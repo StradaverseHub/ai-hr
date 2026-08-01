@@ -26,6 +26,11 @@
  */
 export * from '../../core/leave';
 export * from '../../core/leave-approval-policy';
+// r90 (241817ef) — the approval-rule conversion, exposed here so its operator script consumes it through
+// the facade like any other caller. The alternative was a fifth scripts/ entry in the audited debt
+// allowlist, which is documented to only ever SHRINK; growing it to silence a guard would be the wrong
+// direction. The four scripts already in there are pre-existing debt, not a precedent to extend.
+export * from '../../core/leave-approval-consolidation';
 export * from '../../core/leave-approval-template';
 export * from '../../core/leave-compute';
 export * from '../../core/leave-encashment';

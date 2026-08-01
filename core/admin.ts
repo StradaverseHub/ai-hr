@@ -3263,6 +3263,13 @@ export async function updateLeaveType(
     // save must not touch it and the audit diff must label it correctly. null ⇒ Unlimited, which is what
     // every existing leave type means.
     maxDaysPerLeaveYear?: number | null;
+    // Maximum Consecutive Leave (c6ffa725 revision 2, migration 0343): the OTHER half of the same request —
+    // the longest SINGLE application this type allows, and the unit that figure is read in. OWN tri-state,
+    // and an ALL-OR-NOTHING PAIR: both undefined ⇒ columns untouched; both null ⇒ Unlimited (what every
+    // existing leave type means); a figure + a unit ⇒ Limited. A half-set pair is rejected — "maximum 3" of
+    // what is not answerable, and a unit with no figure is inert configuration that looks set.
+    maxConsecutiveDays?: number | null;
+    maxConsecutiveUnit?: 'calendar_days' | 'working_days' | null;
     // Leave Type Expiry Field (fec49317): OPTIONAL age-from-earning expiry, stored as a (value, unit) pair.
     // OWN tri-state — both keys are undefined (block not rendered) ⇒ columns untouched; both present ⇒ set;
     // an explicit clear posts value=null unit=null (its own sub-form marks the pair as touched). value must
@@ -3428,6 +3435,11 @@ export async function updateLeaveType(
   // sub-form omits maxDaysPerLeaveYear, so max_days_per_leave_year stays untouched (no silent reset, and no
   // silently-imposed ceiling on a type nobody configured one for).
   const touchApplicationLimits = p.maxDaysPerLeaveYear !== undefined;
+  // Maximum Consecutive Leave (c6ffa725 rev 2): its OWN tri-state, separate from touchApplicationLimits
+  // above even though the two controls sit in the same card. They are different rules — "how much in a
+  // year" and "how much in one go" — and sharing a marker would make a save of one silently clear the
+  // other. Touched when EITHER key is present; the sub-form always posts both together.
+  const touchMaxConsecutive = p.maxConsecutiveDays !== undefined || p.maxConsecutiveUnit !== undefined;
   // Leave Type Expiry Field (fec49317): its OWN tri-state — the pair is touched when EITHER key is present
   // (its sub-form always posts both together). Both null ⇒ clear (no expiry); both set ⇒ configure.
   const touchExpiry = p.expiryValue !== undefined || p.expiryUnit !== undefined;
@@ -3620,6 +3632,32 @@ export async function updateLeaveType(
   ) {
     throw new Error('“Maximum application per leave year” must be greater than 0 and no more than 9999 days.');
   }
+  // Maximum Consecutive Leave (c6ffa725 rev 2): mirrors the four DB CHECKs in migration 0343. The pair is
+  // all-or-nothing — Unlimited is (null, null) and Limited is (figure, unit) — because a cap with no unit
+  // cannot be read and a unit with no cap is inert configuration that looks set. A zero or negative cap
+  // would refuse EVERY application of the type, which is a configuration mistake and not a policy.
+  // Fractional figures ARE allowed: half-day leave exists and "at most 2.5 working days" is expressible.
+  let nextMaxConsecutiveDays: number | null | undefined;
+  let nextMaxConsecutiveUnit: 'calendar_days' | 'working_days' | null | undefined;
+  if (touchMaxConsecutive) {
+    const rawDays = p.maxConsecutiveDays ?? null;
+    const rawUnit = p.maxConsecutiveUnit ?? null;
+    if (rawDays == null && rawUnit == null) {
+      nextMaxConsecutiveDays = null;
+      nextMaxConsecutiveUnit = null;
+    } else if (rawDays == null || rawUnit == null) {
+      throw new Error('“Maximum consecutive leave” needs both a maximum and a unit, or neither (Unlimited).');
+    } else {
+      if (!Number.isFinite(rawDays) || rawDays <= 0 || rawDays > 9999) {
+        throw new Error('“Maximum consecutive leave” must be greater than 0 and no more than 9999 days.');
+      }
+      if (rawUnit !== 'calendar_days' && rawUnit !== 'working_days') {
+        throw new Error('“Maximum consecutive leave” unit must be Calendar Days or Working Days.');
+      }
+      nextMaxConsecutiveDays = rawDays;
+      nextMaxConsecutiveUnit = rawUnit;
+    }
+  }
   // Leave Type Expiry Field (fec49317): normalize + validate the (value, unit) pair. Both null = clear (no
   // expiry). A partial pair (one set, the other empty) is a user error — reject it so a half-configured
   // expiry can never persist. value must be a whole number >= 1; unit must be 'months' | 'days'.
@@ -3691,11 +3729,22 @@ export async function updateLeaveType(
   // `{} | { x: … }`, and spreading N of them into one literal multiplies out to 2^N members; the `.set({…})`
   // below spreads enough of them that TypeScript gives up with TS2590. Declaring the merged shape collapses
   // these three back to ONE member and buys the headroom this column needed.
+  // Maximum Consecutive Leave (c6ffa725 rev 2): its own set fragment, PRE-MERGED into the same declared
+  // shape below for the same TS2590 reason. numeric(6,2) is a STRING column to drizzle, so the figure is
+  // serialised here; the unit is plain text.
+  const maxConsecutiveSet = touchMaxConsecutive
+    ? {
+        maxConsecutiveDays: nextMaxConsecutiveDays == null ? null : nextMaxConsecutiveDays.toFixed(2),
+        maxConsecutiveUnit: nextMaxConsecutiveUnit ?? null,
+      }
+    : {};
   const requestRuleSet: {
     backdatingLimitDays?: number | null;
     minAdvanceDays?: number | null;
     maxDaysPerLeaveYear?: string | null;
-  } = { ...backdatingSet, ...minAdvanceSet, ...applicationLimitSet };
+    maxConsecutiveDays?: string | null;
+    maxConsecutiveUnit?: 'calendar_days' | 'working_days' | null;
+  } = { ...backdatingSet, ...minAdvanceSet, ...applicationLimitSet, ...maxConsecutiveSet };
   // Leave Type Expiry Field (fec49317): its own set fragment (the normalized pair, or both null to clear).
   const expirySet = touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {};
   // Partial Leave Approval (ADR-0068): its own set fragment.
@@ -3739,6 +3788,9 @@ export async function updateLeaveType(
         minAdvanceDays: leaveType.minAdvanceDays,
         // Application Limits (c6ffa725): selected for the before/after audit diff.
         maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
+        // Maximum Consecutive Leave (c6ffa725 rev 2): the pair, selected for the before/after audit diff.
+        maxConsecutiveDays: leaveType.maxConsecutiveDays,
+        maxConsecutiveUnit: leaveType.maxConsecutiveUnit,
         expiryValue: leaveType.expiryValue,
         expiryUnit: leaveType.expiryUnit,
         perDateApproval: leaveType.perDateApproval,
@@ -3990,6 +4042,12 @@ export async function updateLeaveType(
           ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
           ...(touchMinAdvance ? { minAdvanceDays: before?.minAdvanceDays ?? null } : {}),
           ...(touchApplicationLimits ? { maxDaysPerLeaveYear: before?.maxDaysPerLeaveYear ?? null } : {}),
+          ...(touchMaxConsecutive
+            ? {
+                maxConsecutiveDays: before?.maxConsecutiveDays ?? null,
+                maxConsecutiveUnit: before?.maxConsecutiveUnit ?? null,
+              }
+            : {}),
           ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
@@ -4043,6 +4101,9 @@ export async function updateLeaveType(
                 maxDaysPerLeaveYear:
                   p.maxDaysPerLeaveYear !== undefined ? p.maxDaysPerLeaveYear : (before?.maxDaysPerLeaveYear ?? null),
               }
+            : {}),
+          ...(touchMaxConsecutive
+            ? { maxConsecutiveDays: nextMaxConsecutiveDays ?? null, maxConsecutiveUnit: nextMaxConsecutiveUnit ?? null }
             : {}),
           ...(touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),

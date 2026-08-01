@@ -215,6 +215,66 @@ export class CombinedLeaveApplicationTooLongError extends Error {
   }
 }
 
+/** Maximum Consecutive Leave (c6ffa725 rev 2, migration 0343) — the UNIT a per-application cap is read in.
+ *
+ *  'calendar_days' counts every day the application SPANS (weekends and public holidays included);
+ *  'working_days' counts only the days it actually CHARGES as leave. A Friday→Monday application is 4 of
+ *  the first and 2 of the second. Stored as TEXT + CHECK rather than a pgEnum (the 0338 lesson) and given
+ *  its reading in exactly one function, applicationSpanDays(). */
+export type ConsecutiveLeaveUnit = 'calendar_days' | 'working_days';
+
+/** One candidate per-application length limit, already measured against the application in its own unit.
+ *  The input shape of bindingApplicationLengthLimit — see that function for the composition rule. */
+export type ApplicationLengthLimit = {
+  /** Which configuration the limit came from — the narrower scope wins a tie. */
+  scope: 'leave_type' | 'shared_group';
+  /** The leave type's name, or the shared group's — whatever the refusal must NAME. */
+  name: string;
+  cap: number;
+  unit: ConsecutiveLeaveUnit;
+  /** The application measured in `unit` (applicationSpanDays). */
+  measured: number;
+};
+
+// Maximum Consecutive Leave (feedback c6ffa725 revision 2, migration 0343): this LEAVE TYPE sets a maximum
+// length for a single application — the reporter's "how much in one go", as against
+// max_days_per_leave_year's "how much in a year" — and this application is longer than it allows.
+//
+// A FOURTH, DISTINCT REFUSAL, and specifically NOT CombinedLeaveApplicationTooLongError. That one names a
+// SHARED LEAVE GROUP and the administrator fixes it on the group; this one names a LEAVE TYPE and is fixed
+// on the type. They can both be configured at once — see bindingApplicationLengthLimit, which decides which
+// one binds — so an employee handed the wrong one would go and change a rule that was not refusing them.
+// Asserted by class AND payload, and `not.toBeInstanceOf` its neighbours, per this area's convention: a
+// bare rejects.toThrow() passes on any throw and this repo has been bitten by that.
+//
+// It carries the UNIT because the number alone is ambiguous: "at most 3 days, this one covers 4" reads as a
+// mistake to an employee who counted 2 working days. The localized message says which reading was used.
+//
+// The request is REFUSED, never silently shortened — the same rule both caps beside it follow. Clipping an
+// application to fit would approve dates the employee did not ask for and leave the rest unrequested.
+export class LeaveTypeApplicationTooLongError extends Error {
+  readonly leaveTypeName: string;
+  readonly maxConsecutiveDays: number;
+  readonly unit: ConsecutiveLeaveUnit;
+  /** The refused application measured in `unit` — the figure the employee must bring under the cap. */
+  readonly requestedSpanDays: number;
+  constructor(p: {
+    leaveTypeName: string;
+    maxConsecutiveDays: number;
+    unit: ConsecutiveLeaveUnit;
+    requestedSpanDays: number;
+  }) {
+    super(
+      `Leave type "${p.leaveTypeName}" allows at most ${p.maxConsecutiveDays} consecutive ${p.unit === 'working_days' ? 'working' : 'calendar'} days per application; this one covers ${p.requestedSpanDays}`,
+    );
+    this.name = 'LeaveTypeApplicationTooLongError';
+    this.leaveTypeName = p.leaveTypeName;
+    this.maxConsecutiveDays = p.maxConsecutiveDays;
+    this.unit = p.unit;
+    this.requestedSpanDays = p.requestedSpanDays;
+  }
+}
+
 // Application Limits (feedback c6ffa725, migration 0335): this leave TYPE sets a maximum number of days an
 // employee may apply for within one leave year, and this application would push them past it.
 //
@@ -1152,40 +1212,185 @@ export async function leaveTypeApplySummary(
 // more: the group applies to the leave TYPE, for everyone. The scheme-based ENTITLEMENT resolution is a
 // different thing and lives on untouched in buildSchemeEntitlementResolver.
 
-/** THE SINGLE PLACE "consecutive days" is given units (r82a 1ef1cf95).
+/** THE SINGLE PLACE "consecutive days" is given units (r82a 1ef1cf95; made SELECTABLE by c6ffa725 rev 2).
  *
- *  The reporter's rule is "each application is capped at 3 consecutive days". The approved plan states that
- *  we read that as CALENDAR days spanned by the application — start..end inclusive, weekends and public
- *  holidays counted — and explicitly invited a rejection if working days were meant. A Friday–Monday
- *  application therefore spans 4 and is refused by a cap of 3, even though it costs 2 working days.
+ *  The reporter's rule is "each application is capped at N consecutive days". r82a read that as CALENDAR
+ *  days spanned by the application — start..end inclusive, weekends and public holidays counted — and the
+ *  approved plan explicitly invited a rejection if working days were meant. The reporter came back and
+ *  asked for the CHOICE, per leave type, which is what `unit` now is. This function is still the whole
+ *  change: it is the only place either reading is produced, and there is deliberately no second span
+ *  helper anywhere.
  *
- *  If the reporter comes back and says working days, THIS FUNCTION is the whole change: return the count of
- *  days the leave type actually charges for instead of the span (the caller would then pass `days`, which
- *  requestLeave has already computed with the type's counting mode and duration). Nothing else moves — the
- *  stored column is a plain day figure with no unit baked in, and the error carries whatever this returns.
+ *    'calendar_days' — the span, start..end inclusive. Both dates are ISO yyyy-mm-dd and are read as UTC
+ *      midnights, so no timezone can shift it. Friday→Monday is 4.
+ *    'working_days'  — `chargedDays`, i.e. the days the application ACTUALLY COSTS, already computed by the
+ *      caller with the leave type's own counting mode, day-type inclusion and duration. It is not
+ *      recomputed here: a second working-day count beside the one that charges the ledger is exactly the
+ *      silent disagreement this area exists to avoid. Friday→Monday is 2.
  *
- *  Both dates are ISO yyyy-mm-dd and are read as UTC midnights, so no timezone can shift the span. */
-function applicationSpanDays(startDate: string, endDate: string): number {
-  const start = Date.parse(`${startDate}T00:00:00Z`);
-  const end = Date.parse(`${endDate}T00:00:00Z`);
+ *  The shared-leave-group cap has no unit column and is always read as 'calendar_days' — that is the
+ *  reading r82a shipped and test/shared-leave-group-max-days.test.ts pins it. */
+function applicationSpanDays(p: {
+  startDate: string;
+  endDate: string;
+  /** Days this application charges as leave — requestLeave's `days`. Only read for 'working_days'. */
+  chargedDays: number;
+  unit: ConsecutiveLeaveUnit;
+}): number {
+  if (p.unit === 'working_days') return round2(Math.max(0, p.chargedDays));
+  const start = Date.parse(`${p.startDate}T00:00:00Z`);
+  const end = Date.parse(`${p.endDate}T00:00:00Z`);
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
   return Math.round((end - start) / 86_400_000) + 1;
 }
 
-/** Shared-leave-group guard: if the requested leave type belongs to a group, enforce the group's TWO
- *  independent rules.
+/**
+ * ONE COMPOSITION, NOT ONE SOURCE — the per-application length rule (c6ffa725 rev 2).
  *
- *  1. PER-APPLICATION CAP (r82a 1ef1cf95 — nullable, so a group without one behaves exactly as before):
- *     this one application may not span more than `max_days_per_application`. Checked FIRST because it is a
- *     property of the application alone — an employee with the whole year's allowance untouched is still
- *     refused a too-long application, and telling them "the allowance is exhausted" would be a lie.
- *  2. SHARED ANNUAL TOTAL (R44 4c48fd1f): sum the employee's per-cycle usage ACROSS ALL member types
- *     (pending + approved, minus the request being re-evaluated) and reject when adding `requestedDays`
- *     would breach the group's shared total. The cycle is the calendar leave year of `startDate` (mirrors
- *     the tenant's calendar-year leave_year_config keying).
+ * TWO configured limits can cap the length of a single application:
  *
- *  The two refuse with DIFFERENT named errors. A no-op when the type is in no group, so tenants with no
- *  groups are unchanged.
+ *   1. the LEAVE TYPE's own Maximum Consecutive Leave (leave_type.max_consecutive_days + _unit, 0343), and
+ *   2. the SHARED LEAVE GROUP's max_days_per_application (leave_shared_group, 1ef1cf95), which applies to
+ *      every member type of the group and is always read in calendar days.
+ *
+ * Two independent caps on the same application CAN disagree, and a silent disagreement is unanswerable for
+ * the employee who was refused — which is precisely why test/shared-leave-group-single-mechanism.test.ts
+ * exists. The answer is not to forbid the second scope; it is to refuse to let them be independent. This
+ * function is the ONLY place either cap is compared with an application, exactly as entitledDays is the
+ * only place three entitlement sources are composed into one day figure.
+ *
+ * THE RULE: the STRICTER limit binds — it can only ever tighten, never loosen what the group already
+ * promised. "Stricter" is the SMALLEST SLACK, slack = cap − measured in that limit's own unit. When both
+ * limits read calendar days (the common case) `measured` is identical for both, so smallest slack is
+ * literally MIN(typeCap, groupCap) — the rule stated in the approved plan. When the type's unit is working
+ * days the two figures are not commensurable as bare numbers, and slack is the one comparison that stays
+ * meaningful: it asks "how close is this application to each limit", which is the question a cap answers.
+ *
+ * Returns the binding limit, or null when the application is within every configured cap. The TIE-BREAK is
+ * the leave type, the narrower scope: if both bind by exactly the same margin, the employee is told about
+ * the rule attached to the type they actually chose.
+ */
+export function bindingApplicationLengthLimit(
+  candidates: readonly ApplicationLengthLimit[],
+): ApplicationLengthLimit | null {
+  const breached = candidates.filter((c) => c.cap > 0 && c.measured > c.cap);
+  if (breached.length === 0) return null;
+  const slack = (c: ApplicationLengthLimit) => c.cap - c.measured;
+  const rank = (c: ApplicationLengthLimit) => (c.scope === 'leave_type' ? 0 : 1);
+  return [...breached].sort((a, bb) => slack(a) - slack(bb) || rank(a) - rank(bb))[0];
+}
+
+/**
+ * THE ONE PLACE a per-application length cap is compared with an application (c6ffa725 rev 2).
+ *
+ * Gathers every configured cap on how long a SINGLE application may be, measures the application in each
+ * cap's own unit, hands them to bindingApplicationLengthLimit, and throws the refusal that NAMES the limit
+ * which bound. Two caps exist:
+ *
+ *   - the LEAVE TYPE's Maximum Consecutive Leave (0343) — calendar OR working days, the administrator's
+ *     choice, because "3 days" means different things over a weekend and the reporter asked to say which;
+ *   - the SHARED LEAVE GROUP's max_days_per_application (1ef1cf95) — always calendar days, the reading
+ *     r82a shipped, unchanged.
+ *
+ * Both NULL is the state of every database that has not been configured, so this is a query-and-return
+ * no-op until an administrator sets one. The STRICTER binds; see bindingApplicationLengthLimit for why
+ * "one composition" is what the single-mechanism invariant actually asks for, and why two SOURCES with one
+ * composition is not the thing that guard forbids.
+ *
+ * CALLED AT BOTH SUBMISSION AND APPROVAL, for the reason every rule in this file is: a submit-only check is
+ * walked straight through by anything already pending when the cap is set or tightened, and an
+ * approval-only check lets an employee file applications that will all be refused later.
+ */
+async function enforceApplicationLengthLimit(
+  tx: Tx,
+  p: {
+    leaveTypeId: string;
+    startDate: string;
+    /** The application's last date — a calendar-unit cap measures this span. */
+    endDate: string;
+    /** Days this application CHARGES — what a working-days cap measures. Already computed by the caller
+     *  with the type's counting mode; never recomputed here (one working-day count, not two). */
+    chargedDays: number;
+  },
+): Promise<void> {
+  if (p.chargedDays <= 0) return;
+  const [lt] = await tx
+    .select({
+      name: leaveType.name,
+      maxConsecutiveDays: leaveType.maxConsecutiveDays,
+      maxConsecutiveUnit: leaveType.maxConsecutiveUnit,
+    })
+    .from(leaveType)
+    .where(eq(leaveType.id, p.leaveTypeId))
+    .limit(1);
+  // The group (if any) this leave type belongs to. The unique index on (tenant, leave_type) means there is
+  // at most one, so no ordering or tie-break is needed to make this deterministic.
+  const [group] = await tx
+    .select({ name: leaveSharedGroup.name, maxDaysPerApplication: leaveSharedGroup.maxDaysPerApplication })
+    .from(leaveSharedGroupMember)
+    .innerJoin(leaveSharedGroup, eq(leaveSharedGroup.id, leaveSharedGroupMember.groupId))
+    .where(eq(leaveSharedGroupMember.leaveTypeId, p.leaveTypeId))
+    .limit(1);
+
+  const candidates: ApplicationLengthLimit[] = [];
+  if (lt?.maxConsecutiveDays != null) {
+    const cap = Number(lt.maxConsecutiveDays);
+    // The DB CHECK and the write-time validator both refuse a non-positive cap and a missing unit, but the
+    // guards are restated so a hand-edited row cannot refuse every application of a type or leave the unit
+    // to be guessed at. An unrecognised unit falls back to the calendar reading r82a shipped.
+    if (Number.isFinite(cap) && cap > 0) {
+      const unit: ConsecutiveLeaveUnit = lt.maxConsecutiveUnit === 'working_days' ? 'working_days' : 'calendar_days';
+      candidates.push({
+        scope: 'leave_type',
+        name: lt.name,
+        cap,
+        unit,
+        measured: applicationSpanDays({ ...p, unit }),
+      });
+    }
+  }
+  if (group?.maxDaysPerApplication != null) {
+    const cap = Number(group.maxDaysPerApplication);
+    if (Number.isFinite(cap) && cap > 0) {
+      candidates.push({
+        scope: 'shared_group',
+        name: group.name,
+        cap,
+        unit: 'calendar_days',
+        measured: applicationSpanDays({ ...p, unit: 'calendar_days' }),
+      });
+    }
+  }
+
+  const bound = bindingApplicationLengthLimit(candidates);
+  if (!bound) return;
+  // The refusal NAMES the limit that bound and the configuration to change. Two classes, because the fix is
+  // in two different screens: the leave type, or the shared leave group.
+  if (bound.scope === 'leave_type') {
+    throw new LeaveTypeApplicationTooLongError({
+      leaveTypeName: bound.name,
+      maxConsecutiveDays: bound.cap,
+      unit: bound.unit,
+      requestedSpanDays: bound.measured,
+    });
+  }
+  throw new CombinedLeaveApplicationTooLongError(bound.name, bound.cap, bound.measured);
+}
+
+/** Shared-leave-group guard: if the requested leave type belongs to a group, enforce the group's SHARED
+ *  ANNUAL TOTAL (R44 4c48fd1f) — sum the employee's per-cycle usage ACROSS ALL member types (pending +
+ *  approved, minus the request being re-evaluated) and reject when adding `requestedDays` would breach the
+ *  group's shared total. The cycle is the calendar leave year of `startDate` (mirrors the tenant's
+ *  calendar-year leave_year_config keying). A no-op when the type is in no group, so tenants with no groups
+ *  are unchanged.
+ *
+ *  THE GROUP'S OTHER RULE, its per-application cap (r82a 1ef1cf95), USED TO LIVE HERE and moved out in
+ *  c6ffa725 rev 2 — see enforceApplicationLengthLimit above, which every caller of this function calls
+ *  first. It moved because the leave type gained a cap of its own and two places deciding how long one
+ *  application may be is the disagreement this whole area is built to prevent. The rule itself, its error
+ *  and its calendar-days reading are all unchanged.
+ *
+ *  The two rules refuse with DIFFERENT named errors — "your year is spent" is not "this one is too long".
  *
  *  r88 1ef1cf95: the lookup is now `leaveTypeId -> group`, with no benefit-scheme dimension. That REMOVES a
  *  per-employee dimension: two employees on different schemes can no longer be subject to different shared
@@ -1197,8 +1402,6 @@ async function enforceSharedLeaveGroupLimit(
     employmentId: string;
     leaveTypeId: string;
     startDate: string;
-    /** The application's last date — the per-application cap measures the span, not the charged days. */
-    endDate: string;
     requestedDays: number;
     excludeRequestId?: string;
   },
@@ -1218,16 +1421,9 @@ async function enforceSharedLeaveGroupLimit(
     .where(eq(leaveSharedGroupMember.leaveTypeId, p.leaveTypeId))
     .limit(1);
   if (!group) return;
-  // RULE 1 — the per-application cap. NULL ⇒ this group sets none, so the check is skipped entirely.
-  // Measured by applicationSpanDays, the one place the calendar-vs-working-days reading lives.
-  if (group.maxDaysPerApplication != null) {
-    const cap = Number(group.maxDaysPerApplication);
-    const span = applicationSpanDays(p.startDate, p.endDate);
-    if (cap > 0 && span > cap) {
-      throw new CombinedLeaveApplicationTooLongError(group.name, cap, span);
-    }
-  }
-  // RULE 2 — the shared annual total.
+  // The shared annual total. (The group's per-application cap was checked before this function ran — see
+  // enforceApplicationLengthLimit; leaving a copy of it here would recreate the two-places-decide problem
+  // that composition exists to prevent.)
   const total = Number(group.totalLimitDays);
   // All member leave types of the group.
   const members = await tx
@@ -2096,14 +2292,21 @@ export async function requestLeave(
     // application would push the employee's per-cycle usage across the group's members over its shared
     // total. No-op when the type is in no group, so tenants with no groups are unaffected.
     //
-    // r82a 1ef1cf95: the same guard also enforces the group's PER-APPLICATION cap, which is why endDate is
-    // passed — the cap measures the application's span, not the days it charges. Two rules, two named
-    // refusals (CombinedLeaveApplicationTooLongError / CombinedLeaveLimitExceededError); see the guard.
+    // Maximum Consecutive Leave (c6ffa725 rev 2) + the shared group's per-application cap (r82a 1ef1cf95),
+    // composed: how long may ONE application be. Runs FIRST of the two because it is a property of the
+    // application ALONE — an employee whose whole year is untouched is still refused a too-long
+    // application, and telling them "your allowance is spent" would be a lie. Both dates AND the charged
+    // days are passed: a calendar-unit cap measures the span, a working-days cap measures what it charges.
+    await enforceApplicationLengthLimit(tx, {
+      leaveTypeId: p.leaveTypeId,
+      startDate: p.startDate,
+      endDate: p.endDate,
+      chargedDays: days,
+    });
     await enforceSharedLeaveGroupLimit(tx, {
       employmentId: p.employmentId,
       leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
-      endDate: p.endDate,
       requestedDays: days,
     });
 
@@ -3183,15 +3386,24 @@ async function finalizeLeaveApproval(
   // its days back, so the pending row it represents is counted exactly once. Counts the days TAKEN
   // (approvedDays), unpaid ones included — a combined-limit pool caps absence, not balance spend.
   //
-  // r82a 1ef1cf95: the group's PER-APPLICATION cap is re-checked here too, from the request's own span
-  // (startDate..endDate) — a cap tightened, or a group created, between submission and approval must not be
-  // approvable through. The span is the APPLICATION's, not the per-date subset's: partial approval narrows
-  // which dates are granted, it does not turn a 5-day application into a 3-day one.
+  // Per-application LENGTH — the leave type's Maximum Consecutive Leave (c6ffa725 rev 2) composed with the
+  // group's per-application cap (r82a 1ef1cf95) — re-checked at approval for the same reason: a cap set or
+  // tightened between submission and approval must not be approvable through.
+  //
+  // MEASURED ON THE APPLICATION, not the per-date subset, in BOTH units: the span is startDate..endDate and
+  // the charged days are the request's own `days`, NOT `approvedDays`. Partial approval narrows which dates
+  // are granted; it does not turn a 5-day application into a 3-day one, and approving 3 of 5 days must not
+  // slip a 5-day application past a 3-day cap.
+  await enforceApplicationLengthLimit(tx, {
+    leaveTypeId: req.leaveTypeId,
+    startDate: req.startDate,
+    endDate: req.endDate,
+    chargedDays: Number(req.days),
+  });
   await enforceSharedLeaveGroupLimit(tx, {
     employmentId: req.employmentId,
     leaveTypeId: req.leaveTypeId,
     startDate: req.startDate,
-    endDate: req.endDate,
     requestedDays: approvedDays,
     excludeRequestId: req.id,
   });

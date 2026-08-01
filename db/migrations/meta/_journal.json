@@ -2024,6 +2024,13 @@
       "when": 1781862442000,
       "tag": "0342_leave_shared_group",
       "breakpoints": true
+    },
+    {
+      "idx": 343,
+      "version": "7",
+      "when": 1781862443000,
+      "tag": "0343_leave_type_max_consecutive",
+      "breakpoints": true
     }
   ]
 }

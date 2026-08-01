@@ -19,10 +19,29 @@ import { ReprocessPanel } from './reprocess-panel';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
 import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
-import { listUnattachedTxnSummary, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
+import { listRecomputeDisclosure, listUnattachedTxnSummary, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
+import { payslipProvenance, type StatutoryLineKey } from '@/core/payslip-recompute';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** 97a9b0ab — statutory line key → its payroll.batch label key. Exhaustive by TYPE (Record over
+ *  StatutoryLineKey), so adding a key to STATUTORY_LINE_KEYS without a label fails the build rather
+ *  than rendering `lineundefined` at runtime. */
+const STATUTORY_LINE_LABEL: Record<StatutoryLineKey, string> = {
+  epfEmployee: 'lineEpfEmployee',
+  epfEmployer: 'lineEpfEmployer',
+  socsoEmployee: 'lineSocsoEmployee',
+  socsoEmployer: 'lineSocsoEmployer',
+  socsoSkbbk: 'lineSocsoSkbbk',
+  eisEmployee: 'lineEisEmployee',
+  eisEmployer: 'lineEisEmployer',
+  pcb: 'linePcb',
+  cp38: 'lineCp38',
+  zakat: 'lineZakat',
+  lp: 'lineLp',
+  hrdf: 'lineHrdf',
+};
 
 export default async function BatchPage({
   params,
@@ -66,6 +85,11 @@ export default async function BatchPage({
   // fc776376 — both per-employee tables on this run are genuine lists that grow with headcount. The
   // payslip BREAKDOWN (one payslip's own lines) is deliberately not paged: it is one record, not a list.
   const slipPage = paginateRows(slips, parsePageQuery(sp));
+  // 97a9b0ab — recomputations of this run's payslips, each diffed against the calculation it replaced
+  // with the cause(s) named. Only a PROCESSED/CLOSED run can have any (a draft has no payslips), and the
+  // read returns [] when the history table has no row for this batch, so a never-reprocessed run pays
+  // one indexed lookup and renders nothing extra.
+  const recomputes = batch.status === 'draft' ? [] : await listRecomputeDisclosure(s, { batchId });
   const inputPage = paginateRows(inputs, parsePageQuery({ page: sp.iPage, size: sp.iSize }));
   // Pre-processing checks (feedback f1564110, Phase 1): validate employee master data BEFORE the run
   // is calculated. Blockers (no salary record) disable Generate outright; warnings (no statutory
@@ -828,11 +852,17 @@ export default async function BatchPage({
                 <th className="px-4 py-2 text-right font-medium">{t('colEis')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colPcb')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colNet')}</th>
+                {/* 97a9b0ab — the statutory ruleset version that produced this row, plus the revision
+                    counter. Both were already stored (statutory.version since 2026.0; payslip.version
+                    since the selective-reprocess build) and neither was ever shown, which is why a
+                    figure that moved on a re-run looked unexplainable. No DDL. */}
+                <th className="px-4 py-2 font-medium">{t('colRules')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {slipPage.rows.map((sl) => {
                 const st = sl.statutory as Record<string, number>;
+                const prov = payslipProvenance(sl.statutory);
                 return (
                   <tr key={sl.id}>
                     <td className="px-4 py-2.5">
@@ -856,12 +886,25 @@ export default async function BatchPage({
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.eisEmployee)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.pcb)}</td>
                     <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(sl.net)}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-xs text-muted-foreground">
+                      <span className="font-mono">{prov.rulesetVersion ?? '—'}</span>
+                      {/* Signed statutory pack, when one produced the run. Every company computing from
+                          the built-in ruleset has no pack stamp, so this stays absent for them. */}
+                      {prov.packVersion && (
+                        <span className="ml-1.5 font-mono">{t('slipPackStamp', { v: prov.packVersion })}</span>
+                      )}
+                      {sl.version > 1 && (
+                        <span className="ml-1.5 rounded bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-700 dark:text-amber-400">
+                          {t('slipRevision', { n: sl.version })}
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {slipPage.rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
                     {t('noPayslips')}
                   </td>
                 </tr>
@@ -874,7 +917,90 @@ export default async function BatchPage({
           params={{ from, hw, iPage: sp.iPage, iSize: sp.iSize }}
           state={slipPage.state}
         />
+        {slipPage.rows.length > 0 && (
+          <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('provenanceNote')}</p>
+        )}
       </Card>
+
+      {/* 97a9b0ab — RE-RUN DISCLOSURE. The run already wrote a full before/after payslip pair into
+          payroll_employee_result_history on every selective reprocess, and NOTHING read it back: a
+          statutory figure could move while gross stood still and the screen said nothing at all.
+          This section diffs each pair and names the cause. Read-only; rendered only when this run has
+          actually been recalculated, so an untouched run is visually unchanged. */}
+      {recomputes.length > 0 && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('disclosureTitle')} count={recomputes.length} />
+          <ul className="divide-y divide-border">
+            {recomputes.map((r) => {
+              const d = r.diff;
+              return (
+                <li key={r.id} className="space-y-2 px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="font-medium">{r.employeeName}</span>
+                    {r.employeeCode && <EmployeeCode code={r.employeeCode} />}
+                    <span className="text-xs text-muted-foreground">
+                      {t('disclosureRevision', { before: d.versionBefore ?? '?', after: d.versionAfter ?? '?' })}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{r.at.toISOString().slice(0, 16).replace('T', ' ')}</span>
+                    {r.reason && (
+                      <span className="text-xs text-muted-foreground">{t('disclosureReason', { reason: r.reason })}</span>
+                    )}
+                  </div>
+
+                  {d.moved.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">{t('disclosureNoMove')}</p>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        {d.grossChanged
+                          ? t('disclosureGrossChanged', { before: rm(d.grossBefore), after: rm(d.grossAfter) })
+                          : t('disclosureGrossUnchanged', { gross: rm(d.grossAfter) })}
+                      </p>
+                      <ul className="space-y-0.5">
+                        {d.moved.map((m) => (
+                          <li key={m.key} className="flex items-baseline justify-between gap-4 text-xs">
+                            <span>{t(STATUTORY_LINE_LABEL[m.key])}</span>
+                            <span className="tabular-nums">
+                              <span className="text-muted-foreground">{rm(m.before)}</span>
+                              {' → '}
+                              <span className="font-medium">{rm(m.after)}</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="rounded-md bg-muted/50 px-3 py-2 text-xs">
+                        <p className="mb-1 font-medium">{t('disclosureCauseHeading')}</p>
+                        <ul className="space-y-1 text-muted-foreground">
+                          {/* Cause (a). Reported as a FACT TO CHECK, never as proof the tax moved: a
+                              ruleset bump is not automatically behavioural (2026.4 → 2026.5 changed no
+                              PCB band, rate or relief — it only added optional pay-code classification
+                              tables that are inert unless a pay item is explicitly classified). The
+                              note below carries that caveat, and must not be dropped. */}
+                          {d.rulesetChanged && (
+                            <li>
+                              {t('disclosureCauseRuleset', {
+                                before: d.before.rulesetVersion ?? '?',
+                                after: d.after.rulesetVersion ?? '?',
+                              })}{' '}
+                              {t('disclosureCauseRulesetNote')}
+                            </li>
+                          )}
+                          {d.rulesetUnknown && <li>{t('disclosureCauseRulesetUnknown')}</li>}
+                          {/* Cause (b) — the cumulative-PCB replay. This one IS a mechanism, not a hint. */}
+                          {r.priorMonths.length > 0 && (
+                            <li>{t('disclosureCausePriorMonths', { periods: r.priorMonths.join(', ') })}</li>
+                          )}
+                          {d.causes.length === 0 && !d.rulesetUnknown && <li>{t('disclosureCauseOwnInputs')}</li>}
+                        </ul>
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
 
       {/* Selective reprocessing (feedback 9bc442bc, reporter ask #3): pick specific employees on a
           PROCESSED run and reprocess them as a same-month adjustment run — the regular run's payslips

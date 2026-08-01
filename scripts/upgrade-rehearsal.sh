@@ -113,6 +113,19 @@ if [ "$REBUILD" = "0" ] && [ -n "${EXISTING_MIGRATIONS:-}" ] && [ "${EXISTING_MI
 else
   CARRIED=0
   say "1/6  building the baseline database"
+  # CHECKPOINT FIRST. On PostgreSQL 14 both DROP and CREATE DATABASE force an immediate checkpoint and
+  # WAIT on it. Run straight after a full suite — which is exactly when a rehearsal runs — that wait has
+  # hung indefinitely in IPC/CheckpointStart four times on 2026-08-01, each needing the cluster rebuilt to
+  # escape. test/global-setup.ts got the same treatment, but it only covers the SUITE's own creates; this
+  # script builds its scratch database through its own path, which is why the suite passed and the
+  # rehearsal still wedged.
+  #
+  # Doing it explicitly, once, means the forced checkpoints find little left to flush. It is NOT a
+  # guaranteed fix — a wedge was reproduced on 2026-08-01 with fsync=off, full_page_writes=off and
+  # synchronous_commit=off all set, and the checkpointer sitting in UNINTERRUPTIBLE kernel wait (ps state
+  # U), which no Postgres-level setting can shorten. The durable fix is PostgreSQL 15+, whose
+  # CREATE DATABASE defaults to STRATEGY=WAL_LOG and forces no checkpoint at all.
+  psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d postgres -q -c "CHECKPOINT" 2>/dev/null || true
   psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d postgres -q \
     -c "DROP DATABASE IF EXISTS \"$SCRATCH\" WITH (FORCE)" -c "CREATE DATABASE \"$SCRATCH\"" || exit 1
 fi
