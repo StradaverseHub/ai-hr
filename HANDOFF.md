@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r100 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r102 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,13 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@3e136060` — production on **292** migrations. **Next free number is `0346`.**
+> ### DEPLOYED HEAD IS `main@d0fe7469` — production on **292** migrations. **Next free number is `0346`.**
+>
+> ### SLICE 6 HAS BEGUN — `country-my` IS A MODULE, AND IT IS INERT
+>
+> Production carries **one tenant-wide `country-my` row** (`company_id` NULL, active). Nothing resolves
+> against it yet. `scripts/backfill-country-modules.ts` runs on EVERY deploy and reports any company
+> whose country has no registered pack — that set is the input to the non-statutory tier.
 >
 > ### `tenant_module` HAS EXACTLY ONE WRITER NOW — use it, never hand SQL
 >
@@ -790,7 +796,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 3 | gate classification + migration + backfill | **DONE** — round entry below |
    | 4 | nav + page gating from entitlements | **DONE** — round entry below |
    | 5 | module install / deactivate as operations | **DONE (r97-r100)** except the admin setup notification (no natural key on `notification`) — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
-   | 6 | multi-country entitlement wiring | **NOT BUILT** — no `country-<cc>` provisioning anywhere |
+   | 6 | multi-country entitlement wiring | **STEP 1 DONE (r102)** — `country-my` catalog row + tenant-wide grant, INERT. Still to do: two-tier statutory/non-statutory company (retires r97's `requirePackFor`), leave fails closed (4 `if (!pack) continue` in core/leave.ts), vocabulary scoping, per-company reporting + mixed-currency refusal, and the deploy-failing flip |
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
    | 9 | tenant suspension / export / closure | **NOT BUILT** — `SET TRANSACTION READ ONLY` exists only in COMMENTS |
@@ -856,6 +862,36 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r102 — 2026-08-02 — slice 6 step 1: country becomes a module, shipped inert
+
+**Shipped:** `main@d0fe7469`. **No migration.** **Gate:** `tsc` · **525 files / 6092 tests** · `next build`.
+**Verified on production:** `Country modules: 1 granted, 0 already present` — ONE tenant-wide row for 8
+Malaysian companies, and zero unpacked companies.
+
+**1. THE PLAN'S BACKFILL CANNOT BE A MIGRATION.** `tenant_module.module_code` has an FK to
+`module(code)` and `deploy.sh` migrates BEFORE seeding catalogs, so the migration fails on the FK. And
+"insert where a pack is REGISTERED" is a question only TypeScript can answer — SQL would hard-code a
+country list and rot the moment a second pack ships. It is a deploy backfill script.
+
+**2. THE FAIL-CLOSED FLIP IS DELIBERATELY SPLIT OUT.** The plan pairs it with the backfill in one
+deploy. The backfill is harmless alone; the flip **fails a production deploy** when a company is neither
+packed nor flagged. Making that change against data already in production beats shipping both and
+diagnosing which half broke. **Confirm before shipping the flip.**
+
+**3. THE CATALOG ENTRY USES THE `system_explorer` IDIOM** (`packs/catalog.ts:254`): `null` in
+`LEGACY_MODULE_ENV_GATES` forces the code into `LEGACY_ENABLED_MODULE_CODES`, which the drift test pins
+against 0313's literal SQL — a migration that has already run. An unset env name keeps it out; the
+backfill grants the row instead. `packBacked: false` (the drift correspondence is with
+`listPacks('module')`; a country pack registers under `kind: 'country'`). **`billable: false` on
+purpose** — marking it billable would make the change runner refuse to grant it without a
+`subscription_line`, stranding a capability nobody has decided how to sell.
+
+**4. TENANT-WIDE, NOT PER COMPANY.** The entitlement is "this customer may operate Malaysia", not "this
+company is Malaysian" — the company already carries its country. Idempotent via explicit NOT EXISTS
+(`tenant_module` has no unique constraint, so ON CONFLICT DO NOTHING would be a silent no-op).
+
+---
 
 ## r100 — 2026-08-02 — slice 5 step 4: two-phase deactivation, and D-6 pinned rather than rebuilt
 
