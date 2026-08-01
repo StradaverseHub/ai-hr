@@ -252,7 +252,8 @@ describe('123c1e76 · per-type Entitlement card reuses the benefit-scheme table 
     for (const loc of LOCALES) {
       const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
       const bs = msgs?.admin?.benefitScheme ?? {};
-      for (const key of ['perTypeColScheme', 'perTypeEmpty', 'perTypeSharedPool', 'perTypeManageNote']) {
+      // r88/1ef1cf95 — perTypeSharedPool dropped: the badge it labelled left with the scheme-level pool.
+      for (const key of ['perTypeColScheme', 'perTypeEmpty', 'perTypeManageNote']) {
         expect(typeof bs[key], `${loc}.admin.benefitScheme.${key}`).toBe('string');
         expect((bs[key] as string).length, `${loc}.admin.benefitScheme.${key} non-empty`).toBeGreaterThan(0);
       }

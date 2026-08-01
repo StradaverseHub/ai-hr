@@ -84,12 +84,21 @@ describe('b1b81a08 · Panel A and its drag wiring are gone (over-deletion guard 
     }
   });
 
-  it('the UNRELATED entitlement DndContext survives — this change must not over-delete', () => {
-    // The per-scheme entitlement pool/row drag (R47 d6f88c2f) is a SECOND, independent DndContext further
-    // down the same file. Nothing about grades touches it, and no other test currently guards it.
-    expect(configSrc).toContain('<DndContext');
-    expect(configSrc).toContain('useDroppable({ id: `pool:${pool.id}` })');
-    expect(configSrc).toContain('useDroppable({ id: `row:${ent.id}` })');
+  it('the entitlement pool/row drag is GONE, and nothing drags on this screen any more', () => {
+    // INVERTED IN r88 (1ef1cf95). This assertion was written during the GRADES relocation (b1b81a08),
+    // where the per-scheme entitlement pool/row drag (R47 d6f88c2f) genuinely WAS unrelated collateral —
+    // hence its original name, "must not over-delete". For 1ef1cf95 that same DndContext is the TARGET:
+    // a shared leave group is no longer a property of a benefit scheme, so the drag that created one by
+    // dropping a row onto a pool has no subject left. Keeping the old assertion would have re-asserted
+    // the mechanism the reporter explicitly rejected.
+    //
+    // Both DndContexts in this file are now gone — grades by b1b81a08, pools by 1ef1cf95 — so the
+    // stronger and simpler claim is that the screen has no drag surface at all. That also pins the
+    // dead-import cleanup: a lingering @dnd-kit import is how the next reader concludes it still drags.
+    expect(configSrc).not.toContain('<DndContext');
+    expect(configSrc).not.toContain('useDroppable({ id: `pool:${pool.id}` })');
+    expect(configSrc).not.toContain('useDroppable({ id: `row:${ent.id}` })');
+    expect(configSrc).not.toMatch(/from '@dnd-kit\//);
   });
 
   it('the grade LIST is still loaded by the page and still fed to the config', () => {

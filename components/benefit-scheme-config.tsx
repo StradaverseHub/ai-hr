@@ -1,20 +1,12 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
-import {
-  DndContext,
-  PointerSensor,
-  pointerWithin,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-} from '@dnd-kit/core';
-import { CSS } from '@dnd-kit/utilities';
+// r88/1ef1cf95 — the whole @dnd-kit import block went with the drag-to-group interaction. This file had
+// TWO DndContexts historically: the grade-card drag (removed by b1b81a08) and the entitlement pool/row
+// drag (removed here, because a shared leave group is no longer a property of a benefit scheme). With
+// both gone the imports were dead, and a dead drag import is how the next reader concludes the surface
+// still drags.
 import * as Dialog from '@radix-ui/react-dialog';
-import { GripVertical } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { resolveGradePolicy, type GradePolicyRow, type ServiceBand } from '@/core/leave-compute';
 import {

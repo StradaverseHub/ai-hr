@@ -146,7 +146,12 @@ describe('1bd9a911 · left-side type list: A–Z order + its own scrollbar', () 
     // The Add Leave button stays OUTSIDE the scrolling <ul>, at the bottom of the nav.
     const ulEnd = workspaceSrc.indexOf('</ul>');
     expect(ulEnd).toBeGreaterThan(-1);
-    expect(workspaceSrc.indexOf('className="mt-auto w-full"', ulEnd)).toBeGreaterThan(ulEnd);
+    // r88/1ef1cf95 — the Add Leave Type button gained a SIBLING (the Shared Leave Groups control), so the
+    // two now sit in a shared `mt-auto` flex column instead of the button carrying `mt-auto` itself. The
+    // assertion's subject is unchanged and still checked: the bottom-pinned block sits AFTER </ul>, i.e.
+    // outside the scrolling list. Pinning the literal old class string would have failed on a layout that
+    // still satisfies the rule.
+    expect(workspaceSrc.indexOf('className="mt-auto', ulEnd)).toBeGreaterThan(ulEnd);
   });
 
   it('keeps the selected type visible inside the scroll panel', () => {

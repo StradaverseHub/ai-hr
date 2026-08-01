@@ -186,9 +186,13 @@ describe('b1b81a08 · the origin — Grade is gone from Leave Config', () => {
 
   it('benefit-scheme-config no longer declares gradesPanel but KEEPS the entitlement DndContext', () => {
     expect(schemeConfigSrc.includes('gradesPanel')).toBe(false);
-    // Over-deletion guard: the SECOND, unrelated DndContext is the per-scheme entitlement pool/row drag.
-    expect(schemeConfigSrc).toContain('<DndContext');
-    expect(schemeConfigSrc).toContain('useDroppable({ id: `pool:${pool.id}` })');
+    // r88/1ef1cf95 — this over-deletion guard protected the SECOND DndContext, the per-scheme entitlement
+    // pool/row drag. That drag is now gone too, deliberately: shared groups left the benefit scheme, so
+    // the thing it dragged no longer exists here. Both DndContexts have now been removed by two separate,
+    // intentional changes (grades by b1b81a08, pools by 1ef1cf95), so the guard is inverted rather than
+    // deleted — nothing on this screen drags any more, and no @dnd-kit import should suggest otherwise.
+    expect(schemeConfigSrc).not.toContain('<DndContext');
+    expect(schemeConfigSrc).not.toContain('useDroppable({ id: `pool:${pool.id}` })');
     // Panel B's tick-box membership editor and its shared empty-state string survive.
     expect(schemeConfigSrc).toContain('<form action={actions.updateGradeGroup} className="space-y-3">');
     expect(schemeConfigSrc.match(/t\('noGrades'\)/g)?.length).toBe(2);
