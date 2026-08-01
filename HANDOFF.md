@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-01, after r93 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-01, after r94 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,9 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@4cceb294` — production on **290** migrations.
+> ### DEPLOYED HEAD IS `main@c009578f` — production on **290** migrations.
+>
+> **`241817ef` IS FINALLY CLOSED** (r94), so r90's deliberate half-ship is done. **The board now has NOTHING in `building`.**
 >
 > **Next free migration number is `0344`.** Neither r91 nor r92 added a migration, so the schema has been
 > untouched since r90's `0343`.
@@ -441,6 +443,24 @@ This is the same root-worktree trap that cost r79 a round, arriving by a differe
 next suite printed `RUN … /Users/zenlam/Projects/ai-hr`. Caught only by reading the `RUN` line. Read it
 every time; it is the cheapest check in this file.
 
+**A LONG SESSION BLOATS `pg_wal` UNTIL `resetDb()` STARTS LOSING DEADLOCK RACES — r94 lost THREE gate
+runs to this.** Symptom: one file fails with 22-27 × `Hook timed out in 30000ms` in `beforeEach`, the file
+is unrelated to the change, and it **passes in isolation**. The real error is buried under the timeout:
+
+    Error: Failed query: TRUNCATE tenant, company, … (≈100 tables) RESTART IDENTITY CASCADE
+    Caused by: PostgresError: deadlock detected
+
+`resetDb()` truncates ~100 tables in one statement. That normally wins any lock race; on a degraded
+cluster it does not. **The tell is `global-setup` timing, and it is printed on every run:** healthy is
+**3-10s**, and r94 saw it drift to **18-24s** before the failures started. `pg_wal` had reached **7.8 GB**
+after five full suites in one session — r86 measured **1.8 GB** after a single suite.
+
+**Rebuild the cluster (Traps recipe) rather than re-running.** After the rebuild: `global-setup` **3.4s**,
+the whole suite **481s vs 780s** on identical code, and 517/6021 green. **This is NOT the r83 wedge** —
+nothing was stuck, `pg_stat_bgwriter` counters were moving, and the cluster stopped cleanly with `-m fast`.
+Different problem, same remedy. **Do not conclude "flaky test" from a pass in isolation** — that is how a
+real deadlock would get ignored; read the `Caused by` line and the setup timing before deciding.
+
 **`globalSetup` RUNS ONCE PER PROJECT, NOT ONCE PER RUN — and it is inherited.** It sits in the same
 options bag as `setupFiles`, so a project declared with `extends: true` gets the root's `globalSetup` and
 runs it AGAIN. r93 saw `--project dom` print `[global-setup] … 10 worker DBs wiped` **twice** for a
@@ -774,6 +794,60 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r94 — 2026-08-01 — the half-shipped item is finished, and three gates lost to 7.8 GB of WAL
+
+**Shipped:** `main@c009578f`. **No migration.**
+**Gate:** `tsc` clean · **517 files / 6021 tests** · `next build` clean — on the THIRD attempt, see below.
+**`241817ef` marked deployed.** The board now has nothing in `building`.
+
+### Decisions
+
+**1. THE CONVERSION RAN BEFORE THE REMOVAL, AND THE VERIFICATION EARNED ITS KEEP.**
+`scripts/convert-approval-rules.ts` (r90) was dry-run against production, then applied: **51 assignments
+converted, 3 skipped, 0 failures**, every routing probe resolved before and after in one transaction.
+
+**The raw count understated the job by 12×.** Production showed **4** stranded policies
+(`template_id IS NULL OR leave_type_id IS NULL`) but an any-type rule expands to one assignment PER LEAVE
+TYPE, so the real footprint was **51** across two companies. A plan written off the row count would have
+been wrong about the size of its own change.
+
+**Checking the result mattered more than checking the exit code.** After applying, **2 rows still matched
+the stranded criterion**. They were `active = false` — the archived source rules. Zero ACTIVE stranded
+rules is the precondition that made the removal safe; had those two been live, deploying would have
+silently re-routed their requests onto the built-in fallback, which is the exact failure the two-step
+structure exists to prevent.
+
+**2. THE SCREEN WAS NOT ENOUGH TO REMOVE — THE WRITER HAD TO GO WITH IT.** Deleting the card while leaving
+`saveLeaveApprovalPolicyAction` exported leaves a **caller-less server action, which is still an
+addressable endpoint** — the base chain would have stayed rewritable with no screen showing it, i.e. the
+silent-configuration problem the item exists to end. This repo has shipped caller-less live endpoints
+before (r80). `core/setLeaveApprovalPolicy` is KEPT: it is the domain operation and the policy suite
+drives it directly.
+
+**`LeaveApprovalEditor` LOOKS ORPHANED AND IS NOT** — `app/admin/leave-approval/rule-builder.tsx` still
+renders it. Checked before deleting, per r91's lesson about "unused" screens that turn out to be sole
+writers.
+
+**3. A TEST THAT GUARDED THE OLD ARRANGEMENT WAS INVERTED, NOT DELETED.**
+`test/leave-approval-page-restructure.test.ts` asserted the company section EXISTS; it was right until the
+wildcard rules had somewhere else to live. Its two structural tests now assert the absence, so the removal
+is guarded exactly as the arrangement was. The escalation test lost its upper bound (which WAS the company
+section) and now asserts the editor appears exactly ONCE instead.
+
+**4. CONSEQUENCE THE APPROVED PLAN DID NOT MENTION, now in the `build_ref`.** The two converted companies
+hold explicit per-type assignments, so **a leave type added LATER will not inherit that chain** — it needs
+its own assignment or falls to the built-in `direct_manager → hr_admin` fallback. Nothing existing changed.
+The script says this itself in its output; rev 3 did not, and the reporter was told rather than left to
+discover it.
+
+**5. THREE FULL GATES WERE LOST TO CLUSTER DEGRADATION, NOT TO THE CHANGE.** Two runs failed with 22 then
+27 timeouts in one unrelated TOIL file that passed in isolation. The cause was `deadlock detected` on
+`resetDb()`'s ~100-table TRUNCATE, with **7.8 GB of `pg_wal`** behind it. See the new trap — the diagnosis
+is in the `Caused by` line and in `global-setup` timing, and "passes in isolation" was NOT accepted as
+evidence.
+
+---
 
 ## r93 — 2026-08-01 — the repo learns to render, and the first browser test finds a live bug
 
