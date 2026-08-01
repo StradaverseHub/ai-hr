@@ -1575,6 +1575,9 @@
       "insufficientBalance": "假期余额不足。您的可用假期余额低于所申请的假期时长。",
       "combinedLimitExceeded": "合并假期上限「{poolName}」（每年{days}天）将在其共享假期类型中被超出。",
       "combinedApplicationTooLong": "共享假期组「{poolName}」每次申请最多 {maxDays} 天，本次申请为 {days} 天。请缩短申请天数，或分成多次申请。",
+      "leaveTypeApplicationTooLong": "{typeName} 每次申请最多连续 {maxDays} {unit}，本次申请为 {days}。请缩短申请天数，或分成多次申请。",
+      "consecutiveUnitCalendar": "个日历天",
+      "consecutiveUnitWorking": "个工作日",
       "leaveYearApplicationLimit": "{typeName} 每个假期年度上限为 {maxDays} 天。在 {yearStart} 至 {yearEnd} 期间已申请 {usedDays} 天，因此本次 {days} 天的申请无法提交。"
     },
     "documentLabel": "证明文件",
@@ -4080,7 +4083,16 @@
         "applicationLimitUnlimited": "不限",
         "applicationLimitLimited": "限制",
         "applicationLimitMaxLabel": "上限（天）",
-        "applicationLimitHelp": "限制员工在一个假期年度内可就该假期类型申请的总天数，无论是否存在可用余额——适用于无薪假等类型。提交申请时校验一次，审批时再校验一次。假期额度、累计与假期汇总中显示的余额均不受影响。目前所有假期类型均为“不限”。"
+        "applicationLimitHelp": "限制员工在一个假期年度内可就该假期类型申请的总天数，无论是否存在可用余额——适用于无薪假等类型。提交申请时校验一次，审批时再校验一次。假期额度、累计与假期汇总中显示的余额均不受影响。目前所有假期类型均为“不限”。",
+        "maxConsecutiveTitle": "最长连续请假",
+        "maxConsecutiveLabel": "最长连续请假",
+        "maxConsecutiveUnlimited": "不限",
+        "maxConsecutiveLimited": "限制",
+        "maxConsecutiveMaxLabel": "上限",
+        "maxConsecutiveUnitLabel": "单位",
+        "maxConsecutiveUnitCalendar": "日历天",
+        "maxConsecutiveUnitWorking": "工作日",
+        "maxConsecutiveHelp": "限制该假期类型单次申请的最长天数——与上方的年度上限是两条不同的规则。日历天计入申请跨越的每一天，包括周末和公众假期；工作日只计入真正扣减假期的天数，因此周五至周一的申请是 4 个日历天但只有 2 个工作日。提交申请时检查，批准时再检查一次。若该假期类型同时属于设有单次申请上限的共享假期组，则以两者中更严格的一条为准，并在拒绝时说明是哪一条。目前所有假期类型均为不限。"
       },
       "entitlementStep": {
         "schemes": "福利方案",

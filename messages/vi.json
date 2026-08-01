@@ -1575,6 +1575,9 @@
       "insufficientBalance": "Số dư phép không đủ. Số dư phép khả dụng của bạn thấp hơn thời lượng nghỉ phép được yêu cầu.",
       "combinedLimitExceeded": "Giới hạn nghỉ gộp \"{poolName}\" ({days} ngày mỗi năm) sẽ bị vượt qua trên các loại nghỉ dùng chung.",
       "combinedApplicationTooLong": "Nhóm nghỉ dùng chung \"{poolName}\" cho phép tối đa {maxDays} ngày mỗi đơn; đơn này là {days} ngày. Vui lòng rút ngắn hoặc nộp thành nhiều đơn riêng.",
+      "leaveTypeApplicationTooLong": "{typeName} cho phép tối đa {maxDays} {unit} liên tục mỗi đơn; đơn này là {days}. Vui lòng rút ngắn hoặc nộp thành nhiều đơn riêng.",
+      "consecutiveUnitCalendar": "ngày theo lịch",
+      "consecutiveUnitWorking": "ngày làm việc",
       "leaveYearApplicationLimit": "{typeName} bị giới hạn {maxDays} ngày mỗi năm nghỉ phép. Đã xin {usedDays} ngày trong khoảng {yearStart} đến {yearEnd}, nên đơn xin {days} ngày này không thể nộp."
     },
     "documentLabel": "Tài liệu hỗ trợ",
@@ -4080,7 +4083,16 @@
         "applicationLimitUnlimited": "Không giới hạn",
         "applicationLimitLimited": "Có giới hạn",
         "applicationLimitMaxLabel": "Tối đa (ngày)",
-        "applicationLimitHelp": "Giới hạn tổng số ngày nhân viên được PHÉP XIN nghỉ loại này trong một năm nghỉ phép, bất kể có số dư quyền lợi hay không — quy tắc dành cho các loại như Nghỉ không lương. Được kiểm tra khi nộp đơn và kiểm tra lại khi phê duyệt. Quyền lợi, tích lũy và số dư hiển thị trong Tổng hợp phép đều không đổi. Hiện tại mọi loại nghỉ phép đều là Không giới hạn."
+        "applicationLimitHelp": "Giới hạn tổng số ngày nhân viên được PHÉP XIN nghỉ loại này trong một năm nghỉ phép, bất kể có số dư quyền lợi hay không — quy tắc dành cho các loại như Nghỉ không lương. Được kiểm tra khi nộp đơn và kiểm tra lại khi phê duyệt. Quyền lợi, tích lũy và số dư hiển thị trong Tổng hợp phép đều không đổi. Hiện tại mọi loại nghỉ phép đều là Không giới hạn.",
+        "maxConsecutiveTitle": "Số ngày nghỉ liên tục tối đa",
+        "maxConsecutiveLabel": "Số ngày nghỉ liên tục tối đa",
+        "maxConsecutiveUnlimited": "Không giới hạn",
+        "maxConsecutiveLimited": "Có giới hạn",
+        "maxConsecutiveMaxLabel": "Tối đa",
+        "maxConsecutiveUnitLabel": "Đơn vị",
+        "maxConsecutiveUnitCalendar": "Ngày theo lịch",
+        "maxConsecutiveUnitWorking": "Ngày làm việc",
+        "maxConsecutiveHelp": "Giới hạn độ dài của MỘT đơn xin nghỉ thuộc loại này — một quy tắc khác với giới hạn theo năm ở trên. Ngày theo lịch tính mọi ngày mà đơn bao trùm, kể cả cuối tuần và ngày lễ; Ngày làm việc chỉ tính những ngày thực sự bị trừ phép, nên đơn từ thứ Sáu đến thứ Hai là 4 ngày theo lịch nhưng 2 ngày làm việc. Được kiểm tra khi nộp đơn và kiểm tra lại khi phê duyệt. Nếu loại nghỉ này cũng thuộc một Nhóm nghỉ dùng chung có giới hạn mỗi đơn riêng, quy tắc chặt hơn sẽ được áp dụng và lời từ chối sẽ nói rõ là quy tắc nào. Hiện nay mọi loại nghỉ đều là Không giới hạn."
       },
       "entitlementStep": {
         "schemes": "Chương trình phúc lợi",

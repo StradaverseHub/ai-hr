@@ -1333,6 +1333,23 @@ export const leaveType = pgTable('leave_type', {
   // silently-defaulted limit would begin refusing real leave applications the moment it deployed (the
   // r82 precedent, scheme_leave_combined_limit.max_days_per_application).
   maxDaysPerLeaveYear: numeric('max_days_per_leave_year', { precision: 6, scale: 2 }),
+  // Maximum Consecutive Leave (feedback c6ffa725 revision 2, migration 0343): the OTHER half of the same
+  // request — "how much in ONE GO", where max_days_per_leave_year above is "how much in a YEAR". Unlimited
+  // (both NULL) or Limited (a figure AND the unit it is read in). The DB refuses a half-configured pair.
+  //
+  //   maxConsecutiveDays — the cap. NULL ⇒ Unlimited, which is every row in every existing database.
+  //   maxConsecutiveUnit — 'calendar_days' (every day the application SPANS, weekends and holidays counted)
+  //     or 'working_days' (only the days the application actually CHARGES). Friday→Monday is 4 of the first
+  //     and 2 of the second: the same number means different things, which is why the reporter asked to
+  //     choose. TEXT + CHECK, not a pgEnum — a new enum value cannot be used in the transaction that adds
+  //     it (the 0338 lesson); expiry_unit on this table is the precedent.
+  //
+  // THE SECOND PER-APPLICATION CAP, DELIBERATELY. leave_shared_group.max_days_per_application caps one
+  // application too, for every type in a shared group. The two are NOT independent mechanisms: they are one
+  // composition (resolveApplicationLengthLimit in core/leave.ts), the stricter binds, and the refusal names
+  // which. See test/shared-leave-group-single-mechanism.test.ts, widened in the open to say exactly that.
+  maxConsecutiveDays: numeric('max_consecutive_days', { precision: 6, scale: 2 }),
+  maxConsecutiveUnit: text('max_consecutive_unit'), // 'calendar_days' | 'working_days' (null when Unlimited)
   //   maxBalanceDays — the Maximum Balance clamp (9d8cf621). NOTE its source: this exists TODAY only as a
   //     PER-SERVICE-BAND value inside `accrual.serviceBands[].maxBalanceDays`, never at policy level. The
   //     bands are the DAYS half of the split and move to scheme_leave_entitlement.service_bands, so the cap

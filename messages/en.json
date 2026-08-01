@@ -1575,6 +1575,9 @@
       "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration.",
       "combinedLimitExceeded": "Combined leave limit \"{poolName}\" ({days} days a year) would be exceeded across its shared leave types.",
       "combinedApplicationTooLong": "Shared leave group \"{poolName}\" allows at most {maxDays} days per application; this one covers {days}. Please shorten it or apply in separate applications.",
+      "leaveTypeApplicationTooLong": "{typeName} allows at most {maxDays} consecutive {unit} per application; this one covers {days}. Please shorten it or apply in separate applications.",
+      "consecutiveUnitCalendar": "calendar day(s)",
+      "consecutiveUnitWorking": "working day(s)",
       "leaveYearApplicationLimit": "{typeName} is limited to {maxDays} day(s) per leave year. {usedDays} day(s) have already been applied for between {yearStart} and {yearEnd}, so this application of {days} day(s) cannot be submitted."
     },
     "documentLabel": "Supporting document",
@@ -4080,7 +4083,16 @@
         "applicationLimitUnlimited": "Unlimited",
         "applicationLimitLimited": "Limited",
         "applicationLimitMaxLabel": "Maximum (days)",
-        "applicationLimitHelp": "Caps the total days an employee may APPLY for of this type in one leave year, whether or not any entitlement balance exists — the rule for types such as Unpaid Leave. It is checked when the application is submitted and again when it is approved. Entitlement, accrual and the balance shown in Leave Summary are untouched. Unlimited is how every leave type behaves today."
+        "applicationLimitHelp": "Caps the total days an employee may APPLY for of this type in one leave year, whether or not any entitlement balance exists — the rule for types such as Unpaid Leave. It is checked when the application is submitted and again when it is approved. Entitlement, accrual and the balance shown in Leave Summary are untouched. Unlimited is how every leave type behaves today.",
+        "maxConsecutiveTitle": "Maximum Consecutive Leave",
+        "maxConsecutiveLabel": "Maximum consecutive leave",
+        "maxConsecutiveUnlimited": "Unlimited",
+        "maxConsecutiveLimited": "Limited",
+        "maxConsecutiveMaxLabel": "Maximum",
+        "maxConsecutiveUnitLabel": "Unit",
+        "maxConsecutiveUnitCalendar": "Calendar Days",
+        "maxConsecutiveUnitWorking": "Working Days",
+        "maxConsecutiveHelp": "Caps how long ONE application of this type may be — a different rule from the yearly maximum above. Calendar Days counts every day the application spans, including weekends and public holidays; Working Days counts only the days actually charged as leave, so a Friday-to-Monday application is 4 calendar days but 2 working days. Checked when the application is submitted and again when it is approved. Where this leave type is also in a Shared Leave Group with its own per-application maximum, the stricter of the two applies and the refusal says which. Unlimited is how every leave type behaves today."
       },
       "entitlementStep": {
         "schemes": "Benefit Schemes",

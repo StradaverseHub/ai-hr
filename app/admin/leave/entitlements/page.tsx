@@ -790,6 +790,12 @@ export default async function LeaveEntitlementsPage({
               hrRemarkRequired={lt.hrRemarkRequired}
               backdatingLimitDays={lt.backdatingLimitDays ?? null}
               maxDaysPerLeaveYear={lt.maxDaysPerLeaveYear == null ? null : Number(lt.maxDaysPerLeaveYear)}
+              maxConsecutiveDays={lt.maxConsecutiveDays == null ? null : Number(lt.maxConsecutiveDays)}
+              maxConsecutiveUnit={
+                lt.maxConsecutiveUnit === 'working_days' || lt.maxConsecutiveUnit === 'calendar_days'
+                  ? lt.maxConsecutiveUnit
+                  : null
+              }
               minAdvanceDays={lt.minAdvanceDays ?? null}
               expiryValue={lt.expiryValue ?? null}
               expiryUnit={lt.expiryUnit ?? null}
