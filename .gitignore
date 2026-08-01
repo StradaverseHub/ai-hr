@@ -59,3 +59,7 @@ AI-HR-Consultant-Feedback-Template.xlsx
 
 # Clean-room gate receipt (local, per-machine — consumed by improve:release to skip a duplicate suite run)
 .gate-receipt.json
+
+# Vitest browser mode: failure screenshots and attachments are run artifacts, not sources.
+test/__screenshots__/
+.vitest-attachments/
