@@ -95,6 +95,7 @@ async function main() {
             break;
         }
       }
+      for (const c of r.caveats) console.log(`      NOTE ${companyName(c.companyId)}: ${c.note}`);
     } catch (e) {
       failures += 1;
       if (e instanceof ApprovalRoutingChangedError) {

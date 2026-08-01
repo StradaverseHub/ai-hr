@@ -26,6 +26,15 @@
  *
  * Resolution itself is untouched: this module calls the real `resolveApprovalChain`, never a local copy,
  * so the proof cannot drift away from what production actually does.
+ *
+ * ONE THING THE PROOF CANNOT COVER, stated here because it is the real cost of the item rather than a
+ * defect in the conversion. "Applies to every leave type" also meant every leave type created LATER. Once
+ * a wildcard row is expanded into explicit per-type assignments and archived, a leave type added
+ * afterwards matches none of them and resolves through the tenant-default template, then the built-in
+ * chain. That is inherent in the Assignment Template screen's model (its assign form requires at least one
+ * leave type), not in this rewrite — but it means a NEW leave type now needs an assignment, where before
+ * it inherited the company's base chain. `conversionCaveats` reports it for the companies it applies to so
+ * the operator sees it before, not after.
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -101,6 +110,12 @@ export type ConversionReport = {
   routingChecks: number;
   /** Active employments the routing subjects stand for. */
   employmentsCovered: number;
+  /**
+   * Consequences the before/after proof cannot see, because they concern configuration that does not
+   * exist yet. One entry per company whose "applies to every leave type" rule was expanded: a leave type
+   * added AFTER the conversion no longer inherits that rule and needs an assignment of its own.
+   */
+  caveats: { companyId: string; note: string }[];
 };
 
 /** Thrown when the rewrite would move ANY employee's resolved approver chain. Carries the first few
@@ -427,6 +442,19 @@ export async function convertLegacyApprovalRules(
 
         // ── 2. expand an "any leave type" row into one row per leave type ─────────────────────────
         if (rule.leaveTypeId !== null) continue;
+        if (leaveTypeIds.length === 0) {
+          // A tenant with no leave types has nothing to expand INTO, and archiving the source anyway
+          // would drop the chain with the proof seeing nothing (it iterates leave types, of which there
+          // are none). Refuse rather than silently un-configure the company.
+          actions.push({
+            kind: 'skipped',
+            ruleId: rule.id,
+            companyId: rule.companyId,
+            leaveTypeId: null,
+            reason: 'the tenant has no leave types to expand this rule into',
+          });
+          continue;
+        }
         for (const leaveTypeId of leaveTypeIds) {
           const [existing] = await tx
             .select({ id: leaveApprovalPolicy.id, active: leaveApprovalPolicy.active })
@@ -525,12 +553,21 @@ export async function convertLegacyApprovalRules(
       const differences = diffSnapshots(before, after, subjects);
       if (differences.length) throw new ApprovalRoutingChangedError(differences);
 
+      const expandedCompanies = [
+        ...new Set(actions.filter((a) => a.kind === 'expanded').map((a) => a.companyId)),
+      ];
       const report: ConversionReport = {
         applied: apply,
         legacy,
         actions,
         routingChecks: before.size,
         employmentsCovered,
+        caveats: expandedCompanies.map((companyId) => ({
+          companyId,
+          note:
+            'its any-leave-type rule is now explicit per-type assignments — a leave type added later ' +
+            'will need its own assignment instead of inheriting this chain',
+        })),
       };
       if (!apply) throw new DryRunComplete(report);
       return report;

@@ -265,6 +265,58 @@ describe('241817ef — the dry run and the proof', () => {
   });
 });
 
+describe('241817ef — what the before/after proof cannot see', () => {
+  it('reports the future-leave-type caveat for every company whose any-type rule was expanded', async () => {
+    await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
+    const report = await convertLegacyApprovalRules(ctx(), {});
+    expect(report.caveats).toHaveLength(1);
+    expect(report.caveats[0].companyId).toBe(b.companyId);
+    expect(report.caveats[0].note).toMatch(/added later/);
+  });
+
+  it('says nothing when there was no any-type rule to expand', async () => {
+    await owner.db.insert(schema.leaveApprovalPolicy).values({
+      tenantId: b.tenantId,
+      companyId: b.companyId,
+      leaveTypeId: sickTypeId,
+      levels: ['hr_admin'],
+    });
+    const report = await convertLegacyApprovalRules(ctx(), {});
+    expect(report.actions.some((a) => a.kind === 'rule-templated')).toBe(true);
+    expect(report.caveats).toEqual([]);
+  });
+
+  it('REFUSES to archive an any-type rule when the tenant has no leave types to expand into', async () => {
+    // Archiving it anyway would drop the chain with the proof seeing nothing — it iterates leave types,
+    // and there are none. The rule survives, unconverted, and is reported.
+    await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['hr_admin'] });
+    await owner.db.delete(schema.leaveApprovalPolicy).where(
+      and(
+        eq(schema.leaveApprovalPolicy.companyId, b.companyId),
+        eq(schema.leaveApprovalPolicy.active, true),
+        isNull(schema.leaveApprovalPolicy.leaveTypeId),
+      ),
+    );
+    // Re-create it directly so no leave-type-scoped rows reference the types we are about to remove.
+    await owner.db.insert(schema.leaveApprovalPolicy).values({
+      tenantId: b.tenantId,
+      companyId: b.companyId,
+      leaveTypeId: null,
+      levels: ['hr_admin'],
+    });
+    await owner.db.delete(schema.leaveType).where(eq(schema.leaveType.tenantId, b.tenantId));
+
+    const report = await convertLegacyApprovalRules(ctx(), { apply: true });
+    const skipped = report.actions.filter((a) => a.kind === 'skipped');
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]).toMatchObject({ reason: expect.stringContaining('no leave types') });
+    // Still active, still the company's chain.
+    const rows = await activeRules();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].leaveTypeId).toBeNull();
+  });
+});
+
 describe('241817ef — routing subjects', () => {
   it('a terminated employment is not a routing subject', async () => {
     const second = await hire('Grace', b.deptB);

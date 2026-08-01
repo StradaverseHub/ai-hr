@@ -383,6 +383,13 @@ and both chains printed. A tenant that fails that way has rules needing a human 
 that would move an approver is exactly what this step exists to refuse. Safe to re-run: a converted row
 is no longer a candidate.
 
+One consequence the proof cannot cover, printed as a `NOTE` line per company: "applies to every leave
+type" also meant every leave type created **later**. After the conversion those companies have explicit
+per-type assignments, so a leave type added afterwards needs an assignment of its own instead of
+inheriting the company's base chain. That is inherent in the Assignment Template model — its assign form
+requires at least one leave type — and it is the price of having one place to configure approvals. Tell
+the customer before you run `--apply`, not after.
+
 ### Switching a platform-scoped setting on (until slice 7)
 
 Four keys in `packs/catalog.ts` are `scope: 'platform'`, which migration 0313 enforces in Postgres: the
