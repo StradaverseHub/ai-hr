@@ -9,7 +9,6 @@ import { ENTITLEMENTS, fail, okEntitlements } from '@/app/admin/_redirects';
 import {
   archiveLeaveApprovalRule,
   createLeaveApprovalRule,
-  setLeaveApprovalPolicy,
   setLeaveEscalationPolicy,
   updateLeaveApprovalRule,
   type LeaveApprovalRuleInput,
@@ -30,22 +29,6 @@ import {
 const PAGE = '/admin/leave/approval';
 
 type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
-
-/** Save a company's DEFAULT approval chain (ADR-0039 2B-2). The company default is the fully-wildcard rule
- *  under ADR-0071's matrix. r79 0322 — the on/off toggle is gone; the chain's own length decides whether a
- *  request is single- or multi-step. */
-export async function saveLeaveApprovalPolicyAction(formData: FormData) {
-  const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
-  const levels = parseLevels(formData);
-  const reason = str(formData.get('reason')); // 4ec5a940 — optional "why" for the audit trail
-  try {
-    await setLeaveApprovalPolicy(s, { companyId, levels, reason });
-  } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
-  }
-  redirect(`${PAGE}?toast=${encodeURIComponent('Approval chain saved')}`);
-}
 
 /** R51 722904dc — save a company's Approval Escalation Settings (enable + working-day threshold +
  *  recipient rule). Auth guard stays the page's scopedSession/getSession posture like every other action

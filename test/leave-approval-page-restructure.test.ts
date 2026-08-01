@@ -164,43 +164,46 @@ describe('Approval Workflow page — two headed sections', () => {
     expect(section2).toContain('<LeaveEscalationEditor');
   });
 
-  it('collapses the per-company block into one disclosure line per company (no Card stack)', () => {
-    expect(page).toContain("<SectionHeader title={t('companyDefaultsTitle')} count={rows.length} />");
-    expect(page).toContain("t('companyDefaultsHint')");
-    const list = page.slice(page.indexOf("t('companyDefaultsTitle')"));
-    expect(list).toMatch(/rows\.map\(\(\{ company, pol \}\) => \(/);
-    expect(list).toContain('<li key={company.id}>');
-    expect(list).toMatch(/<details className="group">/);
-    expect(list).toContain('[&::-webkit-details-marker]:hidden');
-    // The old full-height "one Card per company" stack is gone.
-    expect(page).not.toContain('<Card key={company.id}>');
+  /**
+   * 241817ef step 2 (r94) — THE COMPANY BASE CHAIN SECTION IS GONE. This test used to assert the
+   * opposite: that the per-company block collapsed into one disclosure line per company. It was correct
+   * until the wildcard rules it edited had somewhere else to live, which is what
+   * scripts/convert-approval-rules.ts gave them (51 assignments converted on production, routing proven
+   * identical before and after in one transaction). The assignment template is now the single place
+   * approvals are configured, which is what the item asked for.
+   */
+  it('no longer renders a company base approval chain section', () => {
+    expect(page).not.toContain("t('companyDefaultsTitle')");
+    expect(page).not.toContain("t('companyDefaultsHint')");
+    expect(page).not.toContain('<LeaveApprovalEditor');
+    expect(page).not.toContain('saveLeaveApprovalPolicyAction');
+    // The read that fed only that card is gone too, rather than left fetching for nobody.
+    expect(page).not.toContain('getLeaveApprovalPolicy');
+    expect(page).not.toContain('pol.levels');
   });
 
   /**
-   * r79 0322 — what is LEFT in the company section is the any-type base chain and nothing else. The
-   * multi-step switch is gone (the chain's own length says it), and escalation has moved up into the
-   * Assignment Template card. The base chain stays because this is still its only editor: the workflow
-   * matrix deliberately hides fully-wildcard rules, so deleting this card would leave a live routing
-   * rule with no way to see or change it.
+   * Removing a surface must not leave its WRITER reachable. A caller-less server action is still an
+   * addressable endpoint, so the company base chain would have stayed rewritable with no screen showing
+   * it — the exact silent-configuration problem this item exists to end. core setLeaveApprovalPolicy is
+   * deliberately KEPT: it is the domain operation and the policy suite drives it directly.
    */
-  it('leaves the company section holding the base chain alone — no switch, no escalation', () => {
-    const list = page.slice(page.indexOf("t('companyDefaultsTitle')"));
-    expect(list).toContain('<LeaveApprovalEditor');
-    expect(list).toContain('action={saveLeaveApprovalPolicyAction}');
-    expect(list).toContain('initialLevels={pol.levels}');
-    expect(list).not.toContain('initialEnabled');
-    expect(list).not.toContain('<LeaveEscalationEditor');
-    expect(page).not.toContain('pol.enabled');
-    expect(page).not.toContain('setLeaveMultiApprovalAction');
+  it('removes the base-chain server action, not just its screen', () => {
+    const actions = fs.readFileSync(path.join(ROOT, 'app/admin/leave-approval/actions.ts'), 'utf8');
+    expect(actions).not.toContain('saveLeaveApprovalPolicyAction');
+    expect(actions).not.toContain('setLeaveApprovalPolicy');
+    // The neighbouring actions are untouched — this was a removal, not a rewrite.
+    expect(actions).toContain('saveLeaveEscalationPolicyAction');
+    expect(actions).toContain('saveLeaveApprovalRuleAction');
   });
 
   it('relocates the escalation editor into the Assignment Template card, action and all', () => {
     const s2 = page.indexOf("t('assignmentTemplateTitle')");
-    const companySection = page.indexOf("t('companyDefaultsTitle')");
     const escalationAt = page.indexOf('<LeaveEscalationEditor');
-    // Inside section 2, and ABOVE the company section — i.e. it moved, it was not duplicated.
+    // Inside section 2. The upper bound used to be the company section; that section is gone (241817ef
+    // step 2), so the remaining fact is that escalation sits in the assignment card and appears ONCE.
     expect(escalationAt).toBeGreaterThan(s2);
-    expect(escalationAt).toBeLessThan(companySection);
+    expect(page.split('<LeaveEscalationEditor').length - 1).toBe(1);
     expect(page).toContain('action={saveLeaveEscalationPolicyAction}');
     // Same editor, same action, same company columns: nothing was dropped and recreated.
     expect(page).toContain('escalateAfterDays: esc.escalateAfterDays');
@@ -218,8 +221,6 @@ describe('i18n — new labels ship in all 6 locales', () => {
     'assignmentTemplateTitle',
     'assignmentTemplateHint',
     'leaveTypesMore',
-    'companyDefaultsTitle',
-    'companyDefaultsHint',
   ] as const;
 
   for (const loc of LOCALES) {

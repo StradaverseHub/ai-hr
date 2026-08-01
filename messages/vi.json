@@ -6672,8 +6672,6 @@
     "assignmentTemplateTitle": "Mẫu gán",
     "assignmentTemplateHint": "Quyết định mỗi luồng phê duyệt áp dụng cho công ty, loại nghỉ phép và nhân viên nào.",
     "leaveTypesMore": "{n, plural, other {+# nữa}}",
-    "companyDefaultsTitle": "Chuỗi phê duyệt cơ bản của công ty",
-    "companyDefaultsHint": "Mở một công ty để sửa chuỗi mà yêu cầu sẽ đi theo khi không có mẫu được gán nào khớp. Một bước nghĩa là một người phê duyệt.",
     "selectBenefitSchemes": "Chương trình phúc lợi",
     "noBenefitSchemes": "Các công ty đã chọn chưa có chương trình phúc lợi đang hoạt động.",
     "schemeNoGradeGroup": "Hãy gán nhóm bậc cho chương trình này trước khi gán mẫu phê duyệt cho nó.",
