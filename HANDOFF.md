@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r95 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r96 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,10 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@2ef73c0d` — production on **290** migrations.
+> ### DEPLOYED HEAD IS `main@f8c6c3c6` — production on **290** migrations.
+>
+> **THE BOARD IS EMPTY OF BUILDABLE WORK.** `956cec85` shipped in r96; nothing is `approved` or
+> `building`. `a1d82340` rev 3 is the only thing waiting on the reporter.
 >
 > **`241817ef` IS FINALLY CLOSED** (r94), so r90's deliberate half-ship is done. **The board now has NOTHING in `building`.**
 >
@@ -813,6 +816,54 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r96 — 2026-08-02 — the statutory forms were already built; what was missing was their home
+
+**Shipped:** `main@f8c6c3c6`. **No migration.**
+**Gate:** `tsc` clean · **519 files / 6046 tests** · `next build` clean. **`956cec85` marked deployed.**
+
+### THE ROUND'S VALUE IS AGAIN WHAT IT DID NOT BUILD
+
+The plan assumed the forms had to be written. **They already existed and were live**, verified in code
+AND against production before anything was typed:
+
+- `localization/my/reports.ts` registers `my.epf` (KWSP), `my.socso-eis` (PERKESO), `my.cp39` (PCB/LHDN),
+  `my.cp8d` (Form E) and a monthly overview. `app/payroll/reports/page.tsx` renders them via
+  `listReports()`, and **all 8 production companies are `country=MY` with payroll active**.
+- The **EA form** exists in full: admin screen, employee PDF route, and an ADR-0059 amendment layer.
+- Each form already carries name, IC, agency number, gross, the employee/employer split and totals, and
+  **already flags employees missing an agency number** — the exact discipline the plan's build notes asked
+  for. `recordReport()` already persists an artefact + domain event, which is the "trail" the plan wanted.
+
+**The gap was the reporter's literal words: "a new submenu called Statutory Form ... a centralized
+location".** The forms sat mixed in with general reports. Same shape as `61bf109d` (not missing,
+undiscoverable) and `deec1691` (not missing, switched off). **Three items now.**
+
+### Decisions
+
+**1. THE NEW PAGE GENERATES NOTHING, AND THE TEST ENFORCES THAT.** It asks the pack which reports are
+submissions, states where each is filed and by when, and links to the existing preview.
+`test/statutory-forms-page.test.ts` asserts the page contains no `generate(` / `reportPreview(` /
+`recordReport(` / `payslip` — a second generator for the same statutory figures is the duplication
+`241817ef` spent two rounds undoing.
+
+**2. THE DEADLINE WAS THE ONLY GENUINELY MISSING FACT.** `complianceWorklist` covers CP22/CP22A only —
+new-hire and cessation notices — **not** the monthly filing dates. `ReportDef` now carries `submission`,
+populated **from the reporter's own block_trail answer**: EPF via i-Akaun, SOCSO+EIS together via PERKESO
+ASSIST, PCB via LHDN e-PCB/e-CP39, all by the 15th of the following month.
+
+**The annual Form E deadline is left NULL and the screen says "not configured".** Nobody stated it, and an
+invented statutory date is worse than an absent one because somebody files against it — the same rule the
+plan set for form layouts. **Do not "complete" it from memory.**
+
+**3. THE ACCESS-MATRIX GUARD CAUGHT A REAL GAP.** `test/function-access.test.ts` requires every guarded
+`page.tsx` to have a column in `lib/permissions.ts`. The new page was `requireAdmin()`-guarded but absent
+from the registry — it would have shipped invisible to the access-control surface, with `tsc` and
+`next build` both green. **When adding a guarded route, register it.**
+
+**4. THE INTEGRATION GATE HAS NOW FOUND SOMETHING IN SEVEN CONSECUTIVE ROUNDS.**
+
+---
 
 ## r95 — 2026-08-02 — the itemisation the reporter asked for, and a bug I planted two rounds ago
 
