@@ -1352,7 +1352,26 @@ principal from the `dev_user` cookie / `DEV_USER_ID` with no WorkOS at all.
 
 **DEFECT FOUND, and this is what browser verification is for:** on Pay Items, **"Seed Malaysia defaults"
 silently does nothing.** Clicked it, waited, catalog still `(0)`, `pay_component` still 0 rows, no error
-and no toast. Suspected cause, NOT yet confirmed on production:
+and no toast.
+
+> ### ⚠️ CORRECTION (r101, 2026-08-02): THE SUSPECTED CAUSE BELOW IS **DISPROVEN**. Do not act on it.
+>
+> The module-load hypothesis is wrong, and r91 was right to hedge it. `core/pay-components.ts` imports
+> `countryPacks` **from `localization/registry`** — the same module whose top-level body calls
+> `registerPack`. ESM fully evaluates an imported module before the importer's body runs, so registration
+> ALWAYS precedes the union. **Verified empirically in the adversarial order** (importing
+> `core/pay-components` first): the union resolves **3** remuneration types and **13** component
+> defaults, never 0. Pinned by `test/pack-module-scope-unions.test.ts`.
+>
+> **And the defect does NOT reproduce on production:** `pay_component` holds **17 rows** and a
+> `pay-component.catalog.seeded` domain event exists. `seedPayComponentCatalog` has no entitlement gate
+> and is already exercised by two passing suites.
+>
+> **So if it is real, it is in the ACTION/UI layer or was specific to r91's local dev session** — the
+> browser check ran against a LOCAL server, whose `pay_component` is legitimately empty because
+> `db/seed.ts` does not seed it (the button does). **Reproduce it before diagnosing it again.**
+
+Superseded suspected cause, kept only so nobody re-derives it:
 
     core/pay-components.ts:41
     const DEFAULT_PAY_COMPONENTS = countryPacks().flatMap((p) => p.payComponents.defaults)
