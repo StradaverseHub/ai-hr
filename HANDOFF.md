@@ -5,24 +5,26 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-01, after r88)
+## CURRENT STATE — read this first (updated 2026-08-01, after r91 SHIPPED)
 
-> ### DEPLOYED HEAD IS `main@3f2a8c6` — production on **290** migrations. UNCHANGED BY r91.
+> ### DEPLOYED HEAD IS `main@b7134c6` — production on **290** migrations.
 >
-> **Next free migration number is `0344`.** r91 added no migration.
+> **Next free migration number is `0344`.** r91 added no migration, so the schema is untouched by it.
 >
-> ### ⚠️ r91 IS BUILT BUT NOT SHIPPED — DO NOT ASSUME IT IS LIVE
+> ### r91 IS NOW SHIPPED (2026-08-01). The previous version of this block said it was not — that is done.
 >
-> Three commits sit on `build/r91a`, merged into `build/r91`. `tsc` is clean and there is no migration,
-> but **the full suite has never completed** — it was stopped externally twice, four lines in, with
-> 357 GB disk free, 44% memory free and nothing orphaned — and `next build` has not run.
-> **Finish both before merging.** `a1d82340`, `ec845c7d` and `862ed0ad` are still `building` on the
-> board, which is accurate: nothing of theirs is on production.
+> Gate: `tsc` clean · **514 files / 5995 tests** · `next build` clean · no migration, so no rehearsal.
+> Deployed and verified: `systemctl is-active aihr` = active, `GET /` 401, `/login` 200, tunnel 401,
+> and the post-deploy `rsync -azi --dry-run` reported **zero** changed files.
 >
-> **THE r91 FINDINGS MATTER MORE THAN ITS CODE.** Two must reach the reporter before anyone acts:
+> **ONLY `ec845c7d` WAS MARKED DEPLOYED.** `a1d82340` and `862ed0ad` are deliberately still `building`
+> even though their code is live, because neither item's REQUEST is satisfied — see the next block.
+> This is the r90 `241817ef` precedent: marking an item deployed tells the reporter it is done.
+>
+> **THE r91 FINDINGS MATTER MORE THAN ITS CODE, AND THEY HAVE NOT YET REACHED THE REPORTER.**
 > `a1d82340` step 4 would delete the ONLY writer of `payroll_input.tp1_deduction` and the ONLY writer of
 > `payroll_permission_grant`; and `862ed0ad`'s itemisation has **no stored data behind it** for recurring
-> pay components. See the r91 entry.
+> pay components. See the r91 entry. **Getting these two in front of the reporter is the next action.**
 >
 > ### BROWSER VERIFICATION IS ACTIVE — and the recipe is in the r91 entry
 >
@@ -31,8 +33,10 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > items verified since `4dbe04c6`. It also found a live defect: **"Seed Malaysia defaults" on Pay Items
 > silently does nothing**, suspected module-load evaluation of `countryPacks()`.
 >
-> **Board: `approved = 3` · `building = 3` (r91, not shipped) · `contested = 1` (`c33d9bbb`, parked) ·
-> `deployed = 541`.** The 3 approved are `956cec85` (blocked on the reporter), `fc776376` and `bb4f2265`
+> **Board, counted on production 2026-08-01 after r91 shipped: `approved = 3` · `building = 3`
+> (`241817ef` from r90, plus `a1d82340` and `862ed0ad` whose code IS live but whose requests are not
+> met) · `contested = 1` (`c33d9bbb`, parked) · `deployed = 542`.** The 3 approved are `956cec85`
+> (blocked on the reporter naming submission channels and file formats), `fc776376` and `bb4f2265`
 > (both cross-cutting — SOLO AND LAST).
 >
 > **THE REPORTER THEN APPROVED ALL SEVEN PLANS from the 2026-07-31 planning pass.** Board is now
@@ -396,6 +400,23 @@ This is the same root-worktree trap that cost r79 a round, arriving by a differe
 next suite printed `RUN … /Users/zenlam/Projects/ai-hr`. Caught only by reading the `RUN` line. Read it
 every time; it is the cheapest check in this file.
 
+**VITEST CAN PRINT ALL-GREEN COUNTS FOR A RUN THAT SKIPPED A FILE ENTIRELY — r91 hit this.** The r91
+suite printed `Test Files 513 passed (513)` / `Tests 5981 passed (5981)`, zero failures, and **exited 1**.
+The tree has **514** test files. `test/leave-approval-escalation.test.ts` never started:
+
+    Error: [vitest-pool]: Failed to start forks worker for test files …/leave-approval-escalation.test.ts
+    Caused by: Error: [vitest-pool-runner]: Timeout waiting for worker to respond
+
+A file whose worker never spawns is **not counted as a failure and not counted at all** — the denominator
+shrinks silently, so `513 passed (513)` looks complete. Only two things disagreed: the exit code, and the
+file count. It reports under `Errors 1 error`, well above the summary, easy to scroll past.
+
+**Two rules.** Always read vitest's **exit code**, never just the summary block — this suite prints its
+counts and then exits non-zero. And **check the file count against `ls test/*.test.ts | wc -l`**, the same
+way r83's trap is caught by reading the `RUN` line. Re-running the one file is enough (it passed, 14 tests);
+just record honestly that the gate was two runs. This is the same family as the wrong-tree gate and the
+half-delivered rsync: **a green signal computed over less than you think it covered.**
+
 **A DEPLOY CAN REPORT SUCCESS WITH HALF THE TREE ON THE BOX — r86 did.** The rsync died mid-transfer
 (`Broken pipe`, `unexpected end of file`), and the wrapper printed **`RSYNC_EXIT=0`** because the exit
 code was taken through a pipe (`rsync … | tail -3; echo $?` reports **`tail`'s** status). `deploy.sh`
@@ -662,17 +683,27 @@ those employees drop to the statutory floor until their schemes are filled in.
 
 # Round history
 
-## r91 — 2026-08-01 — BUILT, NOT SHIPPED. The gate is incomplete; the findings are the deliverable
+## r91 — 2026-08-01 — SHIPPED. The findings are still the deliverable
 
-> **STATUS: NOT DEPLOYED.** Three commits sit on `build/r91a`, merged into `build/r91`. `tsc` is clean on
-> the integration and there is **NO migration**, so no rehearsal is required — but **the full suite has
-> never completed** (it was stopped externally twice, 4 lines in, with 357 GB disk and 44% memory free
-> and nothing orphaned) and `next build` has not run. **Do not merge to main until both are green.**
-> The three items are still `building` on the board, which is accurate.
+> **STATUS: DEPLOYED** as `main@b7134c6` on 2026-08-01, in a later session than the one that built it.
+> **Gate:** `tsc` clean · **514 files / 5995 tests, all passing** · `next build` clean · **no migration**,
+> so no rehearsal. Verified live: service active, `GET /` 401, `/login` 200, tunnel 401, production still
+> on **290** migrations, and the post-deploy `rsync -azi --dry-run` reported **zero** changed files.
+>
+> **The gate took TWO runs and that is not a formality.** The first printed `513 passed (513)` with zero
+> failures and **exited 1**; the tree has 514 test files and `test/leave-approval-escalation.test.ts` had
+> never started (worker spawn timeout). Re-run alone it passes, 14 tests. See the new trap above — a
+> skipped file shrinks the denominator instead of failing.
 
 **Built (three genuinely-missing slices):** `a1d82340` **step 3 only** · `ec845c7d` **bullet 2 only** ·
 `862ed0ad` (History default tab + bounded read + an honest heading).
-Commits: `a166f114`, `6febe0b1`, `a4bbeec1`.
+Commits: `a166f114`, `6febe0b1`, `a4bbeec1`, merged as `b7134c68`.
+
+**ONLY `ec845c7d` WAS MARKED DEPLOYED.** Its genuinely-missing bullet is built, so the request is met.
+**`a1d82340` and `862ed0ad` were deliberately left `building` although their code is live**, because
+neither request is satisfied: `a1d82340` has only step 3 of five (step 4 needs the reporter's decision,
+step 5 is unbuilt), and `862ed0ad` cannot itemise recurring components at all. Closing either would tell
+the reporter it is done — the r77 mistake, and the same call r90 made for `241817ef`.
 
 ### THE ROUND'S VALUE IS WHAT IT REFUSED TO BUILD
 
