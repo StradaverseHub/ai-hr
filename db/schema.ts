@@ -5721,6 +5721,35 @@ export const tenantModule = pgTable(
   (t) => [index('tenant_module_tenant_idx').on(t.tenantId, t.status)],
 );
 
+/**
+ * ADR-0077 slice 5 — the module change REQUEST (migration 0345). The ONLY entitlement write path
+ * before the platform console: an operator records an intent here and the out-of-band owner-role
+ * runner applies it, because `tenant_module` is SELECT-only to the app role by design and the owner
+ * credential is kept out of the web application. Same shape as tenant_provision_request.
+ */
+export const moduleChangeRequest = pgTable(
+  'module_change_request',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    moduleCode: text('module_code').notNull(),
+    /** NULL = tenant-wide; NON-NULL scopes the change to one company (mirrors tenant_module). */
+    companyId: uuid('company_id').references(() => company.id),
+    action: text('action').notNull(), // activate | deactivate
+    status: text('status').notNull().default('pending'), // pending | running | done | failed
+    currentStep: text('current_step'),
+    error: text('error'),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    /** Text until slice 7's console exists to populate a platform_user reference. */
+    requestedBy: text('requested_by').notNull(),
+    /** Deactivation only — the operator's disposition for blocking state, recorded before the runner acts. */
+    disposition: jsonb('disposition').$type<Record<string, string>>(),
+    createdAt: createdAt(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (t) => [index('module_change_request_claim_idx').on(t.status, t.createdAt)],
+);
+
 /** The per-tenant value. Writes are gated on setting_definition.scope by the RLS policy, not by code. */
 export const tenantSetting = pgTable(
   'tenant_setting',
