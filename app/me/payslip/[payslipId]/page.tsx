@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { payslipDetail } from '@/core/payroll';
+// 97a9b0ab — reads the ruleset/pack provenance already present in the payslip's statutory JSONB.
+import { payslipProvenance } from '@/core/payslip-recompute';
 import { Card } from '@/components/ui';
 import { PrintButton } from '@/components/print-button';
 
@@ -44,6 +46,7 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
   const p = await payslipDetail(s, payslipId);
   if (!p) notFound();
   const st = (p.statutory ?? {}) as Stat;
+  const prov = payslipProvenance(p.statutory);
   const t = await getTranslations('me.payslip');
 
   return (
@@ -150,6 +153,17 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
         {p.daysWorked != null && (
           <p className="text-xs text-muted-foreground">
             {t('proratedNote', { days: Number(p.daysWorked) })}
+          </p>
+        )}
+
+        {/* 97a9b0ab — provenance. Both values were already recorded and neither was ever shown:
+            `statutory.version` is the statutory ruleset that produced these figures (stamped on every
+            payslip since 2026.0) and `payslip.version` counts recalculations. Showing them is what lets
+            "why did my tax change when my pay didn't?" get a specific answer instead of reassurance. */}
+        {(prov.rulesetVersion || p.version > 1) && (
+          <p className="text-xs text-muted-foreground">
+            {prov.rulesetVersion && t('provenanceFooter', { ruleset: prov.rulesetVersion })}
+            {p.version > 1 && <> {t('provenanceRevision', { n: p.version })}</>}
           </p>
         )}
       </Card>

@@ -4803,6 +4803,10 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
         totalDeductions: payslip.totalDeductions,
         net: payslip.netPay,
         employerCost: payslip.employerCost,
+        // 97a9b0ab — the revision counter (1 = as first generated, >1 = selectively reprocessed).
+        // It has always been stored and never shown, which is why a moved figure looked unexplainable.
+        // The RULESET version rides `statutory.version` (already selected above) — no column, no DDL.
+        version: payslip.version,
       })
       .from(payslip)
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
@@ -4962,6 +4966,9 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
         totalDeductions: payslip.totalDeductions,
         net: payslip.netPay,
         employerCost: payslip.employerCost,
+        // 97a9b0ab — revision counter for the payslip's own provenance footer (the ruleset version it
+        // sits beside is already in `statutory`). Read-side only; both values predate this change.
+        version: payslip.version,
         // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe: readable by the
         // employee via their own payslip's batch, unlike the admin-only company_payroll_config).
         releasedAt: payrollBatch.releasedAt,
