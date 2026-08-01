@@ -32,11 +32,16 @@ const exists = (rel: string) => fs.existsSync(path.join(ROOT, rel));
 const NODE = payrollPack.navNodes!.find((n) => n.group === 'admin')!;
 
 /**
- * The retired components/payroll-tabs.tsx, captured VERBATIM from the commit before this item, in
- * the reporter's requested order (Workflow Guide first — read the guide, then run the payroll).
- * hrefs are the tab strip's; only the labelKey namespace moved (components.payrollTabs → nav).
+ * The retired components/payroll-tabs.tsx destinations, captured VERBATIM from the commit before
+ * 1459e116. hrefs are the tab strip's; only the labelKey namespace moved (components.payrollTabs →
+ * nav). This is the SET the fly-out must carry — no destination lost, no href renamed.
+ *
+ * a1d82340 STEP 3 — the ORDER is no longer asserted from a literal here. It is DERIVED from
+ * packs/payroll/phases.ts, the one declaration of the payroll sequence, and separately proved to
+ * agree with the Workflow Guide's phase order. A literal list could be edited to match a drifted
+ * menu without anyone noticing; a derived one cannot, because the guide would have to drift too.
  */
-const EXPECTED = [
+const EXPECTED_SET = [
   { href: '/payroll/guide', labelKey: 'payrollGuide' },
   { href: '/payroll', labelKey: 'payrollProcess' },
   { href: '/payroll/transactions', labelKey: 'payrollTransactions' },
@@ -45,11 +50,21 @@ const EXPECTED = [
   { href: '/payroll/setup', labelKey: 'payrollSettings' },
 ] as const;
 
+const byHref = (a: { href: string }, b: { href: string }) => a.href.localeCompare(b.href);
+
 describe('1459e116 — the payroll fly-out carries the retired tab strip, unbroken', () => {
-  it('lists every tab-strip destination, in the reporter’s order, with its href unchanged', () => {
-    expect(NODE.children.map((c) => ({ href: c.href, labelKey: c.labelKey }))).toEqual(
-      EXPECTED.map((e) => ({ href: e.href, labelKey: e.labelKey })),
+  it('lists every tab-strip destination, with its href and label key unchanged', () => {
+    // Order-insensitive: the SET is 1459e116's promise (no broken bookmark, no lost screen). The
+    // sequence is a1d82340's, asserted below.
+    expect([...NODE.children.map((c) => ({ href: c.href, labelKey: c.labelKey }))].sort(byHref)).toEqual(
+      [...EXPECTED_SET].map((e) => ({ href: e.href, labelKey: e.labelKey })).sort(byHref),
     );
+  });
+
+  it('still opens with the Workflow Guide (1459e116’s ordering request, not undone)', () => {
+    // The reporter's own words were "read the guide, then run the payroll". Re-sequencing the rest
+    // of the menu must not cost that.
+    expect(NODE.children[0]!.href).toBe('/payroll/guide');
   });
 
   it('gates nothing per-row (the Administration group is adminOnly wholesale, as before)', () => {

@@ -104,7 +104,11 @@ describe('(b) payroll surfaces — "not registered" is said, not implied by a bl
     expect(TABLE).toContain('hrdfRegisteredCompanyIds: string[]');
     const VIEW = read('app/payroll/transaction-view/page.tsx');
     expect(VIEW).toContain("r.hrdfStatus !== 'not_registered'");
-    expect(VIEW).toContain('<HistoryTable rows={historyRows} hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds} />');
+    // What matters is that the resolved registration set REACHES the table. Matched on the prop rather
+    // than on the whole element, so 862ed0ad renaming the rows variable (History became the landing tab
+    // and its read is now capped, so the table renders `shownHistoryRows`) does not read as an HRDF
+    // regression — while dropping the prop still does.
+    expect(VIEW).toMatch(/<HistoryTable\s+rows=\{\w+\}\s+hrdfRegisteredCompanyIds=\{hrdfRegisteredCompanyIds\}\s*\/>/);
   });
 });
 

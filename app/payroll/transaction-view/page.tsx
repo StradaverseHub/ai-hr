@@ -42,6 +42,25 @@ import { HistoryTable } from './history-table';
 // asserts no entry is invented, and a new one would also need packs/payroll/index.ts +
 // lib/permissions.ts. A sub-tab needs none of that and inherits this route's scopedAdmin() fence.
 const TABS = ['fixed', 'individual', 'history', 'outstanding'] as const;
+
+/**
+ * 862ed0ad — the most recent N processed payslips the History tab will render.
+ *
+ * The History read was unbounded: every payslip in scope for all time, each carrying its whole
+ * `statutory` jsonb blob, each rendering an expandable breakdown. Making that the tab that OPENS would
+ * have meant every visit to Transaction View paid for the entire payroll history, which is precisely
+ * why the approved plan made bounding a PRECONDITION of the default-tab change.
+ *
+ * A cap rather than a pager, deliberately: the rows are ordered newest-period-first, so the cap keeps
+ * what someone opening the screen came to check, and the filters above the table (year / month /
+ * employee / cycle) are the existing, already-built way to reach anything older. Note the carried debt
+ * the plan called out — r75's paginateRows still fetches everything then slices on about ten tables, so
+ * routing this through it would not have bounded the QUERY, only the render. A LIMIT does.
+ *
+ * The page asks for CAP + 1 and says so on screen when the extra row comes back: a truncation the
+ * operator cannot see would be a worse failure than the slow page it replaces.
+ */
+const HISTORY_ROW_CAP = 200;
 type Tab = (typeof TABS)[number];
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
@@ -81,7 +100,11 @@ export default async function TransactionViewPage({
   const tList = await getTranslations('payroll.list');
   const sp = await searchParams;
 
-  const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'fixed';
+  // 862ed0ad — History is the tab that OPENS. The reporter's point is that Transaction View is where you
+  // check a payroll after it has been calculated, so landing on the recurring-items list meant the first
+  // thing you saw was not the thing you came for. Every ?tab= value still resolves exactly as before, so
+  // saved links keep working; only the no-tab default moves.
+  const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'history';
 
   const [employees, companies, components, creators] = await Promise.all([
     listEmployees(s, scopeIds),
@@ -139,8 +162,10 @@ export default async function TransactionViewPage({
           createdTo,
         })
       : Promise.resolve([]),
+    // 862ed0ad — bounded, because History is now the landing tab. One row more than we mean to show, so
+    // truncation can be STATED rather than silently applied. See HISTORY_ROW_CAP.
     tab === 'history'
-      ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle })
+      ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle, limit: HISTORY_ROW_CAP + 1 })
       : Promise.resolve([]),
     // d0d2c9d1 — money entered but never paid, grouped and totalled. Same scope-guarded filters as the
     // other tabs; deliberately NO default run-state filter (see the read's doc comment).
@@ -159,6 +184,11 @@ export default async function TransactionViewPage({
           .filter((r) => r.hrdfStatus !== 'not_registered')
           .map((r) => r.companyId)
       : [];
+
+  // 862ed0ad — the CAP + 1 row, if it came back, is the proof there is more; it is dropped from the render
+  // and reported instead.
+  const historyTruncated = historyRows.length > HISTORY_ROW_CAP;
+  const shownHistoryRows = historyTruncated ? historyRows.slice(0, HISTORY_ROW_CAP) : historyRows;
 
   const today = new Date().toISOString().slice(0, 10);
   const nowYear = new Date().getFullYear();
@@ -429,8 +459,13 @@ export default async function TransactionViewPage({
           detail inline with no extra round-trip. */}
       {tab === 'history' && (
         <Card className="overflow-hidden">
-          <SectionHeader title={t('view.tabs.history')} count={historyRows.length} />
-          <HistoryTable rows={historyRows} hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds} />
+          <SectionHeader title={t('view.tabs.history')} count={shownHistoryRows.length} />
+          {historyTruncated && (
+            <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">
+              {t('view.history.capped', { cap: HISTORY_ROW_CAP })}
+            </p>
+          )}
+          <HistoryTable rows={shownHistoryRows} hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds} />
         </Card>
       )}
 

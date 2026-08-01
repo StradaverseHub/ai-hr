@@ -4,7 +4,13 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button, Card, EmployeeName, Field, inputCls } from '@/components/ui';
-import { saveIndividualTxnGridAction, type SaveGridResult } from './actions';
+import { fetchExistingTxnContextAction, saveIndividualTxnGridAction, type SaveGridResult } from './actions';
+import type { ExistingTxnContextRow } from './existing-context';
+
+/** 'YYYY-MM' — the wizard's own period shape check (the server re-validates with isPayPeriod). */
+const isPeriod = (v: string) => /^\d{4}-\d{2}$/.test(v);
+/** Stable identity, so the derived-from-state memos below do not re-run on every render. */
+const EMPTY_EXISTING: ExistingTxnContextRow[] = [];
 
 /** Client-side mirror of TXN_KINDS (core/payroll-individual-txn.ts). Kept as a literal here so this client
  *  component never imports the DB-touching service module (RSC boundary). The i18n dynamic-key test pins the
@@ -287,6 +293,53 @@ export function TxnGrid({
     const [y, m] = period.split('-').map(Number);
     return { min: `${period}-01`, max: `${period}-${String(daysInMonth(y, m)).padStart(2, '0')}` };
   }, [period]);
+
+  // ── ec845c7d — the "already entered / still unpaid" context for the current selection + month ──
+  // Fetched when the grid step opens (and again whenever the selection or the month changes), never on
+  // every keystroke: the panel answers "what is already there", which cannot change while you type.
+  // `seq` discards a stale in-flight response so a fast period change cannot paint the previous month's
+  // numbers over the current one.
+  // The fetched rows are stored WITH the key they answer, and "is this current?" is derived rather than
+  // tracked in a second state. That is what makes a fast period change safe — a late response for the
+  // previous month can never paint over the current one — and it keeps every setState inside an async
+  // callback rather than in the effect body.
+  const [existingState, setExistingState] = useState<{ key: string; rows: ExistingTxnContextRow[] }>({
+    key: '',
+    rows: [],
+  });
+  const existingKey =
+    step >= 2 && selectionCompanyId && isPeriod(period)
+      ? `${selectionCompanyId}|${period}|${[...selectedIds].sort().join(',')}`
+      : '';
+  useEffect(() => {
+    if (!existingKey) return;
+    let live = true;
+    const [companyId, payPeriod, ids] = existingKey.split('|');
+    fetchExistingTxnContextAction({
+      companyId: companyId!,
+      payPeriod: payPeriod!,
+      employmentIds: ids ? ids.split(',') : [],
+    })
+      .then((rows) => {
+        if (live) setExistingState({ key: existingKey, rows });
+      })
+      .catch(() => {
+        // A failed context read must never block entry — the panel simply reports nothing. This is a
+        // disclosure beside the grid, not a gate on it; the save path does not consult it.
+        if (live) setExistingState({ key: existingKey, rows: [] });
+      });
+    return () => {
+      live = false;
+    };
+  }, [existingKey]);
+  const existing = existingState.key === existingKey ? existingState.rows : EMPTY_EXISTING;
+  const existingLoading = existingKey !== '' && existingState.key !== existingKey;
+  const existingByEmployment = useMemo(
+    () => new Map(existing.map((r) => [r.employmentId, r])),
+    [existing],
+  );
+  const existingTotalCount = useMemo(() => existing.reduce((n, r) => n + r.count, 0), [existing]);
+  const existingUnpaidCount = useMemo(() => existing.reduce((n, r) => n + r.unpaidCount, 0), [existing]);
 
   const step1Valid = selectedIds.length > 0;
   // Step 2 is satisfied by a resolved draft batch OR a valid period-keyed target (month + anchored company).
@@ -647,6 +700,67 @@ export function TxnGrid({
             {selectedEmployees.length > 1 && (
               <p className="text-xs text-muted-foreground">{t('applyAllHint', { count: selectedEmployees.length })}</p>
             )}
+
+            {/* ── ec845c7d — what is already there, beside where you add to it ──
+                The reporter's complaint is that you cannot see an employee's existing transactions while
+                entering a new one. This is deliberately NOT a return of the page-wide "Unattached
+                Transactions" ledger that 65377ed0 removed for being confusing: it is scoped to exactly the
+                employees and the month being keyed, and it appears at the moment that scope exists.
+
+                The unpaid column is d0d2c9d1's read, not a second definition of "unpaid" — see
+                fetchExistingTxnContextAction. */}
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('alreadyTitle', { period })}
+                </h4>
+                {existingLoading && <span className="text-xs text-muted-foreground">{t('alreadyLoading')}</span>}
+              </div>
+              {!existingLoading && existingTotalCount === 0 && (
+                <p className="mt-1.5 text-xs text-muted-foreground">{t('alreadyNone')}</p>
+              )}
+              {!existingLoading && existingTotalCount > 0 && (
+                <ul className="mt-1.5 space-y-1">
+                  {selectedEmployees.map((e) => {
+                    const x = existingByEmployment.get(e.employmentId);
+                    if (!x || x.count === 0) return null;
+                    return (
+                      <li key={e.employmentId} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
+                        <span className="font-medium text-foreground">{e.name}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {t('alreadyCount', { count: x.count })} · RM {x.total}
+                        </span>
+                        {x.unpaidCount > 0 && (
+                          <span
+                            className={
+                              x.missedTheRun
+                                ? 'rounded px-1.5 py-0.5 font-medium tabular-nums text-red-700 dark:text-red-400'
+                                : 'rounded px-1.5 py-0.5 font-medium tabular-nums text-amber-700 dark:text-amber-400'
+                            }
+                          >
+                            {t('alreadyUnpaid', { count: x.unpaidCount })} · RM {x.unpaidTotal}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {!existingLoading && existingUnpaidCount > 0 && (
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                  {t('alreadyUnpaidHint')}{' '}
+                  <a
+                    className="underline underline-offset-2"
+                    href="/payroll/transaction-view?tab=outstanding"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t('alreadyOutstanding')}
+                  </a>
+                </p>
+              )}
+            </div>
+
             <div className="overflow-x-auto rounded-md border border-border">
               <table className="w-full min-w-[640px] text-sm">
                 <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">

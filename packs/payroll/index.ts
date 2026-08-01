@@ -153,6 +153,7 @@
  */
 import { ArrowLeftRight, Banknote, FileText, Settings2, Table2, Wallet, Workflow } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
+import { payrollNavRank } from './phases';
 
 /**
  * The payroll sidebar presence. At rung 7 this was a SINGLE flat row (`navLinks`) pointing at the
@@ -168,6 +169,14 @@ import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../r
  * The children are the retired tab strip's six destinations, hrefs VERBATIM so existing bookmarks
  * keep working, reordered to the reporter's requested sequence (Workflow Guide before Payroll
  * Process — read the guide, then run the payroll).
+ *
+ * a1d82340 STEP 3 — the ORDER of those six is no longer written out here. It is derived from
+ * `payrollNavRank` (packs/payroll/phases.ts), the single declaration of the payroll sequence that
+ * the Workflow Guide and the Process wizard also read, so the menu cannot drift away from the order
+ * the guide teaches. The SET of rows, their hrefs, their labelKeys and their icons are unchanged;
+ * only the sequence moves — Settings is no longer stranded at the end of a menu whose first real row
+ * is the finished-runs workbench. 1459e116's constraint (Workflow Guide first) is preserved: the
+ * guide is ranked 0.
  *
  * WHY NO SECOND LEVEL. The reporter's tree nests Fixed/Individual under Transactions and the five
  * config screens under Settings. The sidebar fly-out is deliberately ONE level deep
@@ -194,7 +203,10 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView', icon: Table2 },
     { href: '/payroll/reports', labelKey: 'payrollReports', icon: FileText },
     { href: '/payroll/setup', labelKey: 'payrollSettings', icon: Settings2 },
-  ],
+    // Sorted by the canonical sequence, NOT by the literal order above. Written declaratively so a
+    // future row is placed by giving it a rank in phases.ts rather than by guessing where to splice
+    // it in here. `sort` is stable, so two rows sharing a rank keep their literal order.
+  ].sort((a, b) => payrollNavRank(a.href) - payrollNavRank(b.href)),
 };
 
 export const payrollPack: ModulePack = {
