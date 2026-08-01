@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui';
+import { paginateRows } from '@/lib/pagination';
+import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 import type { IndividualTxnViewRow } from '@/core/payroll-view';
 
 /**
@@ -81,6 +83,9 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
     </th>
   );
 
+  const q = useClientPageQuery();
+  const { rows: pageRows, state } = paginateRows(sorted, q);
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -101,7 +106,7 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {sorted.map((r) => (
+          {pageRows.map((r) => (
             <tr key={r.id}>
               <td className="px-4 py-2.5 tabular-nums">{r.payPeriod}</td>
               <td className="px-4 py-2.5">
@@ -147,6 +152,7 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
           )}
         </tbody>
       </table>
+      <ClientPager state={state} />
     </div>
   );
 }

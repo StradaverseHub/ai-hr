@@ -90,11 +90,15 @@ describe('fc776376 — the one pagination contract', () => {
     expect(all.state.truncated).toBe(true);
   });
 
-  it('hides the pager chrome on a list that fits on one default page', () => {
-    expect(showPager(pageState(parsePageQuery({}), 5, 5))).toBe(false);
-    expect(showPager(pageState(parsePageQuery({}), 0, 0))).toBe(false);
+  // REVERSED by fc776376. The pager used to hide on any list of 25 rows or fewer, which on this tenant is
+  // nearly every list (23 active employees, 36 leave requests, 47 payslips) — so the reporter had never
+  // seen the control and reported that pagination did not exist. It was right to believe that. What was
+  // asked for is a framework that is always visible, not a control that appears once a list gets big.
+  it('shows the pager chrome at EVERY row count, including the counts that used to hide it', () => {
+    expect(showPager(pageState(parsePageQuery({}), 5, 5))).toBe(true);
+    expect(showPager(pageState(parsePageQuery({}), 0, 0))).toBe(true);
+    expect(showPager(pageState(parsePageQuery({}), 23, 23))).toBe(true);
     expect(showPager(pageState(parsePageQuery({}), 312, 25))).toBe(true);
-    // A list of exactly 30 still gets the control even while sitting on page one.
     expect(showPager(pageState(parsePageQuery({}), 30, 25))).toBe(true);
   });
 

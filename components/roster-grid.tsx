@@ -7,6 +7,9 @@
  * flags any employee with a shift on all 7 visible days.
  */
 import { useState, useTransition } from 'react';
+import { paginateRows } from '@/lib/pagination';
+import { ClientPager, useClientPageQuery } from '@/components/client-pager';
+
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { assignCellAction, bulkAssignAction } from '@/app/roster/actions';
@@ -86,7 +89,12 @@ export function RosterGrid({
       else n.add(id);
       return n;
     });
-  const allSelected = employees.length > 0 && selected.size === employees.length;
+  const q = useClientPageQuery();
+  const { rows: pageEmployees, state } = paginateRows(employees, q);
+  // Selection covers the rows you can see, for the same reason as the feedback table: a brush applied
+  // to "everyone" must mean everyone on screen, not everyone in the roster.
+  const selectedOnPage = pageEmployees.filter((e) => selected.has(e.employmentId));
+  const allSelected = pageEmployees.length > 0 && selectedOnPage.length === pageEmployees.length;
 
   // §59: warn when every visible day carries a shift (no rest day in the week).
   const noRestDay = (employmentId: string) =>
@@ -138,7 +146,7 @@ export function RosterGrid({
                   <input
                     type="checkbox"
                     checked={allSelected}
-                    onChange={() => setSelected(allSelected ? new Set() : new Set(employees.map((e) => e.employmentId)))}
+                    onChange={() => setSelected(allSelected ? new Set() : new Set(pageEmployees.map((e) => e.employmentId)))}
                   />
                   {t('employee')}
                 </label>
@@ -152,7 +160,7 @@ export function RosterGrid({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {employees.map((e) => (
+            {pageEmployees.map((e) => (
               <tr key={e.employmentId}>
                 <td className="sticky left-0 z-10 bg-background px-3 py-1.5">
                   <label className="flex items-center gap-2">
@@ -193,6 +201,7 @@ export function RosterGrid({
           </tbody>
         </table>
       </div>
+      <ClientPager state={state} />
     </div>
   );
 }

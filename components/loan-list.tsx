@@ -4,6 +4,8 @@ import { Fragment, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { LoanRow, RepaymentRow } from '@/core/loans';
 import { EmployeeCode } from '@/components/ui';
+import { paginateRows } from '@/lib/pagination';
+import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 import {
   amendLoanAction,
   cancelLoanAction,
@@ -30,12 +32,15 @@ export function LoanList({ loans }: { loans: LoanWithSchedule[] }) {
   const tType = useTranslations('loans.loanType');
   const tStatus = useTranslations('loans.status');
   const [open, setOpen] = useState<string | null>(null);
+  const q = useClientPageQuery();
+  const { rows: pageLoans, state } = paginateRows(loans, q);
 
   if (loans.length === 0) {
     return <p className="px-4 py-6 text-sm text-muted-foreground">{t('empty')}</p>;
   }
 
   return (
+    <div>
     <table className="w-full text-sm">
       <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
         <tr>
@@ -50,7 +55,7 @@ export function LoanList({ loans }: { loans: LoanWithSchedule[] }) {
         </tr>
       </thead>
       <tbody className="divide-y divide-border">
-        {loans.map((l) => (
+        {pageLoans.map((l) => (
           <Fragment key={l.id}>
             <tr className="hover:bg-muted/40">
               <td className="px-4 py-2.5 font-medium">
@@ -150,6 +155,8 @@ export function LoanList({ loans }: { loans: LoanWithSchedule[] }) {
         ))}
       </tbody>
     </table>
+    <ClientPager state={state} />
+    </div>
   );
 }
 
