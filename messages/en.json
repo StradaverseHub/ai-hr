@@ -149,7 +149,8 @@
     "dashboardCardConfig": "Dashboard cards",
     "scheduledActions": "Scheduled actions",
     "systemSettings": "System Settings",
-    "systemExplorer": "Dependency explorer"
+    "systemExplorer": "Dependency explorer",
+    "movementSettings": "Movement Settings"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1165,13 +1166,14 @@
           "terminationPayrollFlag": "Termination saved. A payroll run has already been processed for {periods}, past the termination date — review that run. It was not changed."
         },
         "edit": "Edit",
-        "delete": "Delete",
+        "rollback": "Roll Back",
+        "reversedBy": "Rolled back by",
         "editTitle": "Edit Movement Event",
         "reversedBadge": "Reversed",
         "correctedBadge": "Corrected",
-        "deleteConfirmTitle": "Roll this movement event back?",
-        "deleteConfirmDescription": "The employee's details go back to the state immediately before this event. The event stays in Employment History, marked as reversed, so the record remains auditable.",
-        "deleteConfirmPayroll": "A processed payroll run already covered this period. The rollback will NOT reprocess any payslip — reprocess it separately if that is what you need. The event stays in Employment History, marked as reversed.",
+        "rollbackConfirmTitle": "Roll this movement event back?",
+        "rollbackConfirmDescription": "The employee's details go back to the state immediately before this event. The event stays in Employment History, marked as reversed, so the record remains auditable.",
+        "rollbackConfirmPayroll": "A processed payroll run already covered this period. The rollback will NOT reprocess any payslip — reprocess it separately if that is what you need. The event stays in Employment History, marked as reversed.",
         "correctionReasonLabel": "Reason for the correction (optional)",
         "payrollLocked": "Locked by a closed payroll run",
         "status": {
@@ -1226,7 +1228,11 @@
         "priorityOther": "Other",
         "primaryHint": "Only one contact can be the primary. Choosing Primary here moves the marker off the previous contact.",
         "actions": "Actions"
-      }
+      },
+      "disabledIndividualLabel": "Disabled individual (OKU)",
+      "disabledIndividualYes": "Yes",
+      "disabledIndividualNo": "No",
+      "disabledIndividualHint": "A registered disabled individual is entitled to a further annual tax relief. Setting this to Yes changes the employee's monthly tax: because monthly tax is worked out from the year to date, the month you change it in absorbs the correction for the year so far."
     },
     "import": {
       "title": "Import employees",
@@ -1288,7 +1294,24 @@
       "instructionIdentityText": "The IC, phone, bank account, EPF, SOCSO and tax number columns are formatted as text so leading zeros are kept. Do not change their format to General.",
       "instructionCompany": "Leave the Company column blank to use the company selected on the import screen, or name a company to import employees for several companies in one file.",
       "instructionReference": "The Reference sheet lists every accepted value for Company, Department, Position and Cost Center. Anything else is rejected with the reason.",
-      "instructionSamples": "Delete the two sample rows before uploading."
+      "instructionSamples": "Delete the two sample rows before uploading.",
+      "historyTitle": "Import history",
+      "historyHint": "Every import that has been run, and the rows that could not be loaded. The uploaded file itself is not kept.",
+      "historyEmpty": "No imports yet. Once you run one, it is listed here with its result.",
+      "historyColWhen": "When",
+      "historyColFile": "File",
+      "historyColBy": "By",
+      "historyColResult": "Result",
+      "historyPasted": "Pasted CSV",
+      "historyActorUnknown": "Unknown",
+      "historyOutcomeSucceeded": "Succeeded",
+      "historyOutcomePartial": "Partly imported",
+      "historyOutcomeFailed": "Nothing imported",
+      "historyCounts": "{imported} imported, {failed} failed",
+      "historyViewFailed": "Failed rows",
+      "historyErrorsShown": "{count, plural, one {# row could not be imported} other {# rows could not be imported}}",
+      "historyErrorsTruncated": "Showing {shown} of {total} failed rows.",
+      "historyNoDetail": "No row detail was kept for this import."
     },
     "hiringDefaults": {
       "title": "Hiring Defaults",
@@ -6060,7 +6083,10 @@
     "errorCodeDuplicate": "Pay code {code} already exists — pay codes must be unique.",
     "errorCodeDuplicateArchived": "Pay code {code} exists but is deactivated — reactivate it instead.",
     "inputType_qty_rate": "Quantity × rate",
-    "inputType_formula": "Formula"
+    "inputType_formula": "Formula",
+    "colFormula": "Calculation",
+    "inputTypeLinkTitle": "Open {code} to change its Input Type",
+    "sectionPaySettingsHint": "How the amount is worked out — rounding, Input Type and the Formula builder."
   },
   "notifications": {
     "title": "Notifications",
@@ -7695,5 +7721,38 @@
     "truncated": "Showing the first {shown, number} of {total, number} rows.",
     "truncatedHint": "Use Reports → Export for the complete set.",
     "truncatedExport": "Export the complete set"
+  },
+  "movementSettings": {
+    "title": "Movement Settings",
+    "description": "The career event types HR can record on an employee. Rename them to match the language your organisation uses, switch off the ones you do not use, and add your own.",
+    "behaviourNotice": "A few event types drive real consequences — Termination ends employment, Confirmation completes probation, a join-date correction changes leave entitlement. You can rename those or switch them off; you cannot change what they do. Your own event types are recorded on the employee and change only the details you enter.",
+    "catalogTitle": "Event Types",
+    "save": "Save",
+    "builtInBehaviour": "Built-in meaning",
+    "inUse": "Used by recorded movements",
+    "add": "Add Event Type",
+    "addTitle": "Add Your Own Event Type",
+    "addHint": "Give it the name your organisation uses and choose what it should do. It then appears alongside the built-in types when HR records a movement.",
+    "addNamePlaceholder": "e.g. Redeployment",
+    "addBehaviourPlaceholder": "— Choose what it does —",
+    "deactivate": "Switch Off",
+    "activate": "Switch On",
+    "delete": "Delete",
+    "deactivateConfirmTitle": "Switch this event type off?",
+    "deactivateConfirmDescription": "It stops appearing when HR records a movement. Records that already use it are not changed and keep their meaning. You can switch it back on at any time.",
+    "activateConfirmTitle": "Switch this event type on?",
+    "activateConfirmDescription": "It appears again when HR records a movement.",
+    "deleteConfirmTitle": "Delete this event type?",
+    "deleteConfirmDescription": "It is removed from the list. This is only offered for your own event types that no record uses yet — anything already recorded can be switched off but never deleted.",
+    "columns": {
+      "name": "Name",
+      "behaviour": "What It Does",
+      "status": "Status",
+      "action": "Action"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Switched off"
+    }
   }
 }

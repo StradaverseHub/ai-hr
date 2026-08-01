@@ -982,6 +982,13 @@ export type TaxInput = {
   childReliefMode?: ChildReliefMode | string | null;
   employerBearsTax?: boolean;
   /**
+   * Item d64d0df4 — the employee is a registered disabled individual (OKU), which entitles them to a
+   * FURTHER annual deduction in the PCB projection. This is the employee's CIRCUMSTANCE (tenant data);
+   * the deduction AMOUNT is statutory and lives in the country pack's ruleset, never on this row.
+   * Undefined ⇒ false, so a partial write cannot silently claim a relief nobody asked for.
+   */
+  disabledIndividual?: boolean;
+  /**
    * R46 47146ea3 — write PROVENANCE, stamped onto the `employee.tax.updated` event payload so an auditor can
    * tell a machine-driven write from a human one. Absent (the default) ⇒ a human saved the Identity & Tax
    * form. 'auto_child_relief' ⇒ the num_children figure was derived from the Family/dependents register and
@@ -1020,6 +1027,9 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
     // flat-rate intent (only 'resident' is a full-MTD resident; the three incentive statuses are not).
     isResident: residency === 'resident',
     employerBearsTax: p.employerBearsTax ?? false,
+    // Item d64d0df4 — defaults to false, matching the column default, so an employee nobody has flagged
+    // keeps today's PCB exactly and a caller that predates this field cannot claim the relief by omission.
+    disabledIndividual: p.disabledIndividual ?? false,
   };
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
@@ -1032,6 +1042,7 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
         taxResidency: employeeStatutoryMy.taxResidency,
         isResident: employeeStatutoryMy.isResident,
         employerBearsTax: employeeStatutoryMy.employerBearsTax,
+        disabledIndividual: employeeStatutoryMy.disabledIndividual,
       })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
@@ -1061,6 +1072,9 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
               childReliefMode: existing.childReliefMode,
               taxResidency: existing.taxResidency,
               employerBearsTax: existing.employerBearsTax,
+              // d64d0df4 — a relief claim is exactly the kind of PCB input a compliance auditor has to be
+              // able to reconstruct: it moves the employee's tax and it is a claim about a person.
+              disabledIndividual: existing.disabledIndividual,
             }
           : null,
         after: values,

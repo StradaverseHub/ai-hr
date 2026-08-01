@@ -20,7 +20,7 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
  * improving that selector ("I don't want to improve the existing Benefit Scheme selector") and asked for
  * this shape instead. There is deliberately no scheme picker on this screen — a group is tenant-wide.
  *
- * ONE GROUP PER LEAVE TYPE. The database enforces it (unique on (tenant, leave_type), migration 0339); the
+ * ONE GROUP PER LEAVE TYPE. The database enforces it (unique on (tenant, leave_type), migration 0342); the
  * core layer turns a clash into a named sentence — "Marriage Leave is already in Special Leave" — rather
  * than silently moving the type or surfacing a constraint violation. This component does not re-implement
  * that check: it posts, and renders whatever the action says. Duplicating the rule here is how the screen

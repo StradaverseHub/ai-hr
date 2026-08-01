@@ -537,7 +537,7 @@ export async function copySchemeEntitlements(
 // The scheme-level combined-limit CRUD that lived here (listSchemeCombinedLimits / create / update /
 // delete, plus the drag-to-group entrypoints moveCombinedLimitMember / groupSchemeLeaveTypes) is GONE with
 // the tables it wrote. A shared leave group is no longer owned by a benefit scheme: it is tenant-level and
-// its members are leave types, so its home is core/leave-shared-group.ts. Migration 0339 dropped
+// its members are leave types, so its home is core/leave-shared-group.ts. Migration 0342 dropped
 // scheme_leave_combined_limit / _member after archiving what they held.
 //
 // Nothing about entitlement changed here — this module still owns grade groups, benefit schemes, their

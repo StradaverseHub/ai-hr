@@ -13,8 +13,8 @@
  * day-one migration wants maximum rows in, not all-or-nothing. The dry run is the gate.
  */
 import { withTenant, type SessionContext } from '../db/client';
-import { company, person, employeeStatutoryMy, employment } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { company, person, employeeStatutoryMy, employment, employeeImportRun, appUser } from '../db/schema';
+import { and, desc, eq } from 'drizzle-orm';
 import { hireEmployee } from './org';
 import { setCompensation } from './comp';
 import { setPersonComplianceFields } from './profile';
@@ -26,11 +26,32 @@ import { normalizeEmployeeCode, isValidEmployeeCode, EMPLOYEE_CODE_MAX_LEN } fro
 import { listCompanies, listDepartments, listLeaveTypes } from './read';
 import { listPositions, listCostCenters } from './admin';
 import { appendEvent, actorOf } from '../db/events';
-import { IMPORT_COLUMNS, type ImportRecord, type RowResult, type ImportPreview, type ImportResult } from '../lib/import-schema';
+import {
+  IMPORT_COLUMNS,
+  type ImportRecord,
+  type RowResult,
+  type ImportPreview,
+  type ImportResult,
+  type ImportRunError,
+  type ImportRunRow,
+} from '../lib/import-schema';
 
 // Re-exported so server-side callers (actions, tests) can keep importing from core/import.
 export { IMPORT_COLUMNS };
-export type { ImportRecord, RowResult, ImportPreview, ImportResult };
+export type { ImportRecord, RowResult, ImportPreview, ImportResult, ImportRunError, ImportRunRow };
+
+/**
+ * cf43c909 — how many rejected rows an import run stores.
+ *
+ * The error detail exists so HR can correct the rows and re-upload; past a few hundred the file itself is
+ * the wrong file and the answer is to fix the source, not to scroll. Capping bounds the jsonb document a
+ * single bad 5,000-row upload can write, and `errorsTruncated` tells the screen to say the list is a
+ * sample rather than letting anyone believe a truncated report is the whole story.
+ */
+export const IMPORT_RUN_ERROR_CAP = 200;
+
+/** How many past runs the history screen reads. */
+export const IMPORT_RUN_HISTORY_LIMIT = 50;
 
 const EMPLOYMENT_TYPES = new Set(['full_time', 'part_time', 'contract', 'intern']);
 const STANDING_GRANTS = new Set(['ANNUAL', 'SICK', 'HOSPITALIZATION']);
@@ -440,7 +461,7 @@ export async function validateEmployeeImport(
  *  batch event so the import itself shows up in the audit trail. */
 export async function commitEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[] },
+  p: { companyId: string; records: ImportRecord[]; fileName?: string },
 ): Promise<ImportResult> {
   const { resolved } = await analyze(ctx, p.companyId, p.records);
   const valid = resolved.filter((r) => r.result.ok);
@@ -503,5 +524,119 @@ export async function commitEmployeeImport(
     }),
   );
 
-  return { companyId: p.companyId, imported, failed, skipped: resolved.length - valid.length };
+  const runId = await recordImportRun(ctx, {
+    companyId: p.companyId,
+    fileName: p.fileName ?? '',
+    totalRows: resolved.length,
+    imported,
+    rejected: resolved.filter((r) => !r.result.ok).map((r) => r.result),
+    failed,
+  });
+
+  return { companyId: p.companyId, imported, failed, skipped: resolved.length - valid.length, runId };
+}
+
+/**
+ * cf43c909 — write the history row for a finished run.
+ *
+ * BEST-EFFORT BY DESIGN. The employees are already created by the time this runs; if recording the run
+ * throws (an unapplied migration on a stale deploy, a transient failure), the import must still be
+ * reported as what it was. Losing a history row is a lesser fault than telling an admin their import
+ * failed when 300 employees now exist — so the failure is swallowed and `runId` comes back null.
+ *
+ * WHAT A "FAILED ROW" IS. Both kinds are one list to HR, because both mean "this person is not in the
+ * system and here is why": rows REJECTED by validation (they never reached the write) and rows that
+ * FAILED at write (a service threw). Storing them apart would make the screen ask HR to understand an
+ * internal boundary in order to fix a spreadsheet.
+ */
+async function recordImportRun(
+  ctx: SessionContext,
+  p: {
+    companyId: string;
+    fileName: string;
+    totalRows: number;
+    imported: number;
+    rejected: RowResult[];
+    failed: ImportResult['failed'];
+  },
+): Promise<string | null> {
+  // Identity + reason only — never the row's IC, bank account, statutory numbers or salary. The uploaded
+  // file is not stored at all (see migration 0341's header); this is what a correction actually needs.
+  const errors: ImportRunError[] = [
+    ...p.rejected.map((r) => ({ rowNum: r.rowNum, fullName: r.fullName, email: r.email, errors: r.errors })),
+    ...p.failed.map((f) => ({ rowNum: f.rowNum, fullName: '', email: f.email, errors: [f.message] })),
+  ].sort((a, b) => a.rowNum - b.rowNum);
+  const failedRows = errors.length;
+  try {
+    return await withTenant(ctx, async (tx) => {
+      // Resolve the actor's person ONCE, at the moment of the run. A session only carries `personId` when
+      // the login is tied to an employee; an HR admin's usually is, but the link lives on app_user, so
+      // fall back to it rather than showing "Unknown" for the person who is most likely to run an import.
+      // Pinned at write time, not resolved on read, so the history keeps naming whoever ran it even after
+      // that login is later re-pointed or archived.
+      let personId = ctx.personId ?? null;
+      if (!personId && ctx.userId) {
+        const [u] = await tx
+          .select({ personId: appUser.personId })
+          .from(appUser)
+          .where(and(eq(appUser.tenantId, ctx.tenantId), eq(appUser.workosUserId, ctx.userId)))
+          .limit(1);
+        personId = u?.personId ?? null;
+      }
+      const [row] = await tx
+        .insert(employeeImportRun)
+        .values({
+          tenantId: ctx.tenantId,
+          companyId: p.companyId,
+          createdByPersonId: personId,
+          createdByUserId: ctx.userId ?? null,
+          fileName: p.fileName.slice(0, 255),
+          totalRows: p.totalRows,
+          importedRows: p.imported,
+          failedRows,
+          errors: errors.slice(0, IMPORT_RUN_ERROR_CAP),
+          errorsTruncated: failedRows > IMPORT_RUN_ERROR_CAP,
+        })
+        .returning({ id: employeeImportRun.id });
+      return row?.id ?? null;
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** cf43c909 — past import runs, most recent first. RLS (0341) is the authority: admin-only, tenant-scoped. */
+export function listEmployeeImportRuns(
+  ctx: SessionContext,
+  opts?: { limit?: number },
+): Promise<ImportRunRow[]> {
+  const limit = Math.max(1, Math.min(IMPORT_RUN_HISTORY_LIMIT, opts?.limit ?? IMPORT_RUN_HISTORY_LIMIT));
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: employeeImportRun.id,
+        companyId: employeeImportRun.companyId,
+        companyName: company.legalName,
+        actorName: person.fullName,
+        fileName: employeeImportRun.fileName,
+        totalRows: employeeImportRun.totalRows,
+        importedRows: employeeImportRun.importedRows,
+        failedRows: employeeImportRun.failedRows,
+        errors: employeeImportRun.errors,
+        errorsTruncated: employeeImportRun.errorsTruncated,
+        createdAt: employeeImportRun.createdAt,
+      })
+      .from(employeeImportRun)
+      .leftJoin(company, eq(company.id, employeeImportRun.companyId))
+      .leftJoin(person, eq(person.id, employeeImportRun.createdByPersonId))
+      .orderBy(desc(employeeImportRun.createdAt))
+      .limit(limit);
+    return rows.map((r) => ({
+      ...r,
+      // jsonb comes back as `unknown`; a row written by an older or newer shape must render as "no detail"
+      // rather than crashing the history screen for every other run on it.
+      errors: Array.isArray(r.errors) ? (r.errors as ImportRunError[]) : [],
+      createdAt: r.createdAt.toISOString(),
+    }));
+  });
 }

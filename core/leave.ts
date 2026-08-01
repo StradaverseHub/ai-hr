@@ -1145,7 +1145,7 @@ export async function leaveTypeApplySummary(
 // ── Shared Leave Group enforcement (r88, feedback 1ef1cf95; the rules themselves R44 4c48fd1f + r82a) ──
 // The two rules are unchanged and both enforcement points are unchanged — APPLY and APPROVAL. What moved is
 // WHERE the group is looked up: a group is now tenant-level with leave-type members (leave_shared_group /
-// _member, migration 0339), so resolving one no longer starts from the employee's benefit scheme.
+// _member, migration 0342), so resolving one no longer starts from the employee's benefit scheme.
 //
 // The scheme resolution that used to open this section (resolveSchemeIdForEmployment) is gone with it. It
 // existed solely to answer "which scheme's pools apply to this employee", and there is no such question any

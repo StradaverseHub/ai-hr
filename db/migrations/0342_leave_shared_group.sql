@@ -64,12 +64,12 @@ BEGIN
 
     FOR r IN SELECT group_name, benefit_scheme_name, total_limit_days, max_days_per_application, member_leave_types
                FROM "leave_shared_group_reset_archive" ORDER BY benefit_scheme_name, group_name LOOP
-      RAISE NOTICE '[0339] RESET shared leave group: "%" (scheme: %) — total % day(s)/year, max %/application, members: %',
+      RAISE NOTICE '[0342] RESET shared leave group: "%" (scheme: %) — total % day(s)/year, max %/application, members: %',
         r.group_name, coalesce(r.benefit_scheme_name, '(none)'), r.total_limit_days,
         coalesce(r.max_days_per_application, 'no cap'), r.member_leave_types;
     END LOOP;
   END IF;
-  RAISE NOTICE '[0339] Shared leave groups archived before reset: %', captured;
+  RAISE NOTICE '[0342] Shared leave groups archived before reset: %', captured;
 END $$;--> statement-breakpoint
 
 -- ── 2. The new, honestly-named tables ─────────────────────────────────────────────────────────────────

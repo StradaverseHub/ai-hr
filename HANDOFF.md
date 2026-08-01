@@ -5,11 +5,41 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-07-31, after r87)
+## CURRENT STATE — read this first (updated 2026-08-01, after r88)
 
-> **r87 SHIPPED `main@6e967cf`, no migration** — production stays at **286**, next free number is still
-> **`0339`**. Two payroll faults shipped (`ef31d251`, `d0d2c9d1`); `97a9b0ab` was **held** because
-> checking production showed its plan was wrong — see the r87 entry, it is the most useful thing in it.
+> ### DEPLOYED HEAD IS `main@6b82c8e` — production on **288** migrations.
+>
+> r87 (`main@6e967cf`, no migration) shipped two payroll faults — `ef31d251` and `d0d2c9d1` — and
+> **held `97a9b0ab`** because checking production showed its plan was wrong. That is still the most
+> useful thing in the r87 entry, and `97a9b0ab` rev 2 is still awaiting the reporter.
+>
+> ### r88 SHIPPED 2026-08-01 — migrations `0340` + `0341`, taking production 286 → **288**
+>
+> **Next free migration number is `0342`.** `0339` is SPENT BUT UNSHIPPED — see below.
+>
+> **9 items deployed:** `fa3f4ccb` · `30325fc1` · `10fcf6df` · `476f23ed` · `a324a4b3` · `61bf109d` ·
+> `cf43c909` · `d64d0df4` · `e523e85d` (closed as an already-delivered duplicate of `941c9dac`).
+>
+> ### ⚠️ `1ef1cf95` IS STUCK IN `building` ON PURPOSE, AND ITS MIGRATION IS A LOADED TRAP
+>
+> Its agent was cut off mid-item. The work is **uncommitted** in `.claude/worktrees/r88a` and is
+> roughly 80% done: migration `0339` written, all six catalogs updated, `core/leave-shared-group.ts`
+> and the UI created, enforcement re-pointed in `core/leave.ts`.
+>
+> **THREE things must happen before it can ship, and the third is the one that will be missed:**
+> 1. **Three test files still import functions it deleted** (`test/combined-leave-limit.test.ts`,
+>    `test/shared-leave-group-max-days.test.ts`, `test/shared-leave-group-single-mechanism.test.ts`).
+>    The tree does not typecheck as it stands.
+> 2. **The promised config dump was never built.** The approved plan promises the reporter a list of
+>    their existing shared-group configuration BEFORE the reset, and `0339` DROPS
+>    `scheme_leave_combined_limit`. Do not ship the migration until that dump exists and is attached.
+> 3. **`0339` MUST BE RENUMBERED ABOVE `0341`.** It was allocated before r88 shipped `0340`/`0341`, so
+>    it now sits BELOW the deployed watermark. drizzle-kit reads the last applied `when` as a watermark
+>    and silently ignores anything below it: merging `0339` as-is produces no error, no conflict, and
+>    the tables are simply never created. This is the r84 stale-number trap, pre-loaded and waiting.
+>
+> Its board status is deliberately left at `building` — that is accurate, and `startFeedbackBuild`
+> accepts only `approved`, so the status itself prevents a second agent starting it in parallel.
 >
 > **THE REPORTER THEN APPROVED ALL SEVEN PLANS from the 2026-07-31 planning pass.** Board is now
 > **`approved = 18` · `planned = 1` (97a9b0ab rev 2) · `contested = 2` · `deployed = 528`**.
@@ -88,7 +118,15 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
    (Tailwind emission order beating a template-string width, not the class attribute) was found rather
    than guessed. ai-hr is NOT publicly served — it is loopback-only behind a **cloudflared quick
    tunnel**, `https://remove-source-wood-currently.trycloudflare.com` (whose hostname CHANGES if that
-   process restarts). **Everything since r70 except `1ef1cf95` and `4dbe04c6` remains unverified, and
+   process restarts). **Verified live 2026-07-31: that URL returns 401, which is the healthy password
+   gate.**
+
+   **`cloudflared` RUNS ON THE SERVER, NOT ON THE MAC.** A `pgrep cloudflared` locally finds nothing
+   and means nothing — r88 briefly concluded the tunnel was down that way. Check it on the box
+   (`ssh … pgrep -fl cloudflared`) or just curl the URL. And curl it WITHOUT `-f`: with `-f` a 401 is
+   treated as failure, so the healthy state looks dead.
+
+   **Everything since r70 except `1ef1cf95` and `4dbe04c6` remains unverified, and
    r86 just added a lot to that pile:** a step-by-step Create New Employee wizard with drafts, an
    .xlsx import with preview and error-report download, a rebuilt Leave Balance Summary, and a Cancel
    Leave action on Employee Leave Records. **None of it has been seen in a browser**, and this repo
@@ -425,8 +463,24 @@ build's type pass catches RSC client/server boundary errors that `tsc` alone doe
 number is `0339`** — allocate it centrally, never let an agent pick one (r76 found an abandoned branch
 reusing a shipped number, and r84 found one carrying a STALE number; both merge as a SILENT SKIP).
 
-**Board, after the 2026-07-31 planning pass:** `approved = 14` · `planned = 7` · `contested = 1` ·
-`open = 0` · `deployed = 527` · `cancelled = 11` · `blocked = 0`.
+**Board, counted on production after r88 (2026-08-01):** `deployed = 537` · `approved = 8` ·
+`contested = 2` · `cancelled = 11` · `building = 1` (`1ef1cf95`, held — see above) · `planned = 1`
+(`97a9b0ab` rev 2, awaiting the reporter) · `open = 0` · `blocked = 0`.
+
+**The 8 remaining approved items**, none started:
+
+- **`deec1691` — NOT A BUILD, and the cheapest thing on the board.** It is a `tenant_module` activation
+  row: the Dependency Explorer shipped in r79 but `system_explorer` has no row for this tenant, so it
+  resolves OFF and has no screen for any role. See r87. Still not done.
+- **The payroll cluster — overlaps itself, so SEQUENCE it:** `a1d82340` (five-step redesign, must go
+  first) → `ec845c7d` (fixed + individual transaction interfaces) → `862ed0ad` (transaction view
+  history). `956cec85` (statutory forms) still needs the reporter to name their submission channels and
+  file formats — a statutory form with an invented layout is worse than no form.
+- **`241817ef`** — approved at rev 3. Convert the 11 unconditional base chains and the 4 template-less
+  rules FIRST, then remove the sections; removing first causes silent re-routing.
+- **Two cross-cutting items, each SOLO and LAST:** `fc776376` (pagination, ~30 list pages) and
+  `bb4f2265` (UTC dates — 44 occurrences, of which MOST are legitimate arithmetic that must stay UTC;
+  classify every one, do not mass-replace).
 
 ### The 7 items planned on 2026-07-31 — all awaiting the reporter's approve/reject
 
@@ -613,6 +667,92 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r88 — 2026-08-01 — 9 items across four parallel agents, and four failures only the integration saw
+
+**Shipped:** `main@6b82c8e`. Migrations `0340`, `0341` (production 286 → 288).
+**Gate:** `tsc` clean · **508 files / 5922 tests** · `next build` clean · **upgrade rehearsal PASS**.
+Verified live: `GET /` 401, service active, **288 migrations**, `movement_event_type` and
+`employee_import_run` both present, `employee_statutory_my.disabled_individual` present and
+**0 employees flagged** — so no existing PCB figure moved, which is the claim that mattered.
+
+**Shipped:** `fa3f4ccb` (statutory floor stops overriding) · `30325fc1` + `10fcf6df` + `476f23ed`
+(movement cluster) · `a324a4b3` (one Attendance menu) · `61bf109d` (Pay Items discoverability) ·
+`cf43c909` + `d64d0df4` (personnel admin) · `e523e85d` (**already delivered — closed, not built**).
+**HELD:** `1ef1cf95` — incomplete when its agent was cut off, and its promised safeguard was never built.
+
+### Decisions
+
+**1. FOUR INTEGRATION FAILURES, AND TWO WERE REAL DEFECTS.** Every agent was green on its own branch;
+these appeared only where branches met. This is the fourth consecutive round where the integration gate
+earned its cost (r74, r75, r86, r88).
+
+REAL:
+- **`/admin/settings/movement` was absent from `lib/permissions.ts`.** r88b's Movement Settings page
+  shipped with its own `requireAdmin()`, so it was never reachable without admin — but it was missing
+  from the registry that drives the users/roles matrix, so it appeared to nobody as a grantable screen.
+  `test/function-access.test.ts`'s reverse-completeness check caught it. **Same omission class as r74
+  and r75.** Added with the guard matching the page's own; `nav.movementSettings` already existed in all
+  six catalogs.
+- **An ADR-0080 D9 architecture violation.** r88c put `pay-rule-words.ts` in `lib/` importing payroll
+  pack types. I checked whether the ratchet was merely over-strict about type-only imports — **it is
+  not**: `test/helpers/import-ratchet.ts` states the intent explicitly, *"type coupling is still
+  coupling"*. So the fix was to MOVE the file into `app/admin/pay-components/` (already
+  `ALWAYS_ALLOWED`, and where a presentation helper for that screen belongs) rather than add an
+  allowlist entry to a list documented to **only ever shrink**.
+
+SUPERSEDED GUARDS — inverted, not deleted:
+- `entitledDays 'exactly three inputs'` pinned `Math.max(floorDays, schemeDays ?? policyDays)`, which is
+  exactly the override `fa3f4ccb` was approved to remove. Re-pinned to the new composition, preserving
+  its real subject (no FOURTH day-source) and adding that `floorDays` must still reach the caller as the
+  warning signal.
+- `employee-import-file` pinned `commitImportAction`'s two-arg form; `cf43c909` added `fileName` so the
+  import-history row can name the upload. Widened to the call shape; the single-call-site assertions
+  still enforce "no second, file-specific server action".
+
+**2. I MADE THE OVER-BROAD-GUARD MISTAKE WHILE FIXING AN OVER-BROAD GUARD.** My first rewrite of the
+`entitledDays` assertion matched raw source and fired against the COMMENT two lines above the function
+that RECORDS the change ("was `Math.max(...)`; the resolved value is now ..."). That is r86's four-guard
+failure, repeated by the person writing it down. **Comments are stripped before matching now**, following
+`test/module-catalog-drift.test.ts`'s existing helper. The lesson generalises: a guard that greps source
+will eventually match prose describing the invariant.
+
+**3. `e523e85d` WAS CLOSED WITHOUT CODE, and verified before saying so.** It is a duplicate of
+`941c9dac`, raised nine hours later the same day and shipped in r83. Confirmed in the tree rather than
+taken from the plan: migration `0329_movement_scheduled_apply_once` exists and
+`employment.movement.scheduled` is live in `core/movement.ts` tagged to `941c9dac`. The `build_ref` asks
+the reporter to try it and reject if any part differs — because that would be a real fault in r83.
+
+**4. `1ef1cf95` WAS HELD, AND ITS MIGRATION NUMBER IS NOW A TRAP.** The agent was cut off mid-item
+(connection dropped). Two independent reasons not to rescue it into this round:
+- **The promised safeguard was never built.** Its plan promises the reporter a dump of their existing
+  shared-group configuration BEFORE the reset, and that task was still pending. `0339` DROPS
+  `scheme_leave_combined_limit`. Shipping a destructive migration whose safety net does not exist is
+  exactly backwards.
+- It left three test files importing functions it had already deleted, so the tree did not typecheck.
+
+Conveniently ALL of its work is uncommitted, so holding it was clean — `build/r88a` carries only
+`fa3f4ccb`. **The work survives in `.claude/worktrees/r88a` as uncommitted changes.**
+
+> ⚠️ **`0339` IS SPENT BUT UNSHIPPED.** When `1ef1cf95` is finished it must be **RENUMBERED ABOVE
+> `0341`**, not simply un-held: drizzle-kit reads the last applied `when` as a watermark and silently
+> ignores anything below it. `0339` would merge with no error, no conflict, and the tables would simply
+> never be created. This is the r84 stale-number trap, pre-loaded.
+
+**5. THE `-m immediate` ESCAPE HATCH FAILED THIS TIME.** The rehearsal's `CREATE DATABASE` wedged in
+`CheckpointStart` right after the 5922-test suite (counters byte-identical over 10s, stuck 10m28s,
+checkpointer spinning at 16% CPU — the r83 diagnostic, confirmed before acting). But **`pg_ctl -m
+immediate stop` itself hung**, because the postmaster was unresponsive rather than merely stuck on a
+checkpoint. It took `pkill -9 -f 'postgres.*aihr-pg14'`. The handoff previously said `-m immediate` is
+the answer; it is the answer *usually*, and `pkill -9` is the fallback when the postmaster will not
+answer at all.
+
+**6. A FRESH WORKTREE CANNOT RUN THE DB SUITE.** The r88 integration worktree's first full-suite run
+died in setup with `TEST_MIGRATION_DATABASE_URL must be set` and **no test summary at all** — which
+looks nothing like a normal failure. `.env.local` is gitignored, so `git worktree add` does not carry
+it. **Copy `.env.local` into every new worktree before running tests.**
+
+---
 
 ## r87 — 2026-07-31 — two payroll faults shipped, and the third was stopped by its own evidence
 

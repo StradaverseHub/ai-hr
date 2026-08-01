@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import { listPayComponents } from '@/core/pay-components';
-import type { PayRule, PayRuleKind } from '@/core/pay-rule';
+import type { FormulaOp, FormulaOperand, PayRule, PayRuleKind } from '@/core/pay-rule';
+import { payRuleInWords } from './pay-rule-words';
 import { Card, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -13,8 +14,9 @@ import { archiveComponentAction, deleteComponentAction, seedCatalogAction } from
 const PAGE = '/admin/pay-components';
 type Status = 'active' | 'inactive' | 'all';
 
-/** Input Type is DERIVED from the pay-rule kind — this column stays read-only; 61bf109d made the
- *  underlying field editable on the maintenance form (the "Input Type" selector in pay-rule-editor.tsx).
+/** Input Type is DERIVED from the pay-rule kind — the VALUE is still computed here, but since 61bf109d
+ *  rev2 the cell is a LINK to the pay item, because the editable selector lives on the maintenance form
+ *  (the "Input Type" dropdown in pay-rule-editor.tsx, inside Pay Settings) and the list gave no hint of it.
  *  null / 'fixed' ⇒ fixed amount, matching the kernel's legacy fixed-amount behaviour. */
 const inputTypeOf = (rule: unknown): PayRuleKind => (rule as PayRule | null)?.kind ?? 'fixed';
 
@@ -32,6 +34,9 @@ export default async function PayComponentsPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payComponents');
+  // 61bf109d rev2 — the formula description reads the BUILDER's own operand/operator strings, so the list
+  // and the editor cannot word the same formula two different ways. See ./pay-rule-words.ts.
+  const tr = await getTranslations('payRule');
   const sp = await searchParams;
   // Back-compat: the pre-split UI minted ?new=1 / ?edit=CODE links (bookmarks, browser history) — send
   // them to the dedicated maintenance routes instead of rendering an inline form here.
@@ -52,6 +57,19 @@ export default async function PayComponentsPage({
 
   const qs = (st: Status) => `${PAGE}?status=${st}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
 
+  // 61bf109d rev2 — the formula in plain words. Names for referenced codes come from the catalog already
+  // loaded above (archived rows included, so a formula pointing at a deactivated item still reads as words
+  // rather than a bare code). Everything else is injected from the payRule catalog, so the sentence is
+  // localised by the same entries the builder renders.
+  const nameOfCode = new Map(components.map((c) => [c.code.trim().toUpperCase(), c.label ?? c.name]));
+  const wordsOf = (rule: unknown) =>
+    payRuleInWords(rule as PayRule | null, {
+      operandLabel: (ref: FormulaOperand['ref']) => tr(`operand_${ref}`),
+      opLabel: (op: FormulaOp) => tr(({ '+': 'op_add', '-': 'op_sub', '*': 'op_mul', '/': 'op_div' } as const)[op]),
+      startLabel: tr('formulaStart'),
+      payItemLabel: (code) => nameOfCode.get(code),
+    });
+
   // Export semantics (deliberate): the FULL catalog — every row including deactivated, with ALL
   // configuration columns — IGNORING the current search and status filter. A payroll administrator
   // exporting a master configuration table means the whole table, not what happens to be on screen.
@@ -70,6 +88,9 @@ export default async function PayComponentsPage({
     { key: 'eaFormLine', label: t('colEaLine') },
     { key: 'rounding', label: t('colRounding') },
     { key: 'ruleKind', label: t('colRuleKind') },
+    // 61bf109d rev2 — the same plain-words sentence the table shows, so an exported master configuration
+    // says HOW a calculated item is worked out and not merely that it is calculated.
+    { key: 'formula', label: t('colFormula') },
   ];
   const exportRows = components.map((c) => ({
     code: c.code,
@@ -86,6 +107,7 @@ export default async function PayComponentsPage({
     eaFormLine: c.eaFormLine ?? '',
     rounding: c.roundingMethod,
     ruleKind: (c.rule as PayRule | null)?.kind ?? '',
+    formula: wordsOf(c.rule) ?? '',
   }));
 
   return (
@@ -167,7 +189,23 @@ export default async function PayComponentsPage({
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{t(`inputType_${inputTypeOf(c.rule)}`)}</td>
+                  {/* 61bf109d rev2 — THE FIX. The value is still derived and still read-only HERE, but it is
+                      now a link to the pay item, where the editable Input Type selector and the Formula
+                      builder actually live (Pay Settings). Same destination as the Edit action, so no new
+                      route and no new permission surface. Below it, for a calculated item, the formula in
+                      plain words — the "which items are calculated and how" the list could never answer. */}
+                  <td className="px-4 py-2.5 text-muted-foreground">
+                    <Link
+                      href={`${PAGE}/${encodeURIComponent(c.code)}`}
+                      title={t('inputTypeLinkTitle', { code: c.code })}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {t(`inputType_${inputTypeOf(c.rule)}`)}
+                    </Link>
+                    {wordsOf(c.rule) && (
+                      <span className="mt-0.5 block text-xs text-muted-foreground">{wordsOf(c.rule)}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5">
                     <span
                       className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${

@@ -377,6 +377,11 @@ export function validateStatutoryRuleset(data: StatutoryRuleset): string[] {
     const r = pcb.reliefs;
     if (!r || !nonNeg(r.individual) || !nonNeg(r.spouse) || !nonNeg(r.perChild) || !nonNeg(r.epfReliefCap))
       errs.push('PCB reliefs must all be ≥ 0.');
+    // d64d0df4 — the disabled-individual deduction is OPTIONAL (absent ⇒ the built-in fallback in
+    // pcbMonth), but any PRESENT value must be a non-negative number. Same treatment as the optional
+    // overtime excess multipliers below: absence is fine, a bad value is not.
+    else if (r.disabledIndividual != null && !nonNeg(r.disabledIndividual))
+      errs.push('PCB disabled-individual relief must be ≥ 0.');
   }
 
   if (!data.ot || !nonNeg(data.ot.wageCeiling)) errs.push('Overtime wage ceiling must be ≥ 0.');
@@ -550,6 +555,13 @@ function changedFields(before: StatutoryRuleset, after: StatutoryRuleset): strin
     ['pcb.reliefs.spouse', before.pcb?.reliefs?.spouse, after.pcb?.reliefs?.spouse],
     ['pcb.reliefs.perChild', before.pcb?.reliefs?.perChild, after.pcb?.reliefs?.perChild],
     ['pcb.reliefs.epfReliefCap', before.pcb?.reliefs?.epfReliefCap, after.pcb?.reliefs?.epfReliefCap],
+    // d64d0df4 — a change to the OKU deduction moves the tax of every flagged employee, so it belongs in
+    // the audit's changed-field list alongside the other reliefs.
+    [
+      'pcb.reliefs.disabledIndividual',
+      before.pcb?.reliefs?.disabledIndividual,
+      after.pcb?.reliefs?.disabledIndividual,
+    ],
   ];
   for (const [name, a, b] of scalars) if (a !== b) changed.push(name);
   // EPF Third-Schedule band tables are now admin-editable (feedback 99e13860); surface a table edit in the

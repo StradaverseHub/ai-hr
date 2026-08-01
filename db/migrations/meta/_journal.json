@@ -2005,10 +2005,24 @@
       "breakpoints": true
     },
     {
-      "idx": 339,
+      "idx": 340,
       "version": "7",
-      "when": 1781862439000,
-      "tag": "0339_leave_shared_group",
+      "when": 1781862440000,
+      "tag": "0340_movement_event_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 341,
+      "version": "7",
+      "when": 1781862441000,
+      "tag": "0341_import_history_and_disabled_individual",
+      "breakpoints": true
+    },
+    {
+      "idx": 342,
+      "version": "7",
+      "when": 1781862442000,
+      "tag": "0342_leave_shared_group",
       "breakpoints": true
     }
   ]

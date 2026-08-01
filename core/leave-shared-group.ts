@@ -7,7 +7,7 @@
  *
  * WHAT THIS REPLACES. Until r88 the group lived on `scheme_leave_combined_limit` / `_member`, hung off a
  * benefit scheme (0220 / R44 4c48fd1f, extended by r82a 0327). The reporter rejected that shape outright —
- * "I don't want to improve the existing Benefit Scheme selector" — and asked for this one. Migration 0339
+ * "I don't want to improve the existing Benefit Scheme selector" — and asked for this one. Migration 0342
  * created the new tables, archived the old configuration into `leave_shared_group_reset_archive` and dropped
  * the old tables; the reset was part of the request, not a side effect.
  *

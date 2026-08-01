@@ -46,7 +46,14 @@ export class StatutoryRulesetMalformedError extends Error {
   }
 }
 
-export type TaxProfile = { category?: TaxCategory; children?: number };
+export type TaxProfile = {
+  category?: TaxCategory;
+  children?: number;
+  /** d64d0df4 — the employee is a registered disabled individual (OKU), which entitles them to a FURTHER
+   *  annual deduction on top of D. Undefined/false ⇒ exactly today's projection of P, so every employee
+   *  who has not been flagged computes byte-identically. */
+  disabled?: boolean;
+};
 
 /**
  * Per-employee EPF contribution mode (Wave 2B, statutory-aligned). The only above-statutory
@@ -358,8 +365,18 @@ export function pcbMonth(p: {
   const n = 12 - month; // balance of months AFTER the current one
   const pcb = p.pcb ?? DEFAULT_MY_STATUTORY.pcb;
   const cap = pcb.reliefs.epfReliefCap;
+  // d64d0df4 — the further OKU deduction. Read from the RULESET (the pack / an admin override), falling
+  // back to the verified built-in when the ruleset predates 2026.6 — the same shape `hrdfLevy` uses for
+  // rules.hrdf, so a relief amount is never an inline constant in the calculation. Applied ONLY when this
+  // employee is flagged, so an unflagged employee's P is arithmetically identical to before.
+  const disabledRelief = p.profile?.disabled
+    ? (pcb.reliefs.disabledIndividual ?? DEFAULT_MY_STATUTORY.pcb.reliefs.disabledIndividual ?? 0)
+    : 0;
   const reliefs =
-    pcb.reliefs.individual + (category === 2 ? pcb.reliefs.spouse : 0) + children * pcb.reliefs.perChild;
+    pcb.reliefs.individual +
+    (category === 2 ? pcb.reliefs.spouse : 0) +
+    children * pcb.reliefs.perChild +
+    disabledRelief;
   const lp = (acc.lpAccumulated ?? 0) + (p.lpCurrent ?? 0);
   const Z = acc.zakatPaid ?? 0;
   const X = acc.pcbPaid;

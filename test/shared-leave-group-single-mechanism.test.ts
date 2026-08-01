@@ -15,7 +15,7 @@
  *     a drag; 6c775d68 moved that area inside each leave type's Entitlement step.
  *   - The reporter rejected that shape outright — "I don't want to improve the existing Benefit Scheme
  *     selector" — and asked for the group to be defined once, at LEAVE TYPE level. r88 replaced the pair
- *     with `leave_shared_group` + `leave_shared_group_member` (migration 0339): tenant-level, leave-type
+ *     with `leave_shared_group` + `leave_shared_group_member` (migration 0342): tenant-level, leave-type
  *     members, no scheme dimension. Config CRUD moved to core/leave-shared-group.ts; enforcement stayed
  *     exactly where it was, in core/leave.ts, at BOTH apply and approval.
  *
@@ -50,7 +50,7 @@ describe('1ef1cf95 · exactly one table pair groups leave types for sharing', ()
     // Every pgTable name in the schema whose NAME claims to group/pool leave types. `grade_group*` and
     // `holiday_group*` group grades and holidays, not leave types, so they are outside this net by name.
     // `leave_shared_group_reset_archive` is excluded BY NAME below, not by loosening the pattern: it is a
-    // dead record of what 0339 removed, never joined to and never read by the engine, so counting it as a
+    // dead record of what 0342 removed, never joined to and never read by the engine, so counting it as a
     // rival mechanism would be wrong — but a table that could ever be MISTAKEN for one must be named here
     // rather than quietly slipping through a widened regex.
     const names = [...schemaSrc.matchAll(/pgTable\(\s*'([a-z0-9_]+)'/g)].map((m) => m[1]);
@@ -62,7 +62,7 @@ describe('1ef1cf95 · exactly one table pair groups leave types for sharing', ()
 
   it('the archive is a record, not a mechanism', () => {
     // The one thing that would make the exclusion above a loophole: the archive growing enforceable columns
-    // or being read by the engine. It is text-only and write-once (0339).
+    // or being read by the engine. It is text-only and write-once (0342).
     const coreFiles = readdirSync(resolve(here, '../core')).filter((f) => f.endsWith('.ts'));
     const readers = coreFiles.filter((f) => read(`../core/${f}`).includes('leaveSharedGroupResetArchive'));
     expect(readers).toEqual([]);
@@ -92,7 +92,7 @@ describe('1ef1cf95 · exactly one table pair groups leave types for sharing', ()
   });
 
   it('the retired scheme-level pair is gone from the schema, not merely unused', () => {
-    // A leftover declaration is a second mechanism waiting to be re-wired. 0339 drops the tables; the
+    // A leftover declaration is a second mechanism waiting to be re-wired. 0342 drops the tables; the
     // schema must not still describe them.
     expect(schemaSrc).not.toMatch(/pgTable\(\s*'scheme_leave_combined_limit/);
   });
@@ -105,13 +105,28 @@ describe('1ef1cf95 · sharing caps what is TAKEN, never what is GRANTED', () => 
     expect(computeSrc).not.toMatch(/combinedLimit|combined_limit/i);
   });
 
-  it('entitledDays still resolves from exactly three inputs', () => {
-    // floor (statutory pack) vs scheme days vs policy days — schemeDays null, not zero, is the fallback
-    // trigger. A group day-source would appear here as a fourth input.
-    expect(computeSrc).toContain('return Math.max(floorDays, schemeDays ?? policyDays);');
+  it('entitledDays still resolves from exactly three inputs, and the floor no longer overrides', () => {
+    // INVERTED IN r88 (fa3f4ccb), not deleted. This guard's REAL subject is "no FOURTH day-source" — a
+    // shared-group day figure must never become an input here. That invariant is unchanged and is still
+    // pinned by the signature below.
+    //
+    // What DID change, deliberately and at the reporter's twice-stated instruction: the statutory floor
+    // stops OVERRIDING configuration. It was Math.max(floorDays, schemeDays ?? policyDays); it is now
+    // schemeDays ?? policyDays, with floorDays retained SOLELY to raise the below-floor warning. Pinning
+    // the old expression here would have re-asserted the behaviour the round was approved to remove.
+    // COMMENTS STRIPPED BEFORE MATCHING. The first version of this assertion did not, and failed against
+    // the comment two lines above entitledDays that RECORDS the change ("was Math.max(...); the resolved
+    // value is now ..."). A guard that greps raw source will eventually match a comment citing the very
+    // invariant it protects — r86 hit that four times in one integration. Match code, not prose.
+    const code = computeSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code).toContain('const days = schemeDays ?? policyDays;');
+    expect(code).not.toContain('Math.max(floorDays, schemeDays ?? policyDays)');
     expect(computeSrc).toMatch(
-      /export function entitledDays\(\s*floorDays: number,\s*schemeDays: number \| null,\s*policyDays: number,\s*\): number/,
+      /export function entitledDays\(\s*floorDays: number,\s*schemeDays: number \| null,\s*policyDays: number,\s*\): \{ days: number; belowStatutoryFloor: boolean \}/,
     );
+    // floorDays must still REACH the caller as a signal, or the warning has no source and the UI would
+    // have to recompute the floor — which is how two figures drift apart.
+    expect(computeSrc).toContain('belowStatutoryFloor: belowStatutoryFloor(floorDays, days)');
   });
 
   it('the group carries usage caps and no entitlement bands', () => {
