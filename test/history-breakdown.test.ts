@@ -7,6 +7,8 @@
  *      and surfaces as its own line amount.
  *   4. recordLines pass through (itemized allowance/deduction codes the summary row discards).
  *   5. Missing statutory blob / absent keys degrade to zeros (no NaN) — legacy/edge payslips.
+ *   6. componentLines (862ed0ad) group under the figure each explains, and a run stamped before that
+ *      change reports detailNotRecorded rather than an empty breakdown.
  * Pure unit test — no DB (the derivation is presentation-only over a ProcessedPayslipViewRow).
  */
 import { describe, expect, it } from 'vitest';
@@ -115,5 +117,73 @@ describe('deriveHistoryBreakdown', () => {
     expect(b.allowanceNet).toBe(500); // full allowance, nothing to net out
     expect(b.recordLines).toEqual([]);
     expect(Number.isNaN(b.employerContributions.total)).toBe(false);
+  });
+});
+
+/**
+ * Feedback 862ed0ad — the per-item detail behind each summarised figure.
+ *
+ * The request was to break an "Allowance MYR 200.00" line into the allowances behind it. That could not be
+ * done from stored data: core/payroll.ts earningsOf summed recurring pay items into the wage/ot/bonus/
+ * reimburse/deduct buckets and kept nothing per item. It is now stamped at generate time, FORWARD ONLY —
+ * so these tests cover both the stamped shape and the historical one, because both are live on production.
+ */
+describe('deriveHistoryBreakdown — per-item component detail (862ed0ad)', () => {
+  const lines = [
+    { code: 'ALLOW_TRAVEL', name: 'Travel Allowance', amount: 120, buckets: [{ bucket: 'wage' as const, amount: 120 }] },
+    { code: 'ALLOW_PHONE', name: 'Phone Allowance', amount: 80, buckets: [{ bucket: 'wage' as const, amount: 80 }] },
+    { code: 'OT_SHIFT', name: 'Shift Premium', amount: 45, buckets: [{ bucket: 'ot' as const, amount: 45 }] },
+    { code: 'DED_PARK', name: 'Parking', amount: 30, buckets: [{ bucket: 'deduct' as const, amount: 30 }] },
+  ];
+
+  it('groups each item under the figure it contributed to', () => {
+    const b = deriveHistoryBreakdown(row({ statutory: { componentLines: lines } }));
+    expect(b.detailNotRecorded).toBe(false);
+    expect(b.componentsByBucket.wage).toEqual([
+      { code: 'ALLOW_TRAVEL', name: 'Travel Allowance', amount: 120 },
+      { code: 'ALLOW_PHONE', name: 'Phone Allowance', amount: 80 },
+    ]);
+    expect(b.componentsByBucket.ot).toEqual([{ code: 'OT_SHIFT', name: 'Shift Premium', amount: 45 }]);
+    expect(b.componentsByBucket.deduct).toEqual([{ code: 'DED_PARK', name: 'Parking', amount: 30 }]);
+    expect(b.componentsByBucket.bonus).toEqual([]);
+  });
+
+  // THE INVARIANT THE PLAN MADE A PRECONDITION: a breakdown that can disagree with the total beside it is
+  // worse than no breakdown. It holds because both come from the same stamp — nothing is recomputed here.
+  it('sums, per bucket, to the figure it explains', () => {
+    const b = deriveHistoryBreakdown(row({ statutory: { componentLines: lines } }));
+    const sum = (rows: { amount: number }[]) => rows.reduce((t, r) => t + r.amount, 0);
+    expect(sum(b.componentsByBucket.wage)).toBe(200); // the reporter's own MYR 200.00 allowance
+    expect(sum(b.componentsByBucket.ot)).toBe(45);
+    expect(sum(b.componentsByBucket.deduct)).toBe(30);
+  });
+
+  // One item, two figures: the exempt portion is paid untaxed while the remainder is taxable. Flattening
+  // that to a single bucket would misstate where the money went.
+  it('keeps an item that split across two figures in both', () => {
+    const split = [
+      { code: 'ALLOW_MEAL', name: 'Meal Allowance', amount: 300, buckets: [
+        { bucket: 'reimburse' as const, amount: 200 },
+        { bucket: 'wage' as const, amount: 100 },
+      ] },
+    ];
+    const b = deriveHistoryBreakdown(row({ statutory: { componentLines: split } }));
+    expect(b.componentsByBucket.reimburse).toEqual([{ code: 'ALLOW_MEAL', name: 'Meal Allowance', amount: 200 }]);
+    expect(b.componentsByBucket.wage).toEqual([{ code: 'ALLOW_MEAL', name: 'Meal Allowance', amount: 100 }]);
+    expect(b.componentLines[0].amount).toBe(300);
+  });
+
+  // The 18 runs already on production. They must not render an empty breakdown under a non-zero total.
+  it('reports detailNotRecorded for a run stamped before the change', () => {
+    const b = deriveHistoryBreakdown(row({ statutory: { recordLines: [] } }));
+    expect(b.detailNotRecorded).toBe(true);
+    expect(b.componentLines).toEqual([]);
+    expect(b.componentsByBucket.wage).toEqual([]);
+  });
+
+  it('degrades without a statutory blob at all', () => {
+    const b = deriveHistoryBreakdown(row({ statutory: null as never }));
+    expect(b.detailNotRecorded).toBe(true);
+    expect(b.componentsByBucket).toEqual({ wage: [], ot: [], bonus: [], reimburse: [], deduct: [] });
   });
 });

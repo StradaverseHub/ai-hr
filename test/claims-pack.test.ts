@@ -38,6 +38,10 @@ import { createBatch, generatePayslips } from '../core/payroll';
 import { hireEmployee } from '../core/org';
 import { closeAll, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
+// The kernel judges these dates in MYT (bb4f2265); a fixture built in UTC disagrees with it
+// between 00:00 and 08:00 MYT, which is a test that fails only at night.
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 describe('ADR-0080 rung 3: claims pack registration', () => {
   it('registers as a module pack the registry resolves by id', () => {
     expect(packById('claims')).toBe(claimsPack);
@@ -192,7 +196,7 @@ describe('ADR-0080 rung 3 (D9): the claims PayrollInputContributor kernel contra
 
     // Inside the 45-day receipt window (same helper rationale as test/claims-payout.test.ts).
     const recent = (daysBack = 5): string =>
-      new Date(new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`).getTime() - daysBack * 86400000)
+      new Date(new Date(`${todayInKualaLumpur()}T00:00:00Z`).getTime() - daysBack * 86400000)
         .toISOString()
         .slice(0, 10);
 

@@ -45,6 +45,29 @@ const snap = (ps: Record<string, unknown>) => ({
   statutory: ps.statutory,
 });
 
+/**
+ * 862ed0ad NARROWS THIS GUARD BY EXACTLY ONE KEY, and the narrowing is itself asserted.
+ *
+ * `componentLines` is PROVENANCE, not arithmetic: which pay item put how much into which figure. The
+ * legacy path structurally CANNOT produce it — it has no typed components to name, it reads compensation
+ * + payroll_input — so demanding byte-identity on it would forbid the typed kernel from ever recording
+ * anything the legacy kernel cannot express, which is not what this gate is for. Every figure both
+ * kernels compute is still compared byte-for-byte.
+ *
+ * The narrowing is deliberately not "ignore keys the legacy path lacks": `noUnexpectedNewKeys` fails if
+ * the typed path grows ANY other key, so a future stamp cannot quietly ride in behind this exemption.
+ */
+const PROVENANCE_ONLY = ['componentLines'] as const;
+const money = (st: unknown) => {
+  const rest = { ...((st ?? {}) as Record<string, unknown>) };
+  for (const k of PROVENANCE_ONLY) delete rest[k];
+  return rest;
+};
+const noUnexpectedNewKeys = (typed: unknown, legacy: unknown) =>
+  Object.keys((typed ?? {}) as object)
+    .filter((k) => !(k in ((legacy ?? {}) as object)))
+    .filter((k) => !(PROVENANCE_ONLY as readonly string[]).includes(k));
+
 describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kernel', () => {
   let base: Base;
   beforeAll(async () => {
@@ -104,7 +127,8 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
   it('full month: identical payslip + statutory', async () => {
     const { legacy, typed } = await runCompat(base, '2026-01-01');
     expect(typed.cols).toEqual(legacy.cols);
-    expect(typed.statutory).toEqual(legacy.statutory);
+    expect(noUnexpectedNewKeys(typed.statutory, legacy.statutory)).toEqual([]);
+    expect(money(typed.statutory)).toEqual(money(legacy.statutory));
     // Sanity: this scenario actually produced non-trivial figures (basic 5000 + allowance 500 +
     // claim 200 + overtime 600 + bonus 1000 = 7300).
     expect(Number((legacy.cols as Record<string, string>).grossPay)).toBeCloseTo(7300, 2);
@@ -113,7 +137,8 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
   it('prorated mid-month joiner: identical payslip + statutory', async () => {
     const { legacy, typed } = await runCompat(base, '2026-05-16');
     expect(typed.cols).toEqual(legacy.cols);
-    expect(typed.statutory).toEqual(legacy.statutory);
+    expect(noUnexpectedNewKeys(typed.statutory, legacy.statutory)).toEqual([]);
+    expect(money(typed.statutory)).toEqual(money(legacy.statutory));
   });
 
   // Payroll Setup — the configurable pay-rule column is nullable. The real regression surface is the
@@ -127,7 +152,8 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
     expect(rules.length).toBeGreaterThan(0);
     expect(rules.every((r) => r.rule == null)).toBe(true);
     expect(typed.cols).toEqual(legacy.cols);
-    expect(typed.statutory).toEqual(legacy.statutory);
+    expect(noUnexpectedNewKeys(typed.statutory, legacy.statutory)).toEqual([]);
+    expect(money(typed.statutory)).toEqual(money(legacy.statutory));
   });
 
   it('RECORD-ONLY: a non-payable, non-taxable component is recorded on the payslip with zero gross/net delta', async () => {

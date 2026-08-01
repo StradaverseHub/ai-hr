@@ -12,6 +12,19 @@ import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 
 export type RecordLine = { code: string; name: string; amount: number };
 
+/** Which summarised figure a pay item's money landed in (feedback 862ed0ad). Mirrors the kernel's
+ *  stamp in core/payroll.ts earningsOf — the names are a stored contract, not a display choice. */
+export type ComponentBucket = 'wage' | 'ot' | 'bonus' | 'reimburse' | 'deduct';
+
+/** One pay item as it behaved in a run: the whole amount, and every figure it contributed to. A single
+ *  item can appear in two buckets (an exempt portion paid untaxed, plus a taxable remainder). */
+export type ComponentLine = {
+  code: string;
+  name: string;
+  amount: number;
+  buckets: { bucket: ComponentBucket; amount: number }[];
+};
+
 export type BreakdownStat = {
   epfEmployee?: number;
   epfEmployer?: number;
@@ -26,6 +39,10 @@ export type BreakdownStat = {
   hrdf?: number;
   zakat?: number;
   recordLines?: RecordLine[];
+  /** Per-item detail behind the summarised figures. ABSENT on every run calculated before 862ed0ad —
+   *  the detail was never written down, so it cannot be recovered; that is what `detailNotRecorded` says
+   *  on screen instead of rendering an empty breakdown that reads as a bug. */
+  componentLines?: ComponentLine[];
   otConvert?: { code: string; name: string; amount: number };
 };
 
@@ -45,9 +62,35 @@ export type HistoryBreakdown = {
    *  HR administrator had no way to verify the levy or reconcile the employer cost. */
   employerContributions: { epf: number; socso: number; eis: number; hrdf: number; total: number };
   recordLines: RecordLine[];
+  /** The pay items behind the summarised figures, as stored. Empty for a pre-862ed0ad run. */
+  componentLines: ComponentLine[];
+  /** The same lines grouped by the figure they explain — what the expandable panel renders under each
+   *  total. INVARIANT (pinned by test/history-breakdown.test.ts): the amounts under a bucket sum to that
+   *  bucket's stored total, because both come from the same stamp rather than being recomputed here.
+   *  Recomputing from today's pay setup is what would let a breakdown disagree with the figure beside it. */
+  componentsByBucket: Record<ComponentBucket, RecordLine[]>;
+  /** This run predates the per-item stamp (or had no pay items), so there is nothing to disclose. The
+   *  screen must SAY this — an empty breakdown under a non-zero total reads as a defect. */
+  detailNotRecorded: boolean;
 };
 
 const num = (v: unknown) => Number(v ?? 0);
+
+const EMPTY_BUCKETS = (): Record<ComponentBucket, RecordLine[]> => ({
+  wage: [], ot: [], bonus: [], reimburse: [], deduct: [],
+});
+
+/** Group stored lines under the figure each contributed to. Pure re-shaping of what is on the payslip —
+ *  no arithmetic beyond copying the stored per-bucket amounts across. */
+function groupByBucket(lines: ComponentLine[]): Record<ComponentBucket, RecordLine[]> {
+  const out = EMPTY_BUCKETS();
+  for (const l of lines) {
+    for (const b of l.buckets ?? []) {
+      if (out[b.bucket]) out[b.bucket].push({ code: l.code, name: l.name, amount: b.amount });
+    }
+  }
+  return out;
+}
 
 export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBreakdown {
   const st = (row.statutory ?? {}) as BreakdownStat;
@@ -59,6 +102,7 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   // (the engine resolves an absent company statutory row to 'not_registered'), which is why it reads 0
   // on most payslips today rather than being absent.
   const hrdf = num(st.hrdf);
+  const componentLines = st.componentLines ?? [];
   return {
     st,
     basic: num(row.basic),
@@ -73,5 +117,8 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     // would leave the section's own arithmetic wrong — the failure this kind of change invites.
     employerContributions: { epf, socso, eis, hrdf, total: epf + socso + eis + hrdf },
     recordLines: st.recordLines ?? [],
+    componentLines,
+    componentsByBucket: groupByBucket(componentLines),
+    detailNotRecorded: componentLines.length === 0,
   };
 }

@@ -30,6 +30,10 @@ import * as schema from '../db/schema';
 import { commitEmployeeImport } from '../core/import';
 import { completedYearsAt } from '../core/leave';
 import { dobFromIC } from '../localization/my/ic-dob';
+// The kernel judges these dates in MYT (bb4f2265); a fixture built in UTC disagrees with it
+// between 00:00 and 08:00 MYT, which is a test that fails only at night.
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 import {
   adminCtx,
   closeAll,
@@ -152,7 +156,7 @@ describe('b9fd8fd5 · migration 0309 — backfill person.date_of_birth from the 
 
   it('the Age the Profile tab computes goes from Not Available (null) to the correct completed years', async () => {
     const p = await legacyPerson('900101011234');
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInKualaLumpur();
     // Pre-fix world: saved DOB is NULL → completedYearsAt (the page's Age source) yields null → Not Available.
     expect(completedYearsAt(await dobOf(p), today)).toBeNull();
 

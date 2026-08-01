@@ -42,6 +42,10 @@ import { createBatch, generatePayslips } from '../core/payroll';
 import { hireEmployee } from '../core/org';
 import { closeAll, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
+// The kernel judges these dates in MYT (bb4f2265); a fixture built in UTC disagrees with it
+// between 00:00 and 08:00 MYT, which is a test that fails only at night.
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 const hire = (ctx: SessionContext, b: Base, name: string) =>
   hireEmployee(ctx, {
     person: { fullName: name, primaryEmail: `${name.toLowerCase()}@acme.test` },
@@ -54,7 +58,7 @@ const hire = (ctx: SessionContext, b: Base, name: string) =>
 // An incurred date inside the 45-day receipt window (submitClaim now rejects older expense dates). These
 // payout tests only care about the routing of an approved claim, not the specific expense date.
 const recent = (daysBack = 5): string =>
-  new Date(new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`).getTime() - daysBack * 86400000).toISOString().slice(0, 10);
+  new Date(new Date(`${todayInKualaLumpur()}T00:00:00Z`).getTime() - daysBack * 86400000).toISOString().slice(0, 10);
 
 const payslipFor = async (batchId: string) => {
   const [ps] = await owner.db

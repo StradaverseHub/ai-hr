@@ -25,6 +25,23 @@ const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** Itemized row inside an expanded breakdown — mirrors the payslip-detail Row primitive. */
+/** The pay items behind a summarised figure (862ed0ad). Indented under the figure they explain, and
+ *  rendered ONLY from what the payslip stored — never re-derived from today's pay-item assignments, which
+ *  is how a breakdown ends up disagreeing with the total printed above it. */
+function SubLines({ lines, fmt }: { lines: { code: string; name: string; amount: number }[]; fmt: (n: number) => string }) {
+  if (lines.length === 0) return null;
+  return (
+    <ul className="mb-1 ms-3 border-s border-border/60 ps-3">
+      {lines.map((l, i) => (
+        <li key={`${l.code}-${i}`} className="flex items-baseline justify-between gap-4 py-0.5 text-xs text-muted-foreground">
+          <span>{l.name}</span>
+          <span className="tabular-nums">{fmt(l.amount)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Row({ label, value, muted }: { label: string; value: React.ReactNode; muted?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-border/60 py-1.5 text-sm last:border-0">
@@ -140,22 +157,24 @@ export function HistoryTable({
                           {/* f3148da1 — converted OT excess is folded into stored allowance; show base allowance
                               net of it, then a dedicated line for the pay item, so gross still reconciles. */}
                           <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />
-                          {/* 862ed0ad — the reporter's exact example was "an Allowance line reads MYR 200.00
-                              with no indication of which allowances make it up". For the one-off items that
-                              fed it, the answer IS below (see the itemised section). For the employee's
-                              RECURRING pay items it is not: the engine sums them into this one figure and
-                              the payslip stores no per-item detail for them, so there is nothing stored to
-                              disclose. Saying that plainly beats either a silent lump sum or a breakdown
-                              re-derived from today's pay-item assignments, which could disagree with the
-                              figure beside it — the failure the plan warned against. */}
-                          {b.allowanceNet > 0 && (
-                            <p className="pb-1 text-[11px] text-muted-foreground">{t('view.history.allowanceNotItemised')}</p>
+                          {/* 862ed0ad — the reporter's example was "an Allowance line reads MYR 200.00 with
+                              no indication of which allowances make it up". It now breaks down, from detail
+                              the kernel STAMPS at generate time (core/payroll.ts earningsOf). Runs
+                              calculated before that stamp never stored it and cannot have it reconstructed,
+                              so they say so instead — re-deriving from today's pay-item assignments could
+                              print a breakdown that disagrees with the figure above it, which the plan
+                              ruled out. */}
+                          <SubLines lines={b.componentsByBucket.wage} fmt={rm} />
+                          {b.detailNotRecorded && b.allowanceNet > 0 && (
+                            <p className="pb-1 text-[11px] text-muted-foreground">{t('view.history.detailNotRecorded')}</p>
                           )}
                           <Row label={tSlip('overtime')} value={rm(b.overtime)} />
+                          <SubLines lines={b.componentsByBucket.ot} fmt={rm} />
                           {b.otConvertAmount > 0 && (
                             <Row label={tSlip('otConverted', { item: st.otConvert!.name })} value={rm(b.otConvertAmount)} />
                           )}
                           <Row label={tSlip('bonus')} value={rm(b.bonus)} />
+                          <SubLines lines={b.componentsByBucket.bonus} fmt={rm} />
                           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
                             <span>{tSlip('grossPay')}</span>
                             <span className="tabular-nums">{rm(b.gross)}</span>
