@@ -5,9 +5,37 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-01, after r92 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-01, after r93 SHIPPED)
 
-> ### DEPLOYED HEAD IS `main@2a47a66f` — production on **290** migrations.
+> ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
+>
+> Three layers, and knowing which one can see what is the whole point:
+>
+> | layer | command | in the gate? | sees |
+> |---|---|---|---|
+> | `node` | `pnpm vitest run` | yes | 516 files, real Postgres. **Unchanged by the split.** |
+> | `dom` | `pnpm test:dom` | **yes** (joined the default run) | jsdom render + interaction. No CSS. 790ms |
+> | `browser` | `pnpm test:browser` | **no — opt-in** | real Chromium, real Tailwind, `getComputedStyle`. 1.4s |
+>
+> **`pnpm vitest run` now runs node + dom** and prints **517 files / 6021 tests** (= 516/6013 node,
+> unchanged, plus 1/8 dom). The browser project is deliberately OUT of the gate until it has a track
+> record — a flaky browser test must not be able to redden a 6013-test suite. Promote it deliberately.
+>
+> ### ⚠️ THE BROWSER RUNNER FOUND A LIVE DEFECT ON ITS FIRST RUN AND IT IS NOT FIXED
+>
+> **`${inputCls} w-<n>` IS A NO-OP ON WIDTH, IN ~133 FILES.** `inputCls` contains `w-full`, and when two
+> utilities set the same property the winner is decided by EMISSION ORDER in the stylesheet, not by the
+> order of the class attribute. Measured in Chromium: `w-28` alone renders 112px; `${inputCls} w-28`
+> renders the CONTAINER width. r86 diagnosed exactly this cause on `4dbe04c6` and **the idiom was never
+> fixed** — `components/earned-accrual-card.tsx:158` is a live instance.
+>
+> It is recorded as `it.fails` in `test/tailwind-width-order.browser.test.tsx`, so the gate stays green
+> while the bug stands and turns **RED when someone fixes it** — that is the signal to delete the wrapper.
+> **Not raised on the board yet** (awaiting the owner). The fix is either `tailwind-merge` (already a
+> dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
+> rendered input widths across 133 files**, so it needs measuring before it needs planning.
+>
+> ### DEPLOYED HEAD IS `main@4cceb294` — production on **290** migrations.
 >
 > **Next free migration number is `0344`.** Neither r91 nor r92 added a migration, so the schema has been
 > untouched since r90's `0343`.
@@ -413,6 +441,13 @@ This is the same root-worktree trap that cost r79 a round, arriving by a differe
 next suite printed `RUN … /Users/zenlam/Projects/ai-hr`. Caught only by reading the `RUN` line. Read it
 every time; it is the cheapest check in this file.
 
+**`globalSetup` RUNS ONCE PER PROJECT, NOT ONCE PER RUN — and it is inherited.** It sits in the same
+options bag as `setupFiles`, so a project declared with `extends: true` gets the root's `globalSetup` and
+runs it AGAIN. r93 saw `--project dom` print `[global-setup] … 10 worker DBs wiped` **twice** for a
+project with no database. Two concurrent global setups wiping the same worker databases is the shape of
+several past corrupted runs. **Declare `globalSetup` on the project that needs it, never at the root**,
+and check the line count in the output — it is the only thing that tells you.
+
 **VITEST CAN PRINT ALL-GREEN COUNTS FOR A RUN THAT SKIPPED A FILE ENTIRELY — r91 hit this.** The r91
 suite printed `Test Files 513 passed (513)` / `Tests 5981 passed (5981)`, zero failures, and **exited 1**.
 The tree has **514** test files. `test/leave-approval-escalation.test.ts` never started:
@@ -637,6 +672,17 @@ those employees drop to the statutory floor until their schemes are filled in.
 
    Access: loopback-only behind a cloudflared quick tunnel (see CURRENT STATE line 6).
 
+   **PARTLY DISCHARGED BY r93 — but read the boundary carefully.** The repo now has a jsdom `dom`
+   project (in the gate) and a real-Chromium `browser` project (opt-in). What that changes:
+   - **Interaction and rendering logic on CLIENT components is now testable**, and the browser layer
+     found `${inputCls} w-<n>` dead in ~133 files on its first run.
+   - **It does NOT retire manual browser verification.** Async SERVER components cannot be rendered by
+     testing-library, and most pages here are server components. A runner covers `'use client'` islands;
+     it does not open a real page against real data behind the real session.
+   - **The r71–r92 pile is still unverified.** A runner existing is not coverage; only tests are, and
+     there are two files so far.
+   The claude-in-chrome recipe in the r91 entry remains the way to check a whole page.
+
 2. **A rendered-markup test can still be blind.** The companies bug survived a test upgraded from
    "checks props" to "asserts rendered markup", because the markup came from props that had never
    crossed the RSC transport. When a client component receives server-passed nodes, the fixture must be
@@ -695,6 +741,66 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r93 — 2026-08-01 — the repo learns to render, and the first browser test finds a live bug
+
+**Shipped:** `main@4cceb294`. **No migration.**
+**Gate:** `tsc` clean · **517 files / 6021 tests** · `next build` clean · browser project 3 passed + 1
+expected-fail. Deploy installed 65 packages (~28 MB) and **no browser binaries**.
+
+Carried debt item 1 has been the top recommendation since r70. Two runners now exist — see CURRENT STATE
+for the layer table and which one can see what.
+
+### THE BROWSER LAYER EARNED ITS KEEP IMMEDIATELY
+
+First run, measured in Chromium:
+
+    w-28 alone            -> 112px   (harness check: Tailwind really compiled)
+    `${inputCls} w-28`    -> 800px   (should be 112px — w-full wins)
+    inputCls alone        -> 800px
+
+**Every `${inputCls} w-<n>` in this codebase is silently a no-op on width, across ~133 files.** The
+6013-test suite cannot see it because nothing in it applies CSS. See CURRENT STATE for the standing
+warning; it is NOT fixed and NOT yet on the board.
+
+### Decisions
+
+**1. THE BROWSER PROJECT IS OUT OF THE DEFAULT GATE, ON PURPOSE.** `pnpm vitest run` is what the release
+rests on. A browser test is slower and more failure-prone than a unit test, and on day one it has no
+track record. It gets its own config and its own command. Promote it when it has earned it, and record
+that here when it happens.
+
+**2. `globalSetup` IS A PROJECT OPTION, NOT A ROOT ONE — and getting this wrong runs it TWICE.** It lives
+in the same options bag as `setupFiles`, so with `extends: true` every project inherits and re-runs it.
+Observed directly: `--project dom` printed `10 worker DBs wiped` **twice**, for a project that touches no
+database. **Two concurrent global setups wiping the same worker databases is how this repo has corrupted
+runs before.** Scoped to the node project, dom runs it zero times and a full run exactly once — and the
+dom project went from **21.8s to 790ms**. See Traps.
+
+**3. NEXT'S CLIENT MODULES READ `process.env` AT MODULE SCOPE, so a browser test cannot even IMPORT
+`components/ui`.** `next/link` → `resolve-href` → `is-local-url` → `has-base-path` does it on import, and
+`process` does not exist in a browser: `ReferenceError: process is not defined`, before a single
+assertion. Shimmed in `test/browser-setup.ts` **rather than via Vite `define`** — `define` does a textual
+substitution of `process.env` across every module, silently rewriting application code, where a setup
+file only supplies the global a browser is missing.
+
+**4. THE PROVIDER API HAD MOVED, and reading beat recalling.** In Vitest 4 the browser providers are
+SPLIT into per-provider packages: `@vitest/browser-playwright`, and its provider is a **function**
+(`provider: playwright()`), not the string `'playwright'` older versions took. Installing `@vitest/browser`
+and setting a string — the shape from memory — would have failed. Same discipline `AGENTS.md` demands for
+Next, and it paid off twice in one round.
+
+**5. `playwright` HAS NO INSTALL SCRIPT, so the server got no browsers.** This was checked BEFORE merging,
+because `deploy.sh` runs `pnpm install --frozen-lockfile --prod=false` and the lockfile had moved —
+downloading ~560 MB of Chromium onto a 3.9 GB box, right before the `next build` step that has OOM'd
+before, would have been a self-inflicted outage. Browsers come only from the explicit
+`pnpm exec playwright install chromium`, which is a LOCAL step. Local cache went 539 MB → 1.1 GB.
+
+**6. THE DOM PROJECT DID JOIN THE GATE**, because it is deterministic and effectively free (790ms). Its
+first file pins the fc776376 fix that source assertions could only describe indirectly: that a reader
+actually SEES a rows-per-page control on a 5-row list.
+
+---
 
 ## r92 — 2026-08-01 — the last two cross-cutting items, and a bug hiding in a shape the plan did not name
 
