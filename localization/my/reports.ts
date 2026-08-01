@@ -38,12 +38,36 @@ export type ReportResult = {
   };
 };
 export type ReportParams = { companyId: string; periodKey: string };
+/**
+ * Where a generated form actually gets submitted, and by when (feedback 956cec85).
+ *
+ * SOURCED FROM THE REPORTER, NOT INVENTED. The item was parked on exactly this question and their
+ * answer (feedback_request block_trail, resolved 2026-07-30) named the portals and the deadline:
+ * EPF via i-Akaun (Employer); SOCSO and EIS TOGETHER via PERKESO ASSIST; PCB via LHDN e-PCB /
+ * e-Data PCB / e-CP39 — all due by the 15th of the following month.
+ *
+ * `dueDayOfNextMonth` is null where the deadline was NOT stated. The annual Form E deadline is a real
+ * statutory date, but nobody told us it, and this codebase's rule for statutory facts is that an
+ * invented one is worse than an absent one — the screen says "not configured" rather than printing a
+ * date somebody might file against.
+ */
+export type ReportSubmission = {
+  /** The body the form is submitted to, as the reporter names it. */
+  agency: string;
+  /** The portal/channel they actually use. */
+  channel: string;
+  /** Day of the month FOLLOWING the period, or null when the deadline is not established. */
+  dueDayOfNextMonth: number | null;
+};
+
 export type ReportDef = {
   id: string;
   label: string;
   cadence: 'monthly' | 'annual' | 'event';
   scope: 'batch' | 'period' | 'year' | 'event';
   periodKind: 'month' | 'year' | 'event';
+  /** Absent for reports that are not themselves a submission (e.g. the internal overview). */
+  submission?: ReportSubmission;
   generate: (ctx: SessionContext, params: ReportParams) => Promise<ReportResult>;
 };
 
@@ -653,11 +677,18 @@ export async function eaStatement(
 }
 
 export const MY_REPORTS: ReportDef[] = [
+  // No `submission`: an internal reconciliation view, not a form anybody files.
   { id: 'my.contributions', label: 'Monthly statutory contributions (overview)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: contributions },
-  { id: 'my.cp39', label: 'CP39 — MTD / PCB (LHDN)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: cp39 },
-  { id: 'my.epf', label: 'EPF contributions (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: epfReport },
-  { id: 'my.socso-eis', label: 'SOCSO + EIS (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: socsoEis },
-  { id: 'my.cp8d', label: 'Form E / CP8D — annual (LHDN)', cadence: 'annual', scope: 'year', periodKind: 'year', generate: cp8d },
+  { id: 'my.cp39', label: 'CP39 — MTD / PCB (LHDN)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: cp39,
+    submission: { agency: 'LHDN', channel: 'e-PCB / e-Data PCB / e-CP39', dueDayOfNextMonth: 15 } },
+  { id: 'my.epf', label: 'EPF contributions (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: epfReport,
+    submission: { agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
+  // SOCSO and EIS go up TOGETHER through ASSIST's combined contribution function — the reporter's words.
+  { id: 'my.socso-eis', label: 'SOCSO + EIS (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: socsoEis,
+    submission: { agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
+  // dueDayOfNextMonth null: the annual deadline was never stated to us. See ReportSubmission.
+  { id: 'my.cp8d', label: 'Form E / CP8D — annual (LHDN)', cadence: 'annual', scope: 'year', periodKind: 'year', generate: cp8d,
+    submission: { agency: 'LHDN', channel: 'e-Filing (Form E)', dueDayOfNextMonth: null } },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

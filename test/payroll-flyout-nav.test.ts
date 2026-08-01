@@ -36,6 +36,11 @@ const NODE = payrollPack.navNodes!.find((n) => n.group === 'admin')!;
  * 1459e116. hrefs are the tab strip's; only the labelKey namespace moved (components.payrollTabs →
  * nav). This is the SET the fly-out must carry — no destination lost, no href renamed.
  *
+ * 956cec85 — `/payroll/statutory-forms` is an ADDITION to that set, not a change to it. The guard's
+ * promise is "no destination lost, no href renamed", which a new row cannot violate; every original
+ * entry below is untouched. It is listed explicitly rather than the assertion being loosened to
+ * "contains", because a set guard that only checks a subset stops noticing a deletion.
+ *
  * a1d82340 STEP 3 — the ORDER is no longer asserted from a literal here. It is DERIVED from
  * packs/payroll/phases.ts, the one declaration of the payroll sequence, and separately proved to
  * agree with the Workflow Guide's phase order. A literal list could be edited to match a drifted
@@ -47,6 +52,7 @@ const EXPECTED_SET = [
   { href: '/payroll/transactions', labelKey: 'payrollTransactions' },
   { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView' },
   { href: '/payroll/reports', labelKey: 'payrollReports' },
+  { href: '/payroll/statutory-forms', labelKey: 'payrollStatutoryForms' },
   { href: '/payroll/setup', labelKey: 'payrollSettings' },
 ] as const;
 

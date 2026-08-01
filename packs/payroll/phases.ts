@@ -69,6 +69,8 @@ export const PAYROLL_NAV_PHASE: Readonly<Record<string, number>> = {
   '/payroll': 4,
   '/payroll/transaction-view': 5,
   '/payroll/reports': 7,
+  // 956cec85 — filing comes AFTER the figures are reported: the last thing you do with a month.
+  '/payroll/statutory-forms': 8,
 };
 
 /** Sort key for a payroll menu href. An href with no declared rank sorts last, never crashes. */
