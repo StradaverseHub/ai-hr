@@ -34,6 +34,8 @@ import { removePersonPhoto, setPersonPhoto } from '@/core/person-photo';
 import { packFor } from '@/localization/registry';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 // Tab retention (feedback bd2f0bb2): the client tab shell (components/personnel-tabs.tsx) injects a hidden
 // `tab` field into every submitting form. Each action appends `&tab=<key>` to its post-save redirect so the
 // reloaded page lands back on the tab the user was editing instead of resetting to Profile. Absent/empty =
@@ -531,7 +533,7 @@ export async function setDirectSuperiorAction(formData: FormData) {
   const superiorEmploymentId = String(formData.get('superiorEmploymentId') ?? '').trim();
   const currentSuperiorEmploymentId = String(formData.get('currentSuperiorEmploymentId') ?? '').trim();
   const currentLineId = String(formData.get('currentLineId') ?? '').trim();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   try {
     if (superiorEmploymentId === currentSuperiorEmploymentId) {
       // No change — skip the write so the audit trail records only genuine superior moves.

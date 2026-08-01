@@ -46,6 +46,8 @@ import { assertCanDecide } from './approvals';
 import { generateDraft, redactPII } from '../lib/ai';
 import { resolveActiveAiConfig } from './ai-config';
 
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 export class PerfError extends Error {
   constructor(message: string) {
     super(message);
@@ -365,7 +367,7 @@ export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
     if (cycle.status !== 'draft') throw new PerfError(`Cycle is already ${cycle.status}; only a draft can be opened`);
 
     const rules = (cycle.eligibilityRules ?? null) as EligibilityRules | null;
-    const asOf = new Date().toISOString().slice(0, 10);
+    const asOf = todayInKualaLumpur();
     const candidates = await eligibilityCandidates(tx, ctx.tenantId, cycle.companyId, asOf);
     const members = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible);
 
@@ -421,7 +423,7 @@ export async function previewEligibleCount(
     }
   }
   return withTenant(ctx, async (tx) => {
-    const asOf = new Date().toISOString().slice(0, 10);
+    const asOf = todayInKualaLumpur();
     const candidates = await eligibilityCandidates(tx, ctx.tenantId, p.companyId ?? null, asOf);
     const count = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible).length;
     return { count };

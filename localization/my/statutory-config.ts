@@ -10,6 +10,7 @@
 import { and, desc, eq, isNull, lte } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   statutoryComponentOverride,
   statutoryPack,
@@ -28,7 +29,7 @@ import {
 } from './statutory-tables';
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayInKualaLumpur();
 }
 
 // ─────────────────────────────── Loader (kernel) — 3-tier merge ───────────────────────────────

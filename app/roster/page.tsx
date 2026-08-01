@@ -10,6 +10,8 @@ import { ToilElectButton } from '@/components/toil-elect-button';
 import { copyRosterAction, generateRosterAction } from './actions';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 const DAY = 86_400_000;
 const mondayOf = (iso: string): string => {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -41,7 +43,7 @@ export default async function RosterPage({
     );
   }
   const companyId = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : companies[0].id;
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayInKualaLumpur();
   const weekStart = mondayOf(sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? sp.week : todayIso);
   const weekEnd = addDays(weekStart, 6);
 

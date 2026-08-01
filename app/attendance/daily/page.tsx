@@ -9,6 +9,8 @@ import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { checkInAction, checkOutAction } from '../actions';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 const fmtMin = (m: number | null | undefined) =>
   m == null ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 /** OT columns render as decimal hours (2 dp), matching the request's example (0.50 / 1.00). */
@@ -55,7 +57,7 @@ export default async function DailyAttendancePage({
     under: t('flagUnder'),
     odd: t('flagOdd'),
   };
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayInKualaLumpur();
   const date = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : todayIso;
 
   const [companies, departments] = await Promise.all([

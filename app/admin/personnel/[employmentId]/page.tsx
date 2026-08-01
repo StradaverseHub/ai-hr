@@ -125,6 +125,8 @@ import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-compo
 import { encashmentSnapshotForEmployment } from '@/core/leave-encashment';
 import { unfreezeEncashmentAction, adjustEncashmentAction } from './encashment-actions';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 const LEAVE_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
@@ -203,7 +205,7 @@ export default async function EmployeePage({
 
   const emp = await employeeDetail(s, employmentId);
   if (!emp) notFound();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
   // lifecycle dates (+ the manual Blacklist override) — never a stored manual field. Computed once here and
   // rendered as a read-only badge everywhere the current status is shown.

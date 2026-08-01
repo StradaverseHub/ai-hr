@@ -1785,7 +1785,7 @@ export async function deleteLeaveTypeAction(fd: FormData) {
 // deleteLeaveYearAction above. The service asserts it too — a redirect is a UX gate, not authority.
 export async function runToilExpiryAction() {
   const s = await requireAdmin();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   let result;
   try {
     result = await runToilExpiry(s, { today });

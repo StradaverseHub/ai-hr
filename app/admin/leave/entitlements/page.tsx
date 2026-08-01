@@ -39,6 +39,7 @@ import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
 import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
 import { LeaveRulePreviewDialog } from '@/components/leave/leave-rule-preview-dialog';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   archiveLeaveTypeAction,
   countEmployeesInScopeAction,
@@ -202,7 +203,7 @@ export default async function LeaveEntitlementsPage({
     reason: g.reason,
     effectiveOn: g.effectiveOn,
   }));
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayInKualaLumpur();
   // feedback 2c7c6385: the Run-Earned-Accrual Leave-Year selector reads the managed leave_year_config
   // records (9aa894a4). When none exist yet, fall back to the current-year..+6 range so the card still
   // works. Default to the current year if configured, else the newest record. (R45 cc816207 — the

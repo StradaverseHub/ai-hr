@@ -10,6 +10,8 @@ import { saveStatutoryAction } from '@/app/payroll/configuration/actions';
 // this client component never names the MY tables.
 import type { ContribBand, SocsoBand, StatutoryRuleset } from '@/localization/country-pack';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 /** The pack's built-in verified EPF Third Schedule tables (CountryPack.payroll.epfThirdSchedule),
  *  used when a stored override predates the partA/partE fields — the same fallback the calculator
  *  applies. */
@@ -321,7 +323,7 @@ export function StatutoryConfigForm({
     { label: t('colEmployeeRm'), key: 'employee', widthCls: 'w-24' },
   ];
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   const dataJson = useMemo(
     () => JSON.stringify(assemble(s, ruleset, epfScheduleFallback)),
     [s, ruleset, epfScheduleFallback],

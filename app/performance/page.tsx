@@ -15,6 +15,8 @@ import { NewCycleForm } from './new-cycle-form';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 export default async function PerformancePage({
   searchParams,
 }: {
@@ -32,7 +34,7 @@ export default async function PerformancePage({
   if (!admin && !manager) redirect('/');
   const sp = await searchParams;
   const { error } = sp;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
 
   const [cycles, pending, companies, checkinData] = await Promise.all([
     admin ? listCycles(s) : Promise.resolve([]),

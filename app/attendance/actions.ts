@@ -5,9 +5,11 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { checkIn, checkOut, decideAttendanceCorrection } from '@/core/attendance';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 const dateOf = (formData: FormData) => {
   const d = String(formData.get('date') || '');
-  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : new Date().toISOString().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : todayInKualaLumpur();
 };
 
 // Daily tab (314ea061) now hosts the per-employee day table, so check-in/out return there.

@@ -6,6 +6,7 @@ import { calibrationView, cycleDetail } from '@/core/performance';
 import { listBatches } from '@/core/payroll';
 import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   calibrateAction,
   closeAction,
@@ -45,7 +46,7 @@ export default async function CyclePage({
   if (!data) notFound();
   const { cycle, roster, distribution, budget } = data;
   const calib = cycle.status === 'calibration' ? await calibrationView(s, cycleId) : null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   const nextDay = new Date(Date.parse(`${cycle.periodEnd}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
   const batches = await listBatches(s);

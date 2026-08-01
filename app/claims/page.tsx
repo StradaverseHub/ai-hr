@@ -10,6 +10,8 @@ import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { cancelClaimAction, submitClaimAction } from './actions';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 const STATUS_STYLE: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   approved: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
@@ -54,7 +56,7 @@ export default async function ClaimsPage({
   ]);
   // fc776376 — the claim history is a genuine list that grows with time, so it pages like every other.
   const { rows: claimPage, state: pgState } = paginateRows(claims, parsePageQuery(sp));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   const dayMs = 86400000;
   const formTypes: ClaimFormType[] = types.map((ct) => ({
     id: ct.id,

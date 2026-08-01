@@ -25,6 +25,7 @@ import { employmentCompanyBlockedTx } from './read';
 import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile-options';
 // 23ad620e — the emergency contact is a per-person register now, not five person columns.
 import { writeSingleEmergencyContactInTx } from './emergency-contacts';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   person,
   employment,
@@ -2401,7 +2402,7 @@ export async function setEmploymentBlacklist(
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can change the blacklist status.');
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   const reason = p.reason == null ? null : String(p.reason).trim() || null;
   return withTenant(ctx, async (tx) => {
     const [before] = await tx

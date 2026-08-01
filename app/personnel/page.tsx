@@ -8,6 +8,8 @@ import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-
 import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 /**
  * Read-only staff directory (People→Personnel split). Every employee can browse colleagues by
  * name / department / company / work contact — no pay, statutory, or personal data, and no admin
@@ -32,7 +34,7 @@ export default async function PersonnelPage({
   // /admin/personnel — deriveEmploymentStatus over the lifecycle dates, never the legacy stored
   // assignment.status (whose obsolete values must never render anywhere).
   const tStatus = await getTranslations('people.employeeStatus');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   const { s: session, scopeIds } = await scopedSession();
   const sp = await searchParams;
   const { q, company, dept, status, type } = sp;

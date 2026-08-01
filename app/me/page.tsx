@@ -21,6 +21,8 @@ import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/packs/perf
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { AttendanceClockButton, LocationNotice } from '@/components/attendance-clock-button';
 import { ClientTabs } from '@/components/personnel-tabs';
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 // a7cbd895: the Leave tab (and its dialogs/forms/reads) moved wholesale to /leave — "My Absence" in the
 // left nav. /me is purely profile now; ?tab=leave deep-links are forwarded (see the redirect below).
 import {
@@ -155,7 +157,7 @@ export default async function MePage({
   }, {});
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   const todayRow = attendance.find((a) => a.date === today);
 
   // Leave balances / entitlement breakdowns / request history / apply form: all relocated to /leave

@@ -29,10 +29,12 @@ import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
 import { calendarWindowFor } from './payroll-policy-config';
 
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 const slugify = (s: string): string =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'reimbursements';
 
-const today = (): string => new Date().toISOString().slice(0, 10);
+const today = (): string => todayInKualaLumpur();
 const num = (v: string | null): number | null => (v == null ? null : Number(v));
 
 /** UTC-date floor for the receipt window: the YYYY-MM-DD `days` before the given UTC date (inclusive on the
