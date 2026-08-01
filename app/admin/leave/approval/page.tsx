@@ -2,13 +2,12 @@ import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies, listDepartments, listJobGrades, listLeaveTypes } from '@/core/read';
 import { listBusinessUnits, listPositions } from '@/core/admin';
-import { getLeaveApprovalPolicy, getLeaveEscalationPolicy, isCompanyDefaultApprovalRule, listLeaveApprovalRules } from '@/core/leave-approval-policy';
+import { getLeaveEscalationPolicy, isCompanyDefaultApprovalRule, listLeaveApprovalRules } from '@/core/leave-approval-policy';
 import { listApprovalTemplates, listTemplateAssignments } from '@/core/leave-approval-template';
 import { listBenefitSchemes, listGradeGroups } from '@/core/benefit-scheme';
 import { bySchemeDisplayOrder, normalizeSchemeText } from '@/lib/benefit-scheme-label';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
-import { LeaveApprovalEditor } from '../../leave-approval/editor';
 import { LeaveEscalationEditor, type EscalationLabels } from '../../leave-approval/escalation-editor';
 import {
   ApprovalAssignmentManager,
@@ -23,7 +22,6 @@ import {
   deleteApprovalTemplateAction,
   duplicateApprovalTemplateAction,
   saveApprovalTemplateAction,
-  saveLeaveApprovalPolicyAction,
   saveLeaveApprovalRuleAction,
   saveLeaveEscalationPolicyAction,
   setApprovalTemplateActiveAction,
@@ -76,7 +74,6 @@ export default async function LeaveApprovalTabPage({
   const rows = await Promise.all(
     companies.map(async (c) => ({
       company: c,
-      pol: await getLeaveApprovalPolicy(s, c.id),
       rules: await listLeaveApprovalRules(s, c.id),
       // R51 722904dc — per-company Approval Escalation Settings. r79 0322 — read for EVERY company now:
       // they are no longer hidden behind a per-company multi-step switch, because there is no such switch.
@@ -91,25 +88,6 @@ export default async function LeaveApprovalTabPage({
   ]);
   const assignments = allAssignments.filter((a) => companyIds.includes(a.companyId));
 
-  const labels = {
-    chain: t('chain'),
-    empty: t('empty'),
-    manager: t('manager'),
-    departmentHead: t('departmentHead'),
-    businessUnitHead: t('businessUnitHead'),
-    hr: t('hr'),
-    hrManager: t('hrManager'),
-    payroll: t('payroll'),
-    customRole: t('customRole'),
-    add: t('add'),
-    moveUp: t('moveUp'),
-    moveDown: t('moveDown'),
-    remove: t('remove'),
-    dragToReorder: t('dragToReorder'),
-    save: t('save'),
-    reason: t('reason'),
-    reasonPlaceholder: t('reasonPlaceholder'),
-  };
   // R51 722904dc — Approval Escalation Settings card labels; role labels reuse the chain vocabulary.
   const escalationLabels: EscalationLabels = {
     title: t('escalationTitle'),
@@ -373,39 +351,6 @@ export default async function LeaveApprovalTabPage({
               labels={workflowLabels}
             />
 
-            {/* Company base chain — the fully-wildcard "applies to every leave type, every employee" rule.
-                r79 0322: the multi-step on/off gate and the escalation settings have BOTH left this card
-                (the gate no longer exists; escalation moved up into the Assignment Template card). What
-                remains is the any-type default chain itself, which is genuinely load-bearing — it is what
-                a request routes through when no scoped assignment matches, and this is its ONLY editor
-                (the workflow matrix above deliberately hides wildcard rules to avoid double-editing). It
-                stays until that rule has somewhere else to live. */}
-            <Card>
-              <SectionHeader title={t('companyDefaultsTitle')} count={rows.length} />
-              <p className="px-4 pt-3 text-xs text-muted-foreground">{t('companyDefaultsHint')}</p>
-              <ul className="divide-y divide-border">
-                {rows.map(({ company, pol }) => (
-                  <li key={company.id}>
-                    <details className="group">
-                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
-                        <span>{company.name}</span>
-                        <span aria-hidden className="text-xs text-muted-foreground group-open:rotate-180">
-                          ▾
-                        </span>
-                      </summary>
-                      <div className="border-t border-border">
-                        <LeaveApprovalEditor
-                          companyId={company.id}
-                          action={saveLeaveApprovalPolicyAction}
-                          initialLevels={pol.levels}
-                          labels={labels}
-                        />
-                      </div>
-                    </details>
-                  </li>
-                ))}
-              </ul>
-            </Card>
           </section>
         </>
       )}

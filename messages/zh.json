@@ -6672,8 +6672,6 @@
     "assignmentTemplateTitle": "分配模板",
     "assignmentTemplateHint": "决定每条审批流程适用于哪些公司、假期类型与员工。",
     "leaveTypesMore": "{n, plural, other {+# 项}}",
-    "companyDefaultsTitle": "公司基础审批链",
-    "companyDefaultsHint": "展开某家公司即可编辑在没有匹配的已分配模板时申请所走的审批链。只有一个步骤即为单人审批。",
     "selectBenefitSchemes": "福利方案",
     "noBenefitSchemes": "所选公司没有启用中的福利方案。",
     "schemeNoGradeGroup": "请先为此方案设定职级组，才能为它指派审批模板。",

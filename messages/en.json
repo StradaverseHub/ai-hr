@@ -6672,8 +6672,6 @@
     "assignmentTemplateTitle": "Assignment Template",
     "assignmentTemplateHint": "Decide which companies, leave types and employees each approval flow applies to.",
     "leaveTypesMore": "{n, plural, one {+# more} other {+# more}}",
-    "companyDefaultsTitle": "Company base approval chain",
-    "companyDefaultsHint": "Open a company to edit the chain a request follows when no assigned template matches it. One step means a single approver.",
     "selectBenefitSchemes": "Benefit schemes",
     "noBenefitSchemes": "No active benefit schemes for the chosen companies.",
     "schemeNoGradeGroup": "Give this scheme a grade group before assigning an approval template to it.",

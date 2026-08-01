@@ -6672,8 +6672,6 @@
     "assignmentTemplateTitle": "Templat Penetapan",
     "assignmentTemplateHint": "Tentukan syarikat, jenis cuti dan pekerja yang terpakai bagi setiap aliran kelulusan.",
     "leaveTypesMore": "{n, plural, other {+# lagi}}",
-    "companyDefaultsTitle": "Rantaian kelulusan asas syarikat",
-    "companyDefaultsHint": "Buka sesebuah syarikat untuk mengedit rantaian yang diikuti sesuatu permohonan apabila tiada templat yang ditetapkan sepadan dengannya. Satu langkah bermakna seorang pelulus.",
     "selectBenefitSchemes": "Skim faedah",
     "noBenefitSchemes": "Tiada skim faedah aktif bagi syarikat yang dipilih.",
     "schemeNoGradeGroup": "Berikan kumpulan gred kepada skim ini sebelum menetapkan templat kelulusan kepadanya.",
