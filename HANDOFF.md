@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r98 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r99 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@1186817d` — production on **292** migrations. **Next free number is `0346`.**
+> ### DEPLOYED HEAD IS `main@bf2353ce` — production on **292** migrations. **Next free number is `0346`.**
 >
 > ### `tenant_module` HAS EXACTLY ONE WRITER NOW — use it, never hand SQL
 >
@@ -789,7 +789,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 2 | `isModuleEnabled`, the enforcement primitive | **DONE** — `a38ed02f`, **50 call sites**. NO ROUND ENTRY |
    | 3 | gate classification + migration + backfill | **DONE** — round entry below |
    | 4 | nav + page gating from entitlements | **DONE** — round entry below |
-   | 5 | module install / deactivate as operations | **STEPS 1-2 DONE (r97, r98)** — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
+   | 5 | module install / deactivate as operations | **STEPS 1-3 DONE (r97, r98, r99)** — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
    | 6 | multi-country entitlement wiring | **NOT BUILT** — no `country-<cc>` provisioning anywhere |
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
@@ -856,6 +856,37 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r99 — 2026-08-02 — slice 5 step 3, and a bug that made TOIL unactivatable
+
+**Shipped:** `main@bf2353ce`. **No migration.**
+**Gate:** `tsc` clean · **522 files / 6071 tests** · `next build` clean.
+
+**1. A CORE DEPENDENCY HAS NO ROW TO FIND, and r98's runner refused every module that had one.** The
+`depends_on` check looked only at `tenant_module`, but 0313's trigger FORBIDS rows for core codes and
+`isModuleEnabled` answers true for them from the pack catalog. The real `toil` depends on core `leave`,
+so **TOIL could never be activated**: "missing prerequisite module(s): leave". A dependency is now
+satisfied if it is core OR granted.
+
+**THE TEST ONLY FOUND IT BECAUSE THE FIXTURE STOPPED LYING.** The first draft defined its own `toil` with
+`billable:false` and no dependencies — and PASSED, testing a module that does not exist. Switching to the
+SHIPPED catalog row (and recording the sale as a `subscription_line`) surfaced both this and D-15.
+**When a fixture redefines something the product already ships, it is testing itself.**
+
+**2. TOIL's activator seeds a DISABLED-but-present `toil_policy`** — a purchased module arrives visible,
+not as an empty shell. `toil_policy_company_uq` makes reactivation leave a configured policy alone.
+**The plan's admin notification is deliberately NOT built:** `notification` has no natural key, so it
+cannot be idempotent without a SELECT-then-INSERT race. It needs a dedup key on the table first.
+
+**3. THE PER-COMPANY INSTALL HOOK — company #2 is born configured.** Without it a module bought last
+month simply has no row for a company created later; the screen is empty, nothing accrues, and nobody
+connects it to the purchase. `modulesInstalled` is recorded on `company.created`.
+
+**4. ACTIVATION IS TWO KINDS, and conflating them is a bug.** TENANT-LEVEL runs once (`tenant_setting` is
+keyed by (tenant, key) — per-company would repeat one insert and report phantom "skips"). PER-COMPANY
+runs per company AND again for every company created later.
+
+---
 
 ## r98 — 2026-08-02 — ADR-0077 slice 5 step 2: tenant_module gets its only writer
 
