@@ -27,6 +27,7 @@ import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { createDb, type Tx } from '../db/client';
 import { appendEvent } from '../db/events';
 import { activatorsFor, mergeOutcomes, type ActivationOutcome } from '../core/module-activation';
+import { deactivationBlockers, unansweredBlockers } from '../core/module-deactivation';
 import { company, module_, moduleChangeRequest, subscriptionLine, tenantModule } from '../db/schema';
 
 /** A runner killed mid-flight leaves an eternal 'running' row unless something reclaims it. */
@@ -125,6 +126,25 @@ export async function applyModuleChange(tx: Tx, req: Request): Promise<Activatio
   await assertActivatable(tx, req);
 
   if (req.action === 'deactivate') {
+    // TWO-PHASE (slice 5). Enumerate what turning this off would strand, and refuse until the operator
+    // has recorded a decision for each. NOT a veto — a customer who stopped paying is entitled to stop
+    // paying — but the decision must be INFORMED and RECORDED rather than discovered afterwards by
+    // whoever finds the stranded work.
+    const blockers = await deactivationBlockers({
+      tx,
+      tenantId: req.tenantId,
+      moduleCode: req.moduleCode,
+      companyId: req.companyId,
+    });
+    const unanswered = unansweredBlockers(blockers, req.disposition ?? null);
+    if (unanswered.length > 0) {
+      throw new ModuleChangeRefused(
+        'disposition',
+        `deactivating '${req.moduleCode}' would strand work; record a disposition for: ` +
+          unanswered.map((b) => `${b.kind} (${b.detail})`).join('; '),
+      );
+    }
+
     await tx
       .update(tenantModule)
       .set({ status: 'disabled' })
@@ -138,7 +158,17 @@ export async function applyModuleChange(tx: Tx, req: Request): Promise<Activatio
     // Disabled means writes refused, reads and exports preserved (D-6). Nothing is deleted here: the
     // history a disabled module produced stays readable, which is the whole point of disabling rather
     // than removing.
-    return { seeded: 0, skipped: 0, detail: ['entitlement set to disabled; no data removed'] };
+    return {
+      seeded: 0,
+      skipped: 0,
+      detail: [
+        'entitlement set to disabled; no data removed',
+        // Recorded on the event so the decision is auditable next to its execution, which is the whole
+        // reason the disposition is captured before the runner acts rather than inferred after.
+        ...blockers.map((b) => `${b.kind}: ${b.count} — disposition: ${req.disposition?.[b.kind] ?? '(none needed)'}`),
+        'obligations already incurred continue regardless of entitlement state (D4)',
+      ],
+    };
   }
 
   // REACTIVATION IS NOT FIRST INSTALL (D4). An existing row is flipped back to active and the
