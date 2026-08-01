@@ -30,6 +30,14 @@ afterAll(async () => {
   await closeAll();
 });
 
+/**
+ * `module` and `setting_definition` are INSTALLATION-wide, not tenant-scoped, so resetDb() does not
+ * clear them and a fixture with a fixed code collides with the row a previous run left behind. Every
+ * code and key here is therefore unique per run — the alternative, ON CONFLICT DO NOTHING, would
+ * silently keep the OLD row's flags and quietly test something other than what the test says.
+ */
+const uniq = (base: string) => `${base}_${randomUUID().slice(0, 8)}`;
+
 async function defineModule(code: string, o: Partial<typeof schema.module_.$inferInsert> = {}) {
   await owner.db
     .insert(schema.module_)
@@ -71,50 +79,59 @@ describe('what the runner refuses, and why refusing beats warning', () => {
 
   // 0313's trigger already rejects these; failing here NAMES the reason instead of surfacing a trigger.
   it('refuses a CORE module — those are never granted per tenant', async () => {
-    await defineModule('core_thing', { isCore: true });
-    await expect(run(request({ moduleCode: 'core_thing' }))).rejects.toThrow(/core/i);
+    const code = uniq('core_thing');
+    await defineModule(code, { isCore: true });
+    await expect(run(request({ moduleCode: code }))).rejects.toThrow(/core/i);
   });
 
   it('refuses an activation whose prerequisites are not active', async () => {
-    await defineModule('needs_dep', { dependsOn: ['absent_dep'] });
-    await defineModule('absent_dep');
-    const err = await run(request({ moduleCode: 'needs_dep' })).catch((e) => e);
+    const dep = uniq('absent_dep');
+    const code = uniq('needs_dep');
+    await defineModule(code, { dependsOn: [dep] });
+    await defineModule(dep);
+    const err = await run(request({ moduleCode: code })).catch((e) => e);
     expect(err).toBeInstanceOf(ModuleChangeRefused);
     expect((err as ModuleChangeRefused).step).toBe('depends_on');
-    expect((err as Error).message).toMatch(/absent_dep/);
+    expect((err as Error).message).toMatch(new RegExp(dep));
   });
 
   it('accepts once the prerequisite IS active', async () => {
-    await defineModule('dep_ok');
-    await defineModule('needs_ok', { dependsOn: ['dep_ok'] });
-    await run(request({ moduleCode: 'dep_ok' }));
-    await expect(run(request({ moduleCode: 'needs_ok' }))).resolves.toBeTruthy();
+    const dep = uniq('dep_ok');
+    const code = uniq('needs_ok');
+    await defineModule(dep);
+    await defineModule(code, { dependsOn: [dep] });
+    await run(request({ moduleCode: dep }));
+    await expect(run(request({ moduleCode: code }))).resolves.toBeTruthy();
   });
 
   // D-15 — an entitlement is the technical half of a commercial fact.
   it('refuses a BILLABLE module with no subscription line', async () => {
-    await defineModule('paid_thing', { billable: true });
-    const err = await run(request({ moduleCode: 'paid_thing' })).catch((e) => e);
+    const code = uniq('paid_thing');
+    await defineModule(code, { billable: true });
+    const err = await run(request({ moduleCode: code })).catch((e) => e);
     expect((err as ModuleChangeRefused).step).toBe('subscription');
   });
 
   it('accepts a billable module once the line exists', async () => {
-    await defineModule('paid_ok', { billable: true });
-    await owner.db.insert(schema.subscriptionLine).values({ tenantId: b.tenantId, moduleCode: 'paid_ok' });
-    await expect(run(request({ moduleCode: 'paid_ok' }))).resolves.toBeTruthy();
+    const code = uniq('paid_ok');
+    await defineModule(code, { billable: true });
+    await owner.db.insert(schema.subscriptionLine).values({ tenantId: b.tenantId, moduleCode: code });
+    await expect(run(request({ moduleCode: code }))).resolves.toBeTruthy();
   });
 
   it('does not require a line for a non-billable module', async () => {
-    await defineModule('free_thing', { billable: false });
-    await expect(run(request({ moduleCode: 'free_thing' }))).resolves.toBeTruthy();
+    const code = uniq('free_thing');
+    await defineModule(code, { billable: false });
+    await expect(run(request({ moduleCode: code }))).resolves.toBeTruthy();
   });
 });
 
 describe('install, reactivate, disable', () => {
   it('first install creates the entitlement and reports itself as a first install', async () => {
-    await defineModule('installs');
-    const out = await run(request({ moduleCode: 'installs' }));
-    expect(await statusOf('installs')).toBe('active');
+    const code = uniq('installs');
+    await defineModule(code);
+    const out = await run(request({ moduleCode: code }));
+    expect(await statusOf(code)).toBe('active');
     expect(out.detail[0]).toMatch(/first install/);
   });
 
@@ -124,28 +141,30 @@ describe('install, reactivate, disable', () => {
    * rather than claiming a clean install.
    */
   it('reactivation preserves a customer-edited setting and says it skipped', async () => {
-    await defineModule('reinstalls');
+    const code = uniq('reinstalls');
+    const key = `${code}.threshold`;
+    await defineModule(code);
     await owner.db.insert(schema.settingDefinition).values({
-      key: 'reinstalls.threshold',
-      moduleCode: 'reinstalls',
+      key,
+      moduleCode: code,
       scope: 'tenant',
       valueType: 'number',
       defaultValue: 10,
       defaultOnInstall: 10,
     });
 
-    await run(request({ moduleCode: 'reinstalls' }));
+    await run(request({ moduleCode: code }));
     // The customer changes it.
     await owner.db
       .update(schema.tenantSetting)
       .set({ value: 99 })
-      .where(eq(schema.tenantSetting.key, 'reinstalls.threshold'));
+      .where(eq(schema.tenantSetting.key, key));
 
-    await run(request({ moduleCode: 'reinstalls', action: 'deactivate' }));
-    expect(await statusOf('reinstalls')).toBe('disabled');
+    await run(request({ moduleCode: code, action: 'deactivate' }));
+    expect(await statusOf(code)).toBe('disabled');
 
-    const out = await run(request({ moduleCode: 'reinstalls' }));
-    expect(await statusOf('reinstalls')).toBe('active');
+    const out = await run(request({ moduleCode: code }));
+    expect(await statusOf(code)).toBe('active');
     expect(out.detail[0]).toMatch(/reactivation/);
     expect(out.seeded).toBe(0);
     expect(out.skipped).toBeGreaterThan(0);
@@ -153,45 +172,49 @@ describe('install, reactivate, disable', () => {
     const [setting] = await owner.db
       .select()
       .from(schema.tenantSetting)
-      .where(eq(schema.tenantSetting.key, 'reinstalls.threshold'));
+      .where(eq(schema.tenantSetting.key, key));
     expect(setting.value, 'the customer edit must survive a reinstall').toBe(99);
   });
 
   it('seeds the settings a purchase needs to arrive usable', async () => {
-    await defineModule('seeds_settings');
+    const code = uniq('seeds_settings');
+    const key = `${code}.enabled`;
+    await defineModule(code);
     await owner.db.insert(schema.settingDefinition).values({
-      key: 'seeds_settings.enabled',
-      moduleCode: 'seeds_settings',
+      key,
+      moduleCode: code,
       scope: 'tenant',
       valueType: 'boolean',
       defaultValue: false,
       defaultOnInstall: true,
     });
-    const out = await run(request({ moduleCode: 'seeds_settings' }));
+    const out = await run(request({ moduleCode: code }));
     expect(out.seeded).toBeGreaterThan(0);
     const [row] = await owner.db
       .select()
       .from(schema.tenantSetting)
-      .where(eq(schema.tenantSetting.key, 'seeds_settings.enabled'));
+      .where(eq(schema.tenantSetting.key, key));
     expect(row.value).toBe(true);
   });
 
   // D-6: disabled means writes refused, history readable. Deletion is not disabling.
   it('disabling removes no data', async () => {
-    await defineModule('disables');
-    await run(request({ moduleCode: 'disables' }));
-    const out = await run(request({ moduleCode: 'disables', action: 'deactivate' }));
-    expect(await statusOf('disables')).toBe('disabled');
+    const code = uniq('disables');
+    await defineModule(code);
+    await run(request({ moduleCode: code }));
+    const out = await run(request({ moduleCode: code, action: 'deactivate' }));
+    expect(await statusOf(code)).toBe('disabled');
     expect(out.detail.join(' ')).toMatch(/no data removed/);
   });
 });
 
 describe('assertActivatable is the single place a refusal is decided', () => {
   it('is callable on its own, so the console can pre-check before writing an intent row', async () => {
-    await defineModule('precheck', { billable: true });
+    const code = uniq('precheck');
+    await defineModule(code, { billable: true });
     await owner.db.transaction(async (tx) => {
       await expect(
-        assertActivatable(tx as unknown as Tx, request({ moduleCode: 'precheck' })),
+        assertActivatable(tx as unknown as Tx, request({ moduleCode: code })),
       ).rejects.toThrow(/subscription/);
     });
   });

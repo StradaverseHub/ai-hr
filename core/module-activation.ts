@@ -21,7 +21,7 @@
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client';
-import { settingDefinition, tenantSetting } from '../db/schema';
+import { settingDefinition, tenantSetting, toilPolicy } from '../db/schema';
 
 /** What an activator did, in the terms the runner's audit event reports. */
 export type ActivationOutcome = {
@@ -95,12 +95,69 @@ export const seedModuleSettingDefaults: ModuleActivator = async ({ tx, tenantId 
  * knowable by reading this file, and a runner that silently did nothing because an import was missing
  * is the failure mode a registry-by-side-effect invites.
  */
-export const MODULE_ACTIVATORS: Readonly<Record<string, ModuleActivator>> = {};
+/**
+ * TOIL — seed a DISABLED-but-present policy row per company.
+ *
+ * The point is that a purchased module arrives visible rather than inert. Without a row the TOIL config
+ * screen has nothing to render and the customer who just bought it sees an empty shell; with a row at
+ * `enabled: false` they see the module, its defaults, and one switch to turn it on. Nothing accrues
+ * until they do — `toil_policy.enabled` already defaults to false, so this seeds the safe state rather
+ * than choosing a new one.
+ *
+ * `toil_policy_company_uq` is the natural key that makes reactivation safe: a company that already has a
+ * policy keeps it untouched, including every default the customer has since changed.
+ *
+ * NOT DONE HERE, and named rather than skipped quietly: the plan also wants an admin setup notification.
+ * `notification` has NO natural key, so it cannot be written ON CONFLICT DO NOTHING, and a
+ * SELECT-then-INSERT dedup is the unlocked race this repo has been bitten by before (see createBatch in
+ * the Traps). Sending one needs a dedup key on the table — a real design decision, not a line of code —
+ * and getting it wrong means a customer collects a duplicate notification every time an operator
+ * re-runs an activation.
+ */
+const seedToilPolicy: ModuleActivator = async ({ tx, tenantId, companyId }) => {
+  if (!companyId) return emptyOutcome();
+  const inserted = await tx
+    .insert(toilPolicy)
+    .values({ tenantId, companyId })
+    .onConflictDoNothing()
+    .returning({ id: toilPolicy.id });
+  const seeded = inserted.length;
+  return {
+    seeded,
+    skipped: seeded === 0 ? 1 : 0,
+    detail: [
+      seeded === 1
+        ? 'toil_policy: seeded disabled — the module is visible, nothing accrues until switched on'
+        : 'toil_policy: already present, left untouched',
+    ],
+  };
+};
 
-/** Every activator that applies to a module, in the order the runner must run them. */
-export function activatorsFor(moduleCode: string): ModuleActivator[] {
+export const MODULE_ACTIVATORS: Readonly<Record<string, ModuleActivator>> = {
+  toil: seedToilPolicy,
+};
+
+/**
+ * TWO KINDS OF ACTIVATION, and conflating them is a real bug rather than a tidiness point.
+ *
+ *   TENANT-LEVEL runs ONCE per activation. `tenant_setting` is keyed by (tenant, key) — running it per
+ *   company would do the same insert N times and report N-1 phantom "skips".
+ *
+ *   PER-COMPANY runs once for each company, and AGAIN for every company created later. That second
+ *   half is what `companyInstallersFor` exists for: without it, company #2 is born missing every
+ *   module's defaults and looks broken in a way nobody connects to having bought a module last month.
+ */
+
+/** Everything the RUNNER executes for an activation: the tenant-level pass, then the per-company ones. */
+export function activatorsFor(moduleCode: string): { tenant: ModuleActivator[]; perCompany: ModuleActivator[] } {
   const own = MODULE_ACTIVATORS[moduleCode];
-  return own ? [seedModuleSettingDefaults, own] : [seedModuleSettingDefaults];
+  return { tenant: [seedModuleSettingDefaults], perCompany: own ? [own] : [] };
+}
+
+/** What a NEWLY CREATED company needs from an already-active module. Never the tenant-level pass. */
+export function companyInstallersFor(moduleCode: string): ModuleActivator[] {
+  const own = MODULE_ACTIVATORS[moduleCode];
+  return own ? [own] : [];
 }
 
 /** Filter for settings belonging to one module — used by callers that scope the defaults pass. */
