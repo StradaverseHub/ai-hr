@@ -7,39 +7,26 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ## CURRENT STATE — read this first (updated 2026-08-01, after r88)
 
-> ### DEPLOYED HEAD IS `main@6b82c8e` — production on **288** migrations.
+> ### DEPLOYED HEAD IS `main@039853d` — production on **289** migrations.
 >
-> r87 (`main@6e967cf`, no migration) shipped two payroll faults — `ef31d251` and `d0d2c9d1` — and
-> **held `97a9b0ab`** because checking production showed its plan was wrong. That is still the most
-> useful thing in the r87 entry, and `97a9b0ab` rev 2 is still awaiting the reporter.
+> **Next free migration number is `0343`.** No held branch claims a number — but check any held branch's
+> `when` against the deployed watermark before merging it. r89 caught `0339` stranded BELOW the watermark
+> after r88 shipped `0340`/`0341` around it; it merged silently as nothing until renumbered to `0342`.
 >
-> ### r88 SHIPPED 2026-08-01 — migrations `0340` + `0341`, taking production 286 → **288**
+> **r89 shipped `1ef1cf95`**, the item r88 correctly held. Its two blockers were both real and both fixed:
+> the config dump the plan promised the reporter did not exist, and its migration number was stranded.
 >
-> **Next free migration number is `0342`.** `0339` is SPENT BUT UNSHIPPED — see below.
+> **AFTER r88's `fa3f4ccb`, A LEAVE TYPE WITH NO POLICY AND NO SCHEME ROW GRANTS ZERO** — the statutory
+> floor no longer supplies days for an unconfigured type. Production is unaffected (ANNUAL bands 20–24,
+> SICK 14–22, all at or above the minimum) and was checked, not assumed. Any tenant relying on the floor
+> WOULD be. See r89 Decision 3.
 >
-> **9 items deployed:** `fa3f4ccb` · `30325fc1` · `10fcf6df` · `476f23ed` · `a324a4b3` · `61bf109d` ·
-> `cf43c909` · `d64d0df4` · `e523e85d` (closed as an already-delivered duplicate of `941c9dac`).
+> **The local Postgres `CREATE DATABASE` wedge has a root cause and a mitigation** — PG14 forces two
+> checkpoints per create, 22 per suite run. See the r89 section; the recovery recipe changed
+> (`mv` the data dir, and `-m immediate` can itself hang).
 >
-> ### ⚠️ `1ef1cf95` IS STUCK IN `building` ON PURPOSE, AND ITS MIGRATION IS A LOADED TRAP
->
-> Its agent was cut off mid-item. The work is **uncommitted** in `.claude/worktrees/r88a` and is
-> roughly 80% done: migration `0339` written, all six catalogs updated, `core/leave-shared-group.ts`
-> and the UI created, enforcement re-pointed in `core/leave.ts`.
->
-> **THREE things must happen before it can ship, and the third is the one that will be missed:**
-> 1. **Three test files still import functions it deleted** (`test/combined-leave-limit.test.ts`,
->    `test/shared-leave-group-max-days.test.ts`, `test/shared-leave-group-single-mechanism.test.ts`).
->    The tree does not typecheck as it stands.
-> 2. **The promised config dump was never built.** The approved plan promises the reporter a list of
->    their existing shared-group configuration BEFORE the reset, and `0339` DROPS
->    `scheme_leave_combined_limit`. Do not ship the migration until that dump exists and is attached.
-> 3. **`0339` MUST BE RENUMBERED ABOVE `0341`.** It was allocated before r88 shipped `0340`/`0341`, so
->    it now sits BELOW the deployed watermark. drizzle-kit reads the last applied `when` as a watermark
->    and silently ignores anything below it: merging `0339` as-is produces no error, no conflict, and
->    the tables are simply never created. This is the r84 stale-number trap, pre-loaded and waiting.
->
-> Its board status is deliberately left at `building` — that is accurate, and `startFeedbackBuild`
-> accepts only `approved`, so the status itself prevents a second agent starting it in parallel.
+> **Board: `approved = 9` · `contested = 1` (`c33d9bbb`, parked by the owner) · `deployed = 539`.**
+> The reporter has approved both re-plans: `97a9b0ab` rev 2 and `c6ffa725` rev 2.
 >
 > **THE REPORTER THEN APPROVED ALL SEVEN PLANS from the 2026-07-31 planning pass.** Board is now
 > **`approved = 18` · `planned = 1` (97a9b0ab rev 2) · `contested = 2` · `deployed = 528`**.
@@ -667,6 +654,113 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r89 — 2026-08-01 — the held item, finished: shared groups move to leave type level
+
+**Shipped:** `main@039853d`. Migration `0342` (production 288 → **289**).
+**Gate:** `tsc` clean · **508 files / 5921 tests** · `next build` clean · **upgrade rehearsal PASS**.
+Verified live: `GET /` 401, service active, 289 migrations, `leave_shared_group` present,
+`scheme_leave_combined_limit` GONE, **1 archive row kept**, 0 groups after the reset (as asked), and the
+`leave_shared_group_max_days_check` CHECK restored.
+
+**Shipped:** `1ef1cf95` — the item r88 correctly refused to ship.
+
+### Decisions
+
+**1. THE TWO REASONS r88 HELD IT WERE BOTH REAL, and finishing them is the round.**
+- **The promised safeguard did not exist.** The plan promises the reporter a dump of their configuration
+  BEFORE the reset, and `0342` DROPS the tables. It now exists at
+  `docs/1ef1cf95-existing-shared-groups.md`, and producing it found **two things worth more than the
+  dump itself**: their "Special Leave" group covered **only GRADE H (Permanent)**, not everyone — a
+  direct consequence of groups living under a benefit scheme, and exactly what this change removes — and
+  **the 3-day per-application cap they described was never actually set** (the column was NULL). Both are
+  in the `build_ref`.
+- **`0339` HAD BEEN STRANDED BELOW THE WATERMARK.** r88 shipped `0340`/`0341` while this was held, so
+  `0339` (`when=…439000`) sat under production's `…441000`. Merging it would have produced no error, no
+  conflict and no tables. Renumbered to `0342` (`…442000`) — file, journal entry, and **every source
+  comment citing the old number**. Verified against the live watermark before deploying.
+
+**2. THE REHEARSAL CAUGHT A REGRESSION REVIEW DID NOT.** The new `leave_shared_group` shipped WITHOUT the
+`max_days_per_application` CHECK that `0327` put on the table it replaces — the guarantee that an
+importer or hand-written UPDATE cannot store a cap refusing every application. Both CHECKs carried
+forward. **Renaming a table is not a reason to lose its defence in depth.**
+
+**3. AND A SECOND ONE, WHICH IS A LIVE BEHAVIOUR CHANGE FROM r88's `fa3f4ccb`.** The rehearsal's baseline
+seed began failing with `InsufficientLeaveBalanceOnSubmitError`. Cause: the seed never configured SICK,
+because entitlement was `max(statutoryFloor, configured)` and the EA s.60F floor supplied the days by
+itself. **Now that the floor no longer overrides, a leave type with NO policy and no scheme row grants
+ZERO** where it previously granted the legal minimum.
+
+**PRODUCTION WAS CHECKED, NOT ASSUMED, AND IS UNAFFECTED:** ANNUAL bands are **20–24** days and SICK
+**14–22**, all at or above the statutory minimums (8/12/16 and 14/18/22), so **no live employee lost a
+day**. A tenant relying on the floor to cover an unconfigured type WOULD have. The seed now configures
+SICK explicitly, and the reporter is told the general rule.
+
+**4. TWELVE INTEGRATION FAILURES ACROSS SEVEN FILES, one of them a real defect.** The 675-line deletion
+left the whole `@dnd-kit` import block dead in `benefit-scheme-config.tsx` — both DndContexts there are
+now gone (grades by `b1b81a08`, pools by this item), and a dead drag import is how the next reader
+concludes the screen still drags. The rest were guards pinning the removed mechanism, inverted rather
+than deleted. One "failure" was a benign layout change a literal assertion mistook for breakage: Add
+Leave Type gained a sibling, so `mt-auto` moved from the button to a wrapper.
+
+**5. I MADE THE OVER-BROAD-GUARD MISTAKE THREE TIMES IN ONE SESSION**, twice while fixing an over-broad
+guard. Once it matched a COMMENT recording the change; once it forbade `scopeLeaveTypeId` outright and
+caught the scoped-display FILTER, a different and surviving feature. **The fix for an over-broad guard is
+itself usually written as a source grep, which is why this keeps happening.** Strip comments, and scope
+to the construct — never to a token that something still-working also uses.
+
+**6. AN AWARENESS LOSS, RECORDED RATHER THAN DROPPED.** The "Shared with X, Y — edits here affect every
+leave type in this pool" badge is gone with the scheme-level pool. That hazard did not disappear; it got
+**wider**, because a group is no longer scoped to one scheme. Re-earning it means surfacing group
+membership on the entitlement rows from the new tables — beyond the approved plan. Follow-up debt, and
+the reporter is told.
+
+### The local Postgres wedge — ROOT CAUSE FOUND, and mitigated
+
+`CREATE DATABASE` wedged in `CheckpointStart` **three times** on 2026-08-01, each time immediately after
+a full suite. **The cause is PostgreSQL 14**: its `CREATE DATABASE` uses the FILE_COPY strategy, which
+forces **two immediate checkpoints and waits on each**. The harness creates 11 databases per run =
+**22 forced checkpoints**. On a clean cluster each create takes **0.08s** (measured); on one dirtied by a
+5,900-test run, one stalls and never returns. The server log shows nothing — it is a hang, not an error.
+
+**The real fix is PG15+**, where `STRATEGY = WAL_LOG` is the default and there are no forced checkpoints.
+Blocked here: Homebrew installs fail on this Mac's Xcode.
+
+**Mitigations applied:**
+1. `postgresql.conf` on the LOCAL cluster only: `fsync=off`, `full_page_writes=off`,
+   `synchronous_commit=off`, `wal_level=minimal`, `max_wal_senders=0`. Each trades crash-safety for
+   checkpoint cost, correct HERE and nowhere else — this cluster holds only a test template, ten worker
+   DBs and a scratch dev DB, all rebuilt in seconds. **Never on the server.**
+2. `test/global-setup.ts` issues an explicit `CHECKPOINT` before the rebuild path, so the 22 forced
+   checkpoints find nothing to flush. A no-op when clean.
+
+**Recovery recipe, corrected by experience:**
+- **`mv` the data dir aside — instant.** `rm -rf` cost ~10 minutes with the disk busy.
+- **`pg_ctl -m immediate` CAN ITSELF HANG** when the postmaster is unresponsive rather than merely stuck
+  on a checkpoint. It then needs `pkill -9 -f 'postgres.*aihr-pg14'`. The previous note that
+  `-m immediate` is the answer is true *usually*, not always.
+- **`-m immediate` buys a full WAL replay**, which after a heavy suite was 1.8 GB / 27 minutes. Wiping
+  beats replaying when the data is disposable — locally it always is.
+
+### Also this round
+
+**`deec1691` closed with NO BUILD.** The Dependency Explorer shipped in r79 but `system_explorer` had no
+`tenant_module` row, so it resolved OFF and had no screen for any role. One activation row. `toil` is off
+the same way and was left alone — the plan offered it and the reporter has not asked.
+
+**`c6ffa725` re-planned as rev 2, and the reporter was right.** r86 shipped the per-YEAR cap and the
+`build_ref` claimed the item done; the "Maximum Consecutive Leave" half — Unlimited/Limited plus a
+Calendar/Working Days unit — was never built. The re-plan also surfaces a design tension rather than
+hiding it: a per-application cap ALREADY exists on the shared group, and a guard forbids "a rival
+per-type column". Recommended one composition (**stricter of the two wins**, named in the refusal), with
+the guard to be **widened deliberately, never quietly deleted**.
+
+**A FRESH WORKTREE CANNOT RUN THE DB SUITE.** `.env.local` is gitignored, so `git worktree add` does not
+carry it, and the first full-suite run in a new worktree dies in setup with
+`TEST_MIGRATION_DATABASE_URL must be set` and **no test summary at all** — which looks nothing like a
+normal failure. Copy `.env.local` into every new worktree.
+
+---
 
 ## r88 — 2026-08-01 — 9 items across four parallel agents, and four failures only the integration saw
 
