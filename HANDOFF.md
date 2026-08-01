@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r97 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r98 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,15 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@56ec3e2c` — production on **291** migrations. **Next free number is `0345`.**
+> ### DEPLOYED HEAD IS `main@1186817d` — production on **292** migrations. **Next free number is `0346`.**
+>
+> ### `tenant_module` HAS EXACTLY ONE WRITER NOW — use it, never hand SQL
+>
+> `scripts/module-change-runner.ts` drains `module_change_request` under the OWNER role. Every grant and
+> revocation leaves an intent row (who asked) and a chained event (what was seeded, what was skipped).
+> Refusals name their step: unknown module · core module · unmet `depends_on` · **billable with no
+> `subscription_line`**. **Reactivation NEVER re-seeds** — activators write ON CONFLICT DO NOTHING and
+> report the skip, so a customer's edited settings survive a disable/enable cycle (D4, pinned by test).
 >
 > ### ⚠️ LOCAL POSTGRES IS NOW **16.14**, NOT 14 — every PG14 instruction below is superseded
 >
@@ -781,7 +789,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 2 | `isModuleEnabled`, the enforcement primitive | **DONE** — `a38ed02f`, **50 call sites**. NO ROUND ENTRY |
    | 3 | gate classification + migration + backfill | **DONE** — round entry below |
    | 4 | nav + page gating from entitlements | **DONE** — round entry below |
-   | 5 | module install / deactivate as operations | **STEP 1 DONE (r97)** — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
+   | 5 | module install / deactivate as operations | **STEPS 1-2 DONE (r97, r98)** — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
    | 6 | multi-country entitlement wiring | **NOT BUILT** — no `country-<cc>` provisioning anywhere |
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
@@ -848,6 +856,43 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r98 — 2026-08-02 — ADR-0077 slice 5 step 2: tenant_module gets its only writer
+
+**Shipped:** `main@1186817d`. **Migration `0345`** (production 291 → **292**).
+**Gate:** `tsc` clean · **521 files / 6065 tests** · `next build` clean · **`UPGRADE_REHEARSAL=PASS`**
+(and it completed with no hang — the first uneventful rehearsal of the session, post-PG16).
+
+### Decisions
+
+**1. THE PLAN'S `ModulePack.onActivate` IS UNBUILDABLE AS WRITTEN, and the reason generalises.**
+`components/sidebar.tsx` is `'use client'` and imports the pack registry; `packs/registry.ts` states that
+`serviceFacade` is kept OFF the pack object "because it would drag `db/client` into the client bundle".
+An activation hook takes a transaction, so it has exactly that effect. **The plan predates ADR-0080's
+pack registry.** Hooks live in a SERVER-ONLY registry (`core/module-activation.ts`) keyed by module code;
+`ModulePack` stays a description, not a program. **Check any remaining slice instruction that wants to
+put behaviour on a pack object against this.**
+
+**2. REACTIVATION IS NOT FIRST INSTALL (D4) — the assertion that matters most.** A customer who disables
+a module for a month and re-enables it has edited its settings meanwhile. Re-seeding would silently
+revert their work and read as the product losing it. Every activator writes ON CONFLICT DO NOTHING on a
+natural key and REPORTS the skip, so the event says "seeded 0, skipped 3" rather than claiming a clean
+install. Pinned end to end: install → customer sets 99 → disable → re-enable → **99 survives**.
+
+**3. A DORMANT BUG FIXED IN PASSING.** `setting_definition.default_on_install` carries the comment "written
+as a real row when the owning module is installed, so a purchase arrives usable" — and **nothing was
+writing it**. A module whose settings existed only as catalog defaults arrived inert. The generic
+activator now writes them.
+
+**4. REFUSE, DO NOT WARN.** The runner rejects an unknown module, a CORE module (0313's trigger would too;
+failing here names the reason), unmet `depends_on`, and a BILLABLE activation with no `subscription_line`
+(D-15) — an entitlement is the technical half of a commercial fact.
+
+**Slice 5 still open:** TOIL's own activator · two-phase deactivation with blocking pre-checks (the
+`disposition` column exists for it) · disabled-module semantics (writes refused, reads/exports preserved,
+D-6) · the per-company install hook in `createCompany`.
+
+---
 
 ## r97 — 2026-08-02 — ADR-0077 slice 5 begins, and the Postgres wedge finally has a cause
 
