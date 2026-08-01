@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r99 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r100 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@bf2353ce` — production on **292** migrations. **Next free number is `0346`.**
+> ### DEPLOYED HEAD IS `main@3e136060` — production on **292** migrations. **Next free number is `0346`.**
 >
 > ### `tenant_module` HAS EXACTLY ONE WRITER NOW — use it, never hand SQL
 >
@@ -789,7 +789,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 2 | `isModuleEnabled`, the enforcement primitive | **DONE** — `a38ed02f`, **50 call sites**. NO ROUND ENTRY |
    | 3 | gate classification + migration + backfill | **DONE** — round entry below |
    | 4 | nav + page gating from entitlements | **DONE** — round entry below |
-   | 5 | module install / deactivate as operations | **STEPS 1-3 DONE (r97, r98, r99)** — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
+   | 5 | module install / deactivate as operations | **DONE (r97-r100)** except the admin setup notification (no natural key on `notification`) — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
    | 6 | multi-country entitlement wiring | **NOT BUILT** — no `country-<cc>` provisioning anywhere |
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
@@ -856,6 +856,30 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r100 — 2026-08-02 — slice 5 step 4: two-phase deactivation, and D-6 pinned rather than rebuilt
+
+**Shipped:** `main@3e136060`. **No migration.** **Gate:** `tsc` · **523 files / 6083 tests** · `next build`.
+
+**1. DEACTIVATION ENUMERATES WHAT IT WOULD STRAND, AND REFUSES UNTIL THE OPERATOR DECIDES.** Blockers are
+scoped per module (`core/module-deactivation.ts`): TOIL → active accruals; performance → open cycles +
+un-enacted pay recommendations; payroll → draft batches. **Deliberately NOT a veto** — a customer who
+stopped paying is entitled to stop paying, and blocking forever would hold them hostage. The disposition
+lands on the audit event beside its execution. **A BLANK disposition is not an answer** (an unfilled form
+field sends an empty string).
+
+**2. D-6 WAS ALREADY TRUE — THIS ROUND ONLY PINNED IT.** `isModuleEnabled` resolves `disabled` as OFF
+(`status IN ('active','trial')`), so gated WRITES already refuse. A previous round also got the harder
+half right and left the reasoning in `core/toil.ts` above `setToilPolicy`: reads stay UNGATED, and
+`runToilExpiry` / `closeReplacementLeaveYear` stay ungated because they settle debts already incurred
+(D4). **Correct but fragile** — nothing stopped a later change gating a read and turning "disabled" into
+"gone". Three tests now hold it: history readable · obligations still run · **disabling removes nothing**.
+
+**SLICE 5 IS COMPLETE except the admin setup notification**, which is deliberately unbuilt: `notification`
+has NO natural key, so it cannot be idempotent without a SELECT-then-INSERT race. It needs a dedup key on
+the table first — a design decision, not a line of code.
+
+---
 
 ## r99 — 2026-08-02 — slice 5 step 3, and a bug that made TOIL unactivatable
 
