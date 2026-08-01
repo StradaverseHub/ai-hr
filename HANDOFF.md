@@ -5,26 +5,39 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-01, after r91 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-01, after r92 SHIPPED)
 
-> ### DEPLOYED HEAD IS `main@b7134c6` — production on **290** migrations.
+> ### DEPLOYED HEAD IS `main@2a47a66f` — production on **290** migrations.
 >
-> **Next free migration number is `0344`.** r91 added no migration, so the schema is untouched by it.
+> **Next free migration number is `0344`.** Neither r91 nor r92 added a migration, so the schema has been
+> untouched since r90's `0343`.
 >
-> ### r91 IS NOW SHIPPED (2026-08-01). The previous version of this block said it was not — that is done.
+> ### r91 AND r92 ARE BOTH SHIPPED (2026-08-01).
 >
-> Gate: `tsc` clean · **514 files / 5995 tests** · `next build` clean · no migration, so no rehearsal.
-> Deployed and verified: `systemctl is-active aihr` = active, `GET /` 401, `/login` 200, tunnel 401,
-> and the post-deploy `rsync -azi --dry-run` reported **zero** changed files.
+> r91 gate: **514 files / 5995 tests** (in TWO runs — see the trap). r92 gate: **516 files / 6013 tests**
+> in one run. Both `tsc` + `next build` clean, no migration, no rehearsal. Verified live after each:
+> service active, `GET /` 401, `/login` 200, and `rsync -azi --dry-run` reporting **zero** changed files.
 >
-> **ONLY `ec845c7d` WAS MARKED DEPLOYED.** `a1d82340` and `862ed0ad` are deliberately still `building`
-> even though their code is live, because neither item's REQUEST is satisfied — see the next block.
-> This is the r90 `241817ef` precedent: marking an item deployed tells the reporter it is done.
+> ### THE r91 FINDINGS REACHED THE REPORTER — as plan revisions, and they are now PENDING
 >
-> **THE r91 FINDINGS MATTER MORE THAN ITS CODE, AND THEY HAVE NOT YET REACHED THE REPORTER.**
-> `a1d82340` step 4 would delete the ONLY writer of `payroll_input.tp1_deduction` and the ONLY writer of
-> `payroll_permission_grant`; and `862ed0ad`'s itemisation has **no stored data behind it** for recurring
-> pay components. See the r91 entry. **Getting these two in front of the reporter is the next action.**
+> `a1d82340` is at **rev 3** and `862ed0ad` at **rev 2**, both back in `planned` awaiting approve/reject.
+> Their code IS live; their requests are not satisfied, which is why neither was closed:
+> - **`a1d82340` rev 3 WITHDRAWS step 4.** Three of its four "unused" targets are sole writers — the
+>   run-screen input grid is the only writer of `payroll_input.tp1_deduction` (the field payslips read),
+>   `/admin/payroll-permissions` is the only writer of `payroll_permission_grant`, and the file import is
+>   one of the eight money-entry paths step 5 consolidates. **Never used and cannot be used look identical
+>   in an empty-table count.** Rev 3 proposes fixing the disconnected TP1 path instead.
+> - **`862ed0ad` rev 2 admits the itemisation cannot work backwards.** `earningsOf` sums recurring
+>   components into totals and stores no per-item detail, so the reporter's own MYR 200 allowance has
+>   nothing behind it. Rev 2 asks for a forward-only write-path stamp and says the 18 historical runs
+>   can never itemise.
+>
+> **Board on production after r92: `deployed = 544` · `planned = 2` (the two above) · `approved = 1`
+> (`956cec85`, blocked on the reporter naming submission channels and file formats) · `building = 1`
+> (`241817ef`, r90's deliberate half-ship) · `contested = 1` (`c33d9bbb`, parked).**
+>
+> **THE BOARD IS ESSENTIALLY DRAINED.** For the first time there is no approved work that can be started
+> without the reporter. `fc776376` and `bb4f2265` — the last two cross-cutting items — shipped in r92.
 >
 > ### BROWSER VERIFICATION IS ACTIVE — and the recipe is in the r91 entry
 >
@@ -682,6 +695,72 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r92 — 2026-08-01 — the last two cross-cutting items, and a bug hiding in a shape the plan did not name
+
+**Shipped:** `main@2a47a66f`. **No migration** (production stays on 290).
+**Gate:** `tsc` clean · **516 files / 6013 tests** · `next build` clean · rsync dry-run zero changed files.
+**Both items marked deployed:** `bb4f2265` (`013d0a23`) · `fc776376` (`d490d3ad`).
+
+### Decisions
+
+**1. `bb4f2265` — THE PLAN'S CANDIDATE LIST WAS A STARTING POINT AND THE WORST THREE WERE NOT ON IT.**
+The mechanical part went as planned: 45 argless `new Date().toISOString().slice(0, 10)` sites across 38
+files now use `todayInKualaLumpur()`. **Argless is the entire criterion** — `new Date()` with nothing in
+the parens IS the current instant, so all 45 ask "what date is it now"; the 51 remaining occurrences all
+take an argument and are date arithmetic that is correct in UTC. None were touched.
+
+The real find came from looking for the SAME bug in a DIFFERENT SHAPE — a `now` variable converted to a
+date, rather than `new Date()` inline. `app/attendance/clock/actions.ts` and `app/me/actions.ts` both had
+
+    const d = new Date();
+    return { date: d.toISOString().slice(0, 10), time: d.toTimeString().slice(0, 5) };
+
+**date read in UTC, time read off the HOST clock.** A punch at 00:30 MYT was stamped with YESTERDAY's date
+beside TODAY's time — the record disagreed with itself, and an overnight-shift punch landed on the wrong
+day entirely. `app/attendance/clock/page.tsx` derived the same UTC `today` and passed it to
+`attendancePunchesForRange(today, today)`, so before 08:00 the clock screen showed the wrong day's punches.
+This is the population the plan flagged as most affected, and none of it was in the candidate list.
+
+`lib/hr-date.ts` gains `timeInKualaLumpur()` so both halves of a stamp come off one clock.
+**`toTimeString()` was correct only because the box happens to be set to MYT** (verified: `timedatectl`
+says `Asia/Kuala_Lumpur`, and node resolves the same) — an implicit dependency on host configuration,
+now explicit.
+
+**The guard was verified to FAIL.** `test/today-in-myt-drift.test.ts` matches only the argless form, so no
+arithmetic site can trip it (r86 lost four integration runs to over-broad source guards). It was tested by
+reintroducing the bug in `core/claims.ts` and confirming it fails AND names the file. Its behaviour
+assertions INJECT an instant inside the window (`2026-07-31T16:30Z` = `2026-08-01T00:30` MYT); without
+that they would pass all afternoon and prove nothing, which is exactly how the original hid.
+
+**2. `fc776376` — ONE REPORT, TWO DIFFERENT CAUSES, and the reporter was right about both.**
+- **The control was INVISIBLE, not absent.** `showPager()` returned
+  `hasPrev || hasNext || truncated || total > 25`, so any list of 25 rows or fewer rendered nothing. On
+  this tenant that is nearly every list (23 active employees, 36 leave requests, 47 payslips), so "there
+  is still no pagination" was an accurate description of what they could see. It now always returns true.
+  The deliberately-unpaged surfaces are unaffected because they construct no `PageState` at all — the
+  decision about whether a surface is a LIST is made by whether it renders a pager, not inside `showPager`.
+- **Six grids genuinely had none, and the reason is structural:** `<Pager>` is an async SERVER component
+  (it awaits `getTranslations`), so a `'use client'` grid cannot render it. That is why feedback — **517
+  rows, the largest list in the product** — was skipped. `components/client-pager.tsx` is the variant that
+  unblocks it: same `?page=&size=` contract, but `useTranslations` + `useRouter`, and `replace()` rather
+  than `push()` so Back leaves the list instead of walking back through pages of it.
+
+**SORTING ORDERS THE WHOLE SET, PAGING SLICES THE RESULT.** Done the other way, a column header reorders
+25 rows and leaves the other 492 where they were — which looks like sorting and is not. The test asserts
+the ordering by SOURCE POSITION (`.sort(` before `paginateRows(`) so it cannot silently invert.
+
+**SELECTION CANNOT OUTRUN THE PAGE.** On feedback and roster the submitted ids are intersected with the
+visible page, so "approve all" can never quietly mean "approve all 517". **Intersecting is structural**
+— the form can only carry rows that are on screen — where clearing state on page change would have been a
+timing argument, and eslint's `react-hooks/set-state-in-effect` correctly rejected the effect version.
+
+**3. THE LOCAL POSTGRES WAS REBUILT AGAIN, and the numbers justify the standing rule.** It was found down
+with the data dir in `in production` state — crashed, with **10 GB of WAL and 16 databases** to replay.
+Wiped and rebuilt per the Traps recipe rather than waiting out recovery. The test template then migrated
+in **0.7s**. `ai_hr_app` re-verified `NOSUPERUSER`/`NOBYPASSRLS`.
+
+---
 
 ## r91 — 2026-08-01 — SHIPPED. The findings are still the deliverable
 
