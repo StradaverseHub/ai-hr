@@ -96,12 +96,16 @@ import {
   upsertSchemeEntitlement,
   deleteSchemeEntitlement,
   copySchemeEntitlements,
-  createSchemeCombinedLimit,
-  updateSchemeCombinedLimit,
-  deleteSchemeCombinedLimit,
-  moveCombinedLimitMember,
-  groupSchemeLeaveTypes,
 } from '@/core/benefit-scheme';
+// r88 1ef1cf95 — shared leave groups are tenant-level now, so their CRUD has its own module rather than
+// riding on the benefit-scheme one.
+import {
+  createLeaveSharedGroup,
+  updateLeaveSharedGroup,
+  deleteLeaveSharedGroup,
+  LeaveTypeAlreadyGroupedError,
+  LeaveSharedGroupNameTakenError,
+} from '@/core/leave-shared-group';
 import { inviteUser, revokeInvitation, setAppUserArchived } from '@/core/auth';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
 import { setEncashmentPolicy } from '@/core/leave-encashment';
@@ -2182,7 +2186,10 @@ export async function copySchemeEntitlementsAction(fd: FormData) {
   ok(ENTITLEMENTS);
 }
 
-// Combined Leave Type Limit (R44 4c48fd1f) — CRUD for the shared per-cycle caps pooling several leave types.
+// SHARED LEAVE GROUPS (r88, feedback 1ef1cf95) — CRUD for the tenant-level groups that pool several leave
+// types under one shared allowance. These replace the scheme-level combined-limit actions (create / update /
+// delete / move / group-from-drag), which are gone with the tables they wrote: the reporter rejected the
+// Benefit Scheme shape outright, so there is no scheme id on any of these forms and no drag-to-group path.
 
 /** r82a 1ef1cf95 — read the OPTIONAL per-application cap out of a form. An empty box means "no cap", which
  *  is a real answer here and must arrive as null: `Number('')` is 0, so the usual Number(fd.get(...)) shape
@@ -2193,26 +2200,39 @@ function maxDaysPerApplicationFrom(fd: FormData): number | null {
   return raw === '' ? null : Number(raw);
 }
 
-export async function createSchemeCombinedLimitAction(fd: FormData) {
+/** The clash a leave type in two groups would be, rendered as a sentence naming BOTH — the plan's promise
+ *  that we "tell you which one rather than silently moving it". Localized here, at the action boundary, the
+ *  same way every other typed core error is (the core throws structured data, never a display string). */
+async function sharedGroupFailure(e: unknown): Promise<never> {
+  const t = await getTranslations('admin.leave.sharedGroup');
+  if (e instanceof LeaveTypeAlreadyGroupedError) {
+    return fail(ENTITLEMENTS, t('errorAlreadyGrouped', { type: e.leaveTypeName, group: e.groupName }));
+  }
+  if (e instanceof LeaveSharedGroupNameTakenError) {
+    return fail(ENTITLEMENTS, t('errorNameTaken', { name: e.groupName }));
+  }
+  return fail(ENTITLEMENTS, e);
+}
+
+export async function createLeaveSharedGroupAction(fd: FormData) {
   const s = await requireAdmin();
   try {
-    await createSchemeCombinedLimit(s, {
-      benefitSchemeId: String(fd.get('benefitSchemeId') ?? ''),
+    await createLeaveSharedGroup(s, {
       name: String(fd.get('name') ?? ''),
       totalLimitDays: Number(fd.get('totalLimitDays') ?? ''),
       maxDaysPerApplication: maxDaysPerApplicationFrom(fd),
       leaveTypeIds: fd.getAll('leaveTypeIds').map((v) => String(v)).filter(Boolean),
     });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    await sharedGroupFailure(e);
   }
   ok(ENTITLEMENTS);
 }
 
-export async function updateSchemeCombinedLimitAction(fd: FormData) {
+export async function updateLeaveSharedGroupAction(fd: FormData) {
   const s = await requireAdmin();
   try {
-    await updateSchemeCombinedLimit(s, {
+    await updateLeaveSharedGroup(s, {
       id: String(fd.get('id') ?? ''),
       name: String(fd.get('name') ?? ''),
       totalLimitDays: Number(fd.get('totalLimitDays') ?? ''),
@@ -2220,48 +2240,15 @@ export async function updateSchemeCombinedLimitAction(fd: FormData) {
       leaveTypeIds: fd.getAll('leaveTypeIds').map((v) => String(v)).filter(Boolean),
     });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    await sharedGroupFailure(e);
   }
   ok(ENTITLEMENTS);
 }
 
-export async function deleteSchemeCombinedLimitAction(fd: FormData) {
+export async function deleteLeaveSharedGroupAction(fd: FormData) {
   const s = await requireAdmin();
   try {
-    await deleteSchemeCombinedLimit(s, { id: String(fd.get('id') ?? '') });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  ok(ENTITLEMENTS);
-}
-
-// R47 d6f88c2f — drag-and-drop grouping in the entitlement table. One drag = one narrow write: either move
-// a leave type between pools (empty toCombinedLimitId = ungroup), or create a pool from the dragged rows
-// (detaching them from any previous pool server-side).
-export async function moveCombinedLimitMemberAction(fd: FormData) {
-  const s = await requireAdmin();
-  try {
-    await moveCombinedLimitMember(s, {
-      benefitSchemeId: String(fd.get('benefitSchemeId') ?? ''),
-      leaveTypeId: String(fd.get('leaveTypeId') ?? ''),
-      toCombinedLimitId: String(fd.get('toCombinedLimitId') ?? '') || null,
-    });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  ok(ENTITLEMENTS);
-}
-
-export async function groupSchemeLeaveTypesAction(fd: FormData) {
-  const s = await requireAdmin();
-  try {
-    await groupSchemeLeaveTypes(s, {
-      benefitSchemeId: String(fd.get('benefitSchemeId') ?? ''),
-      name: String(fd.get('name') ?? ''),
-      totalLimitDays: Number(fd.get('totalLimitDays') ?? ''),
-      maxDaysPerApplication: maxDaysPerApplicationFrom(fd),
-      leaveTypeIds: fd.getAll('leaveTypeIds').map((v) => String(v)).filter(Boolean),
-    });
+    await deleteLeaveSharedGroup(s, { id: String(fd.get('id') ?? '') });
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }

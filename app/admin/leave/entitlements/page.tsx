@@ -20,12 +20,11 @@ import {
   archiveLeaveApprovalRuleFromEntitlementsAction,
   saveLeaveApprovalRuleFromEntitlementsAction,
 } from '@/app/admin/leave-approval/actions';
-import {
-  listGradeGroups,
-  listBenefitSchemes,
-  listSchemeEntitlements,
-  listSchemeCombinedLimits,
-} from '@/core/benefit-scheme';
+import { listGradeGroups, listBenefitSchemes, listSchemeEntitlements } from '@/core/benefit-scheme';
+// r88 1ef1cf95 — shared leave groups are tenant-level and read from their own module; they are no longer a
+// property of a benefit scheme, so they are no longer read through the benefit-scheme one.
+import { listLeaveSharedGroups } from '@/core/leave-shared-group';
+import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
 import { BenefitSchemeConfig, type LeaveTypeSchemeEntitlement } from '@/components/benefit-scheme-config';
 import type { ServiceBand } from '@/core/leave-compute';
 import { countryPacks } from '@/localization/registry';
@@ -60,10 +59,11 @@ import {
   upsertSchemeEntitlementAction,
   deleteSchemeEntitlementAction,
   copySchemeEntitlementsAction,
-  updateSchemeCombinedLimitAction,
-  deleteSchemeCombinedLimitAction,
-  moveCombinedLimitMemberAction,
-  groupSchemeLeaveTypesAction,
+  // r88 1ef1cf95 — the tenant-level shared-group writes. The scheme-level combined-limit actions (update /
+  // delete / move / group-from-drag) are gone with the surface and the tables they wrote.
+  createLeaveSharedGroupAction,
+  updateLeaveSharedGroupAction,
+  deleteLeaveSharedGroupAction,
   // 1e4eb8af — the four leave-year actions, unchanged: only their redirect target moved to this route.
   upsertLeaveYearConfigAction,
   setLeaveYearStatusAction,
@@ -121,7 +121,7 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, leaveYearRecordYears, gradeGroups, benefitSchemes, schemeEntitlements, schemeCombinedLimits, profileOptionsActive] =
+  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, leaveYearRecordYears, gradeGroups, benefitSchemes, schemeEntitlements, sharedGroups, profileOptionsActive] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
       listLeavePolicies(s),
@@ -142,8 +142,9 @@ export default async function LeaveEntitlementsPage({
       listGradeGroups(s),
       listBenefitSchemes(s),
       listSchemeEntitlements(s),
-      // Combined Leave Type Limit (R44 4c48fd1f): the per-scheme shared-cap pools.
-      listSchemeCombinedLimits(s),
+      // Shared Leave Groups (r88 1ef1cf95): tenant-level groups of leave types sharing one allowance. Read
+      // once here and rendered beside Add Leave Type — there is no scheme dimension to scope them by.
+      listLeaveSharedGroups(s),
       // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the ACTIVE picker values for
       // the eight org fields come from the SAME master list the profile Organisation Assignment screen reads
       // (data consistency); activeOnly ⇒ deleted/inactive values are never offered as new choices.
@@ -285,15 +286,11 @@ export default async function LeaveEntitlementsPage({
   const schemeAxesById = new Map(
     benefitSchemes.map((sc) => [sc.id, { gradeGroupName: sc.gradeGroupName, employmentType: sc.employmentType }] as const),
   );
-  const poolBySchemeType = new Map<string, { name: string; totalLimitDays: number }>();
-  for (const cl of schemeCombinedLimits) {
-    for (const ltId of cl.leaveTypeIds) {
-      poolBySchemeType.set(`${cl.benefitSchemeId}:${ltId}`, { name: cl.name, totalLimitDays: cl.totalLimitDays });
-    }
-  }
+  // r88 1ef1cf95: the per-(scheme × type) pool lookup that used to be built here is gone. A shared group no
+  // longer belongs to a scheme, so there is nothing scheme-scoped to annotate an entitlement row WITH —
+  // group membership is a property of the leave type alone and is shown in the Shared Leave Groups manager.
   const schemeEntsByType = new Map<string, LeaveTypeSchemeEntitlement[]>();
   for (const e of schemeEntitlements) {
-    const pool = poolBySchemeType.get(`${e.benefitSchemeId}:${e.leaveTypeId}`) ?? null;
     const row: LeaveTypeSchemeEntitlement = {
       id: e.id,
       benefitSchemeId: e.benefitSchemeId,
@@ -304,8 +301,6 @@ export default async function LeaveEntitlementsPage({
       leaveTypeId: e.leaveTypeId,
       leaveTypeName: e.leaveTypeName,
       serviceBands: e.serviceBands,
-      poolName: pool?.name ?? null,
-      poolTotalLimitDays: pool?.totalLimitDays ?? null,
     };
     const arr = schemeEntsByType.get(e.leaveTypeId);
     if (arr) arr.push(row);
@@ -342,15 +337,6 @@ export default async function LeaveEntitlementsPage({
       leaveTypeName: e.leaveTypeName,
       serviceBands: e.serviceBands,
     })),
-    combinedLimits: schemeCombinedLimits.map((cl) => ({
-      id: cl.id,
-      benefitSchemeId: cl.benefitSchemeId,
-      name: cl.name,
-      totalLimitDays: cl.totalLimitDays,
-      // r82a 1ef1cf95 (0327): the group's per-application cap; null = uncapped.
-      maxDaysPerApplication: cl.maxDaysPerApplication,
-      leaveTypeIds: cl.leaveTypeIds,
-    })),
     actions: {
       createGradeGroup: createGradeGroupAction,
       updateGradeGroup: updateGradeGroupAction,
@@ -361,11 +347,6 @@ export default async function LeaveEntitlementsPage({
       upsertEntitlement: upsertSchemeEntitlementAction,
       deleteEntitlement: deleteSchemeEntitlementAction,
       copyEntitlements: copySchemeEntitlementsAction,
-      updateCombinedLimit: updateSchemeCombinedLimitAction,
-      deleteCombinedLimit: deleteSchemeCombinedLimitAction,
-      // R47 d6f88c2f — DnD grouping writes for the entitlement table.
-      moveCombinedLimitMember: moveCombinedLimitMemberAction,
-      groupLeaveTypes: groupSchemeLeaveTypesAction,
     },
   };
 
@@ -962,6 +943,22 @@ export default async function LeaveEntitlementsPage({
               />,
             ]),
           )}
+          /* r88 1ef1cf95 — Shared Leave Groups, mounted beside Add Leave Type. It is deliberately NOT scoped
+             to the selected leave type: a group spans several types, so scoping it to one would reproduce
+             the "configure the shared rule from inside one owner" shape the reporter rejected. The member
+             tick list offers every ACTIVE leave type; the at-most-one-group rule is enforced in the database
+             and reported by name from the action, never re-derived here. */
+          sharedGroups={
+            <LeaveSharedGroupConfig
+              groups={sharedGroups}
+              leaveTypes={activeTypeOptions}
+              actions={{
+                create: createLeaveSharedGroupAction,
+                update: updateLeaveSharedGroupAction,
+                remove: deleteLeaveSharedGroupAction,
+              }}
+            />
+          }
           addForm={
         /* Add Leave Type pop-up (8cc268c4): this form now renders ONLY inside the workspace's "Add Leave Type"
             dialog, never as a page row — so the a9c5870a one-row page grid (six sm columns + the explicit lg

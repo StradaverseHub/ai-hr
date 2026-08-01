@@ -67,10 +67,16 @@ export function LeaveTypeWorkspace({
   items,
   panels,
   addForm,
+  sharedGroups,
 }: {
   items: LeaveTypeWorkspaceItem[];
   panels: Record<string, ReactNode>;
   addForm: ReactNode;
+  /** r88 1ef1cf95 — the Shared Leave Group manager, mounted BESIDE Add Leave Type because that is the level
+   *  a group is now defined at: a group names leave types, not a benefit scheme. A slot rather than a direct
+   *  import so this workspace keeps knowing nothing about server actions. Optional: hosts that render the
+   *  workspace without the manager (none today) simply omit it. */
+  sharedGroups?: ReactNode;
 }) {
   const t = useTranslations('admin.leave');
   const [selected, setSelected] = useState<string>(items[0]?.id ?? '');
@@ -141,6 +147,7 @@ export function LeaveTypeWorkspace({
         <Button type="button" size="sm" variant="outline" onClick={() => setAddOpen(true)}>
           {t('addType')}
         </Button>
+        {sharedGroups}
       </div>
 
       {/* Desktop: the internal left panel — type list + the Add Leave button at the bottom. */}
@@ -194,15 +201,14 @@ export function LeaveTypeWorkspace({
             );
           })}
         </ul>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="mt-auto w-full"
-          onClick={() => setAddOpen(true)}
-        >
-          {t('addType')}
-        </Button>
+        {/* r88 1ef1cf95 — Add Leave Type and Shared Leave Groups sit together at the foot of the type list:
+            both are leave-TYPE-level structural actions, and a group is defined over these very types. */}
+        <div className="mt-auto flex flex-col gap-2">
+          <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => setAddOpen(true)}>
+            {t('addType')}
+          </Button>
+          {sharedGroups}
+        </div>
       </nav>
 
       {/* Right workspace: the selected type's step-flow panel — never swapped for the add form (8cc268c4). */}

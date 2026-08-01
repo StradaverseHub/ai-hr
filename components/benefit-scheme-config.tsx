@@ -89,16 +89,6 @@ type Entitlement = {
   leaveTypeName: string | null;
   serviceBands: ServiceBand[];
 };
-type CombinedLimit = {
-  id: string;
-  benefitSchemeId: string;
-  name: string;
-  totalLimitDays: number;
-  /** r82a 1ef1cf95 (0327): the group's per-application day cap. null = uncapped. */
-  maxDaysPerApplication: number | null;
-  leaveTypeIds: string[];
-};
-
 type Actions = {
   createGradeGroup: (fd: FormData) => void | Promise<void>;
   updateGradeGroup: (fd: FormData) => void | Promise<void>;
@@ -109,12 +99,9 @@ type Actions = {
   upsertEntitlement: (fd: FormData) => void | Promise<void>;
   deleteEntitlement: (fd: FormData) => void | Promise<void>;
   copyEntitlements: (fd: FormData) => void | Promise<void>;
-  updateCombinedLimit: (fd: FormData) => void | Promise<void>;
-  deleteCombinedLimit: (fd: FormData) => void | Promise<void>;
-  // R47 d6f88c2f — DnD grouping writes: move one leave type between pools (blank target = ungroup) and
-  // create a pool from dragged rows (server detaches them from any previous pool).
-  moveCombinedLimitMember: (fd: FormData) => void | Promise<void>;
-  groupLeaveTypes: (fd: FormData) => void | Promise<void>;
+  // r88 1ef1cf95: the five shared-group writes that used to sit here (update / delete / move member /
+  // group-from-drag) are gone with the scheme-level tables. Shared groups have their own component and
+  // their own actions now — this surface no longer writes to them at all.
 };
 
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
@@ -141,7 +128,6 @@ export function BenefitSchemeConfig({
   gradeGroups,
   schemes,
   entitlements,
-  combinedLimits,
   actions,
   scopeLeaveTypeId,
 }: {
@@ -151,11 +137,9 @@ export function BenefitSchemeConfig({
   gradeGroups: GradeGroup[];
   schemes: Scheme[];
   entitlements: Entitlement[];
-  combinedLimits: CombinedLimit[];
   actions: Actions;
   /** 6c775d68: when set (the Entitlement-step host), the per-scheme entitlement table shows ONLY this leave
-   *  type's row; pools spanning other types keep rendering (header + shared badge) so shared caps stay
-   *  visible/editable. Grade-group + scheme management and all writes remain scheme-wide. Absent = the full
+   *  type's row. Grade-group + scheme management and all writes remain scheme-wide. Absent = the full
    *  (unscoped) table. */
   scopeLeaveTypeId?: string;
 }) {
@@ -481,21 +465,14 @@ export function BenefitSchemeConfig({
                 />
               </div>
             </div>
-            {/* R47 d6f88c2f — the standalone Combined Leave Limits section is gone: shared caps are now
-                configured by dragging entitlement rows together, directly in this table. */}
-            <EntitlementDndTable
-              schemeId={selectedSchemeId}
+            {/* r88 1ef1cf95 — no shared-cap column, no drag-to-group, no create-group button here. A
+                shared leave group is configured once at leave type level (Shared Leave Groups, beside Add
+                Leave Type) and is not owned by a scheme. */}
+            <EntitlementTable
               ents={sortedEnts}
-              // r82a 1ef1cf95: scheme-wide, NOT display-scoped. The Create-group dialog has to offer every
-              // leave type configured in the scheme — inside a leave type's Entitlement step `sortedEnts`
-              // holds that ONE type's row, which is precisely why grouping by drag was undiscoverable there.
-              allEnts={selectedSchemeEnts}
               sortDir={entSort}
               onToggleSort={() => setEntSort((d) => (d === 'asc' ? 'desc' : 'asc'))}
-              pools={combinedLimits.filter((cl) => cl.benefitSchemeId === selectedSchemeId)}
               headerTiers={headerTiers}
-              scopeLeaveTypeId={scopeLeaveTypeId ?? null}
-              typeNames={typeNames}
               actions={actions}
               t={t}
             />
@@ -527,481 +504,99 @@ export function BenefitSchemeConfig({
 // through the tick-boxes inside each row, which post the same updateGradeGroup action the drop did.
 
 /**
- * EntitlementDndTable (R47 d6f88c2f) — the per-scheme entitlement table with drag-and-drop leave-type
- * grouping, replacing the R44 4c48fd1f standalone Combined Leave Limits section. Every row is draggable:
- * drop it on an ungrouped row to form a new pool (auto-named from the members, editable in the confirm
- * dialog — the total limit HAS to be asked for there since a silent default would cap real leave), or on a
- * group / grouped row to MOVE it into that pool (a type is in at most one pool per scheme). Grouped rows
- * render banded + contiguous with an inline-renameable name and a shared editable Total Limit column
- * (scheme_leave_combined_limit.total_limit_days). Ungroup per row (moveCombinedLimitMember with a blank
- * target) and per group (deleteCombinedLimit). Enforcement (core/leave.ts) reads the same tables and is
- * untouched. Feedback c4014f5a: the A–Z/Z–A direction toggles from the Leave Type column header (caret +
- * aria-sort, copied from leave-balance-table) instead of the old standalone Sort dropdown.
+ * EntitlementTable — the per-scheme entitlement table: one row per leave type, three service tiers.
+ *
+ * r88 1ef1cf95: this used to be EntitlementDndTable, where dragging one row onto another created a SHARED
+ * LEAVE GROUP scoped to the benefit scheme, with banded group blocks, an inline shared-total column, a
+ * "shared with <types>" badge and a Create-group dialog. All of that is gone. The reporter rejected the
+ * scheme-level shape outright — "I don't want to improve the existing Benefit Scheme selector" — and shared
+ * groups are now defined once at LEAVE TYPE level (components/leave/shared-leave-group-config.tsx, backed
+ * by leave_shared_group / _member). A scheme's entitlement table answers one question again: how many days
+ * does this scheme give this leave type at each service tier.
+ *
+ * Feedback c4014f5a: the A–Z/Z–A direction toggles from the Leave Type column header (caret + aria-sort,
+ * copied from leave-balance-table) — kept.
  */
-function EntitlementDndTable({
-  schemeId,
+function EntitlementTable({
   ents,
-  allEnts,
   sortDir,
   onToggleSort,
-  pools,
   headerTiers,
-  scopeLeaveTypeId,
-  typeNames,
   actions,
   t,
 }: {
-  schemeId: string;
   /** The selected scheme's entitlements, ALREADY sorted by the Leave Type column-header toggle. */
   ents: Entitlement[];
-  /** r82a 1ef1cf95: EVERY entitlement row of the selected scheme, unscoped — the member candidates the
-   *  Create-group dialog picks from. `ents` is display-scoped and cannot serve: in a leave type's
-   *  Entitlement step it holds a single row, so a picker built from it could never reach two members. */
-  allEnts: Entitlement[];
   /** Current sort direction of `ents` — drives the header caret + aria-sort. */
   sortDir: 'asc' | 'desc';
   /** Flips the parent-owned sort direction (asc ↔ desc). */
   onToggleSort: () => void;
-  pools: CombinedLimit[];
   headerTiers: { n1: number; n2: number };
-  /** 6c775d68: the Entitlement-step display scope — non-null means `ents` was filtered to this leave type.
-   *  Pools then render header-only when their member rows are hidden, and pools spanning OTHER types carry
-   *  the "shared with <names>" badge. */
-  scopeLeaveTypeId: string | null;
-  /** Leave-type id → display name, for the shared-pool badge. */
-  typeNames: Map<string, string>;
   actions: Actions;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const [, startTransition] = useTransition();
-  // A small activation distance keeps plain clicks (Edit/Delete/inputs) from starting a drag.
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-  const poolByTypeId = useMemo(() => {
-    const m = new Map<string, CombinedLimit>();
-    for (const p of pools) for (const id of p.leaveTypeIds) m.set(id, p);
-    return m;
-  }, [pools]);
-  const entById = useMemo(() => new Map(ents.map((e) => [e.id, e])), [ents]);
-  const hasPools = pools.length > 0;
-  const colCount = hasPools ? 6 : 5;
-
-  // Sorting vs grouping (approved decision): grouped rows must stay CONTIGUOUS while the A–Z/Z–A toggle
-  // stays useful. Walking the direction-sorted rows in order, a group block is ANCHORED at its first
-  // member's sorted position (later members join that block) and ungrouped rows keep their own slot —
-  // so members sort within their group and blocks interleave with singles by the same sort key.
-  type Block = { pool: CombinedLimit | null; ents: Entitlement[] };
-  const blocks = useMemo<Block[]>(() => {
-    const out: Block[] = [];
-    const byPool = new Map<string, Block>();
-    for (const e of ents) {
-      const pool = poolByTypeId.get(e.leaveTypeId) ?? null;
-      if (!pool) {
-        out.push({ pool: null, ents: [e] });
-        continue;
-      }
-      const existing = byPool.get(pool.id);
-      if (existing) {
-        existing.ents.push(e);
-      } else {
-        const blk: Block = { pool, ents: [e] };
-        byPool.set(pool.id, blk);
-        out.push(blk);
-      }
-    }
-    // 6c775d68 scoped view: pools whose member rows are all display-filtered away still render as
-    // header-only blocks — they stay visible ("shared with …" badge), droppable (drag the scoped type's
-    // row in to join an existing shared cap) and dissolvable, exactly like on the full table.
-    if (scopeLeaveTypeId) {
-      for (const p of pools) if (!byPool.has(p.id)) out.push({ pool: p, ents: [] });
-    }
-    return out;
-  }, [ents, poolByTypeId, pools, scopeLeaveTypeId]);
-
-  const [active, setActive] = useState<Entitlement | null>(null);
-  // r82a 1ef1cf95 — ONE dialog, reached two ways. `pick: false` is the drag proposal (members fixed: the two
-  // dragged rows). `pick: true` is the labelled Create-group button, where the admin chooses the members
-  // from the scheme's leave types. Same component, same server action; nothing forks below this state.
-  const [pendingGroup, setPendingGroup] = useState<{ members: Entitlement[]; pick: boolean } | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const activePoolId = active ? (poolByTypeId.get(active.leaveTypeId)?.id ?? null) : null;
-
-  const onDragStart = (e: DragStartEvent) => {
-    setNotice(null);
-    setActive(entById.get(String(e.active.id)) ?? null);
-  };
-  const onDragEnd = (e: DragEndEvent) => {
-    const src = active;
-    setActive(null);
-    if (!src || !e.over) return;
-    const overId = String(e.over.id);
-    const srcPool = poolByTypeId.get(src.leaveTypeId) ?? null;
-    let targetPool: CombinedLimit | null = null;
-    let targetEnt: Entitlement | null = null;
-    if (overId.startsWith('pool:')) {
-      targetPool = pools.find((p) => p.id === overId.slice(5)) ?? null;
-    } else if (overId.startsWith('row:')) {
-      targetEnt = entById.get(overId.slice(4)) ?? null;
-      if (!targetEnt || targetEnt.id === src.id) return;
-      targetPool = poolByTypeId.get(targetEnt.leaveTypeId) ?? null;
-    }
-    if (targetPool) {
-      // Dropping onto a group (band or member row) MOVES the type there — unless it is already a member.
-      if (srcPool?.id === targetPool.id) {
-        setNotice(t('groupConflict'));
-        return;
-      }
-      const fd = new FormData();
-      fd.set('benefitSchemeId', schemeId);
-      fd.set('leaveTypeId', src.leaveTypeId);
-      fd.set('toCombinedLimitId', targetPool.id);
-      startTransition(() => {
-        void actions.moveCombinedLimitMember(fd);
-      });
-      return;
-    }
-    // Dropping onto an ungrouped row proposes a NEW group — confirmed in a dialog because the shared
-    // total limit needs a value (no safe default) and the auto-name should be reviewable.
-    if (targetEnt) setPendingGroup({ members: [src, targetEnt], pick: false });
-  };
-
   return (
-    <>
-      {/* r82a 1ef1cf95 — THE MISSING AFFORDANCE. Until now the ONLY way to create a shared leave group was
-          to drag one row onto another, with nothing on screen saying so; the reporter concluded the whole
-          feature was absent. This button is a labelled entry point to the SAME CreateGroupDialog and the
-          SAME groupSchemeLeaveTypes action the drag posts — not a second creation path. Disabled (with the
-          reason shown) when the scheme has fewer than two leave types to group, since a group needs two. */}
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="text-xs text-muted-foreground">{t('dragHint')}</p>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={allEnts.length < 2}
-          title={allEnts.length < 2 ? t('createGroupNeedsTwoTypes') : undefined}
-          onClick={() => setPendingGroup({ members: [], pick: true })}
-        >
-          {t('createGroupButton')}
-        </Button>
-      </div>
-      {notice && <p className="text-xs text-destructive">{notice}</p>}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={pointerWithin}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        onDragCancel={() => setActive(null)}
-      >
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                {/* c4014f5a: sortable header (leave-balance-table pattern). This table is always sorted by
-                    leave type, so aria-sort is permanently ascending/descending — never 'none' — and the
-                    caret always shows the current direction. Row-level DnD sensors cannot start here. */}
-                <th scope="col" aria-sort={sortDir === 'asc' ? 'ascending' : 'descending'} className="px-3 py-2 font-medium">
-                  <button
-                    type="button"
-                    onClick={onToggleSort}
-                    aria-label={t('sortBy', { column: t('colLeaveType') })}
-                    className="inline-flex items-center font-medium hover:text-foreground"
-                  >
-                    {t('colLeaveType')}
-                    <span aria-hidden>{sortDir === 'asc' ? ' ↑' : ' ↓'}</span>
-                  </button>
-                </th>
-                <th className="px-3 py-2 font-medium">{t('tierUnder', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
-                <th className="px-3 py-2 font-medium">{t('tierMid', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
-                <th className="px-3 py-2 font-medium">{t('tierOver', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
-                {hasPools && <th className="px-3 py-2 font-medium">{t('colTotalLimit')}</th>}
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {ents.length === 0 && (
-                <tr>
-                  <td colSpan={colCount} className="px-3 py-4 text-center text-muted-foreground">{t('noEntitlements')}</td>
-                </tr>
-              )}
-              {blocks.map((blk) =>
-                blk.pool ? (
-                  <GroupBlock
-                    key={`g-${blk.pool.id}`}
-                    pool={blk.pool}
-                    ents={blk.ents}
-                    schemeId={schemeId}
-                    colCount={colCount}
-                    hasPools={hasPools}
-                    activeEnt={active}
-                    activePoolId={activePoolId}
-                    scopeLeaveTypeId={scopeLeaveTypeId}
-                    typeNames={typeNames}
-                    actions={actions}
-                    t={t}
-                  />
-                ) : (
-                  <EntitlementRow
-                    key={blk.ents[0].id}
-                    ent={blk.ents[0]}
-                    pool={null}
-                    isFirstOfGroup={false}
-                    groupSize={0}
-                    schemeId={schemeId}
-                    hasPools={hasPools}
-                    activeEnt={active}
-                    activePoolId={activePoolId}
-                    actions={actions}
-                    t={t}
-                  />
-                ),
-              )}
-            </tbody>
-          </table>
-        </div>
-      </DndContext>
-      {pendingGroup && (
-        <CreateGroupDialog
-          schemeId={schemeId}
-          members={pendingGroup.members}
-          pick={pendingGroup.pick}
-          candidates={allEnts}
-          action={actions.groupLeaveTypes}
-          onClose={() => setPendingGroup(null)}
-          t={t}
-        />
-      )}
-    </>
-  );
-}
-
-/** A pool's banded block: a full-width header row (droppable target, inline rename, dissolve) followed by
- *  its member rows, the first of which carries the shared Total Limit cell (rowSpan). */
-function GroupBlock({
-  pool,
-  ents,
-  schemeId,
-  colCount,
-  hasPools,
-  activeEnt,
-  activePoolId,
-  scopeLeaveTypeId,
-  typeNames,
-  actions,
-  t,
-}: {
-  pool: CombinedLimit;
-  ents: Entitlement[];
-  schemeId: string;
-  colCount: number;
-  hasPools: boolean;
-  activeEnt: Entitlement | null;
-  activePoolId: string | null;
-  /** 6c775d68: non-null inside a leave type's Entitlement step — drives the "shared with" badge. */
-  scopeLeaveTypeId: string | null;
-  typeNames: Map<string, string>;
-  actions: Actions;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  const { isOver, setNodeRef } = useDroppable({ id: `pool:${pool.id}` });
-  const validTarget = !!activeEnt && activePoolId !== pool.id;
-  // 6c775d68: in the scoped (per-type Entitlement step) view, a pool spanning OTHER leave types says so —
-  // editing its shared cap from here correctly affects every listed type, so nobody is surprised.
-  const sharedNames = scopeLeaveTypeId
-    ? pool.leaveTypeIds.filter((id) => id !== scopeLeaveTypeId).map((id) => typeNames.get(id) ?? '—')
-    : [];
-  return (
-    <>
-      <tr
-        ref={setNodeRef}
-        className={`border-b border-border bg-muted/40 ${
-          validTarget ? (isOver ? 'bg-primary/15' : 'bg-primary/5') : ''
-        }`}
-      >
-        <td colSpan={colCount} className="px-3 py-1.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              {/* updateCombinedLimit is an ABSOLUTE set, not a patch — every field it touches must be on
-                  every form that posts it, or saving one silently clears another. This form owns the name
-                  and (r82a 1ef1cf95) the per-application cap; the total stays hidden here and visible in
-                  its own column cell, which carries the cap hidden in return. */}
-              <form action={actions.updateCombinedLimit} className="flex flex-wrap items-center gap-1.5">
-                <input type="hidden" name="id" value={pool.id} />
-                <input type="hidden" name="totalLimitDays" value={String(pool.totalLimitDays)} />
-                {pool.leaveTypeIds.map((id) => (
-                  <input key={id} type="hidden" name="leaveTypeIds" value={id} />
-                ))}
-                <input
-                  name="name"
-                  required
-                  defaultValue={pool.name}
-                  aria-label={t('renameGroup')}
-                  className={`${inputCls} h-7 w-56 text-xs font-medium`}
-                />
-                <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                  {t('maxDaysPerApplicationShort')}
-                  <input
-                    name="maxDaysPerApplication"
-                    type="number"
-                    min={0.5}
-                    step="0.5"
-                    placeholder={t('maxDaysPerApplicationNone')}
-                    defaultValue={pool.maxDaysPerApplication == null ? '' : String(pool.maxDaysPerApplication)}
-                    aria-label={t('maxDaysPerApplication')}
-                    className={`${inputCls} h-7 w-20 text-xs`}
-                  />
-                </label>
-                <Button type="submit" variant="ghost" size="sm">{t('save')}</Button>
-              </form>
-              {sharedNames.length > 0 && (
-                <Badge variant="warning">{t('sharedWithTypes', { names: sharedNames.join(', ') })}</Badge>
-              )}
-            </div>
-            <form action={actions.deleteCombinedLimit}>
-              <input type="hidden" name="id" value={pool.id} />
-              <ConfirmSubmit
-                size="sm"
-                variant="ghost"
-                title={t('dissolveGroupConfirmTitle')}
-                description={t('dissolveGroupConfirmDescription')}
-                confirmLabel={t('dissolveGroup')}
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full min-w-[560px] text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs text-muted-foreground">
+            {/* c4014f5a: sortable header (leave-balance-table pattern). This table is always sorted by
+                leave type, so aria-sort is permanently ascending/descending — never 'none' — and the
+                caret always shows the current direction. */}
+            <th scope="col" aria-sort={sortDir === 'asc' ? 'ascending' : 'descending'} className="px-3 py-2 font-medium">
+              <button
+                type="button"
+                onClick={onToggleSort}
+                aria-label={t('sortBy', { column: t('colLeaveType') })}
+                className="inline-flex items-center font-medium hover:text-foreground"
               >
-                {t('dissolveGroup')}
-              </ConfirmSubmit>
-            </form>
-          </div>
-        </td>
-      </tr>
-      {ents.map((e, i) => (
-        <EntitlementRow
-          key={e.id}
-          ent={e}
-          pool={pool}
-          isFirstOfGroup={i === 0}
-          groupSize={ents.length}
-          schemeId={schemeId}
-          hasPools={hasPools}
-          activeEnt={activeEnt}
-          activePoolId={activePoolId}
-          actions={actions}
-          t={t}
-        />
-      ))}
-    </>
+                {t('colLeaveType')}
+                <span aria-hidden>{sortDir === 'asc' ? ' ↑' : ' ↓'}</span>
+              </button>
+            </th>
+            <th className="px-3 py-2 font-medium">{t('tierUnder', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
+            <th className="px-3 py-2 font-medium">{t('tierMid', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
+            <th className="px-3 py-2 font-medium">{t('tierOver', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
+            <th className="px-3 py-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {ents.length === 0 && (
+            <tr>
+              <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">{t('noEntitlements')}</td>
+            </tr>
+          )}
+          {ents.map((ent) => (
+            <EntitlementRow key={ent.id} ent={ent} actions={actions} t={t} />
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-/** One entitlement row — draggable (grip handle) AND a drop target. Grouped rows band with the pool
- *  colour, carry an Ungroup action, and the first row of a group hosts the shared Total Limit cell. */
+/** One entitlement row: leave type, the three tier figures, Edit + Delete. */
 function EntitlementRow({
   ent,
-  pool,
-  isFirstOfGroup,
-  groupSize,
-  schemeId,
-  hasPools,
-  activeEnt,
-  activePoolId,
   actions,
   t,
 }: {
   ent: Entitlement;
-  pool: CombinedLimit | null;
-  isFirstOfGroup: boolean;
-  groupSize: number;
-  schemeId: string;
-  hasPools: boolean;
-  activeEnt: Entitlement | null;
-  activePoolId: string | null;
   actions: Actions;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const { attributes, listeners, setNodeRef: setDragRef, setActivatorNodeRef, transform, isDragging } = useDraggable({
-    id: ent.id,
-  });
-  const { isOver, setNodeRef: setDropRef } = useDroppable({ id: `row:${ent.id}` });
   const ti = tiersFromBands(ent.serviceBands);
-  // Valid target = not the dragged row itself, and not a sibling of the dragged row's own pool.
-  const validTarget =
-    !!activeEnt && activeEnt.id !== ent.id && (pool ? pool.id !== activePoolId : true);
-  const banded = pool ? 'bg-muted/30' : '';
-  const highlight = validTarget ? (isOver ? 'bg-primary/15' : 'bg-primary/5') : '';
   return (
-    <tr
-      ref={(node) => {
-        setDragRef(node);
-        setDropRef(node);
-      }}
-      style={{ transform: CSS.Translate.toString(transform) }}
-      className={`border-b border-border last:border-0 ${banded} ${highlight} ${
-        isDragging ? 'relative z-10 opacity-60' : ''
-      }`}
-    >
-      <td className="px-3 py-2 font-medium">
-        <span className="flex items-center gap-1.5">
-          <button
-            type="button"
-            ref={setActivatorNodeRef}
-            aria-label={t('dragHandleAria')}
-            className="grid size-6 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-primary/40"
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical className="size-3.5" />
-          </button>
-          {ent.leaveTypeName ?? '—'}
-        </span>
-      </td>
+    <tr className="border-b border-border last:border-0">
+      <td className="px-3 py-2 font-medium">{ent.leaveTypeName ?? '—'}</td>
       <td className="px-3 py-2">{ti.d0 || '0'}</td>
       <td className="px-3 py-2">{ti.d1 || '0'}</td>
       <td className="px-3 py-2">{ti.d2 || '0'}</td>
-      {hasPools &&
-        (pool ? (
-          isFirstOfGroup ? (
-            <td rowSpan={groupSize} className="border-l border-border bg-muted/30 px-3 py-2 align-middle">
-              {/* The shared cap: scheme_leave_combined_limit.total_limit_days, editable in place. */}
-              <form action={actions.updateCombinedLimit} className="flex flex-col items-start gap-1.5">
-                <input type="hidden" name="id" value={pool.id} />
-                <input type="hidden" name="name" value={pool.name} />
-                {/* r82a 1ef1cf95 — carried hidden so saving the yearly total does not clear the group's
-                    per-application cap (the action sets every field it receives). */}
-                <input
-                  type="hidden"
-                  name="maxDaysPerApplication"
-                  value={pool.maxDaysPerApplication == null ? '' : String(pool.maxDaysPerApplication)}
-                />
-                {pool.leaveTypeIds.map((id) => (
-                  <input key={id} type="hidden" name="leaveTypeIds" value={id} />
-                ))}
-                <input
-                  name="totalLimitDays"
-                  type="number"
-                  min={0.5}
-                  step="0.5"
-                  required
-                  defaultValue={String(pool.totalLimitDays)}
-                  aria-label={t('colTotalLimit')}
-                  className={`${inputCls} h-7 w-20 text-xs`}
-                />
-                <Button type="submit" variant="ghost" size="sm">{t('save')}</Button>
-              </form>
-            </td>
-          ) : null
-        ) : (
-          <td className="px-3 py-2 text-muted-foreground">—</td>
-        ))}
       <td className="px-3 py-2 text-right">
         {/* R47 edb0309d: Edit reopens the row in a pre-filled dialog (the R44 dup guard closed the old
             re-add-to-overwrite path); Delete confirms like its R44 sibling delete surfaces. */}
         <div className="inline-flex items-center gap-1">
           <EntitlementEditDialog entitlement={ent} action={actions.upsertEntitlement} t={t} />
-          {pool && (
-            <form action={actions.moveCombinedLimitMember} className="inline">
-              <input type="hidden" name="benefitSchemeId" value={schemeId} />
-              <input type="hidden" name="leaveTypeId" value={ent.leaveTypeId} />
-              <input type="hidden" name="toCombinedLimitId" value="" />
-              <Button type="submit" variant="ghost" size="sm">{t('ungroupRow')}</Button>
-            </form>
-          )}
           <form action={actions.deleteEntitlement} className="inline">
             <input type="hidden" name="id" value={ent.id} />
             <ConfirmSubmit
@@ -1018,147 +613,6 @@ function EntitlementRow({
         </div>
       </td>
     </tr>
-  );
-}
-
-/** The ONE create-a-group dialog, reached from the drag AND from the labelled Create-group button (r82a
- *  1ef1cf95). Name auto-generated from the member leave-type names (approved decision — editable before
- *  save), total limit REQUIRED (a silent default would cap real leave), and — new in 0327 — an OPTIONAL
- *  maximum days per application, blank meaning no cap, which is what every group meant before 0327. Posts
- *  groupSchemeLeaveTypesAction, which detaches the members from any previous pool server-side.
- *
- *  `pick` is the only difference between the two entry points: the drag arrives with its two members
- *  already decided and shows them as fixed badges; the button arrives with none and shows a checklist of
- *  the scheme's leave types. Everything after the member set — the name, both limits, the action — is one
- *  code path, so the two entry points cannot drift apart. */
-function CreateGroupDialog({
-  schemeId,
-  members,
-  pick,
-  candidates,
-  action,
-  onClose,
-  t,
-}: {
-  schemeId: string;
-  /** Fixed members (drag path). Empty when `pick` is true. */
-  members: Entitlement[];
-  /** true ⇒ the admin picks members here (button path); false ⇒ `members` is final (drag path). */
-  pick: boolean;
-  /** Every entitlement row of the scheme — the checklist's options. Ignored when `pick` is false. */
-  candidates: Entitlement[];
-  action: (fd: FormData) => void | Promise<void>;
-  onClose: () => void;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  // Picked member ids (button path). Seeded from `members` so the drag path's set is the same value —
-  // one source of truth for what gets posted, whichever way the dialog was opened.
-  const [picked, setPicked] = useState<string[]>(members.map((m) => m.leaveTypeId));
-  const chosen = pick ? candidates.filter((c) => picked.includes(c.leaveTypeId)) : members;
-  const autoName = chosen
-    .map((m) => m.leaveTypeName ?? '—')
-    .join(' + ')
-    .slice(0, 120);
-  // The name follows the selection until the admin edits it, then stops — otherwise ticking one more type
-  // would silently discard a name they had already typed.
-  const [name, setName] = useState(autoName);
-  const [nameEdited, setNameEdited] = useState(false);
-  const effectiveName = nameEdited ? name : autoName;
-  return (
-    <Dialog.Root
-      open
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-    >
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-lg">
-          <Dialog.Title className="text-base font-semibold">{t('createGroupTitle')}</Dialog.Title>
-          <p className="mt-1 text-xs text-muted-foreground">{t('createGroupHelp')}</p>
-          <form
-            action={(fd) => {
-              onClose();
-              return action(fd);
-            }}
-            className="mt-4 space-y-3"
-          >
-            <input type="hidden" name="benefitSchemeId" value={schemeId} />
-            {chosen.map((m) => (
-              <input key={m.id} type="hidden" name="leaveTypeIds" value={m.leaveTypeId} />
-            ))}
-            {pick ? (
-              <fieldset className="space-y-1">
-                <legend className="text-xs font-medium text-muted-foreground">{t('createGroupPickMembers')}</legend>
-                <div className="max-h-48 space-y-1 overflow-y-auto rounded-md border border-border p-2">
-                  {candidates.map((c) => (
-                    <label key={c.id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={picked.includes(c.leaveTypeId)}
-                        onChange={(e) =>
-                          setPicked((prev) =>
-                            e.target.checked
-                              ? [...prev, c.leaveTypeId]
-                              : prev.filter((id) => id !== c.leaveTypeId),
-                          )
-                        }
-                      />
-                      <span>{c.leaveTypeName ?? '—'}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {chosen.map((m) => (
-                  <Badge key={m.id}>{m.leaveTypeName ?? '—'}</Badge>
-                ))}
-              </div>
-            )}
-            <Field label={t('groupNameLabel')}>
-              <input
-                name="name"
-                required
-                value={effectiveName}
-                onChange={(e) => {
-                  setNameEdited(true);
-                  setName(e.target.value);
-                }}
-                className={inputCls}
-              />
-            </Field>
-            <Field label={t('totalLimitPerYear')}>
-              <input name="totalLimitDays" type="number" min={0.5} step="0.5" required className={`${inputCls} w-28`} />
-            </Field>
-            {/* r82a 1ef1cf95 (0327) — the per-application cap. OPTIONAL, unlike the total: blank means no
-                cap, which is exactly what every group created before 0327 means, so leaving it alone
-                reproduces today's behaviour. The help text says so rather than relying on the empty box. */}
-            <div className="space-y-1">
-              <Field label={t('maxDaysPerApplication')}>
-                <input
-                  name="maxDaysPerApplication"
-                  type="number"
-                  min={0.5}
-                  step="0.5"
-                  className={`${inputCls} w-28`}
-                />
-              </Field>
-              <p className="text-xs text-muted-foreground">{t('maxDaysPerApplicationHelp')}</p>
-            </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <Dialog.Close asChild>
-                <Button type="button" size="sm" variant="outline">{t('cancel')}</Button>
-              </Dialog.Close>
-              <Button type="submit" size="sm" disabled={chosen.length < 2}>{t('createGroupConfirm')}</Button>
-            </div>
-            {chosen.length < 2 && (
-              <p className="text-xs text-muted-foreground">{t('createGroupNeedsTwoTypes')}</p>
-            )}
-          </form>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
   );
 }
 
@@ -1532,8 +986,6 @@ export type LeaveTypeSchemeEntitlement = Entitlement & {
   gradeGroupName: string | null;
   employmentType: string;
   /** Combined-limit pool this leave type belongs to within that scheme; null = not pooled. Read-only here. */
-  poolName: string | null;
-  poolTotalLimitDays: number | null;
 };
 
 /** One tenure COLUMN of the matrix — a service-band bracket read off the rows that are actually stored. */
@@ -1666,11 +1118,8 @@ function SchemeEntitlementMatrixRow({
         {schemeNameLine != null && (
           <span className="text-xs font-normal text-muted-foreground">{schemeNameLine}</span>
         )}
-        {ent.poolName != null && ent.poolTotalLimitDays != null && (
-          <span className="text-xs font-normal text-muted-foreground">
-            {t('perTypeSharedPool', { name: ent.poolName, days: ent.poolTotalLimitDays })}
-          </span>
-        )}
+        {/* r88 1ef1cf95: the "Shared limit <name>: <days> days/year" line is gone from this row. A shared
+            group is no longer a property of a scheme entitlement, so a per-scheme row cannot report one. */}
         {note}
       </span>
     </>
@@ -1967,8 +1416,6 @@ export function ServiceEntitlementTable({
           companyName: null,
           gradeGroupName: scheme.gradeGroupName,
           employmentType: scheme.employmentType,
-          poolName: null,
-          poolTotalLimitDays: null,
         };
         // A scheme on its own brackets is edited through the dialog rather than flattened into these
         // columns — unchanged.

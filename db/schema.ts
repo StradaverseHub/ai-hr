@@ -1502,55 +1502,81 @@ export const schemeLeaveEntitlement = pgTable(
   ],
 );
 
-// scheme_leave_combined_limit (R44 4c48fd1f) = a shared per-cycle cap pooling SEVERAL leave types under one
-// total (e.g. "Compassionate + Marriage + Paternity combined = 5 days a year"). Config layer: a named pool
-// with a total day cap, its member leave types held in scheme_leave_combined_limit_member. Enforced at apply
-// / approval time by summing per-cycle usage across ALL member types. ON DELETE CASCADE from the scheme.
-export const schemeLeaveCombinedLimit = pgTable(
-  'scheme_leave_combined_limit',
+// leave_shared_group (r88, feedback 1ef1cf95 — migration 0339) = a SHARED LEAVE GROUP: several leave types
+// drawing on ONE pooled allowance (e.g. "Special Leave: 10 days a year shared, max 3 days per application").
+//
+// THIS REPLACES scheme_leave_combined_limit / _member (0220 / R44 4c48fd1f, extended by r82a 0327). Those
+// tables hung the group off a BENEFIT SCHEME: the same shared rule had to be recreated inside every scheme
+// it applied to, and the group was described as belonging to a scheme rather than to the leave types that
+// share it. The reporter rejected improving that shape and asked for the group to be defined once, at leave
+// TYPE level. Dropping benefit_scheme_id removes a per-employee dimension with it: two employees on
+// different schemes can no longer have different shared limits for the same leave types. That is intended —
+// one group, one rule, tenant-wide — and it is stated here because it is not recoverable from the columns.
+//
+// New tables rather than a nullable benefit_scheme_id: the old NAMES say "scheme", and a column that is
+// always null is a worse lie than a rename. 0339 does not carry the old rows forward — the reset was part
+// of the request ("reset the current configuration so I can recreate and regroup"), and the migration
+// records what it removed in leave_shared_group_reset_archive first.
+//
+// The group caps what may be TAKEN; it never says how many days are GRANTED. Entitlement comes from the
+// benefit scheme's service bands or the leave policy, per type, exactly as before.
+export const leaveSharedGroup = pgTable(
+  'leave_shared_group',
   {
     id: id(),
     tenantId: tenantId(),
-    benefitSchemeId: uuid('benefit_scheme_id')
-      .notNull()
-      .references(() => benefitScheme.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    // The shared annual allowance: the members' usage is summed across the leave year against this.
     totalLimitDays: numeric('total_limit_days', { precision: 6, scale: 2 }).notNull(),
-    // r82a 1ef1cf95 (migration 0327): the group's PER-APPLICATION day cap — "no single application may
-    // exceed N days, whichever member type is chosen". A SECOND, independent rule beside the shared total:
-    // the total caps the year, this caps one application. NULL = no cap, which is what every group meant
-    // before 0327, so existing groups are unaffected until an admin sets a value. Measured in CALENDAR days
-    // spanned by the application; the units live in applicationSpanDays() (core/leave.ts), not here.
+    // The group's PER-APPLICATION day cap — "no single application may exceed N days, whichever member type
+    // is chosen". A SECOND, independent rule beside the shared total: the total caps the year, this caps one
+    // application. NULL = no cap. Measured in CALENDAR days spanned by the application; the units live in
+    // applicationSpanDays() (core/leave.ts), not here.
     maxDaysPerApplication: numeric('max_days_per_application', { precision: 6, scale: 2 }),
     createdAt: createdAt(),
   },
-  (t) => [index('scheme_leave_combined_limit_scheme_idx').on(t.benefitSchemeId)],
+  (t) => [uniqueIndex('leave_shared_group_name_uq').on(t.tenantId, t.name)],
 );
 
-// scheme_leave_combined_limit_member = one leave type belonging to a combined-limit pool. benefit_scheme_id is
-// denormalised so a UNIQUE (tenant, scheme, leave_type) can enforce "a leave type joins at most one pool per
-// scheme". ON DELETE CASCADE from the pool.
-export const schemeLeaveCombinedLimitMember = pgTable(
-  'scheme_leave_combined_limit_member',
+// leave_shared_group_member = one leave type belonging to a shared group. The unique index is on
+// (tenant, leave_type) with NO scheme dimension: A LEAVE TYPE BELONGS TO AT MOST ONE GROUP, tenant-wide.
+// That is a real constraint, not a UI nicety — the deduction path has no defined behaviour for a type in two
+// pools, so it is enforced in the database and the clash is surfaced BY NAME in the config layer.
+export const leaveSharedGroupMember = pgTable(
+  'leave_shared_group_member',
   {
     id: id(),
     tenantId: tenantId(),
-    combinedLimitId: uuid('combined_limit_id')
+    groupId: uuid('group_id')
       .notNull()
-      .references(() => schemeLeaveCombinedLimit.id, { onDelete: 'cascade' }),
-    benefitSchemeId: uuid('benefit_scheme_id')
-      .notNull()
-      .references(() => benefitScheme.id, { onDelete: 'cascade' }),
+      .references(() => leaveSharedGroup.id, { onDelete: 'cascade' }),
     leaveTypeId: uuid('leave_type_id')
       .notNull()
       .references(() => leaveType.id),
     createdAt: createdAt(),
   },
   (t) => [
-    uniqueIndex('scheme_leave_combined_limit_member_uq').on(t.tenantId, t.benefitSchemeId, t.leaveTypeId),
-    index('scheme_leave_combined_limit_member_pool_idx').on(t.combinedLimitId),
+    uniqueIndex('leave_shared_group_member_uq').on(t.tenantId, t.leaveTypeId),
+    index('leave_shared_group_member_group_idx').on(t.groupId),
   ],
 );
+
+// leave_shared_group_reset_archive (r88, migration 0339) = a RECORD, not a mechanism. The reset the reporter
+// asked for is irreversible, and the plan promises them the list of what was configured before it went. This
+// table holds that list, denormalised to text (owning scheme name, group name, both limits, member leave-type
+// names) so it stays readable after the tables it describes are gone. Nothing in the leave engine reads it;
+// it is never joined to; it is written exactly once, by 0339.
+export const leaveSharedGroupResetArchive = pgTable('leave_shared_group_reset_archive', {
+  id: id(),
+  tenantId: tenantId(),
+  capturedAt: createdAt(),
+  benefitSchemeName: text('benefit_scheme_name'),
+  groupName: text('group_name').notNull(),
+  totalLimitDays: text('total_limit_days'),
+  maxDaysPerApplication: text('max_days_per_application'),
+  /** Comma-separated member leave-type names, in name order — what the reporter needs to recreate the group. */
+  memberLeaveTypes: text('member_leave_types').notNull(),
+});
 
 // leave_ledger = append-only entries; accrual (+), debit (−) on approval, adjustment (±).
 export const leaveLedger = pgTable(

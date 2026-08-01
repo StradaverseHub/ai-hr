@@ -140,8 +140,10 @@ export const leavePack: ModulePack = {
     { table: 'grade_group_member', note: 'job-grade ↔ grade-group membership' },
     { table: 'benefit_scheme', note: 'friendlier entitlement scheme over leave_policy (per employment-type)' },
     { table: 'scheme_leave_entitlement', note: 'per-scheme per-leave-type service-band entitlement table' },
-    { table: 'scheme_leave_combined_limit', note: 'combined caps spanning several leave types in a scheme' },
-    { table: 'scheme_leave_combined_limit_member', note: 'leave types belonging to a combined limit' },
+    // r88 1ef1cf95 — a shared group is tenant-level now, not per benefit scheme, so it sits beside the
+    // scheme tables rather than under them. Same audited surface, honest names (migration 0339).
+    { table: 'leave_shared_group', note: 'a shared allowance pooled across several leave types' },
+    { table: 'leave_shared_group_member', note: 'leave types belonging to a shared group' },
     { table: 'leave_ledger', note: 'the balance ledger: accrual / debit / adjustment / in-lieu rows' },
     { table: 'leave_request', note: 'the request lifecycle row: submit → multi-step approve → ledger debit' },
     { table: 'leave_request_attachment', note: 'supporting documents behind a leave request' },

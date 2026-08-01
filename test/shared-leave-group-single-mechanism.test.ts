@@ -1,29 +1,30 @@
 /**
- * ONE mechanism for sharing across leave types (r77, feedback 1ef1cf95 — HELD).
+ * ONE mechanism for sharing across leave types (r77, feedback 1ef1cf95 — REBUILT AT LEAVE-TYPE LEVEL in r88).
  *
- * 1ef1cf95 asked for a "Shared Leave Group" on the Leave Type screen: several leave types under one
- * configuration. Investigating it found the sharing mechanism ALREADY SHIPPED, twice reworked and
- * already surfaced on that very screen:
+ * WHAT THIS FILE HAS ALWAYS PROTECTED, and still does: there is exactly ONE way to make several leave types
+ * share an allowance, and it caps what may be TAKEN — never what is GRANTED. Two mechanisms that both decide
+ * leave across a set of types will disagree, and the disagreement is about how many days somebody gets.
  *
- *   - `scheme_leave_combined_limit` + `_member` (migration 0220, feedback 4c48fd1f) — a NAMED group of
- *     leave types with one shared day total, per benefit scheme. Config CRUD in core/benefit-scheme.ts,
- *     enforcement in core/leave.ts (`enforceCombinedLeaveLimit`, called on submit and on approval).
- *   - d6f88c2f turned creation into drag-to-group with a name + shared-total confirm dialog.
- *   - 6c775d68 moved that whole area INSIDE each leave type's Entitlement step, scoped to the type, with
- *     a "shared with <other types>" badge on groups spanning other types and a per-row "Shared limit
- *     <name>: <days> days/year" line.
+ * WHAT CHANGED IN r88, deliberately, which is what r77 asked of whoever implemented this. r77 held the item
+ * and wrote: "It does not forbid building the group — it forbids building it SILENTLY. Whoever implements it
+ * must come here, read this, and change these assertions deliberately." This is that change, made in the
+ * open:
  *
- * The part of 1ef1cf95 that is genuinely unbuilt — a group that OWNS entitlement configuration, so its
- * member types stop having their own — was held: it needs new tables and it would put a SECOND thing in
- * front of `entitledDays`, on a different axis (tenant-wide) from the existing per-scheme one. Two
- * mechanisms that both decide leave across a set of types will disagree, and the disagreement is about
- * how many days somebody gets.
+ *   - The mechanism WAS `scheme_leave_combined_limit` + `_member` (migration 0220, feedback 4c48fd1f), a
+ *     named group hung off a BENEFIT SCHEME. r82a added a per-application cap to it; d6f88c2f made creation
+ *     a drag; 6c775d68 moved that area inside each leave type's Entitlement step.
+ *   - The reporter rejected that shape outright — "I don't want to improve the existing Benefit Scheme
+ *     selector" — and asked for the group to be defined once, at LEAVE TYPE level. r88 replaced the pair
+ *     with `leave_shared_group` + `leave_shared_group_member` (migration 0339): tenant-level, leave-type
+ *     members, no scheme dimension. Config CRUD moved to core/leave-shared-group.ts; enforcement stayed
+ *     exactly where it was, in core/leave.ts, at BOTH apply and approval.
  *
- * This is the ratchet for that decision. It does not forbid building the group — it forbids building it
- * SILENTLY. Whoever implements it must come here, read this, and change these assertions deliberately.
+ * The count did not go up. It is still ONE table pair, ONE config module, ONE enforcement helper — that is
+ * the invariant, and re-pointing the names is not the same act as relaxing it. The assertions below are
+ * therefore the SAME assertions against the SAME properties, aimed at the tables that now hold them.
  *
  * Static source guard (repo convention for this area — see benefit-scheme-scoped-step.test.ts). Behaviour
- * of the existing mechanism is covered by test/combined-leave-limit.test.ts; nothing here re-tests it.
+ * of the mechanism is covered by test/combined-leave-limit.test.ts; nothing here re-tests it.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -36,34 +37,64 @@ const read = (p: string) => readFileSync(resolve(here, p), 'utf8');
 
 const schemaSrc = read('../db/schema.ts');
 const computeSrc = read('../core/leave-compute.ts');
-const schemeConfigSrc = read('../components/benefit-scheme-config.tsx');
+const groupConfigSrc = read('../components/leave-shared-group-config.tsx');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-/** The two tables that ARE the shared-leave-group mechanism. */
-const SHARING_TABLES = ['scheme_leave_combined_limit', 'scheme_leave_combined_limit_member'] as const;
+/** The two tables that ARE the shared-leave-group mechanism (r88: renamed from scheme_leave_combined_limit
+ *  / _member when the benefit-scheme dimension was dropped — same pair, honest names). */
+const SHARING_TABLES = ['leave_shared_group', 'leave_shared_group_member'] as const;
 
 describe('1ef1cf95 · exactly one table pair groups leave types for sharing', () => {
   it('db/schema.ts declares no second leave-type grouping mechanism', () => {
     // Every pgTable name in the schema whose NAME claims to group/pool leave types. `grade_group*` and
     // `holiday_group*` group grades and holidays, not leave types, so they are outside this net by name.
+    // `leave_shared_group_reset_archive` is excluded BY NAME below, not by loosening the pattern: it is a
+    // dead record of what 0339 removed, never joined to and never read by the engine, so counting it as a
+    // rival mechanism would be wrong — but a table that could ever be MISTAKEN for one must be named here
+    // rather than quietly slipping through a widened regex.
     const names = [...schemaSrc.matchAll(/pgTable\(\s*'([a-z0-9_]+)'/g)].map((m) => m[1]);
-    const sharing = names.filter((n) => /combined_limit|leave_group|leave_type_group|shared_leave/.test(n));
+    const sharing = names
+      .filter((n) => /combined_limit|leave_group|leave_type_group|shared_group|shared_leave/.test(n))
+      .filter((n) => n !== 'leave_shared_group_reset_archive');
     expect(sharing.sort()).toEqual([...SHARING_TABLES].sort());
   });
 
-  it('the member table pins a leave type to at most one group per scheme', () => {
-    // The uniqueness that makes "which group owns this type" answerable at all. Losing it is how two
-    // groups start disagreeing about the same type.
+  it('the archive is a record, not a mechanism', () => {
+    // The one thing that would make the exclusion above a loophole: the archive growing enforceable columns
+    // or being read by the engine. It is text-only and write-once (0339).
+    const coreFiles = readdirSync(resolve(here, '../core')).filter((f) => f.endsWith('.ts'));
+    const readers = coreFiles.filter((f) => read(`../core/${f}`).includes('leaveSharedGroupResetArchive'));
+    expect(readers).toEqual([]);
+  });
+
+  it('the member table pins a leave type to at most ONE group, tenant-wide', () => {
+    // The uniqueness that makes "which group owns this type" answerable at all. Losing it is how two groups
+    // start disagreeing about the same type. r88 TIGHTENED this: the key was (tenant, scheme, leave_type),
+    // so one type could sit in a different group per scheme; it is now (tenant, leave_type) — one type, one
+    // group, everywhere. Re-pointing must never quietly restore the scheme dimension.
     expect(schemaSrc).toContain(
-      "uniqueIndex('scheme_leave_combined_limit_member_uq').on(t.tenantId, t.benefitSchemeId, t.leaveTypeId)",
+      "uniqueIndex('leave_shared_group_member_uq').on(t.tenantId, t.leaveTypeId)",
+    );
+    const memberBlock = schemaSrc.slice(schemaSrc.indexOf('export const leaveSharedGroupMember = pgTable'));
+    expect(memberBlock.slice(0, memberBlock.indexOf('export const leaveLedger'))).not.toMatch(
+      /benefit_scheme_id|benefitSchemeId/,
     );
   });
 
-  it('only the leave engine and its benefit-scheme config module touch those tables', () => {
+  it('only the leave engine and its own config module touch those tables', () => {
+    // Was ['benefit-scheme.ts', 'leave.ts'] — the config half moved OUT of benefit-scheme.ts into a module
+    // of its own when the group stopped being a property of a scheme. Still exactly two files: one that
+    // configures, one that enforces.
     const coreFiles = readdirSync(resolve(here, '../core')).filter((f) => f.endsWith('.ts'));
-    const touching = coreFiles.filter((f) => read(`../core/${f}`).includes('schemeLeaveCombinedLimit'));
-    expect(touching.sort()).toEqual(['benefit-scheme.ts', 'leave.ts']);
+    const touching = coreFiles.filter((f) => read(`../core/${f}`).includes('leaveSharedGroupMember'));
+    expect(touching.sort()).toEqual(['leave-shared-group.ts', 'leave.ts']);
+  });
+
+  it('the retired scheme-level pair is gone from the schema, not merely unused', () => {
+    // A leftover declaration is a second mechanism waiting to be re-wired. 0339 drops the tables; the
+    // schema must not still describe them.
+    expect(schemaSrc).not.toMatch(/pgTable\(\s*'scheme_leave_combined_limit/);
   });
 });
 

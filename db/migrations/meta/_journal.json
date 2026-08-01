@@ -2003,6 +2003,13 @@
       "when": 1781862438000,
       "tag": "0338_termination_movement",
       "breakpoints": true
+    },
+    {
+      "idx": 339,
+      "version": "7",
+      "when": 1781862439000,
+      "tag": "0339_leave_shared_group",
+      "breakpoints": true
     }
   ]
 }
