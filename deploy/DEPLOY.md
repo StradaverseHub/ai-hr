@@ -351,6 +351,45 @@ The parity reconciliation above is the other half of this window, and unlike the
 **yours to run**, for the reason given there: only you can tell a tenant that predates the row from one
 whose module was deliberately left unticked.
 
+### ONE-SHOT: convert the approval rules the Assignment Template screen cannot own (241817ef)
+
+Run this **before** the Approval Workflows and Company base approval chain sections are removed from the
+Approval tab, not after. Those two sections are the only editor for rules whose `leave_type_id` is null
+("applies to every leave type", which the assign form cannot express) and for rules that carry their own
+chain instead of a template (the assignments table filters `template_id is not null`). Removing them
+first does not break routing — resolution falls through to the tenant-default template and then the
+built-in `direct_manager → hr_admin` chain — it re-routes requests to a different approver with nothing
+on screen saying so.
+
+```bash
+cd /opt/ai-hr
+/opt/node20/bin/node --env-file=.env.production --import tsx \
+  scripts/convert-approval-rules.ts            # dry run — writes nothing
+```
+
+The dry run is a **measurement, not a forecast**: it performs the identical writes and the identical
+proof inside a transaction and then rolls back on purpose. Read the printed list — it names every
+company and leave type that changes, and the approved plan promises the reporter that list before
+anything is removed. Then:
+
+```bash
+/opt/node20/bin/node --env-file=.env.production --import tsx \
+  scripts/convert-approval-rules.ts --apply
+```
+
+Every routing subject × leave type × day-range probe is resolved before and after the rewrite in the
+same transaction; the first difference aborts and rolls back with the affected employment, leave type
+and both chains printed. A tenant that fails that way has rules needing a human decision — a rewrite
+that would move an approver is exactly what this step exists to refuse. Safe to re-run: a converted row
+is no longer a candidate.
+
+One consequence the proof cannot cover, printed as a `NOTE` line per company: "applies to every leave
+type" also meant every leave type created **later**. After the conversion those companies have explicit
+per-type assignments, so a leave type added afterwards needs an assignment of its own instead of
+inheriting the company's base chain. That is inherent in the Assignment Template model — its assign form
+requires at least one leave type — and it is the price of having one place to configure approvals. Tell
+the customer before you run `--apply`, not after.
+
 ### Switching a platform-scoped setting on (until slice 7)
 
 Four keys in `packs/catalog.ts` are `scope: 'platform'`, which migration 0313 enforces in Postgres: the
