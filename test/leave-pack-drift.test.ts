@@ -38,6 +38,13 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const BOUNDARIES = [
   'core/leave',
   'core/leave-approval-policy',
+  // r90 (241817ef) — the approval-rule conversion. Added to BOTH lists deliberately, and the pairing is
+  // the point: as a BOUNDARY it becomes guarded like its siblings, so a future file importing it directly
+  // is caught; in ALWAYS_ALLOWED it may import them back, because leave implementation files import each
+  // other freely. Adding it to ALWAYS_ALLOWED alone would have silenced the failure while leaving the new
+  // module itself unguarded — an unguarded leave-pack module is precisely the drift ADR-0080 D9 exists to
+  // stop. This is NOT an entry in pack-drift-allowlist.json, which is audited debt and only ever shrinks.
+  'core/leave-approval-consolidation',
   'core/leave-approval-template',
   'core/leave-compute',
   'core/leave-encashment',
@@ -53,6 +60,7 @@ const ALWAYS_ALLOWED = [
   'packs/leave/', // the pack itself: wiring (index.ts) + service facade
   'core/leave.ts', // implementation files import each other freely
   'core/leave-approval-policy.ts',
+  'core/leave-approval-consolidation.ts', // r90 241817ef — see the BOUNDARIES note above
   'core/leave-approval-template.ts',
   'core/leave-compute.ts',
   'core/leave-encashment.ts',

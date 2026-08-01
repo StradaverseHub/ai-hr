@@ -17,11 +17,13 @@
 import { eq } from 'drizzle-orm';
 import { createDb } from '../db/client';
 import { company, leaveType, tenant } from '../db/schema';
+// Through the pack FACADE, not the implementation module directly (ADR-0080 D9). Leave services have one
+// front door and an operator script is as much a consumer as a screen is.
 import {
   ApprovalRoutingChangedError,
   convertLegacyApprovalRules,
   type ConversionReport,
-} from '../core/leave-approval-consolidation';
+} from '../packs/leave/service';
 
 async function main() {
   const apply = process.argv.includes('--apply');
