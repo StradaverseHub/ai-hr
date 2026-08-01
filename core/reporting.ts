@@ -59,7 +59,41 @@ export async function listReports(ctx: SessionContext, companyId: string) {
     label: r.label,
     cadence: r.cadence,
     periodKind: r.periodKind,
+    // 956cec85 — where this form is filed and by when, as the pack declares it. Absent for reports that
+    // are not themselves a submission, which is how the Statutory Forms screen tells the two apart.
+    submission: r.submission ?? null,
   }));
+}
+
+/**
+ * When a monthly statutory submission for `periodKey` (YYYY-MM) is due, and where that leaves you today.
+ *
+ * Pure — no DB, no pack lookup — so the boundary cases are unit-testable: the deadline falling on the
+ * day itself (due, not overdue), and a period whose deadline is not established at all.
+ *
+ * `today` defaults to the TENANT's date, not the server's: a deadline judged in UTC flips a day early
+ * for the eight hours between 00:00 and 08:00 MYT, which is the bug bb4f2265 spent a round removing.
+ */
+export type SubmissionDue = {
+  dueBy: string | null;
+  status: 'overdue' | 'due_soon' | 'upcoming' | 'unknown';
+};
+
+export function submissionDueFor(
+  periodKey: string,
+  dueDayOfNextMonth: number | null,
+  today: string = todayInKualaLumpur(),
+): SubmissionDue {
+  if (dueDayOfNextMonth == null || !/^\d{4}-\d{2}$/.test(periodKey)) return { dueBy: null, status: 'unknown' };
+  const year = Number(periodKey.slice(0, 4));
+  const month = Number(periodKey.slice(5, 7)); // 1-12; the deadline is in the month AFTER this one
+  const dueYear = month === 12 ? year + 1 : year;
+  const dueMonth = month === 12 ? 1 : month + 1;
+  const dueBy = `${dueYear}-${String(dueMonth).padStart(2, '0')}-${String(dueDayOfNextMonth).padStart(2, '0')}`;
+  // Strictly AFTER the due date is overdue — filing ON the 15th is on time, which is the whole point of
+  // the deadline being a date rather than an instant.
+  const status = today > dueBy ? 'overdue' : today >= isoAddDays(dueBy, -7) ? 'due_soon' : 'upcoming';
+  return { dueBy, status };
 }
 
 async function resolveDef(ctx: SessionContext, companyId: string, reportId: string): Promise<ReportDef> {
