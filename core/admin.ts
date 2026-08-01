@@ -7,6 +7,8 @@ import { and, desc, eq, getTableName, inArray, isNull, or, sql, type AnyColumn }
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+// ADR-0077 slice 5 — the per-company install hook (see createCompany).
+import { companyInstallersFor } from './module-activation';
 import { CrossCompanyError } from './org';
 import { isEssViewComponentKey, type EssViewConfig } from './ess-view';
 import { normalizeLeaveFormulaConfig, type LeaveFormulaConfig } from './leave-formula';
@@ -69,6 +71,7 @@ import {
   person,
   position,
   roleAssignment,
+  tenantModule,
 } from '../db/schema';
 // Organization Module — Automatic Payroll Cycle Assignment (361e3b15): the admin Add-company path now seeds
 // the standard cycle catalog (the seed the account-setup / provisioning paths already run) so a company is
@@ -326,13 +329,43 @@ export async function createCompany(
     // transaction (tx-injection, the provisionTenant/seedCompanyCatalogs precedent) so a company added via the
     // admin form is payroll-ready immediately, exactly like the account-setup / provisioning paths already are.
     await seedPayrollCycleCatalog(ctx, row.id, tx);
+    // ADR-0077 slice 5 — THE PER-COMPANY INSTALL HOOK. Every module the tenant already has active gets
+    // its per-company defaults for this new company, in THIS transaction.
+    //
+    // Without it, company #2 is born missing the defaults company #1 received when the module was
+    // activated — a TOIL module bought last month simply has no policy row here, so its config screen is
+    // empty and nothing accrues. That failure is invisible at creation time and surfaces weeks later as
+    // "TOIL doesn't work for the new company", with nothing connecting it to the purchase.
+    //
+    // Tenant-WIDE grants only (`company_id IS NULL`): a grant already scoped to one company is, by
+    // definition, not about this one. The tenant-level pass is NOT run here — `tenant_setting` was
+    // seeded once when the module was activated and is not per company.
+    const activeModules = await tx
+      .select({ code: tenantModule.moduleCode })
+      .from(tenantModule)
+      .where(
+        and(
+          eq(tenantModule.tenantId, ctx.tenantId),
+          isNull(tenantModule.companyId),
+          inArray(tenantModule.status, ['active', 'trial']),
+        ),
+      );
+    const installed: string[] = [];
+    for (const m of activeModules) {
+      for (const install of companyInstallersFor(m.code)) {
+        const outcome = await install({ tx, tenantId: ctx.tenantId, companyId: row.id });
+        if (outcome.seeded > 0) installed.push(m.code);
+      }
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'company',
       aggregateId: row.id,
       eventType: 'company.created',
       actor: actorOf(ctx),
-      payload: { legalName: p.legalName, country: p.country || 'MY', defaultPayrollCycle },
+      // `modulesInstalled` recorded on the event so "why does the new company have a TOIL policy?" is
+      // answerable from the audit log rather than by reading this function.
+      payload: { legalName: p.legalName, country: p.country || 'MY', defaultPayrollCycle, modulesInstalled: installed },
     });
     return row;
   });

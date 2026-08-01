@@ -73,7 +73,16 @@ export async function assertActivatable(tx: Tx, req: Request): Promise<void> {
   if (req.action === 'activate') {
     const deps = mod.dependsOn ?? [];
     if (deps.length > 0) {
-      const active = await tx
+      // A CORE dependency is ALWAYS satisfied and has no row to find. 0313's trigger forbids
+      // `tenant_module` rows for core codes, and isModuleEnabled answers true for them straight from
+      // the pack catalog without touching the database — so checking rows alone refuses every module
+      // that depends on a core one. The real catalog's `toil` depends on `leave`, which is core, so
+      // that shape is not hypothetical: it made TOIL permanently unactivatable.
+      const core = await tx
+        .select({ code: module_.code })
+        .from(module_)
+        .where(and(inArray(module_.code, deps), eq(module_.isCore, true)));
+      const granted = await tx
         .select({ code: tenantModule.moduleCode })
         .from(tenantModule)
         .where(
@@ -83,7 +92,7 @@ export async function assertActivatable(tx: Tx, req: Request): Promise<void> {
             inArray(tenantModule.status, ['active', 'trial']),
           ),
         );
-      const have = new Set(active.map((a) => a.code));
+      const have = new Set([...core.map((c) => c.code), ...granted.map((a) => a.code)]);
       const missing = deps.filter((d) => !have.has(d));
       if (missing.length > 0) {
         throw new ModuleChangeRefused('depends_on', `missing prerequisite module(s): ${missing.join(', ')}`);
@@ -164,8 +173,14 @@ export async function applyModuleChange(tx: Tx, req: Request): Promise<Activatio
     ? [{ id: req.companyId }]
     : await tx.select({ id: company.id }).from(company).where(eq(company.tenantId, req.tenantId));
 
+  const { tenant: tenantLevel, perCompany } = activatorsFor(req.moduleCode);
   const outcomes: ActivationOutcome[] = [];
-  for (const activator of activatorsFor(req.moduleCode)) {
+  // Tenant-level ONCE. `tenant_setting` is keyed by (tenant, key), so running this per company would
+  // repeat one insert and report the repeats as skips — a false "already present" in the audit event.
+  for (const activator of tenantLevel) {
+    outcomes.push(await activator({ tx, tenantId: req.tenantId, companyId: null }));
+  }
+  for (const activator of perCompany) {
     for (const target of targets) {
       outcomes.push(await activator({ tx, tenantId: req.tenantId, companyId: target.id }));
     }
