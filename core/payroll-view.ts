@@ -36,6 +36,10 @@ import { employmentStatusSql } from './employment-status-sql';
 // (core/payroll is a pack boundary and core/payroll-view.ts is ALWAYS_ALLOWED — implementation files
 // import each other freely under ADR-0080 D9. No cycle: core/payroll does not import this module.)
 import { resolveBatchScopeFilter, type BatchScope } from './payroll';
+// 97a9b0ab — the PURE re-run diff (no DB, no framework). Kept out of this file so the cause rules
+// are unit-testable without a database, and so the honesty constraint on the ruleset-version cause
+// lives beside the rules it constrains.
+import { diffPayslipVersions, type PayslipSnapshot, type RecomputeDiff } from './payslip-recompute';
 import {
   appUser,
   assignment,
@@ -48,6 +52,7 @@ import {
   jobGrade,
   payComponent,
   payrollBatch,
+  payrollEmployeeResultHistory,
   payrollIndividualTxn,
   payrollRunTypeEnum,
   payrollTxnKindEnum,
@@ -1080,3 +1085,138 @@ const zakatFilterPayload = (p: ZakatTxnFilter) => ({
   cycle: p.cycle ?? null,
   status: p.status ?? null,
 });
+
+/* ─────────────────── Re-run disclosure (feedback 97a9b0ab) ─────────────────── */
+
+/**
+ * One recomputation of one payslip, diffed against the computation it replaced, with the cause(s)
+ * named. READ-ONLY (no event — CLAUDE.md substrate rule).
+ *
+ * NO DDL. Everything here already existed and was simply never read back:
+ *   • `payroll_employee_result_history` — core/payroll.ts writes the full before/after payslip
+ *     (grossPay/netPay/totalDeductions/employerCost/statutory/version) on every selective reprocess,
+ *     and nothing in the app read the table.
+ *   • `payslip.statutory->>'version'` — the statutory ruleset version, stamped on every slip since
+ *     2026.0 and never surfaced.
+ *
+ * CAUSE (b) DERIVATION. "An earlier month was revised after this slip was last computed" is decided
+ * on TIME, not on version numbers: for each event we take the window (T_prev, T_now], where T_prev is
+ * the previous recomputation of the SAME employee in this batch, or — for the first recomputation —
+ * the instant this batch was processed. Any recomputation of an earlier-month batch for the same
+ * employment and tax year landing in that window moved the cumulative accumulators this slip replays.
+ */
+export type RecomputeDisclosureRow = {
+  id: string;
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  action: string;
+  reason: string | null;
+  at: Date;
+  diff: RecomputeDiff;
+  /** Earlier-month pay periods recomputed inside this event's window (cause (b) evidence, deduped). */
+  priorMonths: string[];
+};
+
+export function listRecomputeDisclosure(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<RecomputeDisclosureRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ id: payrollBatch.id, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) return [];
+
+    const events = await tx
+      .select({
+        id: payrollEmployeeResultHistory.id,
+        employmentId: payrollEmployeeResultHistory.employmentId,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        action: payrollEmployeeResultHistory.action,
+        reason: payrollEmployeeResultHistory.reason,
+        at: payrollEmployeeResultHistory.createdAt,
+        before: payrollEmployeeResultHistory.before,
+        after: payrollEmployeeResultHistory.after,
+      })
+      .from(payrollEmployeeResultHistory)
+      .innerJoin(employment, eq(employment.id, payrollEmployeeResultHistory.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(payrollEmployeeResultHistory.batchId, p.batchId))
+      .orderBy(asc(payrollEmployeeResultHistory.employmentId), asc(payrollEmployeeResultHistory.createdAt));
+    if (events.length === 0) return [];
+
+    // The instant this batch was processed — T_prev for an employee's FIRST recomputation. Same
+    // derivation listUnattachedTxnSummary uses; NULL (no readable event) leaves the window open at the
+    // bottom, which can only ADD prior-month evidence, never invent a cause where none was recorded.
+    const [processed] = await tx
+      .select({ at: sql<Date | null>`max(${domainEvent.occurredAt})` })
+      .from(domainEvent)
+      .where(
+        and(
+          eq(domainEvent.aggregateType, 'payroll-batch'),
+          eq(domainEvent.aggregateId, p.batchId),
+          eq(domainEvent.eventType, 'payroll-batch.processed'),
+        ),
+      );
+    const processedAt = processed?.at ? new Date(processed.at) : null;
+
+    // Earlier-month recomputations for these employees, same company, SAME TAX YEAR (the PCB
+    // accumulators reset each year, so a December revision cannot move the following January).
+    const employmentIds = [...new Set(events.map((e) => e.employmentId))];
+    const priorBatch = alias(payrollBatch, 'prior_batch');
+    const priorEvents = await tx
+      .select({
+        employmentId: payrollEmployeeResultHistory.employmentId,
+        payPeriod: priorBatch.payPeriod,
+        at: payrollEmployeeResultHistory.createdAt,
+      })
+      .from(payrollEmployeeResultHistory)
+      .innerJoin(priorBatch, eq(priorBatch.id, payrollEmployeeResultHistory.batchId))
+      .where(
+        and(
+          eq(priorBatch.companyId, batch.companyId),
+          lt(priorBatch.payPeriod, batch.payPeriod),
+          like(priorBatch.payPeriod, `${batch.payPeriod.slice(0, 4)}-%`),
+          inArray(payrollEmployeeResultHistory.employmentId, employmentIds),
+        ),
+      );
+    const priorByEmp = new Map<string, { payPeriod: string; at: Date }[]>();
+    for (const r of priorEvents) {
+      const list = priorByEmp.get(r.employmentId) ?? [];
+      list.push({ payPeriod: r.payPeriod, at: r.at });
+      priorByEmp.set(r.employmentId, list);
+    }
+
+    const lastSeenByEmp = new Map<string, Date>();
+    return events.map((e) => {
+      const tPrev = lastSeenByEmp.get(e.employmentId) ?? processedAt;
+      lastSeenByEmp.set(e.employmentId, e.at);
+      const priorMonths = [
+        ...new Set(
+          (priorByEmp.get(e.employmentId) ?? [])
+            .filter((r) => r.at <= e.at && (tPrev == null || r.at > tPrev))
+            .map((r) => r.payPeriod),
+        ),
+      ].sort();
+      return {
+        id: e.id,
+        employmentId: e.employmentId,
+        employeeName: e.employeeName,
+        employeeCode: e.employeeCode,
+        action: e.action,
+        reason: e.reason,
+        at: e.at,
+        diff: diffPayslipVersions(
+          e.before as PayslipSnapshot | null,
+          e.after as PayslipSnapshot | null,
+          { priorMonthsRecomputed: priorMonths.length > 0 },
+        ),
+        priorMonths,
+      };
+    });
+  });
+}
