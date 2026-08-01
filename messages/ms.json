@@ -1575,6 +1575,9 @@
       "insufficientBalance": "Baki cuti tidak mencukupi. Baki cuti anda yang tersedia adalah lebih rendah daripada tempoh cuti yang dipohon.",
       "combinedLimitExceeded": "Had cuti gabungan \"{poolName}\" ({days} hari setahun) akan melebihi merentasi jenis cuti kongsinya.",
       "combinedApplicationTooLong": "Kumpulan cuti kongsi \"{poolName}\" membenarkan paling banyak {maxDays} hari bagi setiap permohonan; permohonan ini meliputi {days}. Sila pendekkannya atau mohon dalam permohonan berasingan.",
+      "leaveTypeApplicationTooLong": "{typeName} membenarkan paling banyak {maxDays} {unit} berturut-turut bagi setiap permohonan; permohonan ini meliputi {days}. Sila pendekkannya atau mohon dalam permohonan berasingan.",
+      "consecutiveUnitCalendar": "hari kalendar",
+      "consecutiveUnitWorking": "hari bekerja",
       "leaveYearApplicationLimit": "{typeName} dihadkan kepada {maxDays} hari setiap tahun cuti. {usedDays} hari telah pun dipohon antara {yearStart} dan {yearEnd}, jadi permohonan {days} hari ini tidak boleh dihantar."
     },
     "documentLabel": "Dokumen sokongan",
@@ -4049,7 +4052,16 @@
         "applicationLimitUnlimited": "Tanpa had",
         "applicationLimitLimited": "Terhad",
         "applicationLimitMaxLabel": "Maksimum (hari)",
-        "applicationLimitHelp": "Mengehadkan jumlah hari yang boleh DIPOHON oleh pekerja bagi jenis ini dalam satu tahun cuti, sama ada baki kelayakan wujud atau tidak — peraturan untuk jenis seperti Cuti Tanpa Gaji. Ia disemak semasa permohonan dihantar dan sekali lagi semasa diluluskan. Kelayakan, terakru dan baki dalam Ringkasan Cuti tidak berubah. Tanpa had ialah cara setiap jenis cuti berkelakuan hari ini."
+        "applicationLimitHelp": "Mengehadkan jumlah hari yang boleh DIPOHON oleh pekerja bagi jenis ini dalam satu tahun cuti, sama ada baki kelayakan wujud atau tidak — peraturan untuk jenis seperti Cuti Tanpa Gaji. Ia disemak semasa permohonan dihantar dan sekali lagi semasa diluluskan. Kelayakan, terakru dan baki dalam Ringkasan Cuti tidak berubah. Tanpa had ialah cara setiap jenis cuti berkelakuan hari ini.",
+        "maxConsecutiveTitle": "Cuti Berturut-turut Maksimum",
+        "maxConsecutiveLabel": "Cuti berturut-turut maksimum",
+        "maxConsecutiveUnlimited": "Tanpa had",
+        "maxConsecutiveLimited": "Terhad",
+        "maxConsecutiveMaxLabel": "Maksimum",
+        "maxConsecutiveUnitLabel": "Unit",
+        "maxConsecutiveUnitCalendar": "Hari Kalendar",
+        "maxConsecutiveUnitWorking": "Hari Bekerja",
+        "maxConsecutiveHelp": "Mengehadkan panjang SATU permohonan bagi jenis ini — peraturan yang berbeza daripada had tahunan di atas. Hari Kalendar mengira setiap hari yang diliputi permohonan, termasuk hujung minggu dan cuti umum; Hari Bekerja mengira hanya hari yang benar-benar dicaj sebagai cuti, jadi permohonan Jumaat hingga Isnin ialah 4 hari kalendar tetapi 2 hari bekerja. Disemak semasa permohonan dihantar dan sekali lagi semasa diluluskan. Jika jenis cuti ini juga berada dalam Kumpulan Cuti Kongsi yang mempunyai maksimum setiap permohonannya sendiri, yang lebih ketat akan terpakai dan penolakan menyatakan yang mana satu. Tanpa had ialah cara setiap jenis cuti berkelakuan hari ini."
       },
       "entitlementStep": {
         "schemes": "Skim Faedah",

@@ -30,6 +30,7 @@ import {
   InsufficientLeaveBalanceOnSubmitError,
   CombinedLeaveLimitExceededError,
   CombinedLeaveApplicationTooLongError,
+  LeaveTypeApplicationTooLongError,
   LeaveYearApplicationLimitExceededError,
   LeaveApplyNotAllowedError,
   MissingRejectReasonError,
@@ -306,6 +307,19 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
     return t('combinedApplicationTooLong', {
       poolName: e.poolName,
       maxDays: e.maxDaysPerApplication,
+      days: e.requestedSpanDays,
+    });
+  // Maximum Consecutive Leave (c6ffa725 rev 2): a FOURTH refusal, and specifically NOT the one above. That
+  // one names a shared leave GROUP and is fixed on the group; this names the leave TYPE and is fixed on the
+  // type. Both can be configured at once — core/leave.ts composes them and only the binding one is thrown —
+  // so handing an employee the wrong one would send them to change a rule that was not refusing them. The
+  // UNIT is passed through because the number alone is ambiguous: "at most 3 days, this one covers 4" reads
+  // as a mistake to somebody who counted 2 working days.
+  if (e instanceof LeaveTypeApplicationTooLongError)
+    return t('leaveTypeApplicationTooLong', {
+      typeName: e.leaveTypeName,
+      maxDays: e.maxConsecutiveDays,
+      unit: t(e.unit === 'working_days' ? 'consecutiveUnitWorking' : 'consecutiveUnitCalendar'),
       days: e.requestedSpanDays,
     });
   // Application Limits (c6ffa725): a THIRD, distinct refusal — this leave TYPE's own annual application

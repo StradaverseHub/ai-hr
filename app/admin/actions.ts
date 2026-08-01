@@ -1477,6 +1477,24 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const applicationLimitFields = touchApplicationLimits
     ? { maxDaysPerLeaveYear: maxDaysPerLeaveYearRaw === '' ? null : Number(maxDaysPerLeaveYearRaw) }
     : {};
+  // Maximum Consecutive Leave (c6ffa725 rev 2): its own sub-form posts `maxConsecutive=1` (marker), separate
+  // from `applicationLimits` above — the two rules answer different questions ("in a year" vs "in one go")
+  // and a shared marker would let a save of one silently clear the other. Blank maximum ⇒ Unlimited, and the
+  // UNIT IS ONLY FORWARDED WHEN A MAXIMUM IS PRESENT, so a blank save reliably clears BOTH columns as the
+  // all-or-nothing pair the DB CHECK requires (the expiryValue/expiryUnit precedent, same shape).
+  const touchMaxConsecutive = fd.get('maxConsecutive') === '1';
+  const maxConsecutiveRaw = String(fd.get('maxConsecutiveDays') ?? '').trim();
+  const maxConsecutiveUnitRaw = String(fd.get('maxConsecutiveUnit') ?? '').trim();
+  const maxConsecutiveFields = touchMaxConsecutive
+    ? maxConsecutiveRaw === ''
+      ? { maxConsecutiveDays: null, maxConsecutiveUnit: null }
+      : {
+          maxConsecutiveDays: Number(maxConsecutiveRaw),
+          maxConsecutiveUnit: (maxConsecutiveUnitRaw === 'working_days' ? 'working_days' : 'calendar_days') as
+            | 'calendar_days'
+            | 'working_days',
+        }
+    : {};
   // Minimum advance-notice rule (0159): its own sub-form posts `minAdvance=1` (marker), mirroring the
   // backdating tri-state guard above. Empty input ⇒ null (clears the requirement); a number sets it.
   const touchMinAdvance = fd.get('minAdvance') === '1';
@@ -1493,8 +1511,10 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const requestRuleFields: {
     backdatingLimitDays?: number | null;
     maxDaysPerLeaveYear?: number | null;
+    maxConsecutiveDays?: number | null;
+    maxConsecutiveUnit?: 'calendar_days' | 'working_days' | null;
     minAdvanceDays?: number | null;
-  } = { ...backdatingFields, ...applicationLimitFields, ...minAdvanceFields };
+  } = { ...backdatingFields, ...applicationLimitFields, ...maxConsecutiveFields, ...minAdvanceFields };
   // Leave Type Expiry Field (fec49317): its own sub-form posts `expiry=1` (marker) so any other save leaves
   // expiry_value / expiry_unit untouched (same tri-state guard). A blank value clears the pair (both null ⇒
   // no expiry); a number + unit configures age-from-earning expiry. The service normalizes/validates and

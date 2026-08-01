@@ -554,6 +554,12 @@ export function listLeaveTypes(
         // renders as Unlimited on every reload for a type that actually has a limit ("my setting didn't
         // save", the report this projection list has already had twice).
         maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
+        // Maximum Consecutive Leave (c6ffa725 rev 2): feeds the same card's Unlimited / Limited radio, its
+        // Maximum and its Unit. MUST be projected for the same reason as the line above — the radio reads
+        // its state from whether the figure is null, so an unprojected column renders as Unlimited on every
+        // reload for a type that actually has a cap ("my setting didn't save").
+        maxConsecutiveDays: leaveType.maxConsecutiveDays,
+        maxConsecutiveUnit: leaveType.maxConsecutiveUnit,
         // Leave Type Expiry Field (fec49317): the age-from-earning expiry pair — feeds the admin panel's
         // "Leave expiry" sub-form (MUST be projected or the inputs render empty on every reload).
         expiryValue: leaveType.expiryValue,

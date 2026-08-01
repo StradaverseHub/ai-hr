@@ -833,6 +833,110 @@ function ApplicationLimitsForm({
   );
 }
 
+/**
+ * Feedback c6ffa725 REVISION 2 — Maximum Consecutive Leave, under Condition · Leave Application Rules.
+ *
+ * THE OTHER HALF of the same request. Maximum Application Per Leave Year (above) caps "how much of this
+ * type in a YEAR"; this caps "how much in ONE GO". r86a shipped the first and reported the item done, which
+ * is why the reporter came back — they are different rules and neither substitutes for the other.
+ *
+ * ITS OWN FORM AND ITS OWN `maxConsecutive=1` MARKER, not shared with the card above even though the two sit
+ * together: a shared marker would make saving one rule silently clear the other.
+ *
+ * Unlimited / Limited as a radio pair rather than "leave the box blank", for the same reason the year cap
+ * uses one — an administrator reading an empty field cannot tell whether the rule is off or simply not
+ * filled in yet. Unlimited posts an EMPTY maximum and NO unit, which the action reads as a clear of both
+ * columns (the pair is all-or-nothing in the database).
+ *
+ * THE UNIT IS THE POINT OF THE REVISION. "Maximum 3 days" over a Friday→Monday application is 4 calendar
+ * days but 2 working days, so the same number refuses or permits depending on the reading. It is stored per
+ * leave type and given its meaning in exactly one function, applicationSpanDays() in core/leave.ts.
+ */
+function MaxConsecutiveForm({
+  t,
+  id,
+  name,
+  maxConsecutiveDays,
+  maxConsecutiveUnit,
+  action,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  id: string;
+  name: string;
+  maxConsecutiveDays: number | null;
+  maxConsecutiveUnit: 'calendar_days' | 'working_days' | null;
+  action: Action;
+}) {
+  const [limited, setLimited] = useState<boolean>(maxConsecutiveDays != null);
+  return (
+    <form action={action} className="space-y-2">
+      <input type="hidden" name="id" value={id} />
+      {/* preserve the name — this form does not edit it */}
+      <input type="hidden" name="name" value={name} />
+      {/* marker: tells the action to touch the max_consecutive_days / _unit pair (tri-state guard) */}
+      <input type="hidden" name="maxConsecutive" value="1" />
+      <Field label={t('conditionStep.maxConsecutiveLabel')}>
+        <div className="flex flex-col gap-1.5">
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="radio"
+              name="maxConsecutiveMode"
+              value="unlimited"
+              checked={!limited}
+              onChange={() => setLimited(false)}
+              className="h-4 w-4"
+            />
+            {t('conditionStep.maxConsecutiveUnlimited')}
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="radio"
+              name="maxConsecutiveMode"
+              value="limited"
+              checked={limited}
+              onChange={() => setLimited(true)}
+              className="h-4 w-4"
+            />
+            {t('conditionStep.maxConsecutiveLimited')}
+          </label>
+        </div>
+      </Field>
+      {limited ? (
+        <>
+          <Field label={t('conditionStep.maxConsecutiveMaxLabel')}>
+            <input
+              name="maxConsecutiveDays"
+              type="number"
+              min="0.5"
+              step="0.5"
+              defaultValue={maxConsecutiveDays ?? ''}
+              className={cn(inputCls, 'w-full')}
+            />
+          </Field>
+          <Field label={t('conditionStep.maxConsecutiveUnitLabel')}>
+            <select
+              name="maxConsecutiveUnit"
+              defaultValue={maxConsecutiveUnit ?? 'calendar_days'}
+              className={cn(inputCls, 'w-full')}
+            >
+              <option value="calendar_days">{t('conditionStep.maxConsecutiveUnitCalendar')}</option>
+              <option value="working_days">{t('conditionStep.maxConsecutiveUnitWorking')}</option>
+            </select>
+          </Field>
+        </>
+      ) : (
+        // Unlimited posts the maximum EXPLICITLY EMPTY and forwards no unit. The action reads a blank
+        // maximum as a clear of BOTH columns, which is the only state the DB's all-or-nothing CHECK allows
+        // — a unit left behind with no figure would be inert configuration that looks set.
+        <input type="hidden" name="maxConsecutiveDays" value="" />
+      )}
+      <Button type="submit" size="sm">
+        {t('save')}
+      </Button>
+    </form>
+  );
+}
+
 /** Shared shell for the two policy front doors: resolves the active policy rows, offers a scope picker
  *  when more than one is active, and renders the given form for the selected row (keyed by policy id so
  *  its local state re-seeds when HR switches scope). */
@@ -1131,6 +1235,8 @@ export function LeaveTypePanel({
   hrRemarkRequired,
   backdatingLimitDays,
   maxDaysPerLeaveYear,
+  maxConsecutiveDays,
+  maxConsecutiveUnit,
   minAdvanceDays,
   expiryValue,
   expiryUnit,
@@ -1213,6 +1319,11 @@ export function LeaveTypePanel({
   backdatingLimitDays: number | null;
   /** Application Limits (c6ffa725): max days APPLIED FOR per leave year. null = no limit. */
   maxDaysPerLeaveYear: number | null;
+  /** Maximum Consecutive Leave (c6ffa725 rev 2): the longest SINGLE application this type allows, and the
+   *  unit that figure is read in. An all-or-nothing pair — both null = Unlimited, which is every leave type
+   *  today. Threaded so the sub-form round-trips. */
+  maxConsecutiveDays: number | null;
+  maxConsecutiveUnit: 'calendar_days' | 'working_days' | null;
   /** Minimum advance-notice rule (0159): how many days before its start date a leave of this type must be
    *  submitted; null = no requirement. Threaded so the sub-form round-trips. Field hidden for Emergency Leave
    *  (code === 'EMERGENCY' — EL exists precisely for short-notice absence and is never guarded). */
@@ -2869,6 +2980,26 @@ export function LeaveTypePanel({
               action={updateTypeAction}
             />
             <p className="text-xs text-muted-foreground">{t('conditionStep.applicationLimitHelp')}</p>
+          </div>
+          {/* Maximum Consecutive Leave (c6ffa725 rev 2): the longest a SINGLE application of this type may
+              be, and the unit it is read in. Its own sub-form and its own `maxConsecutive=1` marker — a
+              different rule from the card above, which caps the YEAR.
+
+              WHERE IT IS ENFORCED, and why that matters here: a leave type in a Shared Leave Group can ALSO
+              be capped per application by the group. The two are composed in one place
+              (core/leave.ts enforceApplicationLengthLimit), the stricter binds, and the refusal names which
+              limit bound — so setting this can only ever tighten, never loosen what the group promised. */}
+          <div className="mb-3 break-inside-avoid space-y-2 rounded-lg border border-border bg-background p-3">
+            <span className="text-xs font-medium text-muted-foreground">{t('conditionStep.maxConsecutiveTitle')}</span>
+            <MaxConsecutiveForm
+              t={t}
+              id={id}
+              name={name}
+              maxConsecutiveDays={maxConsecutiveDays}
+              maxConsecutiveUnit={maxConsecutiveUnit}
+              action={updateTypeAction}
+            />
+            <p className="text-xs text-muted-foreground">{t('conditionStep.maxConsecutiveHelp')}</p>
           </div>
           {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts
               `backdating=1`. Hidden for Emergency Leave — EL is inherently retroactive and is never guarded,
