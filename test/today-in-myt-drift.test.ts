@@ -26,6 +26,21 @@ import { timeInKualaLumpur, todayInKualaLumpur } from '../lib/hr-date';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const SCANNED = ['core', 'app', 'lib', 'packs', 'localization', 'components'];
 
+/**
+ * `test/` IS SCANNED TOO, and leaving it out cost a gate run on 2026-08-02.
+ *
+ * bb4f2265 swept the application directories and stopped there, on the reasoning that a test fixture is
+ * not production code. That was wrong in a specific way: once the KERNEL judges a date in MYT, a fixture
+ * that builds "today" in UTC disagrees with it for the eight hours between 00:00 and 08:00 MYT. Six test
+ * files did exactly that, and they passed every daytime run — the suite failed the first time it crossed
+ * midnight, on `submitClaim(incurredOn: utcPlusDays(1))`, which is TODAY in MYT and so was correctly not
+ * in the future. The product was right and the test was wrong, which is the hardest version to read.
+ *
+ * The two guard files are excluded because they quote the pattern deliberately: this file asserts its
+ * absence, and sweep-script-timezone.test.ts asserts the old behaviour to contrast against.
+ */
+const GUARD_FILES_THAT_QUOTE_THE_PATTERN = ['today-in-myt-drift.test.ts', 'sweep-script-timezone.test.ts'];
+
 /** The exact shape of the bug: an ISO date sliced off a timestamp taken from the clock RIGHT NOW. */
 const ARGLESS_NOW_DATE = /new Date\(\)\.toISOString\(\)\.slice\(0,\s*10\)/;
 
@@ -47,6 +62,13 @@ describe('"today" is resolved in MYT, never off a UTC timestamp', () => {
       ARGLESS_NOW_DATE.test(readFileSync(join(root, rel), 'utf8')),
     );
     // Named individually so a reintroduction points at its own file rather than a bare count.
+    expect(offenders).toEqual([]);
+  });
+
+  it('no TEST fixture builds "today" in UTC either', () => {
+    const offenders = sourceFiles('test')
+      .filter((rel) => !GUARD_FILES_THAT_QUOTE_THE_PATTERN.some((g) => rel.endsWith(g)))
+      .filter((rel) => ARGLESS_NOW_DATE.test(readFileSync(join(root, rel), 'utf8')));
     expect(offenders).toEqual([]);
   });
 

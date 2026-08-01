@@ -15,6 +15,10 @@ import {
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, eventTypesFor, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
+// The kernel judges these dates in MYT (bb4f2265); a fixture built in UTC disagrees with it
+// between 00:00 and 08:00 MYT, which is a test that fails only at night.
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 const hire = (ctx: SessionContext, b: Base, name: string) =>
   hireEmployee(ctx, {
     person: { fullName: name, primaryEmail: `${name.toLowerCase()}@acme.test` },
@@ -25,7 +29,7 @@ const hire = (ctx: SessionContext, b: Base, name: string) =>
   });
 
 // UTC date helpers relative to the real today() the service uses (the receipt window is dynamic).
-const utcToday = (): string => new Date().toISOString().slice(0, 10);
+const utcToday = (): string => todayInKualaLumpur();
 const utcMinusDays = (days: number): string =>
   new Date(new Date(`${utcToday()}T00:00:00Z`).getTime() - days * 86400000).toISOString().slice(0, 10);
 const utcPlusDays = (days: number): string =>

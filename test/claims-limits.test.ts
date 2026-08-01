@@ -21,6 +21,10 @@ import {
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, eventTypesFor, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
+// The kernel judges these dates in MYT (bb4f2265); a fixture built in UTC disagrees with it
+// between 00:00 and 08:00 MYT, which is a test that fails only at night.
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 async function makeGrade(tenantId: string, code: string, name: string, rank: number): Promise<string> {
   const [g] = await owner.db.insert(schema.jobGrade).values({ tenantId, code, name, rank }).returning({ id: schema.jobGrade.id });
   return g.id;
@@ -121,7 +125,7 @@ describe('ccbd0508 — claim limits by grade', () => {
       hiredOn: '2026-01-01',
     });
     const { id } = await createClaimType(a, { code: 'MEDICAL', name: 'Medical', defaultTaxable: false, requiresReceipt: false });
-    await submitClaim(a, { employmentId: E.employmentId, claimTypeId: id, amount: 10, incurredOn: new Date().toISOString().slice(0, 10) });
+    await submitClaim(a, { employmentId: E.employmentId, claimTypeId: id, amount: 10, incurredOn: todayInKualaLumpur() });
     await expect(deleteClaimType(a, id)).rejects.toThrow(/archive/i);
     expect((await listClaimTypes(a)).find((t) => t.id === id)).toBeDefined(); // still there
   });
