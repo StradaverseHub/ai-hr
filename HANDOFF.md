@@ -7,26 +7,30 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ## CURRENT STATE — read this first (updated 2026-08-01, after r88)
 
-> ### DEPLOYED HEAD IS `main@039853d` — production on **289** migrations.
+> ### DEPLOYED HEAD IS `main@3f2a8c6` — production on **290** migrations.
 >
-> **Next free migration number is `0343`.** No held branch claims a number — but check any held branch's
-> `when` against the deployed watermark before merging it. r89 caught `0339` stranded BELOW the watermark
-> after r88 shipped `0340`/`0341` around it; it merged silently as nothing until renumbered to `0342`.
+> **Next free migration number is `0344`.** No held branch claims a number.
 >
-> **r89 shipped `1ef1cf95`**, the item r88 correctly held. Its two blockers were both real and both fixed:
-> the config dump the plan promised the reporter did not exist, and its migration number was stranded.
+> **r90 shipped `97a9b0ab` and `c6ffa725`.** `241817ef` is STEP 1 OF 2 and is deliberately left
+> `building` — its conversion script shipped, the section removal did NOT, and nothing user-visible
+> changed. Marking it deployed would tell the reporter it is done while their screen is unchanged.
+>
+> **TO FINISH `241817ef`:** run `scripts/convert-approval-rules.ts` against production (dry run first),
+> show the reporter the converted list as their plan promises, then `--apply`, then delete the two
+> sections. The conversion criterion is `(template_id IS NULL OR leave_type_id IS NULL)` — NOT "has no
+> template", which is what my plan wrongly said. See r90 Decision 3.
 >
 > **AFTER r88's `fa3f4ccb`, A LEAVE TYPE WITH NO POLICY AND NO SCHEME ROW GRANTS ZERO** — the statutory
-> floor no longer supplies days for an unconfigured type. Production is unaffected (ANNUAL bands 20–24,
-> SICK 14–22, all at or above the minimum) and was checked, not assumed. Any tenant relying on the floor
-> WOULD be. See r89 Decision 3.
+> floor no longer supplies days for an unconfigured type. Production is unaffected and was checked, not
+> assumed. See r89 Decision 3.
 >
-> **The local Postgres `CREATE DATABASE` wedge has a root cause and a mitigation** — PG14 forces two
-> checkpoints per create, 22 per suite run. See the r89 section; the recovery recipe changed
-> (`mv` the data dir, and `-m immediate` can itself hang).
+> **THE POSTGRES WEDGE DIAGNOSIS IN r89 WAS WRONG AND IS CORRECTED IN r90.** `fsync=off` does NOT prevent
+> it; the checkpointer sits in uninterruptible kernel wait, which no Postgres setting can shorten.
+> `pkill -9` cannot kill it — kill the POSTMASTER. Renaming the data dir does not stop a running server.
+> Read the r90 section before touching the local cluster.
 >
-> **Board: `approved = 9` · `contested = 1` (`c33d9bbb`, parked by the owner) · `deployed = 539`.**
-> The reporter has approved both re-plans: `97a9b0ab` rev 2 and `c6ffa725` rev 2.
+> **Board: `approved = 6` · `contested = 1` (`c33d9bbb`, parked by the owner) · `building = 1`
+> (`241817ef`, step 2 pending) · `deployed = 541`.**
 >
 > **THE REPORTER THEN APPROVED ALL SEVEN PLANS from the 2026-07-31 planning pass.** Board is now
 > **`approved = 18` · `planned = 1` (97a9b0ab rev 2) · `contested = 2` · `deployed = 528`**.
@@ -654,6 +658,92 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r90 — 2026-08-01 — two shipped, one deliberately half-shipped, and two plans of mine corrected by the agents
+
+**Shipped:** `main@3f2a8c6`. Migration `0343` (production 289 → **290**).
+**Gate:** `tsc` clean · **511 files / 5963 tests** · `next build` clean · **upgrade rehearsal PASS**.
+Verified live: `GET /` 401, 290 migrations, both `leave_type` consecutive-cap columns present, the unit
+column is **TEXT not an enum** (the 0338 lesson), and **0 leave types carry a cap** — so no employee's
+behaviour changed.
+
+**Shipped:** `97a9b0ab` (payslip provenance + re-run disclosure) · `c6ffa725` (Maximum Consecutive Leave).
+**Step 1 of 2:** `241817ef` — conversion script and rewrites shipped; the section removal is HELD and the
+item is deliberately left `building`.
+
+### Decisions
+
+**1. THE AGENT CORRECTED MY PLAN'S PREMISE, AND THE REPORTER HAD TO BE TOLD.** Rev 2 of `97a9b0ab` — which
+I wrote — said two things could have moved a tax figure: the earlier months, and the tax rules themselves.
+The agent diffed the only commit that moved `MY_STATUTORY_VERSION` (`7857ddc8`, 2026.4 → 2026.5) and found
+it **changed no rate, no band and no relief**. It only ADDED optional PCB exemption tables, inert unless a
+pay item or employee is explicitly flagged. **So the 14-on-2026.4 / 33-on-2026.5 split correlates with
+revision because the code was redeployed between the two batches of runs, not because the rules moved
+anyone's tax.** The build reflects this: the version cause renders with an explicit caveat, and only the
+earlier-months cause is stated as a real mechanism. The `build_ref` says so plainly.
+
+**2. THE ITEM NEEDED NO MIGRATION AT ALL, and rev 1 would have added one for data already recorded.**
+`statutory.version` has been stamped on every payslip since 2026.0 (both return paths of
+`localization/my/payroll.ts`), `payslip.version` already increments, and — the real find —
+**`payroll_employee_result_history` has stored the complete before/after pair on every selective reprocess
+since `9bc442bc` and is READ BY NOTHING** outside its own delete cascade. The version history the plan
+asked to build already existed in full. The pack-stamp "small half" was also **already built** in
+`bbac11f7`. Every deliverable turned out to be read-side.
+
+**3. `241817ef` WAS HELD AT STEP 1 OF 2, and the agent found MY DISCRIMINATOR WAS WRONG.** My rev 3 plan
+said "213 of 217 rules already reference a template", implying only 4 needed converting. Wrong criterion:
+`app/admin/leave/entitlements/page.tsx` embeds the same WorkflowMatrix per leave type, so any rule with
+`leave_type_id` SET stays editable there after the Approval tab loses its copy. **What the removal strands
+is `leave_type_id IS NULL`** — any-type rules, which that page deliberately renders read-only as shared
+config. The real criterion is `(template_id IS NULL OR leave_type_id IS NULL)`.
+
+The agent also could not reach production — **it tried port 22; this project uses 8288** — and instead of
+guessing, delivered a script that enumerates and proves against real data at run time, refusing with both
+chains printed where expanding a rule would flip a specificity tie. **The escalation relocation I asked
+for was already built in r79.** The item stays `building` because nothing user-visible changed: marking it
+deployed would tell the reporter it is done while their screen is unchanged, which is the r77 mistake.
+
+**4. THE INTEGRATION GATE CAUGHT ONE FAILURE IN 5,963 TESTS THAT THREE ADVERSARIAL REVIEWERS REPORTED
+CLEAN.** `core/leave-approval-consolidation.ts` violated the ADR-0080 D9 leave ratchet. Fixed at the
+boundary, not the allowlist:
+- Added to **BOTH** lists in `test/leave-pack-drift.test.ts` — as a BOUNDARY it becomes guarded like its
+  siblings; in ALWAYS_ALLOWED it may import them back. Adding it only to the second would have silenced
+  the failure while leaving the new module **unguarded**, which is the drift D9 exists to stop.
+- `scripts/convert-approval-rules.ts` now consumes `packs/leave/service`, and the facade re-exports the
+  module. **There are already four `scripts/` entries in the debt allowlist — that is pre-existing debt,
+  not a precedent to extend.** The file is documented to only ever SHRINK.
+
+**Zero findings from three adversarial reviewers is not evidence of a clean tree.** Four rounds running,
+the integration gate has found what per-agent runs and reviewers did not.
+
+### The Postgres wedge — MY EARLIER DIAGNOSIS WAS WRONG, and the correction matters
+
+r89 recorded that `fsync=off` and friends would mitigate the `CREATE DATABASE` wedge. **They do not.** It
+wedged again on 2026-08-01 with `fsync=off`, `full_page_writes=off`, `synchronous_commit=off` and
+`wal_level=minimal` all confirmed active, counters frozen, `CREATE DATABASE` stuck 10m36s.
+
+**What is actually happening:** the checkpointer sits in **`ps` state `UNs` — uninterruptible kernel
+wait**. No Postgres-level setting can shorten that, which is exactly why the tuning had no effect. The
+dirty-buffer/fsync hypothesis was wrong.
+
+**Three corrections to the recovery recipe, each learned the hard way:**
+1. **`pkill -9` CANNOT kill a process in uninterruptible wait.** Kill the **postmaster** (the parent)
+   instead — the stuck child becomes a harmless zombie holding only the old directory. Find it with
+   `lsof -nP -iTCP:5433 -sTCP:LISTEN`.
+2. **Renaming the data directory does NOT stop a running server.** It keeps serving by inode. r90 ended
+   up with a live server whose `data_directory` no longer existed at that path and an `initdb` that
+   refused because the earlier failed attempt had already created the directory.
+3. **`mv` the data dir aside — instant** — rather than `rm -rf`, which cost ~10 minutes with the disk busy.
+
+**The rehearsal needed its OWN checkpoint.** r89 added one to `test/global-setup.ts`, but that only covers
+the SUITE's creates; `scripts/upgrade-rehearsal.sh` builds its scratch database through its own path.
+**That is precisely why the suite passed and the rehearsal wedged.** Now added there too — with a comment
+saying honestly that it is not a guaranteed fix.
+
+**The durable fix is PostgreSQL 15+**, whose `CREATE DATABASE` defaults to `STRATEGY = WAL_LOG` and forces
+no checkpoint at all. Blocked here: Homebrew installs fail on this Mac's Xcode.
+
+---
 
 ## r89 — 2026-08-01 — the held item, finished: shared groups move to leave type level
 
