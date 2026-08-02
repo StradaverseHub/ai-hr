@@ -360,7 +360,7 @@ describe('b81d3c52 · RECALC ON ROUNDING CHANGE — the configured rule reaches 
       validFrom: '2026-01-01',
       asOf: '2026-06-30',
     });
-    expect(res).toEqual({ affected: 1, totalDelta: 0.6 });
+    expect(res).toEqual({ affected: 1, totalDelta: 0.6, packBlocked: [] });
     expect(await balance(emp.employmentId)).toBe(13); // ceil(12.4)
     expect(await readAccrual(created.id)).toMatchObject({ roundingMethod: 'up' });
 
@@ -382,7 +382,7 @@ describe('b81d3c52 · RECALC ON ROUNDING CHANGE — the configured rule reaches 
       validFrom: '2026-01-01',
       asOf: '2026-06-30',
     });
-    expect(again).toEqual({ affected: 0, totalDelta: 0 });
+    expect(again).toEqual({ affected: 0, totalDelta: 0, packBlocked: [] });
     expect((await recalcRows(emp.employmentId)).length).toBe(1);
   });
 
@@ -403,7 +403,7 @@ describe('b81d3c52 · RECALC ON ROUNDING CHANGE — the configured rule reaches 
       validFrom: '2026-01-01',
       asOf: '2026-03-15',
     });
-    expect(res).toEqual({ affected: 1, totalDelta: -1 });
+    expect(res).toEqual({ affected: 1, totalDelta: -1, packBlocked: [] });
     expect(await balance(emp.employmentId)).toBe(3);
     const rows = await recalcRows(emp.employmentId);
     expect(rows.length).toBe(1);
@@ -432,7 +432,7 @@ describe('b81d3c52 · RECALC ON ROUNDING CHANGE — the configured rule reaches 
     const off = await updateLeavePolicy(adminCtx(b), {
       id: created.id, annualDays: 12.4, roundingMethod: 'none', validFrom: '2026-01-01', asOf: '2026-06-30',
     });
-    expect(off).toEqual({ affected: 1, totalDelta: -0.6 });
+    expect(off).toEqual({ affected: 1, totalDelta: -0.6, packBlocked: [] });
     expect(await balance(emp.employmentId)).toBe(12.4);
     expect('roundingMethod' in (await readAccrual(created.id))).toBe(false);
   });
@@ -491,7 +491,7 @@ describe('b81d3c52 · LEDGER AGREEMENT — the projection rounds exactly like th
       validFrom: '2026-01-01',
       asOf: '2026-06-30',
     });
-    expect(up).toEqual({ affected: 1, totalDelta: 2 });
+    expect(up).toEqual({ affected: 1, totalDelta: 2, packBlocked: [] });
     expect(await balance(emp.employmentId)).toBe(15);
 
     // Idempotent: an identical re-save computes delta 0 and posts nothing (no oscillation).
@@ -502,7 +502,7 @@ describe('b81d3c52 · LEDGER AGREEMENT — the projection rounds exactly like th
       validFrom: '2026-01-01',
       asOf: '2026-06-30',
     });
-    expect(again).toEqual({ affected: 0, totalDelta: 0 });
+    expect(again).toEqual({ affected: 0, totalDelta: 0, packBlocked: [] });
     expect(await balance(emp.employmentId)).toBe(15);
   });
 });

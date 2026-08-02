@@ -127,7 +127,7 @@ describe('49809272 — upfront correction (up / down / floor)', () => {
     expect(await annualBalance(emp.employmentId)).toBe(12);
 
     const res = await updateLeavePolicy(adminCtx(b), { id, annualDays: 14, validFrom: '2026-01-01', asOf: ASOF });
-    expect(res).toEqual({ affected: 1, totalDelta: 2 });
+    expect(res).toEqual({ affected: 1, totalDelta: 2, packBlocked: [] });
     expect(await annualBalance(emp.employmentId)).toBe(14);
 
     const rows = await recalcRows(emp.employmentId);
@@ -159,7 +159,7 @@ describe('49809272 — upfront correction (up / down / floor)', () => {
     expect(await annualBalance(emp.employmentId)).toBe(14);
 
     const res = await updateLeavePolicy(adminCtx(b), { id, annualDays: 12, validFrom: '2026-01-01', asOf: ASOF });
-    expect(res).toEqual({ affected: 1, totalDelta: -2 });
+    expect(res).toEqual({ affected: 1, totalDelta: -2, packBlocked: [] });
     expect(await annualBalance(emp.employmentId)).toBe(12);
     const events = await recalcEvents();
     expect((events[0].payload as Record<string, unknown>).delta).toBe(-2);
@@ -192,7 +192,7 @@ describe('49809272 — upfront correction (up / down / floor)', () => {
           eq(schema.domainEvent.eventType, 'leave-policy.updated'),
         ),
       );
-    expect((ev.payload as { recalc?: unknown }).recalc).toEqual({ affected: 1, totalDelta: 2 });
+    expect((ev.payload as { recalc?: unknown }).recalc).toEqual({ affected: 1, totalDelta: 2, packBlocked: [] });
   });
 });
 
@@ -203,7 +203,7 @@ describe('49809272 — idempotency + no-op edits', () => {
     const first = await updateLeavePolicy(adminCtx(b), { id, annualDays: 14, validFrom: '2026-01-01', asOf: ASOF });
     expect(first.affected).toBe(1);
     const second = await updateLeavePolicy(adminCtx(b), { id, annualDays: 14, validFrom: '2026-01-01', asOf: ASOF });
-    expect(second).toEqual({ affected: 0, totalDelta: 0 });
+    expect(second).toEqual({ affected: 0, totalDelta: 0, packBlocked: [] });
     expect(await annualBalance(emp.employmentId)).toBe(14); // not 16
     expect((await recalcRows(emp.employmentId)).length).toBe(1); // one compensating row, not two
   });
@@ -218,7 +218,7 @@ describe('49809272 — idempotency + no-op edits', () => {
       validFrom: '2026-01-01',
       asOf: ASOF,
     });
-    expect(res).toEqual({ affected: 0, totalDelta: 0 });
+    expect(res).toEqual({ affected: 0, totalDelta: 0, packBlocked: [] });
     expect(await annualBalance(emp.employmentId)).toBe(12);
     expect((await recalcRows(emp.employmentId)).length).toBe(0);
     expect((await recalcEvents()).length).toBe(0);
@@ -240,7 +240,7 @@ describe('49809272 — earned (monthly accrual) method', () => {
       validFrom: '2026-01-01',
       asOf: '2026-05-31',
     });
-    expect(res).toEqual({ affected: 1, totalDelta: 2 });
+    expect(res).toEqual({ affected: 1, totalDelta: 2, packBlocked: [] });
     expect(await annualBalance(emp.employmentId)).toBe(7);
 
     // Idempotent against the CRON too: an immediate re-run must see the recalc credit in its
@@ -263,7 +263,7 @@ describe('49809272 — earned (monthly accrual) method', () => {
       validFrom: '2026-01-01',
       asOf: '2026-05-31',
     });
-    expect(res).toEqual({ affected: 0, totalDelta: 0 }); // nothing to correct — nothing was granted
+    expect(res).toEqual({ affected: 0, totalDelta: 0, packBlocked: [] }); // nothing to correct — nothing was granted
     await accrueEarnedLeave(adminCtx(b), { asOf: '2026-05-31' });
     expect(await annualBalance(emp.employmentId)).toBe(7); // cron grants at the corrected rate, once
   });
@@ -288,7 +288,7 @@ describe('49809272 — scope filters', () => {
       validFrom: '2026-01-01',
       asOf: ASOF,
     });
-    expect(res).toEqual({ affected: 1, totalDelta: 1 });
+    expect(res).toEqual({ affected: 1, totalDelta: 1, packBlocked: [] });
     expect(await annualBalance(empA.employmentId)).toBe(13);
     expect(await annualBalance(empB.employmentId)).toBe(14); // other company untouched
   });
@@ -310,7 +310,7 @@ describe('49809272 — scope filters', () => {
       validFrom: '2026-01-01',
       asOf: ASOF,
     });
-    expect(res).toEqual({ affected: 1, totalDelta: 3 });
+    expect(res).toEqual({ affected: 1, totalDelta: 3, packBlocked: [] });
     expect(await annualBalance(empExec.employmentId)).toBe(18);
     expect(await annualBalance(empStaff.employmentId)).toBe(12); // other grade untouched
   });
@@ -331,7 +331,7 @@ describe('49809272 — effective-date model preserved', () => {
 
     const res = await updateLeavePolicy(adminCtx(b), { id, annualDays: 14, validFrom: '2025-01-01', asOf: ASOF });
     // Only the OPEN 2026 cycle re-projects (+2 on its 12); the closed 2025 grant stays exactly as posted.
-    expect(res).toEqual({ affected: 1, totalDelta: 2 });
+    expect(res).toEqual({ affected: 1, totalDelta: 2, packBlocked: [] });
     expect(await annualBalance(emp.employmentId)).toBe(14);
     expect((await priorRows()).length).toBe(priorBefore);
     const rows = await recalcRows(emp.employmentId);
@@ -358,7 +358,7 @@ describe('49809272 — effective-date model preserved', () => {
       validFrom: '2027-01-01',
       asOf: ASOF,
     });
-    expect(res).toEqual({ affected: 0, totalDelta: 0 });
+    expect(res).toEqual({ affected: 0, totalDelta: 0, packBlocked: [] });
     expect(await annualBalance(emp.employmentId)).toBe(12);
   });
 });
@@ -464,7 +464,7 @@ describe('ae5b84d5 — a policy edit no longer claws back scheme-superseded bala
     // The latent bug this feature fixes: a routine policy edit used to project the scheme employee at the
     // POLICY days (13) and claw back the scheme-granted 7. Now the projection reads the scheme table.
     const res = await updateLeavePolicy(ctx, { id, annualDays: 13, validFrom: '2026-01-01', asOf: ASOF });
-    expect(res).toEqual({ affected: 1, totalDelta: 1 }); // ONLY the plain employee moved
+    expect(res).toEqual({ affected: 1, totalDelta: 1, packBlocked: [] }); // ONLY the plain employee moved
     expect(await annualBalance(plainEmp.employmentId)).toBe(13);
     expect(await annualBalance(schemeEmp.employmentId)).toBe(20); // untouched
     expect((await recalcRows(schemeEmp.employmentId)).length).toBe(0);
@@ -524,7 +524,7 @@ describe('b81d3c52 — rounding-method change reaches already-earned balances', 
     const res = await updateLeavePolicy(adminCtx(b), {
       id, annualDays: 16.44, roundingMethod: 'up', validFrom: '2026-01-01', asOf: ASOF,
     });
-    expect(res).toEqual({ affected: 1, totalDelta: 0.04 });
+    expect(res).toEqual({ affected: 1, totalDelta: 0.04, packBlocked: [] });
     expect(await annualBalance(employmentId)).toBe(11);
     expect(await accruedOf(employmentId)).toBe(11); // YTD Entitled moves — accrual-class, not adjustment
     const view = await leaveEntitlementBreakdown(adminCtx(b), employmentId, b.annualLeaveTypeId, '2026-12-31');
@@ -541,7 +541,7 @@ describe('b81d3c52 — rounding-method change reaches already-earned balances', 
     const res = await updateLeavePolicy(adminCtx(b), {
       id, annualDays: 16.44, roundingMethod: 'down', validFrom: '2026-01-01', asOf: ASOF,
     });
-    expect(res).toEqual({ affected: 1, totalDelta: -0.96 });
+    expect(res).toEqual({ affected: 1, totalDelta: -0.96, packBlocked: [] });
     expect(await annualBalance(employmentId)).toBe(10);
     expect(await accruedOf(employmentId)).toBe(10);
     const rows = await recalcRows(employmentId);
@@ -554,7 +554,7 @@ describe('b81d3c52 — rounding-method change reaches already-earned balances', 
     const { id, employmentId } = await joinerFractional();
     await updateLeavePolicy(adminCtx(b), { id, annualDays: 16.44, roundingMethod: 'up', validFrom: '2026-01-01', asOf: ASOF });
     const again = await updateLeavePolicy(adminCtx(b), { id, annualDays: 16.44, roundingMethod: 'up', validFrom: '2026-01-01', asOf: ASOF });
-    expect(again).toEqual({ affected: 0, totalDelta: 0 });
+    expect(again).toEqual({ affected: 0, totalDelta: 0, packBlocked: [] });
     expect(await annualBalance(employmentId)).toBe(11);
     expect((await recalcRows(employmentId)).length).toBe(1); // one row, not two
   });
@@ -564,7 +564,7 @@ describe('b81d3c52 — rounding-method change reaches already-earned balances', 
     await updateLeavePolicy(adminCtx(b), { id, annualDays: 16.44, roundingMethod: 'up', validFrom: '2026-01-01', asOf: ASOF });
     expect(await annualBalance(employmentId)).toBe(11);
     const off = await updateLeavePolicy(adminCtx(b), { id, annualDays: 16.44, roundingMethod: 'none', validFrom: '2026-01-01', asOf: ASOF });
-    expect(off).toEqual({ affected: 1, totalDelta: -0.04 });
+    expect(off).toEqual({ affected: 1, totalDelta: -0.04, packBlocked: [] });
     expect(await annualBalance(employmentId)).toBe(10.96);
     expect(await accruedOf(employmentId)).toBe(10.96);
   });
@@ -579,7 +579,7 @@ describe('b81d3c52 — rounding-method change reaches already-earned balances', 
     const res = await updateLeavePolicy(adminCtx(b), {
       id, annualDays: 21.92, method: 'earned_monthly', roundingMethod: 'up', validFrom: '2026-01-01', asOf: '2026-06-30',
     });
-    expect(res).toEqual({ affected: 1, totalDelta: 0.04 });
+    expect(res).toEqual({ affected: 1, totalDelta: 0.04, packBlocked: [] });
     expect(await annualBalance(emp.employmentId)).toBe(11);
 
     // 7 periods raw = 12.79 ⇒ up ⇒ 13; `already` = 11 (10.96 accrual + 0.04 accrual-class correction), so
@@ -621,7 +621,7 @@ describe('b81d3c52 — rounding-method change reaches already-earned balances', 
     const res = await updateLeavePolicy(adminCtx(b), {
       id, annualDays: 15, roundingMethod: 'up', validFrom: '2026-01-01', asOf: ASOF,
     });
-    expect(res).toEqual({ affected: 1, totalDelta: 3 }); // ceil(15) = 15 ⇒ +3; the rounding is a no-op on 15
+    expect(res).toEqual({ affected: 1, totalDelta: 3, packBlocked: [] }); // ceil(15) = 15 ⇒ +3; the rounding is a no-op on 15
     const rows = await recalcRows(emp.employmentId);
     expect(rows.length).toBe(1);
     expect(rows[0].entryType).toBe('adjustment'); // days moved too ⇒ roundingOnlyChange is false

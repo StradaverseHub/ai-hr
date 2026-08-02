@@ -114,7 +114,7 @@ describe('eee43966 · Eligibility EDIT never resets the earning method', () => {
     expect((await storedAccrual(p.id)).method).toBe('earned_monthly');
     // before.method === after.method zeroes reprojectEntitlementForPolicy's method delta — the method
     // dimension no longer drives a recalculation from the Eligibility tab.
-    expect(recalc).toEqual({ affected: 0, totalDelta: 0 });
+    expect(recalc).toEqual({ affected: 0, totalDelta: 0, packBlocked: [] });
   });
 
   it('non-vacuity control: an EXPLICIT method change with the same days still overrides and still recalculates', async () => {
