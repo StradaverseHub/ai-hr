@@ -5820,7 +5820,11 @@ export const usageSnapshot = pgTable('usage_snapshot', {
   payslipsGenerated: integer('payslips_generated').notNull().default(0),
   modulesActive: jsonb('modules_active').$type<string[]>().notNull().default([]),
   createdAt: createdAt(),
-});
+}, (t) => [
+  // 0347 — one row per (tenant, company, day). The upsert target that makes a re-run replace the day
+  // rather than double it; without it `ON CONFLICT` has nothing to conflict on (the r102 lesson).
+  uniqueIndex('usage_snapshot_tenant_company_day_uq').on(t.tenantId, t.companyId, t.capturedOn),
+]);
 
 /** Stradaverse staff. Deliberately NOT app_user, and invisible to ai_hr_app (no grant at all). */
 export const platformUser = pgTable('platform_user', {

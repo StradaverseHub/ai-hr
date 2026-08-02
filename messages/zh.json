@@ -7737,6 +7737,10 @@
       "leave-expire-carry": {
         "name": "结转假期到期",
         "description": "作废已过到期日的结转假期天数。"
+      },
+      "usage-capture": {
+        "name": "用量记录",
+        "description": "每日记录每位客户的在职人数、用户数、薪资单数量与已启用模块。"
       }
     }
   },

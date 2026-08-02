@@ -7737,6 +7737,10 @@
       "leave-expire-carry": {
         "name": "Hết hạn phép chuyển tiếp",
         "description": "Hủy số ngày chuyển tiếp đã qua ngày hết hạn."
+      },
+      "usage-capture": {
+        "name": "Ghi nhận mức sử dụng",
+        "description": "Ghi lại số nhân sự, người dùng, phiếu lương và các phân hệ đang bật của từng khách hàng mỗi ngày."
       }
     }
   },

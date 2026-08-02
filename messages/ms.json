@@ -7737,6 +7737,10 @@
       "leave-expire-carry": {
         "name": "Luput cuti bawa ke hadapan",
         "description": "Melucutkan hari bawa ke hadapan yang tarikh luputnya telah berlalu."
+      },
+      "usage-capture": {
+        "name": "Rakaman penggunaan",
+        "description": "Merekod bilangan pekerja, pengguna, slip gaji dan modul aktif setiap pelanggan setiap hari."
       }
     }
   },

@@ -108,9 +108,11 @@ describe('0280 — job_run recorder', () => {
     expect(await runsFor('leave.accrue')).toHaveLength(0);
   });
 
-  it('the job registry covers exactly the four sweeps, with i18n keys free of dot separators', () => {
+  it('the job registry covers exactly the known sweeps, with i18n keys free of dot separators', () => {
+    // Stated ABSOLUTELY and deliberately: adding a sweep must fail here until its i18n strings and its
+    // job_run wiring are done too. r113 added usage.capture and this is what made that visible.
     expect(JOBS.map((j) => j.key).sort()).toEqual(
-      ['leave.accrue', 'leave.expire-aged', 'leave.expire-carry', 'review.sweep'].sort(),
+      ['leave.accrue', 'leave.expire-aged', 'leave.expire-carry', 'review.sweep', 'usage.capture'].sort(),
     );
     // A dot in a next-intl key is a namespace separator, so 'leave.accrue' would resolve as a nested
     // object rather than a leaf message. The registry swaps it for a dash.
