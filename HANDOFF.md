@@ -97,13 +97,14 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@dfb6050d` — production on **295** migrations. **Next free number is `0349`.**
+> ### DEPLOYED HEAD IS `main@c8b5da89` — production on **296** migrations. **Next free number is `0350`.**
 >
-> ### THE BOARD IS DRAINED OF OPEN WORK — 18 planned, 0 open, 0 contested, 1 approved, 1 building (r116)
+> ### THE BOARD HAS NO BUILDABLE WORK LEFT — 18 planned, 0 open, 0 contested, 0 approved, 1 building
 >
-> All 8 items that needed a plan were planned in r116's planning pass. **`7cd914b1` is the ONE approved,
-> buildable item**; `a1d82340` is still `building` on its unbuilt step 5. The 18 planned are waiting on
-> the reporter and nothing else.
+> All 8 items that needed a plan were planned in r116's pass; **`7cd914b1` shipped in r117** and is
+> `deployed`. `a1d82340` is still `building` on its unbuilt step 5 (consolidating the eight money-entry
+> paths) — that is the ONLY remaining code the reporter has already approved. The 18 planned are waiting
+> on the reporter and nothing else.
 >
 > ### THE BOARD NOW SAYS WHO WROTE EACH ITEM (0348, r116)
 >
@@ -975,6 +976,62 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r117 — 2026-08-03 — 7cd914b1: carry forward on every leave type, and a percentage of the balance
+
+**Shipped:** `main@c8b5da89`. **Migration `0349`** (production now on **296**).
+**Gate:** `tsc` · **538 files / 6274 tests** · `next build` · **UPGRADE_REHEARSAL=PASS**.
+Verified live: `active`, `GET /` 401, `/login` 200, rsync dry-run **zero** changed files, and on
+production **0 leave types carry a percentage** — i.e. nothing changed for anyone, which is the point.
+
+### THE ANNUAL-ONLY ASSUMPTION WAS IN FIVE PLACES, not the one the plan predicted
+
+The build notes named `openLeaveYear` and the panel's hidden `carryForwardMax=0`. Both were real; three
+more were not in the plan and each would have shipped a live defect:
+
+| where | was | what it would have done |
+|---|---|---|
+| `openLeaveYear` | `t.code === 'ANNUAL' && carryEnabled(pol)` | no non-annual type could carry |
+| `accrueEarnedLeave` 2D-3 | `type.code === 'ANNUAL' ? pol.carryMax : 0` | earned + lump-sum types would disagree |
+| `expireCarriedLeave` | `carryMax <= 0` short-circuit | **percentage carry would never expire** |
+| `resolveCarryBreakdown` | `carryMax > 0` gate on the expiry DATE | percentage carry immortal on screen too |
+| `core/read.ts` breakdown | `type.code === 'ANNUAL' ? carryMax : 0` | **the report would contradict the ledger** |
+
+**All five now call ONE `carryAllowanceFrom`** (`core/leave-compute.ts`), and `carry_forward_percent`
+joined **`leaveTypeRuleColumns`** so the twelfth rule cannot be hand-copied wrong at the eight query
+sites. This is the one-composition invariant `core/leave.ts` warns about at `:6651`, `:6016` and `:6586`
+— engines that re-derive the same rule are how the grant path and the projection kernel come to post an
+oscillating delta.
+
+### PERCENT AND MAX ARE A CLAMP, NOT A MODE
+
+Percentage resolves first, `carryForwardMax` is a CEILING on it, `min()` of the two. There is
+deliberately **no mode column**: two independent settings that can disagree is the shape `9816a5ad`
+consolidated away, and `min()` cannot produce a figure neither setting authorised. Three layers guard
+the range (DB CHECK on 0..100, the service validator, and the resolver's clamp) because the failure is
+silent and lands in the ledger.
+
+**NOTHING CARRIES DIFFERENTLY UNTIL A SETTING CHANGES**, and that is the load-bearing test in
+`test/carry-forward-percent.test.ts` — not the percentage arithmetic. Every non-annual type has
+`carryForwardEnabled` NULL and `carryForwardMax` 0, so `carryEnabled()` is false and the allowance is 0,
+byte-identical to the old branch.
+
+### A JUDGEMENT CALL: THE SICK/HOSPITALIZATION CARVE-OUT IS NOW CONFIGURATION, NOT CODE
+
+`openLeaveYear` hardcoded those two to zero carry citing EA s.60F. That exception is gone — it is now
+expressed as their configuration, following **`fa3f4ccb` rev 5**, where the configured figure wins and
+the statutory position is a warning rather than a silent override. Behaviour today is IDENTICAL (both
+are unconfigured). It becomes the owner's decision only if they deliberately switch it on.
+
+### TWO PINNED ASSERTIONS WERE SUPERSEDED, and the conflict was checked rather than flipped
+
+`carryCapLabel` gains "(days)" — the reporter asked for it once a percentage field sits beside it.
+**`37a1141e` had deliberately pinned that wording**, so the conflict matters: that rule was about
+keeping the forward-looking SETTING worded differently from the "Brought Forward" RESULT. A unit is not
+a rename and the phrase survives, so the distinction holds. The other is the whole-set overlay now
+emitting `carryPercent`.
+
+---
 
 ## r116 — 2026-08-03 — a planning pass that drained the board, and `reporter_label`
 
