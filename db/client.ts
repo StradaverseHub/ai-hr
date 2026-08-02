@@ -11,6 +11,8 @@ import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import * as schema from './schema';
 import type { EntitlementSnapshot, EntitlementsExemptReason } from '../core/entitlement-types';
+// Value import, and safe: core/entitlement-types.ts imports NOTHING, so there is no cycle back here.
+import { TENANT_STATUS_GOOD_STANDING } from '../core/entitlement-types';
 
 export type Grant = { role: string; companyId: string | null };
 
@@ -45,6 +47,19 @@ export type SessionContext = {
    * failed, here is why" distinguishable at the point of use.
    */
   entitlementsError?: string;
+  /**
+   * ADR-0077 slice 9 — the ONLY way to write inside a suspended tenant, and it is deliberately narrow.
+   *
+   * A suspended tenant is read-only (see withTenant). That rule cannot be absolute on a payroll system:
+   * EPF, SOCSO and PCB deadlines do not pause because an invoice is disputed, and a half-finished
+   * statutory month is worse for the employee than for the customer who stopped paying. A caller that
+   * genuinely needs to finish such an obligation sets this, and says WHY — the string is recorded, not
+   * a boolean, so an override is attributable in review rather than anonymous.
+   *
+   * It is not a general escape hatch. Anything that is not a statutory obligation should simply fail
+   * while the tenant is suspended, which is the point of suspending it.
+   */
+  statutoryOverride?: string;
 };
 
 // Reuse pools across hot-reloads (dev) so HMR doesn't leak Postgres connections.
@@ -137,6 +152,32 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       // FORM as well as the presence so the next deferred entry cannot repeat it.
       if (auditHashChainArmed()) {
         await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
+      }
+      // ADR-0077 slice 9 — SUSPENSION IS A MECHANISM, NOT A DISCIPLINE.
+      //
+      // A tenant out of good standing gets a READ-ONLY transaction, and Postgres refuses every write
+      // for us. Doing it per action would mean auditing several hundred call sites and re-auditing
+      // every new one forever; one line here binds all of them, including code written next year.
+      //
+      // WHY THIS WAS NOT ALREADY TRUE. `isModuleEnabled` returns false for a non-good-standing tenant,
+      // so BILLABLE modules already refused — but CORE modules (leave, ESS, employees, org) answer true
+      // from the catalog without consulting the snapshot. A suspended tenant could still file leave and
+      // edit employees. core/entitlements.ts said so against itself: "Until slice 9 lands, a closed
+      // tenant retains write access to core."
+      //
+      // READS ARE UNTOUCHED, on purpose. ADR-0077 open decision 5: read-only + export, never a hard
+      // lock-out on a payroll system. A customer in a billing dispute must still be able to see and
+      // export their own payroll history.
+      //
+      // A context with NO snapshot is not affected: `tenantStatus` is undefined, not "bad". Suspension
+      // must never be inferred from missing data — that would turn any resolver outage into a
+      // tenant-wide outage. Unresolved is handled by the entitlement gates, which fail closed there.
+      const tenantStatus = ctx.entitlements?.tenantStatus;
+      if (tenantStatus != null && !TENANT_STATUS_GOOD_STANDING.has(tenantStatus) && !ctx.statutoryOverride) {
+        // Verified to enforce, not merely to be accepted: reads still succeed, writes raise
+        // "cannot execute ... in a read-only transaction". Issued AFTER the set_configs because those
+        // are SELECTs, which do not close the window for SET TRANSACTION.
+        await tx.execute(sql`SET TRANSACTION READ ONLY`);
       }
       return fn(tx);
     });
