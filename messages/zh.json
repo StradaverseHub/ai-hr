@@ -2986,6 +2986,7 @@
         "colStatus": "状态"
       },
       "prefillFixedZakat": "预填固定天课",
+      "prefillTp1": "预填 TP1 减免",
       "prefillLoans": "预填贷款扣款",
       "loanSummary": "{count} 笔贷款分期 · RM {amount}",
       "step3Title": "第 3 步，共 3 步 — 审核并处理",

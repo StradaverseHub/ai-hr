@@ -12,7 +12,7 @@ import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inp
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, resetAction, transferAllowancesAction, unlockAction } from '../actions';
+import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, prefillTp1Action, resetAction, transferAllowancesAction, unlockAction } from '../actions';
 import { ComponentImport } from './component-import';
 import { OtInputRow } from './ot-input-row';
 import { ReprocessPanel } from './reprocess-panel';
@@ -708,6 +708,21 @@ export default async function BatchPage({
                   {t('prefillFixedZakat')}
                 </Button>
               </form>
+              {/* a1d82340 rev 3 — TP1 self-relief. `prefillTp1Action` has existed since the TP1 screen
+                  shipped and was rendered by NO screen: five of the six prefill actions had a button
+                  here and this one did not. An employee could submit their TP1 relief, HR could see it
+                  on the relief screen, and it could never reach a payslip, because the only bridge from
+                  tp1_relief to payroll_input.tp1_deduction is this action. Regular runs only, like the
+                  loan reservation above: an additional/off-cycle run pays its bonus and does not carry
+                  the month's declared reliefs. */}
+              {isRegular && (
+                <form action={prefillTp1Action}>
+                  <input type="hidden" name="batchId" value={batch.id} />
+                  <Button type="submit" size="sm" variant="secondary">
+                    {t('prefillTp1')}
+                  </Button>
+                </form>
+              )}
               {/* Attendance Allowance (ADR-0072) — pick an active policy and transfer its qualified
                   allowances onto this draft. Gated by TYPED_PAY_COMPONENTS_ENABLED. */}
               {allowancePolicies.length > 0 && (

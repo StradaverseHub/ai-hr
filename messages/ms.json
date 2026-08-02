@@ -2986,6 +2986,7 @@
         "colStatus": "Status"
       },
       "prefillFixedZakat": "Isi awal zakat tetap",
+      "prefillTp1": "Praisi pelepasan TP1",
       "prefillLoans": "Praisi potongan pinjaman",
       "loanSummary": "{count} ansuran pinjaman · RM {amount}",
       "step3Title": "Langkah 3 daripada 3 — Semak & proses",

@@ -2986,6 +2986,7 @@
         "colStatus": "สถานะ"
       },
       "prefillFixedZakat": "เติมซะกาตแบบคงที่ล่วงหน้า",
+      "prefillTp1": "เติมค่าลดหย่อน TP1",
       "prefillLoans": "เติมรายการหักเงินกู้",
       "loanSummary": "{count} งวดเงินกู้ · RM {amount}",
       "step3Title": "ขั้นตอนที่ 3 จาก 3 — ตรวจสอบและประมวลผล",
