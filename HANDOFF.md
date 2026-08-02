@@ -97,7 +97,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@c8b5da89` — production on **296** migrations. **Next free number is `0350`.**
+> ### DEPLOYED HEAD IS `main@1b9bf4c4` — production on **298** migrations. **Next free number is `0352`.**
 >
 > ### THE BOARD HAS NO BUILDABLE WORK LEFT — 18 planned, 0 open, 0 contested, 0 approved, 1 building
 >
@@ -976,6 +976,83 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r118-r121 — 2026-08-03 — slices 6, 7, 8 and 9 (four rounds, all deployed)
+
+**Shipped:** `main@f27de7e3` (r118) · `9d28f2a5` (r119, `0350`) · `e3f4bf1d` (r120, `0351`) ·
+`1b9bf4c4` (r121). Production on **298** migrations. Each verified live: `active`, `GET /` 401,
+rsync dry-run zero drift.
+
+### r118 — SLICE 6: A TOTAL OVER MIXED CURRENCIES IS NOT A NUMBER
+
+Two live faults, found by sweeping what r115 fixed for the OT report:
+- **`listUnattachedGroups` spans EVERY company in scope** and its grand total added the amounts blind,
+  printing one unlabelled figure. Now per-currency subtotals. `lib/money.ts` is a REFUSAL, not a
+  formatter: it exposes no `grandTotal` and **a test asserts that absence**, because the moment it can
+  return one number the fault is back. An unknown currency is its own bucket — treating absent as
+  "same as the others" is exactly how a foreign row joins a ringgit total.
+- **`complianceWorklist` emitted MALAYSIAN CP22/CP22A for every company**, telling a non-Malaysian
+  company it had a statutory filing obligation with a due date. Now gated on the company's pack (r111).
+
+**NOT swept, deliberately:** the EPF/SOCSO/EIS/PCB/SKBBK config screens. Those render the figures OF a
+Malaysian ruleset — the ringgit is part of what the table IS. Relabelling them would make them wrong.
+
+### r119 — SLICE 9: CLOSURE, AND A REACTIVATION THAT REPAYS FROZEN TIME
+
+Closure is dual-controlled **in the database** (`tenant_closure_dual_control_check`), so single-person
+closure is unrepresentable rather than merely refused, plus a retention check.
+
+**Reactivation implements r108's asymmetry rather than papering over it.** Accrual self-heals; both
+expiry sweeps compare a STORED DATE to today, so a plain re-run forfeits everything whose date fell
+inside the window — days the employee could not use because their employer was late paying.
+`shiftExpiryForSuspension` moves those deadlines by exactly the frozen days: not waived, MOVED. An
+expiry that lapsed BEFORE the suspension is untouched — reinstatement is not a second chance.
+
+`tenant_suspension_window` opens in the SAME transaction as the suspension, ON CONFLICT DO NOTHING
+against a one-open-window-per-tenant index (two would double-count and hand back twice the leave).
+`replayPlan` collapses repeats — forty skipped nights is ONE replay, not forty forfeits.
+`scripts/reactivate-tenant.ts` is report-only, REFUSES to reinstate a closed tenant, and does NOT run
+the sweeps — it prints the plan.
+
+### r120 — SLICE 7: THE PLATFORM PLANE GETS THE ROLE ITS DESIGN RESTS ON
+
+**The table side of D5 has been right since 0313** (platform_user, RLS, revoked from ai_hr_app). What
+was missing was the IDENTITY: **`ai_hr_platform` appeared in ZERO files** — a table nobody could read
+and no role to read it with. bootstrap-db.sql creates it (BYPASSRLS, NOSUPERUSER); 0351 grants an
+ENUMERATED list, never `ALL TABLES`; `db/platform.ts` is the only pool that connects as it.
+
+**NO FALLBACK, and that is the design.** Unset ⇒ throws. Falling back to `DATABASE_URL` gives a
+silently POWERLESS plane; to the owner URL, a silently OVER-PRIVILEGED one. It also refuses a URL
+IDENTICAL to either — that copy-paste satisfies "is it set?" while removing the boundary.
+`tenant` is READ-ONLY from the pool: suspension is dunning's alone, closure is dual-controlled.
+0351 also FORCEs RLS on platform_user — 0313 only ENABLEd it, which the table owner still bypasses.
+
+**`deploy/systemd/` NOW EXISTS: 5 services + 5 timers + a README. NOTHING IS INSTALLED.** A test
+asserts `deploy.sh` never enables a timer — scheduling must not be a side effect of shipping.
+`apply-dunning` ships WITHOUT `--apply`, so enabling it reports and suspends nobody.
+
+### r121 — SLICE 8: THE AUDIT CHAIN STOPS BEING DISARMABLE
+
+⚠️ **THE CHAIN HAS NEVER BEEN ARMED IN PRODUCTION.** Counted before shipping: **5707 events, ZERO
+chained**, no tenant with a chain, `AUDIT_HASH_CHAIN_ENABLED` unset. Every warning, the deploy
+preflight and the verifier's `unchained` count all guard a chain that was never switched on. **Arming
+it is an owner decision and effectively one-way.**
+
+`audit.hash_chain_enabled` on the tenant snapshot is the decision now; env survives only as the
+fallback for an unresolvable setting. **Disarming a tenant WITH chained history is REFUSED** — it would
+append events outside the chain, which `verifyTenantChain()` cannot see (it filters
+`chain_seq IS NOT NULL`), so re-arming closes contiguously over the hole and the DPO page renders
+"intact". No backfill can heal it. An unresolvable setting also fails ARMED (a sweep carries no
+snapshot — r108).
+
+**THE OLD TEST CAUGHT IT, WHICH IS HOW IT SHOULD GO.** `test/audit-hash-chain.test.ts` pinned the hole
+itself and now observes `[1..7]` instead of `[1,2,3,4]`. Rewritten to assert the refusal, NOT deleted —
+and the verifier's blindness stays pinned by the test below it, which makes an unchained row directly.
+
+**No DB lookup added to `withTenant`** — it opens every transaction in the product. The cache is a
+process Set seeded by ARMING, sound because `domain_event` is append-only.
+
+---
 
 ## r117 — 2026-08-03 — 7cd914b1: carry forward on every leave type, and a percentage of the balance
 
