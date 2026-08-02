@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r111 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r112 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@a4a6e856` — production on **293** migrations. **Next free number is `0347`.**
+> ### DEPLOYED HEAD IS `main@a3fbe992` — production on **293** migrations. **Next free number is `0347`.**
 >
 > ### THE BOARD IS FULL OF PLANS AWAITING THE REPORTER — 14 planned, 0 open
 >
@@ -594,9 +594,11 @@ what the directory holds. **The test-template fingerprint does not save you** �
 FILES, so the template rebuilt (fingerprint changed, .sql present) while the migration itself was never
 applied, and the failure surfaced as `column "statutory_tier" does not exist` from `seedBase`, which
 reads like a schema bug rather than a missing journal entry. Worse, a fresh template can then be REUSED
-on the next run ("fingerprint match") and keep the column missing. **After adding any migration: append
-the journal entry, then DROP `ai_hr_test_tpl` to force a genuine rebuild.**
-`test/migration-journal-ordering.test.ts` checks ORDER, not presence, so nothing caught this.
+on the next run ("fingerprint match") and keep the column missing. **CORRECTION (r112):** `test/migration-journal-ordering.test.ts` DOES already assert every `.sql` has a
+journal entry (added in r79) — it did not catch r111 because at that moment only the new test FILE was
+run, not the suite. The guard worked; it was not consulted. **What genuinely had no guard was step 2**,
+and r112 closed it: the template fingerprint now hashes `_journal.json`, so adding the entry changes the
+hash and forces a real rebuild. Manually dropping `ai_hr_test_tpl` is no longer needed.
 
 **REBUILDING THE LOCAL CLUSTER — the recipe, because two details are not guessable.**
 Everything in the local cluster is disposable (test DBs + `ai_hr_dev`), so when it wedges, **wiping
@@ -894,6 +896,37 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r112 — 2026-08-02 — the test-template fingerprint covers the migration journal
+
+**Shipped:** `main@a3fbe992`. **No migration.** **Gate:** `tsc` · **534 files / 6224 tests** · `next build`.
+
+**TWO STEPS, and only the second was unguarded.**
+
+**Step 1** — `0346.sql` added with no `_journal.json` entry. drizzle applies what the JOURNAL lists and
+never walks the directory, so it did not run. **`test/migration-journal-ordering.test.ts` already catches
+this** (r79, "a journal entry for every .sql file on disk"). It did not fire because I ran only the new
+test FILE at that point, not the suite. **The guard worked; I did not consult it.** My first report to the
+owner said this guard was missing — that was wrong, and corrected here.
+
+**Step 2 — THE EXPENSIVE ONE, and genuinely unguarded.** After adding the journal entry the fingerprint
+did NOT change, because `templateFingerprint()` hashed `db/migrations/*.sql` and `packs/catalog.ts` and
+**not the journal**. `templateIsReusable` therefore answered TRUE and every worker kept the stale
+template. **So the OBVIOUS FIX APPEARED NOT TO WORK:** journal correct, `.sql` correct, and the suite
+still reporting `column "statutory_tier" does not exist` from `seedBase` — which reads as a schema bug in
+the code under test rather than a stale cache, and survives reruns identically.
+
+`global-setup.ts` claimed the fingerprint hashed **"everything that determines the template's SHAPE"** and
+that **"if the inputs are byte-identical the template cannot be stale"**. That guarantee was FALSE while
+the journal sat outside the hash — the journal is precisely what decides which migrations run. It is true
+now.
+
+**The guard asserts DATA, not a regex over `global-setup.ts`:** the inputs are exported as
+`FINGERPRINT_EXTRA_FILES`, and the property is proven behaviourally — a substituted journal must move the
+digest with every `.sql` byte-identical, which is **exactly the comparison that was EQUAL before this
+change**. A refactor that preserves the behaviour keeps passing; one that drops the journal fails.
+
+---
 
 ## r111 — 2026-08-02 — slice 6 / ADR-0080 D-14: the two-tier statutory company
 
