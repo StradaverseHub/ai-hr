@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r103 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r104 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,17 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@70bc7c11` — production on **292** migrations. **Next free number is `0346`.**
+> ### DEPLOYED HEAD IS `main@05539aa1` — production on **292** migrations. **Next free number is `0346`.**
+>
+> ### ⚠️ A SUSPENDED TENANT IS NOW READ-ONLY, MECHANICALLY (slice 9, r104)
+>
+> `withTenant` issues `SET TRANSACTION READ ONLY` when `tenantStatus` is not in
+> `TENANT_STATUS_GOOD_STANDING` and no `statutoryOverride` is set. **Postgres refuses the write** — this
+> is not per-action discipline. Reads are UNTOUCHED (open decision 5: read-only + export, never a
+> lock-out on a payroll system). **Both production tenants are `active`, so it is inert there today.**
+>
+> **Nothing yet SETS a tenant to suspended** — the dunning policy deriving `tenant.status` from
+> `subscription.status` is the next piece. The mechanism exists; its trigger does not.
 >
 > ### SLICE 6 HAS BEGUN — `country-my` IS A MODULE, AND IT IS INERT
 >
@@ -799,7 +809,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 6 | multi-country entitlement wiring | **STEPS 1-2 DONE (r102, r103)** — `country-my` catalog row + tenant-wide grant (INERT, idempotence proven across two production deploys), and leave now REPORTS packless employments instead of skipping them silently. Still to do: vocabulary scoping (3 module-scope `countryPacks()` unions), per-company reporting + mixed-currency refusal, the two-tier statutory/non-statutory company (retires r97's `requirePackFor`, and closes the two `country` seams left open in r97), and **the deploy-failing flip — CONFIRM BEFORE SHIPPING** |
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
-   | 9 | tenant suspension / export / closure | **NOT BUILT** — `SET TRANSACTION READ ONLY` exists only in COMMENTS |
+   | 9 | tenant suspension / export / closure | **ENFORCEMENT DONE (r104)** — `withTenant` issues `SET TRANSACTION READ ONLY`, verified enforcing. Still to do: the DUNNING POLICY that sets `tenant.status` from `subscription.status` (nothing sets suspended today), sweeps consulting status, and the compliance export |
    | 10 | metering + platform dashboard | **TABLE ONLY** — `usage_snapshot` is in `db/schema.ts` and **nothing writes it** |
 
    > **CORRECTION — SLICE 2 SHIPPED AND THIS FILE MADE IT LOOK SKIPPED.** There are round entries for
@@ -862,6 +872,37 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r104 — 2026-08-02 — slice 9: a suspended tenant is read-only, mechanically
+
+**Shipped:** `main@05539aa1`. **No migration.** **Gate:** `tsc` · **527 files / 6107 tests** · `next build`.
+Behavioural no-op on production — both tenants are `active`, **checked before deploying**.
+
+**1. THIS CLOSES A GAP THE CODE DOCUMENTED AGAINST ITSELF.** `core/entitlements.ts`: "Until slice 9
+lands, a closed tenant retains write access to core." `isModuleEnabled` returned false for a
+non-good-standing tenant so BILLABLE modules refused — but CORE modules (leave, ESS, employees, org)
+answer true from the pack catalog **without consulting the snapshot**. A suspended customer could still
+file leave and edit employees.
+
+**2. MECHANISM, NOT DISCIPLINE.** One line in `withTenant` binds every call site, including ones written
+next year. Per-action enforcement would mean auditing several hundred sites and re-auditing forever.
+
+**3. READS UNTOUCHED, OVERRIDE NARROW.** `statutoryOverride` is a REASON STRING, not a boolean, so an
+override is attributable in review. It exists because EPF/SOCSO/PCB deadlines do not pause for a
+disputed invoice. **MISSING DATA IS NOT SUSPENSION** — a context with no snapshot is unaffected;
+inferring suspension from an unresolved snapshot would turn a resolver outage into a write outage.
+
+**4. VERIFIED BEFORE WRITING.** `SET TRANSACTION READ ONLY` after the four `set_config` SELECTs is both
+accepted AND enforcing (reads succeed, writes raise "cannot execute … in a read-only transaction"). And
+`core/entitlement-types.ts` imports NOTHING, so `db/client` importing from it creates no cycle.
+
+**5. TWO TEST BUGS OF MINE, both instructive.** A `create temp table` collided across tests — a temp
+table lives for the CONNECTION, not the transaction, and the pool reuses connections. And the refusal
+assertion matched drizzle's `"Failed query: …"` wrapper rather than the Postgres cause, so it would have
+passed for ANY query failure; it now walks the `.cause` chain. **That second one is the trap this file's
+own Traps section names.**
+
+---
 
 ## r103 — 2026-08-02 — slice 6 step 2: leave stops skipping packless employees silently
 
