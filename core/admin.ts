@@ -46,6 +46,7 @@ import {
   type ServiceBand,
 } from './leave';
 import { countryPacks, requirePackFor } from '../localization/registry';
+import { statesForCountries } from './state-vocabulary';
 import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
 import { MARITAL_STATUSES } from './profile';
 import {
@@ -2240,9 +2241,15 @@ export async function deleteHoliday(ctx: SessionContext, p: { id: string }) {
 // member states and feeds them into the same holiday.state UNION predicate as work_state. Admin-only
 // writes (RLS 0100). Assignment lives on employment.holiday_group_id (mutually exclusive with work_state).
 
-/** Sanitise + validate a group's member states: each ∈ the registered packs' state vocabulary
- *  (ADR-0080 D6 — holiday groups are tenant-level, so the union across registered country packs is
- *  used; per-company narrowing is a later slice), de-duplicated. For a 'custom' calendar
+/** Sanitise + validate a group's member states, de-duplicated.
+ *
+ *  ADR-0077 slice 6 — this used the UNION across every registered pack, with a comment saying
+ *  per-company narrowing was a later slice. A holiday group is TENANT-level, so there is no single
+ *  company to narrow by; it now narrows to the countries the tenant's companies actually operate in,
+ *  which is the same rule one level up. A tenant that operates only Malaysia can no longer be given a
+ *  Singapore state on a calendar its employees will never match against. See core/state-vocabulary.ts.
+ *
+ *  For a 'custom' calendar
  *  states supply nothing (national is NOT auto-added) so an empty list is allowed; for 'standard'/'extended'
  *  the states[] ARE the gazette state source, so at least one is required (a zero-state non-custom group ==
  *  national, which already exists) — UNLESS the group has a PARENT (R18 a519a96e): then the parent's
@@ -2250,9 +2257,10 @@ export async function deleteHoliday(ctx: SessionContext, p: { id: string }) {
 function cleanHolidayGroupStates(
   states: string[] | undefined,
   archetype: HolidayGroupArchetype,
-  hasParent = false,
+  hasParent: boolean,
+  tenantCountries: readonly (string | null)[],
 ): string[] {
-  const valid = new Set<string>(countryPacks().flatMap((p) => p.states));
+  const valid = statesForCountries(tenantCountries);
   const out = [...new Set((states ?? []).map((s) => (s ?? '').trim()).filter(Boolean))];
   if (archetype !== 'custom' && out.length === 0 && !hasParent)
     throw new Error('A standard or extended holiday calendar must include at least one state.');
@@ -2260,6 +2268,19 @@ function cleanHolidayGroupStates(
     if (!valid.has(s)) throw new Error(`Unknown state “${s}”.`);
   }
   return out;
+}
+
+/**
+ * The distinct countries this tenant's companies operate in — the state vocabulary a TENANT-level
+ * calendar is judged against. Read inside the tx so RLS scopes it to the caller's own tenant.
+ *
+ * A tenant with no companies yet resolves to an empty set, which rejects every state. That is the right
+ * refusal rather than an edge case to paper over: a holiday calendar keyed to states, in a tenant that
+ * operates in no country, cannot match anybody.
+ */
+async function tenantCompanyCountries(tx: Tx): Promise<string[]> {
+  const rows = await tx.selectDistinct({ country: company.country }).from(company);
+  return rows.map((r) => r.country).filter((c): c is string => !!c);
 }
 
 /** R18 a519a96e — validate a prospective PARENT group inside the tx: it must exist in THIS tenant (the FK
@@ -2421,11 +2442,12 @@ export async function createHolidayGroup(
   const name = cleanName(p.name, 'Group name');
   const archetype = cleanArchetype(p.archetype);
   const parentGroupId = p.parentGroupId?.trim() || null;
-  const states = cleanHolidayGroupStates(p.states, archetype, !!parentGroupId);
   const code = p.code?.trim() || null;
   const description = p.description?.trim() || null;
   const active = p.active ?? true;
   return withTenant(ctx, async (tx) => {
+    // Inside the tx: the vocabulary depends on which countries this tenant operates in.
+    const states = cleanHolidayGroupStates(p.states, archetype, !!parentGroupId, await tenantCompanyCountries(tx));
     let parentName: string | null = null;
     if (parentGroupId) parentName = await assertValidParentGroup(tx, ctx.tenantId, parentGroupId);
     const [row] = await tx
@@ -2493,7 +2515,7 @@ export async function updateHolidayGroup(
     if (parentGroupId === p.id) throw new Error('A holiday group cannot be its own parent.');
     const states =
       p.states !== undefined
-        ? cleanHolidayGroupStates(p.states, archetype, !!parentGroupId)
+        ? cleanHolidayGroupStates(p.states, archetype, !!parentGroupId, await tenantCompanyCountries(tx))
         : (before.states as string[]);
     // A standard/extended calendar still needs ≥1 gazette state even if only the archetype changed —
     // unless a parent supplies the gazette source (R18 a519a96e).
