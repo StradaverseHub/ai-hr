@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r106 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r108 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@1558556c` — production on **292** migrations. **Next free number is `0346`.**
+> ### DEPLOYED HEAD IS `main@c3045746` — production on **292** migrations. **Next free number is `0346`.**
 >
 > ### THE BOARD IS FULL OF PLANS AWAITING THE REPORTER — 14 planned, 0 open
 >
@@ -883,6 +883,56 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r108 — 2026-08-02 — slice 9: the scheduled sweeps consult tenant standing
+
+**Shipped:** `main@c3045746`. **No migration.** **Gate:** `tsc` · **530 files / 6166 tests** · `next build`.
+
+**AFTER r104 THE FOUR SWEEPS DISAGREED ABOUT SUSPENSION, and the split follows the snapshot.**
+`accrue-earned`, `expire-carry` and `expire-aged-leave` pass `entitlementsExempt: 'sweeps'`, so their
+context carries NO snapshot — and r104 keys the read-only guard on `ctx.entitlements?.tenantStatus`,
+deliberately treating an absent snapshot as "not known to be bad". **The guard never engaged: all three
+kept granting leave and forfeiting days inside a suspended tenant.** `review-sweep` resolves a REAL
+snapshot (it has to — it calls the billable notifications gate), so there the guard DID engage, **as a
+read-only crash counted as a per-tenant failure and a non-zero exit — a nightly page for a customer
+suspended on purpose.** Enforcement existed for one sweep in four, in the one form nobody wants.
+
+**The exempt marker is not the bug.** It is for MODULE gating; widening it to carry standing would put
+the decision in two places. Scope is now decided BEFORE a transaction opens, by
+`core/sweep-scope.ts`, using the **SAME `TENANT_STATUS_GOOD_STANDING` set `withTenant` uses** — one
+predicate, two consumers. **A sweep must never attempt a write the write boundary would refuse**; if the
+two rules drifted, the drift would surface as exactly that read-only crash.
+
+**AN UNRECOGNISED STATUS IS OUT OF SCOPE — the OPPOSITE direction from r105, on purpose.** In dunning an
+unknown `subscription.status` must NOT suspend (acting on an uninterpretable value costs a customer
+their payroll). Here an unknown `tenant.status` must NOT be swept, because `withTenant` refuses those
+writes anyway. **Both rules say the same thing: agree with the write boundary, never infer standing from
+a value you cannot interpret.** The status is reported BY NAME.
+
+**SKIPPING IS NOT FAILING.** Skips are excluded from `tenantsProcessed` (so an all-suspended night reads
+0/0 and stays `success`, not `failed`) and recorded as `skipped` in the run-log jsonb — no migration.
+That record is also the **only durable evidence a sweep did not run for a tenant**, which is what
+reactivation's "replay skipped sweeps with the suspended window excluded" needs as input.
+
+**THE ASYMMETRY THIS DOES NOT PAPER OVER, and there is a test pinning it.** Accrual SELF-HEALS —
+`accrueEarned` computes from service dates up to `asOf`, so the first run after reinstatement grants the
+missed months. **EXPIRY DOES NOT:** both expiry sweeps compare `today` to a stored date, so a plain
+re-run after reinstatement forfeits everything whose date fell INSIDE the suspended window — days the
+employee never had a chance to use. **Replay belongs to reactivation, not to the sweeps**, and
+`test/sweep-scope.test.ts` fails if a sweep grows its own catch-up loop over `scope.skipped`.
+
+**A SECOND, OLDER BUG FOUND ON THE WAY.** Migration 0151 inserts tenant `00000000-…-0000` so PRE-AUTH
+audit events (login-failed, reset-request) have an FK target. It is not a customer. **All four sweeps
+have enumerated it since they were written**, inflating `tenants_processed` by one — so every count on
+the Scheduled Actions screen has reported one more customer than exists.
+`scripts/reconcile-entitlement-parity.ts` had already learned this and skipped it by hand; the constant
+now lives in `core/sweep-scope.ts` and both import it.
+
+**STILL NOT SCHEDULED.** `systemctl list-timers` on the host shows **no `aihr` timers at all** — none of
+the four sweeps run in production, which is why none of this ever fired. Like r105, this is correctness
+in place before the thing starts running. **Installing the timers is an owner decision.**
+
+---
 
 ## r107 (planning only) — 2026-08-02 — 14 leave items planned, and four of them were traps
 
