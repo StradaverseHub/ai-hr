@@ -769,6 +769,8 @@ export default async function LeaveEntitlementsPage({
                 accrualMethod: lt.accrualMethod ?? null,
                 carryForwardEnabled: lt.carryForwardEnabled ?? null,
                 carryForwardMax: lt.carryForwardMax == null ? null : Number(lt.carryForwardMax),
+                // 7cd914b1: numeric(5,2) — same string-to-number treatment as every other numeric here.
+                carryForwardPercent: lt.carryForwardPercent == null ? null : Number(lt.carryForwardPercent),
                 carryForwardExpiryMode: (lt.carryForwardExpiryMode as 'date' | 'months' | null) ?? null,
                 carryForwardExpiryMonths: lt.carryForwardExpiryMonths ?? null,
                 carryForwardExpiryMonth: lt.carryForwardExpiryMonth ?? null,

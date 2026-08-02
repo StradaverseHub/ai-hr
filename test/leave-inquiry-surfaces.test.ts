@@ -384,7 +384,11 @@ describe('37a1141e: Carried Forward → Brought Forward (English labels only)', 
     expect(at('admin.leave.subStep.carry')).toBe('Carry Forward Policy');
     expect(at('admin.leave.carryEnabledLabel')).toBe('Carry forward rule');
     expect(at('admin.leave.bandColCarryDays')).toBe('Carry-forward days');
-    expect(at('admin.leave.carryCapLabel')).toBe('Carry cap');
+    // 7cd914b1 added "(days)" here — a UNIT, not a rename. The reporter asked for it once a percentage
+    // field sat beside this one, because "Carry cap: 5" and "Carry forward percentage: 50" are otherwise
+    // indistinguishable in kind. 37a1141e's rule still holds: the phrase "Carry cap" is retained, so the
+    // forward-looking setting is still worded differently from the "Brought Forward" result it produces.
+    expect(at('admin.leave.carryCapLabel')).toBe('Carry cap (days)');
   });
 
   it('the two unrelated features that share the English phrase are untouched', () => {

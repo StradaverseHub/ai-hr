@@ -1308,6 +1308,15 @@ export const leaveType = pgTable('leave_type', {
   accrualMethod: text('accrual_method'),
   //   carryForwardMax — `accrual.carryForwardMax`, the cap on days carried into the next leave year.
   carryForwardMax: numeric('carry_forward_max', { precision: 6, scale: 2 }),
+  //   carryForwardPercent — 7cd914b1 (migration 0349): carry forward a PERCENTAGE of the balance the
+  //     employee still has at year end, instead of a flat number of days. 0–100, NULL ⇒ not configured,
+  //     which is every existing row and reads as the fixed-maximum behaviour.
+  //
+  //     PERCENT AND MAX ARE A CLAMP, NOT A CHOICE. When both are set the percentage resolves first and the
+  //     max is a CEILING on it (resolveCarryAllowance). Two independent settings that can disagree is the
+  //     exact shape 9816a5ad consolidated away, so there is deliberately no "which one wins" mode column:
+  //     percent set ⇒ percentage of balance; max set ⇒ ceiling; both ⇒ min of the two.
+  carryForwardPercent: numeric('carry_forward_percent', { precision: 5, scale: 2 }),
   //   carryForwardEnabled — `accrual.carryForwardEnabled`, the explicit on/off switch.
   carryForwardEnabled: boolean('carry_forward_enabled'),
   //   carryForwardExpiryMode — 'date' (read month+day) | 'months' (read months). BOTH modes are live, so

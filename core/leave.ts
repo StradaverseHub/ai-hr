@@ -32,7 +32,10 @@ import {
   bandCarryExpiry,
   bandCarryMax,
   bandMaxBalance,
+  carryAllowanceFrom,
+  carryConfigured,
   carryEnabled,
+  resolveCarryAllowance,
   entitledDays,
   hasAnyCarryExpiry,
   hasAnyLeaveTypeRule,
@@ -5689,6 +5692,9 @@ export async function buildSchemeEntitlementResolver(
 export const leaveTypeRuleColumns = {
   accrualMethod: leaveType.accrualMethod,
   carryForwardMax: leaveType.carryForwardMax,
+  // 7cd914b1 — the twelfth rule column. It belongs HERE and only here for the reason in the header: eight
+  // hand-copied column lists is how the grant engine and the projection kernel come to read different rules.
+  carryForwardPercent: leaveType.carryForwardPercent,
   carryForwardEnabled: leaveType.carryForwardEnabled,
   carryForwardExpiryMode: leaveType.carryForwardExpiryMode,
   carryForwardExpiryMonths: leaveType.carryForwardExpiryMonths,
@@ -5904,11 +5910,21 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         const { days } = entitledDays(pack.leave.entitlement(t.code, years), schemeDays, pol?.days ?? 0);
         if (days <= 0) continue;
         const before = balanceBy.get(key) ?? 0;
-        // Carry-forward enhancement: ANNUAL carries only when the explicit toggle is on (back-compat
-        // default = cap > 0). When disabled, carryMax collapses to 0 ⇒ full forfeit — the requested
-        // "disable carry" behaviour. SICK/HOSPITALIZATION stay 0 (statutory annual reset, EA s.60F).
-        const carryMax = t.code === 'ANNUAL' && carryEnabled(pol) ? (pol?.carryMax ?? 0) : 0;
-        const rawCarry = Math.min(Math.max(before, 0), carryMax);
+        // Carry forward, for EVERY leave type (7cd914b1). This used to read
+        // `t.code === 'ANNUAL' && carryEnabled(pol)`, which meant a non-annual type could not carry
+        // anything no matter how it was configured — and the editor reinforced that by posting a hidden
+        // carryForwardMax=0 for those types. The code gate is gone; CONFIGURATION now decides.
+        //
+        // NOTHING CHANGES FOR ANYONE UNTIL A SETTING CHANGES. Every non-annual type carries
+        // carryForwardEnabled=false / NULL and carryForwardMax 0 today, so carryEnabled() is false and the
+        // allowance is 0 — a full forfeit, byte-identical to the old branch. SICK and HOSPITALIZATION
+        // included: their statutory annual reset (EA s.60F) is now expressed as their configuration rather
+        // than as a hardcoded exception, which is the fa3f4ccb rev 5 precedent — the configured figure
+        // wins and the statutory position is a warning, not a silent override.
+        //
+        // resolveCarryAllowance is the SINGLE definition of how much carries, shared with the projection
+        // kernel. It handles the percentage mode and clamps it with carryForwardMax as a ceiling.
+        const rawCarry = resolveCarryAllowance(pol, before);
         // Feedback b81d3c52 — Rounding Method: tidy the CALCULATED entitlement to a whole day BEFORE the
         // max-balance clamp, at the identical point every other engine rounds (hire grant / earned accrual
         // / the recalc kernel's projection) so the ledger and the kernel can never disagree. The carry-in
@@ -6448,16 +6464,21 @@ export async function accrueEarnedLeave(
           groupBy.set(groupKey, group);
         }
         group.count += 1;
-        // 2D-3: cap what carries into the new cycle. ANNUAL carries up to its policy cap; other earned
-        // types reset (cap 0). Posted once per cycle, dated at the cycle start (guarded by `forfeited`).
-        // Leave Year Type override (e1a51aea): the maps are keyed cs|emp|type — this (emp, type)'s window.
+        // 2D-3: cap what carries into the new cycle. Posted once per cycle, dated at the cycle start
+        // (guarded by `forfeited`). Leave Year Type override (e1a51aea): the maps are keyed cs|emp|type —
+        // this (emp, type)'s window.
+        //
+        // 7cd914b1: this used to be `type.code === 'ANNUAL' ? pol!.carryMax : 0`, the same Annual-only gate
+        // openLeaveYear carried. It now asks resolveCarryAllowance, the SAME function openLeaveYear asks —
+        // an earned type and a lump-sum type must not disagree about how much carries, and two hand-written
+        // copies of `min(balance, cap)` are exactly how they would come to.
         const carryKey = `${cycleStart}|${e.employmentId}|${typeId}`;
         const priorBalance = priorBalanceBy.get(carryKey) ?? 0;
-        const baseCap = type.code === 'ANNUAL' ? pol!.carryMax : 0;
-        // Feedback 9d8cf621 — Maximum Balance Days also bounds the earned carry cap: nothing more than the
-        // cap can be retained into the new cycle. null ⇒ pass-through (baseCap unchanged).
-        const cap = pol!.maxBalanceDays != null ? Math.min(baseCap, Math.max(0, pol!.maxBalanceDays)) : baseCap;
-        const retainedCarry = Math.min(Math.max(priorBalance, 0), cap);
+        const baseCarry = resolveCarryAllowance(pol, priorBalance);
+        // Feedback 9d8cf621 — Maximum Balance Days also bounds the earned carry: nothing more than the cap
+        // can be retained into the new cycle. null ⇒ pass-through.
+        const retainedCarry =
+          pol!.maxBalanceDays != null ? Math.min(baseCarry, Math.max(0, pol!.maxBalanceDays)) : baseCarry;
         if (!forfeited.has(carryKey)) {
           const forfeit = Math.round((priorBalance - retainedCarry) * 100) / 100;
           if (forfeit > 0) {
@@ -7677,10 +7698,19 @@ export async function listEntitlementRecalcAudit(
 export function reconstructCarry(p: {
   priorYearEndBalance: number;
   carryMax: number;
+  /** 7cd914b1 — the percentage rule, when the type carries by percentage rather than a flat cap. Absent ⇒
+   *  the cap alone decides, which is every pre-7cd914b1 caller and every pre-7cd914b1 leave year. */
+  carryPercent?: number | null;
   debitsInWindow: number;
   currentBalance: number;
 }): { carried: number; unconsumedCarry: number; forfeitable: number } {
-  const carried = Math.min(Math.max(p.priorYearEndBalance, 0), p.carryMax);
+  // Shared with openLeaveYear through carryAllowanceFrom: this reconstruction exists to say what the
+  // engine POSTED, so it must not be a second opinion about it.
+  const carried = carryAllowanceFrom({
+    balance: p.priorYearEndBalance,
+    carryMax: p.carryMax,
+    carryPercent: p.carryPercent,
+  });
   const unconsumedCarry = Math.max(0, round2(carried - p.debitsInWindow));
   const forfeitable = round2(Math.min(unconsumedCarry, Math.max(0, p.currentBalance)));
   return { carried, unconsumedCarry, forfeitable };
@@ -7700,6 +7730,8 @@ export function reconstructCarry(p: {
 export function resolveCarryBreakdown(p: {
   cycleStart: string;
   carryMax: number;
+  /** 7cd914b1 — the percentage rule, resolved from the same winning policy as carryMax. */
+  carryPercent?: number | null;
   /** {month, day} OFFSET, or null (never expires). Already resolved from the winning policy. */
   expiry: CarryExpiry | null;
   priorBalanceAtCycleStart: number;
@@ -7723,8 +7755,10 @@ export function resolveCarryBreakdown(p: {
   forfeited: number;
 } {
   const cycleYear = p.cycleStart.slice(0, 4);
+  // 7cd914b1: `carryMax > 0` was the "does this type carry at all" test. A percentage-only type has no cap
+  // and must still get an expiry date, or what it carried would never expire.
   const carryForwardExpiryDate =
-    p.carryMax > 0 && p.expiry
+    carryConfigured({ carryMax: p.carryMax, carryPercent: p.carryPercent }) && p.expiry
       ? `${cycleYear}-${String(p.expiry.month).padStart(2, '0')}-${String(
           Math.min(p.expiry.day, lastRealDayOfMonth(Number(cycleYear), p.expiry.month)),
         ).padStart(2, '0')}`
@@ -7732,6 +7766,7 @@ export function resolveCarryBreakdown(p: {
   const { carried, unconsumedCarry: unconsumedRaw, forfeitable } = reconstructCarry({
     priorYearEndBalance: p.priorBalanceAtCycleStart,
     carryMax: p.carryMax,
+    carryPercent: p.carryPercent,
     debitsInWindow: p.debitsInWindow,
     currentBalance: p.currentBalance,
   });
@@ -7892,14 +7927,19 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
             );
           if (Number(openMarker?.n ?? 0) === 0) continue;
           // The carried amount openLeaveYear posted at this year-open: prior-year-end balance, capped.
+          // 7cd914b1: `carryMax <= 0` was the "nothing could have carried" short-circuit. A percentage-only
+          // type has no cap and DOES carry, so the question is now whether carry is configured at all —
+          // otherwise the sweep would skip exactly the types this item introduced and their carry would
+          // never expire.
           const carryMax = pol!.carryMax;
-          if (carryMax <= 0) continue; // nothing could have carried
+          const carryPercent = pol!.carryPercent ?? null;
+          if (!carryConfigured({ carryMax, carryPercent })) continue; // nothing could have carried
           const [priorRow] = await tx
             .select({ bal: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
             .from(leaveLedger)
             .where(and(eq(leaveLedger.employmentId, e.employmentId), eq(leaveLedger.leaveTypeId, t.id), lt(leaveLedger.effectiveOn, yearStart)));
           const priorYearEndBalance = Number(priorRow?.bal ?? 0);
-          if (Math.min(Math.max(priorYearEndBalance, 0), carryMax) <= 0) continue;
+          if (carryAllowanceFrom({ balance: priorYearEndBalance, carryMax, carryPercent }) <= 0) continue;
           // Annual debits inside [yearStart, expiryDate] reduce the still-unconsumed carry. (Weaker rule:
           // no ordering claim — just "how much of the window's leave could have eaten the carry".)
           const [debitRow] = await tx
@@ -7920,6 +7960,7 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
           const { unconsumedCarry, forfeitable: forfeit } = reconstructCarry({
             priorYearEndBalance,
             carryMax,
+            carryPercent,
             debitsInWindow,
             currentBalance,
           });

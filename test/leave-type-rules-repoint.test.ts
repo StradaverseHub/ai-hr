@@ -223,6 +223,9 @@ describe('applyLeaveTypeRules — the pure overlay', () => {
     expect(out).toEqual({
       days: 15, // untouched — step 2 moved the rules, not the days
       carryMax: 7.5,
+      // 7cd914b1 — the twelfth rule. null because this fixture configures no percentage, and the overlay
+      // emits every rule it owns rather than omitting the absent ones (that is what makes it whole-set).
+      carryPercent: null,
       method: 'earned_quarterly',
       carryExpiry: { month: 6, day: 31 }, // months mode: day 31 is the sentinel the build sites clamp
       carryForwardEnabled: false,

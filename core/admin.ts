@@ -4227,6 +4227,8 @@ export async function setLeaveTypeRules(
     accrualMethod?: string | null;
     carryForwardEnabled?: boolean | null;
     carryForwardMax?: number | null;
+    /** 7cd914b1 — carry a percentage (0-100) of the year-end balance. null ⇒ no percentage rule. */
+    carryForwardPercent?: number | null;
     carryForwardExpiryMode?: 'date' | 'months' | null;
     carryForwardExpiryMonths?: number | null;
     carryForwardExpiryMonth?: number | null;
@@ -4242,6 +4244,15 @@ export async function setLeaveTypeRules(
     if (v === null || v === undefined) return v;
     if (!Number.isInteger(v) || v < lo || v > hi) throw new LeaveTypeRuleError(`${label} must be a whole number between ${lo} and ${hi}.`);
     return v;
+  };
+  // 7cd914b1 — a percentage, in its own validator rather than decIn's 0..9999.99 range. A carry-forward
+  // percentage above 100 would hand back more than the employee held, so the ceiling is the point.
+  const pctIn = (v: number | null | undefined) => {
+    if (v === null || v === undefined) return v;
+    if (!Number.isFinite(v) || v < 0 || v > 100) {
+      throw new LeaveTypeRuleError('Carry-forward percentage must be between 0 and 100.');
+    }
+    return Math.round(v * 100) / 100;
   };
   const decIn = (v: number | null | undefined, label: string) => {
     if (v === null || v === undefined) return v;
@@ -4287,6 +4298,7 @@ export async function setLeaveTypeRules(
   put('accrualMethod', p.accrualMethod);
   put('carryForwardEnabled', p.carryForwardEnabled);
   put('carryForwardMax', decIn(p.carryForwardMax, 'Carry-forward maximum'));
+  put('carryForwardPercent', pctIn(p.carryForwardPercent));
   put('carryForwardExpiryMode', p.carryForwardExpiryMode);
   put('carryForwardExpiryMonths', intIn(p.carryForwardExpiryMonths, 1, 12, 'Carry-forward expiry months'));
   put('carryForwardExpiryMonth', month);
@@ -4306,6 +4318,7 @@ export async function setLeaveTypeRules(
         accrualMethod: leaveType.accrualMethod,
         carryForwardEnabled: leaveType.carryForwardEnabled,
         carryForwardMax: leaveType.carryForwardMax,
+        carryForwardPercent: leaveType.carryForwardPercent,
         carryForwardExpiryMode: leaveType.carryForwardExpiryMode,
         carryForwardExpiryMonths: leaveType.carryForwardExpiryMonths,
         carryForwardExpiryMonth: leaveType.carryForwardExpiryMonth,

@@ -978,12 +978,15 @@ export async function carryForwardReport(
         annualType,
       );
       const carryMax = policy?.carryMax ?? 0;
+      // 7cd914b1: this report is ANNUAL-scoped by design, but an ANNUAL type may now carry by percentage.
+      const carryPercent = policy?.carryPercent ?? null;
       const anniversaryEarned = isAnniversaryEarned(e.leaveCycle, policy?.method);
       const priorBalance = priorBalByEmp.get(e.employmentId) ?? 0;
       const debitsInWindow = debitByEmp.get(e.employmentId) ?? 0;
       const { carried, carryForwardExpiryDate } = resolveCarryBreakdown({
         cycleStart,
         carryMax,
+        carryPercent,
         expiry: policy?.carryExpiry ?? null,
         priorBalanceAtCycleStart: priorBalance,
         debitsInWindow,
