@@ -383,6 +383,8 @@ export type OvertimeReportRow = {
   restDayExcessMultiplier: number;
   holidayExcessMultiplier: number;
   otAmount: number;
+  /** ISO-4217 of the employee's COMPANY. Amounts across differing currencies must never be summed (D-9). */
+  currency: string;
   eligible: boolean;
   otSource: 'system' | 'requested' | 'none';
   otApprovalStatus: 'approved' | 'pending' | 'none';
@@ -417,6 +419,7 @@ export async function overtimeReport(
         employeeCode: employment.employeeCode,
         companyId: employment.companyId,
         country: company.country,
+        currency: company.currency,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -432,14 +435,33 @@ export async function overtimeReport(
     if (emps.length === 0) return { month: p.month, statutoryVersion: null, rows: [] };
     const empIds = emps.map((e) => e.employmentId);
 
-    // Effective OT ruleset ONCE at month-end (matches payroll prefill's periodEnd asOf). All companies in scope
-    // share the tenant-wide ruleset; resolve via the pack of the first company that has one.
-    const packCountry = emps.find((e) => packFor(e.country))?.country ?? null;
-    const pack = packFor(packCountry);
-    const ruleset = pack ? await pack.payroll.loadRuleset(tx, { asOf: monthEnd }) : null;
-    const ot = ruleset?.ot;
-    const restMult = ot?.restDayExcessMultiplier ?? 2;
-    const holidayMult = ot?.holidayExcessMultiplier ?? 3;
+    // ADR-0077 slice 6 — the OT ruleset resolves PER COMPANY COUNTRY, not once for the whole report.
+    //
+    // This used to say "All companies in scope share the tenant-wide ruleset; resolve via the pack of the
+    // first company that has one" and did exactly that. With MY the only pack it is byte-identical. With
+    // two, a report spanning a Malaysian and a Singaporean company would have applied ONE jurisdiction's
+    // overtime multipliers and wage ceiling to BOTH — computing foreign employees under Malaysian rules
+    // and labelling the result as theirs. That is the same harm the two-tier company (D-14) exists to
+    // prevent, arriving through a report instead of a mis-keyed country.
+    //
+    // Resolved once PER DISTINCT COUNTRY rather than per employee: a 500-employee report still issues one
+    // loadRuleset per jurisdiction, not 500.
+    const countries = [...new Set(emps.map((e) => e.country))];
+    const rulesByCountry = new Map<
+      string | null,
+      { pack: ReturnType<typeof packFor>; ruleset: Awaited<ReturnType<NonNullable<ReturnType<typeof packFor>>['payroll']['loadRuleset']>> | null }
+    >();
+    for (const c of countries) {
+      const cPack = packFor(c);
+      rulesByCountry.set(c, {
+        pack: cPack,
+        ruleset: cPack ? await cPack.payroll.loadRuleset(tx, { asOf: monthEnd }) : null,
+      });
+    }
+    // The footnote version stays single-valued for now and reports the FIRST resolved jurisdiction's
+    // version; when a second pack ships this becomes a per-country footnote. Recorded rather than hidden:
+    // a report spanning two jurisdictions has more than one statutory version behind it.
+    const firstResolved = countries.map((c) => rulesByCountry.get(c)?.ruleset).find((r) => r) ?? null;
 
     // Current s.2 wages (basic + fixed allowance) — the ORP basis, same as prefillOvertimeFromAttendance.
     const comps = await tx
@@ -522,6 +544,12 @@ export async function overtimeReport(
       const agg = aggBy.get(e.employmentId) ?? { worked: 0, ot: { workday: 0, rest: 0, holiday: 0 } };
       const otMinutesTotal = agg.ot.workday + agg.ot.rest + agg.ot.holiday;
       const wages = wagesBy.get(e.employmentId);
+      // THIS employee's jurisdiction, not the report's.
+      const rules = rulesByCountry.get(e.country);
+      const pack = rules?.pack;
+      const ot = rules?.ruleset?.ot;
+      const restMult = ot?.restDayExcessMultiplier ?? 2;
+      const holidayMult = ot?.holidayExcessMultiplier ?? 3;
       const result =
         pack && wages != null
           ? pack.payroll.overtimePay({
@@ -551,13 +579,17 @@ export async function overtimeReport(
         restDayExcessMultiplier: restMult,
         holidayExcessMultiplier: holidayMult,
         otAmount: result ? r2(result.total) : 0,
+        // The company's own currency. Without it `otAmount` is a bare number that a reader — or a
+        // spreadsheet — will happily add to another company's, and the export header used to assert 'RM'
+        // for every row regardless of where the employee works.
+        currency: e.currency,
         eligible,
         otSource: hasOt ? (hasRequestedOt.has(e.employmentId) ? 'requested' : 'system') : 'none',
         otApprovalStatus: hasOt ? (hasPendingOt.has(e.employmentId) ? 'pending' : 'approved') : 'none',
       };
     });
 
-    return { month: p.month, statutoryVersion: ruleset?.version ?? null, rows };
+    return { month: p.month, statutoryVersion: firstResolved?.version ?? null, rows };
   });
 }
 
@@ -574,7 +606,10 @@ export const OVERTIME_REPORT_COLUMNS = [
   'Workday rate',
   'Rest day excess rate',
   'Public holiday excess rate',
-  'OT amount (RM)',
+  // Not 'OT amount (RM)': that literal was false for any company not in Malaysia. The currency travels
+  // in its own column so a mixed-currency export is visibly mixed rather than silently addable (D-9).
+  'OT amount',
+  'Currency',
   'Eligibility status',
   'OT source',
   'OT approval status',
@@ -611,6 +646,7 @@ export function overtimeReportToReportData(report: OvertimeReport): ReportData {
       `${r.restDayExcessMultiplier}x`,
       `${r.holidayExcessMultiplier}x`,
       r.otAmount.toFixed(2),
+      r.currency,
       eligibility(r),
       sourceLabel[r.otSource],
       approvalLabel[r.otApprovalStatus],
