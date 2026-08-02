@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r109 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r110 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@b83bdb92` — production on **292** migrations. **Next free number is `0346`.**
+> ### DEPLOYED HEAD IS `main@c0095f58` — production on **292** migrations. **Next free number is `0346`.**
 >
 > ### THE BOARD IS FULL OF PLANS AWAITING THE REPORTER — 14 planned, 0 open
 >
@@ -817,7 +817,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 3 | gate classification + migration + backfill | **DONE** — round entry below |
    | 4 | nav + page gating from entitlements | **DONE** — round entry below |
    | 5 | module install / deactivate as operations | **DONE (r97-r100)** except the admin setup notification (no natural key on `notification`) — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
-   | 6 | multi-country entitlement wiring | **STEPS 1-2 DONE (r102, r103)** — `country-my` catalog row + tenant-wide grant (INERT, idempotence proven across two production deploys), and leave now REPORTS packless employments instead of skipping them silently. Still to do: vocabulary scoping (3 module-scope `countryPacks()` unions), per-company reporting + mixed-currency refusal, the two-tier statutory/non-statutory company (retires r97's `requirePackFor`, and closes the two `country` seams left open in r97), and **the deploy-failing flip — CONFIRM BEFORE SHIPPING** |
+   | 6 | multi-country entitlement wiring | **STEPS 1-3 DONE (r102, r103, r110)** — `country-my` catalog row + tenant-wide grant (INERT, idempotence proven across two production deploys), leave now REPORTS packless employments instead of skipping them silently, and **state vocabulary now narrows to the owning jurisdiction (r110)**. Still to do: per-company reporting + mixed-currency refusal, the two-tier statutory/non-statutory company (retires r97's `requirePackFor`, and closes the two `country` seams left open in r97), and **the deploy-failing flip — CONFIRM BEFORE SHIPPING** |
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
    | 9 | tenant suspension / export / closure | **MOSTLY DONE (r104, r105, r108, r109)** — enforcement (`SET TRANSACTION READ ONLY`), the dunning policy that is the only thing that suspends, the four sweeps consulting standing, and the statutory-filing carve-out + the asserted export path. Still to do: **CLOSURE** (dual-controlled, with its own retention check — deliberately never reached by dunning) and **REACTIVATION** (record the suspended window, replay skipped sweeps with that window excluded from expiry clocks — see r108 on why expiry cannot simply re-run) |
@@ -884,6 +884,46 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r110 — 2026-08-02 — slice 6: state vocabulary narrows to the jurisdiction that owns the row
+
+**Shipped:** `main@c0095f58`. **No migration.** **Gate:** `tsc` · **532 files / 6196 tests** · `next build`.
+
+**THE DEFECT IS ALREADY IN PRODUCTION — this is not future-proofing.** Two validators judged a state
+against `countryPacks().flatMap((p) => p.states)`, the union across every REGISTERED pack, and both
+carried a comment ending "per-company narrowing is a later slice". Production holds a location named
+**Sepang with `country = 'SG'` on a MY company, state 'Selangor'.** The union accepted it because
+Selangor is a state of SOME registered pack. **Sepang is in Selangor, Malaysia** — a data-entry slip,
+and exactly the shape a per-jurisdiction check exists to catch. It slipped through because nothing asked
+WHICH country.
+
+**NARROWED BY THE COMPANY'S COUNTRY, NOT THE LOCATION'S, and that choice is load-bearing.**
+`location.country` is documented in `core/location.ts` as "display only (the engine keeps using
+company.country)". **Narrowing by the LOCATION's country would have started REJECTING the live Sepang
+row on its next edit** — 'Selangor' is not an SG state and there is no SG pack to ask. Company-country
+narrowing keeps that row valid and editable while still refusing a genuinely foreign state. **Here the
+correct behaviour and the non-breaking one coincided; I checked production before choosing rather than
+after.** (Fixing the row's 'SG' is a data question for its owner, not something a validator should do.)
+
+**NOT SCOPED BY ENTITLEMENT, on purpose.** r102's `country-*` grants are the tempting source. A context
+with NO snapshot (`entitlementsExempt`, an out-of-band script) would resolve to NO countries and reject
+every state — **turning a resolver gap into a write outage.** The company's country is a column: always
+present, never dependent on a snapshot having resolved. Totality is by construction, not luck —
+`createCompany` and the country-changing branch of company edit both call `requirePackFor`, so no
+company can exist whose country has no pack.
+
+**Holiday groups are TENANT-level**, so there is no single company to narrow by; they now narrow to the
+countries the tenant's companies actually operate in. A tenant with no companies resolves to an empty
+set and rejects every state — the right refusal, since a state-keyed calendar in a tenant operating
+nowhere cannot match anybody.
+
+**THE TESTS REGISTER A REAL SECOND COUNTRY PACK.** With one pack registered the union and the narrowing
+are **byte-identical**, so a MY-only test cannot tell the fix from the bug. **The r106 leak trap in a new
+coat:** `registerPack` mutates a module-level Map. Safe here and PROVEN rather than assumed —
+`test/pack-registry.test.ts:28` asserts `listPacks('country')` EXACTLY equals `['country-my']`, and it
+passes when run in the same invocation.
+
+---
 
 ## r109 — 2026-08-02 — slice 9: the statutory override gets its first caller
 
