@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r104 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r106 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,18 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@05539aa1` — production on **292** migrations. **Next free number is `0346`.**
+> ### DEPLOYED HEAD IS `main@1558556c` — production on **292** migrations. **Next free number is `0346`.**
+>
+> ### THE BOARD IS FULL OF PLANS AWAITING THE REPORTER — 14 planned, 0 open
+>
+> 13 leave-configuration items arrived on 2026-08-02, plus one more mid-pass. All planned. **Four of
+> them would have been built WRONG if planned in isolation — see the r107 planning entry.** Two would
+> have damaged live data if built exactly as asked.
+>
+> **`a1d82340` is `building` with NO build_ref.** Its step-4 replacement (the TP1 fix) shipped in r106;
+> **step 5 is approved and unbuilt**, which is why it is not closed. The CLI can only attach a build_ref
+> by moving an item to `done`, and direct SQL was blocked — so the reporter sees the status without the
+> detail. **Say what shipped when the item next moves.**
 >
 > ### ⚠️ A SUSPENDED TENANT IS NOW READ-ONLY, MECHANICALLY (slice 9, r104)
 >
@@ -872,6 +883,87 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r107 (planning only) — 2026-08-02 — 14 leave items planned, and four of them were traps
+
+**No code.** All 14 open items planned and pushed; board went 13 open → 0 open, 14 planned.
+
+**FOUR ITEMS WOULD HAVE BEEN BUILT WRONG IN ISOLATION. Two would have damaged live data.**
+
+**1. `c459bff9` — "remove the Expiry step, it duplicates Carry Forward Policy". THE PREMISE IS FALSE.**
+`db/schema.ts` on `leaveType.expiryValue` says it outright: age expiry runs from the ledger row's
+`effective_on` and is **"deliberately NOT applied to ANNUAL … layering a second age-expiry there would
+double-forfeit; the sweep filters ANNUAL out."** Carry-forward expiry (`carryForwardExpiryMonths`, r85)
+runs from **year-end on ANNUAL**. **They cover OPPOSITE leave-type populations** — which is exactly why
+they look duplicated on screen. Removing the step deletes the only expiry every non-Annual type has, and
+the symptom is balances quietly growing. **Sequencing does not fix this** (my first reading was that
+7cd914b1 unblocks it — wrong; the two clocks measure different days).
+
+**2. `38f1fd40` — "reset existing adjustment data" WOULD HAND BACK 1,766 DAYS.** Counted on production:
+`entry_type='adjustment'` → **63 rows, −1766.67 days**, of which **51 rows / −1322.67 days carry the
+`sys:` prefix** (expireAgedLeave, A2C reprojection). `adjustment` is a SHARED ledger entry type, not a
+module-owned table, and balance is a plain ledger sum. The plan removes the SCREEN and leaves the ledger.
+
+**3. `56910869` SUBSUMES `65f466e2` AND `fef49b9a`** — its own example table lists them as rows
+("advance notice not met → Emergency", "insufficient balance → split to UPL"). Planned as one engine plus
+its first two rules. Both behaviours PARTLY EXIST: the emergency cascade already resolves SICK → ANNUAL →
+UNPAID on consent (`core/leave.ts` ~2749), and HR-side advance-notice override already stamps the event
+(`:1900`). What is missing is the reporter deciding when they fire.
+
+**4. `491c499f` ARRIVED MID-PASS and is the other half of `38f1fd40`** — one move described twice
+(remove from leave type / create as submenu). `38f1fd40` was revised to rev 2: **build the new home
+FIRST**. Removing the only adjustment path before its replacement exists is the 241817ef failure.
+
+**A CORRECTION I OWED:** I told the owner `e4238594` would strand approval rules. **It will not.** The
+Approval tab still renders its `WorkflowMatrix` over all non-company-default rules, and after r100's
+conversion **all 261 active policies are type-scoped, ZERO any-type**. I had conflated it with what
+`241817ef` protected. Its build notes now warn the next reader off the same confusion.
+
+---
+
+## r106 — 2026-08-02 — a1d82340 rev 3: the TP1 self-relief bridge becomes reachable
+
+**Shipped:** `main@3293d96f`. **No migration.** **Gate:** `tsc` · **528 files / 6122 tests** · `next build`.
+
+**THE FAULT WAS A MISSING CALLER.** `tp1_relief` is what an employee submits; `payroll_input.tp1_deduction`
+is what `generatePayslips` reads; `prefillTp1Action` is the only bridge — and **no screen rendered it**.
+Five of the six prefill actions on the batch screen had a button; this one did not. Relief could be
+submitted, seen by HR, and never reach a payslip. **The fix is the button**; the bridge always worked.
+
+r91 called it "bound to no form" — right in substance, imprecise in detail. **The guard asserts
+reachability for ALL SIX prefill actions**, not just the broken one; a service test would have passed
+throughout. **This is the INVERSE of r100's `saveLeaveApprovalPolicyAction`:** both were caller-less
+server actions; there the capability was retired so the action went with its screen, here it is wanted so
+the action got one.
+
+**A CATALOG LEAK OF MY OWN, caught by the drift guard.** r98/r99's unique fixture codes accumulated in
+`module` — 39 rows in w1, 13 in others — because **"10 worker DBs wiped" clears TENANT-scoped tables, not
+installation-wide catalogs.** Cleanup order matters twice: `resetDb()` first (the last test's
+`tenant_module` rows FK to `module.code`), then `setting_definition` before `module` (it FKs there too).
+**An FK violation inside `afterAll` surfaces as the whole FILE failing with NO failed test.**
+
+---
+
+## r105 — 2026-08-02 — slice 9: the dunning policy, the only thing that suspends a tenant
+
+**Shipped:** `main@1558556c`. **No migration.** **Gate:** `tsc` · **529 files / 6138 tests** · `next build`.
+
+r104 built the enforcement and **nothing could reach the state** — no code path set `tenant.status` to
+`suspended`. This is the trigger. Pure decision (`core/dunning.ts`) + separate sweep
+(`scripts/apply-dunning.ts`), so every boundary is asserted directly with an INJECTED `today`.
+
+**THREE REFUSALS, each load-bearing.** **Never CLOSE** — closure starts a retention clock ending in
+destruction and is dual-controlled; a lapsed invoice must not begin deleting payroll history. **Never
+AUTO-REINSTATE** — reactivation records the suspended window and replays skipped sweeps with that window
+excluded from expiry clocks; a silent flip back would skip all of it. **Never suspend on MISSING DATA** —
+no `period_end` means no anchor, and an unrecognised billing status is not evidence of non-payment.
+
+**REPORT-ONLY BY DEFAULT and NOT SCHEDULED, deliberately.** A sweep that suspends unattended on its first
+run, from a policy whose output nobody has read, is the wrong default. **Wiring it into a schedule is an
+owner decision.** Every suspension appends `tenant.suspended` with the reason, billing status, period end
+and grace days.
+
+---
 
 ## r104 — 2026-08-02 — slice 9: a suspended tenant is read-only, mechanically
 
