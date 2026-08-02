@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r108 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r109 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@c3045746` — production on **292** migrations. **Next free number is `0346`.**
+> ### DEPLOYED HEAD IS `main@b83bdb92` — production on **292** migrations. **Next free number is `0346`.**
 >
 > ### THE BOARD IS FULL OF PLANS AWAITING THE REPORTER — 14 planned, 0 open
 >
@@ -883,6 +883,45 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r109 — 2026-08-02 — slice 9: the statutory override gets its first caller
+
+**Shipped:** `main@b83bdb92`. **No migration.** **Gate:** `tsc` · **531 files / 6178 tests** · `next build`.
+
+**`statutoryOverride` HAD ZERO PRODUCTION CALLERS.** r104 declared and enforced it; nothing ever set it.
+Same defect shape as r105 (enforcement with no trigger) and r106 (an action with no caller) — a
+mechanism is not a behaviour until something reaches it.
+
+**THE COST WAS NOT A MISSING AUDIT ROW.** `recordFileReport` is awaited BETWEEN generating a submission
+file and returning it (`app/payroll/reports/cp39-file/route.ts` — verified by control flow, not
+inferred: file at line 22, record at 23, response at 35, catch at 42). Its read-only error fell into the
+route's GENERIC catch and became a **500 "Could not generate the CP39 file"**. So a suspended customer
+did not lose an artefact — **THEY COULD NOT FILE THEIR PCB AT ALL.** r104 made this strictly WORSE than
+before it shipped, and only for the one obligation carrying a legal deadline.
+
+**`ReportDef.submission` IS THE DISCRIMINATOR, AND IT ALREADY EXISTED** — no new marker, no allowlist to
+keep in step. It is present on the four forms actually filed (`my.cp39`/LHDN, `my.epf`/KWSP,
+`my.socso-eis`/PERKESO, `my.cp8d`/LHDN) and ABSENT on `my.contributions`, which the registry itself
+calls "an internal reconciliation view, not a form anybody files". **A filing obligation writes through;
+an internal convenience does not** — which is r104's own rule ("anything that is not a statutory
+obligation should simply fail while the tenant is suspended"), finally applied. A report added to a pack
+is covered automatically, decided by the same field that drives the agency and due date on screen.
+
+**The two Layer-B file routes DECLARE their agency** rather than having it inferred. `reportType` is a
+free string (`my.cp39-file`), so deriving the agency would mean stripping a suffix and looking the
+remainder up — a substring game on the one path where being wrong means a customer cannot file. Naming
+it at the call site is what makes the override attributable, which is why the field is typed as a reason.
+
+**ADR-0077 DECISION 5's OTHER HALF IS NOW ASSERTED** — "read-only plus export, never a hard lock-out on
+a payroll system". The three export routes (`reports`, `analytics`, `leave`) are asserted to contain NO
+insert, update, delete or event append at all — a stronger and more durable claim than one request
+passing — and a suspended tenant is shown reading its OWN records through RLS, not merely `select 1`.
+
+**TRAP RE-ENCOUNTERED:** the first draft matched `rejects.toThrow(/read-only transaction/)`, which caught
+drizzle's `"Failed query: …"` wrapper and would have passed for ANY query failure. Fixed by walking
+`.cause`, the same helper and the same reason as `test/tenant-suspension-readonly.test.ts`.
+
+---
 
 ## r108 — 2026-08-02 — slice 9: the scheduled sweeps consult tenant standing
 
