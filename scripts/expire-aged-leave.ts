@@ -5,7 +5,7 @@
 // `system`). Idempotent: a re-run forfeits nothing. Schedule daily (or monthly), e.g. just after midnight:
 //   30 3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/expire-aged-leave.ts
 import { createDb } from '../db/client';
-import { tenant } from '../db/schema';
+import { describeSkips, loadSweepScope } from '../core/sweep-scope';
 import { expireAgedLeave, todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
 
@@ -19,8 +19,14 @@ async function main() {
   // MYT, not UTC — see accrue-earned.ts. Scheduled 03:30 local, which is the previous day in UTC.
   const today = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
-  const tenants = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant);
-  console.log(`leave:expire-aged — ${tenants.length} tenant(s), today ${today}`);
+  // ADR-0077 slice 9 — standing is consulted BEFORE any transaction opens. A tenant that is not in
+  // good standing is stepped over, not attempted: withTenant would refuse the writes anyway, and
+  // discovering that as a read-only error would report a suspended customer as a nightly failure.
+  const scope = await loadSweepScope(owner.db);
+  const tenants = scope.run;
+  console.log(`leave:expire-aged — ${tenants.length} tenant(s) in scope, today ${today}` +
+    (scope.skipped.length > 0 ? `, ${scope.skipped.length} skipped` : ''));
+  for (const line of describeSkips(scope)) console.log(line);
 
   let totalSwept = 0;
   let totalForfeited = 0;
@@ -39,7 +45,8 @@ async function main() {
     }
   }
   console.log(
-    `leave:expire-aged done — ${totalSwept} sweep(s), ${totalForfeited} day(s) forfeited across ${tenants.length} tenant(s), ${failures} failure(s).`,
+    `leave:expire-aged done — ${totalSwept} sweep(s), ${totalForfeited} day(s) forfeited across ${tenants.length} tenant(s), ${failures} failure(s).` +
+      (scope.skipped.length > 0 ? ` ${scope.skipped.length} tenant(s) skipped for standing.` : ''),
   );
   // 0280 run log, in its OWN try/catch — see accrue-earned.ts. `forfeited` is a fractional DAY count.
   try {
@@ -48,6 +55,7 @@ async function main() {
       startedAt,
       tenantsProcessed: tenants.length,
       tenantsFailed: failures,
+      tenantsSkipped: scope.skipped.length,
       result: { swept: totalSwept, forfeited: totalForfeited },
     });
   } catch (e) {

@@ -75,6 +75,7 @@
 import { sql } from 'drizzle-orm';
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
+import { SYSTEM_TENANT_ID } from '../core/sweep-scope';
 import {
   LEGACY_MODULE_ENV_GATES,
   legacyEnabledModulesIn,
@@ -83,7 +84,8 @@ import {
 } from '../packs/catalog';
 
 /** The reserved system tenant (0151 §4) — not a customer, and 0313 excludes it for the same reason. */
-const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+// The reserved audit anchor from 0151 — defined once in core/sweep-scope.ts, imported here so the
+// two places that must agree about it cannot drift.
 
 /**
  * `host/database` for the plan header, credentials stripped.

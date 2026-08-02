@@ -16,7 +16,7 @@
 // Schedule daily, e.g.
 //   0 3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/review-sweep.ts
 import { createDb, type SessionContext } from '../db/client';
-import { tenant } from '../db/schema';
+import { describeSkips, loadSweepScope } from '../core/sweep-scope';
 import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review';
 import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
@@ -36,8 +36,14 @@ async function main() {
   // review due today would be missed by a day.
   const today = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
-  const tenants = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant);
-  console.log(`review:sweep — ${tenants.length} tenant(s), today ${today}`);
+  // ADR-0077 slice 9 — standing is consulted BEFORE any transaction opens. A tenant that is not in
+  // good standing is stepped over, not attempted: withTenant would refuse the writes anyway, and
+  // discovering that as a read-only error would report a suspended customer as a nightly failure.
+  const scope = await loadSweepScope(owner.db);
+  const tenants = scope.run;
+  console.log(`review:sweep — ${tenants.length} tenant(s) in scope, today ${today}` +
+    (scope.skipped.length > 0 ? `, ${scope.skipped.length} skipped` : ''));
+  for (const line of describeSkips(scope)) console.log(line);
 
   let totalOpened = 0;
   let totalReminders = 0;
@@ -94,7 +100,8 @@ async function main() {
     }
   }
   console.log(
-    `review:sweep done — ${totalOpened} review(s) opened, ${totalReminders} reminder(s), ${totalEscalated} escalation(s), ${totalMovements} movement(s) applied across ${tenants.length} tenant(s), ${failures} failure(s).`,
+    `review:sweep done — ${totalOpened} review(s) opened, ${totalReminders} reminder(s), ${totalEscalated} escalation(s), ${totalMovements} movement(s) applied across ${tenants.length} tenant(s), ${failures} failure(s).` +
+      (scope.skipped.length > 0 ? ` ${scope.skipped.length} tenant(s) skipped for standing.` : ''),
   );
   // 0280 run log, in its OWN try/catch — see accrue-earned.ts. NOTE for anyone reading the screen: a
   // 'success' here does NOT prove mail was sent. dispatchNotifications is gated by NOTIFICATIONS_ENABLED
@@ -105,6 +112,7 @@ async function main() {
       startedAt,
       tenantsProcessed: tenants.length,
       tenantsFailed: failures,
+      tenantsSkipped: scope.skipped.length,
       result: { opened: totalOpened, reminders: totalReminders, escalated: totalEscalated, movementsApplied: totalMovements },
     });
   } catch (e) {

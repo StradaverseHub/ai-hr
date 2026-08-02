@@ -60,8 +60,22 @@ export type RecordJobRunInput = {
   jobKey: JobKey;
   /** Date.now() captured at the top of the script; duration is derived from it. */
   startedAt: number;
+  /** Tenants the sweep actually RAN. Excludes those skipped for standing — see tenantsSkipped. */
   tenantsProcessed: number;
   tenantsFailed: number;
+  /**
+   * ADR-0077 slice 9 — tenants stepped over because they were not in good standing (core/sweep-scope.ts).
+   *
+   * NOT a failure, and deliberately not folded into tenantsProcessed: `jobOutcome` compares failures
+   * against processed, so counting skips as processed would make a night where every tenant was suspended
+   * look like a night where everything ran. It is stored in `result` as `skipped` rather than a column
+   * because `result` is jsonb and a new column would be a migration for a counter.
+   *
+   * It is also the only durable record that a sweep did not run for a tenant. Reactivation is specified to
+   * "replay skipped sweeps with the suspended window excluded from expiry clocks" — without this it would
+   * have to infer what was missed from the gaps between run timestamps.
+   */
+  tenantsSkipped?: number;
   /**
    * Cross-tenant AGGREGATE counters, e.g. { granted: 12 } or { swept: 3, forfeited: 12.5 }.
    * Values may be fractional — forfeited is a day count, not an integer — and are stored in jsonb
@@ -90,7 +104,12 @@ export async function recordJobRun(db: OwnerDb, input: RecordJobRunInput): Promi
     outcome: jobOutcome(input.tenantsProcessed, input.tenantsFailed),
     tenantsProcessed: input.tenantsProcessed,
     tenantsFailed: input.tenantsFailed,
-    result: input.result ?? null,
+    // Merged into the aggregate counters, and only when there were any: a `skipped: 0` on every row
+    // would bury the runs that actually skipped something.
+    result:
+      input.tenantsSkipped != null && input.tenantsSkipped > 0
+        ? { ...(input.result ?? {}), skipped: input.tenantsSkipped }
+        : (input.result ?? null),
     error: input.error ?? null,
   });
 }
