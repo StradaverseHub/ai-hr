@@ -165,7 +165,45 @@ export const tenant = pgTable('tenant', {
   primaryContactEmail: text('primary_contact_email'),
   notes: text('notes'),
   trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
+  // ADR-0077 slice 9 (migration 0350) — CLOSURE, which is deliberately not just another status value.
+  // Closure starts a retention clock that ends in destruction, so r105 refused to let dunning ever
+  // reach it. These columns are the evidence that two DIFFERENT people agreed, and a DB CHECK
+  // (tenant_closure_dual_control_check) makes single-person closure unrepresentable rather than merely
+  // refused. See core/tenant-lifecycle.ts for the decision.
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+  closureRequestedBy: uuid('closure_requested_by'),
+  closureRequestedAt: timestamp('closure_requested_at', { withTimezone: true }),
+  closureApprovedBy: uuid('closure_approved_by'),
+  closureApprovedAt: timestamp('closure_approved_at', { withTimezone: true }),
 });
+
+/**
+ * ADR-0077 slice 9 (migration 0350) — one row per period a tenant spent out of good standing.
+ *
+ * THE INPUT REACTIVATION NEEDS. r108 pinned the asymmetry: accrual self-heals on the next ordinary run
+ * (accrueEarned computes from service dates up to asOf), but both expiry sweeps compare a STORED DATE
+ * to today — so a plain re-run after reinstatement forfeits everything whose date fell inside the
+ * window, i.e. days the employee never had a chance to use. Reactivation pushes those expiries out by
+ * exactly the frozen time, and can only do that because the frozen time is written down here.
+ *
+ * `resumedAt` NULL ⇒ suspended right now (an OPEN window), and a partial unique index allows only one
+ * per tenant — two open windows would double-count the frozen days and hand back twice the leave.
+ */
+export const tenantSuspensionWindow = pgTable(
+  'tenant_suspension_window',
+  {
+    id: id(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenant.id),
+    suspendedAt: date('suspended_at').notNull(),
+    resumedAt: date('resumed_at'),
+    reason: text('reason'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('tenant_suspension_window_tenant_idx').on(t.tenantId, t.suspendedAt)],
+);
+export type TenantSuspensionWindowRow = typeof tenantSuspensionWindow.$inferSelect;
 
 // company = a legal entity WITHIN a tenant (multi-company lives here, not at the wall).
 export const company = pgTable(
