@@ -784,7 +784,10 @@ export function listFeedback(
         category: feedbackRequest.category,
         title: feedbackRequest.title,
         status: feedbackRequest.status,
-        reporter: person.fullName,
+        // 0348 — the display label wins when set. Operator-raised items carry 'CLAUDE AI'; every in-app
+        // submission leaves it NULL and falls through to the joined person name, so the board reads the
+        // same as it always did for anything a human wrote.
+        reporter: sql<string>`coalesce(${feedbackRequest.reporterLabel}, ${person.fullName})`,
         planRevision: feedbackRequest.planRevision,
         reopenedCount: feedbackRequest.reopenedCount,
         createdAt: feedbackRequest.createdAt,

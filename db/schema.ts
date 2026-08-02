@@ -5385,6 +5385,15 @@ export const feedbackRequest = pgTable(
       .notNull()
       .references(() => employment.id),
     reporterUserId: uuid('reporter_user_id').references(() => appUser.id),
+    // DISPLAY name to show instead of the reporter's person name (0348). Set to 'CLAUDE AI' on items the
+    // improvement loop raises on the reporter's behalf (raiseFeedback), so the board shows who actually
+    // wrote the item rather than the human whose employment it had to borrow.
+    //
+    // A LABEL, and nothing more. reporter_employment_id stays NOT NULL and keeps driving RLS
+    // can_see_employment() — the alternative (a synthetic "CLAUDE AI" person + employment) would put a
+    // fake employee into openLeaveYear, headcount and payroll, which is a far worse trade than a column.
+    // NULL ⇒ show the joined person name, which is every in-app submission.
+    reporterLabel: text('reporter_label'),
     category: feedbackCategoryEnum('category').notNull(),
     title: text('title').notNull(),
     description: text('description').notNull(),
