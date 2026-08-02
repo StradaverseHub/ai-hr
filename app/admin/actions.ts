@@ -677,6 +677,10 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
         ? {
             carryForwardEnabled: formData.get('carryForwardEnabled') === 'on',
             carryForwardMax: num('carryForwardMax') ?? null,
+            // 7cd914b1 — an EMPTY string posts as null, which CLEARS the percentage. That is deliberate:
+            // Fixed Maximum and None both post it empty, so a stored percentage cannot survive a switch
+            // away from percentage mode and quietly keep winning the resolution.
+            carryForwardPercent: num('carryForwardPercent') ?? null,
             carryForwardExpiryMode: carryExpiryMode(formData),
             carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
             carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),

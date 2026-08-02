@@ -2066,6 +2066,13 @@
       "when": 1781862448000,
       "tag": "0348_feedback_reporter_label",
       "breakpoints": true
+    },
+    {
+      "idx": 349,
+      "version": "7",
+      "when": 1781862449000,
+      "tag": "0349_leave_type_carry_percent",
+      "breakpoints": true
     }
   ]
 }

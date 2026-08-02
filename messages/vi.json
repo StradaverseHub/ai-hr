@@ -4085,7 +4085,7 @@
         "carryPolicyLabel": "Chính sách chuyển tiếp",
         "carryNone": "Không (không chuyển tiếp)",
         "carryFixedMax": "Mức tối đa cố định",
-        "carryHelp": "Mức tối đa cố định giữ lại tối đa đến hạn mức; các trường hết hạn quyết định khi phần chuyển tiếp mất hiệu lực (một ngày, hoặc X tháng sau cuối năm).",
+        "carryHelp": "Mức tối đa cố định giữ lại tối đa đến giới hạn; phần trăm giữ lại tỷ lệ đó của số dư còn nắm giữ vào cuối năm, với giới hạn đóng vai trò trần khi cả hai cùng được đặt. Các trường hết hạn quyết định khi nào phần chuyển tiếp hết hiệu lực (một ngày cụ thể, hoặc X tháng sau cuối năm).",
         "carryStepHelp": "Cửa trước dẫn tới thiết lập chuyển tiếp của chính sách quyền lợi đang hiệu lực — điều khiển theo từng chính sách trong mục Điều kiện vẫn là nguồn dữ liệu gốc.",
         "carryAnnualOnly": "Chuyển tiếp chỉ áp dụng cho Nghỉ phép năm — số dư của loại này không được chuyển sang năm sau.",
         "noActivePolicy": "Chưa có chính sách quyền lợi đang hiệu lực — hãy thêm một chính sách trong mục Điều kiện trước.",
@@ -4102,7 +4102,8 @@
         "roundingToExclusive": "Đến (không bao gồm)",
         "roundingToInclusive": "Đến (bao gồm)",
         "roundingThresholdHelp": "Hai khoảng luôn phủ kín từ 0,000 đến 1,000, không có khoảng trống và không chồng lấn, nên chỉ có một ranh giới cần đặt. Thay đổi ranh giới đó thì cả hai khoảng đều theo. Bỏ trống ô này để dùng quy tắc chuẩn: 0,000-0,499 làm tròn xuống, 0,500-1,000 làm tròn lên.",
-        "roundingWorkedExample": "Với quy tắc này, {raw} ngày tính được sẽ được ghi có là {rounded} ngày."
+        "roundingWorkedExample": "Với quy tắc này, {raw} ngày tính được sẽ được ghi có là {rounded} ngày.",
+        "carryPercent": "Phần trăm từ số dư còn lại"
       },
       "conditionStep": {
         "criteria": "Tiêu chí",
@@ -4292,7 +4293,7 @@
       "companyEntitlements": "Mức hưởng của công ty",
       "noCompanyPolicy": "Không có chính sách công ty — không cấp gì cho phạm vi này.",
       "daysPerYearLabel": "Số ngày / năm",
-      "carryCapLabel": "Mức trần chuyển sang",
+      "carryCapLabel": "Giới hạn chuyển tiếp (ngày)",
       "effectiveFromLabel": "Hiệu lực từ",
       "daysPerYearText": "{days} ngày/năm",
       "carryCapText": "· chuyển ≤ {max}",
@@ -4690,7 +4691,8 @@
         "required": "bắt buộc",
         "errorAlreadyGrouped": "{type} đã thuộc nhóm nghỉ phép dùng chung \"{group}\". Hãy gỡ khỏi nhóm đó trước.",
         "errorNameTaken": "Đã có nhóm nghỉ phép dùng chung tên \"{name}\"."
-      }
+      },
+      "carryPercentLabel": "Phần trăm chuyển tiếp (%)"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

@@ -48,6 +48,10 @@ export type ResolvedPolicy = {
   /** Carry-forward enhancement: explicit on/off switch for the carry rule. When absent, carry is
    *  enabled iff `carryMax > 0` (the back-compat default — see `carryEnabled`). */
   carryForwardEnabled?: boolean;
+  /** 7cd914b1 — carry forward as a PERCENTAGE (0–100) of the balance held at year end, resolved by
+   *  `resolveCarryAllowance`. null/absent ⇒ no percentage, i.e. `carryMax` alone decides, which is every
+   *  pre-7cd914b1 policy. When both are set the max is a CEILING on the percentage, never an alternative. */
+  carryPercent?: number | null;
   /** Feedback 9d8cf621 — Maximum Balance Days cap resolved from the winning service band (null = no cap).
    *  The granting engines clamp the running balance against this via `applyMaxBalance`. */
   maxBalanceDays?: number | null;
@@ -178,7 +182,61 @@ export type AccrualConfig = {
  */
 export function carryEnabled(pol: ResolvedPolicy | null | undefined): boolean {
   if (pol == null) return false;
+  // 7cd914b1: a percentage is carry configuration too. Without this clause a type configured as
+  // "carry 50% of the balance" with no fixed cap would read as carry-OFF under the back-compat rule
+  // (`carryMax > 0`) and forfeit everything — the silent-zero failure this whole area is prone to.
+  if ((pol.carryPercent ?? 0) > 0) return true;
   return pol.carryForwardEnabled ?? (pol.carryMax ?? 0) > 0;
+}
+
+/**
+ * 7cd914b1 — HOW MANY DAYS MAY BE CARRIED, given the balance standing at year end.
+ *
+ * THE SINGLE DEFINITION. openLeaveYear, accrueEarnedLeave's cycle-boundary cap and the projection kernel
+ * must all ask this one function, for the same reason `entitledDays` exists: three call sites that each
+ * re-derive "how much carries" is how the ledger and the kernel come to disagree.
+ *
+ * The rule, in order:
+ *   1. Carry off (`carryEnabled` false) ⇒ 0. Full forfeit, which is the existing "disable carry" behaviour
+ *      and is what EVERY non-annual type resolves to until someone configures it.
+ *   2. A percentage ⇒ that share of the balance actually held. 50% of 20 days is 10.
+ *   3. A maximum ⇒ a CEILING, applied after the percentage. Both set ⇒ the smaller wins. This is a clamp,
+ *      not a mode: `min()` cannot produce a figure the reporter did not authorise by both settings.
+ *   4. Neither set, carry on ⇒ 0 by construction (carryMax defaults to 0), unchanged from before.
+ *
+ * NOT ROUNDED HERE, deliberately. openLeaveYear rounds the ENTITLEMENT, never the carry-in — half of 7
+ * days is 3.5 and stays 3.5 unless the leave type's own rounding says otherwise at the entitlement step.
+ * Introducing a second rounding rule for carry forward is explicitly out of scope (8fec719e is
+ * redesigning that surface and would then have two places to change).
+ */
+export function resolveCarryAllowance(pol: ResolvedPolicy | null | undefined, balance: number): number {
+  if (!carryEnabled(pol)) return 0;
+  return carryAllowanceFrom({ balance, carryMax: pol?.carryMax ?? 0, carryPercent: pol?.carryPercent ?? null });
+}
+
+/**
+ * The arithmetic half of `resolveCarryAllowance`, without the carry-enabled question.
+ *
+ * Split out because the RECONSTRUCTION path (`reconstructCarry`, which re-derives what openLeaveYear
+ * posted from the flat ledger) has no ResolvedPolicy to hand — it is given the resolved figures. Both
+ * paths must produce the identical number or the carry-forward report contradicts the ledger it is
+ * reporting on, so they share this one function rather than each writing `min(balance, cap)`.
+ */
+export function carryAllowanceFrom(p: { balance: number; carryMax: number; carryPercent?: number | null }): number {
+  const held = Math.max(0, p.balance);
+  const pct = p.carryPercent ?? null;
+  const max = p.carryMax ?? 0;
+  // A percentage of nothing is nothing; a percentage of a held balance is that share of it.
+  const fromPct = pct != null && pct > 0 ? (held * pct) / 100 : null;
+  // No percentage ⇒ the cap alone decides, exactly as it did before this change.
+  const allowed = fromPct != null ? (max > 0 ? Math.min(fromPct, max) : fromPct) : max;
+  return Math.max(0, Math.min(held, allowed));
+}
+
+/** Is carry forward configured at all — a cap, a percentage, or neither? Drives whether an expiry DATE is
+ *  emitted: a percentage-only type has no `carryMax` and must still expire what it carried. */
+export function carryConfigured(p: { carryMax: number; carryPercent?: number | null }): boolean {
+  return p.carryMax > 0 || (p.carryPercent ?? 0) > 0;
 }
 
 /** Parse the carry-forward expiry config into a `{month, day}` OFFSET, or null (never expires).
@@ -395,6 +453,8 @@ export function isWellFormedBands(bands: unknown): bands is ServiceBand[] {
 export type LeaveTypeRules = {
   accrualMethod?: string | null;
   carryForwardMax?: string | number | null;
+  /** 7cd914b1 (migration 0349) — the twelfth column. A percentage of the year-end balance, 0–100. */
+  carryForwardPercent?: string | number | null;
   carryForwardEnabled?: boolean | null;
   carryForwardExpiryMode?: string | null;
   carryForwardExpiryMonths?: number | null;
@@ -435,6 +495,10 @@ export function hasAnyLeaveTypeRule(rules: LeaveTypeRules | null | undefined): b
   return (
     rules.accrualMethod != null ||
     rules.carryForwardMax != null ||
+    // 7cd914b1: a percentage alone is a configured rule set. Omitting it here would leave a
+    // percentage-only type "unruled", so applyLeaveTypeRules would fall through to the grade policy and
+    // the percentage would be silently ignored — the whole-set overlay's failure mode.
+    rules.carryForwardPercent != null ||
     rules.carryForwardEnabled != null ||
     rules.carryForwardExpiryMode != null ||
     rules.carryForwardExpiryMonths != null ||
@@ -494,6 +558,7 @@ export function applyLeaveTypeRules(
   if (!hasAnyLeaveTypeRule(rules)) return pol;
   const r = rules as LeaveTypeRules;
   const carryMax = finiteOrNull(r.carryForwardMax);
+  const carryPercent = finiteOrNull(r.carryForwardPercent);
   const maxBalance = finiteOrNull(r.maxBalanceDays);
   const method = typeof r.accrualMethod === 'string' && r.accrualMethod !== '' ? r.accrualMethod : undefined;
   return {
@@ -509,6 +574,9 @@ export function applyLeaveTypeRules(
       carryForwardExpiryDay: r.carryForwardExpiryDay ?? undefined,
     }),
     carryForwardEnabled: typeof r.carryForwardEnabled === 'boolean' ? r.carryForwardEnabled : undefined,
+    // 7cd914b1 — clamped to 0..100 here, at the same defensive boundary every other rule is filtered at,
+    // so a stored 500 cannot hand back five times the balance even if the write-time validator is bypassed.
+    carryPercent: carryPercent != null ? Math.min(100, Math.max(0, carryPercent)) : null,
     maxBalanceDays: maxBalance != null ? Math.max(0, maxBalance) : null,
     // 9f5164d8 widened this from the 'up'/'down' pair to the ENGINE_ROUNDING_METHODS set. 'none' and NULL
     // still resolve to undefined (no rounding) exactly as before, so no configured type moves.

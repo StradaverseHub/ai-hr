@@ -4085,7 +4085,7 @@
         "carryPolicyLabel": "结转政策",
         "carryNone": "无（不结转）",
         "carryFixedMax": "固定上限",
-        "carryHelp": "固定上限最多保留至上限；到期字段决定结转部分何时失效（某个日期，或年末后 X 个月）。",
+        "carryHelp": "固定上限保留至上限为止；百分比保留年终仍持有余额的该比例，两者同时设置时上限作为最高限额。失效字段决定结转部分何时失效（某个日期，或年终后 X 个月）。",
         "carryStepHelp": "这是当前生效的额度政策结转设置的快捷入口——“资格”下的按政策控制仍是数据的唯一来源。",
         "carryAnnualOnly": "结转仅适用于年假——此类型的余额不会滚存。",
         "noActivePolicy": "尚无生效的额度政策——请先在“资格”下添加一条。",
@@ -4102,7 +4102,8 @@
         "roundingToExclusive": "截止（不含）",
         "roundingToInclusive": "截止（含）",
         "roundingThresholdHelp": "两个区间始终覆盖 0.000 至 1.000，既无间隙也无重叠，因此只需设置一个分界值。移动分界值，两个区间会随之调整。不勾选则使用标准规则：0.000-0.499 向下取整，0.500-1.000 向上取整。",
-        "roundingWorkedExample": "按此规则，计算得出的 {raw} 天将按 {rounded} 天入账。"
+        "roundingWorkedExample": "按此规则，计算得出的 {raw} 天将按 {rounded} 天入账。",
+        "carryPercent": "剩余余额的百分比"
       },
       "conditionStep": {
         "criteria": "资格条件",
@@ -4292,7 +4293,7 @@
       "companyEntitlements": "公司应享",
       "noCompanyPolicy": "无公司政策 — 此范围不授予任何天数。",
       "daysPerYearLabel": "天数 / 年",
-      "carryCapLabel": "结转上限",
+      "carryCapLabel": "结转上限（天）",
       "effectiveFromLabel": "生效自",
       "daysPerYearText": "{days} 天/年",
       "carryCapText": "· 结转 ≤ {max}",
@@ -4690,7 +4691,8 @@
         "required": "必填",
         "errorAlreadyGrouped": "{type} 已属于共享休假组“{group}”。请先将其从该组移出。",
         "errorNameTaken": "名为“{name}”的共享休假组已存在。"
-      }
+      },
+      "carryPercentLabel": "结转百分比 (%)"
     },
     "holidays": {
       "pageTitle": "公共假期",

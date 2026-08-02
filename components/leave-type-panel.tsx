@@ -513,8 +513,10 @@ function FrontDoorIdentityFields({ p, leaveTypeId }: { p: EntitlementPolicy; lea
  *  (annual types; a non-annual policy mirrors the edit form's `carryForwardMax=0`). carryFlagField reads
  *  `=== 'on'`, so an enabled flag is re-posted as a hidden value="on" input and a disabled one is simply
  *  not rendered (marker present ⇒ absent reads as false, i.e. the stored value). */
-function FrontDoorPreservedCarry({ p, isAnnual }: { p: EntitlementPolicy; isAnnual: boolean }) {
-  if (!isAnnual) return <input type="hidden" name="carryForwardMax" value="0" />;
+function FrontDoorPreservedCarry({ p }: { p: EntitlementPolicy }) {
+  // 7cd914b1: this used to post `carryForwardMax=0` for a non-annual type on EVERY earning save, so such a
+  // type could not hold a carry rule even once the engine allowed one — the save actively rewrote it to
+  // zero. It now preserves whatever is stored, for every type, exactly as it always did for ANNUAL.
   const mode = p.carryForwardExpiryMode === 'months' ? 'months' : 'date';
   return (
     <>
@@ -678,6 +680,10 @@ function EarningMethodForm({
 /** Carry Forward Policy sub-step (e1a51aea): a front door to the active policy's carry fields — None
  *  (carry disabled) or Fixed Max (enable + X-days cap + the existing CarryExpiryFields days/months
  *  mode switch). The stored cap/expiry survive a "None" save (only the enable flag turns off). */
+/** 7cd914b1 — the three Carry Forward Policy shapes. 'percent' carries a share of the year-end balance;
+ *  'fixed_max' a flat number of days; 'none' forfeits everything at year end. */
+type CarryMode = 'none' | 'fixed_max' | 'percent';
+
 function CarryPolicyForm({
   t,
   rules,
@@ -692,7 +698,13 @@ function CarryPolicyForm({
   // Mirrors carryRuleEnabled's back-compat rule at the TYPE level: an explicit flag wins, and when it is
   // absent a positive cap means carry is on. Migration 0325 backfilled both, but a type created since then
   // has neither, and "no flag, no cap" must read as OFF rather than crashing.
-  const [carryOn, setCarryOn] = useState<boolean>(rules.carryForwardEnabled ?? Number(rules.carryForwardMax ?? 0) > 0);
+  // 7cd914b1: three modes now, not two. A stored percentage wins the initial selection — a type
+  // configured as "carry 50%" must not open showing Fixed Maximum and silently save that back.
+  const pct = rules.carryForwardPercent ?? null;
+  const initialMode: CarryMode =
+    Number(pct ?? 0) > 0 ? 'percent' : (rules.carryForwardEnabled ?? Number(rules.carryForwardMax ?? 0) > 0) ? 'fixed_max' : 'none';
+  const [mode, setMode] = useState<CarryMode>(initialMode);
+  const carryOn = mode !== 'none';
   const cap = rules.carryForwardMax ?? 0;
   return (
     <form action={action} className="space-y-2 rounded-lg bg-background p-3">
@@ -705,20 +717,48 @@ function CarryPolicyForm({
       {!!rules.carryForwardIncludeEarned && <input type="hidden" name="carryForwardIncludeEarned" value="on" />}
       <Field label={t('subStep.carryPolicyLabel')}>
         <select
-          value={carryOn ? 'fixed_max' : 'none'}
-          onChange={(e) => setCarryOn(e.target.value === 'fixed_max')}
+          value={mode}
+          onChange={(e) => setMode(e.target.value as CarryMode)}
           aria-label={t('subStep.carryPolicyLabel')}
           className={`${inputCls} w-56`}
         >
           <option value="none">{t('subStep.carryNone')}</option>
           <option value="fixed_max">{t('subStep.carryFixedMax')}</option>
+          <option value="percent">{t('subStep.carryPercent')}</option>
         </select>
       </Field>
       {carryOn ? (
         <div className="flex flex-wrap items-end gap-2">
-          <Field label={t('carryCapLabel')}>
-            <input name="carryForwardMax" type="number" min="0" step="0.5" defaultValue={cap} className={`${inputCls} w-24`} />
-          </Field>
+          {mode === 'percent' ? (
+            <>
+              <Field label={t('carryPercentLabel')}>
+                <input
+                  name="carryForwardPercent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  defaultValue={pct ?? ''}
+                  required
+                  className={`${inputCls} w-24`}
+                />
+              </Field>
+              {/* The cap stays a CEILING on the percentage, not an alternative to it. Preserved rather
+                  than cleared so switching back to Fixed Maximum restores the figure. */}
+              <Field label={t('carryCapLabel')}>
+                <input name="carryForwardMax" type="number" min="0" step="0.5" defaultValue={cap} className={`${inputCls} w-24`} />
+              </Field>
+            </>
+          ) : (
+            <>
+              <Field label={t('carryCapLabel')}>
+                <input name="carryForwardMax" type="number" min="0" step="0.5" defaultValue={cap} className={`${inputCls} w-24`} />
+              </Field>
+              {/* Fixed Maximum means no percentage: post an empty value so a previously-stored percentage
+                  is CLEARED rather than left behind to win the resolution silently. */}
+              <input type="hidden" name="carryForwardPercent" value="" />
+            </>
+          )}
           <CarryExpiryFields
             t={t}
             mode={rules.carryForwardExpiryMode}
@@ -729,8 +769,11 @@ function CarryPolicyForm({
         </div>
       ) : (
         // None = disabled carry: keep the stored cap/expiry so switching back to Fixed Max restores them.
+        // The PERCENTAGE is cleared instead of preserved — carryEnabled() reads a stored percentage as
+        // "carry is on", so a preserved one would defeat the None the user just chose.
         <>
           <input type="hidden" name="carryForwardMax" value={cap} />
+          <input type="hidden" name="carryForwardPercent" value="" />
           <input type="hidden" name="carryForwardExpiryMode" value={rules.carryForwardExpiryMode === 'months' ? 'months' : 'date'} />
           {rules.carryForwardExpiryMode === 'months' ? (
             <input type="hidden" name="carryForwardExpiryMonths" value={rules.carryForwardExpiryMonths ?? ''} />
@@ -1203,6 +1246,8 @@ export type LeaveTypeRules = {
   accrualMethod?: string | null;
   carryForwardEnabled?: boolean | null;
   carryForwardMax?: number | null;
+  /** 7cd914b1 — carry as a share of the year-end balance. numeric ⇒ may arrive as a string. */
+  carryForwardPercent?: string | number | null;
   carryForwardExpiryMode?: 'date' | 'months' | null;
   carryForwardExpiryMonths?: number | null;
   carryForwardExpiryMonth?: number | null;
@@ -2077,13 +2122,11 @@ export function LeaveTypePanel({
           {generalSubStep === 'carry' && (
           <div className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">{t('subStep.carry')}</span>
-            {isAnnual ? (
-              <CarryPolicyForm t={t} rules={typeRules} action={setTypeRulesAction} leaveTypeId={id} />
-            ) : (
-              <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
-                {t('subStep.carryAnnualOnly')}
-              </p>
-            )}
+            {/* 7cd914b1: every leave type gets the real form. It used to render an "annual only" note for
+                anything else, and the engine agreed with it — openLeaveYear hardcoded ANNUAL. Both gates
+                are gone; carry is OFF by default on every type, so nothing starts carrying that does not
+                carry today. */}
+            <CarryPolicyForm t={t} rules={typeRules} action={setTypeRulesAction} leaveTypeId={id} />
             <p className="text-xs text-muted-foreground">{t('subStep.carryStepHelp')}</p>
           </div>
           )}
@@ -2233,7 +2276,7 @@ export function LeaveTypePanel({
                       simply stopped posting it would zero the cap on every save. That would silently drop
                       carry for the leave types that still fall back to the policy row (only 10 of 67 carry
                       type-level rules today), which is a data change nobody asked for. */}
-                  <FrontDoorPreservedCarry p={p} isAnnual={isAnnual} />
+                  <FrontDoorPreservedCarry p={p} />
                   <Field label={t('effectiveFromLabel')}>
                     <input name="validFrom" type="date" required defaultValue={p.validFrom} className={inputCls} />
                   </Field>

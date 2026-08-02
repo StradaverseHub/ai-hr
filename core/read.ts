@@ -2337,8 +2337,12 @@ export function leaveEntitlementBreakdown(
       type,
     );
     const earned = isEarnedMethod(policy?.method);
-    const carryMax = type.code === 'ANNUAL' ? (policy?.carryMax ?? 0) : 0;
-    const expiry = type.code === 'ANNUAL' ? (policy?.carryExpiry ?? null) : null;
+    // 7cd914b1: these used to be forced to 0/null for anything but ANNUAL, matching the engine's own
+    // Annual-only gate. Both gates are gone — a non-annual type that is configured to carry DOES carry, and
+    // a breakdown that still reported 0 would contradict the ledger it is explaining.
+    const carryMax = policy?.carryMax ?? 0;
+    const carryPercent = policy?.carryPercent ?? null;
+    const expiry = policy?.carryExpiry ?? null;
     // R4 Build #1: the expiry date is clamped to the real last day of `expiry.month` in this cycle year
     // (months-mode day=31 sentinel, and any 29-Feb-in-a-common-year) inside the shared helper below —
     // computed once here (pre-aggregates, for the debit-window bound) via the same helper so the two
@@ -2346,6 +2350,7 @@ export function leaveEntitlementBreakdown(
     const { carryForwardExpiryDate } = resolveCarryBreakdown({
       cycleStart,
       carryMax,
+      carryPercent,
       expiry,
       priorBalanceAtCycleStart: 0,
       debitsInWindow: 0,
@@ -2446,6 +2451,7 @@ export function leaveEntitlementBreakdown(
     const { carried, unconsumedCarry: carryForwardRemaining, forfeited: carryForfeited } = resolveCarryBreakdown({
       cycleStart,
       carryMax,
+      carryPercent,
       expiry,
       priorBalanceAtCycleStart: priorBalance,
       debitsInWindow,
@@ -2454,8 +2460,10 @@ export function leaveEntitlementBreakdown(
     });
     // Leave Type Expiry Field (fec49317): fold the aged-expiry lapse into the single `forfeited` figure. For
     // ANNUAL, agedForfeited is always 0 (the sweep excludes ANNUAL), so this is a no-op there and the carry
-    // forfeit stands alone. For non-ANNUAL, carryForfeited is 0 (carryMax forced to 0 above) and this surfaces
-    // the aged lapse — keeping `entitlement + carried + otherAdjustments − taken − forfeited = balance`.
+    // forfeit stands alone. For non-ANNUAL the two can now BOTH be non-zero (7cd914b1 lets such a type carry),
+    // and they are different forfeits over disjoint windows — cap-excess at year open, aged lapse from the
+    // earning date — so summing them is still right and still keeps
+    // `entitlement + carried + otherAdjustments − taken − forfeited = balance`.
     const forfeited = Math.round((carryForfeited + num(agg?.agedForfeited)) * 100) / 100;
 
     // ── Reconciliation partition (feedback 0315dac7) ──────────────────────────────────────────────────
