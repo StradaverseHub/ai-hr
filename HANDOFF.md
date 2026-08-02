@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r114 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r115 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@dd6f4f7c` — production on **294** migrations. **Next free number is `0348`.**
+> ### DEPLOYED HEAD IS `main@65384457` — production on **294** migrations. **Next free number is `0348`.**
 >
 > ### THE BOARD IS FULL OF PLANS AWAITING THE REPORTER — 14 planned, 0 open
 >
@@ -829,7 +829,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 3 | gate classification + migration + backfill | **DONE** — round entry below |
    | 4 | nav + page gating from entitlements | **DONE** — round entry below |
    | 5 | module install / deactivate as operations | **DONE (r97-r100)** except the admin setup notification (no natural key on `notification`) — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
-   | 6 | multi-country entitlement wiring | **STEPS 1-4 DONE (r102, r103, r110, r111)** — `country-my` catalog row + tenant-wide grant (INERT, idempotence proven across two production deploys), leave now REPORTS packless employments instead of skipping them silently, and **state vocabulary now narrows to the owning jurisdiction (r110)**. **the two-tier statutory/non-statutory company shipped (r111, `requirePackFor` retired)**. Still to do: per-company reporting + mixed-currency refusal, the two-tier statutory/non-statutory company (retires r97's `requirePackFor`, and closes the two `country` seams left open in r97), and **the deploy-failing flip — CONFIRM BEFORE SHIPPING** |
+   | 6 | multi-country entitlement wiring | **STEPS 1-5 DONE (r102, r103, r110, r111, r115)** — `country-my` catalog row + tenant-wide grant (INERT, idempotence proven across two production deploys), leave now REPORTS packless employments instead of skipping them silently, and **state vocabulary now narrows to the owning jurisdiction (r110)**. **the two-tier statutory/non-statutory company shipped (r111)**, and **the OT report now resolves per company with a labelled currency (r115)**. Still to do: a sweep of any REMAINING report that assumes one jurisdiction, per-country subtotals wherever a group total exists + mixed-currency refusal, the two-tier statutory/non-statutory company (retires r97's `requirePackFor`, and closes the two `country` seams left open in r97), and **the deploy-failing flip — CONFIRM BEFORE SHIPPING** |
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
    | 9 | tenant suspension / export / closure | **MOSTLY DONE (r104, r105, r108, r109)** — enforcement (`SET TRANSACTION READ ONLY`), the dunning policy that is the only thing that suspends, the four sweeps consulting standing, and the statutory-filing carve-out + the asserted export path. Still to do: **CLOSURE** (dual-controlled, with its own retention check — deliberately never reached by dunning) and **REACTIVATION** (record the suspended window, replay skipped sweeps with that window excluded from expiry clocks — see r108 on why expiry cannot simply re-run) |
@@ -896,6 +896,41 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r115 — 2026-08-02 — slice 6: the OT report resolves per company, and labels its currency
+
+**Shipped:** `main@65384457`. **No migration.** **Gate:** `tsc` · **536 files / 6250 tests** · `next build`.
+
+**THE PLAN'S LINE REFERENCE WAS STALE — verify before building.** It said to fix
+`core/reporting.ts:351-358`; that is `recentReports` today and per-company pack resolution was ALREADY
+correct there. The real seam was the overtime report, found by reading rather than by trusting the plan.
+
+**WHAT IT DID, in its own words:** *"All companies in scope share the tenant-wide ruleset; resolve via the
+pack of the first company that has one"* — literally
+`emps.find((e) => packFor(e.country))?.country`. With MY the only pack that is byte-identical. **With
+two, a report spanning a Malaysian and a Singaporean company applies ONE jurisdiction's overtime
+multipliers and wage ceiling to BOTH**, computing foreign employees under Malaysian rules and presenting
+the result as theirs. The same harm D-14 exists to prevent, arriving through a report instead of a
+mis-keyed country field.
+
+Resolved once **per DISTINCT COUNTRY** — not per employee, so a 500-row report still issues one
+`loadRuleset` per jurisdiction rather than 500.
+
+**THE EXPORT HEADER WAS A HARDCODED LIE: `'OT amount (RM)'`**, over a bare number, for every company
+regardless of where its employees work. Two currencies could be summed in a spreadsheet with nothing on
+screen to say otherwise. The amount now carries its company's own currency in its own column, so a
+mixed-currency export is **visibly** mixed (D-9).
+
+**A packless company still reports** — with the documented fallbacks and a stated zero rather than an
+omission. r111's non-statutory tier makes that a legitimate state, not an error, and omitting those
+employees is how a report quietly under-reports a workforce.
+
+**The tests register a second country pack with different multipliers**, the only way to tell the fix
+from the bug before a real second pack ships — **including an order-independence case**, because the old
+bug was literally "the first company that has a pack" and a report sorted differently would have
+imposed the foreign ruleset on the Malaysian company instead.
+
+---
 
 ## r114 — 2026-08-02 — `usage:capture` gets a package.json script
 
