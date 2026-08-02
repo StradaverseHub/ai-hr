@@ -7737,6 +7737,10 @@
       "leave-expire-carry": {
         "name": "Brought-forward leave expiry",
         "description": "Forfeits brought-forward days whose expiry date has passed."
+      },
+      "usage-capture": {
+        "name": "Usage capture",
+        "description": "Records each customer's daily headcount, users, payslips and active modules."
       }
     }
   },

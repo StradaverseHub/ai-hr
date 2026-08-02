@@ -2052,6 +2052,13 @@
       "when": 1781862446000,
       "tag": "0346_company_statutory_tier",
       "breakpoints": true
+    },
+    {
+      "idx": 347,
+      "version": "7",
+      "when": 1781862447000,
+      "tag": "0347_usage_snapshot_unique",
+      "breakpoints": true
     }
   ]
 }

@@ -17,7 +17,15 @@ import { createDb, withTenant, type SessionContext } from '../db/client';
 import { jobRun } from '../db/schema';
 
 /** The four out-of-band sweeps, keyed exactly as they are stored in job_run.job_key. */
-export const JOB_KEYS = ['leave.accrue', 'review.sweep', 'leave.expire-carry', 'leave.expire-aged'] as const;
+export const JOB_KEYS = [
+  'leave.accrue',
+  'review.sweep',
+  'leave.expire-carry',
+  'leave.expire-aged',
+  // ADR-0077 slice 10 (r113) — the usage meter. Unlike the four above, a MISSED RUN IS A PERMANENT HOLE:
+  // the others recompute from stored dates, this one records a fact that stops being observable.
+  'usage.capture',
+] as const;
 export type JobKey = (typeof JOB_KEYS)[number];
 
 /** Outcome vocabulary. Stored as plain text (not a pgEnum — the 0275 widening lesson), owned here. */
@@ -39,6 +47,7 @@ export const JOBS: readonly JobDescriptor[] = [
   { key: 'review.sweep', i18nKey: 'review-sweep', schedule: 'Daily — 03:00' },
   { key: 'leave.expire-aged', i18nKey: 'leave-expire-aged', schedule: 'Daily — 03:30' },
   { key: 'leave.expire-carry', i18nKey: 'leave-expire-carry', schedule: 'Yearly — 1 April at 03:00' },
+  { key: 'usage.capture', i18nKey: 'usage-capture', schedule: 'Daily — 01:00' },
 ];
 
 /**
