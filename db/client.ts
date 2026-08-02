@@ -10,6 +10,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import * as schema from './schema';
+import { chainArmingDecision } from '../core/audit-chain-arming';
 import type { EntitlementSnapshot, EntitlementsExemptReason } from '../core/entitlement-types';
 // Value import, and safe: core/entitlement-types.ts imports NOTHING, so there is no cycle back here.
 import { TENANT_STATUS_GOOD_STANDING } from '../core/entitlement-types';
@@ -91,6 +92,50 @@ const pgPools = (globalForPg.__aihrPgPools ??= new Map<string, ReturnType<typeof
  *
  * Logged once per process, not per transaction.
  */
+/**
+ * ADR-0077 slice 8 — the three helpers the arming decision needs, kept HERE rather than in
+ * core/entitlements.ts because `withTenant` is what they serve and core/ imports db/, not the reverse.
+ *
+ * `tenantHasChainedHistory` is a PROCESS CACHE of a one-way fact. `domain_event` is append-only, so a
+ * tenant that has chained rows can never stop having them — caching `true` forever is sound, and it is
+ * the only value cached. An unknown tenant answers `false` and is corrected the moment it arms, which
+ * is why `markTenantChained` runs inside the arming branch rather than after a query.
+ *
+ * DELIBERATELY NO DATABASE LOOKUP HERE. `withTenant` opens every transaction in the product; adding a
+ * query to it to answer "does this tenant have chained events" would put a round-trip in front of every
+ * request to protect a state that is false on every existing deployment. The cache is seeded by arming
+ * instead, and `scripts/check-audit-chain-gate.ts` remains the out-of-band check that compares the
+ * configured gate against what the database actually holds.
+ */
+const chainedTenants = new Set<string>();
+function tenantHasChainedHistory(tenantId: string): boolean {
+  return chainedTenants.has(tenantId);
+}
+function markTenantChained(tenantId: string): void {
+  chainedTenants.add(tenantId);
+}
+
+/** The tenant's own `audit.hash_chain_enabled`, or null when no snapshot could be resolved (a sweep
+ *  context carries none — r108). Null is NOT "off": the decision falls back rather than disarming. */
+function readChainSetting(ctx: SessionContext): boolean | null {
+  const v = ctx.entitlements?.settings?.['audit.hash_chain_enabled'];
+  return typeof v === 'boolean' ? v : null;
+}
+
+/** Logged once per tenant per process: a refused disarm is a standing condition, not an event stream. */
+const chainDisarmWarned = new Set<string>();
+function warnChainDisarmRefused(tenantId: string, reason: string): void {
+  if (chainDisarmWarned.has(tenantId)) return;
+  chainDisarmWarned.add(tenantId);
+  console.warn(`[audit-chain] refusing to disarm the chain for tenant ${tenantId}: ${reason}`);
+}
+
+/** Tests only — the caches are process-lifetime by design. */
+export function __resetAuditChainCachesForTests(): void {
+  chainedTenants.clear();
+  chainDisarmWarned.clear();
+}
+
 let auditGateWarned = false;
 function auditHashChainArmed(): boolean {
   const raw = process.env.AUDIT_HASH_CHAIN_ENABLED;
@@ -150,8 +195,32 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       // parity value that was simply wrong and disarmed a chain it believed had never run. Every other
       // gate in this migration uses `=== 'true'`; this one now does too, and the drift test asserts the
       // FORM as well as the presence so the next deferred entry cannot repeat it.
-      if (auditHashChainArmed()) {
+      //
+      // ADR-0077 SLICE 8. The env gate is no longer the decision — `audit.hash_chain_enabled` on the
+      // tenant's own snapshot is, and `chainArmingDecision` resolves the two against this tenant's
+      // HISTORY. The env value survives only as the fallback for an unresolvable setting, so a
+      // deployment mid-migration cannot silently lose a chain it already had.
+      //
+      // THE REFUSAL THIS ADDS. Disarming a chain that already has chained events appends events OUTSIDE
+      // the chain — not a broken link, absent from it — and `verifyTenantChain()` keeps answering
+      // `valid: true` because it only inspects `chain_seq IS NOT NULL`. Re-arming later links straight
+      // across the hole. No backfill exists to heal it, so a tenant WITH history stays armed whatever
+      // the setting says, and the override is logged once per tenant per process.
+      //
+      // INERT ON EVERY EXISTING DEPLOYMENT, verified on production before shipping: 5707 events, ZERO
+      // chained, no tenant with a chain, `AUDIT_HASH_CHAIN_ENABLED` unset. `hasChainedHistory` is false
+      // everywhere, so the decision returns exactly what the env gate returned — off.
+      const chainDecision = chainArmingDecision({
+        settingEnabled: readChainSetting(ctx),
+        hasChainedHistory: tenantHasChainedHistory(ctx.tenantId),
+        envArmed: auditHashChainArmed(),
+      });
+      if (chainDecision.refusedDisarm) warnChainDisarmRefused(ctx.tenantId, chainDecision.reason);
+      if (chainDecision.armed) {
         await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
+        // Remembered the moment we arm: the next transaction for this tenant must see that history now
+        // exists, or a settings flip between the two could still open a one-transaction hole.
+        markTenantChained(ctx.tenantId);
       }
       // ADR-0077 slice 9 — SUSPENSION IS A MECHANISM, NOT A DISCIPLINE.
       //
