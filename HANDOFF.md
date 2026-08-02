@@ -97,7 +97,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@1b9bf4c4` — production on **298** migrations. **Next free number is `0352`.**
+> ### DEPLOYED HEAD IS `main@8226a582` — production on **298** migrations. **Next free number is `0352`.**
 >
 > ### THE BOARD HAS NO BUILDABLE WORK LEFT — 18 planned, 0 open, 0 contested, 0 approved, 1 building
 >
@@ -976,6 +976,38 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r122 — 2026-08-03 — slice 10: the usage read model, leading with staleness
+
+**Shipped:** `main@8226a582`. **No migration.** **Gate:** `tsc` · **543 files / 6354 tests** ·
+`next build`. Verified live: `active`, `GET /` 401, `/login` 200, rsync dry-run zero drift.
+
+Reads on the PLATFORM pool (r120's role), not the owner connection — a read-only dashboard must not
+hold the power to rewrite the schema. `pnpm platform:usage` once `PLATFORM_DATABASE_URL` is set.
+
+**STALENESS IS THE HEADLINE.** No `aihr` timers exist, so the meter has never run on a schedule. A
+confident total over data that stopped updating weeks ago converts a VISIBLE absence into an invisible
+one. Each tenant is summarised at ITS OWN latest capture and carries `daysSinceCapture`; adding a
+tenant metered yesterday to one metered five weeks ago is r118's mixed-currency mistake in another
+costume. `countMissingDays` is exported and tested without a database — usage cannot be backfilled.
+
+### ⚠️ THE `/platform` WEB PAGE IS DELIBERATELY NOT BUILT
+
+`platform_user` is not `app_user` (D5), so a `/platform` route group **cannot reuse the tenant
+session**: it needs a platform identity, a deny-by-default guard, and every view appended to
+`DomainEvent`. A route group that is deny-by-default in INTENTION but not in FACT is a cross-tenant
+leak — the single failure slice 7 exists to prevent. The read model ships first; the page is built on
+top of it deliberately. **This is the next slice-10 step.**
+
+### A MISTAKE WORTH RECORDING: `git commit --amend` LANDED ON THE WRONG BRANCH
+
+The shell cwd had reset to `mainwt`, so an amend intended for `build/r122` rewrote **main's HANDOFF
+commit message** into r122's. Caught immediately, both restored, no content lost. **This is the same
+`pwd` trap that cost a full suite run earlier in the session** — it has now bitten four times in one
+night, twice on plain `cd`, once on a background compound command, once on an amend. **Check
+`git branch --show-current` in the same command as any commit/amend/merge, not just gate runs.**
+
+---
 
 ## r118-r121 — 2026-08-03 — slices 6, 7, 8 and 9 (four rounds, all deployed)
 
