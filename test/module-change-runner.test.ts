@@ -15,6 +15,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { Tx } from '../db/client';
 import { applyModuleChange, assertActivatable, ModuleChangeRefused } from '../scripts/module-change-runner';
+import { inArray } from 'drizzle-orm';
 import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -27,6 +28,23 @@ beforeEach(async () => {
   b = await seedBase();
 });
 afterAll(async () => {
+  // resetDb() FIRST, and this ordering is the whole trick: resetDb runs in beforeEach, so the LAST
+  // test's tenant_module rows are still present here — and tenant_module.module_code has an FK to
+  // module.code. Deleting the catalog rows without clearing the dependants raises a foreign-key
+  // violation inside afterAll, which vitest reports as the whole FILE failing with no failed test.
+  if (created.length > 0 || createdSettings.length > 0) {
+    // ORDER MATTERS TWICE OVER. resetDb() first, because it runs in beforeEach and the LAST test's
+    // tenant_module rows are still here, and those FK to module.code. Then setting_definition, which
+    // ALSO FKs to module.code (setting_definition_module_code_fkey) and is ALSO installation-wide —
+    // that one is easy to miss because it is a catalog the tests write to only incidentally.
+    await resetDb();
+    if (createdSettings.length > 0) {
+      await owner.db.delete(schema.settingDefinition).where(inArray(schema.settingDefinition.key, createdSettings));
+    }
+    if (created.length > 0) {
+      await owner.db.delete(schema.module_).where(inArray(schema.module_.code, created));
+    }
+  }
   await closeAll();
 });
 
@@ -38,7 +56,21 @@ afterAll(async () => {
  */
 const uniq = (base: string) => `${base}_${randomUUID().slice(0, 8)}`;
 
+/**
+ * Every catalog code this file creates, so it can put the catalog back.
+ *
+ * `module` is INSTALLATION-wide — resetDb() does not touch it — so a fixture row survives the test that
+ * made it AND every later run in the same worker database. Unique codes stopped fixtures colliding with
+ * each other and, left there, quietly accumulated: test/module-catalog-drift.test.ts asserts the database
+ * carries no module the code does not know about, and it began failing with a list of this file's
+ * leftovers. Creating rows in a shared catalog obliges you to remove them.
+ */
+const created: string[] = [];
+/** Setting definitions are installation-wide too, and they FK to module.code — so they clear first. */
+const createdSettings: string[] = [];
+
 async function defineModule(code: string, o: Partial<typeof schema.module_.$inferInsert> = {}) {
+  created.push(code);
   await owner.db
     .insert(schema.module_)
     .values({ code, name: code, category: 'hr', billable: false, isCore: false, ...o })
@@ -144,6 +176,7 @@ describe('install, reactivate, disable', () => {
     const code = uniq('reinstalls');
     const key = `${code}.threshold`;
     await defineModule(code);
+    createdSettings.push(key);
     await owner.db.insert(schema.settingDefinition).values({
       key,
       moduleCode: code,
@@ -180,6 +213,7 @@ describe('install, reactivate, disable', () => {
     const code = uniq('seeds_settings');
     const key = `${code}.enabled`;
     await defineModule(code);
+    createdSettings.push(key);
     await owner.db.insert(schema.settingDefinition).values({
       key,
       moduleCode: code,
