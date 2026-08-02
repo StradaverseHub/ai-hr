@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r113 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r114 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@29c5c1db` — production on **294** migrations. **Next free number is `0348`.**
+> ### DEPLOYED HEAD IS `main@dd6f4f7c` — production on **294** migrations. **Next free number is `0348`.**
 >
 > ### THE BOARD IS FULL OF PLANS AWAITING THE REPORTER — 14 planned, 0 open
 >
@@ -896,6 +896,23 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r114 — 2026-08-02 — `usage:capture` gets a package.json script
+
+**Shipped:** `main@dd6f4f7c`. **No migration.** **Gate:** `tsc` · **535 files / 6243 tests** · `next build`.
+
+An omission from r113 caught while running the meter on the server: `leave:accrue`,
+`leave:expire-carry` and `review:sweep` all have a `package.json` entry and the new meter did not.
+
+**RUNNING A SWEEP OVER PLAIN SSH NEEDS `/opt/node20/bin` ON PATH.** The box's default `node` is
+**v18.19.1 at /usr/bin/node**, which predates `--env-file` — so
+`ssh … 'node --env-file=.env.production …'` fails with **"node: bad option: --env-file"**, which reads
+like a broken script rather than a PATH problem. `deploy.sh` prepends `/opt/node20/bin` itself, which is
+why migrations and backfills work there. From an interactive ssh, prefix it:
+
+    cd /opt/ai-hr && PATH=/opt/node20/bin:$PATH node --env-file=.env.production --import tsx scripts/<x>.ts
+
+---
 
 ## r113 — 2026-08-02 — slice 10: the usage meter starts recording
 
