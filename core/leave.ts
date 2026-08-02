@@ -5703,6 +5703,29 @@ export const leaveTypeRuleColumns = {
   maxBalanceDays: leaveType.maxBalanceDays,
 } as const;
 
+/**
+ * An employment a leave sweep could NOT compute, and why (ADR-0077 slice 6).
+ *
+ * Every one of these loops used to say `if (!pack) continue` — the employee was skipped and NOBODY was
+ * told. `createCompany`'s own comment names the consequence: "LEAVE fails SILENT — the engines
+ * `continue` past a packless employee and the holiday resolver yields an empty calendar, so the employee
+ * accrues nothing and nobody is told."
+ *
+ * The skip itself is correct and stays: statutory entitlement cannot be computed without a jurisdiction,
+ * and inventing one would be worse. What changes is that it is REPORTED. A sweep does not throw, because
+ * one packless employee must not abort accrual for everyone else — `requirePackFor` is the right shape
+ * for a single operation and the wrong shape for a batch.
+ *
+ * Unreachable today (every company is MY and the pack resolves), and deliberately landed BEFORE slice 6's
+ * non-statutory tier makes it reachable: introducing companies without packs while this still failed
+ * silently would manufacture zero-accrual employees nobody could see.
+ */
+export type PackBlockedEmployment = {
+  employmentId: string;
+  country: string | null;
+  reason: 'country_pack_inactive';
+};
+
 export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
   return withTenant(ctx, async (tx) => {
     const yearStart = `${p.year}-01-01`;
@@ -5843,9 +5866,13 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
     let granted = 0;
     let skipped = 0;
     let forfeits = 0;
+    const packBlocked: PackBlockedEmployment[] = [];
     for (const e of emps) {
       const pack = packFor(e.country);
-      if (!pack) continue;
+      if (!pack) {
+        packBlocked.push({ employmentId: e.employmentId, country: e.country ?? null, reason: 'country_pack_inactive' });
+        continue;
+      }
       const years = serviceYearsAt(e.hiredOn, yearStart);
       for (const t of types) {
         const key = `${e.employmentId}|${t.id}`;
@@ -5930,7 +5957,7 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
       actor: actorOf(ctx),
       payload: { year: p.year, granted, skipped, forfeits },
     });
-    return { granted, skipped, forfeits };
+    return { granted, skipped, forfeits, packBlocked };
   });
 }
 
@@ -6109,6 +6136,8 @@ export type EarnedAccrualResult = {
   granted: number;
   forfeits: number;
   breakdown: EarnedAccrualGroup[];
+  /** Employments this sweep could not compute, and why — never a silent skip (slice 6). */
+  packBlocked: PackBlockedEmployment[];
 };
 
 /**
@@ -6175,7 +6204,7 @@ export async function accrueEarnedLeave(
         ),
       );
     const typeIds = types.map((t) => t.id);
-    if (typeIds.length === 0) return { granted: 0, forfeits: 0, breakdown: [] };
+    if (typeIds.length === 0) return { granted: 0, forfeits: 0, breakdown: [], packBlocked: [] };
 
     const policies = await tx
       .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
@@ -6208,7 +6237,7 @@ export async function accrueEarnedLeave(
         return rows.some((r) => isEarnedMethod((r.accrual as { method?: string } | null)?.method));
       })
       .map(([id]) => id);
-    if (earnedTypeIds.length === 0) return { granted: 0, forfeits: 0, breakdown: [] };
+    if (earnedTypeIds.length === 0) return { granted: 0, forfeits: 0, breakdown: [], packBlocked: [] };
 
     const emps = await tx
       .select({
@@ -6232,7 +6261,7 @@ export async function accrueEarnedLeave(
           scopeGradeIds.length ? inArray(employment.gradeId, scopeGradeIds) : undefined,
         ),
       );
-    if (emps.length === 0) return { granted: 0, forfeits: 0, breakdown: [] };
+    if (emps.length === 0) return { granted: 0, forfeits: 0, breakdown: [], packBlocked: [] };
     const empIds = emps.map((e) => e.employmentId);
 
     // Benefit Scheme & Leave Entitlement (b83c6a3b): resolve each employee's scheme entitlement days for the
@@ -6372,9 +6401,13 @@ export async function accrueEarnedLeave(
 
     let granted = 0;
     let forfeits = 0;
+    const packBlocked: PackBlockedEmployment[] = [];
     for (const e of emps) {
       const pack = packFor(e.country);
-      if (!pack) continue;
+      if (!pack) {
+        packBlocked.push({ employmentId: e.employmentId, country: e.country ?? null, reason: 'country_pack_inactive' });
+        continue;
+      }
       for (const typeId of earnedTypeIds) {
         const type = types.find((t) => t.id === typeId);
         if (!type) continue;
@@ -6537,7 +6570,7 @@ export async function accrueEarnedLeave(
         },
       });
     }
-    return { granted, forfeits, breakdown };
+    return { granted, forfeits, breakdown, packBlocked };
   });
 }
 
@@ -6730,8 +6763,8 @@ export async function reprojectA2cEntitlement(
     /** Recorded on the event payload: what triggered the correction (e.g. 'year_cycle_override'). */
     trigger: string;
   },
-): Promise<{ affected: number; totalDelta: number }> {
-  const none = { affected: 0, totalDelta: 0 };
+): Promise<{ affected: number; totalDelta: number; packBlocked: PackBlockedEmployment[] }> {
+  const none = { affected: 0, totalDelta: 0, packBlocked: [] as PackBlockedEmployment[] };
 
   const [type] = await tx
     // 9816a5ad step 2: the type's own rules ride along and are handed to the projection kernel below.
@@ -6829,9 +6862,13 @@ export async function reprojectA2cEntitlement(
   const reason = `${A2C_RECALC_REASON_PREFIX}:${p.leaveTypeId}`;
   let affected = 0;
   let totalDelta = 0;
+  const packBlocked: PackBlockedEmployment[] = [];
   for (const e of emps) {
     const pack = packFor(e.country);
-    if (!pack) continue;
+    if (!pack) {
+      packBlocked.push({ employmentId: e.employmentId, country: e.country ?? null, reason: 'country_pack_inactive' });
+      continue;
+    }
     if (frozenSet.has(`${e.employmentId}|${p.leaveTypeId}`)) continue;
 
     const projected = projectExpectedEntitlement(
@@ -6928,7 +6965,7 @@ export async function reprojectA2cEntitlement(
     affected += 1;
     totalDelta = round2(totalDelta + accrualDelta + reversal);
   }
-  return { affected, totalDelta };
+  return { affected, totalDelta, packBlocked };
 }
 
 /**
@@ -6977,8 +7014,8 @@ export async function reprojectEntitlementForPolicy(
     /** Tenant-local (MYT) "today" — threaded from the action layer; anchors the current cycle. */
     asOf: string;
   },
-): Promise<{ affected: number; totalDelta: number }> {
-  const none = { affected: 0, totalDelta: 0 };
+): Promise<{ affected: number; totalDelta: number; packBlocked: PackBlockedEmployment[] }> {
+  const none = { affected: 0, totalDelta: 0, packBlocked: [] as PackBlockedEmployment[] };
 
   // 1. Recalculate only when the correction moves ENTITLEMENT (days / method / bands / rounding) or the
   //    policy's scope. Carry-forward-only edits (cap, expiry, toggles) never changed what was granted — skip.
@@ -7146,9 +7183,13 @@ export async function reprojectEntitlementForPolicy(
   // f3a64d90: employments whose a2c first-year ANNUAL correction is DELEGATED to reprojectA2cEntitlement
   // after this loop (it posts accrual-class rows; this loop's `adjustment` is invisible to YTD Entitled).
   const a2cDelegated: string[] = [];
+  const packBlocked: PackBlockedEmployment[] = [];
   for (const e of emps) {
     const pack = packFor(e.country);
-    if (!pack) continue;
+    if (!pack) {
+      packBlocked.push({ employmentId: e.employmentId, country: e.country ?? null, reason: 'country_pack_inactive' });
+      continue;
+    }
     if (frozenSet.has(`${e.employmentId}|${p.leaveTypeId}`)) continue;
 
     // Resolve the employee's winner + project the current-cycle entitlement via the shared kernel (same
@@ -7242,7 +7283,7 @@ export async function reprojectEntitlementForPolicy(
     affected += a2c.affected;
     totalDelta = round2(totalDelta + a2c.totalDelta);
   }
-  return { affected, totalDelta };
+  return { affected, totalDelta, packBlocked };
 }
 
 // ── Profile-change recalculation (R45 7527ea5f) ────────────────────────────────────────────────────
