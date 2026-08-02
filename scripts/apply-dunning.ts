@@ -24,7 +24,7 @@
 import { eq } from 'drizzle-orm';
 import { createDb } from '../db/client';
 import { appendEvent } from '../db/events';
-import { subscription, tenant } from '../db/schema';
+import { subscription, tenant, tenantSuspensionWindow } from '../db/schema';
 import { dunningDecision, DEFAULT_GRACE_DAYS } from '../core/dunning';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -81,7 +81,23 @@ export async function runDunning(
     if (decision.action !== 'suspend' || !opts.apply) continue;
 
     await owner.db.transaction(async (tx) => {
-      await owner.db.update(tenant).set({ status: 'suspended' }).where(eq(tenant.id, r.tenantId));
+      await owner.db.update(tenant).set({ status: 'suspended', suspendedAt: new Date() }).where(eq(tenant.id, r.tenantId));
+      // ADR-0077 slice 9 (0350) — OPEN THE SUSPENSION WINDOW, in the same transaction as the status.
+      //
+      // This is what reactivation reads. r108 established that a plain re-run of the expiry sweeps after
+      // reinstatement forfeits everything whose date fell inside the window — days the employee never had
+      // a chance to use. core/tenant-lifecycle.ts pushes those expiries out by exactly the frozen time,
+      // and it can only do that if the frozen time was written down AT THE MOMENT IT STARTED. Recording
+      // it later from the event log would work until someone edited the log.
+      //
+      // ON CONFLICT DO NOTHING against the one-open-window-per-tenant partial unique index: re-running
+      // the sweep against an already-suspended tenant must not open a second window (that would
+      // double-count the frozen days and hand back twice the leave). The dunning decision already
+      // short-circuits on 'already suspended', so this is the belt to that braces.
+      await tx
+        .insert(tenantSuspensionWindow)
+        .values({ tenantId: r.tenantId, suspendedAt: today, reason: decision.reason })
+        .onConflictDoNothing();
       // The event is the record of WHY a customer lost write access. Without it, the only evidence is a
       // status column and an operator's memory.
       await appendEvent(tx as never, {
