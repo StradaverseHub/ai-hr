@@ -5882,7 +5882,18 @@ export const usageSnapshot = pgTable('usage_snapshot', {
   uniqueIndex('usage_snapshot_tenant_company_day_uq').on(t.tenantId, t.companyId, t.capturedOn),
 ]);
 
-/** Stradaverse staff. Deliberately NOT app_user, and invisible to ai_hr_app (no grant at all). */
+/**
+ * Stradaverse staff. Deliberately NOT app_user, and invisible to ai_hr_app.
+ *
+ * ADR-0077 D5 / slice 7: platform identity is kept OUTSIDE the tenant identity model on purpose —
+ * these people are not employees of any tenant, have no employment row, and must not be resolvable by
+ * any tenant-facing query. "No grant at all" is now ENFORCED rather than assumed: migration 0351
+ * REVOKEs the table from ai_hr_app (bootstrap-db.sql auto-grants CRUD on every table the owner
+ * creates, so the revoke is necessary, not decorative) and forces RLS with no permissive policy, so
+ * the grant and the policy would both have to be wrong before a tenant could see a row.
+ *
+ * Read and written only through db/platform.ts, on the ai_hr_platform pool.
+ */
 export const platformUser = pgTable('platform_user', {
   id: id(),
   email: text('email').notNull().unique(),

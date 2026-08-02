@@ -3,13 +3,22 @@
 --   sudo -u postgres psql \
 --     -v owner_pw=CHANGE_ME_OWNER_PW \
 --     -v app_pw=CHANGE_ME_APP_PW \
+--     -v platform_pw=CHANGE_ME_PLATFORM_PW \
 --     -f deploy/bootstrap-db.sql
 --   (pass the passwords WITHOUT surrounding quotes — psql's :'var' form quotes them for you.)
 --
--- Creates the `ai_hr` database and the TWO roles the app needs:
---   • ai_hr_owner — owns the schema; runs migrations + seed (MIGRATION_DATABASE_URL).
---   • ai_hr_app   — the application role; NON-superuser, NO BYPASSRLS, so row-level security
---                    (including the FORCE-RLS tables) actually governs it (DATABASE_URL).
+-- Creates the `ai_hr` database and the THREE roles the app needs:
+--   • ai_hr_owner    — owns the schema; runs migrations + seed (MIGRATION_DATABASE_URL).
+--   • ai_hr_app      — the application role; NON-superuser, NO BYPASSRLS, so row-level security
+--                       (including the FORCE-RLS tables) actually governs it (DATABASE_URL).
+--   • ai_hr_platform — ADR-0077 D5 slice 7: the CONTROL PLANE role, BYPASSRLS, on its own pool
+--                       (PLATFORM_DATABASE_URL). Stradaverse staff looking across tenants.
+--
+-- WHY ai_hr_platform IS A SEPARATE ROLE AND NOT A FLAG ON ai_hr_app. ai_hr_app must NEVER gain
+-- cross-tenant read. If the platform view ran on the app's connection, a routing bug alone would leak
+-- one customer's payroll into another's screen. With a distinct role the leak needs TWO independent
+-- mistakes: reaching platform code AND holding the platform pool. That is the whole point of D5, and
+-- it is also why ADR-0077 rejected "just add a superuser flag when needed".
 --
 -- WHY the default-privileges block matters: the repo migrations GRANT to ai_hr_app only the tables
 -- that existed at Slice 0 (migration 0001). Every table created by later migrations relies on
@@ -25,6 +34,7 @@
 \o /dev/null
 SELECT set_config('aihr_bootstrap.owner_pw', :'owner_pw', false);
 SELECT set_config('aihr_bootstrap.app_pw',   :'app_pw',   false);
+SELECT set_config('aihr_bootstrap.platform_pw', :'platform_pw', false);
 \o
 
 DO $$
@@ -34,6 +44,11 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ai_hr_app') THEN
     EXECUTE format('CREATE ROLE ai_hr_app LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS', current_setting('aihr_bootstrap.app_pw'));
+  END IF;
+  -- BYPASSRLS is the entire privilege. NOSUPERUSER still, so it cannot alter the schema, disable a
+  -- policy, or read the columns the migrations REVOKE — it sees rows across tenants, nothing more.
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ai_hr_platform') THEN
+    EXECUTE format('CREATE ROLE ai_hr_platform LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS', current_setting('aihr_bootstrap.platform_pw'));
   END IF;
 END $$;
 
@@ -47,10 +62,18 @@ SELECT 'CREATE DATABASE ai_hr OWNER ai_hr_owner'
 GRANT CONNECT ON DATABASE ai_hr TO ai_hr_app;
 GRANT USAGE ON SCHEMA public TO ai_hr_app;
 
+-- The platform role connects and reads. It is granted per-table by migration 0351, NOT by a blanket
+-- default-privileges rule like ai_hr_app's: the control plane should see the tenancy and billing
+-- tables, not every table a future migration happens to create. An explicit grant list is the
+-- difference between "cross-tenant view of the commercial surface" and "cross-tenant view of
+-- everything", and only one of those is what D5 authorises.
+GRANT CONNECT ON DATABASE ai_hr TO ai_hr_platform;
+GRANT USAGE ON SCHEMA public TO ai_hr_platform;
+
 -- Auto-grant CRUD on every table/sequence that ai_hr_owner creates from here on (i.e. all migrations).
 ALTER DEFAULT PRIVILEGES FOR ROLE ai_hr_owner IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ai_hr_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE ai_hr_owner IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO ai_hr_app;
 
-\echo '✅ ai_hr database + roles ready. Now run migrations as ai_hr_owner (see deploy/DEPLOY.md).'
+\echo '✅ ai_hr database + 3 roles ready. Now run migrations as ai_hr_owner (see deploy/DEPLOY.md).'

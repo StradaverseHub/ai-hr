@@ -1,0 +1,15 @@
+# Timer for the expire-carry sweep. NOT enabled by deploy.sh — see deploy/systemd/README.md.
+[Unit]
+Description=AI HR sweep timer: expire-carry (daily 03:00)
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+# The box may be asleep or the service down at the scheduled minute; run on the next start instead of
+# silently skipping the day. For usage-capture in particular a skipped day is unbillable forever.
+Persistent=true
+# Spread the load so five sweeps do not all wake on the same second.
+RandomizedDelaySec=120
+Unit=aihr-expire-carry.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,21 @@
+# AI HR sweep — expire-aged-leave. Installed by hand, never by deploy.sh: see deploy/systemd/README.md.
+#
+# Forfeit aged leave past its expiry. TAKES DAYS AWAY — same caution as expire-carry.
+[Unit]
+Description=AI HR sweep: expire-aged-leave
+After=network.target postgresql.service aihr.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=aihr
+WorkingDirectory=/opt/ai-hr
+# The server's default node is v18 and predates --env-file. Pinned, not inherited: a PATH that picks
+# up the system node fails with "node: bad option: --env-file", which reads like a broken script.
+Environment=PATH=/opt/node20/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+ExecStart=/opt/node20/bin/node --env-file=/opt/ai-hr/.env.production --import tsx /opt/ai-hr/scripts/expire-aged-leave.ts
+# A sweep that fails must not retry itself into a storm — the timer brings it round again tomorrow.
+Restart=no
+NoNewPrivileges=true
+PrivateTmp=true
