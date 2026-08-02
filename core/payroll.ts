@@ -13,6 +13,7 @@ import {
 } from '../lib/payroll-permissions';
 import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
+import { assertStatutory } from './company-tier';
 import { toCsv } from '../lib/csv';
 import {
   assignment,
@@ -1587,6 +1588,8 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
         payPeriod: payrollBatch.payPeriod,
         status: payrollBatch.status,
         country: company.country,
+        statutoryTier: company.statutoryTier,
+        companyName: company.legalName,
       })
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
@@ -1594,6 +1597,12 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       .limit(1);
     if (!batch) throw new Error('batch not found');
     if (batch.status !== 'draft') throw new BatchNotDraftError();
+    // ADR-0080 D-14 — payroll is a statutory computation and is refused for a non-statutory company,
+    // BY TIER rather than by the pack happening to be missing. The distinction matters to whoever reads
+    // the error: "No localization pack for country TH" reads as a bug to be fixed, while "this is a
+    // non-statutory company" reads as the deliberate arrangement it is. Checked BEFORE the pack lookup
+    // so the tier is what speaks.
+    assertStatutory(batch.statutoryTier, 'Payroll', batch.companyName);
     const pack = packFor(batch.country);
     if (!pack) throw new Error(`No localization pack for country ${batch.country}`);
 

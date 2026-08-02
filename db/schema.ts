@@ -179,6 +179,12 @@ export const company = pgTable(
     // owns it, and the Basic Salary form preselects it for a brand-new salary record (the job that
     // company_payroll_config.default_currency used to do before migration 0324 collapsed the pair).
     currency: text('currency').notNull().default('MYR'),
+    /**
+     * ADR-0080 D-14 (migration 0346) — 'statutory' | 'non_statutory', CHECK-constrained in the DB.
+     * Never inferred from the country: a packless country makes a company non-statutory ONLY when
+     * declared, so a mis-keyed ISO code cannot silently become a tier. See core/company-tier.ts.
+     */
+    statutoryTier: text('statutory_tier').notNull().default('statutory'),
     registrationNo: text('registration_no'),
     // Enhance Company General Tab (bc5d4891) — Company Information + Contact Information master data.
     // All nullable, additive, no backfill. `addressCountry` is display/correspondence only and must NOT be

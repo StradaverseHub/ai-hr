@@ -45,7 +45,8 @@ import {
   isEngineRoundingMethod,
   type ServiceBand,
 } from './leave';
-import { countryPacks, requirePackFor } from '../localization/registry';
+import { countryPacks, packFor } from '../localization/registry';
+import { NON_STATUTORY, resolveCompanyTier } from './company-tier';
 import { statesForCountries } from './state-vocabulary';
 import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
 import { MARITAL_STATUSES } from './profile';
@@ -298,18 +299,33 @@ function resolveDefaultCycleName(v: string | undefined): string {
 
 export async function createCompany(
   ctx: SessionContext,
-  p: { legalName: string; country?: string; currency?: string; registrationNo?: string; defaultPayrollCycle?: string },
+  p: {
+    legalName: string;
+    country?: string;
+    currency?: string;
+    registrationNo?: string;
+    defaultPayrollCycle?: string;
+    /**
+     * ADR-0080 D-14 — declare this company NON-STATUTORY. Required (and only accepted) when the
+     * country has no registered pack. Never inferred, so a mis-keyed ISO code cannot become a tier.
+     */
+    nonStatutory?: boolean;
+  },
 ) {
   const legalName = cleanName(p.legalName, 'Legal name');
   const country = isoCode(p.country, 'MY', 'Country');
-  // F7 — the add-company seam was open: isoCode is a SHAPE check only ('ZZ' and 'XX' pass), so a
-  // company could be created in a country with no statutory pack. Payroll fails closed for such a
-  // company (core/payroll.ts:1546-1547), but LEAVE fails SILENT — the engines `continue` past a
-  // packless employee and the holiday resolver yields an empty calendar, so the employee accrues
-  // nothing and nobody is told. Refusing at creation closes that window until slice 6 replaces this
-  // with the two-tier model (D-14), where a non-statutory company is a deliberate, declared choice
-  // rather than an accident. isoCode is shared with `currency`, so the check lives here, not in it.
-  requirePackFor(country);
+  // ADR-0080 D-14 — F7's blanket refusal is REPLACED by the two-tier model it always pointed at.
+  //
+  // The old guard called requirePackFor(country) and refused any packless country outright, because
+  // isoCode is a SHAPE check ('ZZ' and 'XX' pass) and a packless company fails SILENT on leave. That
+  // silence is now reported (r103's packBlocked), and refusing onboarding is the wrong permanent
+  // answer: a customer with a Thai plant either cannot onboard it, or misfiles Thai staff under the
+  // Malaysian company to get past the refusal — silently applying MY rules to foreign employees.
+  //
+  // resolveCompanyTier keeps the refusal for an UNDECLARED packless country (identical outcome to
+  // before, with a stated way through) and adds the declared non-statutory tier. It also refuses the
+  // opposite mistake: declaring non-statutory where a pack DOES exist.
+  const statutoryTier = resolveCompanyTier(country, p.nonStatutory === true);
   const currency = currencyCode(p.currency);
   // Organization Module (361e3b15): the chosen default, resolved against the standard catalog we are about to
   // seed. Defaults to 'Monthly' (the column default) so the common case is a single accept-and-move-on step.
@@ -322,6 +338,7 @@ export async function createCompany(
         legalName,
         country,
         currency,
+        statutoryTier,
         registrationNo: p.registrationNo?.trim() || null,
         defaultPayrollCycle,
       })
@@ -4367,6 +4384,8 @@ export async function updateCompany(
     id: string;
     legalName: string;
     registrationNo?: string;
+    /** ADR-0080 D-14 — declare the company non-statutory when moving it to a country with no pack. */
+    nonStatutory?: boolean;
     country?: string;
     currency?: string;
     // Company Information (bc5d4891)
@@ -4420,13 +4439,35 @@ export async function updateCompany(
     // Guarded on CHANGE, not on every save, and the difference is deliberate: a company already sitting
     // in a packless country (legacy data, or a direct insert) must stay editable — refusing to save its
     // phone number because of its country would be a new outage, not a fix. What is refused is MOVING a
-    // company into a jurisdiction this installation cannot compute. Slice 6's two-tier model replaces
-    // this with a declared non-statutory tier (D-14) and the guard goes away.
-    const [current] = await tx.select({ country: company.country }).from(company).where(eq(company.id, p.id));
-    if (current && current.country !== country) requirePackFor(country);
+    // company into a jurisdiction this installation cannot compute.
+    //
+    // ADR-0080 D-14: moving a company between countries now RE-DERIVES its tier rather than refusing.
+    // Into a packed country → 'statutory'. Into a packless one → still refused unless the caller
+    // declares it non-statutory, because a country change is exactly the typo-shaped mistake the
+    // declaration exists to catch. A company that was already non-statutory keeps that tier when its
+    // country changes to another packless one, and is PROMOTED to statutory when moved somewhere we
+    // model — the tier follows the jurisdiction, never the other way round.
+    const [current] = await tx
+      .select({ country: company.country, statutoryTier: company.statutoryTier })
+      .from(company)
+      .where(eq(company.id, p.id));
+    // Re-derived only when the country actually CHANGES, so an unrelated save never re-litigates the
+    // tier of a company that is sitting still. The existing tier carries the declaration forward: a
+    // company already declared non-statutory does not have to re-declare on every country edit.
+    // An EXPLICIT declaration wins and is validated (declaring non-statutory into a packed country is
+    // a user error and throws). An INHERITED tier is not a declaration, so it is only carried where it
+    // can still apply: moving into a packed country PROMOTES to statutory rather than conflicting with
+    // the old tier. Collapsing these two into one flag is what made the first version throw on the
+    // TH → MY move it was written to allow.
+    const inheritedDeclaration =
+      packFor(country) ? false : current?.statutoryTier === NON_STATUTORY;
+    const tierSet =
+      current && current.country !== country
+        ? { statutoryTier: resolveCompanyTier(country, p.nonStatutory ?? inheritedDeclaration) }
+        : {};
     await tx
       .update(company)
-      .set({ ...nextCore, ...profileSet })
+      .set({ ...nextCore, ...tierSet, ...profileSet })
       .where(eq(company.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -4434,7 +4475,7 @@ export async function updateCompany(
       aggregateId: p.id,
       eventType: 'company.updated',
       actor: actorOf(ctx),
-      payload: { after: { ...nextCore, ...profileSet } },
+      payload: { after: { ...nextCore, ...tierSet, ...profileSet } },
     });
   });
 }
