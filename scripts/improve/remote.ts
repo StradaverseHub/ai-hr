@@ -17,6 +17,15 @@ const PORT = process.env.IMPROVE_SSH_PORT ?? '8288';
 const USER = process.env.IMPROVE_SSH_USER ?? 'ubuntu';
 const DIR = process.env.IMPROVE_REMOTE_DIR ?? '/opt/ai-hr';
 
+/**
+ * What the board shows as the reporter for an item the improvement loop raised (0348).
+ *
+ * The owner's instruction: anything CLAUDE created must say so on the board. Kept here as the single
+ * definition — the migration's backfill uses the same string, and test/feedback-reporter-label.test.ts
+ * pins that the two agree.
+ */
+export const OPERATOR_REPORTER_LABEL = 'CLAUDE AI';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const assertUuid = (s: string, label: string) => {
   if (!UUID.test(s)) throw new Error(`${label} is not a valid UUID: ${s}`);
@@ -214,8 +223,11 @@ export function raiseFeedback(p: {
   const ef = p.expectedFunction?.trim() ? dq(p.expectedFunction.trim()) : 'NULL';
   const sql = [
     'BEGIN;',
-    `INSERT INTO feedback_request (id, tenant_id, reporter_employment_id, reporter_user_id, category, title, description, expected_behavior, expected_function, status) ` +
-      `VALUES ('${id}', '${p.tenantId}', '${p.reporterEmploymentId}', ${ruser}, '${p.category}', ${dq(title)}, ${dq(description)}, ${eb}, ${ef}, 'open');`,
+    // reporter_label = OPERATOR_REPORTER_LABEL (0348): the board shows who actually WROTE this item. The
+    // employment id still has to be a real one — it is NOT NULL and drives RLS can_see_employment() — so
+    // without the label an operator-raised item is indistinguishable from one the human reporter typed.
+    `INSERT INTO feedback_request (id, tenant_id, reporter_employment_id, reporter_user_id, reporter_label, category, title, description, expected_behavior, expected_function, status) ` +
+      `VALUES ('${id}', '${p.tenantId}', '${p.reporterEmploymentId}', ${ruser}, ${dq(OPERATOR_REPORTER_LABEL)}, '${p.category}', ${dq(title)}, ${dq(description)}, ${eb}, ${ef}, 'open');`,
     `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, actor_id, subject_employment_id, payload) ` +
       `VALUES ('${p.tenantId}', 'feedback', '${id}', 'feedback.submitted', '${actorType}', ${actorId}, '${p.reporterEmploymentId}', ${dq(JSON.stringify({ category: p.category, title, via: 'operator-raised' }))}::jsonb);`,
     'COMMIT;',
