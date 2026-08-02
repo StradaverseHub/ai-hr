@@ -805,7 +805,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    promised faster loads and for those ten that is not yet true. Pushing limit/offset into ~10 read
    functions is the follow-up. Relevant now: `fc776376` is approved and cross-cutting.
 
-4. **ADR-0077: 5 of 11 slices done (0-4), 6 outstanding (5-10).** Plan at
+4. **ADR-0077: 6 of 11 slices done (0-4 and 9-bar-closure), 5 outstanding (5-8, 10).** Plan at
    `~/.claude/plans/resilient-greeting-ripple.md`. **Verified against the tree on 2026-08-01**, not read
    off this file — see the correction below about why that mattered.
 
@@ -820,7 +820,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 6 | multi-country entitlement wiring | **STEPS 1-2 DONE (r102, r103)** — `country-my` catalog row + tenant-wide grant (INERT, idempotence proven across two production deploys), and leave now REPORTS packless employments instead of skipping them silently. Still to do: vocabulary scoping (3 module-scope `countryPacks()` unions), per-company reporting + mixed-currency refusal, the two-tier statutory/non-statutory company (retires r97's `requirePackFor`, and closes the two `country` seams left open in r97), and **the deploy-failing flip — CONFIRM BEFORE SHIPPING** |
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
-   | 9 | tenant suspension / export / closure | **ENFORCEMENT DONE (r104)** — `withTenant` issues `SET TRANSACTION READ ONLY`, verified enforcing. Still to do: the DUNNING POLICY that sets `tenant.status` from `subscription.status` (nothing sets suspended today), sweeps consulting status, and the compliance export |
+   | 9 | tenant suspension / export / closure | **MOSTLY DONE (r104, r105, r108, r109)** — enforcement (`SET TRANSACTION READ ONLY`), the dunning policy that is the only thing that suspends, the four sweeps consulting standing, and the statutory-filing carve-out + the asserted export path. Still to do: **CLOSURE** (dual-controlled, with its own retention check — deliberately never reached by dunning) and **REACTIVATION** (record the suspended window, replay skipped sweeps with that window excluded from expiry clocks — see r108 on why expiry cannot simply re-run) |
    | 10 | metering + platform dashboard | **TABLE ONLY** — `usage_snapshot` is in `db/schema.ts` and **nothing writes it** |
 
    > **CORRECTION — SLICE 2 SHIPPED AND THIS FILE MADE IT LOOK SKIPPED.** There are round entries for
@@ -830,9 +830,10 @@ those employees drop to the statutory floor until their schemes are filled in.
    > absence of a slice, exactly as presence of a "shipped" line is not proof it landed (see Traps).
 
    **Two of the six are more than backlog:**
-   - **Slice 9's gap is LIVE BEHAVIOUR.** A closed or suspended tenant still has write access, and
-     `core/entitlements.ts:653` says so against itself: "Until slice 9 lands, a closed tenant retains
-     write access to core." Harmless today (one tenant, no billing); a real hole the moment either changes.
+   - **Slice 9's live-behaviour gap is CLOSED** (r104-r109). What remains of it — closure and
+     reactivation — is genuinely backlog, not exposure. **NONE OF IT RUNS YET:** `systemctl list-timers`
+     shows no `aihr` timers, so the sweeps never fire, and `apply-dunning` is report-only and unscheduled.
+     **Scheduling either is an owner decision, not a build step.**
    - **Slice 10's table is accumulating NOTHING.** Usage snapshots cannot be backfilled, so any future
      decision to bill on past usage has no data to re-derive from. Every day it stays unwired is a day
      that can never be billed retrospectively.
