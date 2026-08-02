@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r110 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r111 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@c0095f58` — production on **292** migrations. **Next free number is `0346`.**
+> ### DEPLOYED HEAD IS `main@a4a6e856` — production on **293** migrations. **Next free number is `0347`.**
 >
 > ### THE BOARD IS FULL OF PLANS AWAITING THE REPORTER — 14 planned, 0 open
 >
@@ -588,6 +588,16 @@ Two rules:
 
 This is the deploy-side twin of the gate trap above: a green signal computed against the wrong tree.
 
+**A MIGRATION FILE IS NOT A MIGRATION — `db/migrations/meta/_journal.json` IS.** r111 wrote
+`0346_company_statutory_tier.sql`, and it silently never ran: drizzle applies what the JOURNAL lists, not
+what the directory holds. **The test-template fingerprint does not save you** — it hashes the migration
+FILES, so the template rebuilt (fingerprint changed, .sql present) while the migration itself was never
+applied, and the failure surfaced as `column "statutory_tier" does not exist` from `seedBase`, which
+reads like a schema bug rather than a missing journal entry. Worse, a fresh template can then be REUSED
+on the next run ("fingerprint match") and keep the column missing. **After adding any migration: append
+the journal entry, then DROP `ai_hr_test_tpl` to force a genuine rebuild.**
+`test/migration-journal-ordering.test.ts` checks ORDER, not presence, so nothing caught this.
+
 **REBUILDING THE LOCAL CLUSTER — the recipe, because two details are not guessable.**
 Everything in the local cluster is disposable (test DBs + `ai_hr_dev`), so when it wedges, **wiping
 beats waiting**: r86 sat through 27 minutes of WAL replay before realising that. The full rebuild is
@@ -817,7 +827,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 3 | gate classification + migration + backfill | **DONE** — round entry below |
    | 4 | nav + page gating from entitlements | **DONE** — round entry below |
    | 5 | module install / deactivate as operations | **DONE (r97-r100)** except the admin setup notification (no natural key on `notification`) — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
-   | 6 | multi-country entitlement wiring | **STEPS 1-3 DONE (r102, r103, r110)** — `country-my` catalog row + tenant-wide grant (INERT, idempotence proven across two production deploys), leave now REPORTS packless employments instead of skipping them silently, and **state vocabulary now narrows to the owning jurisdiction (r110)**. Still to do: per-company reporting + mixed-currency refusal, the two-tier statutory/non-statutory company (retires r97's `requirePackFor`, and closes the two `country` seams left open in r97), and **the deploy-failing flip — CONFIRM BEFORE SHIPPING** |
+   | 6 | multi-country entitlement wiring | **STEPS 1-4 DONE (r102, r103, r110, r111)** — `country-my` catalog row + tenant-wide grant (INERT, idempotence proven across two production deploys), leave now REPORTS packless employments instead of skipping them silently, and **state vocabulary now narrows to the owning jurisdiction (r110)**. **the two-tier statutory/non-statutory company shipped (r111, `requirePackFor` retired)**. Still to do: per-company reporting + mixed-currency refusal, the two-tier statutory/non-statutory company (retires r97's `requirePackFor`, and closes the two `country` seams left open in r97), and **the deploy-failing flip — CONFIRM BEFORE SHIPPING** |
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
    | 9 | tenant suspension / export / closure | **MOSTLY DONE (r104, r105, r108, r109)** — enforcement (`SET TRANSACTION READ ONLY`), the dunning policy that is the only thing that suspends, the four sweeps consulting standing, and the statutory-filing carve-out + the asserted export path. Still to do: **CLOSURE** (dual-controlled, with its own retention check — deliberately never reached by dunning) and **REACTIVATION** (record the suspended window, replay skipped sweeps with that window excluded from expiry clocks — see r108 on why expiry cannot simply re-run) |
@@ -884,6 +894,42 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r111 — 2026-08-02 — slice 6 / ADR-0080 D-14: the two-tier statutory company
+
+**Shipped:** `main@a4a6e856`. **Migration `0346` — production now on 293.** **Gate:** `tsc` ·
+**533 files / 6219 tests** · `next build` · **`UPGRADE_REHEARSAL=PASS`**.
+**Verified in production: all 8 companies are `statutory`** — the backfill is byte-identical.
+
+**WHAT WAS RETIRED AND WHY IT HAD TO BE.** `createCompany` called `requirePackFor(country)` and refused
+any packless country. Correct as an interim measure — `isoCode` is a SHAPE check, so 'TH' and 'ZZ' both
+pass, and a packless company failed SILENT on leave (engines `continue` past the employee, the holiday
+resolver yields an empty calendar, nobody is told). r103 turned that silence into a reported
+`packBlocked` blocker, landing it **"deliberately BEFORE slice 6's non-statutory tier makes it
+reachable"**. But refusal is the wrong PERMANENT answer: a customer with a Thai plant either cannot
+onboard it, or **MISFILES Thai staff under the Malaysian company to get past the refusal — silently
+applying MY statutory rules to foreign employees.** The workaround is worse than the problem.
+
+**THE RULE, in one line: a pack is not optional where it exists, and not required where it does not.**
+A packed country is `statutory` and **declaring it non-statutory is REFUSED** — you do not decline EPF by
+ticking a box. A packless country is `non_statutory` **only when DECLARED**; undeclared is still refused,
+with the same outcome as before and a stated way through.
+
+**THE DECLARATION IS REQUIRED RATHER THAN INFERRED, and that is the whole safety property.** Inferring
+"no pack ⇒ non-statutory" would make a TYPO into a tier: a mis-keyed country would produce a company with
+no statutory computation and no payroll, looking from outside exactly like a deliberate choice.
+
+**A BUG I WROTE AND THE TEST CAUGHT.** The country-change path first read
+`p.nonStatutory ?? current.statutoryTier === NON_STATUTORY`, which threw when moving TH → MY — it
+inherited the declaration and then hit the "cannot declare non-statutory in a packed country" refusal,
+**contradicting the comment I had just written saying such a move PROMOTES.** An EXPLICIT declaration and
+an INHERITED tier are not the same thing; collapsing them into one flag is what broke it. Inheritance now
+applies only where it can still hold.
+
+**Payroll refuses BY TIER, before the pack lookup.** "No localization pack for country TH" reads as a bug
+to be fixed; "this is a non-statutory company" reads as the deliberate arrangement it is.
+
+---
 
 ## r110 — 2026-08-02 — slice 6: state vocabulary narrows to the jurisdiction that owns the row
 
