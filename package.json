@@ -43,7 +43,8 @@
     "i18n:import": "node --import tsx scripts/i18n-import.ts",
     "statutory:build-my": "node --env-file=.env.local --import tsx scripts/statutory-pack-build-my.ts",
     "statutory:sync": "node --env-file=.env.local --import tsx scripts/statutory-sync.ts",
-    "seed:catalogs": "node --env-file=.env.local --import tsx scripts/seed-catalogs.ts"
+    "seed:catalogs": "node --env-file=.env.local --import tsx scripts/seed-catalogs.ts",
+    "platform:usage": "node --env-file=.env.local --import tsx scripts/platform-usage-report.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",
