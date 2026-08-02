@@ -5,7 +5,7 @@
 // Idempotent: a re-run grants nothing. Schedule monthly on the deploy host, e.g.
 //   0 2 1 * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/accrue-earned.ts
 import { createDb } from '../db/client';
-import { tenant } from '../db/schema';
+import { describeSkips, loadSweepScope } from '../core/sweep-scope';
 import { accrueEarnedLeave, todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
 
@@ -21,8 +21,14 @@ async function main() {
   // The admin "Run earned accrual" button already uses this helper (app/admin/actions.ts).
   const asOf = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
-  const tenants = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant);
-  console.log(`leave:accrue — ${tenants.length} tenant(s), asOf ${asOf}`);
+  // ADR-0077 slice 9 — standing is consulted BEFORE any transaction opens. A tenant that is not in
+  // good standing is stepped over, not attempted: withTenant would refuse the writes anyway, and
+  // discovering that as a read-only error would report a suspended customer as a nightly failure.
+  const scope = await loadSweepScope(owner.db);
+  const tenants = scope.run;
+  console.log(`leave:accrue — ${tenants.length} tenant(s) in scope, asOf ${asOf}` +
+    (scope.skipped.length > 0 ? `, ${scope.skipped.length} skipped` : ''));
+  for (const line of describeSkips(scope)) console.log(line);
 
   let totalGranted = 0;
   let failures = 0;
@@ -39,7 +45,8 @@ async function main() {
     }
   }
   console.log(
-    `leave:accrue done — ${totalGranted} ledger grant(s) across ${tenants.length} tenant(s), ${failures} failure(s).`,
+    `leave:accrue done — ${totalGranted} ledger grant(s) across ${tenants.length} tenant(s), ${failures} failure(s).` +
+      (scope.skipped.length > 0 ? ` ${scope.skipped.length} tenant(s) skipped for standing.` : ''),
   );
   // 0280 run log. In its OWN try/catch: this is an audit record, and failing to write it must never
   // turn a run that did its real work into a non-zero exit. The exit code below is unchanged.
@@ -49,6 +56,7 @@ async function main() {
       startedAt,
       tenantsProcessed: tenants.length,
       tenantsFailed: failures,
+      tenantsSkipped: scope.skipped.length,
       result: { granted: totalGranted },
     });
   } catch (e) {
