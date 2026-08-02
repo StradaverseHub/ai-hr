@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r112 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r113 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@a3fbe992` — production on **293** migrations. **Next free number is `0347`.**
+> ### DEPLOYED HEAD IS `main@29c5c1db` — production on **294** migrations. **Next free number is `0348`.**
 >
 > ### THE BOARD IS FULL OF PLANS AWAITING THE REPORTER — 14 planned, 0 open
 >
@@ -833,7 +833,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
    | 9 | tenant suspension / export / closure | **MOSTLY DONE (r104, r105, r108, r109)** — enforcement (`SET TRANSACTION READ ONLY`), the dunning policy that is the only thing that suspends, the four sweeps consulting standing, and the statutory-filing carve-out + the asserted export path. Still to do: **CLOSURE** (dual-controlled, with its own retention check — deliberately never reached by dunning) and **REACTIVATION** (record the suspended window, replay skipped sweeps with that window excluded from expiry clocks — see r108 on why expiry cannot simply re-run) |
-   | 10 | metering + platform dashboard | **TABLE ONLY** — `usage_snapshot` is in `db/schema.ts` and **nothing writes it** |
+   | 10 | metering + platform dashboard | **METER SHIPPED (r113)** — `scripts/capture-usage.ts` writes one row per (tenant, company, day); **verified against production, 8 rows, 22 active employments cross-checked by direct SQL**. Still to do: the platform DASHBOARD that reads them, and **scheduling the sweep — an owner decision** |
 
    > **CORRECTION — SLICE 2 SHIPPED AND THIS FILE MADE IT LOOK SKIPPED.** There are round entries for
    > slices 0, 1, 3 and 4 and none for 2, so a reader scanning the headings concludes it was never built.
@@ -846,8 +846,8 @@ those employees drop to the statutory floor until their schemes are filled in.
      reactivation — is genuinely backlog, not exposure. **NONE OF IT RUNS YET:** `systemctl list-timers`
      shows no `aihr` timers, so the sweeps never fire, and `apply-dunning` is report-only and unscheduled.
      **Scheduling either is an owner decision, not a build step.**
-   - **Slice 10's table is accumulating NOTHING.** Usage snapshots cannot be backfilled, so any future
-     decision to bill on past usage has no data to re-derive from. Every day it stays unwired is a day
+   - **Slice 10's meter now EXISTS (r113) but is NOT SCHEDULED.** The bleed is stopped only once a timer
+     runs it — there are still **no `aihr` timers on the host at all**. Until then every day remains a day
      that can never be billed retrospectively.
 
    **Re-verify the plan before building any of it.** It was written 26 July and is 43 KB; slice 4 already
@@ -896,6 +896,49 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r113 — 2026-08-02 — slice 10: the usage meter starts recording
+
+**Shipped:** `main@29c5c1db`. **Migration `0347` — production now on 294.** **Gate:** `tsc` ·
+**535 files / 6243 tests** · `next build` · **`UPGRADE_REHEARSAL=PASS`**.
+**Proven against production:** 8 snapshot rows, and the 22 active employments it reported were
+**cross-checked by direct SQL** (23 rows total, 22 active today) rather than taken on trust.
+
+**`usage_snapshot` had existed since slice 1 with NOTHING writing to it.** Usage is not
+reconstructable — headcount changes, draft payslips go with their batches, modules come and go — so a
+later decision to bill on past usage would have had nothing to re-derive from.
+
+**IT OVER-CAPTURES ON PURPOSE.** The pricing unit is still open (plan §7.1), so the row carries
+per-company grain, country, headcount, users, payslips and the active module set. Every plausible unit
+stays derivable; picking one first and capturing only that would foreclose the others.
+
+**`payslipsGenerated` IS A DAILY DELTA, NOT A RUNNING TOTAL** — the one field whose name misleads. A
+month is the SUM of its days, which **degrades gracefully across a missed day**; a running total would
+make a month the difference between two snapshots, and missed days are expected here (a cron that did
+not fire, a tenant skipped for standing). There is a test for exactly that.
+
+**Counted in MYT.** `payslip.created_at` is a timestamptz and the sweep runs in the small hours, so a
+UTC comparison would file the first eight hours of every day under the day before — the r92 trap.
+
+**Migration 0347** adds the `(tenant, company, day)` unique index that makes the upsert mean anything —
+the **r102 lesson that `ON CONFLICT` needs a target**. `DO UPDATE`, not `DO NOTHING`: an operator
+re-running after fixing data must see the fix land.
+
+**TWO BUGS CAUGHT BY RATCHETS RATHER THAN BY ME, and both are the system working:**
+1. I filtered module grants on `status='active'`, silently dropping **TRIAL** — exactly the tenants a
+   conversion decision is about. `core/entitlements.ts:422` treats `('active','trial')` as enabled; the
+   meter now matches. **One rule, two readers.** Surfaced by a CHECK constraint rejecting my fixture.
+2. The **leave-pack import ratchet** refused a new `core/leave` importer. `todayInKualaLumpur` now comes
+   from `lib/hr-date` (the r105 precedent). **The allowlist was NOT widened** — it only ever shrinks.
+
+`test/job-run.test.ts` also pinned the registry at exactly four sweeps and failed when I added a fifth.
+That is the assertion doing its job: a new sweep cannot land without its i18n strings and run-log wiring.
+
+**NOT SCHEDULED — and here the usual caution cuts the other way.** For r105 and r108 an unscheduled
+sweep was harmless. **This one bleeds:** every unscheduled day is permanently unbillable. Suggested
+`Daily — 01:00`, ahead of the 02:00/03:00 leave sweeps so it meters the day before they mutate it.
+
+---
 
 ## r112 — 2026-08-02 — the test-template fingerprint covers the migration journal
 
