@@ -97,9 +97,24 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@65384457` — production on **294** migrations. **Next free number is `0348`.**
+> ### DEPLOYED HEAD IS `main@dfb6050d` — production on **295** migrations. **Next free number is `0349`.**
 >
-> ### THE BOARD IS FULL OF PLANS AWAITING THE REPORTER — 14 planned, 0 open
+> ### THE BOARD IS DRAINED OF OPEN WORK — 18 planned, 0 open, 0 contested, 1 approved, 1 building (r116)
+>
+> All 8 items that needed a plan were planned in r116's planning pass. **`7cd914b1` is the ONE approved,
+> buildable item**; `a1d82340` is still `building` on its unbuilt step 5. The 18 planned are waiting on
+> the reporter and nothing else.
+>
+> ### THE BOARD NOW SAYS WHO WROTE EACH ITEM (0348, r116)
+>
+> `feedback_request.reporter_label` — NULL ⇒ the joined person name (every in-app submission), set ⇒ shown
+> instead. `raiseFeedback` stamps `OPERATOR_REPORTER_LABEL = 'CLAUDE AI'`, and 0348 backfilled the **15**
+> items the loop had already raised, identified from their own `feedback.submitted` event carrying
+> `payload->>'via' = 'operator-raised'`. **DO NOT "simplify" this into a synthetic CLAUDE AI
+> person + employment** — `reporter_employment_id` is NOT NULL and drives RLS `can_see_employment()`, and a
+> fake employment row would join `openLeaveYear`, payroll and every employee list.
+> `test/feedback-reporter-label.test.ts` pins the label as DISPLAY ONLY and pins the constant against the
+> string the migration hardcodes.
 >
 > 13 leave-configuration items arrived on 2026-08-02, plus one more mid-pass. All planned. **Four of
 > them would have been built WRONG if planned in isolation — see the r107 planning entry.** Two would
@@ -960,6 +975,77 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r116 — 2026-08-03 — a planning pass that drained the board, and `reporter_label`
+
+**Shipped:** `main@dfb6050d`. **Migration `0348`** (production now on **295**).
+**Gate:** `tsc` · **537 files / 6254 tests** · `next build` · **UPGRADE_REHEARSAL=PASS**.
+Verified live: `active`, `GET /` 401, `/login` 200, `rsync -azi --dry-run` **zero** changed files,
+and on production `migrations_applied=295`, `reporter_label` set on **15 of 578** items, all `CLAUDE AI`.
+
+### THE PLANNING PASS — 8 items, and the board went to 0 open / 0 contested
+
+Four contested items each carried a plain answer from the reporter, so all four were cheap rev-2s:
+- **`afd0a87c` — ALREADY WORKS, nothing to build.** The reporter withdrew the removal; their real concern
+  (HR admin cancels leave from Employee Leave Record, found by employee name) is live at
+  `app/leave/employee-records/page.tsx:412` + `core/leave.ts:4373`. Approved REPLACEMENT is deliberately
+  refused there — `consumeReplacementLeaveTx` has no inverse.
+- **`e4238594`** — the "leave a link behind" bullet dropped, as asked. r107's correction carried forward:
+  it strands NO approval rule.
+- **`8fec719e`** — narrowed to exactly two options + a full reset to no-rounding.
+- **`c33d9bbb`** — the reporter's deferral recorded so it leaves `contested`.
+
+### ⚠️ `4b0e76ae` IS A TRAP: REMOVING LEAVE YEAR CONFIG REMOVES THE ONLY WAY TO OPEN A LEAVE YEAR
+
+`setLeaveYearStatus` → `openLeaveYear` (`core/leave.ts:5249`, `:5729`) is what grants every employee the
+year's entitlement AND runs carry forward (the cap forfeit, `sys:carry_forward_cap`). **The standalone
+`openLeaveYearAction` (`app/admin/actions.ts:1058`) HAS NO CALLER** — grepped across `app/` and
+`components/`, and no script calls it either. The Start button at
+`app/admin/leave/entitlements/page.tsx:557` is the sole trigger. This is the r106/r100 caller-less-action
+shape INVERTED: there a wanted action had no screen, here the screen is the sole caller of a wanted engine.
+**Re-home the button before deleting the section.**
+
+Two further corrections in that plan: `leave_year_config` is keyed **(tenant, year)**, not per leave type
+(`db/schema.ts:5121`), so "remove it from all Leave Types" describes something that does not exist; and the
+future-year application gate (`core/leave.ts:2104`) reads an ABSENT row as **not open**, so deleting the
+table while leaving the gate would REFUSE all future-year applications rather than allow them. No FK points
+at `leave_year_config.id` (the ledger keys by integer year), so the reset cascades to nothing — this is
+NOT the `38f1fd40` shape.
+
+### `6e9a126e` — THE ENTITLEMENT REDESIGN'S PREMISE IS WRONG, AND THE CENSUS SAYS WHY
+
+The three layers the reporter drew ALREADY EXIST. Service bands are **not** hardcoded to `<2 / 2–5 / 5+`:
+`ServiceBand` (`core/leave-compute.ts:131`, validator `core/admin.ts:909`) already takes arbitrary
+contiguous ranges with per-band `days`, `carryForwardDays`, `maxBalanceDays` and expiry — their proposed
+table column for column. It reads as hardcoded because **all 292 tables use exactly 3 bands**.
+
+**Production census (read-only):** `benefit_scheme 41` · `grade_group 16` · `job_grade 55` ·
+`scheme_leave_entitlement 292` · `leave_policy 67` (65 company-scoped, 64 grade-scoped) ·
+`employment 23`, of which **0** carry a manual `benefit_scheme_id` · `leave_type 25` · `company 8`.
+**359 pieces of entitlement configuration for 23 employees.**
+
+The real defect is CARDINALITY: `scheme_leave_entitlement` is uniquely keyed
+`(tenant, benefit_scheme_id, leave_type_id)` (`db/schema.ts:1517`), so a band table cannot be shared —
+41 schemes × 25 types is the 292. Stage 1 is a named REUSABLE template. Zero manual overrides makes the
+switch-over far safer than it looks.
+
+### A MISTAKE WORTH RECORDING: A FABRICATED UUID WROTE A DANGLING EVENT TO PRODUCTION
+
+The first `push-plan` of the pass was aimed at a **typed** id (`afd0a87c-8f77-…`) rather than one read from
+the pull. `pushPlan`'s UPDATEs matched nothing, but its `domain_event` INSERT is UNCONDITIONAL, so
+`ed0ae010-ca7d-49fb-9773-f42ebfa8a908` is a `feedback.plan.drafted` event whose `aggregate_id` matches no
+`feedback_request`. **Left in place deliberately** — `domain_event` is hash-chained and deleting a row is
+worse than one orphan with no reader. **Never type a feedback id; resolve it from the pulled JSON.**
+
+### TWO GATE TRAPS BIT AGAIN IN THIS ROUND
+
+**The `pwd` trap cost a 10-minute suite run** — the shell had reset to `mainwt`, so `main` was gated
+instead of `build/r116`. Caught by reading vitest's own `RUN` line, which is the only reliable check.
+**The Postgres wedge recurred on a FRESH cluster**: `DROP DATABASE … WITH (FORCE)` stuck at
+`CheckpointDone` with `pg_stat_bgwriter` frozen. Wiping a second time cleared it, because an EMPTY cluster
+has no template to drop — `template migrated in 1.3s, 10 worker DBs ready in 4.3s`. **Wipe, do not wait.**
+
+---
 
 ## r115 — 2026-08-02 — slice 6: the OT report resolves per company, and labels its currency
 
