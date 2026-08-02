@@ -172,8 +172,11 @@ describe('slice 7 — the sweep units exist, and none of them are enabled by dep
 
   it('the dunning sweep ships WITHOUT --apply, so enabling its timer suspends nobody', () => {
     const unit = fs.readFileSync(path.join(dir, 'aihr-apply-dunning.service'), 'utf8');
-    expect(unit).toContain('apply-dunning.ts');
-    expect(unit).not.toContain('--apply');
+    // Assert the EXECSTART, not the whole file: the unit's comment names the flag precisely to explain
+    // that adding it is a separate decision, and a whole-file match would forbid saying so.
+    const execStart = unit.split('\n').find((l) => l.startsWith('ExecStart='))!;
+    expect(execStart).toContain('apply-dunning.ts');
+    expect(execStart).not.toContain('--apply');
   });
 
   it('usage-capture runs BEFORE the leave sweeps, so it meters the day they then mutate', () => {
