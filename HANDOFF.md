@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r102 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r103 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@d0fe7469` — production on **292** migrations. **Next free number is `0346`.**
+> ### DEPLOYED HEAD IS `main@70bc7c11` — production on **292** migrations. **Next free number is `0346`.**
 >
 > ### SLICE 6 HAS BEGUN — `country-my` IS A MODULE, AND IT IS INERT
 >
@@ -796,7 +796,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 3 | gate classification + migration + backfill | **DONE** — round entry below |
    | 4 | nav + page gating from entitlements | **DONE** — round entry below |
    | 5 | module install / deactivate as operations | **DONE (r97-r100)** except the admin setup notification (no natural key on `notification`) — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
-   | 6 | multi-country entitlement wiring | **STEP 1 DONE (r102)** — `country-my` catalog row + tenant-wide grant, INERT. Still to do: two-tier statutory/non-statutory company (retires r97's `requirePackFor`), leave fails closed (4 `if (!pack) continue` in core/leave.ts), vocabulary scoping, per-company reporting + mixed-currency refusal, and the deploy-failing flip |
+   | 6 | multi-country entitlement wiring | **STEPS 1-2 DONE (r102, r103)** — `country-my` catalog row + tenant-wide grant (INERT, idempotence proven across two production deploys), and leave now REPORTS packless employments instead of skipping them silently. Still to do: vocabulary scoping (3 module-scope `countryPacks()` unions), per-company reporting + mixed-currency refusal, the two-tier statutory/non-statutory company (retires r97's `requirePackFor`, and closes the two `country` seams left open in r97), and **the deploy-failing flip — CONFIRM BEFORE SHIPPING** |
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
    | 9 | tenant suspension / export / closure | **NOT BUILT** — `SET TRANSACTION READ ONLY` exists only in COMMENTS |
@@ -862,6 +862,36 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r103 — 2026-08-02 — slice 6 step 2: leave stops skipping packless employees silently
+
+**Shipped:** `main@70bc7c11`. **No migration.** **Gate:** `tsc` · **526 files / 6097 tests** · `next build`.
+
+**1. FOUR `if (!pack) continue` SITES NOW REPORT.** `createCompany`'s own comment names the cost: "LEAVE
+fails SILENT — the engines `continue` past a packless employee and the holiday resolver yields an empty
+calendar, so the employee accrues nothing and nobody is told." The SKIP IS CORRECT AND STAYS — statutory
+entitlement cannot be computed without a jurisdiction — but `openLeaveYear`, `accrueEarnedLeave`,
+`reprojectA2cEntitlement` and `reprojectEntitlementForPolicy` now return a `packBlocked` list.
+
+**A SWEEP DOES NOT THROW.** That is the difference from `requirePackFor`: throwing is right for a single
+operation and wrong for a batch — one packless employee must not abort nightly accrual for everyone.
+
+**2. THE ORDERING IS THE SUBSTANCE.** The branch is unreachable today (every company is MY). Slice 6's
+non-statutory tier is what makes packless companies legitimate. **Shipping the tier first would have
+manufactured zero-accrual employees nobody could see.**
+
+**3. TWO NEAR-MISSES, both caught before landing.** A substring replace of
+`  return { affected, totalDelta };` ALSO matches the 4-space return in
+`reprojectEntitlementForEmployment`, which has no such loop — the assertion counted 3 where 2 were
+expected and stopped BEFORE writing. And `tsc` then caught every declared return type and early-return
+path the widening passed through; neither was visible from the diff.
+
+**4. THE GATE CAUGHT 25 EXACT-EQUALITY ASSERTIONS** across three suites pinning
+`toEqual({ affected, totalDelta })`. Fixed by ADDING the field, **not** by loosening to `toMatchObject` —
+`toEqual` is what would catch a stray field, and swapping it to make my own change pass would retire a
+guard to avoid updating it.
+
+---
 
 ## r102 — 2026-08-02 — slice 6 step 1: country becomes a module, shipped inert
 
