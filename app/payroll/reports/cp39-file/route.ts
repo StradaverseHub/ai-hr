@@ -27,6 +27,10 @@ export async function GET(req: Request) {
       rowCount: file.totals.mtdRecords,
       totals: { mtdCents: file.totals.mtdCents, cp38Cents: file.totals.cp38Cents },
       statutoryVersion: file.statutoryVersion,
+      // ADR-0077 slice 9 — a filing deadline does not pause for a billing dispute. Without this the
+      // artefact write fails on a suspended tenant and the generic catch below turns it into a 500,
+      // leaving the customer unable to file at all.
+      agency: 'LHDN',
     });
     return new Response(file.content, {
       headers: {
