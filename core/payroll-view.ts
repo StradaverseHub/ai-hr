@@ -365,6 +365,9 @@ export type UnattachedGroupRow = {
   employeeCode: string | null;
   companyId: string;
   company: string;
+  /** ADR-0080 slice 6 (D-9): the COMPANY's currency, so a cross-company table cannot be totalled blind.
+   *  This view spans every company in scope, which is exactly where a single grand total goes wrong. */
+  currency: string | null;
   payPeriod: string;
   count: number;
   totalAmount: string;
@@ -432,6 +435,7 @@ export function listUnattachedTxnSummary(
         employeeCode: employment.employeeCode,
         companyId: sql<string>`${payrollIndividualTxn.companyId}`,
         company: company.legalName,
+        currency: company.currency,
         payPeriod: sql<string>`${payrollIndividualTxn.payPeriod}`,
         count: sql<number>`count(*)::int`,
         totalAmount: sql<string>`sum(${payrollIndividualTxn.amount})::numeric(12,2)`,
@@ -471,6 +475,7 @@ export function listUnattachedTxnSummary(
         person.fullName,
         employment.employeeCode,
         company.legalName,
+        company.currency,
         payrollBatch.id,
         payrollBatch.status,
       )

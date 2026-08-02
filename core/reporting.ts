@@ -301,6 +301,20 @@ const statusFor = (today: string, dueBy: string): WorklistItem['status'] =>
  * surface what's outstanding, never auto-submit (ADR-0010). No persistence yet — items age out of
  * the relevance window rather than being marked filed (a documented follow-up).
  */
+/**
+ * ADR-0080 slice 6 — CP22 and CP22A ARE MALAYSIAN LHDN FORMS, and this worklist emitted them for every
+ * company regardless of jurisdiction. On a non-Malaysian company that is not a cosmetic slip: it tells
+ * an HR administrator they have a statutory filing obligation that does not exist, with a due date.
+ *
+ * Gated the same way every other jurisdiction-owned surface is (r111's two-tier company): resolve the
+ * company's pack, and emit nothing when no pack owns that jurisdiction. A NON-STATUTORY company has no
+ * statutory worklist — that is the correct empty, not a degraded one.
+ *
+ * The forms themselves stay hardcoded here rather than moving onto ReportDef: there is exactly one pack
+ * today, so a second pack is what should force that generalisation, and inventing the abstraction now
+ * would be designing against an imagined second jurisdiction. The GATE is what cannot wait, because it
+ * is wrong for a real company the moment one is onboarded.
+ */
 export function complianceWorklist(
   ctx: SessionContext,
   p: { companyId: string; today?: string },
@@ -310,6 +324,15 @@ export function complianceWorklist(
   const ceaseFloor = isoAddDays(today, -60);
   const ceaseCeil = isoAddDays(today, 90); // upcoming cessations need notice before the date
   return withTenant(ctx, async (tx) => {
+    // Resolved BEFORE the employee scan: a company whose jurisdiction no pack owns has no statutory
+    // worklist, and the cheapest correct answer is not to look at its employees at all.
+    const [co] = await tx
+      .select({ country: company.country })
+      .from(company)
+      .where(eq(company.id, p.companyId))
+      .limit(1);
+    const pack = packFor(co?.country ?? null);
+    if (!pack) return [];
     const emps = await tx
       .select({
         id: employment.id,
