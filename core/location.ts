@@ -9,7 +9,7 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { company, holidayGroup, location } from '../db/schema';
-import { countryPacks } from '../localization/registry';
+import { validateStateFor } from './state-vocabulary';
 
 /** Resolve a holiday-group (calendar) id to a tenant-scoped group, or null when no calendar is assigned.
  *  Throws if the id is non-empty but does not resolve in scope (RLS already tenant-scopes the read), so a
@@ -43,14 +43,25 @@ function cleanCountry(v: string | undefined): string {
   if (!/^[A-Z]{2}$/.test(s)) throw new Error('Country must be a 2-letter code (e.g. MY)');
   return s;
 }
-/** The holiday-state override. Null = inherit work_state/default/national. Validated against the
- *  registered packs' state vocabulary (ADR-0080 D6 — union across country packs; per-company
- *  narrowing is a later slice) so a garbage value can't silently disable holiday matching. */
-function cleanState(v: string | null | undefined): string | null {
-  const s = (v ?? '').trim();
-  if (!s) return null;
-  if (!countryPacks().some((p) => p.states.includes(s))) throw new Error(`Unknown state: ${s}`);
-  return s;
+/**
+ * The holiday-state override. Null = inherit work_state/default/national. Validated so a garbage value
+ * can't silently disable holiday matching.
+ *
+ * ADR-0077 slice 6 — this used the UNION across every registered pack, with a comment saying per-company
+ * narrowing was a later slice. It now narrows to the OWNING COMPANY's country, which is the country the
+ * holiday engine actually resolves against (`location.country` is display-only — see cleanCountry).
+ * See core/state-vocabulary.ts for why the company's country and not the location's, and for the live
+ * production row that distinction protects.
+ */
+function cleanState(v: string | null | undefined, companyCountry: string | null | undefined): string | null {
+  return validateStateFor(v, [companyCountry]);
+}
+
+/** The owning company's country — the vocabulary the state above is judged against. */
+async function companyCountryOf(tx: Tx, companyId: string): Promise<string | null> {
+  const [row] = await tx.select({ country: company.country }).from(company).where(eq(company.id, companyId)).limit(1);
+  if (!row) throw new Error('Company not found');
+  return row.country;
 }
 
 export type CreateLocationInput = {
@@ -68,8 +79,11 @@ export async function createLocation(ctx: SessionContext, p: CreateLocationInput
   const code = cleanCode(p.code);
   const name = cleanName(p.name);
   const country = cleanCountry(p.country);
-  const state = cleanState(p.state);
   return withTenant(ctx, async (tx) => {
+    // Inside the transaction: the state is judged against the OWNING COMPANY's country, which has to be
+    // read first. RLS scopes that read to this tenant, so a companyId from another tenant fails here
+    // rather than validating against a company the caller cannot see.
+    const state = cleanState(p.state, await companyCountryOf(tx, p.companyId));
     const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
     const [row] = await tx
       .insert(location)
@@ -100,7 +114,6 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
   const code = cleanCode(p.code);
   const name = cleanName(p.name);
   const country = cleanCountry(p.country);
-  const state = cleanState(p.state);
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
       .select({
@@ -109,11 +122,16 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
         country: location.country,
         state: location.state,
         holidayGroupId: location.holidayGroupId,
+        // Selected for validation, NOT echoed into the event payload below — `before` is the audit
+        // record of what the user changed, and companyId is not one of the editable fields.
+        companyId: location.companyId,
       })
       .from(location)
       .where(eq(location.id, p.locationId))
       .limit(1);
     if (!before) throw new Error('Location not found');
+    const { companyId, ...beforeAudit } = before;
+    const state = cleanState(p.state, await companyCountryOf(tx, companyId));
     const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
     await tx
       .update(location)
@@ -125,7 +143,7 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
       aggregateId: p.locationId,
       eventType: 'location.updated',
       actor: actorOf(ctx),
-      payload: { before, after: { code, name, country, state, holidayGroupId } },
+      payload: { before: beforeAudit, after: { code, name, country, state, holidayGroupId } },
     });
     return { id: p.locationId };
   });
