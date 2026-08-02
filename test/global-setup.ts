@@ -62,9 +62,23 @@ const APP_ROLE = 'ai_hr_app';
 const FINGERPRINT_TABLE = '_test_template_fingerprint';
 
 /**
- * A hash of everything that determines the template's SHAPE: the migration files, and packs/catalog.ts,
- * because the catalogs are code-seeded into the template (ADR-0077 C11) and a catalog edit changes its
- * rows.
+ * The non-migration inputs that determine the template's shape. Exported so the guard in
+ * test/template-fingerprint-inputs.test.ts can assert what is hashed, rather than a regex over this file.
+ *
+ * `_journal.json` IS LOAD-BEARING and was missing until r112. drizzle applies what the JOURNAL lists, not
+ * what the directory holds, so the journal — not the .sql set — is what decides which migrations run.
+ * The concrete failure (r111): adding 0346.sql WITHOUT a journal entry changed the fingerprint (a new
+ * file), so the template rebuilt and the migration did not run. Adding the journal entry afterwards did
+ * NOT change the fingerprint, so `templateIsReusable` returned true and every worker kept a template
+ * whose column did not exist. It surfaced as `column "statutory_tier" does not exist` from seedBase —
+ * indistinguishable from a schema bug, and it survived a rerun, which is the part that wastes the hour.
+ */
+export const FINGERPRINT_EXTRA_FILES = ['db/migrations/meta/_journal.json', 'packs/catalog.ts'] as const;
+
+/**
+ * A hash of everything that determines the template's SHAPE: the migration files, the migration JOURNAL,
+ * and packs/catalog.ts, because the catalogs are code-seeded into the template (ADR-0077 C11) and a
+ * catalog edit changes its rows.
  *
  * This is what makes reuse safe. The rebuild below was unconditional, with the note that "a stale
  * template that predates a new migration would hand every worker the wrong schema, and the failure would
@@ -82,7 +96,7 @@ function templateFingerprint(): string {
     if (!f.endsWith('.sql')) continue;
     h.update(f).update(readFileSync(`db/migrations/${f}`));
   }
-  h.update(readFileSync('packs/catalog.ts'));
+  for (const f of FINGERPRINT_EXTRA_FILES) h.update(f).update(readFileSync(f));
   return h.digest('hex');
 }
 
