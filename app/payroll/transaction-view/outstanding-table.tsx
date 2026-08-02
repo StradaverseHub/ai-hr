@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui';
 import type { UnattachedGroupRow } from '@/core/payroll-view';
+import { formatMoney, totalsByCurrency } from '@/lib/money';
 
 /**
  * Outstanding transactions grid (feedback d0d2c9d1) — money that was entered against an employee and a
@@ -76,15 +77,19 @@ export function OutstandingTable({ rows }: { rows: UnattachedGroupRow[] }) {
     });
   }, [rows, sortKey, sortDir]);
 
-  // Totalled in CENTS. Summing the decimal strings as floats would drift on exactly the four-figure
-  // bonuses this screen exists to surface.
-  const grandTotal = useMemo(
-    () => rows.reduce((cents, r) => cents + Math.round(Number(r.totalAmount) * 100), 0) / 100,
+  // ADR-0080 slice 6 (D-9) — THIS TABLE SPANS EVERY COMPANY IN SCOPE, so a single grand total is only
+  // meaningful when they all pay in the same currency. It used to add the amounts blind and print one
+  // unlabelled number; against two companies on different currencies that is arithmetic nobody
+  // authorised. Subtotals are now per currency, and the single-total path is taken only when there IS
+  // one currency. Still summed in CENTS — floats drift on exactly the four-figure bonuses this screen
+  // exists to surface.
+  const totals = useMemo(
+    () => totalsByCurrency(rows.map((r) => ({ currency: r.currency, amount: r.totalAmount }))),
     [rows],
   );
-  const strandedTotal = useMemo(
+  const strandedTotals = useMemo(
     () =>
-      rows.filter(isStranded).reduce((cents, r) => cents + Math.round(Number(r.totalAmount) * 100), 0) / 100,
+      totalsByCurrency(rows.filter(isStranded).map((r) => ({ currency: r.currency, amount: r.totalAmount }))),
     [rows],
   );
 
@@ -142,7 +147,9 @@ export function OutstandingTable({ rows }: { rows: UnattachedGroupRow[] }) {
               </td>
               <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
               <td className="px-4 py-2.5 text-right tabular-nums">{r.count}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{Number(r.totalAmount).toFixed(2)}</td>
+              {/* Each row carries its own company's currency — without the code a reader cannot tell
+                  which of two subtotals below this row belongs to. */}
+              <td className="px-4 py-2.5 text-right tabular-nums">{formatMoney(r.totalAmount, r.currency)}</td>
               <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-muted-foreground">{r.oldestTxnDate}</td>
               <td className="px-4 py-2.5">
                 {/* 'none' is the normal pre-run state, not an alarm — only a run that has already gone
@@ -175,9 +182,21 @@ export function OutstandingTable({ rows }: { rows: UnattachedGroupRow[] }) {
               <td colSpan={4} className="px-4 py-2.5 text-right">
                 {t('view.outstanding.grandTotal')}
               </td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{grandTotal.toFixed(2)}</td>
+              {/* One row per currency. With a single currency this reads exactly as it did before,
+                  plus the code; with two it is visibly two numbers rather than one wrong one. */}
+              <td className="px-4 py-2.5 text-right tabular-nums">
+                {totals.map((x) => (
+                  <div key={x.currency ?? 'unknown'}>{formatMoney(x.total, x.currency)}</div>
+                ))}
+              </td>
               <td colSpan={2} className="px-4 py-2.5 text-xs font-normal text-muted-foreground">
-                {strandedTotal > 0 && t('view.outstanding.strandedTotal', { amount: strandedTotal.toFixed(2) })}
+                {strandedTotals
+                  .filter((x) => x.total > 0)
+                  .map((x) => (
+                    <div key={x.currency ?? 'unknown'}>
+                      {t('view.outstanding.strandedTotal', { amount: formatMoney(x.total, x.currency) })}
+                    </div>
+                  ))}
               </td>
             </tr>
           </tfoot>
