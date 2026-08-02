@@ -103,6 +103,38 @@ async function resolveDef(ctx: SessionContext, companyId: string, reportId: stri
   return def;
 }
 
+/**
+ * ADR-0077 slice 9 — the ONE narrow use of the statutory override, and what decides it.
+ *
+ * r104 makes a suspended tenant read-only and carves out exactly one exception: "EPF, SOCSO and PCB
+ * deadlines do not pause because an invoice is disputed". r105 built the thing that suspends. Nothing
+ * ever set the override, so the carve-out was theory — and the consequence was not a missing audit row.
+ *
+ * WHAT ACTUALLY BROKE. `recordFileReport` is awaited BETWEEN generating a submission file and returning
+ * it (app/payroll/reports/cp39-file/route.ts). Its read-only error fell into the route's generic catch,
+ * which answers 500 "Could not generate the CP39 file". So a suspended customer did not merely lose the
+ * artefact — THEY COULD NOT FILE THEIR PCB AT ALL. That is the precise outcome the carve-out exists to
+ * prevent, and it is worse than the state before r104, where the write simply succeeded.
+ *
+ * `submission` IS THE DISCRIMINATOR, and it already existed — no new marker, no per-report allowlist to
+ * keep in step. A ReportDef carries `submission` when it is a form filed with an agency on a deadline
+ * (CP39/LHDN, EPF/KWSP, SOCSO+EIS/PERKESO, Form E). It is ABSENT on `my.contributions`, which the
+ * registry itself describes as "an internal reconciliation view, not a form anybody files".
+ *
+ * So the rule is exactly r104's rule, applied: a filing obligation writes through; an internal
+ * convenience does not. A suspended customer can meet a legal deadline and cannot generate management
+ * reporting — which is the whole point of suspending them. When a new report is added to a pack, it gets
+ * the override if and only if it is genuinely filed, decided by the same field that decides whether the
+ * submission panel shows an agency and a due date.
+ *
+ * The reason string NAMES the report and the agency, because SessionContext types this field as a reason
+ * rather than a boolean so an override is attributable in review rather than anonymous.
+ */
+function statutoryCtx(ctx: SessionContext, def: { id: string; submission?: { agency: string } }): SessionContext {
+  if (!def.submission) return ctx;
+  return { ...ctx, statutoryOverride: `statutory submission ${def.id} to ${def.submission.agency}` };
+}
+
 /** Generate a report for preview — pure, no artefact persisted. */
 export async function reportPreview(
   ctx: SessionContext,
@@ -120,7 +152,7 @@ export async function recordReport(
   const def = await resolveDef(ctx, p.companyId, p.reportId);
   const result = await def.generate(ctx, { companyId: p.companyId, periodKey: p.periodKey });
   const country = await companyCountry(ctx, p.companyId);
-  return withTenant(ctx, async (tx) => {
+  return withTenant(statutoryCtx(ctx, def), async (tx) => {
     const [row] = await tx
       .insert(statutoryReport)
       .values({
@@ -167,10 +199,26 @@ export async function recordFileReport(
     rowCount: number;
     totals: Record<string, number>;
     statutoryVersion: string;
+    /**
+     * ADR-0077 slice 9 — the agency this file is filed with, e.g. 'LHDN' or 'PERKESO'.
+     *
+     * REQUIRED, and declared by the CALLER rather than inferred here. Every Layer-B file is by
+     * definition a submission, but `reportType` is a free string ('my.cp39-file'), so deriving the
+     * agency would mean stripping a suffix and looking the remainder up — a substring game on the one
+     * path where being wrong means a customer cannot file. Naming the agency at the call site makes the
+     * override attributable in review, which is what SessionContext types this as a reason for.
+     */
+    agency: string;
   },
 ) {
   const country = await companyCountry(ctx, p.companyId);
-  return withTenant(ctx, async (tx) => {
+  // The file is generated BEFORE this call and returned AFTER it; without the override the read-only
+  // error surfaces as a 500 and the customer gets no file at all. See statutoryCtx above.
+  const writeCtx: SessionContext = {
+    ...ctx,
+    statutoryOverride: `statutory submission file ${p.reportType} to ${p.agency}`,
+  };
+  return withTenant(writeCtx, async (tx) => {
     const [row] = await tx
       .insert(statutoryReport)
       .values({
