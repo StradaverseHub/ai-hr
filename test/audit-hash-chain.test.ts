@@ -131,45 +131,44 @@ describe('domain_event hash chain (ADR-0030 Layer 2, #159)', () => {
     }
   });
 
-  it('a disarm→re-arm window is INVISIBLE to `valid` and is reported as `unchained` instead', async () => {
-    // THE FAILURE THE SLICE-3 DEPLOY CAN ACTUALLY CAUSE, pinned so nobody re-asserts the comfortable
-    // version of it. Correcting the gate to `=== 'true'` disarms the chain on every box that copied
-    // .env.example, and both db/client.ts and DEPLOY.md originally claimed `verifyTenantChain()` would
-    // "report a boundary at this deploy". It does not, and cannot: every query in core/audit-chain.ts
-    // filters `chain_seq IS NOT NULL`, and the trigger takes its head from `max(chain_seq)` over those
-    // same rows — so events written while the gate is off are ABSENT from the chain rather than a break
-    // in it, and re-arming links straight onto the last chained event. Contiguous seq, matching
-    // prev_hash, `valid: true`, over a log with an unverifiable hole in the middle.
+  it('SLICE 8: a tenant with chained history CANNOT be disarmed — the hole can no longer be opened', async () => {
+    // THIS TEST USED TO ASSERT THE HOLE. It pinned the failure a slice-3 deploy could cause: disarm the
+    // gate, write events with no chain columns, re-arm, and the chain closes contiguously over the gap
+    // so `verifyTenantChain()` answers `valid: true` over a log with an unverifiable window in it.
     //
-    // So `valid` staying TRUE here is the assertion, not an oversight — and `unchained` is the signal
-    // that makes the hole visible. `scripts/check-audit-chain-gate.ts` is what stops a deploy creating
-    // one in the first place.
+    // Slice 8 removes the path. `chainArmingDecision` refuses to disarm a tenant that already has
+    // chained events, because there is no backfill that can heal such a window and a green verdict over
+    // a hole is worse than a loud refusal. The env var is no longer able to open one: it survives only
+    // as the fallback for a tenant with NO history to protect.
+    //
+    // The verifier's blindness is unchanged and is still pinned — by the test below this one, which
+    // creates an unchained row directly rather than through the gate. That property is WHY the refusal
+    // exists, so it must stay covered even though this route to it is closed.
     const ctx = adminCtx(b);
     await appendN(ctx, 2); // armed (beforeAll set the gate)
 
     const saved = process.env.AUDIT_HASH_CHAIN_ENABLED;
     process.env.AUDIT_HASH_CHAIN_ENABLED = 'false'; // the .env.example value, under the corrected read
     try {
-      await appendN(ctx, 3); // the window: written with no chain columns
+      await appendN(ctx, 3); // would have been the window — now still chained, because history exists
     } finally {
       process.env.AUDIT_HASH_CHAIN_ENABLED = saved;
     }
-    await appendN(ctx, 2); // re-armed
+    await appendN(ctx, 2);
 
     const rows = await owner.db
       .select({ chainSeq: schema.domainEvent.chainSeq })
       .from(schema.domainEvent)
       .where(eq(schema.domainEvent.tenantId, b.tenantId));
     const chained = rows.filter((r) => r.chainSeq !== null).map((r) => Number(r.chainSeq)).sort((x, y) => x - y);
-    expect(chained, 'the chain closes over the gap — this is why the verifier cannot see it').toEqual([1, 2, 3, 4]);
+    // ALL SEVEN are chained. Before slice 8 this was [1, 2, 3, 4] with three events sitting outside.
+    expect(chained, 'the disarm was refused, so no event escaped the chain').toEqual([1, 2, 3, 4, 5, 6, 7]);
 
     const v = await verifyTenantChain(ctx);
-    expect(v.valid, 'no link is broken: the unchained events are not IN the chain to break it').toBe(true);
-    expect(v.checked, 'only the chained rows are verified…').toBe(4);
-    expect(v.unchained, '…and the three written while the gate was off are counted, not silently dropped').toBe(3);
-    // THE POSITIONAL FIGURE — the one the DPO surface renders. All three fell strictly after the first
-    // chained event, so all three are inside the chain's coverage: an unambiguous hole.
-    expect(v.unchainedInsideChain, 'the whole window sits inside the chain, so it is a hole, not history').toBe(3);
+    expect(v.valid).toBe(true);
+    expect(v.checked, 'every event is inside the chain').toBe(7);
+    expect(v.unchained, 'nothing was written outside the chain').toBe(0);
+    expect(v.unchainedInsideChain, 'and therefore there is no hole').toBe(0);
   });
 
   it('PRE-CHAIN history is reported as coverage, not as a hole — the count alone cannot tell them apart', async () => {
