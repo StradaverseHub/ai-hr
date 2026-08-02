@@ -2986,6 +2986,7 @@
         "colStatus": "Trạng thái"
       },
       "prefillFixedZakat": "Điền sẵn zakat cố định",
+      "prefillTp1": "Điền sẵn miễn trừ TP1",
       "prefillLoans": "Điền sẵn khấu trừ khoản vay",
       "loanSummary": "{count} kỳ trả góp · RM {amount}",
       "step3Title": "Bước 3/3 — Xem lại & xử lý",

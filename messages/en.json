@@ -2725,6 +2725,7 @@
         "colStatus": "Status"
       },
       "prefillFixedZakat": "Prefill fixed zakat",
+      "prefillTp1": "Prefill TP1 relief",
       "prefillLoans": "Prefill loan deductions",
       "loanSummary": "{count} loan instalment(s) · RM {amount}",
       "step3Title": "Step 3 of 3 — Review & process",

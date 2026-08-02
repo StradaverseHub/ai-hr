@@ -2986,6 +2986,7 @@
         "colStatus": "நிலை"
       },
       "prefillFixedZakat": "நிலையான ஜகாத்தை முன்நிரப்பு",
+      "prefillTp1": "TP1 நிவாரணத்தை முன்நிரப்பு",
       "prefillLoans": "கடன் கழிவுகளை முன்நிரப்பு",
       "loanSummary": "{count} கடன் தவணை · RM {amount}",
       "step3Title": "படி 3 / 3 — மதிப்பாய்வு & செயலாக்கம்",
