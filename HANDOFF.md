@@ -7,19 +7,81 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ## CURRENT STATE — read this first (updated 2026-08-02, after r115 SHIPPED)
 
+> ## ▶ NEXT SESSION STARTS HERE
+>
+> **Last session shipped r105 → r115, eleven rounds, all deployed and verified.** Nothing is in flight:
+> no unmerged build branch, no half-applied migration, no pending deploy. `main@65384457` is what runs.
+>
+> ### THREE THINGS ARE WAITING ON THE OWNER, NOT ON CODE
+>
+> 1. **NO `aihr` TIMERS EXIST ON THE HOST.** `systemctl list-timers` shows none. Five sweeps are built
+>    and none of them run. **For four of them that is merely dormant; for `usage:capture` it BLEEDS** —
+>    usage cannot be backfilled, so every unscheduled day is permanently unbillable. Writing the systemd
+>    units is a small job that was deliberately NOT done unasked, because scheduling something that
+>    suspends customers or writes billing data is an owner decision. Suggested: `usage:capture` daily at
+>    01:00 (ahead of the 02:00/03:00 leave sweeps, so it meters the day before they mutate it).
+> 2. **14 BOARD ITEMS SIT `planned`, awaiting approve/reject.** Four carry traps — see the r107 entry.
+>    **Two would damage live data if built exactly as asked** (`c459bff9`'s premise is false;
+>    `38f1fd40` would hand back 1,766 days, 81% of it system-written).
+> 3. **SLICE 6's DEPLOY-FAILING FLIP needs explicit confirmation before shipping.** It turns an
+>    unclassifiable company from a warning into a failed deploy — right end state, deliberate foot-gun.
+>
+> ### WHAT I WOULD PICK UP NEXT, in order
+>
+> - **Finish slice 6:** sweep the REMAINING reports for one-jurisdiction assumptions. r115 fixed the
+>   overtime report; the same "resolve one pack for the whole report" shape may live elsewhere. Grep for
+>   `packFor(` in `core/` and check each against "whose jurisdiction is this row?".
+> - **Slice 9's remainder:** tenant CLOSURE (dual-controlled, own retention check) and REACTIVATION
+>   (record the suspended window, replay skipped sweeps with it EXCLUDED from expiry clocks — r108
+>   explains why expiry cannot simply re-run).
+> - **Slice 10's dashboard** now that the meter records. Arguably wants slice 7's platform plane first.
+> - **Slices 7 and 8** are the big untouched ones (second process + DB role + systemd; audit-chain
+>   lifecycle).
+>
+> ### ENVIRONMENT — READ BEFORE YOU LOSE AN HOUR TO ONE OF THESE
+>
+> - **The local Postgres WEDGED TWICE last session**, both times on `DROP DATABASE` at
+>   `CheckpointStart` with frozen `pg_stat_bgwriter` counters. Cause is Trend Micro **Apex One**
+>   real-time scanning, which is CENTRALLY MANAGED — the exclusion for
+>   `/opt/homebrew/var/aihr-pg16` must be set in the Apex One console by an admin; it cannot be done on
+>   this machine. **Wipe, do not wait** — the rebuild recipe is below and takes under a minute.
+>   Two `aihr-pg16.wedged-*` directories are still on disk and are safe to delete.
+> - **A MIGRATION FILE IS NOT A MIGRATION** — append to `_journal.json` or it silently never runs.
+>   r112 made the test-template fingerprint hash the journal, so this now forces a rebuild rather than
+>   reusing a stale template. `test/migration-journal-ordering.test.ts` catches the missing entry, but
+>   ONLY IF YOU RUN IT — running a single new test file will not.
+> - **The server's default `node` is v18.19.1 and predates `--env-file`.** Over plain ssh, prefix
+>   `PATH=/opt/node20/bin:$PATH`, or you get "node: bad option: --env-file" and chase a phantom bug.
+> - **The improve-loop CLI defaults to `IMPROVE_SSH_HOST=10.20.30.20`**, which is unreachable from
+>   outside the LAN. Use `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:pull`.
+> - **~30 stale `build/r*` worktrees** are on disk under `.claude/worktrees/`, each with its own
+>   `node_modules`. All merged. Safe to prune; left alone rather than deleting unasked.
+>
+> ### ONE LIVE DATA ERROR IN PRODUCTION, left for its owner
+>
+> A location named **Sepang carries `country = 'SG'`** on a Malaysian company. Sepang is in Selangor,
+> Malaysia — a data-entry slip. r110 makes it HARMLESS (state validation now narrows by the COMPANY's
+> country, and `location.country` is display-only), but the row is still wrong and a human should fix it.
+> **A validator silently rewriting a customer's data would be worse than the error.**
+>
+
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
 > Three layers, and knowing which one can see what is the whole point:
 >
 > | layer | command | in the gate? | sees |
 > |---|---|---|---|
-> | `node` | `pnpm vitest run` | yes | 516 files, real Postgres. **Unchanged by the split.** |
+> | `node` | `pnpm vitest run` | yes | the bulk of the suite, real Postgres. **Unchanged by the split.** |
 > | `dom` | `pnpm test:dom` | **yes** (joined the default run) | jsdom render + interaction. No CSS. 790ms |
 > | `browser` | `pnpm test:browser` | **no — opt-in** | real Chromium, real Tailwind, `getComputedStyle`. 1.4s |
 >
-> **`pnpm vitest run` now runs node + dom** and prints **517 files / 6021 tests** (= 516/6013 node,
-> unchanged, plus 1/8 dom). The browser project is deliberately OUT of the gate until it has a track
-> record — a flaky browser test must not be able to redden a 6013-test suite. Promote it deliberately.
+> **`pnpm vitest run` runs node + dom together.** At r115 it prints **536 files / 6250 tests**. The
+> browser project is deliberately OUT of the gate until it has a track record — a flaky browser test must
+> not be able to redden a 6250-test suite. Promote it deliberately.
+>
+> **The tree holds ONE MORE FILE than the gate reports** (537 vs 536): `*.browser.test.tsx` belongs to
+> `vitest.browser.config.ts` and is not part of `pnpm vitest run`. That gap is EXPECTED — do not confuse
+> it with the r91 trap where a file silently failed to spawn.
 >
 > ### ⚠️ THE BROWSER RUNNER FOUND A LIVE DEFECT ON ITS FIRST RUN AND IT IS NOT FIXED
 >
@@ -55,8 +117,10 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > is not per-action discipline. Reads are UNTOUCHED (open decision 5: read-only + export, never a
 > lock-out on a payroll system). **Both production tenants are `active`, so it is inert there today.**
 >
-> **Nothing yet SETS a tenant to suspended** — the dunning policy deriving `tenant.status` from
-> `subscription.status` is the next piece. The mechanism exists; its trigger does not.
+> **SUPERSEDED IN PART:** the trigger now exists — r105's dunning policy derives `tenant.status` from
+> `subscription.status`, r108 made the sweeps consult standing, and r109 gave the statutory carve-out its
+> first caller. **None of it runs**: `apply-dunning` is report-only and unscheduled, and there are no
+> `aihr` timers on the host at all.
 >
 > ### SLICE 6 HAS BEGUN — `country-my` IS A MODULE, AND IT IS INERT
 >
