@@ -91,31 +91,35 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   // order is preserved. Regrouping rows is the visible change the reporter asked for; losing one, or
   // quietly widening a gate while moving it, is not — and only the second kind should fail here.
   const NODES = attendancePack.navNodes!;
-  const flattened = NODES.flatMap((n) => n.children);
+  // a324a4b3 rev3 — two rows left the nodes entirely and became flat Manage rows (navLinks). The parity
+  // oracle is about the ROWS, not about which container holds them, so both sources are flattened here.
+  const MANAGE_LINKS = attendancePack.navLinks ?? [];
+  const flattened = [...NODES.flatMap((n) => n.children), ...MANAGE_LINKS];
 
-  it('declares exactly TWO nodes, both in the day-to-day group (a324a4b3 rev2 merge)', () => {
-    // INVERTED from the 0bb0e303 three-node assertion rather than deleted: the reporter's screenshot
-    // asks for ONE Attendance fly-out, so Manage + Admin collapsed into it and Clock in/out kept its
-    // own My Attendance node (the screenshot omits it; 5249d43f put it there deliberately).
+  it('declares TWO nodes — self-service in main, config in admin (a324a4b3 rev3)', () => {
     expect(NODES.map((n) => n.labelKey)).toEqual(['myAttendance', 'attendance']);
-    // Both in 'main': the merged node holds rows with THREE different gates (none / managerUp /
-    // adminOnly), and only the ungated group renders per row. See the merged-node guard below.
-    expect(NODES.map((n) => n.group)).toEqual(['main', 'main']);
+    // rev2 had both in 'main' because the merged node mixed three gates. rev3 is the reporter's own
+    // correction — the CONFIG menu belongs in Administration between Leave config and Claims config — and
+    // it is only safe there because the mixed rows moved out first. See the regression guard below.
+    expect(NODES.map((n) => n.group)).toEqual(['main', 'admin']);
+    // The two managerUp rows are flat Manage rows now, not children of anything.
+    expect(MANAGE_LINKS.map((l) => l.href).sort()).toEqual(['/attendance/import', '/roster']);
   });
 
-  it('orders the merged Attendance menu exactly as the reporter’s screenshot', () => {
+  it('orders the Attendance CONFIG menu as the reporter listed the settings', () => {
     const merged = NODES.find((n) => n.labelKey === 'attendance')!;
+    // Six rows, all config, all adminOnly. Records / Roster / Import are no longer here — see rev3.
     expect(merged.children.map((c) => c.href)).toEqual([
-      '/attendance', // Records — first, pulled up out of My Attendance
       '/admin/holidays',
       '/admin/attendance', // Shift settings
       '/admin/attendance-policy',
       '/admin/attendance-allowance',
       '/admin/locations', // Clocking location
       '/admin/toil', // Time off in lieu
-      '/roster',
-      '/attendance/import', // Import — always last (f60cd403)
     ]);
+    // Self-service keeps Clock in/out first (5249d43f) with Records beside it.
+    const mine = NODES.find((n) => n.labelKey === 'myAttendance')!;
+    expect(mine.children.map((c) => c.href)).toEqual(['/attendance/clock', '/attendance']);
   });
 
   it('keeps every pre-retrofit row exactly once, with identical icon refs and gates', () => {
@@ -136,22 +140,41 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // Widened to string[]: EXPECTED is `as const`, so map() yields a union of the ten literal hrefs
     // and indexOf() then refuses a plain string. The comparison is by position, not by literal type.
     const wantOrder: string[] = EXPECTED.map((r) => r.href);
-    for (const n of NODES) {
-      const positions = n.children.map((c) => wantOrder.indexOf(c.href));
-      expect(positions, `${n.group} node keeps pre-retrofit order`).toEqual([...positions].sort((a, b) => a - b));
-      expect(positions.every((i) => i >= 0), `${n.group} node has no unknown row`).toBe(true);
+    for (const container of [...NODES.map((n) => ({ name: n.group, rows: n.children })), { name: 'navLinks', rows: MANAGE_LINKS }]) {
+      const positions = container.rows.map((c) => wantOrder.indexOf(c.href));
+      expect(positions, `${container.name} keeps pre-retrofit order`).toEqual([...positions].sort((a, b) => a - b));
+      expect(positions.every((i) => i >= 0), `${container.name} has no unknown row`).toBe(true);
     }
   });
 
-  it('THE REGRESSION GUARD: no attendance node sits in a wholesale-gated sidebar group', () => {
-    // INVERTED FROM 0bb0e303, not dropped. The old guard kept the two managerUp rows OUT of the admin
-    // node because the Administration sidebar group is gated adminOnly as a WHOLE — a managerUp row in
-    // there renders for nobody but admins. The merge removes the admin node, so the rule that now
-    // carries the same protection is: neither attendance node may live in 'admin' (or 'manage', which
-    // would hide Records from plain employees). Only 'main' is ungated at group level, which is what
-    // lets nine rows with three different gates share one parent without any of them widening or
-    // narrowing. If a future change moves this node into Admin, THIS is the test that must fail.
-    expect(NODES.every((n) => n.group === 'main')).toBe(true);
+  it('THE REGRESSION GUARD: a node in a wholesale-gated group contains ONLY rows that gate be that strictly', () => {
+    // THIS ASSERTION HAS NOW BEEN INVERTED TWICE AND THE RULE BEHIND IT HAS NEVER CHANGED — read that
+    // before inverting it a third time.
+    //
+    // 0bb0e303 kept the two managerUp rows OUT of the admin node. rev2 said no attendance node may sit
+    // in 'admin' at all, and added: "If a future change moves this node into Admin, THIS is the test that
+    // must fail." It did fail, exactly as intended, when rev3 made that move — because the reporter asked
+    // for it in as many words.
+    //
+    // So the guard is restated at the level it always meant: the Administration sidebar group is gated
+    // adminOnly as a WHOLE and the sidebar filters group-first, so a row inside it renders for nobody but
+    // administrators REGARDLESS of its own flag. A node may therefore live there only if every one of its
+    // children is already adminOnly. That is what made rev3 safe, and it is what a future edit would
+    // violate by dropping Records or a managerUp row back in.
+    for (const n of NODES) {
+      if (n.group !== 'admin') continue;
+      const widened = n.children.filter((c) => c.adminOnly !== true);
+      expect(
+        widened.map((c) => c.href),
+        `these rows would become admin-only just by sitting in the '${n.group}' group`,
+      ).toEqual([]);
+    }
+    // And the converse: anything NOT admin-only must live somewhere ungated at group level.
+    for (const n of NODES) {
+      if (n.group === 'admin') continue;
+      expect(n.group, `${n.labelKey} must not hide self-service rows`).toBe('main');
+    }
+    expect(MANAGE_LINKS.every((l) => l.group === 'manage'), 'the managerUp rows sit in per-row-gated Manage').toBe(true);
   });
 
   it('THE OTHER HALF: the merged node keeps each row’s own gate, and Records keeps none', () => {
@@ -160,11 +183,21 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       const c = merged.children.find((x) => x.href === href)!;
       return { adminOnly: c.adminOnly, managerUp: c.managerUp };
     };
-    // Records travelled into a node whose other members are adminOnly. It must NOT have caught it:
-    // every employee sees their own attendance record, before and after the merge.
-    expect(gate('/attendance')).toEqual({ adminOnly: undefined, managerUp: undefined });
+    // rev3 — Records and the two managerUp rows LEFT this node, so their gates are checked at their new
+    // homes. Records must still carry none, and Roster/Import must still be managerUp: a move that
+    // widened or narrowed either would be the silent permissions change this whole item risks.
+    const mine = NODES.find((n) => n.labelKey === 'myAttendance')!;
+    const records = mine.children.find((c) => c.href === '/attendance')!;
+    expect({ adminOnly: records.adminOnly, managerUp: records.managerUp }).toEqual({
+      adminOnly: undefined,
+      managerUp: undefined,
+    });
     for (const href of ['/roster', '/attendance/import']) {
-      expect(gate(href), `${href} stays managerUp`).toEqual({ adminOnly: undefined, managerUp: true });
+      const row = MANAGE_LINKS.find((l) => l.href === href)!;
+      expect({ adminOnly: row.adminOnly, managerUp: row.managerUp }, `${href} stays managerUp`).toEqual({
+        adminOnly: undefined,
+        managerUp: true,
+      });
     }
     for (const href of [
       '/admin/holidays',
@@ -182,9 +215,12 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('My Attendance carries self-service ONLY — no admin or manager row leaked in', () => {
-    // Records moved to the merged menu (a324a4b3 rev2); Clock in/out deliberately did not.
+    // rev2 pulled Records up into the merged menu; rev3 sent it back, because that menu now lives in the
+    // group-gated Administration section and a self-service row inside it would render for nobody but
+    // administrators. Clock in/out stays first (5249d43f).
     const mine = NODES.find((n) => n.labelKey === 'myAttendance')!;
-    expect(mine.children.map((c) => c.href)).toEqual(['/attendance/clock']);
+    expect(mine.children.map((c) => c.href)).toEqual(['/attendance/clock', '/attendance']);
+    // The invariant that has held through every regrouping: nothing gated lives in the ungated node.
     expect(mine.children.every((c) => !c.adminOnly && !c.managerUp)).toBe(true);
   });
 

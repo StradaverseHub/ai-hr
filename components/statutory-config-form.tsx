@@ -185,7 +185,18 @@ export function assemble(s: FormState, base: StatutoryRuleset, epfFallback: EpfS
     ot: base.ot,
     pcb: {
       ...base.pcb,
+      // 2e3ec77d — THE SPREAD IS LOAD-BEARING. This object used to be rebuilt from the four edited fields
+      // alone, which silently DELETED every relief this form does not render. `pcb.reliefs` already carries
+      // a fifth the kernel reads — `disabledIndividual` (localization/my/statutory-tables.ts) — so any save
+      // through this editor dropped a tenant's customised OKU relief and localization/my/payroll.ts quietly
+      // fell back to the pack's built-in figure. Nobody saw an error; the deduction for a flagged employee
+      // simply changed after somebody saved an unrelated field on this screen.
+      //
+      // The `ot` slice three lines above documents this exact hazard and was already fixed for it. The
+      // reliefs were missed. Spread first, THEN overwrite the four this form actually edits, so a relief
+      // the UI has never heard of survives a round trip untouched.
       reliefs: {
+        ...base.pcb.reliefs,
         individual: num(s.reliefIndividual),
         spouse: num(s.reliefSpouse),
         perChild: num(s.reliefPerChild),

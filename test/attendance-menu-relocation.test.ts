@@ -63,30 +63,74 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     expect(src, `${route} must call requireAdmin() or scopedAdmin()`).toMatch(/requireAdmin\(|scopedAdmin\(/);
   });
 
-  it('THE INVERTED GUARD: the merged node sits in the day-to-day group, so every admin row carries its OWN gate', () => {
-    // 0bb0e303 asserted the opposite placement — the admin node INSIDE the adminOnly group. a324a4b3
-    // rev2 merged that node into the single Attendance menu, which must live in the ungated day-to-day
-    // group or Records disappears for plain employees and Roster/Import for non-admin managers.
+  it('rev3: the config menu is INSIDE Administration, between Leave config and Claims config', () => {
+    // The assertion has now been inverted TWICE, and the reason is worth reading before inverting it a
+    // third time. 0bb0e303 put the admin node inside the adminOnly group. a324a4b3 rev2 merged everything
+    // into ONE menu, which then had to sit in the ungated group or Records/Roster/Import would vanish.
+    // rev3 is the reporter's own correction: "just relocate the Attendance button below My Attendance to
+    // admin section between Leave Config and Claim Config".
     //
-    // The assertion is inverted rather than deleted because the PROTECTION it stood for is unchanged:
-    // an administrative screen must not be reachable by a non-administrator. What used to supply that
-    // in the rail was the group gate; now it is the per-row adminOnly flag, so that is what is pinned
-    // here — together with the it.each above, which proves the rail was never the real protection.
+    // What survived all three is the PROTECTION: an administrative screen is never reachable because the
+    // rail happened to hide its link. The it.each above proves that directly, and it has not changed.
     const sidebar = read('components/sidebar.tsx');
+    expect(sidebar, 'the pre-merge admin node stays gone').not.toContain('ATTENDANCE_ADMIN_NODE');
+
     const adminGroupStart = sidebar.indexOf("labelKey: 'admin',");
-    expect(adminGroupStart, 'admin group exists').toBeGreaterThan(-1);
-    expect(sidebar, 'the admin-only attendance node is gone').not.toContain('ATTENDANCE_ADMIN_NODE');
-    // Both attendance nodes mount ABOVE the Manage and Admin headings (the screenshot's upper section).
     const manageGroupStart = sidebar.indexOf("labelKey: 'manage',");
-    expect(manageGroupStart, 'manage group exists').toBeGreaterThan(-1);
-    // Matched as a whole line (`^\s*NAME,$`) so the mount point is found rather than the declaration,
-    // and so MY_ATTENDANCE_NODE cannot satisfy the ATTENDANCE_NODE search by being a superstring.
-    for (const konst of ['MY_ATTENDANCE_NODE', 'ATTENDANCE_NODE']) {
-      const at = sidebar.search(new RegExp(`^[ \\t]*${konst},$`, 'm'));
-      expect(at, `${konst} is mounted in a group`).toBeGreaterThan(-1);
-      expect(at, `${konst} sits above the MANAGE heading`).toBeLessThan(manageGroupStart);
+    expect(adminGroupStart).toBeGreaterThan(-1);
+    expect(manageGroupStart).toBeGreaterThan(-1);
+
+    const mountOf = (konst: string) => sidebar.search(new RegExp(`^[ \\t]*${konst},$`, 'm'));
+    const attendanceAt = mountOf('ATTENDANCE_NODE');
+    const leaveConfigAt = mountOf('LEAVE_CONFIG_ROW');
+    const claimsConfigAt = mountOf('CLAIMS_CONFIG_ROW');
+
+    // Literally between them, inside the admin group.
+    expect(attendanceAt, 'ATTENDANCE_NODE is mounted').toBeGreaterThan(-1);
+    expect(attendanceAt, 'inside the admin group').toBeGreaterThan(adminGroupStart);
+    expect(attendanceAt, 'after Leave config').toBeGreaterThan(leaveConfigAt);
+    expect(attendanceAt, 'before Claims config').toBeLessThan(claimsConfigAt);
+
+    // My Attendance stays in the ungated day-to-day group, above Manage.
+    expect(mountOf('MY_ATTENDANCE_NODE'), 'My Attendance stays ungated').toBeLessThan(manageGroupStart);
+  });
+
+  it('rev3: NOTHING non-admin travelled into the admin group with it', () => {
+    // THE WHOLE RISK OF THIS CHANGE, in one test. The admin group gates at GROUP level and the sidebar
+    // filters group-first, so any row left inside the moved node would become admin-only regardless of its
+    // own flag. Records is self-service and Roster/Import are managerUp; all three had to leave the node.
+    // If a future edit puts one back, this fails instead of silently removing it from people's rails.
+    const merged = attendancePack.navNodes!.find((n) => n.labelKey === 'attendance')!;
+    expect(merged.group, 'the config menu lives in the admin group').toBe('admin');
+    expect(
+      merged.children.every((c) => c.adminOnly === true),
+      `every child of an admin-group node must be adminOnly; found: ${merged.children
+        .filter((c) => !c.adminOnly)
+        .map((c) => c.href)
+        .join(', ')}`,
+    ).toBe(true);
+    for (const gone of ['/attendance', '/roster', '/attendance/import']) {
+      expect(merged.children.some((c) => c.href === gone), `${gone} must NOT be in the admin node`).toBe(false);
     }
-    // Every one of the six relocated screens is still admin-gated, now per row rather than per group.
+
+    // …and they are still reachable somewhere ungated.
+    const mine = attendancePack.navNodes!.find((n) => n.labelKey === 'myAttendance')!;
+    expect(mine.children.some((c) => c.href === '/attendance'), 'Records is self-service').toBe(true);
+    expect(mine.children.find((c) => c.href === '/attendance')?.adminOnly).toBeUndefined();
+    const manageLinks = (attendancePack.navLinks ?? []).filter((l) => l.group === 'manage');
+    expect(manageLinks.map((l) => l.href).sort()).toEqual(['/attendance/import', '/roster']);
+    expect(manageLinks.every((l) => l.managerUp === true), 'both stay managerUp').toBe(true);
+  });
+
+  it('rev3: the two relocated rows keep their module gating', () => {
+    // MODULE_OF_HREF is built from the nav NODES' children. /roster and /attendance/import left the nodes,
+    // so without an explicit navLinks line they would drop out of the map and stop being gated by the
+    // attendance module entitlement — an un-gating hidden inside a menu move.
+    const sidebar = read('components/sidebar.tsx');
+    expect(sidebar).toContain("(modulePackById('attendance')!.navLinks ?? []).map((l) => [l.href, 'attendance'] as const)");
+  });
+
+  it('every one of the six config screens is still admin-gated at the row', () => {
     const merged = attendancePack.navNodes!.find((n) => n.labelKey === 'attendance')!;
     for (const route of adminRoutes) {
       expect(merged.children.find((c) => c.href === route)?.adminOnly, `${route} adminOnly`).toBe(true);

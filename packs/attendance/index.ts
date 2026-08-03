@@ -108,6 +108,12 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // action. Records moved out to the merged Attendance node (a324a4b3 rev2), so this is now the node's
     // only row; it remains visible to every employee (self-service, like /me).
     { href: '/attendance/clock', labelKey: 'attendanceClock', icon: Clock },
+    // a324a4b3 rev3 — Records comes BACK here. rev2 pulled it up into the merged Attendance node while
+    // that node sat in the ungated day-to-day group, which was fine. The reporter has now asked for that
+    // node to move into Administration, and the admin group gates at GROUP level — so a Records row left
+    // inside it would vanish from every plain employee's rail. It is self-service (no gate), so its home
+    // is the self-service node.
+    { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
   ],
 };
 
@@ -127,10 +133,18 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
 const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
   labelKey: 'attendance',
   icon: CalendarRange,
-  group: 'main',
+  // a324a4b3 rev3 — 'admin', so the menu lands in Administration between Leave config and Claims config,
+  // which is exactly what the reporter asked for: "just relocate the Attendance button below My Attendance
+  // to admin section between Leave Config and Claim Config".
+  //
+  // ⚠️ THIS IS WHY THE NODE COULD NOT SIMPLY MOVE WHOLE. The admin group carries adminOnly at GROUP level
+  // and the sidebar filters group-first, so a non-admin never reaches the per-row check for anything
+  // inside it. Moving the rev2 node unchanged would have silently removed /attendance from every plain
+  // employee and /roster + /attendance/import from every non-admin manager — a permissions change nobody
+  // asked for, hidden inside a menu tidy-up. Records went back to My Attendance (above) and the two
+  // manager rows became flat Manage rows (navLinks below); only the six adminOnly config screens travel.
+  group: 'admin',
   children: [
-    // Every employee's own attendance record — NO gate, deliberately. See the node comment above.
-    { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
     // R33 f21d6eee: "Shift settings" (/admin/attendance) is now the shared shift library; the per-company
     // working-hours + overtime-rates config moved to its own "Attendance policy" screen.
@@ -151,18 +165,29 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
     // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Roster).
     { href: '/admin/toil', labelKey: 'timeOffInLieu', icon: Hourglass, adminOnly: true },
-    // The two manager rows, last per the screenshot. managerUp resolves per row here (the node is in
-    // the ungated 'main' group), so no manager loses Roster or Import to the merge.
-    { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
-    // Import stays last: administrative bulk-upload, used less than daily attendance (f60cd403).
-    { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
   ],
 };
+
+/**
+ * a324a4b3 rev3 — Roster and Import, as FLAT Manage rows rather than children of the Attendance node.
+ *
+ * They are managerUp, and the node they used to live in has moved into the admin-gated group. Left there
+ * they would disappear for every non-admin manager. A third parent node literally labelled "Attendance"
+ * is not the answer either — that duplicated menu is what the reporter objected to in the first place.
+ * Flat rows in Manage, beside Approvals and Performance, is where a manager already looks.
+ *
+ * Import stays after Roster: administrative bulk-upload, used less than daily attendance (f60cd403).
+ */
+const ATTENDANCE_MANAGE_LINKS = [
+  { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true, group: 'manage' as const },
+  { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true, group: 'manage' as const },
+];
 
 export const attendancePack: ModulePack = {
   id: 'attendance',
   kind: 'module',
   navNodes: [MY_ATTENDANCE_NAV, ATTENDANCE_NAV],
+  navLinks: ATTENDANCE_MANAGE_LINKS,
   // Pack-owned satellite tables (D5/D11 criterion 2 — documentation, not DDL). Audited from
   // db/schema.ts 2026-07-23. shift/roster_assignment/toil_* stay OUTSIDE (roster + TOIL services
   // are not part of this pack, mirroring the nav note above).

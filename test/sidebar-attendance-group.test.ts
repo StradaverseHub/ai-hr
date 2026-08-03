@@ -105,16 +105,23 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     }
   });
 
-  it('restores Records above the config rows inside the one node (a324a4b3 rev2)', () => {
-    // The guarantee the 0bb0e303 split had to give up and the merge gives back: an employee opening
-    // Attendance finds their own Records first, before any administrative screen.
-    const recordsIdx = node.indexOf(`{ href: '/attendance',`);
-    expect(recordsIdx, 'Records is a child of the merged node').toBeGreaterThan(-1);
+  it('keeps Records in the SELF-SERVICE node, not the config node (a324a4b3 rev3)', () => {
+    // rev2 put Records at the top of the merged menu. rev3 moved that menu into the group-gated
+    // Administration section, where a row with no gate of its own renders for nobody but administrators —
+    // so Records went back to My Attendance. An employee still finds their own record without passing
+    // through anything administrative; it is simply reached from the self-service node again.
+    const mine = nodeBlock('MY_ATTENDANCE_NAV');
+    expect(mine.indexOf(`{ href: '/attendance',`), 'Records is a child of My Attendance').toBeGreaterThan(-1);
+    expect(node.indexOf(`{ href: '/attendance',`), 'Records is NOT in the admin-gated config node').toBe(-1);
+    const recordsIdx = mine.indexOf(`{ href: '/attendance',`);
     for (const href of TICKET_HREFS) {
-      expect(recordsIdx, `Records precedes ${href}`).toBeLessThan(node.indexOf(`'${href}'`));
+      // The config rows live in the other node entirely now, so "Records comes first" is expressed as
+      // "Records is not among them" rather than as a position comparison across two files' worth of text.
+      expect(node.indexOf(`'${href}'`), `${href} is a config row`).toBeGreaterThan(-1);
+      expect(recordsIdx, 'Records resolved in the self-service node').toBeGreaterThan(-1);
     }
-    // …and it carries NO gate: merging it in among adminOnly siblings must not have caught one.
-    const line = node.split('\n').find((l) => l.includes(`{ href: '/attendance',`));
+    // …and it carries NO gate. Read from the SELF-SERVICE node, which is where the row now lives.
+    const line = mine.split('\n').find((l) => l.includes(`{ href: '/attendance',`));
     expect(line, 'Records row exists').toBeDefined();
     expect(line, 'Records stays visible to every employee').not.toMatch(/adminOnly|managerUp/);
   });
@@ -123,39 +130,48 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     // f60cd403: administrative bulk-upload stays last. Import moved to the Manage node with Roster
     // (0bb0e303) and back into the merged node with it (a324a4b3 rev2), so "last" is measured there
     // now — the rule is unchanged, the node is not.
-    const importIdx = node.indexOf(`'/attendance/import'`);
-    expect(importIdx, 'Import is a child of the merged node').toBeGreaterThan(-1);
-    const rosterIdx = node.indexOf(`'/roster'`);
+    // rev3 — Roster and Import left the node for flat Manage rows, because the node moved behind the
+    // group-level admin gate and both are managerUp. "Import last" is now measured in that link list.
+    const links = PACK.slice(PACK.indexOf('const ATTENDANCE_MANAGE_LINKS'));
+    const importIdx = links.indexOf(`'/attendance/import'`);
+    expect(importIdx, 'Import is a Manage row').toBeGreaterThan(-1);
+    const rosterIdx = links.indexOf(`'/roster'`);
     expect(rosterIdx, 'Roster present').toBeGreaterThan(-1);
+    expect(node.indexOf(`'/attendance/import'`), 'Import is NOT in the admin-gated node').toBe(-1);
+    expect(node.indexOf(`'/roster'`), 'Roster is NOT in the admin-gated node').toBe(-1);
     expect(rosterIdx, 'Roster precedes Import (Import stays last)').toBeLessThan(importIdx);
-    // Last means last: every other row of the node precedes Import.
-    for (const href of TICKET_HREFS) {
-      expect(node.indexOf(`'${href}'`), `${href} precedes Import`).toBeLessThan(importIdx);
-    }
+    // "Last" is measured within the Manage link list now — the config rows are in a different container,
+    // so a position comparison against them would compare offsets in unrelated blocks of text.
+    expect(links.indexOf(`'/attendance/import'`), 'Import is the last Manage row').toBe(
+      Math.max(links.indexOf(`'/attendance/import'`), links.indexOf(`'/roster'`)),
+    );
 
-    const line = node.split('\n').find((l) => l.includes(`'/attendance/import'`));
+    const line = links.split('\n').find((l) => l.includes(`'/attendance/import'`));
     expect(line, 'Import row exists').toBeDefined();
     expect(line, 'Import keeps managerUp visibility').toMatch(/managerUp:\s*true/);
-    const rosterLine = node.split('\n').find((l) => l.includes(`'/roster'`));
+    const rosterLine = links.split('\n').find((l) => l.includes(`'/roster'`));
     expect(rosterLine, 'Roster keeps managerUp visibility').toMatch(/managerUp:\s*true/);
   });
 });
 
 // Feedback 5249d43f: the employee-facing "Clock in/out" page is the PRIMARY day-to-day action, so it sits
 // FIRST in the Attendance node — above Records — visible to every employee (self-service, like /me).
-describe('sidebar Attendance group — Clock in/out stays in My Attendance (5249d43f)', () => {
-  // Clock in/out and Records were the staff node from 0bb0e303; a324a4b3 rev2 moved Records into the
-  // merged Attendance menu and Clock in/out stayed. The "clock first" rule is measured here still —
-  // INVERTED from "first of two" to "the node's only row", which is what first now means.
+describe('sidebar Attendance group — Clock in/out and Records are the staff node (5249d43f)', () => {
+  // Clock in/out and Records were the staff node from 0bb0e303; rev2 moved Records into the merged menu;
+  // rev3 moved that menu behind the group-level admin gate and so sent Records back. Clock in/out never
+  // moved at all. "Clock first" is measured here, and is again "first of two".
   const node = nodeBlock('MY_ATTENDANCE_NAV');
 
-  it('keeps Clock in/out (/attendance/clock) as the staff node’s row, Records having moved out', () => {
+  it('keeps Clock in/out first, with Records beside it and neither in the config node', () => {
     const clockIdx = node.indexOf(`'/attendance/clock'`);
+    const recordsIdx = node.indexOf(`{ href: '/attendance',`);
     expect(clockIdx, 'Clock in/out is a child of My Attendance').toBeGreaterThan(-1);
-    // The reporter's screenshot omits Clock in/out, so it was NOT folded into the merged menu; and
-    // Records was pulled out of here, so it must not still be listed in both places.
-    expect(node.indexOf(`{ href: '/attendance',`), 'Records moved to the merged node').toBe(-1);
+    expect(recordsIdx, 'Records is a child of My Attendance').toBeGreaterThan(-1);
+    expect(clockIdx, 'Clock in/out is still first (5249d43f)').toBeLessThan(recordsIdx);
+    // Neither appears in the config node — listed in two places is its own bug, and a self-service row
+    // inside the admin-gated node would render for nobody but administrators.
     expect(nodeBlock('ATTENDANCE_NAV').indexOf(`'/attendance/clock'`), 'Clock in/out did NOT move').toBe(-1);
+    expect(nodeBlock('ATTENDANCE_NAV').indexOf(`{ href: '/attendance',`), 'Records is not in config').toBe(-1);
   });
 
   it('keeps Clock in/out visible to every employee (no adminOnly/managerUp gate)', () => {
