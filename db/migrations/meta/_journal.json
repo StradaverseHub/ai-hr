@@ -2136,6 +2136,13 @@
       "when": 1781862465000,
       "tag": "0365_leave_type_override_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 370,
+      "version": "7",
+      "when": 1781862470000,
+      "tag": "0370_drop_leave_type_expiry",
+      "breakpoints": true
     }
   ]
 }

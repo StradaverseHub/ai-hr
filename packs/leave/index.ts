@@ -96,8 +96,9 @@
  *   `components/leave-rule-preview.tsx`, `components/earned-accrual-card.tsx`. They consume the pure
  *   client-safe `leave-compute`/`leave-formula` helpers; they migrate to a client-safe pack entry
  *   (the rung-5b `localization/my/client.ts` pattern), not the server facade.
- * - **Overnight sweeps + seed:** `scripts/accrue-earned.ts`, `scripts/expire-aged-leave.ts`,
- *   `scripts/expire-carry.ts`, `scripts/review-sweep.ts`, `db/seed.ts`.
+ * - **Overnight sweeps + seed:** `scripts/accrue-earned.ts`, `scripts/expire-carry.ts`,
+ *   `scripts/review-sweep.ts`, `db/seed.ts`. (`scripts/expire-aged-leave.ts` was deleted by c459bff9
+ *   along with the leave-type expiry feature.)
  *
  * ## Entitlement hook (D11 criterion 5 — NOT wired)
  *

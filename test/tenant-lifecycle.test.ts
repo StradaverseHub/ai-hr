@@ -155,9 +155,13 @@ describe('slice 9 — the replay plan distinguishes the two kinds of sweep', () 
     for (const s of DATE_CLOCK_SWEEPS) expect(SELF_HEALING_SWEEPS.has(s)).toBe(false);
   });
 
-  it('both r108 expiry sweeps are classified as date-clock', () => {
-    // r108 named these two explicitly as the ones a plain re-run would break.
+  it('the surviving r108 expiry sweep is classified as date-clock', () => {
+    // r108 named TWO sweeps as the ones a plain re-run would break. c459bff9 deleted the second
+    // ('expire-aged-leave') along with the whole leave-type expiry feature, so only expire-carry remains.
+    // The name must be ABSENT rather than left behind: replayPlan falls through to its else branch for an
+    // unrecognised sweep and prints "unrecognised sweep — replay must be decided deliberately, not
+    // inferred" on the operator's reinstatement report, which reads as a fault rather than a clean absence.
     expect(DATE_CLOCK_SWEEPS.has('expire-carry')).toBe(true);
-    expect(DATE_CLOCK_SWEEPS.has('expire-aged-leave')).toBe(true);
+    expect(DATE_CLOCK_SWEEPS.has('expire-aged-leave')).toBe(false);
   });
 });

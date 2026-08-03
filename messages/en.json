@@ -4172,10 +4172,7 @@
       "conditionStep": {
         "criteria": "Criteria",
         "rules": "Leave Application Rules",
-        "expiry": "Expiry",
         "halfDayCompanyWideBadge": "Applies company-wide",
-        "expiryAnnualPointer": "Annual Leave expiry is governed by the carry-forward policy — configure it under General → Carry Forward Policy.",
-        "expiryEmergencyNote": "Emergency Leave carries no balance, so no expiry applies.",
         "applicationLimitsTitle": "Application Limits",
         "applicationLimitYearLabel": "Maximum application per leave year",
         "applicationLimitUnlimited": "Unlimited",
@@ -4544,13 +4541,8 @@
         "pasteToggle": "Or paste CSV instead",
         "downloadTemplateXlsx": "Download Excel template"
       },
-      "expirySectionTitle": "Leave expiry",
-      "expiryValueLabel": "Leave expiry",
-      "expiryValuePlaceholder": "No expiry",
-      "expiryUnitLabel": "Unit",
       "expiryUnitMonths": "Months",
       "expiryUnitDays": "Days",
-      "expirySectionHelp": "Unused days of this leave type expire this long after each portion is earned, and drop out of the balance. Leave the number blank for no expiry. Expired days still appear in leave reports. Not available for Annual leave, which uses carry-forward expiry instead.",
       "auditHelp": "Read-only history of changes to leave types, entitlements, carry-forward, approval workflow, and payroll integration.",
       "advanceNoticeSectionTitle": "Advance notice",
       "minAdvanceDaysLabel": "Minimum advance days",
@@ -7845,10 +7837,6 @@
       "review-sweep": {
         "name": "Probation and contract reviews",
         "description": "Opens reviews that are due and sends the related reminders."
-      },
-      "leave-expire-aged": {
-        "name": "Aged leave forfeiture",
-        "description": "Forfeits earned leave that has passed its expiry age."
       },
       "leave-expire-carry": {
         "name": "Brought-forward leave expiry",

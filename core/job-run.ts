@@ -16,13 +16,18 @@ import { desc, inArray } from 'drizzle-orm';
 import { createDb, withTenant, type SessionContext } from '../db/client';
 import { jobRun } from '../db/schema';
 
-/** The four out-of-band sweeps, keyed exactly as they are stored in job_run.job_key. */
+/** The out-of-band sweeps, keyed exactly as they are stored in job_run.job_key.
+ *
+ *  c459bff9 removed 'leave.expire-aged': the sweep, its script and the leave-type expiry columns it read
+ *  are gone. Note what dropping the key does — listRecentJobRuns filters history with
+ *  inArray(jobRun.jobKey, JOB_KEYS), so past runs of the deleted sweep stop appearing on the Scheduled
+ *  Actions screen. The job_run ROWS are kept in the table; only the screen stops listing a job that can
+ *  never run again. */
 export const JOB_KEYS = [
   'leave.accrue',
   'review.sweep',
   'leave.expire-carry',
-  'leave.expire-aged',
-  // ADR-0077 slice 10 (r113) — the usage meter. Unlike the four above, a MISSED RUN IS A PERMANENT HOLE:
+  // ADR-0077 slice 10 (r113) — the usage meter. Unlike the sweeps above, a MISSED RUN IS A PERMANENT HOLE:
   // the others recompute from stored dates, this one records a fact that stops being observable.
   'usage.capture',
 ] as const;
@@ -32,10 +37,12 @@ export type JobKey = (typeof JOB_KEYS)[number];
 export type JobOutcome = 'success' | 'partial' | 'failed';
 
 /**
- * Static, code-side description of each job for the admin screen. The schedule strings mirror the
- * systemd OnCalendar= units installed on the host; they are display-only. Display NAMES and
- * DESCRIPTIONS are NOT here — they live in i18n (scheduledActions.jobs.<i18nKey>.name/.description),
- * so they are never stored in the DB and never untranslated.
+ * Static, code-side description of each job for the admin screen. The schedule strings describe the
+ * CRONTAB installed on the host (deploy/DEPLOY.md paragraph 5b), which c459bff9 confirmed is the live
+ * scheduler — the systemd units under deploy/systemd/ are an opt-in path deploy.sh never enables. The
+ * strings are display-only and nothing reads them. Display NAMES and DESCRIPTIONS are NOT here — they
+ * live in i18n (scheduledActions.jobs.<i18nKey>.name/.description), so they are never stored in the DB
+ * and never untranslated.
  *
  * `i18nKey` is the job key with the dot swapped for a dash, because a dot is a namespace separator in
  * next-intl message keys and 'leave.accrue' would resolve as a nested object rather than a leaf.
@@ -45,7 +52,6 @@ export type JobDescriptor = { key: JobKey; i18nKey: string; schedule: string };
 export const JOBS: readonly JobDescriptor[] = [
   { key: 'leave.accrue', i18nKey: 'leave-accrue', schedule: 'Monthly — 1st at 02:00' },
   { key: 'review.sweep', i18nKey: 'review-sweep', schedule: 'Daily — 03:00' },
-  { key: 'leave.expire-aged', i18nKey: 'leave-expire-aged', schedule: 'Daily — 03:30' },
   { key: 'leave.expire-carry', i18nKey: 'leave-expire-carry', schedule: 'Yearly — 1 April at 03:00' },
   { key: 'usage.capture', i18nKey: 'usage-capture', schedule: 'Daily — 01:00' },
 ];
@@ -56,7 +62,7 @@ export const JOBS: readonly JobDescriptor[] = [
  *   0 failures             → 'success'
  *   some, but not all      → 'partial'
  *   every tenant failed    → 'failed'
- * The script's PROCESS EXIT CODE is unchanged and independent of this: all four still end
+ * The script's PROCESS EXIT CODE is unchanged and independent of this: every sweep still ends
  * `process.exit(failures > 0 ? 1 : 0)`, so a partial failure remains a non-zero exit for systemd.
  */
 export function jobOutcome(tenantsProcessed: number, tenantsFailed: number): JobOutcome {
@@ -136,7 +142,7 @@ export type JobRunRow = {
 };
 
 /**
- * Recent runs for the admin screen, newest first, across all four jobs in one query. `perJob` caps how
+ * Recent runs for the admin screen, newest first, across every job in JOB_KEYS in one query. `perJob` caps how
  * many runs the caller intends to show per job; the LIMIT here is that cap times the number of jobs,
  * which is a safe upper bound since the caller groups and slices afterwards. Returns [] for anyone the
  * job_run_read policy does not admit — RLS, not a thrown error.

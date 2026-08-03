@@ -106,13 +106,10 @@ describe('a skipped tenant is not a failed tenant', () => {
   });
 });
 
-describe('the four sweeps are wired to it', () => {
-  const SCRIPTS = [
-    'scripts/accrue-earned.ts',
-    'scripts/review-sweep.ts',
-    'scripts/expire-carry.ts',
-    'scripts/expire-aged-leave.ts',
-  ];
+describe('every sweep is wired to it', () => {
+  // c459bff9 deleted scripts/expire-aged-leave.ts; each list below readFileSync's its entries, so a
+  // leftover name here is an ENOENT, not a soft failure.
+  const SCRIPTS = ['scripts/accrue-earned.ts', 'scripts/review-sweep.ts', 'scripts/expire-carry.ts'];
 
   it.each(SCRIPTS)('%s enumerates through loadSweepScope, not a bare tenant select', (path) => {
     const src = readFileSync(path, 'utf8');
@@ -240,7 +237,7 @@ describe('skipping is NOT catching up — the asymmetry between accrual and expi
    * this file's job is to make sure the sweeps do not quietly grow their own version of it.
    */
   it('no sweep contains a catch-up path keyed on skipped tenants', () => {
-    for (const path of ['scripts/expire-carry.ts', 'scripts/expire-aged-leave.ts', 'scripts/accrue-earned.ts']) {
+    for (const path of ['scripts/expire-carry.ts', 'scripts/accrue-earned.ts']) {
       const src = readFileSync(path, 'utf8');
       // scope.skipped may only be COUNTED and PRINTED. Iterating it is how a catch-up loop starts.
       expect(src).not.toMatch(/for\s*\(.*of\s+scope\.skipped/);
@@ -248,10 +245,10 @@ describe('skipping is NOT catching up — the asymmetry between accrual and expi
     }
   });
 
-  it('the expiry sweeps still measure from a stored date, which is why replay is reactivation’s job', () => {
-    // Substantiates the claim above rather than asserting it in prose: both expiry sweeps take `today`
-    // and pass it through, so they have no notion of a window to exclude.
-    for (const path of ['scripts/expire-carry.ts', 'scripts/expire-aged-leave.ts']) {
+  it('the expiry sweep still measures from a stored date, which is why replay is reactivation’s job', () => {
+    // Substantiates the claim above rather than asserting it in prose: the expiry sweep takes `today`
+    // and passes it through, so it has no notion of a window to exclude.
+    for (const path of ['scripts/expire-carry.ts']) {
       const src = readFileSync(path, 'utf8');
       expect(src).toMatch(/\{\s*today\s*\}/);
       expect(src).not.toMatch(/suspendedWindow|excludeWindow|catchUp/i);

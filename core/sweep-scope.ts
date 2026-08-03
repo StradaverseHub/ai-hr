@@ -2,22 +2,23 @@
  * ADR-0077 slice 9 — WHICH TENANTS A SCHEDULED SWEEP MAY TOUCH.
  *
  * r104 made a tenant out of good standing read-only inside `withTenant`, and r105 built the only thing
- * that puts a tenant into that state. This is the third piece: the four out-of-band sweeps run OUTSIDE a
+ * that puts a tenant into that state. This is the third piece: the out-of-band sweeps run OUTSIDE a
  * request, enumerate every tenant with the owner role, and until now consulted nothing about standing.
  *
- * WHAT WAS ACTUALLY BROKEN, and it is not what it looks like. After r104 the four sweeps disagreed:
+ * WHAT WAS ACTUALLY BROKEN, and it is not what it looks like. After r104 the sweeps disagreed (there
+ * were four at the time; c459bff9 deleted expire-aged-leave, leaving three — the analysis is unchanged):
  *
- *   - accrue-earned, expire-carry and expire-aged-leave build their context with
+ *   - accrue-earned and expire-carry build their context with
  *     `entitlementsExempt: 'sweeps'`, which means the context carries NO snapshot. r104 keys the
  *     read-only guard on `ctx.entitlements?.tenantStatus`, and deliberately treats an absent snapshot as
- *     "not known to be bad" rather than "bad" — so for these three the guard NEVER ENGAGED. They granted
+ *     "not known to be bad" rather than "bad" — so for these the guard NEVER ENGAGED. They granted
  *     leave, forfeited days and appended events inside a suspended tenant exactly as before.
  *   - review-sweep resolves a REAL snapshot (it has to: it calls the billable notifications gate). So for
  *     that one the guard DID engage — and engaged as a CRASH, a read-only transaction error counted as a
  *     per-tenant failure, which makes the process exit non-zero and pages an operator every night for a
  *     tenant that is suspended on purpose.
  *
- * So suspension was enforced for one sweep in four, and enforced there in the one form nobody wants.
+ * So suspension was enforced for exactly one of them, and enforced there in the one form nobody wants.
  * The `entitlementsExempt` marker is not the bug — it exists for MODULE gating, and widening it to carry
  * standing would put the same decision in two places. The fix is that the sweeps decide who is in scope
  * BEFORE they open a transaction, and skipping is a first-class outcome rather than a failure.
@@ -57,7 +58,7 @@ import { TENANT_STATUS_GOOD_STANDING } from './entitlement-types';
  * `app.append_auth_event` stamps this id for login-failed and reset-request, which happen before any
  * tenant is known. It is not a customer. It has no employments, no companies and no subscription.
  *
- * All four sweeps have been enumerating it every night since they were written, because they selected
+ * Every sweep has been enumerating it every night since they were written, because they selected
  * `id, name` straight off `tenant` with no filter. Nothing came of it — there is nothing there to sweep —
  * but it inflated `tenants_processed` in the run log by one, so every count on the Scheduled Actions
  * screen has been reporting one more customer than exists. scripts/reconcile-entitlement-parity.ts had
@@ -114,7 +115,7 @@ type OwnerDb = ReturnType<typeof createDb>['db'];
 
 /**
  * Enumerate every tenant and split it by standing. This replaces the bare `select id, name from tenant`
- * the four sweeps each carried — the point is that `status` is no longer optional to ask for, so a new
+ * the sweeps each carried — the point is that `status` is no longer optional to ask for, so a new
  * sweep cannot forget to consider it by simply not selecting the column.
  *
  * Runs on the OWNER connection, so RLS does not bind it and the enumeration is genuinely every tenant.

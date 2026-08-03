@@ -25,15 +25,17 @@ it stood before they mutate it.
 |---|---|---|---|
 | `aihr-accrue-earned` | 02:00 | grants monthly earned leave | grants entitlement to real employees |
 | `aihr-expire-carry` | 03:00 | forfeits carried leave past its expiry | **takes days away**; see reactivation below |
-| `aihr-expire-aged-leave` | 03:10 | forfeits aged leave past its expiry | **takes days away** |
 | `aihr-apply-dunning` | 04:00 | suspends tenants for non-payment | **suspends a customer's payroll**; ships report-only (no `--apply`) |
 
 `aihr-apply-dunning.service` intentionally omits `--apply`, so enabling the timer gives you a nightly
 REPORT and suspends nobody. Adding `--apply` is a second, separate decision.
 
-## Before enabling the two expiry sweeps
+## Before enabling the expiry sweep
 
-They compare a stored date to today. If a tenant has been suspended, running them straight after
+`aihr-expire-aged-leave` used to be listed here too; c459bff9 deleted it along with the leave-type expiry
+feature, so `aihr-expire-carry` is now the only sweep of this kind.
+
+It compares a stored date to today. If a tenant has been suspended, running it straight after
 reinstatement forfeits everything whose expiry fell inside the suspended window — days the employee
 never had a chance to use. `scripts/reactivate-tenant.ts` closes the window and prints the replay plan;
 run reinstatement through it, not by flipping `tenant.status` by hand.

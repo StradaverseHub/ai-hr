@@ -14,9 +14,11 @@
  *
  *   - accrue-earned SELF-HEALS. It computes from service dates up to `asOf`, so the first ordinary run
  *     after reinstatement grants the missed months by construction. Nothing to do.
- *   - expire-carry and expire-aged-leave DO NOT. They compare a STORED DATE to `today`. Run them the
- *     morning after reinstatement and they forfeit every balance whose expiry fell inside the window —
- *     leave the employee could not have used, taken away because their employer was late paying.
+ *   - expire-carry DOES NOT. It compares a STORED DATE to `today`. Run it the morning after reinstatement
+ *     and it forfeits every balance whose expiry fell inside the window — leave the employee could not
+ *     have used, taken away because their employer was late paying. (c459bff9 deleted the second sweep of
+ *     this kind, expire-aged-leave, along with the whole leave-type expiry feature; the reasoning below is
+ *     unchanged and still governs expire-carry.)
  *
  * So reinstatement closes the window FIRST, and the expiry sweeps read it: an expiry whose clock ran
  * through frozen time moves out by exactly that many days. Not skipped, not waived — moved, so the
@@ -96,7 +98,10 @@ async function main() {
 
     // The sweeps that skipped this tenant, from r108's run-log `skipped` entries. Passed in rather than
     // queried here so the plan is computed from the same record the sweeps actually wrote.
-    const skipped: SkippedSweep[] = ['accrue-earned', 'expire-carry', 'expire-aged-leave', 'review-sweep'].map((s) => ({
+    // c459bff9: 'expire-aged-leave' is gone from this list because the sweep was deleted. It moves in
+    // lockstep with core/tenant-lifecycle.ts DATE_CLOCK_SWEEPS — a name left here but absent there prints
+    // "unrecognised sweep" on this very report, which reads as a fault rather than a deliberate absence.
+    const skipped: SkippedSweep[] = ['accrue-earned', 'expire-carry', 'review-sweep'].map((s) => ({
       sweep: s,
       skippedOn: open?.suspendedAt ?? today,
     }));

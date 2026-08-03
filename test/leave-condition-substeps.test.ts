@@ -28,9 +28,15 @@
  *    marked with an applies-company-wide badge. 10e96227 then replaced its per-company rows with ONE
  *    ChipMultiSelect over companyIds + ONE Save posting setLeaveHalfDayFullDeductionCompaniesAction; the
  *    stored shape is still one boolean per company, and the retired per-row action is asserted absent.
- *  - Expiry: the fec49317 age-from-earning expiry moved here from Eligibility — same expiry=1 marker, same
- *    non-Annual/non-EMERGENCY gate. Annual types see a pointer to General → Carry Forward Policy (their
- *    carry-expiry stays there); Emergency Leave gets a no-balance note instead of a dead form.
+ *
+ * c459bff9 REMOVED the third sub-step (Expiry) outright — for EVERY leave type, including the
+ * explanatory-text variants Annual and Emergency saw. The sub-step bar is built unconditionally from
+ * ESS_SUB_STEP_KEYS, so shortening that list is what makes the step disappear everywhere; only the
+ * number+unit FORM was ever behind the !isAnnual && code !== 'EMERGENCY' gate. Condition is now TWO steps.
+ * A tripwire below asserts the panel source carries no expiry form fields, so the step cannot creep back
+ * in by accident. NOTE the Criteria test 'adds no new translation keys…' still pins expiryUnitMonths /
+ * expiryUnitDays: those two keys SURVIVE because the Criteria sub-step's Min Service unit select
+ * deliberately reuses them.
  *
  * Static source guard (the repo convention for this DOM-runner-less component; see
  * leave-type-config-categories.test.ts / leave-type-general-substeps.test.ts). Browser verification covers
@@ -57,7 +63,7 @@ const pickerSrc = readFileSync(resolve(here, '../components/leave/half-day-compa
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-const ESS_SUB_STEP_KEYS = ['criteria', 'rules', 'expiry'] as const;
+const ESS_SUB_STEP_KEYS = ['criteria', 'rules'] as const;
 
 /** Slice the Condition card's segment (its CardTitle to the Custom card's CardTitle). */
 function essSegment(): string {
@@ -88,9 +94,9 @@ function subStepSlice(seg: string, key: (typeof ESS_SUB_STEP_KEYS)[number]): str
   return seg.slice(start, next);
 }
 
-describe('08bc6841 · the Condition step REUSES the SubStepBar (three sub-steps in walk order)', () => {
+describe('08bc6841 · the Condition step REUSES the SubStepBar (two sub-steps in walk order, c459bff9)', () => {
   it('renders the shared SubStepBar inside the Condition card — no reinvented nested bar', () => {
-    expect(panelSrc).toContain("const ESS_SUB_STEP_KEYS = ['criteria', 'rules', 'expiry'] as const");
+    expect(panelSrc).toContain("const ESS_SUB_STEP_KEYS = ['criteria', 'rules'] as const");
     const seg = essSegment();
     expect(seg).toContain('<SubStepBar');
     expect(seg).toContain('ESS_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(ESS_SUB_STEP_TITLE_KEY[k]) }))');
@@ -500,22 +506,34 @@ describe('08bc6841 · Half-Day Deduction relocation — single home, same write'
   });
 });
 
-describe('08bc6841 · Expiry — moved from Eligibility, Annual points at the General carry flow', () => {
-  it('the expiry sub-form lives in the expiry sub-step with its marker + non-Annual gate verbatim', () => {
-    const expiry = subStepSlice(essSegment(), 'expiry');
-    expect(expiry).toContain('<input type="hidden" name="expiry" value="1" />');
-    expect(expiry).toContain("{!isAnnual && code !== 'EMERGENCY' && (");
-    expect(expiry).toContain('name="expiryValue"');
-    expect(expiry).toContain('name="expiryUnit"');
-    expect(expiry).toContain('action={updateTypeAction}');
+describe('c459bff9 · the Expiry sub-step is GONE — for every leave type, form and pointers alike', () => {
+  it('the Condition card has no expiry gate, no expiry form fields and no expiry marker', () => {
+    const seg = essSegment();
+    // The gate itself. Shortening ESS_SUB_STEP_KEYS alone would hide the bar entry but leave a dead block.
+    expect(seg).not.toContain("{essSubStep === 'expiry' && (");
+    // The form. This is the tripwire: these two names are what the server action keyed the write off.
+    expect(panelSrc).not.toContain('name="expiryValue"');
+    expect(panelSrc).not.toContain('name="expiryUnit"');
+    expect(panelSrc).not.toContain('name="expiry" value="1"');
   });
 
-  it('Annual shows the carry-forward pointer; Emergency shows the no-balance note (no dead forms)', () => {
-    const expiry = subStepSlice(essSegment(), 'expiry');
-    expect(expiry).toContain('{isAnnual && (');
-    expect(expiry).toContain("t('conditionStep.expiryAnnualPointer')");
-    expect(expiry).toContain("{!isAnnual && code === 'EMERGENCY' && (");
-    expect(expiry).toContain("t('conditionStep.expiryEmergencyNote')");
+  it('the explanatory-text variants Annual and Emergency saw are gone too, not just the form', () => {
+    // The reporter's complaint was that EVERY leave type showed the step. The form was behind
+    // !isAnnual && code !== 'EMERGENCY'; the POINTERS were not, so removing only the form would have
+    // left Annual and Emergency still looking at a third step.
+    expect(panelSrc).not.toContain("t('conditionStep.expiryAnnualPointer')");
+    expect(panelSrc).not.toContain("t('conditionStep.expiryEmergencyNote')");
+    expect(panelSrc).not.toContain("t('expirySectionTitle')");
+    expect(panelSrc).not.toContain("t('expirySectionHelp')");
+    expect(panelSrc).not.toContain("t('expiryValueLabel')");
+    expect(panelSrc).not.toContain("t('expiryValuePlaceholder')");
+    expect(panelSrc).not.toContain("t('expiryUnitLabel')");
+  });
+
+  it('the storage columns are gone from the panel props as well as the markup', () => {
+    // A prop left threaded through would keep core/read.ts projecting a column that no longer exists.
+    expect(panelSrc).not.toMatch(/\bexpiryValue\b/);
+    expect(panelSrc).not.toMatch(/\bexpiryUnit\b(?!Months|Days)/);
   });
 });
 
@@ -524,20 +542,12 @@ describe('08bc6841 · i18n — all six locales', () => {
     const en = JSON.parse(readFileSync(resolve(here, '../messages/en.json'), 'utf8'));
     expect(en.admin.leave.conditionStep.criteria).toBe('Criteria');
     expect(en.admin.leave.conditionStep.rules).toBe('Leave Application Rules');
-    expect(en.admin.leave.conditionStep.expiry).toBe('Expiry');
     for (const loc of LOCALES) {
       const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
       const leave = msgs?.admin?.leave ?? {};
       expect(typeof leave.conditionStepsLabel, `${loc} conditionStepsLabel`).toBe('string');
       const sub = leave.conditionStep ?? {};
-      for (const key of [
-        'criteria',
-        'rules',
-        'expiry',
-        'halfDayCompanyWideBadge',
-        'expiryAnnualPointer',
-        'expiryEmergencyNote',
-      ]) {
+      for (const key of ['criteria', 'rules', 'halfDayCompanyWideBadge']) {
         expect(typeof sub[key], `${loc}.admin.leave.conditionStep.${key}`).toBe('string');
         expect((sub[key] as string).length, `${loc}.admin.leave.conditionStep.${key} non-empty`).toBeGreaterThan(0);
       }
@@ -562,6 +572,45 @@ describe('08bc6841 · i18n — all six locales', () => {
       for (const key of ['halfDayDeductionOn', 'halfDayDeductionOff', 'halfDayDeductionToggleLabel']) {
         expect(leave[key], `${loc}.admin.leave.${key} should be retired`).toBeUndefined();
       }
+    }
+  });
+
+  /**
+   * c459bff9 orphan guard. THE LIST IS EXPLICIT ON PURPOSE — never a substring match on "expiry".
+   * `expiryUnitMonths` and `expiryUnitDays` contain the word and MUST SURVIVE: the Criteria sub-step's
+   * Min Service unit select deliberately reuses them, and deleting them fails i18n-coverage check C.
+   * The positive half of this pair is asserted first so the two can never drift apart.
+   */
+  it('retires exactly the expiry copy the deleted sub-step owned, and keeps the two shared unit keys', () => {
+    const RETIRED_LEAVE = [
+      'expirySectionTitle',
+      'expirySectionHelp',
+      'expiryValueLabel',
+      'expiryValuePlaceholder',
+      'expiryUnitLabel',
+    ];
+    const RETIRED_CONDITION_STEP = ['expiry', 'expiryAnnualPointer', 'expiryEmergencyNote'];
+    const KEPT_LEAVE = ['expiryUnitMonths', 'expiryUnitDays'];
+    for (const loc of LOCALES) {
+      const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
+      const leave = msgs?.admin?.leave ?? {};
+      for (const key of KEPT_LEAVE) {
+        expect(typeof leave[key], `${loc}.admin.leave.${key} MUST survive (Min Service unit select)`).toBe('string');
+      }
+      for (const key of RETIRED_LEAVE) {
+        expect(leave[key], `${loc}.admin.leave.${key} should be retired`).toBeUndefined();
+      }
+      for (const key of RETIRED_CONDITION_STEP) {
+        expect(
+          (leave.conditionStep ?? {})[key],
+          `${loc}.admin.leave.conditionStep.${key} should be retired`,
+        ).toBeUndefined();
+      }
+      // The Scheduled Actions row for the deleted sweep goes with the sweep.
+      expect(
+        msgs?.scheduledActions?.jobs?.['leave-expire-aged'],
+        `${loc}.scheduledActions.jobs.leave-expire-aged should be retired`,
+      ).toBeUndefined();
     }
   });
 });

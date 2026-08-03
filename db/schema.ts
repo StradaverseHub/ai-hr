@@ -1157,17 +1157,14 @@ export const leaveType = pgTable('leave_type', {
   // may attach a per-type custom block message via customMessages.minAdvanceDays (the 0147 JSONB extension
   // point below — no second column).
   minAdvanceDays: integer('min_advance_days'),
-  // Leave Type Expiry Field (fec49317): OPTIONAL age-from-earning expiry for this leave type. Each accrual
-  // portion lapses `expiry_value` `expiry_unit` (months | days) after the date it was earned (its ledger
-  // effective_on); the expireAgedLeave sweep (core/leave.ts) posts a negative `adjustment` per due batch,
-  // so lapsed days drop out of the balance (a plain ledger sum) and therefore out of encashment. Reuses the
-  // TOIL expires-on / oldest-first sweep pattern — NOT the carry-forward reconstruction. Both null ⇒ no
-  // expiry (existing behaviour; nothing breaks for current types). SCOPE: deliberately NOT applied to
-  // ANNUAL (that code already has per-policy carry-forward expiry via expireCarriedLeave — layering a second
-  // age-expiry there would double-forfeit); the sweep filters ANNUAL out. `expiry_unit` is constrained to
-  // 'months' | 'days' by a DB check; `expiry_value` must be >= 1 (validated in updateLeaveType).
-  expiryValue: integer('expiry_value'),
-  expiryUnit: text('expiry_unit'), // 'months' | 'days' (null when no expiry)
+  // REMOVED by c459bff9 (migration 0370): `expiry_value` / `expiry_unit`, the age-from-earning expiry pair
+  // added by fec49317 (migration 0155), together with 0155's three CHECK constraints and the expireAgedLeave
+  // sweep that read them. An intentional RESET, not a feature deletion — a new expiry framework is designed
+  // separately (6e9a126e) and inherits a clean slate rather than a legacy column pair. ANNUAL's carry-forward
+  // expiry (carry_forward_expiry_* / expireCarriedLeave) is a DIFFERENT clock over a DIFFERENT population
+  // (the leftover carried across a year end, counted from year end, not the age of an earned day) and is
+  // UNTOUCHED. Ledger rows already stamped AGED_FORFEIT_REASON ('sys:leave_type_expiry') are KEPT and still
+  // read — see the constant's comment in core/leave.ts for why it must not be deleted.
   // Custom validation messages (custom-messages migration): admin-authored override text shown to the
   // employee when a leave-validation rule blocks their request, keyed by the same camelCase field name as
   // the rule's config column (e.g. { backdatingLimitDays: "…" }). null/absent key ⇒ show the built-in
@@ -1450,7 +1447,8 @@ export const leaveType = pgTable('leave_type', {
   //     or 'working_days' (only the days the application actually CHARGES). Friday→Monday is 4 of the first
   //     and 2 of the second: the same number means different things, which is why the reporter asked to
   //     choose. TEXT + CHECK, not a pgEnum — a new enum value cannot be used in the transaction that adds
-  //     it (the 0338 lesson); expiry_unit on this table is the precedent.
+  //     it (the 0338 lesson); leave_unit on this table (leave_type_leave_unit_ck, migration 0182) is the
+  //     precedent. It used to cite expiry_unit, which c459bff9 dropped along with the whole expiry pair.
   //
   // THE SECOND PER-APPLICATION CAP, DELIBERATELY. leave_shared_group.max_days_per_application caps one
   // application too, for every type in a shared group. The two are NOT independent mechanisms: they are one
@@ -5761,8 +5759,9 @@ export const leaveEncashmentSnapshot = pgTable(
 );
 
 // ─────────────────── Scheduled-actions run log (job_run, migration 0280) ───────────────────
-// The operator-tier record of the four out-of-band sweeps (leave.accrue / review.sweep /
-// leave.expire-carry / leave.expire-aged). Modelled on statutoryPackSyncLog above: GLOBAL (no
+// The operator-tier record of the out-of-band sweeps (leave.accrue / review.sweep /
+// leave.expire-carry / usage.capture — c459bff9 removed leave.expire-aged along with the sweep, though
+// any rows it already wrote STAY in this table). Modelled on statutoryPackSyncLog above: GLOBAL (no
 // tenantId — one run fans out across every tenant), written ONLY by the scripts under the owner role
 // (MIGRATION_DATABASE_URL), read-only in the app. 0280 REVOKEs INSERT/UPDATE/DELETE from ai_hr_app
 // and gates SELECT on app.is_group_admin(); there is deliberately no write seam, because
@@ -5771,7 +5770,7 @@ export const leaveEncashmentSnapshot = pgTable(
 // `outcome` is text, not a pgEnum (the 0275 widening lesson) — 'success' | 'partial' | 'failed',
 // controlled in code by core/job-run.ts. `result` is jsonb holding CROSS-TENANT AGGREGATE counters
 // only (no per-tenant breakdown — any tenant's group admin can read this table), and must never be
-// coerced to integers: expire-carry / expire-aged aggregate forfeited days as a rounded FLOAT.
+// coerced to integers: expire-carry aggregates forfeited days as a rounded FLOAT.
 export const jobRun = pgTable(
   'job_run',
   {

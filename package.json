@@ -22,7 +22,6 @@
     "db:seed": "node --env-file=.env.local --import tsx db/seed.ts",
     "leave:accrue": "node --env-file=.env.local --import tsx scripts/accrue-earned.ts",
     "leave:expire-carry": "node --env-file=.env.local --import tsx scripts/expire-carry.ts",
-    "leave:expire-aged": "node --env-file=.env.local --import tsx scripts/expire-aged-leave.ts",
     "review:sweep": "node --env-file=.env.local --import tsx scripts/review-sweep.ts",
     "usage:capture": "node --env-file=.env.local --import tsx scripts/capture-usage.ts",
     "feedback:plan": "node --env-file=.env.local --import tsx scripts/feedback-plan.ts",

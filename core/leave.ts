@@ -3,7 +3,8 @@
  * (accrual +, debit −, adjustment ±). Approval checks projected balance and writes
  * the debit + status flip + event atomically in one transaction.
  */
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
+// `isNotNull` and `ne` left with the expireAgedLeave sweep (c459bff9) — it was the only caller of either.
+import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
@@ -5575,12 +5576,24 @@ export const STANDING_LEAVE_CODES = ['ANNUAL', 'SICK', 'HOSPITALIZATION'] as con
 export const CARRY_FORFEIT_REASON_CAP = 'sys:carry_forward_cap';
 export const CARRY_FORFEIT_REASON_EXPIRY = 'sys:carry_forward_expiry';
 /**
- * Leave Type Expiry Field (fec49317) — reason stamped on the automatic negative `adjustment` the
- * expireAgedLeave sweep posts when an earned portion lapses `leave_type.expiry_value expiry_unit` after the
- * date it was earned. A DISTINCT `sys:` code so its idempotency (reason + date + magnitude) can never
- * collide with the carry-forward forfeit codes above or a human festive-grant reason. Reason-blind readers
- * (leaveBalance, leaveEntitlementBreakdown) treat it exactly like any other negative adjustment — the day
- * leaves the balance but stays a real ledger row, so it remains visible in reports.
+ * LEGACY / READ-ONLY — DO NOT DELETE. NOTHING WRITES THIS ANY MORE, AND THAT IS NOT A REASON TO REMOVE IT.
+ *
+ * Leave Type Expiry Field (fec49317) — the reason stamped on the automatic negative `adjustment` the
+ * expireAgedLeave sweep used to post when an earned portion lapsed `leave_type.expiry_value expiry_unit`
+ * after the date it was earned. c459bff9 REMOVED the writer (the sweep, the columns, the screen) as an
+ * intentional reset ahead of a new expiry framework. The constant and its READERS stay, because rows
+ * carrying this reason are transactions employees have already seen and deleting the constant would
+ * silently rewrite that history:
+ *   - core/read.ts classifyLedgerAdjustment would fall through to 'config', so every past AUTOMATIC forfeit
+ *     would render as a MANUAL HR adjustment;
+ *   - core/read.ts agedForfeited would drop out of the `forfeited` fold and the reconciliation identity
+ *     `entitlement + carried + otherAdjustments - taken - forfeited = balance` would stop balancing;
+ *   - a2cSupersededReasonCond would stop superseding those rows in the first-year Anniversary-to-Calendar
+ *     correction, changing first-year entitlement figures.
+ * A new expiry framework MUST mint its own reason code rather than reusing this one — that is what keeps
+ * old and new forfeits distinguishable. Reason-blind readers (leaveBalance, leaveEntitlementBreakdown)
+ * treat it exactly like any other negative adjustment: the day left the balance but stays a real ledger
+ * row, so it remains visible in reports.
  */
 export const AGED_FORFEIT_REASON = 'sys:leave_type_expiry';
 /**
@@ -8619,185 +8632,6 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
       aggregateType: 'leave-year',
       aggregateId: ctx.tenantId,
       eventType: 'leave.carry-forward.swept',
-      actor: actorOf(ctx),
-      payload: { today: p.today, swept, forfeited: forfeitedTotal },
-    });
-    return { swept, forfeited: forfeitedTotal };
-  });
-}
-
-// ═════════════════════ Leave Type Expiry Field (fec49317) — age-from-earning sweep ═════════════════════
-// Reuses the TOIL expires-on / oldest-first pattern (toil_accrual aged from its worked date), NOT the
-// carry-forward reconstruction. For every leave type that has BOTH expiry_value and expiry_unit configured
-// AND whose code is NOT ANNUAL (ANNUAL is owned by expireCarriedLeave; a second age-based forfeit there
-// would double-count against the carry-cap / boundary / carry-expiry writers), each `accrual` ledger row
-// lapses `expiry_value expiry_unit` after its effective_on. When that date has passed, the still-unconsumed
-// remainder of that batch is forfeited as one negative `adjustment` dated at the batch's expiry date and
-// stamped AGED_FORFEIT_REASON. Because leaveBalance is a plain signed ledger sum, the forfeit immediately
-// leaves the balance (and the manual encashment advisory that reads it) while remaining a real ledger row
-// (so it still shows in reports).
-//
-// Consumption model (oldest batch first): a batch's forfeitable = min( batchRemaining, currentBalance ),
-// where batchRemaining is what is left of THAT accrual after subtracting everything the ledger has already
-// removed against it — later debits, earlier aged-forfeits, and forfeits posted earlier in THIS run — and
-// currentBalance is re-read live before each posted batch. Capping at the live balance is what makes it
-// safe to coexist with the other negative-adjustment writers: we can never forfeit days that some other
-// mechanism already forfeited, because they are no longer in the balance. Idempotent: the distinct reason
-// code + (effective_on, magnitude) key means a re-run forfeits nothing.
-
-/** Real-calendar expiry date for an earned batch: `effectiveOn` plus N months (day clamped to the target
- *  month's real last day, leap-correct) or N days. Pure + unit-testable. Mirrors expireCarriedLeave's
- *  lastRealDayOfMonth clamp so the emitted string is always a valid `date`. */
-export function agedExpiryDate(effectiveOn: string, value: number, unit: 'months' | 'days'): string {
-  const [y, m, d] = effectiveOn.split('-').map(Number);
-  if (unit === 'days') {
-    // Day arithmetic via UTC epoch (DST-free) — matches toil.ts addDays semantics.
-    const base = new Date(Date.UTC(y, m - 1, d));
-    base.setUTCDate(base.getUTCDate() + value);
-    return base.toISOString().slice(0, 10);
-  }
-  // months: advance the month, then clamp the day to that month's real last day (29 Feb → 28 Feb, etc.).
-  const targetMonthIndex = m - 1 + value;
-  const targetYear = y + Math.floor(targetMonthIndex / 12);
-  const targetMonth = (targetMonthIndex % 12) + 1; // 1-based
-  const dd = Math.min(d, lastRealDayOfMonth(targetYear, targetMonth));
-  return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-}
-
-export async function expireAgedLeave(ctx: SessionContext, p: { today: string }) {
-  return withTenant(ctx, async (tx) => {
-    // Types with a configured age-expiry pair, excluding ANNUAL (owned by the carry-expiry engine).
-    const types = await tx
-      .select({ id: leaveType.id, code: leaveType.code, expiryValue: leaveType.expiryValue, expiryUnit: leaveType.expiryUnit })
-      .from(leaveType)
-      .where(
-        and(
-          isNull(leaveType.archivedAt),
-          isNotNull(leaveType.expiryValue),
-          isNotNull(leaveType.expiryUnit),
-          ne(leaveType.code, 'ANNUAL'),
-        ),
-      );
-    if (types.length === 0) return { swept: 0, forfeited: 0 };
-    const typeIds = types.map((t) => t.id);
-
-    const emps = await tx
-      .select({ employmentId: employment.id })
-      .from(employment)
-      .where(and(lte(employment.hiredOn, p.today), or(isNull(employment.terminatedOn), gte(employment.terminatedOn, `${Number(p.today.slice(0, 4))}-01-01`))));
-    if (emps.length === 0) return { swept: 0, forfeited: 0 };
-    const empIds = emps.map((e) => e.employmentId);
-
-    // ADR-0069: never touch (employment, type) pairs frozen for an active encashment snapshot.
-    const frozenSet = await frozenSnapshotKeySet(tx, empIds, typeIds);
-
-    let swept = 0;
-    let forfeitedTotal = 0;
-    for (const t of types) {
-      const value = t.expiryValue!;
-      const unit = (t.expiryUnit as 'months' | 'days');
-      for (const e of emps) {
-        if (frozenSet.has(`${e.employmentId}|${t.id}`)) continue;
-        // Every accrual portion, oldest first. accrual rows only: this auto-covers hire-grant + monthly
-        // earned accruals and auto-excludes ad-hoc festive grants (entryType 'adjustment') and TOIL credits
-        // (entryType 'in_lieu_accrual'), which have their own expiry engine.
-        const accruals = await tx
-          .select({ days: leaveLedger.days, effectiveOn: leaveLedger.effectiveOn })
-          .from(leaveLedger)
-          .where(
-            and(
-              eq(leaveLedger.employmentId, e.employmentId),
-              eq(leaveLedger.leaveTypeId, t.id),
-              eq(leaveLedger.entryType, 'accrual'),
-            ),
-          )
-          .orderBy(asc(leaveLedger.effectiveOn));
-        if (accruals.length === 0) continue;
-
-        // Prior aged-forfeits already posted for this pair, keyed by their effective_on (the batch expiry
-        // date), so a re-run recognises what it already forfeited and never doubles it.
-        const priorAged = await tx
-          .select({ days: leaveLedger.days, effectiveOn: leaveLedger.effectiveOn })
-          .from(leaveLedger)
-          .where(
-            and(
-              eq(leaveLedger.employmentId, e.employmentId),
-              eq(leaveLedger.leaveTypeId, t.id),
-              eq(leaveLedger.entryType, 'adjustment'),
-              eq(leaveLedger.reason, AGED_FORFEIT_REASON),
-            ),
-          );
-        const agedByDate = new Map<string, number>();
-        for (const r of priorAged) agedByDate.set(r.effectiveOn, round2((agedByDate.get(r.effectiveOn) ?? 0) + -Number(r.days)));
-
-        // Total debits taken against this pair (all-time). Debits reduce the OLDEST unconsumed accrual first
-        // (a weak FIFO assumption consistent with the carry engine's "how much could have been eaten"). We
-        // walk accruals oldest→newest, letting the running debit pool consume each batch before it can be
-        // forfeited, so a day that was actually TAKEN is never forfeited.
-        const [debitRow] = await tx
-          .select({ taken: sql<string>`coalesce(-sum(${leaveLedger.days}), 0)` })
-          .from(leaveLedger)
-          .where(
-            and(
-              eq(leaveLedger.employmentId, e.employmentId),
-              eq(leaveLedger.leaveTypeId, t.id),
-              eq(leaveLedger.entryType, 'debit'),
-            ),
-          );
-        let debitPool = Number(debitRow?.taken ?? 0);
-        // Prior aged-forfeits also permanently consumed part of an earlier batch — pool them in with debits
-        // so a batch already forfeited (in a previous run) is not reconsumed here.
-        let priorAgedPool = round2([...agedByDate.values()].reduce((s, v) => s + v, 0));
-
-        for (const a of accruals) {
-          const batch = Number(a.days);
-          if (batch <= 0) continue;
-          // Consume this batch with the debit pool first (FIFO), then with the prior-aged pool.
-          let remaining = batch;
-          const eatDebit = Math.min(remaining, debitPool);
-          remaining = round2(remaining - eatDebit);
-          debitPool = round2(debitPool - eatDebit);
-          const eatAged = Math.min(remaining, priorAgedPool);
-          remaining = round2(remaining - eatAged);
-          priorAgedPool = round2(priorAgedPool - eatAged);
-          if (remaining <= 0) continue; // fully consumed by debits / earlier forfeits
-
-          const expiryDate = agedExpiryDate(a.effectiveOn, value, unit);
-          if (expiryDate > p.today) continue; // not yet due
-
-          // Idempotency: a forfeit of this magnitude at this expiry date already exists ⇒ this batch was
-          // swept before (matches expireCarriedLeave's date+magnitude guard, but reason-scoped).
-          if ((agedByDate.get(expiryDate) ?? 0) >= remaining - 0.001) continue;
-
-          // Cap at what is actually still in the balance now — never forfeit days some other writer already
-          // removed, and never drive the balance negative (R1 safety net across all forfeit engines).
-          const currentBalance = await leaveBalance(tx, e.employmentId, t.id);
-          const forfeit = round2(Math.min(remaining, Math.max(currentBalance, 0)));
-          if (forfeit <= 0) continue;
-
-          await tx.insert(leaveLedger).values({
-            tenantId: ctx.tenantId,
-            employmentId: e.employmentId,
-            leaveTypeId: t.id,
-            entryType: 'adjustment',
-            days: (-forfeit).toFixed(2),
-            effectiveOn: expiryDate,
-            reason: AGED_FORFEIT_REASON,
-          });
-          agedByDate.set(expiryDate, round2((agedByDate.get(expiryDate) ?? 0) + forfeit));
-          swept += 1;
-          forfeitedTotal = round2(forfeitedTotal + forfeit);
-        }
-      }
-    }
-
-    // One summary event; the ledger rows are the per-item audit (deliberate substrate skip, mirroring
-    // expireCarriedLeave / accrueEarnedLeave / openLeaveYear).
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-year',
-      aggregateId: ctx.tenantId,
-      eventType: 'leave.aged.swept',
       actor: actorOf(ctx),
       payload: { today: p.today, swept, forfeited: forfeitedTotal },
     });

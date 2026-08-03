@@ -567,10 +567,6 @@ export function listLeaveTypes(
         // reload for a type that actually has a cap ("my setting didn't save").
         maxConsecutiveDays: leaveType.maxConsecutiveDays,
         maxConsecutiveUnit: leaveType.maxConsecutiveUnit,
-        // Leave Type Expiry Field (fec49317): the age-from-earning expiry pair — feeds the admin panel's
-        // "Leave expiry" sub-form (MUST be projected or the inputs render empty on every reload).
-        expiryValue: leaveType.expiryValue,
-        expiryUnit: leaveType.expiryUnit,
         // Partial Leave Approval (ADR-0068): feeds the admin panel's per-date toggle (MUST be projected or the
         // checkbox renders unchecked on every reload). counting is already selected above — the panel needs it
         // to grey out the toggle for calendar-counted types where the feature can never fire.

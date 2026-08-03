@@ -153,7 +153,9 @@ describe('slice 7 — the migration states the privilege, and the bootstrap crea
 
 describe('slice 7 — the sweep units exist, and none of them are enabled by deploy.sh', () => {
   const dir = path.resolve(__dirname, '..', 'deploy', 'systemd');
-  const SWEEPS = ['usage-capture', 'accrue-earned', 'expire-carry', 'expire-aged-leave', 'apply-dunning'];
+  // c459bff9 removed 'expire-aged-leave': its .service and .timer were deleted with the sweep, and the
+  // existsSync assertion below would fail on them directly.
+  const SWEEPS = ['usage-capture', 'accrue-earned', 'expire-carry', 'apply-dunning'];
 
   it('every built sweep has a service and a timer', () => {
     for (const s of SWEEPS) {

@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { desc, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { JOBS, jobOutcome, recordJobRun } from '../core/job-run';
+import { JOBS, JOB_KEYS, jobOutcome, recordJobRun } from '../core/job-run';
 import { closeAll, migrateTestDb, owner, resetDb } from './harness';
 
 const runsFor = (jobKey: string) =>
@@ -54,7 +54,7 @@ describe('0280 — job_run recorder', () => {
     expect(row.error).toBeNull();
   });
 
-  // The single most important storage property: expire-carry / expire-aged aggregate forfeited DAYS as a
+  // The single most important storage property: expire-carry aggregates forfeited DAYS as a
   // rounded float. Coercing result to integers (or rendering it with parseInt) would silently report 12
   // days forfeited where 12.5 were actually taken from employees.
   it('fractional counters in result survive the round-trip un-truncated', async () => {
@@ -112,8 +112,14 @@ describe('0280 — job_run recorder', () => {
     // Stated ABSOLUTELY and deliberately: adding a sweep must fail here until its i18n strings and its
     // job_run wiring are done too. r113 added usage.capture and this is what made that visible.
     expect(JOBS.map((j) => j.key).sort()).toEqual(
-      ['leave.accrue', 'leave.expire-aged', 'leave.expire-carry', 'review.sweep', 'usage.capture'].sort(),
+      ['leave.accrue', 'leave.expire-carry', 'review.sweep', 'usage.capture'].sort(),
     );
+    // c459bff9 removed 'leave.expire-aged' — the sweep, its script and the columns it read are gone, so
+    // the Scheduled Actions screen must not offer a job that can never run again. Asserted by NAME as well
+    // as by the exact list above: the equality alone would pass if a future edit re-added it AND re-added
+    // it to the expected list in the same breath, which is exactly the mechanical edit to guard against.
+    expect(JOB_KEYS).not.toContain('leave.expire-aged');
+    expect(JOBS.map((j) => j.key)).not.toContain('leave.expire-aged');
     // A dot in a next-intl key is a namespace separator, so 'leave.accrue' would resolve as a nested
     // object rather than a leaf message. The registry swaps it for a dash.
     for (const j of JOBS) expect(j.i18nKey).not.toContain('.');

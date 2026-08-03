@@ -774,8 +774,6 @@ export default async function LeaveEntitlementsPage({
                   : null
               }
               minAdvanceDays={lt.minAdvanceDays ?? null}
-              expiryValue={lt.expiryValue ?? null}
-              expiryUnit={lt.expiryUnit ?? null}
               customMessages={(lt.customMessages as Record<string, string> | null) ?? null}
               essViewConfig={(lt.essViewConfig as Record<string, boolean> | null) ?? null}
               formulaExplanations={(lt.formulaExplanations as Record<string, LeaveFormulaEntry> | null) ?? null}
