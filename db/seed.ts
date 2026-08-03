@@ -10,7 +10,7 @@ import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection } from '../packs/attendance/service';
 import { requestLeave, decideLeave, addLeaveAttachment, accrueEarnedLeave } from '../core/leave';
-import { createLeavePolicy, createJobGrade } from '../core/admin';
+import { createLeavePolicy, createJobGrade, setLeaveTypeRules } from '../core/admin';
 import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../packs/performance/service';
 // Rung 5c (ADR-0080 D1) — the demo statutory profile is written through the pack registry, not a
 // direct localization/my import (myPack was already unused here). requirePackFor fails closed for an
@@ -253,10 +253,24 @@ async function main() {
   // r88 (fa3f4ccb): this comment used to read "max(EA floor 8, policy 12) = 12". The statutory floor no
   // longer OVERRIDES configuration — it is a warning now, not a minimum — so the 12 stands on its own.
   // ANNUAL was never at risk (12 > 8), but see the SICK policy below, which WAS.
+  // bc36c768 — THE EARNING METHOD IS SET ON THE LEAVE TYPE, NOT ON THE POLICY ROW, and this is the seed's
+  // half of the reset. The two `createLeavePolicy(... method: 'earned_monthly' ...)` calls this replaces
+  // wrote the method into `leave_policy.accrual` — the duplicated second surface migration 0376 strips
+  // from every existing row. A seed that kept writing it would re-introduce, on every fresh tenant, the
+  // exact key the reset removes, and the reset would be untrue for anyone provisioned after it.
+  //
+  // ONE CALL COVERS BOTH POLICY ROWS below (the 12-day group default and the 18-day Executive override),
+  // which is the consolidation working as intended: the policy row decides the DAYS, the leave TYPE
+  // decides the RULE. Through `setLeaveTypeRules` — the single writer — rather than a direct column
+  // update, so the seed exercises the same validation and the same audit event a real save does.
+  //
+  // accrualDay 1 is stated EXPLICITLY rather than left null. Null means day 1 too, but a demo tenant is
+  // the thing people read to learn what a configured leave type looks like, and "configured to credit on
+  // the 1st" and "never told us when to credit" should not look identical there.
+  await setLeaveTypeRules(admin, { id: annual.id, accrualMethod: 'earned_monthly', accrualDay: 1 });
   await createLeavePolicy(admin, {
     leaveTypeId: annual.id,
     annualDays: 12,
-    method: 'earned_monthly',
     validFrom: '2026-01-01',
   });
   // r88 (fa3f4ccb) — SICK MUST BE CONFIGURED EXPLICITLY NOW, and this is the seed's half of a real
@@ -283,10 +297,11 @@ async function main() {
   // 12-day default), so a graded employee (Daniel, below) accrues more — grade-based entitlement, visible.
   const execGrade = await createJobGrade(admin, { code: 'EXEC', name: 'Executive', rank: 1 });
   await createJobGrade(admin, { code: 'NONEXEC', name: 'Non-Executive', rank: 2 });
+  // bc36c768: no `method` here either — the type-level rule set above governs every policy row under
+  // ANNUAL, this one included. Executives earn 18 days instead of 12; they earn them the same way.
   await createLeavePolicy(admin, {
     leaveTypeId: annual.id,
     annualDays: 18,
-    method: 'earned_monthly',
     gradeId: execGrade.id,
     validFrom: '2026-01-01',
   });

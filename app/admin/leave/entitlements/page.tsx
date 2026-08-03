@@ -740,6 +740,12 @@ export default async function LeaveEntitlementsPage({
               // round-trip a string and the tri-state comparisons in the action misread them.
               typeRules={{
                 accrualMethod: lt.accrualMethod ?? null,
+                // bc36c768: the credit day, and the NOT-CONFIGURED marker as an ISO STRING. A Date would
+                // very likely survive the boundary, but "very likely" is not the standard this file is
+                // held to since r123 shipped an unserialisable prop to production — a plain string is
+                // unambiguous, and the panel only ever asks whether it is null.
+                accrualDay: lt.accrualDay ?? null,
+                accrualUnconfigured: lt.accrualUnconfigured ? lt.accrualUnconfigured.toISOString() : null,
                 carryForwardEnabled: lt.carryForwardEnabled ?? null,
                 carryForwardMax: lt.carryForwardMax == null ? null : Number(lt.carryForwardMax),
                 // 7cd914b1: numeric(5,2) — same string-to-number treatment as every other numeric here.

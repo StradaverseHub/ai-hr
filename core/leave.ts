@@ -6343,6 +6343,17 @@ export async function buildSchemeEntitlementResolver(
  */
 export const leaveTypeRuleColumns = {
   accrualMethod: leaveType.accrualMethod,
+  // bc36c768 (0375): the fourteenth column — which day of the month Monthly Accrual credits on. Here for
+  // the reason the header gives: an accrual day the accrual engine honours but the projection kernel does
+  // not is, precisely, the permanent oscillating delta this map exists to prevent (on the 10th with a
+  // credit day of 15, one side counts N-1 periods and the other counts N, on every profile edit forever).
+  accrualDay: leaveType.accrualDay,
+  // bc36c768 (0375/0376): the fifteenth column — THE NOT-CONFIGURED MARKER. It is in this map so it rides
+  // every existing select and each gate can read it off the type row it already has; without it the hire
+  // grant at core/org.ts has nothing to read. It is deliberately NOT in `hasAnyLeaveTypeRule` and NOT in
+  // `applyLeaveTypeRules` — a column may be in the select map without being in the engagement test, and
+  // for this one that gap is the whole design (see the note on hasAnyLeaveTypeRule).
+  accrualUnconfigured: leaveType.accrualUnconfigured,
   carryForwardMax: leaveType.carryForwardMax,
   // 7cd914b1 — the twelfth rule column. It belongs HERE and only here for the reason in the header: eight
   // hand-copied column lists is how the grant engine and the projection kernel come to read different rules.
@@ -6587,7 +6598,28 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         // / the recalc kernel's projection) so the ledger and the kernel can never disagree. The carry-in
         // (`rawCarry`) is deliberately NOT rounded — a fractional carry-over plus a whole-day grant still
         // yields a fractional balance; rounding shapes the ENTITLEMENT, not every balance.
-        const grantRounded = applyRounding(days, pol?.roundingMethod, pol?.roundingThreshold, pol?.roundingBands);
+        const grantRoundedRaw = applyRounding(days, pol?.roundingMethod, pol?.roundingThreshold, pol?.roundingBands);
+        // bc36c768 — THE NOT-CONFIGURED GATE HERE IS A ZEROED GRANT, NOT A `continue`, and the distinction
+        // is the whole reason this gate reads differently from the other four.
+        //
+        // A `continue` at the `isEarnedMethod` line above would skip TWO more things below it:
+        //   (a) the carry-forward cap forfeit — the NEGATIVE row that removes prior-year balance above the
+        //       carry allowance. Skipping it leaves excess balance sitting untouched forever.
+        //   (b) the grant row itself, which is ALWAYS written even at 0 days because it is openLeaveYear's
+        //       own idempotency open-marker (openedSet) AND the expiry sweep's "year was opened" marker.
+        //       expireCarriedLeave short-circuits on the missing marker (`openMarker.n === 0 ⇒ continue`),
+        //       so carried leave for this type would never expire that year either.
+        //
+        // So the type is resolved exactly as it always was and only the GRANT is forced to zero, here,
+        // BEFORE applyMaxBalance. The forfeit computation and the always-written 0-day marker row survive
+        // intact, which is what keeps carry-forward and expiry working through an unconfigured year.
+        //
+        // ONE DISCLOSED CONSEQUENCE, pinned by a test: with the grant at 0 the max-balance clamp has more
+        // headroom, so `carry` can come out HIGHER — and the forfeit correspondingly SMALLER — than a
+        // configured year would produce. That is real and small and upward, and it is the price of keeping
+        // carry and expiry running at all. The alternative (switching the carry rules off for the year)
+        // would leave excess balances untouched and carried leave never expiring, which is worse.
+        const grantRounded = isAccrualUnconfigured(t) ? 0 : grantRoundedRaw;
         // Feedback 9d8cf621 — Maximum Balance Days: clamp the carry-in AND this year's grant so the
         // resulting balance (carry + grant) never exceeds the resolved band's cap. Reducing the carry
         // increases the forfeit below by construction (forfeit = before − carry). No cap ⇒ pass-through.
@@ -6635,10 +6667,34 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
 }
 
 // ── Earned accrual (ADR-0040 / 2D-1) ──────────────────────────────────────────────────────────────
-/** Lump-sum policies (the default) grant at hire + year-open; these earn through the year instead. */
-export const EARNED_METHODS = ['earned_monthly', 'earned_quarterly'] as const;
+/** Lump-sum policies (the default) grant at hire + year-open; these earn through the year instead.
+ *
+ *  bc36c768 added 'earned_daily' and KEPT 'earned_quarterly'. The reporter's list is three choices — None,
+ *  Monthly Accrual, Daily Accrual — and quarterly is gone from the dropdown; but a value the open contract
+ *  still permits (db/schema.ts leave_type.accrual_method carries no DB CHECK) must keep computing what it
+ *  always computed. Retiring a CHOICE and re-interpreting every value already stored under it are two
+ *  different changes and only the first was asked for. Deleting the recognition here would collapse a
+ *  stored 'earned_quarterly' onto the LUMP path, i.e. hand its holders a full year up front — the exact
+ *  silent-downgrade class eee43966 already cost this codebase once. */
+export const EARNED_METHODS = ['earned_monthly', 'earned_quarterly', 'earned_daily'] as const;
 export function isEarnedMethod(m: unknown): m is (typeof EARNED_METHODS)[number] {
-  return m === 'earned_monthly' || m === 'earned_quarterly';
+  return m === 'earned_monthly' || m === 'earned_quarterly' || m === 'earned_daily';
+}
+
+/**
+ * bc36c768 — THE NOT-CONFIGURED GATE, as one predicate every granting and projecting path asks.
+ *
+ * A leave type carrying `accrual_unconfigured` grants nothing and earns nothing until HR saves an earning
+ * method. It is ONE function rather than five inline `!= null` tests because the five call sites must
+ * agree exactly: a path that forgets the gate resolves the cleared type as LUMP and hands out a full
+ * year's entitlement that nothing in this system can take back.
+ *
+ * Deliberately a null test on the marker alone — NOT "the method is absent". Those are different states
+ * and only this one is safe: an absent method has always meant the lump path, and every leave type in
+ * production read that way for years.
+ */
+export function isAccrualUnconfigured(rules: { accrualUnconfigured?: Date | string | null } | null | undefined): boolean {
+  return rules?.accrualUnconfigured != null;
 }
 /** Accrual periods from `start` through `asOf`, inclusive of the current period (month or quarter). */
 function accrualPeriods(start: string, asOf: string, method: string): number {
@@ -6660,6 +6716,126 @@ export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | 
   const [ay, am] = asOf.split('-').map(Number);
   const cycleYear = am >= Number(hireMonth) ? ay : ay - 1;
   return `${cycleYear}-${hireMonth}-01`;
+}
+
+/** Whole days from `from` to `to`, INCLUSIVE of both ends. UTC arithmetic on date-only strings, so no
+ *  timezone or DST offset can shorten a day. Negative windows clamp to 0 at the call sites that care. */
+function daysInclusive(from: string, to: string): number {
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000) + 1;
+}
+
+/** The ACTUAL length of the leave-year window that opens at `cycleStart` — 365, or 366 across a leap day.
+ *  The reporter's "Days in Leave Year": a 20-day entitlement divides by 365 in an ordinary year and by 366
+ *  in a leap one, so the daily slice is right in both.
+ *
+ *  Deliberately NOT the hardcoded /365 of `a2cFirstYearEntitledToDate`. That divisor is fixed on purpose —
+ *  it pins the 19.73 reference figure of a DIFFERENT model (an up-front part-year grant whose value does
+ *  not move with asOf). Only the arithmetic SHAPE is similar; reusing it here would be wrong in a leap
+ *  year and would couple two settings that have no reason to move together. */
+function leaveYearLength(cycleStart: string): number {
+  const [y, m, d] = cycleStart.split('-').map(Number);
+  return Math.round((Date.UTC(y + 1, m - 1, d) - Date.UTC(y, m - 1, d)) / 86400000);
+}
+
+/**
+ * bc36c768 — THE CONFIGURED CREDIT DAY, CLAMPED TO A DAY THAT EXISTS IN `asOf`'s MONTH.
+ *
+ * The reporter asked for any day from 1 to 31, and named the awkward case themselves: day 31 must credit
+ * on 28 February in an ordinary year and on 29 February in a leap one. A month that never reaches the
+ * configured day would be SKIPPED ENTIRELY, and a skipped month is a permanent hole in a cumulative
+ * to-date model — the accrual engine only ever tops UP (`toGrant > 0`), so nothing later fills it in.
+ *
+ * Absent ⇒ 1, which makes every comparison below vacuously true and the whole gate byte-identical to the
+ * behaviour every existing configuration has today.
+ */
+export function effectiveAccrualDay(asOf: string, accrualDay?: number | null): number {
+  const wanted = accrualDay == null ? 1 : Math.min(31, Math.max(1, Math.trunc(accrualDay)));
+  const [y, m] = asOf.split('-').map(Number);
+  // Day 0 of the NEXT month is the last day of this one — leap-correct without a leap-year branch.
+  const lastDayOfMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return Math.min(wanted, lastDayOfMonth);
+}
+
+/**
+ * bc36c768 — THE ONE EARNED-TO-DATE KERNEL. Returns the RAW cumulative an employee has earned in the
+ * current cycle as of `asOf`, BEFORE rounding and before any max-balance room cap.
+ *
+ * ⚠️ WHY THIS FUNCTION EXISTS AT ALL, and it is the single most important change in the item.
+ * `accrueEarnedLeave` (the engine that credits) and `projectExpectedEntitlement` (the kernel that
+ * reprojects) carried TWO INDEPENDENT COPIES of this arithmetic — `const totalPeriods = method ===
+ * 'earned_quarterly' ? 4 : 12` and then `(days / totalPeriods) * elapsed`, written out twice. Adding the
+ * earned_daily branch or the accrual-day gate to only one of them would make the recalc kernel project
+ * the monthly figure while the accrual engine credits the daily one, and the file's own comment beside
+ * the projection names the consequence verbatim: "a permanent oscillating delta" posted on every profile
+ * edit, forever, in both directions. Both call sites now call THIS, and there is no second copy to drift.
+ *
+ * THE THREE BRANCHES:
+ *
+ *  - earned_monthly — 1/12 per whole month elapsed, inclusive of the current month, EXCEPT that the
+ *    current month counts only once its configured credit day has been reached (see effectiveAccrualDay).
+ *    An absent accrualDay makes that gate vacuous, so an unconfigured day is byte-identical to today.
+ *
+ *  - earned_quarterly — untouched, and kept for the reason `isEarnedMethod` still recognises it.
+ *
+ *  - earned_daily — `min((annualDays / leaveYearDays) * daysElapsedInclusive, annualDays)`, where
+ *    leaveYearDays is the ACTUAL length of the resolved cycle (365 or 366). The reporter's worked example
+ *    holds exactly: 20 / 365 × 182 = 9.97.
+ *
+ * ⚠️ THE JOINER GUARD, and why earned_daily does NOT anchor on cycleStart. The monthly engine anchors a
+ * calendar-cycle mid-year joiner at their HIRE MONTH START, never at the cycle start. Carrying that
+ * "cycleStart → asOf" window into a DAILY model would let an employee hired 2026-06-15 accrue from
+ * 2026-01-01 — roughly five and a half months of leave they never worked — and because the engine only
+ * ever posts a POSITIVE top-up (`toGrant > 0`) it could never claw a penny of it back. So for
+ * earned_daily the anchor is the HIRE DATE ITSELF, not the hire month start. earned_monthly keeps its
+ * existing month-start rule exactly as it was.
+ *
+ * (An ANNIVERSARY-cycle employee still anchors at cycleStart on BOTH branches, because their cycle start
+ * IS their hire-month anniversary. For a mid-month joiner that grants them the part-month before their
+ * hire date, which is the behaviour monthly accrual has always had; matching it was chosen over silently
+ * giving anniversary employees a different first cycle than the one they have today.)
+ */
+export function earnedToDateFor(p: {
+  /** The RESOLVED accrual method. Anything not in EARNED_METHODS yields 0 — this kernel is only ever
+   *  reached behind an `isEarnedMethod` guard, and returning 0 for a lump method is the honest answer
+   *  rather than a silent 1/12. */
+  method: string | null | undefined;
+  /** bc36c768 — the configured credit day, 1..31. null/absent ⇒ 1 (today's behaviour). Monthly only. */
+  accrualDay?: number | null;
+  /** The FULLY RESOLVED annual entitlement (statutory floor ∨ benefit-scheme band ∨ policy days). */
+  annualDays: number;
+  /** The current cycle's window start (earnedCycleStart over the EFFECTIVE per-type cycle). */
+  cycleStart: string;
+  /** The employee's hire date — the joiner anchor on both branches. */
+  hiredOn: string;
+  /** The EFFECTIVE cycle for this (type, company) pair: 'anniversary' or anything else (⇒ calendar). */
+  leaveCycle: string | null | undefined;
+  asOf: string;
+}): number {
+  const { method, annualDays, cycleStart, hiredOn, leaveCycle, asOf } = p;
+  if (!isEarnedMethod(method)) return 0;
+  if (!(annualDays > 0)) return 0;
+
+  if (method === 'earned_daily') {
+    const accrualStart = leaveCycle === 'anniversary' || hiredOn <= cycleStart ? cycleStart : hiredOn;
+    const leaveYearDays = leaveYearLength(cycleStart);
+    const elapsed = Math.max(0, daysInclusive(accrualStart, asOf));
+    return round2(Math.min((annualDays / leaveYearDays) * elapsed, annualDays));
+  }
+
+  const totalPeriods = method === 'earned_quarterly' ? 4 : 12;
+  const accrualStart =
+    leaveCycle === 'anniversary' || hiredOn <= cycleStart ? cycleStart : `${hiredOn.slice(0, 7)}-01`;
+  let periods = accrualPeriods(accrualStart, asOf, method);
+  // The accrual-day gate, monthly only. The CURRENT period counts only once its credit day has arrived;
+  // before that, this month's slice has not been earned. Applied to the RAW period count and clamped
+  // afterwards, so a configured day still withholds December's slice at the very end of a full cycle.
+  if (method === 'earned_monthly' && Number(asOf.slice(8, 10)) < effectiveAccrualDay(asOf, p.accrualDay)) {
+    periods -= 1;
+  }
+  const elapsed = Math.max(0, Math.min(totalPeriods, periods));
+  return round2((annualDays / totalPeriods) * elapsed);
 }
 
 /** Leave Year Type override (feedback e1a51aea, extended by f3a64d90 → adcdf215): the LIVE per-type override
@@ -6906,6 +7082,12 @@ export async function accrueEarnedLeave(
     const earnedTypeIds = [...policyByType.entries()]
       .filter(([id, rows]) => {
         const t = typeById.get(id);
+        // bc36c768 — THE NOT-CONFIGURED GATE, ahead of method resolution. An unconfigured type is not an
+        // earned type and is not a lump type; it is a type that grants nothing until HR configures it. It
+        // must be excluded HERE and not merely inside the loop, because membership of `earnedTypeIds` also
+        // decides which ledger rows are read back as "already accrued" — including it would have this
+        // sweep reasoning about a type it must not touch.
+        if (isAccrualUnconfigured(t)) return false;
         if (hasAnyLeaveTypeRule(t)) return isEarnedMethod(t?.accrualMethod);
         return rows.some((r) => isEarnedMethod((r.accrual as { method?: string } | null)?.method));
       })
@@ -7084,6 +7266,11 @@ export async function accrueEarnedLeave(
       for (const typeId of earnedTypeIds) {
         const type = types.find((t) => t.id === typeId);
         if (!type) continue;
+        // bc36c768 — the NOT-CONFIGURED gate, FIRST, before any method resolution. `earnedTypeIds` above
+        // already excludes such a type, so this is belt-and-braces; it is here anyway because the two
+        // filters are reached by different call shapes and a scoped manual run must not be one refactor
+        // away from crediting a type the reporter was told grants nothing.
+        if (isAccrualUnconfigured(type)) continue;
         // 2D-2: the cycle start anchors both the entitlement band (service years measured at it) and the
         // accrual window. Calendar joiners still pro-rate from their join month; anniversary employees
         // accrue from their own cycle start (which, for a joiner, is their hire month).
@@ -7162,11 +7349,18 @@ export async function accrueEarnedLeave(
         const schemeTargetDays = schemeDaysFor(e.employmentId, typeId, years);
         const { days: entitlement } = entitledDays(pack.leave.entitlement(type.code, years), schemeTargetDays, pol!.days);
         if (entitlement <= 0) continue;
-        const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
-        const accrualStart =
-          cyc === 'anniversary' || e.hiredOn <= cycleStart ? cycleStart : `${e.hiredOn.slice(0, 7)}-01`;
-        const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, p.asOf, pol!.method!));
-        let earnedToDate = Math.round((entitlement / totalPeriods) * elapsed * 100) / 100;
+        // bc36c768 — THE SHARED KERNEL. This used to be four lines of period arithmetic written out here
+        // and again inside projectExpectedEntitlement. One function now, called from both, because the two
+        // must agree to the day or every profile edit posts an oscillating delta (see earnedToDateFor).
+        let earnedToDate = earnedToDateFor({
+          method: pol!.method,
+          accrualDay: pol!.accrualDay ?? null,
+          annualDays: entitlement,
+          cycleStart,
+          hiredOn: e.hiredOn,
+          leaveCycle: cyc,
+          asOf: p.asOf,
+        });
         // Feedback b81d3c52 — Rounding Method (the Accrual Process surface). The CUMULATIVE-to-date figure
         // is tidied every period, before the room-cap, so the running balance the Accrual Process credits
         // is itself a whole day: 'up' shows whole days as they build, 'down' floors a small early
@@ -7307,6 +7501,14 @@ export function projectExpectedEntitlement(
    *  policy's rules. */
   typeRules?: LeaveTypeRules | null,
 ): { expected: number; windowStart: string } | null {
+  // bc36c768 — THE NOT-CONFIGURED GATE, first, before any method resolution.
+  //
+  // ⚠️ IT MUST RETURN null (SKIP THE TYPE), NOT 0. All three callers treat null as "leave this
+  // employee/type completely alone" (`if (!projected) continue`), so no ledger row is written and the
+  // delta is exactly 0.00. Returning 0 would instead make each caller compute `0 − alreadyPosted` and post
+  // a NEGATIVE compensating adjustment clawing back every day already credited — the precise inversion of
+  // the risk this gate exists to remove, on a reset the reporter was promised moves no balance.
+  if (isAccrualUnconfigured(typeRules)) return null;
   const yearStart = `${asOf.slice(0, 4)}-01-01`;
   const cycleStartEarned = earnedCycleStart(emp.hiredOn, asOf, emp.leaveCycle);
   let years = serviceYearsAt(emp.hiredOn, cycleStartEarned);
@@ -7335,6 +7537,15 @@ export function projectExpectedEntitlement(
   const { days } = entitledDays(floor(typeCode, years), schemeDaysForYears?.(years) ?? null, pol?.days ?? 0);
   let expected: number;
   if (a2cFirstYear) {
+    // ⚠️ bc36c768 — THE a2c DIVERGENCE IS SCOPED HERE, NOT FIXED, AND THIS ITEM DOES NOT CLOSE IT. This
+    // branch is tested BEFORE the earned branch below, while accrueEarnedLeave contains zero a2c handling
+    // at all. So for an ANNUAL type with yearCycleOverride 'a2c' in an employee's HIRE year, the accrual
+    // engine credits period slices while this kernel projects the up-front a2c figure — and those two
+    // disagree TODAY, for earned_monthly, before any of this. earned_daily inherits that divergence
+    // unchanged; extracting `earnedToDateFor` does NOT close it, because the two sides never reach the
+    // shared function on the same input. The engine/kernel cross-check test excludes this combination BY
+    // ASSERTION rather than by silent omission. Closing it — teaching accrueEarnedLeave about a2c, or
+    // deciding that an a2c first year simply overrides any earned method — is a separate item.
     // Anniversary to Calendar (f3a64d90 → adcdf215), FIRST (hire) year only: the entitlement is the full
     // prorated part-year (join → 31 Dec) UP FRONT at (resolved entitlement ÷ 365) — the ONE shared kernel,
     // so the hire grant, this projection and the a2c correction can never disagree. A first-year LEAVER is
@@ -7344,11 +7555,17 @@ export function projectExpectedEntitlement(
     // in year two onward — falls through to the branches below and behaves like an ordinary calendar type.
     expected = a2cFirstYearEntitledToDate(emp.hiredOn, asOf, days, emp.terminatedOn ?? null);
   } else if (earnedMethod) {
-    const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
-    const accrualStart =
-      emp.leaveCycle === 'anniversary' || emp.hiredOn <= windowStart ? windowStart : `${emp.hiredOn.slice(0, 7)}-01`;
-    const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, asOf, pol!.method!));
-    expected = days > 0 ? round2((days / totalPeriods) * elapsed) : 0;
+    // bc36c768 — THE SHARED KERNEL, the same call the accrual engine makes. This was the second of the
+    // two independent copies of the period arithmetic; the copy is gone and cannot come back by halves.
+    expected = earnedToDateFor({
+      method: pol!.method,
+      accrualDay: pol!.accrualDay ?? null,
+      annualDays: days,
+      cycleStart: windowStart,
+      hiredOn: emp.hiredOn,
+      leaveCycle: emp.leaveCycle,
+      asOf,
+    });
   } else if (emp.hiredOn >= windowStart && typeCode === 'ANNUAL') {
     // Joiner during the current leave year: ANNUAL pro-rates by hire month (core/org.ts formula).
     const month = Number(emp.hiredOn.slice(5, 7));
@@ -8277,6 +8494,89 @@ export async function reprojectEntitlementForSchemeCohort(
       // Best-effort per employee: the recalc is idempotent and self-heals on the next trigger — one
       // failing employment must not abort the rest of the cohort.
       console.error(`scheme-cohort recalc failed for employment ${employmentId}:`, e);
+    }
+  }
+  return { employees: empIds.length, affected, totalDelta };
+}
+
+/**
+ * bc36c768 — THE CATCH-UP TRIGGER. The leave-type counterpart of `reprojectEntitlementForSchemeCohort`,
+ * fired when a leave type's earning method is saved and the NOT-CONFIGURED marker is cleared.
+ *
+ * WHY IT HAD TO BE BUILT RATHER THAN ASSUMED. The reporter is promised that an employee hired while a
+ * type is unconfigured is credited +0.00 and loses nothing, because configuring the type "then runs a
+ * one-off correction across everyone on it, there and then". No code provided that: `setLeaveTypeRules`
+ * did `tx.update` + `appendEvent` and returned, with no reprojection anywhere. A type set back to None
+ * would therefore have sat at +0.00 for every affected joiner until some unrelated event happened to fire
+ * `reprojectEntitlementForEmployment` for them. The whole safety argument for the NOT-CONFIGURED state is
+ * that its under-credit CORRECTS ITSELF; this is what makes that sentence true.
+ *
+ * COHORT RESOLUTION IS A DELIBERATE SUPERSET — every live employment, not only those whose resolved
+ * policy is on this type. That mirrors the scheme-cohort precedent exactly and for the same reason: an
+ * unaffected employee computes delta 0 and posts nothing, whereas a cohort filter that got the resolution
+ * order subtly wrong would silently leave someone at +0.00 with no signal. (It is also the honest shape:
+ * `reprojectEntitlementForEmployment` recalculates ALL of an employment's types in one pass, so there is
+ * no per-type narrowing to be had inside it either. `leaveTypeId` is carried for the audit trigger and
+ * because a future narrowing belongs behind this signature, not beside it.)
+ *
+ * MUST BE CALLED AFTER THE CONFIG-WRITE TRANSACTION HAS COMMITTED, never inside it — each per-employee
+ * recalc opens its OWN transaction and reads the committed configuration, so calling it inside the write
+ * would have every employee reproject against the PRE-save rules. The action does this, and a test
+ * asserts the ordering rather than trusting the call site.
+ *
+ * BLAST RADIUS, stated to the reporter in plain words: this posts `sys:profile_recalc:` rows for everyone
+ * on that leave type at the moment the method is saved. That is the moment balances move, and it is
+ * deliberate — configure a leave type when you are ready for balances to change, not mid-pay-run.
+ *
+ * ⚠️ WHAT IT DOES NOT REACH, and this is a real gap rather than a caveat. `reprojectEntitlementForEmployment`
+ * carries a MATERIALIZED-ONLY guard ("no accrual row this cycle ⇒ nothing granted yet ⇒ nothing to
+ * correct"), so an employee hired DURING the unconfigured window — who by construction has no accrual row
+ * on that type — is skipped by this catch-up. Precisely who that affects: a joiner during the window on a
+ * type later configured as NONE (the lump path). An EARNED type catches them up on the very next accrual
+ * run, which has no such guard and grants from zero; a lump joiner waits for the next year-open. The
+ * EXISTING workforce, which is who the reset is really about, is trued up correctly.
+ *
+ * Removing the materialized-only guard is NOT the fix to reach for: it is shared by both recalc kernels,
+ * it is what stops a reproject fabricating grants for cycles no engine ever materialised, and 49809272's
+ * tests pin it. Closing this properly means re-running the HIRE GRANT for the affected joiners, which is a
+ * new writer and its own item. test/leave-earning-method-simplified.test.ts pins the gap so it cannot be
+ * quietly forgotten or quietly "fixed" by loosening the guard.
+ *
+ * Sequential + best-effort per employee (log and continue), exactly as the scheme cohort: a rare admin
+ * operation, and one frozen or hiccuping employment must never abort the rest of the cohort.
+ */
+export async function reprojectEntitlementForLeaveTypeCohort(
+  ctx: SessionContext,
+  p: { leaveTypeId: string; trigger: string; asOf?: string },
+): Promise<{ employees: number; affected: number; totalDelta: number }> {
+  const asOf = p.asOf ?? todayInKualaLumpur();
+  // Read-only candidate resolution (no events — CLAUDE.md skip rule). The SAME live-in-cycle window guard
+  // the granting engines use; reprojectEntitlementForEmployment re-checks it per employment anyway.
+  const empIds = await withTenant(ctx, async (tx) => {
+    const yearStart = `${asOf.slice(0, 4)}-01-01`;
+    const rows = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(
+        and(
+          lte(employment.hiredOn, asOf),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+        ),
+      );
+    return rows.map((r) => r.id);
+  });
+
+  let affected = 0;
+  let totalDelta = 0;
+  for (const employmentId of empIds) {
+    try {
+      const res = await reprojectEntitlementForEmployment(ctx, { employmentId, asOf, trigger: p.trigger });
+      affected += res.affected;
+      totalDelta = round2(totalDelta + res.totalDelta);
+    } catch (e) {
+      // Best-effort per employee: the recalc is idempotent and self-heals on the next trigger — one
+      // failing employment must not abort the rest of the cohort.
+      console.error(`leave-type-cohort recalc failed for employment ${employmentId} (type ${p.leaveTypeId}):`, e);
     }
   }
   return { employees: empIds.length, affected, totalDelta };

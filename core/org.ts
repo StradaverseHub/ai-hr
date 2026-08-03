@@ -10,7 +10,7 @@ import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } fr
 import { nextEmployeeCode } from './comp';
 import { generateEmployeeCode } from './employee-id-config';
 import { requireEmployeeCode } from '../lib/employee-code';
-import { a2cFirstYearEntitledToDate, applyLeaveTypeRules, applyMaxBalance, applyRounding, buildSchemeEntitlementResolver, entitledDays, isA2cFirstYear, isEarnedMethod, leaveTypeRuleColumns, resolveGradePolicy, type GradePolicyRow } from './leave';
+import { a2cFirstYearEntitledToDate, applyLeaveTypeRules, applyMaxBalance, applyRounding, buildSchemeEntitlementResolver, entitledDays, isA2cFirstYear, isAccrualUnconfigured, isEarnedMethod, leaveTypeRuleColumns, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import { labelUsableByCompany } from './system-labels';
 import { deriveEmploymentStatus } from './employment-status';
@@ -354,6 +354,13 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
         const typeRulesById = new Map(typeRuleRows.map((r) => [r.id, r]));
         const month = Number(p.hiredOn.slice(5, 7));
         for (const lt of p.grantLeaveTypes) {
+          // bc36c768 — THE NOT-CONFIGURED GATE, FIRST, before any method resolution. This is the gate that
+          // makes the reset safe for NEW JOINERS: a cleared type has no accrual_method, an absent method
+          // has always meant the LUMP path, and the lump path would credit this new hire a full (or
+          // month-prorated) year's entitlement on the spot — which nothing in this system can take back.
+          // They are credited +0.00 instead and lose nothing: saving the earning method for the type runs
+          // the cohort catch-up that credits everything owed (reprojectEntitlementForLeaveTypeCohort).
+          if (isAccrualUnconfigured(typeRulesById.get(lt.id))) continue;
           // ADR-0066: scope to the new hire's company so a per-company UPFRONT entitlement reaches joiners.
           // Leave Entitlement Rules Engine: a new hire has 0 completed years of service (explicit — the
           // param is required so a band-configured policy resolves its 0-year band at hire).

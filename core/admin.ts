@@ -1571,7 +1571,13 @@ export async function saveServiceEntitlement(
     carryForwardExpiryMonths: currentAcc.carryForwardExpiryMonths ?? null,
     carryForwardEnabled: typeof currentAcc.carryForwardEnabled === 'boolean' ? currentAcc.carryForwardEnabled : undefined,
     carryForwardIncludeEarned: currentAcc.carryForwardIncludeEarned,
-    method: currentAcc.method,
+    // bc36c768 — THE METHOD WRITE IS STRIPPED, and only the method write. This function is NOT deleted:
+    // it is the only writer that materialises a company's whole grade scope on first save (the ADR-0066
+    // short-circuit that test/service-based-entitlement.test.ts pins), grade-level policies still resolve
+    // for anyone no benefit scheme covers, and core/saveServiceEntitlement would be stranded. Passing the
+    // stored method back through was already a no-op — updateLeavePolicy PRESERVES the row's method when
+    // the caller sends none (eee43966) — so this is behaviour-identical and removes one more writer from
+    // the "who can write an earning method" enumeration.
     roundingMethod: currentAcc.roundingMethod,
     gradeId: p.gradeId,
     companyId: p.companyId,
@@ -4305,6 +4311,9 @@ export async function setLeaveTypeRules(
   p: {
     id: string;
     accrualMethod?: string | null;
+    /** bc36c768 — the day of the month Monthly Accrual credits on, 1..31. null ⇒ clear (⇒ day 1). Stored
+     *  whatever the method is: a type that switches away from monthly and back must not lose its day. */
+    accrualDay?: number | null;
     carryForwardEnabled?: boolean | null;
     carryForwardMax?: number | null;
     /** 7cd914b1 — carry a percentage (0-100) of the year-end balance. null ⇒ no percentage rule. */
@@ -4402,6 +4411,9 @@ export async function setLeaveTypeRules(
     if (v !== undefined) set[k] = v;
   };
   put('accrualMethod', p.accrualMethod);
+  // bc36c768 — validated here rather than only by the 0375 CHECK, so an out-of-range day surfaces as a
+  // readable message instead of an opaque 23514. The DB constraint remains the backstop.
+  put('accrualDay', intIn(p.accrualDay, 1, 31, 'Accrual day of month'));
   put('carryForwardEnabled', p.carryForwardEnabled);
   put('carryForwardMax', decIn(p.carryForwardMax, 'Carry-forward maximum'));
   put('carryForwardPercent', pctIn(p.carryForwardPercent));
@@ -4430,12 +4442,24 @@ export async function setLeaveTypeRules(
         })),
   );
   put('maxBalanceDays', decIn(p.maxBalanceDays, 'Maximum balance days'));
-  if (Object.keys(set).length === 0) return;
+  // bc36c768 — CLEARING THE NOT-CONFIGURED MARKER, and the trigger is a NON-NULL accrualMethod, nothing
+  // else. Saving carry-forward, or saving the earning form while still on the "Not configured" placeholder
+  // (which posts an empty method ⇒ null), leaves the type unconfigured — which is correct: neither of
+  // those told us how this type earns, and until something does, granting is exactly the risk the marker
+  // exists to hold off.
+  const clearsUnconfigured = p.accrualMethod !== undefined && p.accrualMethod !== null;
+  if (clearsUnconfigured) set.accrualUnconfigured = null;
+  if (Object.keys(set).length === 0) return { unconfiguredCleared: false };
 
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
       .select({
         accrualMethod: leaveType.accrualMethod,
+        // bc36c768 — both new columns ride the before/after payload. The marker especially: "this save is
+        // what took the type out of NOT CONFIGURED" is the single most useful fact in the audit trail
+        // during the reset window, and it is only legible if the transition is recorded.
+        accrualDay: leaveType.accrualDay,
+        accrualUnconfigured: leaveType.accrualUnconfigured,
         carryForwardEnabled: leaveType.carryForwardEnabled,
         carryForwardMax: leaveType.carryForwardMax,
         carryForwardPercent: leaveType.carryForwardPercent,
@@ -4485,6 +4509,11 @@ export async function setLeaveTypeRules(
       actor: actorOf(ctx),
       payload: { before, after: { ...before, ...set } },
     });
+    // bc36c768 — reported to the CALLER, not acted on here. The catch-up cohort reproject must run AFTER
+    // this transaction commits (each per-employee recalc opens its own transaction and must read the
+    // COMMITTED rules), so this returns the fact and the action fires the reproject. Doing it inline would
+    // have every employee reproject against the pre-save configuration.
+    return { unconfiguredCleared: clearsUnconfigured && before.accrualUnconfigured != null };
   });
 }
 

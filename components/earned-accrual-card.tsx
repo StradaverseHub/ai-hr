@@ -55,8 +55,15 @@ export function EarnedAccrualCard({
     [year, companyIds, gradeIds, leaveTypeIds],
   );
 
+  // bc36c768 — three branches, because the else-was-monthly fallback this replaces would have labelled
+  // every earned_daily row "Monthly accrual" on the Accrual Process preview: a table that tells HR the
+  // wrong cadence for the run they are about to commit.
   const methodLabel = (m: string) =>
-    m === 'earned_quarterly' ? t('earnedMethodQuarterly') : t('earnedMethodMonthly');
+    m === 'earned_quarterly'
+      ? t('earnedMethodQuarterly')
+      : m === 'earned_daily'
+        ? t('earnedMethodDaily')
+        : t('earnedMethodMonthly');
 
   const onPreview = () =>
     start(async () => {

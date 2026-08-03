@@ -223,6 +223,17 @@ describe('Service Based Entitlements — wiring', () => {
     const adminSrc = readFileSync(resolve(here, '../core/admin.ts'), 'utf8');
     expect(actionsSrc).toContain('export async function saveServiceEntitlementAction');
     expect(adminSrc).toContain('export async function saveServiceEntitlement');
+    // bc36c768 — the writer KEEPS its export and its ADR-0066 first-save scope materialisation, and loses
+    // ONLY its method write. That is the whole change here, and it is worth pinning both halves: deleting
+    // the function would strand core/saveServiceEntitlement and break the short-circuit guard above, while
+    // leaving the method write in would make "setLeaveTypeRulesAction is the only path that can write an
+    // earning method" false. The write was already a no-op (updateLeavePolicy PRESERVES a stored method
+    // when the caller sends none), so removing it changes no behaviour and closes one more door.
+    const saveFn = adminSrc.slice(
+      adminSrc.indexOf('export async function saveServiceEntitlement'),
+      adminSrc.indexOf('export async function deleteLeavePolicy'),
+    );
+    expect(saveFn).not.toContain('method: currentAcc.method');
   });
 });
 
