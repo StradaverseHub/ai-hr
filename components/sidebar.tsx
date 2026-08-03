@@ -90,6 +90,10 @@ const node = (labelKey: string): CollapsibleGroupItem => ({
   ...ATTENDANCE_NODES.find((n) => n.labelKey === labelKey)!,
 });
 const MY_ATTENDANCE_NODE = node('myAttendance');
+// a324a4b3 rev3 — Roster + Import, mounted from the pack's navLinks rather than from a nav node.
+const ATTENDANCE_MANAGE_ROWS: ChildItem[] = (modulePackById('attendance')!.navLinks ?? []).filter(
+  (l) => l.group === 'manage',
+);
 // The merged menu: Records, the six admin config screens, Roster, Import. It sits in the ungated
 // day-to-day group precisely so each child keeps its OWN gate — see packs/attendance/index.ts.
 const ATTENDANCE_NODE = node('attendance');
@@ -139,6 +143,11 @@ const PAYROLL_NODE: CollapsibleGroupItem = {
  */
 const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   ...ATTENDANCE_NODES.flatMap((n) => n.children.map((c) => [c.href, 'attendance'] as const)),
+  // a324a4b3 rev3 — /roster and /attendance/import LEFT the nav nodes, so the flatMap above no longer
+  // reaches them. Without this line both would fall out of MODULE_OF_HREF and stop being gated by the
+  // attendance module's entitlement — a silent un-gating, which is exactly the class of mistake this
+  // whole item's rev3 exists to avoid.
+  ...(modulePackById('attendance')!.navLinks ?? []).map((l) => [l.href, 'attendance'] as const),
   ...CLAIMS_LINKS.map((l) => [l.href, 'claims'] as const),
   ...(modulePackById('payroll')!.navNodes ?? []).flatMap((n) => n.children.map((c) => [c.href, 'payroll'] as const)),
   ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),
@@ -212,10 +221,9 @@ const GROUPS: Group[] = [
       // tab merged into /leave. Since ADR-0080 rung 6 the row lives on the leave pack and mounts here
       // by const reference (LEAVE_ABSENCE_ROW).
       LEAVE_ABSENCE_ROW,
+      // a324a4b3 rev3: My Attendance carries the two self-service rows (Clock in/out, Records). The
+      // Attendance CONFIG menu moved into Administration — see the admin group below.
       MY_ATTENDANCE_NODE,
-      // a324a4b3 rev2: the ONE Attendance menu, here in the upper section beside My Absence and Claims
-      // exactly as the reporter's screenshot shows it — above the MANAGE heading, not inside Admin.
-      ATTENDANCE_NODE,
       CLAIMS_ROW,
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
@@ -233,9 +241,11 @@ const GROUPS: Group[] = [
       { href: '/personnel', labelKey: 'people', icon: Users },
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ROW,
-      // a324a4b3 rev2: Roster + Import used to have their own Attendance node here (0bb0e303). They moved
-      // into the single Attendance menu in the group above, which is ungated at group level, so both keep
-      // their managerUp row flag and every manager who could reach them still can.
+      // a324a4b3 rev3: Roster + Import come back here as FLAT rows. rev2 put them inside the Attendance
+      // node, which was safe while that node sat in the ungated group; it is not safe now the node has
+      // moved into admin-gated Administration, because the group gate would hide them from every
+      // non-admin manager. They mount by const reference from the attendance pack's navLinks.
+      ...ATTENDANCE_MANAGE_ROWS,
     ],
   },
   {
@@ -251,12 +261,13 @@ const GROUPS: Group[] = [
       // into its Approval Workflow tab). Since ADR-0080 rung 6 the row lives on the leave pack and
       // mounts here by const reference (LEAVE_CONFIG_ROW).
       LEAVE_CONFIG_ROW,
-      // a324a4b3 rev2: the six attendance settings (Holidays, Shift settings, Policy, Allowance,
-      // Clocking location, TOIL) that 0bb0e303 moved here are now children of the single Attendance
-      // menu in the day-to-day group. Each keeps its own adminOnly ROW flag, so they still render for
-      // administrators only — the group gate they used to sit behind is no longer what hides them, and
-      // every one of those pages calls requireAdmin()/scopedAdmin() for itself regardless
+      // a324a4b3 rev3 — THE REPORTER'S ACTUAL REQUEST: "just relocate the Attendance button below My
+      // Attendance to admin section between Leave Config and Claim Config". Here it is, literally between
+      // them. The six config screens are its children and each keeps its own adminOnly row flag, which is
+      // now redundant behind this group's gate but is left alone — dropping it is a second change nobody
+      // asked for. Every one of those pages calls requireAdmin()/scopedAdmin() for itself regardless
       // (test/attendance-menu-relocation.test.ts).
+      ATTENDANCE_NODE,
       CLAIMS_CONFIG_ROW,
       // Since ADR-0080 rung 7 the payroll nav lives on the payroll pack and mounts here by const
       // reference (PAYROLL_NODE — a flyout node since 1459e116, a flat row before that).
