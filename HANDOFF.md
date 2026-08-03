@@ -5,14 +5,27 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-03, after r125 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-04, after r126 SHIPPED)
 
 > ## ▶ NEXT SESSION STARTS HERE
 >
-> **`main@420b61d8` is what runs. Production on 300 migrations. Next free number is `0354`.** Nothing is in
+> **`main@156de9e3` is what runs. Production on 303 migrations. Next free number is `0357`.** Nothing is in
 > flight: no unmerged build branch, no half-applied migration, no pending deploy.
 >
-> ### WHAT IS BUILDABLE RIGHT NOW — the reporter has approved 15 unbuilt items
+> ### ⚠️ BEFORE YOU DELEGATE A BUILD TO AN AGENT, READ THE r126 ENTRY
+>
+> `isolation: 'worktree'` cuts the worktree from the repo's current HEAD, which in this repo is the ROOT
+> worktree on `local/root-scratch` — **114 commits behind `main`**. Two of three agents built against an
+> r91-era tree. **Create the worktree yourself from `main` and pass the path**, and assign each agent an
+> explicit migration number, because they all independently pick the same next one.
+>
+> ### ⚠️ REDIRECT LONG COMMANDS TO A FILE, NEVER A PIPE
+>
+> A backgrounded command whose stdout goes to an undrained pipe hangs forever at 0% CPU. Cost an hour this
+> round. `> file 2>&1` always. To tell a hang from slow work: a healthy vitest has ~10 child processes and
+> ~21 test-DB connections; a hung one has zero of both. CPU alone lies — both idle low.
+>
+> ### WHAT IS BUILDABLE RIGHT NOW — 11 approved and unbuilt after r126
 >
 > `491c499f` is HALF BUILT: its migration `0353` (`leave_adjustment_batch` + `leave_ledger.adjustment_batch_id`)
 > is SHIPPED and INERT on production. The remaining work is real and is enumerated in the r124 entry — no
@@ -1055,6 +1068,108 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r126 — 2026-08-04 — four items built partly in parallel, and the worktree that branched 114 commits back
+
+**Shipped:** `main@156de9e3`. **Migrations `0354` / `0355` / `0356`.** Production on **303**.
+**Gate:** `tsc` · **552 files / 6490 tests** · `next build` · **upgrade rehearsal PASS**.
+Rendered locally before merge — 9 affected routes 200, zero errors. Verified live: `active`, `GET /` 401,
+all four new columns present, zero errors since restart.
+
+`9861b8a4` · `bd271009` · `d64d0df4` · `00307068` (partial), all `deployed`.
+
+### ⚠️ `isolation: 'worktree'` BRANCHES FROM THE REPO'S CURRENT HEAD — WHICH HERE IS NOT `main`
+
+The first parallel build put two of three agents on worktrees cut from `local/root-scratch` at `93c155d9`
+— **the r91 handoff commit, 114 commits behind.** Only the third landed on current `main`. Caught before
+merging, by checking the bases; a naive merge would have reverted large parts of the tree. The overlap was
+7 files for one group and **13 for the other**, including `db/schema.ts`, `core/payroll.ts`,
+`statutory-config-form.tsx` and all six locale catalogs.
+
+**This is the `pwd` trap in a new costume.** This repo has many worktrees on different branches, and any
+tool that resolves "the repo" to a single HEAD picks the root one. **Create the worktree yourself from
+`main` and pass the path**, or check `git rev-parse HEAD` inside the agent's tree before trusting a line
+of its output. Re-running both groups from correct bases cost ~35 minutes.
+
+**PARALLEL AGENTS ALSO ALL PICK THE SAME NEXT MIGRATION NUMBER.** All three independently chose `0354`.
+Assign them explicitly in the brief (`0354` / `0355` / `0356`) or integration is a renumbering exercise.
+
+### THE GATE FOUND FIVE FAILURES, FROM THREE DIFFERENT CAUSES, AND EVERY ONE WAS A REAL SIGNAL
+
+1. **My own `9861b8a4` write guard** — two fixtures turned Allow Negative Balance on with no floor, which
+   the guard now forbids deliberately. Fixtures changed; the guard stands.
+2. **`country-pack-drift`** — the statutory build imported `localization/my` directly from
+   `app/admin/personnel/[employmentId]/actions.ts`, generic admin code. The ADR-0080 D1/D7 ratchet caught
+   it, and its own message says *both lists only ever shrink; do not add debt* — so an allowlist entry was
+   the easy WRONG answer. Repointed to `core/dependents`' `CHILD_RELIEF_CATEGORIES`: the identical five
+   keys in the pack-neutral home where the Family register already stores them.
+3. **`toil-floor-guard` ×2** — `00307068` re-anchors TOIL expiry from the worked date to the approval
+   date, so an `AFTER_EXPIRY` constant derived from `REST_DAY` stopped meaning "after expiry". The test now
+   READS the accrual's own `expires_on`. Anchor-agnostic, and it states the rule instead of an arithmetic
+   that only held under the old anchor.
+
+**(3) WAS THE CORRECT ALARM ON A LIVE DATA CHANGE.** `0354`'s backfill pushes every active accrual's expiry
+LATER (`GREATEST`, so never earlier). The approved plan authorises it in as many words — *"expiry dates on
+already-banked credits can move later or stay the same, never earlier. Nobody loses a day of leave"* — and
+demanded a production count first.
+
+### THREE PRODUCTION PRECONDITIONS READ RATHER THAN ASSUMED
+
+Every one of these was a plan requirement that the building agent could not satisfy (no production access):
+
+| precondition | plan's expectation | ACTUAL |
+|---|---|---|
+| employees whose OKU claim was silently cleared (`d64d0df4` step 1) | unknown, "hand the reporter the list" | **0** — the regression was real but never bit anyone |
+| `employee_id_config` rows flipped by `0355` | unknown | **1** — the single active rule, `allow_manual_override=false` |
+| `toil_accrual` rows extended by `0354` | "expected zero — verify, do not assume" | **0** — the table is empty |
+
+`0355`'s flip is worth understanding: `allow_manual_override` was **dead config read by nothing**, so
+manual entry worked regardless. Flipping it to `true` preserves today's BEHAVIOUR rather than the flag's
+stored value. Leaving it would have silently forbidden manual entry for the only company with a rule.
+
+### WHAT THE AGENTS CAUGHT THAT THEIR OWN APPROVED PLANS GOT WRONG
+
+- **`00307068`** — the plan said `requested_on` could come from the most recent APPROVED attendance
+  correction. It cannot: `maybeAutoAccrueOnApprovalTx` runs BEFORE the status flips
+  (`core/attendance.ts:1992`), so inside that transaction the row is still `pending` and the lookup
+  silently falls back to the worked date. The agent implemented the plan's way, caught it in review, and
+  threaded the date from the caller. Verified independently.
+- **`bd271009`** — the reporter's "manual Employee ID entry is not supported" is **INVERTED**; it has
+  always worked (`core/org.ts:208-220`). The real gap was `allow_manual_override` being written, rendered,
+  and read by nothing.
+- **`d64d0df4`** — declined the plan's instruction to materialise unverified statutory figures into a saved
+  override via `initState`, on the grounds that it defeats the sign-off it exists for. Correct call.
+
+### ⚠️ A BACKGROUNDED COMMAND THAT PIPES ITS OUTPUT WILL HANG FOREVER
+
+Two targeted `vitest` runs sat at **0.0% CPU for 58 and 46 minutes**, holding **zero** database
+connections. Not the Postgres wedge — a blocked write to a stdout pipe nobody was draining, because the
+tool call timed out and backgrounded them. An hour lost waiting on notifications that could never arrive.
+
+**REDIRECT EVERY LONG COMMAND TO A FILE** (`> file 2>&1`), never rely on the pipe. This is the same lesson
+as r124's "never pipe a gate through `tail`", which had been applied to the full gate but not to targeted
+runs.
+
+**How to tell a hang from slow work**, since the CPU number alone lies — a healthy run also idles low while
+waiting on Postgres:
+
+    ps -A -o pid,%cpu,command | grep vitest.mjs     # cpu alone is NOT the signal
+    pgrep -P <pid> | wc -l                          # healthy: 10 workers.   hung: 0
+    psql … -c "select count(*) from pg_stat_activity where datname like 'ai_hr_test%'"
+                                                    # healthy: ~21.          hung: 0
+
+### SMALLER THINGS
+
+- The cluster was wiped twice more this round. `DROP DATABASE ... WITH (FORCE)` on leftover namespaced
+  templates wedges the same way the rehearsal cleanup does — **wipe, do not try to drop them**.
+- `00307068`'s HR configuration leg and all of `296fc027` are NOT built: both need
+  `components/leave-type-panel.tsx`, fenced off this round because other work held it. They belong with
+  the leave-engine cluster.
+- The statutory build ships **seven unverified relief figures** (PwC, not LHDN) surfaced on
+  `/payroll/configuration/pcb` as *Awaiting sign-off*, and recorded in `docs/architecture/STATUTORY-SOURCES.md`.
+  **Name them in the release note** — they drive money withheld and remitted.
+
+---
 
 ## r125 — 2026-08-03 — a live tax-relief bug, and the menu the reporter actually asked for
 
