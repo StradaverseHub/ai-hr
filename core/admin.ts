@@ -40,11 +40,17 @@ import {
   type LeaveYearCycleOverride,
   // Feedback b81d3c52 — the Rounding Method value set persisted on `leave_policy.accrual`.
   type LeaveRoundingMethod,
-  // Feedback 9f5164d8 — the methods the engine actually acts on ('up' | 'down' | 'nearest_half'), so the
-  // write-time validator and the engine cannot drift apart on what a savable method is.
-  isEngineRoundingMethod,
+  // 8fec719e — the TWO methods an administrator may now choose, plus the single authority on what is wrong
+  // with a custom rounding table. `roundingBandErrors` is the same function the editor draws its live
+  // warnings from, so a table the screen calls valid can never be refused here for a reason it did not show.
+  isUserRoundingMethod,
+  roundingBandErrors,
+  type RoundingBand,
+  // 8fec719e — the same engagement test applyLeaveTypeRules uses, so the writer can refuse to leave a type
+  // "unruled" by a rounding change (see the guard in setLeaveTypeRules).
+  hasAnyLeaveTypeRule,
   // ad9cb5c5 — the closed period vocabulary for max_days_period, shared with the enforcement side so the
-  // write-time validator and the resolver cannot drift on what a savable period is (the isEngineRoundingMethod
+  // write-time validator and the resolver cannot drift on what a savable period is (the isUserRoundingMethod
   // precedent immediately above).
   APPLICATION_LIMIT_PERIODS,
   type ApplicationLimitPeriod,
@@ -4308,9 +4314,15 @@ export async function setLeaveTypeRules(
     carryForwardExpiryMonth?: number | null;
     carryForwardExpiryDay?: number | null;
     carryForwardIncludeEarned?: boolean | null;
-    roundingMethod?: 'up' | 'down' | 'nearest_half' | null;
+    /** 8fec719e — 'custom' (evaluate `roundingBands`) or null (No Rounding). The three fixed methods are
+     *  no longer WRITABLE; `applyRounding` still reads them. */
+    roundingMethod?: 'custom' | null;
     /** Feedback 9f5164d8 — the custom decimal threshold for 'nearest_half'. null ⇒ the standard rule. */
     roundingThreshold?: number | null;
+    /** 8fec719e — the custom rounding table. null ⇒ no table. An EMPTY array is normalised to null so an
+     *  emptied editor cannot leave a `[]` behind that reads as "this type carries rules" (hasAnyLeaveTypeRule
+     *  tests for null, not for emptiness). */
+    roundingBands?: RoundingBand[] | null;
     maxBalanceDays?: number | null;
   },
 ) {
@@ -4333,8 +4345,28 @@ export async function setLeaveTypeRules(
     if (!Number.isFinite(v) || v < 0 || v > 9999.99) throw new LeaveTypeRuleError(`${label} must be between 0 and 9999.99.`);
     return Math.round(v * 100) / 100;
   };
-  if (p.roundingMethod !== undefined && p.roundingMethod !== null && !isEngineRoundingMethod(p.roundingMethod)) {
-    throw new LeaveTypeRuleError('Rounding method must be Up, Down or Nearest half day, or cleared.');
+  // 8fec719e — the WRITABLE set is now the USER set, not the engine set. 'up' / 'down' / 'nearest_half'
+  // are still evaluated by applyRounding (a value the migration did not reach must keep producing the
+  // figure it always produced), but nothing may store them again: a retired choice that a hand-crafted
+  // POST could still save is not retired. 'none' arrives here as null (the action maps it), so the only
+  // value this accepts is 'custom'.
+  if (p.roundingMethod !== undefined && p.roundingMethod !== null && !isUserRoundingMethod(p.roundingMethod)) {
+    throw new LeaveTypeRuleError('Rounding must be either No Rounding or Custom Rounding.');
+  }
+  // 8fec719e — the AUTHORITATIVE band check. The editor renders the same problems live from the same
+  // function, but the editor is a courtesy: this is what decides whether a table is storable. Gaps are
+  // deliberately NOT refused (see checkRoundingBands) — a part-built table must be savable, and an
+  // uncovered decimal simply keeps its calculated value.
+  if (p.roundingBands !== undefined && p.roundingBands !== null && p.roundingBands.length > 0) {
+    const problems = roundingBandErrors(p.roundingBands);
+    if (problems.length > 0) {
+      const kinds = [...new Set(problems.map((x) => x.kind))];
+      const rows = [...new Set(problems.map((x) => (x.kind === 'gap' ? 0 : x.index + 1)))].join(', ');
+      throw new LeaveTypeRuleError(
+        `The rounding table is not usable (${kinds.join(', ')}) at row ${rows}. ` +
+          'Every row needs a From below its To, both between 0.000 and 1.000, and no two rows may cover the same decimal.',
+      );
+    }
   }
   // Feedback 9f5164d8 — the reporter's four validation rules, all of which reduce to a bound on ONE number.
   // "Values between 0.000 and 1.000", "ranges must cover the whole interval", "must not overlap", "must not
@@ -4383,6 +4415,20 @@ export async function setLeaveTypeRules(
     'roundingThreshold',
     p.roundingThreshold == null ? p.roundingThreshold : Math.round(p.roundingThreshold * 1000) / 1000,
   );
+  // 8fec719e — an empty table is stored as NULL, never as `[]`. `hasAnyLeaveTypeRule` asks whether the
+  // column is null, so a `[]` would keep the type "ruled" on the strength of a table with nothing in it.
+  put(
+    'roundingBands',
+    p.roundingBands == null || p.roundingBands.length === 0
+      ? p.roundingBands === undefined
+        ? undefined
+        : null
+      : p.roundingBands.map((b) => ({
+          from: Math.round(b.from * 1000) / 1000,
+          to: Math.round(b.to * 1000) / 1000,
+          result: Math.round(b.result * 1000) / 1000,
+        })),
+  );
   put('maxBalanceDays', decIn(p.maxBalanceDays, 'Maximum balance days'));
   if (Object.keys(set).length === 0) return;
 
@@ -4400,12 +4446,32 @@ export async function setLeaveTypeRules(
         carryForwardIncludeEarned: leaveType.carryForwardIncludeEarned,
         roundingMethod: leaveType.roundingMethod,
         roundingThreshold: leaveType.roundingThreshold,
+        roundingBands: leaveType.roundingBands,
         maxBalanceDays: leaveType.maxBalanceDays,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
       .limit(1);
     if (!before) throw new LeaveTypeRuleError('Leave type not found.');
+
+    // 8fec719e — THE UNRULED FALL-THROUGH GUARD. hasAnyLeaveTypeRule is a null test across the rule
+    // columns, and applyLeaveTypeRules returns the LEGACY GRADE POLICY VERBATIM when it says false. So on
+    // a type whose only remaining rule is its rounding, clearing rounding to NULL does not just switch
+    // rounding off — it flips the type to "unruled" and silently restores its entire legacy JSONB rule
+    // set: a different earning method, a different carry cap, a different balance, all under the heading
+    // of a rounding change.
+    //
+    // The fix is to store the explicit string 'none' instead of NULL. It is a value, so the type stays
+    // ruled; `isEngineRoundingMethod('none')` is false, so applyLeaveTypeRules resolves it to undefined
+    // and nothing is rounded. Identical behaviour, without the fall-through. This guard belongs HERE and
+    // not only in migration 0358, because the migration fixes the rows that exist on deploy day and this
+    // fixes every save afterwards — the trap re-arms itself the moment someone saves No Rounding on a
+    // type that has since lost its other rules.
+    const merged = { ...before, ...set } as Record<string, unknown>;
+    const clearsToUnruled =
+      set.roundingMethod === null &&
+      !hasAnyLeaveTypeRule({ ...merged, roundingMethod: null } as Parameters<typeof hasAnyLeaveTypeRule>[0]);
+    if (clearsToUnruled) set.roundingMethod = 'none';
 
     await tx.update(leaveType).set(set).where(eq(leaveType.id, p.id));
 

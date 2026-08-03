@@ -27,8 +27,9 @@
  *  (6) LEDGER AGREEMENT: with rounding on, a later days-change reproject posts only the intended delta
  *      (the projection rounds too, so no permanent oscillating rounding delta appears);
  *  (7) back-compat: an absent roundingMethod behaves exactly as before this feature existed;
- *  (8) static-source guard: the dropdown-rendering forms (Earning Method + the multi-scope add form) post the
- *      tri-state marker; the others (Carry Forward, Eligibility) post no marker so the writer preserves it.
+ *  (8) static-source guard: the ONE dropdown-rendering form (Earning Method) posts the tri-state marker;
+ *      every other form (Carry Forward, Eligibility, and — since 8fec719e — the multi-scope add form) posts
+ *      no marker, so the writer preserves.
  *
  * The persistence round-trip through the server actions lives in leave-rounding-persistence.test.ts
  * (it needs the action-layer module mocks); i18n parity for the five new keys is appended to the
@@ -548,16 +549,19 @@ describe('b81d3c52 · UI source guard — the dropdown-rendering forms post the 
     expect(form).toContain("name=\"roundingMethod\"");
     expect(form).toContain("t('subStep.roundingMethodLabel')");
     expect(form).toContain("t('subStep.roundingNone')");
-    expect(form).toContain("t('subStep.roundingUp')");
-    expect(form).toContain("t('subStep.roundingDown')");
+    // 8fec719e — two options, and the retired three must not survive on this form.
+    expect(form).toContain("t('subStep.roundingCustom')");
+    expect(form).not.toContain("t('subStep.roundingUp')");
+    expect(form).not.toContain("t('subStep.roundingDown')");
+    expect(form).not.toContain("t('subStep.roundingNearestHalf')");
     expect(form).toContain("t('subStep.roundingHelp')");
     // 9816a5ad step 2: the initial value comes from the leave TYPE's own rules, not a policy row.
     //
     // 9f5164d8 made the select CONTROLLED rather than defaultValue'd, and the reason is behavioural, not
-    // stylistic: the "Customize decimal thresholds" checkbox and the threshold table only render under
-    // 'nearest_half', and the worked example recomputes as the method changes. An uncontrolled select
-    // cannot drive either. The SEED is unchanged — `roundingMethodValue(rules.roundingMethod)` is still
-    // what the state starts from — so what an administrator sees on load is byte-identical.
+    // stylistic: the band table (8fec719e; the "Customize decimal thresholds" checkbox before it) renders
+    // only under the tunable method, and the worked example recomputes as the method changes. An
+    // uncontrolled select cannot drive either. The SEED is unchanged — `roundingMethodValue(rules.roundingMethod)`
+    // is still what the state starts from — so what an administrator sees on load is byte-identical.
     expect(form).toContain("value={rounding}");
     expect(form).toContain('useState<LeaveRoundingMethod>(roundingMethodValue(rules.roundingMethod))');
     // renders the dropdown ⇒ posts the marker so 'none' CLEARS and up/down SET.
@@ -579,11 +583,15 @@ describe('b81d3c52 · UI source guard — the dropdown-rendering forms post the 
     expect(body).not.toContain('name="roundingMethodRendered"');
   });
 
-  it('the multi-scope ADD form renders the dropdown and posts the marker', () => {
+  it('8fec719e — the multi-scope ADD form renders NO rounding control at all', () => {
+    // It used to offer Round Up / Round Down against the legacy JSONB copy. Both of those are choices this
+    // item removes, and the key they wrote is one the type-level overlay ignores — a setting that saved,
+    // displayed, and did nothing. Removing the choices from one screen and leaving them on another would
+    // not have been removing them. With no marker posted, the writer preserves rather than clears.
     const add = panelSrc.slice(panelSrc.indexOf('action={createPolicyAction}'));
     const body = add.slice(0, add.indexOf('</form>'));
-    expect(body).toContain('name="roundingMethod"');
-    expect(body).toContain('name="roundingMethodRendered"');
+    expect(body).not.toContain('name="roundingMethod"');
+    expect(body).not.toContain('name="roundingMethodRendered"');
   });
 
   it('the Entitlements page populates roundingMethod onto the panel policy', () => {
@@ -598,5 +606,8 @@ describe('b81d3c52 · UI source guard — the dropdown-rendering forms post the 
     // the tri-state helper is that 'none' means CLEAR everywhere, identically.
     expect(actionsSrc.match(/roundingMethod: roundingMethodField\(formData\)/g)?.length).toBe(3);
     expect(actionsSrc).toContain('roundingMethod: rounding,');
+    // 8fec719e — the band table has exactly ONE reader too, on the same marker, for the same reason.
+    expect(actionsSrc).toContain('const roundingBandsField =');
+    expect(actionsSrc.match(/roundingBands: roundingBandsField\(formData\)/g)?.length).toBe(1);
   });
 });

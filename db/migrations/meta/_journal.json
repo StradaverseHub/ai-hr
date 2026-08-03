@@ -2131,6 +2131,13 @@
       "breakpoints": true
     },
     {
+      "idx": 358,
+      "version": "7",
+      "when": 1781862458000,
+      "tag": "0358_leave_type_rounding_bands",
+      "breakpoints": true
+    },
+    {
       "idx": 365,
       "version": "7",
       "when": 1781862465000,

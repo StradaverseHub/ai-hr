@@ -208,6 +208,10 @@ describe('applyLeaveTypeRules — the pure overlay', () => {
     expect(applyLeaveTypeRules(POL, { carryForwardIncludeEarned: true })).toBe(POL);
     // ...but any behaviour-bearing column does engage.
     expect(hasAnyLeaveTypeRule({ roundingMethod: 'down' })).toBe(true);
+    // 8fec719e — a BANDS-ONLY type is ruled. Without this disjunct applyLeaveTypeRules falls through to
+    // the legacy grade policy and the administrator's table is silently ignored while a stale JSONB rule
+    // set comes back: the identical failure 7cd914b1 shipped with carryForwardPercent.
+    expect(hasAnyLeaveTypeRule({ roundingBands: [{ from: 0, to: 1, result: 1 }] })).toBe(true);
   });
 
   it('replaces every rule from the type, and leaves days alone', () => {
@@ -237,6 +241,10 @@ describe('applyLeaveTypeRules — the pure overlay', () => {
       // toEqual is deliberately left exhaustive: a new rule column silently appearing on the overlay is
       // exactly what this assertion exists to surface.
       roundingThreshold: null,
+      // 8fec719e (migration 0358) added the THIRTEENTH rule column, the custom rounding table. Carried on
+      // the overlay unconditionally and null here, because this type has no table — and read only by the
+      // 'custom' branch of applyRounding, so its presence cannot move a 'down' figure either.
+      roundingBands: null,
     });
   });
 

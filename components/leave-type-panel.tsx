@@ -8,8 +8,10 @@ import { useTranslations } from 'next-intl';
 // saving it, and a second implementation of the rule is a second thing that can disagree with the ledger.
 import {
   applyRounding,
-  DEFAULT_ROUNDING_THRESHOLD,
+  checkRoundingBands,
   type LeaveRoundingMethod,
+  type RoundingBand,
+  type RoundingBandProblem,
   type ServiceBand,
 } from '@/core/leave-compute';
 import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/leave-org-criteria';
@@ -156,117 +158,186 @@ const methodValue = (m?: string) => (isEarned(m) ? m! : 'grant_on_hire_prorated'
 /** Feedback b81d3c52 — normalise a stored Rounding Method to a select/hidden-input value. Nothing stored
  *  (the No-Rounding default, and every policy written before this feature) ⇒ 'none'. The action maps
  *  'none' straight back to "store nothing", so a round-trip through any form is a no-op on the JSONB.
- *  9f5164d8 added 'nearest_half' to the recognised set. */
+ *  9f5164d8 added 'nearest_half' to the recognised set.
+ *
+ *  8fec719e — the select now offers TWO values, so anything that is not 'custom' opens as No Rounding.
+ *  THAT INCLUDES A STORED 'up' / 'down' / 'nearest_half': those are values the engine still honours but
+ *  nobody may choose, and 0358 clears them, so a row that somehow still carries one opens on No Rounding
+ *  and saving the form makes that true. Showing a fifth option nobody asked for, to represent a value we
+ *  are retiring, would keep the removed choices alive on the screen that removed them. */
 const roundingMethodValue = (m?: LeaveRoundingMethod | null): LeaveRoundingMethod =>
-  m === 'up' || m === 'down' || m === 'nearest_half' ? m : 'none';
-
-/** Feedback 9f5164d8 — format a threshold for the editor's number inputs at the three decimal places the
- *  reporter's own table uses. Mirrors DEFAULT_ROUNDING_THRESHOLD when nothing is stored. */
-const thresholdText = (v: number) => v.toFixed(3);
-
-/** A finite number or null — postgres numerics reach the client as strings. */
-const numOrNullFinite = (v: string | number | null | undefined): number | null => {
-  if (v == null) return null;
-  const n = typeof v === 'number' ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
-};
+  m === 'custom' ? 'custom' : 'none';
 
 /** The figure the rounding worked example is computed against: one month of a 14-day annual entitlement
  *  earned monthly (14 ÷ 12 = 1.1666…), which is the reporter's own arithmetic in item 4d6eae7b and the
  *  case that made blunt whole-day rounding unsatisfactory in the first place. */
 const ROUNDING_EXAMPLE_RAW = Math.round((14 / 12) * 100) / 100;
 
+/** 8fec719e — three decimal places, the precision the reporter's tables are written at and the one
+ *  `checkRoundingBands` / `applyRoundingBands` compare and snap to. */
+const bandText = (v: number) => v.toFixed(3);
+
 /**
- * Feedback 9f5164d8 — the "Custom decimal thresholds" editor, exactly the two-row table the reporter drew,
- * driven by ONE stored number.
+ * 8fec719e — ONE EDITOR ROW. The three figures are held as STRINGS, deliberately, for the reason the
+ * retired threshold editor documented and this table makes worse: a controlled number input backed by a
+ * number cannot be typed into, because "0.7" passes through "0." on the way and `Number('0.')` is 0, so
+ * the field snaps back before the second digit lands. Keeping the raw text lets an administrator type;
+ * the warnings below and the SERVER decide whether what they typed is legal.
  *
- * WHY ONE NUMBER AND NOT FOUR. The request lists four validation rules — values within 0.000–1.000, ranges
- * covering the whole interval, no overlap, no gaps — and every one of them is a statement that the two
- * ranges meet at a single point and stop at the two fixed ends. Storing four independent figures would make
- * all four rules violable and then need all four checks; storing the BOUNDARY makes them true by
- * construction. So the table renders four cells, of which the two ends are fixed (0.000 and 1.000) and the
- * two middle ones are the same value: typing in either moves the boundary and the other follows
- * immediately, which is also the clearest way to show that they are one decision.
- *
- * The single editable value is posted as `roundingThreshold`; the fixed ends are never posted at all.
- *
- * THE VALUE IS HELD AS A STRING, deliberately. A controlled number input backed by a number cannot be
- * typed into: "0.7" passes through "0." on the way, `Number('0.')` is 0, and the field snaps back to
- * "0.000" before the second digit arrives. Keeping the raw text lets an administrator type; the SERVER
- * decides whether what they typed is legal, with a named error, which is where that decision belongs.
+ * `fromIsHint` carries the "light grey suggestion" the request asks for. When a row is added, its From is
+ * pre-filled from the row above and marked as a hint: it is a REAL, POSTED, EDITABLE value that merely
+ * looks provisional, not a placeholder. A placeholder would be the wrong shape — the reporter's words are
+ * "you can accept it", and accepting something means doing nothing.
  */
-function RoundingThresholdEditor({
+type BandRow = { from: string; to: string; result: string; fromIsHint: boolean };
+
+const rowsFromStored = (bands: RoundingBand[] | null | undefined): BandRow[] =>
+  (Array.isArray(bands) ? bands : [])
+    .filter((b) => b != null && typeof b === 'object')
+    .map((b) => ({
+      from: bandText(Number(b.from) || 0),
+      to: bandText(Number(b.to) || 0),
+      result: bandText(Number(b.result) || 0),
+      fromIsHint: false,
+    }));
+
+/** The rows as the server will see them. A half-typed figure becomes NaN rather than 0 so the warnings
+ *  below (and `setLeaveTypeRules`) call it a broken row instead of silently reading it as zero. */
+const rowsToBands = (rows: BandRow[]): RoundingBand[] =>
+  rows.map((r) => ({ from: Number(r.from), to: Number(r.to), result: Number(r.result) }));
+
+/**
+ * 8fec719e — the Custom Rounding table: From, Round To, Rounded Result, an Add Row button and as many
+ * rows as the reporter needs.
+ *
+ * IT RENDERS AS SOON AS CUSTOM ROUNDING IS CHOSEN. The "Customize Decimal Thresholds" checkbox this
+ * replaces is gone: it made the common case two steps, and there is nothing behind the box to opt into —
+ * choosing Custom Rounding IS choosing to write a table.
+ *
+ * THE WARNINGS COME FROM THE SERVICE'S OWN VALIDATOR. `checkRoundingBands` is imported from
+ * core/leave-compute (the RSC-safe half of the engine, which is why a client component may) and is the
+ * exact function `setLeaveTypeRules` calls before writing. A lookalike here would be a second opinion
+ * about what is legal, and the two would eventually disagree — the administrator would see green and get
+ * a rejection, or worse, see nothing and get a table the engine cannot evaluate.
+ *
+ * OVERLAPS AND DUPLICATES BLOCK THE SAVE; A GAP ONLY WARNS. That asymmetry is the service's, not a UI
+ * choice — see checkRoundingBands. A gap is shown because part of the decimal range being left alone is
+ * usually not what someone means, but a table has to be buildable one row at a time.
+ */
+function RoundingBandsEditor({
   t,
-  value,
-  onChange,
+  rows,
+  setRows,
 }: {
   t: ReturnType<typeof useTranslations>;
-  value: string;
-  onChange: (v: string) => void;
+  rows: BandRow[];
+  setRows: (next: BandRow[]) => void;
 }) {
   const cell = 'px-1.5 py-1';
-  const readOnlyCls = 'w-24 cursor-not-allowed opacity-70';
-  const boundary = (
-    <input
-      type="number"
-      min="0.001"
-      max="1"
-      step="0.001"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={cn(inputCls, 'w-24')}
-      aria-label={t('subStep.roundingThresholdsTitle')}
-    />
-  );
+  const problems: RoundingBandProblem[] = rows.length === 0 ? [] : checkRoundingBands(rowsToBands(rows));
+  const badRows = new Set(problems.filter((p) => p.kind !== 'gap').map((p) => (p as { index: number }).index));
+  const gaps = problems.filter((p): p is Extract<RoundingBandProblem, { kind: 'gap' }> => p.kind === 'gap');
+  const has = (kind: RoundingBandProblem['kind']) => problems.some((p) => p.kind === kind);
+
+  const patch = (i: number, field: 'from' | 'to' | 'result', v: string) =>
+    setRows(rows.map((r, j) => (j === i ? { ...r, [field]: v, ...(field === 'from' ? { fromIsHint: false } : {}) } : r)));
+
+  const addRow = () => {
+    // The suggestion the request asks for: the next band starts where the last one ended. When there is no
+    // row yet the decimal range starts at 0.000, which is the only sensible first From.
+    const prev = rows[rows.length - 1];
+    const suggested = prev ? prev.to : bandText(0);
+    setRows([...rows, { from: suggested, to: '', result: '', fromIsHint: rows.length > 0 }]);
+  };
+
   return (
     <div className="space-y-2 rounded-lg border border-border p-2">
-      {/* The ONE posted field. Rendered once, outside both rows, so there is no doubt which cell is stored. */}
-      <input type="hidden" name="roundingThreshold" value={value} />
-      <span className="text-xs font-medium text-muted-foreground">{t('subStep.roundingThresholdsTitle')}</span>
-      {/* Two tables, each with its own header, because the request's two ranges close differently: the
-          round-DOWN range is exclusive at its top, the round-UP range is inclusive at its top. Collapsing
-          them into one table would have to pick one heading and misstate the other. */}
-      <div className="space-y-2 overflow-x-auto">
-        <div>
-          <span className="text-xs text-muted-foreground">{t('subStep.roundingDownRangeLabel')}</span>
-          <table className="w-full min-w-[20rem] text-xs">
-            <thead>
-              <tr className="text-left text-muted-foreground">
-                <th className={`${cell} font-medium`}>{t('subStep.roundingFromInclusive')}</th>
-                <th className={`${cell} font-medium`}>{t('subStep.roundingToExclusive')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
+      {/* The ONE posted field: the whole table as JSON, on the rounding form's existing tri-state marker.
+          Rows are posted as typed — an unparseable figure reaches the server as null and is refused there
+          with a named error, rather than being quietly dropped here. */}
+      <input type="hidden" name="roundingBands" value={JSON.stringify(rowsToBands(rows))} />
+      <span className="text-xs font-medium text-muted-foreground">{t('subStep.roundingBandsTitle')}</span>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[26rem] text-xs">
+          <thead>
+            <tr className="text-left text-muted-foreground">
+              <th className={`${cell} font-medium`}>{t('subStep.roundingBandFrom')}</th>
+              <th className={`${cell} font-medium`}>{t('subStep.roundingBandTo')}</th>
+              <th className={`${cell} font-medium`}>{t('subStep.roundingBandResult')}</th>
+              <th className={cell} />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} className={badRows.has(i) ? 'bg-destructive/10' : undefined}>
                 <td className={cell}>
-                  <input type="text" readOnly value={thresholdText(0)} className={cn(inputCls, readOnlyCls)} tabIndex={-1} />
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.001"
+                    value={r.from}
+                    onChange={(e) => patch(i, 'from', e.target.value)}
+                    aria-label={t('subStep.roundingBandFrom')}
+                    // The light-grey suggestion. Styling only — the value is real, posted and editable.
+                    className={cn(inputCls, 'w-24', r.fromIsHint && 'text-muted-foreground/60')}
+                  />
                 </td>
-                <td className={cell}>{boundary}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div>
-          <span className="text-xs text-muted-foreground">{t('subStep.roundingUpRangeLabel')}</span>
-          <table className="w-full min-w-[20rem] text-xs">
-            <thead>
-              <tr className="text-left text-muted-foreground">
-                <th className={`${cell} font-medium`}>{t('subStep.roundingFromInclusive')}</th>
-                <th className={`${cell} font-medium`}>{t('subStep.roundingToInclusive')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className={cell}>{boundary}</td>
                 <td className={cell}>
-                  <input type="text" readOnly value={thresholdText(1)} className={cn(inputCls, readOnlyCls)} tabIndex={-1} />
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.001"
+                    value={r.to}
+                    onChange={(e) => patch(i, 'to', e.target.value)}
+                    aria-label={t('subStep.roundingBandTo')}
+                    className={cn(inputCls, 'w-24')}
+                  />
+                </td>
+                <td className={cell}>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.001"
+                    value={r.result}
+                    onChange={(e) => patch(i, 'result', e.target.value)}
+                    aria-label={t('subStep.roundingBandResult')}
+                    className={cn(inputCls, 'w-24')}
+                  />
+                </td>
+                <td className={cell}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setRows(rows.filter((_, j) => j !== i))}
+                    aria-label={t('subStep.roundingBandRemove')}
+                  >
+                    {t('subStep.roundingBandRemove')}
+                  </Button>
                 </td>
               </tr>
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
-      <p className="text-xs text-muted-foreground">{t('subStep.roundingThresholdHelp')}</p>
+      <Button type="button" size="sm" variant="secondary" onClick={addRow}>
+        {t('subStep.roundingBandAddRow')}
+      </Button>
+      {/* Errors first, then the gap warning: an overlapping table is refused, an incomplete one is not. */}
+      {(has('shape') || has('range') || has('order')) && (
+        <p className="text-xs text-destructive">{t('subStep.roundingBandRowInvalid')}</p>
+      )}
+      {has('overlap') && <p className="text-xs text-destructive">{t('subStep.roundingBandOverlap')}</p>}
+      {has('duplicate') && <p className="text-xs text-destructive">{t('subStep.roundingBandDuplicate')}</p>}
+      {gaps.map((g, i) => (
+        <p key={i} className="text-xs text-amber-600 dark:text-amber-400">
+          {t('subStep.roundingBandGap', { from: bandText(g.from), to: bandText(g.to) })}
+        </p>
+      ))}
+      <p className="text-xs text-muted-foreground">{t('subStep.roundingBandsHelp')}</p>
     </div>
   );
 }
@@ -583,18 +654,12 @@ function EarningMethodForm({
   // Feedback 9f5164d8 — the rounding half of this form is now three linked controls (method, a customize
   // toggle, and the threshold), so it needs local state where a single uncontrolled <select> sufficed.
   const [rounding, setRounding] = useState<LeaveRoundingMethod>(roundingMethodValue(rules.roundingMethod));
-  // Ticked iff a threshold is actually stored. A type on the standard rule stores nothing, so the box opens
-  // unticked exactly as the request specifies — and unticking it POSTS a blank threshold, i.e. an explicit
-  // "use the standard rule", rather than leaving a stale custom value behind the unticked box.
-  const storedThreshold = numOrNullFinite(rules.roundingThreshold);
-  const [custom, setCustom] = useState<boolean>(storedThreshold != null);
-  const [threshold, setThreshold] = useState<string>(thresholdText(storedThreshold ?? DEFAULT_ROUNDING_THRESHOLD));
-  const showThresholds = rounding === 'nearest_half';
-  // The worked example needs a NUMBER. A half-typed value (or a cleared field) falls back to the standard
-  // rule for the preview only — the posted string is untouched, so the server still sees and judges exactly
-  // what was typed.
-  const effectiveThreshold =
-    showThresholds && custom ? (numOrNullFinite(threshold) ?? DEFAULT_ROUNDING_THRESHOLD) : DEFAULT_ROUNDING_THRESHOLD;
+  // 8fec719e — the table is the rounding configuration now, so it is held here next to the method and
+  // posted by the same form. It survives a switch back to No Rounding (the stored column is only cleared
+  // when the administrator empties the table), which is the same containment the retired threshold had:
+  // turning rounding off must not throw away work.
+  const [bandRows, setBandRows] = useState<BandRow[]>(() => rowsFromStored(rules.roundingBands));
+  const showBands = rounding === 'custom';
   return (
     <form action={action} className="space-y-2 rounded-lg bg-background p-3">
       <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
@@ -641,33 +706,17 @@ function EarningMethodForm({
           aria-label={t('subStep.roundingMethodLabel')}
           className={cn(inputCls, 'w-72')}
         >
+          {/* 8fec719e — TWO options, and only two. Nearest 0.5 Day, Round Up and Round Down are gone as
+              choices: each was a fixed table this one can express, and offering four fixed shapes plus a
+              tunable one was the confusion the reporter asked us to remove. */}
           <option value="none">{t('subStep.roundingNone')}</option>
-          {/* Feedback 9f5164d8 — the fourth option, listed in the reporter's own order (it sits between
-              "no rounding" and the two whole-day options because it is the least aggressive of the three
-              that actually change a figure). The other three are UNCHANGED in both value and behaviour. */}
-          <option value="nearest_half">{t('subStep.roundingNearestHalf')}</option>
-          <option value="up">{t('subStep.roundingUp')}</option>
-          <option value="down">{t('subStep.roundingDown')}</option>
+          <option value="custom">{t('subStep.roundingCustom')}</option>
         </select>
       </Field>
-      {/* The checkbox and the threshold table appear ONLY under "Nearest 0.5 day" — the request is explicit
-          that they belong to that method. When another method is selected no `roundingThreshold` field is
-          rendered at all, which the action reads as a clear: a threshold is part of the nearest-half
-          configuration, not a setting that outlives it. */}
-      {showThresholds && (
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={custom}
-              onChange={(e) => setCustom(e.target.checked)}
-              className="h-4 w-4 rounded border-input"
-            />
-            {t('subStep.roundingCustomize')}
-          </label>
-          {custom && <RoundingThresholdEditor t={t} value={threshold} onChange={setThreshold} />}
-        </div>
-      )}
+      {/* The table appears the MOMENT Custom Rounding is chosen — no checkbox in front of it. When No
+          Rounding is selected no `roundingBands` field is rendered at all, which the action reads as a
+          clear: a table is part of the custom-rounding configuration, not a setting that outlives it. */}
+      {showBands && <RoundingBandsEditor t={t} rows={bandRows} setRows={setBandRows} />}
       <p className="text-xs text-muted-foreground">{t('subStep.roundingHelp')}</p>
       {/* A worked example against a real figure, computed with the SAME evaluator the engines use, so what
           the administrator is shown before saving cannot disagree with what is credited afterwards. */}
@@ -675,7 +724,7 @@ function EarningMethodForm({
         <p className="text-xs text-muted-foreground">
           {t('subStep.roundingWorkedExample', {
             raw: ROUNDING_EXAMPLE_RAW.toFixed(2),
-            rounded: applyRounding(ROUNDING_EXAMPLE_RAW, rounding, effectiveThreshold).toFixed(2),
+            rounded: applyRounding(ROUNDING_EXAMPLE_RAW, rounding, null, rowsToBands(bandRows)).toFixed(2),
           })}
         </p>
       )}
@@ -1377,6 +1426,9 @@ export type LeaveTypeRules = {
   roundingMethod?: LeaveRoundingMethod | null;
   /** Feedback 9f5164d8 — the custom decimal threshold. Postgres numeric ⇒ may arrive as a string. */
   roundingThreshold?: string | number | null;
+  /** 8fec719e — the custom rounding table, as stored. A plain array of plain objects, which is what makes
+   *  it legal for the server page to hand to this client component (see test/server-client-boundary). */
+  roundingBands?: RoundingBand[] | null;
   maxBalanceDays?: number | null;
 };
 
@@ -2564,17 +2616,13 @@ export function LeaveTypePanel({
               <Field label={t('effectiveFromLabel')}>
                 <input name="validFrom" type="date" required defaultValue={`${thisYear}-01-01`} className={inputCls} />
               </Field>
-              {/* Feedback b81d3c52 (tri-state, this ticket) — the add form RENDERS the Rounding dropdown, so
-                  it posts the `roundingMethodRendered` marker: on create 'up'/'down' set the new row's value
-                  and 'none' omits the key (nothing to preserve on create). Defaults to No-Rounding. */}
-              <input type="hidden" name="roundingMethodRendered" value="1" />
-              <Field label={t('subStep.roundingMethodLabel')}>
-                <select name="roundingMethod" defaultValue="none" aria-label={t('subStep.roundingMethodLabel')} className={`${inputCls} w-40`}>
-                  <option value="none">{t('subStep.roundingNone')}</option>
-                  <option value="up">{t('subStep.roundingUp')}</option>
-                  <option value="down">{t('subStep.roundingDown')}</option>
-                </select>
-              </Field>
+              {/* 8fec719e — NO ROUNDING CONTROL ON THE ADD FORM, on the fa3f4ccb precedent that already
+                  removed the carry-forward controls here. Rounding is a leave-TYPE rule (9816a5ad), and
+                  the per-policy JSONB copy this dropdown wrote is the "second surface" this item cleared
+                  outright. Leaving it would have been worse than redundant: it still offered Round Up and
+                  Round Down, the two choices the item exists to remove, and it wrote them to a key the
+                  type-level overlay ignores — a setting that saves, shows, and does nothing. With no
+                  `roundingMethodRendered` marker posted, the writer preserves rather than clears. */}
               {/* Feedback eee43966 — no earning-method select on the add-a-dated-entitlement form either.
                   This one WAS the reporter's bug: it defaulted to lump sum, and saving superseded the
                   running earned_monthly row with a lump one. createLeavePolicy now inherits the method

@@ -352,10 +352,12 @@ describe('e1a51aea · i18n — all six locales', () => {
         // Feedback b81d3c52 — Rounding Method, configured directly under Earning Method. This array is
         // HARDCODED (the loop only asserts the keys literally listed here), so every new sub-step key MUST
         // be appended or a locale that drops it still passes green.
+        // 8fec719e reduced the choice to two and retired 'roundingUp' / 'roundingDown' with the options
+        // they named; 'roundingCustom' is the second choice and the band-table keys live in
+        // leave-config-ui-r86a.test.ts, which owns that surface.
         'roundingMethodLabel',
         'roundingNone',
-        'roundingUp',
-        'roundingDown',
+        'roundingCustom',
         'roundingHelp',
         'carryPolicyLabel',
         'carryNone',

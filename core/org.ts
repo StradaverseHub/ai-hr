@@ -390,7 +390,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           // and order openLeaveYear / accrueEarnedLeave / projectExpectedEntitlement apply it, so the
           // credited ledger row and the recalc kernel's projection can never disagree. The pro-ration
           // formula itself (whole months remaining) is unchanged. No method ⇒ pass-through.
-          const grantRounded = applyRounding(grantRaw, polFor?.roundingMethod, polFor?.roundingThreshold);
+          const grantRounded = applyRounding(grantRaw, polFor?.roundingMethod, polFor?.roundingThreshold, polFor?.roundingBands);
           // Feedback 9d8cf621 — Maximum Balance Days: a new hire has 0 prior balance, so clamp the initial
           // grant so it never opens above the resolved band's cap. null ⇒ pass-through (grant unchanged).
           const { grant } = applyMaxBalance(0, grantRounded, polFor?.maxBalanceDays);
