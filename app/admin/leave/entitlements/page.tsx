@@ -740,6 +740,7 @@ export default async function LeaveEntitlementsPage({
               hrRemarkRequired={lt.hrRemarkRequired}
               backdatingLimitDays={lt.backdatingLimitDays ?? null}
               maxDaysPerLeaveYear={lt.maxDaysPerLeaveYear == null ? null : Number(lt.maxDaysPerLeaveYear)}
+              maxDaysPeriod={lt.maxDaysPeriod ?? null}
               maxConsecutiveDays={lt.maxConsecutiveDays == null ? null : Number(lt.maxConsecutiveDays)}
               maxConsecutiveUnit={
                 lt.maxConsecutiveUnit === 'working_days' || lt.maxConsecutiveUnit === 'calendar_days'
@@ -766,6 +767,7 @@ export default async function LeaveEntitlementsPage({
               perDateApproval={lt.perDateApproval ?? false}
               duplicateApplicationPolicy={lt.duplicateApplicationPolicy ?? null}
               allowNegativeBalance={lt.allowNegativeBalance ?? false}
+              maxNegativeBalance={lt.maxNegativeBalance == null ? null : Number(lt.maxNegativeBalance)}
               balanceSourceTypeId={lt.balanceSourceTypeId ?? null}
               allowUnpaidLeave={lt.allowUnpaidLeave ?? false}
               /* Balance Deduction Source (cdf9ca48): the candidates THIS type may point at. Derived from the

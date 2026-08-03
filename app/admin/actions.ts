@@ -1491,10 +1491,17 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // Application Limits (feedback c6ffa725): its own sub-form posts `applicationLimits=1` (marker),
   // mirroring the backdating tri-state guard above. Empty input ⇒ null (Unlimited, which is what every
   // existing leave type means and how it behaves today); a number sets the annual application ceiling.
+  // ad9cb5c5 adds the PERIOD to the same sub-form and the same marker: the ceiling and the window it is
+  // counted over are one decision, and a period posted without a ceiling is refused by the database.
   const touchApplicationLimits = fd.get('applicationLimits') === '1';
   const maxDaysPerLeaveYearRaw = String(fd.get('maxDaysPerLeaveYear') ?? '').trim();
+  const maxDaysPeriodRaw = String(fd.get('maxDaysPeriod') ?? '').trim();
   const applicationLimitFields = touchApplicationLimits
-    ? { maxDaysPerLeaveYear: maxDaysPerLeaveYearRaw === '' ? null : Number(maxDaysPerLeaveYearRaw) }
+    ? {
+        maxDaysPerLeaveYear: maxDaysPerLeaveYearRaw === '' ? null : Number(maxDaysPerLeaveYearRaw),
+        // Clearing the ceiling clears the period with it — "Unlimited, per calendar year" is not a state.
+        maxDaysPeriod: maxDaysPerLeaveYearRaw === '' || maxDaysPeriodRaw === '' ? null : maxDaysPeriodRaw,
+      }
     : {};
   // Maximum Consecutive Leave (c6ffa725 rev 2): its own sub-form posts `maxConsecutive=1` (marker), separate
   // from `applicationLimits` above — the two rules answer different questions ("in a year" vs "in one go")
@@ -1530,6 +1537,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const requestRuleFields: {
     backdatingLimitDays?: number | null;
     maxDaysPerLeaveYear?: number | null;
+    maxDaysPeriod?: string | null;
     maxConsecutiveDays?: number | null;
     maxConsecutiveUnit?: 'calendar_days' | 'working_days' | null;
     minAdvanceDays?: number | null;
@@ -1570,10 +1578,20 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // (marker) plus a Yes/No radio `allowNegativeBalanceValue` (yes ⇒ permit going negative; no ⇒ block over-
   // application). Any other sub-form save omits the marker ⇒ allow_negative_balance stays untouched (same
   // tri-state guard as duplicatePolicy). Forwarded as a concrete boolean; the service persists it.
+  // bc512dc3 adds the FLOOR to the same sub-form and the same marker: one switch, one floor, one decision.
+  // A blank figure means unbounded (today's behaviour), and turning the switch to No clears any floor —
+  // the database refuses a floor with no permission to go negative, so this cannot post that pair.
   const touchNegativeBalance = fd.get('negativeBalance') === '1';
-  const negativeBalanceFields = touchNegativeBalance
-    ? { allowNegativeBalance: fd.get('allowNegativeBalanceValue') === 'yes' }
-    : {};
+  const allowNegativeBalanceValue = fd.get('allowNegativeBalanceValue') === 'yes';
+  const maxNegativeBalanceRaw = String(fd.get('maxNegativeBalance') ?? '').trim();
+  const negativeBalanceFields: { allowNegativeBalance?: boolean; maxNegativeBalance?: number | null } =
+    touchNegativeBalance
+      ? {
+          allowNegativeBalance: allowNegativeBalanceValue,
+          maxNegativeBalance:
+            allowNegativeBalanceValue && maxNegativeBalanceRaw !== '' ? Number(maxNegativeBalanceRaw) : null,
+        }
+      : {};
   // Balance Deduction Source (cdf9ca48): its own sub-form posts `balanceSource=1` (marker) plus a mode radio
   // (`balanceSourceMode` = own | other) and, for 'other', the chosen `balanceSourceTypeId`. Mode 'own' — and
   // 'other' with nothing picked — both clear the column, so the dropdown can never leave a half-configured

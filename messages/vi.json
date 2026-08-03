@@ -4124,7 +4124,12 @@
         "maxConsecutiveUnitLabel": "Đơn vị",
         "maxConsecutiveUnitCalendar": "Ngày theo lịch",
         "maxConsecutiveUnitWorking": "Ngày làm việc",
-        "maxConsecutiveHelp": "Giới hạn độ dài của MỘT đơn xin nghỉ thuộc loại này — một quy tắc khác với giới hạn theo năm ở trên. Ngày theo lịch tính mọi ngày mà đơn bao trùm, kể cả cuối tuần và ngày lễ; Ngày làm việc chỉ tính những ngày thực sự bị trừ phép, nên đơn từ thứ Sáu đến thứ Hai là 4 ngày theo lịch nhưng 2 ngày làm việc. Được kiểm tra khi nộp đơn và kiểm tra lại khi phê duyệt. Nếu loại nghỉ này cũng thuộc một Nhóm nghỉ dùng chung có giới hạn mỗi đơn riêng, quy tắc chặt hơn sẽ được áp dụng và lời từ chối sẽ nói rõ là quy tắc nào. Hiện nay mọi loại nghỉ đều là Không giới hạn."
+        "maxConsecutiveHelp": "Giới hạn độ dài của MỘT đơn xin nghỉ thuộc loại này — một quy tắc khác với giới hạn theo năm ở trên. Ngày theo lịch tính mọi ngày mà đơn bao trùm, kể cả cuối tuần và ngày lễ; Ngày làm việc chỉ tính những ngày thực sự bị trừ phép, nên đơn từ thứ Sáu đến thứ Hai là 4 ngày theo lịch nhưng 2 ngày làm việc. Được kiểm tra khi nộp đơn và kiểm tra lại khi phê duyệt. Nếu loại nghỉ này cũng thuộc một Nhóm nghỉ dùng chung có giới hạn mỗi đơn riêng, quy tắc chặt hơn sẽ được áp dụng và lời từ chối sẽ nói rõ là quy tắc nào. Hiện nay mọi loại nghỉ đều là Không giới hạn.",
+        "applicationLimitPeriodLabel": "Kỳ giới hạn",
+        "applicationLimitPeriodLeaveYear": "Mỗi năm nghỉ phép",
+        "applicationLimitPeriodCalendarYear": "Mỗi năm dương lịch",
+        "applicationLimitPeriodEmployment": "Một lần trong suốt thời gian làm việc",
+        "applicationLimitPeriodHelp": "Năm nghỉ phép chỉ trùng với năm dương lịch khi năm nghỉ phép của bạn bắt đầu vào tháng Một. Một lần trong suốt thời gian làm việc được tính trên toàn bộ thời gian người đó làm việc cho bạn, nên khi tuyển dụng lại sẽ tính lại từ đầu."
       },
       "entitlementStep": {
         "schemes": "Chương trình phúc lợi",
@@ -4689,7 +4694,9 @@
       "halfDayDeductionClearAll": "Xóa tất cả",
       "halfDayDeductionAllSelected": "Tất cả công ty",
       "halfDayDeductionCountSelected": "Đã chọn {count} công ty",
-      "halfDayDeductionEmptyNote": "Không chọn công ty nào sẽ tắt quy tắc này ở mọi nơi: ngày làm nửa buổi lại trừ 0,5 ngày."
+      "halfDayDeductionEmptyNote": "Không chọn công ty nào sẽ tắt quy tắc này ở mọi nơi: ngày làm nửa buổi lại trừ 0,5 ngày.",
+      "maxNegativeBalanceLabel": "Số dư âm tối đa (ngày)",
+      "maxNegativeBalanceHelp": "Nhân viên có thể xuống dưới 0 bao nhiêu. Để trống nếu không giới hạn, đây là cách hoạt động hiện nay. Đơn xin nghỉ vượt quá giới hạn sẽ bị từ chối, và thông báo sẽ nêu rõ giới hạn và mức vượt quá."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

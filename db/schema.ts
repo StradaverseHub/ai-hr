@@ -1287,6 +1287,22 @@ export const leaveType = pgTable('leave_type', {
   // row gains the block immediately (no backfill needed). Enforced only at requestLeave/editLeaveRequest —
   // never read for entitlement / accrual / eligibility / payroll.
   allowNegativeBalance: boolean('allow_negative_balance').notNull().default(false),
+  // Maximum Negative Balance (feedback bc512dc3, migration 0352): the FLOOR under the switch above. With
+  // allow_negative_balance on, one application could take an employee arbitrarily far into deficit; this is
+  // how far is too far. Stored as a POSITIVE magnitude — 2.5 means "no further than -2.5 days" — because a
+  // business user types a magnitude, and a column that sometimes holds -2.5 and sometimes 2.5 is how a sign
+  // error becomes a silent doubling. NULL ⇒ today's unbounded behaviour, so no existing type changes.
+  //
+  // ⚠️ IT BINDS AT SUBMISSION, AND ONLY THERE, BECAUSE THAT IS THE ONLY PLACE THE SWITCH ITSELF BINDS.
+  // allow_negative_balance relaxes the SUBMIT-time gate only: the approval path refuses whenever
+  // `balance - need < 0` (InsufficientLeaveBalanceError, core/leave.ts) without ever consulting the flag.
+  // So a balance cannot go negative through the ordinary request-and-approve flow at all, and a floor
+  // checked at approval would be dead code sitting behind a strictly stronger rule. Adding it there would
+  // read as enforcement while enforcing nothing. The asymmetry is PRE-EXISTING, is pinned by
+  // test/leave-application-limit.ts's own fixture comment, and is raised separately on the board — do not
+  // "fix" it as a side effect of touching this column, because relaxing that gate would let balances go
+  // negative on every type that already has the switch on.
+  maxNegativeBalance: numeric('max_negative_balance', { precision: 6, scale: 2 }),
   // Balance Deduction Source (feedback cdf9ca48, migration 0316): the leave type whose BALANCE an application
   // of THIS type is checked against and debited from. NULL (every existing row) = its own balance — today's
   // exact behaviour, no backfill. Set it and the type keeps no balance of its own: the reporter's Emergency
@@ -1395,6 +1411,22 @@ export const leaveType = pgTable('leave_type', {
   // silently-defaulted limit would begin refusing real leave applications the moment it deployed (the
   // r82 precedent, scheme_leave_combined_limit.max_days_per_application).
   maxDaysPerLeaveYear: numeric('max_days_per_leave_year', { precision: 6, scale: 2 }),
+  // Application Limit PERIOD (feedback ad9cb5c5, migration 0352): the window the ceiling above is counted
+  // over. 'leave_year' (the default meaning of NULL, and what every existing row does today) ·
+  // 'calendar_year' · 'employment'.
+  //
+  // The column above keeps saying leave_year while the period becomes configurable. That is ugly and it is
+  // deliberate: renaming an applied column costs a second migration, a rewrite of every reader, and a
+  // window where the two names disagree — dearer than one awkward name.
+  //
+  // LEAVE YEAR IS NOT CALENDAR YEAR unless the tenant's leave year starts in January, which is why both are
+  // offered. Resolve the window through the leave-year path (resolveLeaveYearCycle + leaveYearWindow),
+  // NEVER by taking the year off the date.
+  //
+  // 'employment' counts across the whole employment, so a REHIRE STARTS FRESH — it is scoped to
+  // employment_id, not person_id. That is a real policy choice: a limit that survives a rehire is a rule
+  // about the person rather than the job, and it must be asked for explicitly rather than assumed here.
+  maxDaysPeriod: text('max_days_period'),
   // Maximum Consecutive Leave (feedback c6ffa725 revision 2, migration 0343): the OTHER half of the same
   // request — "how much in ONE GO", where max_days_per_leave_year above is "how much in a YEAR". Unlimited
   // (both NULL) or Limited (a figure AND the unit it is read in). The DB refuses a half-configured pair.

@@ -804,6 +804,89 @@ function CarryPolicyForm({
 }
 
 /**
+ * Configurable Negative Leave Balance Validation (0ef0defd), with the FLOOR added by bc512dc3.
+ *
+ * Extracted from the inline form it used to be because the floor is conditional: it is only meaningful
+ * when the switch is Yes, and a disabled-looking input beside a No is configuration that reads as set.
+ * Both controls live in ONE form under the single `negativeBalance=1` marker — the switch and the floor are
+ * one decision, and splitting them would let a save of one silently clear the other.
+ *
+ * ⚠️ THE FLOOR BINDS AT SUBMISSION ONLY, because that is the only place the switch itself binds.
+ * allow_negative_balance relaxes the submit-time gate; the approval path refuses any negative balance
+ * outright without consulting it. So a balance cannot actually go negative through the ordinary
+ * request-and-approve flow, and this floor caps how far a SUBMITTED application may reach. The asymmetry is
+ * pre-existing and is raised separately on the board — see the maxNegativeBalance column comment in
+ * db/schema.ts before deciding this control is broken.
+ */
+function NegativeBalanceForm({
+  t,
+  id,
+  name,
+  allowNegativeBalance,
+  maxNegativeBalance,
+  action,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  id: string;
+  name: string;
+  allowNegativeBalance: boolean;
+  /** Positive magnitude — 2.5 means the balance may not pass -2.5. NULL ⇒ unbounded (today's behaviour). */
+  maxNegativeBalance: number | null;
+  action: Action;
+}) {
+  const [allowed, setAllowed] = useState<boolean>(allowNegativeBalance);
+  return (
+    <form action={action} className="space-y-2">
+      <input type="hidden" name="id" value={id} />
+      {/* preserve the name — this form does not edit it */}
+      <input type="hidden" name="name" value={name} />
+      {/* marker: tells the action to touch the allow_negative_balance column (tri-state guard) */}
+      <input type="hidden" name="negativeBalance" value="1" />
+      <span className="text-xs font-medium text-foreground">{t('negativeBalanceLabel')}</span>
+      <div className="space-y-1.5">
+        {(['no', 'yes'] as const).map((opt) => (
+          <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
+            <input
+              type="radio"
+              name="allowNegativeBalanceValue"
+              value={opt}
+              checked={allowed === (opt === 'yes')}
+              onChange={() => setAllowed(opt === 'yes')}
+              className="mt-0.5 size-3.5 border-border"
+            />
+            <span>{opt === 'yes' ? t('negativeBalanceYes') : t('negativeBalanceNo')}</span>
+          </label>
+        ))}
+      </div>
+      {allowed ? (
+        <>
+          <Field label={t('maxNegativeBalanceLabel')}>
+            <input
+              name="maxNegativeBalance"
+              type="number"
+              min="0.5"
+              step="0.5"
+              defaultValue={maxNegativeBalance ?? ''}
+              className={cn(inputCls, 'w-full')}
+            />
+          </Field>
+          {/* Blank is a real, saveable answer here, so the screen has to say what it means — an empty box
+              beside an enabled rule otherwise reads as "not filled in yet" rather than "no limit". */}
+          <p className="text-xs text-muted-foreground">{t('maxNegativeBalanceHelp')}</p>
+        </>
+      ) : (
+        // Switching to No clears any floor: a floor with no permission to go negative is refused by the
+        // database, and posting the field blank is what makes that unreachable from this screen.
+        <input type="hidden" name="maxNegativeBalance" value="" />
+      )}
+      <Button type="submit" size="sm">
+        {t('save')}
+      </Button>
+    </form>
+  );
+}
+
+/**
  * Feedback c6ffa725 — Application Limits, under Condition · Leave Application Rules.
  *
  * Unlimited / Limited as a radio pair rather than "leave the box blank", because blank-means-no-limit is
@@ -820,12 +903,15 @@ function ApplicationLimitsForm({
   id,
   name,
   maxDaysPerLeaveYear,
+  maxDaysPeriod,
   action,
 }: {
   t: ReturnType<typeof useTranslations>;
   id: string;
   name: string;
   maxDaysPerLeaveYear: number | null;
+  /** ad9cb5c5 — 'leave_year' | 'calendar_year' | 'employment'. NULL ⇒ leave year, what every type means today. */
+  maxDaysPeriod: string | null;
   action: Action;
 }) {
   const [limited, setLimited] = useState<boolean>(maxDaysPerLeaveYear != null);
@@ -863,21 +949,41 @@ function ApplicationLimitsForm({
         </div>
       </Field>
       {limited ? (
-        <Field label={t('conditionStep.applicationLimitMaxLabel')}>
-          <input
-            name="maxDaysPerLeaveYear"
-            type="number"
-            min="0.5"
-            step="0.5"
-            defaultValue={maxDaysPerLeaveYear ?? ''}
-            className={cn(inputCls, 'w-full')}
-          />
-        </Field>
+        <>
+          <Field label={t('conditionStep.applicationLimitMaxLabel')}>
+            <input
+              name="maxDaysPerLeaveYear"
+              type="number"
+              min="0.5"
+              step="0.5"
+              defaultValue={maxDaysPerLeaveYear ?? ''}
+              className={cn(inputCls, 'w-full')}
+            />
+          </Field>
+          {/* ad9cb5c5 — the period the ceiling is counted over. Only offered alongside a figure: a period
+              with no ceiling configures the window of a limit that does not exist, and the database
+              refuses that pair. Defaults to per-leave-year, which is what every existing type means. */}
+          <Field label={t('conditionStep.applicationLimitPeriodLabel')}>
+            <select
+              name="maxDaysPeriod"
+              defaultValue={maxDaysPeriod ?? 'leave_year'}
+              className={cn(inputCls, 'w-full')}
+            >
+              <option value="leave_year">{t('conditionStep.applicationLimitPeriodLeaveYear')}</option>
+              <option value="calendar_year">{t('conditionStep.applicationLimitPeriodCalendarYear')}</option>
+              <option value="employment">{t('conditionStep.applicationLimitPeriodEmployment')}</option>
+            </select>
+          </Field>
+          <p className="text-xs text-muted-foreground">{t('conditionStep.applicationLimitPeriodHelp')}</p>
+        </>
       ) : (
         // Unlimited posts the field EXPLICITLY EMPTY rather than omitting it: the marker is present, so an
         // omitted field and a blank one would both have to mean something, and only one of them can. Blank
-        // is the clear.
-        <input type="hidden" name="maxDaysPerLeaveYear" value="" />
+        // is the clear. The period rides along — clearing the ceiling clears the window with it.
+        <>
+          <input type="hidden" name="maxDaysPerLeaveYear" value="" />
+          <input type="hidden" name="maxDaysPeriod" value="" />
+        </>
       )}
       <Button type="submit" size="sm">
         {t('save')}
@@ -1290,6 +1396,7 @@ export function LeaveTypePanel({
   hrRemarkRequired,
   backdatingLimitDays,
   maxDaysPerLeaveYear,
+  maxDaysPeriod,
   maxConsecutiveDays,
   maxConsecutiveUnit,
   minAdvanceDays,
@@ -1312,6 +1419,7 @@ export function LeaveTypePanel({
   perDateApproval,
   duplicateApplicationPolicy,
   allowNegativeBalance,
+  maxNegativeBalance,
   balanceSourceTypeId,
   allowUnpaidLeave,
   balanceSourceOptions,
@@ -1373,6 +1481,8 @@ export function LeaveTypePanel({
   backdatingLimitDays: number | null;
   /** Application Limits (c6ffa725): max days APPLIED FOR per leave year. null = no limit. */
   maxDaysPerLeaveYear: number | null;
+  /** ad9cb5c5 — the window the ceiling is counted over. NULL ⇒ leave year, what every type means today. */
+  maxDaysPeriod: string | null;
   /** Maximum Consecutive Leave (c6ffa725 rev 2): the longest SINGLE application this type allows, and the
    *  unit that figure is read in. An all-or-nothing pair — both null = Unlimited, which is every leave type
    *  today. Threaded so the sub-form round-trips. */
@@ -1445,6 +1555,8 @@ export function LeaveTypePanel({
    *  application of this type that exceeds their available balance. false ⇒ block over-application (the
    *  default). Threaded so the Yes/No sub-form round-trips its saved value; persisted via touchNegativeBalance. */
   allowNegativeBalance: boolean;
+  /** bc512dc3 — positive magnitude floor; NULL ⇒ unbounded (today's behaviour). */
+  maxNegativeBalance: number | null;
   /** Balance Deduction Source (cdf9ca48): the leave type this one's applications are checked against and
    *  debited from. null ⇒ its own balance (the default). Threaded so the mode radio + source select
    *  round-trip; persisted via touchBalanceSource. */
@@ -2927,31 +3039,14 @@ export function LeaveTypePanel({
               going negative (the approval-time guard still applies). */}
           <div className="mb-3 break-inside-avoid space-y-2 rounded-lg border border-border bg-background p-3">
             <span className="text-xs font-medium text-muted-foreground">{t('negativeBalanceSectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the allow_negative_balance column (tri-state guard) */}
-              <input type="hidden" name="negativeBalance" value="1" />
-              <span className="text-xs font-medium text-foreground">{t('negativeBalanceLabel')}</span>
-              <div className="space-y-1.5">
-                {(['no', 'yes'] as const).map((opt) => (
-                  <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
-                    <input
-                      type="radio"
-                      name="allowNegativeBalanceValue"
-                      value={opt}
-                      defaultChecked={opt === (allowNegativeBalance ? 'yes' : 'no')}
-                      className="mt-0.5 size-3.5 border-border"
-                    />
-                    <span>{opt === 'yes' ? t('negativeBalanceYes') : t('negativeBalanceNo')}</span>
-                  </label>
-                ))}
-              </div>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
+            <NegativeBalanceForm
+              t={t}
+              id={id}
+              name={name}
+              allowNegativeBalance={allowNegativeBalance}
+              maxNegativeBalance={maxNegativeBalance}
+              action={updateTypeAction}
+            />
             <p className="text-xs text-muted-foreground">{t('negativeBalanceHelp')}</p>
           </div>
           {/* Balance Deduction Source (feedback cdf9ca48). Its own self-contained <form> + `balanceSource=1`
@@ -3016,6 +3111,7 @@ export function LeaveTypePanel({
               id={id}
               name={name}
               maxDaysPerLeaveYear={maxDaysPerLeaveYear}
+              maxDaysPeriod={maxDaysPeriod}
               action={updateTypeAction}
             />
             <p className="text-xs text-muted-foreground">{t('conditionStep.applicationLimitHelp')}</p>

@@ -380,9 +380,23 @@ describe('08bc6841 · Leave Application Rules — the seven rule groups as a car
     const rules = subStepSlice(essSegment(), 'rules');
     let cursor = -1;
     for (const marker of RULE_MARKERS) {
-      const at = rules.indexOf(`<input type="hidden" ${marker} value="1" />`);
-      expect(at, `${marker} tri-state marker inside the rules grid`).toBeGreaterThan(cursor);
+      // bc512dc3 extracted the negative-balance card into NegativeBalanceForm (it needed client state to
+      // show the floor only when the switch is Yes), so its marker now lives in that component rather than
+      // inline in the grid. What the grid still has to show, in order, is the card ITSELF — which is what
+      // this assertion is actually about. The marker is checked separately below, on the whole file.
+      const needle =
+        marker === 'name="negativeBalance"' ? '<NegativeBalanceForm' : `<input type="hidden" ${marker} value="1" />`;
+      const at = rules.indexOf(needle);
+      expect(at, `${marker} rule card inside the rules grid, in source order`).toBeGreaterThan(cursor);
       cursor = at;
+    }
+  });
+
+  it('every rule group still carries its own tri-state marker somewhere in the panel', () => {
+    // The markers are what stop a save of one card silently clearing another, so they are asserted on the
+    // whole file — extracting a card into a component must not be able to drop one.
+    for (const marker of RULE_MARKERS) {
+      expect(panelSrc, `${marker} tri-state marker`).toContain(`<input type="hidden" ${marker} value="1" />`);
     }
   });
 

@@ -4124,7 +4124,12 @@
         "maxConsecutiveUnitLabel": "Unit",
         "maxConsecutiveUnitCalendar": "Calendar Days",
         "maxConsecutiveUnitWorking": "Working Days",
-        "maxConsecutiveHelp": "Caps how long ONE application of this type may be — a different rule from the yearly maximum above. Calendar Days counts every day the application spans, including weekends and public holidays; Working Days counts only the days actually charged as leave, so a Friday-to-Monday application is 4 calendar days but 2 working days. Checked when the application is submitted and again when it is approved. Where this leave type is also in a Shared Leave Group with its own per-application maximum, the stricter of the two applies and the refusal says which. Unlimited is how every leave type behaves today."
+        "maxConsecutiveHelp": "Caps how long ONE application of this type may be — a different rule from the yearly maximum above. Calendar Days counts every day the application spans, including weekends and public holidays; Working Days counts only the days actually charged as leave, so a Friday-to-Monday application is 4 calendar days but 2 working days. Checked when the application is submitted and again when it is approved. Where this leave type is also in a Shared Leave Group with its own per-application maximum, the stricter of the two applies and the refusal says which. Unlimited is how every leave type behaves today.",
+        "applicationLimitPeriodLabel": "Limit period",
+        "applicationLimitPeriodLeaveYear": "Per leave year",
+        "applicationLimitPeriodCalendarYear": "Per calendar year",
+        "applicationLimitPeriodEmployment": "Once per employment",
+        "applicationLimitPeriodHelp": "A leave year is the same as a calendar year only when your leave year starts in January. Once per employment counts across the whole time someone has worked for you, so a rehire starts fresh."
       },
       "entitlementStep": {
         "schemes": "Benefit Schemes",
@@ -4689,7 +4694,9 @@
       "halfDayDeductionClearAll": "Clear all",
       "halfDayDeductionAllSelected": "All companies",
       "halfDayDeductionCountSelected": "{count} companies selected",
-      "halfDayDeductionEmptyNote": "Selecting no company turns the rule off everywhere: half days deduct 0.5 day again."
+      "halfDayDeductionEmptyNote": "Selecting no company turns the rule off everywhere: half days deduct 0.5 day again.",
+      "maxNegativeBalanceLabel": "Maximum negative balance (days)",
+      "maxNegativeBalanceHelp": "How far below zero an employee may go. Leave it empty for no limit, which is how this works today. An application that would take someone past the limit is refused, and the message says what the limit is and how far past it the request goes."
     },
     "holidays": {
       "pageTitle": "Public holidays",

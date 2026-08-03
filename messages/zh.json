@@ -4124,7 +4124,12 @@
         "maxConsecutiveUnitLabel": "单位",
         "maxConsecutiveUnitCalendar": "日历天",
         "maxConsecutiveUnitWorking": "工作日",
-        "maxConsecutiveHelp": "限制该假期类型单次申请的最长天数——与上方的年度上限是两条不同的规则。日历天计入申请跨越的每一天，包括周末和公众假期；工作日只计入真正扣减假期的天数，因此周五至周一的申请是 4 个日历天但只有 2 个工作日。提交申请时检查，批准时再检查一次。若该假期类型同时属于设有单次申请上限的共享假期组，则以两者中更严格的一条为准，并在拒绝时说明是哪一条。目前所有假期类型均为不限。"
+        "maxConsecutiveHelp": "限制该假期类型单次申请的最长天数——与上方的年度上限是两条不同的规则。日历天计入申请跨越的每一天，包括周末和公众假期；工作日只计入真正扣减假期的天数，因此周五至周一的申请是 4 个日历天但只有 2 个工作日。提交申请时检查，批准时再检查一次。若该假期类型同时属于设有单次申请上限的共享假期组，则以两者中更严格的一条为准，并在拒绝时说明是哪一条。目前所有假期类型均为不限。",
+        "applicationLimitPeriodLabel": "限制周期",
+        "applicationLimitPeriodLeaveYear": "每假期年度",
+        "applicationLimitPeriodCalendarYear": "每日历年度",
+        "applicationLimitPeriodEmployment": "整个雇佣期内一次",
+        "applicationLimitPeriodHelp": "仅当您的假期年度从一月开始时，假期年度才与日历年度相同。整个雇佣期内一次是按员工为您工作的全部时间计算的，因此重新聘用会重新开始计算。"
       },
       "entitlementStep": {
         "schemes": "福利方案",
@@ -4689,7 +4694,9 @@
       "halfDayDeductionClearAll": "全部清除",
       "halfDayDeductionAllSelected": "所有公司",
       "halfDayDeductionCountSelected": "已选择 {count} 家公司",
-      "halfDayDeductionEmptyNote": "若不选择任何公司，此规则将在所有公司停用：半天将重新按 0.5 天扣除。"
+      "halfDayDeductionEmptyNote": "若不选择任何公司，此规则将在所有公司停用：半天将重新按 0.5 天扣除。",
+      "maxNegativeBalanceLabel": "最大负余额（天）",
+      "maxNegativeBalanceHelp": "员工余额最多可以低于零多少。留空表示不设限制，这也是目前的运作方式。超出限制的申请将被拒绝，提示信息会说明限制值以及超出的幅度。"
     },
     "holidays": {
       "pageTitle": "公共假期",

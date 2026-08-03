@@ -4124,7 +4124,12 @@
         "maxConsecutiveUnitLabel": "Unit",
         "maxConsecutiveUnitCalendar": "Hari Kalendar",
         "maxConsecutiveUnitWorking": "Hari Bekerja",
-        "maxConsecutiveHelp": "Mengehadkan panjang SATU permohonan bagi jenis ini — peraturan yang berbeza daripada had tahunan di atas. Hari Kalendar mengira setiap hari yang diliputi permohonan, termasuk hujung minggu dan cuti umum; Hari Bekerja mengira hanya hari yang benar-benar dicaj sebagai cuti, jadi permohonan Jumaat hingga Isnin ialah 4 hari kalendar tetapi 2 hari bekerja. Disemak semasa permohonan dihantar dan sekali lagi semasa diluluskan. Jika jenis cuti ini juga berada dalam Kumpulan Cuti Kongsi yang mempunyai maksimum setiap permohonannya sendiri, yang lebih ketat akan terpakai dan penolakan menyatakan yang mana satu. Tanpa had ialah cara setiap jenis cuti berkelakuan hari ini."
+        "maxConsecutiveHelp": "Mengehadkan panjang SATU permohonan bagi jenis ini — peraturan yang berbeza daripada had tahunan di atas. Hari Kalendar mengira setiap hari yang diliputi permohonan, termasuk hujung minggu dan cuti umum; Hari Bekerja mengira hanya hari yang benar-benar dicaj sebagai cuti, jadi permohonan Jumaat hingga Isnin ialah 4 hari kalendar tetapi 2 hari bekerja. Disemak semasa permohonan dihantar dan sekali lagi semasa diluluskan. Jika jenis cuti ini juga berada dalam Kumpulan Cuti Kongsi yang mempunyai maksimum setiap permohonannya sendiri, yang lebih ketat akan terpakai dan penolakan menyatakan yang mana satu. Tanpa had ialah cara setiap jenis cuti berkelakuan hari ini.",
+        "applicationLimitPeriodLabel": "Tempoh had",
+        "applicationLimitPeriodLeaveYear": "Setiap tahun cuti",
+        "applicationLimitPeriodCalendarYear": "Setiap tahun kalendar",
+        "applicationLimitPeriodEmployment": "Sekali sepanjang pekerjaan",
+        "applicationLimitPeriodHelp": "Tahun cuti sama dengan tahun kalendar hanya apabila tahun cuti anda bermula pada bulan Januari. Sekali sepanjang pekerjaan dikira sepanjang tempoh seseorang bekerja dengan anda, jadi pengambilan semula bermula semula."
       },
       "entitlementStep": {
         "schemes": "Skim Faedah",
@@ -4689,7 +4694,9 @@
       "halfDayDeductionClearAll": "Kosongkan semua",
       "halfDayDeductionAllSelected": "Semua syarikat",
       "halfDayDeductionCountSelected": "{count} syarikat dipilih",
-      "halfDayDeductionEmptyNote": "Tidak memilih mana-mana syarikat akan mematikan peraturan ini di semua tempat: hari separuh akan ditolak 0.5 hari semula."
+      "halfDayDeductionEmptyNote": "Tidak memilih mana-mana syarikat akan mematikan peraturan ini di semua tempat: hari separuh akan ditolak 0.5 hari semula.",
+      "maxNegativeBalanceLabel": "Baki negatif maksimum (hari)",
+      "maxNegativeBalanceHelp": "Sejauh mana pekerja boleh melepasi sifar. Biarkan kosong untuk tiada had, iaitu cara ia berfungsi hari ini. Permohonan yang akan melepasi had itu akan ditolak, dan mesejnya menyatakan had tersebut dan sejauh mana permohonan itu melepasinya."
     },
     "holidays": {
       "pageTitle": "Cuti umum",
