@@ -5,15 +5,21 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-04, after r128 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-04, after r130 SHIPPED)
 
 > ## ▶ NEXT SESSION STARTS HERE
 >
-> **`main@5b113ea5` is what runs. Production on 307 migrations. Next free number is `0382`.**
+> **`main@8cc11664` is what runs. Production on 312 migrations. Next free number is `0386`.** Nothing is
+> in flight: no unmerged build branch, no half-applied migration, no pending deploy.
 >
-> **IN FLIGHT:** `build/r131` (`bc36c768`, migrations 0375/0376) and `build/r132` (`296fc027`,
-> migrations 0380/0381) are built and unmerged. 0358/0365/0370 are SHIPPED; the gaps between those
-> numbers are deliberate — they were handed out to parallel agents so they could not collide.
+> **NINE of the ten approved items shipped in one night** (r127–r130): `491c499f`, `8fec719e`,
+> `56910869`, `65f466e2`, `fef49b9a`, `c459bff9`, `bc36c768`, `4b0e76ae`, `296fc027`. The gaps in the
+> migration numbers (0358, 0365, 0370, 0375/0376, 0380/0381, 0385) are deliberate — numbers were handed
+> out to parallel agents up front so they could not collide, which they had done the round before.
+>
+> **`6e9a126e` IS THE ONE LEFT, AND IT WAS NOT ATTEMPTED.** Its own approved plan stages it across three
+> releases and it DROPS `benefit_scheme`, `scheme_leave_entitlement` and `leave_policy`. It is the
+> umbrella over the entitlement layer and it deserves a session of its own, not the tail of one.
 >
 > ### ⚠️ THE DEPLOY RSYNC HAS NO `--delete`
 >
@@ -1102,6 +1108,130 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r130 — 2026-08-04 — 4b0e76ae and 296fc027, plus a bug r127 shipped that only a render could find
+
+**Shipped:** `4b0e76ae` (Leave Year Configuration removed + Generate Entitlement page) ·
+`296fc027` (Replacement Leave configuration + employee request workflow).
+Plus a fix for a defect **r127 introduced**.
+**`main@8cc11664`. 312 migrations. New: `0380`, `0381`, `0385`.**
+
+### r127 SHIPPED THE ADJUSTMENTS SCREEN WITH TWELVE BROKEN LABELS
+
+`app/admin/leave/adjustments/page.tsx` read `admin.leave.employmentType.*` and
+`admin.leave.orgCriteria.*`. **Neither namespace exists.** So all four employment-type chips and all eight
+org-criteria chips on the screen `491c499f` was raised to create resolved to nothing.
+
+**Every gate step passed** — tsc, 6591 tests, `next build`, the upgrade rehearsal — and the page returned
+**200**. It is visible in exactly one place: the dev-server log on a real render, as
+`MISSING_MESSAGE: Could not resolve …`. This is the third time in four rounds that rendering caught what
+the whole gate could not (r123's server/client boundary, r127's missing GRANT, now this).
+
+**Both label sets already shipped, translated in all six locales.** The fix reads them where they live
+rather than minting a seventh copy: the eight org axes under `admin.profileOptions.category` — which is
+what `ORG_ASSIGNMENT_CRITERIA`'s own header says `labelKey` indexes — and the employment types under
+`people.wizard.employmentType`. Verified by re-render: no new `MISSING_MESSAGE`, chips read Full-time,
+Part-time, Division, Branch, Region, Section.
+
+**A bare status code is not a render check.** Grep the dev log too. `296fc027`'s build hit the same class
+independently — a next-intl `FORMATTING_ERROR` from an ICU variable that was never supplied, on a page
+that returned 200 throughout.
+
+### Decisions — 4b0e76ae
+
+**THE REMOVAL WAS NEVER THE RISK. THE ORPHANED BUTTON WAS.** Pressing *Start* in the deleted section was
+the only way a leave year got opened for anybody, so `/admin/leave/generate` ships in the SAME release and
+`openLeaveYearAction` moves onto it. It had **zero** direct callers before this — it was reached only
+through the deleted section's draft→open transition — and now has exactly one, pinned by a filesystem scan
+that strips comments (three surviving prose mentions would otherwise read as call sites).
+
+**AND IT WAS NOT SAFE TO RE-HOME AS-IS.** `openLeaveYearAction` was gated on `getSession()`, not
+`requireAdmin()`; `openLeaveYear` asserts nothing about admin anywhere in its body; and the ledger's RLS
+gates on `can_see_employment`, not on admin. **An ordinary member posting that server action could have
+written accrual grants for every employment they can see.** Now `requireAdmin()`, with a test written to
+fail on reversion rather than merely assert the new line.
+
+**The future-year gate keeps its behaviour and loses its read.** Deleting it outright — the obvious move
+once the table it reads is emptied — would let an employee book next-year dates against this year's
+balance. The approval debit stamps at the request's start date while `openLeaveYear`'s "before" is an
+UNBOUNDED ledger read, so that booking would quietly REDUCE carry-forward and INCREASE forfeit. It is now
+a flat rule with no read at all: a future year plus not-admin throws; admin keeps the override stamp.
+
+**The year list is a computed range, `currentYear − 3 .. + 6`.** It must reach BACK three years: today's
+Run Earned Accrual selector builds `currentYear .. +6`, so a forward-only range would silently remove the
+ability to run earned accrual for a past year. Accepted difference, disclosed: the selector now opens on
+the current year rather than the newest configured year.
+
+**The reset must run as the table OWNER.** `leave_year_config` carries a RESTRICTIVE delete policy that
+ANDs with `app.is_admin()`, and `ai_hr_app` is NOBYPASSRLS — so the same `DELETE` through the app role
+**removes nothing and raises nothing**. Migrations connect as owner and the table is ENABLE (not FORCE)
+RLS, so the migration path is clean. Do NOT add FORCE to this table. The empty table and migrations
+0190/0191/0282 stay in place, unreferenced — `test/harness.ts` and `test/leave-pack.test.ts` both pin it.
+
+**DISCLOSURE, MEASURED NOT ASSUMED: 2027 was OPEN on production** (2028 draft, 3 rows total). The plan
+stated the consequence conditionally — "if any year later than this one is currently Open". It was. So
+this reset really does remove the ability to apply into 2027 until the new module opens a year again.
+
+**A dependant the plan missed:** `test/entitlement-standalone-sections-removal.test.ts` asserts the
+entitlements page matches `listLeaveYearConfigs(s)`. The plan said "no change expected" for that file.
+Guaranteed break; re-pointed. Also, `lib/permissions.ts` held SEVEN routes and the tab strip SEVEN tabs,
+not the six the plan counted — `/admin/leave/adjustments` landed in between.
+
+### Decisions — 296fc027
+
+**Replacement leave already worked.** The engine grants it, tracks expiry and stops the same worked day
+being both paid and banked — it just lived on the Time Off In Lieu screen, one company at a time,
+reachable only by a manager from the roster and only for a day that already carried approved overtime.
+Configuration moves to `/admin/leave/replacement`; **the ledger and the two settlement sweeps deliberately
+STAY** on `/admin/toil`, whose wind-down comments explain why they are not entitlement-gated.
+
+**`accrueToilTx` was SPLIT at the fork, not duplicated.** It hard-requires an attendance row with overtime
+and restricts to rest days and holidays; this phase validates none of that. Everything from the policy
+check down — double-bank guard, First Schedule gate, frozen expiry, ledger credit, register row — moved
+into a shared `bankToilCreditTx` that both paths call, so **the gates sit BELOW the fork where neither path
+can miss them.**
+
+**A SELF-DECLARED CREDIT HAS NO DAY TYPE, AND WE DO NOT INVENT ONE.** The exact s.60(3)/s.60D(3) cash for a
+First Schedule employee is a *function of* the worked day type — rest day and public holiday pay at
+different multiples. Fabricating one would produce a confident, wrong figure on a legal obligation. So
+`day_type` stays NULL, the expiry sweep falls back to contractual ORP, and the event carries a note telling
+the admin to verify the worked day before paying. It can only arise where the employer already used the
+First Schedule override.
+
+**Requests are NOT `leave_request` rows.** That table means TIME TAKEN everywhere — balance checks,
+calendar, payroll unpaid days — and reusing it would have corrupted all three. New header + line tables,
+decided through `assertCanDecide` (line-manager-or-admin with a self-grant ban), not the multi-level
+template chain.
+
+**Named individuals WIDEN eligibility, they do not narrow it.** Eligible if named individually OR matching
+all set org criteria. AND-ing would make "and also Aisha" silently exclude her. Guarded against the
+vacuous-truth trap where an individuals-only config collapses into "everyone".
+
+**Two expiry columns, not one.** `expiry_days` keeps its exact meaning and `expiry_months` is separate — a
+column named `expiry_days` holding "3 months" is how `addDays` produces a 3-day expiry. Month arithmetic
+clamps to end-of-month; JS `setUTCMonth` rolls *forward* into March and would silently lengthen the period.
+
+**Already done, so not rebuilt:** the plan's item 3 (expiry counted from the approval date) had ALREADY
+shipped as `00307068` in migration 0354. Only the unit was missing. And `56910869` did NOT add a button to
+the My Leave row as this plan assumed — it added a consent block inside the Request Leave modal — so there
+was no conflict to resolve.
+
+**Production had ZERO toil_accrual and ZERO toil_policy rows**, so the promise that banked credits keep
+their expiry dates is trivially true and the screen move carries no data risk.
+
+### Gate
+
+`tsc` clean · **554 files / 6618 tests** · `next build` clean · upgrade rehearsal from `build/r127` **PASS**.
+
+**Honest note on the last two fixes.** The gate run that produced those numbers had **2 files / 6 tests
+failing**, both in `4b0e76ae`'s own new suites, which its agent never ran because the cluster was wedged.
+Both were TEST-side (a `vi.mock` missing `isAdmin`; a `.toMatch()` against a key the item itself deleted)
+and **no production code changed to fix them**. They were re-run in isolation — 2 files / 24 tests green —
+rather than re-running the whole 22-minute suite before the deadline. The other 552 files' results stand
+because nothing they exercise moved.
+Render-verified on a real dev server, all 200 and dev log checked, not just status codes:
+`/`, `/admin/leave`, `/admin/leave/generate`, `/admin/leave/replacement`, `/admin/leave/entitlements`,
+`/admin/leave/adjustments`, `/admin/toil`, `/me`, `/leave`.
 
 ## r129 — 2026-08-04 — bc36c768: three earning methods, and the gate that makes a reset safe
 
