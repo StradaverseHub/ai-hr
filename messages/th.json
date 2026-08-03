@@ -1607,7 +1607,10 @@
       "leaveTypeApplicationTooLong": "{typeName} อนุญาตสูงสุด {maxDays} {unit} ต่อเนื่องต่อการยื่นหนึ่งครั้ง แต่ครั้งนี้ {days} กรุณาลดจำนวนวันหรือแยกยื่นเป็นหลายครั้ง",
       "consecutiveUnitCalendar": "วันตามปฏิทิน",
       "consecutiveUnitWorking": "วันทำงาน",
-      "leaveYearApplicationLimit": "{typeName} จำกัดไม่เกิน {maxDays} วันต่อปีการลา มีการยื่นขอไปแล้ว {usedDays} วัน ระหว่าง {yearStart} ถึง {yearEnd} จึงไม่สามารถยื่นคำขอ {days} วันนี้ได้"
+      "leaveYearApplicationLimit": "{typeName} จำกัดไม่เกิน {maxDays} วันต่อปีการลา มีการยื่นขอไปแล้ว {usedDays} วัน ระหว่าง {yearStart} ถึง {yearEnd} จึงไม่สามารถยื่นคำขอ {days} วันนี้ได้",
+      "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
+      "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
     },
     "documentLabel": "เอกสารประกอบ",
     "documentHint": "จำเป็นสำหรับการลาบางประเภท (เช่น ใบรับรองแพทย์) ประเภทไฟล์และขนาดที่อนุญาตขึ้นอยู่กับประเภทการลาที่เลือก",
@@ -1789,6 +1792,14 @@
       "pageNext": "ถัดไป",
       "pageAria": "หน้า {page}",
       "noEmployeesFiltered": "ไม่มีพนักงานที่ตรงกับตัวกรอง"
+    },
+    "override": {
+      "title": "Before you submit",
+      "convertNotice": "This application does not meet the {days}-day notice period for {typeName} (you have given {given} day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
+      "splitNotice": "Your balance does not cover this application. {paid} day(s) would be paid and {unpaid} day(s) would be taken as unpaid leave, which may reduce your salary.",
+      "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
+      "convertConfirm": "Yes — submit this as Emergency Leave.",
+      "splitConfirm": "Yes — I agree to the unpaid days."
     }
   },
   "attendance": {
@@ -4780,7 +4791,20 @@
       "adjustmentsRecentLine": "{days} วัน · บันทึกแล้ว {written} จาก {targeted} รายการ · มีผล {date}",
       "adjustmentsReverse": "ย้อนกลับ",
       "adjustmentsReverseConfirm": "ระบบจะบันทึกรายการตรงข้ามสำหรับทุกรายการที่การปรับปรุงนี้สร้างขึ้น ทำให้ยอดคงเหลือกลับไปเป็นเหมือนเดิม ไม่มีการลบข้อมูล และทำได้เพียงครั้งเดียว",
-      "adjustmentsReversed": "ย้อนกลับแล้ว"
+      "adjustmentsReversed": "ย้อนกลับแล้ว",
+      "overrideSectionTitle": "Override Leave Application",
+      "overrideSectionHelp": "What the system should do when one of the rules above is not met. Choose an action per situation, then switch it on. Nothing changes for this leave type until a rule is switched on. Employees are always told what will happen and must confirm before their application is submitted.",
+      "overrideActionNone": "Do nothing (refuse as today)",
+      "overrideEnabledLabel": "Switch this rule on",
+      "overrideTrigger": {
+        "advance_notice_not_met": "When the minimum advance notice is not met",
+        "insufficient_balance": "When the balance does not cover the application"
+      },
+      "overrideAction": {
+        "convert_to_emergency": "Offer to submit it as Emergency Leave",
+        "split_unpaid": "Offer to take the shortfall as unpaid leave",
+        "block": "Block the application"
+      }
     },
     "holidays": {
       "pageTitle": "วันหยุดราชการ",

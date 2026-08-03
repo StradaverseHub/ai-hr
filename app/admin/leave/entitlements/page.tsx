@@ -792,6 +792,9 @@ export default async function LeaveEntitlementsPage({
               counting={lt.counting ?? 'working_days'}
               perDateApproval={lt.perDateApproval ?? false}
               duplicateApplicationPolicy={lt.duplicateApplicationPolicy ?? null}
+              // Override Leave Application (56910869): a plain array of plain objects — serialisable, so it
+              // may cross the server→client boundary (test/server-client-boundary.test.ts).
+              overrideRules={lt.overrideRules ?? null}
               allowNegativeBalance={lt.allowNegativeBalance ?? false}
               maxNegativeBalance={lt.maxNegativeBalance == null ? null : Number(lt.maxNegativeBalance)}
               balanceSourceTypeId={lt.balanceSourceTypeId ?? null}

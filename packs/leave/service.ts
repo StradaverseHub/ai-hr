@@ -37,6 +37,11 @@ export * from '../../core/leave-encashment';
 export * from '../../core/leave-escalation';
 export * from '../../core/leave-formula';
 export * from '../../core/leave-import';
+// 56910869 — the Override Leave Application rule vocabulary. Re-exported here (and registered in BOTH
+// BOUNDARIES and ALWAYS_ALLOWED in test/leave-pack-drift.test.ts) for the reason the 241817ef note above
+// gives: a new leave-pack module that is not a BOUNDARY is simply unguarded, and silencing the guard with
+// an allowlist entry would grow a list documented to only ever shrink.
+export * from '../../core/leave-override';
 // 491c499f — the bulk Leave Adjustments writer (batch apply + reversal + the set resolver). Consumed
 // through this facade like every other leave service, never by reaching into core/ directly.
 export * from '../../core/leave-adjustment';

@@ -2129,6 +2129,13 @@
       "when": 1781862457000,
       "tag": "0357_leave_adjustment_batch_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 365,
+      "version": "7",
+      "when": 1781862465000,
+      "tag": "0365_leave_type_override_rules",
+      "breakpoints": true
     }
   ]
 }

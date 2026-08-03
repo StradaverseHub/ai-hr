@@ -23,6 +23,8 @@ import {
   LeaveDocumentTypeError,
   LeaveDocumentSizeError,
   UnpaidConsentRequiredError,
+  LeaveOverrideConsentRequiredError,
+  LeaveOverrideTargetMissingError,
   HourlyLeaveTimeRangeError,
   LeaveNoDaysInRangeError,
   DuplicateLeaveApplicationError,
@@ -99,6 +101,9 @@ export async function myPreviewLeaveDeduction(p: {
       startDate: p.startDate,
       endDate: p.endDate,
       durationType: p.durationType,
+      // Override Leave Application (56910869): the same tenant-local "today" myRequestLeave passes below, so
+      // the pop-out and the submission judge the notice period against one date.
+      today: todayInKualaLumpur(),
     });
   } catch {
     return null; // preview is best-effort — the submit action remains the authoritative gate
@@ -123,6 +128,10 @@ export async function myRequestLeave(formData: FormData) {
   const reasonCategoryRaw = String(formData.get('reasonCategory') ?? '').trim();
   const reasonCategory = isEmergencyReasonCategory(reasonCategoryRaw) ? reasonCategoryRaw : undefined;
   const unpaidConsent = String(formData.get('unpaidConsent') ?? '') === 'on';
+  // Override Leave Application (56910869): the employee's confirmation of each rule that will CHANGE this
+  // application (`trigger:action` tokens). getAll because two rules can fire on one application. The SERVICE
+  // is the gate — this only forwards what the form collected.
+  const overrideConsent = formData.getAll('overrideConsent').map(String).filter((v) => v !== '');
 
   const locale = await getLocale();
   // Supporting-document config: resolve the selected type once — supplies the localized name for error
@@ -152,6 +161,7 @@ export async function myRequestLeave(formData: FormData) {
       toTime: durationType === 'hourly' && toTime !== '' ? toTime : undefined,
       reasonCategory,
       unpaidConsent,
+      overrideConsent,
       // Configurable backdated-leave restriction (0133): pass the tenant-local (MYT) "today" so the boundary
       // is judged in Malaysian time, not server/UTC.
       today: todayInKualaLumpur(),
@@ -281,6 +291,19 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   }
   if (e instanceof LeaveDocumentSizeError) return t('fileTooLarge', { mb: e.maxMb });
   if (e instanceof UnpaidConsentRequiredError) return t('unpaidConsentRequired', { days: e.unpaidDays ?? 0 });
+  // Override Leave Application (56910869): the SERVICE refused to apply a rule that would CHANGE this
+  // application because the employee never confirmed it. Reaching this message means the client skipped the
+  // pop-out (a stale form, or a direct post) — the ordinary flow answers Yes/No before submitting and never
+  // sees it. Localized per action so each rule explains itself in the viewer's language.
+  if (e instanceof LeaveOverrideConsentRequiredError) {
+    return e.action === 'convert_to_emergency'
+      ? t('overrideConsentRequiredConvert', { typeName: e.toTypeName ?? '', fromTypeName: e.fromTypeName ?? name ?? '' })
+      : t('overrideConsentRequiredSplit', { paid: e.paidDays ?? 0, unpaid: e.unpaidDays ?? 0 });
+  }
+  // A conversion rule is enabled but there is no Emergency Leave type to convert TO. Refused loudly rather
+  // than quietly falling back to the ordinary refusal, so HR is not left looking at a rule that is on and
+  // doing nothing.
+  if (e instanceof LeaveOverrideTargetMissingError) return t('overrideTargetMissing');
   // Partial Leave Approval (0131): a manager rejected a leave date without a reason. Localized so the
   // approvals inbox shows the translated mandatory-reason message, not the raw English Error string.
   if (e instanceof MissingRejectReasonError) return t('rejectReasonRequired');

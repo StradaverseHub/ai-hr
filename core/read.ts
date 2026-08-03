@@ -588,6 +588,11 @@ export function listLeaveTypes(
         // the "my setting didn't save" report this list has already had twice).
         balanceSourceTypeId: leaveType.balanceSourceTypeId,
         allowUnpaidLeave: leaveType.allowUnpaidLeave,
+        // Override Leave Application (56910869): feeds the admin panel's "Override Leave Application" card —
+        // every row's action select and its on/off switch read their state from here, so an unprojected
+        // column would render every configured rule as off on every reload (the "my setting didn't save"
+        // report this projection list has already had twice).
+        overrideRules: leaveType.overrideRules,
         // Custom validation messages (custom-messages migration): feeds the admin panel's "Custom system
         // message" textarea (MUST be projected or the textarea renders empty on every reload).
         customMessages: leaveType.customMessages,

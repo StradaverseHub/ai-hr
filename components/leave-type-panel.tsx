@@ -1420,6 +1420,7 @@ export function LeaveTypePanel({
   counting,
   perDateApproval,
   duplicateApplicationPolicy,
+  overrideRules,
   allowNegativeBalance,
   maxNegativeBalance,
   balanceSourceTypeId,
@@ -1553,6 +1554,10 @@ export function LeaveTypePanel({
    *  ('allow' | 'restrict_same' | 'restrict_any'), threaded so the radio round-trips its saved value. null ⇒
    *  'allow' (today's behaviour). Enforced at requestLeave/editLeaveRequest; persisted via touchDuplicatePolicy. */
   duplicateApplicationPolicy: string | null;
+  /** Override Leave Application (56910869): what HR has configured to happen when one of this type's rules
+   *  is not met. null / empty ⇒ nothing configured, which is every type until HR adds a rule. Serialisable
+   *  data only — this component is a client component (see the header). */
+  overrideRules: { trigger: string; action: string; enabled: boolean }[] | null;
   /** Configurable Negative Leave Balance Validation (0ef0defd): whether employees may submit/edit a leave
    *  application of this type that exceeds their available balance. false ⇒ block over-application (the
    *  default). Threaded so the Yes/No sub-form round-trips its saved value; persisted via touchNegativeBalance. */
@@ -3225,6 +3230,82 @@ export function LeaveTypePanel({
               <p className="text-xs text-muted-foreground">{t('advanceNoticeSectionHelp')}</p>
             </div>
           )}
+          {/* ── Override Leave Application (feedback 56910869) ────────────────────────────────────────
+              THE ONE PLACE HR DECIDES WHAT HAPPENS WHEN A RULE ABOVE IS NOT MET. It sits directly below
+              Advance Notice and above Duplicate Leave Applications, where the reporter asked for it and
+              where it reads correctly: the rules that can be missed come first, then what to do about it.
+
+              One row per TRIGGER, each choosing an ACTION and carrying its own on/off switch — so one leave
+              type can BOTH convert on short notice AND split on insufficient balance. Its own
+              self-contained <form> + `overrideRules=1` tri-state marker, so an unrelated save never resets
+              it, and the whole set is REPLACED on save (a partial write is how a rule HR believes they
+              turned off stays on).
+
+              NOT hidden for Emergency Leave, unlike Backdating and Advance Notice above: EL can legitimately
+              carry a balance rule. The `Do nothing` action is what an unconfigured trigger reads as, and the
+              engine refuses to convert EL to itself in any case.
+
+              The option values are written out literally here, as the duplicate-policy card below does with
+              its three: this is a client component and the leave pack's vocabulary module is server-side
+              (ADR-0080), so the strings cross as data, never as an import. */}
+          <div className="mb-3 break-inside-avoid space-y-2 rounded-lg border border-border bg-background p-3">
+            <span className="text-xs font-medium text-muted-foreground">{t('overrideSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the override_rules column (tri-state guard) */}
+              <input type="hidden" name="overrideRules" value="1" />
+              {(
+                [
+                  { trigger: 'advance_notice_not_met', actions: ['convert_to_emergency', 'block'] },
+                  { trigger: 'insufficient_balance', actions: ['split_unpaid', 'block'] },
+                ] as const
+              ).map((row) => {
+                const stored = (overrideRules ?? []).find((r) => r.trigger === row.trigger);
+                // A stored action outside this row's set renders as "Do nothing" rather than as a phantom
+                // option — the same defensive reading normalizeLeaveOverrideRules takes on the server, so
+                // the screen and the engine agree about what is configured.
+                const actions: readonly string[] = row.actions;
+                const currentAction = actions.includes(stored?.action ?? '') ? (stored!.action as string) : '';
+                return (
+                  <div key={row.trigger} className="space-y-1.5 border-t border-border pt-2 first:border-t-0 first:pt-0">
+                    <Field label={t(`overrideTrigger.${row.trigger}`)}>
+                      <select
+                        name={`override_${row.trigger}`}
+                        defaultValue={currentAction}
+                        aria-label={t(`overrideTrigger.${row.trigger}`)}
+                        className={`${inputCls} w-full`}
+                      >
+                        <option value="">{t('overrideActionNone')}</option>
+                        {row.actions.map((a) => (
+                          <option key={a} value={a}>
+                            {t(`overrideAction.${a}`)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    {/* DEFAULT OFF. An unticked box does not post, and the action reads absent as
+                        enabled:false — the only reading that cannot turn a rule nobody enabled into
+                        behaviour. Configuring a rule and enabling it are deliberately two acts. */}
+                    <label className="flex items-start gap-2 text-xs text-foreground">
+                      <input
+                        type="checkbox"
+                        name={`overrideOn_${row.trigger}`}
+                        defaultChecked={stored?.enabled === true}
+                        className="mt-0.5 size-3.5 rounded border-border"
+                      />
+                      <span>{t('overrideEnabledLabel')}</span>
+                    </label>
+                  </div>
+                );
+              })}
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('overrideSectionHelp')}</p>
+          </div>
           {/* Duplicate Leave Application Restriction (d5e51c34). Its own self-contained <form> + `duplicatePolicy=1`
               tri-state marker so an unrelated save never resets it. A 3-option radio controls whether an employee
               may submit more than one leave application overlapping the same date. Default 'allow' = today's

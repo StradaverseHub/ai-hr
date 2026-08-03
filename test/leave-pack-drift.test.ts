@@ -51,6 +51,12 @@ const BOUNDARIES = [
   'core/leave-escalation',
   'core/leave-formula',
   'core/leave-import',
+  // 56910869 — the Override Leave Application rule vocabulary. In BOTH lists for the reason the 241817ef
+  // note above gives: as a BOUNDARY it is guarded like its siblings, so a future file importing it directly
+  // is caught; in ALWAYS_ALLOWED it may import them back. Its outside importers (core/admin, core/read,
+  // app/admin/actions, components/leave-type-panel) are ALREADY audited debt on the leave allowlist for
+  // importing core/leave itself, so this adds no entry — the list only shrinks.
+  'core/leave-override',
   // 491c499f — the bulk Leave Adjustments writer. In BOTH lists for the reason the r90 note above gives:
   // as a BOUNDARY it is guarded like its siblings, so a future file importing it directly is caught; in
   // ALWAYS_ALLOWED it may import them back, because leave implementation files import each other freely.
@@ -73,6 +79,7 @@ const ALWAYS_ALLOWED = [
   'core/leave-escalation.ts',
   'core/leave-formula.ts',
   'core/leave-import.ts',
+  'core/leave-override.ts', // 56910869 — see the BOUNDARIES note above
   'core/leave-adjustment.ts', // 491c499f — see the BOUNDARIES note above
   'core/toil.ts',
   'core/benefit-scheme.ts',

@@ -45,7 +45,15 @@ export async function previewLeaveDeductionAction(p: {
   try {
     const employmentId = p.employmentId || (await myEmployment(session))?.employmentId;
     if (!employmentId) return null;
-    return await previewLeaveDeduction(session, { ...p, employmentId, includeDayRows: true });
+    // Override Leave Application (56910869): the tenant-local "today" the advance-notice trigger is judged
+    // against — the SAME value requestLeaveAction passes below, so the pop-out the employee is shown and the
+    // rule the submission applies can never disagree about the notice given.
+    return await previewLeaveDeduction(session, {
+      ...p,
+      employmentId,
+      includeDayRows: true,
+      today: todayInKualaLumpur(),
+    });
   } catch {
     return null; // preview is best-effort — the submit action remains the authoritative gate
   }
@@ -101,6 +109,12 @@ export async function requestLeaveAction(formData: FormData) {
   const reasonCategoryRaw = String(formData.get('reasonCategory') ?? '').trim();
   const reasonCategory = isEmergencyReasonCategory(reasonCategoryRaw) ? reasonCategoryRaw : undefined;
   const unpaidConsent = String(formData.get('unpaidConsent') ?? '') === 'on';
+  // Override Leave Application (56910869): the employee's confirmation of the rule(s) that will CHANGE this
+  // application, one `trigger:action` token per rule (the form posts one hidden field per rule it showed).
+  // getAll, not get: two rules can fire on one application and consent to one is not consent to the other.
+  // Forwarded unconditionally — the SERVICE is the gate, and it refuses a converting rule whose token is
+  // missing, so a client that skips the pop-out cannot submit a silently-converted application.
+  const overrideConsent = formData.getAll('overrideConsent').map(String).filter((v) => v !== '');
   // Phase-B #13 (ADR-0062): maternity-only s.37 paid-allowance facts. Inert for non-maternity types (the
   // service only reads them for a MATERNITY request). Empty inputs ⇒ undefined ⇒ conservative paid default.
   const survivingChildrenRaw = String(formData.get('survivingChildren') ?? '').trim();
@@ -166,6 +180,7 @@ export async function requestLeaveAction(formData: FormData) {
       toTime: durationType === 'hourly' && toTime !== '' ? toTime : undefined,
       reasonCategory,
       unpaidConsent,
+      overrideConsent,
       survivingChildren: survivingChildrenRaw !== '' ? Number(survivingChildrenRaw) : undefined,
       confinementDate: confinementDateRaw !== '' ? confinementDateRaw : undefined,
       // Configurable backdated-leave restriction (0133): tenant-local (MYT) "today" for the boundary. The

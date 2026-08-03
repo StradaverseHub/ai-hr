@@ -64,6 +64,28 @@ import {
   type SchemeMatchSubject,
   type ServiceBand,
 } from './leave-compute';
+// Override Leave Application (56910869) — the rule vocabulary. Pure (no db), so the engine, the write
+// validator and the admin panel all read ONE definition of what a rule is and when it engages.
+import {
+  leaveOverrideConsentToken,
+  leaveOverrideNeedsConsent,
+  normalizeLeaveOverrideRules,
+  parseLeaveOverrideConsent,
+  resolveLeaveOverrideRule,
+  type LeaveOverrideAction,
+  type LeaveOverrideRule,
+  type LeaveOverrideTrigger,
+} from './leave-override';
+export {
+  leaveOverrideConsentToken,
+  leaveOverrideNeedsConsent,
+  normalizeLeaveOverrideRules,
+  parseLeaveOverrideConsent,
+  resolveLeaveOverrideRule,
+  type LeaveOverrideAction,
+  type LeaveOverrideRule,
+  type LeaveOverrideTrigger,
+} from './leave-override';
 // Re-export the pure module's surface so every existing caller/test keeps importing these from '@/core/leave'.
 export {
   applyLeaveTypeRules,
@@ -490,6 +512,75 @@ export class UnpaidConsentRequiredError extends Error {
     );
     this.name = 'UnpaidConsentRequiredError';
     this.unpaidDays = unpaidDays;
+  }
+}
+
+// ── Override Leave Application — the CONSENT GATE (feedback 56910869) ──────────────────────────────
+//
+// CONFIRMATION IS A SERVICE CONCERN, NOT ONLY A DIALOG. An override rule that CHANGES an application (it
+// converts it to another leave type, or takes part of it unpaid) may not be applied unless the employee has
+// explicitly agreed to that exact change — so this is thrown BEFORE anything is persisted, and a client that
+// skips the confirmation simply cannot submit a silently-converted application. Exactly the
+// UnpaidConsentRequiredError precedent above, generalised: consent names the RULE, not a bare boolean,
+// because two different rules can fire on one application (convert on short notice AND split on
+// insufficient balance) and consent to one is not consent to the other.
+//
+// Everything the confirmation needs to be INFORMED rides on the error: which rule, the leave type it came
+// from, the one it is going to, and the day figures. The action layer localizes it; the form renders the
+// pop-out and posts back the token(s).
+export class LeaveOverrideConsentRequiredError extends Error {
+  readonly trigger: LeaveOverrideTrigger;
+  readonly action: LeaveOverrideAction;
+  /** The token the client must post back to consent to THIS rule. */
+  readonly consentToken: string;
+  /** The type the employee applied for (the one the rule is configured on). */
+  readonly fromTypeName?: string;
+  /** Where a converting action sends it (absent for a split, which stays on the same type). */
+  readonly toTypeName?: string;
+  /** Advance-notice trigger: the notice actually given, and what the type requires. */
+  readonly daysInAdvance?: number;
+  readonly minAdvanceDays?: number | null;
+  /** Insufficient-balance trigger: how the application would be split. */
+  readonly paidDays?: number;
+  readonly unpaidDays?: number;
+  constructor(
+    trigger: LeaveOverrideTrigger,
+    action: LeaveOverrideAction,
+    detail: {
+      fromTypeName?: string;
+      toTypeName?: string;
+      daysInAdvance?: number;
+      minAdvanceDays?: number | null;
+      paidDays?: number;
+      unpaidDays?: number;
+    } = {},
+  ) {
+    super(
+      action === 'convert_to_emergency'
+        ? `This application does not meet the notice period and would be submitted as ${detail.toTypeName ?? 'Emergency Leave'} instead. Your confirmation is required.`
+        : `Your balance does not cover this application; ${detail.unpaidDays ?? 0} day(s) would be taken as unpaid leave. Your confirmation is required.`,
+    );
+    this.name = 'LeaveOverrideConsentRequiredError';
+    this.trigger = trigger;
+    this.action = action;
+    this.consentToken = leaveOverrideConsentToken(trigger, action);
+    this.fromTypeName = detail.fromTypeName;
+    this.toTypeName = detail.toTypeName;
+    this.daysInAdvance = detail.daysInAdvance;
+    this.minAdvanceDays = detail.minAdvanceDays;
+    this.paidDays = detail.paidDays;
+    this.unpaidDays = detail.unpaidDays;
+  }
+}
+
+/** Override Leave Application: a `convert_to_emergency` rule is enabled but the tenant has no Emergency
+ *  Leave type to convert TO. Refusing loudly is the only safe answer — quietly falling back to the ordinary
+ *  refusal would leave HR looking at a rule that is on and doing nothing, which is the config-trap this
+ *  panel goes out of its way to avoid elsewhere (the hidden backdating / advance-notice fields for EL). */
+export class LeaveOverrideTargetMissingError extends Error {
+  constructor(targetCode: string) {
+    super(`This leave type's override rule converts to ${targetCode}, but no such leave type is configured.`);
+    this.name = 'LeaveOverrideTargetMissingError';
   }
 }
 
@@ -1992,6 +2083,12 @@ async function insertLeaveRequest(
     // override onto the submitted event payload for the audit trail. null/absent ⇒ normal request; payload
     // unchanged. Mirrors backdatingAudit / minAdvanceAudit above.
     leaveYearAudit?: { targetYear: number } | null;
+    // Override Leave Application (56910869): set only when an HR-configured override rule actually CHANGED
+    // this application (converted it to another type, or split part of it unpaid) with the employee's
+    // explicit confirmation. Stamped on the submitted event so an auditor can tell a converted application
+    // from one filed directly as Emergency Leave, and from an HR-side advance-notice override. null/absent
+    // ⇒ nothing extra on the payload, so every existing assertion stays green.
+    overrideAudit?: LeaveOverrideAudit | null;
   },
 ): Promise<{ id: string }> {
   const [row] = await tx
@@ -2075,6 +2172,39 @@ async function insertLeaveRequest(
       ...(v.leaveYearAudit
         ? { leaveYearNotOpenOverride: true, targetLeaveYear: v.leaveYearAudit.targetYear }
         : {}),
+      // Override Leave Application (56910869) — THE AUDIT STAMP, and the reason it looks like this.
+      //
+      // A converted application re-stamps the SAME advanceNoticeOverride / daysInAdvance / minAdvanceDays
+      // trio the HR-side override writes above, because it IS an override of that same rule and an auditor
+      // querying "which applications went through despite the notice period" must find both. What tells the
+      // two apart — and tells a CONVERTED application apart from one the employee filed as Emergency Leave
+      // in the first place, which was the whole point — is `leaveOverrideApplied` plus the rule that fired
+      // and the type it came FROM. A natively-Emergency application carries none of these keys.
+      ...(v.overrideAudit
+        ? {
+            leaveOverrideApplied: true,
+            overrideTrigger: v.overrideAudit.trigger,
+            overrideAction: v.overrideAudit.action,
+            overrideConsentAt: v.overrideAudit.consentAt,
+            ...(v.overrideAudit.fromLeaveTypeId
+              ? {
+                  convertedFromLeaveTypeId: v.overrideAudit.fromLeaveTypeId,
+                  convertedFromLeaveTypeName: v.overrideAudit.fromLeaveTypeName,
+                }
+              : {}),
+            ...(v.overrideAudit.trigger === 'advance_notice_not_met'
+              ? {
+                  advanceNoticeOverride: true,
+                  daysInAdvance: v.overrideAudit.daysInAdvance,
+                  minAdvanceDays: v.overrideAudit.minAdvanceDays,
+                }
+              : {}),
+            ...(v.overrideAudit.alsoSplitUnpaid ? { overrideAlsoSplitUnpaid: true } : {}),
+            ...(v.overrideAudit.unpaidDays != null
+              ? { overridePaidDays: v.overrideAudit.paidDays, overrideUnpaidDays: v.overrideAudit.unpaidDays }
+              : {}),
+          }
+        : {}),
     },
   });
   // 2B-1/2B-2/ADR-0071: if the company runs a multi-step chain, generate the instance approval steps,
@@ -2099,6 +2229,87 @@ export type RequestLeaveResult = {
   // has fewer than the EA s.60D minimum of 11 gazetted holidays loaded, so the working-day count may be
   // wrong until HR finishes loading the state gazette. The request is still created.
   holidayWarnings?: HolidayCompletenessWarning[];
+};
+
+/**
+ * Every `leave_type` column a submission needs, as ONE drizzle select shape.
+ *
+ * Extracted (56910869) because a submission can now read a type row TWICE: once for the type the employee
+ * chose, and — when an Override Leave Application rule converts the application — once for the type it
+ * becomes. Two hand-copied column lists is how the converted application ends up judged by a different set
+ * of rules than the original would have been (the same failure `leaveTypeRuleColumns` exists to prevent one
+ * layer down). One list, both reads.
+ */
+const leaveTypeRequestColumns = {
+  id: leaveType.id,
+  code: leaveType.code,
+  name: leaveType.name,
+  counting: leaveType.counting,
+  eligibility: leaveType.eligibility,
+  // Probation eligibility (d6bdbd55): merged into the eligibility object below so the probation gate
+  // rides the same assertEligible check as gender/marital/min-service.
+  probationEligibility: leaveType.probationEligibility,
+  // Day Type Inclusion (feedback ef6d7146): the re-inclusion vector — threaded into the working_days
+  // counting below so the deducted `days` honours which day types this type counts.
+  dayTypeInclusion: leaveType.dayTypeInclusion,
+  requiresDocument: leaveType.requiresDocument,
+  mandatoryAfterDays: leaveType.mandatoryAfterDays,
+  employeeRemarkRequired: leaveType.employeeRemarkRequired,
+  durations: leaveType.durations,
+  perDateApproval: leaveType.perDateApproval,
+  backdatingLimitDays: leaveType.backdatingLimitDays,
+  // Minimum advance-notice rule (0159): required days of notice before the start date.
+  minAdvanceDays: leaveType.minAdvanceDays,
+  // Custom validation messages (custom-messages migration): the admin-authored override map, keyed by
+  // rule config field. Passed through the typed error so the localizer shows it verbatim.
+  customMessages: leaveType.customMessages,
+  // Leave Type Employee Visibility (7b11f1c1): the can-apply switch. false ⇒ an ordinary employee may
+  // not apply for this type (rejected below); NULL ⇒ can apply (today's behaviour). isAdmin bypasses.
+  employeeCanApply: leaveType.employeeCanApply,
+  // Duplicate Leave Application Restriction (d5e51c34): the same-date double-booking policy, enforced
+  // below AFTER the AM/PM slot-clash guard. null ⇒ 'allow' (no extra check).
+  duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
+  // Configurable Negative Leave Balance Validation (0ef0defd): false ⇒ reject a submit that would take
+  // the balance negative (enforced below, after `days` is known); true ⇒ skip the submit-time check.
+  allowNegativeBalance: leaveType.allowNegativeBalance,
+  // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): the two settings that decide
+  // WHICH balance this application is measured against and what happens to the part it cannot cover.
+  // Both are read here and used together below — see the balance guard.
+  balanceSourceTypeId: leaveType.balanceSourceTypeId,
+  allowUnpaidLeave: leaveType.allowUnpaidLeave,
+  // Override Leave Application (56910869): what HR has configured to happen when one of the rules above is
+  // not met. NULL / empty ⇒ nothing at all changes — the refusals below stand exactly as they do today.
+  overrideRules: leaveType.overrideRules,
+} as const;
+
+/**
+ * What an applied Override rule stamps on the submitted event (56910869).
+ *
+ * WHY IT EXISTS AT ALL: the HR-side advance-notice override already writes `advanceNoticeOverride` +
+ * `daysInAdvance` + `minAdvanceDays` onto the submitted event, and without an equivalent here an auditor
+ * looking at a converted application could not tell it from one the employee filed as Emergency Leave in
+ * the first place. So a conversion stamps that SAME trio (an override of the same rule is an override of
+ * the same rule) PLUS the fields that say it was the EMPLOYEE's confirmed election under a configured rule
+ * rather than HR acting on their behalf: which rule fired, and which type the application came FROM.
+ */
+type LeaveOverrideAudit = {
+  trigger: LeaveOverrideTrigger;
+  action: LeaveOverrideAction;
+  /** The type the employee originally applied for (absent for a rule that does not convert). */
+  fromLeaveTypeId?: string;
+  fromLeaveTypeName?: string;
+  /** Advance-notice trigger — the same pair the HR override stamps. */
+  daysInAdvance?: number;
+  minAdvanceDays?: number | null;
+  /** Insufficient-balance trigger — the split as it was measured at submission. */
+  paidDays?: number;
+  unpaidDays?: number;
+  /** Set when a SECOND rule also fired on the same application: the notice-period conversion is the
+   *  headline (`trigger`/`action` name it) and the balance split rode along on the converted application.
+   *  Both facts are kept because either one alone misdescribes what the employee agreed to. */
+  alsoSplitUnpaid?: boolean;
+  /** When the employee confirmed. The confirmation is the record that protects both sides. */
+  consentAt: string;
 };
 
 export async function requestLeave(
@@ -2130,51 +2341,28 @@ export async function requestLeave(
     // which the backdating window is judged. The action layer computes it in Asia/Kuala_Lumpur and passes it
     // in; core defaults to todayInKualaLumpur() so importer/legacy callers still work.
     today?: string;
+    // Override Leave Application (56910869): the employee's EXPLICIT confirmation of the rule(s) that will
+    // change this application, as `trigger:action` tokens (leaveOverrideConsentToken). Absent ⇒ no consent,
+    // and any converting rule that fires throws LeaveOverrideConsentRequiredError BEFORE anything is
+    // persisted. One token per rule rather than a single boolean, because two rules can fire on ONE
+    // application (convert on short notice AND split on insufficient balance) and agreeing to one is not
+    // agreeing to the other.
+    overrideConsent?: string | readonly string[];
   },
 ): Promise<RequestLeaveResult> {
   return withTenant(ctx, async (tx) => {
     // Day count depends on the leave type: working-days (excl weekends + holidays) vs calendar.
-    const [lt] = await tx
-      .select({
-        code: leaveType.code,
-        name: leaveType.name,
-        counting: leaveType.counting,
-        eligibility: leaveType.eligibility,
-        // Probation eligibility (d6bdbd55): merged into the eligibility object below so the probation gate
-        // rides the same assertEligible check as gender/marital/min-service.
-        probationEligibility: leaveType.probationEligibility,
-        // Day Type Inclusion (feedback ef6d7146): the re-inclusion vector — threaded into the working_days
-        // counting below so the deducted `days` honours which day types this type counts.
-        dayTypeInclusion: leaveType.dayTypeInclusion,
-        requiresDocument: leaveType.requiresDocument,
-        mandatoryAfterDays: leaveType.mandatoryAfterDays,
-        employeeRemarkRequired: leaveType.employeeRemarkRequired,
-        durations: leaveType.durations,
-        perDateApproval: leaveType.perDateApproval,
-        backdatingLimitDays: leaveType.backdatingLimitDays,
-        // Minimum advance-notice rule (0159): required days of notice before the start date.
-        minAdvanceDays: leaveType.minAdvanceDays,
-        // Custom validation messages (custom-messages migration): the admin-authored override map, keyed by
-        // rule config field. Passed through the typed error so the localizer shows it verbatim.
-        customMessages: leaveType.customMessages,
-        // Leave Type Employee Visibility (7b11f1c1): the can-apply switch. false ⇒ an ordinary employee may
-        // not apply for this type (rejected below); NULL ⇒ can apply (today's behaviour). isAdmin bypasses.
-        employeeCanApply: leaveType.employeeCanApply,
-        // Duplicate Leave Application Restriction (d5e51c34): the same-date double-booking policy, enforced
-        // below AFTER the AM/PM slot-clash guard. null ⇒ 'allow' (no extra check).
-        duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
-        // Configurable Negative Leave Balance Validation (0ef0defd): false ⇒ reject a submit that would take
-        // the balance negative (enforced below, after `days` is known); true ⇒ skip the submit-time check.
-        allowNegativeBalance: leaveType.allowNegativeBalance,
-        // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): the two settings that decide
-        // WHICH balance this application is measured against and what happens to the part it cannot cover.
-        // Both are read here and used together below — see the balance guard.
-        balanceSourceTypeId: leaveType.balanceSourceTypeId,
-        allowUnpaidLeave: leaveType.allowUnpaidLeave,
-      })
+    const [lt0] = await tx
+      .select(leaveTypeRequestColumns)
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
       .limit(1);
+    // 56910869 — `lt` and `p` are REASSIGNABLE from here on because an Override Leave Application rule can
+    // convert this application to another leave type mid-flight (see the advance-notice gate below). The
+    // conversion re-points BOTH so every gate after it is judged against the type the application actually
+    // becomes, rather than a second submission path re-implementing them. Nothing else reassigns either.
+    let lt = lt0;
+    let overrideAudit: LeaveOverrideAudit | null = null;
 
     // Emergency Leave (0106): an application type only — decompose into ANNUAL + UNPAID children over the
     // same dates before the normal single-request path. No EMERGENCY row is ever persisted.
@@ -2262,11 +2450,76 @@ export async function requestLeave(
     // employees to it) and the field is hidden for EL in the admin UI.
     const minAdvance = lt?.minAdvanceDays ?? null;
     const advanceOverride = isAdmin(ctx) && lacksMinAdvanceNotice(p.startDate, today, minAdvance);
+    const consent = parseLeaveOverrideConsent(p.overrideConsent);
     if (!isAdmin(ctx) && lacksMinAdvanceNotice(p.startDate, today, minAdvance)) {
-      // Custom validation messages (0147): pass the admin-authored override for THIS rule (keyed by its
-      // config field name) through the typed error so the localizer renders it verbatim; absent ⇒ the
-      // built-in localized default. Same look-up-then-pass-through pattern as the backdating gate above.
-      throw new LeaveAdvanceNoticeRequiredError(minAdvance!, lt?.name, lt?.customMessages?.minAdvanceDays || undefined);
+      // ── Override Leave Application (56910869) · TRIGGER 1: advance notice not met ──────────────────
+      //
+      // THIS IS 65f466e2, SHIPPED AS A RULE RATHER THAN A BRANCH. Absent a rule — which is every leave type
+      // until HR enables one — nothing below this block runs and the refusal is byte-identical to today's.
+      // An enabled `block` rule also lands on that same refusal, deliberately: HR having decided to refuse
+      // and nobody having decided yet must produce the same answer for the employee, and differ only in
+      // what the configuration screen can say about it.
+      const rule = resolveLeaveOverrideRule(normalizeLeaveOverrideRules(lt?.overrideRules), 'advance_notice_not_met');
+      // A conversion out of Emergency Leave is meaningless (it is where conversions GO), and a type
+      // converting to itself would loop. Both are refused by the vocabulary, but the guard is cheap and the
+      // failure would be an infinite re-entry rather than a wrong answer.
+      if (rule?.action === 'convert_to_emergency' && lt?.code !== EMERGENCY_LEAVE_CODE) {
+        // ROUTE THROUGH THE EXISTING ENGINE. The target type is read with the SAME column shape, so every
+        // rule the ordinary path applies is applied to the converted application too — including, crucially,
+        // Emergency Leave's own BALANCE DEDUCTION SOURCE. That is the point of 65f466e2 and the reason the
+        // conversion must not invent a second path: Emergency is a CATEGORY, not an entitlement, so a
+        // converted application still deducts from whatever source HR pointed Emergency Leave at (Annual),
+        // exactly as a directly-filed Emergency application does.
+        const [target] = await tx
+          .select(leaveTypeRequestColumns)
+          .from(leaveType)
+          .where(and(eq(leaveType.code, EMERGENCY_LEAVE_CODE), isNull(leaveType.archivedAt)))
+          .limit(1);
+        if (!target) throw new LeaveOverrideTargetMissingError(EMERGENCY_LEAVE_CODE);
+        const daysInAdvance = daysBetween(today, p.startDate);
+        // CONFIRMATION IS A SERVICE CONCERN. Nothing is persisted without the employee's explicit
+        // agreement to THIS rule — a client that skips the pop-out cannot submit a converted application.
+        if (!consent.has(leaveOverrideConsentToken('advance_notice_not_met', 'convert_to_emergency'))) {
+          throw new LeaveOverrideConsentRequiredError('advance_notice_not_met', 'convert_to_emergency', {
+            fromTypeName: lt?.name,
+            toTypeName: target.name,
+            daysInAdvance,
+            minAdvanceDays: minAdvance,
+          });
+        }
+        overrideAudit = {
+          trigger: 'advance_notice_not_met',
+          action: 'convert_to_emergency',
+          fromLeaveTypeId: p.leaveTypeId,
+          fromLeaveTypeName: lt?.name,
+          daysInAdvance,
+          minAdvanceDays: minAdvance,
+          consentAt: new Date().toISOString(),
+        };
+        // Re-point the application. Everything from here on — the duplicate-application policy, the balance
+        // guard (and therefore trigger 2), the length/pool/year limits, the approval chain and the persisted
+        // row — is judged against Emergency Leave, because that is what this application now IS. Everything
+        // ABOVE was judged against the type the employee chose, which is also right: they must be entitled
+        // to apply for it, and it must be inside its backdating window, before a rule on it can fire.
+        p = { ...p, leaveTypeId: target.id };
+        lt = target;
+        // Emergency Leave with no configured balance source still DECOMPOSES (0106) — SICK-first for an
+        // illness absence under EA s.60F, then Annual, then Unpaid on consent. That cascade IS the split
+        // behaviour, and re-entering it here rather than around it is what keeps the converted application
+        // on one deduction path.
+        if (lt.balanceSourceTypeId == null) {
+          return requestEmergencyLeave(tx, ctx, { ...p, leaveTypeId: target.id }, overrideAudit);
+        }
+      } else {
+        // Custom validation messages (0147): pass the admin-authored override for THIS rule (keyed by its
+        // config field name) through the typed error so the localizer renders it verbatim; absent ⇒ the
+        // built-in localized default. Same look-up-then-pass-through pattern as the backdating gate above.
+        throw new LeaveAdvanceNoticeRequiredError(
+          minAdvance!,
+          lt?.name,
+          lt?.customMessages?.minAdvanceDays || undefined,
+        );
+      }
     }
 
     // Leave Year Configuration (9aa894a4). "Employees can only apply leave for a FUTURE leave year after the
@@ -2447,7 +2700,53 @@ export async function requestLeave(
     // Math.max(0, available) rather than `available` itself so an already-negative balance (permitted earlier
     // under allow_negative_balance) makes the whole request unpaid rather than manufacturing extra paid days.
     let unpaidDays = 0;
-    if (lt?.allowUnpaidLeave === true) {
+    // ── Override Leave Application (56910869) · TRIGGER 2: the balance does not cover the application ──
+    //
+    // THIS IS fef49b9a, SHIPPED AS A RULE. It sits AHEAD of the three legacy branches below rather than
+    // inside them because an enabled rule is HR's explicit answer to this exact situation and must not be
+    // second-guessed by a setting they did not touch. With no rule configured — every leave type until HR
+    // enables one — this whole block is skipped and the chain below runs byte-identically to today.
+    //
+    // `split_unpaid` writes NO new arithmetic: it reuses the same `unpaid_days` measurement a7fab30b
+    // already ships (available balance, resolved through the BALANCE SOURCE, subtracted from the charged
+    // days), so there is exactly one splitter and the preview and the outcome cannot drift. What the rule
+    // adds is (a) it works without `allow_unpaid_leave` being on, because HR configured the exception here
+    // instead, and (b) it requires the employee's explicit confirmation first.
+    const balanceRule = resolveLeaveOverrideRule(
+      normalizeLeaveOverrideRules(lt?.overrideRules),
+      'insufficient_balance',
+    );
+    if (balanceRule) {
+      const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
+      const shortfall = round2(Math.max(0, days - Math.max(0, available)));
+      if (shortfall > 0) {
+        // A `block` rule refuses with the SAME error the unconfigured path would — see trigger 1's note on
+        // why "HR decided to refuse" and "nobody decided" must read identically to the employee. Note this
+        // is STRICTER than allow_negative_balance + a floor: an explicit block is an explicit block.
+        if (balanceRule.action === 'block') throw new InsufficientLeaveBalanceOnSubmitError();
+        if (!consent.has(leaveOverrideConsentToken('insufficient_balance', 'split_unpaid'))) {
+          throw new LeaveOverrideConsentRequiredError('insufficient_balance', 'split_unpaid', {
+            fromTypeName: lt?.name,
+            paidDays: round2(days - shortfall),
+            unpaidDays: shortfall,
+          });
+        }
+        unpaidDays = shortfall;
+        // TWO RULES ON ONE LEAVE TYPE BOTH APPLY. When this application was already converted by trigger 1,
+        // the conversion's stamp is kept and the split is recorded ALONGSIDE it — an auditor must be able to
+        // see both facts, and overwriting would erase the one that explains why the type changed.
+        overrideAudit = {
+          ...(overrideAudit ?? {
+            trigger: 'insufficient_balance',
+            action: 'split_unpaid',
+            consentAt: new Date().toISOString(),
+          }),
+          ...(overrideAudit ? { alsoSplitUnpaid: true } : {}),
+          paidDays: round2(days - shortfall),
+          unpaidDays: shortfall,
+        };
+      }
+    } else if (lt?.allowUnpaidLeave === true) {
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
       unpaidDays = round2(Math.max(0, days - Math.max(0, available)));
     } else if (lt?.allowNegativeBalance === false) {
@@ -2638,6 +2937,9 @@ export async function requestLeave(
       // Leave Year Configuration (9aa894a4): stamp the override onto the submitted event only when an HR admin
       // actually applied for a not-yet-open future leave year (computed at the gate above).
       leaveYearAudit: leaveYearOverride ? { targetYear: targetLeaveYear } : null,
+      // Override Leave Application (56910869): null on every application no rule changed, which is every
+      // application until HR enables a rule — so the ordinary payload is byte-identical to before.
+      overrideAudit,
     });
 
     // Partial Leave Approval — single-request model (ADR-0068 §4B). When the type is opted-in (§4C gate above)
@@ -2728,6 +3030,11 @@ export async function previewLeaveDeduction(
      *  that produced `days` also returns its per-date detail as `dayRows`. Absent ⇒ byte-identical work, so
      *  every existing caller (notably app/me/actions.ts myPreviewLeaveDeduction) is untouched. */
     includeDayRows?: boolean;
+    /** Override Leave Application (56910869): the tenant-local "today" the advance-notice trigger is judged
+     *  against — the same value the action layer passes to requestLeave, so the pop-out the employee is
+     *  shown and the rule the submission applies can never describe different days. Defaults as requestLeave
+     *  does, so every existing caller is untouched. */
+    today?: string;
   },
 ): Promise<{
   days: number;
@@ -2741,6 +3048,16 @@ export async function previewLeaveDeduction(
    *  opted in) ⇒ the whole request is paid. Computed from the same availableLeaveBalance the submit-time
    *  guard uses, so the warning and the outcome agree. */
   unpaidDays?: number;
+  /** Override Leave Application (56910869): the rule(s) that WOULD change this application if it were
+   *  submitted now, so the form can tell the employee what will happen and collect the confirmation the
+   *  service requires. Absent (never an empty array) when no rule fires — which is every leave type until
+   *  HR enables one, so no other type gains a line.
+   *
+   *  ADVISORY ONLY. The service re-evaluates every trigger at submission and refuses a converting rule
+   *  without its token; this exists so the employee is ASKED, not so the client can decide. `block` rules
+   *  are reported too — the form shows why the application will be refused rather than letting the employee
+   *  fill the whole thing in first. */
+  overrides?: LeaveOverridePreview[];
 }> {
   return withTenant(ctx, async (tx) => {
     const durationType: LeaveDurationType = p.durationType ?? 'full_day';
@@ -2756,6 +3073,12 @@ export async function previewLeaveDeduction(
         // application will not touch.
         balanceSourceTypeId: leaveType.balanceSourceTypeId,
         allowUnpaidLeave: leaveType.allowUnpaidLeave,
+        // Override Leave Application (56910869): the configured exceptions + the notice rule trigger 1 fires
+        // on + the name the pop-out says. Read here so the preview evaluates the SAME rules the submission
+        // will, rather than the form guessing from what it happens to know.
+        name: leaveType.name,
+        minAdvanceDays: leaveType.minAdvanceDays,
+        overrideRules: leaveType.overrideRules,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -2813,6 +3136,49 @@ export async function previewLeaveDeduction(
         ? round2(Math.max(0, days - Math.max(0, await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId))))
         : 0;
 
+    // ── Override Leave Application (56910869): what the employee is about to be asked ────────────────
+    //
+    // The rules are re-evaluated here rather than mirrored client-side, and against the same helpers the
+    // submission uses (lacksMinAdvanceNotice, availableLeaveBalance), so the pop-out cannot promise a
+    // conversion the submission will not make or stay silent about one it will.
+    //
+    // HR admins are excluded, exactly as the underlying gates exclude them: an admin applying on someone's
+    // behalf bypasses the notice rule outright (the HR-side override), so offering them a conversion to
+    // consent to would be offering them an exception they do not need.
+    const overrides: LeaveOverridePreview[] = [];
+    if (!isAdmin(ctx) && lt) {
+      const rules = normalizeLeaveOverrideRules(lt.overrideRules);
+      const today = p.today ?? todayInKualaLumpur();
+      const advance = resolveLeaveOverrideRule(rules, 'advance_notice_not_met');
+      if (advance && lt.code !== EMERGENCY_LEAVE_CODE && lacksMinAdvanceNotice(p.startDate, today, lt.minAdvanceDays ?? null)) {
+        overrides.push({
+          trigger: 'advance_notice_not_met',
+          action: advance.action,
+          consentToken: leaveOverrideConsentToken('advance_notice_not_met', advance.action),
+          needsConsent: leaveOverrideNeedsConsent(advance.action),
+          fromTypeName: lt.name ?? null,
+          daysInAdvance: daysBetween(today, p.startDate),
+          minAdvanceDays: lt.minAdvanceDays ?? null,
+        });
+      }
+      const balanceRule = resolveLeaveOverrideRule(rules, 'insufficient_balance');
+      if (balanceRule) {
+        const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
+        const shortfall = round2(Math.max(0, days - Math.max(0, available)));
+        if (shortfall > 0) {
+          overrides.push({
+            trigger: 'insufficient_balance',
+            action: balanceRule.action,
+            consentToken: leaveOverrideConsentToken('insufficient_balance', balanceRule.action),
+            needsConsent: leaveOverrideNeedsConsent(balanceRule.action),
+            fromTypeName: lt.name ?? null,
+            paidDays: round2(days - shortfall),
+            unpaidDays: shortfall,
+          });
+        }
+      }
+    }
+
     return {
       days,
       balanceAvailable,
@@ -2823,9 +3189,26 @@ export async function previewLeaveDeduction(
       isEmergencySplit,
       ...(dayRows ? { dayRows } : {}),
       ...(unpaidDays > 0 ? { unpaidDays } : {}),
+      ...(overrides.length ? { overrides } : {}),
     };
   });
 }
+
+/** One rule the apply form must tell the employee about before they submit. Flat + serialisable: it crosses
+ *  the server/client boundary as a plain object on a server action's return value. */
+export type LeaveOverridePreview = {
+  trigger: LeaveOverrideTrigger;
+  action: LeaveOverrideAction;
+  /** What the form posts back as `overrideConsent` when the employee says Yes. */
+  consentToken: string;
+  /** false for `block` — there is nothing to agree to, only a refusal to explain. */
+  needsConsent: boolean;
+  fromTypeName: string | null;
+  daysInAdvance?: number;
+  minAdvanceDays?: number | null;
+  paidDays?: number;
+  unpaidDays?: number;
+};
 
 /** Employee apply-popup day-by-day panel: what ONE date is on the employee's LEAVE schedule. Rest and Off
  *  day are ONE bucket ('rest_day'), matching dayWeight's Phase-A collapse — splitting them here would let the
@@ -2943,6 +3326,11 @@ async function requestEmergencyLeave(
     reasonCategory?: EmergencyReasonCategory;
     unpaidConsent?: boolean;
   },
+  /** Override Leave Application (56910869): present when this EL submission is the result of an
+   *  advance-notice conversion rather than the employee choosing Emergency Leave. Stamped on EVERY child's
+   *  submitted event AND on the EL command event, because the decomposition means there is no single row an
+   *  auditor can look at — the conversion has to be findable from any of them. */
+  overrideAudit?: LeaveOverrideAudit | null,
 ): Promise<RequestLeaveResult> {
   // EL is full-day-range only (no durations allow-list) — reject a non-full-day request explicitly.
   if (p.durationType && p.durationType !== 'full_day') {
@@ -3054,6 +3442,7 @@ async function requestEmergencyLeave(
       employmentId: p.employmentId, leaveTypeId: seg.typeId, startDate: segStart, endDate: boundaryWorkingDay,
       days: seg.segDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
       employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
+      overrideAudit: overrideAudit ?? null,
     });
     children.push({ id, code: seg.code, days: seg.segDays });
     cursor += seg.dateCount;
@@ -3068,6 +3457,7 @@ async function requestEmergencyLeave(
       days: uplDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
       employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
       unpaidConsentAt: consentAt, unpaidConsentBy: ctx.userId ?? null,
+      overrideAudit: overrideAudit ?? null,
     });
     children.push({ id, code: 'UNPAID', days: uplDays });
   }
@@ -3098,6 +3488,22 @@ async function requestEmergencyLeave(
       startDate: p.startDate,
       endDate: p.endDate,
       ...(hasUnpaid ? { unpaidConsent: true, unpaidConsentAt: consentAt!.toISOString() } : {}),
+      // Override Leave Application (56910869): this EL submission was CONVERTED from another leave type by
+      // an advance-notice rule, not chosen by the employee. Only present on the conversion path, so the
+      // ordinary EL payload is byte-identical to before.
+      ...(overrideAudit
+        ? {
+            leaveOverrideApplied: true,
+            overrideTrigger: overrideAudit.trigger,
+            overrideAction: overrideAudit.action,
+            overrideConsentAt: overrideAudit.consentAt,
+            convertedFromLeaveTypeId: overrideAudit.fromLeaveTypeId,
+            convertedFromLeaveTypeName: overrideAudit.fromLeaveTypeName,
+            advanceNoticeOverride: true,
+            daysInAdvance: overrideAudit.daysInAdvance,
+            minAdvanceDays: overrideAudit.minAdvanceDays,
+          }
+        : {}),
     },
   });
 

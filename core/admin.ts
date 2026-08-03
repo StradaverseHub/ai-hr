@@ -50,6 +50,13 @@ import {
   type ApplicationLimitPeriod,
   type ServiceBand,
 } from './leave';
+// Override Leave Application (56910869): the write validator reads the SAME vocabulary the engine acts on,
+// so a rule that saves is exactly a rule that fires.
+import {
+  normalizeLeaveOverrideRules,
+  validateLeaveOverrideRules,
+  type LeaveOverrideRule,
+} from './leave-override';
 import { countryPacks, packFor } from '../localization/registry';
 import { NON_STATUTORY, resolveCompanyTier } from './company-tier';
 import { statesForCountries } from './state-vocabulary';
@@ -3457,6 +3464,14 @@ export async function updateLeaveType(
     // unrelated save never resets it. Validated against the closed { allow, restrict_same, restrict_any } set
     // (the DB CHECK is defence-in-depth). Enforced at requestLeave/editLeaveRequest; 'allow' = today's behaviour.
     duplicateApplicationPolicy?: 'allow' | 'restrict_same' | 'restrict_any';
+    // Override Leave Application (feedback 56910869, migration 0365): what the system does when one of this
+    // type's rules is not met, as an ORDERED list of (trigger, action, enabled) rules. OWN tri-state
+    // (undefined = override_rules column untouched), mirroring duplicateApplicationPolicy — its own
+    // "Override Leave Application" sub-form posts `overrideRules=1` so an unrelated save never resets it.
+    // null (or an empty list) ⇒ no exceptions, which is today's behaviour and every existing row. Validated
+    // against the closed trigger/action vocabulary AND against "at most one enabled action per trigger",
+    // because two enabled actions for one trigger is a contradiction rather than a precedence question.
+    overrideRules?: LeaveOverrideRule[] | null;
     // Configurable Negative Leave Balance Validation (feedback 0ef0defd): whether employees may SUBMIT/EDIT a
     // leave application of this type that exceeds their available balance. OWN tri-state (undefined =
     // allow_negative_balance column untouched), mirroring duplicateApplicationPolicy — its own "Allow Negative
@@ -3585,6 +3600,17 @@ export async function updateLeaveType(
   // untouched. The normaliser coerces to strict booleans and collapses an all-false vector to null (inert).
   const touchDayTypeInclusion = p.dayTypeInclusion !== undefined;
   const nextDayTypeInclusion = touchDayTypeInclusion ? cleanDayTypeInclusion(p.dayTypeInclusion) : undefined;
+  // Override Leave Application (56910869): OWN tri-state, mirroring touchDayTypeInclusion. Normalised
+  // through the SAME reader the engine uses, so a rule that survives the write is exactly a rule the engine
+  // will act on — a shape only one of the two accepted would be configuration that silently does nothing.
+  // Then validated for the contradiction the normaliser cannot express (two enabled actions on one trigger),
+  // which is refused with a readable message rather than resolved by first-wins.
+  const touchOverrideRules = p.overrideRules !== undefined;
+  const nextOverrideRules = touchOverrideRules ? normalizeLeaveOverrideRules(p.overrideRules ?? []) : undefined;
+  if (nextOverrideRules) {
+    const problem = validateLeaveOverrideRules(nextOverrideRules);
+    if (problem) throw new Error(problem);
+  }
   // Leave Unit Configuration (e4980382): OWN tri-state, mirroring touchPartial — the "Leave Unit" sub-form
   // posts `leaveUnit=1`, any other save omits leaveUnit so leave_unit stays untouched (no silent reset).
   // Validate against the closed { day, hour } set (the DB CHECK is defence-in-depth).
@@ -3890,6 +3916,12 @@ export async function updateLeaveType(
   const visualSet = touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {};
   // Day Type Inclusion (feedback ef6d7146): its own set fragment (the normalised vector, or null to clear).
   const dayTypeInclusionSet = touchDayTypeInclusion ? { dayTypeInclusion: nextDayTypeInclusion ?? null } : {};
+  // Override Leave Application (56910869): its own set fragment. An empty list stores NULL rather than `[]`
+  // so "HR cleared every rule" and "HR never configured any" are the same row — one representation, one
+  // reading, and the engine's Array.isArray branch never has to distinguish them.
+  const overrideRulesSet = touchOverrideRules
+    ? { overrideRules: nextOverrideRules && nextOverrideRules.length > 0 ? nextOverrideRules : null }
+    : {};
 
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
@@ -4107,6 +4139,7 @@ export async function updateLeaveType(
         ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
         ...(touchFormulaExplanations ? { formulaExplanations: nextFormulaExplanations } : {}),
         ...dayTypeInclusionSet,
+        ...overrideRulesSet,
         ...leaveUnitSet,
         ...yearCycleSet,
         ...visibleToEmployeeSet,

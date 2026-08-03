@@ -1324,6 +1324,20 @@ export const leaveType = pgTable('leave_type', {
   // balanceSourceTypeId resolves to, so a type that both borrows and allows unpaid leave overflows the
   // BORROWED balance.
   allowUnpaidLeave: boolean('allow_unpaid_leave').notNull().default(false),
+  // Override Leave Application (feedback 56910869, migration 0365): the ORDERED set of exceptions HR has
+  // configured for this leave type — what the system does when one of its rules is not met. Each entry is a
+  // (trigger, action) pair with its own switch: `{ trigger, action, enabled }`. Several per type on purpose,
+  // so Annual Leave can BOTH convert on short notice AND split on insufficient balance; a single "override
+  // mode" could only ever have expressed one exception per type.
+  //
+  // NULL on every existing row and DEFAULT OFF on every rule that is written — a configured-but-off rule is
+  // configuration, not behaviour. Nothing about any leave type changes until HR enables a rule.
+  //
+  // Typed structurally rather than importing core/leave-override's LeaveOverrideRule: this file deliberately
+  // imports nothing from core/, and the vocabulary guard belongs at the boundary anyway
+  // (normalizeLeaveOverrideRules drops anything it does not recognise, so an unrecognised pair reads as
+  // "no rule" — i.e. today's refusal — rather than as behaviour nobody configured).
+  overrideRules: jsonb('override_rules').$type<{ trigger: string; action: string; enabled: boolean }[]>(),
   // Leave Entitlement Formula Management (feedback 79011509, migration 0241): HR-owned, per-leave-type
   // plain-language EXPLANATIONS for each leave-view component — keyed by the widened explanation key set
   // (core/leave-formula.ts LEAVE_EXPLANATION_KEYS: the seven legacy §7 "Entitlement Calculation Breakdown"

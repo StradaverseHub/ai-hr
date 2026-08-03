@@ -1607,7 +1607,10 @@
       "leaveTypeApplicationTooLong": "{typeName} allows at most {maxDays} consecutive {unit} per application; this one covers {days}. Please shorten it or apply in separate applications.",
       "consecutiveUnitCalendar": "calendar day(s)",
       "consecutiveUnitWorking": "working day(s)",
-      "leaveYearApplicationLimit": "{typeName} is limited to {maxDays} day(s) per leave year. {usedDays} day(s) have already been applied for between {yearStart} and {yearEnd}, so this application of {days} day(s) cannot be submitted."
+      "leaveYearApplicationLimit": "{typeName} is limited to {maxDays} day(s) per leave year. {usedDays} day(s) have already been applied for between {yearStart} and {yearEnd}, so this application of {days} day(s) cannot be submitted.",
+      "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
+      "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -1789,6 +1792,14 @@
       "pageNext": "Next",
       "pageAria": "Page {page}",
       "noEmployeesFiltered": "No employees match the filters."
+    },
+    "override": {
+      "title": "Before you submit",
+      "convertNotice": "This application does not meet the {days}-day notice period for {typeName} (you have given {given} day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
+      "splitNotice": "Your balance does not cover this application. {paid} day(s) would be paid and {unpaid} day(s) would be taken as unpaid leave, which may reduce your salary.",
+      "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
+      "convertConfirm": "Yes — submit this as Emergency Leave.",
+      "splitConfirm": "Yes — I agree to the unpaid days."
     }
   },
   "attendance": {
@@ -4780,7 +4791,20 @@
       "adjustmentsRecentLine": "{days} days · {written} of {targeted} records written · effective {date}",
       "adjustmentsReverse": "Reverse",
       "adjustmentsReverseConfirm": "This writes an opposite entry for every record this adjustment created, returning those balances to where they were. Nothing is deleted, and it can only be done once.",
-      "adjustmentsReversed": "Reversed"
+      "adjustmentsReversed": "Reversed",
+      "overrideSectionTitle": "Override Leave Application",
+      "overrideSectionHelp": "What the system should do when one of the rules above is not met. Choose an action per situation, then switch it on. Nothing changes for this leave type until a rule is switched on. Employees are always told what will happen and must confirm before their application is submitted.",
+      "overrideActionNone": "Do nothing (refuse as today)",
+      "overrideEnabledLabel": "Switch this rule on",
+      "overrideTrigger": {
+        "advance_notice_not_met": "When the minimum advance notice is not met",
+        "insufficient_balance": "When the balance does not cover the application"
+      },
+      "overrideAction": {
+        "convert_to_emergency": "Offer to submit it as Emergency Leave",
+        "split_unpaid": "Offer to take the shortfall as unpaid leave",
+        "block": "Block the application"
+      }
     },
     "holidays": {
       "pageTitle": "Public holidays",
