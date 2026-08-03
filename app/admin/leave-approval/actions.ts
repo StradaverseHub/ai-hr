@@ -117,8 +117,12 @@ export async function archiveLeaveApprovalRuleAction(formData: FormData) {
 // They existed only so a save posted from the leave type workspace's Approval Workflow sub-step returned
 // to that type instead of the Approvals screen. That sub-step is gone — it duplicated the Approval
 // Workflow tab — so the wrappers had no caller left, and a server action with no caller retires WITH its
-// screen (the r100 saveLeaveApprovalPolicyAction precedent) rather than lingering as a second, unreachable
-// write path into the same rules.
+// screen (the r100 base-chain precedent — 241817ef step 2 retired that action the same way) rather than
+// lingering as a second, unreachable write path into the same rules.
+//
+// The precedent's action is deliberately NOT named here: test/leave-approval-page-restructure.test.ts
+// asserts this file does not contain that identifier ANYWHERE, comments included, because a caller-less
+// server action is still an addressable endpoint. Naming it even in prose would redden that guard.
 //
 // THE SHARED CORE IS UNTOUCHED: persistApprovalRule / persistArchiveApprovalRule above still back the
 // standalone saveLeaveApprovalRuleAction / archiveLeaveApprovalRuleAction, which are what the Approval tab

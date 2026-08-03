@@ -91,7 +91,11 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
     'name="eligibility"',
     'name="durations"',
     'name="document"',
-    'name="negativeBalance"',
+    // bc512dc3 extracted the negative-balance card into NegativeBalanceForm (the floor renders only when
+    // the switch is Yes, which needs client state), so its MARKER now lives in that component rather than
+    // inline in the card. What belongs to the Condition card is the card itself; the marker's continued
+    // existence is asserted separately below, against the whole file.
+    '<NegativeBalanceForm',
     'name="backdating"',
     'name="minAdvance"',
     'name="duplicatePolicy"',
@@ -110,6 +114,10 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
     '<LeaveVisualForm',
   ],
 };
+
+/** Markers whose sub-form was extracted into its own component, so the marker no longer appears inside the
+ *  card segment that renders it. They are still asserted present in the file as a whole. */
+const EXTRACTED_SUBFORM_MARKERS = ['name="negativeBalance"'] as const;
 
 /** Split the file into the 5 card segments, keyed by category, using the <CardTitle>{t('categoryX')}</CardTitle>
  *  markers as boundaries (each segment runs from its title to the next title, last to EOF). */
@@ -161,6 +169,11 @@ describe('123c1e76 · leave-type config restructured into 4 category cards (b8fc
       for (const needle of markers) {
         expect(panelSrc.includes(needle), `${needle} still present`).toBe(true);
       }
+    }
+    // The markers are what stop a save of one sub-form silently clearing another, so every one is checked
+    // against the whole file — extracting a sub-form into its own component must not be able to drop one.
+    for (const marker of EXTRACTED_SUBFORM_MARKERS) {
+      expect(panelSrc.includes(marker), `${marker} still present`).toBe(true);
     }
   });
 
