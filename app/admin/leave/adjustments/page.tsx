@@ -35,6 +35,17 @@ export default async function LeaveAdjustmentsPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
+  // r127 SHIPPED THIS SCREEN WITH TWO LABEL SETS THAT DO NOT EXIST under `admin.leave`, so every
+  // employment-type chip and all eight org-criteria chips rendered through a MISSING_MESSAGE. The page
+  // still returned 200, which is exactly why a bare status-code check did not catch it — the same class
+  // of defect as r123, found the same way, by grepping the dev log after a real render.
+  //
+  // Both label sets ALREADY SHIP, fully translated in all six locales, so this reads them where they live
+  // rather than minting a seventh copy: the eight org axes under `admin.profileOptions.category` (which is
+  // what ORG_ASSIGNMENT_CRITERIA's own header says `labelKey` indexes), and the employment types under
+  // `people.wizard.employmentType`, the same vocabulary the hiring wizard writes them with.
+  const tOrg = await getTranslations('admin.profileOptions.category');
+  const tEmploymentType = await getTranslations('people.wizard.employmentType');
   const { error } = await searchParams;
 
   const [types, companies, departments, batches, profileOptions] = await Promise.all([
@@ -77,9 +88,9 @@ export default async function LeaveAdjustmentsPage({
             departments={departments.map((d) => ({ value: d.id, label: d.name }))}
             employmentTypes={['full_time', 'part_time', 'contract', 'intern'].map((v) => ({
               value: v,
-              label: t(`employmentType.${v}`),
+              label: tEmploymentType(v),
             }))}
-            orgCriteria={orgOptions.map((o) => ({ ...o, label: t(`orgCriteria.${o.labelKey}`) }))}
+            orgCriteria={orgOptions.map((o) => ({ ...o, label: tOrg(o.labelKey) }))}
             labels={{
               stepTypes: t('adjustmentsStepTypes'),
               stepWho: t('adjustmentsStepWho'),
