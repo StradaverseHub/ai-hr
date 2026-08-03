@@ -20,6 +20,8 @@ import {
   type LeaveDurationType,
 } from '@/core/leave';
 import { resolveEssView } from '@/core/ess-view';
+// 296fc027 — the employee replacement-leave request path, reached through the leave-pack facade.
+import { decideReplacementLeaveRequest, submitReplacementLeaveRequest } from '@/packs/leave/service';
 import { localizeLeaveError } from '@/app/me/actions';
 
 /** Feedback 31474452 (Step 5): read-only pre-submission preview for the Leave-tab form (which can apply
@@ -336,3 +338,75 @@ export async function cancelOwnLeaveAction(formData: FormData) {
 // approved and rejected ONLY through Approval Items (app/approvals/actions.ts → core/leave decideLeave,
 // single and bulk). Nothing else moved: the Requests table this page still carries has never held an
 // approve or reject control — see the enumeration recorded in test/leave-requests-not-approvals.test.ts.
+
+/**
+ * 296fc027 · Submit an employee replacement-leave request.
+ *
+ * The form posts one repeated field per worked-date row (`workedDate`, plus `days` OR `fromTime`/`toTime`
+ * depending on the unit), which is the plain HTML shape — `getAll` zips them back into rows by INDEX. That
+ * is safe here because every row renders all of its own inputs unconditionally for the chosen unit, so the
+ * arrays are the same length by construction; a row with a blank date is dropped before zipping so a
+ * half-filled row cannot shift the alignment of the ones after it.
+ *
+ * EVERY CONTROL IS THE SERVICE'S. This action validates nothing about eligibility, the employee-request
+ * switch or the First Schedule floor — it shapes the form data and lets core/replacement-request.ts refuse
+ * it. That is deliberate: an action is one POST away from being called directly, so a check here would be
+ * a check that can be skipped.
+ */
+export async function submitReplacementLeaveRequestAction(formData: FormData) {
+  const session = await getSession();
+  const unit = String(formData.get('unit') ?? 'day') === 'hour' ? ('hour' as const) : ('day' as const);
+  const workedDates = formData.getAll('workedDate').map(String);
+  const daysRaw = formData.getAll('days').map(String);
+  const fromTimes = formData.getAll('fromTime').map(String);
+  const toTimes = formData.getAll('toTime').map(String);
+
+  const lines = workedDates
+    .map((workedDate, i) => ({
+      workedDate: workedDate.trim(),
+      days: unit === 'day' ? Number(daysRaw[i] ?? 0) : undefined,
+      fromTime: unit === 'hour' ? (fromTimes[i] ?? '').trim() : undefined,
+      toTime: unit === 'hour' ? (toTimes[i] ?? '').trim() : undefined,
+    }))
+    .filter((l) => l.workedDate !== '');
+
+  try {
+    const employmentId = (await myEmployment(session))?.employmentId;
+    if (!employmentId) throw new Error('No employment on record for this account.');
+    await submitReplacementLeaveRequest(session, {
+      employmentId,
+      leaveTypeId: String(formData.get('leaveTypeId') ?? '') || null,
+      unit,
+      lines,
+      reason: String(formData.get('reason') ?? '').trim() || undefined,
+      firstScheduleConsent: formData.get('firstScheduleConsent') === 'on',
+      today: todayInKualaLumpur(),
+    });
+  } catch (e) {
+    redirect(`/leave?error=${encodeURIComponent(e instanceof Error ? e.message : String(e))}`);
+  }
+  revalidatePath('/leave');
+  const t = await getTranslations('replacementRequest');
+  redirect(`/leave?toast=${encodeURIComponent(t('submittedToast'))}`);
+}
+
+/**
+ * 296fc027 · Decide one (line-manager approval only — `assertCanDecide`, never the multi-level chain).
+ * Approving here is what MINTS the credits, with the expiry counted from this moment.
+ */
+export async function decideReplacementLeaveRequestAction(formData: FormData) {
+  const session = await getSession();
+  const requestId = String(formData.get('requestId') ?? '');
+  const decision = String(formData.get('decision') ?? '') === 'approved' ? ('approved' as const) : ('rejected' as const);
+  try {
+    await decideReplacementLeaveRequest(session, {
+      requestId,
+      decision,
+      note: String(formData.get('note') ?? '').trim() || undefined,
+    });
+  } catch (e) {
+    redirect(`/leave?error=${encodeURIComponent(e instanceof Error ? e.message : String(e))}`);
+  }
+  revalidatePath('/leave');
+  redirect('/leave');
+}

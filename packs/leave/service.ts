@@ -46,4 +46,14 @@ export * from '../../core/leave-override';
 // through this facade like every other leave service, never by reaching into core/ directly.
 export * from '../../core/leave-adjustment';
 export * from '../../core/toil';
+// 296fc027 — the replacement-leave request eligibility resolver (the as-of `assignment` join that
+// core/leave-org-criteria.ts documents as DEFERRED). In BOTH BOUNDARIES and ALWAYS_ALLOWED in
+// test/leave-pack-drift.test.ts for the reason the 241817ef note above gives: a new leave-pack module that
+// is not a BOUNDARY is simply unguarded, and silencing the guard with a pack-drift-allowlist entry would
+// grow a list documented to only ever shrink.
+export * from '../../core/replacement-eligibility';
+// 296fc027 Step 2 — the employee request path (submit / decide / grant-on-approval). Same reasoning as
+// the line above: a BOUNDARY so it is guarded, re-exported here so outside callers reach it through the
+// facade rather than adding an entry to the audited debt allowlist.
+export * from '../../core/replacement-request';
 export * from '../../core/benefit-scheme';

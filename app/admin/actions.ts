@@ -108,8 +108,9 @@ import {
 } from '@/core/leave-shared-group';
 import { inviteUser, revokeInvitation, setAppUserArchived } from '@/core/auth';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
+import { REPLACEMENT_ELIGIBILITY_CRITERIA, type ReplacementRequestEligibility } from '@/core/replacement-eligibility';
 import { setEncashmentPolicy } from '@/core/leave-encashment';
-import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
+import type { ToilAccrualBasis, ToilExpiryAction, ToilExpiryUnit, ToilReplacementLeaveFrom } from '@/db/schema';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
 import { isMyBankKey } from '@/lib/my-banks';
 import {
@@ -135,7 +136,11 @@ const HOLIDAY_GROUPS = '/admin/holidays/groups';
 // R33 f21d6eee — the per-company attendance policy + OT-rates form moved to its own /admin/attendance-policy
 // screen (the /admin/attendance route is now the shared shift library). setAttendancePolicyAction redirects here.
 const ATTENDANCE_POLICY = '/admin/attendance-policy';
+// 296fc027 split this route in two. /admin/toil keeps the balance LEDGER and the two settlement sweeps
+// (deliberately not entitlement-gated — see core/toil.ts); CONFIGURATION moved to the Leave Config tab
+// below, which is where setToilPolicyAction now redirects. Both routes stay registered in lib/permissions.
 const TOIL_POLICY = '/admin/toil';
+const LEAVE_REPLACEMENT = '/admin/leave/replacement';
 const LOCATIONS = '/admin/locations';
 
 export async function createCompanyAction(formData: FormData) {
@@ -1858,10 +1863,25 @@ export async function closeReplacementLeaveYearAction() {
 }
 
 // ADR-0033 33-5 — upsert one company's TOIL (leave-in-lieu) policy. Checkboxes ⇒ presence test.
+//
+// 296fc027: the form this serves MOVED to /admin/leave/replacement, so every redirect target moved with
+// it. The action itself did not move — it stays here beside the two sweep actions it is related to, and
+// beside `fail`/`ok`, which is what the plan asked for ("move the policy editor form and its
+// setToilPolicyAction TARGET"). Redirecting to the old page would have landed the admin on a screen that
+// no longer shows the form they just submitted, with their validation error invisible.
 export async function setToilPolicyAction(fd: FormData) {
   const s = await getSession();
   let warning: string | undefined;
   try {
+    // 296fc027 — the eligibility criteria, read the way every other multi-select criteria form in this
+    // codebase is read: one repeated hidden input per selected value, under the criterion's own key,
+    // pulled back with getAll. No JSON round-trip. The key IS the stored JSONB key by construction
+    // (core/replacement-eligibility.ts), so this loop needs no per-field wiring and cannot drift from the
+    // picker. `setToilPolicy` normalises the result (dedupe, drop blanks, all-empty ⇒ NULL).
+    const requestEligibility: ReplacementRequestEligibility = {};
+    for (const c of REPLACEMENT_ELIGIBILITY_CRITERIA) {
+      requestEligibility[c.key] = fd.getAll(c.key).map(String);
+    }
     // Phase-B #14: premium_equivalent + allowing First-Schedule staff returns a banking-risk warning.
     const r = await setToilPolicy(s, {
       companyId: String(fd.get('companyId') ?? ''),
@@ -1872,16 +1892,22 @@ export async function setToilPolicyAction(fd: FormData) {
       allowFirstScheduleEligible: fd.get('allowFirstScheduleEligible') === 'on',
       autoAccrueOnApproval: fd.get('autoAccrueOnApproval') === 'on',
       carryForwardAtYearEnd: fd.get('carryForwardAtYearEnd') === 'on',
+      // Both counts are posted on every save regardless of which unit is selected, so flipping the unit
+      // and flipping back does not lose the other count — see the two-column note in migration 0380.
+      expiryUnit: String(fd.get('expiryUnit') ?? 'days') as ToilExpiryUnit,
+      expiryMonths: Number(fd.get('expiryMonths') ?? 3),
+      employeeRequestEnabled: fd.get('employeeRequestEnabled') === 'on',
+      replacementLeaveFrom: String(fd.get('replacementLeaveFrom') ?? 'overtime') as ToilReplacementLeaveFrom,
+      requestEligibility,
     });
     warning = r.premiumEquivalentWarning;
   } catch (e) {
-    fail(TOIL_POLICY, e);
+    fail(LEAVE_REPLACEMENT, e);
   }
-  if (warning) {
-    revalidatePath(TOIL_POLICY);
-    redirect(`${TOIL_POLICY}?warning=${encodeURIComponent(warning)}`);
-  }
-  ok(TOIL_POLICY);
+  revalidatePath(LEAVE_REPLACEMENT);
+  // The warning has been produced since Phase-B #14 but the old target never read the param, so it was
+  // dropped on every save. The new page renders it.
+  redirect(warning ? `${LEAVE_REPLACEMENT}?warning=${encodeURIComponent(warning)}` : `${LEAVE_REPLACEMENT}?saved=1`);
 }
 
 // ADR-0069 — upsert one company's leave encashment policy (Company Leave Settings -> Encashment Policy).
