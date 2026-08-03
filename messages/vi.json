@@ -1623,7 +1623,24 @@
         "available": "Số ngày bạn thực sự có thể xin nghỉ hôm nay. Đây là con số giống hệt con số hiển thị ở mọi nơi khác, kể cả khi bạn xin nghỉ."
       },
       "adjustmentNoReason": "Không có lý do",
-      "expiresOn": "Hết hạn: {date}"
+      "expiresOn": "Hết hạn: {date}",
+      "replacement": {
+        "creditsHeading": "Tín dụng đã tích lũy",
+        "empty": "Chưa có tín dụng nghỉ bù nào được tích lũy.",
+        "col": {
+          "requestDate": "Ngày yêu cầu",
+          "number": "Số lượng",
+          "unit": "Đơn vị",
+          "approvalDate": "Ngày phê duyệt",
+          "expiredDate": "Ngày hết hạn"
+        },
+        "unitDay": "Ngày",
+        "unitHour": "Giờ",
+        "statusTaken": "Đã sử dụng",
+        "statusExpired": "Đã hết hạn",
+        "statusConverted": "Đã quy đổi thành tiền",
+        "statusPartlyUsed": "Đã dùng một phần"
+      }
     },
     "preview": {
       "loading": "Đang tính toán…"
@@ -4507,7 +4524,12 @@
         "pendingApproval": "Chờ phê duyệt",
         "forfeited": "Chuyển sang bị mất",
         "available": "Số dư khả dụng",
-        "groupOther": "Khác"
+        "groupOther": "Khác",
+        "requestDate": "Ngày yêu cầu",
+        "number": "Số lượng",
+        "unit": "Đơn vị",
+        "approvalDate": "Ngày phê duyệt",
+        "expiredDate": "Ngày hết hạn"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Bao gồm loại ngày",

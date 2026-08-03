@@ -3400,6 +3400,16 @@ export const toilAccrual = pgTable(
     // day (preserves the unique index + the payroll predicate join) instead of splitting on partial use.
     daysTaken: numeric('days_taken', { precision: 6, scale: 2 }).notNull().default('0'),
     accrualBasis: toilAccrualBasisEnum('accrual_basis').notNull(),
+    // 00307068 (migration 0354): the two dates the employee's Replacement Leave table shows and the register
+    // never recorded. Both NULLABLE — a legacy row genuinely does not know them and the panel renders a dash
+    // rather than a fabricated date.
+    //  • requestedOn — the day the credit was ASKED for. The auto path writes the linked attendance
+    //    correction's created_at::date; the manual roster election has no employee request at all, so it
+    //    writes the worked date.
+    //  • approvedOn  — the instant a line manager's decision banked it. Also the ANCHOR expiresOn is counted
+    //    from (approvedOn::date + policy.expiryDays), replacing the worked-date anchor.
+    requestedOn: date('requested_on'),
+    approvedOn: timestamp('approved_on', { withTimezone: true }),
     expiresOn: date('expires_on').notNull(),
     status: toilAccrualStatusEnum('status').notNull().default('active'),
     // 0113: the policy's carryForwardAtYearEnd copied at accrual time (mirrors expiryAction's freeze). The

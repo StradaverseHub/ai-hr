@@ -1623,7 +1623,24 @@
         "available": "您今天实际可以申请的天数。这与其他各处显示的数字完全相同，包括申请休假时看到的数字。"
       },
       "adjustmentNoReason": "未填写原因",
-      "expiresOn": "到期：{date}"
+      "expiresOn": "到期：{date}",
+      "replacement": {
+        "creditsHeading": "已累积额度",
+        "empty": "尚未累积任何替代假额度。",
+        "col": {
+          "requestDate": "申请日期",
+          "number": "数量",
+          "unit": "单位",
+          "approvalDate": "批准日期",
+          "expiredDate": "到期日期"
+        },
+        "unitDay": "天",
+        "unitHour": "小时",
+        "statusTaken": "已使用",
+        "statusExpired": "已过期",
+        "statusConverted": "已折现",
+        "statusPartlyUsed": "部分使用"
+      }
     },
     "preview": {
       "loading": "计算中…"
@@ -4507,7 +4524,12 @@
         "pendingApproval": "待批准",
         "forfeited": "结转作废",
         "available": "可用余额",
-        "groupOther": "其他"
+        "groupOther": "其他",
+        "requestDate": "申请日期",
+        "number": "数量",
+        "unit": "单位",
+        "approvalDate": "批准日期",
+        "expiredDate": "到期日期"
       },
       "dayTypeInclusion": {
         "sectionTitle": "日期类型计入",

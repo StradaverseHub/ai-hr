@@ -26,6 +26,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { leaveVisual } from '@/lib/leave-visual';
 import { LeaveDetailsPanel } from './LeaveDetailsPanel';
+import { ReplacementLeavePanel, type ReplacementPanelData } from './ReplacementLeavePanel';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
 import type { PanelSummary } from './entitlement-panel-config';
 
@@ -47,6 +48,16 @@ export type LeaveCardEntry = {
   remaining: number | null;
   /** The breakdown envelope the panel needs; `null` ⇒ no breakdown loaded or ESS-hidden ⇒ static tile. */
   panel: LeaveCardPanel | null;
+  /**
+   * 00307068 — Replacement Leave's card opens a DIFFERENT panel: the per-credit table, not the nine-line
+   * Leave Balance Summary. Non-null on the REPLACEMENT card only; every other type sees this field absent
+   * and its behaviour is byte-identical to before.
+   *
+   * It sits BESIDE `panel` rather than replacing it because the card's clickability, its highlight and its
+   * remaining figure are all still driven by `panel` — the type's balance envelope is the same, only the
+   * body of the side-sheet differs.
+   */
+  replacement?: ReplacementPanelData | null;
 };
 
 export function LeaveCards({ entries }: { entries: LeaveCardEntry[] }) {
@@ -97,8 +108,26 @@ export function LeaveCards({ entries }: { entries: LeaveCardEntry[] }) {
         })}
       </div>
 
+      {/* 00307068: Replacement Leave opens the per-credit table instead of the summary panel. The branch is
+          HERE, at the one place that decides which side-sheet a card opens, rather than inside
+          LeaveDetailsPanel — that file's whole design is a descriptor loop with no leave-type conditionals
+          in it (584edf44), and adding the first one would be the end of that property. Same controlled-open
+          contract, same remount-per-selection key. */}
+      {selected?.panel && selected.replacement && (
+        <ReplacementLeavePanel
+          key={selected.leaveTypeId}
+          open={open}
+          onOpenChange={setOpen}
+          leaveTypeName={selected.leaveType}
+          visual={selected.panel.visual}
+          asOf={selected.panel.asOf}
+          available={selected.remaining}
+          data={selected.replacement}
+        />
+      )}
+
       {/* One controlled panel, remounted per selection (key) so its internal state resets on type switch. */}
-      {selected?.panel && (
+      {selected?.panel && !selected.replacement && (
         <LeaveDetailsPanel
           key={selected.leaveTypeId}
           open={open}

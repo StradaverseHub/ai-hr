@@ -18,6 +18,7 @@ import {
   listLeaveRequestsPage,
   listLeaveApprovers,
   reportingLinesFor,
+  replacementLeaveLedger,
 } from '@/core/read';
 import {
   deriveEmploymentStatus,
@@ -27,7 +28,7 @@ import {
 import { listBusinessUnits } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { todayInKualaLumpur } from '@/core/leave';
-import { essViewHasAnyVisibleRow } from '@/core/ess-view';
+import { essViewHasAnyVisibleRow, isReplacementLeaveCode } from '@/core/ess-view';
 import { Avatar, Button, Card, EmployeeCode, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 // Employee Details (feedback 650b6eb8): the left-side inquiry nav wave 1 built for the two screens this
@@ -319,6 +320,19 @@ export default async function LeavePage({
       asOf: breakdownAsOf,
     };
   };
+  // ── Replacement Leave: the per-credit register behind the card (feedback 00307068) ──────────────────
+  //
+  // Replacement Leave is not a yearly allowance — it is a stack of separately earned credits, each with its
+  // own approval and its own expiry — so its card opens a TABLE of those credits rather than the nine-line
+  // Leave Balance Summary every other type gets. `replacementLeaveLedger` has held exactly that data since
+  // 0113 and, until now, had no UI caller at all; this is the entry point it was missing.
+  //
+  // ONE EXTRA READ, AND ONLY WHEN IT IS RENDERED. Loaded only when the employee actually has a visible
+  // REPLACEMENT card (ESS surface + a primary-placed type whose code is REPLACEMENT), so an admin page load
+  // and every tenant without the module pay nothing for it. Nothing else on this page changes shape.
+  const replacementBalance = ess ? selfBalances.find((b) => b.placement === 'primary' && isReplacementLeaveCode(b.code)) : undefined;
+  const replacementLedger = replacementBalance && me ? await replacementLeaveLedger(session, me.employmentId) : null;
+
   const primaryCards: LeaveCardEntry[] = selfBalances
     .filter((b) => b.placement === 'primary')
     .map((b) => ({
@@ -330,6 +344,18 @@ export default async function LeavePage({
       // ESS-gated remaining figure (null when Available is HR-hidden ⇒ the card renders "—").
       remaining: deriveBalanceRow(b, breakdownByType.get(b.leaveTypeId) ?? null).available,
       panel: buildCardPanel(b),
+      // The credit table's envelope — plain serialisable data only (no Date objects, no closures), because
+      // this RSC hands it straight to a client component. The column explanations come from the SAME
+      // breakdown read every other card uses; for a REPLACEMENT type core/read resolves them over the five
+      // column keys instead of the nine summary keys, so heading and wording are always keyed alike.
+      replacement:
+        replacementLedger && isReplacementLeaveCode(b.code)
+          ? {
+              rows: replacementLedger.rows,
+              leaveUnit: replacementLedger.leaveUnit,
+              explanations: breakdownByType.get(b.leaveTypeId)?.formulaExplanations ?? {},
+            }
+          : null,
     }));
   // Canonical PRIMARY_CODES order first (Annual, Medical, Hospitalisation, Emergency, Replacement), then
   // any other HR-promoted primaries alphabetically — same reading order the /me tab had.

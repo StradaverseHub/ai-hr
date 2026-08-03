@@ -30,7 +30,12 @@
 // editor in components/leave-type-panel.tsx, the read path in core/read.ts (leaveEntitlementBreakdown), and
 // the per-row hover info icons in components/leave/LeaveDetailsPanel.tsx.
 
-import { ESS_VIEW_COMPONENT_KEYS, type EssViewComponentKey } from './ess-view';
+import {
+  ESS_VIEW_COMPONENT_KEYS,
+  essViewKeysForCode,
+  isEssViewComponentKeyForCode,
+  type EssViewComponentKey,
+} from './ess-view';
 
 /** Every key an explanation may be stored under — the Leave Summary items, in the summary's display order.
  *  i18n labels live under `admin.leave.essView.<key>` (the checklist's own labels), so an item can never be
@@ -65,18 +70,59 @@ export function isLeaveExplanationKey(k: string): k is LeaveExplanationKey {
   return KEY_SET.has(k);
 }
 
+// ── 00307068: the same key set, resolved per leave type ────────────────────────────────────────────────
+//
+// Replacement Leave's employee panel is a per-credit TABLE with five columns, not the nine-line summary, so
+// the items HR can annotate for it are those five columns. The identity this file exists to hold — every
+// configurable item is a rendered item, every rendered item is configurable — is UNCHANGED; it is now
+// asserted per type instead of once globally, which is the only way it can stay true when two types render
+// different things. LEAVE_EXPLANATION_KEYS === ESS_VIEW_COMPONENT_KEYS still holds and is still pinned.
+
+/** The explanation keys for ONE leave type: the five Replacement Leave columns, or the nine summary items. */
+export function leaveExplanationKeysForCode(code: string | null | undefined): readonly string[] {
+  return essViewKeysForCode(code);
+}
+
+/** True when `k` may carry an explanation FOR THIS LEAVE TYPE. */
+export function isLeaveExplanationKeyForCode(code: string | null | undefined, k: string): boolean {
+  return isEssViewComponentKeyForCode(code, k);
+}
+
+/** Resolve a stored config over ONE leave type's key set. Same semantics as `resolveLeaveFormula` (missing
+ *  or all-blank ⇒ null, unknown stored keys ignored) — this is what the render sites call once they know
+ *  which panel they are drawing. */
+export function resolveLeaveFormulaForCode(
+  code: string | null | undefined,
+  config: Record<string, LeaveFormulaEntry> | null | undefined,
+): Record<string, LeaveFormulaEntry | null> {
+  const out: Record<string, LeaveFormulaEntry | null> = {};
+  for (const key of leaveExplanationKeysForCode(code)) {
+    const v = config?.[key];
+    out[key] = v && (v.description || v.formula) ? v : null;
+  }
+  return out;
+}
+
 /**
  * Validate + normalise a caller-supplied config: reject unknown keys, trim every field, drop blank fields, and
  * drop an entry whose fields are all blank. Returns null when nothing meaningful remains (⇒ clear the column,
  * so the default "no explanation" path stays clean). Throws on an over-long field or an unknown key.
  */
-export function normalizeLeaveFormulaConfig(input: LeaveFormulaConfig): LeaveFormulaConfig | null {
-  const out: LeaveFormulaConfig = {};
+export function normalizeLeaveFormulaConfig(input: LeaveFormulaConfig, code?: string | null): LeaveFormulaConfig | null {
+  // Indexed as a plain string map: since 00307068 the accepted key set depends on `code`, so the check below
+  // is a boolean rather than a type predicate and cannot narrow `key` to the nine-item union. The refusal on
+  // the line above is what makes this safe — nothing unvalidated reaches these two lookups.
+  const src = input as Record<string, LeaveFormulaEntry | undefined>;
+  const out: Record<string, LeaveFormulaEntry> = {};
   for (const key of Object.keys(input)) {
-    if (!isLeaveExplanationKey(key)) {
+    // 00307068: the allow-list is now resolved BY LEAVE TYPE CODE — the five Replacement Leave columns for
+    // REPLACEMENT, the nine summary items for everything else. `code` omitted ⇒ the nine, so every existing
+    // caller behaves exactly as before. A mismatched key still throws, which is the guard that stops a
+    // replacement column being configured on Annual Leave (where it would name nothing).
+    if (!isLeaveExplanationKeyForCode(code, key)) {
       throw new Error(`Unknown leave-formula component key: ${key}.`);
     }
-    const raw = input[key] ?? {};
+    const raw = src[key] ?? {};
     const entry: LeaveFormulaEntry = {};
     for (const field of LEAVE_FORMULA_FIELDS) {
       const trimmed = (raw[field] ?? '').trim();

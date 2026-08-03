@@ -1623,7 +1623,24 @@
         "available": "இன்று நீங்கள் உண்மையில் விண்ணப்பிக்கக்கூடியது. விடுப்புக்கு விண்ணப்பிக்கும்போது உட்பட, மற்ற எல்லா இடங்களிலும் காட்டப்படும் அதே எண்."
       },
       "adjustmentNoReason": "காரணம் தரப்படவில்லை",
-      "expiresOn": "காலாவதி: {date}"
+      "expiresOn": "காலாவதி: {date}",
+      "replacement": {
+        "creditsHeading": "சேமிக்கப்பட்ட வரவுகள்",
+        "empty": "இதுவரை மாற்று விடுப்பு வரவு எதுவும் சேமிக்கப்படவில்லை.",
+        "col": {
+          "requestDate": "கோரிக்கை தேதி",
+          "number": "எண்ணிக்கை",
+          "unit": "அலகு",
+          "approvalDate": "ஒப்புதல் தேதி",
+          "expiredDate": "காலாவதி தேதி"
+        },
+        "unitDay": "நாள்",
+        "unitHour": "மணி",
+        "statusTaken": "பயன்படுத்தப்பட்டது",
+        "statusExpired": "காலாவதியானது",
+        "statusConverted": "பணமாக வழங்கப்பட்டது",
+        "statusPartlyUsed": "பகுதியளவு பயன்படுத்தப்பட்டது"
+      }
     },
     "preview": {
       "loading": "கணக்கிடப்படுகிறது…"
@@ -4507,7 +4524,12 @@
         "pendingApproval": "ஒப்புதலுக்கு நிலுவையில்",
         "forfeited": "முன்கொணர்வு பறிமுதல்",
         "available": "கிடைக்கக்கூடிய இருப்பு",
-        "groupOther": "மற்றவை"
+        "groupOther": "மற்றவை",
+        "requestDate": "கோரிக்கை தேதி",
+        "number": "எண்ணிக்கை",
+        "unit": "அலகு",
+        "approvalDate": "ஒப்புதல் தேதி",
+        "expiredDate": "காலாவதி தேதி"
       },
       "dayTypeInclusion": {
         "sectionTitle": "நாள் வகை சேர்ப்பு",

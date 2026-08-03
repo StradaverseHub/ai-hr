@@ -1993,6 +1993,11 @@ export async function decideAttendanceCorrection(
         employmentId: cor.employmentId,
         workedDate: cor.attendanceDate,
         dayType,
+        // 00307068: THIS correction is the employee's request for the credit, so its own creation date is
+        // the credit's Request Date. Passed rather than re-queried inside the accrual because the status
+        // flip to 'approved' happens BELOW this call — a lookup would still see 'pending' and could not
+        // identify the row it was looking for.
+        requestedOn: cor.createdAt.toISOString().slice(0, 10),
       });
     }
 

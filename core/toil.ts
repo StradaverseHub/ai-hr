@@ -317,6 +317,15 @@ export async function accrueToilTx(
      *  meaningful for a First-Schedule-eligible (≤ ceiling) employee — required (with the company toggle) before
      *  such an accrual is permitted; moot for > ceiling staff. */
     firstScheduleConsent?: boolean;
+    /** 00307068: the approval instant, INJECTED — the date the expiry period is now counted from. Omitted ⇒
+     *  now, which is what both production paths pass (reaching this function IS the approval). Present only
+     *  so the suite can assert an expiry date rather than recompute one, the same convention `runToilExpiry`
+     *  and `closeReplacementLeaveYear` already follow with `today` / `asOf`. */
+    approvedOn?: Date;
+    /** 00307068: the date the employee ASKED for this credit (YYYY-MM-DD). Supplied by the auto path from
+     *  the attendance correction being approved — the only caller that has a real request to point at.
+     *  Omitted ⇒ the worked date, which is the honest answer for a manager's roster election. */
+    requestedOn?: string;
   },
 ): Promise<AccrueToilResult> {
   if (p.requireDecideAuth) await assertCanDecide(tx, ctx, p.employmentId, 'time off in lieu');
@@ -417,7 +426,32 @@ export async function accrueToilTx(
   // 5 · days credited + expiry.
   const mult = policy.accrualBasis === 'premium_equivalent' ? PREMIUM_MULT[dayType] : 1;
   const daysCredited = round2((otMinutes / STD_DAY_MINUTES) * mult);
-  const expiresOn = addDays(p.workedDate, policy.expiryDays);
+
+  // 00307068 · THE EXPIRY ANCHOR MOVES FROM THE WORKED DAY TO THE APPROVAL. This is a behaviour change, not
+  // a display one, and it is the reason the item is Large. Reaching this line IS the approval: the manual
+  // roster path has already run assertCanDecide above, and the auto path runs inside
+  // decideAttendanceCorrection's transaction, where the correction's approver passed the same check. So
+  // "now" is the decision instant on both paths and there is no third path that could disagree.
+  //
+  // It can only ever LENGTHEN a credit's life: approval never precedes the day worked, so approvedOn::date
+  // is always on or after workedDate and the resulting expiry is always on or after the old one. Nobody
+  // loses a day. Migration 0354 applies the same one-way rule to rows already banked, via GREATEST.
+  const approvedOn = p.approvedOn ?? new Date();
+  const approvedOnDate = approvedOn.toISOString().slice(0, 10);
+  const expiresOn = addDays(approvedOnDate, policy.expiryDays);
+
+  // 00307068 · the REQUEST date, which is a different question with two honest answers.
+  //  • auto path — the employee really did ask: the attendance correction they filed IS the request, so its
+  //    creation date is the request date. It is PASSED IN by decideAttendanceCorrection rather than looked
+  //    up here, and that is not a stylistic preference. A lookup would have to guess which correction for
+  //    that (employment, date) produced this credit, and it would guess WRONG: the hook runs BEFORE the
+  //    status flips to 'approved' (core/attendance.ts writes the status after calling it), so the row being
+  //    approved is still 'pending' at this moment. The caller already holds the exact row; asking it is the
+  //    only answer that cannot be wrong.
+  //  • roster path — there is NO employee request. A manager elects a worked day directly off the roster
+  //    (there is no submission anywhere to date), so the worked day is the only date in evidence, and
+  //    inventing a "requested on" that nobody typed would be a fabrication on a screen the employee reads.
+  const requestedOn = p.requestedOn ?? p.workedDate;
   // Phase-B #14: premium_equivalent banking for a First-Schedule employee can over/under-bank vs the exact
   // s.60(3) split-rule cash — flag the risk (the convert-to-pay path still reconciles to the exact statutory
   // entitlement; this surfaces the divergence at the banking decision).
@@ -446,6 +480,10 @@ export async function accrueToilTx(
       otMinutes,
       daysCredited: daysCredited.toFixed(2),
       accrualBasis: policy.accrualBasis,
+      // 00307068: the two dates the employee's Replacement Leave table shows, recorded at the moment they
+      // are known rather than re-derived later from a row that no longer remembers.
+      requestedOn,
+      approvedOn,
       expiresOn,
       status: 'active',
       // Floor protection: an eligible employee's unused TOIL always converts to pay, never lapses.
@@ -503,7 +541,7 @@ export async function accrueToilTx(
  */
 export async function accrueToil(
   ctx: SessionContext,
-  p: { employmentId: string; workedDate: string; firstScheduleConsent?: boolean },
+  p: { employmentId: string; workedDate: string; firstScheduleConsent?: boolean; approvedOn?: Date },
 ): Promise<AccrueToilResult> {
   if (!toilEnabled(ctx)) throw new ToilDisabledError();
   return withTenant(ctx, (tx) => accrueToilTx(tx, ctx, { ...p, requireDecideAuth: true }));
@@ -519,7 +557,14 @@ export async function accrueToil(
 export async function maybeAutoAccrueOnApprovalTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { employmentId: string; workedDate: string; dayType: string | null },
+  p: {
+    employmentId: string;
+    workedDate: string;
+    dayType: string | null;
+    /** 00307068: the approved correction's own creation date — the employee's request date for the credit
+     *  this approval banks. See the note in accrueToilTx for why it is passed rather than looked up. */
+    requestedOn?: string;
+  },
 ): Promise<boolean> {
   if (!toilEnabled(ctx)) return false;
   // Cheap pre-checks before any work: must be a rest-day/holiday correction.
@@ -534,7 +579,13 @@ export async function maybeAutoAccrueOnApprovalTx(
   const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, att.companyId)).limit(1);
   if (!policy || !policy.enabled || !policy.autoAccrueOnApproval) return false;
   try {
-    await accrueToilTx(tx, ctx, { employmentId: p.employmentId, workedDate: p.workedDate, requireDecideAuth: false, viaAutoApproval: true });
+    await accrueToilTx(tx, ctx, {
+      employmentId: p.employmentId,
+      workedDate: p.workedDate,
+      requireDecideAuth: false,
+      viaAutoApproval: true,
+      requestedOn: p.requestedOn,
+    });
     return true;
   } catch (e) {
     // Swallow the expected eligibility/duplicate refusals so auto-accrual never blocks an approval; rethrow

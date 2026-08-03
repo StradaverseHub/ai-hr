@@ -49,6 +49,10 @@ import {
 
 let b: Base;
 const REST_DAY = '2026-07-04'; // a Saturday; setRestDay makes it a rostered rest day regardless
+// 00307068: the expiry period is counted from the APPROVAL, not the worked day, so the approval instant is
+// now an input to every accrual assertion and is injected like every other date in this suite. Two days
+// after the rest day — a manager approving on the following Monday, which is the ordinary case.
+const APPROVED_ON = new Date('2026-07-06T02:00:00.000Z');
 /** One cut-off cycle of a weekly/bi-weekly run's disbursement schedule (payslip.statutory.paymentSchedule). */
 type Cycle = { seq: number; from: string; to: string; amount: number };
 const uniqEmail = () => `toil_${Math.random().toString(36).slice(2)}@t.local`;
@@ -176,7 +180,7 @@ describe('TOIL core (ADR-0033 33-3)', () => {
     const ctx = await toilOnCtx();
     const { a, employmentId } = await hireWithWorkedRestDay(5000); // > RM4,000 ⇒ not eligible ⇒ TOIL free
     await setToilPolicy(a, policy(b.companyId));
-    const r = await accrueToil(ctx, { employmentId, workedDate: REST_DAY });
+    const r = await accrueToil(ctx, { employmentId, workedDate: REST_DAY, approvedOn: APPROVED_ON });
     expect(r.daysCredited).toBe(1); // 480 / 480
     expect(r.forcedConvertOnExpiry).toBe(false);
     expect(r.complianceWarning).toBeUndefined();
@@ -184,7 +188,20 @@ describe('TOIL core (ADR-0033 33-3)', () => {
     const acc = await accrualRow(employmentId);
     expect(acc.status).toBe('active');
     expect(acc.dayType).toBe('rest_day');
-    expect(acc.expiresOn).toBe('2026-10-02'); // REST_DAY + 90d
+    // 00307068 MOVED THIS ANCHOR, and this assertion is where the move is visible.
+    //
+    // It used to read `expect(acc.expiresOn).toBe('2026-10-02')` — REST_DAY + 90d, i.e. counted from the day
+    // WORKED. The reporter's rule is that a credit's life starts when the line manager APPROVES it, and
+    // reaching accrueToilTx is that approval on both paths. The election above ran on 2026-07-06 (injected,
+    // like every other date in this suite), so the credit now runs to 2026-10-04 rather than 2026-10-02.
+    expect(acc.expiresOn).toBe('2026-10-04');
+    // The direction of the change is the guarantee that makes it safe: approval never precedes the work, so
+    // a credit's life can only ever get LONGER. Nobody loses a day.
+    expect(acc.expiresOn > '2026-10-02').toBe(true);
+    // Both new dates are recorded. A roster election has NO employee request — a manager picks the worked
+    // day directly — so the worked day is the only date in evidence for `requestedOn`.
+    expect(acc.requestedOn).toBe(REST_DAY);
+    expect(acc.approvedOn?.toISOString().slice(0, 10)).toBe('2026-07-06');
   });
 
   it('refuses a First-Schedule employee (≤ ceiling) when the toggle is OFF', async () => {
