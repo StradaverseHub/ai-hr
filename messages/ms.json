@@ -1378,13 +1378,14 @@
       "orgLabelsEmptyForCompany": "Tiada label organisasi dikonfigurasikan untuk syarikat yang dipilih.",
       "hints": {
         "provisionalEndOn": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada.",
-        "employeeCode": "Biarkan kosong dan sistem akan menjana ID Pekerja seterusnya semasa pekerja dicipta. Draf tidak pernah menggunakannya.",
+        "employeeCode": "Huruf, nombor dan sengkang, sehingga 30 aksara. Ia tidak boleh sedang digunakan.",
         "icNumber": "Pilihan — biarkan kosong bagi pemegang pasport. Jika diisi, ia mesti nombor pengenalan yang sah bagi negara syarikat.",
         "dateOfBirth": "Biarkan kosong dan ia diambil daripada nombor pengenalan jika boleh.",
         "businessUnit": "Hanya menapis senarai jabatan. Ia tidak disimpan pada pekerja.",
         "hiredOn": "Hari pertama bekerja. Selepas penciptaan, tarikh ini hanya berubah melalui peristiwa pergerakan.",
         "bankAccount": "Isikan kedua-dua bank dan nombor akaun, atau tiada langsung.",
-        "rateAmount": "Diperlukan untuk mod bayaran harian atau sejam."
+        "rateAmount": "Diperlukan untuk mod bayaran harian atau sejam.",
+        "company": "Ditanya dahulu kerana ia menentukan Tetapan Nombor Berjalan Automatik ID Pekerja yang digunakan."
       },
       "backLabel": "Kembali ke Personel",
       "title": "Cipta pekerja baharu",
@@ -1443,7 +1444,27 @@
       "draftSaved": "Draf disimpan",
       "discardDraft": "Buang draf",
       "createEmployee": "Cipta pekerja",
-      "creating": "Mencipta…"
+      "creating": "Mencipta…",
+      "requiredField": "wajib",
+      "companyOnProfileStep": "Dipilih pada langkah Profil, kerana ia menentukan peraturan ID Pekerja.",
+      "employeeId": {
+        "heading": "ID Pekerja",
+        "chooseCompanyFirst": "Pilih syarikat di atas dahulu — ia menentukan peraturan ID Pekerja yang digunakan.",
+        "noSetup": "Tiada Tetapan Nombor Berjalan Automatik ID Pekerja dikonfigurasikan untuk syarikat yang dipilih. Sila masukkan ID Pekerja secara manual.",
+        "ruleCompany": "Syarikat ini mempunyai Tetapan Nombor Berjalan Automatik ID Pekerja sendiri. ID seterusnya yang akan dikeluarkan ialah {sample}.",
+        "ruleGlobal": "Tetapan Nombor Berjalan Automatik ID Pekerja seluruh kumpulan digunakan untuk syarikat ini. ID seterusnya yang akan dikeluarkan ialah {sample}.",
+        "modeLabel": "Bagaimanakah ID Pekerja perlu diberikan?",
+        "modeAuto": "Nombor Berjalan Automatik",
+        "modeManual": "Kunci Masuk Manual",
+        "forcedAuto": "Tetapan syarikat ini tidak membenarkan Kunci Masuk Manual, jadi nombor berjalan digunakan.",
+        "previewNote": "ialah rupanya nanti. ID Pekerja sebenar dikeluarkan semasa pekerja dicipta.",
+        "checking": "Menyemak…",
+        "duplicate": "ID Pekerja \"{code}\" sudah wujud. Sila masukkan ID Pekerja yang lain.",
+        "available": "ID Pekerja \"{code}\" boleh digunakan.",
+        "staleCode": "ID Pekerja \"{code}\" yang dimasukkan sebelum ini tidak akan digunakan, kerana syarikat ini tidak lagi membenarkan Kunci Masuk Manual.",
+        "removeCode": "Buang",
+        "draftCostsNothing": "Menyimpan sebagai draf tidak menggunakan apa-apa. ID Pekerja hanya diambil apabila pekerja berjaya dicipta."
+      }
     }
   },
   "leave": {

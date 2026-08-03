@@ -20,15 +20,18 @@
  * read in the product joins `employment`, so a flag would need a new exclusion in each of them forever,
  * and the failure mode is a half-entered person appearing in a headcount or a payroll run.
  */
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { company, employeeDraft, person } from '../db/schema';
+import { company, employeeDraft, employment, person } from '../db/schema';
 import { appendEvent, actorOf } from '../db/events';
 import { hireEmployee } from './org';
 import { setCompensation } from './comp';
 import { setPersonComplianceFields } from './profile';
 import { listLeaveTypes } from './read';
+import { listConfigs, resolveEmployeeIdRule } from './employee-id-config';
 import { requirePackFor } from '../localization/registry';
+import { normalizeEmployeeCode } from '../lib/employee-code';
+import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
 import {
   draftLabel,
   missingForCreation,
@@ -148,6 +151,37 @@ export async function saveEmployeeDraft(
   });
 }
 
+/**
+ * The Employee ID rule in force for one company RIGHT NOW (item bd271009).
+ *
+ * Read at every decision point rather than stored on the draft: an administrator may edit the setup
+ * screen between a draft being saved and being created, and a remembered rule would let the wizard
+ * promise a number the engine would not issue.
+ */
+export async function employeeIdRuleFor(ctx: SessionContext, companyId: string): Promise<EmployeeIdRule> {
+  return resolveEmployeeIdRule(await listConfigs(ctx), companyId);
+}
+
+/**
+ * Is this Employee ID already taken? Powers the wizard's on-blur look-ahead (item bd271009), so a clash
+ * is named while HR is still in the field instead of at the final button.
+ *
+ * ADVISORY ONLY. `hireEmployee`'s `assertEmployeeCodeUnique` plus the tenant-wide unique index remain the
+ * authority — this read can go stale between the blur and the create, and is allowed to.
+ */
+export async function isEmployeeCodeTaken(ctx: SessionContext, raw: string): Promise<boolean> {
+  const code = normalizeEmployeeCode(raw);
+  if (!code) return false;
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(and(eq(employment.tenantId, ctx.tenantId), eq(employment.employeeCode, code)))
+      .limit(1);
+    return rows.length > 0;
+  });
+}
+
 export async function discardEmployeeDraft(ctx: SessionContext, id: string): Promise<void> {
   assertAdmin(ctx);
   await withTenant(ctx, async (tx) => {
@@ -188,16 +222,43 @@ export async function completeEmployeeDraft(
   if (!draft) throw new Error('Draft not found (or not visible).');
   const data = draft.data;
 
-  // The client renders the same rules, but the client is not trusted: re-run them here.
-  const missing = missingForCreation(data);
-  if (missing.length > 0) throw new Error(`Cannot create the employee yet: ${missing.join(', ')}`);
-
   const p = data.profile ?? {};
   const e = data.employment ?? {};
   const s = data.statutory ?? {};
   const pay = data.payroll ?? {};
-  const companyId = str(e.companyId)!;
+
+  // ── Employee ID (item bd271009) ────────────────────────────────────────────────────────────────
+  // The rule is resolved HERE, from the live setup, at the moment of creation — never from anything the
+  // draft remembered. A draft saved last week under a setup that has since been edited is judged by the
+  // setup that exists today, which is the only answer the engine can actually honour.
+  const chosenCompanyId = str(e.companyId);
+  const rule = chosenCompanyId ? await employeeIdRuleFor(ctx, chosenCompanyId) : null;
+
+  // The client renders the same rules, but the client is not trusted: re-run them here. The Employee ID
+  // is judged only once a company is known — demanding an ID before the company that decides its rule
+  // has been chosen would report a fault the reporter cannot act on.
+  const missing = chosenCompanyId ? missingForCreation(data, { employeeIdRule: rule }) : missingForCreation(data);
+  if (missing.length > 0) throw new Error(`Cannot create the employee yet: ${missing.join(', ')}`);
+
+  const companyId = chosenCompanyId!;
   const hiredOn = str(e.hiredOn)!;
+
+  const decision = resolveEmployeeIdMode(rule, {
+    chosen: p.employeeIdMode,
+    hasCode: str(p.employeeCode) !== undefined,
+  });
+  const typedCode = str(p.employeeCode);
+  // "Allow manual override" is OFF for this company's setup — obeyed for the first time (the switch has
+  // been stored and displayed since 0261 and read by nothing). Refusing LOUDLY rather than quietly
+  // dropping the typed value: HR typed an ID on purpose and must be told it will not be used.
+  if (typedCode && decision.forcedBecause === 'manualNotAllowed') {
+    throw new Error(
+      `Employee ID "${typedCode}" was entered by hand, but the selected company's Employee ID Auto Running Number Setup does not allow manual entry. Remove it and the next running number will be issued automatically.`,
+    );
+  }
+  // In Auto mode we send NO code, so `hireEmployee` runs the generator. A code left behind by someone who
+  // switched Manual → Auto is deliberately ignored rather than used — the mode on screen is the promise.
+  const employeeCodeToIssue = decision.mode === 'manual' ? typedCode : undefined;
 
   // The company's country pack owns the IC rules (ADR-0080 D1/D6) — resolved from the COMPANY, never
   // from a hardcoded jurisdiction, and fail-loud when the country resolves nothing.
@@ -220,8 +281,9 @@ export async function completeEmployeeDraft(
   const { employmentId, personId } = await hireEmployee(ctx, {
     person: { fullName: str(p.fullName)!, primaryEmail: str(p.primaryEmail)!, phone: str(p.phone) },
     // Blank ⇒ hireEmployee generates the next code. That IS the reporter's rule that a draft consumes
-    // no Employee ID: the counter only ever advances inside this call.
-    employeeCode: str(p.employeeCode),
+    // no Employee ID: the counter only ever advances inside this call. bd271009 decides WHICH of the two
+    // happens above, in the open, instead of leaving it to whether a box happened to be filled in.
+    employeeCode: employeeCodeToIssue,
     companyId,
     departmentId: str(e.departmentId)!,
     positionId: str(e.positionId),

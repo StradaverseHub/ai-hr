@@ -1378,13 +1378,14 @@
       "orgLabelsEmptyForCompany": "所选公司未配置任何组织标签。",
       "hints": {
         "provisionalEndOn": "全职为试用期结束（默认 +3 个月）；否则为合同或实习结束日期。如无则留空。",
-        "employeeCode": "留空则在创建员工时由系统生成下一个员工编号。草稿不会占用编号。",
+        "employeeCode": "字母、数字与连字符，最多 30 个字符，且不能与现有编号重复。",
         "icNumber": "可选 — 持护照者可留空。如填写，必须是符合公司所在国家规则的有效身份证号。",
         "dateOfBirth": "留空时将尽可能从身份证号推导。",
         "businessUnit": "仅用于筛选部门列表，不会保存到员工记录。",
         "hiredOn": "入职首日。创建之后，此日期只能通过异动事件更改。",
         "bankAccount": "银行与账号请同时填写，或都留空。",
-        "rateAmount": "日薪或时薪方式必填。"
+        "rateAmount": "日薪或时薪方式必填。",
+        "company": "先询问公司，因为它决定适用哪一套员工编号自动流水号设置。"
       },
       "backLabel": "返回人事",
       "title": "创建新员工",
@@ -1443,7 +1444,27 @@
       "draftSaved": "草稿已保存",
       "discardDraft": "放弃草稿",
       "createEmployee": "创建员工",
-      "creating": "正在创建…"
+      "creating": "正在创建…",
+      "requiredField": "必填",
+      "companyOnProfileStep": "在「个人资料」步骤选择，因为它决定员工编号规则。",
+      "employeeId": {
+        "heading": "员工编号",
+        "chooseCompanyFirst": "请先在上方选择公司 — 它决定适用哪一套员工编号规则。",
+        "noSetup": "所选公司尚未配置员工编号自动流水号设置。请手动输入员工编号。",
+        "ruleCompany": "本公司有自己的员工编号自动流水号设置。下一个将发出的编号为 {sample}。",
+        "ruleGlobal": "集团级员工编号自动流水号设置适用于本公司。下一个将发出的编号为 {sample}。",
+        "modeLabel": "员工编号如何分配？",
+        "modeAuto": "自动流水号",
+        "modeManual": "手动输入",
+        "forcedAuto": "本公司的设置不允许手动输入，因此使用自动流水号。",
+        "previewNote": "是编号的样式。真正的员工编号在创建员工时发出。",
+        "checking": "检查中…",
+        "duplicate": "员工编号“{code}”已存在。请输入其他员工编号。",
+        "available": "员工编号“{code}”可以使用。",
+        "staleCode": "先前输入的员工编号“{code}”不会被使用，因为本公司已不再允许手动输入。",
+        "removeCode": "移除",
+        "draftCostsNothing": "保存为草稿不会占用任何编号。员工编号只在员工成功创建时才被占用。"
+      }
     }
   },
   "leave": {

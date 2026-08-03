@@ -107,7 +107,12 @@ describe('the dedicated screen carries the whole job', () => {
   });
 
   it('a draft consumes no Employee ID — the counter only advances inside hireEmployee', () => {
-    expect(draftCore).toContain('employeeCode: str(p.employeeCode)');
+    // Item bd271009 renamed the expression handed to `hireEmployee`: what used to be the raw typed value
+    // is now the value the RESOLVED MODE says to send. The invariant this guard exists for is unchanged
+    // and is asserted more precisely — in Auto mode nothing is sent, so the generator runs inside
+    // `hireEmployee` exactly as before, and in Manual mode the typed code bypasses it.
+    expect(draftCore).toContain('employeeCode: employeeCodeToIssue');
+    expect(draftCore).toContain("const employeeCodeToIssue = decision.mode === 'manual' ? typedCode : undefined;");
     // NB: assert a phrase that is not line-wrapped in the source — a comment split across two `//`
     // lines does not contain the sentence as a contiguous string.
     expect(draftCore).toContain('the counter only ever advances inside this call');

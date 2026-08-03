@@ -1378,13 +1378,14 @@
       "orgLabelsEmptyForCompany": "No organization labels are configured for the selected company.",
       "hints": {
         "provisionalEndOn": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.",
-        "employeeCode": "Leave blank and the system generates the next Employee ID when the employee is created. A draft never uses one up.",
+        "employeeCode": "Letters, numbers and dashes, up to 30 characters. It must not already be in use.",
         "icNumber": "Optional — leave blank for a passport holder. If given, it must be a valid identity number for the company’s country.",
         "dateOfBirth": "Leave blank and it is taken from the identity number where possible.",
         "businessUnit": "Narrows the department list only. It is not stored on the employee.",
         "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
         "bankAccount": "Give both the bank and the account number, or neither.",
-        "rateAmount": "Required for a daily or hourly pay mode."
+        "rateAmount": "Required for a daily or hourly pay mode.",
+        "company": "Asked first because it decides which Employee ID Auto Running Number Setup applies."
       },
       "backLabel": "Back to Personnel",
       "title": "Create new employee",
@@ -1443,7 +1444,27 @@
       "draftSaved": "Draft saved",
       "discardDraft": "Discard draft",
       "createEmployee": "Create employee",
-      "creating": "Creating…"
+      "creating": "Creating…",
+      "requiredField": "required",
+      "companyOnProfileStep": "Chosen on the Profile step, because it decides the Employee ID rule.",
+      "employeeId": {
+        "heading": "Employee ID",
+        "chooseCompanyFirst": "Choose the company above first — it decides which Employee ID rule applies.",
+        "noSetup": "No Employee ID Auto Running Number Setup is configured for the selected company. Please enter the Employee ID manually.",
+        "ruleCompany": "This company has its own Employee ID Auto Running Number Setup. The next ID it would issue is {sample}.",
+        "ruleGlobal": "The group-wide Employee ID Auto Running Number Setup applies to this company. The next ID it would issue is {sample}.",
+        "modeLabel": "How should the Employee ID be assigned?",
+        "modeAuto": "Auto Running Number",
+        "modeManual": "Manual Key In",
+        "forcedAuto": "This company's setup does not allow Manual Key In, so the running number is used.",
+        "previewNote": "is what it will look like. The real Employee ID is issued when the employee is created.",
+        "checking": "Checking…",
+        "duplicate": "Employee ID \"{code}\" already exists. Please enter another Employee ID.",
+        "available": "Employee ID \"{code}\" is available.",
+        "staleCode": "The Employee ID \"{code}\" entered earlier will not be used, because this company no longer allows Manual Key In.",
+        "removeCode": "Remove it",
+        "draftCostsNothing": "Saving as a draft costs nothing. The Employee ID is taken only when the employee is successfully created."
+      }
     }
   },
   "leave": {

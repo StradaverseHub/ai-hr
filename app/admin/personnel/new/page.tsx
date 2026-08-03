@@ -11,7 +11,9 @@ import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin'
 import { computeProvisionalEndOn, resolveProbationMonths } from '@/core/org';
 import { getHiringDefaults } from '@/core/hiring-defaults';
 import { getEmployeeDraft, listEmployeeDrafts } from '@/core/employee-draft';
+import { listConfigs, resolveEmployeeIdRule } from '@/core/employee-id-config';
 import { labelIdsForCompany } from '@/core/system-labels';
+import type { EmployeeIdRule } from '@/lib/employee-id-mode';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { PageHeader } from '@/components/ui';
 import { EmployeeWizard } from './wizard';
@@ -39,7 +41,7 @@ export default async function CreateEmployeePage({
   const sp = await searchParams;
   const today = todayInKualaLumpur();
 
-  const [companies, departments, positions, costCenters, businessUnits, grades, managerCandidates, drafts] =
+  const [companies, departments, positions, costCenters, businessUnits, grades, managerCandidates, drafts, idConfigs] =
     await Promise.all([
       listCompanies(session),
       listDepartments(session),
@@ -49,9 +51,18 @@ export default async function CreateEmployeePage({
       listJobGrades(session),
       listManagerCandidates(session, { companyIds: scopeIds }),
       listEmployeeDrafts(session),
+      listConfigs(session, scopeIds),
     ]);
 
   const draft = sp.draft ? await getEmployeeDraft(session, sp.draft) : null;
+
+  // Item bd271009 — which Employee ID Auto Running Number Setup applies to each company, resolved ONCE
+  // here from a single read rather than a query per company as the select is used. What crosses the
+  // boundary is PLAIN DATA (booleans, strings, numbers, and a pre-formatted sample code): the wizard is a
+  // client component, and a formatter or a translator closure passed here would throw at render and take
+  // the whole page down — the r123 fault test/server-client-boundary.test.ts exists to catch.
+  const employeeIdRules: Record<string, EmployeeIdRule> = {};
+  for (const c of companies) employeeIdRules[c.id] = resolveEmployeeIdRule(idConfigs, c.id);
 
   // Same inversion the Personnel page performs: resolver answers per company → Map(labelId → CSV).
   const labelCompanyCsv = async (kind: string): Promise<Map<string, string>> => {
@@ -135,6 +146,7 @@ export default async function CreateEmployeePage({
           label: m.employeeCode ? `${m.name} (${m.employeeCode})` : m.name,
         }))}
         probationDefaults={probationDefaults}
+        employeeIdRules={employeeIdRules}
       />
     </div>
   );
