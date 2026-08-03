@@ -1,0 +1,36 @@
+-- 4b0e76ae — Remove Leave Year Configuration: clear every managed leave-year record.
+--
+-- The reporter asked for the redesigned Leave Year module to start from an empty slate. The screen, its two
+-- dialogs, its four writing actions and its eight services are deleted in this same release, so after this
+-- migration nothing in the product reads or writes this table. It is kept, EMPTY and unreferenced, on
+-- purpose: the redesigned module picks its own shape, dropping now buys nothing but risk, and both
+-- test/harness.ts and test/leave-pack.test.ts still expect it to exist.
+--
+-- ⚠️ THIS DELETE MUST RUN AS THE TABLE OWNER, WHICH IS EXACTLY WHAT A MIGRATION IS.
+-- 0282_leave_year_delete_guard.sql installs
+--     CREATE POLICY leave_year_config_delete_admin ON leave_year_config
+--       AS RESTRICTIVE FOR DELETE USING (tenant_id = app.current_tenant_id() AND app.is_admin())
+-- A RESTRICTIVE policy ANDs, and ai_hr_app is NOBYPASSRLS — so this same statement run through the APP role
+-- with no tenant/admin GUCs set removes NOTHING and raises NO error. "We ran it" would not be proof that
+-- anything was deleted. The migration path is clean only because migrations connect as the table OWNER and
+-- leave_year_config is ENABLE (not FORCE) row level security (0190_leave_year_config.sql), and owner
+-- connections bypass RLS by default (the convention is documented at 0059_ai_provider_config_rls.sql, which
+-- had to add FORCE precisely because of it).
+--
+-- ⚠️ DO NOT ADD FORCE ROW LEVEL SECURITY TO THIS TABLE. It would break exactly this path.
+--
+-- NOTHING CASCADES. No foreign key points at leave_year_config.id; the grant ledger and leave requests key
+-- leave years by the integer year, never by the config row. No ledger row is rewritten, no balance moves and
+-- no carry-forward or forfeit figure changes. The domain_event rows (leave-year.configured / .opened /
+-- .opening-rule.configured / .deleted) live in their own table and are NOT deleted, so the written audit
+-- history of every past open and close outlives this reset.
+--
+-- WHAT IS PERMANENTLY LOST: the open dates, the employee application start dates, the Advance Rules
+-- settings, and the opened_at / opened_by stamps. The reporter asked for this deliberately.
+--
+-- PRODUCTION STATE MEASURED 2026-08-04, BEFORE THIS MIGRATION: 3 rows — 2 open, 1 draft, 0 closed.
+-- 2027 was OPEN and 2028 was draft. 2027 being open is not hypothetical: employees who can apply into 2027
+-- today lose that ability until the redesigned module opens a year again. Re-run
+--     SELECT count(*), status FROM leave_year_config GROUP BY status;
+-- after this migration and require zero.
+DELETE FROM leave_year_config;

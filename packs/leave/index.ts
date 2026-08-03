@@ -155,7 +155,12 @@ export const leavePack: ModulePack = {
     { table: 'leave_approval_template', note: 'reusable approval-workflow templates + assignments' },
     { table: 'toil_policy', note: 'time-off-in-lieu policy: accrual basis, expiry action, eligibility' },
     { table: 'toil_accrual', note: 'per-employment TOIL accruals (active / taken / converted / lapsed)' },
-    { table: 'leave_year_config', note: 'per-company leave-year cycle + opening/override rules' },
+    // 4b0e76ae — the row STAYS (test/leave-pack.test.ts and test/harness.ts both pin the table), but the
+    // note was wrong on two counts and is corrected here: the records are TENANT-wide, not per-company, and
+    // the leave-year CYCLE override moved onto the leave type (4d6eae7b). The table is now empty (migration
+    // 0385) and unreferenced — its screen, dialogs, actions and services were removed — and it is kept only
+    // so the redesigned Leave Year module can pick its own shape without a drop/recreate.
+    { table: 'leave_year_config', note: 'tenant-wide leave-year records — EMPTY and unreferenced since 4b0e76ae' },
     { table: 'leave_entitlement_recalc_audit', note: 'audit trail of entitlement reprojections' },
     { table: 'leave_encashment_policy', note: 'encashment ORP divisor + eligibility policy' },
     { table: 'leave_encashment_snapshot', note: 'resignation-approval frozen encashable-day snapshot (ADR-0069)' },

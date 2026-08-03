@@ -134,9 +134,9 @@ const DOC_MIME_OPTIONS = [
  *  Condition's historical key — kept deliberately so persisted state survives, see the leaveTypeCards
  *  migration in LeaveTypePanel).
  *
- *  1e4eb8af widened step 4: Custom Settings now opens with Leave Year Configuration — this type's Leave
- *  Year Type override (moved out of the General walk) plus the managed leave-year records (moved off the
- *  retired Application Rules tab, as the leaveYearSection slot). The step list itself is unchanged. */
+ *  1e4eb8af widened step 4 with a Leave Year Configuration block; 4b0e76ae removed it again, in full, at
+ *  the reporter's request (entitlement GENERATION moved to /admin/leave/generate in the same release). The
+ *  step list itself never changed either way. */
 const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const;
 type StepKey = (typeof STEP_KEYS)[number];
 /** The storage key of the step b8fcae73 retired. Kept ONLY so a persisted leaveTypeCards:<id> payload that
@@ -375,10 +375,9 @@ function RoundingBandsEditor({
  *  in the order the decisions are actually made. This is presentation only — the same `yearCycle=1`
  *  tri-state marker, the same `updateTypeAction`, the same `year_cycle_override` column.
  *
- *  WHAT DID NOT MOVE BACK: the tenant-wide MANAGED LEAVE-YEAR RECORDS (the `leaveYearSection` slot) stay
- *  in Custom Settings. They are not a property of this leave type — they are tenant-wide rows carrying an
- *  "applies company-wide" badge — so putting them inside a per-type walk would say something untrue about
- *  their scope. Only the per-type override moved.
+ *  WHAT DID NOT MOVE BACK: the tenant-wide MANAGED LEAVE-YEAR RECORDS stayed in Custom Settings, because
+ *  they were not a property of this leave type. 4b0e76ae has since removed them from the product entirely,
+ *  so only the per-type override — this one — remains anywhere in the panel.
  *
  *  A persisted payload pointing at 'yearType' from before 1e4eb8af now resolves again rather than falling
  *  back to Details; the hydration guard restores any key present in this list. */
@@ -1605,7 +1604,6 @@ export function LeaveTypePanel({
   benefitSchemeSection,
   festiveGrantSection,
   halfDaySection,
-  leaveYearSection,
   previewScenarioSection,
   accrualSection,
   updateTypeAction,
@@ -1770,13 +1768,6 @@ export function LeaveTypePanel({
    *  applies-company-wide badge). Slot-shaped like benefitSchemeSection: the rule is per-COMPANY (not
    *  per-type), so ONE node is prepared at page level and shared by every panel. */
   halfDaySection?: ReactNode;
-  /** 1e4eb8af: the managed Leave Year records (Draft → Open → Closed, their two control dates, the
-   *  per-row Advance-Rules / Edit / Delete controls) — a server-composed slot carrying what the retired
-   *  Application Rules TAB used to host. It joins the per-type Leave Year Type override inside Custom
-   *  Settings, so every leave-year decision is made from the leave type being configured. Slot-shaped
-   *  like halfDaySection: the records are per-TENANT (not per-type), so ONE node is prepared at page
-   *  level and shared by every panel, and its applies-company-wide badge says so. */
-  leaveYearSection?: ReactNode;
   /** 7b945408: the Preview Scenario checker (d778d2d3's LeaveRulePreviewDialog), joining the Service Based
    *  Entitlements sub-step as its checking tool — a server-composed slot (page-level data prep, one shared
    *  node). The PageHeader button is removed separately by item 962077a8; this slot is its new home. */
@@ -3596,20 +3587,20 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryCustom')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-custom-${id}`} className="space-y-3">
-          {/* Leave Year Configuration (1e4eb8af, narrowed by 4d6eae7b) — the tenant-wide managed leave-year
-              RECORDS, moved off the retired Application Rules tab as the server-composed leaveYearSection
-              slot. The records are tenant-wide, hence the applies-company-wide badge — the same honesty the
-              relocated Half-Day Deduction card carries in the Condition step.
+          {/* 4b0e76ae — THE LEAVE YEAR CONFIGURATION SECTION IS GONE FROM HERE, AND FROM EVERY LEAVE TYPE.
+              1e4eb8af had moved the tenant-wide managed leave-year RECORDS in as the server-composed
+              leaveYearSection slot; the reporter asked for the whole block removed — year list, Draft /
+              Open / Closed badge, Open Leave Year Date, Employee Application Start Date, Advance Rules and
+              the Start / Close / Reopen / Edit / Delete / Add buttons — so the slot, both dialogs, the four
+              writing actions and the records themselves went with it.
 
-              THE PER-TYPE LEAVE YEAR TYPE OVERRIDE IS NO LONGER HERE. 4d6eae7b moved it back into the
-              General walk as sub-step 2, where the reporter wants it — the cycle is chosen before the
-              earning and rounding rules that operate inside it. It is rendered in exactly ONE place: two
-              editors over one column, each with its own default, is how a stale value silently overwrites a
-              fresh one. Only the records, which are not a property of this leave type, stay behind. */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('leaveYearConfigTitle')}</span>
-            {leaveYearSection}
-          </div>
+              GENERATING A YEAR'S ENTITLEMENT DID NOT GO. That was the one thing this block did that nothing
+              else could, and it now has its own page at /admin/leave/generate, shipped in the SAME release.
+              Do not re-add a leave-year surface here: the redesigned Leave Year module owns that ground.
+
+              THE PER-TYPE LEAVE YEAR TYPE OVERRIDE was already not here — 4d6eae7b moved it back into the
+              General walk as sub-step 2, where the cycle is chosen before the earning and rounding rules
+              that operate inside it, and it is still rendered in exactly ONE place. */}
           {/* Restructure (123c1e76): the former "Leave Information Display" card's sub-forms (view
               configuration, employee visibility, ESS placement) live INSIDE the Custom Settings card. */}
           {/* Consolidated Employee Leave View Configuration (2bc2f2a3): the 65dec703 checklist and the

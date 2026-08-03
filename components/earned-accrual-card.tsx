@@ -19,8 +19,14 @@ export type EarnedLeaveYearOption = { year: number; status: string };
  * the missing front-of-house: pick a SCOPE (Company / Leave Year / Leave Type / Grade), PREVIEW a grouped
  * summary table (a dry-run that writes nothing yet reports the exact numbers the commit will produce), then
  * Run / Cancel / Export. Mirrors the FestiveGrantCard client pattern (multi-select popovers + useTransition
- * + toast + router.refresh). Empty selection on any axis ⇒ "all" on that axis. The Leave-Year selector reads
- * the managed leave_year_config records (9aa894a4). Export is a client-side CSV (toCsv guards CSV injection).
+ * + toast + router.refresh). Empty selection on any axis ⇒ "all" on that axis. Export is a client-side CSV
+ * (toCsv guards CSV injection).
+ *
+ * 4b0e76ae — THE LEAVE-YEAR SELECTOR NO LONGER READS ANY TABLE. It used to be fed from the managed
+ * leave_year_config records (9aa894a4); that module was removed, so the page now hands it the ONE shared
+ * computed range (core/leave.ts `entitlementYearOptions`, currentYear − 3 .. currentYear + 6). The prop
+ * SHAPE is unchanged and `status` is informational only — this card renders the year and nothing else —
+ * so every computed year arrives as 'draft', exactly what the old empty-config fallback produced.
  */
 export function EarnedAccrualCard({
   companies,
@@ -33,7 +39,7 @@ export function EarnedAccrualCard({
   companies: EarnedScopeOption[];
   grades: EarnedScopeOption[];
   leaveTypes: EarnedScopeOption[];
-  /** Managed leave-year records (9aa894a4), newest first. */
+  /** The entitlement-year list, oldest first — the shared computed range (see the header). */
   leaveYears: EarnedLeaveYearOption[];
   defaultYear: number;
 }) {

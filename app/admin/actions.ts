@@ -50,12 +50,6 @@ import {
 } from '@/core/admin';
 import {
   openLeaveYear,
-  upsertLeaveYearConfig,
-  setLeaveYearStatus,
-  saveFutureOpeningRule,
-  deleteLeaveYear,
-  LeaveYearDeleteError,
-  isLeaveYearStatus,
   accrueEarnedLeave,
   asOfForLeaveYear,
   grantAdHocLeave,
@@ -126,15 +120,14 @@ import { packFor } from '@/localization/registry';
 // 4e9a4d59 — the post-action redirect contract lives in a plain module so BOTH this file and
 // app/admin/leave-approval/actions.ts share ONE okEntitlements (a 'use server' file can only export
 // async functions, so these helpers could never be exported from here).
-import { ENTITLEMENTS, fail, ok, okToast, okEntitlements } from './_redirects';
+import { ENTITLEMENTS, GENERATE, fail, ok, okToast, okEntitlements } from './_redirects';
 
 const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
-// R45 cc816207 moved the managed Leave-Year table from the Entitlements tab to the Application Rules tab;
-// 1e4eb8af retired that tab and moved the table BACK — into each leave type's Custom Settings step — so its
-// create/edit/open/close/delete/opening-rule actions revalidate/redirect to ENTITLEMENTS again (the page
-// reads ?error= for the ErrorBanner). Landing on the bare route is deliberate: the workspace's leave-type
-// selection is client state on the SAME route, so it survives the soft navigation.
+// 4b0e76ae — the managed Leave-Year table and its five create/edit/open/close/delete/opening-rule actions
+// are GONE (cc816207 → 1e4eb8af moved that section twice; this item removed it). The one surviving
+// leave-year action is openLeaveYearAction, and it redirects to GENERATE, not here. LEAVE remains the
+// redirect target of the leave TYPE master actions on /admin/leave.
 const USERS = '/admin/users';
 const HOLIDAYS = '/admin/holidays';
 // 66b8f5a8 — the Holiday Group tab + its dedicated add/edit pages.
@@ -1154,127 +1147,38 @@ export async function deleteHolidayGroupAction(formData: FormData) {
   ok(HOLIDAY_GROUPS);
 }
 
+// 4b0e76ae — GENERATE ENTITLEMENT. The one surviving leave-year action, re-homed onto
+// /admin/leave/generate: pick a year, press Generate, and the shipped openLeaveYear grant sweep posts that
+// year's entitlement for every eligible employment. The engine is untouched — what never existed was a way
+// to reach it. Until this item, the ONLY caller was the Leave Year Configuration screen's Start button
+// (through setLeaveYearStatusAction's draft→open transition), and deleting that screen without giving the
+// sweep a new home is how a year-end silently fails to open. test/leave-generate-page.test.ts pins that
+// this action has exactly ONE caller and that the caller is the Generate page.
+//
+// ⚠️ requireAdmin(), NOT getSession() — THIS WAS A REAL HOLE, FIXED HERE. Until 4b0e76ae this action opened
+// with `const s = await getSession()`, openLeaveYear carries no admin assertion anywhere in its body, and
+// leave_ledger RLS gates on can_see_employment rather than on admin. So an ordinary member who POSTed this
+// server action directly would have posted accrual grants for every employment they can see. Same
+// correction dcd8e32f made on the sibling delete action, for the same reason. The redirect below is a UX
+// gate, not authority — the guard is.
+//
+// Idempotent by construction: openLeaveYear's dedupe set is built from the ledger's existing accrual rows
+// at the year start, NOT from any configuration table, so pressing Generate twice never double-grants and
+// clearing leave_year_config (migration 0385) cannot cause one either.
 export async function openLeaveYearAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
+  const t = await getTranslations('admin.leave');
   const year = Number(formData.get('year'));
   let res = { granted: 0, skipped: 0, forfeits: 0 };
   try {
     if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error('Invalid year');
     res = await openLeaveYear(s, { year });
   } catch (e) {
-    fail(LEAVE, e);
+    fail(GENERATE, e);
   }
-  revalidatePath(LEAVE);
-  redirect(
-    `${LEAVE}?toast=${encodeURIComponent(
-      `Leave year ${year}: ${res.granted} grant${res.granted === 1 ? '' : 's'} posted` +
-        (res.skipped ? `, ${res.skipped} already open` : '') +
-        (res.forfeits ? `, ${res.forfeits} forfeit${res.forfeits === 1 ? '' : 's'}` : ''),
-    )}`,
-  );
-}
-
-// Leave Year Configuration (9aa894a4): create/edit a managed leave-year record's two control dates. Status
-// is NOT changed here (setLeaveYearStatusAction moves the lifecycle). Empty date inputs post '' → cleared.
-// dcd8e32f: a successful save now confirms via okToast (localised HERE) so the admin knows the edit took.
-export async function upsertLeaveYearConfigAction(formData: FormData) {
-  const s = await getSession();
-  const t = await getTranslations('admin.leave');
-  try {
-    await upsertLeaveYearConfig(s, {
-      year: Number(formData.get('year')),
-      openLeaveYearDate: String(formData.get('openLeaveYearDate') ?? '') || null,
-      employeeApplicationStartDate: String(formData.get('employeeApplicationStartDate') ?? '') || null,
-    });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  okToast(ENTITLEMENTS, t('leaveYearSavedToast'));
-}
-
-// Leave Year Configuration (9aa894a4): transition a managed leave-year's status. →open runs the existing
-// openLeaveYear grant sweep (idempotent) + stamps opened_at/by, keeping the record and ledger in lockstep.
-// This is the repointed "Open leave year" action — the button posts status='open' through the record.
-export async function setLeaveYearStatusAction(formData: FormData) {
-  const s = await getSession();
-  const year = Number(formData.get('year'));
-  const status = String(formData.get('status') ?? '');
-  let res: Awaited<ReturnType<typeof setLeaveYearStatus>> | null = null;
-  try {
-    if (!isLeaveYearStatus(status)) throw new Error('Invalid leave-year status');
-    res = await setLeaveYearStatus(s, { year, status });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  revalidatePath(ENTITLEMENTS);
-  const opened = res?.opened;
-  redirect(
-    `${ENTITLEMENTS}?toast=${encodeURIComponent(
-      opened
-        ? `Leave year ${year} opened: ${opened.granted} grant${opened.granted === 1 ? '' : 's'} posted` +
-            (opened.skipped ? `, ${opened.skipped} already open` : '') +
-            (opened.forfeits ? `, ${opened.forfeits} forfeit${opened.forfeits === 1 ? '' : 's'}` : '')
-        : `Leave year ${year} status set to ${status}`,
-    )}`,
-  );
-}
-
-// Future Leave Year Opening Rule (d9e41725): persist the advance-opening policy for a leave year. Posted by
-// the per-row "Advanced leave year rules" dialog (37088a65), whose hidden `year` input pins the save to the
-// clicked record. `enable` is a plain checkbox — present when checked, absent ⇒ disable the rule (no marker
-// field exists; disabling works purely from the checkbox's absence). When enabled, the service computes +
-// stamps open_leave_year_date = Jan-1-minus-window (v1 is COMPUTE-ONLY; no auto-open cron).
-export async function saveFutureOpeningRuleAction(formData: FormData) {
-  const s = await getSession();
-  try {
-    const enabled = formData.get('enable') != null;
-    const rawAmount = String(formData.get('openBeforeAmount') ?? '').trim();
-    await saveFutureOpeningRule(s, {
-      year: Number(formData.get('year')),
-      enabled,
-      amount: rawAmount === '' ? null : Number(rawAmount),
-      unit: String(formData.get('openBeforeUnit') ?? '') || null,
-    });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  ok(ENTITLEMENTS);
-}
-
-// R45 fd71fa38 — delete a mistakenly-created DRAFT leave-year record. The service enforces the guard (draft
-// only + no leave ledger / live requests referencing the year) and throws LeaveYearDeleteError. dcd8e32f:
-// admin-gated with requireAdmin() (getSession() left ordinary members through to a service with no admin
-// assertion), and the refusal reason is LOCALISED here from the error's stable code before fail() redirects
-// (ErrorBanner renders the raw string — never pass a code in the URL; app/admin/payroll-cycle/actions.ts
-// documents the same convention). The actor threads through the admin session, so the leave-year.deleted
-// event carries a real user, not SYSTEM.
-export async function deleteLeaveYearAction(formData: FormData) {
-  const s = await requireAdmin();
-  const t = await getTranslations('admin.leave');
-  const year = Number(formData.get('year'));
-  // f1701466 — the two-step confirm dialog mirrors each checked deletion reason as a hidden input named
-  // `reasons`; getAll collects them all (filter guards stray empty values — the companyIds convention).
-  // The service validates against its allowlist LAST, after the block guards (UI disable is not authority).
-  const reasons = formData.getAll('reasons').map(String).filter(Boolean);
-  try {
-    await deleteLeaveYear(s, { year, reasons });
-  } catch (e) {
-    const localised =
-      e instanceof LeaveYearDeleteError
-        ? e.code === 'leaveYearNotFound'
-          ? t('deleteLeaveYearNotFound')
-          : e.code === 'leaveYearNotDraft'
-            ? t('deleteLeaveYearBlockedOpened')
-            : e.code === 'leaveYearHasLedger'
-              ? t('deleteLeaveYearBlockedRecords')
-              : e.code === 'leaveYearHasRequests'
-                ? t('deleteLeaveYearBlockedRequests')
-                : null
-        : null;
-    fail(ENTITLEMENTS, localised ? new Error(localised) : e);
-  }
-  // Success toast stays plain English by this file's convention (mirrors setLeaveYearStatusAction).
-  okToast(ENTITLEMENTS, `Leave year ${year} deleted`);
+  // Localised HERE before the redirect (the dcd8e32f convention): ToastFromQuery renders the raw string, so
+  // an i18n key in the URL would surface to HR verbatim.
+  okToast(GENERATE, t('generateToast', { year, granted: res.granted, skipped: res.skipped, forfeits: res.forfeits }));
 }
 
 export async function assignRoleAction(formData: FormData) {
@@ -1911,7 +1815,7 @@ export async function deleteLeaveTypeAction(fd: FormData) {
 // TOIL_ENABLED is set in no tracked env file it refused everyone. Slice 3 removed that gate deliberately
 // (a lapsed entitlement must not strand a settlement the employer already owes), which left a mutating
 // statutory sweep behind a bare session on a directly-POSTable server action. Same correction as
-// deleteLeaveYearAction above. The service asserts it too — a redirect is a UX gate, not authority.
+// openLeaveYearAction above. The service asserts it too — a redirect is a UX gate, not authority.
 export async function runToilExpiryAction() {
   const s = await requireAdmin();
   const today = todayInKualaLumpur();
