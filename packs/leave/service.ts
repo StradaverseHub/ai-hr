@@ -37,5 +37,8 @@ export * from '../../core/leave-encashment';
 export * from '../../core/leave-escalation';
 export * from '../../core/leave-formula';
 export * from '../../core/leave-import';
+// 491c499f — the bulk Leave Adjustments writer (batch apply + reversal + the set resolver). Consumed
+// through this facade like every other leave service, never by reaching into core/ directly.
+export * from '../../core/leave-adjustment';
 export * from '../../core/toil';
 export * from '../../core/benefit-scheme';
