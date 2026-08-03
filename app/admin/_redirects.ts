@@ -16,6 +16,8 @@ import { redirect } from 'next/navigation';
 export const ENTITLEMENTS = '/admin/leave/entitlements';
 /** 491c499f — the Leave Adjustments screen. Its saves return here with a toast carrying the two counts. */
 export const ADJUSTMENTS = '/admin/leave/adjustments';
+/** 4b0e76ae — the Generate Entitlement screen. openLeaveYearAction returns here with the grant counts. */
+export const GENERATE = '/admin/leave/generate';
 
 export function fail(path: string, e: unknown): never {
   redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);

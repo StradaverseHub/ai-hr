@@ -16,11 +16,17 @@ import Link from 'next/link';
  * 645e67c4 — the Replacement Leave tab is NEW and is a placeholder page (see that file's header for why
  * it holds nothing). It sits after Payroll Related and before Audit so the configuration tabs stay
  * together and Audit remains last, which is the order the strip has always read in.
+ *
+ * 4b0e76ae — the Generate Entitlement tab. It sits straight after Adjustments: both are things you DO to an
+ * entitlement, as opposed to the configuration tabs around them. A tab entry is half the wiring — the route
+ * must ALSO be registered on the leaveConfig screen in lib/permissions.ts, or the page is either invisible
+ * or refused by our own access check. test/leave-generate-page.test.ts pins the two together so they cannot
+ * drift apart later.
  */
 export async function LeaveTabs({
   active,
 }: {
-  active: 'types' | 'entitlements' | 'adjustments' | 'approval' | 'payroll' | 'replacement' | 'audit';
+  active: 'types' | 'entitlements' | 'adjustments' | 'generate' | 'approval' | 'payroll' | 'replacement' | 'audit';
 }) {
   const t = await getTranslations('admin.leaveTabs');
   const tabs = [
@@ -30,6 +36,9 @@ export async function LeaveTabs({
     // entitlement, so it reads in the order the work is actually done. It must exist BEFORE 38f1fd40
     // removes the old per-leave-type Adjustments step.
     { key: 'adjustments', href: '/admin/leave/adjustments', label: t('adjustments') },
+    // 4b0e76ae — Generate Entitlement: pick a year, press Generate. The `active` union above must carry
+    // this key too; omitting it is a compile error at every call site, which is the intended tripwire.
+    { key: 'generate', href: '/admin/leave/generate', label: t('generate') },
     { key: 'approval', href: '/admin/leave/approval', label: t('approval') },
     { key: 'payroll', href: '/admin/leave/payroll', label: t('payroll') },
     { key: 'replacement', href: '/admin/leave/replacement', label: t('replacement') },

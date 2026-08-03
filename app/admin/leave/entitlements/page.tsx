@@ -3,9 +3,11 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
 import { listAdHocLeaveGrants, listLeavePolicies } from '@/core/admin';
-// 1e4eb8af — leaveYearsWithRecords joins the reads here: the relocated Leave Year Configuration section
-// needs the same delete pre-check the Application Rules tab used to run.
-import { listLeaveYearConfigs, leaveYearsWithRecords } from '@/core/leave';
+// 4b0e76ae — the Leave Year Configuration section is GONE from Custom Settings, so the two reads that fed
+// it (listLeaveYearConfigs / leaveYearsWithRecords) went with it and their services no longer exist. What
+// this page still needs from the leave module is the ONE shared entitlement-year range, which the Run
+// Earned Accrual selector below and the new /admin/leave/generate page both offer.
+import { entitlementYearOptions } from '@/core/leave';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 import { leaveFormulaTemplateFrom, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { listAllProfileOptions } from '@/core/profile-options';
@@ -28,9 +30,6 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 // client side; only serialisable data crosses. See that file's header before changing this.
 import { HalfDayCompanyPicker } from '@/components/leave/half-day-company-picker';
 import { LeaveTabs } from '@/components/leave-tabs';
-// 1e4eb8af — the two leave-year dialogs come along with the relocated section, unchanged.
-import { LeaveYearRuleDialog } from '@/components/leave/leave-year-rule-dialog';
-import { LeaveYearEditDialog } from '@/components/leave/leave-year-edit-dialog';
 import { LeaveTypePanel, type EntitlementPolicy, type LeaveEligibilityRule } from '@/components/leave-type-panel';
 import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
@@ -62,11 +61,6 @@ import {
   createLeaveSharedGroupAction,
   updateLeaveSharedGroupAction,
   deleteLeaveSharedGroupAction,
-  // 1e4eb8af — the four leave-year actions, unchanged: only their redirect target moved to this route.
-  upsertLeaveYearConfigAction,
-  setLeaveYearStatusAction,
-  saveFutureOpeningRuleAction,
-  deleteLeaveYearAction,
 } from '../../actions';
 
 /**
@@ -100,12 +94,15 @@ import {
  * was copied, renamed or re-created, so every employment, leave policy, approval rule, claim limit and
  * grade group still points at the same row.
  *
- * 1e4eb8af (Restructure Leave Year Configuration): the Leave Year Configuration table came BACK from the
- * Application Rules tab — that tab is retired — but not to the page bottom: it is composed here as the
- * `leaveYearSection` slot and rendered inside every leave type's Custom Settings step, beside that type's
- * Leave Year Type override. Same records, same actions, same dialogs, same delete guard; only the frame
- * moved, and the leave-year actions redirect back to THIS route. The per-company Leave Cycle card did not
- * come along: it decided the same thing the per-type override decides, so it was retired with the tab.
+ * 4b0e76ae (Remove Leave Year Configuration): the Leave Year Configuration block is GONE from Custom
+ * Settings on every leave type — the year list, the Draft/Open/Closed badge, the Open Leave Year Date, the
+ * Employee Application Start Date, Advance Rules, and the Start / Close / Reopen / Edit / Delete / Add
+ * buttons, together with the `leaveYearSection` slot, both dialogs and the four writing actions. Generating
+ * a year's entitlement — the ONE thing that block did that nothing else could — moved to its own page at
+ * /admin/leave/generate in the SAME release, so there is no window in which a leave year cannot be opened.
+ * The Run Earned Accrual selector below no longer reads the (now empty, now unwritable) leave_year_config
+ * records: it offers the shared computed range, which reaches three years BACK so running earned accrual
+ * for a past year stays possible.
  *
  * 962077a8 (Remove Unnecessary Action Buttons): with the 7b945408 step homes in place, the PageHeader is
  * down to the single page-level action — + Import. Run Accrual and Preview Scenario open ONLY from their
@@ -119,7 +116,7 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, leaveYearRecordYears, gradeGroups, benefitSchemes, schemeEntitlements, sharedGroups, profileOptionsActive] =
+  const [types, policies, companies, grades, adHocGrants, gradeGroups, benefitSchemes, schemeEntitlements, sharedGroups, profileOptionsActive] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
       listLeavePolicies(s),
@@ -130,12 +127,6 @@ export default async function LeaveEntitlementsPage({
       // policy can render its grade name; the ACTIVE-only filters below are unchanged.
       listJobGrades(s, { includeArchived: true }),
       listAdHocLeaveGrants(s),
-      // Leave Year Configuration (9aa894a4): feeds BOTH the earned-accrual Leave-Year selector and — since
-      // 1e4eb8af relocated the management card off the retired Application Rules tab — the Leave Year
-      // Configuration section inside each type's Custom Settings step.
-      listLeaveYearConfigs(s),
-      // R45 fd71fa38: years that already have leave records — drives the row Delete button's blocked state.
-      leaveYearsWithRecords(s),
       // Benefit Scheme & Leave Entitlement (b83c6a3b): the new configuration layer's data.
       listGradeGroups(s),
       listBenefitSchemes(s),
@@ -201,19 +192,18 @@ export default async function LeaveEntitlementsPage({
     effectiveOn: g.effectiveOn,
   }));
   const todayIso = todayInKualaLumpur();
-  // feedback 2c7c6385: the Run-Earned-Accrual Leave-Year selector reads the managed leave_year_config
-  // records (9aa894a4). When none exist yet, fall back to the current-year..+6 range so the card still
-  // works. Default to the current year if configured, else the newest record. (R45 cc816207 — the
-  // Leave-Year management card itself now lives on the Application Rules tab; only this earned-accrual
-  // selector still reads the configs here.)
+  // feedback 2c7c6385, re-pointed by 4b0e76ae: the Run-Earned-Accrual Leave-Year selector used to read the
+  // managed leave_year_config records (9aa894a4) and fall back to a current-year..+6 range only when none
+  // existed. Those records are gone and nothing can write them any more, so the fallback became the ONLY
+  // source — and it is now the shared `entitlementYearOptions` range, three years BACK through six forward.
+  // The back-reach is the point: the old fallback started at the current year, so a tenant that had 2025
+  // configured would have lost the ability to run earned accrual for 2025. The one accepted difference is
+  // that the box now opens on the CURRENT year every time rather than on the newest configured record.
+  // EarnedLeaveYearOption's `status` is informational only (the card renders just the year), so every
+  // computed year carries 'draft' — exactly what the old empty-config fallback already produced.
   const currentYear = new Date().getUTCFullYear();
-  const yearOptions = Array.from({ length: 7 }, (_, i) => currentYear + i);
-  const earnedLeaveYears =
-    leaveYearConfigs.length > 0
-      ? leaveYearConfigs.map((c) => ({ year: c.year, status: c.status }))
-      : yearOptions.map((y) => ({ year: y, status: 'draft' }));
-  const earnedDefaultYear =
-    earnedLeaveYears.find((y) => y.year === currentYear)?.year ?? earnedLeaveYears[0]?.year ?? currentYear;
+  const earnedLeaveYears = entitlementYearOptions(currentYear).map((y) => ({ year: y, status: 'draft' }));
+  const earnedDefaultYear = currentYear;
 
   // Country-pack entitlement lookup — feeds each type's `floor0` (the day-zero statutory entitlement that
   // drives the entitlement summary and the below-minimum badge). Rung 5c — the entitlement floor comes from
@@ -416,194 +406,6 @@ export default async function LeaveEntitlementsPage({
         <Button type="submit" variant="outline" size="sm">
           {t('save')}
         </Button>
-      </form>
-    </div>
-  );
-
-  // ── Leave Year Configuration records (1e4eb8af) ────────────────────────────────────────────────────
-  // Relocated from the retired Application Rules tab into the Custom Settings step of every leave type,
-  // joining that type's Leave Year Type override so leave-year decisions are made in ONE place. Same
-  // records, same rows, same actions, same dialogs — only the rendering moved (the leave-year actions now
-  // redirect back to the Entitlements route; the R64 08bc6841 half-day precedent). The records are
-  // TENANT-wide, not per-type, so ONE node is composed here and shared by every panel, and the
-  // applies-company-wide badge says out loud that saving here affects every leave type.
-  const leaveYearStatusVariant = (status: string) =>
-    status === 'open' ? ('success' as const) : status === 'closed' ? ('default' as const) : ('warning' as const);
-  // Offer the current year through +6 in the create dropdown; default to the first year with no managed
-  // record yet (so repeated "Add" naturally walks forward).
-  const configuredYears = new Set(leaveYearConfigs.map((c) => c.year));
-  const defaultNewYear = yearOptions.find((y) => !configuredYears.has(y)) ?? currentYear + 1;
-  // R45 fd71fa38 — a leave year is deletable only when it is still a DRAFT AND no leave records reference
-  // it (the service guard stays authoritative; this only drives the pre-emptive enabled/disabled state and
-  // the visible inline reason beside the row).
-  const leaveYearRecordYearSet = new Set(leaveYearRecordYears);
-  const leaveYearDeletable = (cfg: { year: number; status: string }) =>
-    cfg.status === 'draft' && !leaveYearRecordYearSet.has(cfg.year);
-  const leaveYearSection = (
-    <div className="space-y-1.5 rounded-lg border border-border p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground">{t('leaveYearTitle')}</span>
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          {t('conditionStep.halfDayCompanyWideBadge')}
-        </span>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {t.rich('leaveYearHelp', {
-          strong: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
-        })}
-      </p>
-      <ul className="divide-y divide-border">
-        {leaveYearConfigs.length === 0 && (
-          <li className="py-4 text-center text-sm text-muted-foreground">{t('noLeaveYears')}</li>
-        )}
-        {leaveYearConfigs.map((cfg) => (
-          <li key={cfg.id} className="flex flex-wrap items-end justify-between gap-4 py-3">
-            <div className="flex items-center gap-3">
-              <span className="w-14 text-sm font-semibold text-foreground">{cfg.year}</span>
-              <Badge variant={leaveYearStatusVariant(cfg.status)}>{t(`leaveYearStatus_${cfg.status}`)}</Badge>
-            </div>
-            {/* The two control dates, read-only (7903c197) — editing happens in LeaveYearEditDialog so
-                nothing saves until Save is pressed inside it. Feedback 4f4d9cff's row order is kept:
-                dates, then "Advance Rules" beside the Employee-application-start-date value, then (after
-                the justify-between gap) Start / Edit / Delete. */}
-            <div className="flex flex-wrap items-end gap-4">
-              <div className="w-40">
-                <span className="block text-xs font-medium text-muted-foreground">
-                  {t('openLeaveYearDateLabel')}
-                </span>
-                <span className="text-sm text-foreground">{cfg.openLeaveYearDate ?? '—'}</span>
-              </div>
-              <div className="w-40">
-                <span className="block text-xs font-medium text-muted-foreground">
-                  {t('employeeApplicationStartDateLabel')}
-                </span>
-                <span className="text-sm text-foreground">{cfg.employeeApplicationStartDate ?? '—'}</span>
-              </div>
-              {cfg.status === 'draft' && (
-                /* 37088a65 — per-row "Advance Rules" dialog. Draft-only, matching the lifecycle Start
-                   button: an ungated trigger would let HR stamp open_leave_year_date onto an open/closed
-                   year. The trigger Button is type="button", so it can never submit an adjacent row form. */
-                <LeaveYearRuleDialog
-                  year={cfg.year}
-                  current={{
-                    openingRuleEnabled: cfg.openingRuleEnabled,
-                    openBeforeAmount: cfg.openBeforeAmount,
-                    openBeforeUnit: cfg.openBeforeUnit,
-                    openLeaveYearDate: cfg.openLeaveYearDate,
-                  }}
-                  saveAction={saveFutureOpeningRuleAction}
-                />
-              )}
-            </div>
-            {/* Action group, ordered per feedback 4f4d9cff: lifecycle (Start on a draft; Close / Reopen
-                keep that slot on open / closed years), then Edit, then Delete last. Draft → Open runs the
-                grant sweep; Open → Closed is an informational badge flip (v1); Closed → Draft reopens for
-                corrections. */}
-            <div className="flex items-end gap-2">
-              {cfg.status === 'draft' && (
-                <form action={setLeaveYearStatusAction}>
-                  <input type="hidden" name="year" value={cfg.year} />
-                  <input type="hidden" name="status" value="open" />
-                  <Button type="submit" size="sm">
-                    {t('openLeaveYear')}
-                  </Button>
-                </form>
-              )}
-              {cfg.status === 'open' && (
-                <form action={setLeaveYearStatusAction}>
-                  <input type="hidden" name="year" value={cfg.year} />
-                  <input type="hidden" name="status" value="closed" />
-                  <Button type="submit" variant="outline" size="sm">
-                    {t('closeLeaveYear')}
-                  </Button>
-                </form>
-              )}
-              {cfg.status === 'closed' && (
-                <form action={setLeaveYearStatusAction}>
-                  <input type="hidden" name="year" value={cfg.year} />
-                  <input type="hidden" name="status" value="draft" />
-                  <Button type="submit" variant="ghost" size="sm">
-                    {t('reopenLeaveYear')}
-                  </Button>
-                </form>
-              )}
-              {/* dcd8e32f / 7903c197 — a recognisable EDIT action opening a prefilled pop-up, available on
-                  EVERY row whatever its status: HR must stay able to correct dates on an open or closed
-                  year. */}
-              <LeaveYearEditDialog
-                year={cfg.year}
-                current={{
-                  openLeaveYearDate: cfg.openLeaveYearDate,
-                  employeeApplicationStartDate: cfg.employeeApplicationStartDate,
-                }}
-                saveAction={upsertLeaveYearConfigAction}
-              />
-              {/* R45 fd71fa38 / f1701466 — Delete is ALWAYS clickable. A blocked row (not draft, or leave
-                  records reference the year) renders a plain submit button — clicking posts and the SERVICE
-                  guard refuses, its localized message landing in the ErrorBanner + error toast (the message
-                  can never drift from the real guard); the inline text stays as a pre-click hint. A
-                  deletable row opens the two-step confirm. leaveYearsWithRecords is purely the UX
-                  pre-check; a stale render lands on the ErrorBanner with the exact service message. */}
-              {leaveYearDeletable(cfg) ? (
-                <form action={deleteLeaveYearAction}>
-                  <input type="hidden" name="year" value={cfg.year} />
-                  <ConfirmSubmit
-                    size="sm"
-                    variant="ghost"
-                    title={t('deleteLeaveYearConfirmTitle')}
-                    subtitle={t('deleteLeaveYearTarget', { year: cfg.year })}
-                    description={t('deleteLeaveYearConfirmBody')}
-                    confirmLabel={t('deleteLeaveYearConfirmButton')}
-                    twoStep={{
-                      warning: t('deleteLeaveYearWarning'),
-                      reasonLegend: t('deleteLeaveYearReasonLegend'),
-                      reasonOptions: [
-                        { value: 'wrongly_created', label: t('deleteLeaveYearReasonWronglyCreated') },
-                        { value: 'duplicate', label: t('deleteLeaveYearReasonDuplicate') },
-                      ],
-                      name: 'reasons',
-                      yesLabel: t('deleteLeaveYearYes'),
-                      noLabel: t('deleteLeaveYearNo'),
-                    }}
-                  >
-                    {t('deleteLeaveYear')}
-                  </ConfirmSubmit>
-                </form>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <form action={deleteLeaveYearAction}>
-                    <input type="hidden" name="year" value={cfg.year} />
-                    <Button type="submit" variant="ghost" size="sm">
-                      {t('deleteLeaveYear')}
-                    </Button>
-                  </form>
-                  <span className="max-w-56 text-xs text-muted-foreground">
-                    {cfg.status !== 'draft' ? t('deleteLeaveYearBlockedOpened') : t('deleteLeaveYearBlockedRecords')}
-                  </span>
-                </div>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-      {/* Create / configure an upcoming leave year (year dropdown + two control dates). */}
-      <form action={upsertLeaveYearConfigAction} className="flex flex-wrap items-end gap-3 border-t border-border pt-3">
-        <Field label={t('yearLabel')}>
-          <select name="year" defaultValue={String(defaultNewYear)} className={`${inputCls} w-28`}>
-            {yearOptions.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={t('openLeaveYearDateLabel')}>
-          <input type="date" name="openLeaveYearDate" className={`${inputCls} w-44`} />
-        </Field>
-        <Field label={t('employeeApplicationStartDateLabel')}>
-          <input type="date" name="employeeApplicationStartDate" className={`${inputCls} w-44`} />
-        </Field>
-        <button className={btnPrimary}>{t('addLeaveYear')}</button>
       </form>
     </div>
   );
@@ -854,7 +656,6 @@ export default async function LeaveEntitlementsPage({
                 </div>
               }
               halfDaySection={halfDaySection}
-              leaveYearSection={leaveYearSection}
               previewScenarioSection={previewScenarioSection}
               accrualSection={accrualSection}
               updateTypeAction={updateLeaveTypeAction}

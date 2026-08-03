@@ -170,7 +170,6 @@ import {
   leaveRequestAttachment,
   leaveRequestDate,
   leaveType,
-  leaveYearConfig,
   payrollBatch,
   payslip,
   person,
@@ -441,12 +440,14 @@ export class LeaveYearApplicationLimitExceededError extends Error {
   }
 }
 
-// Leave Year Configuration (9aa894a4): a non-HR employee tried to apply for a FUTURE leave year that has not
-// yet been opened for applications — either there is no managed leave_year_config row for that year, its
-// status is not 'open', or today is before its employeeApplicationStartDate. Carries `year` so the action
-// layer can re-localize via getTranslations('leave.errors') before redirecting with ?error=. HR admins
-// (isAdmin) bypass this in requestLeave (the override path, stamped for audit), so it only throws for
-// ordinary employees. Models InsufficientLeaveBalanceError (a plain typed leave rejection).
+// Leave Year Configuration (9aa894a4, re-based by 4b0e76ae): a non-HR employee tried to apply for a leave
+// year strictly later than the tenant-local current year. The reason used to be a lookup — no managed
+// leave_year_config row for that year, a status other than 'open', or a date before its
+// employeeApplicationStartDate — and is now the flat standing rule that replaced it. The ERROR, its `year`,
+// its localiser and its message key are all unchanged, because the refusal HR's employees see is unchanged.
+// Carries `year` so the action layer can re-localize via getTranslations('leave.errors') before redirecting
+// with ?error=. HR admins (isAdmin) bypass this in requestLeave (the override path, stamped for audit), so
+// it only throws for ordinary employees. Models InsufficientLeaveBalanceError (a plain typed rejection).
 export class LeaveYearNotOpenError extends Error {
   readonly year: number;
   constructor(year: number) {
@@ -1118,42 +1119,27 @@ export function lacksMinAdvanceNotice(startDate: string, today: string, minDays:
   return daysBetween(today, startDate) < minDays;
 }
 
-/** The lifecycle status of a managed leave-year record. draft = created but balances not yet posted;
- *  open = openLeaveYear ran (balances live) and applications are permitted (subject to the app-start date);
- *  closed = an informational badge for a bygone year (v1 does not sweep on close). */
-export type LeaveYearStatus = 'draft' | 'open' | 'closed';
-export const LEAVE_YEAR_STATUSES: readonly LeaveYearStatus[] = ['draft', 'open', 'closed'] as const;
-export function isLeaveYearStatus(v: unknown): v is LeaveYearStatus {
-  return typeof v === 'string' && (LEAVE_YEAR_STATUSES as readonly string[]).includes(v);
-}
-
-/** The minimal leave-year config shape the pure gate reads (subset of LeaveYearConfigRow). */
-export type LeaveYearGateConfig = {
-  year: number;
-  status: string;
-  employeeApplicationStartDate: string | null;
-};
-
 /**
- * Leave Year Configuration (9aa894a4) — pure "may an employee apply for `targetYear`?" gate. Mirrors
- * lacksMinAdvanceNotice: pure + `today`-injectable for deterministic tests. Returns TRUE only when the
- * managed record for `targetYear` exists, is 'open', and today is on/after its employeeApplicationStartDate.
- * FALSE (not open) when: no config for the year, config for a different year, status ≠ 'open', or today is
- * before the application-start date. A null application-start date on an OPEN year means "no gate date" ⇒
- * open immediately. The caller decides WHICH years to enforce this on — requestLeave only enforces it for a
- * FUTURE leave year, so a null-config current/past year keeps today's exact behaviour (see requestLeave).
+ * 4b0e76ae — THE ONE year list every entitlement-year picker offers: a COMPUTED RANGE, three years back
+ * through six years forward, oldest first. Pure + `currentYear`-injectable for deterministic tests.
+ *
+ * WHY IT IS COMPUTED AND NOT READ. Both pickers (the Generate Entitlement page and the Run Earned Accrual
+ * selector) used to derive their years from the managed `leave_year_config` records. That module is gone —
+ * its screen, all five writers and every row — so a table-backed dropdown would render permanently empty
+ * with nothing able to fill it. A computed range needs no setup and nothing to maintain.
+ *
+ * WHY IT REACHES BACK THREE YEARS, which is the part not to trim. The Run Earned Accrual selector previously
+ * built `currentYear .. currentYear + 6` and leaned on the configured records for anything earlier, so a
+ * forward-only range would silently REMOVE the ability to run earned accrual for a past year. Reaching back
+ * three years is what makes the "nothing is lost" promise true. The one accepted difference, stated to the
+ * reporter in plain words, is that the selector now opens on the CURRENT year rather than the newest
+ * configured one.
  */
-export function leaveYearOpenForApplication(
-  config: LeaveYearGateConfig | null | undefined,
-  targetYear: number,
-  today: string,
-): boolean {
-  if (!config) return false;
-  if (config.year !== targetYear) return false;
-  if (config.status !== 'open') return false;
-  const appStart = config.employeeApplicationStartDate;
-  if (appStart && today < appStart) return false;
-  return true;
+export const ENTITLEMENT_YEARS_BACK = 3;
+export const ENTITLEMENT_YEARS_FORWARD = 6;
+export function entitlementYearOptions(currentYear: number): number[] {
+  const span = ENTITLEMENT_YEARS_BACK + ENTITLEMENT_YEARS_FORWARD + 1;
+  return Array.from({ length: span }, (_, i) => currentYear - ENTITLEMENT_YEARS_BACK + i);
 }
 
 /** Subtract whole calendar months from an ISO date, clamping the day to the target month's length. */
@@ -2546,31 +2532,30 @@ export async function requestLeave(
       }
     }
 
-    // Leave Year Configuration (9aa894a4). "Employees can only apply leave for a FUTURE leave year after the
-    // leave year is opened." Derive the target year from the request's START date. Only a FUTURE year (strictly
-    // after today's tenant-local calendar year) is gated — a current/past year keeps today's EXACT behaviour,
-    // and with NO managed leave_year_config record the system is unchanged for current/past years. For a
-    // future year we look up its managed record and require it to be OPEN and past its employee-application-
-    // start date (leaveYearOpenForApplication). HR admins (isAdmin) bypass for exceptional cases (the override
-    // path, stamped onto the submitted event below); ordinary employees get a typed LeaveYearNotOpenError
-    // BEFORE any write. Emergency Leave already returned above (it exists for urgent, current absence).
+    // Future leave-year application gate (9aa894a4, re-based by 4b0e76ae). "Employees can only apply leave for
+    // a FUTURE leave year after HR has opened it." Derive the target year from the request's START date. Only a
+    // FUTURE year (strictly after today's tenant-local calendar year) is gated — a current/past year keeps
+    // today's EXACT behaviour. HR admins (isAdmin) bypass for exceptional cases (the override path, stamped
+    // onto the submitted event below); ordinary employees get a typed LeaveYearNotOpenError BEFORE any write.
+    // Emergency Leave already returned above (it exists for urgent, current absence).
+    //
+    // 4b0e76ae — THE BEHAVIOUR STAYED, THE READ WENT. This used to SELECT the managed leave_year_config row for
+    // the target year and ask the pure helper `leaveYearOpenForApplication` whether it was open. That module is
+    // gone (its screen, its five writers and its rows), so the gate is now a FLAT standing rule with no read at
+    // all. Byte-identical to the old code for any tenant with no OPEN future-year record — which, after
+    // migration 0385 emptied the table, is every tenant.
+    //
+    // ⚠️ DO NOT "SIMPLIFY" THIS AWAY NOW THAT NOTHING IS READ. Dropping the gate would let an ordinary employee
+    // book NEXT-year dates against THIS year's balance. The approval debit is stamped effectiveOn =
+    // req.startDate, while openLeaveYear's `before` balance is an UNBOUNDED ledger read with no effectiveOn
+    // bound, feeding BOTH resolveCarryAllowance(pol, before) and forfeit = max(0, before - carry). So that
+    // booking would silently REDUCE the days an employee carries forward and INCREASE the days they forfeit at
+    // the next year opening. The gate is what keeps those figures honest.
     const targetLeaveYear = Number(p.startDate.slice(0, 4));
     const currentLeaveYear = Number(today.slice(0, 4));
-    let leaveYearOverride = false;
-    if (Number.isInteger(targetLeaveYear) && targetLeaveYear > currentLeaveYear) {
-      const [lyCfg] = await tx
-        .select({
-          year: leaveYearConfig.year,
-          status: leaveYearConfig.status,
-          employeeApplicationStartDate: leaveYearConfig.employeeApplicationStartDate,
-        })
-        .from(leaveYearConfig)
-        .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, targetLeaveYear)))
-        .limit(1);
-      const open = leaveYearOpenForApplication(lyCfg ?? null, targetLeaveYear, today);
-      leaveYearOverride = isAdmin(ctx) && !open;
-      if (!isAdmin(ctx) && !open) throw new LeaveYearNotOpenError(targetLeaveYear);
-    }
+    const futureLeaveYear = Number.isInteger(targetLeaveYear) && targetLeaveYear > currentLeaveYear;
+    const leaveYearOverride = futureLeaveYear && isAdmin(ctx);
+    if (futureLeaveYear && !isAdmin(ctx)) throw new LeaveYearNotOpenError(targetLeaveYear);
 
     const durationType: LeaveDurationType = p.durationType ?? 'full_day';
     // Hourly-leave time window (0129): for an hourly request prefer the From/To window — the window is
@@ -5739,481 +5724,6 @@ export const completedYearsAt = (from: string | null | undefined, asOf: string):
  * entirely (their hire grant covers the year). Overdrawn balances are never "forfeited"
  * (the debt simply rolls and the new grant lands on top).
  */
-// ── Leave Year Configuration (9aa894a4) ──────────────────────────────────────────────────────────────
-/** Row shape returned to the admin surface (the managed leave-year table). Dates are ISO yyyy-mm-dd. */
-export type LeaveYearConfigView = {
-  id: string;
-  year: number;
-  status: LeaveYearStatus;
-  openLeaveYearDate: string | null;
-  employeeApplicationStartDate: string | null;
-  // Future Leave Year Opening Rule (d9e41725): the advance-opening policy attached to this row.
-  openingRuleEnabled: boolean;
-  openBeforeAmount: number | null;
-  openBeforeUnit: LeaveOpeningUnit | null;
-  openedAt: string | null;
-  openedBy: string | null;
-};
-
-/** List every managed leave-year record for the tenant, newest year first. Read-only (RLS: tenant-read). */
-export async function listLeaveYearConfigs(ctx: SessionContext): Promise<LeaveYearConfigView[]> {
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select()
-      .from(leaveYearConfig)
-      .where(eq(leaveYearConfig.tenantId, ctx.tenantId))
-      .orderBy(desc(leaveYearConfig.year));
-    return rows.map((r) => ({
-      id: r.id,
-      year: r.year,
-      status: (isLeaveYearStatus(r.status) ? r.status : 'draft') as LeaveYearStatus,
-      openLeaveYearDate: r.openLeaveYearDate ?? null,
-      employeeApplicationStartDate: r.employeeApplicationStartDate ?? null,
-      openingRuleEnabled: r.openingRuleEnabled,
-      openBeforeAmount: r.openBeforeAmount ?? null,
-      openBeforeUnit: isLeaveOpeningUnit(r.openBeforeUnit) ? r.openBeforeUnit : null,
-      openedAt: r.openedAt ? r.openedAt.toISOString() : null,
-      openedBy: r.openedBy ?? null,
-    }));
-  });
-}
-
-/** R45 fd71fa38 — the set of CONFIGURED leave years that already have leave RECORDS. The Leave-Year table
- *  uses this to DISABLE the row Delete button (with a visible inline reason) for a referenced year; the
- *  service `deleteLeaveYear` guard stays authoritative.
- *
- *  Cluster dcd8e32f rewrote this to use the SAME predicates as `deleteLeaveYear` — previously it derived
- *  blocked years from EXTRACT(YEAR) of start/end dates separately (so a 2024→2026 request left 2025 out of
- *  the UI's blocked set while the service still refused it) and ran three unbounded GROUP BY scans on every
- *  page render. Now it walks only the configured leave_year_config years and, per year, runs the guard's own
- *  two indexed EXISTS probes: a leave_ledger row dated inside the year, or a genuinely-live (pending /
- *  approved — rejected and cancelled do not block, matching Guard 2) request overlapping it.
- *  Read-only, no events. */
-export async function leaveYearsWithRecords(ctx: SessionContext): Promise<number[]> {
-  return withTenant(ctx, async (tx) => {
-    const configured = await tx
-      .select({ year: leaveYearConfig.year })
-      .from(leaveYearConfig)
-      .where(eq(leaveYearConfig.tenantId, ctx.tenantId));
-    const referenced: number[] = [];
-    for (const { year } of configured) {
-      const yearStart = `${year}-01-01`;
-      const yearEnd = `${year}-12-31`;
-      // Same predicate as deleteLeaveYear Guard 1.
-      const [ledgerHit] = await tx
-        .select({ id: leaveLedger.id })
-        .from(leaveLedger)
-        .where(
-          and(
-            eq(leaveLedger.tenantId, ctx.tenantId),
-            gte(leaveLedger.effectiveOn, yearStart),
-            lte(leaveLedger.effectiveOn, yearEnd),
-          ),
-        )
-        .limit(1);
-      if (ledgerHit) {
-        referenced.push(year);
-        continue;
-      }
-      // Same predicate as deleteLeaveYear Guard 2 (true date overlap + live statuses only).
-      const [requestHit] = await tx
-        .select({ id: leaveRequest.id })
-        .from(leaveRequest)
-        .where(
-          and(
-            eq(leaveRequest.tenantId, ctx.tenantId),
-            lte(leaveRequest.startDate, yearEnd),
-            gte(leaveRequest.endDate, yearStart),
-            inArray(leaveRequest.status, ['pending', 'approved']),
-          ),
-        )
-        .limit(1);
-      if (requestHit) referenced.push(year);
-    }
-    return referenced;
-  });
-}
-
-/** Create or edit a managed leave-year record's two control dates (status is NOT changed here — use
- *  setLeaveYearStatus for the Draft→Open transition). Idempotent on (tenant, year). Appends
- *  leave-year.configured. Substrate: config write → event. */
-export async function upsertLeaveYearConfig(
-  ctx: SessionContext,
-  p: { year: number; openLeaveYearDate?: string | null; employeeApplicationStartDate?: string | null },
-) {
-  if (!Number.isInteger(p.year) || p.year < 2020 || p.year > 2100) {
-    throw new Error('Invalid leave year (must be an integer between 2020 and 2100)');
-  }
-  const openDate = p.openLeaveYearDate?.trim() || null;
-  const appStart = p.employeeApplicationStartDate?.trim() || null;
-  return withTenant(ctx, async (tx) => {
-    const [before] = await tx
-      .select()
-      .from(leaveYearConfig)
-      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, p.year)))
-      .limit(1);
-    const [row] = await tx
-      .insert(leaveYearConfig)
-      .values({
-        tenantId: ctx.tenantId,
-        year: p.year,
-        status: 'draft',
-        openLeaveYearDate: openDate,
-        employeeApplicationStartDate: appStart,
-      })
-      .onConflictDoUpdate({
-        target: [leaveYearConfig.tenantId, leaveYearConfig.year],
-        // Status is left untouched on edit (only setLeaveYearStatus moves the lifecycle).
-        set: { openLeaveYearDate: openDate, employeeApplicationStartDate: appStart, updatedAt: new Date() },
-      })
-      .returning({ id: leaveYearConfig.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-year',
-      aggregateId: row.id,
-      eventType: 'leave-year.configured',
-      actor: actorOf(ctx),
-      payload: {
-        year: p.year,
-        before: before
-          ? { openLeaveYearDate: before.openLeaveYearDate ?? null, employeeApplicationStartDate: before.employeeApplicationStartDate ?? null }
-          : null,
-        after: { openLeaveYearDate: openDate, employeeApplicationStartDate: appStart },
-      },
-    });
-    return { id: row.id };
-  });
-}
-
-/**
- * Transition a managed leave-year record's status. On →open, CALL the existing openLeaveYear grant sweep
- * (idempotent — never duplicated here) so the record and the ledger move in lockstep, then stamp opened_at /
- * opened_by on the record. draft/closed transitions just flip the badge (v1: closed is informational, no
- * carry-forward sweep). Substrate: each write appends leave-year.configured (the status change), and →open
- * additionally emits leave-year.opened via openLeaveYear.
- */
-export async function setLeaveYearStatus(ctx: SessionContext, p: { year: number; status: LeaveYearStatus }) {
-  if (!Number.isInteger(p.year) || p.year < 2020 || p.year > 2100) {
-    throw new Error('Invalid leave year (must be an integer between 2020 and 2100)');
-  }
-  const target: LeaveYearStatus = isLeaveYearStatus(p.status) ? p.status : 'draft';
-  // On →open, run the grant sweep FIRST in its own transaction (idempotent; emits leave-year.opened). Doing
-  // it before the record write keeps record + ledger in lockstep even if a caller retries.
-  let opened: { granted: number; skipped: number; forfeits: number } | null = null;
-  if (target === 'open') {
-    opened = await openLeaveYear(ctx, { year: p.year });
-  }
-  const result = await withTenant(ctx, async (tx) => {
-    const [before] = await tx
-      .select()
-      .from(leaveYearConfig)
-      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, p.year)))
-      .limit(1);
-    const now = new Date();
-    const openedAt = target === 'open' ? now : (before?.openedAt ?? null);
-    const openedBy = target === 'open' ? (ctx.userId ?? null) : (before?.openedBy ?? null);
-    const [row] = await tx
-      .insert(leaveYearConfig)
-      .values({
-        tenantId: ctx.tenantId,
-        year: p.year,
-        status: target,
-        openedAt,
-        openedBy,
-      })
-      .onConflictDoUpdate({
-        target: [leaveYearConfig.tenantId, leaveYearConfig.year],
-        set: { status: target, openedAt, openedBy, updatedAt: now },
-      })
-      .returning({ id: leaveYearConfig.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-year',
-      aggregateId: row.id,
-      eventType: 'leave-year.configured',
-      actor: actorOf(ctx),
-      payload: {
-        year: p.year,
-        before: { status: (before?.status ?? 'draft') as LeaveYearStatus },
-        after: { status: target },
-        ...(opened ? { opened } : {}),
-      },
-    });
-    return { id: row.id, status: target };
-  });
-  return { ...result, opened };
-}
-
-// ── Future Leave Year Opening Rule (d9e41725) ─────────────────────────────────────────────────────────
-/** The advance-opening window unit. Days / Weeks / Months, mirroring the reporter's field. */
-export type LeaveOpeningUnit = 'days' | 'weeks' | 'months';
-export const LEAVE_OPENING_UNITS: readonly LeaveOpeningUnit[] = ['days', 'weeks', 'months'] as const;
-export function isLeaveOpeningUnit(v: unknown): v is LeaveOpeningUnit {
-  return typeof v === 'string' && (LEAVE_OPENING_UNITS as readonly string[]).includes(v);
-}
-
-/**
- * Compute the advance opening date for a leave `year`: 1-Jan-of-year MINUS `amount × unit`, returned as ISO
- * yyyy-mm-dd. Pure + UTC-correct calendar math (mirrors serviceYearsAt / subtractMonths — NEVER amount/365.25):
- *   - days   → subtract `amount` calendar days
- *   - weeks  → subtract `amount × 7` calendar days
- *   - months → subtract `amount` WHOLE calendar months (day clamped to the target month's length)
- * The anchor is deliberately the LEAVE YEAR START (Jan 1). Example: LY2027, 14 days → 2026-12-18; LY2027,
- * 1 month → 2026-12-01; LY2027, 2 weeks → 2026-12-18. Amount must be a positive integer.
- */
-export function computeOpenLeaveYearDate(year: number, amount: number, unit: LeaveOpeningUnit): string {
-  if (!Number.isInteger(amount) || amount <= 0) {
-    throw new Error('Open-before amount must be a positive integer');
-  }
-  const leaveYearStart = `${year}-01-01`;
-  if (unit === 'months') return subtractMonths(leaveYearStart, amount);
-  const days = unit === 'weeks' ? amount * 7 : amount;
-  // Calendar-day subtraction via a UTC epoch (no DST/timezone drift — dates are date-only).
-  const [y, m, d] = leaveYearStart.split('-').map(Number);
-  const base = new Date(Date.UTC(y, m - 1, d));
-  base.setUTCDate(base.getUTCDate() - days);
-  const ty = base.getUTCFullYear();
-  const tm = base.getUTCMonth() + 1;
-  const td = base.getUTCDate();
-  return `${ty}-${String(tm).padStart(2, '0')}-${String(td).padStart(2, '0')}`;
-}
-
-/**
- * Save the Future Leave Year Opening Rule for a leave `year` (the "Effective Leave Year"). This is the
- * advance-opening POLICY layered on the managed leave_year_config row (9aa894a4): HR Admin says "open this
- * year `amount` `unit` before it starts" and the system COMPUTES open_leave_year_date = Jan-1-minus-window and
- * stamps it on the same row. Idempotent on (tenant, year) — upserts the record (creating it as `draft` if it
- * does not exist, matching upsertLeaveYearConfig). Lifecycle `status` is left untouched here.
- *
- * v1 is COMPUTE-ONLY (a documented product decision): enabling the rule SETS open_leave_year_date but does NOT
- * auto-transition the year to `open`. An automatic cron (open the year once today >= open_leave_year_date) is
- * DEFERRED — when built it belongs in scripts/ (like accrue-earned.ts), iterating tenants under RLS, relying
- * on openLeaveYear's idempotent openedSet. Disabling the rule (enabled=false) clears the rule columns and
- * leaves open_leave_year_date as-is (a previously computed date is not wiped — an admin can still edit it by
- * hand via upsertLeaveYearConfig). Substrate: config write → leave-year.opening-rule.configured.
- */
-export async function saveFutureOpeningRule(
-  ctx: SessionContext,
-  p: { year: number; enabled: boolean; amount?: number | null; unit?: string | null },
-) {
-  if (!Number.isInteger(p.year) || p.year < 2020 || p.year > 2100) {
-    throw new Error('Invalid leave year (must be an integer between 2020 and 2100)');
-  }
-  let amount: number | null = null;
-  let unit: LeaveOpeningUnit | null = null;
-  let computedOpenDate: string | null = null;
-  if (p.enabled) {
-    amount = Number(p.amount);
-    if (!Number.isInteger(amount) || amount <= 0) {
-      throw new Error('Open-before amount must be a positive integer when the rule is enabled');
-    }
-    if (!isLeaveOpeningUnit(p.unit)) {
-      throw new Error('Unit must be one of days, weeks, months when the rule is enabled');
-    }
-    unit = p.unit;
-    computedOpenDate = computeOpenLeaveYearDate(p.year, amount, unit);
-  }
-  return withTenant(ctx, async (tx) => {
-    const [before] = await tx
-      .select()
-      .from(leaveYearConfig)
-      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, p.year)))
-      .limit(1);
-    const now = new Date();
-    // When enabling, the computed date overwrites open_leave_year_date. When disabling, keep whatever date is
-    // already on the record (don't wipe a hand-set/previously-computed date) and null out the rule columns.
-    const openLeaveYearDate = p.enabled ? computedOpenDate : (before?.openLeaveYearDate ?? null);
-    const [row] = await tx
-      .insert(leaveYearConfig)
-      .values({
-        tenantId: ctx.tenantId,
-        year: p.year,
-        status: 'draft',
-        openLeaveYearDate,
-        openingRuleEnabled: p.enabled,
-        openBeforeAmount: amount,
-        openBeforeUnit: unit,
-      })
-      .onConflictDoUpdate({
-        target: [leaveYearConfig.tenantId, leaveYearConfig.year],
-        // Status stays untouched (only setLeaveYearStatus moves the lifecycle). open_leave_year_date is only
-        // rewritten when enabling; on disable it is left as-is via the openLeaveYearDate computed above.
-        set: {
-          openLeaveYearDate,
-          openingRuleEnabled: p.enabled,
-          openBeforeAmount: amount,
-          openBeforeUnit: unit,
-          updatedAt: now,
-        },
-      })
-      .returning({ id: leaveYearConfig.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-year',
-      aggregateId: row.id,
-      eventType: 'leave-year.opening-rule.configured',
-      actor: actorOf(ctx),
-      payload: {
-        year: p.year,
-        before: before
-          ? {
-              openingRuleEnabled: before.openingRuleEnabled,
-              openBeforeAmount: before.openBeforeAmount ?? null,
-              openBeforeUnit: before.openBeforeUnit ?? null,
-              openLeaveYearDate: before.openLeaveYearDate ?? null,
-            }
-          : null,
-        after: {
-          openingRuleEnabled: p.enabled,
-          openBeforeAmount: amount,
-          openBeforeUnit: unit,
-          openLeaveYearDate,
-        },
-      },
-    });
-    return { id: row.id, openLeaveYearDate, enabled: p.enabled };
-  });
-}
-
-/** Cluster dcd8e32f — the machine-readable reason a leave-year delete was refused. The action layer maps
- *  each code to a localised message key (the English `.message` is a service-level fallback only — never
- *  surface it to the admin verbatim, five of the six locales would see English). */
-export type LeaveYearDeleteErrorCode =
-  | 'leaveYearNotAdmin'
-  | 'leaveYearNotFound'
-  | 'leaveYearNotDraft'
-  | 'leaveYearHasLedger'
-  | 'leaveYearHasRequests'
-  | 'leaveYearReasonsRequired';
-
-/** Feedback f1701466 — the allow-listed deletion-reason codes the two-step confirm dialog offers. Stored
- *  verbatim (deduped) in the `leave-year.deleted` payload; `lib/audit-format.ts` maps them back to the
- *  human labels for the audit tab + its exports. */
-const LEAVE_YEAR_DELETE_REASONS = new Set(['wrongly_created', 'duplicate']);
-
-/** R45 fd71fa38 — a typed error the delete-leave-year path throws when the guard blocks removal (year not
- *  draft, or leave records already reference it). Carries a stable `code` (dcd8e32f) so the action layer
- *  can localise the refusal before redirecting. */
-export class LeaveYearDeleteError extends Error {
-  readonly code: LeaveYearDeleteErrorCode;
-  constructor(code: LeaveYearDeleteErrorCode, message: string) {
-    super(message);
-    this.name = 'LeaveYearDeleteError';
-    this.code = code;
-  }
-}
-
-/**
- * R45 fd71fa38 — Delete a managed leave-year record. Edit + lifecycle already exist; this adds removal for a
- * mistakenly-created draft year. There is NO FK to lean on (the grant ledger + leave requests are keyed by
- * the integer year, not by leave_year_config.id), so the guard is enforced HERE, service-side:
- *   - the year must still be in `draft` (an opened/closed year has driven grants — never silently orphan them);
- *   - AND zero leave_ledger rows fall inside the calendar year (no entitlement generated / transactions);
- *   - AND zero leave_request rows overlap the calendar year (no applications reference it).
- * Any violation throws LeaveYearDeleteError (the reporter's "cannot delete — records exist"). On success the
- * row is removed and a `leave-year.deleted` DomainEvent is appended (substrate: the delete write → event).
- *
- * Cluster dcd8e32f: admin-only, asserted HERE as well as at the action layer (requireAdmin) and in the DB
- * (0282 RESTRICTIVE FOR DELETE policy) — the 0190 FOR ALL policy's WITH CHECK never applied to DELETE, so
- * before 0282 any tenant member could remove a leave-year row. Guard 2 now ignores rejected / cancelled
- * requests: only genuinely-live (pending / approved) applications block deletion.
- *
- * Feedback f1701466: every delete now requires at least one allow-listed reason ('wrongly_created' /
- * 'duplicate'), recorded (deduped) on the leave-year.deleted event. Validation runs LAST, after all the
- * block guards — the guard ORDER is load-bearing: a genuinely blocked year must always report its true
- * block message even on a forged/reason-less POST, and a stale blocked-rendered button that posts against
- * a now-deletable year hits the reasons error instead of silently deleting. The UI's disabled Confirm
- * button is not authority; the service is.
- */
-export async function deleteLeaveYear(ctx: SessionContext, p: { year: number; reasons: string[] }) {
-  if (!isAdmin(ctx)) {
-    throw new LeaveYearDeleteError('leaveYearNotAdmin', 'Only an admin can delete a leave year.');
-  }
-  if (!Number.isInteger(p.year)) throw new Error('Invalid leave year');
-  const reasons = Array.from(new Set(p.reasons));
-  const yearStart = `${p.year}-01-01`;
-  const yearEnd = `${p.year}-12-31`;
-  return withTenant(ctx, async (tx) => {
-    const [before] = await tx
-      .select()
-      .from(leaveYearConfig)
-      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, p.year)))
-      .limit(1);
-    if (!before) throw new LeaveYearDeleteError('leaveYearNotFound', 'This leave year no longer exists.');
-    if (before.status !== 'draft') {
-      throw new LeaveYearDeleteError(
-        'leaveYearNotDraft',
-        'This leave year cannot be deleted because it has been opened or closed. Only a draft year can be removed.',
-      );
-    }
-    // Guard 1: any leave_ledger row dated inside the calendar year ⇒ entitlement/transactions exist.
-    const [ledgerHit] = await tx
-      .select({ id: leaveLedger.id })
-      .from(leaveLedger)
-      .where(
-        and(
-          eq(leaveLedger.tenantId, ctx.tenantId),
-          gte(leaveLedger.effectiveOn, yearStart),
-          lte(leaveLedger.effectiveOn, yearEnd),
-        ),
-      )
-      .limit(1);
-    if (ledgerHit) {
-      throw new LeaveYearDeleteError(
-        'leaveYearHasLedger',
-        'This leave year cannot be deleted because leave records already exist for it.',
-      );
-    }
-    // Guard 2: any LIVE (pending / approved) leave_request overlapping the calendar year ⇒ applications
-    // reference it. Rejected / cancelled requests deliberately do NOT block (dcd8e32f): a lone rejected
-    // application must not permanently pin an otherwise pristine draft year.
-    const [requestHit] = await tx
-      .select({ id: leaveRequest.id })
-      .from(leaveRequest)
-      .where(
-        and(
-          eq(leaveRequest.tenantId, ctx.tenantId),
-          lte(leaveRequest.startDate, yearEnd),
-          gte(leaveRequest.endDate, yearStart),
-          inArray(leaveRequest.status, ['pending', 'approved']),
-        ),
-      )
-      .limit(1);
-    if (requestHit) {
-      throw new LeaveYearDeleteError(
-        'leaveYearHasRequests',
-        'This leave year cannot be deleted because leave applications already reference it.',
-      );
-    }
-    // Reasons validation LAST (f1701466) — see the guard-order note in the doc comment above.
-    if (reasons.length === 0 || reasons.some((r) => !LEAVE_YEAR_DELETE_REASONS.has(r))) {
-      throw new LeaveYearDeleteError('leaveYearReasonsRequired', 'Select at least one deletion reason.');
-    }
-
-    await tx
-      .delete(leaveYearConfig)
-      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.id, before.id)));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-year',
-      aggregateId: before.id,
-      eventType: 'leave-year.deleted',
-      actor: actorOf(ctx),
-      payload: {
-        year: p.year,
-        reasons,
-        before: {
-          status: before.status,
-          openLeaveYearDate: before.openLeaveYearDate ?? null,
-          employeeApplicationStartDate: before.employeeApplicationStartDate ?? null,
-          openingRuleEnabled: before.openingRuleEnabled,
-        },
-      },
-    });
-    return { deleted: true, year: p.year };
-  });
-}
-
 // ── Benefit Scheme entitlement resolution for the grant sweeps (feedback b83c6a3b) ───────────────────
 /** The per-employee attributes the scheme resolver needs beyond what the grant loops already select. */
 type SchemeEmp = {

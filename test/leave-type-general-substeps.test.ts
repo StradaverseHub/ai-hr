@@ -165,13 +165,12 @@ describe('4d6eae7b · Leave Year Type (per-type cycle override) — back in the 
     expect(generalSegment()).toContain("{generalSubStep === 'yearType' && (");
   });
 
-  it('the TENANT-WIDE leave-year records stay in Custom Settings', () => {
-    const seg = customSegment();
-    expect(seg).toContain("t('leaveYearConfigTitle')");
-    expect(seg).toContain('{leaveYearSection}');
-    // The slot is declared as a server-composed ReactNode, like halfDaySection.
-    expect(panelSrc).toContain('leaveYearSection?: ReactNode;');
-  });
+  // 4b0e76ae REMOVED the block this case used to pin. The tenant-wide leave-year RECORDS no longer live in
+  // Custom Settings — or anywhere else: the section, the leaveYearSection slot, both dialogs, the four
+  // writing actions and the rows themselves are gone, and entitlement GENERATION moved to its own page at
+  // /admin/leave/generate in the same release. test/leave-generate-page.test.ts pins the removal and the
+  // new home; the 4d6eae7b assertions above are untouched, because the per-type CYCLE override is a
+  // different control and this item did not touch it.
 });
 
 /**
@@ -367,15 +366,12 @@ describe('e1a51aea · i18n — all six locales', () => {
       const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
       const leave = msgs?.admin?.leave ?? {};
       expect(typeof leave.workspaceSubStepsLabel, `${loc} workspaceSubStepsLabel`).toBe('string');
-      // 1e4eb8af — the Leave Year Configuration section title in Custom Settings, hosting the relocated
-      // Leave Year Type sub-form and the leave-year records slot.
-      expect(typeof leave.leaveYearConfigTitle, `${loc} leaveYearConfigTitle`).toBe('string');
       const sub = leave.subStep ?? {};
       for (const key of [
         'details',
         // 'yearType' (the sub-step TITLE) is back with the sub-step itself — 4d6eae7b returned the form to
-        // the General walk. leaveYearConfigTitle above still names the Custom Settings section that keeps
-        // the tenant-wide leave-year RECORDS.
+        // the General walk. The leaveYearConfigTitle assertion that used to sit above went with 4b0e76ae:
+        // the Custom Settings leave-year section it named no longer exists, and neither does the key.
         'yearType',
         'yearTypeStepHelp',
         'earning',

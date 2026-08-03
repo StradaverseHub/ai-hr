@@ -103,9 +103,14 @@ describe('d778d2d3 → 962077a8: the two tools are dialog buttons — mounted in
   });
 
   it('still prepares the tools’ data at page level (leave-year options, preview policies)', () => {
-    // The dialog path reuses the page-level prep — listLeaveYearConfigs feeds the accrual Leave-Year
-    // selector; the ACTIVE-policy filter feeds the preview. Neither moved into a client component.
-    expect(entitlementsPage).toMatch(/listLeaveYearConfigs\(s\)/);
+    // The dialog path reuses the page-level prep — the accrual Leave-Year selector's year list; the
+    // ACTIVE-policy filter feeds the preview. Neither moved into a client component.
+    //
+    // 4b0e76ae re-pointed the SOURCE of that year list, not its home: it used to be listLeaveYearConfigs(s)
+    // (a read of the managed leave_year_config records) and is now the shared computed range, because this
+    // item emptied that table and deleted every writer to it — a table-backed dropdown would have rendered
+    // permanently empty and permanently unfillable. The prep still happens here, at page level.
+    expect(entitlementsPage).toMatch(/entitlementYearOptions\(currentYear\)/);
     expect(entitlementsPage).toMatch(/earnedLeaveYears/);
     expect(entitlementsPage).toMatch(/const previewPolicies = policies\s*\n?\s*\.filter\(\(p\) => !p\.validTo\)/);
   });

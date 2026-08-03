@@ -2164,6 +2164,13 @@
       "when": 1781862476000,
       "tag": "0376_leave_type_earning_method_clearout",
       "breakpoints": true
+    },
+    {
+      "idx": 385,
+      "version": "7",
+      "when": 1781862485000,
+      "tag": "0385_leave_year_config_reset",
+      "breakpoints": true
     }
   ]
 }

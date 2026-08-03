@@ -269,6 +269,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // 491c499f — same admin surface, same requireAdmin guard, so it is a ROUTE rather than a new
       // screenKey (the /admin/personnel precedent above).
       '/admin/leave/adjustments',
+      // 4b0e76ae — Generate Entitlement. Same admin surface, same requireAdmin guard the leaveConfig screen
+      // declares above, so it is a ROUTE on this screenKey rather than a new one (the /admin/leave/replacement
+      // precedent two lines up). REGISTERING IT IS NOT OPTIONAL AND IS NOT COSMETIC: this page is the ONLY
+      // way left to open a leave year after the Leave Year Configuration block was removed, and
+      // test/function-access.test.ts fails BOTH ways — a guarded page.tsx absent from REGISTERED_ROUTES, and
+      // a registered route with no page on disk — so the route and the page land in one commit or neither.
+      '/admin/leave/generate',
       '/admin/leave/payroll',
       '/admin/leave/replacement',
       '/admin/leave/audit',
