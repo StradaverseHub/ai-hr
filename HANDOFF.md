@@ -1103,6 +1103,83 @@ those employees drop to the statutory floor until their schemes are filled in.
 
 # Round history
 
+## r129 — 2026-08-04 — bc36c768: three earning methods, and the gate that makes a reset safe
+
+**Shipped:** `bc36c768` — Simplify Earning Method Configuration.
+**`main@289a1b84`. 309 migrations. New: `0375`, `0376`.**
+
+None / Monthly Accrual / Daily Accrual. **By Year** and **None** were the same stored value, **Earn Upon
+Resignation** was greyed out and had never calculated anything, and an unlisted quarterly option nobody
+used sat behind them. Monthly gains a day-of-month (1–31, clamped to the last day in a shorter month, so
+day 31 credits on 28 Feb and never skips). Daily accrual is new: annual entitlement in daily slices over
+the ACTUAL cycle length, 365 or 366.
+
+### Decisions
+
+**THE GATE, NOT THE WRITER, IS WHAT MAKES THE RESET SAFE.** A blank earning method is read by the engine
+as "hand the whole entitlement over up front". So simply clearing the columns — the obvious reading of
+the request — would have credited a new joiner a full year on the spot, and posted an UPWARD correction
+for anyone previously earning monthly the next time ordinary HR work (a grade change, a confirmation, a
+hire-date fix, a movement, a scheme assignment) triggered a recalc. Nothing can claw either back.
+`leave_type.accrual_unconfigured` makes an unconfigured type grant *nothing* instead.
+
+**`projectExpectedEntitlement` returns `null`, NOT `0`.** Returning 0 would make the reproject paths post
+a NEGATIVE compensating adjustment clawing back every already-credited day — the exact inversion of the
+risk being removed. Pinned at all three callers.
+
+**`openLeaveYear` is a ZEROED GRANT, not a `continue`.** The `continue` looks equivalent and is not: it
+would skip the carry-forward cap forfeit AND the grant row that is always written even at 0 days, which
+is simultaneously openLeaveYear's own idempotency marker and the expiry sweep's "year was opened" marker.
+Without it `expireCarriedLeave` short-circuits and carried leave never expires that year either. So the
+grant is forced to 0 *before* `applyMaxBalance`, leaving both writes intact.
+
+**AND THE PLAN'S DISCLOSURE ABOUT THAT WAS OVER-CAUTIOUS — measured at 0.00 days.** The plan warned the
+reporter that a zeroed grant leaves `carry` higher and the forfeit correspondingly smaller.
+`applyMaxBalance` computes `clampedCarry = min(carry, cap)` **before** giving the grant the remaining
+room, so carry has never depended on the grant and zeroing it cannot move the forfeit. A test now measures
+a configured and an unconfigured year side by side and asserts the forfeits are identical.
+
+**The marker is in `leaveTypeRuleColumns` but deliberately NOT in `hasAnyLeaveTypeRule`** — it must ride
+every select so the gates can read it, but if it flipped a previously-unruled type onto the type-level
+rule set, `applyLeaveTypeRules` would overlay NULL carryMax / roundingMethod / maxBalanceDays over the
+policy's real values and silently wipe configuration nobody asked to reset. Same reasoning as
+`carryForwardIncludeEarned`. Pinned twice.
+
+**ONE shared `earnedToDateFor`, called from both engines.** `accrueEarnedLeave` and
+`projectExpectedEntitlement` were two independent copies of the same arithmetic. Adding daily accrual or
+the accrual-day gate to only one would make the kernel project the monthly figure while the engine credits
+the daily one — the file's own comment names the result: "a permanent oscillating delta" posted on every
+profile edit.
+
+**The joiner guard differs by method, on purpose.** Daily accrual anchors on the HIRE DATE; a
+"cycleStart to asOf" window would let a calendar-cycle mid-year joiner accrue from 1 January — months of
+leave never worked, which the `toGrant > 0` guard means the engine can never take back. Monthly keeps its
+existing month-start rule.
+
+**KNOWN LIMIT, pinned rather than papered over:** the catch-up reproject does NOT reach an employee hired
+*during* the unconfigured window. `reprojectEntitlementForEmployment` carries a materialized-only guard —
+no accrual row this cycle means nothing to correct — and such a joiner has no row by construction.
+Affected precisely: a joiner during the window on a type later set to **None** (an earned type
+self-corrects on the next accrual run). The guard was NOT loosened: it is what stops a reproject
+fabricating grants, and it is shared by both recalc kernels.
+
+**Not fixed, and not claimed to be:** the a2c first-year divergence. `projectExpectedEntitlement` tests
+`a2cFirstYear` before the earned branch and `accrueEarnedLeave` has no a2c handling at all, so the two
+already disagree for `earned_monthly`; `earned_daily` inherits that unchanged. Excluded by explicit
+assertion in the cross-check rather than silently omitted. Worth its own item.
+
+### Verified on production after deploy
+
+25 leave types marked NOT CONFIGURED, `accrual_method` cleared at BOTH levels (10 → 0 on the type, 67 → 0
+in `leave_policy.accrual`), and **25 `leave-type.rules.updated` events each carrying a `before` payload** —
+the only recoverable record of what was cleared, exactly as promised to the reporter. **Ledger total
+unchanged at 1273.02 days, zero adjustment rows.** The gate did what it exists to do.
+
+### Gate
+
+`tsc` clean · **555 files / 6591 tests** · `next build` clean · upgrade rehearsal from `build/r127`
+**PASS**, leave balances unchanged at 128.00.
+
 ## r128 — 2026-08-04 — five items, three parallel agents, and the wedge that stopped all three
 
 **Shipped:** `8fec719e` (custom rounding table) · `56910869` (Override Leave Application engine) ·
