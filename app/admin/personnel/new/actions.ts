@@ -13,8 +13,10 @@ import { requireAdmin } from '@/lib/authz';
 import {
   completeEmployeeDraft,
   discardEmployeeDraft,
+  isEmployeeCodeTaken,
   saveEmployeeDraft,
 } from '@/core/employee-draft';
+import { normalizeEmployeeCode } from '@/lib/employee-code';
 import type { EmployeeDraftData } from '@/lib/employee-draft-schema';
 
 export async function saveDraftAction(
@@ -26,6 +28,20 @@ export async function saveDraftAction(
   const out = await saveEmployeeDraft(s, { id: id || undefined, data, currentStep });
   revalidatePath('/admin/personnel/new');
   return out;
+}
+
+/**
+ * Item bd271009 — is this hand-keyed Employee ID already taken? Called on blur so the clash is named
+ * while HR is still looking at the field, instead of surfacing as a refusal at the very last button.
+ *
+ * ADVISORY. `hireEmployee` re-checks and the tenant-wide unique index is the real net; a "free" answer
+ * here can be overtaken by a concurrent hire and that is accepted, because the cost is the old behaviour
+ * (a clear refusal at create) rather than a bad ID.
+ */
+export async function checkEmployeeCodeAction(code: string): Promise<{ code: string; taken: boolean }> {
+  const s = await requireAdmin();
+  const normalized = normalizeEmployeeCode(code);
+  return { code: normalized, taken: normalized === '' ? false : await isEmployeeCodeTaken(s, normalized) };
 }
 
 export async function discardDraftAction(id: string): Promise<void> {

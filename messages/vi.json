@@ -1378,13 +1378,14 @@
       "orgLabelsEmptyForCompany": "Chưa có nhãn tổ chức nào được cấu hình cho công ty đã chọn.",
       "hints": {
         "provisionalEndOn": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có.",
-        "employeeCode": "Để trống thì hệ thống sẽ sinh Mã nhân viên kế tiếp khi nhân viên được tạo. Bản nháp không bao giờ dùng mã nào.",
+        "employeeCode": "Chữ cái, chữ số và dấu gạch ngang, tối đa 30 ký tự. Mã không được trùng với mã đang dùng.",
         "icNumber": "Không bắt buộc — để trống với người dùng hộ chiếu. Nếu nhập, phải là số định danh hợp lệ theo quốc gia của công ty.",
         "dateOfBirth": "Để trống thì hệ thống lấy từ số định danh nếu có thể.",
         "businessUnit": "Chỉ để lọc danh sách phòng ban. Không lưu vào hồ sơ nhân viên.",
         "hiredOn": "Ngày làm việc đầu tiên. Sau khi tạo, ngày này chỉ thay đổi qua sự kiện điều động.",
         "bankAccount": "Nhập cả ngân hàng và số tài khoản, hoặc bỏ trống cả hai.",
-        "rateAmount": "Bắt buộc với hình thức trả lương theo ngày hoặc theo giờ."
+        "rateAmount": "Bắt buộc với hình thức trả lương theo ngày hoặc theo giờ.",
+        "company": "Được hỏi trước vì nó quyết định Thiết lập Số chạy tự động Mã nhân viên nào được áp dụng."
       },
       "backLabel": "Quay lại Nhân sự",
       "title": "Tạo nhân viên mới",
@@ -1443,7 +1444,27 @@
       "draftSaved": "Đã lưu nháp",
       "discardDraft": "Bỏ bản nháp",
       "createEmployee": "Tạo nhân viên",
-      "creating": "Đang tạo…"
+      "creating": "Đang tạo…",
+      "requiredField": "bắt buộc",
+      "companyOnProfileStep": "Được chọn ở bước Hồ sơ, vì đây là yếu tố quyết định quy tắc Mã nhân viên.",
+      "employeeId": {
+        "heading": "Mã nhân viên",
+        "chooseCompanyFirst": "Hãy chọn công ty ở trên trước — đây là yếu tố quyết định quy tắc Mã nhân viên.",
+        "noSetup": "Chưa có Thiết lập Số chạy tự động Mã nhân viên nào cho công ty đã chọn. Vui lòng nhập Mã nhân viên thủ công.",
+        "ruleCompany": "Công ty này có Thiết lập Số chạy tự động Mã nhân viên riêng. Mã tiếp theo sẽ cấp là {sample}.",
+        "ruleGlobal": "Thiết lập Số chạy tự động Mã nhân viên toàn tập đoàn áp dụng cho công ty này. Mã tiếp theo sẽ cấp là {sample}.",
+        "modeLabel": "Mã nhân viên được gán như thế nào?",
+        "modeAuto": "Số chạy tự động",
+        "modeManual": "Nhập thủ công",
+        "forcedAuto": "Thiết lập của công ty này không cho phép nhập thủ công, nên số chạy tự động sẽ được dùng.",
+        "previewNote": "là hình thức mã sẽ có. Mã nhân viên thật được cấp khi nhân viên được tạo.",
+        "checking": "Đang kiểm tra…",
+        "duplicate": "Mã nhân viên \"{code}\" đã tồn tại. Vui lòng nhập Mã nhân viên khác.",
+        "available": "Mã nhân viên \"{code}\" còn trống.",
+        "staleCode": "Mã nhân viên \"{code}\" đã nhập trước đó sẽ không được dùng, vì công ty này không còn cho phép nhập thủ công.",
+        "removeCode": "Xóa mã",
+        "draftCostsNothing": "Lưu bản nháp không tốn gì cả. Mã nhân viên chỉ bị lấy khi nhân viên được tạo thành công."
+      }
     }
   },
   "leave": {

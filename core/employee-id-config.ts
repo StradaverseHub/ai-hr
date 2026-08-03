@@ -27,6 +27,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { company, employeeIdConfig } from '../db/schema';
 import { EMPLOYEE_CODE_MAX_LEN } from '../lib/employee-code';
+import type { EmployeeIdRule } from '../lib/employee-id-mode';
 
 export const EMPLOYEE_ID_CONFIG_STATUSES = ['active', 'inactive'] as const;
 export type EmployeeIdConfigStatus = (typeof EMPLOYEE_ID_CONFIG_STATUSES)[number];
@@ -457,4 +458,73 @@ export async function listConfigs(ctx: SessionContext, companyIds?: string[]): P
 export async function getConfig(ctx: SessionContext, id: string): Promise<ConfigRow | null> {
   const rows = await listConfigs(ctx);
   return rows.find((r) => r.id === id) ?? null;
+}
+
+// ─────────────────── Resolution over ROWS (item bd271009) ───────────────────
+//
+// generateEmployeeCode resolves the applicable config IN SQL, one company at a time, inside the hire
+// transaction — exactly right for issuing a number, useless for a screen that has to describe the rule for
+// every company in a select before anything is chosen. These three pure helpers express THE SAME
+// precedence over rows already read, so the wizard needs one listConfigs call rather than one query per
+// company, and there is no second definition of "which setup applies" to drift.
+
+type ActiveScopeRow = { companyId: string | null; status: EmployeeIdConfigStatus };
+
+/** The ACTIVE config that applies to `companyId`: its own first, else the tenant-wide GLOBAL one, else
+ *  null. Mirrors generateEmployeeCode's `ORDER BY company_id is null LIMIT 1` over the same predicate. */
+export function pickActiveConfig<T extends ActiveScopeRow>(rows: T[], companyId: string): T | null {
+  const applicable = rows.filter(
+    (r) => r.status === 'active' && (r.companyId === companyId || r.companyId == null),
+  );
+  return applicable.find((r) => r.companyId === companyId) ?? applicable.find((r) => r.companyId == null) ?? null;
+}
+
+/** The number the NEXT issue would take — the same arithmetic the row-locked UPDATE performs:
+ *  startNumber on the first issue (current below start), else current + increment. */
+export function nextRunningNumber(cfg: {
+  startNumber: number;
+  increment: number;
+  currentRunningNumber: number;
+}): number {
+  return cfg.currentRunningNumber < cfg.startNumber ? cfg.startNumber : cfg.currentRunningNumber + cfg.increment;
+}
+
+/** Flatten a config row into the serialisable rule the wizard consumes. `null` ⇒ "no setup applies". */
+export function ruleFromConfig(cfg: ConfigRow | null | undefined): EmployeeIdRule {
+  if (!cfg) {
+    return {
+      hasConfig: false,
+      scope: null,
+      prefix: '',
+      suffix: '',
+      numberLength: 0,
+      nextNumber: 0,
+      sampleCode: '',
+      allowManualOverride: false,
+    };
+  }
+  const nextNumber = nextRunningNumber(cfg);
+  let sampleCode = '';
+  // A SAMPLE never blocks a screen: an over-long template is refused on save by assertFits, and here an
+  // impossible composition simply has no preview to show.
+  try {
+    sampleCode = formatEmployeeCode(cfg.prefix, nextNumber, cfg.numberLength, cfg.suffix);
+  } catch {
+    sampleCode = '';
+  }
+  return {
+    hasConfig: true,
+    scope: cfg.companyId == null ? 'global' : 'company',
+    prefix: cfg.prefix,
+    suffix: cfg.suffix,
+    numberLength: cfg.numberLength,
+    nextNumber,
+    sampleCode,
+    allowManualOverride: cfg.allowManualOverride,
+  };
+}
+
+/** pickActiveConfig + ruleFromConfig, the pair the callers actually want. */
+export function resolveEmployeeIdRule(rows: ConfigRow[], companyId: string): EmployeeIdRule {
+  return ruleFromConfig(pickActiveConfig(rows, companyId));
 }

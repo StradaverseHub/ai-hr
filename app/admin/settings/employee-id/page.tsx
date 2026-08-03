@@ -232,7 +232,11 @@ export default async function EmployeeIdConfigPage({
               <input
                 type="checkbox"
                 name="allowManualOverride"
-                defaultChecked={editing?.allowManualOverride ?? false}
+                // Item bd271009 — a NEW setup starts with manual entry PERMITTED, matching what migration
+                // 0355 wrote onto every existing active row. The switch now actually hides the wizard's
+                // Manual Key In option, so defaulting it off would quietly take a capability away from
+                // every setup created from here on.
+                defaultChecked={editing?.allowManualOverride ?? true}
                 className="mt-0.5 size-4 accent-primary"
               />
               <span className="flex flex-col gap-0.5">
