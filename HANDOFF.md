@@ -5,17 +5,42 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-03, after r123 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-03, after r124 SHIPPED)
 
 > ## ▶ NEXT SESSION STARTS HERE
 >
-> **`main@db05087a` is what runs. Production on 299 migrations. Next free number is `0353`.** Nothing is in
-> flight: no unmerged build branch, no half-applied migration, no pending deploy. r123 shipped five approved
-> items and both new columns are inert on production (all 25 leave types NULL in both).
+> **`main@56f2c5e3` is what runs. Production on 300 migrations. Next free number is `0354`.** Nothing is in
+> flight: no unmerged build branch, no half-applied migration, no pending deploy.
 >
-> ### THE BOARD, COUNTED 2026-08-03 AFTER r123 — the r115/r122 counts below are STALE
+> ### ⚠️ READ THE r124 ENTRY BEFORE SHIPPING ANY UI CHANGE
 >
-> **4 approved and unbuilt · 10 contested · 2 open (both raised by r123) · 0 blocked.**
+> r123 broke the Entitlements tab in production — a server component passed closures to a client
+> component — and **every gate step passed**: tsc, next build, 6389 tests, the rehearsal. The reporter
+> found it, not us. r124 fixed it and added `test/server-client-boundary.test.ts`, but the durable lesson
+> is that **rendering the page takes five minutes and nothing else can catch this class**:
+>
+>     pnpm db:seed && PORT=3111 pnpm dev
+>     curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3111/admin/leave/entitlements
+>
+> No browser extension, no production access. Every leave route was verified 200 this way in r124.
+>
+> ### THE BOARD IS FULLY PLANNED — counted 2026-08-03 after r124. Every count below this block is STALE.
+>
+> **16 items were planned this session.** 10 contested were re-planned and pushed; 6 more were planned from
+> scratch, and **THREE OF THOSE SIX TURNED OUT TO BE ALREADY BUILT** (`a324a4b3`, `bd271009`, `00307068`).
+> Read a plan's `KNOWN OPEN POINTS FROM REVIEW` block before building it — that is where the objections
+> that were NOT resolved are recorded, with citations.
+>
+> **`8fec719e` was re-planned rather than built and the reporter RE-APPROVED it.** Its approved plan had
+> told them existing balances would not move. They will: 2 types (Annual, Compassionate), all 23 employees,
+> moving DOWN. See the r124 entry.
+>
+> **Two items the reporter narrowed AFTER the plans went out, both now Quick and both unaddressed:**
+> - `645e67c4` — "is not under leave configuration tab, what I meant is to place under leave config
+>   module". The Replacement Leave placeholder shipped as a TAB; they want a sidebar entry.
+> - `7cd914b1` — "I just dont need Carry cap (days) if the option is percentage from remaining balance,
+>   the rest like carry expiry boxes, please remain." This settles the exact fork an earlier plan was
+>   refuted for asking about.
 >
 > Every one of the 4 approved is GATED on something, which is why r123 shipped the other five and stopped:
 > - `8fec719e` (custom rounding table) waits on `7cd914b1` — which the reporter has since CONTESTED.
@@ -1012,6 +1037,134 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r124 — 2026-08-03 — the hotfix for a page r123 broke, and why nothing caught it
+
+**Shipped:** `main@56f2c5e3`. **Migration `0353`.** Production on **300** migrations.
+**Gate:** `tsc` · **547 files / 6392 tests** · `next build` · **upgrade rehearsal PASS**.
+Verified live AND rendered locally — see below, because rendering is the whole point of this entry.
+
+### ⚠️ r123 BROKE THE ENTITLEMENTS TAB IN PRODUCTION AND THE REPORTER FOUND IT BEFORE WE DID
+
+`10e96227` put `ChipMultiSelect` — a `'use client'` component — directly into
+`app/admin/leave/entitlements/page.tsx`, a SERVER component, and passed it `removeLabelFor` and
+`countLabelFor`: closures over the server's translator. React cannot serialise a function across that
+boundary, so it threw at RENDER and the tab returned "This page couldn't load" from the moment r123
+deployed until this fix. Raised as `b55fdf33`.
+
+**The idiom looked safe because every OTHER `ChipMultiSelect` caller lives inside
+`components/leave-type-panel.tsx`, which is itself a client component** — where function props are
+perfectly legal. The usage was copied without checking which side of the boundary it landed on.
+
+### THE PART TO INTERNALISE: EVERY GATE STEP PASSED
+
+| step | result | why it was blind |
+|---|---|---|
+| `tsc --noEmit` | clean | a function prop is well-typed |
+| `next build` | clean | this is a RUNTIME serialisation error |
+| 6389 tests | clean | they are static source scans + DB-backed behaviour tests. **Nothing renders.** |
+| upgrade rehearsal | clean | it tests migrations |
+
+A defect invisible to types, invisible to the build, and invisible to every test that does not render.
+**The handoff has said since r91 that browser verification is "not optional" and that everything since r70
+is unverified. r123 shipped a UI change and did not run it.**
+
+**`test/server-client-boundary.test.ts` is the cheapest thing that CAN see it.** For every server file
+under `app/` it finds JSX whose tag is a known client component and flags any prop whose value is an arrow
+or function expression. **It was verified against the SHIPPED code before being trusted** — run over
+`main`'s version of the page it reports `removeLabelFor` and `countLabelFor` at line 402. A test that
+cannot fail is worthless, and that check took two minutes.
+
+**The fix is `components/leave/half-day-company-picker.tsx`**, a client wrapper that calls
+`useTranslations` itself so only serialisable data crosses. The form contract (`name="companyIds"`,
+`defaultSelected`) is unchanged, so the action is untouched.
+
+### RENDER VERIFICATION IS NOW DONE, AND IT TOOK FIVE MINUTES
+
+`pnpm db:seed` then `PORT=3111 pnpm dev`, then curl each surface. Every leave route returns **200** with
+**zero** errors in the dev log, and the half-day card renders its new labels:
+
+    /admin/leave              200   487985b
+    /admin/leave/entitlements 200   555858b   ("Half-day deduction", "Companies this applies to")
+    /admin/leave/replacement  200   462246b   ("under development", "already works today")
+    /admin/leave/approval     200   494143b
+    /admin/leave/payroll      200   493182b
+    /admin/leave/audit        200   515366b
+
+**This is the recipe. It needs no browser extension and no production access.** There is no excuse for
+shipping a UI change without it.
+
+### `0353` — the schema half of 491c499f, shipped inert
+
+`leave_adjustment_batch` + a nullable `leave_ledger.adjustment_batch_id`. Referenced by nothing yet.
+It exists because **the ledger had no way to group a bulk adjustment**: the festive grant writes one
+summary event whose `aggregate_id` is the TENANT, so afterwards the rows one action wrote cannot be found.
+`core/leave-import.ts:298` has the same shape. 491c499f's approved plan requires reversal *as a unit*, and
+an event alone cannot locate the rows.
+
+Six CHECKs make the failure modes unrepresentable: a reason cannot be blank or `sys:`-prefixed (either
+would misclassify the row in `classifyLedgerAdjustment`, which reads a NULL reason as `'config'`), days
+cannot be zero, only an `adjustment` row may carry a batch, and a reversal cannot record a time without an
+actor. **`leave_adjustment_batch` was added to the harness TRUNCATE list** — omitting it lets a batch
+outlive its ledger rows across test files (the ADR-0071 leak the list's own comment records).
+
+### THE BOARD IS FULLY PLANNED FOR THE FIRST TIME — 16 items planned this session
+
+Ten contested plans were re-planned and pushed, each carrying a **`KNOWN OPEN POINTS FROM REVIEW`** block
+in its build notes listing the objections that were NOT resolved, with citations. Six more were planned
+from scratch. **Three of those six turned out to be ALREADY BUILT** — `a324a4b3`'s expandable Attendance
+menu exists and merely sits in the wrong sidebar group; `bd271009` and `00307068` likewise.
+
+**`a324a4b3` carries a trap worth reading before building it:** the admin sidebar group gates at GROUP
+level, so moving the Attendance node into it wholesale would strip `/attendance` from every plain
+employee's rail and `/roster` + `/attendance/import` from every non-admin manager. Its plan splits the node
+three ways for exactly that reason.
+
+### `8fec719e` WAS RE-PLANNED RATHER THAN BUILT, AND THE REPORTER RE-APPROVED IT
+
+It was APPROVED, and its approved plan told the reporter *"leave already granted or taken is not
+recalculated"*. **That is false.** `core/leave.ts:7221-7233` folds `roundingMethod` into the
+entitlement-change comparison and the comment at `:7213` says outright that flipping the dropdown
+re-figures every already-granted balance. `test/leave-entitlement-rounding.test.ts:346-440` already pinned
+it. Closed prior years ARE protected; the current open cycle is not.
+
+**The count the approved plan asked for and nobody took**, run before re-planning: 25 leave types, 23
+already unrounded, **2 on Round Up (Annual Leave, Compassionate Leave)**, **all 23 employees hold a balance
+on them**, and the reset moves those balances DOWN. Also corrected: the carry-forward percentage is
+deliberately never rounded (`core/leave.ts:6096-6100`), so the plan's claim that the table decides what 3.5
+becomes was wrong. And the approved plan's "second rounding_method column" warning pointed at
+`pay_component` — payroll pay codes, a different domain. **The real second surface is the legacy
+`leave_policy.accrual.roundingMethod` JSONB, 58 rows still `'up'` on production.**
+
+### THE RE-PLANNING WORKFLOWS: 34 AGENTS, TWO ROUNDS, ZERO SURVIVORS — AND WHY A THIRD WAS NOT RUN
+
+Round 1 refuted 7 of 10. Round 2 revised those 7 and re-verified all 10: **0 survived.** That is not a
+mis-calibrated judge — the round-2 verifiers confirmed round-1 fixes had LANDED (`38f1fd40` restored its
+dropped minus sign, `c459bff9` deleted a dependency on an item that had already shipped) and then found
+DIFFERENT, deeper defects: 90 concerns, only 13 self-labelled minor. **Each pass reads deeper. It did not
+converge and there is no stopping rule.**
+
+What finally worked was a THIRD workflow with a NARROW, CONVERGENT brief — *correct what is verifiably
+wrong, disclose what you cannot resolve, do not rewrite* — and it produced the plans that shipped. **It
+also caught the reviewers being wrong**: `4b0e76ae`'s notes record that a claimed `yearLabel` collision
+does not exist (three different namespaces) and that a claimed "16 files" grep returns 13.
+
+**Lesson: an adversarial verifier told to "default to refuted" can never clear anything. Gate on SEVERITY,
+not on a boolean, and give the final pass a brief it can finish.**
+
+### SMALLER THINGS
+
+- **The cluster was wiped FIVE times this session.** Fresh: full chain in 2.5-3.1s, template 1.1s. Wedged:
+  `du -sh` on the data dir hangs past 120s. **The rehearsal's cleanup `DROP DATABASE ... WITH (FORCE)`
+  wedges on `CheckpointStart` every time** — the verdict is printed BEFORE it, so a hung cleanup after
+  `UPGRADE_REHEARSAL=PASS` is not a failed rehearsal.
+- **NEVER run a second vitest while a gate is in flight.** Doing so wiped a running gate's 10 worker DBs
+  and cost an 18-minute run. The `TEST_DB_NAMESPACE` rule applies to the main session, not just subagents.
+- **Never pipe a gate through `tail`.** A run that fails becomes unreadable — the first attempt lost the
+  list of 14 affected files that way.
+- The `pwd` trap bit twice more, once writing to the wrong worktree. Put `cd <path> &&` in EVERY command.
+
+---
 
 ## r123 — 2026-08-03 — five approved items, and two of them were not what the tickets said
 
