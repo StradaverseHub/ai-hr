@@ -20,12 +20,16 @@ import Link from 'next/link';
 export async function LeaveTabs({
   active,
 }: {
-  active: 'types' | 'entitlements' | 'approval' | 'payroll' | 'replacement' | 'audit';
+  active: 'types' | 'entitlements' | 'adjustments' | 'approval' | 'payroll' | 'replacement' | 'audit';
 }) {
   const t = await getTranslations('admin.leaveTabs');
   const tabs = [
     { key: 'types', href: '/admin/leave', label: t('types') },
     { key: 'entitlements', href: '/admin/leave/entitlements', label: t('entitlements') },
+    // 491c499f — Leave Adjustments sits straight after Entitlements: an adjustment is a transaction ON an
+    // entitlement, so it reads in the order the work is actually done. It must exist BEFORE 38f1fd40
+    // removes the old per-leave-type Adjustments step.
+    { key: 'adjustments', href: '/admin/leave/adjustments', label: t('adjustments') },
     { key: 'approval', href: '/admin/leave/approval', label: t('approval') },
     { key: 'payroll', href: '/admin/leave/payroll', label: t('payroll') },
     { key: 'replacement', href: '/admin/leave/replacement', label: t('replacement') },

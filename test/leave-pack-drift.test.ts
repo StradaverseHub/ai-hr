@@ -51,6 +51,12 @@ const BOUNDARIES = [
   'core/leave-escalation',
   'core/leave-formula',
   'core/leave-import',
+  // 491c499f — the bulk Leave Adjustments writer. In BOTH lists for the reason the r90 note above gives:
+  // as a BOUNDARY it is guarded like its siblings, so a future file importing it directly is caught; in
+  // ALWAYS_ALLOWED it may import them back, because leave implementation files import each other freely.
+  // ALWAYS_ALLOWED alone would have silenced the failure and left this module unguarded, which is the
+  // drift D9 exists to stop. It is re-exported from packs/leave/service like every other pack module.
+  'core/leave-adjustment',
   'core/toil',
   'core/benefit-scheme',
 ];
@@ -67,6 +73,7 @@ const ALWAYS_ALLOWED = [
   'core/leave-escalation.ts',
   'core/leave-formula.ts',
   'core/leave-import.ts',
+  'core/leave-adjustment.ts', // 491c499f — see the BOUNDARIES note above
   'core/toil.ts',
   'core/benefit-scheme.ts',
   'app/leave/', // the My Absence self-service home (balances/apply/history/export)

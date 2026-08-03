@@ -266,6 +266,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/leave',
       '/admin/leave/import',
       '/admin/leave/entitlements',
+      // 491c499f — same admin surface, same requireAdmin guard, so it is a ROUTE rather than a new
+      // screenKey (the /admin/personnel precedent above).
+      '/admin/leave/adjustments',
       '/admin/leave/payroll',
       '/admin/leave/replacement',
       '/admin/leave/audit',

@@ -137,6 +137,13 @@ import {
  *  year-boundary sweeps (openLeaveYear, accrueEarnedLeave, expireCarriedLeave, grantAdHocLeave) to skip —
  *  the DB trigger would reject the write anyway; skipping here avoids aborting the whole batch on one
  *  frozen employee. Read-only, no events.append (CLAUDE.md skip rule). */
+/** 491c499f — the same set, exported for core/leave-adjustment.ts. Re-implementing it there would give the
+ *  bulk-adjustment writer a second opinion about which balances are frozen, and two opinions about an
+ *  ADR-0069 freeze is how a paid-out figure gets written through. One definition, two callers. */
+export async function frozenAdjustmentKeys(tx: Tx, empIds: string[], typeIds: string[]): Promise<Set<string>> {
+  return frozenSnapshotKeySet(tx, empIds, typeIds);
+}
+
 async function frozenSnapshotKeySet(tx: Tx, empIds: string[], typeIds: string[]): Promise<Set<string>> {
   if (empIds.length === 0 || typeIds.length === 0) return new Set();
   const rows = await tx
