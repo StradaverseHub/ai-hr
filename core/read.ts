@@ -72,7 +72,10 @@ import { payslipReleaseAt } from './payroll-policy-config';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { visibleLabelIdsCondition } from './system-labels';
 import { resolveEssView, type ResolvedEssView } from './ess-view';
-import { resolveLeaveFormula, type LeaveFormulaEntry, type ResolvedLeaveFormula } from './leave-formula';
+// 00307068: `resolveLeaveFormula` (the fixed nine-key resolver) is no longer imported here — every call site
+// in this file now resolves BY LEAVE TYPE CODE. The function itself is unchanged and still exported for the
+// pack facade and its own tests.
+import { resolveLeaveFormulaForCode, type LeaveFormulaEntry } from './leave-formula';
 import { resolvePlacement, type EssPlacement } from '../lib/leave-groups';
 import type { EmploymentStatus } from './employment-status';
 import { employmentStatusSql } from './employment-status-sql';
@@ -2258,8 +2261,13 @@ export type LeaveEntitlementBreakdown = {
   essView: ResolvedEssView;
   /** Leave Entitlement Formula Management (79011509): HR-authored per-component explanations for this leave
    *  type, resolved (missing / all-empty ⇒ null). The breakdown panel shows a per-row info icon only where an
-   *  explanation exists (feedback b8b665ff). Explanation layer only — never a computed figure. */
-  formulaExplanations: ResolvedLeaveFormula;
+   *  explanation exists (feedback b8b665ff). Explanation layer only — never a computed figure.
+   *
+   *  00307068 widened the declared type from `ResolvedLeaveFormula` (the nine summary keys) to a plain
+   *  string-keyed map, because the key set is now resolved BY LEAVE TYPE CODE: a REPLACEMENT type resolves
+   *  its five per-credit TABLE COLUMNS, every other type resolves the same nine summary items as before.
+   *  The render sites already index this by a string field key, so nothing downstream changes shape. */
+  formulaExplanations: Record<string, LeaveFormulaEntry | null>;
 };
 
 /**
@@ -2544,7 +2552,9 @@ export function leaveEntitlementBreakdown(
         reason: r.reason,
       })),
       essView: resolveEssView(type.essViewConfig as Record<string, boolean> | null),
-      formulaExplanations: resolveLeaveFormula(type.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
+      // 00307068: resolved over THIS type's own key set — the five Replacement Leave columns for REPLACEMENT,
+      // the nine summary items for everything else. `type.code` is already selected above.
+      formulaExplanations: resolveLeaveFormulaForCode(type.code, type.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
     };
   });
 }
@@ -2559,6 +2569,11 @@ export type ReplacementLeaveLedger = {
   expired: number;
   convertedToPay: number;
   soonestExpiry: string | null;
+  /** 00307068: the REPLACEMENT leave type's configured labelling unit ('day' | 'hour'), so the per-credit
+   *  table can render the Number column in the unit HR named it in. Deliberately labelling-only — it does
+   *  NOT change how any figure is calculated (see leave_type.leave_unit, e4980382). 'day' when the type does
+   *  not exist for this tenant yet. */
+  leaveUnit: 'day' | 'hour';
   rows: {
     id: string;
     workedDate: string;
@@ -2567,6 +2582,15 @@ export type ReplacementLeaveLedger = {
     daysTaken: number;
     status: 'active' | 'taken' | 'converted_to_pay' | 'lapsed';
     remaining: number;
+    // ── 00307068 additions. Kept ADDITIVE: test/replacement-leave-controls.test.ts asserts against the
+    // shape above and every field it names is untouched.
+    /** The day the credit was asked for. NULL on a row banked before migration 0354 could know it. */
+    requestedOn: string | null;
+    /** The instant a line manager's approval banked it, ISO-8601. NULL for the same reason. */
+    approvedOn: string | null;
+    /** The raw overtime minutes behind `daysCredited` — what the Number column shows when the type's unit
+     *  is 'hour' (otMinutes / 60), rather than re-deriving hours from a rounded day figure. */
+    otMinutes: number;
   }[];
 };
 
@@ -2580,10 +2604,25 @@ export function replacementLeaveLedger(ctx: SessionContext, employmentId: string
         daysCredited: toilAccrual.daysCredited,
         daysTaken: toilAccrual.daysTaken,
         status: toilAccrual.status,
+        // 00307068: the two dates the employee's per-credit table shows, plus the raw minutes the 'hour'
+        // unit renders from.
+        requestedOn: toilAccrual.requestedOn,
+        approvedOn: toilAccrual.approvedOn,
+        otMinutes: toilAccrual.otMinutes,
       })
       .from(toilAccrual)
       .where(eq(toilAccrual.employmentId, employmentId))
       .orderBy(asc(toilAccrual.expiresOn), asc(toilAccrual.workedDate));
+
+    // 00307068: the REPLACEMENT type's labelling unit. One narrow read rather than threading the whole
+    // leave-type row: this function's callers ask for a credit register, not a type. Absent type ⇒ 'day'
+    // (the column default), which is also what every tenant that has never touched the setting has.
+    const [rlType] = await tx
+      .select({ leaveUnit: leaveType.leaveUnit })
+      .from(leaveType)
+      .where(and(sql`lower(${leaveType.code}) = 'replacement'`, isNull(leaveType.archivedAt)))
+      .limit(1);
+    const leaveUnit: 'day' | 'hour' = rlType?.leaveUnit === 'hour' ? 'hour' : 'day';
 
     let active = 0;
     let taken = 0;
@@ -2614,9 +2653,12 @@ export function replacementLeaveLedger(ctx: SessionContext, employmentId: string
         daysTaken: dTaken,
         status: r.status,
         remaining,
+        requestedOn: r.requestedOn ?? null,
+        approvedOn: r.approvedOn ? r.approvedOn.toISOString() : null,
+        otMinutes: r.otMinutes ?? 0,
       });
     }
-    return { active, taken, expired, convertedToPay, soonestExpiry, rows: out };
+    return { active, taken, expired, convertedToPay, soonestExpiry, leaveUnit, rows: out };
   });
 }
 

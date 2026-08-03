@@ -1623,7 +1623,24 @@
         "available": "What you can actually apply for today. This is the same figure shown everywhere else, including when you apply for leave."
       },
       "adjustmentNoReason": "No reason given",
-      "expiresOn": "Expires: {date}"
+      "expiresOn": "Expires: {date}",
+      "replacement": {
+        "creditsHeading": "Banked Credits",
+        "empty": "No replacement leave credits have been banked yet.",
+        "col": {
+          "requestDate": "Request Date",
+          "number": "Number",
+          "unit": "Unit",
+          "approvalDate": "Approval Date",
+          "expiredDate": "Expired Date"
+        },
+        "unitDay": "Day(s)",
+        "unitHour": "Hour(s)",
+        "statusTaken": "Used",
+        "statusExpired": "Expired",
+        "statusConverted": "Paid out",
+        "statusPartlyUsed": "Partly used"
+      }
     },
     "preview": {
       "loading": "Calculating…"
@@ -4544,7 +4561,12 @@
         "pendingApproval": "Pending Approval",
         "forfeited": "Brought Forward Forfeited",
         "available": "Available Balance",
-        "groupOther": "Other"
+        "groupOther": "Other",
+        "requestDate": "Request Date",
+        "number": "Number",
+        "unit": "Unit",
+        "approvalDate": "Approval Date",
+        "expiredDate": "Expired Date"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Day Type Inclusion",

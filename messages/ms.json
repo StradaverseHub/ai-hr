@@ -1623,7 +1623,24 @@
         "available": "Jumlah yang benar-benar boleh anda mohon hari ini. Ini angka yang sama dipaparkan di tempat lain, termasuk semasa anda memohon cuti."
       },
       "adjustmentNoReason": "Tiada sebab dinyatakan",
-      "expiresOn": "Luput: {date}"
+      "expiresOn": "Luput: {date}",
+      "replacement": {
+        "creditsHeading": "Kredit Terkumpul",
+        "empty": "Belum ada kredit cuti gantian yang terkumpul.",
+        "col": {
+          "requestDate": "Tarikh Permohonan",
+          "number": "Bilangan",
+          "unit": "Unit",
+          "approvalDate": "Tarikh Kelulusan",
+          "expiredDate": "Tarikh Luput"
+        },
+        "unitDay": "Hari",
+        "unitHour": "Jam",
+        "statusTaken": "Telah digunakan",
+        "statusExpired": "Luput",
+        "statusConverted": "Dibayar tunai",
+        "statusPartlyUsed": "Sebahagian digunakan"
+      }
     },
     "preview": {
       "loading": "Mengira…"
@@ -4507,7 +4524,12 @@
         "pendingApproval": "Menunggu Kelulusan",
         "forfeited": "Bawa Hadapan Dilucuthak",
         "available": "Baki Tersedia",
-        "groupOther": "Lain-lain"
+        "groupOther": "Lain-lain",
+        "requestDate": "Tarikh Permohonan",
+        "number": "Bilangan",
+        "unit": "Unit",
+        "approvalDate": "Tarikh Kelulusan",
+        "expiredDate": "Tarikh Luput"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Kemasukan Jenis Hari",

@@ -65,6 +65,10 @@ let b: Base;
 let ctx: SessionContext;
 const REST_DAY = '2026-07-04'; // Saturday; setRestDay makes it a rostered rest day regardless
 const WORKDAY = '2026-07-06'; // a Monday workday
+// 00307068: the expiry period is counted from the line manager's APPROVAL rather than the day worked, so
+// the approval instant is now an input to every accrual and is injected like every other date here. Two
+// days after the rest day — a manager approving on the following Monday.
+const APPROVED_ON = new Date('2026-07-06T02:00:00.000Z');
 const uniqEmail = () => `rlc_${Math.random().toString(36).slice(2)}@t.local`;
 
 const policy = (companyId: string, over: Partial<ToilPolicyInput> = {}): ToilPolicyInput => ({
@@ -99,7 +103,7 @@ async function accrueRestDay(basic: number, over: Partial<ToilPolicyInput> = {})
   await setRestDay(a, { employmentId, shiftDate: REST_DAY });
   await checkIn(a, { employmentId, date: REST_DAY, time: '08:00:00' });
   await checkOut(a, { employmentId, date: REST_DAY, time: '17:00:00' }); // 540 − 60 break = 480 OT
-  const r = await accrueToil(a, { employmentId, workedDate: REST_DAY });
+  const r = await accrueToil(a, { employmentId, workedDate: REST_DAY, approvedOn: APPROVED_ON });
   return { a, employmentId, accrualId: r.accrualId };
 }
 
@@ -268,7 +272,7 @@ describe('Active-vs-expired read (step 3)', () => {
     const { employmentId, accrualId } = await accrueRestDay(5000, { onExpiry: 'convert_to_pay' });
     let led = await replacementLeaveLedger(ctx, employmentId);
     expect(led.active).toBe(1);
-    expect(led.soonestExpiry).toBe('2026-10-02'); // REST_DAY + 90d
+    expect(led.soonestExpiry).toBe('2026-10-04'); // 00307068: APPROVED_ON + 90d (was REST_DAY + 90d)
 
     await runToilExpiry(ctx, { today: '2026-10-15' });
     led = await replacementLeaveLedger(ctx, employmentId);
@@ -276,6 +280,85 @@ describe('Active-vs-expired read (step 3)', () => {
     expect(led.convertedToPay).toBe(1);
     expect(await replacementBalance(employmentId)).toBe(0);
     expect((await accrualRow(accrualId)).status).toBe('converted_to_pay');
+  });
+});
+
+/**
+ * 00307068 — the two dates a credit has never recorded, and the expiry anchor that now depends on one of
+ * them. These are the columns the employee's Replacement Leave table shows; before this item they could not
+ * be built from anything stored, which is why this needed a migration and not a screen change.
+ */
+describe('Request / approval dates on a banked credit (00307068)', () => {
+  it('a ROSTER election records the approval instant and, having no employee request, the worked day', async () => {
+    const { employmentId, accrualId } = await accrueRestDay(5000);
+    const acc = await accrualRow(accrualId);
+    expect(acc.approvedOn?.toISOString()).toBe(APPROVED_ON.toISOString());
+    // There is no employee request on this path at all — a manager picks the worked day off the roster —
+    // so the worked day is the only date in evidence. Inventing a "requested on" nobody typed would be a
+    // fabrication on a screen the employee reads.
+    expect(acc.requestedOn).toBe(REST_DAY);
+    // The expiry now runs from the approval, which is why it is 2026-10-04 and not 2026-10-02.
+    expect(acc.expiresOn).toBe('2026-10-04');
+
+    // …and all three reach the read the employee panel is built on.
+    const led = await replacementLeaveLedger(ctx, employmentId);
+    expect(led.rows).toHaveLength(1);
+    expect(led.rows[0]).toMatchObject({
+      requestedOn: REST_DAY,
+      expiresOn: '2026-10-04',
+      otMinutes: 480,
+      daysCredited: 1,
+      status: 'active',
+    });
+    expect(led.rows[0].approvedOn).toBe(APPROVED_ON.toISOString());
+    // The type's labelling unit rides along so the Number column can read in the unit HR named.
+    expect(led.leaveUnit).toBe('day');
+  });
+
+  it('the AUTO path records the employee’s own request date — the attendance correction they filed', async () => {
+    const { a, employmentId } = await hire(5000);
+    await setToilPolicy(a, policy(b.companyId, { autoAccrueOnApproval: true }));
+    await setRestDay(a, { employmentId, shiftDate: REST_DAY });
+    const cor = await requestAttendanceCorrection(a, {
+      employmentId,
+      date: REST_DAY,
+      checkIn: '08:00:00',
+      checkOut: '17:00:00',
+      reason: 'Correction',
+    });
+    await decideAttendanceCorrection(a, { correctionId: cor.correctionId, decision: 'approved' });
+
+    const [acc] = await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId, employmentId));
+    // On THIS path the employee really did ask, and the correction IS the request — so its own creation
+    // date is the request date, not the worked-day fallback the roster path has to use.
+    //
+    // THE ORDERING TRAP THIS PINS. decideAttendanceCorrection calls the accrual hook BEFORE it flips the
+    // correction's status to 'approved', so an implementation that looked the correction up by
+    // status='approved' would find nothing and silently fall back to the worked date. The correction here
+    // is deliberately created on a DIFFERENT day from the worked date, so that fallback would fail this
+    // assertion instead of passing by coincidence.
+    const [corrRow] = await owner.db
+      .select({ createdAt: schema.attendanceCorrection.createdAt })
+      .from(schema.attendanceCorrection)
+      .where(eq(schema.attendanceCorrection.id, cor.correctionId));
+    const requestDay = corrRow.createdAt.toISOString().slice(0, 10);
+    expect(acc.requestedOn).toBe(requestDay);
+    expect(acc.requestedOn).not.toBe(REST_DAY); // …and it is NOT the worked-day fallback
+    expect(acc.approvedOn).not.toBeNull();
+    // Approval is the anchor here too: the credit expires 90 days from the decision, never from the work.
+    const approvedDay = acc.approvedOn!.toISOString().slice(0, 10);
+    expect(acc.expiresOn).toBe(
+      new Date(Date.parse(`${approvedDay}T00:00:00Z`) + 90 * 86_400_000).toISOString().slice(0, 10),
+    );
+  });
+
+  it('the anchor move can only LENGTHEN a credit’s life, never shorten it', async () => {
+    // The property the whole change rests on, asserted rather than argued: approval is always on or after
+    // the day worked, so approval + period is always on or after worked + period.
+    const { accrualId } = await accrueRestDay(5000);
+    const acc = await accrualRow(accrualId);
+    const underOldRule = new Date(Date.parse(`${REST_DAY}T00:00:00Z`) + 90 * 86_400_000).toISOString().slice(0, 10);
+    expect(acc.expiresOn >= underOldRule).toBe(true);
   });
 });
 

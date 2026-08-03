@@ -29,7 +29,10 @@ import { isModuleEnabled } from '../core/entitlements';
 
 let b: Base;
 const REST_DAY = '2026-07-04';
-const AFTER_EXPIRY = '2026-10-15'; // > REST_DAY + 90d (2026-10-02)
+// 00307068 moved the expiry anchor from the worked day to the line manager's APPROVAL, so the approval
+// instant is now an input to every accrual here and is injected like every other date in this suite.
+const APPROVED_ON = new Date('2026-07-06T02:00:00.000Z');
+const AFTER_EXPIRY = '2026-10-15'; // > APPROVED_ON + 90d (2026-10-04, was REST_DAY + 90d = 2026-10-02)
 const BEFORE_EXPIRY = '2026-09-01';
 const uniqEmail = () => `tex_${Math.random().toString(36).slice(2)}@t.local`;
 
@@ -66,7 +69,7 @@ async function accrue(basic: number, over: Partial<ToilPolicyInput> = {}) {
   await checkIn(a, { employmentId: e.employmentId, date: REST_DAY, time: '08:00:00' });
   await checkOut(a, { employmentId: e.employmentId, date: REST_DAY, time: '17:00:00' });
   // Phase-B #14: pass per-election consent (moot for > ceiling employees, required for First-Schedule ones).
-  const r = await accrueToil(a, { employmentId: e.employmentId, workedDate: REST_DAY, firstScheduleConsent: true });
+  const r = await accrueToil(a, { employmentId: e.employmentId, workedDate: REST_DAY, firstScheduleConsent: true, approvedOn: APPROVED_ON });
   return { a, employmentId: e.employmentId, accrualId: r.accrualId };
 }
 

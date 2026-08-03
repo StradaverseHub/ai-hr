@@ -1623,7 +1623,24 @@
         "available": "จำนวนที่คุณยื่นขอได้จริงในวันนี้ เป็นตัวเลขเดียวกับที่แสดงในที่อื่น ๆ รวมถึงตอนยื่นขอลา"
       },
       "adjustmentNoReason": "ไม่ได้ระบุเหตุผล",
-      "expiresOn": "หมดอายุ: {date}"
+      "expiresOn": "หมดอายุ: {date}",
+      "replacement": {
+        "creditsHeading": "เครดิตที่สะสมไว้",
+        "empty": "ยังไม่มีเครดิตวันลาชดเชยที่สะสมไว้",
+        "col": {
+          "requestDate": "วันที่ยื่นคำขอ",
+          "number": "จำนวน",
+          "unit": "หน่วย",
+          "approvalDate": "วันที่อนุมัติ",
+          "expiredDate": "วันที่หมดอายุ"
+        },
+        "unitDay": "วัน",
+        "unitHour": "ชั่วโมง",
+        "statusTaken": "ใช้แล้ว",
+        "statusExpired": "หมดอายุ",
+        "statusConverted": "จ่ายเป็นเงินแล้ว",
+        "statusPartlyUsed": "ใช้บางส่วน"
+      }
     },
     "preview": {
       "loading": "กำลังคำนวณ…"
@@ -4507,7 +4524,12 @@
         "pendingApproval": "รอการอนุมัติ",
         "forfeited": "ยอดยกมาที่ถูกริบ",
         "available": "ยอดคงเหลือที่ใช้ได้",
-        "groupOther": "อื่น ๆ"
+        "groupOther": "อื่น ๆ",
+        "requestDate": "วันที่ยื่นคำขอ",
+        "number": "จำนวน",
+        "unit": "หน่วย",
+        "approvalDate": "วันที่อนุมัติ",
+        "expiredDate": "วันที่หมดอายุ"
       },
       "dayTypeInclusion": {
         "sectionTitle": "การนับประเภทวัน",
