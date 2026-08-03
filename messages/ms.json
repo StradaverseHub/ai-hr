@@ -4062,7 +4062,6 @@
         "details": "Butiran",
         "earning": "Kaedah Perolehan",
         "carry": "Polisi Bawa ke Hadapan",
-        "workflow": "Aliran Kerja Kelulusan",
         "yearTypeLabel": "Jenis tahun cuti",
         "yearTypeCompanyDefault": "Lalai syarikat (ikut kitaran cuti syarikat)",
         "yearTypeA2a": "Ulang Tahun ke Ulang Tahun",
@@ -4090,7 +4089,6 @@
         "carryAnnualOnly": "Bawa ke hadapan terpakai untuk Cuti Tahunan — baki jenis ini tidak dibawa ke tahun berikutnya.",
         "noActivePolicy": "Belum ada polisi kelayakan aktif — tambah satu di bawah Kelayakan dahulu.",
         "frontDoorScopeLabel": "Terpakai kepada polisi",
-        "workflowUnavailable": "Tetapan aliran kerja kelulusan tidak tersedia di sini — buka tab Kelulusan.",
         "yearType": "Jenis Tahun Cuti",
         "yearTypeStepHelp": "Pilih kitaran cuti dahulu. Langkah Kaedah Perolehan dan Pembundaran selepas ini menentukan cara cuti dikreditkan dalam kitaran tersebut.",
         "roundingNearestHalf": "Terdekat 0.5 hari",
@@ -4135,14 +4133,6 @@
         "gradesCompanyWideBadge": "Terpakai seluruh syarikat",
         "previewHint": "Semak hak cuti yang akan diterima oleh pekerja contoh di bawah peraturan semasa.",
         "accrualHint": "Memproses hak cuti terkumpul bagi satu tahun cuti — pratonton larian percubaan dahulu, kemudian sahkan."
-      },
-      "approvalStep": {
-        "hint": "Peraturan kelulusan jenis cuti ini, boleh disunting di sini. Rantaian seluruh syarikat dan templat boleh guna semula berada pada tab Kelulusan.",
-        "wildcardTitle": "Peraturan yang terpakai untuk semua jenis cuti",
-        "wildcardBadge": "Terpakai untuk semua jenis",
-        "wildcardNone": "Tiada peraturan semua-jenis dikonfigurasi.",
-        "defaultChainTitle": "Rantaian kelulusan lalai syarikat",
-        "openApprovalTab": "Buka tab Kelulusan →"
       },
       "noLeaveTypes": "Tiada jenis cuti.",
       "codeLabel": "Kod",
@@ -4389,9 +4379,6 @@
       "halfDayDeductionTitle": "Potongan separuh hari",
       "halfDayDeductionHelp": "Mengawal jumlah cuti yang ditolak apabila pekerja memohon cuti pada hari jadual kerja “Separuh Hari” (ditetapkan pada halaman Tetapan syif). Mati: tolak 0.5 hari. Hidup: tolak 1.0 hari penuh. Hari bekerja penuh tidak akan terjejas.",
       "halfDayDeductionFrozenNote": "Hanya terpakai untuk permohonan baharu — cuti yang telah dihantar atau diluluskan mengekalkan jumlah potongan yang ditunjukkan semasa ia dihantar.",
-      "halfDayDeductionOn": "Kini HIDUP — menolak 1.0 hari",
-      "halfDayDeductionOff": "Kini MATI — menolak 0.5 hari",
-      "halfDayDeductionToggleLabel": "Kira Separuh Hari sebagai 1 hari penuh",
       "encashmentSectionTitle": "Dasar Pemvantaian",
       "encashmentHelp": "Apabila peletakan jawatan pekerja diluluskan, baki Cuti Tahunan yang tidak digunakan boleh dibekukan dan ditukar menjadi angka hari boleh-vantai untuk Penggajian. Modul ini hanya mengira dan membekukan hari cuti — Penggajian mengendalikan penukaran ringgit secara berasingan.",
       "encashmentEnabled": "Diaktifkan",
@@ -4692,7 +4679,17 @@
         "errorAlreadyGrouped": "{type} sudah berada dalam kumpulan cuti dikongsi \"{group}\". Keluarkannya daripada kumpulan itu dahulu.",
         "errorNameTaken": "Kumpulan cuti dikongsi bernama \"{name}\" sudah wujud."
       },
-      "carryPercentLabel": "Peratusan bawa ke hadapan (%)"
+      "carryPercentLabel": "Peratusan bawa ke hadapan (%)",
+      "replacementModuleTitle": "Cuti ganti",
+      "replacementModuleUnderDevelopment": "Modul ini sedang dibangunkan. Tiada apa-apa untuk dikonfigurasikan di sini buat masa ini.",
+      "replacementModuleExistingNote": "Cuti ganti sudah berfungsi hari ini: pekerja boleh memperolehnya, menyimpannya dan memohonnya, dan ia dijejaki secara berasingan dengan tempoh luputnya sendiri. Halaman ini tidak menjejaskannya.",
+      "halfDayDeductionCompaniesLabel": "Syarikat yang terpakai",
+      "halfDayDeductionCompaniesPlaceholder": "Pilih syarikat",
+      "halfDayDeductionSelectAll": "Pilih semua",
+      "halfDayDeductionClearAll": "Kosongkan semua",
+      "halfDayDeductionAllSelected": "Semua syarikat",
+      "halfDayDeductionCountSelected": "{count} syarikat dipilih",
+      "halfDayDeductionEmptyNote": "Tidak memilih mana-mana syarikat akan mematikan peraturan ini di semua tempat: hari separuh akan ditolak 0.5 hari semula."
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -5214,6 +5211,7 @@
       "entitlements": "Kelayakan",
       "approval": "Aliran Kelulusan",
       "payroll": "Berkaitan Gaji",
+      "replacement": "Cuti Ganti",
       "audit": "Audit"
     },
     "systemLabelsTabs": {

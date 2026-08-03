@@ -1,25 +1,17 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
-import { listLeaveTypes, listCompanies, listJobGrades, listDepartments } from '@/core/read';
-import { listAdHocLeaveGrants, listLeavePolicies, listBusinessUnits, listPositions } from '@/core/admin';
+import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
+import { listAdHocLeaveGrants, listLeavePolicies } from '@/core/admin';
 // 1e4eb8af — leaveYearsWithRecords joins the reads here: the relocated Leave Year Configuration section
 // needs the same delete pre-check the Application Rules tab used to run.
 import { listLeaveYearConfigs, leaveYearsWithRecords } from '@/core/leave';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 import { leaveFormulaTemplateFrom, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { listAllProfileOptions } from '@/core/profile-options';
-// e1a51aea — the Approval Workflow sub-step's data + shared matrix labels (one source with the Approval tab).
-import { getLeaveApprovalPolicy, isCompanyDefaultApprovalRule, listLeaveApprovalRules } from '@/core/leave-approval-policy';
-import { listApprovalTemplates } from '@/core/leave-approval-template';
-import { WorkflowMatrix } from '@/app/admin/leave-approval/workflow-matrix';
-import { buildWorkflowMatrixLabels } from '@/app/admin/leave-approval/matrix-labels';
-// 4e9a4d59 — the EMBEDDED matrix posts the stay-on-this-type wrappers (the standalone Approvals screen
-// keeps the plain actions), so a rule save/delete never bounces HR out of the leave type they're setting up.
-import {
-  archiveLeaveApprovalRuleFromEntitlementsAction,
-  saveLeaveApprovalRuleFromEntitlementsAction,
-} from '@/app/admin/leave-approval/actions';
+// e4238594 — the e1a51aea Approval Workflow imports (WorkflowMatrix, the matrix label builder, the
+// approval-policy/template reads and the 4e9a4d59 stay-on-this-type action wrappers) all went with the
+// sub-step. This page no longer touches approval configuration at all; /admin/leave/approval owns it.
 import { listGradeGroups, listBenefitSchemes, listSchemeEntitlements } from '@/core/benefit-scheme';
 // r88 1ef1cf95 — shared leave groups are tenant-level and read from their own module; they are no longer a
 // property of a benefit scheme, so they are no longer read through the benefit-scheme one.
@@ -30,6 +22,10 @@ import type { ServiceBand } from '@/core/leave-compute';
 import { countryPacks } from '@/localization/registry';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+// 10e96227 — the half-day-deduction card's company picker. ChipMultiSelect (not MultiSelectPopover)
+// because this card lives inside a plain server-action <form>: it is uncontrolled and posts hidden
+// inputs, so no client state has to be lifted into this server component to make Save work.
+import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { LeaveTabs } from '@/components/leave-tabs';
 // 1e4eb8af — the two leave-year dialogs come along with the relocated section, unchanged.
 import { LeaveYearRuleDialog } from '@/components/leave/leave-year-rule-dialog';
@@ -43,7 +39,7 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   archiveLeaveTypeAction,
   countEmployeesInScopeAction,
-  setLeaveHalfDayFullDeductionAction,
+  setLeaveHalfDayFullDeductionCompaniesAction,
   createLeavePoliciesMultiAction,
   createLeaveTypeAction,
   deleteLeavePolicyAction,
@@ -351,84 +347,43 @@ export default async function LeaveEntitlementsPage({
     },
   };
 
-  // ── Approval Workflow sub-step data (e1a51aea) ────────────────────────────────────────────────────
-  // The General step's 5th sub-step embeds the SAME WorkflowMatrix the Approval tab renders, scoped to the
-  // hosting leave type. All approval data + the label bag are prepared ONCE here (the benefitSchemeSection
-  // precedent — no N+1 per type); only the row filter + defaultLeaveTypeId vary per panel. Company-wide
-  // chains and templates stay on the Approval tab (linked from the sub-step) — the per-company default
-  // chain is summarised READ-ONLY here.
-  const ta = await getTranslations('leaveApproval');
-  const companyIds = companies.map((c) => c.id);
-  const [departmentsAll, positionsAll, businessUnitsAll, approvalTemplates, approvalPerCompany] = await Promise.all([
-    companyIds.length ? listDepartments(s, { companyIds }) : Promise.resolve([]),
-    companyIds.length ? listPositions(s, { companyIds }) : Promise.resolve([]),
-    companyIds.length ? listBusinessUnits(s, { companyIds }) : Promise.resolve([]),
-    listApprovalTemplates(s),
-    Promise.all(
-      companies.map(async (c) => ({
-        company: c,
-        pol: await getLeaveApprovalPolicy(s, c.id),
-        rules: await listLeaveApprovalRules(s, c.id),
-      })),
-    ),
-  ]);
-  // Every non-company-default rule across the in-scope companies, in the matrix's row shape. The per-type
-  // slot filters this ONE array — scoped rules (leaveTypeId === the type) render editable in the matrix;
-  // wildcard any-type rules (leaveTypeId === null) render read-only with an "applies to all types" badge.
-  const approvalRuleRows = approvalPerCompany.flatMap(({ rules }) =>
-    rules
-      .filter((r) => !isCompanyDefaultApprovalRule(r))
-      .map((r) => ({
-        id: r.id,
-        companyId: r.companyId,
-        ruleName: r.ruleName,
-        leaveTypeId: r.leaveTypeId,
-        gradeGroupId: r.gradeGroupId,
-        businessUnitId: r.businessUnitId,
-        departmentId: r.departmentId,
-        positionId: r.positionId,
-        gradeId: r.gradeId,
-        employmentType: r.employmentType,
-        minDays: r.minDays,
-        maxDays: r.maxDays,
-        levels: r.levels,
-        templateId: r.templateId,
-      })),
-  );
-  const wildcardApprovalRules = approvalRuleRows.filter((r) => r.leaveTypeId == null);
-  // Chain-role labels for the read-only default-chain summary (the Approval tab's vocabulary).
-  const approvalRoleLabel: Record<string, string> = {
-    direct_manager: ta('manager'),
-    department_head: ta('departmentHead'),
-    business_unit_head: ta('businessUnitHead'),
-    hr_admin: ta('hr'),
-    hr_manager: ta('hrManager'),
-    payroll: ta('payroll'),
-    custom_role: ta('customRole'),
-  };
-  const approvalMatrixShared = {
-    companies: companies.map((c) => ({ id: c.id, label: c.name })),
-    leaveTypes: types.map((x) => ({ id: x.id, label: x.name })),
-    gradeGroups: gradeGroups.filter((g) => !g.archived).map((g) => ({ id: g.id, label: g.name })),
-    grades: grades.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` })),
-    businessUnits: businessUnitsAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}`, companyId: x.companyId })),
-    departments: departmentsAll.map((x) => ({ id: x.id, label: x.name, companyId: x.companyId })),
-    positions: positionsAll.map((x) => ({ id: x.id, label: x.title, companyId: x.companyId })),
-    templates: approvalTemplates.filter((t2) => t2.active).map((t2) => ({ id: t2.id, label: t2.name })),
-    actions: {
-      save: saveLeaveApprovalRuleFromEntitlementsAction,
-      archive: archiveLeaveApprovalRuleFromEntitlementsAction,
-    },
-    labels: buildWorkflowMatrixLabels(ta),
-  };
+  // e4238594 removed the Approval Workflow sub-step data block that stood here (e1a51aea). It prepared
+  // the WorkflowMatrix rows, the wildcard list, the per-company default chain and the label bag for a
+  // per-type embed that duplicated the Approval Workflow tab. The tab renders a strict superset of
+  // those rules, so nothing is stranded — and every read above (departments, positions, business units,
+  // templates, per-company policies) went with it, which is the point: the duplicate cost a fan of
+  // queries on every render of this page.
 
-  // ── Half-Day Deduction card (08bc6841) ─────────────────────────────────────────────────────────────
+  // ── Half-Day Deduction card (08bc6841, multi-select since 10e96227) ────────────────────────────────
   // Relocated from the Application Rules tab (feedback 31474452's per-company toggle — this is its single
-  // home now): rendered as ONE card of the Condition step's Leave Application Rules grid. The rows are
+  // home now): rendered as ONE card of the Condition step's Leave Application Rules grid. The rule is
   // per-COMPANY (not per-type), so one node is composed here and shared by every panel (the slot
-  // precedent — benefitSchemeSection etc.); each row posts the SAME setLeaveHalfDayFullDeductionAction —
-  // only the rendering (and the action's redirect target) moved. The applies-company-wide badge flags
-  // that saving here affects every leave type and every application, not just the hosting type.
+  // precedent — benefitSchemeSection etc.). The applies-company-wide badge flags that saving here affects
+  // every leave type and every application, not just the hosting type.
+  //
+  // 10e96227 REPLACED N FORMS WITH ONE. The reporter's complaint was arithmetic: eight companies meant
+  // eight rows, eight tickboxes and eight Saves to express a single decision, and the screen grew every
+  // time a company was added. It is now one multi-select naming the companies the rule applies to, and one
+  // Save. The STORED SHAPE IS UNCHANGED — still one boolean per company — so this is presentation only and
+  // needs no migration; what changed is that the post states the whole set instead of one member of it.
+  //
+  // ⚠️ THERE IS NO SEPARATE "ENABLE" SWITCH, and that is a deliberate departure from the approved plan's
+  // wording ("one enable switch and a multi-select"). A master switch has nowhere to live: the schema
+  // stores exactly a set of companies, so an OFF switch would have to mean "all companies false" — after
+  // which a reload cannot tell it from an empty selection, and any remembered selection silently
+  // evaporates. The empty selection already says "applies nowhere", which is the same thing every box
+  // unticked said before, so the switch would add a state the database cannot hold. Select all / Clear all
+  // give the same one-click reach without inventing one. Recorded for the reporter at deploy time.
+  //
+  // ⚠️ THE PICKER IS SCOPED TO `adminOnly`, WHICH IS NARROWER THAN THE PAGE'S `companies`. `listCompanies(s)`
+  // is tenant-wide, but the company UPDATE policy is admin-for-company — so a company-scoped hr_admin can
+  // SEE companies it cannot write. Under the old per-row UI that made one row's Save a silent no-op. Under
+  // one authoritative Save it would be actively misleading: unselected-but-unwritable companies would look
+  // like a deliberate "turn this off" that never lands. Offering exactly the companies the write can reach
+  // keeps the screen and the database in agreement, and core.setLeaveHalfDayFullDeductionCompanies resolves
+  // the same `app.is_admin_for` set server-side so a hand-crafted post cannot widen it either.
+  const halfDayCompanies = await listCompanies(s, { adminOnly: true });
+  const halfDayEnabledCompanyIds = halfDayCompanies.filter((c) => c.leaveHalfDayFullDeduction).map((c) => c.id);
   const halfDaySection = (
     // #f6d3be0b: matches the chrome the Condition · Leave Application Rules cards now use — one surface
     // (border + fill + padding), so the relocated card does not read as a different kind of thing beside them.
@@ -441,36 +396,28 @@ export default async function LeaveEntitlementsPage({
       </div>
       <p className="text-xs text-muted-foreground">{t('halfDayDeductionHelp')}</p>
       <p className="text-xs text-muted-foreground">{t('halfDayDeductionFrozenNote')}</p>
-      <ul className="divide-y divide-border">
-        {companies.map((c) => (
-          <li key={c.id} className="py-2">
-            <form
-              action={setLeaveHalfDayFullDeductionAction}
-              className="flex flex-wrap items-center justify-between gap-3"
-            >
-              <input type="hidden" name="companyId" value={c.id} />
-              <div className="min-w-0">
-                <span className="block truncate text-sm font-medium text-foreground">{c.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {c.leaveHalfDayFullDeduction ? t('halfDayDeductionOn') : t('halfDayDeductionOff')}
-                </span>
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="enabled"
-                  defaultChecked={!!c.leaveHalfDayFullDeduction}
-                  className="size-4 rounded"
-                />
-                {t('halfDayDeductionToggleLabel')}
-              </label>
-              <Button type="submit" variant="outline" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-          </li>
-        ))}
-      </ul>
+      <form action={setLeaveHalfDayFullDeductionCompaniesAction} className="space-y-2">
+        {/* defaultSelected is the CURRENT state, so first render reproduces today's configuration exactly
+            and saving an unrelated field on this screen cannot silently rewrite it. */}
+        <ChipMultiSelect
+          name="companyIds"
+          label={t('halfDayDeductionCompaniesLabel')}
+          options={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}
+          defaultSelected={halfDayEnabledCompanyIds}
+          addPlaceholder={t('halfDayDeductionCompaniesPlaceholder')}
+          removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
+          selectAllLabel={t('halfDayDeductionSelectAll')}
+          clearAllLabel={t('halfDayDeductionClearAll')}
+          allSelectedLabel={t('halfDayDeductionAllSelected')}
+          countLabelFor={(count) => t('halfDayDeductionCountSelected', { count })}
+        />
+        {/* Says what an empty selection means, because "no chips" is otherwise indistinguishable from
+            "not configured yet" — and here it is a real, saveable decision. */}
+        <p className="text-xs text-muted-foreground">{t('halfDayDeductionEmptyNote')}</p>
+        <Button type="submit" variant="outline" size="sm">
+          {t('save')}
+        </Button>
+      </form>
     </div>
   );
 
@@ -864,70 +811,6 @@ export default async function LeaveEntitlementsPage({
                       defaultLeaveTypeId={lt.id}
                     />
                   </div>
-                </div>
-              }
-              approvalWorkflowSection={
-                /* e1a51aea: the Approval Workflow sub-step — this type's rules from the SAME rule matrix
-                   the Approval tab renders (same actions, shared labels), scoped + seeded to this type;
-                   wildcard any-type rules and the per-company default chain are summarised read-only with
-                   the Approval tab one click away. */
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground">{t('approvalStep.hint')}</p>
-                  <WorkflowMatrix
-                    rows={approvalRuleRows.filter((r) => r.leaveTypeId === lt.id)}
-                    defaultLeaveTypeId={lt.id}
-                    {...approvalMatrixShared}
-                  />
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">{t('approvalStep.wildcardTitle')}</span>
-                    {wildcardApprovalRules.length === 0 ? (
-                      <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
-                        {t('approvalStep.wildcardNone')}
-                      </p>
-                    ) : (
-                      wildcardApprovalRules.map((r) => (
-                        <div
-                          key={r.id}
-                          className="flex flex-wrap items-center gap-2 rounded-lg bg-background px-3 py-2 text-xs"
-                        >
-                          <span className="font-medium text-foreground">
-                            {companyNameById.get(r.companyId) ?? r.companyId}
-                          </span>
-                          {r.ruleName && <span className="text-muted-foreground">{r.ruleName}</span>}
-                          {/* read-only: an any-type rule is shared config — edited on the Approval tab */}
-                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                            {t('approvalStep.wildcardBadge')}
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {t('approvalStep.defaultChainTitle')}
-                    </span>
-                    {approvalPerCompany.map(({ company, pol }) => (
-                      <div
-                        key={company.id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background px-3 py-2 text-xs"
-                      >
-                        <span className="font-medium text-foreground">{company.name}</span>
-                        {/* r79 0322 — always the chain now. This used to print "Single approver
-                            (multi-step approval off)" whenever company.leave_multi_approval was off,
-                            which was the whole defect: the chain shown here was NOT what ran. A
-                            one-level chain IS single approver, so the chain says it by itself. */}
-                        <span className="text-muted-foreground">
-                          {pol.levels.map((lv) => approvalRoleLabel[lv] ?? lv).join(' → ')}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <Link
-                    href="/admin/leave/approval"
-                    className="inline-block text-xs font-medium text-primary underline-offset-2 hover:underline"
-                  >
-                    {t('approvalStep.openApprovalTab')}
-                  </Link>
                 </div>
               }
               halfDaySection={halfDaySection}

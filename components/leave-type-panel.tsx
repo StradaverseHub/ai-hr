@@ -271,12 +271,23 @@ function RoundingThresholdEditor({
   );
 }
 
-/** General step sub-flow (e1a51aea, shortened by 1e4eb8af, RESTORED to five by 4d6eae7b): the five
- *  sub-steps of step 1, in the reporter's stated walk order — 1 Details, 2 Leave Year Type, 3 Earning
- *  Method, 4 Carry Forward Policy, 5 Approval Workflow. The keys are storage keys (persisted as
- *  `generalSubStep` in the leaveTypeCards:<id> localStorage shape, next to activeStep) — 'workflow' is
- *  deliberately NOT named after the retired accordion card keys (approval/display/calculation), which must
- *  never reappear in this file (see leave-type-config-categories.test.ts).
+/** General step sub-flow (e1a51aea, shortened by 1e4eb8af, RESTORED to five by 4d6eae7b, back to FOUR by
+ *  e4238594): the sub-steps of step 1, in the reporter's stated walk order — 1 Details, 2 Leave Year Type,
+ *  3 Earning Method, 4 Carry Forward Policy. The keys are storage keys (persisted as `generalSubStep` in
+ *  the leaveTypeCards:<id> localStorage shape, next to activeStep) and must never be named after the
+ *  retired accordion card keys (approval/display/calculation), which must never reappear in this file (see
+ *  leave-type-config-categories.test.ts).
+ *
+ *  WHY 'workflow' IS GONE (e4238594). The reporter's point was that the same approval configuration
+ *  appeared twice. The Approval Workflow TAB is the real home — templates are built there, assigned there,
+ *  and the full rule list is maintained there; this sub-step showed the same rules filtered to one type.
+ *  Nothing is stranded: every rule editable here was type-scoped and non-default, and the tab renders a
+ *  strict superset of them. NO LINK OR PLACEHOLDER REPLACES IT — the reporter rejected that explicitly, so
+ *  the sub-step simply goes and the bar renumbers itself (leave-sub-step-bar renders `i + 1`).
+ *
+ *  A persisted payload still pointing at 'workflow' falls back to Details, and that is correct rather than
+ *  merely tolerable: unlike the bc9be1e8 case below, the content did not move to a SIBLING sub-step that a
+ *  redirect could name — it moved to a different tab entirely. There is nowhere in this panel to send them.
  *
  *  WHY 'yearType' IS BACK, HAVING BEEN REMOVED. 1e4eb8af dropped it and moved the control into Custom
  *  Settings, on the reasoning that every leave-year decision should be made in one place. Feedback
@@ -293,7 +304,7 @@ function RoundingThresholdEditor({
  *
  *  A persisted payload pointing at 'yearType' from before 1e4eb8af now resolves again rather than falling
  *  back to Details; the hydration guard restores any key present in this list. */
-const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const;
+const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry'] as const;
 type GeneralSubStepKey = (typeof GENERAL_SUB_STEP_KEYS)[number];
 /** Sub-step → its admin.leave title key (all 6 locales). */
 const GENERAL_SUB_STEP_TITLE_KEY: Record<GeneralSubStepKey, string> = {
@@ -301,7 +312,6 @@ const GENERAL_SUB_STEP_TITLE_KEY: Record<GeneralSubStepKey, string> = {
   yearType: 'subStep.yearType',
   earning: 'subStep.earning',
   carry: 'subStep.carry',
-  workflow: 'subStep.workflow',
 };
 
 /** Condition step sub-flow (08bc6841): the three sub-steps of step 4, in walk order — 1 Criteria (who
@@ -1312,7 +1322,6 @@ export function LeaveTypePanel({
   schemeEntitlements,
   benefitSchemeSection,
   festiveGrantSection,
-  approvalWorkflowSection,
   halfDaySection,
   leaveYearSection,
   previewScenarioSection,
@@ -1470,15 +1479,10 @@ export function LeaveTypePanel({
    *  defaultLeaveTypeId={id}> slot, so the grant form arrives preset to THIS type. Slot-shaped like
    *  benefitSchemeSection: companies/grants data is prepared ONCE at page level (no N+1 per type). */
   festiveGrantSection?: ReactNode;
-  /** e1a51aea: the Approval Workflow sub-step's content — a server-composed slot (this type's WorkflowMatrix
-   *  scoped to its leaveTypeId, the read-only wildcard rules + per-company default-chain summary, and links
-   *  to the Approval tab). Slot-shaped like benefitSchemeSection so the approval data + label bags are
-   *  prepared ONCE at page level (no N+1 per type). */
-  approvalWorkflowSection?: ReactNode;
-  /** 08bc6841: the company-wide Half-Day Deduction card — a server-composed slot (the per-company toggle
-   *  rows posting the SAME setLeaveHalfDayFullDeductionAction the Application Rules tab used to host,
-   *  now embedded as one card of the Condition step's Leave Application Rules grid with an
-   *  applies-company-wide badge). Slot-shaped like benefitSchemeSection: the rows are per-COMPANY (not
+  /** 08bc6841: the company-wide Half-Day Deduction card — a server-composed slot (since 10e96227 ONE
+   *  ChipMultiSelect over companyIds plus one Save posting setLeaveHalfDayFullDeductionCompaniesAction,
+   *  embedded as one card of the Condition step's Leave Application Rules grid with an
+   *  applies-company-wide badge). Slot-shaped like benefitSchemeSection: the rule is per-COMPANY (not
    *  per-type), so ONE node is prepared at page level and shared by every panel. */
   halfDaySection?: ReactNode;
   /** 1e4eb8af: the managed Leave Year records (Draft → Open → Closed, their two control dates, the
@@ -1827,10 +1831,11 @@ export function LeaveTypePanel({
             </CardHeader>
             <CardContent id={`cat-general-${id}`} className="space-y-3">
           {/* General sub-flow (e1a51aea): the reusable SubStepBar (components/leave-sub-step-bar.tsx —
-              the R61 step-bar mechanism generalized; later secondary flows MUST reuse it) walks the five
-              sub-steps 1 Details · 2 Leave Year Type · 3 Earning Method · 4 Carry Forward Policy ·
-              5 Approval Workflow. One sub-step visible at a time; the choice persists per type alongside
-              activeStep (leaveTypeCards:<id>). */}
+              the R61 step-bar mechanism generalized; later secondary flows MUST reuse it) walks the four
+              sub-steps 1 Details · 2 Leave Year Type · 3 Earning Method · 4 Carry Forward Policy. One
+              sub-step visible at a time; the choice persists per type alongside activeStep
+              (leaveTypeCards:<id>). e4238594 removed the fifth, Approval Workflow — the bar renders
+              `i + 1`, so the numbering follows the array and no step number is written down anywhere. */}
           <SubStepBar
             steps={GENERAL_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(GENERAL_SUB_STEP_TITLE_KEY[k]) }))}
             active={generalSubStep}
@@ -2130,18 +2135,9 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('subStep.carryStepHelp')}</p>
           </div>
           )}
-          {/* Sub-step 5 — Approval Workflow (e1a51aea): this type's approval rules from the rule matrix,
-              editable right here (server-composed slot, scoped to this leaveTypeId), with company-wide
-              chains + templates one click away on the Approval tab. */}
-          {generalSubStep === 'workflow' && (
-          <div className="space-y-1.5">
-            {approvalWorkflowSection ?? (
-              <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
-                {t('subStep.workflowUnavailable')}
-              </p>
-            )}
-          </div>
-          )}
+          {/* e4238594 removed sub-step 5 (Approval Workflow, e1a51aea). It duplicated the Approval Workflow
+              tab, which is the real home. No link or placeholder stands in its place — the reporter
+              rejected that explicitly — so the walk simply ends at Carry Forward Policy. */}
             </CardContent>
           </Card>
           )}

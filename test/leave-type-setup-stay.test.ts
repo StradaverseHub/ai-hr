@@ -16,8 +16,12 @@
  * query would swallow it, the b9dac2d1 precedent).
  *
  * b1b81a08 retired half A: grade master data moved out of Leave Config to Settings → System Labels →
- * Organisation Labels, so there is no grade form on this workspace and no grade action to anchor. Only the
- * Approval Workflow half of the contract remains testable here.
+ * Organisation Labels, so there is no grade form on this workspace and no grade action to anchor.
+ *
+ * e4238594 then retired half B as well: the embedded Approval Workflow matrix was removed as a duplicate of
+ * the Approval Workflow tab, so its two stay-on-this-type wrappers had no caller. BOTH halves of the
+ * 4e9a4d59 contract are now historical — what this file still guards is that the wrappers stay gone and
+ * that the STANDALONE Approvals screen never regressed while they were removed.
  *
  * These assertions are on the redirect STRING; the on-screen "same type + same tab" outcome is covered by
  * the browser smoke.
@@ -47,9 +51,7 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 import { createLeaveApprovalRule } from '../core/leave-approval-policy';
 import {
   archiveLeaveApprovalRuleAction,
-  archiveLeaveApprovalRuleFromEntitlementsAction,
   saveLeaveApprovalRuleAction,
-  saveLeaveApprovalRuleFromEntitlementsAction,
 } from '../app/admin/leave-approval/actions';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
@@ -95,70 +97,24 @@ beforeEach(async () => {
 // actions guarded by test/grade-system-label-relocation.test.ts. The Approval Workflow half of the
 // 4e9a4d59 stay-on-this-type contract below is untouched.
 
-describe('4e9a4d59 — Approval Workflow saves posted from the leave type workspace stay on that type', () => {
-  it('saveLeaveApprovalRuleFromEntitlementsAction anchors back to the rule’s leave type', async () => {
-    const target = await captureRedirect(() =>
-      saveLeaveApprovalRuleFromEntitlementsAction(
-        fd({
-          companyId: b.companyId,
-          leaveTypeId: b.annualLeaveTypeId,
-          ruleName: 'Workspace rule',
-          levels: 'direct_manager,hr_admin',
-        }),
-      ),
-    );
-    // The old behaviour: /admin/leave/approval — the standalone Approvals screen, off the setup flow.
-    expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target).toContain('savedToast'); // localised key, not the standalone action's English literal
-    expect(target.endsWith(`#type-${b.annualLeaveTypeId}`)).toBe(true);
-    expect(target.startsWith(APPROVAL)).toBe(false);
+describe('e4238594 — the workspace approval wrappers are RETIRED', () => {
+  // The 4e9a4d59 contract these tests used to pin (a save posted from the leave type workspace's Approval
+  // Workflow sub-step returns to that type rather than the Approvals screen) no longer has a subject: the
+  // sub-step was removed as a duplicate of the Approval Workflow tab, so the two wrappers had no caller and
+  // retired with it. Asserting their ABSENCE rather than deleting the block, so re-introducing a second
+  // write path into the same approval rules is a visible decision and not an accident.
+  it('neither FromEntitlements wrapper is exported any more', async () => {
+    const mod = await import('../app/admin/leave-approval/actions');
+    expect(Object.keys(mod)).not.toContain('saveLeaveApprovalRuleFromEntitlementsAction');
+    expect(Object.keys(mod)).not.toContain('archiveLeaveApprovalRuleFromEntitlementsAction');
   });
 
-  it('an "applies to all types" rule (no leaveTypeId) degrades to the bare Entitlements route', async () => {
-    const target = await captureRedirect(() =>
-      saveLeaveApprovalRuleFromEntitlementsAction(
-        fd({ companyId: b.companyId, ruleName: 'Any-type rule', levels: 'hr_admin' }),
-      ),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target).not.toContain('#type-');
-  });
-
-  it('a failed rule save stays on the Entitlements page (?error=)', async () => {
-    const target = await captureRedirect(() =>
-      // No levels and no template ⇒ cleanRuleInput throws.
-      saveLeaveApprovalRuleFromEntitlementsAction(
-        fd({ companyId: b.companyId, leaveTypeId: b.annualLeaveTypeId, ruleName: 'Bad rule', levels: '' }),
-      ),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?error=`)).toBe(true);
-    expect(target).not.toContain('#type-');
-  });
-
-  it('archiveLeaveApprovalRuleFromEntitlementsAction keeps HR on the type they were viewing', async () => {
-    const rule = await createLeaveApprovalRule(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: b.annualLeaveTypeId,
-      levels: ['direct_manager'],
-    });
-    const target = await captureRedirect(() =>
-      archiveLeaveApprovalRuleFromEntitlementsAction(
-        fd({ companyId: b.companyId, ruleId: rule.id, leaveTypeId: b.annualLeaveTypeId }),
-      ),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target).toContain('savedToast');
-    expect(target.endsWith(`#type-${b.annualLeaveTypeId}`)).toBe(true);
-  });
-
-  it('a failed rule delete stays on the Entitlements page (?error=)', async () => {
-    const target = await captureRedirect(() =>
-      archiveLeaveApprovalRuleFromEntitlementsAction(
-        fd({ companyId: b.companyId, ruleId: 'not-a-uuid', leaveTypeId: b.annualLeaveTypeId }),
-      ),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?error=`)).toBe(true);
-    expect(target).not.toContain('#type-');
+  it('the shared persist core survives — only the redirect wrappers went', async () => {
+    // The standalone actions below still run persistApprovalRule / persistArchiveApprovalRule. If the
+    // removal had taken the core with it, the regression guard that follows would fail for the wrong reason.
+    const mod = await import('../app/admin/leave-approval/actions');
+    expect(Object.keys(mod)).toContain('saveLeaveApprovalRuleAction');
+    expect(Object.keys(mod)).toContain('archiveLeaveApprovalRuleAction');
   });
 });
 

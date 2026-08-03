@@ -36,7 +36,7 @@ import {
   setCompanyDefaultPayrollCycle,
   setCompanyLogo,
   removeCompanyLogo,
-  setLeaveHalfDayFullDeduction,
+  setLeaveHalfDayFullDeductionCompanies,
   updateBusinessUnit,
   updateCompany,
   updateCostCenter,
@@ -891,17 +891,32 @@ export async function runEarnedAccrualAction(
 // any more, so it is removed rather than left dangling; core/admin.setCompanyLeaveCycle is UNCHANGED and
 // still the write path — stored company cycles keep driving types left on "Company default".
 
-/** Feedback request 31474452: set a company's half-day leave-deduction toggle (checkbox posts "on" or is
- *  absent — mirrors the existing checkbox-action convention in this file, e.g. autoAccrueOnApproval above). */
-// R64 08bc6841 — the half-day-deduction card's single home is now the Entitlements tab (the Condition
-// step's Leave Application Rules grid), so this action redirects THERE (the R45 cc816207 / R61 d778d2d3
-// relocation precedent). The setLeaveHalfDayFullDeduction write itself is unchanged.
-export async function setLeaveHalfDayFullDeductionAction(formData: FormData) {
+/** Feedback request 31474452 / R64 08bc6841: the half-day-deduction toggle, one company per post.
+ *  RETIRED BY 10e96227 — the card is now ONE multi-select plus ONE Save, so nothing posts a single
+ *  company any more and the action is removed rather than left dangling (the r100
+ *  saveLeaveApprovalPolicyAction precedent: a server action retires WITH the screen that was its only
+ *  caller). `core/admin.setLeaveHalfDayFullDeduction` is UNCHANGED and deliberately kept — it is the
+ *  single-company primitive the behavioural tests drive directly; only its form wrapper is gone.
+ *  Replaced by setLeaveHalfDayFullDeductionCompaniesAction below. */
+
+/**
+ * 10e96227 — the half-day-deduction card saves the WHOLE company set in one post.
+ *
+ * The reporter's complaint was arithmetic: eight companies meant eight rows and eight Saves to express
+ * one decision. The multi-select posts every selected company under the same `companyIds` field (the
+ * house convention — cf. the festive-grant company picker above), so the whole rule arrives as one
+ * statement of intent and the core write turns the ones NOT posted off.
+ *
+ * `getAll` with no selection yields `[]`, which is a MEANINGFUL value here, not a missing one: it means
+ * "applies nowhere", the same thing every box unticked meant before. That is why there is no guard
+ * rejecting an empty post — treating empty as "nothing to do" would make it impossible to turn the last
+ * company off, which is exactly the state the old per-row UI could reach trivially.
+ */
+export async function setLeaveHalfDayFullDeductionCompaniesAction(formData: FormData) {
   const s = await getSession();
   try {
-    await setLeaveHalfDayFullDeduction(s, {
-      companyId: String(formData.get('companyId')),
-      enabled: formData.get('enabled') === 'on',
+    await setLeaveHalfDayFullDeductionCompanies(s, {
+      companyIds: formData.getAll('companyIds').map(String).filter(Boolean),
     });
   } catch (e) {
     fail(ENTITLEMENTS, e);

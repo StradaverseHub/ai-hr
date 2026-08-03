@@ -24,10 +24,10 @@
  *    (f6d3be0b: balanced columns-1 md:columns-2 xl:columns-3) in the existing source order — durations, document,
  *    negativeBalance, backdating (EMERGENCY-hidden), minAdvance (EMERGENCY-hidden), duplicatePolicy,
  *    dayTypeInclusion — each group one card with its own edit marker so saves stay per-group. PLUS the
- *    company-wide Half-Day Deduction card relocated from the Application Rules tab (single home now):
- *    per-company rows posting the SAME setLeaveHalfDayFullDeductionAction (write unchanged; the action
- *    redirects to the Entitlements route per the R45/R61 relocation precedent), marked with an
- *    applies-company-wide badge.
+ *    company-wide Half-Day Deduction card relocated from the Application Rules tab (single home now),
+ *    marked with an applies-company-wide badge. 10e96227 then replaced its per-company rows with ONE
+ *    ChipMultiSelect over companyIds + ONE Save posting setLeaveHalfDayFullDeductionCompaniesAction; the
+ *    stored shape is still one boolean per company, and the retired per-row action is asserted absent.
  *  - Expiry: the fec49317 age-from-earning expiry moved here from Eligibility — same expiry=1 marker, same
  *    non-Annual/non-EMERGENCY gate. Annual types see a pointer to General → Carry Forward Policy (their
  *    carry-expiry stays there); Emergency Leave gets a no-balance note instead of a dead form.
@@ -414,32 +414,55 @@ describe('08bc6841 · Half-Day Deduction relocation — single home, same write'
     expect(appRulesSrc.includes('leaveHalfDayFullDeduction')).toBe(false);
   });
 
-  it('the Entitlements page composes the per-company rows with the SAME action and field names + the badge', () => {
+  // 10e96227 REPLACED THE PER-COMPANY ROWS WITH ONE MULTI-SELECT. What this describe still guards is the
+  // RELOCATION (08bc6841): the card has exactly one home, it is composed once and shared via the slot, and
+  // it still carries the company-wide badge and the frozen note. The row-shaped assertions below were
+  // rewritten rather than deleted — the contract they pinned (one post carries the decision, and the user
+  // is told it is company-wide) still exists, it is just expressed over a set instead of a single row.
+  it('the Entitlements page composes ONE multi-select carrying the whole company set + the badge', () => {
     const start = pageSrc.indexOf('const halfDaySection = (');
     expect(start).toBeGreaterThan(-1);
     const section = pageSrc.slice(start, pageSrc.indexOf('return (', start));
-    expect(section).toContain('action={setLeaveHalfDayFullDeductionAction}');
-    // Identical FormData contract to the old card: companyId hidden + `enabled` checkbox.
-    expect(section).toContain('<input type="hidden" name="companyId" value={c.id} />');
-    expect(section).toContain('name="enabled"');
-    expect(section).toContain('defaultChecked={!!c.leaveHalfDayFullDeduction}');
-    // The company-wide marker + the existing half-day strings.
+    expect(section).toContain('action={setLeaveHalfDayFullDeductionCompaniesAction}');
+    expect(section).toContain('<ChipMultiSelect');
+    expect(section).toContain('name="companyIds"');
+    // First render must reproduce today's configuration exactly, or an unrelated save silently rewrites it.
+    expect(section).toContain('defaultSelected={halfDayEnabledCompanyIds}');
+    expect(pageSrc).toContain(
+      'const halfDayEnabledCompanyIds = halfDayCompanies.filter((c) => c.leaveHalfDayFullDeduction).map((c) => c.id);',
+    );
+    // The picker is scoped to companies the caller can actually WRITE, so the screen and the set-write
+    // agree. Offering the page's tenant-wide `companies` here would let a company-scoped admin deselect
+    // a company whose row the write can never reach.
+    expect(pageSrc).toContain("const halfDayCompanies = await listCompanies(s, { adminOnly: true });");
+    expect(section).toContain('options={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}');
+    // The company-wide marker + the existing half-day strings, all still shown.
     expect(section).toContain("t('conditionStep.halfDayCompanyWideBadge')");
     expect(section).toContain("t('halfDayDeductionTitle')");
     expect(section).toContain("t('halfDayDeductionFrozenNote')");
+    // An empty selection is a real decision, so the screen must say what it means.
+    expect(section).toContain("t('halfDayDeductionEmptyNote')");
     // ONE shared node passed into every panel via the slot prop.
     expect(pageSrc).toContain('halfDaySection={halfDaySection}');
   });
 
-  it('the action keeps the SAME core write and now redirects to the Entitlements route (R45/R61 precedent)', () => {
-    const fnStart = actionsSrc.indexOf('export async function setLeaveHalfDayFullDeductionAction');
+  it('the per-company action is RETIRED — nothing posts one company any more', () => {
+    // The r100 precedent: a server action retires with the screen that was its only caller. Kept as an
+    // assertion rather than a deletion so re-adding a second write path is a visible decision.
+    expect(actionsSrc).not.toMatch(/export async function setLeaveHalfDayFullDeductionAction\b/);
+    expect(pageSrc.includes('setLeaveHalfDayFullDeductionAction')).toBe(false);
+  });
+
+  it('the set action posts companyIds and redirects to the Entitlements route (R45/R61 precedent)', () => {
+    const fnStart = actionsSrc.indexOf('export async function setLeaveHalfDayFullDeductionCompaniesAction');
     expect(fnStart).toBeGreaterThan(-1);
     const fn = actionsSrc.slice(fnStart, actionsSrc.indexOf('\n}', fnStart));
-    expect(fn).toMatch(/setLeaveHalfDayFullDeduction\(s, \{/);
-    expect(fn).toMatch(/companyId: String\(formData\.get\('companyId'\)\)/);
-    expect(fn).toMatch(/enabled: formData\.get\('enabled'\) === 'on'/);
+    expect(fn).toMatch(/setLeaveHalfDayFullDeductionCompanies\(s, \{/);
+    expect(fn).toMatch(/formData\.getAll\('companyIds'\)\.map\(String\)\.filter\(Boolean\)/);
     expect(fn).toMatch(/fail\(ENTITLEMENTS, e\)/);
     expect(fn).toMatch(/ok\(ENTITLEMENTS\)/);
+    // No empty-post guard: [] means "applies nowhere", which must stay reachable.
+    expect(fn).not.toMatch(/length === 0/);
   });
 });
 
@@ -484,9 +507,26 @@ describe('08bc6841 · i18n — all six locales', () => {
         expect(typeof sub[key], `${loc}.admin.leave.conditionStep.${key}`).toBe('string');
         expect((sub[key] as string).length, `${loc}.admin.leave.conditionStep.${key} non-empty`).toBeGreaterThan(0);
       }
-      // The relocated card reuses the existing half-day strings — they must stay present.
-      for (const key of ['halfDayDeductionTitle', 'halfDayDeductionHelp', 'halfDayDeductionFrozenNote', 'halfDayDeductionToggleLabel']) {
+      // The relocated card reuses the existing half-day strings — they must stay present. 10e96227 dropped
+      // `halfDayDeductionToggleLabel` (and the On/Off state captions) with the per-row tickbox that was
+      // their only caller, and added the multi-select's own copy.
+      for (const key of [
+        'halfDayDeductionTitle',
+        'halfDayDeductionHelp',
+        'halfDayDeductionFrozenNote',
+        'halfDayDeductionCompaniesLabel',
+        'halfDayDeductionCompaniesPlaceholder',
+        'halfDayDeductionSelectAll',
+        'halfDayDeductionClearAll',
+        'halfDayDeductionAllSelected',
+        'halfDayDeductionCountSelected',
+        'halfDayDeductionEmptyNote',
+      ]) {
         expect(typeof leave[key], `${loc}.admin.leave.${key}`).toBe('string');
+      }
+      // Retired with the per-row form — leaving them would be dead copy translators keep maintaining.
+      for (const key of ['halfDayDeductionOn', 'halfDayDeductionOff', 'halfDayDeductionToggleLabel']) {
+        expect(leave[key], `${loc}.admin.leave.${key} should be retired`).toBeUndefined();
       }
     }
   });

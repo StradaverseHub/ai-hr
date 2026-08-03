@@ -4530,6 +4530,68 @@ export async function setLeaveHalfDayFullDeduction(ctx: SessionContext, p: { com
     });
   });
 }
+
+/**
+ * 10e96227 — set the half-day full-deduction flag for the WHOLE administrable set in one save.
+ *
+ * The stored shape is unchanged: still one boolean per company (company.leave_half_day_full_deduction).
+ * What changes is that the caller states the complete set of companies the rule applies to, instead of
+ * posting one company at a time. Companies in `companyIds` are turned ON; every other administrable
+ * company is turned OFF. An empty list therefore means "applies nowhere", which is exactly what every
+ * box unticked meant before.
+ *
+ * ⚠️ THE SCOPE IS `app.is_admin_for`, NOT "every company the session can SEE", and that distinction is the
+ * whole reason this function resolves its own candidate set rather than trusting the posted ids.
+ * `listCompanies(ctx)` is tenant-wide, but the company UPDATE policy is admin-for-company — so a
+ * company-scoped hr_admin can see companies it cannot write. Under the old per-row UI that merely made one
+ * row's Save a silent no-op. Under an authoritative set-write it would be worse in BOTH directions: an
+ * unadministrable company omitted from the post would look like a deliberate "turn this off", and the
+ * write would silently fail to apply it — leaving the screen and the database disagreeing. Resolving the
+ * candidate set in SQL means the function can only ever rewrite rows the caller could have written
+ * one-by-one, and the returned summary reports precisely what moved.
+ *
+ * ONE EVENT PER CHANGED COMPANY, and none for the unchanged. The event type and payload are byte-identical
+ * to setLeaveHalfDayFullDeduction's, so existing audit consumers are unaffected; emitting a no-op event for
+ * every untouched company on every save would bury the real changes in the trail.
+ *
+ * Frozen at submission (D6) as before — flipping this never recomputes already-submitted or approved leave.
+ */
+export async function setLeaveHalfDayFullDeductionCompanies(
+  ctx: SessionContext,
+  p: { companyIds: string[] },
+): Promise<{ enabled: string[]; disabled: string[]; unchanged: number }> {
+  const wanted = new Set(p.companyIds);
+  return withTenant(ctx, async (tx) => {
+    const candidates = await tx
+      .select({ id: company.id, enabled: company.leaveHalfDayFullDeduction })
+      .from(company)
+      .where(and(isNull(company.archivedAt), sql`app.is_admin_for(company.id)`));
+
+    const enabled: string[] = [];
+    const disabled: string[] = [];
+    let unchanged = 0;
+
+    for (const c of candidates) {
+      const next = wanted.has(c.id);
+      const before = !!c.enabled;
+      if (next === before) {
+        unchanged += 1;
+        continue;
+      }
+      await tx.update(company).set({ leaveHalfDayFullDeduction: next }).where(eq(company.id, c.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'company',
+        aggregateId: c.id,
+        eventType: 'company.leave-half-day-deduction.changed',
+        actor: actorOf(ctx),
+        payload: { before, after: next },
+      });
+      (next ? enabled : disabled).push(c.id);
+    }
+    return { enabled, disabled, unchanged };
+  });
+}
 // ─────────────────────────── Company logo (branding) ───────────────────────────
 // A 1:1 logo stored in the company_logo SIDE TABLE (schema.ts). PNG/JPEG only; the mime is sniffed from
 // magic bytes at the action boundary before it reaches here (SVG is excluded — scriptable). Read is
