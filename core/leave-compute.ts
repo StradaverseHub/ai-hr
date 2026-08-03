@@ -62,7 +62,27 @@ export type ResolvedPolicy = {
    *  DEFAULT_ROUNDING_THRESHOLD. Meaningless (and ignored) for every other method, so a stored value can
    *  never change what 'up' / 'down' / 'none' produce. */
   roundingThreshold?: number | null;
+  /** 8fec719e — the CUSTOM ROUNDING TABLE, read ONLY by the 'custom' method. null/absent ⇒ nothing to
+   *  apply, so 'custom' with no table is byte-identical to No Rounding. See `applyRoundingBands`. */
+  roundingBands?: RoundingBand[] | null;
 };
+
+/**
+ * 8fec719e — ONE ROW of the custom rounding table the reporter fills in: "a decimal portion from `from`
+ * up to `to` becomes `result`".
+ *
+ * THE UNIT IS THE DECIMAL PORTION, NOT THE WHOLE VALUE. A band is matched against `value − floor(value)`,
+ * and the whole-day part is added back untouched. That is what makes ONE table usable at every
+ * entitlement size: the reporter writes the table once for 0.000–1.000 and it shapes 1.17, 10.17 and
+ * 21.17 identically, which is exactly how the three fixed methods it replaces behaved.
+ *
+ *   from   inclusive lower bound of the decimal portion, 0 <= from < to
+ *   to     upper bound. EXCLUSIVE, except for a band ending at exactly 1.000, which is inclusive — so a
+ *          table ending at 1.000 has no unreachable sliver at the top and `result: 1` means "round up to
+ *          the next whole day" (the old 'up' method, expressible as a single row 0 → 1 ⇒ 1).
+ *   result what the decimal portion becomes, 0 <= result <= 1. `whole + result` is credited.
+ */
+export type RoundingBand = { from: number; to: number; result: number };
 
 /** Feedback b81d3c52 — how a CALCULATED leave entitlement is tidied before it is credited:
  *   - 'none' (or absent) — keep the calculated value exactly as-is (today's behaviour);
@@ -77,8 +97,19 @@ export type ResolvedPolicy = {
  *  test/leave-entitlement-rounding-thresholds.test.ts, which runs all three through the new evaluator).
  *
  *  This is a SEPARATE concept from the pay-component `roundingMethod` (core/pay-components.ts, values
- *  none/nearest) — different domain, different values, deliberately no shared code. */
-export type LeaveRoundingMethod = 'none' | 'up' | 'down' | 'nearest_half';
+ *  none/nearest) — different domain, different values, deliberately no shared code.
+ *
+ *  8fec719e — THE CHOICE IS NOW TWO, THE VOCABULARY IS STILL FIVE, and the difference is the whole point:
+ *   - 'none' and 'custom' are what an administrator may CHOOSE (see USER_ROUNDING_METHODS). 'custom'
+ *     evaluates the leave type's own `roundingBands` table and subsumes all three fixed methods —
+ *     one row 0→1 ⇒ 1 is Round Up, one row 0→1 ⇒ 0 is Round Down, and the two-row 0→0.5 ⇒ 0 /
+ *     0.5→1 ⇒ 0.5 table is Nearest 0.5 Day.
+ *   - 'up' / 'down' / 'nearest_half' are RETIRED AS CHOICES but NOT as values. `applyRounding` still
+ *     honours them, deliberately: migration 0358 clears both storage surfaces, but this evaluator also
+ *     runs against seeds, fixtures and hand-written JSONB that no migration reaches, and quietly turning
+ *     a stored 'up' into no-rounding would move a figure without anybody asking. They can no longer be
+ *     WRITTEN (setLeaveTypeRules refuses them) — only read. */
+export type LeaveRoundingMethod = 'none' | 'up' | 'down' | 'nearest_half' | 'custom';
 
 /**
  * Feedback 9f5164d8 — the threshold the reporter documented as the STANDARD rule, used whenever
@@ -383,13 +414,21 @@ function round2dp(n: number): number {
  *
  * DEFENSIVE like the rest of this file: a non-finite value or an unknown method passes straight through,
  * and a garbage threshold degrades to the default rather than throwing.
+ *
+ * FEEDBACK 8fec719e — 'custom'. The value's decimal portion is looked up in the leave type's own band
+ * table and replaced by that band's `result` (see `applyRoundingBands`). This is the ONLY method an
+ * administrator can now choose besides No Rounding, and it expresses all three of the fixed methods it
+ * replaces. `bands` is read by NOTHING except this branch, so passing one can never move a figure on a
+ * type configured with any other method — the same containment 9f5164d8's `threshold` has.
  */
 export function applyRounding(
   value: number,
   method: LeaveRoundingMethod | string | null | undefined,
   threshold?: string | number | null,
+  bands?: unknown,
 ): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return value;
+  if (method === 'custom') return applyRoundingBands(value, bands);
   if (method === 'up') return round2dp(Math.ceil(value));
   if (method === 'down') return round2dp(Math.floor(value));
   if (method === 'nearest_half') {
@@ -405,6 +444,132 @@ export function applyRounding(
     const down = f < 0.5 ? 0 : 0.5;
     const up = f === 0 ? 0 : f <= 0.5 ? 0.5 : 1;
     return round2dp(whole + (f < t ? down : up));
+  }
+  return value;
+}
+
+/**
+ * 8fec719e — WHAT IS WRONG WITH A CUSTOM ROUNDING TABLE. One shape, returned as a LIST rather than a
+ * first-failure, because the editor draws every problem at once and the service names every problem it
+ * refuses. `checkRoundingBands` is the SINGLE authority: the client component imports this exact function
+ * for its live hints (this module is RSC-safe, which is why it can), and `setLeaveTypeRules` calls it
+ * again before writing. The UI hints are a courtesy; the service call is the guard. A second
+ * implementation for the browser is a second thing that can disagree with what actually saves.
+ *
+ * THE GAP IS A WARNING, NOT AN ERROR, and that asymmetry is deliberate. An overlap or a duplicate means
+ * the table has TWO answers for one decimal and the engine would silently pick one — unresolvable, so it
+ * is refused. A gap means the table has NO answer for part of the range, and there IS a defined answer
+ * for that: the value is left exactly as calculated (`applyRoundingBands` falls through). A
+ * half-finished table must be savable, or an administrator cannot build one row at a time.
+ */
+export type RoundingBandProblem =
+  /** a row that is not three finite numbers at all */
+  | { kind: 'shape'; index: number }
+  /** a bound outside 0.000–1.000 (from, to and result all live in the decimal portion) */
+  | { kind: 'range'; index: number }
+  /** from >= to — an empty or inverted band, which can never match anything */
+  | { kind: 'order'; index: number }
+  /** the SAME (from, to) appears twice; `index` is the later row */
+  | { kind: 'duplicate'; index: number }
+  /** this row's interval intersects an earlier row's; `index` is the later row */
+  | { kind: 'overlap'; index: number }
+  /** part of 0.000–1.000 that no row covers. WARNING only — see the header. */
+  | { kind: 'gap'; from: number; to: number };
+
+/** Three decimal places, matching the precision the reporter's own tables are written at and the one
+ *  `applyRounding`'s nearest-half branch already snaps the decimal portion to. Comparing at this
+ *  precision is what stops 0.1 + 0.2 = 0.30000000000000004 from reading as an overlap. */
+const bandRound = (n: number) => Math.round(n * 1000) / 1000;
+
+export function checkRoundingBands(bands: unknown): RoundingBandProblem[] {
+  const out: RoundingBandProblem[] = [];
+  if (!Array.isArray(bands)) return [{ kind: 'shape', index: 0 }];
+  const rows: { from: number; to: number; i: number }[] = [];
+  bands.forEach((b, i) => {
+    const row = b as Record<string, unknown> | null;
+    const nums = [row?.from, row?.to, row?.result];
+    if (row == null || typeof row !== 'object' || nums.some((n) => typeof n !== 'number' || !Number.isFinite(n))) {
+      out.push({ kind: 'shape', index: i });
+      return;
+    }
+    const from = bandRound(row.from as number);
+    const to = bandRound(row.to as number);
+    const result = bandRound(row.result as number);
+    if (from < 0 || from > 1 || to < 0 || to > 1 || result < 0 || result > 1) {
+      out.push({ kind: 'range', index: i });
+      return;
+    }
+    if (from >= to) {
+      out.push({ kind: 'order', index: i });
+      return;
+    }
+    rows.push({ from, to, i });
+  });
+  // Pairwise rather than sort-then-compare-neighbours: the rows are in the order the administrator typed
+  // them, a table is a handful of rows, and reporting the LATER row of a clashing pair is what lets the
+  // editor highlight the row the person is working on rather than the one they finished earlier.
+  for (let a = 0; a < rows.length; a++) {
+    for (let z = a + 1; z < rows.length; z++) {
+      const x = rows[a];
+      const y = rows[z];
+      if (x.from === y.from && x.to === y.to) out.push({ kind: 'duplicate', index: y.i });
+      else if (x.from < y.to && y.from < x.to) out.push({ kind: 'overlap', index: y.i });
+    }
+  }
+  // Coverage is only meaningful once the rows are individually sane; on a broken table the gaps would be
+  // an artefact of the rows we already refused, and reporting both would bury the real problem.
+  if (out.length === 0) {
+    let cursor = 0;
+    for (const r of [...rows].sort((p, q) => p.from - q.from)) {
+      if (r.from > cursor) out.push({ kind: 'gap', from: cursor, to: r.from });
+      cursor = Math.max(cursor, r.to);
+    }
+    if (cursor < 1) out.push({ kind: 'gap', from: cursor, to: 1 });
+  }
+  return out;
+}
+
+/** The half of `checkRoundingBands` that REFUSES a save: everything except the gap warning. */
+export function roundingBandErrors(bands: unknown): RoundingBandProblem[] {
+  return checkRoundingBands(bands).filter((p) => p.kind !== 'gap');
+}
+
+/** A table the engine will act on: a non-empty array with no ERROR-class problem. Gaps are permitted (the
+ *  uncovered decimals simply keep their calculated value), so a part-built table rounds what it covers. */
+export function isWellFormedRoundingBands(bands: unknown): bands is RoundingBand[] {
+  return Array.isArray(bands) && bands.length > 0 && roundingBandErrors(bands).length === 0;
+}
+
+/**
+ * 8fec719e — evaluate a custom rounding table against a calculated entitlement.
+ *
+ *     whole = floor(value)
+ *     f     = the decimal portion, snapped to three places FIRST (the 9f5164d8 precedent, and load-bearing
+ *             for the same reason: 0.1 + 0.2 + 1.2 is 1.5000000000000002 in IEEE754, and a raw compare
+ *             would drop it in the band above the one an administrator reading the table expects)
+ *     hit   = the band with from <= f < to, or from <= f <= to for a band closing at exactly 1.000
+ *     out   = whole + hit.result
+ *
+ * A WHOLE VALUE IS NEVER MOVED. f === 0 returns immediately, before any lookup. Every method this
+ * replaces behaved that way (ceil, floor and the nearest-half branch all leave 11.0 at 11.0), and without
+ * the guard a first band of 0.000→0.500 ⇒ 0.500 would quietly hand out half a day to everyone whose
+ * entitlement came out whole — a table that looks like "round the stragglers up" silently inflating the
+ * exact figures.
+ *
+ * DEFENSIVE, like every other resolver here: a malformed table, an unmatched decimal (a gap) or a
+ * non-finite value all leave the value EXACTLY as calculated. Refusing to round is always recoverable;
+ * rounding on a table nobody could validate is not.
+ */
+export function applyRoundingBands(value: number, bands: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return value;
+  if (!isWellFormedRoundingBands(bands)) return value;
+  const whole = Math.floor(value);
+  const f = Math.round((value - whole) * 1000) / 1000;
+  if (f === 0) return round2dp(value);
+  for (const b of bands) {
+    const from = bandRound(b.from);
+    const to = bandRound(b.to);
+    if (f >= from && (to >= 1 ? f <= to : f < to)) return round2dp(whole + bandRound(b.result));
   }
   return value;
 }
@@ -464,6 +629,9 @@ export type LeaveTypeRules = {
   roundingMethod?: string | null;
   /** Feedback 9f5164d8 (migration 0335) — the eleventh column. Read only alongside a 'nearest_half' method. */
   roundingThreshold?: string | number | null;
+  /** 8fec719e (migration 0358) — the thirteenth column: the custom rounding table. jsonb, so it arrives as
+   *  a parsed value of unknown shape and is validated at the boundary rather than trusted. */
+  roundingBands?: unknown;
   maxBalanceDays?: string | number | null;
 };
 
@@ -505,6 +673,11 @@ export function hasAnyLeaveTypeRule(rules: LeaveTypeRules | null | undefined): b
     rules.carryForwardExpiryMonth != null ||
     rules.carryForwardExpiryDay != null ||
     rules.roundingMethod != null ||
+    // 8fec719e: the band table is a configured rule in its own right. This disjunct is NOT optional — it
+    // is the exact omission 7cd914b1 shipped with carryForwardPercent and documented four lines above. A
+    // bands-only type without it reads as unruled, applyLeaveTypeRules falls through to the legacy grade
+    // policy, and the administrator's table is silently ignored while a stale JSONB rule set comes back.
+    rules.roundingBands != null ||
     rules.maxBalanceDays != null
   );
 }
@@ -513,10 +686,31 @@ export function hasAnyLeaveTypeRule(rules: LeaveTypeRules | null | undefined): b
  *  value for. Anything else (including 'none' and NULL) means "leave the calculated value alone". One
  *  definition so the overlay, the write-time validator and the editor cannot drift apart. */
 export type EngineRoundingMethod = Exclude<LeaveRoundingMethod, 'none'>;
-export const ENGINE_ROUNDING_METHODS: readonly EngineRoundingMethod[] = ['up', 'down', 'nearest_half'];
+export const ENGINE_ROUNDING_METHODS: readonly EngineRoundingMethod[] = ['up', 'down', 'nearest_half', 'custom'];
 export function isEngineRoundingMethod(v: unknown): v is EngineRoundingMethod {
   return typeof v === 'string' && (ENGINE_ROUNDING_METHODS as readonly string[]).includes(v);
 }
+
+/**
+ * 8fec719e — THE METHODS AN ADMINISTRATOR MAY CHOOSE. Exactly two, which is the whole request: No
+ * Rounding, or a table you write yourself.
+ *
+ * DISTINCT FROM `ENGINE_ROUNDING_METHODS`, and the gap between the two sets is the migration story rather
+ * than an oversight. The engine set is what `applyRounding` still ACTS on — it keeps 'up', 'down' and
+ * 'nearest_half' so a stored value the migration did not reach (a seed, a fixture, hand-written JSONB)
+ * keeps producing the figure it always produced. The user set is what may be WRITTEN, and it is the one
+ * the editor renders and `setLeaveTypeRules` enforces. Retiring a choice and silently re-interpreting
+ * every value already stored under it are two different changes, and only the first one was asked for.
+ */
+export const USER_ROUNDING_METHODS = ['none', 'custom'] as const;
+export type UserRoundingMethod = (typeof USER_ROUNDING_METHODS)[number];
+export function isUserRoundingMethod(v: unknown): v is UserRoundingMethod {
+  return typeof v === 'string' && (USER_ROUNDING_METHODS as readonly string[]).includes(v);
+}
+
+/** The retired methods, kept READABLE and named so nothing has to spell the three strings again. Nothing
+ *  may write these; `applyRounding` still evaluates them. */
+export const LEGACY_ROUNDING_METHODS = ['up', 'down', 'nearest_half'] as const;
 
 /**
  * Overlay a leave type's own rules onto a policy resolved by `resolveGradePolicy`. DAYS ARE NEVER TOUCHED.
@@ -585,6 +779,10 @@ export function applyLeaveTypeRules(
     // applyRounding ignores it for every other method, and dropping it here would mean a type that
     // temporarily switches away from 'nearest_half' and back loses the threshold it had configured.
     roundingThreshold: finiteOrNull(r.roundingThreshold),
+    // 8fec719e — the band table, filtered at this boundary exactly like every other rule: a malformed or
+    // self-contradictory table resolves to null (no rounding) rather than reaching the engine, so a row
+    // that bypassed the write-time validator can never round a balance by an unresolvable rule.
+    roundingBands: isWellFormedRoundingBands(r.roundingBands) ? r.roundingBands : null,
   };
 }
 
@@ -739,7 +937,7 @@ export function previewEntitlement(
   // the granting engines apply it, so this function's docstring guarantee ("the admin preview can never
   // disagree with the real engine") still holds once a Rounding Method is configured. `floorDays` /
   // `policyDays` stay RAW so the UI can still quote the minimum in its warning.
-  const days = applyRounding(policyDays ?? 0, policy?.roundingMethod, policy?.roundingThreshold);
+  const days = applyRounding(policyDays ?? 0, policy?.roundingMethod, policy?.roundingThreshold, policy?.roundingBands);
   // Derive which scope tier actually won, mirroring resolveGradePolicy's own subset filters exactly —
   // including the case where the company scope EXISTS but resolves to a policy days of 0 (i.e. the
   // company has only other-grade rows and no null-grade default): scope is still 'company' (short-circuit

@@ -22,7 +22,7 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { setLeaveTypeRules, LeaveTypeRuleError } from '../core/admin';
-import { applyLeaveTypeRules } from '../core/leave-compute';
+import { applyLeaveTypeRules, hasAnyLeaveTypeRule } from '../core/leave-compute';
 
 let b: Base;
 
@@ -53,6 +53,7 @@ const rulesOf = async (id: string) => {
       carryForwardExpiryMode: schema.leaveType.carryForwardExpiryMode,
       carryForwardExpiryMonths: schema.leaveType.carryForwardExpiryMonths,
       roundingMethod: schema.leaveType.roundingMethod,
+      roundingBands: schema.leaveType.roundingBands,
       maxBalanceDays: schema.leaveType.maxBalanceDays,
     })
     .from(schema.leaveType)
@@ -71,24 +72,25 @@ describe('§1 the writer persists, and the engine reads it back', () => {
       carryForwardMax: 10,
       carryForwardExpiryMode: 'months',
       carryForwardExpiryMonths: 6,
-      roundingMethod: 'up',
+      roundingMethod: 'custom',
+      roundingBands: [{ from: 0, to: 1, result: 1 }],
       maxBalanceDays: 25,
     });
     const r = await rulesOf(id);
     expect(r.accrualMethod).toBe('earned_monthly');
     expect(r.carryForwardExpiryMonths).toBe(6);
-    expect(r.roundingMethod).toBe('up');
+    expect(r.roundingMethod).toBe('custom');
 
     // The proof that matters: the overlay the engines use resolves what was just written, rather than the
     // policy row it used to come from. A stored value nothing reads would pass a column assertion alone.
     const resolved = applyLeaveTypeRules({ days: 12, carryMax: 0 }, r);
     expect(resolved?.method).toBe('earned_monthly');
-    expect(resolved?.roundingMethod).toBe('up');
+    expect(resolved?.roundingMethod).toBe('custom');
   });
 
   it('records the change with both sides, because these rules decide what everyone accrues', async () => {
     const id = await annualId();
-    await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'down' });
+    await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'custom' });
     const events = await owner.db
       .select({ t: schema.domainEvent.eventType, p: schema.domainEvent.payload })
       .from(schema.domainEvent)
@@ -96,7 +98,7 @@ describe('§1 the writer persists, and the engine reads it back', () => {
     const ev = events.filter((e) => e.t === 'leave-type.rules.updated').at(-1);
     expect(ev).toBeTruthy();
     const payload = ev!.p as { before: Record<string, unknown>; after: Record<string, unknown> };
-    expect(payload.after.roundingMethod).toBe('down');
+    expect(payload.after.roundingMethod).toBe('custom');
     // `after` must be the resulting STATE, not the posted patch — a reader has to see what it became.
     expect(payload.after).toHaveProperty('accrualMethod');
   });
@@ -113,11 +115,11 @@ describe('§2 the tri-state — one row, two forms, disjoint halves', () => {
       carryForwardExpiryMonths: 6,
     });
     // The Earning Method form posts ONLY its half.
-    await setLeaveTypeRules(adminCtx(b), { id, accrualMethod: 'lump_sum', roundingMethod: 'down' });
+    await setLeaveTypeRules(adminCtx(b), { id, accrualMethod: 'lump_sum', roundingMethod: 'custom' });
 
     const r = await rulesOf(id);
     expect(r.accrualMethod).toBe('lump_sum');
-    expect(r.roundingMethod).toBe('down');
+    expect(r.roundingMethod).toBe('custom');
     // ...and the carry half survived. Without the tri-state this is where carry-forward silently dies.
     expect(r.carryForwardEnabled).toBe(true);
     expect(Number(r.carryForwardMax)).toBe(10);
@@ -126,9 +128,42 @@ describe('§2 the tri-state — one row, two forms, disjoint halves', () => {
 
   it('an explicit null CLEARS, which is different from omitting the field', async () => {
     const id = await annualId();
-    await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'up' });
+    // 8fec719e: the type must carry ANOTHER rule for the clear to land as NULL — see the next test for why.
+    await setLeaveTypeRules(adminCtx(b), { id, accrualMethod: 'earned_monthly', roundingMethod: 'custom' });
     await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: null });
     expect((await rulesOf(id)).roundingMethod).toBeNull();
+  });
+
+  it("8fec719e — clearing the ONLY rule stores 'none', not NULL, so the type cannot go unruled", async () => {
+    // THE TRAP. hasAnyLeaveTypeRule is a null test and applyLeaveTypeRules returns the LEGACY grade policy
+    // verbatim when it says false. On a type whose only rule is its rounding, a NULL here would not switch
+    // rounding off — it would restore the type's entire legacy JSONB rule set (a different earning method,
+    // a different carry cap, a different balance) under the heading of a rounding change. 'none' is a
+    // value, so the type stays ruled; the engine reads it as no rounding either way.
+    const id = await annualId();
+    // Earlier tests in this file share the seeded ANNUAL type, so put it back to "no rules at all" first —
+    // the guard is about a type whose ONLY rule is rounding, and the state has to actually be that.
+    await owner.db
+      .update(schema.leaveType)
+      .set({
+        accrualMethod: null,
+        carryForwardMax: null,
+        carryForwardPercent: null,
+        carryForwardEnabled: null,
+        carryForwardExpiryMode: null,
+        carryForwardExpiryMonths: null,
+        carryForwardExpiryMonth: null,
+        carryForwardExpiryDay: null,
+        maxBalanceDays: null,
+      })
+      .where(eq(schema.leaveType.id, id));
+    await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'custom', roundingBands: [{ from: 0, to: 1, result: 1 }] });
+    await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: null, roundingBands: null });
+    const r = await rulesOf(id);
+    expect(r.roundingMethod).toBe('none');
+    expect(hasAnyLeaveTypeRule(r)).toBe(true);
+    // …and 'none' rounds nothing, which is the whole point of choosing it.
+    expect(applyLeaveTypeRules({ days: 12, carryMax: 0 }, r)?.roundingMethod).toBeUndefined();
   });
 
   it('a call with no fields at all is a no-op rather than a wipe', async () => {

@@ -28,6 +28,8 @@ const schemeSrc = readFileSync(resolve(here, '../components/benefit-scheme-confi
 const uiSrc = readFileSync(resolve(here, '../components/ui.tsx'), 'utf8');
 const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
 const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
+// 8fec719e — the service-side validator the editor's warnings must come from, not a browser lookalike.
+const adminSrc = readFileSync(resolve(here, '../core/admin.ts'), 'utf8');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const msgs = (loc: string) => JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
@@ -58,10 +60,15 @@ describe('§1 4dbe04c6 · the Minimum Service pair fits its container', () => {
   });
 });
 
-describe('§2 9f5164d8 · the rounding editor', () => {
-  it('offers the four methods the request lists, and only those', () => {
-    for (const v of ['value="none"', 'value="nearest_half"', 'value="up"', 'value="down"']) {
-      expect(panelSrc.includes(`<option ${v}>`), `rounding option ${v}`).toBe(true);
+describe('§2 8fec719e · the rounding editor', () => {
+  it('offers exactly TWO methods — No Rounding and Custom Rounding — and none of the retired three', () => {
+    expect(panelSrc).toContain('<option value="none">');
+    expect(panelSrc).toContain('<option value="custom">');
+    // The three fixed choices this item removes must not survive anywhere in the panel, on EITHER form.
+    // The add-entitlement form used to offer up/down against the legacy JSONB copy; that dropdown is gone
+    // with the rest, or the item would have removed the choices from one screen and left them on another.
+    for (const v of ['nearest_half', 'up', 'down']) {
+      expect(panelSrc.includes(`<option value="${v}">`), `retired rounding option ${v}`).toBe(false);
     }
   });
 
@@ -71,32 +78,58 @@ describe('§2 9f5164d8 · the rounding editor', () => {
     // any form that ever stopped rendering the control, defeating the tri-state the helper exists to give.
     expect(actionsSrc).toContain('roundingMethod: roundingMethodField(formData),');
     expect(actionsSrc).not.toContain('roundingMethodField(formData) ?? null');
-    // The threshold rides the SAME marker and carries the same discipline.
+    // The threshold and the band table ride the SAME marker and carry the same discipline.
     expect(actionsSrc).toContain('roundingThreshold: roundingThresholdField(formData),');
     expect(actionsSrc).not.toContain('roundingThresholdField(formData) ?? null');
+    expect(actionsSrc).toContain('roundingBands: roundingBandsField(formData),');
+    expect(actionsSrc).not.toContain('roundingBandsField(formData) ?? null');
   });
 
-  it('posts exactly ONE roundingThreshold field — the boundary, not four independent numbers', () => {
-    // Four stored figures would make "no gaps / no overlaps / full coverage" violable and then need three
-    // more validators. One boundary makes them true by construction.
-    expect(panelSrc.match(/name="roundingThreshold"/g)).toHaveLength(1);
-    expect(panelSrc).toContain('<input type="hidden" name="roundingThreshold"');
+  it('posts the whole table as exactly ONE roundingBands field, not a grid of named inputs', () => {
+    // One JSON field is what makes the row count unbounded without the action having to guess how many
+    // `roundingBands[3][to]` names to look for — the serviceBands precedent, verbatim.
+    expect(panelSrc.match(/name="roundingBands"/g)).toHaveLength(1);
+    expect(panelSrc).toContain('<input type="hidden" name="roundingBands"');
   });
 
-  it('shows the thresholds only under Nearest 0.5 day, behind the customize checkbox', () => {
-    expect(panelSrc).toContain("const showThresholds = rounding === 'nearest_half';");
-    expect(panelSrc).toContain('{custom && <RoundingThresholdEditor');
+  it('the Customize Decimal Thresholds checkbox is gone, and the table shows the moment Custom is picked', () => {
+    expect(panelSrc).toContain("const showBands = rounding === 'custom';");
+    expect(panelSrc).toContain('{showBands && <RoundingBandsEditor');
+    // No checkbox in front of it. The reporter's complaint was that the tunable option took two steps.
+    expect(panelSrc).not.toContain("roundingCustomize");
+    expect(panelSrc).not.toContain('RoundingThresholdEditor');
+  });
+
+  it('adding a row suggests the next From from the row above — a real value, not a placeholder', () => {
+    // "You can accept it" has to mean doing nothing, so the suggestion is the input's VALUE (posted,
+    // editable) and only its colour says provisional. A placeholder would post nothing when accepted.
+    expect(panelSrc).toContain('const suggested = prev ? prev.to : bandText(0);');
+    expect(panelSrc).toContain("r.fromIsHint && 'text-muted-foreground/60'");
+    expect(panelSrc).toContain("t('subStep.roundingBandAddRow')");
+  });
+
+  it('the warnings come from the SERVICE validator, not a lookalike in the browser', () => {
+    // A second opinion about what is legal is a second thing that can disagree with what actually saves.
+    expect(panelSrc).toMatch(/import \{[\s\S]*?\bcheckRoundingBands\b[\s\S]*?\} from '@\/core\/leave-compute'/);
+    expect(panelSrc).toContain('checkRoundingBands(rowsToBands(rows))');
+    // …and the same module is what the writer calls before storing.
+    expect(adminSrc).toContain('roundingBandErrors(p.roundingBands)');
   });
 
   it('the worked example runs the REAL evaluator, not a lookalike', () => {
-    // An administrator is shown what a rule produces before saving it. A second implementation of the rule
-    // is a second thing that can disagree with the ledger.
     expect(panelSrc).toMatch(/import \{[\s\S]*?\bapplyRounding\b[\s\S]*?\} from '@\/core\/leave-compute'/);
-    expect(panelSrc).toContain('applyRounding(ROUNDING_EXAMPLE_RAW, rounding, effectiveThreshold)');
+    expect(panelSrc).toContain('applyRounding(ROUNDING_EXAMPLE_RAW, rounding, null, rowsToBands(bandRows))');
   });
 
-  it('the panel receives the stored threshold from the page (or it renders as lost on every reload)', () => {
-    expect(pageSrc).toContain('roundingThreshold: lt.roundingThreshold == null ? null : Number(lt.roundingThreshold)');
+  it('the panel receives the stored table from the page (or it renders as lost on every reload)', () => {
+    expect(pageSrc).toContain('roundingBands: (lt.roundingBands as RoundingBand[] | null) ?? null');
+  });
+
+  it('the panel is handed only SERIALISABLE rounding props — no translator, no closure', () => {
+    // A server component passing a function to a client component throws AT RENDER and no gate step catches
+    // it. The table is a plain array of plain objects; `t` inside the panel comes from useTranslations.
+    expect(pageSrc).not.toMatch(/roundingBands=\{\s*\(/);
+    expect(panelSrc).toContain("import { useTranslations } from 'next-intl'");
   });
 });
 
@@ -154,6 +187,28 @@ describe('§5 i18n — every new key resolves in all six locales', () => {
   const SUB_STEP = [
     'yearType',
     'yearTypeStepHelp',
+    // 8fec719e retired the four fixed methods and the threshold table with them; these are the keys the
+    // custom rounding table introduced. English copy in all six locales for now (the translation sweep is
+    // a separate pass) — this file asserts PRESENCE and non-blankness, which is what a missing key breaks.
+    'roundingCustom',
+    'roundingBandsTitle',
+    'roundingBandFrom',
+    'roundingBandTo',
+    'roundingBandResult',
+    'roundingBandAddRow',
+    'roundingBandRemove',
+    'roundingBandsHelp',
+    'roundingBandRowInvalid',
+    'roundingBandOverlap',
+    'roundingBandDuplicate',
+    'roundingBandGap',
+    'roundingWorkedExample',
+  ];
+  // The keys that named the removed choices must be GONE, not merely unused — a stale
+  // "Nearest 0.5 day" string is how a removed option finds its way back onto a screen.
+  const RETIRED_SUB_STEP = [
+    'roundingUp',
+    'roundingDown',
     'roundingNearestHalf',
     'roundingCustomize',
     'roundingThresholdsTitle',
@@ -163,7 +218,6 @@ describe('§5 i18n — every new key resolves in all six locales', () => {
     'roundingToExclusive',
     'roundingToInclusive',
     'roundingThresholdHelp',
-    'roundingWorkedExample',
   ];
   const CONDITION = [
     'applicationLimitsTitle',
@@ -180,6 +234,7 @@ describe('§5 i18n — every new key resolves in all six locales', () => {
       const m = msgs(loc);
       for (const k of SUB_STEP) expect(typeof m?.admin?.leave?.subStep?.[k], `${loc} subStep.${k}`).toBe('string');
       for (const k of SUB_STEP) expect(String(m.admin.leave.subStep[k]).trim().length, `${loc} subStep.${k}`).toBeGreaterThan(0);
+      for (const k of RETIRED_SUB_STEP) expect(m.admin.leave.subStep[k], `${loc} retired subStep.${k}`).toBeUndefined();
       for (const k of CONDITION) expect(typeof m?.admin?.leave?.conditionStep?.[k], `${loc} conditionStep.${k}`).toBe('string');
       for (const k of BENEFIT) expect(typeof m?.admin?.benefitScheme?.[k], `${loc} benefitScheme.${k}`).toBe('string');
       expect(typeof m?.leave?.errors?.leaveYearApplicationLimit, `${loc} leave.errors.leaveYearApplicationLimit`).toBe('string');

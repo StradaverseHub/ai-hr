@@ -34,6 +34,7 @@ import {
   applyRounding,
   DEFAULT_ROUNDING_THRESHOLD,
   ENGINE_ROUNDING_METHODS,
+  USER_ROUNDING_METHODS,
   resolveRoundingThreshold,
   roundingThresholdRanges,
 } from '../core/leave-compute';
@@ -161,10 +162,25 @@ describe('§3 the validation rules, four of which hold by construction', () => {
     expect(up).toEqual({ from: 0.5, to: 1 });
   });
 
-  it('the writer refuses an out-of-range boundary with a NAMED error, not a raw constraint violation', async () => {
+  it('8fec719e — the writer no longer accepts nearest_half AT ALL, so no new threshold can be created', async () => {
+    // The method was retired as a CHOICE by 8fec719e. The evaluator above still honours a stored one (that
+    // is what §1/§2 assert, and it is why nothing already stored moves), but nothing may write it again —
+    // a retired choice a hand-crafted POST could still save is not retired.
+    const id = await annualId();
+    for (const m of ['nearest_half', 'up', 'down'] as const) {
+      await expect(
+        setLeaveTypeRules(adminCtx(b), { id, roundingMethod: m as unknown as 'custom' }),
+      ).rejects.toBeInstanceOf(LeaveTypeRuleError);
+    }
+  });
+
+  it('the threshold bounds are still enforced with a NAMED error, not a raw constraint violation', async () => {
+    // The column survives 8fec719e (dropping it is not reversible in a rollback and nothing asked for it),
+    // so its validator survives too. It is now reachable only without a method, which is the honest shape:
+    // the threshold was never the method's operand at the writer, only at the evaluator.
     const id = await annualId();
     for (const bad of [0, -0.5, 1.001, 2, Number.NaN]) {
-      const attempt = setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'nearest_half', roundingThreshold: bad });
+      const attempt = setLeaveTypeRules(adminCtx(b), { id, roundingThreshold: bad });
       await expect(attempt).rejects.toBeInstanceOf(LeaveTypeRuleError);
       await expect(attempt).rejects.toMatchObject({ name: 'LeaveTypeRuleError' });
     }
@@ -172,13 +188,11 @@ describe('§3 the validation rules, four of which hold by construction', () => {
 
   it('the writer refuses more than three decimal places', async () => {
     const id = await annualId();
-    await expect(
-      setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'nearest_half', roundingThreshold: 0.4995 }),
-    ).rejects.toBeInstanceOf(LeaveTypeRuleError);
+    await expect(setLeaveTypeRules(adminCtx(b), { id, roundingThreshold: 0.4995 })).rejects.toBeInstanceOf(
+      LeaveTypeRuleError,
+    );
     // …but three decimal places, including ones that are inexact in binary floating point, are accepted.
-    await expect(
-      setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'nearest_half', roundingThreshold: 0.123 }),
-    ).resolves.not.toThrow();
+    await expect(setLeaveTypeRules(adminCtx(b), { id, roundingThreshold: 0.123 })).resolves.not.toThrow();
   });
 
   it('the writer still refuses a method the engine would ignore', async () => {
@@ -186,23 +200,46 @@ describe('§3 the validation rules, four of which hold by construction', () => {
     await expect(
       // 'nearest' is the PAY-COMPONENT rounding vocabulary (core/pay-components.ts), a different domain with
       // deliberately no shared code. Storing it here would save and then do nothing.
-      setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'nearest' as 'up' }),
+      setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'nearest' as 'custom' }),
     ).rejects.toBeInstanceOf(LeaveTypeRuleError);
   });
 
-  it('the engine method set is exactly the three that change a figure', () => {
-    expect([...ENGINE_ROUNDING_METHODS].sort()).toEqual(['down', 'nearest_half', 'up']);
-    // 'none' is deliberately NOT in it: it is the absence of rounding, stored as NULL.
+  it('8fec719e — the ENGINE set and the USER set are different, and the difference is deliberate', () => {
+    // The ENGINE set is what applyRounding still ACTS on. It keeps the three retired methods so a stored
+    // value migration 0358 did not reach (a seed, a fixture, hand-written JSONB) keeps producing the figure
+    // it always produced — retiring a choice and re-interpreting every value stored under it are different
+    // changes, and only the first was asked for.
+    expect([...ENGINE_ROUNDING_METHODS].sort()).toEqual(['custom', 'down', 'nearest_half', 'up']);
     expect(ENGINE_ROUNDING_METHODS).not.toContain('none');
+    // The USER set is what may be WRITTEN, rendered and chosen. Exactly two, which IS the request.
+    expect([...USER_ROUNDING_METHODS].sort()).toEqual(['custom', 'none']);
+    for (const retired of ['up', 'down', 'nearest_half']) {
+      expect(USER_ROUNDING_METHODS as readonly string[]).not.toContain(retired);
+    }
   });
 });
 
-describe('§4 the round trip: what the editor stores is what the engine reads', () => {
-  it('persists the method and threshold, and the overlay hands both to the engine', async () => {
+describe('§4 the round trip — 8fec719e: a STORED nearest_half still reads back and still evaluates', () => {
+  /**
+   * The writer can no longer create one (see §3), so the round trip is now half a round trip: a value that
+   * already sits in the column — a seed, a fixture, a tenant migration 0358 has not reached — must still
+   * resolve through the overlay and still produce the figure it always produced. This is the assertion
+   * that makes "we retired the CHOICE, not the VALUE" true rather than merely stated.
+   */
+  const writeDirect = async (id: string, roundingMethod: string, roundingThreshold: string | null) =>
+    owner.db
+      .update(schema.leaveType)
+      .set({ roundingMethod: roundingMethod as 'nearest_half', roundingThreshold })
+      .where(eq(schema.leaveType.id, id));
+
+  it('the overlay hands a stored method and threshold to the engine unchanged', async () => {
     const id = await annualId();
-    await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'nearest_half', roundingThreshold: 0.75 });
+    await writeDirect(id, 'nearest_half', '0.750');
     const [row] = await owner.db
-      .select({ roundingMethod: schema.leaveType.roundingMethod, roundingThreshold: schema.leaveType.roundingThreshold })
+      .select({
+        roundingMethod: schema.leaveType.roundingMethod,
+        roundingThreshold: schema.leaveType.roundingThreshold,
+      })
       .from(schema.leaveType)
       .where(eq(schema.leaveType.id, id))
       .limit(1);
@@ -217,12 +254,14 @@ describe('§4 the round trip: what the editor stores is what the engine reads', 
     expect(applyRounding(1.6, pol!.roundingMethod, pol!.roundingThreshold)).toBe(1.5);
   });
 
-  it('clearing the threshold returns the type to the standard rule without clearing the method', async () => {
+  it('a stored method with NO threshold falls back to the standard rule, exactly as before', async () => {
     const id = await annualId();
-    await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'nearest_half', roundingThreshold: 0.75 });
-    await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'nearest_half', roundingThreshold: null });
+    await writeDirect(id, 'nearest_half', null);
     const [row] = await owner.db
-      .select({ roundingMethod: schema.leaveType.roundingMethod, roundingThreshold: schema.leaveType.roundingThreshold })
+      .select({
+        roundingMethod: schema.leaveType.roundingMethod,
+        roundingThreshold: schema.leaveType.roundingThreshold,
+      })
       .from(schema.leaveType)
       .where(eq(schema.leaveType.id, id))
       .limit(1);
@@ -233,11 +272,14 @@ describe('§4 the round trip: what the editor stores is what the engine reads', 
 
   it('a save that does not mention rounding leaves BOTH columns alone (the tri-state)', async () => {
     const id = await annualId();
-    await setLeaveTypeRules(adminCtx(b), { id, roundingMethod: 'nearest_half', roundingThreshold: 0.75 });
+    await writeDirect(id, 'nearest_half', '0.750');
     // The Carry Forward sub-step's half of the row — it never renders the rounding control.
     await setLeaveTypeRules(adminCtx(b), { id, carryForwardMax: 7, carryForwardEnabled: true });
     const [row] = await owner.db
-      .select({ roundingMethod: schema.leaveType.roundingMethod, roundingThreshold: schema.leaveType.roundingThreshold })
+      .select({
+        roundingMethod: schema.leaveType.roundingMethod,
+        roundingThreshold: schema.leaveType.roundingThreshold,
+      })
       .from(schema.leaveType)
       .where(eq(schema.leaveType.id, id))
       .limit(1);

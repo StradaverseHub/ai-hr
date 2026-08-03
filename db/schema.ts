@@ -1390,7 +1390,10 @@ export const leaveType = pgTable('leave_type', {
   //   roundingMethod — 'none' | 'up' | 'down' (b81d3c52) | 'nearest_half' (9f5164d8, migration 0335).
   //     NULL ⇒ none. Only 'up'/'down' were ever written by the 0325 backfill, mirroring resolveGradePolicy,
   //     which honoured nothing else; 'nearest_half' is only ever written by a deliberate admin save.
-  roundingMethod: text('rounding_method').$type<'none' | 'up' | 'down' | 'nearest_half'>(),
+  //     8fec719e (0358) adds 'custom' — the only value the writer may store from now on, alongside 'none'.
+  //     The three legacy values stay in the union (and in the CHECK) because applyRounding still evaluates
+  //     them: retiring a CHOICE and re-interpreting every value stored under it are different changes.
+  roundingMethod: text('rounding_method').$type<'none' | 'up' | 'down' | 'nearest_half' | 'custom'>(),
   //   roundingThreshold — 9f5164d8 (migration 0335): the decimal point at which the fractional part of a
   //     calculated entitlement rounds UP to the next 0.5 instead of DOWN to the previous one. Read ONLY when
   //     roundingMethod is 'nearest_half'; NULL ⇒ the reporter's documented standard rule (0.000–0.499 down,
@@ -1398,6 +1401,20 @@ export const leaveType = pgTable('leave_type', {
   //     validation forbids gaps and overlaps — that shape has exactly one degree of freedom, the boundary,
   //     which is what this column is. See DEFAULT_ROUNDING_THRESHOLD in core/leave-compute.ts.
   roundingThreshold: numeric('rounding_threshold', { precision: 4, scale: 3 }),
+  //   roundingBands — 8fec719e (migration 0358): the CUSTOM ROUNDING TABLE. An ordered jsonb array of
+  //     {from, to, result} rows over the DECIMAL PORTION 0.000–1.000, evaluated by applyRoundingBands.
+  //     NULL ⇒ no table, which is every row 0358 leaves behind and reads as No Rounding.
+  //
+  //     WHY jsonb AND NOT A CHILD TABLE. The rows have no identity of their own — they are not referenced,
+  //     not audited individually and never queried across types; they are one value that is always read and
+  //     always written whole, exactly like `service_bands` on leave_policy.accrual. The DB CHECK only
+  //     asserts "an array"; the SHAPE is validated by checkRoundingBands (core/leave-compute.ts), which is
+  //     the same function the editor draws its live warnings from, so the screen and the guard cannot drift.
+  //
+  //     rounding_method AND rounding_bands ARE BOTH REQUIRED to round. A table with the method back on
+  //     'none' is dormant, not deleted — the reporter can switch Custom Rounding off and on without
+  //     retyping the table, the same containment `rounding_threshold` already has.
+  roundingBands: jsonb('rounding_bands'),
   // Application Limits (feedback c6ffa725, migration 0335): the maximum total days an employee may APPLY
   // for, of this type, within one leave year — regardless of entitlement balance. The home for the
   // reporter's Unpaid Leave case (entitlement 0, Leave Summary showing 0 available, applications still

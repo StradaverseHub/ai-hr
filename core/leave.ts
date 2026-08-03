@@ -40,6 +40,18 @@ import {
   hasAnyCarryExpiry,
   hasAnyLeaveTypeRule,
   isEngineRoundingMethod,
+  // 8fec719e — the custom rounding table: the two choosable methods, the shared validator and the
+  // evaluator. Re-exported below so server callers/tests keep importing them from '@/core/leave'.
+  isUserRoundingMethod,
+  applyRoundingBands,
+  checkRoundingBands,
+  isWellFormedRoundingBands,
+  roundingBandErrors,
+  USER_ROUNDING_METHODS,
+  LEGACY_ROUNDING_METHODS,
+  type RoundingBand,
+  type RoundingBandProblem,
+  type UserRoundingMethod,
   isValidMonthDay,
   isWellFormedBands,
   lastRealDayOfMonth,
@@ -79,6 +91,17 @@ export {
   hasAnyCarryExpiry,
   hasAnyLeaveTypeRule,
   isEngineRoundingMethod,
+  // 8fec719e — the custom rounding table surface, re-exported like the rest of the pure module.
+  isUserRoundingMethod,
+  applyRoundingBands,
+  checkRoundingBands,
+  isWellFormedRoundingBands,
+  roundingBandErrors,
+  USER_ROUNDING_METHODS,
+  LEGACY_ROUNDING_METHODS,
+  type RoundingBand,
+  type RoundingBandProblem,
+  type UserRoundingMethod,
   isValidMonthDay,
   isWellFormedBands,
   lastRealDayOfMonth,
@@ -5916,6 +5939,11 @@ export const leaveTypeRuleColumns = {
   // the header gives — a rounding threshold read by the grant engine but not by the projection kernel
   // would post a permanent oscillating delta on every reproject.
   roundingThreshold: leaveType.roundingThreshold,
+  // 8fec719e (0358): the thirteenth column, the custom rounding table. Added HERE for the reason the
+  // header gives and 7cd914b1 proved twice: a band table the grant engine reads but the projection kernel
+  // does not would make every reproject post a permanent oscillating delta against a ledger written under
+  // a rule the kernel cannot see.
+  roundingBands: leaveType.roundingBands,
   maxBalanceDays: leaveType.maxBalanceDays,
 } as const;
 
@@ -6140,7 +6168,7 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         // / the recalc kernel's projection) so the ledger and the kernel can never disagree. The carry-in
         // (`rawCarry`) is deliberately NOT rounded — a fractional carry-over plus a whole-day grant still
         // yields a fractional balance; rounding shapes the ENTITLEMENT, not every balance.
-        const grantRounded = applyRounding(days, pol?.roundingMethod, pol?.roundingThreshold);
+        const grantRounded = applyRounding(days, pol?.roundingMethod, pol?.roundingThreshold, pol?.roundingBands);
         // Feedback 9d8cf621 — Maximum Balance Days: clamp the carry-in AND this year's grant so the
         // resulting balance (carry + grant) never exceeds the resolved band's cap. Reducing the carry
         // increases the forfeit below by construction (forfeit = before − carry). No cap ⇒ pass-through.
@@ -6727,7 +6755,7 @@ export async function accrueEarnedLeave(
         // guard never posts a NEGATIVE top-up, switching to 'down' mid-cycle cannot claw back what is
         // already credited — only forward periods accrue less (the forward-only contract; the save-time
         // recalc kernel deliberately does not reproject on a rounding-only edit either).
-        earnedToDate = applyRounding(earnedToDate, pol!.roundingMethod, pol!.roundingThreshold);
+        earnedToDate = applyRounding(earnedToDate, pol!.roundingMethod, pol!.roundingThreshold, pol!.roundingBands);
         // Feedback 9d8cf621 — Maximum Balance Days: cap the cumulative earned so retainedCarry + earned
         // never exceeds the cap (i.e. the running balance stays ≤ cap across the cycle). null ⇒ no cap.
         if (pol!.maxBalanceDays != null) {
@@ -6915,7 +6943,7 @@ export function projectExpectedEntitlement(
   // joiner pro-ration, full grant). REQUIRED for ledger agreement: without it, any reproject triggered by
   // an unrelated days/method change would compare a raw projection against a rounded ledger and post a
   // permanent oscillating delta. `pol` null (floor-only / scheme-only) ⇒ no method ⇒ pass-through.
-  expected = applyRounding(expected, pol?.roundingMethod, pol?.roundingThreshold);
+  expected = applyRounding(expected, pol?.roundingMethod, pol?.roundingThreshold, pol?.roundingBands);
   // Feedback 9d8cf621 mirrored into the kernel (ae5b84d5): the winning band's Maximum Balance cap bounds
   // what the granting engines will ever materialize this cycle (applyMaxBalance at year-open/hire; the
   // earned room-cap in accrueEarnedLeave), so the projection must not exceed it either — on BOTH the

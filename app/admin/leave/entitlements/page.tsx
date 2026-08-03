@@ -18,7 +18,7 @@ import { listGradeGroups, listBenefitSchemes, listSchemeEntitlements } from '@/c
 import { listLeaveSharedGroups } from '@/core/leave-shared-group';
 import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
 import { BenefitSchemeConfig, type LeaveTypeSchemeEntitlement } from '@/components/benefit-scheme-config';
-import type { ServiceBand } from '@/core/leave-compute';
+import type { LeaveRoundingMethod, RoundingBand, ServiceBand } from '@/core/leave-compute';
 import { countryPacks } from '@/localization/registry';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -749,9 +749,14 @@ export default async function LeaveEntitlementsPage({
                 carryForwardExpiryMonth: lt.carryForwardExpiryMonth ?? null,
                 carryForwardExpiryDay: lt.carryForwardExpiryDay ?? null,
                 carryForwardIncludeEarned: lt.carryForwardIncludeEarned ?? null,
-                roundingMethod: (lt.roundingMethod as 'up' | 'down' | 'nearest_half' | null) ?? null,
+                roundingMethod: (lt.roundingMethod as LeaveRoundingMethod | null) ?? null,
                 // 9f5164d8: numeric(4,3) — same string-to-number treatment as the other numerics above.
                 roundingThreshold: lt.roundingThreshold == null ? null : Number(lt.roundingThreshold),
+                // 8fec719e: jsonb — passed through as a SERIALISABLE value (a plain array of plain
+                // objects), which is the only kind of prop a server component may hand a client one. The
+                // panel validates the shape itself; a malformed stored table renders as an empty editor
+                // rather than throwing on the server.
+                roundingBands: (lt.roundingBands as RoundingBand[] | null) ?? null,
                 maxBalanceDays: lt.maxBalanceDays == null ? null : Number(lt.maxBalanceDays),
               }}
               floor0={packEntitlement?.(lt.code, 0) ?? 0}

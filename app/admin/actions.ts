@@ -62,13 +62,13 @@ import {
   grantAdHocLeaveMulti,
   reprojectEntitlementForSchemeCohort,
   todayInKualaLumpur,
-  // Feedback 9f5164d8 — the engine's own set of savable rounding methods.
-  isEngineRoundingMethod,
   DAY_TYPE_INCLUSION_KEYS,
   type DayTypeInclusion,
   type EarnedAccrualGroup,
   type LeaveDurationType,
   type LeaveEligibility,
+  // 8fec719e — one row of the custom rounding table, parsed out of the editor's single JSON field.
+  type RoundingBand,
   type ServiceBand,
 } from '@/core/leave';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
@@ -481,18 +481,44 @@ const carryFlagField = (fd: FormData, name: string): boolean | undefined =>
  * instead of riding a hidden input on every unrelated form (the footgun the codebase itself flagged):
  *  - marker `roundingMethodRendered` ABSENT ⇒ `undefined` = PRESERVE (the form did not render the Rounding
  *    dropdown — Carry Forward / Eligibility inline edit — so the writer keeps the stored value);
- *  - marker present + an engine method ('up' / 'down' / 'nearest_half') ⇒ that value = SET;
+ *  - marker present + a choosable method ⇒ that value = SET;
  *  - marker present + anything else (incl. 'none') ⇒ `null` = explicit CLEAR (omit the key).
- * Only the forms that actually render the dropdown (Earning Method, the multi-scope add form) post the marker.
+ * Only the form that actually renders the dropdown (Earning Method) posts the marker.
  *
- * Feedback 9f5164d8 widened the accepted set with 'nearest_half'. The add-entitlement form's own dropdown
- * still offers only none/up/down, so nothing about the JSONB path changes; the widening is here rather than
- * at the Earning Method call site so the two readers cannot disagree about what a savable method is.
+ * 8fec719e narrowed the accepted set to the TWO the reporter now has: 'custom' = SET, anything else
+ * (including 'none' and the three retired methods) = CLEAR. The add-entitlement form no longer renders a
+ * rounding control at all, so the JSONB surface has no writer left — rounding is a leave-TYPE rule.
  */
-const roundingMethodField = (fd: FormData): 'up' | 'down' | 'nearest_half' | null | undefined => {
+const roundingMethodField = (fd: FormData): 'custom' | null | undefined => {
   if (fd.get('roundingMethodRendered') == null) return undefined;
   const v = String(fd.get('roundingMethod') ?? '');
-  return isEngineRoundingMethod(v) ? v : null;
+  return v === 'custom' ? 'custom' : null;
+};
+
+/**
+ * 8fec719e — the custom rounding table, posted as ONE JSON field and riding the SAME
+ * `roundingMethodRendered` marker as the dropdown it belongs to (the `roundingThresholdField` precedent
+ * directly below, for the same reason: the table is part of the rounding configuration, not a setting
+ * that outlives it).
+ *
+ * Marker present + rows ⇒ the parsed array. Marker present + blank / `[]` ⇒ null = CLEAR. Marker absent ⇒
+ * undefined = PRESERVE.
+ *
+ * A MALFORMED JSON STRING IS `undefined`, NOT `null` — the `serviceBandsField` precedent verbatim: a
+ * client-side bug must not silently wipe a table an administrator spent time building. A table that DOES
+ * parse but is self-contradictory is a different case and is refused loudly by `setLeaveTypeRules`.
+ */
+const roundingBandsField = (fd: FormData): RoundingBand[] | null | undefined => {
+  if (fd.get('roundingMethodRendered') == null) return undefined;
+  const raw = fd.get('roundingBands');
+  if (raw == null || String(raw) === '') return null;
+  try {
+    const parsed = JSON.parse(String(raw));
+    if (!Array.isArray(parsed)) return undefined;
+    return parsed.length === 0 ? null : (parsed as RoundingBand[]);
+  } catch {
+    return undefined;
+  }
 };
 
 /**
@@ -580,7 +606,11 @@ export async function createLeavePoliciesMultiAction(formData: FormData) {
   const companies: (string | null)[] = companyIds.length ? companyIds : [null];
   const grades: (string | null)[] = gradeIds.length ? gradeIds : [null];
   const bands = serviceBandsField(formData);
-  // b81d3c52: read the Rounding Method ONCE — every fanned-out (company × grade) row gets the same value.
+  // 8fec719e — the add form no longer renders a rounding control, so it posts no marker and
+  // `roundingMethodField` returns undefined: a new policy row simply carries no rounding key. Rounding is
+  // a leave-TYPE rule (9816a5ad consolidated it there, and this item cleared the legacy JSONB copy
+  // outright); a per-policy dropdown writing a key the type-level overlay ignores was the second surface
+  // this item exists to close. Read once and passed through so the parameter keeps its tri-state shape.
   const rounding = roundingMethodField(formData);
   try {
     for (const companyId of companies) {
@@ -668,8 +698,12 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
             // clear the stored rounding for any form that ever stops rendering the control.
             roundingMethod: roundingMethodField(formData),
             // 9f5164d8 — the threshold rides the same marker as the dropdown, for the same reason and with
-            // the same NOT-`?? null` discipline.
+            // the same NOT-`?? null` discipline. 8fec719e retired 'nearest_half' as a choice, so the editor
+            // no longer renders the field and this now reads as a CLEAR whenever the rounding form saves —
+            // deliberately: a threshold that belongs to a method nobody can pick must not linger.
             roundingThreshold: roundingThresholdField(formData),
+            // 8fec719e — the custom rounding table, on the SAME marker as the method it belongs to.
+            roundingBands: roundingBandsField(formData),
           }
         : {}),
       // Carry half — enable flag, cap, expiry mode and both expiry shapes, plus the max-balance cap.
