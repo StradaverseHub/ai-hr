@@ -2094,6 +2094,13 @@
       "when": 1781862452000,
       "tag": "0352_leave_limit_period_and_negative_floor",
       "breakpoints": true
+    },
+    {
+      "idx": 353,
+      "version": "7",
+      "when": 1781862453000,
+      "tag": "0353_leave_adjustment_batch",
+      "breakpoints": true
     }
   ]
 }
