@@ -259,9 +259,12 @@ export const SCREENS: readonly ScreenEntry[] = [
     // R13 0d147b78: leave config split into route-based tabs (approval tab is scopedSession → own screen below).
     // 1e4eb8af retired the Application Rules tab; /admin/leave/application-rules is now an unguarded redirect
     // stub, so it is deliberately NOT listed here (a stub has nothing to guard — the fbdeee87 precedent).
-    // 645e67c4 added /admin/leave/replacement. It is a PLACEHOLDER page but it calls requireAdmin(), so it
-    // IS a route here — the same admin surface behind the same guard is a route, not a new screenKey (the
-    // /admin/personnel precedent above). Registering it is what keeps a non-HR role out while it is empty.
+    // 645e67c4 added /admin/leave/replacement, and 296fc027 made it the HOME of replacement-leave
+    // CONFIGURATION (the policy editor moved onto it from /admin/toil, which keeps the balance ledger and
+    // the two settlement sweeps). Still a ROUTE rather than a new screenKey — same admin surface behind
+    // the same requireAdmin guard, the /admin/personnel precedent above. `toilPolicy` stays registered
+    // separately below: the two screens are gated differently ON PURPOSE, because the sweeps must stay
+    // reachable when the `toil` entitlement lapses and configuration must not.
     routes: [
       '/admin/leave',
       '/admin/leave/import',

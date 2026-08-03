@@ -43,6 +43,10 @@ import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-di
 import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
 import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
+// 296fc027 — the employee replacement-leave request: the button beside "+ Request Leave", the availability
+// read that decides whether to offer it, and the action it posts to.
+import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-leave-request-dialog';
+import { replacementRequestAvailability } from '@/packs/leave/service';
 import { LeaveBalanceTable } from '@/components/leave/leave-balance-table';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 // My Absence merge (a7cbd895): the /me Leave tab's primary summary cards + per-request extras now live here.
@@ -63,6 +67,7 @@ import { durationLabel } from '@/lib/leave-duration';
 import { LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
 import {
   requestLeaveAction,
+  submitReplacementLeaveRequestAction,
   requestLeaveCancellationAction,
   adminCancelLeaveAction,
   editLeaveAction,
@@ -285,6 +290,14 @@ export default async function LeavePage({
   // admin page load no longer pays for balances/breakdowns nobody renders. Nothing about leave application,
   // approval or balance calculation changes — only who is shown their own figures here.
   const ess = !admin;
+  // 296fc027 · may this employee ask for replacement leave? THREE questions in one read: the chargeable
+  // add-on, the per-company employee-request switch, and this employee's own eligibility as of today. Only
+  // asked on the ESS path — an admin viewing this route sees the employee-inquiry surface, not their own.
+  //
+  // THIS IS NOT THE ENFORCEMENT. `submitReplacementLeaveRequest` re-derives all three server-side; this
+  // read exists so the button is not offered where the submission would be refused. Hiding it is the
+  // courtesy, refusing the POST is the control.
+  const replacementRequest = ess && me ? await replacementRequestAvailability(session, me.employmentId, today) : { allowed: false };
   const breakdownAsOf = sp.asOf && /^\d{4}-\d{2}-\d{2}$/.test(sp.asOf) ? sp.asOf : today;
   const selfBalances = ess && me ? await leaveBalances(session, me.employmentId, locale) : [];
   const selfRequests = ess && me ? await leaveRequestsFor(session, me.employmentId, locale) : [];
@@ -996,6 +1009,24 @@ export default async function LeavePage({
                   submitAction={requestLeaveAction}
                   previewAction={previewLeaveDeductionAction}
                   summaryAction={leaveApplySummaryAction}
+                />
+              )}
+              {/* 296fc027 · "+ Replacement Leave Request", BESIDE "+ Request Leave" and deliberately not
+                  inside it. Request Leave asks to TAKE time; this asks to be CREDITED for time already
+                  worked. They sit together because that is where an employee looks, and they are separate
+                  because they are opposites underneath — different table, different service, a credit
+                  rather than a debit (migration 0381 explains why reusing `leave_request` would corrupt
+                  the balance check, the calendar and payroll at once).
+
+                  Rendered only when the server says this employee may submit. With the switch off, or the
+                  employee outside the eligibility criteria, there is no button — and the action refuses
+                  the POST anyway. */}
+              {ess && replacementRequest.allowed && (
+                <ReplacementLeaveRequestDialog
+                  types={requestLeaveTypeOptions}
+                  submitAction={submitReplacementLeaveRequestAction}
+                  today={today}
+                  requiresFirstScheduleConsent={replacementRequest.requiresFirstScheduleConsent}
                 />
               )}
             </div>

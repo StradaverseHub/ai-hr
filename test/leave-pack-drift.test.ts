@@ -64,6 +64,15 @@ const BOUNDARIES = [
   // drift D9 exists to stop. It is re-exported from packs/leave/service like every other pack module.
   'core/leave-adjustment',
   'core/toil',
+  // 296fc027 — the replacement-leave eligibility resolver. In BOTH lists for the reason the notes above
+  // give: as a BOUNDARY it is guarded like its siblings, so a future file importing it directly is caught;
+  // in ALWAYS_ALLOWED it may import them back. Its outside importer (app/admin/actions) is ALREADY audited
+  // debt on the leave allowlist for importing core/leave itself, so this adds no entry — the list only
+  // shrinks. components/replacement-eligibility-picker.tsx deliberately does NOT import it (the descriptor
+  // is passed to it as serialisable props) — see that file's header.
+  'core/replacement-eligibility',
+  // 296fc027 Step 2 — the employee replacement-leave request path. In BOTH lists, same reasoning.
+  'core/replacement-request',
   'core/benefit-scheme',
 ];
 
@@ -82,6 +91,8 @@ const ALWAYS_ALLOWED = [
   'core/leave-override.ts', // 56910869 — see the BOUNDARIES note above
   'core/leave-adjustment.ts', // 491c499f — see the BOUNDARIES note above
   'core/toil.ts',
+  'core/replacement-eligibility.ts', // 296fc027 — see the BOUNDARIES note above
+  'core/replacement-request.ts', // 296fc027 Step 2 — see the BOUNDARIES note above
   'core/benefit-scheme.ts',
   'app/leave/', // the My Absence self-service home (balances/apply/history/export)
   'app/admin/leave/', // leave config: type master, entitlements, rules, approval, payroll, import, audit

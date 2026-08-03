@@ -27,10 +27,15 @@ import {
   leaveType,
   toilAccrual,
   toilPolicy,
+  type ReplacementRequestEligibility,
   type ToilAccrualBasis,
+  type ToilAccrualSource,
   type ToilAccrualStatus,
   type ToilExpiryAction,
+  type ToilExpiryUnit,
+  type ToilReplacementLeaveFrom,
 } from '../db/schema';
+import { cleanReplacementEligibility } from './replacement-eligibility';
 import { packFor } from '../localization/registry';
 import { assertModuleEnabled, isModuleEnabled } from './entitlements';
 import { isAdmin } from '../lib/authz';
@@ -112,6 +117,52 @@ const STD_DAY_MINUTES = 480; // 8h — the ORP/standard-day convention (wages / 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const addDays = (date: string, n: number): string =>
   new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * 296fc027 · CALENDAR-month addition, with the short-month clamp stated rather than inherited.
+ *
+ * An employee told "3 months" expects the same day-of-month three months on, so this is NOT `addDays(date,
+ * n * 30)` — over a year that drifts by five days, always in the employer's favour.
+ *
+ * THE CLAMP IS THE PART WORTH READING. 31 January + 1 month has no correct answer; every convention picks
+ * one. JavaScript's own `Date` picks the WRONG one for an expiry date: `setUTCMonth(1)` on 31 Jan rolls
+ * FORWARD into 2/3 March, so an expiry period would silently lengthen for anyone whose approval landed on
+ * the 29th–31st. We clamp to the LAST DAY of the target month instead (31 Jan + 1 month ⇒ 28 Feb, or 29
+ * Feb in a leap year), which is the convention every statutory-period calculation in this codebase uses
+ * and the only one that keeps a "1 month" period inside one month.
+ *
+ * Pure and UTC throughout — the caller has already reduced the approval instant to a YYYY-MM-DD string, so
+ * there is no zone to get wrong here.
+ */
+export function addMonths(date: string, n: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const targetMonthIndex = m - 1 + n;
+  const targetYear = y + Math.floor(targetMonthIndex / 12);
+  const targetMonth = ((targetMonthIndex % 12) + 12) % 12; // 0-based, non-negative for negative n
+  // Day 0 of the NEXT month is the last day of the target month — the leap-year-correct month length.
+  const lastDayOfTargetMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const day = Math.min(d, lastDayOfTargetMonth);
+  return `${String(targetYear).padStart(4, '0')}-${String(targetMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
+ * 296fc027 · THE ONE PLACE the expiry period is turned into a date. Three columns carry the period
+ * (`expiryUnit` + `expiryDays` + `expiryMonths`) and exactly one function may read all three, so a caller
+ * cannot accidentally do `addDays(grant, policy.expiryDays)` on a months-unit policy and produce a 3-day
+ * expiry. `expiryUnit` defaults to 'days' on every existing row, so this reproduces the old arithmetic
+ * byte-for-byte for every policy that predates the setting.
+ *
+ * The result is FROZEN onto the accrual by the caller and never re-derived — changing the period later
+ * moves nothing already banked, which is existing behaviour this keeps deliberately.
+ */
+export function resolveExpiry(
+  grantDate: string,
+  policy: { expiryUnit?: ToilExpiryUnit | null; expiryDays: number; expiryMonths?: number | null },
+): string {
+  return (policy.expiryUnit ?? 'days') === 'months'
+    ? addMonths(grantDate, policy.expiryMonths ?? 3)
+    : addDays(grantDate, policy.expiryDays);
+}
 // premium_equivalent banks the worked time uplifted by the day-type OT multiplier (itself contractual for
 // TOIL; the exact EA ½/1-day rest-day rule governs cash pay, not in-lieu banking).
 const PREMIUM_MULT: Record<'workday' | 'rest_day' | 'holiday', number> = { workday: 1.5, rest_day: 2, holiday: 3 };
@@ -163,6 +214,27 @@ export type ToilPolicyInput = {
   // of being expired. FROZEN onto each accrual at accrual time so a mid-year flip cannot change a banked
   // entitlement's fate.
   carryForwardAtYearEnd: boolean;
+  // ── 296fc027 · the Replacement Leave configuration page's four new settings ──────────────────────────
+  //
+  // ALL OPTIONAL, and that is a compatibility decision rather than a modelling one. `setToilPolicy` is a
+  // FULL REPLACE (it always writes every column), and `ToilPolicyInput` is constructed literally by eight
+  // test files and by the module-install path. Making these required would break every one of those call
+  // sites into a compile error for no behavioural gain, and each has a default that reproduces today's
+  // behaviour exactly — so an omitting caller gets the pre-296fc027 policy, which is what it meant.
+  //
+  // The form always posts all four, so the only callers that omit them are ones that genuinely do not
+  // care. A caller that DOES omit them resets them to the defaults below; that is the documented meaning
+  // of a full-replace upsert and matches how `enabled`/`onExpiry` already behave.
+  /** 'days' (default, today's behaviour) or 'months' (calendar-month addition). */
+  expiryUnit?: ToilExpiryUnit;
+  /** The count when the unit is 'months'. Ignored — but preserved — when the unit is 'days'. */
+  expiryMonths?: number;
+  /** Employee-submitted requests. OFF by default; enforced server-side, never only in the UI. */
+  employeeRequestEnabled?: boolean;
+  /** RECORDED ONLY — nothing validates against it and the page says so on screen. */
+  replacementLeaveFrom?: ToilReplacementLeaveFrom;
+  /** Who may submit. null/absent ⇒ everyone. See core/replacement-eligibility.ts for the rule. */
+  requestEligibility?: ReplacementRequestEligibility | null;
 };
 
 /**
@@ -186,6 +258,14 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
   assertModuleEnabled(ctx, 'toil');
   if (!Number.isInteger(p.expiryDays) || p.expiryDays < 1 || p.expiryDays > 730)
     throw new Error('Expiry days must be a whole number between 1 and 730.');
+  // 296fc027: the months count gets its OWN bound rather than sharing the days one. 24 months is the same
+  // horizon 730 days expresses; validating it against 1..730 would have accepted "500 months".
+  const expiryMonths = p.expiryMonths ?? 3;
+  if (!Number.isInteger(expiryMonths) || expiryMonths < 1 || expiryMonths > 24)
+    throw new Error('Expiry months must be a whole number between 1 and 24.');
+  // Normalised BEFORE the write so the column holds exactly one representation of "no restriction"
+  // (NULL), and a criteria object that is all-empty lists cannot masquerade as a restriction.
+  const requestEligibility = cleanReplacementEligibility(p.requestEligibility);
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(toilPolicy)
@@ -199,6 +279,11 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
         allowFirstScheduleEligible: p.allowFirstScheduleEligible,
         autoAccrueOnApproval: p.autoAccrueOnApproval,
         carryForwardAtYearEnd: p.carryForwardAtYearEnd,
+        expiryUnit: p.expiryUnit ?? 'days',
+        expiryMonths,
+        employeeRequestEnabled: p.employeeRequestEnabled ?? false,
+        replacementLeaveFrom: p.replacementLeaveFrom ?? 'overtime',
+        requestEligibility,
       })
       .onConflictDoUpdate({
         target: toilPolicy.companyId,
@@ -211,6 +296,13 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
           // 0113: new columns MUST be in the update set too, or an upsert silently drops them.
           autoAccrueOnApproval: p.autoAccrueOnApproval,
           carryForwardAtYearEnd: p.carryForwardAtYearEnd,
+          // 296fc027: the same rule, five more columns. An upsert that inserts a value it does not also
+          // update is the single most repeatable bug on this function — 0113 left the note; this obeys it.
+          expiryUnit: p.expiryUnit ?? 'days',
+          expiryMonths,
+          employeeRequestEnabled: p.employeeRequestEnabled ?? false,
+          replacementLeaveFrom: p.replacementLeaveFrom ?? 'overtime',
+          requestEligibility,
         },
       })
       .returning({ id: toilPolicy.id });
@@ -232,7 +324,23 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
   });
 }
 
-export type ToilPolicyView = ToilPolicyInput & { isDefault: boolean };
+/**
+ * The READ shape. 296fc027 makes the five new settings REQUIRED here even though they are optional on the
+ * write shape, and the asymmetry is deliberate: a caller writing a policy may legitimately not care about
+ * a setting, but a caller RENDERING one must be handed a concrete value rather than an `undefined` it
+ * would have to re-default (and would eventually re-default differently from `POLICY_DEFAULTS`).
+ */
+export type ToilPolicyView = Omit<
+  ToilPolicyInput,
+  'expiryUnit' | 'expiryMonths' | 'employeeRequestEnabled' | 'replacementLeaveFrom' | 'requestEligibility'
+> & {
+  isDefault: boolean;
+  expiryUnit: ToilExpiryUnit;
+  expiryMonths: number;
+  employeeRequestEnabled: boolean;
+  replacementLeaveFrom: ToilReplacementLeaveFrom;
+  requestEligibility: ReplacementRequestEligibility | null;
+};
 const POLICY_DEFAULTS = {
   enabled: false,
   accrualBasis: 'hours_worked' as ToilAccrualBasis,
@@ -241,6 +349,13 @@ const POLICY_DEFAULTS = {
   allowFirstScheduleEligible: false,
   autoAccrueOnApproval: false,
   carryForwardAtYearEnd: false,
+  // 296fc027 — these MUST match the column defaults in migration 0380, or a company with no saved policy
+  // would render one thing and save another.
+  expiryUnit: 'days' as ToilExpiryUnit,
+  expiryMonths: 3,
+  employeeRequestEnabled: false,
+  replacementLeaveFrom: 'overtime' as ToilReplacementLeaveFrom,
+  requestEligibility: null as ReplacementRequestEligibility | null,
 };
 
 /** Each requested company's TOIL policy, falling back to the (disabled) defaults where none is saved. */
@@ -261,6 +376,11 @@ export function listToilPolicies(ctx: SessionContext, companyIds: string[]): Pro
             allowFirstScheduleEligible: r.allowFirstScheduleEligible,
             autoAccrueOnApproval: r.autoAccrueOnApproval,
             carryForwardAtYearEnd: r.carryForwardAtYearEnd,
+            expiryUnit: r.expiryUnit,
+            expiryMonths: r.expiryMonths,
+            employeeRequestEnabled: r.employeeRequestEnabled,
+            replacementLeaveFrom: r.replacementLeaveFrom,
+            requestEligibility: r.requestEligibility ?? null,
             isDefault: false,
           }
         : { companyId, ...POLICY_DEFAULTS, isDefault: true };
@@ -353,8 +473,80 @@ export async function accrueToilTx(
     throw new ToilNotEligibleError('Replacement leave can only be banked for work on a rest day or public holiday.');
   }
 
+  // 2..6 · everything from here is SHARED with the employee-request path, which reaches it without an
+  // attendance row at all. See `bankToilCreditTx`.
+  return bankToilCreditTx(tx, ctx, {
+    employmentId: p.employmentId,
+    workedDate: p.workedDate,
+    companyId: att.companyId,
+    country: att.country,
+    dayType,
+    otMinutes,
+    approvedOn: p.approvedOn,
+    requestedOn: p.requestedOn,
+    firstScheduleConsent: p.firstScheduleConsent,
+    viaAutoApproval: p.viaAutoApproval,
+    source: p.viaAutoApproval ? 'auto_approval' : 'roster',
+  });
+}
+
+/**
+ * 296fc027 · THE SHARED ACCRUAL EXECUTOR — steps 2 to 6, and nothing above them.
+ *
+ * WHY THIS SPLIT EXISTS. `accrueToilTx` cannot be reused as-is for the employee-request path, and the two
+ * reasons are both hard requirements of the manager route that the employee route explicitly does not
+ * have. Step 1 demands an `attendance` row with `otMinutes > 0` (`ToilNoOvertimeError`); step 1b restricts
+ * the day to rest_day/holiday (`RL_ELIGIBLE_DAY_TYPES`). The approved request states that there is NO
+ * attendance, timesheet or overtime validation in this phase — the employee DECLARES the dates they
+ * worked. So the employee path must skip 1 and 1b.
+ *
+ * IT MUST NOT SKIP ANYTHING ELSE, and that is what this function is for. Duplicating the write would have
+ * been the obvious shortcut and the wrong one: everything below is either a legal control or a
+ * double-payment control, and a second copy of it is a second copy that can drift out of step.
+ *   · step 2 — the company policy must be enabled;
+ *   · step 3 — the DOUBLE-BANK GUARD. An employee cannot claim a worked date a manager already banked for
+ *     them, and a banked date stays excluded from overtime pay (core/payroll.ts reads `toil_accrual`
+ *     per-day). Unchanged, including the unique index behind it;
+ *   · step 4 — the FIRST SCHEDULE GATE. A legal one: an employee at or below the statutory overtime
+ *     protection threshold is entitled to overtime CASH rather than banked time, and may bank only when
+ *     the company has switched the override on AND their own agreement is recorded. A self-service button
+ *     must not become a way around that, so the gate lives HERE, below the fork, where neither path can
+ *     miss it;
+ *   · steps 5 and 6 — the frozen expiry, the ledger credit and the register row.
+ *
+ * THE ONE THING THE FORK CHANGES BELOW IT is where `daysCredited` comes from. The manager path derives it
+ * from measured `otMinutes` × the policy basis. The employee path DECLARES it (`declaredDays`), because
+ * there is no measurement to derive it from — that is precisely what "no overtime validation in this
+ * phase" means. Everything else reads identically on both paths.
+ */
+export async function bankToilCreditTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    workedDate: string;
+    companyId: string;
+    country: string | null;
+    /**
+     * NULL ⇒ SELF-DECLARED: there is no attendance row, so the day type is genuinely unknown. It is
+     * recorded as NULL rather than guessed at, because a guessed 'workday' would flow into the expiry
+     * sweep's exact-statutory-cash calculation and produce a wrong convert-to-pay figure for a
+     * First-Schedule employee. See `convertAmountFor`, which falls back to the contractual ORP basis and
+     * says so on the event when the day type is unknown.
+     */
+    dayType: 'workday' | 'rest_day' | 'holiday' | null;
+    otMinutes: number;
+    /** Employee path: the credit is this many days verbatim. Omitted ⇒ derived from otMinutes × basis. */
+    declaredDays?: number;
+    approvedOn?: Date;
+    requestedOn?: string;
+    firstScheduleConsent?: boolean;
+    viaAutoApproval?: boolean;
+    source: ToilAccrualSource;
+  },
+): Promise<AccrueToilResult> {
   // 2 · the company policy must be enabled.
-  const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, att.companyId)).limit(1);
+  const [policy] = await tx.select().from(toilPolicy).where(eq(toilPolicy.companyId, p.companyId)).limit(1);
   if (!policy || !policy.enabled) throw new ToilDisabledError('Time off in lieu is not enabled for this company.');
 
   // 3 · no double-banking (the unique index also guards; this is the friendly error).
@@ -408,7 +600,7 @@ export async function accrueToilTx(
     .where(and(eq(compensation.employmentId, p.employmentId), isNull(compensation.validTo), isNull(compensation.supersededAt)))
     .limit(1);
   const wages = comp ? round2(Number(comp.basic) + Number(comp.allowance ?? 0)) : null;
-  const pack = packFor(att.country);
+  const pack = packFor(p.country);
   const ceiling = pack ? (await pack.payroll.loadRuleset(tx, { asOf: p.workedDate })).ot.wageCeiling : 4000;
   const eligible = wages != null && wages <= ceiling; // First-Schedule: statutory OT pay normally applies
   if (eligible && !policy.allowFirstScheduleEligible) {
@@ -424,8 +616,16 @@ export async function accrueToilTx(
   }
 
   // 5 · days credited + expiry.
-  const mult = policy.accrualBasis === 'premium_equivalent' ? PREMIUM_MULT[dayType] : 1;
-  const daysCredited = round2((otMinutes / STD_DAY_MINUTES) * mult);
+  //
+  // 296fc027 · THE ONE PLACE THE TWO PATHS DIVERGE. The manager path derives the credit from MEASURED
+  // overtime uplifted by the policy basis. The employee path DECLARES it, because there is no measurement
+  // to derive it from — no attendance row was required to get here. The premium multiplier is not applied
+  // to a declared figure: it keys off the day type, and a self-declared credit has none, so applying it
+  // would mean picking a multiplier at random.
+  const dayType = p.dayType;
+  const otMinutes = p.otMinutes;
+  const mult = dayType != null && policy.accrualBasis === 'premium_equivalent' ? PREMIUM_MULT[dayType] : 1;
+  const daysCredited = p.declaredDays != null ? round2(p.declaredDays) : round2((otMinutes / STD_DAY_MINUTES) * mult);
 
   // 00307068 · THE EXPIRY ANCHOR MOVES FROM THE WORKED DAY TO THE APPROVAL. This is a behaviour change, not
   // a display one, and it is the reason the item is Large. Reaching this line IS the approval: the manual
@@ -436,9 +636,13 @@ export async function accrueToilTx(
   // It can only ever LENGTHEN a credit's life: approval never precedes the day worked, so approvedOn::date
   // is always on or after workedDate and the resulting expiry is always on or after the old one. Nobody
   // loses a day. Migration 0354 applies the same one-way rule to rows already banked, via GREATEST.
+  //
+  // 296fc027 · the period is now a NUMBER PLUS A UNIT, and `resolveExpiry` is the only reader of the three
+  // columns that carry it. Still frozen onto the accrual below and never re-derived, so changing the
+  // period later moves nothing already banked.
   const approvedOn = p.approvedOn ?? new Date();
   const approvedOnDate = approvedOn.toISOString().slice(0, 10);
-  const expiresOn = addDays(approvedOnDate, policy.expiryDays);
+  const expiresOn = resolveExpiry(approvedOnDate, policy);
 
   // 00307068 · the REQUEST date, which is a different question with two honest answers.
   //  • auto path — the employee really did ask: the attendance correction they filed IS the request, so its
@@ -451,6 +655,8 @@ export async function accrueToilTx(
   //  • roster path — there is NO employee request. A manager elects a worked day directly off the roster
   //    (there is no submission anywhere to date), so the worked day is the only date in evidence, and
   //    inventing a "requested on" that nobody typed would be a fabrication on a screen the employee reads.
+  //  • 296fc027 employee path — there IS a request, and it is the replacement-leave request the employee
+  //    filed. Its submission date is passed in, for the same reason the auto path passes its own.
   const requestedOn = p.requestedOn ?? p.workedDate;
   // Phase-B #14: premium_equivalent banking for a First-Schedule employee can over/under-bank vs the exact
   // s.60(3) split-rule cash — flag the risk (the convert-to-pay path still reconciles to the exact statutory
@@ -494,6 +700,11 @@ export async function accrueToilTx(
       // Phase-B #14: record the explicit per-election consent for a First-Schedule election (true only when
       // eligible — moot/NULL for > ceiling staff who need no statutory-floor substitution agreement).
       firstScheduleConsent: eligible ? true : null,
+      // 296fc027: WHICH PATH minted this credit. NULL on every legacy row — a credit banked before this
+      // column existed genuinely does not know, and back-filling a guess would make the audit trail claim
+      // a precision it does not have. The expiry sweep reads `dayType IS NULL` rather than this, because
+      // the valuation question is "do we know the day type", not "where did it come from".
+      source: p.source,
       policyId: policy.id,
       ledgerEntryId: ledger.id,
     })
@@ -545,6 +756,64 @@ export async function accrueToil(
 ): Promise<AccrueToilResult> {
   if (!toilEnabled(ctx)) throw new ToilDisabledError();
   return withTenant(ctx, (tx) => accrueToilTx(tx, ctx, { ...p, requireDecideAuth: true }));
+}
+
+/**
+ * 296fc027 · SELF-DECLARED accrual — the employee-request path's grant, run inside the approval's tx.
+ *
+ * Skips exactly two things `accrueToilTx` does and nothing else: the attendance lookup (step 1) and the
+ * rest-day/holiday restriction (step 1b). Both are refused for the same reason — the approved request
+ * states there is no attendance, timesheet or overtime validation in this phase, so there is no attendance
+ * row to read and no day type to restrict on. Everything that follows is `bankToilCreditTx`, shared
+ * verbatim with the manager route: the double-bank guard, the First Schedule gate, the frozen expiry, the
+ * ledger credit and the register row.
+ *
+ * NO `assertCanDecide` HERE, and that is not a gap. This function is only ever reached from
+ * `decideReplacementLeaveRequest`, which has already run `assertCanDecide` against the same employment —
+ * the identical arrangement `maybeAutoAccrueOnApprovalTx` relies on, and for the identical reason:
+ * re-checking inside the approval's own transaction would hard-throw on the very manager who just passed.
+ *
+ * `otMinutes` is DECLARED, not measured. It is recorded so the register row is complete and so the
+ * employee's Replacement Leave table can show what was claimed, but nothing computes a statutory
+ * entitlement from it — the null `dayType` is what tells the expiry sweep that (see `convertAmountFor`).
+ */
+export async function accrueSelfDeclaredToilTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    workedDate: string;
+    /** The credit, in days, exactly as the employee declared it. */
+    declaredDays: number;
+    /** The declared minutes behind that figure (days × the standard day, or the hours claimed). */
+    declaredMinutes: number;
+    approvedOn: Date;
+    requestedOn: string;
+    firstScheduleConsent?: boolean;
+  },
+): Promise<AccrueToilResult> {
+  // The company + country the First-Schedule ceiling is resolved from. `accrueToilTx` gets these off the
+  // attendance join; with no attendance row they come straight off the employment.
+  const [emp] = await tx
+    .select({ companyId: employment.companyId, country: company.country })
+    .from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
+  if (!emp) throw new ToilNotEligibleError('No employment on record for this request.');
+  return bankToilCreditTx(tx, ctx, {
+    employmentId: p.employmentId,
+    workedDate: p.workedDate,
+    companyId: emp.companyId,
+    country: emp.country,
+    dayType: null, // self-declared: genuinely unknown, never guessed
+    otMinutes: Math.max(0, Math.round(p.declaredMinutes)),
+    declaredDays: p.declaredDays,
+    approvedOn: p.approvedOn,
+    requestedOn: p.requestedOn,
+    firstScheduleConsent: p.firstScheduleConsent,
+    source: 'employee_request',
+  });
 }
 
 /**
@@ -739,7 +1008,8 @@ type SweepRow = {
   remaining: number;
   expiryAction: ToilExpiryAction;
   workedDate: string;
-  dayType: 'workday' | 'rest_day' | 'holiday';
+  /** 296fc027: NULL on a self-declared (employee-request) credit — no attendance row, so no day type. */
+  dayType: 'workday' | 'rest_day' | 'holiday' | null;
   otMinutes: number;
 };
 
@@ -810,7 +1080,14 @@ async function expireAccrualsTx(
     const ot = otByCountry.get(country) ?? { wageCeiling: 4000 };
     const ceiling = ot.wageCeiling;
     const pack = packFor(country);
-    if (pack && wages > 0 && wages <= ceiling) {
+    // 296fc027 · AN UNKNOWN DAY TYPE CANNOT BE VALUED STATUTORILY, so it is not pretended otherwise. A
+    // self-declared credit (the employee-request path) has no attendance row behind it and therefore no
+    // day type, and the exact s.60(3)/s.60D(3) cash is a FUNCTION of the day type — rest day and public
+    // holiday pay at different multiples. Guessing one would produce a confident, wrong statutory figure
+    // on a legal obligation. Falling back to the contractual ORP × banked-days basis is the honest answer,
+    // and `valuationNote` on the event says the day type was self-declared so the admin reconciles it by
+    // hand at pay time rather than trusting a number the system could not derive.
+    if (a.dayType != null && pack && wages > 0 && wages <= ceiling) {
       // Exact statutory cash for the worked day-type (s.60(3) rest day, s.60D(3) holiday, s.60A workday OT).
       // The two configurable excess-hours multipliers (ADR-0019 ot ruleset) are threaded so TOIL cash-out
       // never diverges from what the same day would earn in payroll.
@@ -871,7 +1148,12 @@ async function expireAccrualsTx(
               valuationNote:
                 owed.basis === 'statutory_exact'
                   ? 'Exact s.60(3)/s.60D(3) cash for the worked day-type, valued at close-run wages; reconcile to the correct pay period.'
-                  : 'ORP computed at close-run wages; reconcile to the correct pay period.',
+                  : a.dayType == null
+                    ? // 296fc027: a self-declared credit. The day type was never recorded, so the exact
+                      // statutory cash for it cannot be computed — this is the contractual ORP basis and
+                      // needs a human to reconcile it if the employee is within the First Schedule.
+                      'Self-declared replacement leave with no recorded day type: ORP computed at close-run wages. The exact statutory overtime cash could not be derived — verify the worked day before paying.'
+                    : 'ORP computed at close-run wages; reconcile to the correct pay period.',
             }
           : {}),
       },

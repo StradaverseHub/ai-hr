@@ -35,13 +35,22 @@ import { requestLeave, decideLeave } from '../core/leave';
 import { replacementLeaveLedger } from '../core/read';
 import {
   accrueToil,
+  addMonths,
   closeReplacementLeaveYear,
+  listToilPolicies,
   runToilExpiry,
   setToilPolicy,
   ToilNotEligibleError,
   ToilSweepForbiddenError,
   type ToilPolicyInput,
 } from '../core/toil';
+// 296fc027 — the as-of eligibility resolver. The pure matcher is exercised directly (it is a rule, not a
+// query) and the dated resolver against a real assignment history.
+import {
+  matchesReplacementEligibility,
+  resolveEligibilityFactsTx,
+  type ReplacementEligibilityFacts,
+} from '../core/replacement-eligibility';
 import { isModuleEnabled } from '../core/entitlements';
 
 let b: Base;
@@ -359,6 +368,208 @@ describe('Request / approval dates on a banked credit (00307068)', () => {
     const acc = await accrualRow(accrualId);
     const underOldRule = new Date(Date.parse(`${REST_DAY}T00:00:00Z`) + 90 * 86_400_000).toISOString().slice(0, 10);
     expect(acc.expiresOn >= underOldRule).toBe(true);
+  });
+});
+
+/**
+ * 296fc027 · THE EXPIRY PERIOD BECOMES A NUMBER PLUS A UNIT.
+ *
+ * Three columns now carry the period (`expiryUnit` + `expiryDays` + `expiryMonths`) and exactly one
+ * function reads all three (`resolveExpiry`). The risk this block exists for is not the happy path — it is
+ * that somebody later writes `addDays(grant, policy.expiryDays)` again and turns a 3-MONTH policy into a
+ * 3-DAY one, which looks plausible in a diff and is catastrophic in production.
+ */
+describe('Expiry period: number + unit (296fc027)', () => {
+  it('addMonths adds CALENDAR months, not 30-day blocks', () => {
+    expect(addMonths('2026-01-15', 1)).toBe('2026-02-15');
+    expect(addMonths('2026-01-15', 3)).toBe('2026-04-15');
+    // 30-day arithmetic would give 2026-04-15 + drift here; calendar addition lands on the same day.
+    expect(addMonths('2026-07-04', 6)).toBe('2027-01-04');
+  });
+
+  it('crosses a YEAR boundary correctly', () => {
+    expect(addMonths('2026-11-30', 2)).toBe('2027-01-30');
+    expect(addMonths('2026-12-31', 1)).toBe('2027-01-31');
+  });
+
+  it('CLAMPS into a short target month instead of rolling forward into the next one', () => {
+    // The case every naive implementation gets wrong. JavaScript's own Date.setUTCMonth rolls 31 Jan + 1
+    // month FORWARD to 2/3 March, which would silently LENGTHEN the expiry period for anybody approved on
+    // the 29th–31st. Clamping to the last day of the target month is the only convention that keeps a
+    // "1 month" period inside one month.
+    expect(addMonths('2026-01-31', 1)).toBe('2026-02-28');
+    expect(addMonths('2026-01-30', 1)).toBe('2026-02-28');
+    expect(addMonths('2026-03-31', 1)).toBe('2026-04-30');
+    // …and the clamp is leap-year aware, because the month length is computed rather than tabulated.
+    expect(addMonths('2028-01-31', 1)).toBe('2028-02-29');
+  });
+
+  it('a MONTHS policy expires a real credit by calendar months from the APPROVAL date', async () => {
+    // The integration half: not just that addMonths is right, but that the policy columns reach it. The
+    // approval lands 2026-07-06, so a 3-month period must resolve to 2026-10-06 — and NOT 2026-07-09,
+    // which is what re-reading `expiryDays` (90) as days would produce.
+    const { accrualId } = await accrueRestDay(5000, { expiryUnit: 'months', expiryMonths: 3 });
+    const acc = await accrualRow(accrualId);
+    expect(acc.expiresOn).toBe('2026-10-06');
+  });
+
+  it('a MONTHS policy crossing into a SHORT month clamps the stored expiry', async () => {
+    // Approval on 31 December, one month: the frozen expiry must be 31 January, and a January approval
+    // plus one month must clamp to the end of February rather than spilling into March.
+    const { a, employmentId } = await hire(5000);
+    await setToilPolicy(a, policy(b.companyId, { expiryUnit: 'months', expiryMonths: 1 }));
+    await setRestDay(a, { employmentId, shiftDate: '2026-01-31' });
+    await checkIn(a, { employmentId, date: '2026-01-31', time: '08:00:00' });
+    await checkOut(a, { employmentId, date: '2026-01-31', time: '17:00:00' });
+    const r = await accrueToil(a, {
+      employmentId,
+      workedDate: '2026-01-31',
+      approvedOn: new Date('2026-01-31T02:00:00.000Z'),
+    });
+    expect(r.expiresOn).toBe('2026-02-28');
+    expect((await accrualRow(r.accrualId)).expiresOn).toBe('2026-02-28');
+  });
+
+  it('the DAYS unit is byte-identical to the pre-296fc027 behaviour', async () => {
+    // Every existing policy row lands on expiryUnit='days' via the column default, so this is the
+    // regression that matters most: the new columns must change nothing for anyone who never touches them.
+    const { accrualId } = await accrueRestDay(5000); // policy() sets no unit ⇒ the default
+    expect((await accrualRow(accrualId)).expiresOn).toBe('2026-10-04'); // approval 2026-07-06 + 90 days
+  });
+
+  it('BOTH counts survive a unit flip, so switching back does not lose the other one', async () => {
+    const { a } = await hire(5000);
+    await setToilPolicy(a, policy(b.companyId, { expiryUnit: 'months', expiryMonths: 6, expiryDays: 45 }));
+    const [saved] = await listToilPolicies(a, [b.companyId]);
+    expect(saved.expiryUnit).toBe('months');
+    expect(saved.expiryMonths).toBe(6);
+    expect(saved.expiryDays).toBe(45); // still there, untouched, ready if the unit flips back
+  });
+
+  it('rejects an out-of-range months count with its OWN bound, not the days one', async () => {
+    const { a } = await hire(5000);
+    // 500 would pass a 1..730 check. Months get 1..24 — the same horizon 730 days expresses.
+    await expect(setToilPolicy(a, policy(b.companyId, { expiryUnit: 'months', expiryMonths: 500 }))).rejects.toThrow(
+      /between 1 and 24/i,
+    );
+  });
+});
+
+/**
+ * 296fc027 · WHO MAY SUBMIT — the AS-OF eligibility resolver.
+ *
+ * The four criteria core/leave-org-criteria.ts documents as DEFERRED (department, position, employment
+ * type, grade) are the whole reason this resolver exists: they are not plain text columns on `employment`,
+ * they come off the effective-dated `assignment` row. The tests that matter are therefore the DATED ones —
+ * an employee judged against the assignment they held on the day asked about, not today's row.
+ */
+describe('Replacement-leave request eligibility (296fc027)', () => {
+  const facts = (over: Partial<ReplacementEligibilityFacts> = {}): ReplacementEligibilityFacts => ({
+    employmentId: 'emp-1',
+    companyId: 'co-1',
+    employmentType: 'full_time',
+    departmentId: 'dept-a',
+    positionId: 'pos-1',
+    gradeId: 'grade-1',
+    division: 'North',
+    employmentCategory: 'Executive',
+    ...over,
+  });
+
+  it('nothing selected anywhere ⇒ EVERYONE may submit', () => {
+    expect(matchesReplacementEligibility(null, facts())).toBe(true);
+    expect(matchesReplacementEligibility({}, facts())).toBe(true);
+    // An all-empty-lists object is the same statement as an absent one — the form posts this shape.
+    expect(matchesReplacementEligibility({ departmentIds: [], gradeIds: [] }, facts())).toBe(true);
+  });
+
+  it('AND across criteria, OR within one', () => {
+    const elig = { departmentIds: ['dept-a', 'dept-b'], employmentTypes: ['full_time'] };
+    expect(matchesReplacementEligibility(elig, facts())).toBe(true);
+    expect(matchesReplacementEligibility(elig, facts({ departmentId: 'dept-b' }))).toBe(true);
+    expect(matchesReplacementEligibility(elig, facts({ departmentId: 'dept-z' }))).toBe(false);
+    // …and one criterion failing is enough, even when the other matches.
+    expect(matchesReplacementEligibility(elig, facts({ employmentType: 'intern' }))).toBe(false);
+  });
+
+  it('a NULL fact is refused by a criterion that names a value, never admitted by accident', () => {
+    // An employee with no assignment as of the date has departmentId null. That must FAIL a department
+    // criterion rather than slipping through a loose comparison.
+    expect(matchesReplacementEligibility({ departmentIds: ['dept-a'] }, facts({ departmentId: null }))).toBe(false);
+    expect(matchesReplacementEligibility({ gradeIds: ['grade-1'] }, facts({ gradeId: null }))).toBe(false);
+  });
+
+  it('named individuals WIDEN the set rather than narrowing it', () => {
+    // The rule the plan did not settle. "Engineering, and also Aisha" must admit Aisha even though she is
+    // in Sales — AND-ing the two would silently exclude the person the admin went out of their way to name.
+    const elig = { departmentIds: ['dept-a'], employmentIds: ['emp-9'] };
+    expect(matchesReplacementEligibility(elig, facts({ employmentId: 'emp-9', departmentId: 'sales' }))).toBe(true);
+    expect(matchesReplacementEligibility(elig, facts({ employmentId: 'emp-1', departmentId: 'dept-a' }))).toBe(true);
+    expect(matchesReplacementEligibility(elig, facts({ employmentId: 'emp-1', departmentId: 'sales' }))).toBe(false);
+  });
+
+  it('an INDIVIDUALS-ONLY configuration does not collapse into "everyone"', () => {
+    // The trap in the union rule: with all seven org lists empty, "matches every set criterion" is
+    // vacuously TRUE, so a naive union would admit the whole company the moment anybody is named.
+    const elig = { employmentIds: ['emp-9'] };
+    expect(matchesReplacementEligibility(elig, facts({ employmentId: 'emp-9' }))).toBe(true);
+    expect(matchesReplacementEligibility(elig, facts({ employmentId: 'emp-1' }))).toBe(false);
+  });
+
+  it('resolves the assignment row valid AS OF the date, not the latest one', async () => {
+    // The reason this resolver exists at all. The employee starts in deptA and transfers to deptB; a
+    // question asked about a date BEFORE the transfer must see deptA.
+    const { a, employmentId } = await hire(5000, '2024-01-01');
+    // Close the original assignment and open a new one — the CLOSE+INSERT shape the table is built for.
+    await owner.db
+      .update(schema.assignment)
+      .set({ validTo: '2026-06-30' })
+      .where(and(eq(schema.assignment.employmentId, employmentId), sql`${schema.assignment.validTo} is null`));
+    await owner.db.insert(schema.assignment).values({
+      tenantId: b.tenantId,
+      employmentId,
+      departmentId: b.deptB,
+      employmentType: 'contract',
+      validFrom: '2026-07-01',
+    });
+
+    const before = await withTenant(a, (tx) => resolveEligibilityFactsTx(tx, employmentId, '2026-06-15'));
+    expect(before?.departmentId).toBe(b.deptA);
+    expect(before?.employmentType).toBe('full_time');
+
+    const after = await withTenant(a, (tx) => resolveEligibilityFactsTx(tx, employmentId, '2026-07-15'));
+    expect(after?.departmentId).toBe(b.deptB);
+    expect(after?.employmentType).toBe('contract');
+  });
+
+  it('an employee with no assignment covering the date resolves to NULL facts, not to nothing', async () => {
+    // A gap in the history must produce a row with null org facts (so a criterion refuses them), never an
+    // absent row — which at the call site is indistinguishable from "no such employee".
+    const { a, employmentId } = await hire(5000, '2024-01-01');
+    const facts = await withTenant(a, (tx) => resolveEligibilityFactsTx(tx, employmentId, '2020-01-01'));
+    expect(facts).not.toBeNull();
+    expect(facts!.departmentId).toBeNull();
+    expect(facts!.companyId).toBe(b.companyId); // the employment-level fact is still there
+  });
+
+  it('the criteria round-trip through the policy column, normalised', async () => {
+    const { a } = await hire(5000);
+    await setToilPolicy(
+      a,
+      policy(b.companyId, {
+        // Blanks and duplicates are what the form actually posts when a picker is cleared.
+        requestEligibility: { departmentIds: [b.deptA, b.deptA, ''], gradeIds: [], employmentTypes: ['full_time'] },
+      }),
+    );
+    const [saved] = await listToilPolicies(a, [b.companyId]);
+    expect(saved.requestEligibility).toEqual({ departmentIds: [b.deptA], employmentTypes: ['full_time'] });
+  });
+
+  it('an all-empty criteria object stores as NULL, so "no restriction" has ONE representation', async () => {
+    const { a } = await hire(5000);
+    await setToilPolicy(a, policy(b.companyId, { requestEligibility: { departmentIds: [], employmentIds: [''] } }));
+    const [saved] = await listToilPolicies(a, [b.companyId]);
+    expect(saved.requestEligibility).toBeNull();
   });
 });
 

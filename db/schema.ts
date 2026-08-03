@@ -3440,9 +3440,27 @@ export const rosterAssignment = pgTable(
 export const toilAccrualBasisEnum = pgEnum('toil_accrual_basis', ['hours_worked', 'premium_equivalent']);
 export const toilExpiryActionEnum = pgEnum('toil_expiry_action', ['convert_to_pay', 'lapse']);
 export const toilAccrualStatusEnum = pgEnum('toil_accrual_status', ['active', 'taken', 'converted_to_pay', 'lapsed']);
+// 296fc027 (migration 0380): the expiry PERIOD gains a unit. `days` reproduces today's behaviour exactly
+// and is the default every existing row lands on; `months` is calendar-month addition (see addMonths in
+// core/toil.ts), never 30-day arithmetic.
+export const toilExpiryUnitEnum = pgEnum('toil_expiry_unit', ['days', 'months']);
+// 296fc027 (migration 0380): "Replacement Leave From" — RECORDED ONLY. Nothing reads this but the form
+// that writes it; no attendance or overtime figure is validated against it, and the page says so on
+// screen. Deliberately NOT folded into `toilAccrualBasisEnum`, which answers a different question (how
+// much one banked day is worth, not which worked time may be banked at all).
+export const toilReplacementLeaveFromEnum = pgEnum('toil_replacement_leave_from', [
+  'working_hours',
+  'overtime',
+  'working_hours_and_overtime',
+]);
 export type ToilAccrualBasis = (typeof toilAccrualBasisEnum.enumValues)[number];
 export type ToilExpiryAction = (typeof toilExpiryActionEnum.enumValues)[number];
 export type ToilAccrualStatus = (typeof toilAccrualStatusEnum.enumValues)[number];
+export type ToilExpiryUnit = (typeof toilExpiryUnitEnum.enumValues)[number];
+export type ToilReplacementLeaveFrom = (typeof toilReplacementLeaveFromEnum.enumValues)[number];
+// 296fc027 (migration 0381): which path minted a credit. NULL on every row banked before this existed.
+export const toilAccrualSourceEnum = pgEnum('toil_accrual_source', ['roster', 'auto_approval', 'employee_request']);
+export type ToilAccrualSource = (typeof toilAccrualSourceEnum.enumValues)[number];
 
 // One TOIL policy per company. allowFirstScheduleEligible is the per-company toggle (ADR-0033 §6): OFF ⇒
 // ≤RM4,000 staff cannot elect TOIL (cash only); ON ⇒ they may, but with a compliance warning + forced
@@ -3466,11 +3484,51 @@ export const toilPolicy = pgTable(
     // 0113: opt-in (default false) — an accrual survives the year-end close sweep instead of expiring.
     // FROZEN onto each accrual at accrual time so a mid-year flip cannot change a banked entitlement's fate.
     carryForwardAtYearEnd: boolean('carry_forward_at_year_end').notNull().default(false),
+    // 296fc027 (migration 0380) — the four settings the Replacement Leave config page adds.
+    //
+    // TWO COUNTS, ONE UNIT, and no overloading of `expiryDays`. `expiryDays` keeps its exact current
+    // meaning (the stored day count, authoritative when expiryUnit is 'days'), so every existing row is
+    // untouched; `expiryMonths` is authoritative when the unit is 'months'. Both are always populated, so
+    // flipping the unit on the form and back is lossless. `resolveExpiry` in core/toil.ts is the single
+    // reader of the trio — nothing else may do the arithmetic.
+    expiryUnit: toilExpiryUnitEnum('expiry_unit').notNull().default('days'),
+    expiryMonths: integer('expiry_months').notNull().default(3),
+    // The employee-request switch. OFF for every existing row (there is no employee path today). When OFF
+    // the employee never sees the button AND cannot submit — `assertEmployeeMaySubmit` enforces it in the
+    // service, because the UI is one action POST away from being bypassed.
+    employeeRequestEnabled: boolean('employee_request_enabled').notNull().default(false),
+    // RECORDED ONLY (see the enum's note). Default 'overtime' because that is what the engine does today.
+    replacementLeaveFrom: toilReplacementLeaveFromEnum('replacement_leave_from').notNull().default('overtime'),
+    // Who may submit. Same JSONB shape as `leaveType.eligibility` — criterion key → string[], empty or
+    // absent ⇒ no restriction on that criterion. NULL ⇒ everyone, which is the only safe backfill for a
+    // switch that is itself off by default. Resolved by core/replacement-eligibility.ts.
+    requestEligibility: jsonb('request_eligibility').$type<ReplacementRequestEligibility | null>(),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [uniqueIndex('toil_policy_company_uq').on(t.companyId)],
 );
+
+/**
+ * 296fc027 — who may submit a replacement-leave request, as stored on `toil_policy.requestEligibility`.
+ *
+ * Declared HERE rather than in core/ so the schema can type the JSONB column without importing a service
+ * module (db/schema.ts is imported by everything, including client-adjacent code). The descriptor that
+ * drives the picker, the resolver and the summary lives in core/replacement-eligibility.ts.
+ *
+ * Every field is a list of allowed values; an empty or absent list restricts nothing. `employmentIds` is
+ * the ONE field that widens rather than narrows — see RESOLUTION RULE in core/replacement-eligibility.ts.
+ */
+export type ReplacementRequestEligibility = {
+  companyIds?: string[];
+  employmentTypes?: string[];
+  departmentIds?: string[];
+  divisions?: string[];
+  positionIds?: string[];
+  gradeIds?: string[];
+  employmentCategories?: string[];
+  employmentIds?: string[];
+};
 
 // The TOIL register: one row per elected+approved worked day. Drives mutual-exclusion with OT pay (a day here
 // is never also monetised) and the expiry sweep. ledgerEntryId points at the leave_ledger credit it wrote;
@@ -3484,7 +3542,11 @@ export const toilAccrual = pgTable(
       .notNull()
       .references(() => employment.id),
     workedDate: date('worked_date').notNull(),
-    dayType: attendanceDayTypeEnum('day_type').notNull(),
+    // 296fc027 (migration 0381): NULLABLE. A credit granted from an EMPLOYEE REQUEST has no attendance row
+    // behind it, so it has no day type — and a fabricated 'workday' would flow into the expiry sweep's
+    // exact-statutory-cash calculation and produce a wrong convert-to-pay figure for a First-Schedule
+    // employee. NULL is the honest record; core/toil.ts falls back to the contractual ORP basis and says so.
+    dayType: attendanceDayTypeEnum('day_type'),
     otMinutes: integer('ot_minutes').notNull(),
     daysCredited: numeric('days_credited', { precision: 6, scale: 2 }).notNull(),
     // 0113 (RL Control Engine): signed per-accrual consumption tally. The active bucket nets to
@@ -3515,6 +3577,9 @@ export const toilAccrual = pgTable(
     // election (> RM4,000) or a legacy row. Accrual blocks an eligible election unless the company toggle is
     // ON *and* this consent is supplied — the toggle alone must not be a blanket default (EA s.60 floor).
     firstScheduleConsent: boolean('first_schedule_consent'),
+    // 296fc027 (migration 0381): which path minted this credit. NULLABLE with no backfill — a legacy row
+    // genuinely does not know, and a guessed value would make the audit trail claim a precision it lacks.
+    source: toilAccrualSourceEnum('source'),
     policyId: uuid('policy_id').references((): AnyPgColumn => toilPolicy.id),
     ledgerEntryId: uuid('ledger_entry_id').references((): AnyPgColumn => leaveLedger.id),
     takenByRequestId: uuid('taken_by_request_id').references((): AnyPgColumn => leaveRequest.id),
@@ -3525,6 +3590,86 @@ export const toilAccrual = pgTable(
     // At most one accrual per worked day — the no-double-pay guard at the DB level.
     uniqueIndex('toil_accrual_emp_date_uq').on(t.tenantId, t.employmentId, t.workedDate),
     index('toil_accrual_expiry_idx').on(t.tenantId, t.status, t.expiresOn),
+  ],
+);
+
+// ── 296fc027 (migration 0381): the EMPLOYEE REPLACEMENT-LEAVE REQUEST. ───────────────────────────────
+//
+// NOT a `leave_request`. That table means TIME TAKEN everywhere it is read — the balance check, the team
+// calendar, payroll's unpaid days — and a replacement-leave request is the opposite: a claim for time
+// ALREADY WORKED that should ADD to a balance. Reusing it would have corrupted all three, silently.
+export const replacementLeaveRequestUnitEnum = pgEnum('replacement_leave_request_unit', ['day', 'hour']);
+export const replacementLeaveRequestStatusEnum = pgEnum('replacement_leave_request_status', [
+  'pending',
+  'approved',
+  'rejected',
+  'cancelled',
+]);
+export type ReplacementLeaveRequestUnit = (typeof replacementLeaveRequestUnitEnum.enumValues)[number];
+export type ReplacementLeaveRequestStatus = (typeof replacementLeaveRequestStatusEnum.enumValues)[number];
+
+export const replacementLeaveRequest = pgTable(
+  'replacement_leave_request',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    leaveTypeId: uuid('leave_type_id').references((): AnyPgColumn => leaveType.id),
+    // One unit per REQUEST, not per line: a mixed request would have no honest total to show at the
+    // bottom of the table, which is the figure the employee is asked to check before submitting.
+    unit: replacementLeaveRequestUnitEnum('unit').notNull(),
+    // Stored as submitted rather than re-summed on read — they are what the employee saw and agreed to.
+    totalDays: numeric('total_days', { precision: 6, scale: 2 }).notNull().default('0'),
+    totalHours: numeric('total_hours', { precision: 6, scale: 2 }).notNull().default('0'),
+    reason: text('reason'),
+    /** The REQUEST date, frozen here and copied onto each credit at approval. */
+    submittedOn: date('submitted_on').notNull(),
+    status: replacementLeaveRequestStatusEnum('status').notNull().default('pending'),
+    /** The APPROVAL instant — and the anchor the expiry period is counted from. */
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decidedByUserId: uuid('decided_by_user_id').references((): AnyPgColumn => appUser.id),
+    decisionNote: text('decision_note'),
+    // Recorded consent to bank time instead of the statutory overtime cash. Meaningful only for a
+    // First-Schedule employee. The GATE lives in core/toil.ts and is re-applied at approval — this column
+    // records the agreement, it is not trusted as the check.
+    firstScheduleConsent: boolean('first_schedule_consent'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('rl_request_employment_idx').on(t.employmentId, t.status)],
+);
+
+export const replacementLeaveRequestDate = pgTable(
+  'replacement_leave_request_date',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    requestId: uuid('request_id')
+      .notNull()
+      .references((): AnyPgColumn => replacementLeaveRequest.id, { onDelete: 'cascade' }),
+    // Denormalised so the RLS policy keys on it directly, exactly as leave_request_date does.
+    subjectEmploymentId: uuid('subject_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    workedDate: date('worked_date').notNull(),
+    // Populated per the request's unit: `days` for Day, `fromTime`/`toTime`/`hours` for Hour.
+    days: numeric('days', { precision: 6, scale: 2 }),
+    fromTime: time('from_time'),
+    toTime: time('to_time'),
+    hours: numeric('hours', { precision: 6, scale: 2 }),
+    /** The credit this line minted once approved. NULL while pending, and NULL forever if rejected. */
+    accrualId: uuid('accrual_id').references((): AnyPgColumn => toilAccrual.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // The same worked date twice in one request is a data-entry slip. The CROSS-request guard is
+    // toil_accrual's own unique index — the one that also stops an employee claiming a date a manager
+    // already banked.
+    uniqueIndex('rl_request_date_request_date_uq').on(t.requestId, t.workedDate),
+    index('rl_request_date_request_idx').on(t.requestId),
+    index('rl_request_date_subject_idx').on(t.subjectEmploymentId, t.workedDate),
   ],
 );
 

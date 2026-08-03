@@ -25,6 +25,8 @@ import { setCompensation } from '../core/comp';
 import { checkIn, checkOut } from '../core/attendance';
 import { setRestDay } from '../core/roster';
 import { accrueToil, runToilExpiry, setToilPolicy, ToilDisabledError, type ToilPolicyInput } from '../core/toil';
+// 296fc027 — the employee-request path, whose credits carry a NULL day type.
+import { decideReplacementLeaveRequest, submitReplacementLeaveRequest } from '../core/replacement-request';
 import { isModuleEnabled } from '../core/entitlements';
 
 let b: Base;
@@ -239,6 +241,13 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     //    ready to take effect the day it does. `setToilPolicy` asserts the same server-side
     //    (test/toil.test.ts covers the refusal).
     //
+    //    296fc027 MOVED THE FORM, NOT THE RULE. The policy editor now lives on
+    //    app/admin/leave/replacement/page.tsx — Leave Config is the single place replacement leave is
+    //    configured — while the ledger and the two sweeps stay here, precisely because the two are gated
+    //    DIFFERENTLY and putting them on one screen is what made that easy to get wrong. So this section
+    //    now reads the OTHER file. Every assertion below is unchanged in substance; only the source is.
+    //    Sections 1–3 above still read this page, which is the half the wind-down argument protects.
+    //
     //    READ-ONLY, NOT HIDDEN (review r3). The first version of this gate rendered `null`, and this
     //    assertion pinned that — while the banner immediately above the cards says, in all six locales,
     //    "You can review policies here, but no new time will be banked". Hiding the cards made that copy
@@ -247,14 +256,30 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     //    an outstanding liability could not see the settings that govern HOW it settles. `toil` is in no
     //    parity set, so every existing tenant lands in this branch at the flip. What the entitlement
     //    withholds is the write, and that is what these assert.
-    const formAt = src.indexOf('action={setToilPolicyAction}');
-    expect(formAt, 'the policy form must still exist').toBeGreaterThan(-1);
+    const cfg = fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/leave/replacement/page.tsx'), 'utf8');
+    // The sweeps must NOT have followed the form onto the configuration screen — that would re-gate a
+    // statutory settlement behind a page that is read-only without the module.
+    //
+    // CHECKED AS INVOCATION, NOT AS A SUBSTRING. A bare `not.toContain('runToilExpiryAction')` fails on
+    // the page's own header, which names both sweeps precisely to explain why they stayed on /admin/toil.
+    // Forbidding the words would push the next author to delete the explanation in order to pass — the
+    // exact trade this suite argues against elsewhere. What must be absent is the ability to CALL them:
+    // no import, and no form bound to one.
+    for (const sweep of ['runToilExpiryAction', 'closeReplacementLeaveYearAction']) {
+      expect(cfg, `${sweep} must not be invoked from the configuration page`).not.toContain(`action={${sweep}}`);
+      expect(
+        new RegExp(`import\\s*\\{[^}]*\\b${sweep}\\b`).test(cfg),
+        `${sweep} must not be imported by the configuration page — it belongs to the settlement screen`,
+      ).toBe(false);
+    }
+    const formAt = cfg.indexOf('action={setToilPolicyAction}');
+    expect(formAt, 'the policy form must still exist, on the configuration page').toBeGreaterThan(-1);
     expect(
-      src.slice(0, formAt),
+      cfg.slice(0, formAt),
       'the policy cards must render for an unentitled tenant — the banner promises a review surface',
     ).not.toMatch(/!moduleOn\s*\?\s*null\s*:/);
-    const formEnd = src.indexOf('</form>', formAt);
-    const form = src.slice(formAt, formEnd);
+    const formEnd = cfg.indexOf('</form>', formAt);
+    const form = cfg.slice(formAt, formEnd);
     // Every named control in the form is disabled without the module — asserted PER CONTROL, by name.
     //
     // This used to be arithmetic: `disabled === controls - 1`, with the -1 explained as "the hidden
@@ -285,7 +310,67 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     }
     expect(gated, 'the control scan found no editable fields — the regex has drifted').toBeGreaterThan(4);
     expect(form, 'and the submit must not be offered at all').toContain('{moduleOn && <button');
-    // …and the form must sit ABOVE the settlement card, so gating it cannot drag the sweeps with it.
-    expect(formAt, 'the policy form is expected before the settlement card').toBeLessThan(guard);
+    // The form used to have to sit ABOVE the settlement card so gating it could not drag the sweeps with
+    // it. 296fc027 makes that structurally impossible instead of positionally: they are different files,
+    // asserted above. The stronger statement is that this page has no policy form left at all.
+    expect(src, 'the policy form must not linger on the settlement page').not.toContain('setToilPolicyAction');
+    expect(guard, 'the settlement card must still be on this page').toBeGreaterThan(-1);
+  });
+});
+
+/**
+ * 296fc027 · A SELF-DECLARED CREDIT HAS NO DAY TYPE, AND THE SWEEP MUST NOT INVENT ONE.
+ *
+ * The employee-request path banks a credit with no attendance row behind it, so `toil_accrual.day_type` is
+ * NULL. That matters here and nowhere else: for a First-Schedule employee the convert-to-pay amount is the
+ * EXACT s.60(3)/s.60D(3) statutory cash, and that figure is a function OF THE DAY TYPE — a rest day and a
+ * public holiday pay at different multiples. Guessing one would put a confident, wrong number on a
+ * statutory obligation. The sweep must fall back to the contractual ORP basis and say so.
+ */
+describe('Expiry of a self-declared credit (296fc027)', () => {
+  it('values a NULL-day-type credit on the generic ORP basis and flags it for human reconciliation', async () => {
+    const a = await entitledCtx(b);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'Self Declared', primaryEmail: uniqEmail() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2024-01-01',
+    });
+    // BELOW the ceiling — the case where a fabricated day type would have produced a wrong statutory figure.
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 2000, monthlyAllowance: 0, effectiveFrom: '2024-01-01' });
+    await setToilPolicy(a, policy(b.companyId, { allowFirstScheduleEligible: true, employeeRequestEnabled: true }));
+
+    const { requestId } = await submitReplacementLeaveRequest(a, {
+      employmentId: e.employmentId,
+      unit: 'day',
+      lines: [{ workedDate: REST_DAY, days: 1 }],
+      today: '2026-07-06',
+      firstScheduleConsent: true,
+    });
+    await decideReplacementLeaveRequest(a, { requestId, decision: 'approved', decidedAt: APPROVED_ON });
+
+    const [acc] = await owner.db
+      .select()
+      .from(schema.toilAccrual)
+      .where(eq(schema.toilAccrual.employmentId, e.employmentId));
+    expect(acc.dayType).toBeNull();
+    // Floor protection still applies — an eligible employee's credit converts, it never lapses.
+    expect(acc.expiryAction).toBe('convert_to_pay');
+
+    const res = await runToilExpiry(a, { today: AFTER_EXPIRY });
+    expect(res.converted).toBe(1);
+    expect(await statusOf(acc.id)).toBe('converted_to_pay');
+
+    const [ev] = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.aggregateId, acc.id), eq(schema.domainEvent.eventType, 'toil.converted')));
+    const payload = ev.payload as Record<string, unknown>;
+    // NOT 'statutory_exact': the day type it would need is not known.
+    expect(payload.valuationBasis).toBe('generic_orp');
+    expect(String(payload.valuationNote)).toMatch(/self-declared/i);
+    // ORP × banked days = 2000/26 × 1 day.
+    expect(payload.amountOwed).toBeCloseTo(76.92, 2);
   });
 });

@@ -2150,6 +2150,20 @@
       "when": 1781862470000,
       "tag": "0370_drop_leave_type_expiry",
       "breakpoints": true
+    },
+    {
+      "idx": 380,
+      "version": "7",
+      "when": 1781862480000,
+      "tag": "0380_replacement_leave_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 381,
+      "version": "7",
+      "when": 1781862481000,
+      "tag": "0381_replacement_leave_request",
+      "breakpoints": true
     }
   ]
 }
