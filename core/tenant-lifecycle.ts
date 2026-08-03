@@ -149,8 +149,18 @@ export type ReplayStep =
  * SWEEPS WHOSE EXPIRY IS A STORED DATE COMPARED TO `today`. These are the ones that must not simply
  * re-run — see the r108 asymmetry in this file's header. Named explicitly rather than pattern-matched:
  * a new expiry sweep should have to be added here deliberately, and the test pins the list.
+ *
+ * c459bff9 removed 'expire-aged-leave' from this set because the sweep itself no longer exists. It must
+ * come out here rather than be left as a harmless leftover: the ONLY production caller
+ * (scripts/reactivate-tenant.ts) feeds replayPlan a hardcoded skipped-sweep list, and a name that is in
+ * neither set falls through to the else branch below and prints "unrecognised sweep — replay must be
+ * decided deliberately, not inferred" on the operator's reinstatement report. That reads as a fault
+ * rather than a clean absence, so the two lists move together. Consequence, stated plainly: a reinstated
+ * tenant no longer gets a rerun_with_shifted_expiry step for aged leave, which is correct — the days it
+ * would have forfeited now simply stay in the balance. 'expire-carry' is untouched and keeps its
+ * shifted-expiry replay.
  */
-export const DATE_CLOCK_SWEEPS: ReadonlySet<string> = new Set(['expire-carry', 'expire-aged-leave']);
+export const DATE_CLOCK_SWEEPS: ReadonlySet<string> = new Set(['expire-carry']);
 
 /** Sweeps that recompute from source data up to `asOf`, so a single ordinary run catches everything up. */
 export const SELF_HEALING_SWEEPS: ReadonlySet<string> = new Set(['accrue-earned', 'usage-capture']);

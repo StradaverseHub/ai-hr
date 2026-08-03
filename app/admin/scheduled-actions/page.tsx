@@ -65,7 +65,7 @@ export default async function ScheduledActionsPage() {
 
   /**
    * "What it changed", from the jsonb counters. Values are rendered through Intl.NumberFormat and are
-   * NEVER coerced to integers — expire-carry / expire-aged report forfeited DAYS as a float, so 12.5 must
+   * NEVER coerced to integers — expire-carry reports forfeited DAYS as a float, so 12.5 must
    * not display as 12. An unrecognised counter falls back to its raw key rather than throwing.
    */
   const changed = (result: Record<string, number> | null): string => {

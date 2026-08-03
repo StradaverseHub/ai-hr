@@ -82,7 +82,8 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
     '{festiveGrantSection}',
     // b8fcae73: the per-company entitlement policies timeline, relocated here from the retired
     // Eligibility card as this step's Company Entitlements sub-step (08bc6841 had already moved the
-    // eligibility rules / expiry sub-forms to Condition · Criteria / Expiry).
+    // eligibility rules to Condition · Criteria; the Expiry sub-step 08bc6841 also created was removed
+    // outright by c459bff9).
     "t('companyEntitlements')",
     "t('addEntitlement')",
   ],
@@ -101,8 +102,9 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
     'name="duplicatePolicy"',
     // moved here from the retired Leave Calculation Rules card
     'name="dayTypeInclusion"',
-    // 08bc6841: moved here from the Eligibility card (Expiry sub-step)
-    'name="expiry"',
+    // c459bff9: `name="expiry"` used to be listed here — the marker for the Expiry sub-step's tri-state
+    // sub-form. The sub-step, the form, the columns and the sweep behind them are all gone, so the marker
+    // is asserted ABSENT below rather than assigned to a card.
   ],
   categoryCustom: [
     // moved here from the retired Leave Information Display card
@@ -175,6 +177,11 @@ describe('123c1e76 · leave-type config restructured into 4 category cards (b8fc
     for (const marker of EXTRACTED_SUBFORM_MARKERS) {
       expect(panelSrc.includes(marker), `${marker} still present`).toBe(true);
     }
+    // c459bff9 — the ONE marker this file deliberately asserts ABSENT. Every other marker above is
+    // protected against accidental loss; this one was removed on purpose along with the Expiry sub-step,
+    // its form, its two leave_type columns and the overnight sweep that read them. Re-adding it would
+    // resurrect a write path to storage that no longer exists.
+    expect(panelSrc.includes('name="expiry"'), 'name="expiry" retired with the Expiry sub-step').toBe(false);
   });
 
   it('retires the Approval Rules / Leave Information Display / Leave Calculation Rules cards', () => {

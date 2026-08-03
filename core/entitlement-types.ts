@@ -148,7 +148,10 @@ export const ENTITLEMENTS_EXEMPT_REASONS = {
     why: 'scripts/*.ts cron sweeps — synthetic contexts; slice 9 gives them the by-tenantId resolver.',
     owners: [
       'scripts/accrue-earned.ts',
-      'scripts/expire-aged-leave.ts',
+      // scripts/expire-aged-leave.ts is NOT here any more: c459bff9 DELETED the script along with the
+      // leave-type expiry feature. The owners entry had to come out in the SAME change — the ratchet in
+      // test/entitlement-resolver.test.ts readFileSync's every declared owner with no existence guard, so
+      // a stale name here throws ENOENT rather than failing softly.
       'scripts/expire-carry.ts',
       // scripts/review-sweep.ts is NOT here any more either: it calls `dispatchNotifications`, gated on
       // the BILLABLE `notifications` module, and an exempt context reads every module as ENABLED — so it

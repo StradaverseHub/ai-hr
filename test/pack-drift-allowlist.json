@@ -53,7 +53,6 @@
     "db/seed.ts",
     "localization/my/leave.ts",
     "scripts/accrue-earned.ts",
-    "scripts/expire-aged-leave.ts",
     "scripts/expire-carry.ts",
     "scripts/review-sweep.ts"
   ],

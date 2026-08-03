@@ -4161,10 +4161,7 @@
       "conditionStep": {
         "criteria": "Kriteria",
         "rules": "Peraturan Permohonan Cuti",
-        "expiry": "Luput",
         "halfDayCompanyWideBadge": "Terpakai seluruh syarikat",
-        "expiryAnnualPointer": "Luput Cuti Tahunan ditadbir oleh polisi bawa ke hadapan — tetapkannya di Umum → Polisi Bawa ke Hadapan.",
-        "expiryEmergencyNote": "Cuti Kecemasan tidak membawa baki, jadi tiada luput terpakai.",
         "applicationLimitsTitle": "Had Permohonan",
         "applicationLimitYearLabel": "Permohonan maksimum setiap tahun cuti",
         "applicationLimitUnlimited": "Tanpa had",
@@ -4496,13 +4493,8 @@
         "pasteToggle": "Atau tampal CSV sebaliknya",
         "downloadTemplateXlsx": "Muat turun templat Excel"
       },
-      "expirySectionTitle": "Luput cuti",
-      "expiryValueLabel": "Luput cuti",
-      "expiryValuePlaceholder": "Tiada luput",
-      "expiryUnitLabel": "Unit",
       "expiryUnitMonths": "Bulan",
       "expiryUnitDays": "Hari",
-      "expirySectionHelp": "Hari yang tidak digunakan bagi jenis cuti ini akan luput selepas tempoh ini dari setiap bahagian diperoleh, dan digugurkan daripada baki. Biarkan nombor kosong untuk tiada luput. Hari yang luput masih dipaparkan dalam laporan cuti. Tidak tersedia untuk Cuti Tahunan, yang menggunakan luput bawa ke hadapan.",
       "auditHelp": "Sejarah baca sahaja bagi perubahan jenis cuti, kelayakan, bawa ke hadapan, aliran kelulusan dan integrasi gaji.",
       "advanceNoticeSectionTitle": "Notis awal",
       "minAdvanceDaysLabel": "Hari notis awal minimum",
@@ -7821,10 +7813,6 @@
       "review-sweep": {
         "name": "Penilaian percubaan dan kontrak",
         "description": "Membuka penilaian yang tiba tempoh dan menghantar peringatan berkaitan."
-      },
-      "leave-expire-aged": {
-        "name": "Pelucutan cuti lampau tempoh",
-        "description": "Melucutkan cuti terkumpul yang telah melepasi had tempoh sahnya."
       },
       "leave-expire-carry": {
         "name": "Luput cuti bawa ke hadapan",

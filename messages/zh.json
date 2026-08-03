@@ -4161,10 +4161,7 @@
       "conditionStep": {
         "criteria": "资格条件",
         "rules": "请假申请规则",
-        "expiry": "过期",
         "halfDayCompanyWideBadge": "适用于全公司",
-        "expiryAnnualPointer": "年假的过期由结转政策决定 — 请在“常规 → 结转政策”中配置。",
-        "expiryEmergencyNote": "紧急假不带余额，因此没有过期设置。",
         "applicationLimitsTitle": "申请上限",
         "applicationLimitYearLabel": "每个假期年度的最高申请天数",
         "applicationLimitUnlimited": "不限",
@@ -4496,13 +4493,8 @@
         "pasteToggle": "或改为粘贴 CSV",
         "downloadTemplateXlsx": "下载 Excel 模板"
       },
-      "expirySectionTitle": "假期到期",
-      "expiryValueLabel": "假期到期",
-      "expiryValuePlaceholder": "不过期",
-      "expiryUnitLabel": "单位",
       "expiryUnitMonths": "月",
       "expiryUnitDays": "天",
-      "expirySectionHelp": "此假期类型未使用的天数将在每部分累积后经过此时长到期，并从余额中扣除。留空表示不过期。已过期的天数仍会显示在假期报表中。不适用于年假，年假改用结转到期规则。",
       "auditHelp": "假期类型、额度、结转、审批流程和薪资集成变更的只读历史记录。",
       "advanceNoticeSectionTitle": "提前申请",
       "minAdvanceDaysLabel": "最少提前天数",
@@ -7821,10 +7813,6 @@
       "review-sweep": {
         "name": "试用期与合约考核",
         "description": "开启到期的考核并发送相关提醒。"
-      },
-      "leave-expire-aged": {
-        "name": "超期假期作废",
-        "description": "作废已超过有效期限的应计假期。"
       },
       "leave-expire-carry": {
         "name": "结转假期到期",

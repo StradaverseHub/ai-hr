@@ -314,21 +314,24 @@ const GENERAL_SUB_STEP_TITLE_KEY: Record<GeneralSubStepKey, string> = {
   carry: 'subStep.carry',
 };
 
-/** Condition step sub-flow (08bc6841): the three sub-steps of step 4, in walk order — 1 Criteria (who
- *  qualifies: the eligibility rules moved from the Eligibility step), 2 Leave Application Rules (the seven
- *  existing rule groups as a card grid + the relocated company-wide Half-Day Deduction), 3 Expiry (the
- *  age-from-earning expiry moved from Eligibility; Annual points at the General carry-forward flow).
+/** Condition step sub-flow (08bc6841, shortened by c459bff9): the TWO sub-steps of step 4, in walk order
+ *  — 1 Criteria (who qualifies: the eligibility rules moved from the Eligibility step), 2 Leave Application
+ *  Rules (the seven existing rule groups as a card grid + the relocated company-wide Half-Day Deduction).
+ *  c459bff9 removed the third sub-step (Expiry) outright — an intentional reset ahead of a new expiry
+ *  framework, not a relocation: the age-from-earning expiry pair no longer exists anywhere, for ANY leave
+ *  type, including the explanatory-text variants Annual and Emergency used to see here.
  *  Keys are storage keys (persisted as `essSubStep` in the leaveTypeCards:<id> localStorage shape, next to
- *  activeStep / generalSubStep — the e1a51aea shape extended backward-compatibly). The step's OWN storage
- *  key stays 'ess' (Condition's historical accordion key — see STEP_KEYS). Rendered by the SAME reusable
- *  SubStepBar the General flow introduced (components/leave-sub-step-bar.tsx — the reuse contract). */
-const ESS_SUB_STEP_KEYS = ['criteria', 'rules', 'expiry'] as const;
+ *  activeStep / generalSubStep — the e1a51aea shape extended backward-compatibly). Hydration validates the
+ *  stored value against this list, so an older payload holding 'expiry' falls back to Criteria. The step's
+ *  OWN storage key stays 'ess' (Condition's historical accordion key — see STEP_KEYS). Rendered by the SAME
+ *  reusable SubStepBar the General flow introduced (components/leave-sub-step-bar.tsx — the reuse
+ *  contract). */
+const ESS_SUB_STEP_KEYS = ['criteria', 'rules'] as const;
 type EssSubStepKey = (typeof ESS_SUB_STEP_KEYS)[number];
 /** Sub-step → its admin.leave title key (all 6 locales). */
 const ESS_SUB_STEP_TITLE_KEY: Record<EssSubStepKey, string> = {
   criteria: 'conditionStep.criteria',
   rules: 'conditionStep.rules',
-  expiry: 'conditionStep.expiry',
 };
 
 /** Entitlement step sub-flow (7b945408, extended by b8fcae73, shortened again by bc9be1e8 + 0d9cf710):
@@ -1402,8 +1405,6 @@ export function LeaveTypePanel({
   maxConsecutiveDays,
   maxConsecutiveUnit,
   minAdvanceDays,
-  expiryValue,
-  expiryUnit,
   customMessages,
   essViewConfig,
   formulaExplanations,
@@ -1494,11 +1495,6 @@ export function LeaveTypePanel({
    *  submitted; null = no requirement. Threaded so the sub-form round-trips. Field hidden for Emergency Leave
    *  (code === 'EMERGENCY' — EL exists precisely for short-notice absence and is never guarded). */
   minAdvanceDays: number | null;
-  /** Leave Type Expiry Field (fec49317): age-from-earning expiry pair — after this many months/days from the
-   *  date each portion is earned, unused days lapse. Both null = no expiry. Threaded so the sub-form
-   *  round-trips. Hidden for Annual (owned by the per-policy carry-forward expiry engine). */
-  expiryValue: number | null;
-  expiryUnit: string | null;
   /** Custom validation messages (custom-messages migration): admin-authored override text keyed by rule config
    *  field (`backdatingLimitDays` | `minAdvanceDays`). Threaded so each rule's "Custom system message"
    *  textarea round-trips. null / absent key = show the built-in localized default. */
@@ -2753,9 +2749,9 @@ export function LeaveTypePanel({
           {/* Feedback 9d8cf621: the "Payroll impact" controls moved to the Payroll Related tab (per-type list
               there). Both were self-contained sub-forms, so moving/removing them here never touches any other
               column on save. */}
-          {/* Condition sub-flow (08bc6841): the SAME reusable SubStepBar the General flow introduced
-              (components/leave-sub-step-bar.tsx — the reuse contract) walks the three sub-steps
-              1 Criteria · 2 Leave Application Rules · 3 Expiry. One sub-step visible at a time; the
+          {/* Condition sub-flow (08bc6841, shortened by c459bff9): the SAME reusable SubStepBar the General
+              flow introduced (components/leave-sub-step-bar.tsx — the reuse contract) walks the two
+              sub-steps 1 Criteria · 2 Leave Application Rules. One sub-step visible at a time; the
               choice persists per type alongside activeStep/generalSubStep (leaveTypeCards:<id>). */}
           <SubStepBar
             steps={ESS_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(ESS_SUB_STEP_TITLE_KEY[k]) }))}
@@ -3329,62 +3325,12 @@ export function LeaveTypePanel({
           <div className="mb-3 break-inside-avoid">{halfDaySection}</div>
           </div>
           )}
-          {/* Sub-step 3 — Expiry (08bc6841): the leave expiry configuration moved here from Eligibility.
-              Annual types' carry-forward expiry stays with the Carry Forward Policy sub-step of the
-              General flow — the pointer below explains where; Emergency Leave carries no balance to
-              expire, so it gets an explanatory note instead of a dead form (the fec49317 config-trap
-              rationale, kept). */}
-          {essSubStep === 'expiry' && (
-          <>
-          {isAnnual && (
-            <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
-              {t('conditionStep.expiryAnnualPointer')}
-            </p>
-          )}
-          {!isAnnual && code === 'EMERGENCY' && (
-            <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
-              {t('conditionStep.expiryEmergencyNote')}
-            </p>
-          )}
-          {/* Leave Type Expiry Field (fec49317). Its own sub-form (own tri-state) posts `expiry=1`.
-              Hidden for Annual — Annual already has per-policy carry-forward expiry (a second age-based
-              forfeit would double-count) — and for Emergency Leave, which carries no balance. Both inputs
-              blank ⇒ clears the expiry; a number + unit configures age-from-earning expiry. */}
-          {!isAnnual && code !== 'EMERGENCY' && (
-            <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">{t('expirySectionTitle')}</span>
-              <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
-                <input type="hidden" name="id" value={id} />
-                {/* preserve the name — this form does not edit it */}
-                <input type="hidden" name="name" value={name} />
-                {/* marker: tells the action to touch the expiry_value / expiry_unit columns (tri-state guard) */}
-                <input type="hidden" name="expiry" value="1" />
-                <Field label={t('expiryValueLabel')}>
-                  <input
-                    name="expiryValue"
-                    type="number"
-                    min="1"
-                    step="1"
-                    defaultValue={expiryValue ?? ''}
-                    placeholder={t('expiryValuePlaceholder')}
-                    className={`${inputCls} w-24`}
-                  />
-                </Field>
-                <Field label={t('expiryUnitLabel')}>
-                  <select name="expiryUnit" defaultValue={expiryUnit ?? 'months'} className={`${inputCls} w-32`}>
-                    <option value="months">{t('expiryUnitMonths')}</option>
-                    <option value="days">{t('expiryUnitDays')}</option>
-                  </select>
-                </Field>
-                <Button type="submit" size="sm">
-                  {t('save')}
-                </Button>
-              </form>
-              <p className="text-xs text-muted-foreground">{t('expirySectionHelp')}</p>
-            </div>
-          )}
-          </>
-          )}
+          {/* c459bff9: the third sub-step (Expiry) is GONE — for every leave type, including the
+              explanatory pointer Annual saw and the no-balance note Emergency saw. The age-from-earning
+              expiry pair (leave_type.expiry_value / expiry_unit) and its overnight sweep were removed
+              outright as an intentional reset; a replacement expiry framework is designed separately.
+              Annual's carry-forward expiry is UNAFFECTED and still lives in General → Carry Forward
+              Policy — it is a different clock over a different set of days. */}
             </CardContent>
           </Card>
           )}

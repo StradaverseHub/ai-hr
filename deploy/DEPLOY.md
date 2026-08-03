@@ -134,10 +134,15 @@ only dispatched when an admin happens to load a page. The demo server ran for mo
 | --- | --- | --- |
 | `scripts/accrue-earned.ts` | `0 2 1 * *` | Tops earned-leave policies up to the amount earned |
 | `scripts/review-sweep.ts` | `0 3 * * *` | Opens due probation/contract reviews, sends reminders, dispatches notifications |
-| `scripts/expire-aged-leave.ts` | `30 3 * * *` | Forfeits earned leave past its configured age |
 | `scripts/expire-carry.ts` | `0 3 1 4 *` | Forfeits carried-forward leave, just after the 31 Mar expiry |
 
-All four are idempotent — re-running grants, opens and forfeits nothing extra.
+All three are idempotent — re-running grants, opens and forfeits nothing extra.
+
+> **REMOVED 2026-08 (c459bff9).** `scripts/expire-aged-leave.ts` (`30 3 * * *`, "Forfeits earned leave past
+> its configured age") is GONE, together with the `leave_type.expiry_value` / `expiry_unit` columns it read.
+> If you are upgrading a host that already has the crontab installed, **remove that line from the crontab
+> BEFORE deploying**, or cron fires nightly at a file that no longer exists. `crontab -e`, delete the
+> `expire-aged-leave` line, save.
 
 **The host timezone matters.** The scripts resolve "today" via `todayInKualaLumpur()`, and the schedules
 above are small-hours local times. Confirm the host agrees before installing:
@@ -155,7 +160,6 @@ crontab -e
 ```cron
 0 2 1 * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/accrue-earned.ts >> /home/ubuntu/aihr-cron-logs/accrue.log 2>&1
 0 3 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/review-sweep.ts >> /home/ubuntu/aihr-cron-logs/review-sweep.log 2>&1
-30 3 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/expire-aged-leave.ts >> /home/ubuntu/aihr-cron-logs/expire-aged.log 2>&1
 0 3 1 4 * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/expire-carry.ts >> /home/ubuntu/aihr-cron-logs/expire-carry.log 2>&1
 ```
 

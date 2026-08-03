@@ -2129,6 +2129,13 @@
       "when": 1781862457000,
       "tag": "0357_leave_adjustment_batch_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 370,
+      "version": "7",
+      "when": 1781862470000,
+      "tag": "0370_drop_leave_type_expiry",
+      "breakpoints": true
     }
   ]
 }

@@ -3355,12 +3355,6 @@ export async function updateLeaveType(
     // what is not answerable, and a unit with no figure is inert configuration that looks set.
     maxConsecutiveDays?: number | null;
     maxConsecutiveUnit?: 'calendar_days' | 'working_days' | null;
-    // Leave Type Expiry Field (fec49317): OPTIONAL age-from-earning expiry, stored as a (value, unit) pair.
-    // OWN tri-state — both keys are undefined (block not rendered) ⇒ columns untouched; both present ⇒ set;
-    // an explicit clear posts value=null unit=null (its own sub-form marks the pair as touched). value must
-    // be an integer >= 1; unit must be 'months' | 'days'. A partial pair (one set, one null) is rejected.
-    expiryValue?: number | null;
-    expiryUnit?: 'months' | 'days' | null;
     // Partial Leave Approval (ADR-0068): expose per_date_approval as an editable toggle. OWN tri-state
     // (undefined = leave column untouched), mirroring sendToPayroll/backdating — its own sub-form so an
     // unrelated rename/doc/payroll save never silently resets it. The gate (single-step company + full-day
@@ -3530,9 +3524,6 @@ export async function updateLeaveType(
   // year" and "how much in one go" — and sharing a marker would make a save of one silently clear the
   // other. Touched when EITHER key is present; the sub-form always posts both together.
   const touchMaxConsecutive = p.maxConsecutiveDays !== undefined || p.maxConsecutiveUnit !== undefined;
-  // Leave Type Expiry Field (fec49317): its OWN tri-state — the pair is touched when EITHER key is present
-  // (its sub-form always posts both together). Both null ⇒ clear (no expiry); both set ⇒ configure.
-  const touchExpiry = p.expiryValue !== undefined || p.expiryUnit !== undefined;
   // Partial Leave Approval (ADR-0068): its OWN tri-state, mirroring touchPayroll/touchBackdating — a save
   // from any other sub-form omits perDateApproval, so per_date_approval stays untouched (no silent reset).
   const touchPartial = p.perDateApproval !== undefined;
@@ -3787,31 +3778,6 @@ export async function updateLeaveType(
       nextMaxConsecutiveUnit = rawUnit;
     }
   }
-  // Leave Type Expiry Field (fec49317): normalize + validate the (value, unit) pair. Both null = clear (no
-  // expiry). A partial pair (one set, the other empty) is a user error — reject it so a half-configured
-  // expiry can never persist. value must be a whole number >= 1; unit must be 'months' | 'days'.
-  let nextExpiryValue: number | null | undefined;
-  let nextExpiryUnit: 'months' | 'days' | null | undefined;
-  if (touchExpiry) {
-    const rawValue = p.expiryValue ?? null;
-    const rawUnit = p.expiryUnit ?? null;
-    if (rawValue == null && rawUnit == null) {
-      nextExpiryValue = null;
-      nextExpiryUnit = null;
-    } else {
-      if (rawValue == null || rawUnit == null) {
-        throw new Error('Enter both a number and a unit for leave expiry, or clear both.');
-      }
-      if (!Number.isInteger(rawValue) || rawValue < 1) {
-        throw new Error('“Leave expiry” must be a whole number ≥ 1.');
-      }
-      if (rawUnit !== 'months' && rawUnit !== 'days') {
-        throw new Error('Leave expiry unit must be months or days.');
-      }
-      nextExpiryValue = rawValue;
-      nextExpiryUnit = rawUnit;
-    }
-  }
   // Custom validation messages: reject unknown rule keys and over-long messages up front. The set of
   // known keys is deliberately small (one rule today); expand it as new validation rules ship.
   if (touchCustomMessages && p.customMessages != null) {
@@ -3879,8 +3845,6 @@ export async function updateLeaveType(
     maxConsecutiveDays?: string | null;
     maxConsecutiveUnit?: 'calendar_days' | 'working_days' | null;
   } = { ...backdatingSet, ...minAdvanceSet, ...applicationLimitSet, ...maxConsecutiveSet };
-  // Leave Type Expiry Field (fec49317): its own set fragment (the normalized pair, or both null to clear).
-  const expirySet = touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {};
   // Partial Leave Approval (ADR-0068): its own set fragment.
   const partialSet = touchPartial ? { perDateApproval: p.perDateApproval } : {};
   // Leave Type master page (feedback 097de541): its own set fragment (the trimmed value, or null to clear).
@@ -3926,8 +3890,6 @@ export async function updateLeaveType(
         // Maximum Consecutive Leave (c6ffa725 rev 2): the pair, selected for the before/after audit diff.
         maxConsecutiveDays: leaveType.maxConsecutiveDays,
         maxConsecutiveUnit: leaveType.maxConsecutiveUnit,
-        expiryValue: leaveType.expiryValue,
-        expiryUnit: leaveType.expiryUnit,
         perDateApproval: leaveType.perDateApproval,
         // Must be selected so before?.customMessages reflects what was actually stored — without it the
         // audit diff and the read-then-patch merge would always see undefined (silently clobbering).
@@ -4093,7 +4055,6 @@ export async function updateLeaveType(
         ...(touchDurations ? { durations: nextDurations } : {}),
         ...docSet,
         ...requestRuleSet,
-        ...expirySet,
         ...partialSet,
         ...descriptionSet,
         ...visualSet,
@@ -4194,7 +4155,6 @@ export async function updateLeaveType(
                 maxConsecutiveUnit: before?.maxConsecutiveUnit ?? null,
               }
             : {}),
-          ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
           ...(touchEssViewConfig ? { essViewConfig: before?.essViewConfig ?? null } : {}),
@@ -4261,7 +4221,6 @@ export async function updateLeaveType(
           ...(touchMaxConsecutive
             ? { maxConsecutiveDays: nextMaxConsecutiveDays ?? null, maxConsecutiveUnit: nextMaxConsecutiveUnit ?? null }
             : {}),
-          ...(touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: nextCustomMessages ?? null } : {}),
           ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig ?? null } : {}),

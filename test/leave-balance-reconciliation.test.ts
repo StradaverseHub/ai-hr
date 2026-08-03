@@ -23,7 +23,7 @@
  *   balance − pendingApproval               =  totalAvailable
  *
  * Every scenario below asserts that identity against what the REAL engines posted (openLeaveYear,
- * expireCarriedLeave, expireAgedLeave, grantAdHocLeave), including the cases where the old derived
+ * expireCarriedLeave, grantAdHocLeave), including the cases where the old derived
  * arithmetic demonstrably does not close. Read-only feature: no schema, no migration, no DomainEvent.
  * // substrate: read-only, no event
  */
@@ -39,7 +39,6 @@ import {
   CARRY_FORFEIT_REASON_EXPIRY,
   POLICY_RECALC_REASON_PREFIX,
   PROFILE_RECALC_REASON_PREFIX,
-  expireAgedLeave,
   expireCarriedLeave,
   grantAdHocLeave,
   openLeaveYear,
@@ -96,8 +95,9 @@ const annualPolicy = (p: {
     validFrom: p.from ?? '2025-01-01',
   });
 
-/** Add a non-ANNUAL leave type, optionally with the age-from-earning expiry the aged sweep reads. */
-const addType = async (code: string, name: string, expiry?: { value: number; unit: 'months' | 'days' }) => {
+/** Add a non-ANNUAL leave type. c459bff9 dropped the optional age-from-earning expiry argument along with
+ *  the leave_type.expiry_value / expiry_unit columns and the sweep that read them. */
+const addType = async (code: string, name: string) => {
   const [t] = await owner.db
     .insert(schema.leaveType)
     .values({
@@ -106,7 +106,6 @@ const addType = async (code: string, name: string, expiry?: { value: number; uni
       name,
       paid: true,
       allowNegativeBalance: true,
-      ...(expiry ? { expiryValue: expiry.value, expiryUnit: expiry.unit } : {}),
     })
     .returning({ id: schema.leaveType.id });
   return t.id;
@@ -303,12 +302,19 @@ describe('the reconciliation identity closes where the DERIVED carry arithmetic 
     expectReconciles(await bdOf(emp.employmentId, b.annualLeaveTypeId, '2026-12-31'));
   });
 
-  it('aged type-expiry forfeit (non-ANNUAL) lands in forfeited, never in adjustments', async () => {
+  /**
+   * c459bff9: the SWEEP that used to write these rows is deleted, but rows it already wrote are KEPT and
+   * still read. This block therefore posts the historical row DIRECTLY instead of running the engine —
+   * that is the whole point. If AGED_FORFEIT_REASON were ever dropped from core/read.ts's readers, a past
+   * automatic forfeit would silently re-render as a manual HR adjustment and the identity would stop
+   * closing. On production this population is currently zero rows, which is exactly why it needs a test
+   * rather than a live example.
+   */
+  it('a HISTORICAL aged type-expiry forfeit still lands in forfeited, never in adjustments', async () => {
     const emp = await hire('2025-01-01');
-    const sick = await addType('SICKX', 'Sick (aged)', { value: 3, unit: 'months' });
-    await post(emp.employmentId, sick, 'accrual', 5, '2026-01-10'); // lapses 2026-04-10
-    const res = await expireAgedLeave(adminCtx(b), { today: '2026-05-01' });
-    expect(res.forfeited).toBe(5);
+    const sick = await addType('SICKX', 'Sick (aged)');
+    await post(emp.employmentId, sick, 'accrual', 5, '2026-01-10');
+    await post(emp.employmentId, sick, 'adjustment', -5, '2026-04-10', AGED_FORFEIT_REASON);
 
     const bd = await bdOf(emp.employmentId, sick, '2026-06-30');
     expect(bd.currentYearEntitlement).toBe(5);
