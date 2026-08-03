@@ -120,9 +120,16 @@ describe('fa3f4ccb · the warning is rendered from the engine signal, never reco
     // the screens this item changes. Pinned by MEANING (the claim), not by wording.
     for (const loc of LOCALES) {
       const m = JSON.parse(read(`/messages/${loc}.json`));
-      const leave = m.admin.leave as Record<string, string>;
+      const leave = m.admin.leave as Record<string, string | undefined>;
       expect(leave.typesHelp, `${loc} typesHelp`).not.toMatch(/max\(/i);
-      expect(leave.leaveYearHelp, `${loc} leaveYearHelp`).not.toMatch(/max\(/i);
+      // 4b0e76ae DELETED leaveYearHelp along with the whole Leave Year Configuration block. A string that
+      // no longer exists cannot assert the removed behaviour, which satisfies this case more strongly than
+      // a reworded one would — so absence passes. The check still runs if the key ever comes back, because
+      // the redesigned Leave Year module is expected to reintroduce copy in this namespace and it must not
+      // reintroduce the claim with it.
+      if (leave.leaveYearHelp !== undefined) {
+        expect(leave.leaveYearHelp, `${loc} leaveYearHelp`).not.toMatch(/max\(/i);
+      }
     }
     // English is the source text, so the claim itself can be checked there.
     const en = JSON.parse(read('/messages/en.json')).admin.leave as Record<string, string>;

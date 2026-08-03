@@ -58,6 +58,13 @@ vi.mock('../lib/authz', () => ({
     if (!adminGuardCtx) redirectSpy('/');
     return adminGuardCtx;
   }),
+  // 4b0e76ae: requestLeave's future-year gate now reads isAdmin() directly instead of the deleted
+  // leaveYearConfig row, so the mock has to provide it. It reproduces lib/authz's real one-liner rather
+  // than returning a constant — the whole point of these cases is that an ADMIN gets through and an
+  // ordinary employee does not, and a hardcoded true/false would decide that for the test instead of
+  // letting the session's own roles decide it.
+  isAdmin: (s: { roles?: string[] | null }) =>
+    !!s.roles?.some((r) => r === 'hr_admin' || r === 'super_admin'),
 }));
 vi.mock('next/navigation', () => ({ redirect: (p: string) => redirectSpy(p), notFound: vi.fn(() => undefined) }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(() => undefined), revalidateTag: vi.fn(() => undefined) }));
