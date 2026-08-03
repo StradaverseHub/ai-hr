@@ -4696,7 +4696,9 @@
       "halfDayDeductionCountSelected": "Đã chọn {count} công ty",
       "halfDayDeductionEmptyNote": "Không chọn công ty nào sẽ tắt quy tắc này ở mọi nơi: ngày làm nửa buổi lại trừ 0,5 ngày.",
       "maxNegativeBalanceLabel": "Số dư âm tối đa (ngày)",
-      "maxNegativeBalanceHelp": "Nhân viên có thể xuống dưới 0 bao nhiêu. Để trống nếu không giới hạn, đây là cách hoạt động hiện nay. Đơn xin nghỉ vượt quá giới hạn sẽ bị từ chối, và thông báo sẽ nêu rõ giới hạn và mức vượt quá."
+      "maxNegativeBalanceHelp": "Nhân viên có thể xuống dưới 0 bao nhiêu. Bắt buộc nhập số khi cho phép số dư âm, và đó là giới hạn ở CẢ HAI giai đoạn: đơn xin nghỉ bị từ chối nếu vượt quá giới hạn, và việc phê duyệt cũng vậy. Thông báo sẽ nêu rõ giới hạn và mức vượt quá.",
+      "negativeBalanceNeedsLimitTitle": "Các loại nghỉ phép cho phép số dư âm nhưng chưa đặt giới hạn",
+      "negativeBalanceNeedsLimitHelp": "Các loại nghỉ phép này được đặt cho phép số dư âm nhưng chưa có mức tối đa. Chúng hoạt động y như hiện nay — việc phê duyệt vẫn từ chối số dư dưới 0 — vì quyền mới chỉ có hiệu lực khi bạn nhập giới hạn. Hãy xem xét từng loại: nhập số nếu đó là ý bạn, hoặc chuyển công tắc về Không."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

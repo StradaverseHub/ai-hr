@@ -4696,7 +4696,9 @@
       "halfDayDeductionCountSelected": "{count} companies selected",
       "halfDayDeductionEmptyNote": "Selecting no company turns the rule off everywhere: half days deduct 0.5 day again.",
       "maxNegativeBalanceLabel": "Maximum negative balance (days)",
-      "maxNegativeBalanceHelp": "How far below zero an employee may go. Leave it empty for no limit, which is how this works today. An application that would take someone past the limit is refused, and the message says what the limit is and how far past it the request goes."
+      "maxNegativeBalanceHelp": "How far below zero an employee may go. A figure is required when a negative balance is allowed, and it is the floor at BOTH stages: the application is refused if it would pass the limit, and so is the approval. The message says what the limit is and how far past it the request goes.",
+      "negativeBalanceNeedsLimitTitle": "Leave types allowing a negative balance with no limit set",
+      "negativeBalanceNeedsLimitHelp": "These leave types are set to allow a negative balance but have no maximum. They behave exactly as they do today — approval still refuses a balance below zero — because the new permission only takes effect once you enter a limit. Work through them: enter a figure where you meant it, or set the switch back to No."
     },
     "holidays": {
       "pageTitle": "Public holidays",

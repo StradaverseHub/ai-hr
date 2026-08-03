@@ -4696,7 +4696,9 @@
       "halfDayDeductionCountSelected": "{count} syarikat dipilih",
       "halfDayDeductionEmptyNote": "Tidak memilih mana-mana syarikat akan mematikan peraturan ini di semua tempat: hari separuh akan ditolak 0.5 hari semula.",
       "maxNegativeBalanceLabel": "Baki negatif maksimum (hari)",
-      "maxNegativeBalanceHelp": "Sejauh mana pekerja boleh melepasi sifar. Biarkan kosong untuk tiada had, iaitu cara ia berfungsi hari ini. Permohonan yang akan melepasi had itu akan ditolak, dan mesejnya menyatakan had tersebut dan sejauh mana permohonan itu melepasinya."
+      "maxNegativeBalanceHelp": "Sejauh mana pekerja boleh melepasi sifar. Angka ini diperlukan apabila baki negatif dibenarkan, dan ia menjadi had pada KEDUA-DUA peringkat: permohonan ditolak jika melepasi had, begitu juga kelulusan. Mesejnya menyatakan had tersebut dan sejauh mana permohonan itu melepasinya.",
+      "negativeBalanceNeedsLimitTitle": "Jenis cuti yang membenarkan baki negatif tanpa had ditetapkan",
+      "negativeBalanceNeedsLimitHelp": "Jenis cuti ini ditetapkan untuk membenarkan baki negatif tetapi tiada had maksimum. Ia berkelakuan sama seperti hari ini — kelulusan masih menolak baki di bawah sifar — kerana kebenaran baharu hanya berkuat kuasa setelah anda memasukkan had. Semak satu per satu: masukkan angka jika itu yang dimaksudkan, atau tetapkan semula suis kepada Tidak."
     },
     "holidays": {
       "pageTitle": "Cuti umum",

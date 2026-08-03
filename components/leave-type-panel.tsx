@@ -866,12 +866,14 @@ function NegativeBalanceForm({
               type="number"
               min="0.5"
               step="0.5"
+              // 9861b8a4 — REQUIRED now. Yes is what unlocks the approval gate, so "Yes with no figure"
+              // would mean "may go arbitrarily far below zero", which nobody should be able to set by
+              // leaving a box empty. The service refuses it too; this is the fast, readable half.
+              required
               defaultValue={maxNegativeBalance ?? ''}
               className={cn(inputCls, 'w-full')}
             />
           </Field>
-          {/* Blank is a real, saveable answer here, so the screen has to say what it means — an empty box
-              beside an enabled rule otherwise reads as "not filled in yet" rather than "no limit". */}
           <p className="text-xs text-muted-foreground">{t('maxNegativeBalanceHelp')}</p>
         </>
       ) : (

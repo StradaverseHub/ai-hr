@@ -383,6 +383,12 @@ export default async function LeaveEntitlementsPage({
   // like a deliberate "turn this off" that never lands. Offering exactly the companies the write can reach
   // keeps the screen and the database in agreement, and core.setLeaveHalfDayFullDeductionCompanies resolves
   // the same `app.is_admin_for` set server-side so a hand-crafted post cannot widen it either.
+  // 9861b8a4 — leave types where a negative balance is allowed but no floor has been set. These are the
+  // ones whose new approval permission is NOT yet active, listed so the administrator can finish the
+  // decision. Archived types are excluded: they configure nothing.
+  const negativeBalanceNeedsLimit = types.filter(
+    (lt) => lt.allowNegativeBalance === true && lt.maxNegativeBalance == null && !lt.archivedAt,
+  );
   const halfDayCompanies = await listCompanies(s, { adminOnly: true });
   const halfDayEnabledCompanyIds = halfDayCompanies.filter((c) => c.leaveHalfDayFullDeduction).map((c) => c.id);
   const halfDaySection = (
@@ -677,6 +683,33 @@ export default async function LeaveEntitlementsPage({
           left panel listing the types (Add Leave button at the bottom) and a right pane showing the SELECTED
           type's five-step configuration flow (LeaveTypePanel's step bar). Each panel keeps the exact same
           props/actions as before; the client workspace only decides which one is mounted. */}
+      {/* 9861b8a4 — THE LIST THE PLAN PROMISED. Allowing a negative balance now unlocks the approval gate,
+          but ONLY on a type that also carries a maximum. Types set to Yes with no figure keep behaving
+          exactly as they did (approval still refuses below zero), so nothing changed for them — but that
+          state is now a decision left half-made, and it must be visible rather than buried inside each
+          type's Condition step. Rendered only when the set is non-empty: a permanent empty banner is
+          furniture, and furniture stops being read. */}
+      {negativeBalanceNeedsLimit.length > 0 && (
+        <Card>
+          <SectionHeader
+            title={t('negativeBalanceNeedsLimitTitle')}
+            count={negativeBalanceNeedsLimit.length}
+          />
+          <div className="space-y-2 px-4 py-3">
+            <p className="text-xs text-muted-foreground">{t('negativeBalanceNeedsLimitHelp')}</p>
+            <ul className="flex flex-wrap gap-2">
+              {negativeBalanceNeedsLimit.map((lt) => (
+                <li
+                  key={lt.id}
+                  className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground"
+                >
+                  {lt.name}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      )}
       <Card data-tour="leave-config">
         <SectionHeader title={t('typesSectionTitle')} count={types.length} />
         <LeaveTypeWorkspace
