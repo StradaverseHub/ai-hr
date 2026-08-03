@@ -5,12 +5,24 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-04, after r127 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-04, after r128 SHIPPED)
 
 > ## ▶ NEXT SESSION STARTS HERE
 >
-> **`main@776ab66b` is what runs. Production on 304 migrations. Next free number is `0358`.** Nothing is in
-> flight: no unmerged build branch, no half-applied migration, no pending deploy.
+> **`main@5b113ea5` is what runs. Production on 307 migrations. Next free number is `0382`.**
+>
+> **IN FLIGHT:** `build/r131` (`bc36c768`, migrations 0375/0376) and `build/r132` (`296fc027`,
+> migrations 0380/0381) are built and unmerged. 0358/0365/0370 are SHIPPED; the gaps between those
+> numbers are deliberate — they were handed out to parallel agents so they could not collide.
+>
+> ### ⚠️ THE DEPLOY RSYNC HAS NO `--delete`
+>
+> A release that DELETES a source file leaves the old file on the server, where `next build` still
+> compiles it. r128 failed its first deploy exactly this way: a deleted sweep script kept importing a
+> function that no longer existed. Production never went down (the build fails before the restart), but
+> list and remove them by hand first:
+>
+>     git diff --diff-filter=D --name-only <last-released-ref>..HEAD
 >
 > ### ⚠️ A MIGRATION THAT CREATES A TABLE MUST ALSO GRANT ON IT — 0353 DID NOT
 >
@@ -1090,6 +1102,168 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r128 — 2026-08-04 — five items, three parallel agents, and the wedge that stopped all three
+
+**Shipped:** `8fec719e` (custom rounding table) · `56910869` (Override Leave Application engine) ·
+`65f466e2` and `fef49b9a` (its first two rules) · `c459bff9` (Expiry step removed).
+**`main@5b113ea5`. 307 migrations. New: `0358`, `0365`, `0370`.**
+
+Five board items in one release because three of them are one mechanism and two share a form.
+
+### The thing that cost the most: the local Postgres wedged for ninety minutes
+
+The checkpointer completed **zero** checkpoints in 1h26m of uptime and every `DROP DATABASE` queued
+behind it — three of them, aged 1h02m, 31m and 10m. `test/global-setup.ts` drops before it creates, so
+**every vitest run on the machine failed at setup**, in all three worktrees at once, with connection
+timeouts that look exactly like real failures. One agent nearly started debugging its own code against
+it.
+
+The diagnosis that works, and it is not CPU (both idle low). **Note `pg_stat_checkpointer` is
+PostgreSQL 17+; this cluster is 16, so use `pg_stat_bgwriter`** — the 17 name fails silently under
+`2>/dev/null` and looks like a stalled counter:
+
+    select checkpoints_timed, checkpoints_req, buffers_checkpoint from pg_stat_bgwriter
+    select count(*) from pg_stat_activity where wait_event in ('CheckpointStart','CheckpointDone')
+
+Byte-identical counters over ~40s **plus** backends parked on those wait events is the wedge.
+
+**I tried recovery twice and it was the wrong call both times. WIPE FIRST — the standing note is right.**
+
+- Restart #1, at **61 databases**: crash recovery finished in ~4 minutes and everything came back. This
+  is the outcome that tempts you into trying it again.
+- Restart #2, an hour later at **~70 databases**: `syncing data directory (pre-fsync)` ran past **10
+  minutes**, then the second `(fsync)` pass ran past **13 more**, walking file-by-file and eventually
+  blocking inside a single `fsync()` that never returned. Trend Micro
+  (`/Library/Application Support/TrendMicro/…`, confirmed running) scanning the data directory is the
+  plausible reason. **Every `-m immediate` restart re-triggers that pre-fsync from scratch**, so once it
+  starts you cannot shorten it by restarting again.
+
+Total cost of choosing recovery over the wipe: **~50 minutes.** The wipe took under two:
+
+    pg_ctl -D $DATA -m immediate stop; pkill -9 -f aihr-pg16
+    mv $DATA $DATA.wedged-$(date +%Y%m%d)      # stash, do not delete — 3.2 GB, still there if wanted
+    initdb -D $DATA -U postgres --encoding=UTF8
+    # then: max_wal_size=4GB + checkpoint_timeout=30min into postgresql.conf, start,
+    #       CREATE ROLE ai_hr_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+    #       CREATE DATABASE ai_hr_dev; CREATE DATABASE ai_hr_test;
+    #       GRANT CONNECT/USAGE + ALTER DEFAULT PRIVILEGES FOR ROLE postgres … TO ai_hr_app;
+    #       pnpm drizzle-kit migrate
+
+**`ALTER DEFAULT PRIVILEGES` is not optional.** Migration 0001 grants to `ai_hr_app` only the tables that
+existed at Slice 0; every later table relies on the default-privileges rule to be reachable at all. Miss
+it and you reproduce r127's `permission denied` bug across the whole schema.
+
+Result: **72 databases → 5**, migrations applied in seconds, checkpoints now complete in milliseconds.
+The recurring wedge was never really the checkpointer — it was fsync cost scaling with leaked databases.
+
+### PARALLEL AGENTS NEED `TEST_DB_NAMESPACE`, AND NOTHING TELLS YOU THAT
+
+`test/db-names.ts` exists precisely for this and its header spells out the failure: the template and
+worker database names are **server-wide, not per-checkout**, so two `pnpm vitest` runs anywhere on the
+machine — different worktrees included — destroy each other's databases mid-run. Set it on every
+invocation, one value per agent:
+
+    TEST_DB_NAMESPACE=r128 pnpm vitest run …
+
+A namespaced run is treated as ephemeral and tears its databases down, so it does not leak either. I
+launched three agents without it and had to correct all three mid-flight.
+
+### ALSO: A WORKTREE HAS NO `node_modules`, AND AN AGENT WILL NOT TELL YOU
+
+One agent reported "29/29 green" from a worktree whose `node_modules` contained a single `.vite`
+directory — `vitest` was not installed there and could not have run. Its code turned out to be fine
+(195 tests green once I installed and re-ran), but **the report was not evidence.** Pre-install
+`node_modules` and copy `.env.local` into every agent worktree before launching, and re-run anything
+load-bearing yourself.
+
+### Decisions — 8fec719e (rounding)
+
+**The reset is not inert, and the reporter re-approved knowing it.** Rounding is folded into the
+entitlement-change comparison, so turning it off reprojects already-granted balances for the current
+cycle. Annual Leave and Compassionate Leave stop rounding up and all 23 employees move DOWN to the exact
+unrounded figure. Closed prior years are protected by the effective-date guards.
+
+**The unruled fall-through was checked on production, not assumed.** Nulling `rounding_method` on a type
+whose ONLY rule was rounding would flip it unruled and silently restore its whole legacy JSONB rule set —
+a balance change disguised as a rounding change. Both affected types carry other rule columns (Annual:
+`earned_monthly`, carry max 10, 6-month expiry; Compassionate: `grant_on_hire_prorated`, carry max 0), so
+neither can. `0358` still writes the literal `'none'` rather than NULL where nulling *would* leave a type
+unruled, and `setLeaveTypeRules` applies the same guard on every future save — because the trap re-arms
+the moment a type later loses its other rules.
+
+**A stored `nearest_half` still evaluates; it just cannot be written any more.** Removing an option from
+a dropdown while the engine still recognises the value is how a silent downgrade happens.
+
+### Decisions — 56910869 (the override engine)
+
+**Three items, one mechanism.** Building "advance notice becomes Emergency" and "insufficient balance
+splits" as branches first, then dismantling them into a rule engine, would have billed the same behaviour
+twice with a gap in between where only we could change the rules. The engine shipped first and both rules
+shipped **OFF**.
+
+**Consent is a service concern, not a dialog.** The service refuses a converting rule without an explicit
+token, so a client that skips the confirmation cannot submit a silently-converted application.
+
+**`override_rules` is deliberately NOT in `hasAnyLeaveTypeRule` or `leaveTypeRuleColumns`.** Those are the
+*entitlement* overlay. An override rule is an *application* rule, the same family as `min_advance_days` and
+`allow_negative_balance`, none of which are in either symbol. Adding it would mean a type whose only
+setting is an override rule suddenly reads entitlement from its own ten NULL columns — stripping its
+accrual method, carry cap and rounding. Pinned by two tests.
+
+**After a conversion, the NEW type's rules govern the rest of the application.** So Annual's split rule
+does not follow an application converted to Emergency; the split must be configured on Emergency.
+
+### Decisions — c459bff9 (expiry removal)
+
+**`AGED_FORFEIT_REASON` is KEPT, exported and read-only, though nothing writes it.** Deleting the constant
+would have rewritten history employees have already seen: `classifyLedgerAdjustment` would fall through to
+`config` so every past automatic forfeit rendered as a *manual HR adjustment*, `agedForfeited` would drop
+out of the forfeited fold so the reconciliation identity stopped balancing, and `a2cSupersededReasonCond`
+would stop superseding those rows, changing first-year entitlement figures.
+
+**Measured, not estimated:** production had exactly ONE leave type configured (RL / Replacement Leave, 2
+months) and **zero rows ever forfeited** by this sweep. The plan's offer to also erase past forfeits was
+therefore moot — there was nothing to erase — and HANDOFF.md's attribution of 1,322.67 days to
+`expireAgedLeave` was wrong. That population is `carry_forward_cap` (14 / −550.67), `profile_recalc`
+(13 / −738.00), `a2c_recalc` (8 / −25.67) and `policy_recalc` (19 / −26.33).
+
+**The crontab was live and the handoff said it wasn't.** See the corrected block at the top of this file.
+The `30 3 * * *` line was removed from the host before this deployed.
+
+
+### Two things production did NOT do that the plans said it would
+
+**No balance moved on deploy day.** 8fec719e's plan told the reporter "the current year's balances for
+all 23 employees are re-worked to the exact figure that day." They were not. Migration `0358` clears the
+configuration; the reprojection lives in `updateLeavePolicy`, not in SQL. Measured immediately after the
+deploy: **zero adjustment rows in the last hour, total ledger unchanged at 1273.02 days.** The re-work
+happens when an ordinary engine next runs — a profile edit, the monthly accrual, or year open. The
+direction and size are still as disclosed; only the timing was wrong. **Tell the reporter this**, because
+they were told to warn employees about a same-day change.
+
+**Both rounding types cleared to NULL, not `'none'`.** `0358` writes the literal `'none'` only where
+nulling would leave a type with no rule columns at all. Neither affected type qualified — confirmed on
+production before the build — so both went to NULL and the guard never fired. All 25 leave types now read
+NULL, `rounding_threshold` is 0 rows, and the 58 legacy `leave_policy` values are gone.
+
+### The deploy failed the first time, and rsync is why
+
+`deploy.sh` failed type-check on the first attempt: `scripts/expire-aged-leave.ts` was still on the
+server importing an `expireAgedLeave` that no longer exists. **The deploy rsync has no `--delete`**, so a
+release that DELETES a source file leaves an orphan behind that still gets compiled. Four files were
+deleted this round; removing them by hand and redeploying fixed it. Production never went down — the
+build fails before the restart.
+
+**For any future release that deletes a file**, list them first and remove them on the host before
+deploying:
+
+    git diff --diff-filter=D --name-only <last-released-ref>..HEAD
+
+### Gate
+
+`tsc` clean · **554 files / 6563 tests** · `next build` clean · upgrade rehearsal from `build/r127` —
+the exact tree production was running — ****PASS** (leave balances unchanged at 128.00, every row survived)**.
 
 ## r127 — 2026-08-04 — Leave Adjustments gets a place of its own, and the GRANT that 0353 forgot
 
