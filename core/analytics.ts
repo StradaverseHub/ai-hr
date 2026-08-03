@@ -34,6 +34,7 @@ import {
   CARRY_FORFEIT_REASON_EXPIRY,
   applyLeaveTypeRules,
   earnedCycleStart,
+  isEarnedMethod,
   leaveTypeRuleColumns,
   resolveCarryBreakdown,
   resolveGradePolicy,
@@ -816,8 +817,13 @@ export type CarryForwardReportRow = {
 /** True iff this (employment, type)'s cycle is an earned-method policy on an anniversary-leaveCycle
  *  company — accrueEarnedLeave (not openLeaveYear) owns its carry-cap, and expireCarriedLeave's Jan-1
  *  "open marker" check never finds a marker for it, so the expiry sweep never covers it (engine gap). */
+/*  bc36c768 — this used to spell the pair `method === 'earned_monthly' || method === 'earned_quarterly'`
+ *  by hand instead of asking `isEarnedMethod`, so the engine-gap flag silently omitted any cadence added
+ *  later. 'earned_daily' would have been the first: an anniversary daily-accrual type sits in exactly the
+ *  same expiry-sweep gap and the report would have said nothing about it. One definition, so a new method
+ *  cannot become invisible to the report that exists to surface engine gaps. */
 const isAnniversaryEarned = (leaveCycle: string | null, method: string | undefined): boolean =>
-  leaveCycle === 'anniversary' && (method === 'earned_monthly' || method === 'earned_quarterly');
+  leaveCycle === 'anniversary' && isEarnedMethod(method);
 
 export async function carryForwardReport(
   ctx: SessionContext,

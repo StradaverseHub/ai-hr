@@ -151,9 +151,16 @@ const STEP_TITLE_KEY: Record<StepKey, string> = {
   custom: 'categoryCustom',
 };
 
-const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly';
-/** Normalise to a select value: earned methods pass through, everything else is the lump option. */
-const methodValue = (m?: string) => (isEarned(m) ? m! : 'grant_on_hire_prorated');
+/** The client-side mirror of core/leave.ts `isEarnedMethod` (a client component cannot import the server
+ *  module). bc36c768 added 'earned_daily' and KEPT 'earned_quarterly': the dropdown no longer offers
+ *  quarterly, but the entitlement timeline can still meet a legacy stored value and must label it
+ *  honestly rather than show no badge at all. Keep in step with EARNED_METHODS. */
+const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly' || m === 'earned_daily';
+/* bc36c768 removed `methodValue` — "normalise a stored method to a select value", dead since fa3f4ccb
+ * retired the per-policy method select and referenced by nothing when this item found it. Its job is now
+ * `earningChoiceOf` / `earningMethodOf`, which speak the three-choice vocabulary and, unlike this helper,
+ * do NOT collapse an unrecognised value onto the lump option — that collapse is precisely the silent
+ * downgrade the read-only branch of EarningMethodForm exists to prevent. */
 
 /** Feedback b81d3c52 — normalise a stored Rounding Method to a select/hidden-input value. Nothing stored
  *  (the No-Rounding default, and every policy written before this feature) ⇒ 'none'. The action maps
@@ -631,12 +638,45 @@ function FrontDoorPreservedCarry({ p }: { p: EntitlementPolicy }) {
  *   - by_quarter  → earned_quarterly        (not reporter vocabulary — shown only when a policy already
  *                                            stores it, so the select can round-trip faithfully)
  *   - resignation → DISABLED (engine support coming — no calculation semantics exist; follow-up item)
+ *
+ * bc36c768 REPLACED ALL OF THE ABOVE. The list offered four options that added up to only two behaviours:
+ * None and By Year BOTH mapped to grant_on_hire_prorated (the same stored value, identical arithmetic),
+ * Earn Upon Resignation was permanently disabled with no calculation behind it at all, and a fifth
+ * quarterly option existed only to round-trip a stored value. The reporter asked for three choices that
+ * each mean something genuinely different, and this is them:
+ *
+ *   - none     → grant_on_hire_prorated  (entitlement handed over up front — the lump path, unchanged)
+ *   - monthly  → earned_monthly          (plus a REQUIRED day-of-month, the one new field)
+ *   - daily    → earned_daily            (the annual entitlement in daily slices across the leave year)
+ *
+ * `''` IS A FOURTH STATE BUT NOT A FOURTH CHOICE. It is the NOT-CONFIGURED placeholder a type carries
+ * after the 0376 reset, and it posts an EMPTY method, which the action maps to null — so saving the form
+ * while the placeholder is still selected leaves the type unconfigured rather than quietly committing it
+ * to the lump path. An accidental save must not be how a leave type gets configured.
+ *
+ * NOTE ON "None": it is not literally a full year for everyone, and the help text says so. An ANNUAL
+ * joiner is credited only the months remaining in their hire year (core/org.ts); SICK and HOSPITALIZATION
+ * are credited in full whatever month someone joins, because s.60F requires it. That joiner pro-ration is
+ * NOT changed here — removing it would hand every mid-year joiner days they have not worked for, and
+ * nothing in this system can take a credited day back.
  */
-type EarningChoice = 'none' | 'by_month' | 'by_year' | 'by_quarter';
-const earningChoiceOf = (m?: string): EarningChoice =>
-  m === 'earned_monthly' ? 'by_month' : m === 'earned_quarterly' ? 'by_quarter' : 'none';
+type EarningChoice = '' | 'none' | 'monthly' | 'daily';
+/** Every method value this editor can RENDER as a choice. A stored value outside this set (a legacy
+ *  'earned_quarterly', or anything a hand-crafted POST once put there) takes the READ-ONLY branch in the
+ *  form below rather than being silently collapsed onto a choice nobody made — which is exactly the
+ *  eee43966 silent-downgrade class, and the reason the by_quarter round-trip option existed at all. */
+const KNOWN_EARNING_METHODS = ['', 'grant_on_hire_prorated', 'earned_monthly', 'earned_daily'];
+const isKnownEarningMethod = (m?: string | null) => KNOWN_EARNING_METHODS.includes(m ?? '');
+const earningChoiceOf = (m?: string, unconfigured?: boolean): EarningChoice =>
+  unconfigured ? '' : m === 'earned_monthly' ? 'monthly' : m === 'earned_daily' ? 'daily' : 'none';
 const earningMethodOf = (c: EarningChoice): string =>
-  c === 'by_month' ? 'earned_monthly' : c === 'by_quarter' ? 'earned_quarterly' : 'grant_on_hire_prorated';
+  c === 'monthly'
+    ? 'earned_monthly'
+    : c === 'daily'
+      ? 'earned_daily'
+      : c === 'none'
+        ? 'grant_on_hire_prorated'
+        : '';
 
 /** Earning Method sub-step (e1a51aea): a type-level front door to the active policy's `method`. */
 function EarningMethodForm({
@@ -650,7 +690,20 @@ function EarningMethodForm({
   action: Action;
   leaveTypeId: string;
 }) {
-  const [choice, setChoice] = useState<EarningChoice>(earningChoiceOf(rules.accrualMethod ?? undefined));
+  // bc36c768 — a stored method this editor does not render is shown READ-ONLY and RE-POSTED VERBATIM (see
+  // the belt-and-braces block below). Computed once, up front, because it decides both halves of the form.
+  const storedMethod = rules.accrualMethod ?? '';
+  const unknownStoredMethod = !isKnownEarningMethod(storedMethod);
+  const unconfigured = rules.accrualUnconfigured != null;
+  const [choice, setChoice] = useState<EarningChoice>(
+    earningChoiceOf(rules.accrualMethod ?? undefined, unconfigured),
+  );
+  // bc36c768 — the credit day, rendered only for Monthly Accrual and REQUIRED there. Held as a string so
+  // the input can be genuinely empty (a numeric 0 or NaN would render as a value the administrator did not
+  // type); the action reads an empty field as a CLEAR.
+  const [accrualDay, setAccrualDay] = useState<string>(
+    rules.accrualDay == null ? '' : String(rules.accrualDay),
+  );
   // Feedback 9f5164d8 — the rounding half of this form is now three linked controls (method, a customize
   // toggle, and the threshold), so it needs local state where a single uncontrolled <select> sufficed.
   const [rounding, setRounding] = useState<LeaveRoundingMethod>(roundingMethodValue(rules.roundingMethod));
@@ -666,30 +719,86 @@ function EarningMethodForm({
       {/* Tri-state marker: names the HALF of the rule row this form renders. The carry half is a separate
           form, and without this marker an earning-only save would clear its configuration. */}
       <input type="hidden" name="earningRendered" value="1" />
-      {/* the mapped engine value — the select below speaks the reporter's vocabulary */}
-      <input type="hidden" name="method" value={earningMethodOf(choice)} />
-      <Field label={t('subStep.earningMethodLabel')}>
-        <select
-          value={choice}
-          onChange={(e) => setChoice(e.target.value as EarningChoice)}
-          aria-label={t('subStep.earningMethodLabel')}
-          className={`${inputCls} w-72`}
-        >
-          <option value="none">{t('subStep.earningNone')}</option>
-          <option value="by_month">{t('subStep.earningByMonth')}</option>
-          <option value="by_year">{t('subStep.earningByYear')}</option>
-          {/* round-trip only: surfaced when the policy already stores quarterly earning */}
-          {earningChoiceOf(rules.accrualMethod ?? undefined) === 'by_quarter' && (
-            <option value="by_quarter">{t('methodEarnedQuarterly')}</option>
+      {/* bc36c768 — BELT AND BRACES FOR A METHOD THIS EDITOR CANNOT RENDER (a legacy 'earned_quarterly',
+          or anything else the open value contract still permits). Two rules, and both matter:
+
+          1. RE-POST THE STORED VALUE VERBATIM. Collapsing it onto 'none' — which is what the choice mapper
+             would do — turns an unrelated save of the ROUNDING half into a silent downgrade of the earning
+             method to the lump path. That is the eee43966 defect class exactly, and it is why the retired
+             by_quarter option existed. Re-posting makes the method write a harmless no-op.
+
+          2. KEEP `earningRendered` POSTED. It is rendered unconditionally above, and it must stay that
+             way: app/admin/actions.ts gates accrualMethod, accrualDay, roundingMethod, roundingThreshold
+             AND roundingBands inside ONE `...(earningRendered ? {...} : {})`. Dropping the marker to avoid
+             writing the method would make Rounding Method unsaveable for this leave type — the exact
+             half-save the markers exist to prevent. (roundingMethodRendered below is a second, inner
+             marker; it does not rescue an omitted earningRendered.) */}
+      {unknownStoredMethod ? (
+        <>
+          <input type="hidden" name="method" value={storedMethod} />
+          {/* A SPAN, not a read-only <input>, and the distinction is deliberate. A disabled/read-only form
+              control still reads as a control — it invites a click and it would be the second element in
+              this panel carrying the earning-method label, which is exactly the "one visible method picker"
+              invariant eee43966 pinned. The value is displayed; the hidden field above is what is posted. */}
+          <Field label={t('subStep.earningMethodLabel')}>
+            <span className={cn(inputCls, 'w-72 bg-muted text-muted-foreground')}>{storedMethod}</span>
+          </Field>
+          <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.earningLegacyMethodNote')}</p>
+        </>
+      ) : (
+        <>
+          {/* the mapped engine value — the select below speaks the reporter's vocabulary */}
+          <input type="hidden" name="method" value={earningMethodOf(choice)} />
+          <Field label={t('subStep.earningMethodLabel')}>
+            <select
+              value={choice}
+              onChange={(e) => setChoice(e.target.value as EarningChoice)}
+              aria-label={t('subStep.earningMethodLabel')}
+              className={`${inputCls} w-72`}
+            >
+              {/* The NOT-CONFIGURED placeholder, offered only while the type actually is. Not disabled:
+                  an administrator who opens the dropdown, thinks better of it and picks this back must be
+                  able to leave the type unconfigured rather than be forced into a choice by the UI. */}
+              {choice === '' && <option value="">{t('subStep.earningNotConfigured')}</option>}
+              <option value="none">{t('subStep.earningNone')}</option>
+              <option value="monthly">{t('subStep.earningByMonth')}</option>
+              <option value="daily">{t('subStep.earningDaily')}</option>
+            </select>
+          </Field>
+          {choice === '' && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.earningNotConfiguredNote')}</p>
           )}
-          {/* disabled pending engine work — no resignation-earning semantics exist yet. f3a64d90 retired the
-              shared pendingEngineNote (it also named Anniversary to Calendar, now live) for a dedicated key
-              that speaks only about Earn Upon Resignation. */}
-          <option value="resignation" disabled title={t('subStep.resignationPendingNote')}>
-            {t('subStep.earningResignation')}
-          </option>
-        </select>
-      </Field>
+          {/* bc36c768 — the ONE new field, revealed only by Monthly Accrual and required there. Nothing
+              appears for None or Daily Accrual: neither has a credit day to choose. */}
+          {choice === 'monthly' && (
+            <>
+              <Field label={t('subStep.accrualDayLabel')}>
+                <input
+                  name="accrualDay"
+                  type="number"
+                  min={1}
+                  max={31}
+                  step={1}
+                  required
+                  value={accrualDay}
+                  onChange={(e) => setAccrualDay(e.target.value)}
+                  aria-label={t('subStep.accrualDayLabel')}
+                  className={cn(inputCls, 'w-28')}
+                />
+              </Field>
+              <p className="text-xs text-muted-foreground">{t('subStep.accrualDayHelp')}</p>
+            </>
+          )}
+          {/* Daily Accrual applies rounding to the RUNNING TOTAL, not to each day's slice, so a table that
+              rounds a decimal upward hands the employee a whole day from their very first day. The
+              reporter was told we would WARN rather than block: a combination that is wrong for most
+              tenants is not necessarily wrong for all of them, and blocking it would be us overruling a
+              configuration decision that is theirs to make. */}
+          {choice === 'daily' && rounding !== 'none' && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.dailyRoundingWarning')}</p>
+          )}
+        </>
+      )}
       <p className="text-xs text-muted-foreground">{t('subStep.earningMappingHelp')}</p>
       {/* Feedback b81d3c52 — Rounding Method sits directly UNDER Earning Method (its requested home) and
           rides the same policy row: it tidies whatever the earning calculation produces, as the final
@@ -728,10 +837,12 @@ function EarningMethodForm({
           })}
         </p>
       )}
-      {/* Integration r66: b81d3c52 was cut against main and still referenced the shared
-          `pendingEngineNote`, which eee43966/f3a64d90 retired in favour of the dedicated
-          `resignationPendingNote` (the old key also named Anniversary to Calendar, now live). */}
-      <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.resignationPendingNote')}</p>
+      {/* bc36c768 — the unconditional amber pending-engine paragraph is GONE, along with the disabled
+          Earn-Upon-Resignation option it explained. It rendered below the select on EVERY leave type,
+          apologising for an option nobody could pick and no engine ever implemented; removing the option
+          and leaving the apology would have been worse than either. Its i18n key is retired in all six
+          locales. (Named by prose rather than by identifier on purpose: the substeps test asserts the
+          retired key name appears NOWHERE in this file, and a comment quoting it would defeat that.) */}
       <Button type="submit" size="sm">
         {t('save')}
       </Button>
@@ -1414,6 +1525,13 @@ function LeaveVisualForm({
  */
 export type LeaveTypeRules = {
   accrualMethod?: string | null;
+  /** bc36c768 — the day of the month Monthly Accrual credits on, 1..31. null ⇒ not set (⇒ day 1). */
+  accrualDay?: number | null;
+  /** bc36c768 — the NOT-CONFIGURED marker, as an ISO STRING rather than the Date the column holds.
+   *  Deliberate: the server page hands this to a client component, and a plain string is unambiguously
+   *  serialisable across that boundary (see test/server-client-boundary.test.ts). Non-null ⇒ this type
+   *  grants nothing and earns nothing until an earning method is saved. */
+  accrualUnconfigured?: string | null;
   carryForwardEnabled?: boolean | null;
   carryForwardMax?: number | null;
   /** 7cd914b1 — carry as a share of the year-end balance. numeric ⇒ may arrive as a string. */
@@ -2544,9 +2662,18 @@ export function LeaveTypePanel({
                         : t('validFrom', { from: p.validFrom })}
                     </span>
                     {!p.validTo && <span className={badge.emerald}>{t('activeBadge')}</span>}
+                    {/* bc36c768: three-way, for the reason earned-accrual-card.tsx is — an else-is-monthly
+                        fallback would badge a daily-accrual row "Earned monthly". methodEarnedQuarterly is
+                        deliberately KEPT: this badge is exactly where a legacy stored value still surfaces. */}
                     {isEarned(p.method) && (
                       <span className={badge.amber}>
-                        {t(p.method === 'earned_quarterly' ? 'methodEarnedQuarterly' : 'methodEarnedMonthly')}
+                        {t(
+                          p.method === 'earned_quarterly'
+                            ? 'methodEarnedQuarterly'
+                            : p.method === 'earned_daily'
+                              ? 'methodEarnedDaily'
+                              : 'methodEarnedMonthly',
+                        )}
                       </span>
                     )}
                     {p.gradeId && p.gradeName && <span className={badge.muted}>{p.gradeName}</span>}

@@ -2150,6 +2150,20 @@
       "when": 1781862470000,
       "tag": "0370_drop_leave_type_expiry",
       "breakpoints": true
+    },
+    {
+      "idx": 375,
+      "version": "7",
+      "when": 1781862475000,
+      "tag": "0375_leave_type_accrual_day_and_unconfigured",
+      "breakpoints": true
+    },
+    {
+      "idx": 376,
+      "version": "7",
+      "when": 1781862476000,
+      "tag": "0376_leave_type_earning_method_clearout",
+      "breakpoints": true
     }
   ]
 }

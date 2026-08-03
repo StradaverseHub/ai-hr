@@ -212,6 +212,17 @@ describe('applyLeaveTypeRules — the pure overlay', () => {
     // the legacy grade policy and the administrator's table is silently ignored while a stale JSONB rule
     // set comes back: the identical failure 7cd914b1 shipped with carryForwardPercent.
     expect(hasAnyLeaveTypeRule({ roundingBands: [{ from: 0, to: 1, result: 1 }] })).toBe(true);
+    // bc36c768 — a DAY-ONLY type is ruled, for the same reason: without the disjunct the overlay falls
+    // through to the legacy grade policy and the administrator's chosen credit day is silently ignored.
+    expect(hasAnyLeaveTypeRule({ accrualDay: 15 })).toBe(true);
+    // bc36c768 — …and the NOT-CONFIGURED marker does NOT engage it, joining carryForwardIncludeEarned in
+    // the exclusion for a stronger reason than that one. The 0376 clear-out stamps EVERY non-archived type
+    // at once, including the ones 0325 never consolidated — whose real carry / rounding / max-balance
+    // configuration is still in leave_policy.accrual. If the marker counted here, all of it would be
+    // buried under the type's NULLs on deploy day and an EARNING-METHOD reset would silently wipe carry
+    // forward and rounding. This exclusion is load-bearing.
+    expect(hasAnyLeaveTypeRule({ accrualUnconfigured: new Date() })).toBe(false);
+    expect(applyLeaveTypeRules(POL, { accrualUnconfigured: new Date() })).toBe(POL);
   });
 
   it('replaces every rule from the type, and leaves days alone', () => {
@@ -245,6 +256,13 @@ describe('applyLeaveTypeRules — the pure overlay', () => {
       // the overlay unconditionally and null here, because this type has no table — and read only by the
       // 'custom' branch of applyRounding, so its presence cannot move a 'down' figure either.
       roundingBands: null,
+      // bc36c768 (migration 0375) added the FOURTEENTH rule column, the monthly credit day. Carried on the
+      // overlay unconditionally and null here, because this fixture sets none — and read only by the
+      // 'earned_monthly' branch of earnedToDateFor, where null means day 1, so its presence cannot move an
+      // 'earned_quarterly' figure. The NOT-CONFIGURED marker (the fifteenth column) is deliberately NOT
+      // here: it decides whether a type is granted AT ALL, upstream of what its rules say, and letting it
+      // leak into the resolved policy would invite an engine to read it as one more accrual method.
+      accrualDay: null,
     });
   });
 

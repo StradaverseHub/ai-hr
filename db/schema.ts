@@ -1368,8 +1368,14 @@ export const leaveType = pgTable('leave_type', {
   // roundingMethod means no rounding; an absent maxBalanceDays means no cap.
   //
   //   accrualMethod — `accrual.method`. Open value set BY CONTRACT (no DB CHECK): isEarnedMethod()
-  //     recognises 'earned_monthly' / 'earned_quarterly' and reads everything else, absent included, as the
-  //     lump-sum 'grant_on_hire_prorated' path.
+  //     recognises 'earned_monthly' / 'earned_quarterly' / 'earned_daily' (bc36c768) and reads everything
+  //     else, absent included, as the lump-sum 'grant_on_hire_prorated' path.
+  //
+  //     bc36c768 narrowed the CHOICES to three — None, Monthly Accrual, Daily Accrual — without narrowing
+  //     the stored set. 'earned_quarterly' stays RECOGNISED by the engine and keeps its arithmetic branch:
+  //     retiring a choice and re-interpreting every value already stored under it are different changes,
+  //     and only the first was asked for. The open contract is also what lets a pack introduce a cadence
+  //     later without a schema change, which is why no CHECK is added here.
   accrualMethod: text('accrual_method'),
   //   carryForwardMax — `accrual.carryForwardMax`, the cap on days carried into the next leave year.
   carryForwardMax: numeric('carry_forward_max', { precision: 6, scale: 2 }),
@@ -1426,6 +1432,33 @@ export const leaveType = pgTable('leave_type', {
   //     'none' is dormant, not deleted — the reporter can switch Custom Rounding off and on without
   //     retyping the table, the same containment `rounding_threshold` already has.
   roundingBands: jsonb('rounding_bands'),
+  //   accrualDay — bc36c768 (migration 0375): the DAY OF THE MONTH Monthly Accrual credits on, 1..31
+  //     (DB CHECK). NULL ⇒ day 1, which is what every pre-bc36c768 row means and what `accrualPeriods`
+  //     has always hard-wired. Read ONLY by the 'earned_monthly' branch of `earnedToDateFor`; meaningless
+  //     (and ignored) for 'earned_daily', the quarterly legacy branch and every lump method, so a stored
+  //     value can never change what any other method produces.
+  //
+  //     IN A SHORTER MONTH THE CREDIT MOVES TO THAT MONTH'S LAST DAY rather than being skipped —
+  //     `effectiveAccrualDay` clamps 31 to 28 (29 in a leap year) in February and to 30 in April. A month
+  //     that never credits would leave a permanent hole in the cumulative, which is the one thing the
+  //     to-date model cannot express.
+  accrualDay: integer('accrual_day'),
+  //   accrualUnconfigured — bc36c768 (migrations 0375 + 0376): THE NOT-CONFIGURED MARKER. Stamped by the
+  //     0376 clear-out on every non-archived type, cleared the moment `setLeaveTypeRules` writes a
+  //     non-null accrualMethod. NULL ⇒ configured (every type from that save onward).
+  //
+  //     A type carrying this marker GRANTS NOTHING AND EARNS NOTHING: the hire grant skips it,
+  //     accrueEarnedLeave skips it, projectExpectedEntitlement returns null (a SKIP, never 0 — a 0 would
+  //     make the reproject paths claw back every already-credited day), and openLeaveYear forces the
+  //     grant to 0 while still writing its forfeit row and its always-written open-marker row.
+  //
+  //     DELIBERATELY NOT PART OF `hasAnyLeaveTypeRule`, for the reason `carryForwardIncludeEarned` is not:
+  //     if this marker flipped a previously unruled type onto the type-level rule set, applyLeaveTypeRules
+  //     would overlay NULL carryMax / roundingMethod / maxBalanceDays over the policy's real values and
+  //     silently wipe configuration nobody asked to reset. It IS in `leaveTypeRuleColumns`, so it rides
+  //     every existing select and every gate can read it. A column may be in the select map without being
+  //     in the engagement test; that is exactly the shape this needs.
+  accrualUnconfigured: timestamp('accrual_unconfigured', { withTimezone: true }),
   // Application Limits (feedback c6ffa725, migration 0335): the maximum total days an employee may APPLY
   // for, of this type, within one leave year — regardless of entitlement balance. The home for the
   // reporter's Unpaid Leave case (entitlement 0, Leave Summary showing 0 available, applications still

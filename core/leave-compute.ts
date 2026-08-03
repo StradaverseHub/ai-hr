@@ -44,6 +44,12 @@ export type ResolvedPolicy = {
   days: number;
   carryMax: number;
   method?: string;
+  /** bc36c768 — the day of the month 'earned_monthly' credits on (1..31), resolved from the leave TYPE.
+   *  null/absent ⇒ day 1, which is byte-identical to every pre-bc36c768 configuration and is what the
+   *  pre-consolidation `leave_policy.accrual` path always resolves to (the JSONB has no such key: an
+   *  accrual day is a type-level rule and was never a per-policy one). Read ONLY by `earnedToDateFor`'s
+   *  monthly branch. */
+  accrualDay?: number | null;
   carryExpiry?: CarryExpiry | null;
   /** Carry-forward enhancement: explicit on/off switch for the carry rule. When absent, carry is
    *  enabled iff `carryMax > 0` (the back-compat default — see `carryEnabled`). */
@@ -617,6 +623,19 @@ export function isWellFormedBands(bands: unknown): bands is ServiceBand[] {
  *  as STRINGS from postgres, so both spellings are accepted and normalised below. */
 export type LeaveTypeRules = {
   accrualMethod?: string | null;
+  /** bc36c768 (migration 0375) — the day of the month Monthly Accrual credits on, 1..31. NULL/absent ⇒
+   *  day 1, which is byte-identical to every pre-bc36c768 row. Read only by `earnedToDateFor`'s
+   *  'earned_monthly' branch. */
+  accrualDay?: string | number | null;
+  /** bc36c768 (migrations 0375 + 0376) — THE NOT-CONFIGURED MARKER. Set ⇒ this type grants nothing and
+   *  earns nothing until HR saves an earning method.
+   *
+   *  DELIBERATELY ABSENT FROM `hasAnyLeaveTypeRule` — see the note there. It is carried on this type (and
+   *  in `leaveTypeRuleColumns`) so every gate can read it off the type row it already selects, NOT so it
+   *  can engage the overlay. `applyLeaveTypeRules` never reads it either: the marker decides whether a
+   *  type is granted AT ALL, upstream of what its rules say, and letting it leak into the resolved policy
+   *  would invite an engine to treat "not configured" as one more accrual method. */
+  accrualUnconfigured?: Date | string | null;
   carryForwardMax?: string | number | null;
   /** 7cd914b1 (migration 0349) — the twelfth column. A percentage of the year-end balance, 0–100. */
   carryForwardPercent?: string | number | null;
@@ -657,11 +676,26 @@ function finiteOrNull(v: string | number | null | undefined): number | null {
  * can set it, read by no engine (see AccrualConfig) — so on its own it says nothing about whether this
  * type's rules have been consolidated, and letting it flip a type onto the type-level rule set would
  * change behaviour on the strength of a field that has none.
+ *
+ * `accrualUnconfigured` (bc36c768) IS EXCLUDED FOR THE SAME REASON, AND THE EXCLUSION IS LOAD-BEARING.
+ * The 0376 clear-out stamps that marker on EVERY non-archived leave type at once — including the ones
+ * step 1 never consolidated, whose real carry / rounding / max-balance configuration still lives in
+ * `leave_policy.accrual`. If the marker counted here, every one of those types would flip to "ruled" on
+ * deploy day, `applyLeaveTypeRules` would overlay their NULL carryMax / roundingMethod / maxBalanceDays
+ * over the policy's real values, and a reset that was scoped to the EARNING METHOD would silently wipe
+ * carry-forward and rounding configuration nobody asked to touch. The marker says "do not grant this
+ * type"; it says nothing whatever about which rule set a type resolves through, and it must not be
+ * allowed to answer a question it was never asked. test/leave-earning-method-simplified.test.ts pins it.
  */
 export function hasAnyLeaveTypeRule(rules: LeaveTypeRules | null | undefined): boolean {
   if (rules == null) return false;
   return (
     rules.accrualMethod != null ||
+    // bc36c768: a configured accrual DAY is a configured rule in its own right — the same disjunct
+    // 7cd914b1 shipped without for carryForwardPercent and 8fec719e had to add for roundingBands. A
+    // day-only type without it reads as unruled, applyLeaveTypeRules falls through to the legacy grade
+    // policy, and the administrator's chosen credit day is silently ignored.
+    rules.accrualDay != null ||
     rules.carryForwardMax != null ||
     // 7cd914b1: a percentage alone is a configured rule set. Omitting it here would leave a
     // percentage-only type "unruled", so applyLeaveTypeRules would fall through to the grade policy and
@@ -755,10 +789,20 @@ export function applyLeaveTypeRules(
   const carryPercent = finiteOrNull(r.carryForwardPercent);
   const maxBalance = finiteOrNull(r.maxBalanceDays);
   const method = typeof r.accrualMethod === 'string' && r.accrualMethod !== '' ? r.accrualMethod : undefined;
+  // bc36c768 — the accrual DAY rides the method it belongs to, filtered at this boundary like every other
+  // rule: anything outside 1..31 resolves to null (⇒ day 1) rather than reaching the engine. Deliberately
+  // NOT gated on the method being 'earned_monthly': `earnedToDateFor` ignores it for every other method,
+  // and dropping it here would mean a type that switches away from monthly and back loses its day.
+  const accrualDayRaw = finiteOrNull(r.accrualDay ?? null);
+  const accrualDay =
+    accrualDayRaw != null && Number.isInteger(accrualDayRaw) && accrualDayRaw >= 1 && accrualDayRaw <= 31
+      ? accrualDayRaw
+      : null;
   return {
     days: pol.days,
     carryMax: carryMax != null ? Math.max(0, carryMax) : 0,
     method,
+    accrualDay,
     // Reuse parseCarryExpiry rather than restate it: a NULL mode is the back-compat 'date' branch, exactly
     // as an absent `carryForwardExpiryMode` is on the JSONB side.
     carryExpiry: parseCarryExpiry({

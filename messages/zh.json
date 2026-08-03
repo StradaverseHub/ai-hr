@@ -4134,14 +4134,11 @@
         "yearTypeA2c": "入职周年至日历年",
         "yearTypeC2c": "日历年至日历年",
         "yearTypeHelp": "未作选择的类型将跟随其公司已保存的休假周期；选择一个值仅覆盖此类型的该周期。",
-        "resignationPendingNote": "“离职时获取”会显示但保持禁用——计算引擎支持将作为独立事项交付。",
         "earningMethodLabel": "获取方式",
-        "earningNone": "无（期初发放全部额度）",
-        "earningByMonth": "按月（每月获取）",
-        "earningByYear": "按年（期初发放全年额度）",
-        "earningResignation": "离职时获取",
-        "earningMappingHelp": "“无”与“按年”均在期初发放全年额度（引擎的一次性发放）；“按月”通过现有的按月获取机制每月获取 1/12。",
-        "earningHelp": "这是当前生效的额度政策获取方式的快捷入口——“资格”下的按政策控制仍是数据的唯一来源并继续可用。",
+        "earningNone": "None",
+        "earningByMonth": "Monthly Accrual",
+        "earningMappingHelp": "Three methods, each doing something different. None hands the entitlement over up front — for Annual Leave a mid-year joiner is still credited only the months remaining in their hire year, and Sick and Hospitalisation leave are credited in full whatever month someone joins. Monthly Accrual earns one twelfth each month, credited on the day you choose. Daily Accrual earns the annual entitlement in daily slices across the leave year, then applies the leave type's rounding rule.",
+        "earningHelp": "The earning method is a leave-TYPE setting: one choice here governs every entitlement row under this type, whatever the company or grade. Changing it takes effect on the next grant, accrual run or recalculation.",
         "roundingMethodLabel": "取整方式",
         "roundingNone": "不取整（保留计算所得的数值）",
         "roundingHelp": "在额度计算完成之后作为最后一步应用——获取规则本身保持不变。入账的是取整后的数值，因此它会体现在休假余额、年初至今额度、额度计算明细和累计流程中。可按休假类型分别设置。",
@@ -4168,7 +4165,14 @@
         "roundingBandRowInvalid": "Every row needs a From below its Round To, and all three figures must be between 0.000 and 1.000.",
         "roundingBandOverlap": "Two rows cover the same decimals. Ranges must not overlap — the table would have two answers for one figure.",
         "roundingBandDuplicate": "The same range is entered twice. Remove the duplicate row.",
-        "roundingBandGap": "Nothing covers {from} to {to}. A calculated value landing in that range keeps its exact decimal."
+        "roundingBandGap": "Nothing covers {from} to {to}. A calculated value landing in that range keeps its exact decimal.",
+        "earningDaily": "Daily Accrual",
+        "earningNotConfigured": "Not configured",
+        "earningNotConfiguredNote": "This leave type is not configured. It grants nothing and earns nothing — for existing employees, for new joiners, and when anything else triggers a recalculation — until you choose an earning method and save. Saving one then credits everyone on this type the full amount owed, in one upward correction.",
+        "earningLegacyMethodNote": "This leave type stores an earning method that is no longer offered. It is shown here read-only and is kept exactly as it is when you save; the calculation still honours it. Choose one of the three current methods to replace it.",
+        "accrualDayLabel": "Day of month",
+        "accrualDayHelp": "Leave is credited on this day of each month. In a month shorter than the day you pick, it is credited on that month's last day — so 31 credits on 28 February, and on 29 February in a leap year. No month is ever skipped.",
+        "dailyRoundingWarning": "Daily Accrual applies your rounding rule to the running total, not to each day's slice, so a rule that rounds a decimal upward will credit a whole day from the employee's very first day. No rounding is the recommended pairing with Daily Accrual."
       },
       "conditionStep": {
         "criteria": "资格条件",
@@ -4797,7 +4801,9 @@
         "convert_to_emergency": "Offer to submit it as Emergency Leave",
         "split_unpaid": "Offer to take the shortfall as unpaid leave",
         "block": "Block the application"
-      }
+      },
+      "methodEarnedDaily": "Earned daily",
+      "earnedMethodDaily": "Daily accrual"
     },
     "holidays": {
       "pageTitle": "公共假期",

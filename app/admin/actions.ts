@@ -61,6 +61,9 @@ import {
   grantAdHocLeave,
   grantAdHocLeaveMulti,
   reprojectEntitlementForSchemeCohort,
+  // bc36c768 — the leave-type counterpart of the scheme cohort, fired after an earning-method save clears
+  // the NOT-CONFIGURED marker.
+  reprojectEntitlementForLeaveTypeCohort,
   todayInKualaLumpur,
   DAY_TYPE_INCLUSION_KEYS,
   type DayTypeInclusion,
@@ -578,7 +581,13 @@ export async function createLeavePolicyAction(formData: FormData) {
       carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
       carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
       carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
-      method: String(formData.get('method') || '') || undefined,
+      // bc36c768 — THE `method` READ IS GONE. It was already dead (`grep -rn 'name="method"' app/
+      // components/` returns exactly one hit, the type-level earning form), but stripping it is what makes
+      // "setLeaveTypeRulesAction is the only path that can write an earning method" TRUE rather than
+      // incidental — and that claim is the entire justification for removing the by_quarter round-trip
+      // option from the editor. A dead read is one hand-crafted POST away from being a live one.
+      // createLeavePolicy still INHERITS the superseded row's method (eee43966), so a dated version does
+      // not silently downgrade an earned setup to lump.
       gradeId: String(formData.get('gradeId') || '') || null,
       companyId: String(formData.get('companyId') || '') || null,
       serviceBands: serviceBandsField(formData),
@@ -628,7 +637,8 @@ export async function createLeavePoliciesMultiAction(formData: FormData) {
           carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
           carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
           carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
-          method: String(formData.get('method') || '') || undefined,
+          // bc36c768 — the `method` read is gone here too; see createLeavePolicyAction above for why a
+          // dead read is still stripped. The add form has never rendered a method control.
           gradeId,
           companyId,
           serviceBands: bands,
@@ -689,13 +699,20 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
   const earningRendered = formData.get('earningRendered') != null;
   const carryRendered = formData.get('carryBlockRendered') != null;
 
+  let saved = { unconfiguredCleared: false };
   try {
-    await setLeaveTypeRules(s, {
+    saved = (await setLeaveTypeRules(s, {
       id,
       // Earning half — method + rounding. roundingMethodField already carries its own tri-state marker.
       ...(earningRendered
         ? {
             accrualMethod: String(formData.get('method') ?? '') || null,
+            // bc36c768 — the accrual day rides the earningRendered marker, like the method it belongs to.
+            // `num` returns undefined when the FIELD IS ABSENT, and the editor renders it only for Monthly
+            // Accrual — so `?? null` deliberately CLEARS the stored day whenever the earning form saves
+            // any other choice. That is the intent: a credit day that belongs to a cadence this type no
+            // longer uses must not linger, waiting to surprise whoever switches back to monthly.
+            accrualDay: num('accrualDay') ?? null,
             // NOT `?? null`. roundingMethodField already carries its own tri-state: undefined means the
             // dropdown was not rendered, which the service reads as PRESERVE. Coercing that to null would
             // clear the stored rounding for any form that ever stops rendering the control.
@@ -726,10 +743,31 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
             maxBalanceDays: num('maxBalanceDays'),
           }
         : {}),
-    });
+    })) ?? { unconfiguredCleared: false };
   } catch (e) {
     if (e instanceof LeaveTypeRuleError) return fail(ENTITLEMENTS, e.message);
     throw e;
+  }
+  // bc36c768 — THE CATCH-UP, AFTER THE CONFIG WRITE HAS COMMITTED, never inside it.
+  //
+  // This is the moment balances move, and it is the promise the NOT-CONFIGURED state is made of: an
+  // employee hired while the type was unconfigured was credited +0.00 and lost nothing, because saving
+  // the earning method credits everything owed as a single upward top-up, here and now. Without this the
+  // under-credit would sit there indefinitely, waiting for some unrelated profile edit to fix it.
+  //
+  // ORDERING IS LOAD-BEARING, not stylistic: each per-employee recalc inside the cohort opens its OWN
+  // transaction and reads the COMMITTED rules. Calling it inside setLeaveTypeRules would have every
+  // employee reproject against the configuration this save just replaced. A test asserts the ordering.
+  //
+  // Best-effort, exactly like the scheme-cohort precedent at upsertSchemeEntitlementAction: the
+  // configuration is saved and must stay saved; the recalc is idempotent and self-heals on the next
+  // trigger, so a failure here must not turn a successful save into an error banner.
+  if (saved.unconfiguredCleared) {
+    try {
+      await reprojectEntitlementForLeaveTypeCohort(s, { leaveTypeId: id, trigger: 'leave_type_rules' });
+    } catch (e) {
+      console.error(`leave-type cohort catch-up failed for leave type ${id}:`, e);
+    }
   }
   okEntitlements(t('entitlementUpdatedToast'), id);
 }
@@ -753,7 +791,12 @@ export async function updateLeavePolicyAction(formData: FormData) {
       carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
       carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
       carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
-      method: String(formData.get('method') || '') || undefined,
+      // bc36c768 — THE `method` READ IS GONE, AND THIS IS THE ONE THAT MATTERED. Unlike the two create
+      // actions above, updateLeavePolicyAction is MOUNTED (app/admin/leave/entitlements/page.tsx, as
+      // updatePolicyAction) and passed `method` straight into updateLeavePolicy. While it stood, the
+      // claim that setLeaveTypeRulesAction is the only path that can write an earning method was simply
+      // FALSE. updateLeavePolicy PRESERVES the row's stored method when the caller sends none (eee43966),
+      // so removing the read changes nothing for any existing edit — it only closes the door.
       gradeId: String(formData.get('gradeId') || '') || null,
       companyId: String(formData.get('companyId') || '') || null,
       serviceBands: serviceBandsField(formData),

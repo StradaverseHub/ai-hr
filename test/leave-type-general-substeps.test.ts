@@ -199,7 +199,13 @@ describe('9816a5ad step 2 · Earning Method + Carry Forward write the leave TYPE
     // The reporter's vocabulary still maps onto the engine's method values; only the destination moved.
     expect(earningForm).toContain('name="method"');
     expect(earningForm).toContain('name="leaveTypeId"');
-    expect(panelSrc).toContain("'by_month' ? 'earned_monthly'");
+    // bc36c768 replaced the reporter's OLD vocabulary ('by_month' → 'earned_monthly') with the three
+    // choices they actually asked for. The mapping assertion moves with it rather than being deleted:
+    // what this test is really pinning is that the select speaks a UI vocabulary and something maps it to
+    // an engine value, which is still true — the vocabulary changed, the invariant did not.
+    expect(panelSrc).toContain("c === 'monthly'");
+    expect(panelSrc).toContain("'earned_monthly'");
+    expect(panelSrc).toContain("'earned_daily'");
   });
 
   it('the per-policy scope picker is gone, because there is no longer a scope', () => {
@@ -228,8 +234,49 @@ describe('9816a5ad step 2 · Earning Method + Carry Forward write the leave TYPE
     expect(carryForm.includes('name="roundingMethodRendered"')).toBe(false);
   });
 
-  it('renders Earn-Upon-Resignation DISABLED with the pending-engine note', () => {
-    expect(panelSrc).toMatch(/value="resignation" disabled/);
+  // bc36c768 INVERTED THIS TEST. It used to assert that Earn Upon Resignation rendered DISABLED with an
+  // apologetic note. The reporter's request was to remove the option outright — it had never calculated
+  // anything and never would on this item's watch — so the assertion becomes its own negation, which is
+  // the honest way to retire a pinned behaviour: the pin stays, the expectation flips, and nobody can
+  // reintroduce the option without this failing.
+  it('Earn-Upon-Resignation is GONE — not disabled, not hidden, removed', () => {
+    expect(panelSrc).not.toMatch(/value="resignation"/);
+    expect(panelSrc).not.toContain('earningResignation');
+    // The unconditional amber paragraph that explained the disabled option goes with it.
+    expect(panelSrc).not.toContain('resignationPendingNote');
+  });
+
+  // bc36c768 — the same treatment for By Year, the other choice that added up to no distinct behaviour:
+  // it mapped to grant_on_hire_prorated, byte-identically to None.
+  it('By Year is GONE — it was the same stored value and the same arithmetic as None', () => {
+    expect(panelSrc).not.toContain('earningByYear');
+    expect(panelSrc).not.toMatch(/value="by_year"/);
+  });
+
+  it('the earning method list is exactly three choices', () => {
+    const earningForm = panelSrc.slice(
+      panelSrc.indexOf('function EarningMethodForm'),
+      panelSrc.indexOf('function CarryPolicyForm'),
+    );
+    expect(earningForm).toContain("<option value=\"none\">{t('subStep.earningNone')}</option>");
+    expect(earningForm).toContain("<option value=\"monthly\">{t('subStep.earningByMonth')}</option>");
+    expect(earningForm).toContain("<option value=\"daily\">{t('subStep.earningDaily')}</option>");
+    // The quarterly round-trip option is gone from the dropdown. It survives as a READ-ONLY re-post for a
+    // type that still stores it (see the unknown-method branch), which is what lets the option go without
+    // recreating the eee43966 silent-downgrade class.
+    expect(earningForm).not.toMatch(/value="by_quarter"/);
+    expect(earningForm).toContain('unknownStoredMethod');
+  });
+
+  it('the accrual-day field is revealed by Monthly Accrual only, and is required there', () => {
+    const earningForm = panelSrc.slice(
+      panelSrc.indexOf('function EarningMethodForm'),
+      panelSrc.indexOf('function CarryPolicyForm'),
+    );
+    expect(earningForm).toContain("choice === 'monthly' && (");
+    expect(earningForm).toContain('name="accrualDay"');
+    expect(earningForm).toContain('required');
+    expect(earningForm).toContain('max={31}');
   });
 
   it('the carry front door reuses CarryExpiryFields (the existing days/months expiry switch)', () => {
@@ -339,14 +386,22 @@ describe('e1a51aea · i18n — all six locales', () => {
         'yearTypeA2c',
         'yearTypeC2c',
         'yearTypeHelp',
-        // f3a64d90 retired the shared pendingEngineNote (it also named the now-live Anniversary to
-        // Calendar) for a dedicated key that speaks only about Earn Upon Resignation.
-        'resignationPendingNote',
+        // bc36c768 retired 'resignationPendingNote', 'earningByYear' and 'earningResignation' with the two
+        // options and the amber note they named. 'methodEarnedQuarterly' (admin.leave, not subStep) is
+        // deliberately KEPT — the entitlement-timeline badge can still meet a legacy stored value.
         'earningMethodLabel',
         'earningNone',
         'earningByMonth',
-        'earningByYear',
-        'earningResignation',
+        // bc36c768 — the third choice, the required credit day, and the three states the form can be in
+        // that the reporter has to be able to read: not configured, a legacy method it cannot render, and
+        // the daily+rounding pairing we warn about rather than block.
+        'earningDaily',
+        'earningNotConfigured',
+        'earningNotConfiguredNote',
+        'earningLegacyMethodNote',
+        'accrualDayLabel',
+        'accrualDayHelp',
+        'dailyRoundingWarning',
         'earningMappingHelp',
         'earningHelp',
         // Feedback b81d3c52 — Rounding Method, configured directly under Earning Method. This array is
