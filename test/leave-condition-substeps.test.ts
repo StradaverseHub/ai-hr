@@ -51,6 +51,9 @@ const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page
 // ever being re-added to that route.
 const appRulesSrc = readFileSync(resolve(here, '../app/admin/leave/application-rules/page.tsx'), 'utf8');
 const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
+// b55fdf33 — the half-day picker now lives behind a client wrapper (a server component may not pass
+// function props across the boundary). The form contract it owns is asserted against this file.
+const pickerSrc = readFileSync(resolve(here, '../components/leave/half-day-company-picker.tsx'), 'utf8');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
@@ -438,10 +441,18 @@ describe('08bc6841 · Half-Day Deduction relocation — single home, same write'
     expect(start).toBeGreaterThan(-1);
     const section = pageSrc.slice(start, pageSrc.indexOf('return (', start));
     expect(section).toContain('action={setLeaveHalfDayFullDeductionCompaniesAction}');
-    expect(section).toContain('<ChipMultiSelect');
-    expect(section).toContain('name="companyIds"');
+    // b55fdf33 — the picker moved BEHIND A CLIENT WRAPPER. This page is a server component, and passing
+    // ChipMultiSelect's label closures across that boundary threw at render and took the tab down in
+    // production. The card still carries the same one-post contract; it just reaches the control through
+    // HalfDayCompanyPicker, which owns the translator on the client side. See test/server-client-boundary.
+    expect(section).toContain('<HalfDayCompanyPicker');
+    expect(section).not.toContain('<ChipMultiSelect');
+    // The posted field name lives in the wrapper now. Asserted THERE rather than dropped, because it is
+    // the whole contract between this form and setLeaveHalfDayFullDeductionCompaniesAction's getAll.
+    expect(pickerSrc).toContain('name="companyIds"');
     // First render must reproduce today's configuration exactly, or an unrelated save silently rewrites it.
-    expect(section).toContain('defaultSelected={halfDayEnabledCompanyIds}');
+    expect(section).toContain('selected={halfDayEnabledCompanyIds}');
+    expect(pickerSrc).toContain('defaultSelected={selected}');
     expect(pageSrc).toContain(
       'const halfDayEnabledCompanyIds = halfDayCompanies.filter((c) => c.leaveHalfDayFullDeduction).map((c) => c.id);',
     );
@@ -449,7 +460,7 @@ describe('08bc6841 · Half-Day Deduction relocation — single home, same write'
     // agree. Offering the page's tenant-wide `companies` here would let a company-scoped admin deselect
     // a company whose row the write can never reach.
     expect(pageSrc).toContain("const halfDayCompanies = await listCompanies(s, { adminOnly: true });");
-    expect(section).toContain('options={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}');
+    expect(section).toContain('companies={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}');
     // The company-wide marker + the existing half-day strings, all still shown.
     expect(section).toContain("t('conditionStep.halfDayCompanyWideBadge')");
     expect(section).toContain("t('halfDayDeductionTitle')");

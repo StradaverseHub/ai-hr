@@ -22,10 +22,11 @@ import type { ServiceBand } from '@/core/leave-compute';
 import { countryPacks } from '@/localization/registry';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-// 10e96227 — the half-day-deduction card's company picker. ChipMultiSelect (not MultiSelectPopover)
-// because this card lives inside a plain server-action <form>: it is uncontrolled and posts hidden
-// inputs, so no client state has to be lifted into this server component to make Save work.
-import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
+// 10e96227 — the half-day-deduction card's company picker, behind a CLIENT wrapper. This page is a SERVER
+// component, and r123 passed ChipMultiSelect's removeLabelFor/countLabelFor closures straight across the
+// boundary, which threw at render and took the whole tab down. The wrapper resolves the translator on the
+// client side; only serialisable data crosses. See that file's header before changing this.
+import { HalfDayCompanyPicker } from '@/components/leave/half-day-company-picker';
 import { LeaveTabs } from '@/components/leave-tabs';
 // 1e4eb8af — the two leave-year dialogs come along with the relocated section, unchanged.
 import { LeaveYearRuleDialog } from '@/components/leave/leave-year-rule-dialog';
@@ -399,17 +400,9 @@ export default async function LeaveEntitlementsPage({
       <form action={setLeaveHalfDayFullDeductionCompaniesAction} className="space-y-2">
         {/* defaultSelected is the CURRENT state, so first render reproduces today's configuration exactly
             and saving an unrelated field on this screen cannot silently rewrite it. */}
-        <ChipMultiSelect
-          name="companyIds"
-          label={t('halfDayDeductionCompaniesLabel')}
-          options={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}
-          defaultSelected={halfDayEnabledCompanyIds}
-          addPlaceholder={t('halfDayDeductionCompaniesPlaceholder')}
-          removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
-          selectAllLabel={t('halfDayDeductionSelectAll')}
-          clearAllLabel={t('halfDayDeductionClearAll')}
-          allSelectedLabel={t('halfDayDeductionAllSelected')}
-          countLabelFor={(count) => t('halfDayDeductionCountSelected', { count })}
+        <HalfDayCompanyPicker
+          companies={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}
+          selected={halfDayEnabledCompanyIds}
         />
         {/* Says what an empty selection means, because "no chips" is otherwise indistinguishable from
             "not configured yet" — and here it is a real, saveable decision. */}

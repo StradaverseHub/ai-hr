@@ -14,6 +14,11 @@ export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 const ALL_TABLES = [
   'tenant', 'company', 'company_logo', 'person', 'position', 'department', 'cost_center', 'employment',
   'assignment', 'reporting_line', 'leave_type', 'leave_policy', 'leave_ledger',
+  // 491c499f — the adjustment batch header. leave_ledger.adjustment_batch_id points AT it, so it must
+  // be truncated too: leaving it out lets a batch row survive between files and the next test's
+  // "recent adjustments" list reads a batch whose ledger rows are gone. This is the ADR-0071 leak
+  // the comment below records, and it is why the list is edited whenever a leave table is added.
+  'leave_adjustment_batch',
   'leave_request', 'leave_request_date', 'leave_cancellation_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   // 6d671f44 — Create New Employee drafts (migration 0337). Listed explicitly rather than left to the
