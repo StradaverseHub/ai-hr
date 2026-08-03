@@ -125,7 +125,15 @@ describe('allow_negative_balance — schema default & persistence', () => {
   it('updateLeaveType persists the flag and records before/after in the leave-type.updated event', async () => {
     const id = await leaveType(false);
     const [before] = await owner.db.select({ name: schema.leaveType.name }).from(schema.leaveType).where(eq(schema.leaveType.id, id));
-    await updateLeaveType(adminCtx(b), { id, name: before.name, allowNegativeBalance: true });
+    // 9861b8a4 — turning the switch ON now requires a floor, because Yes is what unlocks the approval
+    // gate and "Yes with no figure" would mean unbounded. The flag's own round-trip is what this test is
+    // about, so it simply supplies one.
+    await updateLeaveType(adminCtx(b), {
+      id,
+      name: before.name,
+      allowNegativeBalance: true,
+      maxNegativeBalance: 5,
+    });
     const [after] = await owner.db
       .select({ v: schema.leaveType.allowNegativeBalance })
       .from(schema.leaveType)

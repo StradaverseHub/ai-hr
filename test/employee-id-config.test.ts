@@ -25,9 +25,14 @@ import {
   formatEmployeeCode,
   getConfig,
   listConfigs,
+  nextRunningNumber,
+  pickActiveConfig,
   PrefixCollisionError,
+  resolveEmployeeIdRule,
+  ruleFromConfig,
   setStatus,
   updateConfig,
+  type ConfigRow,
 } from '../core/employee-id-config';
 import { buildCp39File } from '../localization/my/cp39-file';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -281,5 +286,85 @@ describe('CP39 guard for long Employee IDs (de2823cc)', () => {
     const detail = f.content.split('\r\n')[1];
     expect(detail).toHaveLength(136);
     expect(detail.endsWith('EMP1234567')).toBe(true);
+  });
+});
+
+// ─────────── Resolution over rows (item bd271009) ───────────
+//
+// generateEmployeeCode decides "which setup applies" IN SQL, one company at a time, inside the hire
+// transaction. The wizard has to answer the same question for every company in a select before anything
+// is chosen, so pickActiveConfig / ruleFromConfig express the SAME precedence over rows already read.
+// These are the tests that keep the two definitions saying the same thing — the DB tests above pin the
+// SQL side against real hires, and each case here mirrors one of them.
+describe('pickActiveConfig / nextRunningNumber / ruleFromConfig — the pure twin of the SQL resolution', () => {
+  const row = (over: Partial<ConfigRow> = {}): ConfigRow => ({
+    id: randomUUID(),
+    companyId: null,
+    companyName: null,
+    templateName: null,
+    prefix: 'EMP',
+    suffix: '',
+    startNumber: 1,
+    numberLength: 4,
+    increment: 1,
+    allowManualOverride: true,
+    currentRunningNumber: 0,
+    status: 'active',
+    updatedAt: new Date(),
+    ...over,
+  });
+
+  it('a COMPANY-SPECIFIC active config beats the GLOBAL one — the same precedence as ORDER BY company_id is null', () => {
+    const global = row({ prefix: 'G' });
+    const mine = row({ companyId: 'c1', prefix: 'KL' });
+    const other = row({ companyId: 'c2', prefix: 'JB' });
+    expect(pickActiveConfig([global, mine, other], 'c1')?.prefix).toBe('KL');
+    expect(pickActiveConfig([global, mine, other], 'c2')?.prefix).toBe('JB');
+    // Order of the input rows must not decide the answer.
+    expect(pickActiveConfig([mine, global], 'c1')?.prefix).toBe('KL');
+  });
+
+  it('falls back to GLOBAL for a company with no config of its own', () => {
+    expect(pickActiveConfig([row({ prefix: 'GLB' }), row({ companyId: 'c2', prefix: 'JB' })], 'c1')?.prefix).toBe('GLB');
+  });
+
+  it('returns null when nothing active applies — which is what makes the wizard demand a typed ID', () => {
+    expect(pickActiveConfig([], 'c1')).toBeNull();
+    expect(pickActiveConfig([row({ companyId: 'c2' })], 'c1')).toBeNull();
+    expect(pickActiveConfig([row({ status: 'inactive' })], 'c1')).toBeNull();
+    expect(ruleFromConfig(null).hasConfig).toBe(false);
+    expect(ruleFromConfig(null).allowManualOverride).toBe(false);
+  });
+
+  it('an INACTIVE company config does not shadow an ACTIVE global one', () => {
+    const rows = [row({ prefix: 'GLB' }), row({ companyId: 'c1', prefix: 'KL', status: 'inactive' })];
+    expect(pickActiveConfig(rows, 'c1')?.prefix).toBe('GLB');
+    expect(resolveEmployeeIdRule(rows, 'c1').scope).toBe('global');
+  });
+
+  it('nextRunningNumber is the same arithmetic the row-locked UPDATE performs', () => {
+    // First issue: current below start ⇒ start.
+    expect(nextRunningNumber({ startNumber: 1, increment: 1, currentRunningNumber: 0 })).toBe(1);
+    expect(nextRunningNumber({ startNumber: 1000, increment: 5, currentRunningNumber: 0 })).toBe(1000);
+    // Afterwards: current + increment.
+    expect(nextRunningNumber({ startNumber: 1, increment: 1, currentRunningNumber: 3 })).toBe(4);
+    expect(nextRunningNumber({ startNumber: 1000, increment: 5, currentRunningNumber: 1000 })).toBe(1005);
+  });
+
+  it('the rule carries the sample the wizard shows, formatted by the SAME function that issues codes', () => {
+    const r = resolveEmployeeIdRule([row({ companyId: 'c1', prefix: 'ABC', numberLength: 6, startNumber: 123 })], 'c1');
+    expect(r).toMatchObject({ hasConfig: true, scope: 'company', prefix: 'ABC', nextNumber: 123, sampleCode: 'ABC000123' });
+    expect(r.sampleCode).toBe(formatEmployeeCode('ABC', 123, 6, ''));
+    // Suffixes ride along (R45 7bf025f0).
+    expect(resolveEmployeeIdRule([row({ prefix: 'CHINHIN-HQ-', numberLength: 6, suffix: '-MY' })], 'c1').sampleCode)
+      .toBe('CHINHIN-HQ-000001-MY');
+  });
+
+  it('a preview it cannot format is EMPTY, never an exception — a sample must not take a screen down', () => {
+    // prefix + numberLength + suffix past the 30-char employee_code ceiling: assertFits refuses this on
+    // SAVE, so it can only be reached by a row that predates the check. The screen degrades quietly.
+    const r = ruleFromConfig(row({ prefix: 'A'.repeat(28), numberLength: 6 }));
+    expect(r.hasConfig).toBe(true);
+    expect(r.sampleCode).toBe('');
   });
 });

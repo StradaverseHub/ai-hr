@@ -127,9 +127,11 @@ describe('d64d0df4 · the deduction is pack data, not a constant in the calculat
   it('a ruleset PREDATING 2026.6 (no such key) falls back to the built-in, not to a silent zero', () => {
     // An admin override saved before this item omits the key entirely. The employee is still entitled to
     // the deduction — falling back to the verified built-in is the same shape hrdfLevy uses for rules.hrdf.
+    // d64d0df4 step 3 — `reliefs` is no longer all-scalar (childByCategory is a map), so the cast
+    // widens to `unknown` values. The assertion below is unchanged.
     const legacy = { ...DEFAULT_MY_STATUTORY.pcb, reliefs: { ...DEFAULT_MY_STATUTORY.pcb.reliefs } } as {
       bands: typeof DEFAULT_MY_STATUTORY.pcb.bands;
-      reliefs: Record<string, number>;
+      reliefs: Record<string, unknown>;
     };
     delete legacy.reliefs.disabledIndividual;
     expect(legacy.reliefs.disabledIndividual).toBeUndefined();

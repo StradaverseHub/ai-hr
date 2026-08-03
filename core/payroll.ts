@@ -2034,6 +2034,13 @@ export async function generatePayslips(
         // Item d64d0df4 — registered disabled individual (OKU). Drives the FURTHER annual deduction in the
         // PCB projection of P; the amount itself is statutory and comes from the country pack's ruleset.
         disabledIndividual: employeeStatutoryMy.disabledIndividual,
+        // Item d64d0df4 — the spouse's OKU status (a further deduction, gated by the pack to tax
+        // category 2 exactly as the spouse deduction is), plus the child-relief MODE and the keyed
+        // category GRID. The grid is read ONLY when the mode is 'auto_table'; num_children below stays
+        // the whole head count for Form E / CP8D / EA regardless of mode.
+        disabledSpouse: employeeStatutoryMy.disabledSpouse,
+        childReliefMode: employeeStatutoryMy.childReliefMode,
+        childReliefTable: employeeStatutoryMy.childReliefTable,
         isResident: employeeStatutoryMy.isResident,
         // Item 8b5334db — tax residency drives the PCB method (resident MTD / non-resident flat 30% / REP +
         // Knowledge Worker flat 15%); employer_bears_tax funds the employee's PCB from employer cost.
@@ -3227,10 +3234,23 @@ export async function generatePayslips(
       // Item d64d0df4 — `disabled` is the employee's CIRCUMSTANCE; the deduction it entitles them to is a
       // figure in the pack's ruleset, applied inside pcbMonth. `?? false` keeps a row that predates
       // migration 0341 (or a person with no statutory row at all) computing exactly as it does today.
+      // Item d64d0df4 — the CHILD leg. Only an employee in 'auto_table' mode supplies a worked-out
+      // amount: the pack turns their keyed category grid into RM using the resolved ruleset's
+      // per-category figures (halving any 50%-share child). 'manual' and 'auto' employees supply
+      // `undefined`, and pcbMonth then computes `children × perChild` — the identical expression it used
+      // before this item, so their projection of P is unchanged to the cent.
+      const childReliefAmount =
+        e.childReliefMode === 'auto_table' && pack.payroll.childReliefAmountFor
+          ? pack.payroll.childReliefAmountFor(e.childReliefTable, rules.pcb?.reliefs)
+          : undefined;
       const taxProfile = {
         category: (e.taxCategory ?? 1) as 1 | 2 | 3,
         children: e.numChildren ?? 0,
         disabled: e.disabledIndividual ?? false,
+        // `?? false` keeps a row that predates migration 0356 (or a person with no statutory row at all)
+        // computing exactly as it does today.
+        disabledSpouse: e.disabledSpouse ?? false,
+        childReliefAmount,
       };
       // Item a7271737 — persisted SOCSO / EIS category override. 'auto' reproduces the age/citizenship derivation
       // below byte-for-byte; 'first'/'second' pin the SOCSO band; 'none' gates the respective scheme off (exactly

@@ -6,6 +6,8 @@ import { settingsBack } from '@/app/payroll/setup/back';
 import { StatutoryTabs } from '@/components/statutory-tabs';
 import { StatutoryConfigForm } from '@/components/statutory-config-form';
 import type { StatutorySource } from '@/localization/my/statutory-config';
+// Item d64d0df4 — the built-in relief fallbacks + the canonical five-category order for the sign-off rows.
+import { CHILD_RELIEF_CATEGORY_KEYS, DEFAULT_MY_STATUTORY } from '@/localization/my/statutory-tables';
 import Link from 'next/link';
 import { pct, rm, fmtUpTo, Row, SourceMeta, VersionBadge, OverrideHistoryTable } from '../shared';
 
@@ -65,6 +67,12 @@ export default async function PcbConfigPage({
   }
 
   const pcbOverrides = componentOverrides.filter((co) => co.body === 'pcb');
+  // Item d64d0df4 — the built-in reliefs are the FALLBACK the kernel uses when the resolved ruleset
+  // predates the version that introduced a figure (optional-with-fallback, the same shape hrdfLevy uses).
+  // Resolving the display through the identical expression is what makes this card a sign-off surface
+  // rather than a second, drift-prone copy of the numbers.
+  const fallbackReliefs = DEFAULT_MY_STATUTORY.pcb.reliefs;
+  const childByCategory = ruleset.pcb.reliefs.childByCategory ?? fallbackReliefs.childByCategory ?? {};
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -93,6 +101,37 @@ export default async function PcbConfigPage({
           <Row label={t('reliefSpouse')} value={rm(ruleset.pcb.reliefs.spouse)} />
           <Row label={t('reliefPerChild')} value={rm(ruleset.pcb.reliefs.perChild)} />
           <Row label={t('reliefEpfCap')} value={rm(ruleset.pcb.reliefs.epfReliefCap)} />
+        </div>
+        {/* Item d64d0df4 — the SIGN-OFF surface. Until this item, this card rendered exactly the four
+            reliefs above and silently omitted disabledIndividual, so the sign-off the plan asks the
+            owner to perform could not be performed against the running system at all. These seven
+            figures are RATE-ONLY: sourced from a reputable published summary because the LHDN MTD spec
+            URL now 404s, and NOT transcribed from the official publication. They resolve through the
+            SAME optional-with-fallback path pcbMonth uses (ruleset value ?? pack built-in), so what is
+            shown here is the number the kernel actually applies — never a second copy that can drift. */}
+        <h3 className="mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t('reliefsPendingSignOff')}
+        </h3>
+        <p className="mt-1 text-xs text-muted-foreground">{t('reliefsPendingSignOffNote')}</p>
+        <div className="mt-2 grid gap-x-8 sm:grid-cols-2">
+          <Row
+            label={t('reliefDisabledIndividual')}
+            value={rm(ruleset.pcb.reliefs.disabledIndividual ?? fallbackReliefs.disabledIndividual ?? 0)}
+            pending={t('pendingSignOff')}
+          />
+          <Row
+            label={t('reliefDisabledSpouse')}
+            value={rm(ruleset.pcb.reliefs.disabledSpouse ?? fallbackReliefs.disabledSpouse ?? 0)}
+            pending={t('pendingSignOff')}
+          />
+          {CHILD_RELIEF_CATEGORY_KEYS.map((key) => (
+            <Row
+              key={key}
+              label={t(`reliefChildCat_${key}`)}
+              value={rm(childByCategory[key] ?? 0)}
+              pending={t('pendingSignOff')}
+            />
+          ))}
         </div>
         <h3 className="mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('pcbBands')}</h3>
         <div className="mt-2 overflow-x-auto">

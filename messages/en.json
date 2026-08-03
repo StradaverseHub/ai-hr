@@ -1233,7 +1233,14 @@
       "disabledIndividualLabel": "Disabled individual (OKU)",
       "disabledIndividualYes": "Yes",
       "disabledIndividualNo": "No",
-      "disabledIndividualHint": "A registered disabled individual is entitled to a further annual tax relief. Setting this to Yes changes the employee's monthly tax: because monthly tax is worked out from the year to date, the month you change it in absorbs the correction for the year so far."
+      "disabledIndividualHint": "A registered disabled individual is entitled to a further annual tax relief. Setting this to Yes changes the employee's monthly tax: because monthly tax is worked out from the year to date, the month you change it in absorbs the correction for the year so far.",
+      "disabledSpouseLabel": "Disabled spouse (OKU)",
+      "disabledSpouseHint": "A registered disabled spouse entitles the employee to a further annual tax relief. This applies only when the tax category is Married & Spouse Not Working — the official rules give it no effect otherwise, so it is recorded and shown but does not change the deduction for any other category. Where it does apply, the month you change it in absorbs the correction for the year so far.",
+      "childReliefModeAutoTable": "Auto (from table)",
+      "childReliefTableNote": "Key the number of children in each official relief category. Use the 100% column when this employee claims the whole relief for that child, and the 50% column when the claim is shared with the other parent — a child in the 50% column is worth exactly half that category’s relief. Whole numbers of zero or more only. The Children (PCB relief) figure above is the total of this table.",
+      "childReliefTableCategoryCol": "Relief category",
+      "childReliefTableFullCol": "100%",
+      "childReliefTableHalfCol": "50%"
     },
     "import": {
       "title": "Import employees",
@@ -1378,13 +1385,14 @@
       "orgLabelsEmptyForCompany": "No organization labels are configured for the selected company.",
       "hints": {
         "provisionalEndOn": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.",
-        "employeeCode": "Leave blank and the system generates the next Employee ID when the employee is created. A draft never uses one up.",
+        "employeeCode": "Letters, numbers and dashes, up to 30 characters. It must not already be in use.",
         "icNumber": "Optional — leave blank for a passport holder. If given, it must be a valid identity number for the company’s country.",
         "dateOfBirth": "Leave blank and it is taken from the identity number where possible.",
         "businessUnit": "Narrows the department list only. It is not stored on the employee.",
         "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
         "bankAccount": "Give both the bank and the account number, or neither.",
-        "rateAmount": "Required for a daily or hourly pay mode."
+        "rateAmount": "Required for a daily or hourly pay mode.",
+        "company": "Asked first because it decides which Employee ID Auto Running Number Setup applies."
       },
       "backLabel": "Back to Personnel",
       "title": "Create new employee",
@@ -1443,7 +1451,27 @@
       "draftSaved": "Draft saved",
       "discardDraft": "Discard draft",
       "createEmployee": "Create employee",
-      "creating": "Creating…"
+      "creating": "Creating…",
+      "requiredField": "required",
+      "companyOnProfileStep": "Chosen on the Profile step, because it decides the Employee ID rule.",
+      "employeeId": {
+        "heading": "Employee ID",
+        "chooseCompanyFirst": "Choose the company above first — it decides which Employee ID rule applies.",
+        "noSetup": "No Employee ID Auto Running Number Setup is configured for the selected company. Please enter the Employee ID manually.",
+        "ruleCompany": "This company has its own Employee ID Auto Running Number Setup. The next ID it would issue is {sample}.",
+        "ruleGlobal": "The group-wide Employee ID Auto Running Number Setup applies to this company. The next ID it would issue is {sample}.",
+        "modeLabel": "How should the Employee ID be assigned?",
+        "modeAuto": "Auto Running Number",
+        "modeManual": "Manual Key In",
+        "forcedAuto": "This company's setup does not allow Manual Key In, so the running number is used.",
+        "previewNote": "is what it will look like. The real Employee ID is issued when the employee is created.",
+        "checking": "Checking…",
+        "duplicate": "Employee ID \"{code}\" already exists. Please enter another Employee ID.",
+        "available": "Employee ID \"{code}\" is available.",
+        "staleCode": "The Employee ID \"{code}\" entered earlier will not be used, because this company no longer allows Manual Key In.",
+        "removeCode": "Remove it",
+        "draftCostsNothing": "Saving as a draft costs nothing. The Employee ID is taken only when the employee is successfully created."
+      }
     }
   },
   "leave": {
@@ -1623,7 +1651,24 @@
         "available": "What you can actually apply for today. This is the same figure shown everywhere else, including when you apply for leave."
       },
       "adjustmentNoReason": "No reason given",
-      "expiresOn": "Expires: {date}"
+      "expiresOn": "Expires: {date}",
+      "replacement": {
+        "creditsHeading": "Banked Credits",
+        "empty": "No replacement leave credits have been banked yet.",
+        "col": {
+          "requestDate": "Request Date",
+          "number": "Number",
+          "unit": "Unit",
+          "approvalDate": "Approval Date",
+          "expiredDate": "Expired Date"
+        },
+        "unitDay": "Day(s)",
+        "unitHour": "Hour(s)",
+        "statusTaken": "Used",
+        "statusExpired": "Expired",
+        "statusConverted": "Paid out",
+        "statusPartlyUsed": "Partly used"
+      }
     },
     "preview": {
       "loading": "Calculating…"
@@ -3029,6 +3074,16 @@
       "reliefSpouse": "Spouse relief — Cat 2 (RM/yr)",
       "reliefPerChild": "Relief per child (RM/yr)",
       "reliefEpfCap": "EPF relief cap (RM/yr)",
+      "reliefsPendingSignOff": "Reliefs awaiting sign-off",
+      "reliefsPendingSignOffNote": "These figures come from a reputable published summary rather than the official document, because the official page is offline. They are the numbers the calculation actually applies. Check each one against the current official publication and confirm it before the first payroll run that relies on it.",
+      "pendingSignOff": "Awaiting sign-off",
+      "reliefDisabledIndividual": "Disabled individual (OKU)",
+      "reliefDisabledSpouse": "Disabled spouse (OKU)",
+      "reliefChildCat_under_18": "Child under 18",
+      "reliefChildCat_study_preu": "Child 18+ in pre-university study",
+      "reliefChildCat_study_tertiary": "Child 18+ in diploma/degree study",
+      "reliefChildCat_disabled": "Disabled child",
+      "reliefChildCat_disabled_study": "Disabled child in full-time study",
       "pcbBands": "Tax bands (Table 1: P, M, R, B)",
       "colUpTo": "Up to P (RM)",
       "colM": "M",
@@ -4544,7 +4599,12 @@
         "pendingApproval": "Pending Approval",
         "forfeited": "Brought Forward Forfeited",
         "available": "Available Balance",
-        "groupOther": "Other"
+        "groupOther": "Other",
+        "requestDate": "Request Date",
+        "number": "Number",
+        "unit": "Unit",
+        "approvalDate": "Approval Date",
+        "expiredDate": "Expired Date"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Day Type Inclusion",
@@ -4696,7 +4756,9 @@
       "halfDayDeductionCountSelected": "{count} companies selected",
       "halfDayDeductionEmptyNote": "Selecting no company turns the rule off everywhere: half days deduct 0.5 day again.",
       "maxNegativeBalanceLabel": "Maximum negative balance (days)",
-      "maxNegativeBalanceHelp": "How far below zero an employee may go. Leave it empty for no limit, which is how this works today. An application that would take someone past the limit is refused, and the message says what the limit is and how far past it the request goes."
+      "maxNegativeBalanceHelp": "How far below zero an employee may go. A figure is required when a negative balance is allowed, and it is the floor at BOTH stages: the application is refused if it would pass the limit, and so is the approval. The message says what the limit is and how far past it the request goes.",
+      "negativeBalanceNeedsLimitTitle": "Leave types allowing a negative balance with no limit set",
+      "negativeBalanceNeedsLimitHelp": "These leave types are set to allow a negative balance but have no maximum. They behave exactly as they do today — approval still refuses a balance below zero — because the new permission only takes effect once you enter a limit. Work through them: enter a figure where you meant it, or set the switch back to No."
     },
     "holidays": {
       "pageTitle": "Public holidays",

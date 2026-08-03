@@ -9,7 +9,20 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.6';
+export const MY_STATUTORY_VERSION = '2026.7';
+// 2026.7 (2026-08-03): PCB reliefs gain TWO more optional bodies, both item d64d0df4:
+//   · `disabledSpouse` — the FURTHER deduction for a disabled spouse under s.47(1)(b) ITA 1967, on top of
+//     the RM4,000 `spouse` deduction and, like it, claimable ONLY by a category-2 employee (married,
+//     spouse not working). Categories 1 and 3 get nothing from it, exactly as they get nothing from
+//     `spouse`.
+//   · `childByCategory` — the per-child deduction broken out by the five LHDN s.48 categories, so the
+//     projection can stop treating every child as one flat `perChild` amount. Used ONLY by an employee
+//     whose child-relief mode is 'auto_table' (the category grid on the Identity & Tax card); 'manual'
+//     and 'auto' employees keep the `children × perChild` arithmetic to the cent.
+//   Both are OPTIONAL on the ruleset: an override or pack predating 2026.7 omits them and `pcbMonth`
+//   falls back to these built-ins, so every existing DB override stays byte-identical. Both are
+//   RATE-ONLY (see §1 of docs/architecture/STATUTORY-SOURCES.md) — six figures that must be signed off
+//   against the current LHDN publication before a real filing relies on them.
 // 2026.6 (2026-07-31): PCB reliefs gain `disabledIndividual` — the FURTHER deduction a registered disabled
 //   individual (OKU) is entitled to under s.46(1)(g) ITA 1967, on top of the RM9,000 individual deduction
 //   (item d64d0df4). Optional on the ruleset: an override or pack predating 2026.6 omits it and `pcbMonth`
@@ -96,7 +109,60 @@ export const MY_RELIEFS = {
    * a guaranteed over-deduction on every entitled one, which is what leaving it out means.
    */
   disabledIndividual: 7000,
+  /**
+   * FURTHER deduction for a DISABLED SPOUSE, on top of `spouse` — s.47(1)(b) ITA 1967 (RM5,000).
+   *
+   * ⚠️ RATE-ONLY, NOT YET VERIFIED — same footing as `disabledIndividual` above: transcribed from PwC
+   * Worldwide Tax Summaries (Malaysia — Individual — Deductions, YA2026) because the LHDN MTD spec URL
+   * recorded above now 404s. Listed as RATE-ONLY in docs/architecture/STATUTORY-SOURCES.md §1 and
+   * shown as "pending sign-off" on the PCB configuration screen.
+   *
+   * GATED TO CATEGORY 2 exactly like `spouse`. A category-1 (single) or category-3 (spouse working /
+   * divorced / widowed) employee has no spouse deduction to add to, so this adds nothing to their P.
+   * The Identity & Tax card says so rather than letting the setting look ignored.
+   */
+  disabledSpouse: 5000,
+  /**
+   * PER-CHILD deduction broken out by the five LHDN s.48 categories (item d64d0df4). `perChild` above is
+   * the flat RM2,000 figure the projection uses for every child today; this map is what the projection
+   * uses INSTEAD when an employee's child-relief mode is 'auto_table' and a category grid has been keyed
+   * against them. A 50%-shared child counts HALF the amount below (LHDN: 100% one parent, or 50% each).
+   *
+   *   under_18        RM2,000   child under 18
+   *   study_preu      RM2,000   18+, unmarried, full-time pre-university study
+   *   study_tertiary  RM8,000   18+, unmarried, full-time diploma/degree study and above
+   *   disabled        RM6,000   disabled child (OKU)
+   *   disabled_study  RM14,000  disabled child in full-time higher education (RM6,000 + RM8,000)
+   *
+   * ⚠️ RATE-ONLY, NOT YET VERIFIED — all five, same footing as the two disability figures above.
+   */
+  childByCategory: {
+    // NB: keyed by CHILD_RELIEF_CATEGORY_KEYS below — the SAME five keys the Family register stores per
+    // child (core/dependents.ts CHILD_RELIEF_CATEGORIES). A test pins the two lists equal.
+    under_18: 2000,
+    study_preu: 2000,
+    study_tertiary: 8000,
+    disabled: 6000,
+    disabled_study: 14000,
+  } as Record<string, number>,
 };
+
+/**
+ * Item d64d0df4 — the five LHDN s.48 child-relief categories, in the canonical order the grid and the
+ * PCB configuration screen render them. This is the SINGLE list every consumer keys off: the ruleset's
+ * `childByCategory` amounts, the validator's unknown-key rejection, the per-employee grid's normaliser,
+ * and the sign-off rows on the PCB screen. It is deliberately equal to core/dependents.ts
+ * CHILD_RELIEF_CATEGORIES (the per-child value on the Family register) — pinned by a test rather than by
+ * an import, because a country pack must not depend on a core service module.
+ */
+export const CHILD_RELIEF_CATEGORY_KEYS = [
+  'under_18',
+  'study_preu',
+  'study_tertiary',
+  'disabled',
+  'disabled_study',
+] as const;
+export type ChildReliefCategoryKey = (typeof CHILD_RELIEF_CATEGORY_KEYS)[number];
 
 /** PCB tax categories (LHDN). */
 export type TaxCategory = 1 | 2 | 3;
@@ -598,6 +664,16 @@ export type StatutoryRuleset = {
        *  override or pack predating 2026.6 omits it and `pcbMonth` falls back to the built-in
        *  MY_RELIEFS value, exactly as `hrdfLevy` falls back to MY_HRDF. */
       disabledIndividual?: number;
+      /** d64d0df4 — the further deduction for a DISABLED SPOUSE, on top of `spouse` and gated to
+       *  category 2 exactly as `spouse` is. OPTIONAL: an override or pack predating 2026.7 omits it
+       *  and `pcbMonth` falls back to the built-in MY_RELIEFS value. */
+      disabledSpouse?: number;
+      /** d64d0df4 — the per-child deduction broken out by the five LHDN s.48 categories, keyed by the
+       *  ChildReliefCategory keys (under_18 / study_preu / study_tertiary / disabled / disabled_study).
+       *  OPTIONAL: an override or pack predating 2026.7 omits it and `pcbMonth` falls back to the
+       *  built-in map. Read ONLY for an employee in 'auto_table' child-relief mode; every other
+       *  employee keeps `children × perChild`. */
+      childByCategory?: Record<string, number>;
     };
   };
   ot: {

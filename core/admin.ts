@@ -3751,6 +3751,16 @@ export async function updateLeaveType(
   if (p.maxNegativeBalance != null && p.allowNegativeBalance !== true) {
     throw new Error('“Maximum negative balance” only applies when a negative balance is allowed.');
   }
+  // 9861b8a4 — Yes now REQUIRES a figure, because Yes is what unlocks the approval gate. Before this item
+  // the switch was inert at approval, so "Yes with no floor" was merely useless; now it would mean
+  // "unbounded", which is not a policy anyone should be able to set by leaving a box empty. Existing rows
+  // in that state are untouched (this only guards WRITES) and the leave-type screen lists them so they can
+  // be resolved deliberately — a migration that guessed a floor for them would be inventing policy.
+  if (touchNegativeBalance && p.allowNegativeBalance === true && p.maxNegativeBalance == null) {
+    throw new Error(
+      'Allowing a negative balance now requires a “Maximum negative balance” — enter how far below zero this leave type may go, or set it back to No.',
+    );
+  }
   // Maximum Consecutive Leave (c6ffa725 rev 2): mirrors the four DB CHECKs in migration 0343. The pair is
   // all-or-nothing — Unlimited is (null, null) and Limited is (figure, unit) — because a cap with no unit
   // cannot be read and a unit with no cap is inert configuration that looks set. A zero or negative cap

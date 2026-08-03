@@ -53,6 +53,16 @@ export type TaxProfile = {
    *  annual deduction on top of D. Undefined/false ⇒ exactly today's projection of P, so every employee
    *  who has not been flagged computes byte-identically. */
   disabled?: boolean;
+  /** d64d0df4 — the employee's SPOUSE is a registered disabled individual (OKU), which entitles the
+   *  employee to a FURTHER annual deduction on top of the spouse deduction. Like the spouse deduction
+   *  itself this is claimable ONLY by category 2 (married, spouse not working); for categories 1 and 3
+   *  it is stored and displayed but adds nothing. Undefined/false ⇒ exactly today's projection of P. */
+  disabledSpouse?: boolean;
+  /** d64d0df4 — the TOTAL child deduction in RM, already worked out category by category (and halved
+   *  for any child recorded at the 50% share) by the caller. Supplied ONLY for an employee in
+   *  'auto_table' child-relief mode. When supplied it REPLACES `children × perChild` in the relief sum;
+   *  when absent (every 'manual' and 'auto' employee) the arithmetic below is untouched to the cent. */
+  childReliefAmount?: number;
 };
 
 /**
@@ -339,6 +349,43 @@ export type PcbMonthResult = {
 };
 
 /**
+ * Item d64d0df4 — one employee's keyed child-relief GRID → the total child deduction in RM.
+ *
+ * The grid is `{ <s.48 category>: { full: n, half: n } }`, exactly as stored on
+ * employee_statutory_my.child_relief_table. `full` is the count of children claimed at 100%, `half` the
+ * count claimed at 50% (LHDN: 100% to one parent, or 50% each when parents split the claim), so a half
+ * child is worth exactly half the category's amount — no rounding is applied here, because the
+ * projection of P is truncated once, downstream, exactly as it is today.
+ *
+ * WHERE THE AMOUNTS COME FROM: the RULESET (`pcb.reliefs.childByCategory`), falling back to the pack's
+ * built-in map when the resolved ruleset predates 2026.7 — the same optional-with-fallback shape
+ * `hrdfLevy` uses. A category present in the grid but absent from BOTH maps contributes nothing rather
+ * than throwing: an unknown key is a data error, not a reason to fail a payroll run, and the setter
+ * already drops unknown keys on write.
+ *
+ * This is a PURE function on the pack surface (`pack.payroll.childReliefAmountFor`) so the kernel never
+ * names a Malaysian relief figure; it hands the grid + the resolved reliefs back to the pack.
+ */
+export function childReliefAmountFor(
+  table: unknown,
+  reliefs?: StatutoryRuleset['pcb']['reliefs'],
+): number {
+  if (!table || typeof table !== 'object' || Array.isArray(table)) return 0;
+  const amounts = reliefs?.childByCategory ?? DEFAULT_MY_STATUTORY.pcb.reliefs.childByCategory ?? {};
+  let total = 0;
+  for (const [key, cell] of Object.entries(table as Record<string, unknown>)) {
+    const amount = amounts[key];
+    if (typeof amount !== 'number' || !Number.isFinite(amount)) continue;
+    if (!cell || typeof cell !== 'object') continue;
+    const c = cell as { full?: unknown; half?: unknown };
+    const full = typeof c.full === 'number' && Number.isFinite(c.full) ? Math.max(0, Math.floor(c.full)) : 0;
+    const half = typeof c.half === 'number' && Number.isFinite(c.half) ? Math.max(0, Math.floor(c.half)) : 0;
+    total += full * amount + half * (amount / 2);
+  }
+  return total;
+}
+
+/**
  * One month's PCB under the full computerised method. `monthlyWage` is Y₁ (taxable cash, incl.
  * OT, prorated actual); `epfMonthly` the actual employee EPF on it; `additional`/`epfOnAdditional`
  * the bonus (Yₜ/Kₜ). `month` is the calendar month of the pay period (1–12).
@@ -372,11 +419,25 @@ export function pcbMonth(p: {
   const disabledRelief = p.profile?.disabled
     ? (pcb.reliefs.disabledIndividual ?? DEFAULT_MY_STATUTORY.pcb.reliefs.disabledIndividual ?? 0)
     : 0;
+  // d64d0df4 — the further deduction for a DISABLED SPOUSE. Read from the RULESET with the same
+  // optional-with-fallback shape as `disabledIndividual` above, and GATED TO CATEGORY 2 exactly as the
+  // `spouse` deduction beside it is: a single (cat 1) or spouse-working/divorced/widowed (cat 3)
+  // employee has no spouse deduction to add to, so the flag is stored and shown but moves nothing.
+  const disabledSpouseRelief =
+    p.profile?.disabledSpouse && category === 2
+      ? (pcb.reliefs.disabledSpouse ?? DEFAULT_MY_STATUTORY.pcb.reliefs.disabledSpouse ?? 0)
+      : 0;
+  // d64d0df4 — the child leg. `childReliefAmount` is supplied ONLY for an employee in 'auto_table'
+  // child-relief mode, where the caller has already worked the total out category by category from the
+  // ruleset's `childByCategory` map (halving any 50%-share child). For every other employee it is
+  // undefined and this is `children * perChild` — the identical expression that was here before.
+  const childRelief = p.profile?.childReliefAmount ?? children * pcb.reliefs.perChild;
   const reliefs =
     pcb.reliefs.individual +
     (category === 2 ? pcb.reliefs.spouse : 0) +
-    children * pcb.reliefs.perChild +
-    disabledRelief;
+    childRelief +
+    disabledRelief +
+    disabledSpouseRelief;
   const lp = (acc.lpAccumulated ?? 0) + (p.lpCurrent ?? 0);
   const Z = acc.zakatPaid ?? 0;
   const X = acc.pcbPaid;

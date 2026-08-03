@@ -3526,6 +3526,10 @@ async function finalizeLeaveApproval(
       paid: leaveType.paid,
       sendToPayroll: leaveType.sendToPayroll,
       balanceSourceTypeId: leaveType.balanceSourceTypeId,
+      // 9861b8a4 — the approval gate below now consults these. See its comment for why the pair, and not
+      // the switch alone, is what unlocks it.
+      allowNegativeBalance: leaveType.allowNegativeBalance,
+      maxNegativeBalance: leaveType.maxNegativeBalance,
     })
     .from(leaveType)
     .where(eq(leaveType.id, req.leaveTypeId))
@@ -3545,7 +3549,38 @@ async function finalizeLeaveApproval(
   // includes the unpaid days, while the ledger counts only what was paid for out of the balance.
   const approvedDays = daysOverride ?? Number(req.days);
   const need = round2(Math.max(0, approvedDays - unpaid));
-  if (balance - need < 0) throw new InsufficientLeaveBalanceError();
+  // 9861b8a4 — THE APPROVAL GATE FINALLY CONSULTS allow_negative_balance, and it is OPT-IN PER TYPE.
+  //
+  // Until now this refused ANY below-zero result without ever reading the flag, so a type set to "Yes"
+  // let an employee SUBMIT leave they had not earned and then refused it at approval. A balance could not
+  // fall below zero through the ordinary apply-and-approve route at all; every negative balance in the
+  // system arrived via an adjustment or an expiry sweep. bc512dc3's floor was therefore capping how far a
+  // SUBMITTED application could reach, not how far an approved balance could fall.
+  //
+  // ⚠️ THE SWITCH ALONE IS NOT ENOUGH, DELIBERATELY. Loosening on `allowNegativeBalance` by itself would
+  // have changed behaviour immediately for every type that already carries it — on production that is a
+  // set nobody chose with this consequence in mind, because the flag has never meant what it said here.
+  // The unlock is the PAIR: the switch on AND a floor typed in. A type set to Yes with no floor keeps
+  // today's behaviour exactly, so this ships inert and turns on one leave type at a time, as its
+  // administrator decides. The leave-type screen lists the Yes-without-a-figure types so that decision is
+  // visible rather than buried.
+  //
+  // The floor is enforced against the SAME balance this gate reads (the resolved balance source), so the
+  // submit-time check and this one can never be talking about different ledgers.
+  const negativeFloor = lt?.allowNegativeBalance === true ? Number(lt.maxNegativeBalance ?? Number.NaN) : Number.NaN;
+  const negativeAllowed = Number.isFinite(negativeFloor) && negativeFloor > 0;
+  if (negativeAllowed) {
+    if (round2(balance - need) < -negativeFloor) {
+      throw new NegativeLeaveBalanceLimitExceededError({
+        leaveTypeName: lt?.code ?? 'leave',
+        maxNegativeBalance: negativeFloor,
+        availableDays: round2(balance),
+        requestedDays: need,
+      });
+    }
+  } else if (balance - need < 0) {
+    throw new InsufficientLeaveBalanceError();
+  }
   // Combined Leave Type Limit (R44 4c48fd1f, Stage 2): re-check the shared pool at approval time (a second
   // approver / stale pending set could otherwise breach it). Exclude THIS request from the usage sum and add
   // its days back, so the pending row it represents is counted exactly once. Counts the days TAKEN

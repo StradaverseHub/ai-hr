@@ -104,3 +104,65 @@ export function resolveEssView(config: Record<string, boolean> | null | undefine
 export function essViewHasAnyVisibleRow(view: Record<string, boolean> | null | undefined): boolean {
   return ESS_VIEW_COMPONENT_KEYS.some((k) => view?.[k] !== false);
 }
+
+// ─── Replacement Leave columns (feedback 00307068) ──────────────────────────────────────────────────────
+//
+// A SECOND closed key set, resolved BY LEAVE TYPE CODE, not a widening of the nine above.
+//
+// WHY A SECOND SET RATHER THAN MORE KEYS. Replacement Leave is not a yearly allowance, so the nine-line
+// Leave Balance Summary is the wrong shape for it: it is a stack of separately earned credits, each banked
+// on its own day and each lapsing on its own date. Its employee panel is therefore a TABLE with five
+// COLUMNS, and a column is not a summary row. Adding the five to ESS_VIEW_COMPONENT_KEYS would let HR tick
+// "Approval Date" on Annual Leave, where it names nothing and would render as an unexplained blank — the
+// exact drift ed17a4f9 spent an item removing. Two sets, resolved by code, makes that unrepresentable:
+// a non-REPLACEMENT type can never be configured with a replacement column, and vice versa.
+//
+// NOTHING IS DELETED. The nine keys, every stored selection under them, and every consumer that imports
+// ESS_VIEW_COMPONENT_KEYS directly are byte-identical. Callers that want the set for a SPECIFIC type ask
+// `essViewKeysForCode`; callers that mean "the summary's nine" keep naming them.
+//
+// i18n labels live under `admin.leave.essView.<key>` and the panel's own headings under
+// `leave.breakdown.field.<key>`, following the nine keys' naming so a column can never be called one thing
+// in the configuration and another on the screen.
+
+/** The Replacement Leave per-credit table's columns, in the table's own left-to-right display order. */
+export const REPLACEMENT_COLUMN_KEYS = ['requestDate', 'number', 'unit', 'approvalDate', 'expiredDate'] as const;
+
+export type ReplacementColumnKey = (typeof REPLACEMENT_COLUMN_KEYS)[number];
+
+const REPLACEMENT_KEY_SET: ReadonlySet<string> = new Set(REPLACEMENT_COLUMN_KEYS);
+
+/** The leave-type code whose panel is the per-credit table rather than the nine-line summary. */
+export const REPLACEMENT_LEAVE_CODE = 'REPLACEMENT';
+
+/** True when this leave-type code renders the Replacement Leave per-credit table. Case-insensitive because
+ *  `code` is HR-entered free text everywhere else it is compared (core/toil.ts lowercases it too). */
+export function isReplacementLeaveCode(code: string | null | undefined): boolean {
+  return (code ?? '').trim().toUpperCase() === REPLACEMENT_LEAVE_CODE;
+}
+
+/** The configurable key set for ONE leave type — the five columns for Replacement Leave, the nine summary
+ *  rows for every other type. This is the single place the split is decided; nothing else branches on code. */
+export function essViewKeysForCode(code: string | null | undefined): readonly string[] {
+  return isReplacementLeaveCode(code) ? REPLACEMENT_COLUMN_KEYS : ESS_VIEW_COMPONENT_KEYS;
+}
+
+/** True when `k` is configurable FOR THIS LEAVE TYPE. A mismatched key must still be rejected on write —
+ *  that refusal is what keeps the two sets from leaking into each other's types. */
+export function isEssViewComponentKeyForCode(code: string | null | undefined, k: string): boolean {
+  return isReplacementLeaveCode(code) ? REPLACEMENT_KEY_SET.has(k) : KEY_SET.has(k);
+}
+
+/** Resolve a stored config for ONE leave type. Same semantics as `resolveEssView` (missing ⇒ visible,
+ *  unknown stored keys ignored) but over that type's own key set. */
+export function resolveEssViewForCode(
+  code: string | null | undefined,
+  config: Record<string, boolean> | null | undefined,
+): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const key of essViewKeysForCode(code)) {
+    const v = config?.[key];
+    out[key] = v === undefined ? true : !!v;
+  }
+  return out;
+}

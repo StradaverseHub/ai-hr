@@ -32,6 +32,13 @@ import { buildReviewLetterPdf } from '@/lib/review-letter-build';
 import { setPersonComplianceFields } from '@/core/profile';
 import { removePersonPhoto, setPersonPhoto } from '@/core/person-photo';
 import { packFor } from '@/localization/registry';
+// Item d64d0df4 — the five LHDN s.48 child-relief categories, in the canonical order the grid renders.
+// ADR-0080 D1/D7 — the five child-relief categories are read from core/dependents, NOT from the MY pack.
+// They are the same five keys, but this is generic admin code: reaching into localization/my directly is
+// what test/country-pack-drift.test.ts's ratchet forbids, and the ratchet caught it. The Family register
+// stores these on employee_dependent, so core/dependents is their pack-neutral home; the MY pack's
+// CHILD_RELIEF_CATEGORY_KEYS is the same list expressed for the ruleset side.
+import { CHILD_RELIEF_CATEGORIES } from '@/core/dependents';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -1358,6 +1365,26 @@ export async function setPassportAction(formData: FormData) {
  * and appends `employee.tax.updated`. childReliefMode 'auto' still persists a CONFIRMED numChildren (the client
  * surfaces the family-derived suggestion for the admin to accept) — this action never silently derives tax.
  */
+/**
+ * Item d64d0df4 — gather the Identity & Tax card's child-relief GRID out of the posted form.
+ *
+ * The grid is posted as flat scalar fields ("childRelief_under_18_full", "…_half", …) because a form
+ * post has no nested shape; this reassembles them into the stored
+ * `{ <category>: { full, half } }` document. It does NOT validate — `setTaxProfileMY` owns that
+ * (whole numbers ≥ 0, unknown keys dropped, all-zero ⇒ null), so there is exactly one place where an
+ * invalid grid can be rejected no matter which door the write comes through.
+ */
+function collectChildReliefTable(formData: FormData): Record<string, { full: number; half: number }> {
+  const out: Record<string, { full: number; half: number }> = {};
+  for (const key of CHILD_RELIEF_CATEGORIES) {
+    out[key] = {
+      full: Number(formData.get(`childRelief_${key}_full`)) || 0,
+      half: Number(formData.get(`childRelief_${key}_half`)) || 0,
+    };
+  }
+  return out;
+}
+
 export async function setTaxAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
@@ -1377,6 +1404,16 @@ export async function setTaxAction(formData: FormData) {
       // than `=== 'on'`. Anything other than an explicit 'yes' (including a missing field, which is what a
       // caller predating this control sends) is No — the default that reproduces today's PCB exactly.
       disabledIndividual: formData.get('disabledIndividual') === 'yes',
+      // Item d64d0df4 — Disabled Spouse, same Yes/No select shape as the field above. Anything other
+      // than an explicit 'yes' (including a missing field) is No.
+      disabledSpouse: formData.get('disabledSpouse') === 'yes',
+      // Item d64d0df4 — the 'auto_table' category grid, posted as one field per category+share
+      // ("childRelief_<category>_full" / "_half"). Collected here into the stored shape and handed to
+      // the pack setter, which validates it (whole numbers ≥ 0, unknown keys dropped, empty ⇒ null).
+      // NOTE it is sent on EVERY save, not only in auto_table mode: the setter overwrites the whole tax
+      // column set, so omitting it in another mode would erase a grid the admin keyed earlier and would
+      // silently move their tax the next time they switched back.
+      childReliefTable: collectChildReliefTable(formData),
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
