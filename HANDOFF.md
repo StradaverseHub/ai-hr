@@ -114,15 +114,29 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 >
 > ### THREE THINGS ARE WAITING ON THE OWNER, NOT ON CODE
 >
-> 1. **NO `aihr` TIMERS EXIST ON THE HOST.** `systemctl list-timers` shows none. Five sweeps are built
->    and none of them run. **For four of them that is merely dormant; for `usage:capture` it BLEEDS** —
->    usage cannot be backfilled, so every unscheduled day is permanently unbillable. Writing the systemd
->    units is a small job that was deliberately NOT done unasked, because scheduling something that
->    suspends customers or writes billing data is an owner decision. Suggested: `usage:capture` daily at
->    01:00 (ahead of the 02:00/03:00 leave sweeps, so it meters the day before they mutate it).
+> 1. **`usage:capture` IS THE ONLY UNSCHEDULED SWEEP — corrected 2026-08-04.** This entry used to say
+>    "five sweeps are built and none of them run". **That is out of date and was wrong to act on.** No
+>    `aihr` *timers* exist (`systemctl list-timers` still shows none) — but a **crontab was installed on
+>    the host on 2026-07-21** and five jobs DO run: `accrue-earned` (monthly, 1st 02:00),
+>    `review-sweep` (daily 03:00), `expire-aged-leave` (daily 03:30), `expire-carry` (yearly, 1 Apr
+>    03:00) and `provision-runner` (every minute). Verify with `crontab -l` as `ubuntu`, not with
+>    `systemctl`. **`usage:capture` is genuinely absent, and for it the gap BLEEDS** — usage cannot be
+>    backfilled, so every unscheduled day is permanently unbillable. Suggested: daily at 01:00, ahead of
+>    the 02:00/03:00 leave sweeps, so it meters the day before they mutate it.
+>    **Consequence for `c459bff9`:** deleting `scripts/expire-aged-leave.ts` without first removing its
+>    `30 3 * * *` crontab line leaves cron firing nightly at a missing file.
 > 2. **14 BOARD ITEMS SIT `planned`, awaiting approve/reject.** Four carry traps — see the r107 entry.
 >    **Two would damage live data if built exactly as asked** (`c459bff9`'s premise is false;
 >    `38f1fd40` would hand back 1,766 days, 81% of it system-written).
+>    **`c459bff9`'s reject-path fork is MOOT — measured 2026-08-04.** It asks the reporter whether to
+>    also erase past aged-expiry forfeits, saying the size is unknown, "between zero and all of"
+>    1,322.67 days. `select count(*), sum(days) from leave_ledger where reason='sys:leave_type_expiry'`
+>    returns **0 rows, 0 days** — the sweep has forfeited nothing, ever, because only ONE leave type
+>    (RL, 2 months) has expiry configured. Do not put that fork to the reporter again. The
+>    "51 rows / −1,322.67 days attributed to expireAgedLeave plus A2C" note elsewhere in this file is
+>    **wrong on attribution**: expireAgedLeave contributed zero. Real split of the 54 `sys:` adjustment
+>    rows — `carry_forward_cap` 14/−550.67, `profile_recalc` 13/−738.00, `a2c_recalc` 8/−25.67,
+>    `policy_recalc` 19/−26.33.
 > 3. **SLICE 6's DEPLOY-FAILING FLIP needs explicit confirmation before shipping.** It turns an
 >    unclassifiable company from a warning into a failed deploy — right end state, deliberate foot-gun.
 >
