@@ -5,12 +5,20 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-04, after r126 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-04, after r127 SHIPPED)
 
 > ## ▶ NEXT SESSION STARTS HERE
 >
-> **`main@156de9e3` is what runs. Production on 303 migrations. Next free number is `0357`.** Nothing is in
+> **`main@776ab66b` is what runs. Production on 304 migrations. Next free number is `0358`.** Nothing is in
 > flight: no unmerged build branch, no half-applied migration, no pending deploy.
+>
+> ### ⚠️ A MIGRATION THAT CREATES A TABLE MUST ALSO GRANT ON IT — 0353 DID NOT
+>
+> `0353` created `leave_adjustment_batch` with no `GRANT` line. Production never noticed, because its
+> `ALTER DEFAULT PRIVILEGES` covers tables created by the migration role. A developer cluster restored
+> from a dump has no such default, so the first real render through `ai_hr_app` threw
+> `permission denied for table leave_adjustment_batch`. **No test could see it** — the suite connects as
+> the owner. `0357` grants it explicitly, the way `0345` and `0354` already do. Copy that habit.
 >
 > ### ⚠️ BEFORE YOU DELEGATE A BUILD TO AN AGENT, READ THE r126 ENTRY
 >
@@ -25,12 +33,12 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > round. `> file 2>&1` always. To tell a hang from slow work: a healthy vitest has ~10 child processes and
 > ~21 test-DB connections; a hung one has zero of both. CPU alone lies — both idle low.
 >
-> ### WHAT IS BUILDABLE RIGHT NOW — 11 approved and unbuilt after r126
+> ### WHAT IS BUILDABLE RIGHT NOW — 10 approved and unbuilt after r127
 >
-> `491c499f` is HALF BUILT: its migration `0353` (`leave_adjustment_batch` + `leave_ledger.adjustment_batch_id`)
-> is SHIPPED and INERT on production. The remaining work is real and is enumerated in the r124 entry — no
-> set-based criteria resolver exists, the criteria builder is inline JSX needing extraction, and
-> `grantAdHocLeave` refuses negative days so cannot be reused for a downward adjustment.
+> `491c499f` is **DONE and DEPLOYED** (r127). `/admin/leave/adjustments` exists, takes many leave types at
+> once, resolves a target set from criteria or a pasted id list, and reverses a batch as a unit.
+> **`38f1fd40` is now unblocked** — it removes the old per-leave-type Adjustments step, and the ordering
+> constraint both plans stated ("convert first, remove second") is satisfied.
 >
 > **Four NEW reporter items are unplanned:** `7c834696` (attendance calculation engine), `8590615a`
 > (contract employment info), `2ef69d1e` (back pay / arrears), `169e3c24` (individual payslip submenu).
@@ -1068,6 +1076,76 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r127 — 2026-08-04 — Leave Adjustments gets a place of its own, and the GRANT that 0353 forgot
+
+**Shipped:** `491c499f` — Leave Adjustments as a Leave Settings submenu.
+**`main@776ab66b`. 304 migrations. New: `0357`.**
+
+### What the item actually was
+
+An adjustment is a **transaction**, not configuration. It was living inside a leave type's Entitlement
+step, so an operational task sat in a settings screen, and a grant spanning six leave types had to be
+repeated six times. The item asks for one screen that takes many types at once.
+
+`0353` (r122) had already created `leave_adjustment_batch` and `leave_ledger.adjustment_batch_id` and
+shipped them **inert** — nothing read or wrote either. r127 is the write side plus the screen.
+
+New: `core/leave-adjustment.ts` — `resolveAdjustmentTargets`, `applyLeaveAdjustmentBatch`,
+`reverseLeaveAdjustmentBatch`, `listLeaveAdjustmentBatches`, `countAdjustmentTargets`.
+Plus `app/admin/leave/adjustments/{page,actions}.tsx` and `components/leave/adjustment-form.tsx`.
+
+### Decisions
+
+**The schema existed but was invisible to Drizzle.** `0353` created the table in SQL; nobody added the
+declaration to `db/schema.ts`. So the table was real, empty, and unqueryable through the ORM. Declared
+now, along with `leaveLedger.adjustmentBatchId`. **A migration is not finished until the schema file
+agrees with it** — the two can disagree indefinitely without any test noticing, because nothing
+references what nothing declares.
+
+**The GRANT bug — see the block at the top of this file.** `0353` created a table and granted nothing.
+Production was fine by accident (`ALTER DEFAULT PRIVILEGES`); a locally-restored cluster was not. It
+surfaced only when the page was actually rendered through the app role, which is the *second* time in
+four rounds that rendering caught what the whole gate could not (r124 was the first). **Five minutes of
+`curl` against `pnpm dev` is not optional.** Verified 200 this round: `/admin/leave/adjustments`,
+`/admin/leave/entitlements`, `/admin/leave`, `/admin/leave/replacement`, zero errors.
+
+**Department and employment type are NOT on `employment`.** They live on the effective-dated
+`assignment` table, so a criteria set is only meaningful *as of a date*. The resolver takes the
+adjustment's `effectiveOn` and matches the assignment row valid on that date:
+
+    assignment.validFrom <= effectiveOn AND (assignment.validTo IS NULL OR validTo >= effectiveOn)
+
+Resolving against "current" assignment instead would silently include people who transferred after the
+effective date and exclude people who transferred into the group before it. Backdated adjustments are
+the normal case here, not the exotic one.
+
+**An empty criteria set means everyone, and the resolver does not second-guess that.** There is no way
+for it to distinguish "deliberately unfiltered" from "form nobody finished". So the *form* says so out
+loud with a warning banner while no criterion is set, and the resolver stays literal. Guessing at the
+boundary would make the explicit case impossible to express.
+
+**Targeted and written are reported separately.** They differ whenever an ADR-0069 frozen encashment
+snapshot causes a row to be skipped. A bulk write that reports one number hides exactly the discrepancy
+that makes it untrustworthy, so the toast and the history list both carry both counts.
+
+**Reversal writes compensating rows; it does not delete.** ADR-0006 is append-only. The batch is marked
+reversed and a second attempt is refused.
+
+**Every prop crossing into `AdjustmentForm` is serialisable, deliberately.** Copy arrives as a plain
+`labels` object rather than a `t` function — this is the exact shape that took the Entitlements tab down
+in r123. `test/server-client-boundary.test.ts` now fails the build if anyone reaches for the shorter
+route.
+
+**Pack ratchet:** `core/leave-adjustment` was added to both `BOUNDARIES` and `ALWAYS_ALLOWED` in
+`test/leave-pack-drift.test.ts`, with a facade re-export from `packs/leave/service.ts` — fixed at the
+boundary, not by widening an allowlist.
+
+### Gate
+
+`tsc` clean · **553 files / 6507 tests** · `next build` clean · upgrade rehearsal **PASS** against a
+populated customer database. Live: service active, `GET /` 401, 304 migrations,
+`leave_adjustment_batch` grants `SELECT,INSERT,UPDATE,DELETE` to `ai_hr_app`, zero errors since restart.
 
 ## r126 — 2026-08-04 — four items built partly in parallel, and the worktree that branched 114 commits back
 
