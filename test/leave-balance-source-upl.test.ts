@@ -180,7 +180,15 @@ describe('cdf9ca48 · balance_source_type_id — schema default & persistence', 
     const annual = await leaveType();
     const emergency = await leaveType({ balanceSourceTypeId: annual, allowUnpaidLeave: true });
     const name = await typeName(emergency);
-    await updateLeaveType(adminCtx(b), { id: emergency, name, allowNegativeBalance: true });
+    // 9861b8a4 — the negative-balance sub-form must post its floor alongside the switch. This test is
+    // about the OTHER columns staying untouched, so the pair is supplied and the assertions below are
+    // unchanged: a save from one sub-form still leaves balance source and unpaid-leave alone.
+    await updateLeaveType(adminCtx(b), {
+      id: emergency,
+      name,
+      allowNegativeBalance: true,
+      maxNegativeBalance: 5,
+    });
     const [after] = await owner.db
       .select({ src: schema.leaveType.balanceSourceTypeId, upl: schema.leaveType.allowUnpaidLeave })
       .from(schema.leaveType)

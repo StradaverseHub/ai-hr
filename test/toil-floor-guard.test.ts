@@ -45,7 +45,24 @@ import { accrueToil, runToilExpiry, setToilPolicy, ToilNotEligibleError, type To
 
 let b: Base;
 const REST_DAY = '2026-07-04';
-const AFTER_EXPIRY = '2026-10-15'; // > REST_DAY + 90d (2026-10-02)
+// 00307068 — EXPIRY IS ANCHORED ON THE APPROVAL DATE NOW, not the worked date (core/toil.ts:441,
+// addDays(approvedOnDate, policy.expiryDays)). A constant derived from REST_DAY therefore stops being
+// "after expiry" the moment the accrual is approved on any other day, which is what broke these two tests
+// when the anchor moved. Derived from the row instead, so the test states the RULE (expiry has passed)
+// rather than an arithmetic that only held under the old anchor.
+const AFTER_EXPIRY = '2026-10-15'; // still used by tests that never run the expiry sweep
+
+/** The day after this accrual actually expires, read from the row — anchor-agnostic by construction. */
+async function dayAfterExpiry(accrualId: string): Promise<string> {
+  const [row] = await owner.db
+    .select({ expiresOn: schema.toilAccrual.expiresOn })
+    .from(schema.toilAccrual)
+    .where(eq(schema.toilAccrual.id, accrualId));
+  expect(row?.expiresOn, 'the accrual carries an expiry date').toBeTruthy();
+  const d = new Date(`${row.expiresOn}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
 const uniqEmail = () => `tfg_${Math.random().toString(36).slice(2)}@t.local`;
 
 const policy = (companyId: string, over: Partial<ToilPolicyInput> = {}): ToilPolicyInput => ({
@@ -148,7 +165,7 @@ describe('TOIL OT-floor guard — exact-quantum convert-to-pay (s.60(3))', () =>
     expect(await replacementBalance(employmentId)).toBe(2);
 
     // `runToilExpiry` is module-gated: entitledCtx, not adminCtx, is what carries this tenant's `toil` row.
-    const r = await runToilExpiry(await entitledCtx(b), { today: AFTER_EXPIRY });
+    const r = await runToilExpiry(await entitledCtx(b), { today: await dayAfterExpiry(acc.accrualId) });
     expect(r.converted).toBe(1);
     // Exact s.60(3)(b): a full normal-hours rest day = 1 day's ORP = 3000/26 = 115.38 — NOT 2 × 115.38.
     expect(r.convertedAmount).toBe(115.38);
@@ -164,7 +181,7 @@ describe('TOIL OT-floor guard — exact-quantum convert-to-pay (s.60(3))', () =>
     const acc = await accrueToil(a, { employmentId, workedDate: REST_DAY });
     expect(acc.daysCredited).toBe(2); // 2.0 banked days
 
-    const r = await runToilExpiry(await entitledCtx(b), { today: AFTER_EXPIRY });
+    const r = await runToilExpiry(await entitledCtx(b), { today: await dayAfterExpiry(acc.accrualId) });
     expect(r.converted).toBe(1);
     // Generic basis: 2 banked days × (5000/26) = 2 × 192.31 = 384.62 (contractual, no statutory floor applies).
     expect(r.convertedAmount).toBe(384.62);

@@ -33,7 +33,12 @@ import { setPersonComplianceFields } from '@/core/profile';
 import { removePersonPhoto, setPersonPhoto } from '@/core/person-photo';
 import { packFor } from '@/localization/registry';
 // Item d64d0df4 — the five LHDN s.48 child-relief categories, in the canonical order the grid renders.
-import { CHILD_RELIEF_CATEGORY_KEYS } from '@/localization/my/statutory-tables';
+// ADR-0080 D1/D7 — the five child-relief categories are read from core/dependents, NOT from the MY pack.
+// They are the same five keys, but this is generic admin code: reaching into localization/my directly is
+// what test/country-pack-drift.test.ts's ratchet forbids, and the ratchet caught it. The Family register
+// stores these on employee_dependent, so core/dependents is their pack-neutral home; the MY pack's
+// CHILD_RELIEF_CATEGORY_KEYS is the same list expressed for the ruleset side.
+import { CHILD_RELIEF_CATEGORIES } from '@/core/dependents';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -1371,7 +1376,7 @@ export async function setPassportAction(formData: FormData) {
  */
 function collectChildReliefTable(formData: FormData): Record<string, { full: number; half: number }> {
   const out: Record<string, { full: number; half: number }> = {};
-  for (const key of CHILD_RELIEF_CATEGORY_KEYS) {
+  for (const key of CHILD_RELIEF_CATEGORIES) {
     out[key] = {
       full: Number(formData.get(`childRelief_${key}_full`)) || 0,
       half: Number(formData.get(`childRelief_${key}_half`)) || 0,
