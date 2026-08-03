@@ -308,6 +308,16 @@ export async function syncChildReliefFromFamily(
           taxCategory: employeeStatutoryMy.taxCategory,
           taxResidency: employeeStatutoryMy.taxResidency,
           employerBearsTax: employeeStatutoryMy.employerBearsTax,
+          // ⚠️ CARRY-FORWARD LIST — item d64d0df4 regression fix. setTaxProfileMY OVERWRITES the whole
+          // tax column set and defaults every omitted field to its "nothing claimed" value, so ANY tax
+          // column missing from this select is silently RESET on every automatic family-driven sync.
+          // Between migration 0341 and this fix, adding or editing a family record on an employee in
+          // 'auto' mode quietly cleared disabled_individual and RAISED their PCB, with nothing on
+          // screen saying so. Any tax column added to employee_statutory_my in future MUST be added
+          // here and to the setTax call below in the same change.
+          disabledIndividual: employeeStatutoryMy.disabledIndividual,
+          disabledSpouse: employeeStatutoryMy.disabledSpouse,
+          childReliefTable: employeeStatutoryMy.childReliefTable,
         })
         .from(employeeStatutoryMy)
         .where(eq(employeeStatutoryMy.personId, personId))
@@ -372,7 +382,8 @@ export async function syncChildReliefFromFamily(
     // catch degrades to NO_SYNC('error'), the rail-safe outcome), stamped with provenance so the resulting
     // `employee.tax.updated` event is identifiable as machine-driven. Every other tax column is carried
     // forward unchanged: the setter overwrites the whole tax column set, so omitting them would
-    // silently reset residency / category / employer-bears-tax.
+    // silently reset residency / category / employer-bears-tax — and, until item d64d0df4 fixed it here,
+    // the disability relief claims below. Only num_children may differ from what was read.
     await requirePackFor(country).statutory.setTax(ctx, {
       personId,
       taxNumber: state.statutory.taxNumber,
@@ -381,6 +392,11 @@ export async function syncChildReliefFromFamily(
       childReliefMode: 'auto',
       employerBearsTax: state.statutory.employerBearsTax ?? false,
       numChildren: state.derived,
+      // d64d0df4 — see the CARRY-FORWARD LIST comment on the select above. These are relief CLAIMS about
+      // the employee and their family; a family-record edit must never silently withdraw one.
+      disabledIndividual: state.statutory.disabledIndividual ?? false,
+      disabledSpouse: state.statutory.disabledSpouse ?? false,
+      childReliefTable: state.statutory.childReliefTable ?? null,
       provenance: 'auto_child_relief',
     });
 

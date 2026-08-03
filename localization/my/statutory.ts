@@ -6,7 +6,7 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
 import { companyStatutoryMy, domainEvent, employeeStatutoryMy, employment, person } from '../../db/schema';
-import { DEFAULT_MY_STATUTORY, type HrdfStatus } from './statutory-tables';
+import { CHILD_RELIEF_CATEGORY_KEYS, DEFAULT_MY_STATUTORY, type HrdfStatus } from './statutory-tables';
 import { MY_STATES } from './holidays';
 import type { EpfMode } from './payroll';
 
@@ -785,11 +785,57 @@ export const TAX_RESIDENCIES = ['resident', 'non_resident', 'rep', 'knowledge_wo
 export type TaxResidency = (typeof TAX_RESIDENCIES)[number];
 export const isTaxResidency = (v: string): v is TaxResidency => (TAX_RESIDENCIES as readonly string[]).includes(v);
 
-/** How num_children is maintained. 'manual' = HR keys it; 'auto' = derived-from-family suggestion that HR
- *  confirms into num_children (never silent). Payroll always reads num_children regardless of mode. */
-export const CHILD_RELIEF_MODES = ['manual', 'auto'] as const;
+/** How the child relief is maintained.
+ *  - 'manual'     — HR keys num_children; payroll applies children × perChild (today's behaviour).
+ *  - 'auto'       — num_children is derived from the Family register on every dependent write
+ *                   (syncChildReliefFromFamily); payroll still applies children × perChild.
+ *  - 'auto_table' — item d64d0df4. HR keys the LHDN s.48 CATEGORY GRID directly against the employee
+ *                   (child_relief_table) and payroll works the deduction out category by category at the
+ *                   official amount for each, halved for anyone recorded in the 50% column. num_children
+ *                   is still maintained as the whole HEAD COUNT so Form E / CP8D / EA are unaffected.
+ *                   This mode exists for the case where an employee's DECLARED relief differs from what
+ *                   the Family tab holds.
+ *  Payroll always reads num_children as the head count regardless of mode. */
+export const CHILD_RELIEF_MODES = ['manual', 'auto', 'auto_table'] as const;
 export type ChildReliefMode = (typeof CHILD_RELIEF_MODES)[number];
 export const isChildReliefMode = (v: string): v is ChildReliefMode => (CHILD_RELIEF_MODES as readonly string[]).includes(v);
+
+/**
+ * Item d64d0df4 — the stored shape of the 'auto_table' grid: per LHDN s.48 category, the count of
+ * children claimed at 100% and the count claimed at 50%.
+ */
+export type ChildReliefTableCell = { full: number; half: number };
+export type ChildReliefTable = Record<string, ChildReliefTableCell>;
+
+/** The five LHDN s.48 categories the grid is keyed by — the SAME keys the Family register already uses
+ *  per child (core/dependents.ts CHILD_RELIEF_CATEGORIES). Duplicated here rather than imported because
+ *  a country pack must not depend on a core service module; the two lists are pinned equal by a test. */
+export const CHILD_RELIEF_TABLE_KEYS = CHILD_RELIEF_CATEGORY_KEYS;
+
+/**
+ * Validate-and-normalise a keyed child-relief grid. Whole numbers ≥ 0 only; unknown keys are DROPPED
+ * (never thrown on — a caller predating a future category must not be able to fail a save); a category
+ * with nothing in it is dropped too, so an empty grid normalises to null rather than to five zero rows.
+ * Returns null when there is nothing to store, which is exactly what "not configured" means on the column.
+ */
+export function normaliseChildReliefTable(input: unknown): ChildReliefTable | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const out: ChildReliefTable = {};
+  for (const key of CHILD_RELIEF_TABLE_KEYS) {
+    const cell = (input as Record<string, unknown>)[key];
+    if (!cell || typeof cell !== 'object') continue;
+    const c = cell as { full?: unknown; half?: unknown };
+    const whole = (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+    };
+    const full = whole(c.full);
+    const half = whole(c.half);
+    if (full === 0 && half === 0) continue;
+    out[key] = { full, half };
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
 
 /** A tax partial-save was attempted before an IC exists (the statutory row is seeded by the IC field on the
  *  Profile tab, item 8b5334db). Distinct message so the admin knows where to set it. */
@@ -989,6 +1035,20 @@ export type TaxInput = {
    */
   disabledIndividual?: boolean;
   /**
+   * Item d64d0df4 — the employee's SPOUSE is a registered disabled individual (OKU), entitling the
+   * EMPLOYEE to a further deduction on top of the spouse deduction. Same separation as the field above:
+   * the circumstance is tenant data, the AMOUNT is statutory and lives in the country pack's ruleset.
+   * Like the spouse deduction it only moves the figure for tax category 2 (married, spouse not working).
+   * Undefined ⇒ false, so a partial write cannot silently claim a relief nobody asked for.
+   */
+  disabledSpouse?: boolean;
+  /**
+   * Item d64d0df4 — the LHDN s.48 category grid, read by payroll ONLY in 'auto_table' mode. Passed
+   * through `normaliseChildReliefTable` (whole numbers ≥ 0, unknown keys dropped, empty ⇒ null).
+   * Undefined ⇒ null, matching the column's "not configured" state.
+   */
+  childReliefTable?: unknown;
+  /**
    * R46 47146ea3 — write PROVENANCE, stamped onto the `employee.tax.updated` event payload so an auditor can
    * tell a machine-driven write from a human one. Absent (the default) ⇒ a human saved the Identity & Tax
    * form. 'auto_child_relief' ⇒ the num_children figure was derived from the Family/dependents register and
@@ -1030,6 +1090,11 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
     // Item d64d0df4 — defaults to false, matching the column default, so an employee nobody has flagged
     // keeps today's PCB exactly and a caller that predates this field cannot claim the relief by omission.
     disabledIndividual: p.disabledIndividual ?? false,
+    // Item d64d0df4 — both default to the "nothing claimed" state, matching the column defaults, so a
+    // caller that predates these fields (the new-hire wizard, the bulk import, the zakat election path)
+    // cannot claim a relief by omission and every existing employee keeps today's PCB exactly.
+    disabledSpouse: p.disabledSpouse ?? false,
+    childReliefTable: normaliseChildReliefTable(p.childReliefTable),
   };
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
@@ -1043,6 +1108,8 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
         isResident: employeeStatutoryMy.isResident,
         employerBearsTax: employeeStatutoryMy.employerBearsTax,
         disabledIndividual: employeeStatutoryMy.disabledIndividual,
+        disabledSpouse: employeeStatutoryMy.disabledSpouse,
+        childReliefTable: employeeStatutoryMy.childReliefTable,
       })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
@@ -1075,6 +1142,10 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
               // d64d0df4 — a relief claim is exactly the kind of PCB input a compliance auditor has to be
               // able to reconstruct: it moves the employee's tax and it is a claim about a person.
               disabledIndividual: existing.disabledIndividual,
+              // d64d0df4 — same reasoning: both are relief CLAIMS that move the employee's tax, so an
+              // auditor has to be able to reconstruct them from the event log alone.
+              disabledSpouse: existing.disabledSpouse,
+              childReliefTable: existing.childReliefTable,
             }
           : null,
         after: values,

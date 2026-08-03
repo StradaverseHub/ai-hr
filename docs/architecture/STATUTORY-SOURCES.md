@@ -73,10 +73,56 @@ to these tables is traceable to the exact runs it affects.
     or as a separate deduction) against the current LHDN publication, then either record the sign-off
     below or correct the figure and rebuild the bundled pack
     (`node --import tsx scripts/statutory-pack-build-my.ts`).
+- **Disabled spouse further deduction — ⚠️ RATE-ONLY, NOT VERIFIED. NEEDS SIGN-OFF.**
+  `MY_RELIEFS.disabledSpouse` = **RM5,000**, the further deduction under **s.47(1)(b) ITA 1967** on top
+  of the RM4,000 spouse deduction (item `d64d0df4`, statutory-table version **2026.7**).
+  - **Source (secondary):** PwC _Worldwide Tax Summaries_ — Malaysia · Individual · Deductions
+    (YA2026 personal reliefs: disabled spouse **MYR 5,000** further relief).
+    <https://taxsummaries.pwc.com/malaysia/individual/deductions>
+  - **Why it is not ✅ Verified:** identical reason to the OKU figure above — the LHDN MTD spec PDF URL
+    returns HTTP 404, so only a high-trust secondary reference was available.
+  - **Blast radius if wrong:** bounded and opt-in, and narrower still than the OKU figure. It is applied
+    only to an employee an admin has flagged as having a disabled spouse **AND** whose tax category is
+    **2** (married, spouse not working) — the same gate the RM4,000 spouse deduction sits behind.
+    Categories 1 and 3 store and display the flag but their PCB is untouched.
+  - **Action before a real filing:** confirm RM5,000 against the current LHDN publication, then record
+    the sign-off below or correct the figure and rebuild the bundled pack.
+- **Per-category child deductions (LHDN s.48) — ⚠️ RATE-ONLY, NOT VERIFIED. NEEDS SIGN-OFF (5 figures).**
+  `MY_RELIEFS.childByCategory` (item `d64d0df4`, statutory-table version **2026.7**):
+
+  | Category | Amount | s.48 case |
+  | --- | --- | --- |
+  | `under_18` | RM2,000 | child under 18 |
+  | `study_preu` | RM2,000 | 18+, unmarried, full-time pre-university study |
+  | `study_tertiary` | RM8,000 | 18+, unmarried, full-time diploma/degree study and above |
+  | `disabled` | RM6,000 | disabled child (OKU) |
+  | `disabled_study` | RM14,000 | disabled child in full-time higher education (RM6,000 + RM8,000) |
+
+  - **Source (secondary):** PwC _Worldwide Tax Summaries_ — Malaysia · Individual · Deductions (YA2026
+    child reliefs). <https://taxsummaries.pwc.com/malaysia/individual/deductions>
+  - **Why it is not ✅ Verified:** same 404 as above. Note the flat `MY_RELIEFS.perChild` = RM2,000 that
+    the projection has always used is itself the `under_18` figure, so this table does not contradict any
+    previously verified number — it breaks one number out into five.
+  - **Blast radius if wrong:** bounded and opt-in. These amounts are read **only** for an employee whose
+    child-relief mode is `auto_table` and against whom a category grid has been keyed. Every employee on
+    `manual` or `auto` keeps `children × perChild` to the cent, which is exactly today's arithmetic.
+    A child recorded at the **50%** share contributes exactly half the amount above.
+  - **Action before a real filing:** confirm all five against the current LHDN publication, then record
+    the sign-off below or correct the figures and rebuild the bundled pack.
+- **Where the seven pending figures are visible in the running system:** Payroll → Configuration → PCB
+  renders all of them (`disabledIndividual`, `disabledSpouse`, and the five `childByCategory` amounts)
+  under **"Reliefs awaiting sign-off"**, each carrying an *Awaiting sign-off* badge, resolved through the
+  same optional-with-fallback path `pcbMonth` uses — so the screen shows the number the kernel actually
+  applies rather than a second copy that can drift.
 - **Known limitations (documented, not bugs):**
-  - **Disabled spouse / disabled child** further deductions are **not** implemented. Child relief is
-    still a flat `perChild × numChildren`; the five LHDN s.48 child-relief CATEGORIES are captured on
-    the Family tab (item `6c635212`) but do not yet weight the PCB deduction. See `d64d0df4`'s notes.
+  - **Disabled spouse** is now implemented (item `d64d0df4`, above) — gated to tax category 2.
+  - **Category-weighted child relief** is implemented for the `auto_table` child-relief mode ONLY.
+    An employee on `manual` or `auto` still gets the flat `perChild × numChildren`. The five LHDN
+    s.48 CATEGORIES captured per child on the Family tab (item `6c635212`) are still **not** used to
+    weight the deduction automatically — deriving the two DISABLED categories is impossible from the
+    Family register today (it has `dateOfBirth`, `isStudent`, `studyLevel`, `studyCountry`, but no
+    independent child-disability flag), so `auto` remains head-count-weighted. This deferral is
+    recorded in `d64d0df4`'s approved plan.
   - **Arrears / ESOS** other additional-remuneration types reuse the bonus steps; only bonus is
     surfaced in the UI so far.
   - **REP / knowledge-worker / C-suite** special categories are not implemented.

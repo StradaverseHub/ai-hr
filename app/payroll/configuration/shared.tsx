@@ -51,10 +51,25 @@ export function SourceMeta({ src, label }: { src?: StatutorySource; label: strin
   );
 }
 
-export function Row({ label, value }: { label: string; value: string }) {
+/**
+ * Item d64d0df4 — `pending` marks a figure that is RATE-ONLY: sourced from a reputable published summary
+ * rather than transcribed from the official publication, and therefore awaiting the owner's sign-off
+ * against the running system. It renders as an amber pill beside the label, deliberately using the same
+ * badge shape as VersionBadge below rather than inventing a second treatment, so a figure the system
+ * cannot vouch for is visible on the same card as the figures it can. The text is passed in already
+ * localized (the sub-pages own their own translator).
+ */
+export function Row({ label, value, pending }: { label: string; value: string; pending?: string }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1.5">
-      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="flex flex-wrap items-baseline gap-1.5 text-sm text-muted-foreground">
+        {label}
+        {pending && (
+          <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+            {pending}
+          </span>
+        )}
+      </span>
       <span className="font-mono text-sm font-medium tabular-nums">{value}</span>
     </div>
   );

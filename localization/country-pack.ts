@@ -274,6 +274,19 @@ export interface CountryPack {
     ) => number;
     /** Effective per-employee HRDF subjectivity (tri-state flag resolved against the employer band). */
     hrdfSubject: (subjectToHrdf: boolean | null | undefined, status: HrdfStatus) => boolean;
+    /**
+     * Item d64d0df4 (D6) — an employee's keyed child-relief GRID → the total child deduction in RM.
+     *
+     * The kernel holds the stored grid (employee_statutory_my.child_relief_table) and the resolved
+     * ruleset's relief slice; it hands BOTH back to the pack rather than knowing what a category is
+     * worth, so no jurisdiction's relief figure can leak into core/payroll.ts. The result feeds
+     * `TaxProfile.childReliefAmount`, which REPLACES `children × perChild` in the projection — and is
+     * supplied only for an employee whose child-relief mode is 'auto_table'.
+     *
+     * OPTIONAL on the pack: a jurisdiction with no per-category child relief simply omits it, and the
+     * kernel then never supplies an amount, leaving that pack's own arithmetic untouched.
+     */
+    childReliefAmountFor?: (table: unknown, reliefs?: StatutoryRuleset['pcb']['reliefs']) => number;
     /** EPF relief cap (RM) used by the PCB accumulator maths. */
     epfReliefCap: number;
     /**
