@@ -27,7 +27,24 @@ export type IdentityTaxDefaults = {
   employerBearsTax: boolean;
   /** Item d64d0df4 — registered disabled individual (OKU). Defaults to false. */
   disabledIndividual: boolean;
+  /** Item d64d0df4 — the employee's SPOUSE is a registered disabled individual. Defaults to false.
+   *  Only moves the tax figure for tax category 2 (married, spouse not working); the card says so. */
+  disabledSpouse: boolean;
+  /** Item d64d0df4 — the 'auto_table' category grid: per LHDN s.48 category, the count of children
+   *  claimed at 100% and the count claimed at 50%. Null / absent keys ⇒ nothing keyed yet. */
+  childReliefTable: Record<string, { full: number; half: number }> | null;
 };
+
+/** The five LHDN s.48 categories, in the canonical order the grid renders them. Kept as a literal here
+ *  rather than imported from the server pack so this client island pulls no server module into the
+ *  bundle; the list is pinned equal to the pack's CHILD_RELIEF_CATEGORY_KEYS by a test. */
+const CHILD_RELIEF_CATEGORY_KEYS = [
+  'under_18',
+  'study_preu',
+  'study_tertiary',
+  'disabled',
+  'disabled_study',
+] as const;
 
 /**
  * Identification & Tax card (item 8b5334db). Dedicated, visually-separated card with its OWN save (setTaxAction,
@@ -65,8 +82,37 @@ export function IdentityTaxCard({
   embedded?: boolean;
 }) {
   const t = useTranslations('people.detail');
-  const [mode, setMode] = useState(defaults.childReliefMode === 'auto' ? 'auto' : 'manual');
+  const [mode, setMode] = useState(
+    defaults.childReliefMode === 'auto' || defaults.childReliefMode === 'auto_table'
+      ? defaults.childReliefMode
+      : 'manual',
+  );
   const [numChildren, setNumChildren] = useState<string>(String(defaults.numChildren ?? 0));
+  // Item d64d0df4 — the 'auto_table' grid. Held as STRINGS so an emptied cell stays empty while the
+  // admin retypes it (a number state would snap it back to 0 on every keystroke). Every category has a
+  // row whether or not it was stored, so the admin sees the whole official list, not just what happens
+  // to be filled in.
+  const [grid, setGrid] = useState<Record<string, { full: string; half: string }>>(() =>
+    Object.fromEntries(
+      CHILD_RELIEF_CATEGORY_KEYS.map((k) => [
+        k,
+        {
+          full: String(defaults.childReliefTable?.[k]?.full ?? 0),
+          half: String(defaults.childReliefTable?.[k]?.half ?? 0),
+        },
+      ]),
+    ),
+  );
+  const whole = (v: string) => {
+    const n = Math.floor(Number(v));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  // In 'auto_table' the head count that Form E / CP8D / the EA statement read is the TOTAL of the grid,
+  // so num_children keeps meaning exactly what it means in the other two modes and no report changes.
+  const gridHeadCount = CHILD_RELIEF_CATEGORY_KEYS.reduce(
+    (sum, k) => sum + whole(grid[k].full) + whole(grid[k].half),
+    0,
+  );
 
   const heading = embedded ? (
     <div className="px-4 py-3">
@@ -131,8 +177,23 @@ export function IdentityTaxCard({
                 <option value="yes">{t('disabledIndividualYes')}</option>
               </select>
             </Field>
+            {/* Item d64d0df4 — Disabled Spouse (OKU). Same Yes/No shape as the field above and the same
+                default of No. Unlike Disabled Individual it only moves the deduction for tax category 2
+                (Married & Spouse Not Working) — the official rules give it no effect otherwise — so the
+                hint below says that out loud rather than letting the setting look ignored. */}
+            <Field label={t('disabledSpouseLabel')}>
+              <select
+                name="disabledSpouse"
+                defaultValue={defaults.disabledSpouse ? 'yes' : 'no'}
+                className={inputCls}
+              >
+                <option value="no">{t('disabledIndividualNo')}</option>
+                <option value="yes">{t('disabledIndividualYes')}</option>
+              </select>
+            </Field>
           </div>
           <p className="text-xs text-muted-foreground">{t('disabledIndividualHint')}</p>
+          <p className="text-xs text-muted-foreground">{t('disabledSpouseHint')}</p>
         </fieldset>
 
         {/* Children (PCB relief) — manual or auto (derive from Family records, confirm into numChildren). */}
@@ -150,6 +211,10 @@ export function IdentityTaxCard({
               >
                 <option value="manual">{t('childReliefModeManual')}</option>
                 <option value="auto">{t('childReliefModeAuto')}</option>
+                {/* Item d64d0df4 — the third mode. Keys the official five categories directly against
+                    the employee, for the case this mode exists for: their DECLARED relief differs from
+                    what the Family tab holds. */}
+                <option value="auto_table">{t('childReliefModeAutoTable')}</option>
               </select>
             </Field>
             {/* R46 47146ea3 — in 'auto' the count is machine-maintained, so the input goes read-only and
@@ -163,14 +228,77 @@ export function IdentityTaxCard({
                 type="number"
                 min="0"
                 step="1"
-                value={mode === 'auto' ? String(derivedChildCount) : numChildren}
+                // d64d0df4 — 'auto_table' is read-only for the same reason 'auto' is: the head count is
+                // machine-maintained, here as the TOTAL of the grid below. Keeping num_children equal to
+                // the head count is what leaves Form E / CP8D and the EA statement untouched by this item.
+                value={
+                  mode === 'auto'
+                    ? String(derivedChildCount)
+                    : mode === 'auto_table'
+                      ? String(gridHeadCount)
+                      : numChildren
+                }
                 onChange={(e) => setNumChildren(e.target.value)}
-                readOnly={mode === 'auto'}
-                aria-readonly={mode === 'auto'}
-                className={`${inputCls}${mode === 'auto' ? ' bg-muted/50 text-muted-foreground' : ''}`}
+                readOnly={mode !== 'manual'}
+                aria-readonly={mode !== 'manual'}
+                className={`${inputCls}${mode !== 'manual' ? ' bg-muted/50 text-muted-foreground' : ''}`}
               />
             </Field>
           </div>
+          {/* Item d64d0df4 — the official five-category grid, rendered ONLY for 'auto_table'. Whole
+              numbers of zero or more; the 100% and 50% columns are the LHDN claim split (100% to one
+              parent, or 50% each when parents share the claim), and a 50% child is worth exactly half
+              that category's relief. The hidden inputs below carry the grid on EVERY save regardless of
+              mode, so switching to Manual and back does not silently discard what was keyed — the save
+              action overwrites the whole tax column set. */}
+          {mode === 'auto_table' ? (
+            <div className="rounded-md border border-border bg-card/60 p-3">
+              <p className="mb-2 text-xs text-muted-foreground">{t('childReliefTableNote')}</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="py-1.5 pr-4 font-medium">{t('childReliefTableCategoryCol')}</th>
+                      <th className="py-1.5 pr-4 font-medium">{t('childReliefTableFullCol')}</th>
+                      <th className="py-1.5 font-medium">{t('childReliefTableHalfCol')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {CHILD_RELIEF_CATEGORY_KEYS.map((key) => (
+                      <tr key={key} className="border-t border-border">
+                        <td className="py-1.5 pr-4 align-middle">{t(`family.childReliefCat_${key}`)}</td>
+                        {(['full', 'half'] as const).map((share) => (
+                          <td key={share} className="py-1.5 pr-4">
+                            <input
+                              name={`childRelief_${key}_${share}`}
+                              type="number"
+                              min="0"
+                              step="1"
+                              aria-label={`${t(`family.childReliefCat_${key}`)} — ${share === 'full' ? t('childReliefTableFullCol') : t('childReliefTableHalfCol')}`}
+                              value={grid[key][share]}
+                              onChange={(e) =>
+                                setGrid((g) => ({ ...g, [key]: { ...g[key], [share]: e.target.value } }))
+                              }
+                              className={`${inputCls} max-w-24`}
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            // Not in table mode — still POST the stored grid, so a save made in Manual or Auto mode
+            // cannot wipe a grid the admin keyed earlier and silently change their tax on the way back.
+            CHILD_RELIEF_CATEGORY_KEYS.map((key) => (
+              <span key={key} className="hidden">
+                <input type="hidden" name={`childRelief_${key}_full`} value={grid[key].full} />
+                <input type="hidden" name={`childRelief_${key}_half`} value={grid[key].half} />
+              </span>
+            ))
+          )}
           {mode === 'auto' && (
             // R46 47146ea3 — the "Use {count}" button and its client-side confirm step are GONE. The count is
             // now synced server-side from the Family register on every dependent add / edit / archive (see

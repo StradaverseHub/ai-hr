@@ -2406,6 +2406,12 @@ export default async function EmployeePage({
           employerBearsTax: statutory?.employerBearsTax ?? false,
           // Item d64d0df4 — No unless explicitly claimed, matching the column default and today's PCB.
           disabledIndividual: statutory?.disabledIndividual ?? false,
+          disabledSpouse: statutory?.disabledSpouse ?? false,
+          // Item d64d0df4 — the 'auto_table' grid. A plain serialisable object (or null) crosses the
+          // server/client boundary; the card renders it read-write only in that mode and posts it back
+          // as flat scalar fields in every mode.
+          childReliefTable:
+            (statutory?.childReliefTable as Record<string, { full: number; half: number }> | null) ?? null,
         }}
       />
     </Card>

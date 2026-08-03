@@ -5,7 +5,7 @@
 import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
-import { eis, epf, hrdfLevy, hrdfSubject, overtimePay, pcbMonth, socso, statutory } from './payroll';
+import { childReliefAmountFor, eis, epf, hrdfLevy, hrdfSubject, overtimePay, pcbMonth, socso, statutory } from './payroll';
 import {
   DEFAULT_MY_STATUTORY,
   MY_EPF_THIRD_SCHEDULE_PART_A,
@@ -106,6 +106,10 @@ export const myPack: CountryPack = {
     // Feedback 0df0c635 — effective per-employee HRDF subjectivity (tri-state subject_to_hrdf resolved
     // against the employer's registration band). D6 vocabulary: the kernel consumes it via the pack.
     hrdfSubject,
+    // Item d64d0df4 (D6) — an employee's keyed child-relief GRID → the total child deduction in RM,
+    // worked out category by category from the resolved ruleset (or the pack built-in). The kernel
+    // hands the stored grid straight back to the pack rather than naming a Malaysian relief figure.
+    childReliefAmountFor,
     epfReliefCap: MY_RELIEFS.epfReliefCap,
     // Rung 5c (D6) — the built-in HRDF levy rates; the OT/HRDF config + Attendance-policy screens'
     // fallback when a resolved ruleset predates the `hrdf` slice (they never name MY_HRDF directly).

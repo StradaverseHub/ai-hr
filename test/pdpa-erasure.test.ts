@@ -111,7 +111,20 @@ describe('erasePersonPii — PDPA retention guard (ADR-0030, #159)', () => {
       'religion',
       'state',
     ]);
-    expect(r.withheld.map((w) => w.field).sort()).toEqual(['bankAccountNo', 'bankName', 'dateOfBirth', 'epfNumber', 'socsoNumber', 'taxNumber']);
+    // d64d0df4 — `childReliefTable` joins the statutory-locked set. It records how many of an employee's
+    // children fall into a DISABLED relief category: health data about people who are not the employee,
+    // and a PCB input, so it is withheld while the LHDN retention hold stands and erased once it lifts —
+    // the decision recorded beside PII_FIELDS in core/pdpa.ts. (The two disability BOOLEANS are NOT here:
+    // they are NOT NULL columns and the erasure mechanism only ever writes NULL — also recorded there.)
+    expect(r.withheld.map((w) => w.field).sort()).toEqual([
+      'bankAccountNo',
+      'bankName',
+      'childReliefTable',
+      'dateOfBirth',
+      'epfNumber',
+      'socsoNumber',
+      'taxNumber',
+    ]);
     expect(r.withheld.every((w) => /retention/i.test(w.reason))).toBe(true);
 
     const [pp] = await owner.db.select().from(schema.person).where(eq(schema.person.id, personId));

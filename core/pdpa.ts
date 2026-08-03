@@ -74,6 +74,23 @@ const PII_FIELDS: PiiField[] = [
   { key: 'epfNumber', table: 'statutory', statutoryLocked: true, scopes: ['statutory-ids'] },
   { key: 'socsoNumber', table: 'statutory', statutoryLocked: true, scopes: ['statutory-ids'] },
   { key: 'taxNumber', table: 'statutory', statutoryLocked: true, scopes: ['statutory-ids'] },
+  // ── d64d0df4 — ERASURE SCOPE FOR THE DISABILITY / CHILD-RELIEF CLAIMS. Decision recorded here because
+  // the approved plan required one BEFORE the columns landed, and because two of the three fields hold
+  // health data about people who are NOT the employee (a spouse, and children).
+  //
+  // DECIDED: they are erased with the rest of the subject's data once the LHDN retention period lifts —
+  // i.e. statutoryLocked, under the `identity` scope alongside the other PDPA s.40 sensitive
+  // demographics (religion / race), NOT under `statutory-ids`, which is about registration NUMBERS.
+  //
+  // ONLY child_relief_table is listed. The mechanism below NULLs a column, and the other two
+  // (disabled_individual, migration 0341; disabled_spouse, migration 0356) are NOT NULL booleans
+  // defaulting to false: NULLing them would violate the constraint, and this list has no "reset to
+  // default" form. They are therefore out of reach of erasure until the mechanism gains one — a gap
+  // deliberately recorded here rather than papered over, and the reason child_relief_table was made
+  // NULLable in the first place. The two booleans say only "a claim was made"; the grid is the field
+  // that says how many of this person's children are disabled, which is why it is the one that matters
+  // most and the one that is covered.
+  { key: 'childReliefTable', table: 'statutory', statutoryLocked: true, scopes: ['identity'] },
 ];
 
 const inScope = (f: PiiField, scope: ErasureScope) => scope === 'all' || f.scopes.includes(scope);

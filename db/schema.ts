@@ -2492,6 +2492,23 @@ export const employeeStatutoryMy = pgTable(
     // the individual / spouse / per-child deductions. Default false ⇒ every pre-existing row keeps today's PCB
     // byte-for-byte; only an employee an admin explicitly flags starts claiming the extra deduction.
     disabledIndividual: boolean('disabled_individual').notNull().default(false),
+    // Item d64d0df4 (migration 0356) — the employee's SPOUSE is a registered disabled individual (OKU),
+    // which entitles the EMPLOYEE to a further deduction on top of the spouse deduction. Same separation
+    // as the column above: the circumstance is tenant data, the AMOUNT is statutory
+    // (`MY_RELIEFS.disabledSpouse`). Like the spouse deduction it is claimable only by a category-2
+    // employee (married, spouse not working); it is stored and shown for everyone else but moves nothing.
+    // Default false ⇒ every pre-existing row keeps today's PCB byte-for-byte.
+    disabledSpouse: boolean('disabled_spouse').notNull().default(false),
+    // Item d64d0df4 (migration 0356) — the child-relief GRID keyed directly against the employee, read by
+    // payroll ONLY when child_relief_mode = 'auto_table'. Shape:
+    //   { "<s.48 category>": { "full": <count at 100%>, "half": <count at 50%> }, ... }
+    // over the five LHDN s.48 categories (under_18 / study_preu / study_tertiary / disabled /
+    // disabled_study). A COLUMN rather than a child table, following the precedent recorded in migration
+    // 0250: it inherits this row's RLS unchanged and lands whole in the existing employee.tax.updated
+    // before/after payload, so no new policy and no new audit path is introduced. num_children stays the
+    // whole HEAD COUNT (Form E / CP8D / EA all still read it) — this grid produces an AMOUNT alongside it,
+    // it never replaces it. NULL = not configured (every pre-existing row).
+    childReliefTable: jsonb('child_relief_table'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

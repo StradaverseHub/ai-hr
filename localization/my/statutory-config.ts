@@ -19,6 +19,7 @@ import {
   statutorySigningKey,
 } from '../../db/schema';
 import {
+  CHILD_RELIEF_CATEGORY_KEYS,
   DEFAULT_MY_STATUTORY,
   MY_STATUTORY_VERSION,
   STATUTORY_BODIES,
@@ -383,6 +384,27 @@ export function validateStatutoryRuleset(data: StatutoryRuleset): string[] {
     // overtime excess multipliers below: absence is fine, a bad value is not.
     else if (r.disabledIndividual != null && !nonNeg(r.disabledIndividual))
       errs.push('PCB disabled-individual relief must be ≥ 0.');
+    if (r) {
+      // d64d0df4 — the disabled-SPOUSE deduction, same optional-with-fallback treatment as above.
+      if (r.disabledSpouse != null && !nonNeg(r.disabledSpouse))
+        errs.push('PCB disabled-spouse relief must be ≥ 0.');
+      // d64d0df4 — the per-category child deduction MAP. The scalar `nonNeg` helpers do not cover a map,
+      // so the loop is written out: every value must be a non-negative number, and an UNKNOWN key is
+      // REJECTED rather than ignored. A silently-ignored key would let an admin believe they had
+      // corrected a figure that the calculation never reads, which is the failure mode this whole item
+      // exists to close.
+      const byCat = r.childByCategory;
+      if (byCat != null) {
+        if (typeof byCat !== 'object' || Array.isArray(byCat))
+          errs.push('PCB per-category child reliefs must be an object keyed by relief category.');
+        else
+          for (const [key, amount] of Object.entries(byCat as Record<string, unknown>)) {
+            if (!(CHILD_RELIEF_CATEGORY_KEYS as readonly string[]).includes(key))
+              errs.push(`PCB per-category child relief: unknown category "${key}".`);
+            else if (!nonNeg(amount)) errs.push(`PCB per-category child relief "${key}" must be ≥ 0.`);
+          }
+      }
+    }
   }
 
   if (!data.ot || !nonNeg(data.ot.wageCeiling)) errs.push('Overtime wage ceiling must be ≥ 0.');
@@ -563,10 +585,18 @@ function changedFields(before: StatutoryRuleset, after: StatutoryRuleset): strin
       before.pcb?.reliefs?.disabledIndividual,
       after.pcb?.reliefs?.disabledIndividual,
     ],
+    // d64d0df4 — same reasoning for the disabled-spouse deduction: it moves the tax of every flagged
+    // category-2 employee, so a change to it belongs in the audit's changed-field list.
+    ['pcb.reliefs.disabledSpouse', before.pcb?.reliefs?.disabledSpouse, after.pcb?.reliefs?.disabledSpouse],
   ];
   for (const [name, a, b] of scalars) if (a !== b) changed.push(name);
   // EPF Third-Schedule band tables are now admin-editable (feedback 99e13860); surface a table edit in the
   // audit's changed-field list the same way PCB/SOCSO/EIS band edits are surfaced.
+  // d64d0df4 — the per-category child relief is a MAP, not a scalar, so it is compared the way the EPF
+  // band TABLES below it are. Without this a per-category amount could be corrected (or dropped) without
+  // the audit's changed-field list ever mentioning it — the one relief that would be edited silently.
+  if (JSON.stringify(before.pcb?.reliefs?.childByCategory) !== JSON.stringify(after.pcb?.reliefs?.childByCategory))
+    changed.push('pcb.reliefs.childByCategory');
   if (JSON.stringify(before.epf?.partA) !== JSON.stringify(after.epf?.partA)) changed.push('epf.partA');
   if (JSON.stringify(before.epf?.partE) !== JSON.stringify(after.epf?.partE)) changed.push('epf.partE');
   if (JSON.stringify(before.pcb?.bands) !== JSON.stringify(after.pcb?.bands)) changed.push('pcb.bands');
