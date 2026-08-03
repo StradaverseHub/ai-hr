@@ -5,12 +5,30 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-03, after r124 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-03, after r125 SHIPPED)
 
 > ## ▶ NEXT SESSION STARTS HERE
 >
-> **`main@56f2c5e3` is what runs. Production on 300 migrations. Next free number is `0354`.** Nothing is in
+> **`main@420b61d8` is what runs. Production on 300 migrations. Next free number is `0354`.** Nothing is in
 > flight: no unmerged build branch, no half-applied migration, no pending deploy.
+>
+> ### WHAT IS BUILDABLE RIGHT NOW — the reporter has approved 15 unbuilt items
+>
+> `491c499f` is HALF BUILT: its migration `0353` (`leave_adjustment_batch` + `leave_ledger.adjustment_batch_id`)
+> is SHIPPED and INERT on production. The remaining work is real and is enumerated in the r124 entry — no
+> set-based criteria resolver exists, the criteria builder is inline JSX needing extraction, and
+> `grantAdHocLeave` refuses negative days so cannot be reused for a downward adjustment.
+>
+> **Four NEW reporter items are unplanned:** `7c834696` (attendance calculation engine), `8590615a`
+> (contract employment info), `2ef69d1e` (back pay / arrears), `169e3c24` (individual payslip submenu).
+>
+> **Four are still contested and need re-planning from the reporter's latest words**, two of which are
+> Quick and both settle forks earlier plans were refuted for asking about:
+> - `645e67c4` — "is not under leave configuration tab, what I meant is to place under leave config
+>   module". The Replacement Leave placeholder shipped as a TAB; they want a sidebar entry.
+> - `7cd914b1` — "I just dont need Carry cap (days) if the option is percentage from remaining balance,
+>   the rest like carry expiry boxes, please remain."
+> - `afd0a87c`, `38f1fd40`.
 >
 > ### ⚠️ READ THE r124 ENTRY BEFORE SHIPPING ANY UI CHANGE
 >
@@ -1037,6 +1055,83 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r125 — 2026-08-03 — a live tax-relief bug, and the menu the reporter actually asked for
+
+**Shipped:** `main@420b61d8`. **No migration** (production stays on 300).
+**Gate:** `tsc` · **548 files / 6400 tests** · `next build`.
+**Rendered locally before merge** — all 12 affected routes 200, zero errors, nav order confirmed.
+`2e3ec77d` and `a324a4b3` both `deployed`.
+
+### `2e3ec77d` — SAVING THE STATUTORY EDITOR WAS DELETING A TAX RELIEF, SILENTLY
+
+`components/statutory-config-form.tsx` rebuilt `pcb.reliefs` as a FRESH object from the four fields the
+form renders, with no spread of what it started from. The ruleset carries a **fifth** the payroll kernel
+reads — `disabledIndividual` (`localization/my/statutory-tables.ts`), the further deduction a registered
+disabled employee receives — and that screen has never shown it. So **every save through the editor
+dropped it**, and because `localization/my/payroll.ts:373` reads it with a fallback to the pack default,
+nothing errored: a tenant's corrected amount quietly reverted and the monthly tax of every flagged employee
+moved the following month.
+
+**Found by a PLANNING agent working on an unrelated item (`d64d0df4`), not by any test or by us.** Verified
+against the tree before raising.
+
+**The same file already carried a written warning about this exact hazard for the `ot` slice** — "Carry the
+whole existing ot slice through unchanged … so a raw-editor save never drops overtime data" — and the
+warning did not stop the reliefs being written the unsafe way three lines below it. **A comment did not
+hold.** `test/statutory-relief-roundtrip.test.ts` now does, and it was run against the BUGGY code first,
+where it fails. A test that cannot fail is worthless.
+
+### `a324a4b3` rev3 — ALREADY BUILT; ONLY ITS PLACEMENT WAS WRONG
+
+The reporter's contest reason WAS the spec: *"just relocate the Attendance button below My Attendance to
+admin section between Leave Config and Claim Config."* The expandable menu the original ticket asked for
+shipped in rev2. Only where it sat was wrong.
+
+**⚠️ THE NODE COULD NOT SIMPLY MOVE, AND THIS IS THE REUSABLE PART.** The Administration sidebar group
+carries `adminOnly` at **GROUP** level and the sidebar filters **group-first**, so a row inside it renders
+for nobody but administrators *regardless of its own flag*. Moving the merged node intact would have
+silently stripped `/attendance` from every plain employee and `/roster` + `/attendance/import` from every
+non-admin manager — a permissions change nobody asked for, hidden inside a menu tidy-up.
+
+Split three ways: **Records back to My Attendance** (self-service, no gate), **Roster + Import to flat
+Manage rows** (`managerUp`, per-row gated there), **only the six `adminOnly` config screens travel**.
+
+**`MODULE_OF_HREF` IS BUILT FROM THE NAV NODES' CHILDREN.** The two departing rows needed an explicit
+`navLinks` line or they would have dropped out of the map and stopped being gated by the attendance module
+entitlement — an un-gating hidden inside a menu move, the same class of mistake as the one above.
+
+### NINE TESTS FAILED AND ALL NINE WERE RIGHT TO — including one that predicted this exact change
+
+They pinned rev2's shape across `attendance-menu-relocation`, `attendance-pack` and
+`sidebar-attendance-group`. One said, verbatim:
+
+> *"If a future change moves this node into Admin, THIS is the test that must fail."*
+
+It fired on precisely that move. **Rather than invert it a third time** (0bb0e303 → rev2 → rev3), it is
+restated at the level it always meant:
+
+> **A node in a wholesale-gated group may contain ONLY rows that gate at least that strictly.**
+
+That is stronger than either previous form, survives the next regrouping, and is what would catch someone
+dropping Records or a manager row back in later.
+
+### THE BOARD: THE REPORTER APPROVED 17 ITEMS, INCLUDING ALL TEN THAT WERE RE-PLANNED
+
+The narrow third pass (correct · disclose · do not rewrite) was worth doing — everything it produced was
+accepted. **`8fec719e` was re-approved WITH its corrected data-impact disclosure**, so the reporter has
+accepted that the rounding reset moves Annual and Compassionate balances DOWN for all 23 employees.
+
+**Four NEW reporter items arrived during the session** and are unplanned: `7c834696` (attendance
+calculation engine), `8590615a` (contract employment info), `2ef69d1e` (back pay / arrears), `169e3c24`
+(individual payslip submenu).
+
+**Still contested and NOT yet re-planned:** `7cd914b1` (drop the days cap in percentage mode — the
+reporter's words settle the exact fork an earlier plan was refuted for asking about), `afd0a87c`,
+`38f1fd40`, `645e67c4` (*"is not under leave configuration tab, what I meant is to place under leave
+config module"* — the Replacement Leave placeholder shipped as a TAB and they want a sidebar entry).
+
+---
 
 ## r124 — 2026-08-03 — the hotfix for a page r123 broke, and why nothing caught it
 
