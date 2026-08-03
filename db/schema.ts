@@ -1708,10 +1708,56 @@ export const leaveLedger = pgTable(
     // ADR-0066: human reason for a festive / one-off `adjustment` grant (e.g. "CNY 2026"), OR a system-
     // stamped machine code for an automatic carry-forward forfeit (sys:carry_forward_cap /
     // sys:carry_forward_expiry — see CARRY_FORFEIT_REASON_CAP/EXPIRY in core/leave.ts). null otherwise.
-    reason: text('reason'),
+      reason: text('reason'),
+    // 491c499f (migration 0353) — the batch this row belongs to, when it was written by the Leave
+    // Adjustments screen. NULL for every other writer (accrual, debit, forfeit, recalc, festive grant) and
+    // for every row that predates it. A DB CHECK confines it to entry_type='adjustment': reversing a batch
+    // sums its rows, and a debit swept in by mistake would be handed back as entitlement.
+    adjustmentBatchId: uuid('adjustment_batch_id').references((): AnyPgColumn => leaveAdjustmentBatch.id),
     createdAt: createdAt(),
   },
   (t) => [index('leave_ledger_employment_idx').on(t.employmentId, t.leaveTypeId)],
+);
+
+/**
+ * 491c499f (migration 0353) — one row per ADJUSTMENT ACTION, not per employee.
+ *
+ * The festive grant writes one summary DomainEvent whose aggregateId is the TENANT, so afterwards there is
+ * no way to find the ledger rows a single action wrote. core/leave-import.ts has the same shape. This table
+ * is what makes "reversed as a unit" possible, and it carries the facts that belong to the ACTION rather
+ * than to each row it wrote — who ran it, why, which criteria, how many were targeted versus written.
+ * Duplicating those onto every ledger row would let them drift.
+ *
+ * `days` is SIGNED, unlike the festive grant which refuses anything <= 0: an adjustment must be able to
+ * take days away as well as give them. classifyLedgerAdjustment already counts a negative human-reason row
+ * as a config adjustment, so the read side was ready for it.
+ */
+export const leaveAdjustmentBatch = pgTable(
+  'leave_adjustment_batch',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** The app_user who ran it — an adjustment is an administrative act, not an employment fact. */
+    actorUserId: uuid('actor_user_id').references(() => appUser.id),
+    days: numeric('days', { precision: 6, scale: 2 }).notNull(),
+    effectiveOn: date('effective_on').notNull(),
+    /** Copied onto every ledger row. NOT NULL and non-blank: classifyLedgerAdjustment reads a NULL reason
+     *  as 'config', so a blank one is indistinguishable from a configured entitlement change. */
+    reason: text('reason').notNull(),
+    /** 'criteria' | 'individual' — the same resulting set means different things, and re-running a
+     *  criteria batch later can legitimately hit different people. */
+    targetMode: text('target_mode').notNull(),
+    /** The criteria as posted, so the screen can show what was ASKED rather than what it resolved to. */
+    criteria: jsonb('criteria'),
+    targetedCount: integer('targeted_count').notNull().default(0),
+    writtenCount: integer('written_count').notNull().default(0),
+    createdAt: createdAt(),
+    /** Reversal is recorded here, never by deleting rows — the ledger is append-only, so a reversal writes
+     *  compensating rows and this pair stops the screen offering the same batch twice. */
+    reversedAt: timestamp('reversed_at', { withTimezone: true }),
+    reversedByUserId: uuid('reversed_by_user_id').references(() => appUser.id),
+  },
+  (t) => [index('leave_adjustment_batch_tenant_idx').on(t.tenantId, t.createdAt)],
 );
 
 export const leaveRequest = pgTable(

@@ -1,0 +1,17 @@
+-- 491c499f — the GRANT that migration 0353 forgot.
+--
+-- 0353 created leave_adjustment_batch and added leave_ledger.adjustment_batch_id, but granted nothing.
+-- On PRODUCTION that was invisible: deploy/bootstrap-db.sql sets ALTER DEFAULT PRIVILEGES FOR ROLE
+-- ai_hr_owner, so every table ai_hr_owner creates is auto-granted to ai_hr_app, and the table duly came
+-- out with INSERT/SELECT/UPDATE/DELETE. Verified on production before writing this.
+--
+-- It is NOT invisible anywhere the table is created by a different role. On a developer cluster built by
+-- the Traps recipe the migration role owns the database but a fresh table can land owned by `postgres`,
+-- and then the app connection gets `permission denied for table leave_adjustment_batch` — which is exactly
+-- what the first render of /admin/leave/adjustments produced, after tsc, the unit tests and every guard
+-- suite had passed. The failure only appears when a real request touches the table through the APP role.
+--
+-- So the grant is stated explicitly, the way 0345 and 0354 state theirs, rather than inherited from a
+-- default-privileges rule that is correct on one environment and absent on another. Idempotent: GRANT on
+-- an already-granted table is a no-op, so this is safe on production where the rights already exist.
+GRANT SELECT, INSERT, UPDATE, DELETE ON "leave_adjustment_batch" TO ai_hr_app;

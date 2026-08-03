@@ -14,6 +14,8 @@ import { redirect } from 'next/navigation';
 
 /** The Leave Type configuration workspace (General / Condition / Entitlement / Custom Setting steps). */
 export const ENTITLEMENTS = '/admin/leave/entitlements';
+/** 491c499f — the Leave Adjustments screen. Its saves return here with a toast carrying the two counts. */
+export const ADJUSTMENTS = '/admin/leave/adjustments';
 
 export function fail(path: string, e: unknown): never {
   redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);
