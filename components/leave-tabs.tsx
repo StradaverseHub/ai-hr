@@ -12,11 +12,15 @@ import Link from 'next/link';
  * Configuration moved into each leave type's Custom Settings step (beside that type's Leave Year Type
  * override), and the per-company Leave Cycle card was retired as a duplicate of that override. The old
  * route survives as a redirect stub so bookmarks still land somewhere real.
+ *
+ * 645e67c4 — the Replacement Leave tab is NEW and is a placeholder page (see that file's header for why
+ * it holds nothing). It sits after Payroll Related and before Audit so the configuration tabs stay
+ * together and Audit remains last, which is the order the strip has always read in.
  */
 export async function LeaveTabs({
   active,
 }: {
-  active: 'types' | 'entitlements' | 'approval' | 'payroll' | 'audit';
+  active: 'types' | 'entitlements' | 'approval' | 'payroll' | 'replacement' | 'audit';
 }) {
   const t = await getTranslations('admin.leaveTabs');
   const tabs = [
@@ -24,6 +28,7 @@ export async function LeaveTabs({
     { key: 'entitlements', href: '/admin/leave/entitlements', label: t('entitlements') },
     { key: 'approval', href: '/admin/leave/approval', label: t('approval') },
     { key: 'payroll', href: '/admin/leave/payroll', label: t('payroll') },
+    { key: 'replacement', href: '/admin/leave/replacement', label: t('replacement') },
     { key: 'audit', href: '/admin/leave/audit', label: t('audit') },
   ] as const;
   return (

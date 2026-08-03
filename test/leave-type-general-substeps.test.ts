@@ -42,7 +42,8 @@ const approvalPageSrc = readFileSync(resolve(here, '../app/admin/leave/approval/
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-const SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const;
+// e4238594 removed 'workflow' — the General walk ends at Carry Forward Policy.
+const SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry'] as const;
 
 /** Slice the General card's segment (its CardTitle to the next card's CardTitle — the Entitlement card
  *  since b8fcae73 removed the Eligibility card that used to sit between them). */
@@ -79,7 +80,7 @@ describe('e1a51aea · reusable sub-step control', () => {
     // 1e4eb8af dropped 'yearType' (moved to Custom Settings); feedback 4d6eae7b puts it BACK as sub-step 2,
     // the reporter's stated order — the cycle is chosen before the rules that operate inside it.
     expect(panelSrc).toContain(
-      "const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const",
+      "const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry'] as const",
     );
     const seg = generalSegment();
     expect(seg).toContain('<SubStepBar');
@@ -242,56 +243,70 @@ describe('9816a5ad step 2 · Earning Method + Carry Forward write the leave TYPE
   });
 });
 
-describe('e1a51aea · Approval Workflow sub-step (scoped matrix embed)', () => {
-  it('the panel renders the server-composed approvalWorkflowSection slot in the workflow sub-step', () => {
+describe('e4238594 · the Approval Workflow sub-step is GONE, and nothing is stranded', () => {
+  // e1a51aea embedded the Approval tab's own WorkflowMatrix inside every leave type, scoped to that type.
+  // The reporter's complaint was that the same approval configuration appeared twice; the tab is the real
+  // home (templates are built and assigned there, and the full rule list is maintained there). These
+  // assertions replace the embed's contract with its removal, and — more importantly — pin the reason the
+  // removal is SAFE, which is the part a future reader will need.
+  it('the panel no longer renders an approval slot, and the sub-step key is gone', () => {
     const seg = generalSegment();
-    expect(seg).toContain('{approvalWorkflowSection ??');
+    expect(seg).not.toContain('approvalWorkflowSection');
+    expect(seg).not.toContain("{generalSubStep === 'workflow' && (");
+    expect(panelSrc).not.toContain('approvalWorkflowSection?: ReactNode');
   });
 
-  it('the page embeds WorkflowMatrix filtered + seeded to the hosting type', () => {
-    expect(pageSrc).toContain('rows={approvalRuleRows.filter((r) => r.leaveTypeId === lt.id)}');
-    expect(pageSrc).toContain('defaultLeaveTypeId={lt.id}');
-    // 4e9a4d59 — the embedded matrix now posts the stay-on-this-type wrappers instead of the Approval
-    // tab's actions, so a rule save/delete no longer throws HR out of the leave type they're setting up.
-    // The PERSIST behaviour still cannot fork: both entry points run the same two persist helpers, and
-    // only the post-save redirect differs (workspace → okEntitlements, standalone → the Approval page).
-    expect(pageSrc).toContain('saveLeaveApprovalRuleFromEntitlementsAction');
-    expect(pageSrc).toContain('archiveLeaveApprovalRuleFromEntitlementsAction');
-    const approvalActionsSrc = readFileSync(
-      resolve(here, '../app/admin/leave-approval/actions.ts'),
-      'utf8',
-    );
+  it('NO LINK OR PLACEHOLDER stands in its place — the reporter rejected that explicitly', () => {
+    // rev 1 offered to leave a pointer to the Approval tab; the reporter said no. A stub step would keep
+    // the duplication complaint alive while adding a step that does nothing.
+    const seg = generalSegment();
+    expect(seg).not.toContain("t('subStep.workflowUnavailable')");
+    expect(seg).not.toContain('href="/admin/leave/approval"');
+  });
+
+  it('the Entitlements page stopped preparing approval data entirely', () => {
+    // The embed cost a fan of reads on every render of this page (departments, positions, business units,
+    // templates, and one policy + rule list PER COMPANY). All of it went with the sub-step.
+    //
+    // Asserted STRUCTURALLY — against imports and JSX, not bare identifiers — because the comments that
+    // record WHY the block was removed necessarily name the things it used. A bare-substring assertion here
+    // would forbid explaining the removal, which is the opposite of what this file is for.
+    expect(pageSrc).not.toContain('<WorkflowMatrix');
+    expect(pageSrc).not.toMatch(/^import .*workflow-matrix'/m);
+    expect(pageSrc).not.toMatch(/^import .*matrix-labels'/m);
+    expect(pageSrc).not.toMatch(/^import .*leave-approval-template'/m);
+    expect(pageSrc).not.toMatch(/^import .*leave-approval-policy'/m);
+    expect(pageSrc).not.toMatch(/^import \{[^}]*FromEntitlementsAction/m);
+    // The derived data is gone too, not merely unrendered.
+    expect(pageSrc).not.toMatch(/const approvalRuleRows =/);
+    expect(pageSrc).not.toMatch(/const approvalMatrixShared =/);
+  });
+
+  it('the STANDALONE Approval tab still renders the matrix over non-default rules — the real home survives', () => {
+    // This is what makes the removal safe rather than merely tidy: every rule the embed could edit was
+    // type-scoped and non-default, and the tab renders a strict superset of them.
+    expect(approvalPageSrc).toContain('WorkflowMatrix');
+    expect(approvalPageSrc).toContain('buildWorkflowMatrixLabels');
+    expect(approvalPageSrc).toContain('isCompanyDefaultApprovalRule');
+  });
+
+  it('the standalone actions still reuse the shared persist helpers — only the wrappers retired', () => {
+    const approvalActionsSrc = readFileSync(resolve(here, '../app/admin/leave-approval/actions.ts'), 'utf8');
     for (const [action, helper] of [
       ['saveLeaveApprovalRuleAction', 'persistApprovalRule'],
-      ['saveLeaveApprovalRuleFromEntitlementsAction', 'persistApprovalRule'],
       ['archiveLeaveApprovalRuleAction', 'persistArchiveApprovalRule'],
-      ['archiveLeaveApprovalRuleFromEntitlementsAction', 'persistArchiveApprovalRule'],
     ] as const) {
       const start = approvalActionsSrc.indexOf(`export async function ${action}(`);
       expect(start, `${action} exists`).toBeGreaterThan(-1);
       const body = approvalActionsSrc.slice(start, approvalActionsSrc.indexOf('\n}', start));
       expect(body.includes(`${helper}(s, formData)`), `${action} reuses ${helper}`).toBe(true);
     }
-    // Only the workspace pair returns through the shared stay-on-page contract; the standalone pair keeps
-    // landing on the Approvals screen.
-    expect(approvalActionsSrc).toContain("from '@/app/admin/_redirects'");
-    // One label source shared with the Approval tab (matrix-labels.ts), so the two matrices cannot drift.
-    expect(pageSrc).toContain('buildWorkflowMatrixLabels');
-    expect(approvalPageSrc).toContain('buildWorkflowMatrixLabels');
+    // The 4e9a4d59 stay-on-this-type wrappers had no caller once the embed went (the r100 precedent).
+    expect(approvalActionsSrc).not.toContain('export async function saveLeaveApprovalRuleFromEntitlementsAction');
+    expect(approvalActionsSrc).not.toContain('export async function archiveLeaveApprovalRuleFromEntitlementsAction');
   });
 
-  it('wildcard any-type rules render read-only with the applies-to-all-types badge; default chain is summarised', () => {
-    expect(pageSrc).toContain('r.leaveTypeId == null');
-    expect(pageSrc).toContain("t('approvalStep.wildcardBadge')");
-    expect(pageSrc).toContain("t('approvalStep.defaultChainTitle')");
-    // One click to the company-wide config.
-    expect(pageSrc).toContain('href="/admin/leave/approval"');
-    // The company-default filter is the SHARED core helper (no local re-implementation).
-    expect(pageSrc).toContain('isCompanyDefaultApprovalRule');
-    expect(approvalPageSrc).toContain('isCompanyDefaultApprovalRule');
-  });
-
-  it('WorkflowMatrix seeds a NEW rule to the embed type but leaves existing rules + the Approval tab unchanged', () => {
+  it('WorkflowMatrix keeps its defaultLeaveTypeId seeding for the tab that still uses it', () => {
     expect(matrixSrc).toContain('defaultLeaveTypeId');
     expect(matrixSrc).toContain('initial={row ? row.leaveTypeId : defaultLeaveTypeId}');
   });
@@ -318,7 +333,6 @@ describe('e1a51aea · i18n — all six locales', () => {
         'yearTypeStepHelp',
         'earning',
         'carry',
-        'workflow',
         'yearTypeLabel',
         'yearTypeCompanyDefault',
         'yearTypeA2a',
@@ -351,25 +365,17 @@ describe('e1a51aea · i18n — all six locales', () => {
         'carryAnnualOnly',
         'noActivePolicy',
         'frontDoorScopeLabel',
-        'workflowUnavailable',
       ]) {
         expect(typeof sub[key], `${loc}.admin.leave.subStep.${key}`).toBe('string');
         expect((sub[key] as string).length, `${loc}.admin.leave.subStep.${key} non-empty`).toBeGreaterThan(0);
       }
-      const ap = leave.approvalStep ?? {};
-      for (const key of [
-        'hint',
-        'wildcardTitle',
-        'wildcardBadge',
-        'wildcardNone',
-        'defaultChainTitle',
-        // r79 0322 — 'defaultChainOff' is GONE with company.leave_multi_approval. It printed "Single
-        // approver (multi-step approval off)" INSTEAD of the chain, i.e. the summary hid the very rule
-        // that was about to run. A one-level chain now renders as itself and says the same thing truthfully.
-        'openApprovalTab',
-      ]) {
-        expect(typeof ap[key], `${loc}.admin.leave.approvalStep.${key}`).toBe('string');
-        expect((ap[key] as string).length, `${loc}.admin.leave.approvalStep.${key} non-empty`).toBeGreaterThan(0);
+      // e4238594 — subStep.workflow, subStep.workflowUnavailable and the whole approvalStep block are
+      // RETIRED with the sub-step they described. Asserted absent in every locale: i18n-coverage only
+      // enforces en -> other-locale parity, so it cannot see an orphaned key that survives in all six, and
+      // dead copy is copy translators keep maintaining.
+      expect(leave.approvalStep, `${loc}.admin.leave.approvalStep should be retired`).toBeUndefined();
+      for (const key of ['workflow', 'workflowUnavailable']) {
+        expect(sub[key], `${loc}.admin.leave.subStep.${key} should be retired`).toBeUndefined();
       }
     }
   });

@@ -4062,7 +4062,6 @@
         "details": "Chi tiết",
         "earning": "Phương thức tích lũy",
         "carry": "Chính sách chuyển tiếp",
-        "workflow": "Quy trình phê duyệt",
         "yearTypeLabel": "Loại năm nghỉ phép",
         "yearTypeCompanyDefault": "Mặc định công ty (theo chu kỳ nghỉ phép của công ty)",
         "yearTypeA2a": "Ngày vào làm đến ngày vào làm",
@@ -4090,7 +4089,6 @@
         "carryAnnualOnly": "Chuyển tiếp chỉ áp dụng cho Nghỉ phép năm — số dư của loại này không được chuyển sang năm sau.",
         "noActivePolicy": "Chưa có chính sách quyền lợi đang hiệu lực — hãy thêm một chính sách trong mục Điều kiện trước.",
         "frontDoorScopeLabel": "Áp dụng cho chính sách",
-        "workflowUnavailable": "Thiết lập quy trình phê duyệt không khả dụng tại đây — hãy mở thẻ Phê duyệt.",
         "yearType": "Loại năm nghỉ phép",
         "yearTypeStepHelp": "Hãy chọn chu kỳ nghỉ phép trước. Các bước Phương thức tích lũy và Làm tròn tiếp theo quyết định cách ghi có phép trong chu kỳ đó.",
         "roundingNearestHalf": "Gần nhất 0,5 ngày",
@@ -4126,7 +4124,12 @@
         "maxConsecutiveUnitLabel": "Đơn vị",
         "maxConsecutiveUnitCalendar": "Ngày theo lịch",
         "maxConsecutiveUnitWorking": "Ngày làm việc",
-        "maxConsecutiveHelp": "Giới hạn độ dài của MỘT đơn xin nghỉ thuộc loại này — một quy tắc khác với giới hạn theo năm ở trên. Ngày theo lịch tính mọi ngày mà đơn bao trùm, kể cả cuối tuần và ngày lễ; Ngày làm việc chỉ tính những ngày thực sự bị trừ phép, nên đơn từ thứ Sáu đến thứ Hai là 4 ngày theo lịch nhưng 2 ngày làm việc. Được kiểm tra khi nộp đơn và kiểm tra lại khi phê duyệt. Nếu loại nghỉ này cũng thuộc một Nhóm nghỉ dùng chung có giới hạn mỗi đơn riêng, quy tắc chặt hơn sẽ được áp dụng và lời từ chối sẽ nói rõ là quy tắc nào. Hiện nay mọi loại nghỉ đều là Không giới hạn."
+        "maxConsecutiveHelp": "Giới hạn độ dài của MỘT đơn xin nghỉ thuộc loại này — một quy tắc khác với giới hạn theo năm ở trên. Ngày theo lịch tính mọi ngày mà đơn bao trùm, kể cả cuối tuần và ngày lễ; Ngày làm việc chỉ tính những ngày thực sự bị trừ phép, nên đơn từ thứ Sáu đến thứ Hai là 4 ngày theo lịch nhưng 2 ngày làm việc. Được kiểm tra khi nộp đơn và kiểm tra lại khi phê duyệt. Nếu loại nghỉ này cũng thuộc một Nhóm nghỉ dùng chung có giới hạn mỗi đơn riêng, quy tắc chặt hơn sẽ được áp dụng và lời từ chối sẽ nói rõ là quy tắc nào. Hiện nay mọi loại nghỉ đều là Không giới hạn.",
+        "applicationLimitPeriodLabel": "Kỳ giới hạn",
+        "applicationLimitPeriodLeaveYear": "Mỗi năm nghỉ phép",
+        "applicationLimitPeriodCalendarYear": "Mỗi năm dương lịch",
+        "applicationLimitPeriodEmployment": "Một lần trong suốt thời gian làm việc",
+        "applicationLimitPeriodHelp": "Năm nghỉ phép chỉ trùng với năm dương lịch khi năm nghỉ phép của bạn bắt đầu vào tháng Một. Một lần trong suốt thời gian làm việc được tính trên toàn bộ thời gian người đó làm việc cho bạn, nên khi tuyển dụng lại sẽ tính lại từ đầu."
       },
       "entitlementStep": {
         "schemes": "Chương trình phúc lợi",
@@ -4135,14 +4138,6 @@
         "gradesCompanyWideBadge": "Áp dụng toàn công ty",
         "previewHint": "Kiểm tra định mức mà một nhân viên mẫu sẽ nhận được theo quy tắc hiện tại.",
         "accrualHint": "Xử lý định mức đã tích lũy cho một năm nghỉ phép — xem trước bản chạy thử trước, rồi xác nhận."
-      },
-      "approvalStep": {
-        "hint": "Quy tắc phê duyệt của loại nghỉ phép này, chỉnh sửa tại đây. Chuỗi phê duyệt toàn công ty và mẫu dùng lại nằm ở thẻ Phê duyệt.",
-        "wildcardTitle": "Quy tắc áp dụng cho mọi loại nghỉ phép",
-        "wildcardBadge": "Áp dụng cho mọi loại",
-        "wildcardNone": "Chưa cấu hình quy tắc áp dụng cho mọi loại.",
-        "defaultChainTitle": "Chuỗi phê duyệt mặc định của công ty",
-        "openApprovalTab": "Mở thẻ Phê duyệt →"
       },
       "noLeaveTypes": "Không có loại nghỉ phép.",
       "codeLabel": "Mã",
@@ -4389,9 +4384,6 @@
       "halfDayDeductionTitle": "Trừ lương nửa ngày",
       "halfDayDeductionHelp": "Kiểm soát số ngày nghỉ bị trừ khi nhân viên xin nghỉ vào ngày làm việc “Nửa ngày” (thiết lập ở trang Cài đặt ca làm việc). Tắt: trừ 0.5 ngày. Bật: trừ 1.0 ngày đầy đủ. Các ngày làm việc đầy đủ không bị ảnh hưởng.",
       "halfDayDeductionFrozenNote": "Chỉ áp dụng cho đơn xin nghỉ mới — đơn đã gửi hoặc đã duyệt vẫn giữ nguyên số ngày trừ được hiển thị lúc gửi.",
-      "halfDayDeductionOn": "Hiện đang BẬT — trừ 1.0 ngày",
-      "halfDayDeductionOff": "Hiện đang TẮT — trừ 0.5 ngày",
-      "halfDayDeductionToggleLabel": "Tính Nửa ngày là 1 ngày đầy đủ",
       "encashmentSectionTitle": "Chính sách quy đổi phép năm",
       "encashmentHelp": "Khi đơn xin nghỉ việc của nhân viên được phê duyệt, số ngày phép năm chưa sử dụng có thể được khóa lại và quy đổi thành số ngày có thể quy đổi tiền cho bộ phận Tiền lương. Mô-đun này chỉ tính toán và khóa số ngày phép — bộ phận Tiền lương sẽ xử lý việc quy đổi sang tiền riêng.",
       "encashmentEnabled": "Đã bật",
@@ -4692,7 +4684,19 @@
         "errorAlreadyGrouped": "{type} đã thuộc nhóm nghỉ phép dùng chung \"{group}\". Hãy gỡ khỏi nhóm đó trước.",
         "errorNameTaken": "Đã có nhóm nghỉ phép dùng chung tên \"{name}\"."
       },
-      "carryPercentLabel": "Phần trăm chuyển tiếp (%)"
+      "carryPercentLabel": "Phần trăm chuyển tiếp (%)",
+      "replacementModuleTitle": "Nghỉ bù",
+      "replacementModuleUnderDevelopment": "Mô-đun này đang được phát triển. Hiện chưa có mục nào để thiết lập tại đây.",
+      "replacementModuleExistingNote": "Nghỉ bù hiện đã hoạt động: nhân viên có thể tích lũy, giữ và xin nghỉ bù, và nó được theo dõi riêng với thời hạn hết hiệu lực riêng. Trang này không ảnh hưởng đến điều đó.",
+      "halfDayDeductionCompaniesLabel": "Các công ty áp dụng",
+      "halfDayDeductionCompaniesPlaceholder": "Chọn công ty",
+      "halfDayDeductionSelectAll": "Chọn tất cả",
+      "halfDayDeductionClearAll": "Xóa tất cả",
+      "halfDayDeductionAllSelected": "Tất cả công ty",
+      "halfDayDeductionCountSelected": "Đã chọn {count} công ty",
+      "halfDayDeductionEmptyNote": "Không chọn công ty nào sẽ tắt quy tắc này ở mọi nơi: ngày làm nửa buổi lại trừ 0,5 ngày.",
+      "maxNegativeBalanceLabel": "Số dư âm tối đa (ngày)",
+      "maxNegativeBalanceHelp": "Nhân viên có thể xuống dưới 0 bao nhiêu. Để trống nếu không giới hạn, đây là cách hoạt động hiện nay. Đơn xin nghỉ vượt quá giới hạn sẽ bị từ chối, và thông báo sẽ nêu rõ giới hạn và mức vượt quá."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -5214,6 +5218,7 @@
       "entitlements": "Quyền lợi",
       "approval": "Quy trình phê duyệt",
       "payroll": "Liên quan bảng lương",
+      "replacement": "Nghỉ bù",
       "audit": "Kiểm toán"
     },
     "systemLabelsTabs": {

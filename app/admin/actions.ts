@@ -36,7 +36,7 @@ import {
   setCompanyDefaultPayrollCycle,
   setCompanyLogo,
   removeCompanyLogo,
-  setLeaveHalfDayFullDeduction,
+  setLeaveHalfDayFullDeductionCompanies,
   updateBusinessUnit,
   updateCompany,
   updateCostCenter,
@@ -891,17 +891,32 @@ export async function runEarnedAccrualAction(
 // any more, so it is removed rather than left dangling; core/admin.setCompanyLeaveCycle is UNCHANGED and
 // still the write path — stored company cycles keep driving types left on "Company default".
 
-/** Feedback request 31474452: set a company's half-day leave-deduction toggle (checkbox posts "on" or is
- *  absent — mirrors the existing checkbox-action convention in this file, e.g. autoAccrueOnApproval above). */
-// R64 08bc6841 — the half-day-deduction card's single home is now the Entitlements tab (the Condition
-// step's Leave Application Rules grid), so this action redirects THERE (the R45 cc816207 / R61 d778d2d3
-// relocation precedent). The setLeaveHalfDayFullDeduction write itself is unchanged.
-export async function setLeaveHalfDayFullDeductionAction(formData: FormData) {
+/** Feedback request 31474452 / R64 08bc6841: the half-day-deduction toggle, one company per post.
+ *  RETIRED BY 10e96227 — the card is now ONE multi-select plus ONE Save, so nothing posts a single
+ *  company any more and the action is removed rather than left dangling (the r100
+ *  saveLeaveApprovalPolicyAction precedent: a server action retires WITH the screen that was its only
+ *  caller). `core/admin.setLeaveHalfDayFullDeduction` is UNCHANGED and deliberately kept — it is the
+ *  single-company primitive the behavioural tests drive directly; only its form wrapper is gone.
+ *  Replaced by setLeaveHalfDayFullDeductionCompaniesAction below. */
+
+/**
+ * 10e96227 — the half-day-deduction card saves the WHOLE company set in one post.
+ *
+ * The reporter's complaint was arithmetic: eight companies meant eight rows and eight Saves to express
+ * one decision. The multi-select posts every selected company under the same `companyIds` field (the
+ * house convention — cf. the festive-grant company picker above), so the whole rule arrives as one
+ * statement of intent and the core write turns the ones NOT posted off.
+ *
+ * `getAll` with no selection yields `[]`, which is a MEANINGFUL value here, not a missing one: it means
+ * "applies nowhere", the same thing every box unticked meant before. That is why there is no guard
+ * rejecting an empty post — treating empty as "nothing to do" would make it impossible to turn the last
+ * company off, which is exactly the state the old per-row UI could reach trivially.
+ */
+export async function setLeaveHalfDayFullDeductionCompaniesAction(formData: FormData) {
   const s = await getSession();
   try {
-    await setLeaveHalfDayFullDeduction(s, {
-      companyId: String(formData.get('companyId')),
-      enabled: formData.get('enabled') === 'on',
+    await setLeaveHalfDayFullDeductionCompanies(s, {
+      companyIds: formData.getAll('companyIds').map(String).filter(Boolean),
     });
   } catch (e) {
     fail(ENTITLEMENTS, e);
@@ -1476,10 +1491,17 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // Application Limits (feedback c6ffa725): its own sub-form posts `applicationLimits=1` (marker),
   // mirroring the backdating tri-state guard above. Empty input ⇒ null (Unlimited, which is what every
   // existing leave type means and how it behaves today); a number sets the annual application ceiling.
+  // ad9cb5c5 adds the PERIOD to the same sub-form and the same marker: the ceiling and the window it is
+  // counted over are one decision, and a period posted without a ceiling is refused by the database.
   const touchApplicationLimits = fd.get('applicationLimits') === '1';
   const maxDaysPerLeaveYearRaw = String(fd.get('maxDaysPerLeaveYear') ?? '').trim();
+  const maxDaysPeriodRaw = String(fd.get('maxDaysPeriod') ?? '').trim();
   const applicationLimitFields = touchApplicationLimits
-    ? { maxDaysPerLeaveYear: maxDaysPerLeaveYearRaw === '' ? null : Number(maxDaysPerLeaveYearRaw) }
+    ? {
+        maxDaysPerLeaveYear: maxDaysPerLeaveYearRaw === '' ? null : Number(maxDaysPerLeaveYearRaw),
+        // Clearing the ceiling clears the period with it — "Unlimited, per calendar year" is not a state.
+        maxDaysPeriod: maxDaysPerLeaveYearRaw === '' || maxDaysPeriodRaw === '' ? null : maxDaysPeriodRaw,
+      }
     : {};
   // Maximum Consecutive Leave (c6ffa725 rev 2): its own sub-form posts `maxConsecutive=1` (marker), separate
   // from `applicationLimits` above — the two rules answer different questions ("in a year" vs "in one go")
@@ -1515,6 +1537,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const requestRuleFields: {
     backdatingLimitDays?: number | null;
     maxDaysPerLeaveYear?: number | null;
+    maxDaysPeriod?: string | null;
     maxConsecutiveDays?: number | null;
     maxConsecutiveUnit?: 'calendar_days' | 'working_days' | null;
     minAdvanceDays?: number | null;
@@ -1555,10 +1578,20 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // (marker) plus a Yes/No radio `allowNegativeBalanceValue` (yes ⇒ permit going negative; no ⇒ block over-
   // application). Any other sub-form save omits the marker ⇒ allow_negative_balance stays untouched (same
   // tri-state guard as duplicatePolicy). Forwarded as a concrete boolean; the service persists it.
+  // bc512dc3 adds the FLOOR to the same sub-form and the same marker: one switch, one floor, one decision.
+  // A blank figure means unbounded (today's behaviour), and turning the switch to No clears any floor —
+  // the database refuses a floor with no permission to go negative, so this cannot post that pair.
   const touchNegativeBalance = fd.get('negativeBalance') === '1';
-  const negativeBalanceFields = touchNegativeBalance
-    ? { allowNegativeBalance: fd.get('allowNegativeBalanceValue') === 'yes' }
-    : {};
+  const allowNegativeBalanceValue = fd.get('allowNegativeBalanceValue') === 'yes';
+  const maxNegativeBalanceRaw = String(fd.get('maxNegativeBalance') ?? '').trim();
+  const negativeBalanceFields: { allowNegativeBalance?: boolean; maxNegativeBalance?: number | null } =
+    touchNegativeBalance
+      ? {
+          allowNegativeBalance: allowNegativeBalanceValue,
+          maxNegativeBalance:
+            allowNegativeBalanceValue && maxNegativeBalanceRaw !== '' ? Number(maxNegativeBalanceRaw) : null,
+        }
+      : {};
   // Balance Deduction Source (cdf9ca48): its own sub-form posts `balanceSource=1` (marker) plus a mode radio
   // (`balanceSourceMode` = own | other) and, for 'other', the chosen `balanceSourceTypeId`. Mode 'own' — and
   // 'other' with nothing picked — both clear the column, so the dropdown can never leave a half-configured

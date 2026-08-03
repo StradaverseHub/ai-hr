@@ -271,12 +271,23 @@ function RoundingThresholdEditor({
   );
 }
 
-/** General step sub-flow (e1a51aea, shortened by 1e4eb8af, RESTORED to five by 4d6eae7b): the five
- *  sub-steps of step 1, in the reporter's stated walk order — 1 Details, 2 Leave Year Type, 3 Earning
- *  Method, 4 Carry Forward Policy, 5 Approval Workflow. The keys are storage keys (persisted as
- *  `generalSubStep` in the leaveTypeCards:<id> localStorage shape, next to activeStep) — 'workflow' is
- *  deliberately NOT named after the retired accordion card keys (approval/display/calculation), which must
- *  never reappear in this file (see leave-type-config-categories.test.ts).
+/** General step sub-flow (e1a51aea, shortened by 1e4eb8af, RESTORED to five by 4d6eae7b, back to FOUR by
+ *  e4238594): the sub-steps of step 1, in the reporter's stated walk order — 1 Details, 2 Leave Year Type,
+ *  3 Earning Method, 4 Carry Forward Policy. The keys are storage keys (persisted as `generalSubStep` in
+ *  the leaveTypeCards:<id> localStorage shape, next to activeStep) and must never be named after the
+ *  retired accordion card keys (approval/display/calculation), which must never reappear in this file (see
+ *  leave-type-config-categories.test.ts).
+ *
+ *  WHY 'workflow' IS GONE (e4238594). The reporter's point was that the same approval configuration
+ *  appeared twice. The Approval Workflow TAB is the real home — templates are built there, assigned there,
+ *  and the full rule list is maintained there; this sub-step showed the same rules filtered to one type.
+ *  Nothing is stranded: every rule editable here was type-scoped and non-default, and the tab renders a
+ *  strict superset of them. NO LINK OR PLACEHOLDER REPLACES IT — the reporter rejected that explicitly, so
+ *  the sub-step simply goes and the bar renumbers itself (leave-sub-step-bar renders `i + 1`).
+ *
+ *  A persisted payload still pointing at 'workflow' falls back to Details, and that is correct rather than
+ *  merely tolerable: unlike the bc9be1e8 case below, the content did not move to a SIBLING sub-step that a
+ *  redirect could name — it moved to a different tab entirely. There is nowhere in this panel to send them.
  *
  *  WHY 'yearType' IS BACK, HAVING BEEN REMOVED. 1e4eb8af dropped it and moved the control into Custom
  *  Settings, on the reasoning that every leave-year decision should be made in one place. Feedback
@@ -293,7 +304,7 @@ function RoundingThresholdEditor({
  *
  *  A persisted payload pointing at 'yearType' from before 1e4eb8af now resolves again rather than falling
  *  back to Details; the hydration guard restores any key present in this list. */
-const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const;
+const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry'] as const;
 type GeneralSubStepKey = (typeof GENERAL_SUB_STEP_KEYS)[number];
 /** Sub-step → its admin.leave title key (all 6 locales). */
 const GENERAL_SUB_STEP_TITLE_KEY: Record<GeneralSubStepKey, string> = {
@@ -301,7 +312,6 @@ const GENERAL_SUB_STEP_TITLE_KEY: Record<GeneralSubStepKey, string> = {
   yearType: 'subStep.yearType',
   earning: 'subStep.earning',
   carry: 'subStep.carry',
-  workflow: 'subStep.workflow',
 };
 
 /** Condition step sub-flow (08bc6841): the three sub-steps of step 4, in walk order — 1 Criteria (who
@@ -794,6 +804,89 @@ function CarryPolicyForm({
 }
 
 /**
+ * Configurable Negative Leave Balance Validation (0ef0defd), with the FLOOR added by bc512dc3.
+ *
+ * Extracted from the inline form it used to be because the floor is conditional: it is only meaningful
+ * when the switch is Yes, and a disabled-looking input beside a No is configuration that reads as set.
+ * Both controls live in ONE form under the single `negativeBalance=1` marker — the switch and the floor are
+ * one decision, and splitting them would let a save of one silently clear the other.
+ *
+ * ⚠️ THE FLOOR BINDS AT SUBMISSION ONLY, because that is the only place the switch itself binds.
+ * allow_negative_balance relaxes the submit-time gate; the approval path refuses any negative balance
+ * outright without consulting it. So a balance cannot actually go negative through the ordinary
+ * request-and-approve flow, and this floor caps how far a SUBMITTED application may reach. The asymmetry is
+ * pre-existing and is raised separately on the board — see the maxNegativeBalance column comment in
+ * db/schema.ts before deciding this control is broken.
+ */
+function NegativeBalanceForm({
+  t,
+  id,
+  name,
+  allowNegativeBalance,
+  maxNegativeBalance,
+  action,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  id: string;
+  name: string;
+  allowNegativeBalance: boolean;
+  /** Positive magnitude — 2.5 means the balance may not pass -2.5. NULL ⇒ unbounded (today's behaviour). */
+  maxNegativeBalance: number | null;
+  action: Action;
+}) {
+  const [allowed, setAllowed] = useState<boolean>(allowNegativeBalance);
+  return (
+    <form action={action} className="space-y-2">
+      <input type="hidden" name="id" value={id} />
+      {/* preserve the name — this form does not edit it */}
+      <input type="hidden" name="name" value={name} />
+      {/* marker: tells the action to touch the allow_negative_balance column (tri-state guard) */}
+      <input type="hidden" name="negativeBalance" value="1" />
+      <span className="text-xs font-medium text-foreground">{t('negativeBalanceLabel')}</span>
+      <div className="space-y-1.5">
+        {(['no', 'yes'] as const).map((opt) => (
+          <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
+            <input
+              type="radio"
+              name="allowNegativeBalanceValue"
+              value={opt}
+              checked={allowed === (opt === 'yes')}
+              onChange={() => setAllowed(opt === 'yes')}
+              className="mt-0.5 size-3.5 border-border"
+            />
+            <span>{opt === 'yes' ? t('negativeBalanceYes') : t('negativeBalanceNo')}</span>
+          </label>
+        ))}
+      </div>
+      {allowed ? (
+        <>
+          <Field label={t('maxNegativeBalanceLabel')}>
+            <input
+              name="maxNegativeBalance"
+              type="number"
+              min="0.5"
+              step="0.5"
+              defaultValue={maxNegativeBalance ?? ''}
+              className={cn(inputCls, 'w-full')}
+            />
+          </Field>
+          {/* Blank is a real, saveable answer here, so the screen has to say what it means — an empty box
+              beside an enabled rule otherwise reads as "not filled in yet" rather than "no limit". */}
+          <p className="text-xs text-muted-foreground">{t('maxNegativeBalanceHelp')}</p>
+        </>
+      ) : (
+        // Switching to No clears any floor: a floor with no permission to go negative is refused by the
+        // database, and posting the field blank is what makes that unreachable from this screen.
+        <input type="hidden" name="maxNegativeBalance" value="" />
+      )}
+      <Button type="submit" size="sm">
+        {t('save')}
+      </Button>
+    </form>
+  );
+}
+
+/**
  * Feedback c6ffa725 — Application Limits, under Condition · Leave Application Rules.
  *
  * Unlimited / Limited as a radio pair rather than "leave the box blank", because blank-means-no-limit is
@@ -810,12 +903,15 @@ function ApplicationLimitsForm({
   id,
   name,
   maxDaysPerLeaveYear,
+  maxDaysPeriod,
   action,
 }: {
   t: ReturnType<typeof useTranslations>;
   id: string;
   name: string;
   maxDaysPerLeaveYear: number | null;
+  /** ad9cb5c5 — 'leave_year' | 'calendar_year' | 'employment'. NULL ⇒ leave year, what every type means today. */
+  maxDaysPeriod: string | null;
   action: Action;
 }) {
   const [limited, setLimited] = useState<boolean>(maxDaysPerLeaveYear != null);
@@ -853,21 +949,41 @@ function ApplicationLimitsForm({
         </div>
       </Field>
       {limited ? (
-        <Field label={t('conditionStep.applicationLimitMaxLabel')}>
-          <input
-            name="maxDaysPerLeaveYear"
-            type="number"
-            min="0.5"
-            step="0.5"
-            defaultValue={maxDaysPerLeaveYear ?? ''}
-            className={cn(inputCls, 'w-full')}
-          />
-        </Field>
+        <>
+          <Field label={t('conditionStep.applicationLimitMaxLabel')}>
+            <input
+              name="maxDaysPerLeaveYear"
+              type="number"
+              min="0.5"
+              step="0.5"
+              defaultValue={maxDaysPerLeaveYear ?? ''}
+              className={cn(inputCls, 'w-full')}
+            />
+          </Field>
+          {/* ad9cb5c5 — the period the ceiling is counted over. Only offered alongside a figure: a period
+              with no ceiling configures the window of a limit that does not exist, and the database
+              refuses that pair. Defaults to per-leave-year, which is what every existing type means. */}
+          <Field label={t('conditionStep.applicationLimitPeriodLabel')}>
+            <select
+              name="maxDaysPeriod"
+              defaultValue={maxDaysPeriod ?? 'leave_year'}
+              className={cn(inputCls, 'w-full')}
+            >
+              <option value="leave_year">{t('conditionStep.applicationLimitPeriodLeaveYear')}</option>
+              <option value="calendar_year">{t('conditionStep.applicationLimitPeriodCalendarYear')}</option>
+              <option value="employment">{t('conditionStep.applicationLimitPeriodEmployment')}</option>
+            </select>
+          </Field>
+          <p className="text-xs text-muted-foreground">{t('conditionStep.applicationLimitPeriodHelp')}</p>
+        </>
       ) : (
         // Unlimited posts the field EXPLICITLY EMPTY rather than omitting it: the marker is present, so an
         // omitted field and a blank one would both have to mean something, and only one of them can. Blank
-        // is the clear.
-        <input type="hidden" name="maxDaysPerLeaveYear" value="" />
+        // is the clear. The period rides along — clearing the ceiling clears the window with it.
+        <>
+          <input type="hidden" name="maxDaysPerLeaveYear" value="" />
+          <input type="hidden" name="maxDaysPeriod" value="" />
+        </>
       )}
       <Button type="submit" size="sm">
         {t('save')}
@@ -1280,6 +1396,7 @@ export function LeaveTypePanel({
   hrRemarkRequired,
   backdatingLimitDays,
   maxDaysPerLeaveYear,
+  maxDaysPeriod,
   maxConsecutiveDays,
   maxConsecutiveUnit,
   minAdvanceDays,
@@ -1302,6 +1419,7 @@ export function LeaveTypePanel({
   perDateApproval,
   duplicateApplicationPolicy,
   allowNegativeBalance,
+  maxNegativeBalance,
   balanceSourceTypeId,
   allowUnpaidLeave,
   balanceSourceOptions,
@@ -1312,7 +1430,6 @@ export function LeaveTypePanel({
   schemeEntitlements,
   benefitSchemeSection,
   festiveGrantSection,
-  approvalWorkflowSection,
   halfDaySection,
   leaveYearSection,
   previewScenarioSection,
@@ -1364,6 +1481,8 @@ export function LeaveTypePanel({
   backdatingLimitDays: number | null;
   /** Application Limits (c6ffa725): max days APPLIED FOR per leave year. null = no limit. */
   maxDaysPerLeaveYear: number | null;
+  /** ad9cb5c5 — the window the ceiling is counted over. NULL ⇒ leave year, what every type means today. */
+  maxDaysPeriod: string | null;
   /** Maximum Consecutive Leave (c6ffa725 rev 2): the longest SINGLE application this type allows, and the
    *  unit that figure is read in. An all-or-nothing pair — both null = Unlimited, which is every leave type
    *  today. Threaded so the sub-form round-trips. */
@@ -1436,6 +1555,8 @@ export function LeaveTypePanel({
    *  application of this type that exceeds their available balance. false ⇒ block over-application (the
    *  default). Threaded so the Yes/No sub-form round-trips its saved value; persisted via touchNegativeBalance. */
   allowNegativeBalance: boolean;
+  /** bc512dc3 — positive magnitude floor; NULL ⇒ unbounded (today's behaviour). */
+  maxNegativeBalance: number | null;
   /** Balance Deduction Source (cdf9ca48): the leave type this one's applications are checked against and
    *  debited from. null ⇒ its own balance (the default). Threaded so the mode radio + source select
    *  round-trip; persisted via touchBalanceSource. */
@@ -1470,15 +1591,10 @@ export function LeaveTypePanel({
    *  defaultLeaveTypeId={id}> slot, so the grant form arrives preset to THIS type. Slot-shaped like
    *  benefitSchemeSection: companies/grants data is prepared ONCE at page level (no N+1 per type). */
   festiveGrantSection?: ReactNode;
-  /** e1a51aea: the Approval Workflow sub-step's content — a server-composed slot (this type's WorkflowMatrix
-   *  scoped to its leaveTypeId, the read-only wildcard rules + per-company default-chain summary, and links
-   *  to the Approval tab). Slot-shaped like benefitSchemeSection so the approval data + label bags are
-   *  prepared ONCE at page level (no N+1 per type). */
-  approvalWorkflowSection?: ReactNode;
-  /** 08bc6841: the company-wide Half-Day Deduction card — a server-composed slot (the per-company toggle
-   *  rows posting the SAME setLeaveHalfDayFullDeductionAction the Application Rules tab used to host,
-   *  now embedded as one card of the Condition step's Leave Application Rules grid with an
-   *  applies-company-wide badge). Slot-shaped like benefitSchemeSection: the rows are per-COMPANY (not
+  /** 08bc6841: the company-wide Half-Day Deduction card — a server-composed slot (since 10e96227 ONE
+   *  ChipMultiSelect over companyIds plus one Save posting setLeaveHalfDayFullDeductionCompaniesAction,
+   *  embedded as one card of the Condition step's Leave Application Rules grid with an
+   *  applies-company-wide badge). Slot-shaped like benefitSchemeSection: the rule is per-COMPANY (not
    *  per-type), so ONE node is prepared at page level and shared by every panel. */
   halfDaySection?: ReactNode;
   /** 1e4eb8af: the managed Leave Year records (Draft → Open → Closed, their two control dates, the
@@ -1827,10 +1943,11 @@ export function LeaveTypePanel({
             </CardHeader>
             <CardContent id={`cat-general-${id}`} className="space-y-3">
           {/* General sub-flow (e1a51aea): the reusable SubStepBar (components/leave-sub-step-bar.tsx —
-              the R61 step-bar mechanism generalized; later secondary flows MUST reuse it) walks the five
-              sub-steps 1 Details · 2 Leave Year Type · 3 Earning Method · 4 Carry Forward Policy ·
-              5 Approval Workflow. One sub-step visible at a time; the choice persists per type alongside
-              activeStep (leaveTypeCards:<id>). */}
+              the R61 step-bar mechanism generalized; later secondary flows MUST reuse it) walks the four
+              sub-steps 1 Details · 2 Leave Year Type · 3 Earning Method · 4 Carry Forward Policy. One
+              sub-step visible at a time; the choice persists per type alongside activeStep
+              (leaveTypeCards:<id>). e4238594 removed the fifth, Approval Workflow — the bar renders
+              `i + 1`, so the numbering follows the array and no step number is written down anywhere. */}
           <SubStepBar
             steps={GENERAL_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(GENERAL_SUB_STEP_TITLE_KEY[k]) }))}
             active={generalSubStep}
@@ -2130,18 +2247,9 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('subStep.carryStepHelp')}</p>
           </div>
           )}
-          {/* Sub-step 5 — Approval Workflow (e1a51aea): this type's approval rules from the rule matrix,
-              editable right here (server-composed slot, scoped to this leaveTypeId), with company-wide
-              chains + templates one click away on the Approval tab. */}
-          {generalSubStep === 'workflow' && (
-          <div className="space-y-1.5">
-            {approvalWorkflowSection ?? (
-              <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
-                {t('subStep.workflowUnavailable')}
-              </p>
-            )}
-          </div>
-          )}
+          {/* e4238594 removed sub-step 5 (Approval Workflow, e1a51aea). It duplicated the Approval Workflow
+              tab, which is the real home. No link or placeholder stands in its place — the reporter
+              rejected that explicitly — so the walk simply ends at Carry Forward Policy. */}
             </CardContent>
           </Card>
           )}
@@ -2931,31 +3039,14 @@ export function LeaveTypePanel({
               going negative (the approval-time guard still applies). */}
           <div className="mb-3 break-inside-avoid space-y-2 rounded-lg border border-border bg-background p-3">
             <span className="text-xs font-medium text-muted-foreground">{t('negativeBalanceSectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the allow_negative_balance column (tri-state guard) */}
-              <input type="hidden" name="negativeBalance" value="1" />
-              <span className="text-xs font-medium text-foreground">{t('negativeBalanceLabel')}</span>
-              <div className="space-y-1.5">
-                {(['no', 'yes'] as const).map((opt) => (
-                  <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
-                    <input
-                      type="radio"
-                      name="allowNegativeBalanceValue"
-                      value={opt}
-                      defaultChecked={opt === (allowNegativeBalance ? 'yes' : 'no')}
-                      className="mt-0.5 size-3.5 border-border"
-                    />
-                    <span>{opt === 'yes' ? t('negativeBalanceYes') : t('negativeBalanceNo')}</span>
-                  </label>
-                ))}
-              </div>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
+            <NegativeBalanceForm
+              t={t}
+              id={id}
+              name={name}
+              allowNegativeBalance={allowNegativeBalance}
+              maxNegativeBalance={maxNegativeBalance}
+              action={updateTypeAction}
+            />
             <p className="text-xs text-muted-foreground">{t('negativeBalanceHelp')}</p>
           </div>
           {/* Balance Deduction Source (feedback cdf9ca48). Its own self-contained <form> + `balanceSource=1`
@@ -3020,6 +3111,7 @@ export function LeaveTypePanel({
               id={id}
               name={name}
               maxDaysPerLeaveYear={maxDaysPerLeaveYear}
+              maxDaysPeriod={maxDaysPeriod}
               action={updateTypeAction}
             />
             <p className="text-xs text-muted-foreground">{t('conditionStep.applicationLimitHelp')}</p>

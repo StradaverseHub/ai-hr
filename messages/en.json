@@ -4062,7 +4062,6 @@
         "details": "Details",
         "earning": "Earning Method",
         "carry": "Carry Forward Policy",
-        "workflow": "Approval Workflow",
         "yearTypeLabel": "Leave year type",
         "yearTypeCompanyDefault": "Company default (follow the company leave cycle)",
         "yearTypeA2a": "Anniversary to Anniversary",
@@ -4090,7 +4089,6 @@
         "carryAnnualOnly": "Carry-forward applies to Annual Leave — this type's balance does not roll over.",
         "noActivePolicy": "No active entitlement policy yet — add one under Eligibility first.",
         "frontDoorScopeLabel": "Applies to policy",
-        "workflowUnavailable": "Approval workflow settings are unavailable here — open the Approval tab.",
         "yearType": "Leave Year Type",
         "yearTypeStepHelp": "Choose the leave cycle first. The Earning Method and Rounding steps that follow decide how leave is credited within that cycle.",
         "roundingNearestHalf": "Nearest 0.5 day",
@@ -4126,7 +4124,12 @@
         "maxConsecutiveUnitLabel": "Unit",
         "maxConsecutiveUnitCalendar": "Calendar Days",
         "maxConsecutiveUnitWorking": "Working Days",
-        "maxConsecutiveHelp": "Caps how long ONE application of this type may be — a different rule from the yearly maximum above. Calendar Days counts every day the application spans, including weekends and public holidays; Working Days counts only the days actually charged as leave, so a Friday-to-Monday application is 4 calendar days but 2 working days. Checked when the application is submitted and again when it is approved. Where this leave type is also in a Shared Leave Group with its own per-application maximum, the stricter of the two applies and the refusal says which. Unlimited is how every leave type behaves today."
+        "maxConsecutiveHelp": "Caps how long ONE application of this type may be — a different rule from the yearly maximum above. Calendar Days counts every day the application spans, including weekends and public holidays; Working Days counts only the days actually charged as leave, so a Friday-to-Monday application is 4 calendar days but 2 working days. Checked when the application is submitted and again when it is approved. Where this leave type is also in a Shared Leave Group with its own per-application maximum, the stricter of the two applies and the refusal says which. Unlimited is how every leave type behaves today.",
+        "applicationLimitPeriodLabel": "Limit period",
+        "applicationLimitPeriodLeaveYear": "Per leave year",
+        "applicationLimitPeriodCalendarYear": "Per calendar year",
+        "applicationLimitPeriodEmployment": "Once per employment",
+        "applicationLimitPeriodHelp": "A leave year is the same as a calendar year only when your leave year starts in January. Once per employment counts across the whole time someone has worked for you, so a rehire starts fresh."
       },
       "entitlementStep": {
         "schemes": "Benefit Schemes",
@@ -4135,14 +4138,6 @@
         "gradesCompanyWideBadge": "Applies company-wide",
         "previewHint": "Check the entitlement a sample employee would receive under the current rules.",
         "accrualHint": "Processes earned entitlement for a leave year — preview the dry run first, then confirm."
-      },
-      "approvalStep": {
-        "hint": "This leave type's approval rules, editable here. Company-wide chains and reusable templates live on the Approval tab.",
-        "wildcardTitle": "Rules that apply to all leave types",
-        "wildcardBadge": "Applies to all types",
-        "wildcardNone": "No all-types rules configured.",
-        "defaultChainTitle": "Company default approval chain",
-        "openApprovalTab": "Open the Approval tab →"
       },
       "noLeaveTypes": "No leave types.",
       "codeLabel": "Code",
@@ -4426,9 +4421,6 @@
       "halfDayDeductionTitle": "Half-day deduction",
       "halfDayDeductionHelp": "Controls how much leave is deducted when an employee applies leave on a “Half Day” work-schedule day (set on the Shift settings page). Off: deduct 0.5 day. On: deduct 1.0 full day. Full working days are never affected.",
       "halfDayDeductionFrozenNote": "Applies to new applications only — leave already submitted or approved keeps the deduction amount shown at the time it was submitted.",
-      "halfDayDeductionOn": "Currently ON — deducts 1.0 day",
-      "halfDayDeductionOff": "Currently OFF — deducts 0.5 day",
-      "halfDayDeductionToggleLabel": "Count Half-Day as 1 full day",
       "encashmentSectionTitle": "Encashment policy",
       "encashmentHelp": "When an employee's resignation is approved, their unused Annual Leave balance can be frozen and converted into an encashable-days figure for Payroll. This module only calculates and freezes leave days — Payroll handles the ringgit conversion separately.",
       "encashmentEnabled": "Enabled",
@@ -4692,7 +4684,19 @@
         "errorAlreadyGrouped": "{type} already belongs to the shared leave group \"{group}\". Remove it from that group first.",
         "errorNameTaken": "A shared leave group named \"{name}\" already exists."
       },
-      "carryPercentLabel": "Carry forward percentage (%)"
+      "carryPercentLabel": "Carry forward percentage (%)",
+      "replacementModuleTitle": "Replacement leave",
+      "replacementModuleUnderDevelopment": "This module is under development. There is nothing to configure here yet.",
+      "replacementModuleExistingNote": "Replacement leave already works today: employees can earn it, hold it and apply for it, and it is tracked separately with its own expiry. That is unaffected by this page.",
+      "halfDayDeductionCompaniesLabel": "Companies this applies to",
+      "halfDayDeductionCompaniesPlaceholder": "Select companies",
+      "halfDayDeductionSelectAll": "Select all",
+      "halfDayDeductionClearAll": "Clear all",
+      "halfDayDeductionAllSelected": "All companies",
+      "halfDayDeductionCountSelected": "{count} companies selected",
+      "halfDayDeductionEmptyNote": "Selecting no company turns the rule off everywhere: half days deduct 0.5 day again.",
+      "maxNegativeBalanceLabel": "Maximum negative balance (days)",
+      "maxNegativeBalanceHelp": "How far below zero an employee may go. Leave it empty for no limit, which is how this works today. An application that would take someone past the limit is refused, and the message says what the limit is and how far past it the request goes."
     },
     "holidays": {
       "pageTitle": "Public holidays",
@@ -5214,6 +5218,7 @@
       "entitlements": "Entitlements",
       "approval": "Approval Workflow",
       "payroll": "Payroll Related",
+      "replacement": "Replacement Leave",
       "audit": "Audit"
     },
     "systemLabelsTabs": {

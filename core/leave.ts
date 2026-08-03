@@ -175,6 +175,52 @@ export class InsufficientLeaveBalanceOnSubmitError extends Error {
   }
 }
 
+/**
+ * Maximum Negative Balance (feedback bc512dc3, migration 0352) — the type permits a negative balance, but
+ * this application would take the employee past the configured floor.
+ *
+ * DISTINCT FROM InsufficientLeaveBalanceOnSubmitError, which means "you may not go negative at all". These
+ * are different refusals with different remedies: one says the answer is never yes, the other says the
+ * answer is yes for a smaller number of days. Collapsing them into one error is how an employee ends up
+ * asking HR what the number is.
+ *
+ * CARRIES THE FIGURES, and that is the requirement rather than a nicety — the reporter's plan says the
+ * message must state the limit and how far past it the request goes. A bare "insufficient balance" is
+ * exactly what sends someone to HR.
+ */
+export class NegativeLeaveBalanceLimitExceededError extends Error {
+  readonly leaveTypeName: string;
+  /** The configured floor as a POSITIVE magnitude — 2.5 means the balance may not pass -2.5. */
+  readonly maxNegativeBalance: number;
+  /** Balance available before this application. May itself already be negative. */
+  readonly availableDays: number;
+  readonly requestedDays: number;
+  /** Where the balance would land: availableDays - requestedDays, always negative when this throws. */
+  readonly resultingBalance: number;
+  /** How far past the floor, positive. resultingBalance = -(maxNegativeBalance + overshootDays). */
+  readonly overshootDays: number;
+  constructor(p: {
+    leaveTypeName: string;
+    maxNegativeBalance: number;
+    availableDays: number;
+    requestedDays: number;
+  }) {
+    const resultingBalance = Math.round((p.availableDays - p.requestedDays) * 100) / 100;
+    const overshootDays = Math.round((-resultingBalance - p.maxNegativeBalance) * 100) / 100;
+    super(
+      `Leave type "${p.leaveTypeName}" may not go further negative than ${p.maxNegativeBalance} days; ` +
+        `this application would leave a balance of ${resultingBalance}, ${overshootDays} past the limit`,
+    );
+    this.name = 'NegativeLeaveBalanceLimitExceededError';
+    this.leaveTypeName = p.leaveTypeName;
+    this.maxNegativeBalance = p.maxNegativeBalance;
+    this.availableDays = p.availableDays;
+    this.requestedDays = p.requestedDays;
+    this.resultingBalance = resultingBalance;
+    this.overshootDays = overshootDays;
+  }
+}
+
 // Combined Leave Type Limit (R44 4c48fd1f, Stage 2): the requested leave type belongs to a benefit-scheme
 // combined-limit pool (e.g. "Compassionate + Marriage + Paternity = 5 days/year") and this application would
 // push the employee's per-cycle usage ACROSS ALL pooled types over the shared total. Carries the pool name +
@@ -307,6 +353,11 @@ export class LeaveYearApplicationLimitExceededError extends Error {
    *  the calendar year, and "you have used 14 of 14 days" is unanswerable without it. */
   readonly yearStart: string;
   readonly yearEnd: string;
+  /** ad9cb5c5 — WHICH period filled up. Carried because the refusal is otherwise ambiguous the moment more
+   *  than one period is configurable: "you have used 1 of 1" reads identically for a once-per-employment
+   *  limit and a once-per-year one, and only one of those is worth waiting until January for. Absent ⇒
+   *  'leave_year', so an error constructed by older code still describes itself correctly. */
+  readonly period: ApplicationLimitPeriod;
   constructor(p: {
     leaveTypeName: string;
     maxDaysPerLeaveYear: number;
@@ -314,9 +365,17 @@ export class LeaveYearApplicationLimitExceededError extends Error {
     requestedDays: number;
     yearStart: string;
     yearEnd: string;
+    period?: ApplicationLimitPeriod;
   }) {
+    const period = p.period ?? 'leave_year';
+    const window =
+      period === 'employment'
+        ? 'per employment'
+        : period === 'calendar_year'
+          ? 'per calendar year'
+          : 'per leave year';
     super(
-      `Leave type "${p.leaveTypeName}" allows at most ${p.maxDaysPerLeaveYear} days per leave year (${p.yearStart}..${p.yearEnd}); ${p.usedDays} already applied for and this application adds ${p.requestedDays}`,
+      `Leave type "${p.leaveTypeName}" allows at most ${p.maxDaysPerLeaveYear} days ${window} (${p.yearStart}..${p.yearEnd}); ${p.usedDays} already applied for and this application adds ${p.requestedDays}`,
     );
     this.name = 'LeaveYearApplicationLimitExceededError';
     this.leaveTypeName = p.leaveTypeName;
@@ -325,6 +384,7 @@ export class LeaveYearApplicationLimitExceededError extends Error {
     this.requestedDays = p.requestedDays;
     this.yearStart = p.yearStart;
     this.yearEnd = p.yearEnd;
+    this.period = period;
   }
 }
 
@@ -1492,6 +1552,89 @@ export function leaveYearWindow(
 }
 
 /**
+ * ad9cb5c5 — the periods an application ceiling can be measured over.
+ *
+ * 'leave_year'    the employee's own leave year (hire-date or calendar-anchored per the company cycle)
+ * 'calendar_year' 1 January to 31 December, which equals the leave year ONLY when the leave year starts
+ *                 in January — the whole reason both are offered
+ * 'employment'    the entire employment. A rehire is a new employment and legitimately starts fresh.
+ */
+export const APPLICATION_LIMIT_PERIODS = ['leave_year', 'calendar_year', 'employment'] as const;
+export type ApplicationLimitPeriod = (typeof APPLICATION_LIMIT_PERIODS)[number];
+
+/** NULL / unknown ⇒ 'leave_year', which is what every row written before migration 0352 means. Unknown is
+ *  folded into the default rather than thrown on: a hand-edited row must not make every application of a
+ *  type unanswerable, the same reasoning as the non-positive-limit guard below. */
+export function resolveApplicationLimitPeriod(raw: string | null | undefined): ApplicationLimitPeriod {
+  return (APPLICATION_LIMIT_PERIODS as readonly string[]).includes(raw ?? '')
+    ? (raw as ApplicationLimitPeriod)
+    : 'leave_year';
+}
+
+/**
+ * The [start, end] window an application ceiling counts over. Pure — no database — so the period arithmetic
+ * is testable without a fixture, which is the part most likely to be got wrong.
+ *
+ * 'employment' returns the hire date to the application date rather than an open-ended range, because the
+ * usage query filters on `start_date BETWEEN start AND end`: an unbounded end would need a different query
+ * shape, and a far-future sentinel would silently include applications dated beyond the one being judged.
+ * Counting up to and including the application's own start date is what "how many have you had so far"
+ * means, and it makes the rule independent of when it is evaluated.
+ */
+export function applicationLimitWindow(p: {
+  period: ApplicationLimitPeriod;
+  hiredOn: string;
+  startDate: string;
+  cycle: string | null | undefined;
+}): { start: string; end: string } {
+  if (p.period === 'calendar_year') {
+    const year = p.startDate.slice(0, 4);
+    return { start: `${year}-01-01`, end: `${year}-12-31` };
+  }
+  if (p.period === 'employment') {
+    // An application dated BEFORE the hire date would invert the range and match nothing; clamp so the
+    // window is always well-formed and such a request is judged against its own day.
+    const start = p.hiredOn <= p.startDate ? p.hiredOn : p.startDate;
+    return { start, end: p.startDate };
+  }
+  return leaveYearWindow(p.hiredOn, p.startDate, p.cycle);
+}
+
+/**
+ * bc512dc3 — the floor check, shared by requestLeave and editLeaveRequest so the two cannot drift.
+ *
+ * Only meaningful when allow_negative_balance is ON: with it off, the caller has already refused any
+ * negative at all, and migration 0352's CHECK makes "floor without permission" unrepresentable anyway.
+ *
+ * `available` is passed in rather than re-read, because the callers resolve it against the BALANCE SOURCE
+ * (cdf9ca48) and, on the edit path, excluding the request's own reservation. Re-reading it here would
+ * quietly measure a different balance from the one the caller just gated on.
+ */
+async function enforceMaxNegativeBalance(
+  tx: Tx,
+  p: { leaveTypeId: string; available: number; requestedDays: number },
+): Promise<void> {
+  const [lt] = await tx
+    .select({ name: leaveType.name, maxNegativeBalance: leaveType.maxNegativeBalance })
+    .from(leaveType)
+    .where(eq(leaveType.id, p.leaveTypeId))
+    .limit(1);
+  if (!lt || lt.maxNegativeBalance == null) return; // NULL ⇒ unbounded, today's behaviour
+  const floor = Number(lt.maxNegativeBalance);
+  // A non-positive floor is refused by the DB CHECK, but restate it: a hand-edited row must not start
+  // refusing every application of the type (the same reasoning as the application-limit guard).
+  if (!Number.isFinite(floor) || floor <= 0) return;
+  if (round2(p.available - p.requestedDays) < -floor) {
+    throw new NegativeLeaveBalanceLimitExceededError({
+      leaveTypeName: lt.name,
+      maxNegativeBalance: floor,
+      availableDays: round2(p.available),
+      requestedDays: p.requestedDays,
+    });
+  }
+}
+
+/**
  * Application Limits (feedback c6ffa725, migration 0335) — refuse an application that would push the
  * employee past this leave TYPE's maximum days per leave year.
  *
@@ -1527,6 +1670,7 @@ async function enforceLeaveYearApplicationLimit(
     .select({
       name: leaveType.name,
       maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
+      maxDaysPeriod: leaveType.maxDaysPeriod,
       yearCycleOverride: leaveType.yearCycleOverride,
     })
     .from(leaveType)
@@ -1549,8 +1693,20 @@ async function enforceLeaveYearApplicationLimit(
     .from(company)
     .where(eq(company.id, emp.companyId))
     .limit(1);
-  const cycle = resolveLeaveYearCycle(lt.yearCycleOverride, co?.leaveCycle ?? null);
-  const { start, end } = leaveYearWindow(String(emp.hiredOn), p.startDate, cycle);
+  // ad9cb5c5 — the window the ceiling is counted over. NULL ⇒ 'leave_year', so every type configured before
+  // this existed keeps counting exactly as it did.
+  //
+  // Each branch resolves a real window; none of them takes the year off the date. 'calendar_year' is the
+  // only one that legitimately can, and it is written out explicitly so the difference from 'leave_year' is
+  // visible at the call site rather than hidden in a helper — the two coincide ONLY when the leave year
+  // starts in January, and reading one as the other is the whole reason this option was asked for.
+  const period = resolveApplicationLimitPeriod(lt.maxDaysPeriod);
+  const { start, end } = applicationLimitWindow({
+    period,
+    hiredOn: String(emp.hiredOn),
+    startDate: p.startDate,
+    cycle: resolveLeaveYearCycle(lt.yearCycleOverride, co?.leaveCycle ?? null),
+  });
 
   const [used] = await tx
     .select({ total: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
@@ -1574,6 +1730,7 @@ async function enforceLeaveYearApplicationLimit(
       requestedDays: p.requestedDays,
       yearStart: start,
       yearEnd: end,
+      period,
     });
   }
 }
@@ -2289,6 +2446,11 @@ export async function requestLeave(
     } else if (lt?.allowNegativeBalance === false) {
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
       if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
+    } else if (lt?.allowNegativeBalance === true) {
+      // bc512dc3 — going negative is permitted, but not without end. Same balance the branch above reads,
+      // resolved through the BALANCE SOURCE, so the two gates never talk about different ledgers.
+      const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
+      await enforceMaxNegativeBalance(tx, { leaveTypeId: p.leaveTypeId, available, requestedDays: days });
     }
 
     // Shared Leave Group (R44 4c48fd1f, re-pointed to leave-type level by r88 1ef1cf95): reject when this
@@ -4771,6 +4933,12 @@ export async function editLeaveRequest(
     } else if (lt.allowNegativeBalance === false) {
       const available = await availableLeaveBalance(tx, req.employmentId, p.leaveTypeId, req.id);
       if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
+    } else if (lt.allowNegativeBalance === true) {
+      // bc512dc3 — the floor applies to an EDIT too, or an application refused at submission could be
+      // resubmitted as an edit and land past the limit. Excludes this request's own reservation, exactly
+      // as the branch above does.
+      const available = await availableLeaveBalance(tx, req.employmentId, p.leaveTypeId, req.id);
+      await enforceMaxNegativeBalance(tx, { leaveTypeId: p.leaveTypeId, available, requestedDays: days });
     }
 
     // Document + remark gates (identical to requestLeave). hasDocument = an attachment already exists on this

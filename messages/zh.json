@@ -4062,7 +4062,6 @@
         "details": "详细信息",
         "earning": "获取方式",
         "carry": "结转政策",
-        "workflow": "审批流程",
         "yearTypeLabel": "休假年度类型",
         "yearTypeCompanyDefault": "公司默认（跟随公司休假周期）",
         "yearTypeA2a": "入职周年至入职周年",
@@ -4090,7 +4089,6 @@
         "carryAnnualOnly": "结转仅适用于年假——此类型的余额不会滚存。",
         "noActivePolicy": "尚无生效的额度政策——请先在“资格”下添加一条。",
         "frontDoorScopeLabel": "适用的政策",
-        "workflowUnavailable": "此处无法使用审批流程设置——请打开“审批”标签页。",
         "yearType": "假期年度类型",
         "yearTypeStepHelp": "请先选择假期周期。随后的赚取方式与取整步骤决定该周期内假期如何入账。",
         "roundingNearestHalf": "最接近的 0.5 天",
@@ -4126,7 +4124,12 @@
         "maxConsecutiveUnitLabel": "单位",
         "maxConsecutiveUnitCalendar": "日历天",
         "maxConsecutiveUnitWorking": "工作日",
-        "maxConsecutiveHelp": "限制该假期类型单次申请的最长天数——与上方的年度上限是两条不同的规则。日历天计入申请跨越的每一天，包括周末和公众假期；工作日只计入真正扣减假期的天数，因此周五至周一的申请是 4 个日历天但只有 2 个工作日。提交申请时检查，批准时再检查一次。若该假期类型同时属于设有单次申请上限的共享假期组，则以两者中更严格的一条为准，并在拒绝时说明是哪一条。目前所有假期类型均为不限。"
+        "maxConsecutiveHelp": "限制该假期类型单次申请的最长天数——与上方的年度上限是两条不同的规则。日历天计入申请跨越的每一天，包括周末和公众假期；工作日只计入真正扣减假期的天数，因此周五至周一的申请是 4 个日历天但只有 2 个工作日。提交申请时检查，批准时再检查一次。若该假期类型同时属于设有单次申请上限的共享假期组，则以两者中更严格的一条为准，并在拒绝时说明是哪一条。目前所有假期类型均为不限。",
+        "applicationLimitPeriodLabel": "限制周期",
+        "applicationLimitPeriodLeaveYear": "每假期年度",
+        "applicationLimitPeriodCalendarYear": "每日历年度",
+        "applicationLimitPeriodEmployment": "整个雇佣期内一次",
+        "applicationLimitPeriodHelp": "仅当您的假期年度从一月开始时，假期年度才与日历年度相同。整个雇佣期内一次是按员工为您工作的全部时间计算的，因此重新聘用会重新开始计算。"
       },
       "entitlementStep": {
         "schemes": "福利方案",
@@ -4135,14 +4138,6 @@
         "gradesCompanyWideBadge": "适用于全公司",
         "previewHint": "查看示例员工在当前规则下将获得的额度。",
         "accrualHint": "处理某个假期年度的已赚取额度 — 先预览试运行结果，再确认执行。"
-      },
-      "approvalStep": {
-        "hint": "此休假类型的审批规则可在此编辑。公司级审批链与可复用模板位于“审批”标签页。",
-        "wildcardTitle": "适用于所有休假类型的规则",
-        "wildcardBadge": "适用于所有类型",
-        "wildcardNone": "未配置适用于所有类型的规则。",
-        "defaultChainTitle": "公司默认审批链",
-        "openApprovalTab": "打开“审批”标签页 →"
       },
       "noLeaveTypes": "无休假类型。",
       "codeLabel": "代码",
@@ -4389,9 +4384,6 @@
       "halfDayDeductionTitle": "半天扣除",
       "halfDayDeductionHelp": "控制员工在“半天”工作日程日（在班次设置页面设置）请假时扣除多少天。关闭：扣除 0.5 天。开启：扣除 1.0 天。全天工作日不受影响。",
       "halfDayDeductionFrozenNote": "仅适用于新申请 — 已提交或已批准的请假将保留提交时显示的扣除金额。",
-      "halfDayDeductionOn": "当前已开启 — 扣除 1.0 天",
-      "halfDayDeductionOff": "当前已关闭 — 扣除 0.5 天",
-      "halfDayDeductionToggleLabel": "将半天计为 1 全天",
       "encashmentSectionTitle": "年假折现政策",
       "encashmentHelp": "当员工的离职申请获批后，未使用的年假余额可以被冻结并转换为可折现天数供薪资模块使用。本模块仅计算并冻结假期天数——薪资模块另行处理令吉金额的换算。",
       "encashmentEnabled": "已启用",
@@ -4692,7 +4684,19 @@
         "errorAlreadyGrouped": "{type} 已属于共享休假组“{group}”。请先将其从该组移出。",
         "errorNameTaken": "名为“{name}”的共享休假组已存在。"
       },
-      "carryPercentLabel": "结转百分比 (%)"
+      "carryPercentLabel": "结转百分比 (%)",
+      "replacementModuleTitle": "替假",
+      "replacementModuleUnderDevelopment": "此模块正在开发中，目前尚无可配置的内容。",
+      "replacementModuleExistingNote": "替假目前已可使用：员工可以累积、持有并申请替假，系统会单独跟踪并设有各自的有效期。本页面不影响这些功能。",
+      "halfDayDeductionCompaniesLabel": "适用的公司",
+      "halfDayDeductionCompaniesPlaceholder": "选择公司",
+      "halfDayDeductionSelectAll": "全选",
+      "halfDayDeductionClearAll": "全部清除",
+      "halfDayDeductionAllSelected": "所有公司",
+      "halfDayDeductionCountSelected": "已选择 {count} 家公司",
+      "halfDayDeductionEmptyNote": "若不选择任何公司，此规则将在所有公司停用：半天将重新按 0.5 天扣除。",
+      "maxNegativeBalanceLabel": "最大负余额（天）",
+      "maxNegativeBalanceHelp": "员工余额最多可以低于零多少。留空表示不设限制，这也是目前的运作方式。超出限制的申请将被拒绝，提示信息会说明限制值以及超出的幅度。"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -5214,6 +5218,7 @@
       "entitlements": "假期额度",
       "approval": "审批流程",
       "payroll": "薪资相关",
+      "replacement": "替假",
       "audit": "审计"
     },
     "systemLabelsTabs": {

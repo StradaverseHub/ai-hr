@@ -1,11 +1,10 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-// 4e9a4d59 — the shared post-action redirect contract (see app/admin/_redirects.ts). Imported rather than
-// re-implemented so the workspace wrappers below inherit okEntitlements' exact URL shape.
-import { ENTITLEMENTS, fail, okEntitlements } from '@/app/admin/_redirects';
+// e4238594 — the _redirects imports (ENTITLEMENTS / fail / okEntitlements) and getTranslations went with
+// the 4e9a4d59 wrappers below; this file redirects to its own PAGE only. Those helpers are still used
+// widely elsewhere under app/admin — nothing was removed from _redirects itself.
 import {
   archiveLeaveApprovalRule,
   createLeaveApprovalRule,
@@ -112,44 +111,22 @@ export async function archiveLeaveApprovalRuleAction(formData: FormData) {
   redirect(`${PAGE}?toast=${encodeURIComponent('Rule deleted')}`);
 }
 
-// ── 4e9a4d59: the SAME two saves, posted from INSIDE a leave type's setup flow ─────────────────────────
-// The Approval Workflow sub-step of the Leave Type workspace embeds the very same WorkflowMatrix the
-// standalone Approvals screen renders. Origin is known STATICALLY at the call site (WorkflowMatrix takes
-// its actions as an injected prop), so no runtime origin flag is needed: the workspace simply injects
-// these two wrappers instead. They run the identical persist core, then return via okEntitlements — HR
-// stays on the leave type + step they were configuring, on success AND on failure (the Entitlements page
-// already renders its ErrorBanner from ?error=). The standalone actions above are untouched, so that
-// screen cannot regress.
+// e4238594 RETIRED the two 4e9a4d59 wrappers that stood here
+// (saveLeaveApprovalRuleFromEntitlementsAction / archiveLeaveApprovalRuleFromEntitlementsAction).
 //
-// Toast wording deliberately uses admin.leave.savedToast rather than the standalone actions' raw English
-// literals ('Rule created' / 'Rule deleted') — the workspace is fully localised, so reusing those would
-// show English to ms/ta/th/vi/zh users.
-
-/** Save a rule from the leave-type workspace's Approval Workflow sub-step — stay on that type. */
-export async function saveLeaveApprovalRuleFromEntitlementsAction(formData: FormData) {
-  const s = await getSession();
-  try {
-    await persistApprovalRule(s, formData);
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  const t = await getTranslations('admin.leave');
-  // The rule's own Scope select owns leaveTypeId: retargeting a rule to another type (or to "all types",
-  // which posts nothing) lands HR where the rule now lives — the latter degrading to the bare route.
-  okEntitlements(t('savedToast'), str(formData.get('leaveTypeId')) ?? '');
-}
-
-/** Delete a rule from the leave-type workspace's Approval Workflow sub-step — stay on that type. */
-export async function archiveLeaveApprovalRuleFromEntitlementsAction(formData: FormData) {
-  const s = await getSession();
-  try {
-    await persistArchiveApprovalRule(s, formData);
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  const t = await getTranslations('admin.leave');
-  okEntitlements(t('savedToast'), str(formData.get('leaveTypeId')) ?? '');
-}
+// They existed only so a save posted from the leave type workspace's Approval Workflow sub-step returned
+// to that type instead of the Approvals screen. That sub-step is gone — it duplicated the Approval
+// Workflow tab — so the wrappers had no caller left, and a server action with no caller retires WITH its
+// screen (the r100 base-chain precedent — 241817ef step 2 retired that action the same way) rather than
+// lingering as a second, unreachable write path into the same rules.
+//
+// The precedent's action is deliberately NOT named here: test/leave-approval-page-restructure.test.ts
+// asserts this file does not contain that identifier ANYWHERE, comments included, because a caller-less
+// server action is still an addressable endpoint. Naming it even in prose would redden that guard.
+//
+// THE SHARED CORE IS UNTOUCHED: persistApprovalRule / persistArchiveApprovalRule above still back the
+// standalone saveLeaveApprovalRuleAction / archiveLeaveApprovalRuleAction, which are what the Approval tab
+// posts. Only the two redirect wrappers went.
 
 // ──────────────── 6fadb036 (R17): reusable templates + tenant default + bulk assignment ────────────────
 

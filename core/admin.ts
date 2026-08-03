@@ -43,6 +43,11 @@ import {
   // Feedback 9f5164d8 — the methods the engine actually acts on ('up' | 'down' | 'nearest_half'), so the
   // write-time validator and the engine cannot drift apart on what a savable method is.
   isEngineRoundingMethod,
+  // ad9cb5c5 — the closed period vocabulary for max_days_period, shared with the enforcement side so the
+  // write-time validator and the resolver cannot drift on what a savable period is (the isEngineRoundingMethod
+  // precedent immediately above).
+  APPLICATION_LIMIT_PERIODS,
+  type ApplicationLimitPeriod,
   type ServiceBand,
 } from './leave';
 import { countryPacks, packFor } from '../localization/registry';
@@ -3337,6 +3342,12 @@ export async function updateLeaveType(
     // save must not touch it and the audit diff must label it correctly. null ⇒ Unlimited, which is what
     // every existing leave type means.
     maxDaysPerLeaveYear?: number | null;
+    // ad9cb5c5 (migration 0352): the PERIOD the ceiling above is measured over — 'leave_year' (the default,
+    // and what null means) | 'calendar_year' | 'employment'. Rides the SAME tri-state marker as
+    // maxDaysPerLeaveYear rather than carrying its own, because the two are one decision: a period without
+    // a ceiling configures the window of a limit that does not exist, and migration 0352 refuses that pair
+    // in the database. One marker means the sub-form cannot post half of it.
+    maxDaysPeriod?: string | null;
     // Maximum Consecutive Leave (c6ffa725 revision 2, migration 0343): the OTHER half of the same request —
     // the longest SINGLE application this type allows, and the unit that figure is read in. OWN tri-state,
     // and an ALL-OR-NOTHING PAIR: both undefined ⇒ columns untouched; both null ⇒ Unlimited (what every
@@ -3453,6 +3464,11 @@ export async function updateLeaveType(
     // application at submission (the approved default); true = permit going negative. Enforced at
     // requestLeave/editLeaveRequest.
     allowNegativeBalance?: boolean;
+    // bc512dc3 (migration 0352): how far negative is too far, as a POSITIVE magnitude (2.5 ⇒ the balance may
+    // not pass -2.5). Rides the SAME `negativeBalance=1` marker as allowNegativeBalance — one switch, one
+    // floor, one decision — so turning the switch off and leaving a floor behind is unrepresentable. null ⇒
+    // unbounded, which is what every existing type with the switch on means today.
+    maxNegativeBalance?: number | null;
     // Balance Deduction Source (feedback cdf9ca48): the leave type whose balance an application of THIS type
     // is checked against and debited from. OWN tri-state (undefined = balance_source_type_id untouched) —
     // its own "Balance Deduction Source" sub-form posts `balanceSource=1`. null ⇒ own balance (the default
@@ -3543,7 +3559,17 @@ export async function updateLeaveType(
   // allow_negative_balance stays untouched (no silent reset). Plain boolean column (NOT NULL); the sub-form
   // always forwards a concrete boolean when its marker is present.
   const touchNegativeBalance = p.allowNegativeBalance !== undefined;
-  const negativeBalanceSet = touchNegativeBalance ? { allowNegativeBalance: p.allowNegativeBalance } : {};
+  const negativeBalanceSet = touchNegativeBalance
+    ? {
+        allowNegativeBalance: p.allowNegativeBalance,
+        // bc512dc3 — the floor rides the same marker, and is FORCED to null when the switch goes off, so the
+        // pair migration 0352 refuses (a floor with no permission to go negative) cannot be written.
+        maxNegativeBalance:
+          p.allowNegativeBalance === true && p.maxNegativeBalance != null
+            ? p.maxNegativeBalance.toFixed(2)
+            : null,
+      }
+    : {};
   // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): two OWN tri-states, mirroring
   // touchNegativeBalance. Each has its own sub-form + marker so an unrelated save never resets either. The
   // source's cross-row validation lives in the transaction below (it has to read the candidate source).
@@ -3706,6 +3732,25 @@ export async function updateLeaveType(
   ) {
     throw new Error('“Maximum application per leave year” must be greater than 0 and no more than 9999 days.');
   }
+  // ad9cb5c5: mirrors migration 0352's vocabulary CHECK. Validated rather than silently coerced — an
+  // unrecognised period would fall back to leave_year at read time, so accepting it here would store a
+  // figure that means something other than what the administrator chose.
+  if (p.maxDaysPeriod != null && !APPLICATION_LIMIT_PERIODS.includes(p.maxDaysPeriod as ApplicationLimitPeriod)) {
+    throw new Error('“Limit period” must be one of: per leave year, per calendar year, once per employment.');
+  }
+  // bc512dc3: mirrors migration 0352's two CHECKs. Zero is refused deliberately — "may go negative, but not
+  // by any amount" is what turning the switch OFF already says, and admitting both spellings gives one
+  // policy two representations that the engines can disagree about. Fractional floors are allowed, because
+  // half-day leave exists and "no further than -0.5" is a real policy.
+  if (
+    p.maxNegativeBalance != null &&
+    (!Number.isFinite(p.maxNegativeBalance) || p.maxNegativeBalance <= 0 || p.maxNegativeBalance > 9999)
+  ) {
+    throw new Error('“Maximum negative balance” must be greater than 0 and no more than 9999 days.');
+  }
+  if (p.maxNegativeBalance != null && p.allowNegativeBalance !== true) {
+    throw new Error('“Maximum negative balance” only applies when a negative balance is allowed.');
+  }
   // Maximum Consecutive Leave (c6ffa725 rev 2): mirrors the four DB CHECKs in migration 0343. The pair is
   // all-or-nothing — Unlimited is (null, null) and Limited is (figure, unit) — because a cap with no unit
   // cannot be read and a unit with no cap is inert configuration that looks set. A zero or negative cap
@@ -3797,7 +3842,12 @@ export async function updateLeaveType(
   // numeric(6,2) is a STRING column to drizzle, so the figure is serialised here rather than handed over as
   // a number — the same treatment leave_policy's numeric columns get on the way in.
   const applicationLimitSet = touchApplicationLimits
-    ? { maxDaysPerLeaveYear: p.maxDaysPerLeaveYear == null ? null : p.maxDaysPerLeaveYear.toFixed(2) }
+    ? {
+        maxDaysPerLeaveYear: p.maxDaysPerLeaveYear == null ? null : p.maxDaysPerLeaveYear.toFixed(2),
+        // ad9cb5c5 — the period rides the same marker. Clearing the ceiling clears the period with it, so
+        // the pair migration 0352 refuses (period set, ceiling null) cannot be written from here.
+        maxDaysPeriod: p.maxDaysPerLeaveYear == null ? null : (p.maxDaysPeriod ?? null),
+      }
     : {};
   // The ANNOTATION is load-bearing, not decoration. Each `touchX ? {...} : {}` fragment has the union type
   // `{} | { x: … }`, and spreading N of them into one literal multiplies out to 2^N members; the `.set({…})`
@@ -3862,6 +3912,7 @@ export async function updateLeaveType(
         minAdvanceDays: leaveType.minAdvanceDays,
         // Application Limits (c6ffa725): selected for the before/after audit diff.
         maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
+        maxDaysPeriod: leaveType.maxDaysPeriod,
         // Maximum Consecutive Leave (c6ffa725 rev 2): the pair, selected for the before/after audit diff.
         maxConsecutiveDays: leaveType.maxConsecutiveDays,
         maxConsecutiveUnit: leaveType.maxConsecutiveUnit,
@@ -3888,6 +3939,7 @@ export async function updateLeaveType(
         duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
         // Configurable Negative Leave Balance Validation (0ef0defd): selected for the before/after audit diff.
         allowNegativeBalance: leaveType.allowNegativeBalance,
+        maxNegativeBalance: leaveType.maxNegativeBalance,
         // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): selected for the audit diff.
         balanceSourceTypeId: leaveType.balanceSourceTypeId,
         allowUnpaidLeave: leaveType.allowUnpaidLeave,
@@ -4110,12 +4162,22 @@ export async function updateLeaveType(
           ...(touchPayroll ? { sendToPayroll: before?.sendToPayroll ?? null } : {}),
           ...(touchPaid ? { paid: before?.paid ?? null } : {}),
           ...(touchDuplicatePolicy ? { duplicateApplicationPolicy: before?.duplicateApplicationPolicy ?? null } : {}),
-          ...(touchNegativeBalance ? { allowNegativeBalance: before?.allowNegativeBalance ?? null } : {}),
+          ...(touchNegativeBalance
+            ? {
+                allowNegativeBalance: before?.allowNegativeBalance ?? null,
+                maxNegativeBalance: before?.maxNegativeBalance ?? null,
+              }
+            : {}),
           ...(touchBalanceSource ? { balanceSourceTypeId: before?.balanceSourceTypeId ?? null } : {}),
           ...(touchAllowUpl ? { allowUnpaidLeave: before?.allowUnpaidLeave ?? null } : {}),
           ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
           ...(touchMinAdvance ? { minAdvanceDays: before?.minAdvanceDays ?? null } : {}),
-          ...(touchApplicationLimits ? { maxDaysPerLeaveYear: before?.maxDaysPerLeaveYear ?? null } : {}),
+          ...(touchApplicationLimits
+            ? {
+                maxDaysPerLeaveYear: before?.maxDaysPerLeaveYear ?? null,
+                maxDaysPeriod: before?.maxDaysPeriod ?? null,
+              }
+            : {}),
           ...(touchMaxConsecutive
             ? {
                 maxConsecutiveDays: before?.maxConsecutiveDays ?? null,
@@ -4160,7 +4222,13 @@ export async function updateLeaveType(
             ? { duplicateApplicationPolicy: p.duplicateApplicationPolicy ?? before?.duplicateApplicationPolicy ?? null }
             : {}),
           ...(touchNegativeBalance
-            ? { allowNegativeBalance: p.allowNegativeBalance ?? before?.allowNegativeBalance ?? null }
+            ? {
+                allowNegativeBalance: p.allowNegativeBalance ?? before?.allowNegativeBalance ?? null,
+                // bc512dc3 — same reasoning: the floor moving from 2 to 20 is the whole change, and the
+                // switch it rides on did not move.
+                maxNegativeBalance:
+                  p.allowNegativeBalance === true && p.maxNegativeBalance != null ? p.maxNegativeBalance : null,
+              }
             : {}),
           ...(touchBalanceSource ? { balanceSourceTypeId: p.balanceSourceTypeId ?? null } : {}),
           ...(touchAllowUpl ? { allowUnpaidLeave: p.allowUnpaidLeave ?? before?.allowUnpaidLeave ?? null } : {}),
@@ -4174,6 +4242,10 @@ export async function updateLeaveType(
             ? {
                 maxDaysPerLeaveYear:
                   p.maxDaysPerLeaveYear !== undefined ? p.maxDaysPerLeaveYear : (before?.maxDaysPerLeaveYear ?? null),
+                // ad9cb5c5 — the period is part of the same decision, so it belongs in the same diff. A
+                // limit that moved from per-leave-year to per-employment changed meaning entirely while its
+                // FIGURE stayed at 1; an audit trail showing only the figure would show nothing at all.
+                maxDaysPeriod: p.maxDaysPerLeaveYear == null ? null : (p.maxDaysPeriod ?? null),
               }
             : {}),
           ...(touchMaxConsecutive
@@ -4528,6 +4600,68 @@ export async function setLeaveHalfDayFullDeduction(ctx: SessionContext, p: { com
       actor: actorOf(ctx),
       payload: { before: before?.enabled ?? false, after: p.enabled },
     });
+  });
+}
+
+/**
+ * 10e96227 — set the half-day full-deduction flag for the WHOLE administrable set in one save.
+ *
+ * The stored shape is unchanged: still one boolean per company (company.leave_half_day_full_deduction).
+ * What changes is that the caller states the complete set of companies the rule applies to, instead of
+ * posting one company at a time. Companies in `companyIds` are turned ON; every other administrable
+ * company is turned OFF. An empty list therefore means "applies nowhere", which is exactly what every
+ * box unticked meant before.
+ *
+ * ⚠️ THE SCOPE IS `app.is_admin_for`, NOT "every company the session can SEE", and that distinction is the
+ * whole reason this function resolves its own candidate set rather than trusting the posted ids.
+ * `listCompanies(ctx)` is tenant-wide, but the company UPDATE policy is admin-for-company — so a
+ * company-scoped hr_admin can see companies it cannot write. Under the old per-row UI that merely made one
+ * row's Save a silent no-op. Under an authoritative set-write it would be worse in BOTH directions: an
+ * unadministrable company omitted from the post would look like a deliberate "turn this off", and the
+ * write would silently fail to apply it — leaving the screen and the database disagreeing. Resolving the
+ * candidate set in SQL means the function can only ever rewrite rows the caller could have written
+ * one-by-one, and the returned summary reports precisely what moved.
+ *
+ * ONE EVENT PER CHANGED COMPANY, and none for the unchanged. The event type and payload are byte-identical
+ * to setLeaveHalfDayFullDeduction's, so existing audit consumers are unaffected; emitting a no-op event for
+ * every untouched company on every save would bury the real changes in the trail.
+ *
+ * Frozen at submission (D6) as before — flipping this never recomputes already-submitted or approved leave.
+ */
+export async function setLeaveHalfDayFullDeductionCompanies(
+  ctx: SessionContext,
+  p: { companyIds: string[] },
+): Promise<{ enabled: string[]; disabled: string[]; unchanged: number }> {
+  const wanted = new Set(p.companyIds);
+  return withTenant(ctx, async (tx) => {
+    const candidates = await tx
+      .select({ id: company.id, enabled: company.leaveHalfDayFullDeduction })
+      .from(company)
+      .where(and(isNull(company.archivedAt), sql`app.is_admin_for(company.id)`));
+
+    const enabled: string[] = [];
+    const disabled: string[] = [];
+    let unchanged = 0;
+
+    for (const c of candidates) {
+      const next = wanted.has(c.id);
+      const before = !!c.enabled;
+      if (next === before) {
+        unchanged += 1;
+        continue;
+      }
+      await tx.update(company).set({ leaveHalfDayFullDeduction: next }).where(eq(company.id, c.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'company',
+        aggregateId: c.id,
+        eventType: 'company.leave-half-day-deduction.changed',
+        actor: actorOf(ctx),
+        payload: { before, after: next },
+      });
+      (next ? enabled : disabled).push(c.id);
+    }
+    return { enabled, disabled, unchanged };
   });
 }
 // ─────────────────────────── Company logo (branding) ───────────────────────────

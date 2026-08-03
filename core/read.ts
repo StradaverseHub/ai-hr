@@ -556,6 +556,8 @@ export function listLeaveTypes(
         // renders as Unlimited on every reload for a type that actually has a limit ("my setting didn't
         // save", the report this projection list has already had twice).
         maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
+        // ad9cb5c5 — the window that ceiling is counted over (NULL ⇒ leave year).
+        maxDaysPeriod: leaveType.maxDaysPeriod,
         // Maximum Consecutive Leave (c6ffa725 rev 2): feeds the same card's Unlimited / Limited radio, its
         // Maximum and its Unit. MUST be projected for the same reason as the line above — the radio reads
         // its state from whether the figure is null, so an unprojected column renders as Unlimited on every
@@ -576,6 +578,8 @@ export function listLeaveTypes(
         // Configurable Negative Leave Balance Validation (0ef0defd): feeds the admin panel's "Allow Negative
         // Balance" Yes/No radio (MUST be projected or the radio renders at its default on every reload).
         allowNegativeBalance: leaveType.allowNegativeBalance,
+        // bc512dc3 — the floor under that switch (NULL ⇒ unbounded).
+        maxNegativeBalance: leaveType.maxNegativeBalance,
         // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): feed the admin panel's two new
         // Leave Application Rules cards (MUST be projected or both render at their defaults on every reload —
         // the "my setting didn't save" report this list has already had twice).
