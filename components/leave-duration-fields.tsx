@@ -22,6 +22,29 @@ export type LeavePreview = {
   /** Allow Unpaid Leave (a7fab30b): how many of `days` the balance will not cover. Present only when the
    *  selected type allows unpaid leave AND the request actually overflows — absent means fully paid. */
   unpaidDays?: number;
+  /** Override Leave Application (56910869): the rule(s) HR configured that WOULD change this application if
+   *  it were submitted now. Absent (never an empty array) when nothing fires, which is every leave type
+   *  until HR enables a rule — so no other type gains a line.
+   *
+   *  Declared structurally rather than imported from core/leave-override: this is a client component and the
+   *  leave pack's modules are server-side (the ADR-0080 ratchet). The shape crosses the boundary as plain
+   *  serialisable data on the preview action's return value, which is the only thing that may cross it. */
+  overrides?: LeaveOverrideNotice[];
+};
+
+/** One configured exception the employee must be told about — and, unless it merely refuses, agree to. */
+export type LeaveOverrideNotice = {
+  trigger: string;
+  action: string;
+  /** Posted back as `overrideConsent` when the employee ticks Yes. The SERVICE refuses the rule without it. */
+  consentToken: string;
+  /** false for a `block` rule: there is nothing to agree to, only a refusal to explain up front. */
+  needsConsent: boolean;
+  fromTypeName: string | null;
+  daysInAdvance?: number;
+  minAdvanceDays?: number | null;
+  paidDays?: number;
+  unpaidDays?: number;
 };
 
 /** Employee apply-popup entitlement summary. A null figure means HR gated that component out of the employee
@@ -415,6 +438,59 @@ export function LeaveDurationFields({
             unpaid: preview.unpaidDays!,
           })}
         </p>
+      )}
+
+      {/* ── Override Leave Application (56910869): TELL THE EMPLOYEE, THEN ASK ────────────────────────
+          No application is silently turned into something else. When HR has configured an exception that
+          would CHANGE this application — submit it as Emergency Leave because the notice period was missed,
+          or take part of it unpaid because the balance falls short — the employee sees exactly what will
+          happen and must tick Yes before the form will submit. Ticking nothing submits nothing.
+
+          THE TICK IS NOT THE GATE. The service re-evaluates every rule at submission and refuses a
+          converting rule whose token is missing (LeaveOverrideConsentRequiredError), so a client that skips
+          this block cannot get a converted application through. This is how the employee is ASKED; the
+          server is what makes the answer binding.
+
+          A `block` rule renders as an explanation with no tick — there is nothing to agree to, and saying
+          so here saves the employee filling in the rest of a form that will be refused. */}
+      {(preview?.overrides ?? []).length > 0 && (
+        <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/40 sm:col-span-2">
+          <p className="text-xs font-medium text-foreground">{t('override.title')}</p>
+          {preview!.overrides!.map((o) => (
+            <div key={o.consentToken} className="space-y-1.5">
+              <p className="text-xs text-foreground">
+                {o.action === 'convert_to_emergency'
+                  ? t('override.convertNotice', {
+                      typeName: o.fromTypeName ?? '',
+                      days: o.minAdvanceDays ?? 0,
+                      given: o.daysInAdvance ?? 0,
+                    })
+                  : o.action === 'split_unpaid'
+                    ? t('override.splitNotice', { paid: o.paidDays ?? 0, unpaid: o.unpaidDays ?? 0 })
+                    : t('override.blockNotice', { typeName: o.fromTypeName ?? '' })}
+              </p>
+              {o.needsConsent && (
+                <label className="flex items-start gap-2 text-xs text-foreground">
+                  <input
+                    type="checkbox"
+                    name="overrideConsent"
+                    value={o.consentToken}
+                    // required is the "No submits nothing and returns them to the form" half: the browser
+                    // refuses the submission until it is ticked, so an employee who does not agree simply
+                    // stays on the form with everything they typed intact.
+                    required
+                    className="mt-0.5 h-4 w-4 rounded border-border"
+                  />
+                  <span>
+                    {o.action === 'convert_to_emergency'
+                      ? t('override.convertConfirm')
+                      : t('override.splitConfirm')}
+                  </span>
+                </label>
+              )}
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Employee apply-popup enhancement: compact Pending approval / Available for the selected leave type,

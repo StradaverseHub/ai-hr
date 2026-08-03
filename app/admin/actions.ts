@@ -72,6 +72,9 @@ import {
   type ServiceBand,
 } from '@/core/leave';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
+// Override Leave Application (56910869): the trigger list the form iterates, so the card and the parser
+// cannot disagree about which rows exist.
+import { LEAVE_OVERRIDE_TRIGGERS, type LeaveOverrideAction } from '@/core/leave-override';
 import { setAttendancePolicy } from '@/packs/attendance/service';
 import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
 import {
@@ -1670,6 +1673,31 @@ export async function updateLeaveTypeAction(fd: FormData) {
         ) as unknown as DayTypeInclusion,
       }
     : {};
+  // Override Leave Application (feedback 56910869): the "Override Leave Application" sub-form posts
+  // `overrideRules=1` (marker) plus one row per (trigger, action) pair the card offers — an `override_<t>`
+  // select naming the chosen action and an `overrideOn_<t>` checkbox. Any other sub-form save omits the
+  // marker ⇒ override_rules stays untouched (same tri-state guard as dayTypeInclusion).
+  //
+  // ONE ROW PER TRIGGER is what the form collects, which is why the whole set is rebuilt and REPLACED on
+  // every save rather than merged: a partial write is how a rule HR believes they turned off stays on. An
+  // unticked box does not post, so absent ⇒ enabled:false — the DEFAULT-OFF reading, and the only reading
+  // that cannot turn a rule nobody enabled into behaviour. The service validates the vocabulary.
+  const touchOverrideRules = fd.get('overrideRules') === '1';
+  const overrideRulesFields = touchOverrideRules
+    ? {
+        overrideRules: LEAVE_OVERRIDE_TRIGGERS.flatMap((trigger) => {
+          const action = String(fd.get(`override_${trigger}`) ?? '').trim();
+          if (action === '') return [];
+          return [
+            {
+              trigger,
+              action: action as LeaveOverrideAction,
+              enabled: fd.get(`overrideOn_${trigger}`) === 'on',
+            },
+          ];
+        }),
+      }
+    : {};
   // Leave Type Visual Configuration Enhancement (639fdf77): the visual sub-form posts `visual=1` (marker) plus
   // `color` (one of the 7 palette tokens, or '' to clear) + `icon` (an icon-registry key, or '' to clear).
   // OWN tri-state (mirrors essView) — any other sub-form save omits the marker ⇒ color/icon stay untouched.
@@ -1771,6 +1799,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...essViewFields,
       ...formulaFields,
       ...dayTypeInclusionFields,
+      ...overrideRulesFields,
       ...visualFields,
       ...leaveUnitFields,
       ...yearCycleFields,

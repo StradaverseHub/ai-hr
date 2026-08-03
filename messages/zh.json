@@ -1607,7 +1607,10 @@
       "leaveTypeApplicationTooLong": "{typeName} 每次申请最多连续 {maxDays} {unit}，本次申请为 {days}。请缩短申请天数，或分成多次申请。",
       "consecutiveUnitCalendar": "个日历天",
       "consecutiveUnitWorking": "个工作日",
-      "leaveYearApplicationLimit": "{typeName} 每个假期年度上限为 {maxDays} 天。在 {yearStart} 至 {yearEnd} 期间已申请 {usedDays} 天，因此本次 {days} 天的申请无法提交。"
+      "leaveYearApplicationLimit": "{typeName} 每个假期年度上限为 {maxDays} 天。在 {yearStart} 至 {yearEnd} 期间已申请 {usedDays} 天，因此本次 {days} 天的申请无法提交。",
+      "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
+      "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -1789,6 +1792,14 @@
       "pageNext": "下一頁",
       "pageAria": "第 {page} 頁",
       "noEmployeesFiltered": "沒有符合篩選條件的員工。"
+    },
+    "override": {
+      "title": "Before you submit",
+      "convertNotice": "This application does not meet the {days}-day notice period for {typeName} (you have given {given} day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
+      "splitNotice": "Your balance does not cover this application. {paid} day(s) would be paid and {unpaid} day(s) would be taken as unpaid leave, which may reduce your salary.",
+      "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
+      "convertConfirm": "Yes — submit this as Emergency Leave.",
+      "splitConfirm": "Yes — I agree to the unpaid days."
     }
   },
   "attendance": {
@@ -4780,7 +4791,20 @@
       "adjustmentsRecentLine": "{days} 天 · 已写入 {targeted} 条中的 {written} 条 · {date} 生效",
       "adjustmentsReverse": "撤销",
       "adjustmentsReverseConfirm": "此操作会为该调整创建的每条记录写入一条相反分录，使余额恢复原状。不会删除任何数据，且只能执行一次。",
-      "adjustmentsReversed": "已撤销"
+      "adjustmentsReversed": "已撤销",
+      "overrideSectionTitle": "Override Leave Application",
+      "overrideSectionHelp": "What the system should do when one of the rules above is not met. Choose an action per situation, then switch it on. Nothing changes for this leave type until a rule is switched on. Employees are always told what will happen and must confirm before their application is submitted.",
+      "overrideActionNone": "Do nothing (refuse as today)",
+      "overrideEnabledLabel": "Switch this rule on",
+      "overrideTrigger": {
+        "advance_notice_not_met": "When the minimum advance notice is not met",
+        "insufficient_balance": "When the balance does not cover the application"
+      },
+      "overrideAction": {
+        "convert_to_emergency": "Offer to submit it as Emergency Leave",
+        "split_unpaid": "Offer to take the shortfall as unpaid leave",
+        "block": "Block the application"
+      }
     },
     "holidays": {
       "pageTitle": "公共假期",

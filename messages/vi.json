@@ -1607,7 +1607,10 @@
       "leaveTypeApplicationTooLong": "{typeName} cho phép tối đa {maxDays} {unit} liên tục mỗi đơn; đơn này là {days}. Vui lòng rút ngắn hoặc nộp thành nhiều đơn riêng.",
       "consecutiveUnitCalendar": "ngày theo lịch",
       "consecutiveUnitWorking": "ngày làm việc",
-      "leaveYearApplicationLimit": "{typeName} bị giới hạn {maxDays} ngày mỗi năm nghỉ phép. Đã xin {usedDays} ngày trong khoảng {yearStart} đến {yearEnd}, nên đơn xin {days} ngày này không thể nộp."
+      "leaveYearApplicationLimit": "{typeName} bị giới hạn {maxDays} ngày mỗi năm nghỉ phép. Đã xin {usedDays} ngày trong khoảng {yearStart} đến {yearEnd}, nên đơn xin {days} ngày này không thể nộp.",
+      "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
+      "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -1789,6 +1792,14 @@
       "pageNext": "Tiếp",
       "pageAria": "Trang {page}",
       "noEmployeesFiltered": "Không có nhân viên nào khớp với bộ lọc."
+    },
+    "override": {
+      "title": "Before you submit",
+      "convertNotice": "This application does not meet the {days}-day notice period for {typeName} (you have given {given} day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
+      "splitNotice": "Your balance does not cover this application. {paid} day(s) would be paid and {unpaid} day(s) would be taken as unpaid leave, which may reduce your salary.",
+      "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
+      "convertConfirm": "Yes — submit this as Emergency Leave.",
+      "splitConfirm": "Yes — I agree to the unpaid days."
     }
   },
   "attendance": {
@@ -4780,7 +4791,20 @@
       "adjustmentsRecentLine": "{days} ngày · đã ghi {written} trên {targeted} bản ghi · hiệu lực {date}",
       "adjustmentsReverse": "Hoàn tác",
       "adjustmentsReverseConfirm": "Thao tác này ghi một bút toán ngược cho mọi bản ghi mà điều chỉnh đã tạo, đưa số dư trở lại như trước. Không xóa dữ liệu và chỉ thực hiện được một lần.",
-      "adjustmentsReversed": "Đã hoàn tác"
+      "adjustmentsReversed": "Đã hoàn tác",
+      "overrideSectionTitle": "Override Leave Application",
+      "overrideSectionHelp": "What the system should do when one of the rules above is not met. Choose an action per situation, then switch it on. Nothing changes for this leave type until a rule is switched on. Employees are always told what will happen and must confirm before their application is submitted.",
+      "overrideActionNone": "Do nothing (refuse as today)",
+      "overrideEnabledLabel": "Switch this rule on",
+      "overrideTrigger": {
+        "advance_notice_not_met": "When the minimum advance notice is not met",
+        "insufficient_balance": "When the balance does not cover the application"
+      },
+      "overrideAction": {
+        "convert_to_emergency": "Offer to submit it as Emergency Leave",
+        "split_unpaid": "Offer to take the shortfall as unpaid leave",
+        "block": "Block the application"
+      }
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

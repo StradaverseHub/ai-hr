@@ -1607,7 +1607,10 @@
       "leaveTypeApplicationTooLong": "{typeName} ஒரு விண்ணப்பத்திற்கு அதிகபட்சம் {maxDays} தொடர் {unit} அனுமதிக்கிறது; இந்த விண்ணப்பம் {days} கொண்டுள்ளது. அதைக் குறைக்கவும் அல்லது தனித்தனி விண்ணப்பங்களாகச் சமர்ப்பிக்கவும்.",
       "consecutiveUnitCalendar": "நாட்காட்டி நாட்கள்",
       "consecutiveUnitWorking": "வேலை நாட்கள்",
-      "leaveYearApplicationLimit": "{typeName} ஒரு விடுப்பு ஆண்டுக்கு {maxDays} நாட்களாக வரம்பிடப்பட்டுள்ளது. {yearStart} முதல் {yearEnd} வரை ஏற்கனவே {usedDays} நாட்கள் விண்ணப்பிக்கப்பட்டுள்ளன, எனவே {days} நாட்களுக்கான இந்த விண்ணப்பத்தைச் சமர்ப்பிக்க முடியாது."
+      "leaveYearApplicationLimit": "{typeName} ஒரு விடுப்பு ஆண்டுக்கு {maxDays} நாட்களாக வரம்பிடப்பட்டுள்ளது. {yearStart} முதல் {yearEnd} வரை ஏற்கனவே {usedDays} நாட்கள் விண்ணப்பிக்கப்பட்டுள்ளன, எனவே {days} நாட்களுக்கான இந்த விண்ணப்பத்தைச் சமர்ப்பிக்க முடியாது.",
+      "overrideConsentRequiredConvert": "This application would be submitted as {typeName} instead of {fromTypeName}. Please confirm before submitting.",
+      "overrideConsentRequiredSplit": "This application would be {paid} day(s) paid and {unpaid} day(s) unpaid. Please confirm before submitting.",
+      "overrideTargetMissing": "This leave type is set to convert to Emergency Leave, but no Emergency Leave type is configured. Please contact HR."
     },
     "documentLabel": "ஆதரவு ஆவணம்",
     "documentHint": "சில விடுப்பு வகைகளுக்குத் தேவை (எ.கா. மருத்துவச் சான்றிதழ்). அனுமதிக்கப்படும் வகைகளும் அளவு வரம்புகளும் தேர்ந்தெடுத்த விடுப்பு வகையைப் பொறுத்தது.",
@@ -1789,6 +1792,14 @@
       "pageNext": "அடுத்தது",
       "pageAria": "பக்கம் {page}",
       "noEmployeesFiltered": "வடிகட்டிகளுக்கு பொருந்தும் ஊழியர் யாரும் இல்லை."
+    },
+    "override": {
+      "title": "Before you submit",
+      "convertNotice": "This application does not meet the {days}-day notice period for {typeName} (you have given {given} day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
+      "splitNotice": "Your balance does not cover this application. {paid} day(s) would be paid and {unpaid} day(s) would be taken as unpaid leave, which may reduce your salary.",
+      "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
+      "convertConfirm": "Yes — submit this as Emergency Leave.",
+      "splitConfirm": "Yes — I agree to the unpaid days."
     }
   },
   "attendance": {
@@ -4780,7 +4791,20 @@
       "adjustmentsRecentLine": "{days} நாட்கள் · {targeted} இல் {written} பதிவுகள் எழுதப்பட்டன · {date} முதல் நடைமுறை",
       "adjustmentsReverse": "மாற்றியமை",
       "adjustmentsReverseConfirm": "இந்தச் சரிசெய்தல் உருவாக்கிய ஒவ்வொரு பதிவுக்கும் எதிரான உள்ளீட்டை இது எழுதும், அந்த இருப்புகளை முந்தைய நிலைக்குத் திருப்பும். எதுவும் நீக்கப்படாது, மேலும் இதை ஒருமுறை மட்டுமே செய்ய முடியும்.",
-      "adjustmentsReversed": "மாற்றப்பட்டது"
+      "adjustmentsReversed": "மாற்றப்பட்டது",
+      "overrideSectionTitle": "Override Leave Application",
+      "overrideSectionHelp": "What the system should do when one of the rules above is not met. Choose an action per situation, then switch it on. Nothing changes for this leave type until a rule is switched on. Employees are always told what will happen and must confirm before their application is submitted.",
+      "overrideActionNone": "Do nothing (refuse as today)",
+      "overrideEnabledLabel": "Switch this rule on",
+      "overrideTrigger": {
+        "advance_notice_not_met": "When the minimum advance notice is not met",
+        "insufficient_balance": "When the balance does not cover the application"
+      },
+      "overrideAction": {
+        "convert_to_emergency": "Offer to submit it as Emergency Leave",
+        "split_unpaid": "Offer to take the shortfall as unpaid leave",
+        "block": "Block the application"
+      }
     },
     "holidays": {
       "pageTitle": "பொது விடுமுறைகள்",

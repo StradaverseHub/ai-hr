@@ -341,6 +341,10 @@ describe('08bc6841 · Leave Application Rules — the seven rule groups as a car
     'name="negativeBalance"',
     'name="backdating"',
     'name="minAdvance"',
+    // 56910869 — Override Leave Application, between Advance Notice and Duplicate Leave Applications
+    // exactly as the reporter placed it. Its position in this list IS the placement assertion: the loop
+    // below walks the markers in source order and fails if any card moves.
+    'name="overrideRules"',
     'name="duplicatePolicy"',
     'name="dayTypeInclusion"',
   ] as const;
@@ -364,8 +368,13 @@ describe('08bc6841 · Leave Application Rules — the seven rule groups as a car
     // half of the same request that r86a did not ship. The count is asserted rather than ">= 1" on purpose
     // — a card that forgets the opt-out is invisible until a browser splits it across a column boundary,
     // so a new card must come here and say so. This is that saying-so.
+    //
+    // 56910869 adds the ELEVENTH: Override Leave Application — what the system does when one of the rules
+    // in this grid is NOT met. It is the one card that is about the others, which is why the reporter
+    // placed it below Advance Notice and above Duplicate Leave Applications rather than at the end; that
+    // position is asserted separately below.
     const cards = rules.split('break-inside-avoid').length - 1;
-    expect(cards, 'every rule card (plus the half-day slot wrapper) carries break-inside-avoid').toBe(10);
+    expect(cards, 'every rule card (plus the half-day slot wrapper) carries break-inside-avoid').toBe(11);
   });
 
   it('each rule card is a single surface — no padded box nested inside a padded box', () => {
