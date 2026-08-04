@@ -23,12 +23,35 @@ import type { EmploymentStatus } from './employment-status';
  * `least()` ignores NULLs in Postgres, which is precisely what earliest() does above. The branch order is
  * the same first-match-wins ladder.
  */
+/**
+ * THE effective confirmation date, in SQL — R81's four-step fallback: a recorded confirmation first
+ * (`finalConfirmationDate` already folds in any probation extension), then `confirmationDate`, then the
+ * probation END date, then the provisional end date written at hire. See the TS twin
+ * (`deriveEmploymentStatus`) for why the last two are needed at all — nothing writes a confirmation date at
+ * hire, so without them every new hire derives to "Active" on day one.
+ *
+ * 18103ba4 EXPORTED IT. The Leave Adjustments criteria builder offers a "Confirmation Status" axis, which is
+ * the SAME question the status ladder's `probation` branch asks (`asOf < confirmation`). Writing that
+ * coalesce a second time is how a screen ends up saying "on probation" while the employee's status badge two
+ * pages away says "Active". One expression, two readers.
+ *
+ * ⚠️ NOT the same as `onProbationAsOf` in core/leave.ts, which coalesces only the first TWO columns. That
+ * is the older, narrower leave-eligibility rule and it is deliberately left alone — changing it would change
+ * who qualifies for a confirmed_only leave type, which is not this item's business.
+ */
+export function confirmationDateSql(): SQL<string | null> {
+  return sql<string | null>`coalesce(${employment.finalConfirmationDate}, ${employment.confirmationDate}, ${employment.probationEndDate}, ${employment.provisionalEndOn})`;
+}
+
+/** True when the employment is still WITHIN its probation as at `asOf` — the status ladder's rule 5, alone. */
+export function onProbationSql(asOf: string): SQL<boolean> {
+  const confirmation = confirmationDateSql();
+  return sql<boolean>`(${confirmation} is not null and ${asOf}::date < ${confirmation})`;
+}
+
 export function employmentStatusSql(today: string = todayInKualaLumpur()): SQL<EmploymentStatus> {
   const ended = sql`least(${employment.resignationDate}, ${employment.lastWorkingDate}, ${employment.terminatedOn})`;
-  // R81: the same four-step fallback deriveEmploymentStatus uses — a recorded confirmation first, then
-  // the probation end date, then the provisional end date written at hire. See the TS twin for why the
-  // last two are needed at all (nothing writes a confirmation date at hire).
-  const confirmation = sql`coalesce(${employment.finalConfirmationDate}, ${employment.confirmationDate}, ${employment.probationEndDate}, ${employment.provisionalEndOn})`;
+  const confirmation = confirmationDateSql();
   return sql<EmploymentStatus>`case
     when ${employment.blacklistedAt} is not null then 'blacklisted'
     /* R81 'withhold' has NO branch here on purpose. The TypeScript twin reads emp.payrollHoldAt, an
