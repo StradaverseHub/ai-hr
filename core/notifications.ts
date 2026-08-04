@@ -17,6 +17,7 @@ import {
   leaveRequest,
   notification,
   notificationCursor,
+  noticeRecipient,
   payslip,
   reportingLine,
   roleAssignment,
@@ -476,6 +477,34 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
         out = (await hrAdminsForCompany(tx, ev.subjectEmploymentId)).filter((id) => id !== ev.subjectEmploymentId);
       }
       return [...new Set(out)];
+    },
+  },
+  // 6e122302 — a Notice Board notice is A NOTIFICATION WITH A DIFFERENT PAYLOAD, which is why there is no
+  // mail code anywhere in core/notice.ts. Publishing appends notice.published; this entry fans it out to
+  // the audience SNAPSHOT (notice_recipient), and the engine's existing preference/channel machinery
+  // decides how each recipient actually receives it. A second mail path would be a second set of
+  // preferences to honour, a second bounce story, and a second thing to switch off.
+  'notice.published': {
+    kind: 'notice.published',
+    category: 'notice',
+    // 'info', not 'action': release one has no acknowledgement, so there is nothing the employee must DO.
+    // Severity 'action' would put it in the bell's Task tab and count toward a to-do list it cannot clear.
+    render: (p, ev) => ({
+      severity: 'info',
+      title: 'New notice',
+      body: String(p?.title ?? 'A new notice has been published.'),
+      linkPath: `/notices/${ev.aggregateId}`,
+    }),
+    recipients: async (tx, ev, payload) => {
+      // The publisher's "Send Email Notification" choice, snapshotted into the event. Read from the
+      // PAYLOAD rather than re-queried: switching the flag off after publication must not retroactively
+      // un-send, and re-reading the row would make it look as though it had.
+      if (payload?.notify !== true) return [];
+      const rows = await tx
+        .select({ e: noticeRecipient.employmentId })
+        .from(noticeRecipient)
+        .where(eq(noticeRecipient.noticeId, ev.aggregateId));
+      return [...new Set(rows.map((r) => r.e))];
     },
   },
   // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
