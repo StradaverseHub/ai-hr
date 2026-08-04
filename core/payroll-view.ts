@@ -40,7 +40,7 @@ import { resolveBatchScopeFilter, type BatchScope } from './payroll';
 // are unit-testable without a database, and so the honesty constraint on the ruleset-version cause
 // lives beside the rules it constrains.
 import { diffPayslipVersions, type PayslipSnapshot, type RecomputeDiff } from './payslip-recompute';
-import { todayInKualaLumpur } from '../lib/hr-date';
+import { HR_LOCAL_TZ, todayInKualaLumpur } from '../lib/hr-date';
 // a1d82340 step 5 — the pending-money view mirrors the kernel's own flag gates rather than reporting
 // rows the run will not pay. See the flag note on pendingBatchMoney.
 import { isModuleEnabled, settingEnabled } from './entitlements';
@@ -1579,5 +1579,64 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
       deductions: round2(lines.filter((l) => l.amount < 0).reduce((n, l) => n + l.amount, 0)),
       inertRows,
     };
+  });
+}
+
+// ───────────────────── 9. When a run was processed (dashboard "Processed date") ─────────────────────
+
+/**
+ * 7f6ca478 — the DATE each of a set of payroll runs was actually processed, keyed by batch id.
+ *
+ * THERE IS NO `payroll_batch.processed_at`. `created_at` is the wrong instant (the row exists from the
+ * moment the draft is created, often weeks earlier) and `closed_at` is a different act entirely. The only
+ * record of when calculation happened is the `payroll-batch.processed` domain event, so this reads that —
+ * the same derivation `listUnattachedTxnSummary` uses for `arrivedAfterProcessing`, lifted into a read of
+ * its own because the dashboard needs the instant itself rather than a comparison against it.
+ *
+ * MAX, NOT MIN. A run can be processed, reset back to draft (feedback a03b2d9b) and processed again; each
+ * pass appends its own event. The date on the screen must name the CURRENT figures, which are the last
+ * pass's — so the latest event wins. A `min()` here would date this month's numbers to a superseded run.
+ *
+ * THE TIMEZONE IS PART OF THE ANSWER, NOT A DETAIL. `occurred_at` is a timestamptz; a run processed at
+ * 00:30 MYT on the 1st happened at 16:30 UTC on the previous day, so reducing the instant to a date in UTC
+ * dates a third of the month's evening runs to the wrong day — and in a YEAR-MONTH timeline that is the
+ * difference between a run appearing to belong to the previous month. The conversion therefore names
+ * Asia/Kuala_Lumpur explicitly (lib/hr-date.ts HR_LOCAL_TZ) rather than leaning on the session timezone,
+ * which is right on this deployment only by coincidence.
+ *
+ * NO "PROCESSED BY" HERE, DELIBERATELY. The event carries an `actor_id`, and resolving it to a name
+ * through app_user → person is a solved join in this very file (queryIndividualTxns' `createdBy`). What
+ * is NOT established is whether production's existing processed events actually CARRY that actor: a run
+ * processed by a script, an import, or any path without a session records actor_type='system' with a null
+ * actor_id, and an app_user with no linked person resolves to a null name. A "Processed By" column that is
+ * blank on every historical row is worse than no column, so the date ships alone until someone has counted
+ * the non-null actors on a real production row set. Adding the column afterwards is this function plus two
+ * left joins — see the report for the exact query.
+ *
+ * DEGRADES, NEVER FLIPS. 'payroll-batch.processed' carries no subject_employment_id, so under ADR-0015 it
+ * is admin-only to read: a payroll_partner sees no rows here and every date renders '—' ("not known"),
+ * never a wrong date. Read-only, no domain event (pure SELECT). Fails closed on an empty id set.
+ */
+export function listBatchProcessedDates(
+  ctx: SessionContext,
+  batchIds: readonly string[],
+): Promise<Map<string, string>> {
+  if (batchIds.length === 0) return Promise.resolve(new Map());
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        batchId: domainEvent.aggregateId,
+        processedOn: sql<string>`to_char(max(${domainEvent.occurredAt}) at time zone ${HR_LOCAL_TZ}::text, 'YYYY-MM-DD')`,
+      })
+      .from(domainEvent)
+      .where(
+        and(
+          eq(domainEvent.aggregateType, 'payroll-batch'),
+          eq(domainEvent.eventType, 'payroll-batch.processed'),
+          inArray(domainEvent.aggregateId, batchIds as string[]),
+        ),
+      )
+      .groupBy(domainEvent.aggregateId);
+    return new Map(rows.map((r) => [r.batchId, r.processedOn]));
   });
 }

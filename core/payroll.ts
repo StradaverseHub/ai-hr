@@ -4420,13 +4420,34 @@ export async function getReprocessJob(ctx: SessionContext, jobId: string) {
 // additive filter: when a non-empty string is passed it is AND-ed onto the existing tenant-RLS +
 // companyIds guard, so it can only NARROW the result (Build #10). Omitting it (or passing '')
 // reproduces the prior behaviour byte-identically — the three existing callers pass ≤2 args.
-export function listBatches(ctx: SessionContext, companyIds?: string[], payPeriod?: string) {
+//
+// 7f6ca478 — it now also accepts a SET of periods. The Payroll Process dashboard shows a whole YEAR
+// at once (twelve month cells, each carrying its own run count), so it asks for twelve periods in one
+// round trip rather than filtering an unbounded "every batch this tenant ever ran" fetch in JS, which
+// is what the single-period signature forced the old list to do. A string still means exactly one
+// period; an EMPTY array means "no period can match" and is honoured as such (`inArray(…, [])` ⇒ no
+// rows) rather than being quietly widened to "all" — a caller that computed an empty set wants an
+// empty result, and silently returning everything is how a filter becomes a data leak.
+export function listBatches(
+  ctx: SessionContext,
+  companyIds?: string[],
+  payPeriod?: string | readonly string[],
+) {
+  const periodFilter = Array.isArray(payPeriod)
+    ? inArray(payrollBatch.payPeriod, payPeriod as string[])
+    : typeof payPeriod === 'string' && payPeriod
+      ? eq(payrollBatch.payPeriod, payPeriod)
+      : undefined;
   return withTenant(ctx, (tx) =>
     tx
       .select({
         id: payrollBatch.id,
         companyId: payrollBatch.companyId,
         company: company.legalName,
+        // 7f6ca478 — the dashboard renders Net Pay through lib/money.formatMoney, which refuses to
+        // guess a currency (an unlabelled figure over a claim). The list spans every company in scope,
+        // which is exactly where one hard-coded "RM" mislabels somebody's payroll.
+        currency: company.currency,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -4450,7 +4471,7 @@ export function listBatches(ctx: SessionContext, companyIds?: string[], payPerio
       .where(
         and(
           companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
-          payPeriod ? eq(payrollBatch.payPeriod, payPeriod) : undefined,
+          periodFilter,
         ),
       )
       .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq),

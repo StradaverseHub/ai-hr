@@ -1,0 +1,196 @@
+/**
+ * 7f6ca478 — the Payroll Process dashboard's filter arithmetic, kept pure so it can be unit-tested
+ * without a DOM or a database AND imported from both the server page and its `'use client'` filter bar.
+ * (Same arrangement as ./process/selection-logic.ts, and for the same reason.)
+ *
+ * The whole screen is driven by the address bar: ?year=2026&m=5&m=6&company=…&cycle=…&status=…
+ * Nothing about the selection is stored per user — saved filter preferences are deliberately OUT of
+ * scope for this piece of work (they are a new per-user write path, not layout), so a copied URL is
+ * the only "saved view" and it works for everybody.
+ */
+
+/** Month numbers as the URL and the timeline speak them: 1 = January … 12 = December. */
+export const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+
+/**
+ * How far either side of "this year" the year <select> reaches. The arrows are NOT clamped to this
+ * window — `yearOptions` always includes the selected year, so stepping past the edge extends the list
+ * rather than dead-ending. A tenant whose oldest run is 2019 can still reach it; the window only decides
+ * what the dropdown offers without being asked.
+ */
+const YEAR_BACK = 5;
+const YEAR_FORWARD = 1;
+
+/** 'YYYY-MM' for one (year, month1). */
+export const periodOf = (year: number, month1: number): string =>
+  `${year}-${String(month1).padStart(2, '0')}`;
+
+/** The twelve periods of a year, ascending — the dashboard's ONE bounded read window. */
+export const periodsForYear = (year: number): string[] => MONTHS.map((m) => periodOf(year, m));
+
+/** The month number (1-12) of a 'YYYY-MM' period, or null if it is not one. */
+export function monthOfPeriod(period: string): number | null {
+  const m = /^\d{4}-(0[1-9]|1[0-2])$/.exec(period);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Resolve the ?year param. Anything that is not a plausible four-digit year falls back to the CALLER'S
+ * "this year" — which the page must derive through the tenant timezone (todayInKualaLumpur), not
+ * `new Date().getFullYear()`: between 00:00 and 08:00 MYT on 1 January those two disagree, and on a
+ * year-month timeline that means opening on the wrong year for eight hours every New Year.
+ */
+export function parseYear(raw: string | string[] | undefined, thisYear: number): number {
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  const n = Number(first);
+  return Number.isInteger(n) && n >= 1900 && n <= 2999 ? n : thisYear;
+}
+
+/**
+ * Resolve the repeated ?m params into a sorted, de-duplicated set of month numbers.
+ *
+ * An EMPTY result means "the whole year", not "nothing" — that is what makes the timeline usable: you
+ * arrive seeing every month and tick months to narrow. Out-of-range and non-numeric values are dropped
+ * rather than clamped, so a hand-typed ?m=13 quietly means "no such month" instead of silently becoming
+ * December.
+ */
+export function parseMonths(raw: string | string[] | undefined): number[] {
+  const list = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
+  const out = new Set<number>();
+  for (const item of list) {
+    for (const part of item.split(',')) {
+      const n = Number(part.trim());
+      if (Number.isInteger(n) && n >= 1 && n <= 12) out.add(n);
+    }
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+/** Repeated-param values as a string[] (a single string becomes a 1-element array). */
+export const asArray = (v: string | string[] | undefined): string[] =>
+  v == null ? [] : Array.isArray(v) ? v : v ? [v] : [];
+
+/**
+ * The periods the GRID should show: the ticked months, or all twelve when none is ticked.
+ *
+ * Note this is NOT what is fetched. The read always asks for the whole year (periodsForYear) so the
+ * timeline can put a run count on every month cell — a month you have not ticked still has to show you
+ * whether there is anything in it, or the timeline is just twelve inert buttons.
+ */
+export const selectedPeriods = (year: number, months: readonly number[]): string[] =>
+  (months.length ? [...months] : [...MONTHS]).map((m) => periodOf(year, m));
+
+/** Years the dropdown offers: a window around `thisYear`, always including `selected`. */
+export function yearOptions(selected: number, thisYear: number): number[] {
+  const lo = Math.min(thisYear - YEAR_BACK, selected);
+  const hi = Math.max(thisYear + YEAR_FORWARD, selected);
+  return Array.from({ length: hi - lo + 1 }, (_, i) => hi - i);
+}
+
+/** One month cell of the timeline. */
+export type MonthCell = { month: number; label: string; selected: boolean; runs: number };
+
+/**
+ * The twelve timeline cells for a year: label, selection state, and how many runs the year's fetched
+ * rows put in that month. `labels` is 12 PRE-TRANSLATED short month names (the server formats them
+ * with Intl against the request locale — month names are calendar data, not product copy, so they do
+ * not belong in the message catalogs).
+ */
+export function monthCells(
+  labels: readonly string[],
+  months: readonly number[],
+  rows: readonly { payPeriod: string }[],
+): MonthCell[] {
+  const counts = new Map<number, number>();
+  for (const r of rows) {
+    const m = monthOfPeriod(r.payPeriod);
+    if (m != null) counts.set(m, (counts.get(m) ?? 0) + 1);
+  }
+  const picked = new Set(months);
+  return MONTHS.map((m) => ({
+    month: m,
+    label: labels[m - 1] ?? String(m),
+    selected: picked.has(m),
+    runs: counts.get(m) ?? 0,
+  }));
+}
+
+/**
+ * Apply the non-period filters in JS over the year's already-fetched rows.
+ *
+ * The PERIOD narrowing happens in SQL (listBatches takes the period set); company / cycle / status are
+ * applied here because the read window is at most one year of runs and re-querying on every chip would
+ * buy nothing. Every filter is a plain intersection — an empty selection means "no filter", never
+ * "nothing", which keeps "All companies" as the default without a magic sentinel value.
+ */
+export function applyFilters<
+  T extends { payPeriod: string; companyId: string; runType: string; status: string },
+>(
+  rows: readonly T[],
+  f: { periods: readonly string[]; companyIds: readonly string[]; cycles: readonly string[]; statuses: readonly string[] },
+): T[] {
+  const periods = new Set(f.periods);
+  const companies = new Set(f.companyIds);
+  const cycles = new Set(f.cycles);
+  const statuses = new Set(f.statuses);
+  return rows.filter(
+    (r) =>
+      periods.has(r.payPeriod) &&
+      (companies.size === 0 || companies.has(r.companyId)) &&
+      (cycles.size === 0 || cycles.has(r.runType)) &&
+      (statuses.size === 0 || statuses.has(r.status)),
+  );
+}
+
+/**
+ * The summary tiles across the top: one count per REAL run state.
+ *
+ * The request asked for five tiles — Total, Draft, Processing, Completed and Failed. Three of those
+ * states do not exist and cannot be counted, because they do not exist as data: `payroll_status` is
+ * exactly ('draft','processed','closed'). Generation is synchronous and transactional, so there is no
+ * moment at which a run is "processing" and nothing survives a run that fails. Counting a state that
+ * cannot occur would put a permanent, authoritative "Failed: 0" on the screen — a reassurance the
+ * system is in no position to give. So the tiles report what is real.
+ */
+export type StatusSummary = { total: number; draft: number; processed: number; closed: number };
+
+export function summarise(rows: readonly { status: string }[]): StatusSummary {
+  return {
+    total: rows.length,
+    draft: rows.filter((r) => r.status === 'draft').length,
+    processed: rows.filter((r) => r.status === 'processed').length,
+    closed: rows.filter((r) => r.status === 'closed').length,
+  };
+}
+
+/** The dashboard's filter state, as it travels between the address bar, the page and the filter bar. */
+export type DashboardFilters = {
+  year: number;
+  months: number[];
+  companyIds: string[];
+  cycles: string[];
+  statuses: string[];
+};
+
+/**
+ * Build the dashboard's address for a filter state. `page`/`size` are deliberately NOT carried: changing
+ * a filter changes which rows exist, so staying on page 4 would land the reader past the end of the new
+ * result and show them an empty table they did not ask for.
+ */
+export function dashboardHref(f: DashboardFilters, basePath = '/payroll'): string {
+  const sp = new URLSearchParams();
+  sp.set('year', String(f.year));
+  for (const m of f.months) sp.append('m', String(m));
+  for (const c of f.companyIds) sp.append('company', c);
+  for (const c of f.cycles) sp.append('cycle', c);
+  for (const s of f.statuses) sp.append('status', s);
+  return `${basePath}?${sp.toString()}`;
+}
+
+/** Tick / untick ONE month, returning the next sorted month set. */
+export function toggleMonth(months: readonly number[], month: number): number[] {
+  const next = new Set(months);
+  if (next.has(month)) next.delete(month);
+  else next.add(month);
+  return [...next].sort((a, b) => a - b);
+}
