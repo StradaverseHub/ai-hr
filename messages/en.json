@@ -2915,7 +2915,35 @@
       "lineCp38": "CP38",
       "lineZakat": "Zakat",
       "lineLp": "Optional deductions (LP)",
-      "lineHrdf": "HRD Corp levy"
+      "lineHrdf": "HRD Corp levy",
+      "pendingMoney": {
+        "title": "Pending transactions",
+        "hint": "Everything queued against this run that is not basic salary, whichever screen it was entered on. Twelve entry points write five different tables; this is the one place they are all visible before you generate.",
+        "empty": "Nothing is queued. This run will pay basic salary and the statutory calculation only.",
+        "employees": "Employees affected",
+        "earnings": "Earnings",
+        "deductions": "Deductions",
+        "colSource": "Entered via",
+        "colItem": "Pay item",
+        "colAmount": "Amount",
+        "inert": "{n} recorded transactions will NOT be paid by this run: the pay-item features that read them are switched off for this tenant. They are excluded from the totals above.",
+        "door": {
+          "fixedComponent": "Fixed transaction",
+          "individualTxn": "Individual transaction",
+          "batchComponent": "One-off pay item",
+          "overtime": "Overtime",
+          "bonus": "Bonus",
+          "claims": "Claims payout",
+          "loan": "Loan instalment",
+          "tp1": "TP1 relief",
+          "zakat": "Zakat"
+        },
+        "note": {
+          "attendance": "from attendance",
+          "manual": "keyed manually",
+          "unattached": "not yet attached"
+        }
+      }
     },
     "reports": {
       "pageTitle": "Payroll",

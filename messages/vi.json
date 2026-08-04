@@ -3189,7 +3189,35 @@
       "lineCp38": "CP38",
       "lineZakat": "Zakat",
       "lineLp": "Khoản giảm trừ tùy chọn (LP)",
-      "lineHrdf": "Phí HRD Corp"
+      "lineHrdf": "Phí HRD Corp",
+      "pendingMoney": {
+        "title": "Giao dịch đang chờ",
+        "hint": "Mọi khoản đang chờ trong đợt này ngoài lương cơ bản, bất kể được nhập từ màn hình nào. Mười hai điểm nhập liệu ghi vào năm bảng khác nhau; đây là nơi duy nhất thấy được tất cả trước khi bạn tính lương.",
+        "empty": "Không có khoản nào đang chờ. Đợt này chỉ trả lương cơ bản và phần tính toán theo luật.",
+        "employees": "Nhân viên bị ảnh hưởng",
+        "earnings": "Khoản thu nhập",
+        "deductions": "Khoản khấu trừ",
+        "colSource": "Nhập qua",
+        "colItem": "Khoản mục lương",
+        "colAmount": "Số tiền",
+        "inert": "{n} giao dịch đã ghi nhận sẽ KHÔNG được trả trong đợt này: các tính năng khoản mục lương đọc chúng đang tắt cho tổ chức này. Chúng không được tính vào các tổng ở trên.",
+        "door": {
+          "fixedComponent": "Giao dịch cố định",
+          "individualTxn": "Giao dịch cá nhân",
+          "batchComponent": "Khoản mục lương một lần",
+          "overtime": "Làm thêm giờ",
+          "bonus": "Thưởng",
+          "claims": "Chi trả hoàn ứng",
+          "loan": "Kỳ trả nợ vay",
+          "tp1": "Miễn giảm TP1",
+          "zakat": "Zakat"
+        },
+        "note": {
+          "attendance": "từ chấm công",
+          "manual": "nhập thủ công",
+          "unattached": "chưa gắn vào đợt"
+        }
+      }
     },
     "transactions": {
       "title": "Giao dịch",
