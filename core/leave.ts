@@ -4,7 +4,7 @@
  * the debit + status flip + event atomically in one transaction.
  */
 // `isNotNull` and `ne` left with the expireAgedLeave sweep (c459bff9) — it was the only caller of either.
-import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
@@ -2547,17 +2547,35 @@ export async function requestLeave(
         //
         // Precedence: the rule's chosen target wins; absent one, fall back to the code lookup so rules
         // written before this field existed behave exactly as they do today rather than changing on deploy.
-        const [target] = rule.targetLeaveTypeId
-          ? await tx
-              .select(leaveTypeRequestColumns)
-              .from(leaveType)
-              .where(and(eq(leaveType.id, rule.targetLeaveTypeId), isNull(leaveType.archivedAt)))
-              .limit(1)
-          : await tx
-              .select(leaveTypeRequestColumns)
-              .from(leaveType)
-              .where(and(eq(leaveType.code, EMERGENCY_LEAVE_CODE), isNull(leaveType.archivedAt)))
-              .limit(1);
+        // THREE STEPS, IN THIS ORDER — and step 2 is what actually fixes production on deploy day.
+        //   1. the target HR chose on the rule;
+        //   2. failing that, the type whose ROLE is 'emergency' — 0387 classified production's `EL` row,
+        //      so the conversion starts working with NO configuration change by the tenant. Without this
+        //      step the fix would require HR to first open a rule editor and pick a target, which is not
+        //      a fix, it is a workaround with extra steps;
+        //   3. failing that, the seeded code, which is the pre-65f466e2 behaviour for an unclassified
+        //      tenant and must stay reachable so nothing changes underneath them.
+        // Ordered by id so a tenant that somehow carries two 'emergency' rows resolves deterministically
+        // rather than by whatever the planner returned first (0387 raises a WARNING in that case).
+        // Ordered by id so a tenant carrying two candidate rows resolves deterministically rather than by
+        // whatever the planner happened to return first (0387 raises a WARNING if it finds such a pair).
+        const findTarget = (where: SQL | undefined) =>
+          tx.select(leaveTypeRequestColumns).from(leaveType).where(where).orderBy(leaveType.id).limit(1);
+
+        let target: Awaited<ReturnType<typeof findTarget>>[number] | undefined;
+        if (rule.targetLeaveTypeId) {
+          // 1. What HR chose. If it has since been archived we do NOT silently fall through to another
+          //    type — converting into something the tenant did not pick would be worse than refusing.
+          [target] = await findTarget(and(eq(leaveType.id, rule.targetLeaveTypeId), isNull(leaveType.archivedAt)));
+        } else {
+          // 2. The type whose ROLE is emergency. 0387 classified production's `EL` row, so the conversion
+          //    starts working on deploy with NO configuration change by the tenant.
+          [target] = await findTarget(and(eq(leaveType.role, 'emergency'), isNull(leaveType.archivedAt)));
+          // 3. The seeded code — pre-65f466e2 behaviour, kept reachable for an unclassified tenant.
+          if (!target) {
+            [target] = await findTarget(and(eq(leaveType.code, EMERGENCY_LEAVE_CODE), isNull(leaveType.archivedAt)));
+          }
+        }
         // Still a real state, and still loud: the chosen type can be archived after the rule was written.
         // The message names what was CHOSEN, so HR can see which configuration to repair.
         if (!target) throw new LeaveOverrideTargetMissingError(rule.targetLeaveTypeId ?? EMERGENCY_LEAVE_CODE);
