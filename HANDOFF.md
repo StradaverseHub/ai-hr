@@ -18,23 +18,24 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-05 (r139 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-05 (r140 SHIPPED)
 
-**`main@a2b6ddab` is what runs. Production on 319 migrations. Next free migration number is `0396`**
-(0389 and 0394/0395 unused — `build/r148` holds 0394/0395; 0389 was never claimed). No half-applied
-migration, no pending deploy. Verified after deploy: service active, `GET /` 401, `/login` 200,
-`rsync --dry-run` zero changes, notice tables present, claim `draft` enum present, `OT1_5` reclassified.
+**`main@00de9851` is what runs. Production on 321 migrations. Next free migration number is `0396`**
+(0389 was never claimed and is dead). No half-applied migration, no pending deploy, nothing in flight.
+Verified after deploy: service active, `GET /` 401, `/login` 200, `rsync --dry-run` zero changes, and
+**the attendance backfill's invariant holds on real data — 151 rows written, the six OT rate buckets
+summing to exactly `ot_minutes` (5940 = 5940), zero mismatched rows.**
 
-### The board — counted on production 2026-08-05 after r139
+### The board — counted on production 2026-08-05 after r140
 
-**`deployed = 581` · `approved = 4` · `building = 1` · `cancelled = 12`. `open = 0`, `contested = 0`,
+**`deployed = 582` · `approved = 3` · `building = 1` · `cancelled = 12`. `open = 0`, `contested = 0`,
 `planned = 0`.**
 
 **WHAT IS LEFT — five items, and four of them are genuinely sequential:**
 
 | item | why it is not just "next" |
 |---|---|
-| `7c834696` Attendance engine | IN FLIGHT on `build/r148` (stage 1 only). Its own plan: "stage 1 must not share a release with any other attendance change." Migrations 0394/0395 assigned |
+| ~~`7c834696` Attendance stage 1~~ | **SHIPPED r140.** Stages 2 (flexi-shift + cut-off) and 3 (transparency + simulator) remain, and stage 3 depends on stage 1's stored figures. **TWO OWNER DECISIONS ARE OPEN — see below** |
 | `6e9a126e` Entitlement redesign | **OWN SESSION.** Drops `benefit_scheme`, `scheme_leave_entitlement`, `leave_policy`. Archive to text FIRST, re-count the census on production, and **re-locate every anchor BY SYMBOL** — its rev-3 claim that line numbers were re-verified was false |
 | `93249794` Generate Entitlement | Waits on `6e9a126e`'s eligibility layer, or you build a SECOND criteria engine — the exact defect several plans complain about |
 | `2ef69d1e` Back pay | LAST. It posts through `createIndividualTxnsBulk` into the screen r139 just rebuilt, adds a run-type to the dashboard r139 just rebuilt, and rewrites the earnings fold `3c473773` just changed. Pass 2 waits on `7c834696` |
@@ -82,6 +83,24 @@ Six workstreams built seven items simultaneously. What made it work:
   field exists. The screen NAMES them as unavailable rather than silently omitting them.
 - **Claims stage 1 has no `reserved_amount` column**, deliberately: a stored counter is what gets
   decremented twice and silently frees limit that is still consumed.
+
+### ⚠️ TWO OWNER DECISIONS OPEN ON ATTENDANCE — free to make NOW, expensive later
+
+1. **THE OT ROUNDING RULE IS AMBIGUOUS IN THE APPROVED PLAN.** It gives two mutually exclusive
+   examples: "0:01–0:59 at round-to 60 → 60" implies round UP; "121 at round-to 30 → 120" implies
+   NEAREST. Nearest is what ships, unchanged from before. Production has exactly ONE rounding band —
+   rule `A01`, 61–119 minutes, round-to 60 — so today 61–89 rounds DOWN to 60 while 90–119 already
+   rounds up. **It costs nobody anything yet**: `A01` is not the tenant default and no shift selects
+   it, so it decides ZERO days. The moment someone assigns `A01` to a shift it becomes an hour of
+   overtime pay per occurrence. `test/attendance-stage1-calc.test.ts` pins today's behaviour against
+   `A01`'s real geometry, so choosing round-up will fail a test that names the exact minutes that move.
+2. **"Overtime beyond the final band shall not be counted"** would cut `ot_minutes` DOWNWARD and
+   retroactively. Not built — those minutes keep the final band's rate. Truncation needs its own opt-in.
+
+**One human-visible consequence of r140 on production:** rule `A01`'s band ladder breaks contiguity,
+so the new validation refuses to SAVE it until repaired. Deliberate — a hole in the ladder used to be
+cosmetic and now decides which rate column overtime lands in. The band editor flags the offending row
+on OPEN, in the same wording as the save error, so it is visible rather than a surprise at save time.
 
 ### FOLLOW-UPS MEASURED BUT NOT BUILT
 

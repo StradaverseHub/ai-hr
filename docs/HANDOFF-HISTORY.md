@@ -9,6 +9,55 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r140 — 2026-08-05 — the attendance engine starts calculating, and it ships inert by measurement
+
+**Shipped `main@00de9851`.** `7c834696` stage 1. Gate: tsc clean · **575 files / 6939 tests** ·
+next build clean · **upgrade rehearsal PASS**. Migrations 0394/0395 → production on **321**.
+
+### Decisions
+
+**THE RELEASE GATE WAS DEMONSTRATED, NOT ASSERTED.** The plan's own acceptance test is "a rule with no
+bands and deductions off leaves every derived figure byte-identical". `test/attendance-stage1-calc.test.ts`
+keeps a VERBATIM COPY of the pre-change `otByRate` and checks the new code against it across a 28-row
+matrix (4 day types × 7 shapes, including OT>worked and nulls). Copy the technique: pin the old
+implementation, not a description of it.
+
+**MEASURED ON PRODUCTION BEFORE SHIPPING, and the counts are why this was safe:** 151 rows backfilled
+across six weeks · **band categorisation decides ZERO days** (the one banded rule is not the default and
+no shift selects it) · **zero** rules fail the new bounds validation · **zero** rules carry deduction
+values. **Verified after deploy on real data: the six OT rate buckets sum to exactly `ot_minutes`
+(5940 = 5940), zero mismatched rows.** `ot_minutes` stays canonical — payroll, reporting and
+`toil_accrual` all read it, so the rate buckets are ADDITIVE.
+
+**THE PLAN CONTRADICTED ITSELF ON ROUNDING, AND THE AGENT CHANGED NOTHING.** Two mutually exclusive
+worked examples (round-up vs nearest). Rounding decides `ot_minutes`, which is money, so today's
+behaviour was pinned instead — and then re-pinned against the REAL production band after the counts
+came back, because the first version of that test used a generic band and proved the mechanism while
+telling the owner nothing about their own data. **A conflict test written against invented geometry is
+half a test.**
+
+**"REFUSE" WAS KEPT, BUT THE SURPRISE WAS REMOVED.** The new ladder validation refuses to save rule
+`A01`, whose bands break contiguity — deliberate, because a hole in the ladder used to be cosmetic and
+now decides which rate column overtime lands in. Grandfathering would have made `normalizeInput`
+stateful forever ("was it already broken, and did this edit make it worse") to spare one admin one
+ten-second repair. Instead the band editor flags the offending row on OPEN, in the save error's own
+wording: blocked-at-save became visible-on-open.
+
+**AN ADJACENT LIVE BUG, FIXED:** the variable-rate `<select>` compared options as strings while the
+form loaded `toFixed(2)`, so a band saved at 1.5× reopened showing 1.0× — and re-saving wrote the
+wrong rate back.
+
+### A THIRD HOLE IN THE i18n GUARD — a key that EXISTS but cannot FORMAT
+
+A warning message containing `{row}`/`{expected}` is ICU interpolation, so a plain `t()` with no
+arguments threw `FORMATTING_ERROR` at render and painted the literal key path on screen. **The route
+returned 200, tsc passed, and `i18n-coverage` check C passed** — check C asks whether the key
+RESOLVES, and existing is not the same as formatting. Use `t.raw()` when the braces are literal.
+Found only in the dev-server log on a real render. That is now three documented blind spots in one
+guard, every one of them found by rendering rather than by testing.
+
+---
+
 ## r139 — 2026-08-05 — seven items, six parallel workstreams, and four live bugs nobody had reported
 
 **Shipped `main@a2b6ddab`.** `6e122302` Notice Board · `e7eb5d83` claims stage 1 · `7f6ca478` payroll
