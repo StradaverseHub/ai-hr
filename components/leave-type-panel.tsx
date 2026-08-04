@@ -18,6 +18,9 @@ import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/
 import { ESS_VIEW_CHECKLIST_GROUPS } from '@/components/leave/entitlement-panel-config';
 import { applyLeaveFormulaTemplate, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
+// 35b7af0a — the shared person master lists, in a client-safe module so this client component can use the
+// real one instead of the hand-synced copy it used to carry.
+import { MARITAL_STATUSES } from '@/lib/person-vocabulary';
 import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -100,11 +103,18 @@ export type LeaveEligibilityRule = {
   employmentCategory?: string | string[];
 };
 
-/** The checkbox options the eligibility rule form renders. Order matches the mockup. The marital list mirrors
- *  the shared master enum (core/profile.ts MARITAL_STATUSES, #12129e77) — client components can't import the
- *  server module, so it's duplicated here in the same order; keep the two in sync. */
+/** The checkbox options the eligibility rule form renders. Order matches the mockup.
+ *
+ *  35b7af0a — the marital list is no longer a hand-synced copy. It IS the shared master list
+ *  (`lib/person-vocabulary.ts` MARITAL_STATUSES, #12129e77), which moved out of `core/profile.ts` into a
+ *  client-safe module precisely so client components like this one can import it instead of restating it.
+ *  The old comment here said "keep the two in sync"; that obligation is gone.
+ *
+ *  Gender stays a SHORTER, deliberate list: 'undisclosed' is a valid PROFILE value but never a rule value
+ *  (see core/admin.ts ELIGIBILITY_GENDER_OPTIONS and eligibilityUndisclosedNote), so this is a real
+ *  narrowing of the master list, not a drifted copy of it. */
 const ELIGIBILITY_GENDER_OPTIONS = ['male', 'female'] as const;
-const ELIGIBILITY_MARITAL_OPTIONS = ['single', 'married', 'divorced', 'widowed', 'separated', 'other'] as const;
+const ELIGIBILITY_MARITAL_OPTIONS = MARITAL_STATUSES;
 // Day Type Inclusion (feedback ef6d7146): the five day types, in the order the reporter listed them. Each
 // posts `dayType_<key>` when its toggle is on; the closed set mirrors core/leave.ts DAY_TYPE_INCLUSION_KEYS.
 const DAY_TYPE_INCLUSION_OPTIONS = ['offDay', 'restDay', 'publicHoliday', 'companyHoliday', 'shutdownDay'] as const;
@@ -920,11 +930,18 @@ function CarryPolicyForm({
                   className={`${inputCls} w-24`}
                 />
               </Field>
-              {/* The cap stays a CEILING on the percentage, not an alternative to it. Preserved rather
-                  than cleared so switching back to Fixed Maximum restores the figure. */}
-              <Field label={t('carryCapLabel')}>
-                <input name="carryForwardMax" type="number" min="0" step="0.5" defaultValue={cap} className={`${inputCls} w-24`} />
-              </Field>
+              {/* 7cd914b1 rev 2: the cap is NO LONGER offered beside the percentage. It used to render
+                  here as a ceiling, and core/leave-compute.ts's Math.min then silently trimmed the
+                  percentage to it — a type set to "50%" while holding an old cap of 5 carried 5 days,
+                  with nothing on screen saying so. Percentage mode now shows ONE number.
+                  Posting an explicit 0 rather than omitting the field: app/admin/actions.ts reads
+                  carryForwardMax as `num(...) ?? null`, which is NOT tri-state, so an omitted input
+                  would clear it anyway — the explicit zero makes the intent readable and matches the
+                  None branch's deliberate hidden re-post below.
+                  KNOWN AND INTENDED: Fixed Max -> Percent -> Fixed Max loses the stored cap. Preserving
+                  it in a hidden field would reinstate the invisible ceiling this change exists to
+                  remove. */}
+              <input type="hidden" name="carryForwardMax" value="0" />
             </>
           ) : (
             <>

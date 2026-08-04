@@ -202,19 +202,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/personnel',
     labelKey: 'nav.personnelAdmin',
     guard: 'requireAdmin',
-    // r79a (4fb8b75a step 3): /admin/personnel/settings is the Hiring Defaults screen — probation months
-    // and review-reminder cadence, relocated off the Payroll Schedule screen. Registered as a ROUTE of the
-    // existing personnel-admin screen rather than a new screenKey: it is the same admin surface behind the
-    // same requireAdmin guard, so it inherits the function-access column instead of minting one.
-    // 6d671f44: /admin/personnel/new is the Create New Employee wizard, registered here for the same
-    // reason — it is the same admin surface behind the same requireAdmin guard, and creating an
-    // employee is not a separate function-access right from managing them.
+    // 6d671f44: /admin/personnel/new is the Create New Employee wizard, registered here because it is the
+    // same admin surface behind the same requireAdmin guard, and creating an employee is not a separate
+    // function-access right from managing them.
+    // 7b5f18c3: /admin/personnel/settings (Hiring Defaults) is GONE from this list. The screen moved to
+    // System Settings (own column below) and the old address is now an unguarded redirect stub — so it is
+    // no longer a guarded page on disk, and leaving it here would fail the "no stale routes" check.
     routes: [
       '/admin/personnel',
       '/admin/personnel/[employmentId]',
       '/admin/personnel/import',
       '/admin/personnel/new',
-      '/admin/personnel/settings',
     ],
   },
   {
@@ -236,6 +234,21 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'nav.movementSettings',
     guard: 'requireAdmin',
     routes: ['/admin/settings/movement'],
+  },
+  {
+    // 7b5f18c3 — Hiring Defaults, relocated out of Personnel (Admin) into System Settings as a company
+    // list plus a page per company. Its OWN column, not a route on personnelAdmin any more: it is no
+    // longer part of the personnel surface, and the transparency grid should say where a screen actually
+    // lives. This registration is the other half of the SYSTEM_SETTINGS_NODE row in components/sidebar.tsx
+    // — a nav row whose route is unregistered is refused by our own access check, and a registered route
+    // with no row cannot be found. test/hiring-defaults-system-settings.test.ts asserts both together.
+    // scopedAdmin matches the page's own guard and its four System Settings siblings; access is unchanged
+    // from the old requireAdmin screen (scopedAdmin calls requireAdmin internally → the same two roles).
+    screenKey: 'hiringDefaults',
+    href: '/admin/settings/hiring-defaults',
+    labelKey: 'nav.hiringDefaults',
+    guard: 'scopedAdmin',
+    routes: ['/admin/settings/hiring-defaults', '/admin/settings/hiring-defaults/[companyId]'],
   },
   {
     // R22 7d309da7: Personnel profile dropdown catalog (religion/race/nationality/state/country/relationship).

@@ -159,7 +159,8 @@
     "scheduledActions": "Tác vụ theo lịch",
     "systemSettings": "Cài đặt hệ thống",
     "systemExplorer": "Trình khám phá phụ thuộc",
-    "movementSettings": "Cài đặt biến động"
+    "movementSettings": "Cài đặt biến động",
+    "hiringDefaults": "Mặc định tuyển dụng"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -352,7 +353,6 @@
       "employeeIdLabel": "Mã nhân viên",
       "employeeIdPlaceholder": "vd. EMP-0001",
       "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 30 ký tự.",
-      "hiringDefaults": "Mặc định tuyển dụng",
       "draftsHeading": "Nhân viên mới chưa hoàn tất",
       "draftsCount": "{count} bản nháp",
       "draftUntitled": "Bản nháp chưa đặt tên",
@@ -817,6 +817,12 @@
         "status_offboarding": "Đang nghỉ việc",
         "status_terminated": "Đã chấm dứt",
         "probationGroup": "Thông tin thử việc",
+        "contractGroup": "Thông tin hợp đồng",
+        "contractStartDate": "Ngày bắt đầu hợp đồng",
+        "contractEndDate": "Ngày kết thúc hợp đồng",
+        "contractRemark": "Ghi chú",
+        "contractRemarkPlaceholder": "ví dụ: Hợp đồng lao động 12 tháng đầu tiên. Có thể gia hạn sau khi đánh giá hiệu suất.",
+        "contractNote": "Chỉ hiển thị cho nhân viên hợp đồng. Ngày bắt đầu mặc định theo Ngày gia nhập tập đoàn cho đến khi bạn lưu, và ngày kết thúc chính là ngày mà đợt rà soát hết hạn hợp đồng theo dõi.",
         "noticeGroup": "Thông tin thời gian báo trước",
         "resignationGroup": "Thông tin nghỉ việc",
         "value": "Giá trị",
@@ -1329,17 +1335,6 @@
       "historyErrorsTruncated": "Đang hiển thị {shown} trong {total} hàng lỗi.",
       "historyNoDetail": "Không có chi tiết hàng nào được lưu cho lần nhập này."
     },
-    "hiringDefaults": {
-      "title": "Mặc định tuyển dụng",
-      "description": "Giá trị mặc định theo từng công ty cho nhân viên mới và các kỳ đánh giá. Trước đây chúng nằm trên màn hình lịch trả lương, nơi không có phần nào của bảng lương đọc tới.",
-      "back": "Nhân sự",
-      "emptyScope": "Không có công ty nào trong phạm vi hiện tại.",
-      "save": "Lưu",
-      "probationMonths": "Thời gian thử việc mặc định (tháng)",
-      "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
-      "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
-      "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
-    },
     "wizard": {
       "fields": {
         "fullName": "Họ và tên",
@@ -1355,12 +1350,11 @@
         "employmentType": "Loại hợp đồng",
         "hiredOn": "Ngày tuyển dụng",
         "provisionalEndOn": "Ngày kết thúc tạm thời",
+        "contractEndDate": "Ngày kết thúc hợp đồng",
         "basicSalary": "Lương cơ bản ban đầu (MYR)",
         "remarks": "Ghi chú",
         "icNumber": "Số định danh (NRIC)",
         "phone": "Số điện thoại di động",
-        "gender": "Giới tính",
-        "maritalStatus": "Tình trạng hôn nhân",
         "epfNumber": "Số EPF",
         "socsoNumber": "Số SOCSO",
         "taxNumber": "Mã số thuế",
@@ -1374,8 +1368,6 @@
         "isResident": "Cư trú thuế",
         "taxCategory": "Nhóm PCB",
         "monthlyAllowance": "Phụ cấp hàng tháng",
-        "payMode": "Hình thức trả lương",
-        "paymentTerm": "Kỳ trả lương",
         "rateAmount": "Mức đơn giá"
       },
       "employmentType": {
@@ -1393,13 +1385,13 @@
       "orgLabelsEmptyForCompany": "Chưa có nhãn tổ chức nào được cấu hình cho công ty đã chọn.",
       "hints": {
         "provisionalEndOn": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có.",
+        "contractEndDate": "Ngày hết hạn hợp đồng — ngày làm việc cuối cùng theo hợp đồng này. Giá trị này được lưu làm ngày kết thúc hợp đồng ở tab Việc làm và kích hoạt đợt rà soát hết hạn hợp đồng.",
         "employeeCode": "Chữ cái, chữ số và dấu gạch ngang, tối đa 30 ký tự. Mã không được trùng với mã đang dùng.",
         "icNumber": "Không bắt buộc — để trống với người dùng hộ chiếu. Nếu nhập, phải là số định danh hợp lệ theo quốc gia của công ty.",
         "dateOfBirth": "Để trống thì hệ thống lấy từ số định danh nếu có thể.",
         "businessUnit": "Chỉ để lọc danh sách phòng ban. Không lưu vào hồ sơ nhân viên.",
         "hiredOn": "Ngày làm việc đầu tiên. Sau khi tạo, ngày này chỉ thay đổi qua sự kiện điều động.",
         "bankAccount": "Nhập cả ngân hàng và số tài khoản, hoặc bỏ trống cả hai.",
-        "rateAmount": "Bắt buộc với hình thức trả lương theo ngày hoặc theo giờ.",
         "company": "Được hỏi trước vì nó quyết định Thiết lập Số chạy tự động Mã nhân viên nào được áp dụng."
       },
       "backLabel": "Quay lại Nhân sự",
@@ -1417,29 +1409,10 @@
       "selectPrompt": "— Chọn —",
       "yes": "Có",
       "no": "Không",
-      "gender": {
-        "male": "Nam",
-        "female": "Nữ"
-      },
-      "marital": {
-        "single": "Độc thân",
-        "married": "Đã kết hôn"
-      },
       "citizenship": {
         "citizen": "Công dân",
         "pr": "Thường trú nhân",
         "non_citizen": "Không phải công dân"
-      },
-      "payMode": {
-        "monthly": "Hàng tháng",
-        "daily": "Hàng ngày",
-        "hourly": "Theo giờ",
-        "custom_period": "Kỳ tùy chỉnh"
-      },
-      "paymentTerm": {
-        "monthly": "Hàng tháng",
-        "weekly": "Hàng tuần",
-        "biweekly": "Hai tuần một lần"
       },
       "continueDraft": "Tiếp tục bản nháp ({count})",
       "untitledDraft": "Bản nháp chưa đặt tên",
@@ -4182,7 +4155,7 @@
         "carryPolicyLabel": "Chính sách chuyển tiếp",
         "carryNone": "Không (không chuyển tiếp)",
         "carryFixedMax": "Mức tối đa cố định",
-        "carryHelp": "Mức tối đa cố định giữ lại tối đa đến giới hạn; phần trăm giữ lại tỷ lệ đó của số dư còn nắm giữ vào cuối năm, với giới hạn đóng vai trò trần khi cả hai cùng được đặt. Các trường hết hạn quyết định khi nào phần chuyển tiếp hết hiệu lực (một ngày cụ thể, hoặc X tháng sau cuối năm).",
+        "carryHelp": "Mức tối đa cố định giữ lại tối đa đến giới hạn; phần trăm giữ lại tỷ lệ đó của số dư còn nắm giữ vào cuối năm. Hai lựa chọn này thay thế cho nhau — với phần trăm, chỉ phần trăm quyết định con số. Các trường hết hạn quyết định khi nào phần chuyển tiếp hết hiệu lực (một ngày cụ thể, hoặc X tháng sau cuối năm).",
         "carryStepHelp": "Cửa trước dẫn tới thiết lập chuyển tiếp của chính sách quyền lợi đang hiệu lực — điều khiển theo từng chính sách trong mục Điều kiện vẫn là nguồn dữ liệu gốc.",
         "carryAnnualOnly": "Chuyển tiếp chỉ áp dụng cho Nghỉ phép năm — số dư của loại này không được chuyển sang năm sau.",
         "noActivePolicy": "Chưa có chính sách quyền lợi đang hiệu lực — hãy thêm một chính sách trong mục Điều kiện trước.",
@@ -7956,12 +7929,46 @@
       "name": "Tên",
       "behaviour": "Việc nó làm",
       "status": "Trạng thái",
-      "action": "Thao tác"
+      "action": "Thao tác",
+      "created": "Ngày tạo"
     },
     "status": {
       "active": "Đang dùng",
-      "inactive": "Đã tắt"
-    }
+      "inactive": "Đã tắt",
+      "all": "Tất cả"
+    },
+    "searchPlaceholder": "Tìm loại sự kiện hoặc mã…",
+    "createNew": "+ Thêm sự kiện biến động",
+    "edit": "Sửa",
+    "editTitle": "Sửa loại sự kiện",
+    "editHint": "Đổi tên cho khớp với cách gọi của tổ chức bạn. Loại có sẵn giữ nguyên chức năng; chỉ loại do bạn tạo mới đổi được hành vi.",
+    "cancel": "Hủy",
+    "empty": "Không có loại sự kiện nào khớp với tìm kiếm này.",
+    "builtIn": "Có sẵn"
+  },
+  "hiringDefaults": {
+    "title": "Mặc định tuyển dụng",
+    "description": "Giá trị mặc định theo từng công ty được áp dụng khi HR tạo nhân viên. Chọn một công ty để đặt thời gian thử việc và nhịp nhắc đánh giá của công ty đó.",
+    "catalogTitle": "Công ty",
+    "searchPlaceholder": "Tìm tên hoặc mã công ty…",
+    "statusActive": "Đang hoạt động",
+    "statusInactive": "Ngưng hoạt động",
+    "statusAll": "Tất cả",
+    "colCompany": "Công ty",
+    "colCode": "Mã công ty",
+    "colProbation": "Thử việc (tháng)",
+    "colReminders": "Nhắc đánh giá (ngày)",
+    "colStatus": "Trạng thái",
+    "usingDefault": "Mặc định hệ thống",
+    "edit": "Sửa",
+    "empty": "Không có công ty nào khớp với tìm kiếm này.",
+    "emptyScope": "Không có công ty nào trong phạm vi hiện tại.",
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "probationMonths": "Thời gian thử việc mặc định (tháng)",
+    "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
+    "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
+    "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
   },
   "replacementRequest": {
     "trigger": "+ Replacement Leave Request",

@@ -279,10 +279,17 @@ describe('4b0e76ae · the reset keeps the table, and the year list stops reading
     const journal = JSON.parse(read('db/migrations/meta/_journal.json'));
     const entry = journal.entries.find((e: { tag: string }) => e.tag === '0385_leave_year_config_reset');
     expect(entry, '0385 must be journalled or drizzle skips it').toBeTruthy();
-    const maxOther = Math.max(
-      ...journal.entries.filter((e: { tag: string }) => e.tag !== entry.tag).map((e: { when: number }) => e.when),
+    // CORRECTED (r138): this used to assert 0385's `when` beat EVERY other entry's — i.e. that 0385 was
+    // the newest migration in the repo. That can only hold until the next migration lands, and 0386/0387/
+    // 0388 duly broke it. The rule it was reaching for is directional: drizzle takes the last APPLIED
+    // `when` as a watermark and skips anything at or below it, so what matters is that 0385 sits above
+    // everything that comes BEFORE it. Migrations added afterwards are supposed to be higher.
+    const maxBelow = Math.max(
+      ...journal.entries
+        .filter((e: { idx: number }) => e.idx < entry.idx)
+        .map((e: { when: number }) => e.when),
     );
-    expect(entry.when).toBeGreaterThan(maxOther);
+    expect(entry.when, '0385 must sit above every earlier migration or drizzle skips it').toBeGreaterThan(maxBelow);
   });
 
   it('the table and its pack satellite row stay — only the note text is corrected', () => {

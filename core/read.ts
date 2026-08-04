@@ -529,6 +529,11 @@ export function listLeaveTypes(
       .select({
         id: leaveType.id,
         code: leaveType.code,
+        // 65f466e2 — the role marker travels with every leave-type read, because the callers that decide
+        // "is this Emergency Leave" (app/leave/actions.ts's attachment backstop, the admin panel's
+        // statutory gates) must ask the role. Production codes its Emergency type `EL`, so a caller left
+        // comparing the code answers "no" for the very type it is asking about.
+        role: leaveType.role,
         name: leaveType.name,
         // 9816a5ad step 2: the consolidated rule columns, so the Leave Type panel can EDIT them.
         // Read here rather than via a second query — the panel renders one row per type already.
@@ -1708,6 +1713,14 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         // hire, so without these two an employee serving probation reads "Active" on their own profile.
         probationEndDate: employment.probationEndDate,
         provisionalEndOn: employment.provisionalEndOn,
+        // 8590615a — the Contract Information group the Employment tab renders for contract employees.
+        // contractEndDate is the pre-existing employment-review column: projecting it here is what lets
+        // the Employment tab show (and re-save) the very date the Employment Review row already watches,
+        // instead of a second copy. provisionalEndOn stays — it is the display fallback for a contract
+        // employee hired before this shipped, and full_time/intern still depend on it elsewhere.
+        contractStartDate: employment.contractStartDate,
+        contractEndDate: employment.contractEndDate,
+        contractRemark: employment.contractRemark,
         tenderResignationDate: employment.tenderResignationDate,
         lastWorkingDate: employment.lastWorkingDate,
         orgBranch: employment.orgBranch,

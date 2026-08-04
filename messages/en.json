@@ -159,7 +159,8 @@
     "scheduledActions": "Scheduled actions",
     "systemSettings": "System Settings",
     "systemExplorer": "Dependency explorer",
-    "movementSettings": "Movement Settings"
+    "movementSettings": "Movement Settings",
+    "hiringDefaults": "Hiring Defaults"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -352,7 +353,6 @@
       "employeeIdLabel": "Employee ID",
       "employeeIdPlaceholder": "e.g. EMP-0001",
       "employeeIdHint": "Letters, numbers and dashes; up to 30 characters.",
-      "hiringDefaults": "Hiring defaults",
       "draftsHeading": "Unfinished new employees",
       "draftsCount": "{count} draft",
       "draftUntitled": "Unnamed draft",
@@ -825,6 +825,12 @@
         "status_offboarding": "Offboarding",
         "status_terminated": "Terminated",
         "probationGroup": "Probation Information",
+        "contractGroup": "Contract Information",
+        "contractStartDate": "Contract Start Date",
+        "contractEndDate": "Contract End Date",
+        "contractRemark": "Remark",
+        "contractRemarkPlaceholder": "e.g. Initial 12-month employment contract. Renewable upon performance review.",
+        "contractNote": "Shown for contract employees only. The start date defaults to the Group Join Date until you save one, and the end date is the same date the contract expiry review watches.",
         "noticeGroup": "Notice Period Information",
         "resignationGroup": "Resignation Information",
         "value": "Value",
@@ -1329,17 +1335,6 @@
       "historyErrorsTruncated": "Showing {shown} of {total} failed rows.",
       "historyNoDetail": "No row detail was kept for this import."
     },
-    "hiringDefaults": {
-      "title": "Hiring Defaults",
-      "description": "Per-company defaults for new hires and employment reviews. They used to sit on the payroll schedule screen, where nothing about payroll read them.",
-      "back": "Personnel",
-      "emptyScope": "No companies in the current scope.",
-      "save": "Save",
-      "probationMonths": "Default probation period (months)",
-      "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
-      "reviewReminderDays": "Review reminders (days before end date)",
-      "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
-    },
     "wizard": {
       "fields": {
         "fullName": "Full name",
@@ -1355,12 +1350,11 @@
         "employmentType": "Employment type",
         "hiredOn": "Hire date",
         "provisionalEndOn": "Provisional end date",
+        "contractEndDate": "Contract end date",
         "basicSalary": "Initial basic salary (MYR)",
         "remarks": "Remarks",
         "icNumber": "Identity No (NRIC)",
         "phone": "Mobile Phone Number",
-        "gender": "Gender",
-        "maritalStatus": "Marital status",
         "epfNumber": "EPF number",
         "socsoNumber": "SOCSO number",
         "taxNumber": "Tax number",
@@ -1374,8 +1368,6 @@
         "isResident": "Tax resident",
         "taxCategory": "PCB category",
         "monthlyAllowance": "Monthly allowance",
-        "payMode": "Pay mode",
-        "paymentTerm": "Payment term",
         "rateAmount": "Rate amount"
       },
       "employmentType": {
@@ -1393,13 +1385,13 @@
       "orgLabelsEmptyForCompany": "No organization labels are configured for the selected company.",
       "hints": {
         "provisionalEndOn": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.",
+        "contractEndDate": "The contract expiry date — the last working day under this contract. It is stored as the contract end date on the Employment tab and drives the contract expiry review.",
         "employeeCode": "Letters, numbers and dashes, up to 30 characters. It must not already be in use.",
         "icNumber": "Optional — leave blank for a passport holder. If given, it must be a valid identity number for the company’s country.",
         "dateOfBirth": "Leave blank and it is taken from the identity number where possible.",
         "businessUnit": "Narrows the department list only. It is not stored on the employee.",
         "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
         "bankAccount": "Give both the bank and the account number, or neither.",
-        "rateAmount": "Required for a daily or hourly pay mode.",
         "company": "Asked first because it decides which Employee ID Auto Running Number Setup applies."
       },
       "backLabel": "Back to Personnel",
@@ -1417,29 +1409,10 @@
       "selectPrompt": "— Select —",
       "yes": "Yes",
       "no": "No",
-      "gender": {
-        "male": "Male",
-        "female": "Female"
-      },
-      "marital": {
-        "single": "Single",
-        "married": "Married"
-      },
       "citizenship": {
         "citizen": "Citizen",
         "pr": "Permanent resident",
         "non_citizen": "Non-citizen"
-      },
-      "payMode": {
-        "monthly": "Monthly",
-        "daily": "Daily",
-        "hourly": "Hourly",
-        "custom_period": "Custom period"
-      },
-      "paymentTerm": {
-        "monthly": "Monthly",
-        "weekly": "Weekly",
-        "biweekly": "Fortnightly"
       },
       "continueDraft": "Continue a draft ({count})",
       "untitledDraft": "Unnamed draft",
@@ -4182,7 +4155,7 @@
         "carryPolicyLabel": "Carry forward policy",
         "carryNone": "None (no carry-forward)",
         "carryFixedMax": "Fixed maximum",
-        "carryHelp": "Fixed maximum keeps up to the cap; percentage keeps that share of the balance still held at year end, with the cap acting as a ceiling when both are set. The expiry fields decide when the carried portion lapses (a date, or X months after year-end).",
+        "carryHelp": "Fixed maximum keeps up to the cap; percentage keeps that share of the balance still held at year end. The two are alternatives — with percentage, the percentage alone decides the figure. The expiry fields decide when the carried portion lapses (a date, or X months after year-end).",
         "carryStepHelp": "A front door to the active entitlement policy's carry-forward settings — the per-policy controls under Eligibility remain the underlying truth.",
         "carryAnnualOnly": "Carry-forward applies to Annual Leave — this type's balance does not roll over.",
         "noActivePolicy": "No active entitlement policy yet — add one under Eligibility first.",
@@ -7956,12 +7929,46 @@
       "name": "Name",
       "behaviour": "What It Does",
       "status": "Status",
-      "action": "Action"
+      "action": "Action",
+      "created": "Created"
     },
     "status": {
       "active": "Active",
-      "inactive": "Switched off"
-    }
+      "inactive": "Switched off",
+      "all": "All"
+    },
+    "searchPlaceholder": "Search event type or code…",
+    "createNew": "+ Add Movement Event",
+    "edit": "Edit",
+    "editTitle": "Edit Event Type",
+    "editHint": "Rename it to match the language your organisation uses. A built-in type keeps what it does; only your own types can be re-pointed.",
+    "cancel": "Cancel",
+    "empty": "No event types match this search.",
+    "builtIn": "Built-in"
+  },
+  "hiringDefaults": {
+    "title": "Hiring Defaults",
+    "description": "Per-company defaults applied when HR creates an employee. Pick a company to set its probation length and review-reminder cadence.",
+    "catalogTitle": "Companies",
+    "searchPlaceholder": "Search company name or code…",
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
+    "statusAll": "All",
+    "colCompany": "Company",
+    "colCode": "Company Code",
+    "colProbation": "Probation (months)",
+    "colReminders": "Review reminders (days)",
+    "colStatus": "Status",
+    "usingDefault": "System default",
+    "edit": "Edit",
+    "empty": "No companies match this search.",
+    "emptyScope": "No companies in the current scope.",
+    "save": "Save",
+    "cancel": "Cancel",
+    "probationMonths": "Default probation period (months)",
+    "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
+    "reviewReminderDays": "Review reminders (days before end date)",
+    "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
   },
   "replacementRequest": {
     "trigger": "+ Replacement Leave Request",

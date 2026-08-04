@@ -25,7 +25,11 @@ import {
   STATUTORY_APPLY_CODES,
   // Edit Leave Type Code (a7194511): EMERGENCY joins the statutory codes as a LOCKED code — its literal
   // is the semantic key the leave engine splits emergency leave on, so it must never be renamed.
+  // 65f466e2: the codes are now only the FALLBACK for an unclassified row; the roles below are the real
+  // test, because a tenant's statutory types are rarely coded the way the pack seeds them.
   EMERGENCY_LEAVE_CODE,
+  STATUTORY_APPLY_ROLES,
+  isStatutoryApplyType,
   type AccrualConfig,
   type DayTypeInclusion,
   type LeaveDurationType,
@@ -3872,6 +3876,11 @@ export async function updateLeaveType(
         // Leave Type Employee Visibility (7b11f1c1): the code drives the statutory-entitlement guard below;
         // the two flags feed the before/after audit diff.
         code: leaveType.code,
+        // 65f466e2 — MUST BE SELECTED. The statutory lock and the can-apply guard below read the role and
+        // fall back to the code only when it is absent. Omitting it here would make `before.role` undefined
+        // on every row, silently reinstating the code-only comparison this item exists to replace — and
+        // nothing would fail: the guards would simply go quiet again, exactly as they have been.
+        role: leaveType.role,
         visibleToEmployee: leaveType.visibleToEmployee,
         employeeCanApply: leaveType.employeeCanApply,
         // Leave grouping visibility (b653ac1b): feeds the before/after placement audit diff.
@@ -3994,11 +4003,23 @@ export async function updateLeaveType(
     // to a bespoke type). The uniqueness guard mirrors the rename-name guard above — active (non-archived),
     // non-self, case-insensitive on code — mapped to the reporter's exact message. The DB partial unique index
     // + CHECK from migration 0031 remain the backstop (the .set() below maps a 23505 to the same message).
+    // 65f466e2 — THE LOCK NOW ASKS THE ROLE, NOT THE CODE.
+    // LOCKED_CODES only ever matched the codes the pack SEEDS. Production's statutory types are coded EL,
+    // MTL, PTL, so none of them were in this set and none of them were locked: a statutory type could be
+    // renamed or altered, silently, which is the second of the three behaviours 65f466e2 found dead.
+    // A classified row is judged by `before.role`; an unclassified one falls back to the code set, so a
+    // tenant the backfill could not classify keeps exactly today's behaviour.
     const LOCKED_CODES = new Set<string>([...STATUTORY_APPLY_CODES, EMERGENCY_LEAVE_CODE]);
+    const LOCKED_ROLES = new Set<string>([...STATUTORY_APPLY_ROLES, 'emergency']);
+    const isLockedType = (row: { role?: string | null; code?: string | null } | null | undefined): boolean => {
+      if (row == null) return false;
+      if (row.role != null && row.role !== '') return LOCKED_ROLES.has(row.role);
+      return LOCKED_CODES.has((row.code ?? '').toUpperCase());
+    };
     let codeSet: { code?: string } = {};
     let codeChanged = false;
     if (touchCode && before && normalizedNewCode !== before.code) {
-      if (LOCKED_CODES.has(before.code)) {
+      if (isLockedType(before)) {
         throw new Error('statutory leave type code cannot be changed');
       }
       if (LOCKED_CODES.has(normalizedNewCode!)) {
@@ -4029,7 +4050,9 @@ export async function updateLeaveType(
       touchEmployeeCanApply &&
       p.employeeCanApply === false &&
       before &&
-      (STATUTORY_APPLY_CODES as readonly string[]).includes(before.code)
+      // 65f466e2 — role first, seeded codes as the fallback. Production's MTL/PTL were never in the code
+      // list, so the statutory right to APPLY was unprotected on exactly the types the law names.
+      isStatutoryApplyType(before)
     ) {
       throw new Error(
         `${before.code} is a statutory leave entitlement — employees must be able to apply for it. You cannot block applications for this leave type.`,

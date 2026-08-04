@@ -159,7 +159,8 @@
     "scheduledActions": "计划任务",
     "systemSettings": "系统设置",
     "systemExplorer": "依赖关系浏览器",
-    "movementSettings": "异动设置"
+    "movementSettings": "异动设置",
+    "hiringDefaults": "入职默认设置"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -352,7 +353,6 @@
       "employeeIdLabel": "员工编号",
       "employeeIdPlaceholder": "例如 EMP-0001",
       "employeeIdHint": "字母、数字和连字符；最多 30 个字符。",
-      "hiringDefaults": "入职默认设置",
       "draftsHeading": "未完成的新员工",
       "draftsCount": "{count} 份草稿",
       "draftUntitled": "未命名草稿",
@@ -817,6 +817,12 @@
         "status_offboarding": "离职办理中",
         "status_terminated": "已离职",
         "probationGroup": "试用期信息",
+        "contractGroup": "合同信息",
+        "contractStartDate": "合同开始日期",
+        "contractEndDate": "合同结束日期",
+        "contractRemark": "备注",
+        "contractRemarkPlaceholder": "例如：首份 12 个月雇佣合同，绩效评估后可续签。",
+        "contractNote": "仅对合同制员工显示。在您保存之前，开始日期默认为集团入职日期；结束日期即合同到期审核所监控的同一日期。",
         "noticeGroup": "通知期信息",
         "resignationGroup": "离职信息",
         "value": "数值",
@@ -1329,17 +1335,6 @@
       "historyErrorsTruncated": "显示 {total} 个失败行中的 {shown} 个。",
       "historyNoDetail": "本次导入未保留行级明细。"
     },
-    "hiringDefaults": {
-      "title": "入职默认设置",
-      "description": "按公司设置的新员工与雇佣评估默认值。它们原本位于薪资计划界面，但薪资相关逻辑从不读取它们。",
-      "back": "员工",
-      "emptyScope": "当前范围内没有公司。",
-      "save": "保存",
-      "probationMonths": "默认试用期（月）",
-      "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。",
-      "reviewReminderDays": "评估提醒（结束日期前天数）",
-      "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
-    },
     "wizard": {
       "fields": {
         "fullName": "全名",
@@ -1355,12 +1350,11 @@
         "employmentType": "雇佣类型",
         "hiredOn": "入职日期",
         "provisionalEndOn": "临时结束日期",
+        "contractEndDate": "合同结束日期",
         "basicSalary": "初始基本薪资 (MYR)",
         "remarks": "备注",
         "icNumber": "身份识别号码 (NRIC)",
         "phone": "手机号码",
-        "gender": "性别",
-        "maritalStatus": "婚姻状况",
         "epfNumber": "EPF 号码",
         "socsoNumber": "SOCSO 号码",
         "taxNumber": "税号",
@@ -1374,8 +1368,6 @@
         "isResident": "税务居民",
         "taxCategory": "PCB 类别",
         "monthlyAllowance": "每月津贴",
-        "payMode": "计薪方式",
-        "paymentTerm": "支付周期",
         "rateAmount": "费率金额"
       },
       "employmentType": {
@@ -1393,13 +1385,13 @@
       "orgLabelsEmptyForCompany": "所选公司未配置任何组织标签。",
       "hints": {
         "provisionalEndOn": "全职为试用期结束（默认 +3 个月）；否则为合同或实习结束日期。如无则留空。",
+        "contractEndDate": "合同到期日 — 本合同下的最后工作日。该日期会保存为“雇佣”标签页的合同结束日期，并驱动合同到期审核。",
         "employeeCode": "字母、数字与连字符，最多 30 个字符，且不能与现有编号重复。",
         "icNumber": "可选 — 持护照者可留空。如填写，必须是符合公司所在国家规则的有效身份证号。",
         "dateOfBirth": "留空时将尽可能从身份证号推导。",
         "businessUnit": "仅用于筛选部门列表，不会保存到员工记录。",
         "hiredOn": "入职首日。创建之后，此日期只能通过异动事件更改。",
         "bankAccount": "银行与账号请同时填写，或都留空。",
-        "rateAmount": "日薪或时薪方式必填。",
         "company": "先询问公司，因为它决定适用哪一套员工编号自动流水号设置。"
       },
       "backLabel": "返回人事",
@@ -1417,29 +1409,10 @@
       "selectPrompt": "— 请选择 —",
       "yes": "是",
       "no": "否",
-      "gender": {
-        "male": "男",
-        "female": "女"
-      },
-      "marital": {
-        "single": "单身",
-        "married": "已婚"
-      },
       "citizenship": {
         "citizen": "公民",
         "pr": "永久居民",
         "non_citizen": "非公民"
-      },
-      "payMode": {
-        "monthly": "月薪",
-        "daily": "日薪",
-        "hourly": "时薪",
-        "custom_period": "自定义周期"
-      },
-      "paymentTerm": {
-        "monthly": "每月",
-        "weekly": "每周",
-        "biweekly": "每两周"
       },
       "continueDraft": "继续草稿（{count}）",
       "untitledDraft": "未命名草稿",
@@ -4182,7 +4155,7 @@
         "carryPolicyLabel": "结转政策",
         "carryNone": "无（不结转）",
         "carryFixedMax": "固定上限",
-        "carryHelp": "固定上限保留至上限为止；百分比保留年终仍持有余额的该比例，两者同时设置时上限作为最高限额。失效字段决定结转部分何时失效（某个日期，或年终后 X 个月）。",
+        "carryHelp": "固定上限保留至上限为止；百分比保留年终仍持有余额的该比例。两者是互斥的选择——选择百分比时，仅由百分比决定结转天数。失效字段决定结转部分何时失效（某个日期，或年终后 X 个月）。",
         "carryStepHelp": "这是当前生效的额度政策结转设置的快捷入口——“资格”下的按政策控制仍是数据的唯一来源。",
         "carryAnnualOnly": "结转仅适用于年假——此类型的余额不会滚存。",
         "noActivePolicy": "尚无生效的额度政策——请先在“资格”下添加一条。",
@@ -7956,12 +7929,46 @@
       "name": "名称",
       "behaviour": "作用",
       "status": "状态",
-      "action": "操作"
+      "action": "操作",
+      "created": "创建日期"
     },
     "status": {
       "active": "启用中",
-      "inactive": "已关闭"
-    }
+      "inactive": "已关闭",
+      "all": "全部"
+    },
+    "searchPlaceholder": "搜索事件类型或代码…",
+    "createNew": "+ 新增异动事件",
+    "edit": "编辑",
+    "editTitle": "编辑事件类型",
+    "editHint": "按贵组织的用语重命名。内置类型的作用不变；只有自建类型可以改变其行为。",
+    "cancel": "取消",
+    "empty": "没有符合此搜索条件的事件类型。",
+    "builtIn": "内置"
+  },
+  "hiringDefaults": {
+    "title": "入职默认设置",
+    "description": "HR 创建员工时应用的按公司默认值。选择一家公司，设置其试用期长度与评估提醒节奏。",
+    "catalogTitle": "公司",
+    "searchPlaceholder": "搜索公司名称或代码…",
+    "statusActive": "启用",
+    "statusInactive": "停用",
+    "statusAll": "全部",
+    "colCompany": "公司",
+    "colCode": "公司代码",
+    "colProbation": "试用期（月）",
+    "colReminders": "评估提醒（天）",
+    "colStatus": "状态",
+    "usingDefault": "系统默认",
+    "edit": "编辑",
+    "empty": "没有符合此搜索条件的公司。",
+    "emptyScope": "当前范围内没有公司。",
+    "save": "保存",
+    "cancel": "取消",
+    "probationMonths": "默认试用期（月）",
+    "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。",
+    "reviewReminderDays": "评估提醒（结束日期前天数）",
+    "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
   },
   "replacementRequest": {
     "trigger": "+ Replacement Leave Request",
