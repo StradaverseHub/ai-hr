@@ -34,6 +34,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { leavePack } from '../packs/leave';
 
 import { REGISTERED_ROUTES } from '../lib/permissions';
 
@@ -62,17 +63,20 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(REGISTERED_ROUTES.has('/admin/toil')).toBe(true);
   });
 
-  it('the tab strip still carries the replacement entry, between Payroll Related and Audit', () => {
-    const src = read('components/leave-tabs.tsx');
-    expect(src).toContain("{ key: 'replacement', href: '/admin/leave/replacement', label: t('replacement') }");
-    expect(src).toMatch(/active:\s*'types'[^;]*\|\s*'replacement'\s*\|/);
-    const at = (key: string) => src.indexOf(`{ key: '${key}'`);
-    expect(at('replacement')).toBeGreaterThan(at('payroll'));
-    expect(at('audit')).toBeGreaterThan(at('replacement'));
+  it('the leave fly-out still carries the replacement entry, between Payroll Related and Audit', () => {
+    // 645e67c4 — this asserted against components/leave-tabs.tsx, now deleted: Leave config is a sidebar
+    // fly-out. The ORDER the reporter sees is unchanged and is still worth guarding, so the same promise
+    // is re-made against the pack node that actually renders it.
+    const node = leavePack.navNodes!.find((n) => n.group === 'admin')!;
+    const hrefs = node.children.map((c) => c.href);
+    expect(hrefs).toContain('/admin/leave/replacement');
+    const at = (href: string) => hrefs.indexOf(href);
+    expect(at('/admin/leave/replacement')).toBeGreaterThan(at('/admin/leave/payroll'));
+    expect(at('/admin/leave/audit')).toBeGreaterThan(at('/admin/leave/replacement'));
   });
 
-  it('the page marks itself as the active tab', () => {
-    expect(read(PAGE_REL)).toContain('<LeaveTabs active="replacement" />');
+  it('the page no longer marks itself as an active tab — there is no strip to be active in', () => {
+    expect(read(PAGE_REL)).not.toContain('LeaveTabs');
   });
 
   // ── The guarantee that INVERTS: it is no longer a placeholder ──────────────────────────────────────
@@ -174,7 +178,8 @@ describe('296fc027 · Replacement Leave configuration page', () => {
   // ── Copy ───────────────────────────────────────────────────────────────────────────────────────────
   it('every locale has the configuration screen strings', () => {
     const keys = [
-      'admin.leaveTabs.replacement',
+      // 645e67c4 — moved out of admin.leaveTabs with the strip's retirement.
+      'nav.leaveReplacement',
       'admin.replacementLeave.enabledLabel',
       'admin.replacementLeave.employeeRequestLabel',
       'admin.replacementLeave.employeeRequestHint',

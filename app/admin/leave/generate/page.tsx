@@ -3,7 +3,6 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { entitlementYearOptions } from '@/core/leave';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { LeaveTabs } from '@/components/leave-tabs';
 import { openLeaveYearAction } from '../../actions';
 
 /**
@@ -54,7 +53,6 @@ export default async function LeaveGeneratePage({
   return (
     <div className="space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
-      <LeaveTabs active="generate" />
       <ErrorBanner message={error} />
 
       <Card>

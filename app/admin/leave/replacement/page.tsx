@@ -8,7 +8,6 @@ import { listAllProfileOptions } from '@/core/profile-options';
 import { listToilPolicies } from '@/packs/leave/service';
 import { REPLACEMENT_ELIGIBILITY_CRITERIA } from '@/core/replacement-eligibility';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { LeaveTabs } from '@/components/leave-tabs';
 import { ReplacementEligibilityPicker } from '@/components/replacement-eligibility-picker';
 import { setToilPolicyAction } from '../../actions';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -120,7 +119,6 @@ export default async function LeaveReplacementPage({
   return (
     <div className="space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
-      <LeaveTabs active="replacement" />
 
       <ErrorBanner message={error} />
       {saved !== undefined && (

@@ -106,8 +106,18 @@
  * `id: 'leave'` below matching the future catalog row: when 0077 lands, the gate resolves this pack
  * via `modulePackById('leave')` and fails closed (D3). No entitlement machinery is built here.
  */
-import { CalendarDays, SlidersHorizontal } from 'lucide-react';
-import { registerPack, type ModulePack, type NavLinkDescriptor } from '../registry';
+import {
+  CalendarDays,
+  CalendarPlus,
+  ClipboardList,
+  GitBranch,
+  LayoutList,
+  Repeat2,
+  ScrollText,
+  SlidersHorizontal,
+  Wallet,
+} from 'lucide-react';
+import { registerPack, type ModulePack, type NavLinkDescriptor, type NavNodeGroupDescriptor } from '../registry';
 
 // The leave sidebar presence, moved VERBATIM from components/sidebar.tsx at rung 6 — like claims this
 // is two FLAT rows in two different groups (not a collapsible node), so the pack contributes
@@ -123,13 +133,65 @@ import { registerPack, type ModulePack, type NavLinkDescriptor } from '../regist
 // are the sidebar's verbatim; only the mounting moved (the sidebar places these rows via the registry).
 const LEAVE_NAV_LINKS: NavLinkDescriptor[] = [
   { group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays },
-  { group: 'admin', href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
 ];
+
+/**
+ * 645e67c4 — Leave config becomes a COLLAPSIBLE GROUP, and the tab strip is retired.
+ *
+ * The reporter asked for Replacement Leave "under Leave Configuration… the same navigation style as
+ * Leave Type / Leave Adjustments / Generate Entitlement", and then contested `491c499f` in the same
+ * words: "move this leave adjustment in the Leave Config left-hand menu from a single line into an
+ * expandable group, the same way Payroll and Attendance already work." Both items are asking for THIS.
+ *
+ * Before this, Leave config was a single flat row (`group: 'admin'`, href `/admin/leave`) opening a
+ * screen with EIGHT tabs strung across the top — there was nowhere to hang a submenu, which is exactly
+ * why the Replacement Leave entry landed as a ninth tab instead of where it was asked for.
+ *
+ * This copies 1459e116's payroll conversion line for line: the pack declares a NavNodeGroupDescriptor,
+ * the sidebar spreads it into a CollapsibleGroupItem, and the strip component is deleted so there is ONE
+ * way in rather than two competing ones. Every href is carried over CHARACTER FOR CHARACTER — no screen
+ * moves address, so no bookmark breaks.
+ *
+ * ORDER IS THE STRIP'S ORDER, deliberately: it is the order the work is done in (configure → adjust →
+ * generate → route → pay → replace → audit), it is what the reporter's HR team already reads, and
+ * re-sorting it here would be a second change nobody asked for.
+ *
+ * `leaveApprovalWorkflow`, NOT `leaveApproval`. `nav.leaveApproval` ALREADY EXISTS and is live: it is
+ * the label `lib/permissions.ts` gives the separate `leaveApproval` SCREEN ("Approval chain", a leftover
+ * from the standalone route 0d147b78 absorbed). Reusing that key silently renames that screen to this
+ * menu's wording. The product already carries two names for this destination; reconciling them is not
+ * this item's job, so the menu takes its own key and the retired tab's exact label.
+ *
+ * `/admin/leave/import` is registered on the leaveConfig screen but stays OFF the menu — it had no tab
+ * either and is reached from inside Entitlements. Adding it is a change nobody asked for.
+ *
+ * NOT gated per row: leave is a CORE module, deliberately absent from the sidebar's MODULE_OF_HREF (a
+ * tenant cannot not-have it), and the Administration group is gated adminOnly wholesale. Every one of
+ * these pages calls requireAdmin()/scopedAdmin() for itself regardless.
+ */
+const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
+  labelKey: 'leaveConfig',
+  icon: SlidersHorizontal,
+  group: 'admin',
+  children: [
+    { href: '/admin/leave', labelKey: 'leaveSummary', icon: LayoutList },
+    { href: '/admin/leave/entitlements', labelKey: 'leaveEntitlements', icon: ClipboardList },
+    { href: '/admin/leave/adjustments', labelKey: 'leaveAdjustments', icon: SlidersHorizontal },
+    { href: '/admin/leave/generate', labelKey: 'leaveGenerate', icon: CalendarPlus },
+    { href: '/admin/leave/approval', labelKey: 'leaveApprovalWorkflow', icon: GitBranch },
+    { href: '/admin/leave/payroll', labelKey: 'leavePayroll', icon: Wallet },
+    { href: '/admin/leave/replacement', labelKey: 'leaveReplacement', icon: Repeat2 },
+    { href: '/admin/leave/audit', labelKey: 'leaveAudit', icon: ScrollText },
+  ],
+};
 
 export const leavePack: ModulePack = {
   id: 'leave',
   kind: 'module',
   navLinks: LEAVE_NAV_LINKS,
+  // 645e67c4 — the Administration-group contribution went from a flat row to a node (see LEAVE_ADMIN_NAV).
+  // The 'main' /leave row above is untouched: that is the employee's own My Absence home, not config.
+  navNodes: [LEAVE_ADMIN_NAV],
   // Pack-owned satellite tables (D5/D11 criterion 2 — documentation, not DDL). Audited from
   // db/schema.ts 2026-07-24. holiday / holiday_group / holiday_group_holiday stay OUTSIDE (shared
   // spine, see the header decision). leave_request unpaid-day reads and payroll_input rows written

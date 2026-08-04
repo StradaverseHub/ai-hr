@@ -80,15 +80,26 @@ describe('ADR-0080 rung 6: leave pack registration', () => {
 });
 
 describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
-  // components/sidebar.tsx leave rows as of the commit before rung 6, captured VERBATIM. Like claims
-  // this is two FLAT rows in two groups, not a collapsible node:
-  //   top group:   { href: '/leave',       labelKey: 'myAbsence',  icon: CalendarDays }       (no gate)
-  //   admin group: { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal } (no per-row
-  //     gate — the Administration group is gated adminOnly wholesale, unchanged by the move).
+  // components/sidebar.tsx leave rows as of the commit before rung 6, captured VERBATIM.
+  //
+  // 645e67c4 SUPERSEDES HALF OF THIS, deliberately. The admin row is no longer a flat link: Leave config
+  // became a collapsible NODE carrying the retired tab strip's eight destinations, which is what the
+  // reporter asked for twice (this item, and 491c499f's contest in the same words). The rung-6 promise
+  // that survives is the one that still matters — the rows come from the PACK and the sidebar hardcodes
+  // none of them. What the node itself must contain is test/leave-flyout-nav.test.ts's job, exactly as
+  // payroll's node parity lives in test/payroll-flyout-nav.test.ts rather than here.
+  //
+  //   top group:   { href: '/leave', labelKey: 'myAbsence', icon: CalendarDays }  (no gate) — UNCHANGED
+  //   admin group: now LEAVE_ADMIN_NAV, a node (see below)
   const EXPECTED = [
     { group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays },
-    { group: 'admin', href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
   ] as const;
+
+  /** Every href the pack contributes, flat rows and node children alike — what the sidebar must not hardcode. */
+  const ALL_HREFS = [
+    '/leave',
+    ...leavePack.navNodes!.flatMap((n) => n.children.map((c) => c.href)),
+  ];
 
   const links = leavePack.navLinks!;
 
@@ -107,8 +118,13 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
     });
   });
 
-  it('declares no collapsible nav node (leave is flat links by design)', () => {
-    expect(leavePack.navNodes).toBeUndefined();
+  it('declares the Leave config node (645e67c4 — an expandable group, not a flat row)', () => {
+    const admin = leavePack.navNodes!.filter((n) => n.group === 'admin');
+    expect(admin, 'exactly one admin node').toHaveLength(1);
+    expect(admin[0].labelKey).toBe('leaveConfig');
+    // The flat admin row it replaced must be gone, not left alongside — two entries for one
+    // destination is the "two navigations at once" this conversion exists to remove.
+    expect(leavePack.navLinks!.some((l) => l.group === 'admin')).toBe(false);
   });
 
   it('sidebar.tsx mounts both rows via the registry and hardcodes neither', () => {
@@ -122,7 +138,8 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
     expect(registerAll, 'registers the pack (static side-effect import)').toContain(`import '@/packs/leave'`);
     expect(sidebar, 'sidebar pulls in the shared pack wiring').toContain(`import '@/packs/register-all'`);
     expect(sidebar, 'resolves the rows through the registry').toContain(`modulePackById('leave')`);
-    for (const { href } of EXPECTED) {
+    // Node children count too: a hardcoded child href would bypass the pack just as a hardcoded row did.
+    for (const href of ALL_HREFS) {
       expect(sidebar.includes(`'${href}'`), `${href} no longer hardcoded in sidebar.tsx`).toBe(false);
     }
   });

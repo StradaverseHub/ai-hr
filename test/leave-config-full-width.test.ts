@@ -38,12 +38,14 @@ function leavePages(dir = 'app/admin/leave'): string[] {
   return out;
 }
 
-// Tab-content components where a width cap could reappear unseen by the page glob: the shared tab
-// strip, the entitlements two-pane workspace and per-type panel, the import client component, and
+// Tab-content components where a width cap could reappear unseen by the page glob: the entitlements
+// two-pane workspace and per-type panel, the import client component, and
 // the approval editor pieces (app/admin/leave-approval/* render inside the approval and
 // entitlements tabs; that route's page.tsx itself is a pure redirect and stays out of scope).
 const TAB_CONTENT_COMPONENTS = [
-  'components/leave-tabs.tsx',
+  // 645e67c4 — components/leave-tabs.tsx is deleted (Leave config is a sidebar fly-out now). The width
+  // cap it was scanned for cannot reappear in a file that no longer exists; the destinations it linked
+  // to are all covered by the page glob above.
   'components/leave-type-workspace.tsx',
   'components/leave-type-panel.tsx',
   'app/admin/leave/import/leave-ledger-import.tsx',

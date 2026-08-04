@@ -6,7 +6,6 @@ import { listLeaveAdjustmentBatches } from '@/core/leave-adjustment';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { LeaveTabs } from '@/components/leave-tabs';
 import { AdjustmentForm } from '@/components/leave/adjustment-form';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -71,7 +70,6 @@ export default async function LeaveAdjustmentsPage({
   return (
     <div className="space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
-      <LeaveTabs active="adjustments" />
       <ErrorBanner message={error} />
 
       <Card>

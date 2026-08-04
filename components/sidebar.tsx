@@ -121,7 +121,16 @@ const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find
 // concern.
 const LEAVE_LINKS = modulePackById('leave')!.navLinks!;
 const LEAVE_ABSENCE_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'main')!;
-const LEAVE_CONFIG_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'admin')!;
+
+// 645e67c4 — leave's own horizontal tab strip (components/leave-tabs.tsx) is retired in favour of this
+// flyout, so the leave pack's Administration-group contribution went from a flat row (LEAVE_CONFIG_ROW,
+// rung 6) to a NODE carrying the strip's eight destinations (packs/leave/index.ts, LEAVE_ADMIN_NAV).
+// Placement is unchanged: same Admin group, same position between System Settings and Attendance, same
+// reliance on the group's wholesale adminOnly gate. Mirrors PAYROLL_NODE below exactly.
+const LEAVE_CONFIG_NODE: CollapsibleGroupItem = {
+  collapsible: true,
+  ...modulePackById('leave')!.navNodes!.find((n) => n.group === 'admin')!,
+};
 
 // Payroll nav node (1459e116): payroll's own horizontal tab strip (components/payroll-tabs.tsx) is
 // retired in favour of this flyout, so the payroll pack's Administration-group contribution went from
@@ -257,10 +266,11 @@ const GROUPS: Group[] = [
       // a4e49748: the three system-wide setup rows (Employee ID numbering / Dashboard cards / System
       // Labels) collapsed into the single System Settings node above.
       SYSTEM_SETTINGS_NODE,
-      // 0d147b78: Leave config is a tabbed surface (the former "Approval chain" entry was absorbed
-      // into its Approval Workflow tab). Since ADR-0080 rung 6 the row lives on the leave pack and
-      // mounts here by const reference (LEAVE_CONFIG_ROW).
-      LEAVE_CONFIG_ROW,
+      // 0d147b78: Leave config absorbed the former "Approval chain" entry into its Approval Workflow
+      // screen. Since ADR-0080 rung 6 it lives on the leave pack and mounts here by const reference;
+      // since 645e67c4 it is a flyout NODE rather than a flat row (LEAVE_CONFIG_NODE), which is what
+      // both that item and 491c499f's contest asked for.
+      LEAVE_CONFIG_NODE,
       // a324a4b3 rev3 — THE REPORTER'S ACTUAL REQUEST: "just relocate the Attendance button below My
       // Attendance to admin section between Leave Config and Claim Config". Here it is, literally between
       // them. The six config screens are its children and each keeps its own adminOnly row flag, which is

@@ -3,7 +3,6 @@ import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes } from '@/core/read';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { LeaveTabs } from '@/components/leave-tabs';
 import { deleteLeaveTypeAction } from '../actions';
 
 /**
@@ -34,7 +33,6 @@ export default async function LeaveTypesPage({
   return (
     <div className="space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
-      <LeaveTabs active="types" />
       <ErrorBanner message={error} />
 
       {/* Leave Type master page (feedback 097de541) — read-only master listing. Edit jumps to the per-type

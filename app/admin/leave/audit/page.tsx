@@ -3,7 +3,6 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { auditActors, auditEvents, auditEventsCount, listCompanies, listLeaveTypes } from '@/core/read';
 import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { LeaveTabs } from '@/components/leave-tabs';
 import { AuditTable } from '@/components/audit-table';
 import { aggregateLabel } from '@/lib/audit-format';
 import { Pager } from '@/components/pager';
@@ -144,7 +143,6 @@ export default async function LeaveAuditPage({
   return (
     <div className="space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
-      <LeaveTabs active="audit" />
 
       <Card>
         <p className="px-4 pt-4 text-xs text-muted-foreground">{t('auditHelp')}</p>

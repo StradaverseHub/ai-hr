@@ -16,6 +16,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { leavePack } from '../packs/leave';
 
 import { SCREENS } from '../lib/permissions';
 
@@ -68,15 +69,17 @@ function codeReferences(needle: string): string[] {
 }
 
 describe('4b0e76ae · the Generate Entitlement page is REACHABLE', () => {
-  it('the page exists, is guarded with requireAdmin, and sits on the leave tab strip', () => {
+  it('the page exists and is guarded with requireAdmin', () => {
     expect(existsSync(resolve(ROOT, GENERATE_PAGE))).toBe(true);
     const page = read(GENERATE_PAGE);
     // requireAdmin() is also what registers the route with test/function-access.test.ts's GUARD_RE scan.
     expect(page).toContain('requireAdmin()');
-    expect(page).toContain('<LeaveTabs active="generate" />');
+    // 645e67c4 — the page no longer marks itself as an active TAB: Leave config is a sidebar fly-out and
+    // the strip is deleted. Reachability is asserted against the pack node below, where it now lives.
+    expect(page).not.toContain('LeaveTabs');
   });
 
-  it('THE TWO HALVES CANNOT DRIFT: the route is in lib/permissions.ts AND in components/leave-tabs.tsx', () => {
+  it('THE TWO HALVES CANNOT DRIFT: the route is in lib/permissions.ts AND in the leave fly-out node', () => {
     // Either half alone ships a broken feature: no permissions row ⇒ our own access check refuses the page
     // (and test/function-access.test.ts fails); no tab ⇒ nobody can find it. They are asserted together on
     // purpose, so a later edit that removes one is caught by the same test that guards the other.
@@ -88,17 +91,19 @@ describe('4b0e76ae · the Generate Entitlement page is REACHABLE', () => {
     expect(leaveConfig!.guard).toBe('requireAdmin');
     expect(SCREENS.filter((s) => s.routes.includes(GENERATE_ROUTE))).toHaveLength(1);
 
-    const tabs = read('components/leave-tabs.tsx');
-    expect(tabs).toContain(`href: '${GENERATE_ROUTE}'`);
-    // The `active` union must carry the key too — omitting it is a compile error at every call site.
-    expect(tabs).toMatch(/active:[^;]*'generate'/);
+    // 645e67c4 — the navigation half moved from the tab strip to the leave pack's fly-out node. The
+    // promise is unchanged and is the whole point of this test: no permissions row and our own access
+    // check refuses the page; no menu entry and nobody can find it.
+    const node = leavePack.navNodes!.find((n) => n.group === 'admin')!;
+    expect(node.children.map((c) => c.href)).toContain(GENERATE_ROUTE);
   });
 
-  it('the tab label exists under admin.leaveTabs in all six locales', () => {
+  it('the menu label exists under nav in all six locales', () => {
+    // 645e67c4 — moved from admin.leaveTabs.generate to nav.leaveGenerate with the strip's retirement.
     for (const loc of LOCALES) {
-      const tabs = msgs(loc)?.admin?.leaveTabs ?? {};
-      expect(typeof tabs.generate, `${loc} admin.leaveTabs.generate`).toBe('string');
-      expect(String(tabs.generate).length, `${loc} admin.leaveTabs.generate is blank`).toBeGreaterThan(0);
+      const label = (msgs(loc)?.nav ?? {}).leaveGenerate;
+      expect(typeof label, `${loc} nav.leaveGenerate`).toBe('string');
+      expect(String(label).length, `${loc} nav.leaveGenerate is blank`).toBeGreaterThan(0);
     }
   });
 

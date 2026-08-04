@@ -1,7 +1,7 @@
 /**
- * Guard for the "Leave Types" -> "Summary" tab rename (admin.leaveTabs.types).
+ * Guard for the "Leave Types" -> "Summary" rename (nav.leaveSummary, formerly admin.leaveTabs.types).
  *
- * The first tab in Leave config (/admin/leave, components/leave-tabs.tsx key 'types')
+ * The first entry in Leave config (/admin/leave — a sidebar fly-out child since 645e67c4)
  * was renamed from "Leave Types" to "Summary" in all six locales. This guard is
  * deliberately slim: it pins only the i18n key, because the change is a
  * display-label-only rename — no route, component or service behaviour changed.
@@ -23,7 +23,10 @@ function getPath(obj: Dict, dotted: string): unknown {
   return dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
 }
 
-const KEY = 'admin.leaveTabs.types';
+// 645e67c4 — the eight leave-config labels moved from admin.leaveTabs into the nav namespace when the
+// tab strip became a sidebar fly-out. The RENAME this file defends is unaffected by that move, so the
+// key is re-pointed rather than the test retired: "Summary" must still be the first entry's label.
+const KEY = 'nav.leaveSummary';
 
 /** Pre-rename translations per locale — the rename must have replaced every one of these. */
 const OLD_LABELS: Record<string, string> = {
@@ -35,8 +38,8 @@ const OLD_LABELS: Record<string, string> = {
   zh: '假期类型',
 };
 
-describe('leave config Summary tab rename (admin.leaveTabs.types)', () => {
-  it('en.json labels the first Leave config tab "Summary"', () => {
+describe('leave config Summary rename (nav.leaveSummary, formerly admin.leaveTabs.types)', () => {
+  it('en.json labels the first Leave config entry "Summary"', () => {
     expect(getPath(load('en'), KEY)).toBe('Summary');
   });
 
@@ -44,6 +47,6 @@ describe('leave config Summary tab rename (admin.leaveTabs.types)', () => {
     const stale = Object.entries(OLD_LABELS)
       .filter(([loc, old]) => getPath(load(loc), KEY) === old)
       .map(([loc]) => loc);
-    expect(stale, `locales still using the pre-rename tab label: ${stale.join(', ')}`).toEqual([]);
+    expect(stale, `locales still using the pre-rename label: ${stale.join(', ')}`).toEqual([]);
   });
 });
