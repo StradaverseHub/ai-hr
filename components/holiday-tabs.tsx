@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 /**
  * Sub-navigation within the Holiday module (66b8f5a8 — Holiday Module Enhancement & Centralized Holiday
- * Group Management). Mirrors `components/leave-tabs.tsx` / `components/claims-tabs.tsx` exactly (same markup
+ * Group Management). Mirrors `components/claims-tabs.tsx` exactly (same markup
  * + active-tab styling) so the holiday admin surface reads consistently: a row of tabs across the top —
  * Holiday (the centralized master list) · Holiday Group (reusable collections HR ticks together) — instead
  * of one long scroll. Each tab is a real sub-route (server component) loading only its own data.

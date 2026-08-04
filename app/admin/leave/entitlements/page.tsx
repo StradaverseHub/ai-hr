@@ -29,7 +29,6 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 // boundary, which threw at render and took the whole tab down. The wrapper resolves the translator on the
 // client side; only serialisable data crosses. See that file's header before changing this.
 import { HalfDayCompanyPicker } from '@/components/leave/half-day-company-picker';
-import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy, type LeaveEligibilityRule } from '@/components/leave-type-panel';
 import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
@@ -477,7 +476,6 @@ export default async function LeaveEntitlementsPage({
           </Link>
         }
       />
-      <LeaveTabs active="entitlements" />
       <ErrorBanner message={error} />
 
       {/* Feedback 9d8cf621 — per-type configuration + entitlements. "1 leave type, 1 full set of settings".

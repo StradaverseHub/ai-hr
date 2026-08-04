@@ -7,7 +7,6 @@ import { listApprovalTemplates, listTemplateAssignments } from '@/core/leave-app
 import { listBenefitSchemes, listGradeGroups } from '@/core/benefit-scheme';
 import { bySchemeDisplayOrder, normalizeSchemeText } from '@/lib/benefit-scheme-label';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
-import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveEscalationEditor, type EscalationLabels } from '../../leave-approval/escalation-editor';
 import {
   ApprovalAssignmentManager,
@@ -194,7 +193,6 @@ export default async function LeaveApprovalTabPage({
   return (
     <div className="space-y-6">
       <PageHeader title={t('title')} description={t('description')} />
-      <LeaveTabs active="approval" />
       {error && <ErrorBanner message={error} />}
 
       {companies.length === 0 ? (

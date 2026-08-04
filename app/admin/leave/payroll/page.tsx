@@ -3,7 +3,6 @@ import { requireAdmin } from '@/lib/authz';
 import { listCompanies, listLeaveTypes } from '@/core/read';
 import { getEncashmentPolicies } from '@/core/leave-encashment';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
-import { LeaveTabs } from '@/components/leave-tabs';
 import { setLeaveEncashmentPolicyAction, updateLeaveTypeAction } from '../../actions';
 
 /**
@@ -35,7 +34,6 @@ export default async function LeavePayrollPage({
   return (
     <div className="space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
-      <LeaveTabs active="payroll" />
       <ErrorBanner message={error} />
 
       {/* Feedback 9d8cf621 — per-leave-type Payroll impact, relocated from the Leave Types tab. */}

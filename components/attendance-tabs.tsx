@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 /**
  * Sub-navigation within Attendance > Records (314ea061 — Attendance Records tabs, Phase 1). Mirrors
- * `components/leave-tabs.tsx` / `claims-tabs.tsx` exactly so the module reads consistently: Overview
+ * `components/claims-tabs.tsx` exactly so the module reads consistently: Overview
  * (month-summary dashboard + corrections), Daily Attendance (per-employee day table + Company/Department/
  * Date filters), Individual Attendance (single-employee date-range enquiry). Each tab is a real sub-route
  * (server component) loading only its own data.

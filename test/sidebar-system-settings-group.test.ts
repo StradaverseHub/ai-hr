@@ -37,7 +37,7 @@ const TICKET_HREFS = [
  * long array literal is exactly where an adjacent row gets clipped, so assert the whole list — a
  * dropped or reordered sibling fails loudly. Rows referenced by const name, not href — the
  * collapsible nodes (SYSTEM_SETTINGS_NODE, REPORTS_NODE) and, since ADR-0080, the registry-mounted
- * CLAIMS_CONFIG_ROW (rung 3, /admin/claims → packs/claims) and LEAVE_CONFIG_ROW (rung 6,
+ * CLAIMS_CONFIG_ROW (rung 3, /admin/claims → packs/claims) and LEAVE_CONFIG_NODE (rung 6,
  * /admin/leave → packs/leave) — are asserted separately by position.
  */
 const ADMIN_GROUP_FLAT_HREFS = [
@@ -95,31 +95,35 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
   });
 
   // ADR-0080 rung 3 + rung 6: the /admin/claims and /admin/leave rows moved onto their packs and
-  // mount by const reference (CLAIMS_CONFIG_ROW, LEAVE_CONFIG_ROW), like the collapsible nodes — so
+  // mount by const reference (CLAIMS_CONFIG_ROW, LEAVE_CONFIG_NODE), like the collapsible nodes — so
   // they are asserted by position here, keeping the anti-clipping guard whole. Row content parity is
   // test/claims-pack.test.ts and test/leave-pack.test.ts.
-  it('keeps the config rows in order: LEAVE_CONFIG_ROW → CLAIMS_CONFIG_ROW → PAYROLL_NODE', () => {
+  //
+  // 645e67c4 turned the leave reference from a flat row into a flyout node (LEAVE_CONFIG_ROW ->
+  // LEAVE_CONFIG_NODE) WITHOUT moving it — the same rename 1459e116 made for payroll. This guard is
+  // about POSITION, which is unchanged; the node's contents are test/leave-flyout-nav.test.ts.
+  it('keeps the config rows in order: LEAVE_CONFIG_NODE → CLAIMS_CONFIG_ROW → PAYROLL_NODE', () => {
     const block = adminGroupBlock();
-    const leaveRef = block.indexOf('LEAVE_CONFIG_ROW');
+    const leaveRef = block.indexOf('LEAVE_CONFIG_NODE');
     const claimsRef = block.indexOf('CLAIMS_CONFIG_ROW');
     // ADR-0080 rung 7: the payroll entry moved onto the payroll pack and mounts by const reference,
     // like the claims/leave config rows — asserted by position here. 1459e116 turned that reference
     // from a flat row into a flyout node (PAYROLL_ROW → PAYROLL_NODE) without moving it; its
     // contents are test/payroll-flyout-nav.test.ts.
     const payroll = block.indexOf('PAYROLL_NODE');
-    expect(leaveRef, 'LEAVE_CONFIG_ROW is referenced in the admin group').toBeGreaterThan(-1);
-    expect(claimsRef, 'CLAIMS_CONFIG_ROW is referenced after LEAVE_CONFIG_ROW').toBeGreaterThan(leaveRef);
+    expect(leaveRef, 'LEAVE_CONFIG_NODE is referenced in the admin group').toBeGreaterThan(-1);
+    expect(claimsRef, 'CLAIMS_CONFIG_ROW is referenced after LEAVE_CONFIG_NODE').toBeGreaterThan(leaveRef);
     expect(payroll, 'PAYROLL_NODE sits after CLAIMS_CONFIG_ROW').toBeGreaterThan(claimsRef);
   });
 
-  it('places SYSTEM_SETTINGS_NODE immediately after the /admin/personnel row (before LEAVE_CONFIG_ROW)', () => {
+  it('places SYSTEM_SETTINGS_NODE immediately after the /admin/personnel row (before LEAVE_CONFIG_NODE)', () => {
     const block = adminGroupBlock();
     const personnel = block.indexOf(`'/admin/personnel'`);
     const nodeRef = block.indexOf('SYSTEM_SETTINGS_NODE');
-    const leaveRef = block.indexOf('LEAVE_CONFIG_ROW');
+    const leaveRef = block.indexOf('LEAVE_CONFIG_NODE');
     expect(personnel, '/admin/personnel row exists').toBeGreaterThan(-1);
     expect(nodeRef, 'SYSTEM_SETTINGS_NODE is referenced in the admin group').toBeGreaterThan(personnel);
-    expect(leaveRef, 'SYSTEM_SETTINGS_NODE sits before the LEAVE_CONFIG_ROW row').toBeGreaterThan(nodeRef);
+    expect(leaveRef, 'SYSTEM_SETTINGS_NODE sits before the LEAVE_CONFIG_NODE row').toBeGreaterThan(nodeRef);
   });
 
   // fdc20776 (flyout redesign) removed per-group open/closed persistence entirely: panels are

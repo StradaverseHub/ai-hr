@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 /**
  * Sub-navigation within the System Labels module (fbdeee87 — Relocate Profile Options into System Labels).
- * Mirrors `components/leave-tabs.tsx` exactly (same markup + active-tab
+ * Mirrors `components/claims-tabs.tsx` exactly (same markup + active-tab
  * styling) so the master-data admin surface reads consistently: a row of tabs across the top. Each tab is
  * a real sub-route (server component) that loads only its own data.
  *

@@ -38,6 +38,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { leavePack } from '../packs/leave';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -84,9 +85,19 @@ describe('d778d2d3: the three standalone sections are gone from the Entitlements
 
 describe('d778d2d3 → 962077a8: the two tools are dialog buttons — mounted in the sub-steps, not the header', () => {
   // The whole actions cluster: from actions={ to the closing of the PageHeader element.
+  // 645e67c4 — this slice used `<LeaveTabs` as its end marker, and the strip is deleted. The marker is
+  // now the PageHeader's own closing tag, which is what the slice always meant: "the header cluster".
+  // Derived rather than guessed, and asserted non-empty below so a future markup change cannot silently
+  // reduce every assertion in this block to a check against an empty string.
   const headerStart = entitlementsPage.indexOf('<PageHeader');
-  const headerEnd = entitlementsPage.indexOf('<LeaveTabs');
+  const headerEnd = entitlementsPage.indexOf('/>', entitlementsPage.indexOf('actions={', headerStart));
   const header = entitlementsPage.slice(headerStart, headerEnd);
+
+  it('the header slice is real — a broken marker would make every assertion below vacuous', () => {
+    expect(headerStart).toBeGreaterThan(-1);
+    expect(headerEnd).toBeGreaterThan(headerStart);
+    expect(header.length).toBeGreaterThan(50);
+  });
 
   it('the PageHeader actions slot carries ONLY the + Import link (962077a8)', () => {
     expect(header).toMatch(/actions=\{/);
@@ -156,7 +167,6 @@ describe('1e4eb8af: the Leave Cycle card is retired with the Application Rules t
     // Nothing survives of the page it replaced.
     expect(applicationRulesStub.includes('leaveCycleTitle')).toBe(false);
     expect(applicationRulesStub.includes('leaveYearTitle')).toBe(false);
-    expect(applicationRulesStub.includes('<LeaveTabs')).toBe(false);
     expect(applicationRulesStub.includes('requireAdmin')).toBe(false);
   });
 
@@ -177,12 +187,14 @@ describe('1e4eb8af: the Leave Cycle card is retired with the Application Rules t
     expect(core).toContain('export async function setCompanyLeaveCycle(');
   });
 
-  it('the retired tab is not a guarded route any more (a redirect stub guards nothing)', () => {
+  it('the retired destination is not a guarded route and not in the menu (a redirect stub guards nothing)', () => {
     const permissions = read('/lib/permissions.ts');
     expect(permissions.includes("'/admin/leave/application-rules'")).toBe(false);
-    const tabs = read('/components/leave-tabs.tsx');
-    expect(tabs.includes('application-rules')).toBe(false);
-    expect(tabs.includes('applicationRules')).toBe(false);
+    // 645e67c4 — this read components/leave-tabs.tsx, which is deleted. The surviving navigation is the
+    // leave pack's fly-out node, so the same promise is now made against the thing that actually renders.
+    const node = leavePack.navNodes!.find((n) => n.group === 'admin')!;
+    expect(node.children.some((c) => c.href.includes('application-rules'))).toBe(false);
+    expect(node.children.some((c) => c.labelKey.toLowerCase().includes('applicationrules'))).toBe(false);
   });
 });
 

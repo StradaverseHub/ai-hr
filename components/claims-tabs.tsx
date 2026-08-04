@@ -3,9 +3,14 @@ import Link from 'next/link';
 
 /**
  * Sub-navigation within the Claims Settings module (ccbd0508 — Claim Module Simplification). Mirrors
- * `components/leave-tabs.tsx` exactly so the claims admin surface reads consistently: Claim Types (master
+ * the house tab-strip idiom exactly so the claims admin surface reads consistently: Claim Types (master
  * data only) · Claim Limits (per Job-Grade entitlement rules) · Reimbursements (payout). Each tab is a real
  * sub-route (server component) loading only its own data — the "Claim Limit submenu" the reporter asked for.
+ *
+ * 645e67c4 — THIS FILE IS NOW THE REFERENCE COPY for the house tab-strip idiom. components/leave-tabs.tsx
+ * held that role and was deleted when Leave config became a sidebar flyout group; the attendance,
+ * holiday, statutory and system-labels strips (and company-panel's tab trigger) all point here instead.
+ * If this one is ever retired the same way, move the pointer again rather than leaving them dangling.
  */
 export async function ClaimsTabs({ active }: { active: 'types' | 'limits' | 'reimbursements' }) {
   const t = await getTranslations('admin.claimsTabs');
