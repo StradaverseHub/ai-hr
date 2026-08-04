@@ -23,12 +23,13 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const POPOVER = 'components/ui/multi-select-popover.tsx';
-const FESTIVE = 'components/festive-grant-card.tsx';
+// 38f1fd40 — FESTIVE ('components/festive-grant-card.tsx') retired with the Adjustments sub-step. The
+// contract this file guards is NOT retired with it: EARNED is a surviving consumer of the same popover,
+// which is exactly why the plan said to check for a non-festive case before deleting the file.
 const EARNED = 'components/earned-accrual-card.tsx';
 
 describe('2449fbb7 · MultiSelectPopover form contract', () => {
   const popover = read(POPOVER);
-  const festive = read(FESTIVE);
   const earned = read(EARNED);
 
   it('the shared component exists and is a client leaf', () => {
@@ -39,7 +40,7 @@ describe('2449fbb7 · MultiSelectPopover form contract', () => {
     expect(popover).toMatch(/type="hidden" name=\{name\} value=\{id\}/);
     // Source-order proof that the hidden inputs are NOT gated on the panel being open: the hidden-input
     // block must appear BEFORE the `{open &&` conditional. If someone moves the inputs inside the panel,
-    // closing the dropdown would unmount them and every Festive Grant submit would hard-fail server-side
+    // closing the dropdown would unmount them and every submit using it would hard-fail server-side
     // while the trigger still reads "N selected".
     const hiddenAt = popover.indexOf('type="hidden"');
     const openGuardAt = popover.indexOf('{open &&');
@@ -50,14 +51,9 @@ describe('2449fbb7 · MultiSelectPopover form contract', () => {
     );
   });
 
-  it('FestiveGrantCard wires the posted field name into the shared component', () => {
-    // This is the single assertion standing between this change and a broken write path:
-    // app/admin/actions.ts reads formData.getAll('companyIds') and grantAdHocLeaveMulti throws on empty.
-    expect(festive).toMatch(/import \{ MultiSelectPopover \} from '\.\/ui\/multi-select-popover'/);
-    expect(festive).toMatch(/name="companyIds"/);
-    // The visible checkboxes are presentation-only now — no checkbox carries the posted name.
-    expect(festive).not.toMatch(/type="checkbox"\s+name="companyIds"/);
-  });
+  // 38f1fd40 — the 'FestiveGrantCard wires the posted field name' case is retired with that card. Its
+  // promise is not lost: the surviving consumer below makes the same one, and the popover-side assertions
+  // above (hidden inputs outside the open guard) were always the load-bearing half.
 
   it('both cards consume the shared component (the two local copies are gone)', () => {
     expect(earned).toMatch(/import \{ MultiSelectPopover \} from '\.\/ui\/multi-select-popover'/);

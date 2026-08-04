@@ -23,7 +23,7 @@
  *   balance − pendingApproval               =  totalAvailable
  *
  * Every scenario below asserts that identity against what the REAL engines posted (openLeaveYear,
- * expireCarriedLeave, grantAdHocLeave), including the cases where the old derived
+ * expireCarriedLeave, and the Leave Adjustments module), including the cases where the old derived
  * arithmetic demonstrably does not close. Read-only feature: no schema, no migration, no DomainEvent.
  * // substrate: read-only, no event
  */
@@ -40,7 +40,6 @@ import {
   POLICY_RECALC_REASON_PREFIX,
   PROFILE_RECALC_REASON_PREFIX,
   expireCarriedLeave,
-  grantAdHocLeave,
   openLeaveYear,
 } from '../core/leave';
 import {
@@ -51,6 +50,7 @@ import {
   type LeaveEntitlementBreakdown,
 } from '../core/read';
 import { reconciledBalance } from '../components/leave/entitlement-panel-config';
+import { applyLeaveAdjustmentBatch } from '../core/leave-adjustment';
 import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -330,19 +330,21 @@ describe('ask 1 — the Adjustment line is the Adjustment configuration, and not
   /** Two festive grants (the config single source of truth) + recalc corrections in BOTH signs. */
   const seedAdjustments = async () => {
     const emp = await hire('2025-01-01');
-    await grantAdHocLeave(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: b.annualLeaveTypeId,
+    await applyLeaveAdjustmentBatch(adminCtx(b), {
+      leaveTypeIds: [b.annualLeaveTypeId],
       days: 2,
-      reason: 'CNY 2026',
       effectiveOn: '2026-02-01',
+      reason: 'CNY 2026',
+      targetMode: 'criteria',
+      criteria: { companyIds: [b.companyId] },
     });
-    await grantAdHocLeave(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: b.annualLeaveTypeId,
+    await applyLeaveAdjustmentBatch(adminCtx(b), {
+      leaveTypeIds: [b.annualLeaveTypeId],
       days: 1,
-      reason: 'Deepavali 2026',
       effectiveOn: '2026-11-01',
+      reason: 'Deepavali 2026',
+      targetMode: 'criteria',
+      criteria: { companyIds: [b.companyId] },
     });
     // Automatic corrections — never entered on the Adjustment screen. Both prefixes, both signs.
     await post(emp.employmentId, b.annualLeaveTypeId, 'adjustment', 3, '2026-03-01', `${POLICY_RECALC_REASON_PREFIX}:${randomUUID()}`);
@@ -401,12 +403,13 @@ describe('ask 1 — the Adjustment line is the Adjustment configuration, and not
     expect(before.configAdjustmentItems).toEqual([]);
     expectReconciles(before);
 
-    await grantAdHocLeave(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: b.annualLeaveTypeId,
+    await applyLeaveAdjustmentBatch(adminCtx(b), {
+      leaveTypeIds: [b.annualLeaveTypeId],
       days: 2,
-      reason: 'CNY 2026',
       effectiveOn: '2026-02-01',
+      reason: 'CNY 2026',
+      targetMode: 'criteria',
+      criteria: { companyIds: [b.companyId] },
     });
 
     const after = await bdOf(emp.employmentId, b.annualLeaveTypeId, '2026-12-31');
@@ -425,12 +428,13 @@ describe('cross-surface consistency — one Balance everywhere', () => {
     await openLeaveYear(adminCtx(b), { year: 2026 });
     await expireCarriedLeave(adminCtx(b), { today: '2026-03-31' });
     await post(emp.employmentId, b.annualLeaveTypeId, 'debit', -3, '2026-06-01');
-    await grantAdHocLeave(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: b.annualLeaveTypeId,
+    await applyLeaveAdjustmentBatch(adminCtx(b), {
+      leaveTypeIds: [b.annualLeaveTypeId],
       days: 2,
-      reason: 'CNY 2026',
       effectiveOn: '2026-02-01',
+      reason: 'CNY 2026',
+      targetMode: 'criteria',
+      criteria: { companyIds: [b.companyId] },
     });
 
     // asOf covers every posted row, so the as-at breakdown and the live balance reads must agree exactly.

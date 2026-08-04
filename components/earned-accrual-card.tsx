@@ -160,9 +160,9 @@ export function EarnedAccrualCard({
           selected={companyIds}
           onChange={setCompanyIds}
           searchPlaceholder={t('earnedSearchPlaceholder')}
-          selectAllLabel={t('festiveSelectAll')}
-          clearAllLabel={t('festiveClearAll')}
-          selectedCount={(n) => t('festiveSelectedCount', { count: n })}
+          selectAllLabel={t('multiSelectSelectAll')}
+          clearAllLabel={t('multiSelectClearAll')}
+          selectedCount={(n) => t('multiSelectSelectedCount', { count: n })}
         />
         <Field label={t('earnedScopeLeaveYear')}>
           <select
@@ -184,9 +184,9 @@ export function EarnedAccrualCard({
           selected={leaveTypeIds}
           onChange={setLeaveTypeIds}
           searchPlaceholder={t('earnedSearchPlaceholder')}
-          selectAllLabel={t('festiveSelectAll')}
-          clearAllLabel={t('festiveClearAll')}
-          selectedCount={(n) => t('festiveSelectedCount', { count: n })}
+          selectAllLabel={t('multiSelectSelectAll')}
+          clearAllLabel={t('multiSelectClearAll')}
+          selectedCount={(n) => t('multiSelectSelectedCount', { count: n })}
         />
         <MultiSelectPopover
           label={t('earnedScopeGrade')}
@@ -195,9 +195,9 @@ export function EarnedAccrualCard({
           selected={gradeIds}
           onChange={setGradeIds}
           searchPlaceholder={t('earnedSearchPlaceholder')}
-          selectAllLabel={t('festiveSelectAll')}
-          clearAllLabel={t('festiveClearAll')}
-          selectedCount={(n) => t('festiveSelectedCount', { count: n })}
+          selectAllLabel={t('multiSelectSelectAll')}
+          clearAllLabel={t('multiSelectClearAll')}
+          selectedCount={(n) => t('multiSelectSelectedCount', { count: n })}
         />
         <Button type="button" size="sm" onClick={onPreview} disabled={pending}>
           {pending && rows === null ? t('earnedPreviewingButton') : t('earnedPreviewButton')}

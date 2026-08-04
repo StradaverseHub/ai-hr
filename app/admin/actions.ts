@@ -52,8 +52,6 @@ import {
   openLeaveYear,
   accrueEarnedLeave,
   asOfForLeaveYear,
-  grantAdHocLeave,
-  grantAdHocLeaveMulti,
   reprojectEntitlementForSchemeCohort,
   // bc36c768 — the leave-type counterpart of the scheme cohort, fired after an earning-method save clears
   // the NOT-CONFIGURED marker.
@@ -859,48 +857,6 @@ export async function saveServiceEntitlementAction(formData: FormData) {
   );
 }
 
-/** ADR-0066 (re-plan round 5): festive / one-off leave grant. Returns the affected-employee count for the
- *  confirm step (no redirect — a client card shows the count + toast, then refreshes). Branches on the
- *  `groupWide` checkbox: when set, reuses the shipped single-company-shaped `grantAdHocLeave` with
- *  companyId=null (byte-identical path, group admins only); otherwise reads `companyIds` (multi-select
- *  checkboxes, formData.getAll) and calls the new `grantAdHocLeaveMulti`. */
-export async function grantAdHocLeaveAction(
-  formData: FormData,
-): Promise<{ granted?: number; targeted?: number; companies?: number; skipped?: number; error?: string }> {
-  const s = await getSession();
-  const leaveTypeId = String(formData.get('leaveTypeId') || '');
-  const days = Number(formData.get('days'));
-  const reason = String(formData.get('reason') || '');
-  const effectiveOn = String(formData.get('effectiveOn') || '');
-  const expiresOn = String(formData.get('expiresOn') || '') || null;
-  try {
-    if (formData.get('groupWide')) {
-      const res = await grantAdHocLeave(s, {
-        companyId: null,
-        leaveTypeId,
-        days,
-        reason,
-        effectiveOn,
-        expiresOn,
-      });
-      revalidatePath(LEAVE);
-      return { granted: res.granted, targeted: res.targeted };
-    }
-    const companyIds = formData.getAll('companyIds').map(String);
-    const res = await grantAdHocLeaveMulti(s, {
-      companyIds,
-      leaveTypeId,
-      days,
-      reason,
-      effectiveOn,
-      expiresOn,
-    });
-    revalidatePath(LEAVE);
-    return { granted: res.granted, targeted: res.targeted, companies: res.companies, skipped: res.skipped };
-  } catch (e) {
-    return { error: (e as Error).message };
-  }
-}
 
 /** feedback 2c7c6385 (Run Earned Accrual button): the scope the HR admin picked in the review card. An
  *  empty array on any axis ⇒ "all" on that axis (matches countEmployeesInScope). `year` selects the leave
@@ -941,7 +897,7 @@ export async function previewEarnedAccrualAction(
  *  year, narrowed to the chosen scope. Idempotent — admins can run it any time; a re-run grants nothing more
  *  (the monthly cron scripts/accrue-earned.ts calls the same engine unscoped). Returns {granted, forfeits}
  *  so the review card can surface "N generated" (a 2nd run visibly shows 0). No redirect — the client card
- *  toasts + refreshes, mirroring grantAdHocLeaveAction. */
+ *  toasts + refreshes — the pattern grantAdHocLeaveAction used before 38f1fd40 retired it. */
 export async function runEarnedAccrualAction(
   scope: EarnedAccrualScope,
 ): Promise<{ granted?: number; forfeits?: number; error?: string }> {

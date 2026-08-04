@@ -422,17 +422,22 @@ const ESS_SUB_STEP_TITLE_KEY: Record<EssSubStepKey, string> = {
  *  `entitlementSubStep` in the leaveTypeCards:<id> localStorage shape, next to activeStep / generalSubStep /
  *  essSubStep — the e1a51aea shape extended backward-compatibly). Rendered by the SAME reusable SubStepBar
  *  the General flow introduced (components/leave-sub-step-bar.tsx — the reuse contract). */
-const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'adjustments'] as const;
+const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service'] as const;
 type EntitlementSubStepKey = (typeof ENTITLEMENT_SUB_STEP_KEYS)[number];
 /** The storage key of the sub-step bc9be1e8 retired (Company Entitlements). Kept ONLY so a persisted
  *  leaveTypeCards:<id> payload that still points at it lands where its content went — Service Based
  *  Entitlements — instead of silently snapping back to sub-step 1. Never an EntitlementSubStepKey. */
 const RETIRED_COMPANY_ENTITLEMENTS_SUB_STEP = 'policies';
+/** 38f1fd40 — the Adjustments sub-step is removed. Kept ONLY so a persisted leaveTypeCards:<id> payload
+ *  still pointing at it lands on Service Based Entitlements, where Run Earned Accrual moved, rather than
+ *  silently snapping back to sub-step 1. Same discipline as the constant above. Never an
+ *  EntitlementSubStepKey. THIS IS THE ONE REAL REGRESSION RISK IN THIS CHANGE: it is per-browser state,
+ *  so no test and no render can see a user stranded by its absence. */
+const RETIRED_ADJUSTMENTS_SUB_STEP = 'adjustments';
 /** Sub-step → its admin.leave title key (all 6 locales). */
 const ENTITLEMENT_SUB_STEP_TITLE_KEY: Record<EntitlementSubStepKey, string> = {
   schemes: 'entitlementStep.schemes',
   service: 'entitlementStep.service',
-  adjustments: 'entitlementStep.adjustments',
 };
 
 type Action = (fd: FormData) => void | Promise<void>;
@@ -1602,7 +1607,6 @@ export function LeaveTypePanel({
   companies,
   schemeEntitlements,
   benefitSchemeSection,
-  festiveGrantSection,
   halfDaySection,
   previewScenarioSection,
   accrualSection,
@@ -1757,11 +1761,6 @@ export function LeaveTypePanel({
    *  Assignment) — grade MASTER data now lives on Settings → System Labels → Organisation Labels, so there
    *  is no gradesPanel slot any more. This ONE section is still the whole Benefit Schemes sub-step. */
   benefitSchemeSection?: ReactNode;
-  /** fd7c8e20: the One-Off / Festive Leave Grant tool, moved from the page-bottom section into the
-   *  Entitlement step BELOW the Benefit Schemes area — a server-composed <FestiveGrantCard
-   *  defaultLeaveTypeId={id}> slot, so the grant form arrives preset to THIS type. Slot-shaped like
-   *  benefitSchemeSection: companies/grants data is prepared ONCE at page level (no N+1 per type). */
-  festiveGrantSection?: ReactNode;
   /** 08bc6841: the company-wide Half-Day Deduction card — a server-composed slot (since 10e96227 ONE
    *  ChipMultiSelect over companyIds plus one Save posting setLeaveHalfDayFullDeductionCompaniesAction,
    *  embedded as one card of the Condition step's Leave Application Rules grid with an
@@ -1772,9 +1771,11 @@ export function LeaveTypePanel({
    *  Entitlements sub-step as its checking tool — a server-composed slot (page-level data prep, one shared
    *  node). The PageHeader button is removed separately by item 962077a8; this slot is its new home. */
   previewScenarioSection?: ReactNode;
-  /** 7b945408: the Run Accrual action (d778d2d3's EarnedAccrualDialog), relocated into the Adjustments
-   *  sub-step — it processes earned entitlement, so it belongs with entitlement adjustments. Server-composed
-   *  slot (page-level data prep, one shared node); the PageHeader button is removed by item 962077a8. */
+  /** 7b945408 / 38f1fd40: the Run Accrual action (d778d2d3's EarnedAccrualDialog). It lived in the
+   *  Adjustments sub-step until 38f1fd40 retired that sub-step, and now sits in Service Based
+   *  Entitlements beside previewScenarioSection. It is the ONLY mount of EarnedAccrualDialog — the page
+   *  header was cleared by 962077a8 and must not be used as a home again. Server-composed slot
+   *  (page-level data prep, one shared node). */
   accrualSection?: ReactNode;
   updateTypeAction: Action;
   archiveTypeAction: Action;
@@ -1926,10 +1927,13 @@ export function LeaveTypePanel({
       } else if (
         !wantedEligibility &&
         parsed &&
-        parsed.entitlementSubStep === RETIRED_COMPANY_ENTITLEMENTS_SUB_STEP
+        (parsed.entitlementSubStep === RETIRED_COMPANY_ENTITLEMENTS_SUB_STEP ||
+          parsed.entitlementSubStep === RETIRED_ADJUSTMENTS_SUB_STEP)
       ) {
         // bc9be1e8: a browser left on the removed Company Entitlements tab lands on Service Based
         // Entitlements, where that content now lives — not back on sub-step 1 with no explanation.
+        // 38f1fd40 adds the Adjustments tab to the same remap, for the same reason: Run Earned Accrual
+        // moved to Service Based Entitlements, so that is where a browser left on Adjustments belongs.
         setEntitlementSubStep('service');
       }
     } catch {
@@ -2893,18 +2897,14 @@ export function LeaveTypePanel({
           {/* The Preview Scenario checker stays LAST in the sub-step, after the policy block — the
               pre-existing rule that the preview tool follows the service content it checks. */}
           {previewScenarioSection}
-          </>
-          )}
-          {/* Sub-step 4 — Adjustments (7b945408): what manual adjustments apply. */}
-          {entitlementSubStep === 'adjustments' && (
-          <>
-          {/* fd7c8e20: the One-Off / Festive Leave Grant tool, preset to this type — the standalone
-              page-bottom section moved into this step (now its Adjustments sub-step). Server-composed
-              slot; see the festiveGrantSection prop doc. */}
-          {festiveGrantSection}
-          {/* 7b945408: the Run Accrual action relocated here from the page header — it processes earned
-              entitlement, so it belongs with entitlement adjustments. The SAME self-contained
-              EarnedAccrualDialog (d778d2d3). Server-composed slot; see the accrualSection prop doc. */}
+          {/* 38f1fd40 — Run Earned Accrual RE-HOMED here from the retired Adjustments sub-step. It was
+              parked there because it was treated as an entitlement adjustment, and after 962077a8 cleared
+              the page header this became its ONLY reachable mount: deleting that sub-step as the ticket
+              literally asked would have taken the only way to generate earned leave days with it.
+              Service Based Entitlements is the right home — it already hosts Preview Scenario, and the
+              header is deliberately NOT an option (962077a8 removed it at the reporter's request and
+              test/entitlement-header-actions-removal.test.ts guards that). Same button, same dialog, same
+              behaviour; only its home changed. */}
           {accrualSection}
           </>
           )}
