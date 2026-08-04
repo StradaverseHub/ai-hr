@@ -160,7 +160,8 @@
     "systemSettings": "系统设置",
     "systemExplorer": "依赖关系浏览器",
     "movementSettings": "异动设置",
-    "hiringDefaults": "入职默认设置"
+    "hiringDefaults": "入职默认设置",
+    "noticeBoard": "公告栏"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -359,7 +360,8 @@
       "draftNoCompany": "尚未选择公司",
       "draftMissing": "还需 {count} 项",
       "draftReady": "可以创建",
-      "draftContinue": "继续"
+      "draftContinue": "继续",
+      "hiringDefaults": "入职默认设置"
     },
     "detail": {
       "backToPeople": "员工",
@@ -1368,7 +1370,11 @@
         "isResident": "税务居民",
         "taxCategory": "PCB 类别",
         "monthlyAllowance": "每月津贴",
-        "rateAmount": "费率金额"
+        "rateAmount": "费率金额",
+        "gender": "性别",
+        "maritalStatus": "婚姻状况",
+        "payMode": "计薪方式",
+        "paymentTerm": "支付周期"
       },
       "employmentType": {
         "full_time": "全职",
@@ -1392,7 +1398,8 @@
         "businessUnit": "仅用于筛选部门列表，不会保存到员工记录。",
         "hiredOn": "入职首日。创建之后，此日期只能通过异动事件更改。",
         "bankAccount": "银行与账号请同时填写，或都留空。",
-        "company": "先询问公司，因为它决定适用哪一套员工编号自动流水号设置。"
+        "company": "先询问公司，因为它决定适用哪一套员工编号自动流水号设置。",
+        "rateAmount": "日薪或时薪方式必填。"
       },
       "backLabel": "返回人事",
       "title": "创建新员工",
@@ -1452,7 +1459,37 @@
         "staleCode": "先前输入的员工编号“{code}”不会被使用，因为本公司已不再允许手动输入。",
         "removeCode": "移除",
         "draftCostsNothing": "保存为草稿不会占用任何编号。员工编号只在员工成功创建时才被占用。"
+      },
+      "gender": {
+        "male": "男",
+        "female": "女"
+      },
+      "marital": {
+        "single": "单身",
+        "married": "已婚"
+      },
+      "payMode": {
+        "monthly": "月薪",
+        "daily": "日薪",
+        "hourly": "时薪",
+        "custom_period": "自定义周期"
+      },
+      "paymentTerm": {
+        "monthly": "每月",
+        "weekly": "每周",
+        "biweekly": "每两周"
       }
+    },
+    "hiringDefaults": {
+      "title": "入职默认设置",
+      "description": "按公司设置的新员工与雇佣评估默认值。它们原本位于薪资计划界面，但薪资相关逻辑从不读取它们。",
+      "back": "员工",
+      "emptyScope": "当前范围内没有公司。",
+      "save": "保存",
+      "probationMonths": "默认试用期（月）",
+      "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。",
+      "reviewReminderDays": "评估提醒（结束日期前天数）",
+      "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
     }
   },
   "leave": {
@@ -7993,5 +8030,95 @@
     "submit": "Submit request",
     "submittedToast": "Replacement leave request submitted.",
     "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing."
+  },
+  "notices": {
+    "pageTitle": "公告栏",
+    "pageDescription": "向相关员工发布公司公告。",
+    "add": "新增公告",
+    "listTitle": "公告",
+    "search": "搜索标题",
+    "filterStatus": "状态",
+    "allStatuses": "全部状态",
+    "applyFilter": "应用",
+    "colTitle": "公告标题",
+    "colStart": "开始日期",
+    "colEnd": "结束日期",
+    "colStatus": "状态",
+    "colPublishedBy": "发布人",
+    "colRecipients": "接收人数",
+    "colActions": "操作",
+    "listEmpty": "暂无公告。",
+    "viewEdit": "查看 / 编辑",
+    "status": {
+      "archived": "已归档",
+      "draft": "草稿",
+      "scheduled": "已排期",
+      "active": "生效中",
+      "expired": "已过期"
+    },
+    "newTitle": "新建公告",
+    "newDescription": "保存后会生成草稿。在您发布之前不会发送给任何人。",
+    "backToBoard": "返回公告栏",
+    "setupTitle": "公告设置",
+    "sectionBasics": "基本信息",
+    "sectionContent": "公告内容",
+    "sectionAudience": "接收对象",
+    "sectionDelivery": "送达方式",
+    "fTitle": "公告标题",
+    "fStartOn": "开始日期",
+    "fEndOn": "结束日期",
+    "fShowEndDate": "在公告上显示结束日期",
+    "fBody": "内容",
+    "fBodyHelp": "支持 Markdown：**粗体**、_斜体_、列表、链接和表格。",
+    "write": "编写",
+    "preview": "预览",
+    "previewEmpty": "暂无可预览的内容。",
+    "byCriteria": "按条件",
+    "byIndividual": "指定员工",
+    "fCompanies": "公司",
+    "fDepartments": "部门",
+    "fEmploymentTypes": "雇佣类型",
+    "fEmploymentIds": "员工记录",
+    "fEmploymentIdsHelp": "粘贴雇佣 ID，每行一个。",
+    "everyoneWarning": "未设置任何条件，因此该公告将发送给所有在职员工。发布前请先核对上方的人数。",
+    "targetingFrozen": "该公告已发布，接收对象已固定。若要发给其他人，请先归档并发布新公告。",
+    "fNotify": "发布时通知接收人",
+    "fNotifyHelp": "通过现有的通知设置发送，仍会遵循每个人的偏好设置。",
+    "fPopup": "登录后以弹窗显示",
+    "fPopupFrequency": "弹窗频率",
+    "popupOnce": "每位员工一次",
+    "popupUntilAcknowledged": "每次登录直到结束",
+    "saveDraft": "保存草稿",
+    "save": "保存",
+    "reachTitle": "覆盖范围",
+    "reachDraft": "若现在发布，该公告将覆盖 {count} 名员工。",
+    "reachPublished": "该公告已发布给 {count} 名员工。",
+    "publish": "发布",
+    "publishConfirmTitle": "确认发布该公告？",
+    "publishConfirmDescription": "它将发送给 {count} 名员工，该名单在发布的那一刻即固定。",
+    "archive": "归档",
+    "archiveConfirmTitle": "确认归档该公告？",
+    "archiveConfirmDescription": "员工将立即不再看到它。之后可以恢复。",
+    "restore": "恢复",
+    "duplicate": "复制",
+    "delete": "删除",
+    "deleteConfirmTitle": "确认删除该草稿？",
+    "deleteConfirmDescription": "该草稿尚未送达任何人，不会有任何损失。此操作无法撤销。",
+    "myTitle": "公告栏",
+    "myDescription": "发布给您的公告。",
+    "myListTitle": "您的公告",
+    "myEmpty": "暂无公告。",
+    "publishedOn": "发布于 {date}",
+    "newBadge": "新",
+    "publishedByOn": "由 {by} 于 {date} 发布",
+    "backToMine": "返回公告",
+    "noticeTitle": "公告",
+    "validUntil": "有效期至 {date}",
+    "cardTitle": "公告栏",
+    "cardEmpty": "暂无公告。",
+    "cardViewAll": "查看全部公告",
+    "cardNewCount": "{count} 条新公告",
+    "popupRead": "阅读公告",
+    "popupDismiss": "关闭"
   }
 }

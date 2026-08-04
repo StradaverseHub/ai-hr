@@ -160,7 +160,8 @@
     "systemSettings": "Cài đặt hệ thống",
     "systemExplorer": "Trình khám phá phụ thuộc",
     "movementSettings": "Cài đặt biến động",
-    "hiringDefaults": "Mặc định tuyển dụng"
+    "hiringDefaults": "Mặc định tuyển dụng",
+    "noticeBoard": "Bảng thông báo"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -359,7 +360,8 @@
       "draftNoCompany": "Chưa chọn công ty",
       "draftMissing": "Còn thiếu {count}",
       "draftReady": "Sẵn sàng tạo",
-      "draftContinue": "Tiếp tục"
+      "draftContinue": "Tiếp tục",
+      "hiringDefaults": "Mặc định tuyển dụng"
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -1368,7 +1370,11 @@
         "isResident": "Cư trú thuế",
         "taxCategory": "Nhóm PCB",
         "monthlyAllowance": "Phụ cấp hàng tháng",
-        "rateAmount": "Mức đơn giá"
+        "rateAmount": "Mức đơn giá",
+        "gender": "Giới tính",
+        "maritalStatus": "Tình trạng hôn nhân",
+        "payMode": "Hình thức trả lương",
+        "paymentTerm": "Kỳ trả lương"
       },
       "employmentType": {
         "full_time": "Toàn thời gian",
@@ -1392,7 +1398,8 @@
         "businessUnit": "Chỉ để lọc danh sách phòng ban. Không lưu vào hồ sơ nhân viên.",
         "hiredOn": "Ngày làm việc đầu tiên. Sau khi tạo, ngày này chỉ thay đổi qua sự kiện điều động.",
         "bankAccount": "Nhập cả ngân hàng và số tài khoản, hoặc bỏ trống cả hai.",
-        "company": "Được hỏi trước vì nó quyết định Thiết lập Số chạy tự động Mã nhân viên nào được áp dụng."
+        "company": "Được hỏi trước vì nó quyết định Thiết lập Số chạy tự động Mã nhân viên nào được áp dụng.",
+        "rateAmount": "Bắt buộc với hình thức trả lương theo ngày hoặc theo giờ."
       },
       "backLabel": "Quay lại Nhân sự",
       "title": "Tạo nhân viên mới",
@@ -1452,7 +1459,37 @@
         "staleCode": "Mã nhân viên \"{code}\" đã nhập trước đó sẽ không được dùng, vì công ty này không còn cho phép nhập thủ công.",
         "removeCode": "Xóa mã",
         "draftCostsNothing": "Lưu bản nháp không tốn gì cả. Mã nhân viên chỉ bị lấy khi nhân viên được tạo thành công."
+      },
+      "gender": {
+        "male": "Nam",
+        "female": "Nữ"
+      },
+      "marital": {
+        "single": "Độc thân",
+        "married": "Đã kết hôn"
+      },
+      "payMode": {
+        "monthly": "Hàng tháng",
+        "daily": "Hàng ngày",
+        "hourly": "Theo giờ",
+        "custom_period": "Kỳ tùy chỉnh"
+      },
+      "paymentTerm": {
+        "monthly": "Hàng tháng",
+        "weekly": "Hàng tuần",
+        "biweekly": "Hai tuần một lần"
       }
+    },
+    "hiringDefaults": {
+      "title": "Mặc định tuyển dụng",
+      "description": "Giá trị mặc định theo từng công ty cho nhân viên mới và các kỳ đánh giá. Trước đây chúng nằm trên màn hình lịch trả lương, nơi không có phần nào của bảng lương đọc tới.",
+      "back": "Nhân sự",
+      "emptyScope": "Không có công ty nào trong phạm vi hiện tại.",
+      "save": "Lưu",
+      "probationMonths": "Thời gian thử việc mặc định (tháng)",
+      "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
+      "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
+      "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
     }
   },
   "leave": {
@@ -7993,5 +8030,95 @@
     "submit": "Submit request",
     "submittedToast": "Replacement leave request submitted.",
     "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing."
+  },
+  "notices": {
+    "pageTitle": "Bảng thông báo",
+    "pageDescription": "Đăng thông báo của công ty tới những nhân viên liên quan.",
+    "add": "Thêm thông báo mới",
+    "listTitle": "Thông báo",
+    "search": "Tìm tiêu đề",
+    "filterStatus": "Trạng thái",
+    "allStatuses": "Tất cả trạng thái",
+    "applyFilter": "Áp dụng",
+    "colTitle": "Tiêu đề thông báo",
+    "colStart": "Ngày bắt đầu",
+    "colEnd": "Ngày kết thúc",
+    "colStatus": "Trạng thái",
+    "colPublishedBy": "Người đăng",
+    "colRecipients": "Người nhận",
+    "colActions": "Thao tác",
+    "listEmpty": "Chưa có thông báo nào.",
+    "viewEdit": "Xem / Sửa",
+    "status": {
+      "archived": "Đã lưu trữ",
+      "draft": "Bản nháp",
+      "scheduled": "Đã lên lịch",
+      "active": "Đang hiệu lực",
+      "expired": "Đã hết hạn"
+    },
+    "newTitle": "Thông báo mới",
+    "newDescription": "Lưu sẽ tạo một bản nháp. Không có gì được gửi đi cho đến khi bạn đăng.",
+    "backToBoard": "Quay lại Bảng thông báo",
+    "setupTitle": "Thiết lập thông báo",
+    "sectionBasics": "Thông tin cơ bản",
+    "sectionContent": "Nội dung thông báo",
+    "sectionAudience": "Ai sẽ nhận được",
+    "sectionDelivery": "Cách gửi đến",
+    "fTitle": "Tiêu đề thông báo",
+    "fStartOn": "Ngày bắt đầu",
+    "fEndOn": "Ngày kết thúc",
+    "fShowEndDate": "Hiển thị ngày kết thúc trên thông báo",
+    "fBody": "Nội dung",
+    "fBodyHelp": "Hỗ trợ Markdown: **in đậm**, _in nghiêng_, danh sách, liên kết và bảng.",
+    "write": "Soạn",
+    "preview": "Xem trước",
+    "previewEmpty": "Chưa có gì để xem trước.",
+    "byCriteria": "Theo tiêu chí",
+    "byIndividual": "Nhân viên cụ thể",
+    "fCompanies": "Công ty",
+    "fDepartments": "Phòng ban",
+    "fEmploymentTypes": "Loại hình lao động",
+    "fEmploymentIds": "Hồ sơ nhân viên",
+    "fEmploymentIdsHelp": "Dán các mã hồ sơ lao động, mỗi dòng một mã.",
+    "everyoneWarning": "Chưa đặt tiêu chí nào, nên thông báo này sẽ đến mọi nhân viên đang làm việc. Hãy kiểm tra số lượng ở trên trước khi đăng.",
+    "targetingFrozen": "Thông báo này đã được đăng nên danh sách người nhận là cố định. Để gửi tới người khác, hãy lưu trữ nó và đăng một thông báo mới.",
+    "fNotify": "Thông báo cho người nhận khi đăng",
+    "fNotifyHelp": "Gửi qua cài đặt thông báo hiện có, nên tùy chọn của từng người vẫn được áp dụng.",
+    "fPopup": "Hiển thị dạng cửa sổ bật lên sau khi đăng nhập",
+    "fPopupFrequency": "Tần suất bật lên",
+    "popupOnce": "Một lần cho mỗi nhân viên",
+    "popupUntilAcknowledged": "Mỗi lần đăng nhập cho đến khi kết thúc",
+    "saveDraft": "Lưu bản nháp",
+    "save": "Lưu",
+    "reachTitle": "Ai sẽ nhận được",
+    "reachDraft": "Thông báo này sẽ đến {count} nhân viên nếu đăng ngay bây giờ.",
+    "reachPublished": "Thông báo này đã được đăng tới {count} nhân viên.",
+    "publish": "Đăng",
+    "publishConfirmTitle": "Đăng thông báo này?",
+    "publishConfirmDescription": "Nó sẽ đến {count} nhân viên, và danh sách đó được cố định ngay tại thời điểm bạn đăng.",
+    "archive": "Lưu trữ",
+    "archiveConfirmTitle": "Lưu trữ thông báo này?",
+    "archiveConfirmDescription": "Nhân viên sẽ ngừng nhìn thấy nó ngay lập tức. Bạn có thể khôi phục sau.",
+    "restore": "Khôi phục",
+    "duplicate": "Nhân bản",
+    "delete": "Xóa",
+    "deleteConfirmTitle": "Xóa bản nháp này?",
+    "deleteConfirmDescription": "Bản nháp chưa đến với ai nên không mất gì. Thao tác này không thể hoàn tác.",
+    "myTitle": "Bảng thông báo",
+    "myDescription": "Các thông báo được đăng tới bạn.",
+    "myListTitle": "Thông báo của bạn",
+    "myEmpty": "Hiện không có thông báo nào.",
+    "publishedOn": "Đăng ngày {date}",
+    "newBadge": "Mới",
+    "publishedByOn": "Đăng ngày {date} bởi {by}",
+    "backToMine": "Quay lại thông báo",
+    "noticeTitle": "Thông báo",
+    "validUntil": "Có hiệu lực đến {date}",
+    "cardTitle": "Bảng thông báo",
+    "cardEmpty": "Hiện không có thông báo nào.",
+    "cardViewAll": "Xem tất cả thông báo",
+    "cardNewCount": "{count} mới",
+    "popupRead": "Đọc thông báo",
+    "popupDismiss": "Đóng"
   }
 }

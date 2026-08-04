@@ -160,7 +160,8 @@
     "systemSettings": "System Settings",
     "systemExplorer": "Dependency explorer",
     "movementSettings": "Movement Settings",
-    "hiringDefaults": "Hiring Defaults"
+    "hiringDefaults": "Hiring Defaults",
+    "noticeBoard": "Notice Board"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -359,7 +360,8 @@
       "draftNoCompany": "No company chosen yet",
       "draftMissing": "{count} still needed",
       "draftReady": "Ready to create",
-      "draftContinue": "Continue"
+      "draftContinue": "Continue",
+      "hiringDefaults": "Hiring defaults"
     },
     "detail": {
       "backToPeople": "People",
@@ -1368,7 +1370,11 @@
         "isResident": "Tax resident",
         "taxCategory": "PCB category",
         "monthlyAllowance": "Monthly allowance",
-        "rateAmount": "Rate amount"
+        "rateAmount": "Rate amount",
+        "gender": "Gender",
+        "maritalStatus": "Marital status",
+        "payMode": "Pay mode",
+        "paymentTerm": "Payment term"
       },
       "employmentType": {
         "full_time": "Full-time",
@@ -1392,7 +1398,8 @@
         "businessUnit": "Narrows the department list only. It is not stored on the employee.",
         "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
         "bankAccount": "Give both the bank and the account number, or neither.",
-        "company": "Asked first because it decides which Employee ID Auto Running Number Setup applies."
+        "company": "Asked first because it decides which Employee ID Auto Running Number Setup applies.",
+        "rateAmount": "Required for a daily or hourly pay mode."
       },
       "backLabel": "Back to Personnel",
       "title": "Create new employee",
@@ -1452,7 +1459,37 @@
         "staleCode": "The Employee ID \"{code}\" entered earlier will not be used, because this company no longer allows Manual Key In.",
         "removeCode": "Remove it",
         "draftCostsNothing": "Saving as a draft costs nothing. The Employee ID is taken only when the employee is successfully created."
+      },
+      "gender": {
+        "male": "Male",
+        "female": "Female"
+      },
+      "marital": {
+        "single": "Single",
+        "married": "Married"
+      },
+      "payMode": {
+        "monthly": "Monthly",
+        "daily": "Daily",
+        "hourly": "Hourly",
+        "custom_period": "Custom period"
+      },
+      "paymentTerm": {
+        "monthly": "Monthly",
+        "weekly": "Weekly",
+        "biweekly": "Fortnightly"
       }
+    },
+    "hiringDefaults": {
+      "title": "Hiring Defaults",
+      "description": "Per-company defaults for new hires and employment reviews. They used to sit on the payroll schedule screen, where nothing about payroll read them.",
+      "back": "Personnel",
+      "emptyScope": "No companies in the current scope.",
+      "save": "Save",
+      "probationMonths": "Default probation period (months)",
+      "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
+      "reviewReminderDays": "Review reminders (days before end date)",
+      "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
     }
   },
   "leave": {
@@ -7993,5 +8030,95 @@
     "submit": "Submit request",
     "submittedToast": "Replacement leave request submitted.",
     "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing."
+  },
+  "notices": {
+    "pageTitle": "Notice Board",
+    "pageDescription": "Publish company announcements to the employees they apply to.",
+    "add": "Add new notice",
+    "listTitle": "Notices",
+    "search": "Search title",
+    "filterStatus": "Status",
+    "allStatuses": "All statuses",
+    "applyFilter": "Apply",
+    "colTitle": "Notice title",
+    "colStart": "Start date",
+    "colEnd": "End date",
+    "colStatus": "Status",
+    "colPublishedBy": "Published by",
+    "colRecipients": "Recipients",
+    "colActions": "Action",
+    "listEmpty": "No notices yet.",
+    "viewEdit": "View / Edit",
+    "status": {
+      "archived": "Archived",
+      "draft": "Draft",
+      "scheduled": "Scheduled",
+      "active": "Active",
+      "expired": "Expired"
+    },
+    "newTitle": "New notice",
+    "newDescription": "Saving creates a draft. Nothing is sent until you publish it.",
+    "backToBoard": "Back to Notice Board",
+    "setupTitle": "Notice setup",
+    "sectionBasics": "Basic information",
+    "sectionContent": "Notice content",
+    "sectionAudience": "Who receives it",
+    "sectionDelivery": "How it arrives",
+    "fTitle": "Notice title",
+    "fStartOn": "Start date",
+    "fEndOn": "End date",
+    "fShowEndDate": "Show the end date on the notice",
+    "fBody": "Content",
+    "fBodyHelp": "Markdown is supported: **bold**, _italic_, lists, links and tables.",
+    "write": "Write",
+    "preview": "Preview",
+    "previewEmpty": "Nothing to preview yet.",
+    "byCriteria": "By criteria",
+    "byIndividual": "Specific employees",
+    "fCompanies": "Company",
+    "fDepartments": "Department",
+    "fEmploymentTypes": "Employment type",
+    "fEmploymentIds": "Employee records",
+    "fEmploymentIdsHelp": "Paste employment IDs, one per line.",
+    "everyoneWarning": "No criteria are set, so this notice will reach every active employee. Check the number above before publishing.",
+    "targetingFrozen": "This notice is published, so its audience is fixed. To reach different people, archive it and publish a new one.",
+    "fNotify": "Notify recipients when it is published",
+    "fNotifyHelp": "Sent through the existing notification settings, so each person's preferences still apply.",
+    "fPopup": "Show as a popup after login",
+    "fPopupFrequency": "Popup frequency",
+    "popupOnce": "Once per employee",
+    "popupUntilAcknowledged": "Every login until it ends",
+    "saveDraft": "Save draft",
+    "save": "Save",
+    "reachTitle": "Who this reaches",
+    "reachDraft": "This notice would reach {count} employee(s) if published now.",
+    "reachPublished": "This notice was published to {count} employee(s).",
+    "publish": "Publish",
+    "publishConfirmTitle": "Publish this notice?",
+    "publishConfirmDescription": "It will go to {count} employee(s), and that list is fixed at the moment you publish.",
+    "archive": "Archive",
+    "archiveConfirmTitle": "Archive this notice?",
+    "archiveConfirmDescription": "It stops appearing for employees straight away. You can restore it later.",
+    "restore": "Restore",
+    "duplicate": "Duplicate",
+    "delete": "Delete",
+    "deleteConfirmTitle": "Delete this draft?",
+    "deleteConfirmDescription": "The draft has reached nobody, so nothing is lost. This cannot be undone.",
+    "myTitle": "Notice Board",
+    "myDescription": "Announcements published to you.",
+    "myListTitle": "Your notices",
+    "myEmpty": "No notices right now.",
+    "publishedOn": "Published {date}",
+    "newBadge": "New",
+    "publishedByOn": "Published {date} by {by}",
+    "backToMine": "Back to notices",
+    "noticeTitle": "Notice",
+    "validUntil": "Valid until {date}",
+    "cardTitle": "Notice Board",
+    "cardEmpty": "No notices right now.",
+    "cardViewAll": "View all notices",
+    "cardNewCount": "{count} new",
+    "popupRead": "Read notice",
+    "popupDismiss": "Close"
   }
 }

@@ -160,7 +160,8 @@
     "systemSettings": "Tetapan Sistem",
     "systemExplorer": "Peneroka kebergantungan",
     "movementSettings": "Tetapan Pergerakan",
-    "hiringDefaults": "Tetapan Lalai Pengambilan"
+    "hiringDefaults": "Tetapan Lalai Pengambilan",
+    "noticeBoard": "Papan Notis"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -359,7 +360,8 @@
       "draftNoCompany": "Syarikat belum dipilih",
       "draftMissing": "{count} masih diperlukan",
       "draftReady": "Sedia untuk dicipta",
-      "draftContinue": "Sambung"
+      "draftContinue": "Sambung",
+      "hiringDefaults": "Tetapan lalai pengambilan"
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -1368,7 +1370,11 @@
         "isResident": "Pemastautin cukai",
         "taxCategory": "Kategori PCB",
         "monthlyAllowance": "Elaun bulanan",
-        "rateAmount": "Jumlah kadar"
+        "rateAmount": "Jumlah kadar",
+        "gender": "Jantina",
+        "maritalStatus": "Status perkahwinan",
+        "payMode": "Mod bayaran",
+        "paymentTerm": "Tempoh bayaran"
       },
       "employmentType": {
         "full_time": "Sepenuh masa",
@@ -1392,7 +1398,8 @@
         "businessUnit": "Hanya menapis senarai jabatan. Ia tidak disimpan pada pekerja.",
         "hiredOn": "Hari pertama bekerja. Selepas penciptaan, tarikh ini hanya berubah melalui peristiwa pergerakan.",
         "bankAccount": "Isikan kedua-dua bank dan nombor akaun, atau tiada langsung.",
-        "company": "Ditanya dahulu kerana ia menentukan Tetapan Nombor Berjalan Automatik ID Pekerja yang digunakan."
+        "company": "Ditanya dahulu kerana ia menentukan Tetapan Nombor Berjalan Automatik ID Pekerja yang digunakan.",
+        "rateAmount": "Diperlukan untuk mod bayaran harian atau sejam."
       },
       "backLabel": "Kembali ke Personel",
       "title": "Cipta pekerja baharu",
@@ -1452,7 +1459,37 @@
         "staleCode": "ID Pekerja \"{code}\" yang dimasukkan sebelum ini tidak akan digunakan, kerana syarikat ini tidak lagi membenarkan Kunci Masuk Manual.",
         "removeCode": "Buang",
         "draftCostsNothing": "Menyimpan sebagai draf tidak menggunakan apa-apa. ID Pekerja hanya diambil apabila pekerja berjaya dicipta."
+      },
+      "gender": {
+        "male": "Lelaki",
+        "female": "Perempuan"
+      },
+      "marital": {
+        "single": "Bujang",
+        "married": "Berkahwin"
+      },
+      "payMode": {
+        "monthly": "Bulanan",
+        "daily": "Harian",
+        "hourly": "Sejam",
+        "custom_period": "Tempoh tersuai"
+      },
+      "paymentTerm": {
+        "monthly": "Bulanan",
+        "weekly": "Mingguan",
+        "biweekly": "Dua minggu sekali"
       }
+    },
+    "hiringDefaults": {
+      "title": "Tetapan Lalai Pengambilan",
+      "description": "Tetapan lalai setiap syarikat untuk pengambilan baharu dan penilaian pekerjaan. Dahulu ia berada pada skrin jadual gaji, di mana tiada apa-apa berkaitan gaji membacanya.",
+      "back": "Kakitangan",
+      "emptyScope": "Tiada syarikat dalam skop semasa.",
+      "save": "Simpan",
+      "probationMonths": "Tempoh percubaan lalai (bulan)",
+      "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
+      "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
+      "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
     }
   },
   "leave": {
@@ -7993,5 +8030,95 @@
     "submit": "Submit request",
     "submittedToast": "Replacement leave request submitted.",
     "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing."
+  },
+  "notices": {
+    "pageTitle": "Papan Notis",
+    "pageDescription": "Terbitkan pengumuman syarikat kepada pekerja yang berkenaan.",
+    "add": "Tambah notis baharu",
+    "listTitle": "Notis",
+    "search": "Cari tajuk",
+    "filterStatus": "Status",
+    "allStatuses": "Semua status",
+    "applyFilter": "Guna",
+    "colTitle": "Tajuk notis",
+    "colStart": "Tarikh mula",
+    "colEnd": "Tarikh tamat",
+    "colStatus": "Status",
+    "colPublishedBy": "Diterbitkan oleh",
+    "colRecipients": "Penerima",
+    "colActions": "Tindakan",
+    "listEmpty": "Belum ada notis.",
+    "viewEdit": "Lihat / Sunting",
+    "status": {
+      "archived": "Diarkib",
+      "draft": "Draf",
+      "scheduled": "Dijadualkan",
+      "active": "Aktif",
+      "expired": "Tamat tempoh"
+    },
+    "newTitle": "Notis baharu",
+    "newDescription": "Menyimpan akan mencipta draf. Tiada apa-apa dihantar sehingga anda menerbitkannya.",
+    "backToBoard": "Kembali ke Papan Notis",
+    "setupTitle": "Tetapan notis",
+    "sectionBasics": "Maklumat asas",
+    "sectionContent": "Kandungan notis",
+    "sectionAudience": "Siapa yang menerimanya",
+    "sectionDelivery": "Cara ia sampai",
+    "fTitle": "Tajuk notis",
+    "fStartOn": "Tarikh mula",
+    "fEndOn": "Tarikh tamat",
+    "fShowEndDate": "Tunjukkan tarikh tamat pada notis",
+    "fBody": "Kandungan",
+    "fBodyHelp": "Markdown disokong: **tebal**, _condong_, senarai, pautan dan jadual.",
+    "write": "Tulis",
+    "preview": "Pratonton",
+    "previewEmpty": "Tiada apa-apa untuk dipratonton lagi.",
+    "byCriteria": "Mengikut kriteria",
+    "byIndividual": "Pekerja tertentu",
+    "fCompanies": "Syarikat",
+    "fDepartments": "Jabatan",
+    "fEmploymentTypes": "Jenis pekerjaan",
+    "fEmploymentIds": "Rekod pekerja",
+    "fEmploymentIdsHelp": "Tampal ID pekerjaan, satu setiap baris.",
+    "everyoneWarning": "Tiada kriteria ditetapkan, jadi notis ini akan sampai kepada setiap pekerja aktif. Semak jumlah di atas sebelum menerbitkan.",
+    "targetingFrozen": "Notis ini telah diterbitkan, jadi penerimanya tetap. Untuk sampai kepada orang lain, arkibkannya dan terbitkan notis baharu.",
+    "fNotify": "Maklumkan penerima apabila ia diterbitkan",
+    "fNotifyHelp": "Dihantar melalui tetapan pemberitahuan sedia ada, jadi keutamaan setiap orang masih terpakai.",
+    "fPopup": "Papar sebagai tetingkap timbul selepas log masuk",
+    "fPopupFrequency": "Kekerapan tetingkap timbul",
+    "popupOnce": "Sekali bagi setiap pekerja",
+    "popupUntilAcknowledged": "Setiap log masuk sehingga ia tamat",
+    "saveDraft": "Simpan draf",
+    "save": "Simpan",
+    "reachTitle": "Siapa yang dicapai",
+    "reachDraft": "Notis ini akan sampai kepada {count} pekerja jika diterbitkan sekarang.",
+    "reachPublished": "Notis ini telah diterbitkan kepada {count} pekerja.",
+    "publish": "Terbitkan",
+    "publishConfirmTitle": "Terbitkan notis ini?",
+    "publishConfirmDescription": "Ia akan pergi kepada {count} pekerja, dan senarai itu ditetapkan pada saat anda menerbitkannya.",
+    "archive": "Arkib",
+    "archiveConfirmTitle": "Arkibkan notis ini?",
+    "archiveConfirmDescription": "Ia berhenti dipaparkan kepada pekerja serta-merta. Anda boleh memulihkannya kemudian.",
+    "restore": "Pulihkan",
+    "duplicate": "Salin",
+    "delete": "Padam",
+    "deleteConfirmTitle": "Padam draf ini?",
+    "deleteConfirmDescription": "Draf ini belum sampai kepada sesiapa, jadi tiada apa-apa yang hilang. Tindakan ini tidak boleh dibatalkan.",
+    "myTitle": "Papan Notis",
+    "myDescription": "Pengumuman yang diterbitkan kepada anda.",
+    "myListTitle": "Notis anda",
+    "myEmpty": "Tiada notis buat masa ini.",
+    "publishedOn": "Diterbitkan {date}",
+    "newBadge": "Baharu",
+    "publishedByOn": "Diterbitkan {date} oleh {by}",
+    "backToMine": "Kembali ke notis",
+    "noticeTitle": "Notis",
+    "validUntil": "Sah sehingga {date}",
+    "cardTitle": "Papan Notis",
+    "cardEmpty": "Tiada notis buat masa ini.",
+    "cardViewAll": "Lihat semua notis",
+    "cardNewCount": "{count} baharu",
+    "popupRead": "Baca notis",
+    "popupDismiss": "Tutup"
   }
 }
