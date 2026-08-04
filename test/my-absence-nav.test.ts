@@ -149,9 +149,14 @@ describe('My Absence: everything the /me Leave tab had now lives on /leave', () 
       '<EditLeaveDialog',
       '<CancelLeaveDialog',
       '<CancelDatesDialog',
-      '<AdminCancelLeaveDialog',
     ]) {
       expect(leavePage.includes(kept), kept).toBe(true);
     }
+    // afd0a87c — AdminCancelLeaveDialog went with the org-wide request table and is NOT a lost
+    // capability: cancelling someone else's leave lives on Employee Leave Record (where fe3eb141 moved
+    // it) and on the dashboard calendar. Asserted at both surviving homes so it cannot go homeless later.
+    expect(leavePage.includes('<AdminCancelLeaveDialog')).toBe(false);
+    expect(read('app/leave/employee-records/page.tsx')).toContain('<AdminCancelLeaveDialog');
+    expect(read('components/planned-absences-grid.tsx')).toContain('<AdminCancelLeaveDialog');
   });
 });

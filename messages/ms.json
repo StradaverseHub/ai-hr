@@ -5879,10 +5879,6 @@
           "title": "Mohon cuti",
           "body": "Buka panel ini untuk mengisi tarikh, jenis cuti dan sebab, kemudian hantar permohonan anda untuk kelulusan."
         },
-        "requests": {
-          "title": "Jejak permohonan anda",
-          "body": "Setiap permohonan muncul di sini dengan statusnya. Gunakan cip di atas untuk menapis mengikut menunggu, diluluskan atau ditolak."
-        },
         "config": {
           "title": "Konfigurasi jenis cuti",
           "body": "Pentadbir menyediakan jenis cuti, kelayakan dan tahun cuti di sini. Di sinilah dasar dan cuti umum diurus."

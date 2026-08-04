@@ -1,11 +1,16 @@
 /**
  * Advanced Search & Filter for Leave Management (feedback 0773bda9) — static-source guard.
  *
- * The admin /leave surface gained a global search bar, a consolidated Filter panel (with multi-select
- * Leave Type + Status), removable chips, a live count, sortable headers, a pager, and CSV/Excel export.
- * This DB-free guard fails loudly if a future edit drops a searchParam from the contract, removes the
- * admin gate, strips the panel's multi-select support, unguards the export route, or deletes an i18n key.
- * The end-to-end query behaviour is proven independently by test/leave-filters.test.ts.
+ * afd0a87c RE-SCOPED THIS FILE. It guarded the admin /leave surface's global search bar, consolidated
+ * filter panel, sortable headers, pager and CSV/Excel export — all of which belonged to the ORG-WIDE
+ * REQUEST TABLE, which the reporter has since asked to remove outright. What survives on that page is the
+ * Employee Details listing, which has a filter panel of its OWN (employeeFilterFields), and the
+ * FilterPanel component both used.
+ *
+ * So the two halves that still have a subject are kept and re-pointed: the component's multi-select /
+ * accessibility contract, and the surviving listing's use of it. The request-table half is inverted into
+ * a removal guard — a half-removed table leaves a read running for nobody, which is the expensive half.
+ * The export route it fed is deleted, so its describe block goes with it.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -17,61 +22,65 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 describe('leave filter panel: /leave admin surface', () => {
   const src = read('app/leave/page.tsx');
 
-  it('imports FilterPanel + FilterChips from @/components/filter-panel, mounted on /leave', () => {
+  it('still imports FilterPanel + FilterChips — the Employee Details listing uses them', () => {
     expect(src).toMatch(/import\s*\{[^}]*FilterPanel[^}]*\}\s*from\s*'@\/components\/filter-panel'/);
     expect(src).toMatch(/FilterChips/);
     expect(src.includes('action="/leave"')).toBe(true);
+    // The surviving panel is the employee listing's, not the retired request table's.
+    expect(src.includes('fields={employeeFilterFields}')).toBe(true);
   });
 
-  it('preserves the full searchParams contract', () => {
+  it('the org-wide read is gone, and the self-service read is NOT', () => {
+    // The expensive half of a half-removal is a read still running for a table nobody renders.
+    //
+    // Asserted on the CALL and the IMPORT, not on the bare name: the page legitimately NAMES
+    // listLeaveRequestsPage in a comment explaining where the retired filter vocabularies still live, and
+    // a substring check would flag that prose as a regression. Same trap as r134's `tList(` and r135's
+    // LEAVE_CONFIG_ROW — a guard that reports correct code as wrong is worse than no guard.
+    expect(src).not.toContain('listLeaveRequestsPage(session');
+    expect(src).not.toMatch(/^\s*listLeaveRequestsPage,\s*$/m);
+    // The employee's own history still loads — this page is still their My Absence home.
+    expect(src.includes('listLeaveRequests(session, scopeIds)')).toBe(true);
+    // And the listing that replaced it as the admin's landing view survives.
+    expect(src.includes('listEmployeesPage(session, {')).toBe(true);
+  });
+
+  it('the surviving Employee Details panel is still admin-gated and still multi-select', () => {
+    expect(src.includes('isAdmin(session)')).toBe(true);
+    expect(src).toMatch(/\{admin && \(/);
+    expect(src.includes("kind: 'multi'")).toBe(true);
+  });
+
+  it('the retired request table takes its whole query contract with it', () => {
+    // INVERTED from "preserves the full searchParams contract". Declaring a param nothing reads advertises
+    // a filter that silently does nothing; a saved link carrying one now simply arrives unfiltered, which
+    // the approved plan discloses. Asserted on the DECLARATION, so a re-added param without a reader fails.
     for (const param of [
       'q?: string',
-      'page?: string',
       'company?: string',
       'bu?: string',
       'dept?: string',
       'loc?: string',
-      'type?: string | string[]',
-      'status?: string | string[]',
-      'from?: string',
-      'to?: string',
+      'duration?: string',
       'appliedFrom?: string',
       'appliedTo?: string',
-      // Approval Information (feedback 0773bda9 gap-close).
       'approvedBy?: string',
       'pendingWith?: string',
       'sort?: string',
       'dir?: string',
     ]) {
+      expect(src.includes(param), `${param} should be gone with the request table`).toBe(false);
+    }
+    // `emp` SURVIVES on its own — it names the employee under inquiry, threaded between tabs by the nav.
+    expect(src.includes('emp?: string | string[]')).toBe(true);
+    // The employee listing keeps its own prefixed contract untouched.
+    for (const param of ['edQ?: string', 'edPage?: string', 'edCompany?: string | string[]']) {
       expect(src.includes(param), param).toBe(true);
     }
   });
 
-  it('exposes the Approval Information filters (Approved by + Pending with)', () => {
-    // Both filter fields are wired into the panel and their query params flow to the read.
-    expect(src.includes("name: 'approvedBy'")).toBe(true);
-    expect(src.includes("name: 'pendingWith'")).toBe(true);
-    expect(src.includes('listLeaveApprovers')).toBe(true);
-    expect(src.includes('approvedBy,')).toBe(true);
-    expect(src.includes('pendingWith,')).toBe(true);
-  });
 
-  it('gates the search/filter/export UI behind the admin check', () => {
-    // The FilterPanel/search bar/export render only under `admin` (isAdmin(session)). 56a0deb9 split the
-    // shared table into role branches, so the gate is now the `{admin && (` guard (was an admin ? ( ternary).
-    expect(src.includes('isAdmin(session)')).toBe(true);
-    expect(src).toMatch(/\{admin && \(/);
-    // The paginated read is used for admins; the non-admin path keeps listLeaveRequests.
-    expect(src.includes('listLeaveRequestsPage')).toBe(true);
-    expect(src.includes('listLeaveRequests(session, scopeIds)')).toBe(true);
-  });
 
-  it('feeds multi-select + date filters into the panel and carries a live count + export links', () => {
-    expect(src.includes("kind: 'multi'")).toBe(true);
-    expect(src.includes("kind: 'date'")).toBe(true);
-    expect(src.includes('filters.showingOf')).toBe(true);
-    expect(src.includes('/leave/export?')).toBe(true);
-  });
 });
 
 describe('leave filter panel: component supports multi-select additively', () => {
@@ -95,17 +104,10 @@ describe('leave filter panel: component supports multi-select additively', () =>
   });
 });
 
-describe('leave export route: admin-gated CSV + Excel', () => {
-  const src = read('app/leave/export/route.ts');
-
-  it('403s non-admins and offers both formats', () => {
-    expect(src.includes('isAdmin(session)')).toBe(true);
-    expect(src.includes('403')).toBe(true);
-    expect(src.includes('toCsvReport')).toBe(true);
-    expect(src.includes('toXlsxReport')).toBe(true);
-    expect(src.includes('listLeaveRequestsPage')).toBe(true);
-  });
-});
+// afd0a87c — the 'leave export route: admin-gated CSV + Excel' block is gone with app/leave/export/route.ts.
+// That route served the retired org-wide register and its only links in the whole application were on the
+// section that has been removed; an unreachable admin download is worse than none. The surviving
+// per-employee download is app/leave/employee-records/export/route.ts, guarded by its own tests.
 
 describe('leave filter panel: i18n keys exist in en.json', () => {
   it('leave.filters carries the panel + page strings', () => {

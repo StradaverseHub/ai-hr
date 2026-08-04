@@ -42,14 +42,18 @@ describe('Request Leave: relocated to a top-right primary "+" button', () => {
     // 48e69709 put the trigger outside the `admin && (...)` block so employees got it too; 8ec63139 then
     // removed it from the HR-admin landing page, which is an employee-inquiry surface now. So the tag still
     // sits after the admin-guarded search/filter/export block, but inside the `ess` (= !admin) guard.
-    const adminGuardAt = page.indexOf('{admin && (');
+    // afd0a87c — this used to require the dialog to sit AFTER the first `{admin && (`, because the
+    // admin-only search/filter/export block preceded it in source order. That block belonged to the
+    // org-wide request table and has been removed, so the first `{admin && (` now comes LATER in the
+    // file. Source ORDER was never the property under test; the ESS GUARD is. Asserted directly.
     const dialogAt = page.indexOf('<RequestLeaveDialog');
-    expect(adminGuardAt).toBeGreaterThan(-1);
-    expect(dialogAt).toBeGreaterThan(adminGuardAt);
+    expect(dialogAt).toBeGreaterThan(-1);
     expect(page).toMatch(/const ess = !admin;/);
     // The guard wraps the dialog — the `{ess && (` immediately preceding it is the nearest opening guard.
     const guardAt = page.lastIndexOf('{ess && (', dialogAt);
-    expect(guardAt).toBeGreaterThan(adminGuardAt);
+    expect(guardAt, 'the trigger must sit inside an {ess && (…)} guard').toBeGreaterThan(-1);
+    // Nothing between the guard and the dialog may reopen an admin branch.
+    expect(page.slice(guardAt, dialogAt).includes('{admin && (')).toBe(false);
     // A manager is not `admin`, so on-behalf-of application from this page is unaffected.
     expect(page).toContain('employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}');
   });

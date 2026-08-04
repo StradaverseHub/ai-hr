@@ -5879,10 +5879,6 @@
           "title": "Request leave",
           "body": "Open this panel to fill in the dates, leave type, and reason, then submit your request for approval."
         },
-        "requests": {
-          "title": "Track your requests",
-          "body": "Every request lands here with its status. Use the chips above to filter by pending, approved, or rejected."
-        },
         "config": {
           "title": "Configure leave types",
           "body": "Admins set up leave types, entitlements, and the leave year here. This is where policies and holidays are managed."

@@ -113,7 +113,10 @@ describe('fc776376 — one implementation, not a sixth', () => {
   const converted = [
     'app/personnel/page.tsx',
     'app/admin/personnel/page.tsx',
-    'app/leave/page.tsx',
+    // afd0a87c — app/leave/page.tsx is OFF this list. It was converted for the org-wide leave-request
+    // table, which has been removed at the reporter's request; the Employee Details listing that remains
+    // has its own numbered pager (inquiryPageWindow, feedback 650b6eb8) and never used the shared <Pager>
+    // or the ?size= contract. /leave/employee-records below is the surviving shared-pager leave surface.
     'app/leave/employee-records/page.tsx',
     'app/approvals/history/page.tsx',
     'app/admin/audit/page.tsx',
