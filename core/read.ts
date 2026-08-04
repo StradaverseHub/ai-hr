@@ -1708,6 +1708,14 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         // hire, so without these two an employee serving probation reads "Active" on their own profile.
         probationEndDate: employment.probationEndDate,
         provisionalEndOn: employment.provisionalEndOn,
+        // 8590615a — the Contract Information group the Employment tab renders for contract employees.
+        // contractEndDate is the pre-existing employment-review column: projecting it here is what lets
+        // the Employment tab show (and re-save) the very date the Employment Review row already watches,
+        // instead of a second copy. provisionalEndOn stays — it is the display fallback for a contract
+        // employee hired before this shipped, and full_time/intern still depend on it elsewhere.
+        contractStartDate: employment.contractStartDate,
+        contractEndDate: employment.contractEndDate,
+        contractRemark: employment.contractRemark,
         tenderResignationDate: employment.tenderResignationDate,
         lastWorkingDate: employment.lastWorkingDate,
         orgBranch: employment.orgBranch,

@@ -112,6 +112,10 @@ export function EmployeeWizard({
 
   const companyId = data.employment?.companyId ?? '';
   const employeeCode = data.profile?.employeeCode ?? '';
+  // 8590615a — the single provisional/lifecycle end date the wizard captures MEANS the contract end date
+  // when the hire is a contract hire, so it is labelled that way (the field itself is unchanged). Mirrors
+  // the same 'full_time' default the probation-default logic in chooseCompany uses.
+  const isContractHire = (data.employment?.employmentType ?? 'full_time') === 'contract';
 
   // The Employee ID rule for the CHOSEN company, and the decision it produces. The option is passed to
   // the completeness rules only once a company is known — before that there is no rule to judge the ID
@@ -646,14 +650,26 @@ export function EmployeeWizard({
                   movement-only afterwards. The wizard captures the one date, as the ticket asks. */}
               <p className="mt-1 text-xs text-muted-foreground">{t('hints.hiredOn')}</p>
             </Field>
-            <Field label={t('fields.provisionalEndOn')}>
+            {/* 8590615a — for a CONTRACT hire this one date is the contract end date, so it says so. The
+                field, its state and its draft key are unchanged (`provisionalEndOn`); only the label and the
+                hint switch, and `hireEmployee` now copies a contract hire's value into
+                `employment.contract_end_date` as well, which is what closes the two-homes gap: before this,
+                a contract hire's expiry lived in provisional_end_on while Employment Review wrote a
+                different column. Two literal `t()` calls rather than a computed key — a template key is
+                invisible to test/i18n-coverage.test.ts check C, and this file is single-namespace so both
+                keys are actually verified. For every other type the wording is exactly as it was. */}
+            <Field
+              label={isContractHire ? t('fields.contractEndDate') : t('fields.provisionalEndOn')}
+            >
               <input
                 type="date"
                 className={inputCls}
                 value={data.employment?.provisionalEndOn ?? ''}
                 onChange={(e) => set('employment', { provisionalEndOn: e.target.value })}
               />
-              <p className="mt-1 text-xs text-muted-foreground">{t('hints.provisionalEndOn')}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {isContractHire ? t('hints.contractEndDate') : t('hints.provisionalEndOn')}
+              </p>
             </Field>
           </div>
         )}

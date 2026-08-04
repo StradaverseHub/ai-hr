@@ -954,6 +954,14 @@ export async function setEmploymentInfoAction(formData: FormData) {
       noticeAfterConfirmationUnit: str('noticeAfterConfirmationUnit'),
       tenderResignationDate: str('tenderResignationDate'),
       lastWorkingDate: str('lastWorkingDate'),
+      // 8590615a — the Contract Information block. It is rendered ONLY for an employee whose current open
+      // assignment is 'contract', so for everybody else these three are absent from the FormData and `str`
+      // maps them to `undefined` (untouched) — which is also what stops setEmploymentInfo's
+      // both-dates-required check from firing on a non-contract save. contractEndDate is the pre-existing
+      // employment-review column, written here on purpose so the two screens share one date.
+      contractStartDate: str('contractStartDate'),
+      contractEndDate: str('contractEndDate'),
+      contractRemark: str('contractRemark'),
       // c5ac75fa / 8ebabbf2 — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/
       // orgTeam/orgBase/employmentCategory) are NOT written here. They were owned by
       // setOrganisationAssignmentAction, which 8ebabbf2 deleted along with the editable Organisation

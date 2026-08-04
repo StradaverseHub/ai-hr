@@ -3389,6 +3389,59 @@ export default async function EmployeePage({
             </div>
           </div>
 
+          {/* Contract Information (8590615a) — rendered ONLY for a contract employee, hidden for every other
+              type, exactly as the reporter asked. The gate reads the CURRENT open assignment (`current`,
+              resolved from the assignment history at the top of this render) because employment_type lives on
+              `assignment`, NOT on `employment` — the Employee Type shown read-only above comes from the same
+              place. When an employee's type later moves away from Contract the block simply disappears and the
+              stored dates and remark are left alone, never erased.
+
+              THE END DATE IS THE PRE-EXISTING employment-review column, not a new one. It was already
+              editable, but only as a bare "End Date" row inside Employment Review on the Others tab, which is
+              why the reporter could not find it. Both places now write `employment.contract_end_date`, so
+              contract-expiry review keeps working on whatever HR types here.
+
+              Contract Start Date pre-fills with the Group Join Date when nothing is recorded yet — a DISPLAY
+              default only; nothing is written until HR saves. The end date falls back to provisional_end_on so
+              a contract employee hired before this shipped still shows the expiry date the wizard captured. */}
+          {current?.employmentType === 'contract' && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.contractGroup')}</h4>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label={t('employmentInfo.contractStartDate')}>
+                  <input
+                    name="contractStartDate"
+                    type="date"
+                    required
+                    defaultValue={emp.contractStartDate ?? emp.hiredOn}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label={t('employmentInfo.contractEndDate')}>
+                  <input
+                    name="contractEndDate"
+                    type="date"
+                    required
+                    defaultValue={emp.contractEndDate ?? emp.provisionalEndOn ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+              <Field label={t('employmentInfo.contractRemark')}>
+                {/* taCls, not inputCls — inputCls fixes h-9, which collapses a multi-line box to one row.
+                    Same constant every other textarea on this page uses. */}
+                <textarea
+                  name="contractRemark"
+                  rows={3}
+                  defaultValue={emp.contractRemark ?? ''}
+                  className={taCls}
+                  placeholder={t('employmentInfo.contractRemarkPlaceholder')}
+                />
+              </Field>
+              <p className="text-xs text-muted-foreground">{t('employmentInfo.contractNote')}</p>
+            </div>
+          )}
+
           {/* Notice Period Information */}
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.noticeGroup')}</h4>
