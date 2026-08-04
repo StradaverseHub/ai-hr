@@ -1,27 +1,48 @@
 /**
- * ec845c7d — the Individual-Transaction wizard's "already entered / still unpaid" panel.
+ * 44129979 — the Individual Transaction screen's right panel: the employee's existing one-off
+ * transactions, itemised, with the only two statuses the ledger can support.
  *
- * The approved plan made two demands of this screen that pull against each other, and both are what
- * these tests are about:
+ * This replaces ec845c7d's summary-only derivation, which counted and totalled an employee's month
+ * without ever showing the entries behind the figure. Three things can go wrong in the new derivation
+ * and all three are here:
  *
- *   1. it must SURFACE the money that was entered but never reached a payslip (production held 11 such
- *      rows worth RM23,170 when the item was raised), because a faster entry screen with no indication
- *      of it just makes it easier to key money that never gets paid;
- *   2. it must NOT invent a second definition of "unpaid" — the numbers have to be the ones the
- *      Transaction View's Outstanding tab shows, or the operator gets two answers.
- *
- * So `deriveExistingTxnContext` decides nothing about what unpaid means. It joins two existing reads by
- * employment and does the arithmetic, and the arithmetic is what can go wrong.
+ *   1. THE STATUS RULE. `payroll_individual_txn` has no status column. Paid / not-yet-paid is derived
+ *      from the owning batch alone, and the direction of the failure matters: showing an unpaid row as
+ *      Processed tells an operator someone has been paid when they have not. So the tests pin the
+ *      unknown/absent cases to `pending`, not merely "some status".
+ *   2. THE ARITHMETIC. Totals are summed in CENTS. Adding the decimal strings as floats drifts on
+ *      exactly the four-figure bonuses this panel exists to make reviewable.
+ *   3. THE STRANDED FILTER. d0d2c9d1's read returns ALL unattached money, deliberately including the
+ *      months where nothing is wrong yet. The panel must warn about the fault subset only — warning
+ *      about the designed pre-run entry flow is how a warning gets ignored.
  */
 import { describe, expect, it } from 'vitest';
 import {
-  deriveExistingTxnContext,
-  type TxnAmountRow,
-  type UnattachedSummaryRow,
+  buildTxnPanel,
+  txnStatusOf,
+  type StrandedInputRow,
+  type TxnPanelInputRow,
 } from '../app/payroll/transactions/individual/existing-context';
 
-const txn = (employmentId: string, amount: string): TxnAmountRow => ({ employmentId, amount });
-const grp = (p: Partial<UnattachedSummaryRow> & { employmentId: string }): UnattachedSummaryRow => ({
+const row = (p: Partial<TxnPanelInputRow> & { id: string }): TxnPanelInputRow => ({
+  employmentId: 'e1',
+  payPeriod: '2026-08',
+  txnDate: '2026-08-10',
+  kind: 'earning',
+  amount: '100.00',
+  quantity: null,
+  unit: null,
+  notes: null,
+  runType: null,
+  runSeq: null,
+  batchStatus: null,
+  createdOn: '2026-08-01',
+  createdBy: null,
+  ...p,
+});
+
+const grp = (p: Partial<StrandedInputRow> = {}): StrandedInputRow => ({
+  payPeriod: '2026-08',
   count: 1,
   totalAmount: '0.00',
   runState: 'none',
@@ -29,99 +50,139 @@ const grp = (p: Partial<UnattachedSummaryRow> & { employmentId: string }): Unatt
   ...p,
 });
 
-describe('ec845c7d — what the employee already has for the month', () => {
-  it('counts and totals only the employees being keyed', () => {
-    const rows = deriveExistingTxnContext(
-      ['a'],
-      [txn('a', '100.00'), txn('a', '250.50'), txn('b', '9999.00')],
-      [],
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ employmentId: 'a', count: 2, total: '350.50' });
+describe('44129979 — the two statuses the ledger actually supports', () => {
+  it('calls a row processed only when its batch is processed or closed', () => {
+    expect(txnStatusOf('processed')).toBe('processed');
+    expect(txnStatusOf('closed')).toBe('processed');
   });
 
-  it('still returns a row for an employee with nothing keyed', () => {
-    // The panel renders per selected person; a missing entry would make the wizard guess.
-    const rows = deriveExistingTxnContext(['a', 'b'], [txn('a', '10.00')], []);
-    expect(rows.map((r) => r.employmentId).sort()).toEqual(['a', 'b']);
-    expect(rows.find((r) => r.employmentId === 'b')).toMatchObject({ count: 0, total: '0.00', unpaidCount: 0 });
+  it('calls an unattached or draft-batch row pending', () => {
+    // Unattached (null) is the designed pre-run entry flow; draft is a run that has not been processed.
+    expect(txnStatusOf(null)).toBe('pending');
+    expect(txnStatusOf('draft')).toBe('pending');
   });
 
-  it('sums in cents, so a long column of ordinary amounts does not drift', () => {
-    // 0.1 + 0.2 arithmetic on the decimal STRINGS is the failure this guards: three of these as floats
-    // give 0.30000000000000004, and the panel would print a total that disagrees with the ledger.
-    const rows = deriveExistingTxnContext(['a'], [txn('a', '0.10'), txn('a', '0.20'), txn('a', '1234.55')], []);
-    expect(rows[0]!.total).toBe('1234.85');
+  it('degrades an unrecognised batch status to pending, never to paid', () => {
+    // The asymmetry is the point: this is the one place the screen could claim someone has been paid,
+    // and a status this build does not know is not evidence of that.
+    expect(txnStatusOf('some_future_status')).toBe('pending');
+    expect(txnStatusOf(undefined)).toBe('pending');
+  });
+
+  it('offers Edit and Delete exactly where the service would accept them', () => {
+    // updateIndividualTxn / deleteIndividualTxn accept unattached or draft and throw BatchNotDraftError
+    // otherwise. A button that always fails is worse than a disabled one.
+    const panel = buildTxnPanel([
+      row({ id: 'unattached', batchStatus: null }),
+      row({ id: 'draft', batchStatus: 'draft' }),
+      row({ id: 'processed', batchStatus: 'processed' }),
+      row({ id: 'closed', batchStatus: 'closed' }),
+    ]);
+    expect(panel.rows.map((r) => [r.id, r.editable])).toEqual([
+      ['unattached', true],
+      ['draft', true],
+      ['processed', false],
+      ['closed', false],
+    ]);
+  });
+
+  it('separates "on a run" from "waiting for one" without adding a third status', () => {
+    // Both are `pending`; `attached` is the qualifier the screen uses to word the badge, not a status.
+    const panel = buildTxnPanel([row({ id: 'a', batchStatus: null }), row({ id: 'b', batchStatus: 'draft' })]);
+    expect(panel.rows.map((r) => [r.status, r.attached])).toEqual([
+      ['pending', false],
+      ['pending', true],
+    ]);
   });
 });
 
-describe('ec845c7d — the unpaid subset is d0d2c9d1’s, joined not redefined', () => {
-  it('carries the unattached count and total through untouched', () => {
-    const rows = deriveExistingTxnContext(
-      ['a'],
-      [txn('a', '500.00'), txn('a', '1500.00')],
-      [grp({ employmentId: 'a', count: 1, totalAmount: '1500.00' })],
-    );
-    expect(rows[0]).toMatchObject({ count: 2, total: '2000.00', unpaidCount: 1, unpaidTotal: '1500.00' });
+describe('44129979 — totals come from exactly the rows on screen', () => {
+  it('splits the total into paid and not-yet-paid', () => {
+    const panel = buildTxnPanel([
+      row({ id: 'a', amount: '500.00', batchStatus: null }),
+      row({ id: 'b', amount: '250.50', batchStatus: 'draft' }),
+      row({ id: 'c', amount: '1000.00', batchStatus: 'processed' }),
+    ]);
+    expect(panel.totals).toEqual({
+      count: 3,
+      total: '1750.50',
+      pendingCount: 2,
+      pendingTotal: '750.50',
+      processedCount: 1,
+      processedTotal: '1000.00',
+    });
   });
 
-  it('adds up several unattached groups for one employee', () => {
-    // One employee can hold unattached rows in more than one group for the same month.
-    const rows = deriveExistingTxnContext(
-      ['a'],
-      [],
-      [
-        grp({ employmentId: 'a', count: 2, totalAmount: '1000.00' }),
-        grp({ employmentId: 'a', count: 3, totalAmount: '2350.25' }),
-      ],
-    );
-    expect(rows[0]).toMatchObject({ unpaidCount: 5, unpaidTotal: '3350.25' });
+  it('adds a long column of amounts to the exact figure', () => {
+    // NOT a float-drift test, and the comment says so deliberately: the ledger stores numeric(12,2),
+    // and a float sum of two-decimal strings prints the same toFixed(2) — searched over random 2..6-row
+    // combinations without finding a divergence. What this pins is the summation itself (every row
+    // counted once, into the right bucket), which is what actually regresses.
+    const amounts = ['0.10', '0.20', '1234.55', '99.99', '0.01', '4500.00', '17.35'];
+    const panel = buildTxnPanel(amounts.map((amount, i) => row({ id: `r${i}`, amount })));
+    expect(panel.totals.count).toBe(7);
+    expect(panel.totals.total).toBe('5852.20');
+    expect(panel.totals.pendingTotal).toBe('5852.20');
   });
 
-  it('distinguishes "not paid yet" from "the run has already gone"', () => {
-    // The difference the panel colours: with no run yet the money is simply waiting; once the month's
-    // run is processed or closed, or the row was keyed after processing, it has MISSED it and someone
-    // has to act. Reading both the same way is what let RM23,170 sit unnoticed.
-    const waiting = deriveExistingTxnContext(['a'], [], [grp({ employmentId: 'a', runState: 'none' })]);
-    expect(waiting[0]!.missedTheRun).toBe(false);
+  it('reports zeroes rather than nothing when the employee has no transactions', () => {
+    // The panel renders the strip unconditionally; a missing total would make it print undefined.
+    expect(buildTxnPanel([]).totals).toEqual({
+      count: 0,
+      total: '0.00',
+      pendingCount: 0,
+      pendingTotal: '0.00',
+      processedCount: 0,
+      processedTotal: '0.00',
+    });
+  });
 
-    const stillDraft = deriveExistingTxnContext(['a'], [], [grp({ employmentId: 'a', runState: 'draft' })]);
-    expect(stillDraft[0]!.missedTheRun).toBe(false);
+  it('treats an unreadable amount as zero instead of poisoning the whole total', () => {
+    const panel = buildTxnPanel([row({ id: 'a', amount: 'not-a-number' }), row({ id: 'b', amount: '10.00' })]);
+    expect(panel.totals.total).toBe('10.00');
+  });
+});
 
+describe('44129979 — the stranded warning is the fault subset only', () => {
+  it('warns when the month’s regular run is already processed or closed', () => {
     for (const runState of ['processed', 'closed'] as const) {
-      const missed = deriveExistingTxnContext(['a'], [], [grp({ employmentId: 'a', runState })]);
-      expect(missed[0]!.missedTheRun, `runState ${runState}`).toBe(true);
+      const panel = buildTxnPanel([], [grp({ runState, count: 2, totalAmount: '1500.00' })]);
+      expect(panel.stranded, `runState ${runState}`).toEqual([{ payPeriod: '2026-08', count: 2, total: '1500.00' }]);
     }
-
-    const late = deriveExistingTxnContext(
-      ['a'],
-      [],
-      [grp({ employmentId: 'a', runState: 'draft', arrivedAfterProcessing: true })],
-    );
-    expect(late[0]!.missedTheRun, 'keyed after the run was processed').toBe(true);
   });
 
-  it('never reports a missed run when there is nothing unattached', () => {
-    // A processed run with everything attached is the HAPPY case; flagging it would train the operator
-    // to ignore the flag.
-    const rows = deriveExistingTxnContext(['a'], [txn('a', '100.00')], []);
-    expect(rows[0]).toMatchObject({ unpaidCount: 0, missedTheRun: false });
+  it('warns when the rows were keyed after the run was processed', () => {
+    const panel = buildTxnPanel([], [grp({ runState: 'draft', arrivedAfterProcessing: true, totalAmount: '80.00' })]);
+    expect(panel.stranded).toHaveLength(1);
   });
 
-  it('one group flagged is enough — a later clean group does not clear it', () => {
-    const rows = deriveExistingTxnContext(
-      ['a'],
+  it('stays silent while the money is simply waiting for a run', () => {
+    // A month with no run yet, or a draft one, is the DESIGNED pre-run entry flow (f1564110 Phase 2).
+    // Flagging it would train the operator to ignore the flag that matters.
+    expect(buildTxnPanel([], [grp({ runState: 'none' })]).stranded).toEqual([]);
+    expect(buildTxnPanel([], [grp({ runState: 'draft' })]).stranded).toEqual([]);
+  });
+
+  it('adds up several stranded groups in the same month and keeps months newest first', () => {
+    const panel = buildTxnPanel(
       [],
       [
-        grp({ employmentId: 'a', runState: 'closed', count: 1, totalAmount: '50.00' }),
-        grp({ employmentId: 'a', runState: 'none', count: 1, totalAmount: '50.00' }),
+        grp({ payPeriod: '2026-06', runState: 'closed', count: 1, totalAmount: '50.00' }),
+        grp({ payPeriod: '2026-08', runState: 'processed', count: 2, totalAmount: '1000.00' }),
+        grp({ payPeriod: '2026-08', runState: 'closed', count: 3, totalAmount: '2350.25' }),
       ],
     );
-    expect(rows[0]).toMatchObject({ unpaidCount: 2, unpaidTotal: '100.00', missedTheRun: true });
+    expect(panel.stranded).toEqual([
+      { payPeriod: '2026-08', count: 5, total: '3350.25' },
+      { payPeriod: '2026-06', count: 1, total: '50.00' },
+    ]);
   });
 
-  it('ignores unattached groups for employees not being keyed', () => {
-    const rows = deriveExistingTxnContext(['a'], [], [grp({ employmentId: 'z', count: 9, totalAmount: '9.00' })]);
-    expect(rows[0]).toMatchObject({ employmentId: 'a', unpaidCount: 0, unpaidTotal: '0.00' });
+  it('does not stand in for the row statuses — a processed row is not stranded money', () => {
+    // The two answer different questions and the screen shows them in different places. A panel whose
+    // rows are all paid, with no unattached money, must carry no warning at all.
+    const panel = buildTxnPanel([row({ id: 'a', batchStatus: 'processed' })], []);
+    expect(panel.stranded).toEqual([]);
+    expect(panel.totals.processedCount).toBe(1);
   });
 });

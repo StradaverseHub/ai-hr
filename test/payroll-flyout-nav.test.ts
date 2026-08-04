@@ -51,6 +51,9 @@ const EXPECTED_SET = [
   { href: '/payroll', labelKey: 'payrollProcess' },
   { href: '/payroll/transactions', labelKey: 'payrollTransactions' },
   { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView' },
+  // 169e3c24 — an ADDITION to the set, like statutory-forms above. Every original entry is untouched, so
+  // the guard's promise ("no destination lost, no href renamed") is not weakened by listing it.
+  { href: '/payroll/individual-payslip', labelKey: 'payrollIndividualPayslip' },
   { href: '/payroll/reports', labelKey: 'payrollReports' },
   { href: '/payroll/statutory-forms', labelKey: 'payrollStatutoryForms' },
   { href: '/payroll/setup', labelKey: 'payrollSettings' },

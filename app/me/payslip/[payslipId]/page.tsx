@@ -5,6 +5,15 @@ import { getSession } from '@/lib/session';
 import { payslipDetail } from '@/core/payroll';
 // 97a9b0ab — reads the ruleset/pack provenance already present in the payslip's statutory JSONB.
 import { payslipProvenance } from '@/core/payslip-recompute';
+// 3c473773 — which box each earning belongs in (read from the payslip's own stamp), and the employer-borne
+// disclosure (read from the payslip's own snapshot). Neither is re-derived from today's settings.
+import { payslipDisplayEarnings } from '@/core/pay-display-category';
+import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
+
+/** The label key for each employer-borne component, exhaustive over EmployerBorneKey. */
+const EMPLOYER_BORNE_LABEL: Record<EmployerBorneKey, 'epf' | 'socso' | 'skbbk' | 'eis' | 'pcb'> = {
+  epf: 'epf', socso: 'socso', skbbk: 'skbbk', eis: 'eis', tax: 'pcb',
+};
 import { Card } from '@/components/ui';
 import { PrintButton } from '@/components/print-button';
 
@@ -47,6 +56,10 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
   if (!p) notFound();
   const st = (p.statutory ?? {}) as Stat;
   const prov = payslipProvenance(p.statutory);
+  // 3c473773 — the earnings boxes as THIS payslip recorded them. Absent on every payslip issued before the
+  // pay items carried a category, in which case these are the stored columns and the page is unchanged.
+  const disp = payslipDisplayEarnings(p);
+  const eb = payslipEmployerBorne(p.statutory);
   const t = await getTranslations('me.payslip');
 
   return (
@@ -86,15 +99,17 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t('earnings')}
           </h2>
-          <Row label={t('basicSalary')} value={rm(p.basic)} />
+          <Row label={t('basicSalary')} value={rm(disp.basic)} />
           {/* f3148da1 — the converted OT excess is folded into stored allowance; show the base allowance net
               of it, then a dedicated line for the pay item, so gross still reconciles. */}
-          <Row label={t('allowances')} value={rm(Number(p.allowance ?? 0) - Number(st.otConvert?.amount ?? 0))} />
-          <Row label={t('overtime')} value={rm(p.overtime)} />
+          <Row label={t('allowances')} value={rm(disp.allowance - Number(st.otConvert?.amount ?? 0))} />
+          <Row label={t('overtime')} value={rm(disp.overtime)} />
           {Number(st.otConvert?.amount) > 0 && (
             <Row label={t('otConverted', { item: st.otConvert!.name })} value={rm(st.otConvert!.amount)} />
           )}
-          <Row label={t('bonus')} value={rm(p.bonus)} />
+          <Row label={t('bonus')} value={rm(disp.bonus)} />
+          {/* 3c473773 — the Claim box, shown only when a pay item was deliberately categorised into it. */}
+          {disp.claim > 0 && <Row label={t('claim')} value={rm(disp.claim)} />}
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
             <span>{t('grossPay')}</span>
             <span className="tabular-nums">{rm(p.gross)}</span>
@@ -105,11 +120,15 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t('deductionsHeading')}
           </h2>
-          <Row label={t('epf')} value={rm(st.epfEmployee)} />
-          <Row label={t('socso')} value={rm(st.socsoEmployee)} />
-          {Number(st.socsoSkbbk) > 0 && <Row label={t('skbbk')} value={rm(st.socsoSkbbk)} />}
-          <Row label={t('eis')} value={rm(st.eisEmployee)} />
-          <Row label={t('pcb')} value={rm(st.pcb)} />
+          {/* 3c473773 issue 2 — what was actually deducted from YOU: the computed share less anything the
+              employer agreed to fund on your behalf, read from this payslip's own snapshot. The full share
+              is unchanged, is what is remitted to KWSP / PERKESO / LHDN, and is restated below. A payslip
+              carrying no snapshot (every one issued before the setting existed) renders as it always did. */}
+          <Row label={t('epf')} value={rm(eb.employee.epf)} />
+          <Row label={t('socso')} value={rm(eb.employee.socso)} />
+          {Number(st.socsoSkbbk) > 0 && <Row label={t('skbbk')} value={rm(eb.employee.skbbk)} />}
+          <Row label={t('eis')} value={rm(eb.employee.eis)} />
+          <Row label={t('pcb')} value={rm(eb.employee.pcb)} />
           {Number(st.cp38) > 0 && <Row label={t('cp38')} value={rm(st.cp38)} />}
           {/* 1.2.4 Zakat — informational only: PCB above is ALREADY net of this (LHDN §E.5 offset), so it
               is NOT re-added to total deductions. Muted, shown only when there is an election this month. */}
@@ -122,6 +141,27 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
             <span className="tabular-nums">−{rm(p.totalDeductions)}</span>
           </div>
         </section>
+
+        {/* ── Employer-borne statutory contributions (3c473773 issue 2) ──
+            Without this block the deductions above do not visibly add up: an EPF share of RM629.00 reads
+            RM0.00 and nothing says who paid it. The amounts come from this payslip's own stored snapshot,
+            never from the employee's current flags — otherwise a payslip issued before the setting was
+            switched on would retro-explain itself with today's settings. */}
+        {eb.any && (
+          <section>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t('employerBorneHeading')}
+            </h2>
+            {eb.keys.map((k) => (
+              <Row key={k} label={t(EMPLOYER_BORNE_LABEL[k])} value={rm(eb.borne[k])} />
+            ))}
+            <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
+              <span>{t('employerBorneTotal')}</span>
+              <span className="tabular-nums">{rm(eb.total)}</span>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">{t('employerBorneNote')}</p>
+          </section>
+        )}
 
         <div className="flex items-baseline justify-between rounded-lg bg-primary/5 px-4 py-3">
           <span className="text-sm font-semibold">{t('netPay')}</span>

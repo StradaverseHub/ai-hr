@@ -1,0 +1,1110 @@
+'use client';
+
+import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
+import { Badge, Button, Card, EmployeeName, Field, inputCls } from '@/components/ui';
+import { formatMoney } from '@/lib/money';
+import {
+  createIndividualTxnAction,
+  deleteIndividualTxnAction,
+  fetchEmployeeTxnPanelAction,
+  fetchTxnDetailAction,
+  updateIndividualTxnAction,
+  type TxnActionResult,
+} from './actions';
+import type { TxnPanel, TxnPanelRow } from './existing-context';
+
+/**
+ * 44129979 — the Individual Transaction screen, as ONE two-panel workspace.
+ *
+ * WHAT IT REPLACES AND WHY IT IS A REPLACEMENT. The previous screen was a four-step wizard: pick
+ * employees, pick a month, fill a grid, review, save. It was already employee-first and it already
+ * allowed entry before a payroll run existed — two of the three faults the request listed were fixed
+ * before it was written. The one that stood was the SHAPE: a wizard shows you what you are typing and
+ * never what is already there, so there was no way to review an employee's existing entries before
+ * adding another. A wizard and a two-panel workspace are different state machines; keeping both in one
+ * component is how a 985-line file becomes a 1500-line one, so the wizard is gone rather than extended.
+ *
+ * WHAT IS DELIBERATELY NOT HERE.
+ *  - No Draft or Cancelled status. The ledger has no status column; what it supports is paid / not yet
+ *    paid, and those two are what the rows show. See existing-context.ts.
+ *  - No calculated-amount field. `generatePayslips` does NOT apply a pay item's catalog formula to a
+ *    one-off row — the keyed amount is authoritative, because a per_day or percent rule would REPLACE
+ *    what the operator typed. A "Calculated Amount" box would imply the opposite, so instead the form
+ *    states the rule in one line.
+ *  - No attachment upload. There is no document store behind this ledger to put one in.
+ *
+ * MULTI-EMPLOYEE ENTRY IS GONE WITH THE WIZARD, ON PURPOSE. The old grid recorded one set of rows for
+ * many selected employees at once. A screen whose whole premise is "select an employee, see THEIR
+ * transactions" cannot also be a bulk-entry surface without the right panel meaning two different things.
+ * `createIndividualTxnsBulk` still takes many employments and is still the write path used here (with
+ * one), so nothing was removed from the service — only from this screen.
+ */
+
+/** 'YYYY-MM'. The server re-validates with isPayPeriod; this is the client's own shape check. */
+const isPeriod = (v: string) => /^\d{4}-\d{2}$/.test(v);
+
+/** Client-side mirror of TXN_KINDS (core/payroll-individual-txn.ts), kept as a literal so this client
+ *  component never imports the DB-touching service module (RSC boundary). */
+const KINDS = ['earning', 'deduction', 'overtime', 'unpaid', 'leave'] as const;
+type TxnKind = (typeof KINDS)[number];
+
+/** Client-side mirror of TXN_UNITS — the request's "Input Type (Value, Days, Hours, Minutes)". The ledger
+ *  has no minutes unit, so the five it does have are offered rather than four it does not. */
+const UNITS = ['amount', 'qty', 'hours', 'days', 'units'] as const;
+
+/** Map a Payroll Item Master kind onto one of the ledger kinds. 'allowance' ⇒ earning, 'deduction' ⇒
+ *  deduction (the two payable one-off classes). */
+const COMPONENT_KIND_TO_TXN: Record<string, TxnKind> = { allowance: 'earning', deduction: 'deduction' };
+
+/** A resolved item-picker option: a generic kind (`k:<kind>`) or a master component (`c:<id>`). */
+type ItemOption = { value: string; label: string; kind: TxnKind; fromMaster: boolean };
+const componentIdOf = (value: string): string | null => (value.startsWith('c:') ? value.slice(2) : null);
+
+/** Real days-in-month (leap-year correct) — mirrors core/payroll.ts daysInMonth so the date input's max is
+ *  the true month-end, matching what the server's assertDateInPeriod enforces. */
+function daysInMonth(year: number, month1: number): number {
+  if (month1 === 2 && ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0)) return 29;
+  return [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month1 - 1];
+}
+
+export type TxnEmployee = {
+  employmentId: string;
+  name: string;
+  employeeCode: string | null;
+  department: string | null;
+  departmentId: string | null;
+  businessUnit: string | null;
+  businessUnitId: string | null;
+  position: string | null;
+  company: string;
+  companyId: string;
+  /** Derived from termination, matching the View page convention — the employment-status filter. */
+  status: 'active' | 'ended';
+};
+
+export type TxnBatch = {
+  id: string;
+  companyId: string;
+  payPeriod: string;
+  runType: 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
+  runSeq: number;
+  scope: { departmentIds?: string[]; employmentIds?: string[] } | null;
+};
+
+export type TxnPayItem = { id: string; code: string; name: string; kind: string };
+
+export type TxnCompany = { id: string; name: string; currency: string | null };
+
+/** True when a batch's scope includes this employment (empty/null scope ⇒ whole company). Mirrors the
+ *  server's resolveBatchScopeFilter membership rule; the service re-checks it authoritatively. */
+function batchIncludesEmployee(b: TxnBatch, emp: TxnEmployee): boolean {
+  const empIds = b.scope?.employmentIds ?? [];
+  const deptIds = b.scope?.departmentIds ?? [];
+  if (empIds.length === 0 && deptIds.length === 0) return true;
+  if (empIds.includes(emp.employmentId)) return true;
+  if (emp.departmentId && deptIds.includes(emp.departmentId)) return true;
+  return false;
+}
+
+/** The create/edit form's own state. `mode` decides which action the Save button calls; `sourceId` is the
+ *  row a Duplicate was copied FROM, kept only so the form can warn about an identical copy. */
+type FormState = {
+  mode: 'create' | 'edit';
+  id: string | null;
+  sourceId: string | null;
+  payPeriod: string;
+  batchId: string;
+  item: string;
+  txnDate: string;
+  amount: string;
+  quantity: string;
+  unit: string;
+  notes: string;
+};
+
+const EMPTY_PANEL: TxnPanel = {
+  rows: [],
+  totals: { count: 0, total: '0.00', pendingCount: 0, pendingTotal: '0.00', processedCount: 0, processedTotal: '0.00' },
+  stranded: [],
+};
+
+const PAGE_SIZE = 20;
+const EMPLOYEE_CAP = 50;
+
+type SortKey = 'payPeriod' | 'txnDate' | 'kind' | 'amount' | 'status';
+
+export function TxnWorkspace({
+  employees,
+  batches,
+  companies,
+  payItems,
+  processHref,
+  requireComponent,
+  currentPeriod,
+}: {
+  employees: TxnEmployee[];
+  batches: TxnBatch[];
+  companies: TxnCompany[];
+  payItems: TxnPayItem[];
+  processHref: string;
+  /** f1564110 Phase 3 — with the kernel paying these rows, a NEW payable row must name a master item. */
+  requireComponent: boolean;
+  /** Today's month in the TENANT timezone, resolved on the server. Deriving it in the browser would put
+   *  a transaction in the wrong month for anyone whose device clock sits in a different day. */
+  currentPeriod: string;
+}) {
+  const t = useTranslations('payroll.transactions.individual');
+
+  // ── Item picker options (Payroll Item Master + the generic kinds) ──
+  const genericKinds = useMemo<readonly TxnKind[]>(
+    () => (requireComponent ? KINDS.filter((k) => k !== 'earning' && k !== 'deduction') : [...KINDS]),
+    [requireComponent],
+  );
+  const itemOptions = useMemo<ItemOption[]>(() => {
+    const generic: ItemOption[] = genericKinds.map((k) => ({ value: `k:${k}`, label: t(`kindLabel.${k}`), kind: k, fromMaster: false }));
+    const master: ItemOption[] = payItems
+      .filter((c) => COMPONENT_KIND_TO_TXN[c.kind] != null)
+      .map((c) => ({ value: `c:${c.id}`, label: `${c.code} — ${c.name}`, kind: COMPONENT_KIND_TO_TXN[c.kind], fromMaster: true }));
+    return [...generic, ...master];
+  }, [payItems, t, genericKinds]);
+  const itemByValue = useMemo(() => new Map(itemOptions.map((o) => [o.value, o])), [itemOptions]);
+  const masterEarnings = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'earning'), [itemOptions]);
+  const masterDeductions = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'deduction'), [itemOptions]);
+  const defaultItemValue = requireComponent ? (masterEarnings[0]?.value ?? itemOptions[0]?.value ?? 'k:overtime') : 'k:earning';
+
+  // ── Left panel: filters + selection ──
+  // A single-company admin has their one company chosen for them (an initialiser, not an effect —
+  // the effect version rendered an empty dropdown for one frame first).
+  const [companyId, setCompanyId] = useState(() => (companies.length === 1 ? companies[0].id : ''));
+  const [businessUnitFilter, setBusinessUnitFilter] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [periodFilter, setPeriodFilter] = useState('');
+  const [query, setQuery] = useState('');
+  const [selectedId, setSelectedId] = useState('');
+
+  // ── Right panel: the selected employee's transactions ──
+  const [panelState, setPanelState] = useState<{ key: string; panel: TxnPanel }>({ key: '', panel: EMPTY_PANEL });
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const [rowQuery, setRowQuery] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('payPeriod');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = useState(0);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // ── The form ──
+  const [form, setForm] = useState<FormState | null>(null);
+  const [formBaseline, setFormBaseline] = useState<string>('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const [pendingEmployeeId, setPendingEmployeeId] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  /**
+   * The dependent filters are cleared IN THE HANDLERS, not in effects. A department belongs to one
+   * business unit and a business unit to one company, so a stale narrower pick must not survive a
+   * wider change — but doing that in an effect means React renders once with the impossible
+   * combination before correcting it, and the lint rule that flags it is right. One handler each,
+   * cleared before the render that shows the new options.
+   */
+  const changeCompany = (id: string) => {
+    setCompanyId(id);
+    setBusinessUnitFilter('');
+    setDeptFilter('');
+  };
+  const changeBusinessUnit = (id: string) => {
+    setBusinessUnitFilter(id);
+    setDeptFilter('');
+  };
+
+  const byId = useMemo(() => new Map(employees.map((e) => [e.employmentId, e])), [employees]);
+  const selected = selectedId ? (byId.get(selectedId) ?? null) : null;
+  const currencyOf = useMemo(() => new Map(companies.map((c) => [c.id, c.currency])), [companies]);
+  const currency = selected ? (currencyOf.get(selected.companyId) ?? null) : null;
+  const rm = useCallback((v: string | number) => formatMoney(v, currency), [currency]);
+
+  const inCompany = useMemo(
+    () => (companyId ? employees.filter((e) => e.companyId === companyId) : employees),
+    [employees, companyId],
+  );
+  const businessUnitOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const e of inCompany) if (e.businessUnitId && e.businessUnit) seen.set(e.businessUnitId, e.businessUnit);
+    return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [inCompany]);
+  const departmentOptions = useMemo(() => {
+    const src = businessUnitFilter ? inCompany.filter((e) => e.businessUnitId === businessUnitFilter) : inCompany;
+    const seen = new Map<string, string>();
+    for (const e of src) if (e.departmentId && e.department) seen.set(e.departmentId, e.department);
+    return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [inCompany, businessUnitFilter]);
+
+  const filteredEmployees = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let base = companyId ? employees.filter((e) => e.companyId === companyId) : employees;
+    if (businessUnitFilter) base = base.filter((e) => e.businessUnitId === businessUnitFilter);
+    if (deptFilter) base = base.filter((e) => e.departmentId === deptFilter);
+    if (statusFilter) base = base.filter((e) => e.status === statusFilter);
+    if (q) base = base.filter((e) => e.name.toLowerCase().includes(q) || (e.employeeCode ?? '').toLowerCase().includes(q));
+    return base;
+  }, [employees, query, companyId, businessUnitFilter, deptFilter, statusFilter]);
+  const visibleEmployees = useMemo(() => filteredEmployees.slice(0, EMPLOYEE_CAP), [filteredEmployees]);
+  const capped = filteredEmployees.length > EMPLOYEE_CAP;
+
+  // ── Load the selected employee's transactions ON DEMAND ──
+  // The fetched panel is stored WITH the key it answers and "is this current?" is derived rather than
+  // tracked in a second state, so a slow response for a previously-selected employee can never paint over
+  // the one now on screen. `reloadNonce` is part of the key so a write can force a refetch of the SAME key.
+  const panelKey = selected ? `${selected.companyId}|${selected.employmentId}|${periodFilter}|${reloadNonce}` : '';
+  useEffect(() => {
+    if (!panelKey) return;
+    let live = true;
+    const [cid, eid, period] = panelKey.split('|');
+    fetchEmployeeTxnPanelAction({ companyId: cid!, employmentId: eid!, payPeriod: period })
+      .then((panel) => {
+        if (live) setPanelState({ key: panelKey, panel });
+      })
+      .catch(() => {
+        // A failed read must never block entry — the panel reports nothing and the form still works.
+        if (live) setPanelState({ key: panelKey, panel: EMPTY_PANEL });
+      });
+    return () => {
+      live = false;
+    };
+  }, [panelKey]);
+  const panel = panelState.key === panelKey ? panelState.panel : EMPTY_PANEL;
+  const panelLoading = panelKey !== '' && panelState.key !== panelKey;
+  const refreshPanel = () => setReloadNonce((n) => n + 1);
+
+  /** Everything about HOW the listing is being viewed — page, search, which row is expanded, a delete
+   *  waiting for confirmation — belongs to the employee and month being viewed, so it is cleared by
+   *  the two handlers that change them rather than by an effect watching them. An effect would leave a
+   *  pending delete confirmation on screen for one render after the row it belongs to is gone. */
+  const resetListingView = () => {
+    setPage(0);
+    setRowQuery('');
+    setExpandedId(null);
+    setConfirmDeleteId(null);
+  };
+  const changePeriodFilter = (period: string) => {
+    setPeriodFilter(period);
+    resetListingView();
+  };
+
+  const sortedRows = useMemo(() => {
+    const q = rowQuery.trim().toLowerCase();
+    const matched = q
+      ? panel.rows.filter(
+          (r) =>
+            (r.notes ?? '').toLowerCase().includes(q) ||
+            r.kind.toLowerCase().includes(q) ||
+            r.txnDate.includes(q) ||
+            r.payPeriod.includes(q) ||
+            r.amount.includes(q),
+        )
+      : panel.rows;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const val = (r: TxnPanelRow): string | number => {
+      switch (sortKey) {
+        case 'amount':
+          return Number(r.amount);
+        case 'kind':
+          return r.kind;
+        case 'status':
+          return r.status;
+        case 'txnDate':
+          return r.txnDate;
+        case 'payPeriod':
+        default:
+          return r.payPeriod;
+      }
+    };
+    return [...matched].sort((a, b) => {
+      const av = val(a);
+      const bv = val(b);
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      // Within a month the transaction date is the reading order, then id for a deterministic tiebreak.
+      if (a.txnDate !== b.txnDate) return a.txnDate < b.txnDate ? -1 : 1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+  }, [panel.rows, rowQuery, sortKey, sortDir]);
+
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageRows = useMemo(
+    () => sortedRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
+    [sortedRows, safePage],
+  );
+
+  const toggleSort = (key: SortKey) => {
+    if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortKey(key);
+      setSortDir(key === 'payPeriod' || key === 'txnDate' ? 'desc' : 'asc');
+    }
+  };
+
+  // ── Form target resolution: which run (if any) a new/edited row lands on ──
+  const formPeriod = form?.payPeriod ?? '';
+  const eligibleBatches = useMemo(() => {
+    if (!selected || !isPeriod(formPeriod)) return [];
+    return batches
+      .filter((b) => b.companyId === selected.companyId && b.payPeriod === formPeriod && batchIncludesEmployee(b, selected))
+      .sort((a, b) => (a.runType === b.runType ? a.runSeq - b.runSeq : a.runType < b.runType ? -1 : 1));
+  }, [batches, selected, formPeriod]);
+  const periodKeyed = isPeriod(formPeriod) && eligibleBatches.length === 0;
+  const cycleLabel = (b: TxnBatch) => `${t(`cycle.${b.runType}`)}${b.runSeq > 1 ? ` #${b.runSeq}` : ''}`;
+
+  /**
+   * The run a save will land on, DERIVED rather than stored: the operator's pick while it is still
+   * one of the eligible runs, otherwise the sole eligible run, otherwise none (period-keyed).
+   *
+   * This was an effect that wrote the resolved id back into form state, and deriving it is not a
+   * tidy-up — a stored batchId is a second copy of something the month and the employee already
+   * determine, and the window where the two disagree is a window where the row is written against a
+   * run that no longer covers this employee. There is no such window if it is never stored.
+   */
+  const resolvedBatchId = useMemo(() => {
+    if (!form) return '';
+    if (form.batchId && eligibleBatches.some((b) => b.id === form.batchId)) return form.batchId;
+    return eligibleBatches.length === 1 ? eligibleBatches[0].id : '';
+  }, [form, eligibleBatches]);
+
+  const monthBounds = useMemo(() => {
+    if (!isPeriod(formPeriod)) return null;
+    const [y, m] = formPeriod.split('-').map(Number);
+    return { min: `${formPeriod}-01`, max: `${formPeriod}-${String(daysInMonth(y, m)).padStart(2, '0')}` };
+  }, [formPeriod]);
+
+  const dirty = form != null && JSON.stringify(form) !== formBaseline;
+
+  const openForm = (next: FormState) => {
+    setForm(next);
+    setFormBaseline(JSON.stringify(next));
+    setFormError(null);
+  };
+  const patchForm = (patch: Partial<FormState>) => {
+    setForm((f) => (f ? { ...f, ...patch } : f));
+    setFormError(null);
+  };
+  const closeForm = () => {
+    setForm(null);
+    setFormBaseline('');
+    setFormError(null);
+  };
+
+  const blankForm = (period: string): FormState => ({
+    mode: 'create',
+    id: null,
+    sourceId: null,
+    payPeriod: period,
+    batchId: '',
+    item: defaultItemValue,
+    txnDate: '',
+    amount: '',
+    quantity: '',
+    unit: '',
+    notes: '',
+  });
+
+  const startCreate = () => openForm(blankForm(periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod));
+
+  /** Open Edit or Duplicate. Both need the row's stored component, which only the by-id read carries. */
+  const openFromRow = (row: TxnPanelRow, mode: 'edit' | 'duplicate') => {
+    startTransition(async () => {
+      const detail = await fetchTxnDetailAction({ id: row.id });
+      if (!detail) {
+        setFormError(t('txnNotFound'));
+        return;
+      }
+      const item = detail.componentId ? `c:${detail.componentId}` : `k:${detail.kind}`;
+      openForm({
+        mode: mode === 'edit' ? 'edit' : 'create',
+        id: mode === 'edit' ? detail.id : null,
+        sourceId: mode === 'duplicate' ? detail.id : null,
+        payPeriod: detail.payPeriod,
+        batchId: '',
+        // A component that is archived (or hidden by requireComponent) is no longer an offered option;
+        // fall back to the generic kind rather than a select stuck on a value that does not exist.
+        item: itemByValue.has(item) ? item : `k:${detail.kind}`,
+        txnDate: detail.txnDate,
+        amount: Number(detail.amount).toString(),
+        quantity: detail.quantity != null ? Number(detail.quantity).toString() : '',
+        unit: detail.unit ?? '',
+        notes: detail.notes ?? '',
+      });
+    });
+  };
+
+  /** The item as it will be persisted: the picked option's kind + componentId, and (for a named master
+   *  item) its label defaulted into the remarks so the specific pay item is readable in the ledger. */
+  const resolveItem = (f: FormState) => {
+    const opt = itemByValue.get(f.item) ?? itemOptions[0];
+    return {
+      kind: opt.kind,
+      componentId: opt.fromMaster ? componentIdOf(opt.value) : null,
+      notes: f.notes.trim() || (opt.fromMaster ? opt.label : ''),
+    };
+  };
+
+  /** Client-side validity. The server re-validates all of it; this only avoids a round trip. */
+  const formInvalid = (f: FormState): string | null => {
+    if (!isPeriod(f.payPeriod)) return 'periodInvalid';
+    if (!itemByValue.has(f.item)) return 'rowIncomplete';
+    if (!f.txnDate) return 'rowIncomplete';
+    if (monthBounds && (f.txnDate < monthBounds.min || f.txnDate > monthBounds.max)) return 'dateOutOfPeriod';
+    if (!(Number(f.amount) > 0)) return 'amountNotPositive';
+    if (f.quantity.trim() !== '' && !Number.isFinite(Number(f.quantity))) return 'rowIncomplete';
+    return null;
+  };
+
+  /**
+   * A copy the operator has not changed would post a second, byte-identical transaction. That is exactly
+   * the double-post `DuplicateTxnRowError` rejects within one grid submission — but across submissions
+   * the service does not (and should not) refuse it: two identical claims on one day are occasionally
+   * real. So this warns and does not block, which is the honest position for something we cannot know.
+   */
+  const identicalExisting = useMemo(() => {
+    if (!form || form.mode !== 'create') return false;
+    const r = resolveItem(form);
+    const amt = Number(form.amount);
+    if (!Number.isFinite(amt)) return false;
+    return panel.rows.some(
+      (x) =>
+        x.kind === r.kind &&
+        x.txnDate === form.txnDate &&
+        Number(x.amount) === amt &&
+        (x.notes ?? '').trim().toLowerCase() === r.notes.trim().toLowerCase(),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, panel.rows, itemByValue]);
+
+  /** The ONE write path for the form, so "Save", "Save & add another" and the save-before-switching
+   *  button in the unsaved-changes dialog cannot drift apart. An edit patches the row; anything else —
+   *  including the save of a Duplicate — is an ordinary create. */
+  const runSave = async (f: FormState): Promise<TxnActionResult> => {
+    if (!selected) return { ok: false, error: 'noEmployeesSelected' };
+    const r = resolveItem(f);
+    const quantity = f.quantity.trim() === '' ? null : Number(f.quantity);
+    const unit = f.unit === '' ? null : f.unit;
+    const common = {
+      kind: r.kind,
+      componentId: r.componentId,
+      txnDate: f.txnDate,
+      amount: Number(f.amount),
+      quantity,
+      unit,
+      notes: r.notes || null,
+    };
+    return f.mode === 'edit' && f.id
+      ? updateIndividualTxnAction({ id: f.id, companyId: selected.companyId, ...common })
+      : createIndividualTxnAction({
+          employmentId: selected.employmentId,
+          companyId: selected.companyId,
+          payPeriod: f.payPeriod,
+          batchId: resolvedBatchId,
+          ...common,
+        });
+  };
+
+  const submitForm = (addAnother: boolean) => {
+    if (!form) return;
+    const bad = formInvalid(form);
+    if (bad) {
+      setFormError(t(bad as never));
+      return;
+    }
+    const f = form;
+    startTransition(async () => {
+      const res = await runSave(f);
+      if (!res.ok) {
+        setFormError(t(res.error as never));
+        return;
+      }
+      setFormError(null);
+      refreshPanel();
+      toast.success(t(f.mode === 'edit' ? 'updated' : 'created'));
+      if (addAnother && f.mode === 'create') openForm(blankForm(f.payPeriod));
+      else closeForm();
+    });
+  };
+
+  const doDelete = (id: string) => {
+    startTransition(async () => {
+      const res = await deleteIndividualTxnAction({ id });
+      setConfirmDeleteId(null);
+      if (res.ok) {
+        refreshPanel();
+        toast.success(t('deleted'));
+        if (form?.id === id) closeForm();
+      } else {
+        toast.error(t(res.error as never));
+      }
+    });
+  };
+
+  /** Switching employees with an unsaved form asks first — the request's third workflow requirement. */
+  const requestSelect = (id: string) => {
+    if (id === selectedId) return;
+    if (dirty) {
+      setPendingEmployeeId(id);
+      return;
+    }
+    closeForm();
+    resetListingView();
+    setSelectedId(id);
+  };
+  const completeSwitch = () => {
+    const id = pendingEmployeeId;
+    setPendingEmployeeId(null);
+    if (!id) return;
+    closeForm();
+    resetListingView();
+    setSelectedId(id);
+  };
+  /** Save first, then switch — and if the save fails, do NOT switch. Navigating away from a failed save
+   *  is exactly the loss this dialog exists to prevent. */
+  const saveThenSwitch = () => {
+    if (!form) return;
+    const bad = formInvalid(form);
+    if (bad) {
+      setPendingEmployeeId(null);
+      setFormError(t(bad as never));
+      return;
+    }
+    const f = form;
+    startTransition(async () => {
+      const res = await runSave(f);
+      if (res.ok) {
+        toast.success(t(f.mode === 'edit' ? 'updated' : 'created'));
+        completeSwitch();
+      } else {
+        setPendingEmployeeId(null);
+        setFormError(t(res.error as never));
+      }
+    });
+  };
+
+  const statusBadge = (r: TxnPanelRow) =>
+    r.status === 'processed' ? (
+      <Badge variant="success">{t('statusProcessed')}</Badge>
+    ) : r.attached ? (
+      <Badge variant="info">{t('statusPending')}</Badge>
+    ) : (
+      <Badge variant="warning">{t('statusAwaitingRun')}</Badge>
+    );
+
+  const arrow = (key: SortKey) => (key === sortKey ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
+  const sortTh = (key: SortKey, label: string, extra = '') => (
+    <th className={`px-3 py-2 font-medium ${extra}`}>
+      <button type="button" onClick={() => toggleSort(key)} className="uppercase tracking-wide hover:text-foreground">
+        {label}
+        {arrow(key)}
+      </button>
+    </th>
+  );
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
+      {/* ────────────────── LEFT PANEL — employees ────────────────── */}
+      <Card className="overflow-hidden">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold text-foreground">{t('employeesPanel')}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t('employeesPanelHint')}</p>
+        </div>
+        <div className="space-y-3 border-b border-border p-3">
+          <Field label={t('company')}>
+            <select value={companyId} onChange={(e) => changeCompany(e.target.value)} className={inputCls}>
+              {companies.length > 1 && <option value="">—</option>}
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t('businessUnitFilter')}>
+              <select value={businessUnitFilter} onChange={(e) => changeBusinessUnit(e.target.value)} className={inputCls}>
+                <option value="">{t('allBusinessUnits')}</option>
+                {businessUnitOptions.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('deptFilter')}>
+              <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className={inputCls}>
+                <option value="">{t('allDepartments')}</option>
+                {departmentOptions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('statusFilter')}>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputCls}>
+                <option value="">{t('allStatuses')}</option>
+                <option value="active">{t('statusActive')}</option>
+                <option value="ended">{t('statusEnded')}</option>
+              </select>
+            </Field>
+            {/* The period narrows the TRANSACTIONS shown on the right, not which employees are listed —
+                labelled so it cannot be read as an employee filter. */}
+            <Field label={t('periodFilter')}>
+              <input type="month" value={periodFilter} onChange={(e) => changePeriodFilter(e.target.value)} className={inputCls} />
+            </Field>
+          </div>
+          <Field label={t('employeeSearch')}>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('searchPlaceholder')}
+              className={inputCls}
+            />
+          </Field>
+        </div>
+        <div className="max-h-[32rem] divide-y divide-border overflow-y-auto">
+          {visibleEmployees.length === 0 && (
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noEmployees')}</p>
+          )}
+          {visibleEmployees.map((e) => {
+            const active = e.employmentId === selectedId;
+            return (
+              <button
+                key={e.employmentId}
+                type="button"
+                aria-current={active ? 'true' : undefined}
+                onClick={() => requestSelect(e.employmentId)}
+                className={`flex w-full flex-col items-start gap-0.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted ${
+                  active ? 'bg-primary/10' : ''
+                }`}
+              >
+                <EmployeeName code={e.employeeCode} name={e.name} className="block font-medium text-foreground" />
+                <span className="block truncate text-xs text-muted-foreground">
+                  {e.company} · {e.department ?? '—'} · {e.status === 'active' ? t('statusActive') : t('statusEnded')}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {capped && (
+          <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+            {t('showingCapped', { cap: EMPLOYEE_CAP, total: filteredEmployees.length })}
+          </p>
+        )}
+      </Card>
+
+      {/* ────────────────── RIGHT PANEL — that employee's one-off transactions ────────────────── */}
+      <Card className="overflow-hidden">
+        {!selected && (
+          <div className="px-6 py-16 text-center">
+            <p className="text-sm font-medium text-foreground">{t('pickEmployeeTitle')}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t('pickEmployeeBody')}</p>
+          </div>
+        )}
+
+        {selected && (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+              <div className="min-w-0">
+                <EmployeeName
+                  code={selected.employeeCode}
+                  name={selected.name}
+                  className="text-sm font-semibold text-foreground"
+                />
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {selected.company} · {selected.department ?? '—'} · {selected.position ?? '—'}
+                </p>
+              </div>
+              <Button type="button" size="sm" onClick={startCreate} disabled={form?.mode === 'create'}>
+                {t('addTxn')}
+              </Button>
+            </div>
+
+            {/* Totals of exactly the rows below — never a second read that could disagree with them. */}
+            <div className="flex flex-wrap gap-x-6 gap-y-2 border-b border-border bg-muted/20 px-4 py-2.5 text-xs">
+              <span className="text-muted-foreground">
+                {t('totalEntered')}{' '}
+                <span className="font-medium tabular-nums text-foreground">
+                  {t('nTxns', { count: panel.totals.count })} · {rm(panel.totals.total)}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                {t('totalPending')}{' '}
+                <span className="font-medium tabular-nums text-amber-700 dark:text-amber-400">
+                  {t('nTxns', { count: panel.totals.pendingCount })} · {rm(panel.totals.pendingTotal)}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                {t('totalProcessed')}{' '}
+                <span className="font-medium tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {t('nTxns', { count: panel.totals.processedCount })} · {rm(panel.totals.processedTotal)}
+                </span>
+              </span>
+              {periodFilter && <span className="text-muted-foreground">{t('periodScope', { period: periodFilter })}</span>}
+              {panelLoading && <span className="text-muted-foreground">{t('alreadyLoading')}</span>}
+            </div>
+
+            {/* d0d2c9d1's stranded-money read: entries whose month's regular run has already gone. A fault
+                alert, deliberately not a fourth status. */}
+            {panel.stranded.length > 0 && (
+              <div className="border-b border-border bg-red-50/60 px-4 py-2.5 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-400">
+                <p className="font-medium">{t('strandedTitle')}</p>
+                <ul className="mt-1 space-y-0.5">
+                  {panel.stranded.map((s) => (
+                    <li key={s.payPeriod} className="tabular-nums">
+                      {t('strandedLine', { period: s.payPeriod, count: s.count, amount: rm(s.total) })}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1">
+                  {t('strandedHint')}{' '}
+                  <Link className="underline underline-offset-2" href="/payroll/transaction-view?tab=outstanding">
+                    {t('alreadyOutstanding')}
+                  </Link>
+                </p>
+              </div>
+            )}
+
+            {/* ── Create / Edit form ── */}
+            {form && (
+              <div className="space-y-3 border-b border-border bg-muted/10 p-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {form.mode === 'edit' ? t('editTxnTitle') : form.sourceId ? t('duplicateTxnTitle') : t('addTxnTitle')}
+                  </h3>
+                  {form.sourceId && <span className="text-xs text-muted-foreground">{t('duplicateHint')}</span>}
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <Field label={t('monthLabel')}>
+                    <input
+                      type="month"
+                      value={form.payPeriod}
+                      disabled={form.mode === 'edit'}
+                      onChange={(e) => patchForm({ payPeriod: e.target.value, txnDate: '' })}
+                      className={inputCls}
+                    />
+                  </Field>
+                  <Field label={t('cycleLabel')}>
+                    {eligibleBatches.length > 1 ? (
+                      <select value={resolvedBatchId} onChange={(e) => patchForm({ batchId: e.target.value })} className={inputCls}>
+                        <option value="">—</option>
+                        {eligibleBatches.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {cycleLabel(b)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="px-1 py-2 text-sm text-muted-foreground">
+                        {eligibleBatches.length === 1 ? cycleLabel(eligibleBatches[0]) : t('pendingRun')}
+                      </p>
+                    )}
+                  </Field>
+                  <Field label={t('colItem')}>
+                    <select value={form.item} onChange={(e) => patchForm({ item: e.target.value })} className={inputCls}>
+                      <optgroup label={t('itemGroupGeneral')}>
+                        {genericKinds.map((k) => (
+                          <option key={k} value={`k:${k}`}>
+                            {t(`kindLabel.${k}`)}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {masterEarnings.length > 0 && (
+                        <optgroup label={t('itemGroupEarnings')}>
+                          {masterEarnings.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {masterDeductions.length > 0 && (
+                        <optgroup label={t('itemGroupDeductions')}>
+                          {masterDeductions.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </Field>
+                  <Field label={t('colEffectiveDate')}>
+                    <input
+                      type="date"
+                      value={form.txnDate}
+                      min={monthBounds?.min}
+                      max={monthBounds?.max}
+                      onChange={(e) => patchForm({ txnDate: e.target.value })}
+                      className={inputCls}
+                    />
+                  </Field>
+                  <Field label={t('inputType')}>
+                    <select value={form.unit} onChange={(e) => patchForm({ unit: e.target.value })} className={inputCls}>
+                      <option value="">{t('inputTypeNone')}</option>
+                      {UNITS.map((u) => (
+                        <option key={u} value={u}>
+                          {t(`unitLabel.${u}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('quantity')}>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={form.quantity}
+                      onChange={(e) => patchForm({ quantity: e.target.value })}
+                      className={`${inputCls} text-right`}
+                    />
+                  </Field>
+                  <Field label={t('colAmount')}>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.amount}
+                      onChange={(e) => patchForm({ amount: e.target.value })}
+                      className={`${inputCls} text-right`}
+                    />
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field label={t('colRemarks')}>
+                      <input
+                        type="text"
+                        value={form.notes}
+                        placeholder={t('notesPlaceholder')}
+                        onChange={(e) => patchForm({ notes: e.target.value })}
+                        className={inputCls}
+                      />
+                    </Field>
+                  </div>
+                </div>
+
+                {/* The amount is paid as typed — a pay item's catalog formula is NOT applied to a one-off. */}
+                <p className="text-xs text-muted-foreground">{t('amountIsFinalHint')}</p>
+                {requireComponent && <p className="text-xs text-muted-foreground">{t('componentRequiredHint')}</p>}
+                {periodKeyed && isPeriod(form.payPeriod) && (
+                  <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                    {t('noDraftYetNotice', { period: form.payPeriod })}{' '}
+                    <Link href={processHref} className="font-medium underline underline-offset-2">
+                      {t('noDraftForSelectionLink')}
+                    </Link>
+                  </p>
+                )}
+                {identicalExisting && (
+                  <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                    {t('identicalWarning')}
+                  </p>
+                )}
+                {formError && <p className="text-sm text-destructive">{formError}</p>}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" onClick={() => submitForm(false)} disabled={isPending}>
+                    {isPending ? t('saving') : t('save')}
+                  </Button>
+                  {form.mode === 'create' && (
+                    <Button type="button" size="sm" variant="secondary" onClick={() => submitForm(true)} disabled={isPending}>
+                      {t('saveAndAnother')}
+                    </Button>
+                  )}
+                  <Button type="button" size="sm" variant="outline" onClick={closeForm} disabled={isPending}>
+                    {t('cancel')}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Itemised listing ── */}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+              <input
+                type="search"
+                value={rowQuery}
+                onChange={(e) => {
+                  setRowQuery(e.target.value);
+                  setPage(0);
+                }}
+                placeholder={t('searchTxnPlaceholder')}
+                className={`${inputCls} max-w-xs`}
+              />
+              <span className="text-xs text-muted-foreground">{t('nShown', { count: sortedRows.length })}</span>
+            </div>
+
+            <div className="overflow-x-auto border-t border-border">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    {sortTh('payPeriod', t('monthLabel'))}
+                    {sortTh('kind', t('colItem'))}
+                    <th className="px-3 py-2 font-medium">{t('colRemarks')}</th>
+                    <th className="px-3 py-2 font-medium">{t('quantity')}</th>
+                    {sortTh('txnDate', t('colEffectiveDate'))}
+                    {sortTh('amount', t('colAmount'), 'text-right')}
+                    {sortTh('status', t('colStatus'))}
+                    <th className="px-3 py-2 font-medium text-right">{t('actions')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {pageRows.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                        {panelLoading ? t('alreadyLoading') : t('noTxnsYet')}
+                      </td>
+                    </tr>
+                  )}
+                  {pageRows.map((r) => (
+                    // A row can render up to three <tr>s (itself, its expanded detail, its delete
+                    // confirmation), so the key belongs on the Fragment, not on the first <tr>.
+                    <Fragment key={r.id}>
+                      <tr className={expandedId === r.id ? 'bg-muted/30' : ''}>
+                        <td className="px-3 py-2 tabular-nums">{r.payPeriod}</td>
+                        <td className="px-3 py-2">{t(`kindLabel.${r.kind}` as never)}</td>
+                        <td className="max-w-[16rem] truncate px-3 py-2 text-muted-foreground">{r.notes ?? '—'}</td>
+                        <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                          {r.quantity != null ? `${Number(r.quantity)}${r.unit ? ` ${t(`unitLabel.${r.unit}` as never)}` : ''}` : '—'}
+                        </td>
+                        <td className="px-3 py-2 tabular-nums">{r.txnDate}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{rm(r.amount)}</td>
+                        <td className="px-3 py-2">{statusBadge(r)}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap justify-end gap-1">
+                            <RowAction label={t('view')} onClick={() => setExpandedId((id) => (id === r.id ? null : r.id))} />
+                            <RowAction label={t('edit')} disabled={!r.editable || isPending} onClick={() => openFromRow(r, 'edit')} />
+                            <RowAction label={t('duplicate')} disabled={isPending} onClick={() => openFromRow(r, 'duplicate')} />
+                            <RowAction
+                              label={t('delete')}
+                              disabled={!r.editable || isPending}
+                              onClick={() => setConfirmDeleteId(r.id)}
+                              tone="danger"
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedId === r.id && (
+                        <tr className="bg-muted/30">
+                          <td colSpan={8} className="px-3 pb-3 text-xs text-muted-foreground">
+                            <dl className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-4">
+                              <Detail label={t('cycleLabel')} value={r.runType ? `${t(`cycle.${r.runType}` as never)}${(r.runSeq ?? 1) > 1 ? ` #${r.runSeq}` : ''}` : t('pendingRun')} />
+                              <Detail label={t('colStatus')} value={r.status === 'processed' ? t('statusProcessed') : r.attached ? t('statusPending') : t('statusAwaitingRun')} />
+                              <Detail label={t('createdOn')} value={r.createdOn} />
+                              <Detail label={t('createdBy')} value={r.createdBy ?? '—'} />
+                              <div className="col-span-2 sm:col-span-4">
+                                <Detail label={t('colRemarks')} value={r.notes ?? '—'} />
+                              </div>
+                            </dl>
+                            {!r.editable && <p className="mt-2 text-amber-700 dark:text-amber-400">{t('lockedHint')}</p>}
+                          </td>
+                        </tr>
+                      )}
+                      {confirmDeleteId === r.id && (
+                        <tr className="bg-red-50/60 dark:bg-red-500/10">
+                          <td colSpan={8} className="px-3 py-2.5 text-xs">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="text-red-700 dark:text-red-400">{t('deleteTxnBody')}</span>
+                              <Button type="button" size="sm" variant="destructive" onClick={() => doDelete(r.id)} disabled={isPending}>
+                                {t('delete')}
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" onClick={() => setConfirmDeleteId(null)}>
+                                {t('cancel')}
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {pageCount > 1 && (
+              <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs">
+                <Button type="button" size="sm" variant="outline" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={safePage === 0}>
+                  {t('prevPage')}
+                </Button>
+                <span className="text-muted-foreground">{t('pageOf', { page: safePage + 1, total: pageCount })}</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                  disabled={safePage >= pageCount - 1}
+                >
+                  {t('nextPage')}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+
+      {/* Unsaved-changes gate on switching employee. Save is offered only when the form would actually
+          save; otherwise the honest choices are discard and stay. */}
+      {pendingEmployeeId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-background p-5 shadow-lg">
+            <h3 className="text-sm font-semibold text-foreground">{t('unsavedTitle')}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{t('unsavedBody')}</p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => setPendingEmployeeId(null)}>
+                {t('cancel')}
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={completeSwitch}>
+                {t('discard')}
+              </Button>
+              <Button type="button" size="sm" disabled={isPending || form == null || formInvalid(form) != null} onClick={saveThenSwitch}>
+                {t('save')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RowAction({
+  label,
+  onClick,
+  disabled,
+  tone,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: 'danger';
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-md border border-border px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        tone === 'danger'
+          ? 'text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="text-foreground">{value}</dd>
+    </div>
+  );
+}

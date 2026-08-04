@@ -78,7 +78,7 @@ describe('partitionDashboardRows — three-way split (2806443b)', () => {
     const { row1, row2, row3 } = partitionDashboardRows(layout, layout.selected.filter(isFixedRowKey));
     expect(row1).toEqual(['leaveBalance', 'nextHoliday', 'pendingTasks', 'upcomingEvents']);
     expect(row2).toEqual(['plannedAbsences']);
-    expect(row3).toEqual(['recentlyJoined', 'recentActivity']);
+    expect(row3).toEqual(['recentlyJoined', 'recentActivity', 'noticeBoard']);
   });
 
   it('fewer than MAX_FIRST_ROW non-pinned cards → empty row3', () => {
@@ -156,16 +156,25 @@ const stmts0296 = readFileSync(path.join(migrationsDir, '0296_employee_dashboard
 /** The 0299 role-dimension statements (audience widen + manager/admin seed), in file order. */
 const stmts0299 = readFileSync(path.join(migrationsDir, '0299_dashboard_card_audience.sql'), 'utf8')
   .split('--> statement-breakpoint');
+/** 6e122302 — the Notice Board card seed. Replayed for the same reason as the three above: migrateTestDb
+ *  stamps the template BEFORE seedBase creates a tenant, so every CROSS JOIN tenant seed lands on an empty
+ *  table and has to be re-run here against the tenant this file makes. */
+const stmts0391 = readFileSync(path.join(migrationsDir, '0391_notice_dashboard_card.sql'), 'utf8')
+  .split('--> statement-breakpoint');
 
 async function runSeedAndMigration(): Promise<void> {
   await owner.db.execute(sql.raw(seed0212));
   for (const stmt of stmts0296) await owner.db.execute(sql.raw(stmt));
 }
 
-/** The full seed chain incl. the 9606c59f role dimension (0212 seed → 0296 → 0299). */
+/** The full seed chain incl. the 9606c59f role dimension and the 6e122302 notice card
+ *  (0212 seed → 0296 → 0299 → 0391). The chain must stay COMPLETE: the "no drift" spec below compares what
+ *  it produces against lib/dashboard-layout's builtin fallback, so a seed migration missing from here would
+ *  report drift that does not exist — or, worse, hide drift that does. */
 async function runFullSeedChain(): Promise<void> {
   await runSeedAndMigration();
   for (const stmt of stmts0299) await owner.db.execute(sql.raw(stmt));
+  for (const stmt of stmts0391) await owner.db.execute(sql.raw(stmt));
 }
 
 async function newEmployeeCtx(): Promise<SessionContext> {
@@ -265,7 +274,8 @@ describe('0296 data migration — Leave Calendar mandatory + order swap', () => 
     // pinned calendar full width, and the sections below it.
     expect(rows.row1).toEqual(['teamAwayToday', 'approvalRequests', 'upcomingReminders', 'upcomingEvents']);
     expect(rows.row2).toEqual(['plannedAbsences']);
-    expect(rows.row3).toEqual(['recentlyJoined', 'recentActivity', 'attendanceOverview']);
+    // 6e122302 appends noticeBoard at display_order 11 — after everything, so nothing above it moved.
+    expect(rows.row3).toEqual(['recentlyJoined', 'recentActivity', 'attendanceOverview', 'noticeBoard']);
   };
   const expectAdminRows = (rows: { row1: string[]; row2: string[]; row3: string[] }) => {
     // Drift guard: the hr_admin DEFAULT keeps the old top stat row exactly, the pinned calendar, then the
@@ -279,6 +289,8 @@ describe('0296 data migration — Leave Calendar mandatory + order swap', () => 
       'attendanceOverview',
       'headcountByCompany',
       'latestPayrollRun',
+      // 6e122302 — appended at display_order 11, after every pre-existing card.
+      'noticeBoard',
     ]);
   };
   const partitionDefault = (cards: readonly DashboardCardChoice[]) => {
@@ -300,7 +312,7 @@ describe('0296 data migration — Leave Calendar mandatory + order swap', () => 
     const rows = partitionDefault(BUILTIN_ROLE_DASHBOARD_CARDS.employee);
     expect(rows.row1).toEqual(['leaveBalance', 'nextHoliday', 'pendingTasks', 'upcomingEvents']);
     expect(rows.row2).toEqual(['plannedAbsences']);
-    expect(rows.row3).toEqual(['recentlyJoined', 'recentActivity']);
+    expect(rows.row3).toEqual(['recentlyJoined', 'recentActivity', 'noticeBoard']);
   });
 
   it('the Leave Calendar stays MANDATORY + pinned for manager and hr_admin: a save dropping it is force-reverted', async () => {
@@ -334,7 +346,11 @@ describe('0296 data migration — Leave Calendar mandatory + order swap', () => 
     await runFullSeedChain();
     const ctx = await newEmployeeCtx();
     const empKeys = (await listEmployeeDashboardCards(ctx)).map((c) => c.cardKey);
-    expect(empKeys).toHaveLength(7); // the employee dashboard is untouched by the role widening
+    // 7 from the 0212/0296 seed + noticeBoard from 0391 (6e122302), which is deliberately audienced to
+    // ALL THREE roles — a notice targets an employment, and an admin or a manager receives announcements
+    // like anyone else. This spec's point is unchanged: no MANAGER-ONLY or ADMIN-ONLY card leaks onto the
+    // employee list, which the loop below still asserts by name.
+    expect(empKeys).toHaveLength(8);
     for (const k of ['teamAwayToday', 'approvalRequests', 'upcomingReminders', 'headcount', 'pendingLeave', 'companies', 'latestPayroll', 'attendanceOverview', 'headcountByCompany', 'latestPayrollRun']) {
       expect(empKeys).not.toContain(k);
     }

@@ -88,6 +88,36 @@ function functionPropsOn(src: string, tag: string): { prop: string; line: number
     for (const p of attrs.matchAll(/(\w+)=\{\s*function\b/g)) {
       if (!/^on[A-Z]/.test(p[1])) found.push({ prop: p[1], line: src.slice(0, start).split('\n').length });
     }
+    // 7f6ca478 — A FUNCTION ONE LEVEL DOWN IS STILL A FUNCTION, and the two scans above only see one at
+    // the TOP of an attribute value. `labels={{ runsInMonth: (n) => t(…) }}` slipped straight through:
+    // tsc was clean, the suite was green, and every request to /payroll returned 500 with "Functions
+    // cannot be passed directly to Client Components". Found by rendering, which is the only reason we
+    // know this hole existed.
+    //
+    // Scoped deliberately to OBJECT-LITERAL props (`name={{ … }}`) — the shape that actually broke.
+    // Not widened to every brace: a prop holding a JSX element (`header={<Foo onClick={…} />}`) may
+    // legitimately carry a handler bound inside another client component, and flagging those would make
+    // this guard cry wolf. A guard with a known, documented edge beats one nobody trusts.
+    for (const p of attrs.matchAll(/(\w+)=\{\{/g)) {
+      if (/^on[A-Z]/.test(p[1])) continue;
+      let j = p.index! + p[0].length - 1; // sit on the inner '{'
+      let d = 0;
+      for (; j < attrs.length; j++) {
+        if (attrs[j] === '{') d++;
+        else if (attrs[j] === '}') { d--; if (d === 0) break; }
+      }
+      const body = attrs.slice(p.index! + p[0].length, j);
+      // A PROPERTY WHOSE VALUE IS A FUNCTION — `key: (a) => …` or `key: function`. Deliberately NOT a
+      // bare search for `=>`: `items: xs.map((x) => f(x))` contains an arrow that is CALLED during
+      // render and yields plain data, which is perfectly serializable. Measured — the loose version
+      // flagged four such sites already in the tree (payroll-policy, personnel, import, analytics),
+      // and a guard that reports four false alarms on day one is one nobody will trust on day two.
+      // The params group forbids nested parens, which is what separates a function VALUE from an
+      // IIFE: `allowedKinds: (() => {…})()` yields data and is fine, `runsInMonth: (n) => …` does not.
+      if (/(?:^|[{,\s])\w+\s*:\s*(?:\([^()]*\)|\w+)\s*=>/.test(body) || /(?:^|[{,\s])\w+\s*:\s*function\s*\(/.test(body)) {
+        found.push({ prop: p[1], line: src.slice(0, start).split('\n').length });
+      }
+    }
   }
   return found;
 }

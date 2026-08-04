@@ -30,6 +30,10 @@ const labels: PayslipPdfLabels = {
   totalEmployerCost: 'Total employer cost',
   proratedNote: 'Prorated for 21 days worked',
   generatedNote: 'This is a system-generated payslip.',
+  claim: 'Claim',
+  employerBorne: 'Paid by your employer on your behalf',
+  employerBorneTotal: 'Total borne by employer',
+  employerBorneNote: 'Reported in full to the authorities; not deducted from your pay.',
 };
 const data: PayslipPdfData = {
   employee: 'Aisyah Rahman',
@@ -41,6 +45,7 @@ const data: PayslipPdfData = {
   allowance: 500,
   overtime: 120,
   bonus: 0,
+  claim: 0,
   gross: 7120,
   epfEmployee: 715,
   socsoEmployee: 24.75,
@@ -56,6 +61,8 @@ const data: PayslipPdfData = {
   eisEmployer: 9.9,
   employerCost: 8141.55,
   daysWorked: 21,
+  employerBorne: [],
+  employerBorneTotal: 0,
 };
 const head = (b: Uint8Array) => Buffer.from(b.slice(0, 5)).toString('latin1');
 
@@ -76,6 +83,20 @@ describe('ADR-0036 — payslip PDF', () => {
     expect(withCp38.length).toBeGreaterThan(without.length);
     // And a zero CP38 omits the row (no growth vs. the baseline, which is also cp38: 0).
     expect(without.length).toBe((await renderPayslipPdf(data, labels)).length);
+  });
+
+  // 3c473773 — the employer-borne disclosure block. Same size-delta signal the CP38 case above uses: the
+  // named lines + total + note are drawn rows, so the document is strictly larger when there is something
+  // to disclose, and byte-for-byte the baseline when there is not (every payslip issued before the
+  // employer-bears settings existed).
+  it('prints the employer-borne block only when the payslip carries one', async () => {
+    const withBorne = await renderPayslipPdf(
+      { ...data, employerBorne: [{ label: 'EPF', amount: 629 }, { label: 'SOCSO', amount: 28.25 }], employerBorneTotal: 657.25 },
+      labels,
+    );
+    const without = await renderPayslipPdf(data, labels);
+    expect(withBorne.length).toBeGreaterThan(without.length);
+    expect(without.length).toBe((await renderPayslipPdf({ ...data, employerBorne: [], employerBorneTotal: 0 }, labels)).length);
   });
 
   it('degrades gracefully: null code/reg, no skbbk/other rows, no proration, non-Latin name', async () => {

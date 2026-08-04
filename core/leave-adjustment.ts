@@ -24,18 +24,18 @@
  * the plan promises "adjustments made here will show on the employee's leave record the same way today's
  * do, so there is no separate history to reconcile".
  */
-import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
-  assignment,
   employment,
   leaveAdjustmentBatch,
   leaveLedger,
   leaveType,
+  person,
 } from '../db/schema';
-import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from './leave-org-criteria';
+import { countOrgCriteriaTargets, resolveOrgCriteriaTargets, type OrgCriteria } from './org-criteria';
 
 export class LeaveAdjustmentError extends Error {
   constructor(message: string) {
@@ -48,87 +48,36 @@ export class LeaveAdjustmentError extends Error {
  * Who a batch targets. Mirrors the leave-type Condition step's criteria vocabulary exactly, so the same
  * builder can drive both — the plan asks for "the same criteria builder you already use elsewhere so the
  * fields and behaviour are familiar".
+ *
+ * 6e122302: this is now an ALIAS for `OrgCriteria` (core/org-criteria.ts) rather than its own type. The
+ * Notice Board asks the identical question of the identical columns, and two structurally-equal types that
+ * are maintained separately drift the moment one of them gains an axis. Every existing import of
+ * `AdjustmentCriteria` keeps compiling and keeps meaning exactly what it did.
  */
-export type AdjustmentCriteria = {
-  companyIds?: string[];
-  departmentIds?: string[];
-  employmentTypes?: string[];
-  // NOTE: gender and marital status are on `person`, not `employment`, and the leave-type Condition step
-  // reads them through the eligibility JSONB rather than as selection criteria. They are deliberately NOT
-  // offered here: a bulk adjustment selects by ORGANISATIONAL position, and filtering a leave grant by a
-  // protected characteristic is a decision that should be made explicitly and asked for, not inherited by
-  // accident from a builder that happens to expose the field.
-} & Partial<Record<OrgAssignmentCriterionKey, string[]>>;
-
-const nonEmpty = (v: string[] | undefined): string[] => (Array.isArray(v) ? v.filter((x) => !!x) : []);
+export type AdjustmentCriteria = OrgCriteria;
 
 /**
- * THE SET RESOLVER, WHICH DID NOT EXIST BEFORE THIS ITEM.
+ * THE SET RESOLVER — now a delegate to the SHARED one.
  *
- * `assertEligible` and `isLeaveEligible` are per-EMPLOYEE predicates — they answer "may this person take
- * this type?", one person at a time. `countEmployeesInScope` is set-based but knows only company and
- * grade. Neither answers "which employments match these criteria?", which is what a bulk adjustment needs.
+ * 6e122302 lifted the body of this function into `core/org-criteria.ts` unchanged, because the Notice
+ * Board needs the same answer to the same question and a second copy of "who does this apply to" is
+ * precisely the duplicate-maintenance defect 6e9a126e was raised about. The approved plan requires the
+ * generalisation rather than a copy.
  *
- * The semantics are copied from `isLeaveEligible` deliberately, so the screen selects the same people the
- * eligibility engine would: **OR within a field, AND across fields, and an empty field means NO
- * restriction on that axis**. All eight org criteria are plain text columns on `employment`, so this is an
- * `inArray` chain rather than anything clever.
+ * IT STAYS EXPORTED, AND IT STAYS A ONE-LINER, ON PURPOSE. Its callers, its error messages and
+ * `test/leave-adjustment-batch.test.ts` are all untouched, so the leave-adjustment behaviour is provably
+ * identical while the notice path runs the same engine rather than a cousin of it. `effectiveOn` is the
+ * leave vocabulary for what the shared resolver calls `asOf` — same value, same meaning; the parameter is
+ * renamed at the seam rather than in eleven call sites.
  *
- * ⚠️ AN EMPTY CRITERIA OBJECT MATCHES EVERY ACTIVE EMPLOYMENT. That is consistent with the per-field rule
- * above and it is genuinely what "no restrictions" means — but it is also how someone grants leave to the
- * whole company by accident. The caller is responsible for showing the resolved count and making the user
- * confirm it; `resolveAdjustmentTargets` will not second-guess an explicit request.
- *
- * Terminated employments are excluded as of `effectiveOn`, matching grantAdHocLeave: someone who had left
- * before the adjustment takes effect is not a target.
+ * ⚠️ AN EMPTY CRITERIA OBJECT STILL MATCHES EVERY ACTIVE EMPLOYMENT, and the caller is still responsible
+ * for showing the resolved count before it lets anyone press the button. See the shared module's header.
  */
 export async function resolveAdjustmentTargets(
   tx: Tx,
   p: { criteria: AdjustmentCriteria; effectiveOn: string },
 ): Promise<string[]> {
-  const c = p.criteria ?? {};
-  const conds = [
-    // Active as of the effective date — hired by then, and not already gone.
-    sql`${employment.hiredOn} <= ${p.effectiveOn}`,
-    or(isNull(employment.terminatedOn), gte(employment.terminatedOn, p.effectiveOn)),
-  ];
-
-  const companyIds = nonEmpty(c.companyIds);
-  if (companyIds.length) conds.push(inArray(employment.companyId, companyIds));
-
-  // ⚠️ DEPARTMENT AND EMPLOYMENT TYPE ARE NOT ON `employment` — they live on `assignment`, which is
-  // EFFECTIVE-DATED (validFrom / validTo, null = current). So they are matched against the assignment in
-  // force ON THE EFFECTIVE DATE, not today's. An adjustment backdated to before somebody transferred must
-  // select the people who were in that department THEN; using the current row would quietly adjust a
-  // different set of people from the one the administrator described.
-  const departmentIds = nonEmpty(c.departmentIds);
-  const employmentTypes = nonEmpty(c.employmentTypes);
-  if (departmentIds.length || employmentTypes.length) {
-    const asOfAssignment = [
-      sql`${assignment.employmentId} = ${employment.id}`,
-      sql`${assignment.validFrom} <= ${p.effectiveOn}`,
-      or(isNull(assignment.validTo), gte(assignment.validTo, p.effectiveOn)),
-    ];
-    if (departmentIds.length) asOfAssignment.push(inArray(assignment.departmentId, departmentIds));
-    if (employmentTypes.length) asOfAssignment.push(inArray(assignment.employmentType, employmentTypes as never[]));
-    conds.push(
-      sql`exists (select 1 from ${assignment} where ${and(...asOfAssignment)})`,
-    );
-  }
-
-  // The eight org-assignment axes are text columns on employment; the key IS the column name (see
-  // core/leave-org-criteria.ts, which exists so clients and services agree on that without a DB import).
-  for (const crit of ORG_ASSIGNMENT_CRITERIA) {
-    const allowed = nonEmpty(c[crit.key]);
-    if (allowed.length) conds.push(inArray(employment[crit.key], allowed));
-  }
-
-  const rows = await tx
-    .select({ id: employment.id })
-    .from(employment)
-    .where(and(...conds))
-    .orderBy(employment.id);
-  return rows.map((r) => r.id);
+  return resolveOrgCriteriaTargets(tx, { criteria: p.criteria ?? {}, asOf: p.effectiveOn });
 }
 
 /** Round to 2dp, matching the rest of the leave math. */
@@ -406,14 +355,156 @@ export async function listLeaveAdjustmentBatches(
 }
 
 /**
- * How many employments a set of criteria currently resolves to — the count the screen MUST show before it
+ * How many employments a set of criteria currently resolves to — the count a screen MUST show before it
  * lets anyone press the button. `resolveAdjustmentTargets` deliberately does not second-guess an empty
  * criteria object, so this is the thing that stops "no restrictions" becoming an accidental whole-company
  * grant.
+ *
+ * 6e122302: delegates to the shared `countOrgCriteriaTargets`, same as the resolver above.
+ *
+ * 18103ba4 GAVE IT ITS FIRST CALLER. Until then it had ZERO — verified by grep before this item was built,
+ * confirming the Notice Board plan's claim that "the live matched-count control already exists on
+ * /admin/leave/adjustments" was FALSE: `components/leave/adjustment-form.tsx` showed a static "this will
+ * match everyone" warning when no criteria were set, and never a number. The step flow's Step 2 now calls
+ * it through `previewLeaveAdjustmentBatch` below, which answers the same question and the harder one next
+ * to it — what is going to go wrong.
  */
 export async function countAdjustmentTargets(
   ctx: SessionContext,
   p: { criteria: AdjustmentCriteria; effectiveOn: string },
 ): Promise<number> {
-  return withTenant(ctx, async (tx) => (await resolveAdjustmentTargets(tx, p)).length);
+  return countOrgCriteriaTargets(ctx, { criteria: p.criteria ?? {}, asOf: p.effectiveOn });
+}
+
+/**
+ * One thing that will go wrong if this batch is processed as described. Counts, never names: the reporter's
+ * mock reads "3 employees have no Annual Leave entitlement", the screen is an admin bulk tool rather than a
+ * personnel record, and naming thirty people in a warning banner is neither readable nor necessary to decide.
+ */
+export type AdjustmentIssue = {
+  kind: 'not_found' | 'inactive' | 'not_eligible' | 'frozen';
+  count: number;
+  /** Set only on 'not_eligible' / 'frozen', which are per leave TYPE — the other two are per employee. */
+  leaveTypeName?: string;
+};
+
+/**
+ * 18103ba4 — WHAT WOULD HAPPEN IF I PRESSED PROCESS? A dry run of `applyLeaveAdjustmentBatch`, sharing its
+ * target resolution and its frozen-snapshot lookup, writing nothing.
+ *
+ * The step flow's Step 4 is "Review & Process", and the reporter asks for validation to run automatically
+ * and show its problems BEFORE the button is available. This is that check. It is deliberately NOT a second
+ * copy of the write path's rules: it calls the same `resolveAdjustmentTargets` and the same
+ * `frozenAdjustmentKeys`, so a review that says "48 records, 2 skipped" is describing the write that will
+ * actually happen rather than a plausible-looking parallel calculation.
+ *
+ * FOUR CLASSES, and which mode each can occur in:
+ *  • not_found  — INDIVIDUAL mode only. An employment reference that resolves to nothing this session can
+ *                 see. `applyLeaveAdjustmentBatch` silently drops these (RLS filters them out); the operator
+ *                 pasted them and deserves to be told they went nowhere.
+ *  • inactive   — INDIVIDUAL mode only. Someone who had already left, or had not yet started, on the
+ *                 effective date. The criteria resolver excludes them by construction, so in criteria mode
+ *                 this is always zero and saying "0 inactive" would be noise. In individual mode the write
+ *                 path adjusts them ANYWAY — that is pre-existing behaviour this item does not change, and
+ *                 precisely why it needs saying out loud.
+ *  • not_eligible — the type's own eligibility rules (gender / marital / minimum service / probation / the
+ *                 eight org axes) as at the effective date. This is the honest reading of the mock's "no
+ *                 Annual Leave entitlement": the ledger will happily take the row, but the employee cannot
+ *                 take that leave, so the days are being put somewhere they cannot be spent.
+ *  • frozen     — ADR-0069. A frozen encashment snapshot makes that (employment, type) balance immutable and
+ *                 the write path SKIPS it. Shown here so the gap between `targeted` and `written` is
+ *                 predicted rather than discovered in the toast afterwards.
+ *
+ * READ-ONLY: no DomainEvent, no row. Called from a client on every criteria change, so it must stay cheap —
+ * it is three queries plus an in-memory eligibility pass, at the ~36-live-employment scale this product runs
+ * at. If a tenant ever makes that hurt, the fix is to debounce the caller, not to make the review lie.
+ */
+export async function previewLeaveAdjustmentBatch(
+  ctx: SessionContext,
+  p: {
+    leaveTypeIds: string[];
+    effectiveOn: string;
+    targetMode: 'criteria' | 'individual';
+    criteria?: AdjustmentCriteria;
+    employmentIds?: string[];
+  },
+): Promise<{ employees: number; targeted: number; willWrite: number; issues: AdjustmentIssue[] }> {
+  const empty = { employees: 0, targeted: 0, willWrite: 0, issues: [] as AdjustmentIssue[] };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveOn)) return empty;
+  const leaveTypeIds = Array.from(new Set((p.leaveTypeIds ?? []).filter(Boolean)));
+
+  return withTenant(ctx, async (tx) => {
+    const asked =
+      p.targetMode === 'individual'
+        ? Array.from(new Set((p.employmentIds ?? []).filter(Boolean)))
+        : await resolveAdjustmentTargets(tx, { criteria: p.criteria ?? {}, effectiveOn: p.effectiveOn });
+
+    const issues: AdjustmentIssue[] = [];
+    if (!asked.length) return { ...empty, issues };
+
+    // The employee facts BOTH the activity check and the eligibility gate need, in one read. `person` is
+    // joined because gender / marital status live there and `isLeaveEligible` reads them.
+    const rows = await tx
+      .select({
+        id: employment.id,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+        confirmationDate: employment.confirmationDate,
+        finalConfirmationDate: employment.finalConfirmationDate,
+        gender: person.gender,
+        marital: person.maritalStatus,
+        orgDivision: employment.orgDivision,
+        orgBranch: employment.orgBranch,
+        orgRegion: employment.orgRegion,
+        orgLine: employment.orgLine,
+        orgSection: employment.orgSection,
+        orgTeam: employment.orgTeam,
+        orgBase: employment.orgBase,
+        employmentCategory: employment.employmentCategory,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(inArray(employment.id, asked));
+
+    // INDIVIDUAL mode only — see the header for why these two are silent in criteria mode.
+    if (p.targetMode === 'individual') {
+      const notFound = asked.length - rows.length;
+      if (notFound > 0) issues.push({ kind: 'not_found', count: notFound });
+      const inactive = rows.filter(
+        (r) => r.hiredOn > p.effectiveOn || (r.terminatedOn != null && r.terminatedOn < p.effectiveOn),
+      ).length;
+      if (inactive > 0) issues.push({ kind: 'inactive', count: inactive });
+    }
+
+    const targetIds = rows.map((r) => r.id);
+    if (!targetIds.length || !leaveTypeIds.length) {
+      return { employees: targetIds.length, targeted: 0, willWrite: 0, issues };
+    }
+
+    const types = await tx
+      .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility })
+      .from(leaveType)
+      .where(inArray(leaveType.id, leaveTypeIds));
+
+    // The eligibility gate, per type, as at the EFFECTIVE DATE — not today. A grant backdated to before
+    // somebody's confirmation must judge them by the rules as they stood then, exactly as the target
+    // resolution does. ONE dynamic import, matching how the write path reaches for the same module (the
+    // cycle core/leave ↔ core/leave-adjustment is why it is dynamic at all).
+    const { isLeaveEligible, frozenAdjustmentKeys } = await import('./leave');
+    for (const t of types) {
+      const ineligible = rows.filter(
+        (r) => !isLeaveEligible(t.eligibility as Parameters<typeof isLeaveEligible>[0], r, p.effectiveOn),
+      ).length;
+      if (ineligible > 0) issues.push({ kind: 'not_eligible', count: ineligible, leaveTypeName: t.name });
+    }
+
+    const frozen = await frozenAdjustmentKeys(tx, targetIds, leaveTypeIds);
+    for (const t of types) {
+      const n = targetIds.filter((e) => frozen.has(`${e}|${t.id}`)).length;
+      if (n > 0) issues.push({ kind: 'frozen', count: n, leaveTypeName: t.name });
+    }
+
+    const targeted = targetIds.length * leaveTypeIds.length;
+    return { employees: targetIds.length, targeted, willWrite: targeted - frozen.size, issues };
+  });
 }

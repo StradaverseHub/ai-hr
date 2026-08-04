@@ -2206,6 +2206,34 @@
       "when": 1781862488000,
       "tag": "0388_employment_contract_information",
       "breakpoints": true
+    },
+    {
+      "idx": 390,
+      "version": "7",
+      "when": 1781862490000,
+      "tag": "0390_notice_board",
+      "breakpoints": true
+    },
+    {
+      "idx": 391,
+      "version": "7",
+      "when": 1781862491000,
+      "tag": "0391_notice_dashboard_card",
+      "breakpoints": true
+    },
+    {
+      "idx": 392,
+      "version": "7",
+      "when": 1781862492000,
+      "tag": "0392_claim_draft_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 393,
+      "version": "7",
+      "when": 1781862493000,
+      "tag": "0393_pay_component_display_category",
+      "breakpoints": true
     }
   ]
 }

@@ -336,6 +336,76 @@ export function listIndividualTxns(ctx: SessionContext, p: { batchId: string }):
   );
 }
 
+/** One ledger row with everything an Edit or a Duplicate needs to reconstruct it — including the picked
+ *  Payroll Item Master component, which the LISTING reads (listIndividualTxnsAcross) deliberately do not
+ *  carry. `editable` is the service's own unattached-or-draft rule, resolved once here so the caller does
+ *  not have to re-derive it (and cannot derive it differently). */
+export type IndividualTxnDetail = {
+  id: string;
+  employmentId: string;
+  companyId: string;
+  payPeriod: string;
+  batchId: string | null;
+  kind: PayrollTxnKind;
+  componentId: string | null;
+  txnDate: string;
+  amount: string;
+  quantity: string | null;
+  unit: string | null;
+  notes: string | null;
+  /** True while `updateIndividualTxn` / `deleteIndividualTxn` would accept this row. */
+  editable: boolean;
+};
+
+/**
+ * 44129979 — read ONE ledger row by id, for the redesigned screen's Edit and Duplicate actions.
+ *
+ * WHY THIS EXISTS RATHER THAN A WIDER LISTING FIELD. The screen's right panel is `listIndividualTxnsAcross`
+ * (core/payroll-view.ts) — the same read the Transaction View uses, deliberately reused rather than
+ * reinvented. That row shape carries no `component_id`, and adding one would change a projection shared
+ * with the History screen and its CSV export for the sake of two per-row buttons. A row is opened for edit
+ * or copy one at a time, so this is one row by id, on demand — which is also what "review before you
+ * change it" means in practice.
+ *
+ * Returns null for an absent id (RLS already fences the tenant; the caller fences the company scope).
+ * Read-only: no write, no domain event.
+ */
+export function getIndividualTxn(ctx: SessionContext, p: { id: string }): Promise<IndividualTxnDetail | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: payrollIndividualTxn.id,
+        employmentId: payrollIndividualTxn.employmentId,
+        companyId: payrollIndividualTxn.companyId,
+        payPeriod: payrollIndividualTxn.payPeriod,
+        batchId: payrollIndividualTxn.batchId,
+        kind: payrollIndividualTxn.kind,
+        componentId: payrollIndividualTxn.componentId,
+        txnDate: payrollIndividualTxn.txnDate,
+        amount: payrollIndividualTxn.amount,
+        quantity: payrollIndividualTxn.quantity,
+        unit: payrollIndividualTxn.unit,
+        notes: payrollIndividualTxn.notes,
+        batchStatus: payrollBatch.status,
+      })
+      .from(payrollIndividualTxn)
+      .leftJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
+      .where(eq(payrollIndividualTxn.id, p.id))
+      .limit(1);
+    if (!row) return null;
+    const { batchStatus, ...rest } = row;
+    return {
+      ...rest,
+      // The write guard is "unattached, or attached to a DRAFT batch" (loadDraftBatch throws otherwise).
+      // Anything else — including a status this build does not know — is reported as not editable, because
+      // the mistake that matters is offering an edit the service will refuse.
+      editable: row.batchId == null || batchStatus === 'draft',
+      companyId: rest.companyId as string,
+      payPeriod: rest.payPeriod as string,
+    } satisfies IndividualTxnDetail;
+  });
+}
+
 /**
  * Record a dated one-off transaction for one employee — EITHER on a draft batch (batchId; draft-only) OR
  * unattached against a (companyId, payPeriod) month when no run exists yet (f1564110 Phase 2). Date-in-period

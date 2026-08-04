@@ -15,12 +15,25 @@ type RateConfig =
 export type ClaimBalance = {
   annualLimit: number | null;
   usedThisYear: number;
+  /** The reserved (submitted, not yet decided) slice of usedThisYear. Part of it, not extra. */
+  reservedThisYear: number;
   remainingThisYear: number | null;
   monthlyLimit: number | null;
   remainingThisMonth: number | null;
   perClaimCap: number | null;
   claimsUsedThisYear: number;
   maxClaimsPerYear: number | null;
+};
+
+/** An existing draft being edited (?draft=<id>) — every value the form should open with. */
+export type ClaimDraftPrefill = {
+  id: string;
+  claimTypeId: string;
+  claimItemId: string | null;
+  amount: number;
+  quantityKm: number | null;
+  incurredOn: string;
+  description: string | null;
 };
 
 export type ClaimFormType = {
@@ -48,18 +61,23 @@ export function ClaimForm({
   types,
   submitAction,
   todayUtc,
+  draft,
 }: {
   types: ClaimFormType[];
   submitAction: Action;
   todayUtc: string;
+  /** Present ⇒ the form is EDITING this draft: Save updates it in place, Submit files that same row. */
+  draft?: ClaimDraftPrefill;
 }) {
   const t = useTranslations('claims');
-  const [typeId, setTypeId] = useState(types[0]?.id ?? '');
-  const [claimItemId, setClaimItemId] = useState(types[0]?.items[0]?.id ?? '');
-  const [km, setKm] = useState('');
-  const [amount, setAmount] = useState('');
-  const [incurredOn, setIncurredOn] = useState(todayUtc);
-  const [description, setDescription] = useState('');
+  const [typeId, setTypeId] = useState(draft?.claimTypeId ?? types[0]?.id ?? '');
+  const [claimItemId, setClaimItemId] = useState(
+    draft?.claimItemId ?? types.find((ct) => ct.id === draft?.claimTypeId)?.items[0]?.id ?? types[0]?.items[0]?.id ?? '',
+  );
+  const [km, setKm] = useState(draft?.quantityKm != null ? String(draft.quantityKm) : '');
+  const [amount, setAmount] = useState(draft && draft.amount > 0 ? String(draft.amount) : '');
+  const [incurredOn, setIncurredOn] = useState(draft?.incurredOn ?? todayUtc);
+  const [description, setDescription] = useState(draft?.description ?? '');
   // On error, useActionState returns without navigating, so the form itself is never unmounted —
   // but React's own form-action machinery still resets any UNCONTROLLED field once the action
   // resolves (this happens even without a redirect). Every field the user can type into is
@@ -94,6 +112,8 @@ export function ClaimForm({
           <ErrorBanner message={state.error} />
         </div>
       )}
+      {/* Editing an existing draft — the id travels with the post so Save updates rather than duplicates. */}
+      {draft && <input type="hidden" name="draftId" value={draft.id} />}
 
       {/* Claim Type (mandatory) → drives the dependent Claim Item dropdown + the amount field. */}
       <Field label={t('typeLabel')}>
@@ -128,6 +148,11 @@ export function ClaimForm({
                 <>
                   <div className="flex justify-between"><span className="text-muted-foreground">{t('annualLimit')}</span><span className="tabular-nums">{rm(bal.annualLimit)}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">{t('alreadyClaimed')}</span><span className="tabular-nums">{rm(bal.usedThisYear)}</span></div>
+                  {/* The reserved slice, shown only when there is one. Without this line an employee whose
+                      balance dropped for a claim nobody has approved yet has no way to tell why. */}
+                  {bal.reservedThisYear > 0 && (
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t('reservedPending')}</span><span className="tabular-nums">{rm(bal.reservedThisYear)}</span></div>
+                  )}
                   <div className="flex justify-between"><span className="text-muted-foreground">{t('remainingBalance')}</span><span className="tabular-nums">{rm(bal.remainingThisYear ?? 0)}</span></div>
                   {afterYear != null && (
                     <div className="flex justify-between"><span className="text-muted-foreground">{t('balanceAfter')}</span><span className={`tabular-nums font-medium ${afterYear < 0 ? 'text-destructive' : 'text-foreground'}`}>{rm(afterYear)}</span></div>
@@ -234,10 +259,16 @@ export function ClaimForm({
         />
       </label>
 
-      <div className="sm:col-span-2">
+      {/* Two submitters on one form. The draft button carries name/value so the server action can tell
+          which was pressed; the primary button carries none, so `intent` is absent on a real submit. */}
+      <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
         <Button type="submit" disabled={isPending}>
-          {isPending ? t('submitting') : t('submit')}
+          {isPending ? t('submitting') : draft ? t('submitDraft') : t('submit')}
         </Button>
+        <Button type="submit" name="intent" value="draft" variant="secondary" disabled={isPending}>
+          {draft ? t('updateDraft') : t('saveDraft')}
+        </Button>
+        <span className="text-xs text-muted-foreground">{t('draftHint')}</span>
       </div>
     </form>
   );
