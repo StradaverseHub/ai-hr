@@ -167,14 +167,13 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     expect(adminPart).not.toContain("sortableTh('name'");
     expect(adminPart).not.toContain('<AdminCancelLeaveDialog');
     expect(adminPart).not.toContain('<Pager');
+    // fc776376's shared <Pager>, the page-state read and the 7-column body all belonged to that table
+    // and go with it. The Employee Details listing has its own numbered pager (inquiryPageWindow).
+    expect(adminPart).not.toContain('pageState(pq, total, history.length)');
+    expect(adminPart).not.toContain('colSpan={7}');
     // What the admin lands on instead:
     expect(adminPart).toContain('<LeaveInquiryNav active="details"');
-    // fc776376 replaced this table's hand-rolled pager with the ONE shared <Pager>: it still shows a
-    // position counter, and now also a rows-per-page control that rides in the address. The requirement
-    // is that the admin table is still PAGINATED, not that it keeps its own copy of the chrome.
-    expect(adminPart).toContain('<Pager');
-    expect(adminPart).toContain('pageState(pq, total, history.length)');
-    expect(adminPart).toContain('colSpan={7}');
+    expect(adminPart).toContain('inquiryPageWindow(edPage, employeePageCount)');
   });
 
   it('8ec63139: the admin no longer gets their OWN breakdown card above that table', () => {
