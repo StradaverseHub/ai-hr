@@ -394,6 +394,12 @@ export const SCREENS: readonly ScreenEntry[] = [
       // R24 5db3ae48: guided end-to-end payroll process view (scopedAdmin, same guard as the hub).
       '/payroll/guide',
       '/payroll/history-import',
+      // 169e3c24: the pre-release Individual Payslip viewer. Registered on the SAME scopedAdmin key as
+      // the rest of the hub, because it is the admin's review of a payslip before it is released — it
+      // reads through `payslipForReview`, never the ESS gate, so it must be admin-scoped exactly like
+      // Transaction View beside it. Its `[payslipId]/pdf` route is a route handler, not a guarded page,
+      // and so is not listed here (the reverse-completeness check walks page.tsx files).
+      '/payroll/individual-payslip',
       '/payroll/process',
       '/payroll/process/result',
       '/payroll/reports',
