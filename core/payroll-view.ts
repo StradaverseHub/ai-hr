@@ -41,6 +41,9 @@ import { resolveBatchScopeFilter, type BatchScope } from './payroll';
 // lives beside the rules it constrains.
 import { diffPayslipVersions, type PayslipSnapshot, type RecomputeDiff } from './payslip-recompute';
 import { todayInKualaLumpur } from '../lib/hr-date';
+// a1d82340 step 5 — the pending-money view mirrors the kernel's own flag gates rather than reporting
+// rows the run will not pay. See the flag note on pendingBatchMoney.
+import { isModuleEnabled, settingEnabled } from './entitlements';
 import {
   appUser,
   assignment,
@@ -53,8 +56,10 @@ import {
   jobGrade,
   payComponent,
   payrollBatch,
+  payrollBatchComponent,
   payrollEmployeeResultHistory,
   payrollIndividualTxn,
+  payrollInput,
   payrollRunTypeEnum,
   payrollTxnKindEnum,
   payslip,
@@ -83,6 +88,10 @@ const cleanDate = (v: unknown): string | undefined =>
 
 /** 'YYYY-MM-DD' today — the same string axis validFrom/validTo live on. */
 const todayIso = () => todayInKualaLumpur();
+
+/** Money rounding, matching core/payroll.ts's own local definition (each module keeps its own — there is
+ *  no shared export, and inventing one here would be a refactor riding on an unrelated change). */
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 type RunType = (typeof payrollRunTypeEnum.enumValues)[number];
 /** Coerce an untrusted cycle filter to a valid enum value or undefined — an unknown value (URL
@@ -1251,5 +1260,324 @@ export function listRecomputeDisclosure(
         priorMonths,
       };
     });
+  });
+}
+
+// ───────────────── a1d82340 STEP 5 — one consolidated view of the money on a draft run ─────────────────
+//
+// THE PROBLEM THIS SOLVES, MEASURED RATHER THAN ASSUMED. Money reaches a payslip through TWELVE
+// independent doors writing FIVE different tables. Before this read model, the draft run screen showed
+// only what `batchInputRows` reads — `payroll_input` — so four of the five tables were invisible until
+// AFTER the payslip was generated:
+//
+//   payroll_input           7 overtime (grid + attendance prefill) · 8 bonus (grid) · 9 claim_allowance
+//                           (claims prefill) · 10 loan_deduction (loans prefill) · 11 tp1_deduction (grid
+//                           + TP1 prefill) · 12 zakat (grid + fixed-zakat prefill)     ← WAS VISIBLE
+//   payroll_batch_component 4 component file import · 5 attendance-allowance transfer ·
+//                           6 shift-differential prefill                               ← WAS INVISIBLE
+//   payroll_individual_txn  3 Individual Transactions, attached OR still period-keyed   ← WAS INVISIBLE
+//   employment_pay_component 2 Fixed Transactions (period-active window)                ← WAS INVISIBLE
+//   compensation            1 basic + monthly allowance                                 ← shown per-employee
+//
+// The approved plan's step 5 says "consolidate the eight places money can be added". The count was taken
+// from an earlier map and is stale — it is twelve. The enumeration above is the first time it has been
+// written down; treat it as the register, and add to it when a thirteenth door is opened.
+//
+// DELIBERATELY READ-ONLY, AND THAT IS THE WHOLE POINT. r91 established that three of the four screens an
+// earlier revision proposed retiring were SOLE WRITERS — "never used" and "no writer reachable" look
+// identical in a row count, and closing a door is not reversible through configuration. So consolidation
+// here means ONE PLACE TO SEE ALL TWELVE, not eleven deletions. Nothing about what reaches a payslip
+// changes: this function computes no money, it reports money other code already committed.
+//
+// BASIC SALARY IS EXCLUDED ON PURPOSE. It is not "added" through a door — it is the compensation record
+// the run is built from, and the draft screen already shows it per employee. Including it would bury the
+// twelve doors under the one figure that is never in question.
+
+/** Which door a pending money line came in through. Stable keys — the UI translates them. */
+export type PendingMoneyDoor =
+  | 'fixedComponent'
+  | 'individualTxn'
+  | 'batchComponent'
+  | 'overtime'
+  | 'bonus'
+  | 'claims'
+  | 'loan'
+  | 'tp1'
+  | 'zakat';
+
+export type PendingMoneyLine = {
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  door: PendingMoneyDoor;
+  /** The pay item's own name where the door names one, else null (the door label stands in). */
+  itemName: string | null;
+  /** SIGNED: earnings positive, deductions negative — so the totals below are honest arithmetic. */
+  amount: number;
+  /** Extra provenance the door carries ('attendance'/'manual' for overtime, 'unattached' for a
+   *  period-keyed individual txn that has not been stamped onto this run yet). Null where none. */
+  note: string | null;
+};
+
+export type PendingMoneyDoorTotal = { door: PendingMoneyDoor; count: number; total: number };
+
+export type PendingBatchMoney = {
+  lines: PendingMoneyLine[];
+  byDoor: PendingMoneyDoorTotal[];
+  /** Distinct employees carrying at least one line. */
+  employees: number;
+  /** Sum of the positive lines and of the negative lines, reported separately (never netted away). */
+  earnings: number;
+  deductions: number;
+  /**
+   * Rows that EXIST but that a feature flag stops the kernel from paying — see the flag note on
+   * `pendingBatchMoney`. Counted, never summed into the totals above: money a run will not pay must not
+   * appear in the figure an operator reads as "what this run will pay". A non-zero count with an empty
+   * `lines` list is the exact shape of "somebody keyed transactions that are going nowhere".
+   */
+  inertRows: number;
+};
+
+/** The nine doors that can carry a line, in the order the card renders them. */
+const PENDING_MONEY_DOORS: readonly PendingMoneyDoor[] = [
+  'fixedComponent',
+  'individualTxn',
+  'batchComponent',
+  'overtime',
+  'bonus',
+  'claims',
+  'loan',
+  'tp1',
+  'zakat',
+] as const;
+
+/**
+ * Every money line queued against a draft run, whichever door it came through.
+ *
+ * PERIOD-KEYED INDIVIDUAL TRANSACTIONS ARE INCLUDED, and this is the subtle part. A row keyed before the
+ * month's run existed carries `batch_id = NULL` + (company, pay_period); `generatePayslips` stamps it onto
+ * the month's REGULAR run at generate time (attach-on-generate, 0175). So for a regular run those rows WILL
+ * be paid by this run even though nothing links them to it yet — omitting them would under-report the very
+ * figure the operator is checking. They are marked `note: 'unattached'` so the screen can say so. An
+ * ADDITIONAL/off-cycle run does not attach them, so it does not count them.
+ *
+ * THE FLAGS ARE MIRRORED, NOT IGNORED — this is the difference between a useful card and a lying one.
+ * Three doors only reach a payslip when a flag is on: the typed-component doors (fixed transactions and
+ * every payroll_batch_component writer) ride TYPED_PAY_COMPONENTS_ENABLED, and the individual-transaction
+ * fold rides INDIVIDUAL_TXN_PAY_ENABLED (which itself depends on the former — see generatePayslips). With
+ * a flag off those rows exist and pay NOTHING. Counting them would tell the operator a run will pay money
+ * it will not; hiding them would lose the fact that somebody keyed transactions into a dead end. So they
+ * are counted separately as `inertRows` and kept out of every total.
+ *
+ * Read-only: no DomainEvent (CLAUDE.md substrate rule — events follow state-changing writes, and there
+ * are none here).
+ */
+export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
+  const typedComponents = isModuleEnabled(ctx, 'typed_pay_components');
+  // Matches generatePayslips' own dependency: the individual fold rides the per-component fold, so with
+  // typed components off a payable one-off row has nothing to fold through and pays nothing either.
+  const individualTxnPay = typedComponents && settingEnabled(ctx, 'payroll.individual_txn_pay_enabled');
+  return withTenant(ctx, async (tx) => {
+    let inertRows = 0;
+    const empty: PendingBatchMoney = { lines: [], byDoor: [], employees: 0, earnings: 0, deductions: 0, inertRows: 0 };
+    const [batch] = await tx
+      .select({
+        id: payrollBatch.id,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        scope: payrollBatch.scope,
+      })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) return empty;
+
+    const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
+    const periodStart = `${batch.payPeriod}-01`;
+    // Last day of the pay month. new Date(y, m, 0) is the 0th day of the NEXT month = the last of this one.
+    const periodEnd = `${batch.payPeriod}-${String(new Date(Date.UTC(pYear, pMonth, 0)).getUTCDate()).padStart(2, '0')}`;
+    // The same scope resolver generatePayslips uses, so "what this run will pay" and "what this card
+    // reports" can never disagree about what a departments-only scope means (d0d2c9d1's rule).
+    const { filter: scopeFilter } = await resolveBatchScopeFilter(tx, batch.scope as BatchScope | null);
+
+    const lines: PendingMoneyLine[] = [];
+    const push = (
+      r: { employmentId: string; employeeName: string; employeeCode: string | null },
+      door: PendingMoneyDoor,
+      amount: number,
+      itemName: string | null = null,
+      note: string | null = null,
+    ) => {
+      if (!(Math.abs(amount) > 0)) return; // a zero line is not a pending transaction
+      lines.push({ ...r, door, itemName, amount, note });
+    };
+
+    // ── payroll_input: six doors on one row (7-12). Deductions are pushed NEGATIVE. ──
+    const inputs = await tx
+      .select({
+        employmentId: payrollInput.employmentId,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        overtime: payrollInput.overtimeAmount,
+        bonus: payrollInput.bonusAmount,
+        claim: payrollInput.claimAllowance,
+        loan: payrollInput.loanDeduction,
+        tp1: payrollInput.tp1Deduction,
+        zakat: payrollInput.zakat,
+        otSource: payrollInput.otSource,
+      })
+      .from(payrollInput)
+      .innerJoin(employment, eq(employment.id, payrollInput.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(payrollInput.batchId, p.batchId));
+    for (const r of inputs) {
+      const who = { employmentId: r.employmentId, employeeName: r.employeeName, employeeCode: r.employeeCode };
+      push(who, 'overtime', Number(r.overtime), null, r.otSource);
+      push(who, 'bonus', Number(r.bonus));
+      push(who, 'claims', Number(r.claim));
+      push(who, 'loan', -Number(r.loan));
+      push(who, 'tp1', -Number(r.tp1));
+      push(who, 'zakat', -Number(r.zakat));
+    }
+
+    // ── payroll_batch_component (doors 4-6): file import, attendance-allowance transfer, shift diff. ──
+    // All three land in the same table with no column recording WHICH wrote the row, so they report as one
+    // door named by the pay item. Naming the writer would need a provenance column and a migration; the
+    // item name is what the operator recognises anyway ("Shift differential", "Attendance allowance").
+    const batchComps = await tx
+      .select({
+        employmentId: payrollBatchComponent.employmentId,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        amount: payrollBatchComponent.amount,
+        itemName: payComponent.name,
+        kind: payComponent.kind,
+      })
+      .from(payrollBatchComponent)
+      .innerJoin(payComponent, eq(payComponent.id, payrollBatchComponent.componentId))
+      .innerJoin(employment, eq(employment.id, payrollBatchComponent.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(payrollBatchComponent.batchId, p.batchId));
+    for (const r of batchComps) {
+      if (!(Math.abs(Number(r.amount)) > 0)) continue;
+      if (!typedComponents) {
+        inertRows += 1;
+        continue;
+      }
+      const signed = r.kind === 'deduction' ? -Number(r.amount) : Number(r.amount);
+      push({ employmentId: r.employmentId, employeeName: r.employeeName, employeeCode: r.employeeCode }, 'batchComponent', signed, r.itemName);
+    }
+
+    // ── payroll_individual_txn (door 3): attached to this batch, plus — for a REGULAR run only — the
+    // period-keyed rows attach-on-generate will stamp onto it. See the docstring. ──
+    const attachesUnattached = batch.runType === 'regular';
+    const txnRows = await tx
+      .select({
+        employmentId: payrollIndividualTxn.employmentId,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        amount: payrollIndividualTxn.amount,
+        kind: payrollIndividualTxn.kind,
+        itemName: payComponent.name,
+        batchId: payrollIndividualTxn.batchId,
+      })
+      .from(payrollIndividualTxn)
+      .innerJoin(employment, eq(employment.id, payrollIndividualTxn.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
+      .where(
+        attachesUnattached
+          ? or(
+              eq(payrollIndividualTxn.batchId, p.batchId),
+              and(
+                isNull(payrollIndividualTxn.batchId),
+                eq(payrollIndividualTxn.companyId, batch.companyId),
+                eq(payrollIndividualTxn.payPeriod, batch.payPeriod),
+              ),
+            )
+          : eq(payrollIndividualTxn.batchId, p.batchId),
+      );
+    for (const r of txnRows) {
+      // 'leave' is RECORD-ONLY in v1 (the kernel does not fold it into pay — see generatePayslips), so it
+      // is not pending MONEY and must not appear in a total the operator reads as "what this run will pay".
+      if (r.kind === 'leave') continue;
+      if (!(Math.abs(Number(r.amount)) > 0)) continue;
+      // 'overtime' and 'unpaid' fold in the payslip loop regardless of the payable-fold flag; only
+      // earning/deduction rows ride INDIVIDUAL_TXN_PAY_ENABLED. Mirrored exactly rather than approximated.
+      if (!individualTxnPay && (r.kind === 'earning' || r.kind === 'deduction')) {
+        inertRows += 1;
+        continue;
+      }
+      const signed = r.kind === 'deduction' || r.kind === 'unpaid' ? -Number(r.amount) : Number(r.amount);
+      push(
+        { employmentId: r.employmentId, employeeName: r.employeeName, employeeCode: r.employeeCode },
+        'individualTxn',
+        signed,
+        r.itemName,
+        r.batchId == null ? 'unattached' : null,
+      );
+    }
+
+    // ── employment_pay_component (door 2): the period-ACTIVE fixed items. The window is copied from
+    // generatePayslips' own recurring query so the two agree exactly: started by period end, not ended
+    // before period start, never superseded. ──
+    const fixed = await tx
+      .select({
+        employmentId: employmentPayComponent.employmentId,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        amount: employmentPayComponent.amount,
+        itemName: payComponent.name,
+        kind: payComponent.kind,
+      })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .innerJoin(employment, eq(employment.id, employmentPayComponent.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          eq(employment.companyId, batch.companyId),
+          lte(employment.hiredOn, periodEnd),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+          lte(employmentPayComponent.validFrom, periodEnd),
+          or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, periodStart)),
+          isNull(employmentPayComponent.supersededAt),
+          // BASIC is the compensation record restated as a component, not an added transaction — it is
+          // excluded for the same reason basic salary is (see the section docstring).
+          sql`${payComponent.code} <> 'BASIC'`,
+          scopeFilter,
+        ),
+      );
+    for (const r of fixed) {
+      if (!(Math.abs(Number(r.amount)) > 0)) continue;
+      if (!typedComponents) {
+        inertRows += 1;
+        continue;
+      }
+      const signed = r.kind === 'deduction' ? -Number(r.amount) : Number(r.amount);
+      push({ employmentId: r.employmentId, employeeName: r.employeeName, employeeCode: r.employeeCode }, 'fixedComponent', signed, r.itemName);
+    }
+
+    lines.sort(
+      (a, b) =>
+        a.employeeName.localeCompare(b.employeeName) ||
+        PENDING_MONEY_DOORS.indexOf(a.door) - PENDING_MONEY_DOORS.indexOf(b.door) ||
+        (a.itemName ?? '').localeCompare(b.itemName ?? ''),
+    );
+
+    const byDoor = PENDING_MONEY_DOORS.map((door) => {
+      const own = lines.filter((l) => l.door === door);
+      return { door, count: own.length, total: round2(own.reduce((n, l) => n + l.amount, 0)) };
+    }).filter((d) => d.count > 0);
+
+    return {
+      lines,
+      byDoor,
+      employees: new Set(lines.map((l) => l.employmentId)).size,
+      earnings: round2(lines.filter((l) => l.amount > 0).reduce((n, l) => n + l.amount, 0)),
+      deductions: round2(lines.filter((l) => l.amount < 0).reduce((n, l) => n + l.amount, 0)),
+      inertRows,
+    };
   });
 }

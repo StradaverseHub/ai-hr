@@ -3189,7 +3189,35 @@
       "lineCp38": "CP38",
       "lineZakat": "Zakat",
       "lineLp": "Potongan pilihan (LP)",
-      "lineHrdf": "Levi HRD Corp"
+      "lineHrdf": "Levi HRD Corp",
+      "pendingMoney": {
+        "title": "Transaksi belum diproses",
+        "hint": "Semua yang beratur untuk larian ini selain gaji pokok, tidak kira skrin mana ia dimasukkan. Dua belas titik kemasukan menulis ke lima jadual berbeza; di sinilah kesemuanya kelihatan sebelum anda menjana.",
+        "empty": "Tiada apa-apa dalam barisan. Larian ini hanya akan membayar gaji pokok dan pengiraan berkanun.",
+        "employees": "Pekerja terlibat",
+        "earnings": "Pendapatan",
+        "deductions": "Potongan",
+        "colSource": "Dimasukkan melalui",
+        "colItem": "Item gaji",
+        "colAmount": "Jumlah",
+        "inert": "{n} transaksi yang direkodkan TIDAK akan dibayar oleh larian ini: ciri item gaji yang membacanya dimatikan untuk penyewa ini. Ia dikecualikan daripada jumlah di atas.",
+        "door": {
+          "fixedComponent": "Transaksi tetap",
+          "individualTxn": "Transaksi individu",
+          "batchComponent": "Item gaji sekali sahaja",
+          "overtime": "Kerja lebih masa",
+          "bonus": "Bonus",
+          "claims": "Bayaran tuntutan",
+          "loan": "Ansuran pinjaman",
+          "tp1": "Pelepasan TP1",
+          "zakat": "Zakat"
+        },
+        "note": {
+          "attendance": "daripada kehadiran",
+          "manual": "dimasukkan secara manual",
+          "unattached": "belum dilampirkan"
+        }
+      }
     },
     "transactions": {
       "title": "Transaksi",

@@ -3189,7 +3189,35 @@
       "lineCp38": "CP38",
       "lineZakat": "天课",
       "lineLp": "可选扣除（LP）",
-      "lineHrdf": "HRD Corp 征费"
+      "lineHrdf": "HRD Corp 征费",
+      "pendingMoney": {
+        "title": "待处理事项",
+        "hint": "本次薪资运行中除基本工资以外所有已排队的款项，无论从哪个界面录入。十二个录入入口写入五张不同的表；这里是生成前唯一能一并查看它们的地方。",
+        "empty": "没有待处理事项。本次运行仅支付基本工资和法定计算部分。",
+        "employees": "涉及员工",
+        "earnings": "收入项",
+        "deductions": "扣除项",
+        "colSource": "录入方式",
+        "colItem": "薪资项目",
+        "colAmount": "金额",
+        "inert": "已记录的 {n} 笔事项不会在本次运行中支付：读取它们的薪资项目功能对本租户已关闭。它们不计入上方的合计。",
+        "door": {
+          "fixedComponent": "固定事项",
+          "individualTxn": "个别事项",
+          "batchComponent": "一次性薪资项目",
+          "overtime": "加班费",
+          "bonus": "奖金",
+          "claims": "报销支付",
+          "loan": "贷款分期",
+          "tp1": "TP1 减免",
+          "zakat": "天课"
+        },
+        "note": {
+          "attendance": "来自考勤",
+          "manual": "手动录入",
+          "unattached": "尚未挂接"
+        }
+      }
     },
     "transactions": {
       "title": "交易",

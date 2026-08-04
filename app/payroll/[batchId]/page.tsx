@@ -19,7 +19,7 @@ import { ReprocessPanel } from './reprocess-panel';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
 import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
-import { listRecomputeDisclosure, listUnattachedTxnSummary, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
+import { listRecomputeDisclosure, listUnattachedTxnSummary, pendingBatchMoney, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
 import { payslipProvenance, type StatutoryLineKey } from '@/core/payslip-recompute';
 
 const rm = (n: unknown) =>
@@ -98,6 +98,11 @@ export default async function BatchPage({
     batch.status === 'draft'
       ? await preProcessAdvisory(s, batchId)
       : { missingCompensation: [], missingStatutory: [], missingBank: [] };
+  // a1d82340 STEP 5 — every money line queued against this draft, whichever of the twelve doors it came
+  // through. Before this, four of the five tables money lands in were invisible until AFTER generation:
+  // the inputs grid below reads payroll_input only. Draft-only: once processed, the payslips ARE the
+  // record and this card would be a second, weaker account of the same figures.
+  const pendingMoney = batch.status === 'draft' ? await pendingBatchMoney(s, { batchId }) : null;
   // Feedback 64fb5e48 — blockers are the salary-record gaps (missing/period-miss/zero); the old
   // BASIC-pay-item existence blocker is gone. A stale BASIC pay item is a confirm-to-proceed warning.
   const preBlockers = preChecks.missingCompensation.length + (preChecks.zeroBasic?.length ?? 0);
@@ -115,6 +120,9 @@ export default async function BatchPage({
   // Read-only; surfaced here as a compact panel with a link to the full Workflow Guide. Uses the
   // payroll.guide namespace so the check copy is written once.
   const tg = await getTranslations('payroll.guide');
+  // r134 — the four payroll-cycle names (regular / off_cycle / bonus / adjustment) are catalogued under
+  // payroll.list, NOT payroll.batch. See the Cycle field below.
+  const tList = await getTranslations('payroll.list');
   const configReadiness: PayrollReadiness | null =
     batch.status === 'draft'
       ? await payrollReadiness(s, {
@@ -445,7 +453,13 @@ export default async function BatchPage({
             </div>
             <div className="p-3">
               <div className="text-xs text-muted-foreground">{t('summaryCycle')}</div>
-              <div className="text-sm font-medium">{t(`runType.${batch.runType}`)}{batch.remarks ? ` — ${batch.remarks}` : ''}</div>
+              {/* r134 — this read `t('runType.…')` under the `payroll.batch` namespace, where runType
+                  has NEVER existed: the four cycle names live under payroll.list, payroll.process and
+                  payrollCycleConfig. So the Cycle field on EVERY run detail page resolved to a
+                  MISSING_MESSAGE. Same class as the bug r127 shipped and r130 fixed, and found the same
+                  way — by rendering the page and reading the dev log, not by any gate step.
+                  Read where they live rather than minting a fourth copy (r130's rule). */}
+              <div className="text-sm font-medium">{tList(`runType.${batch.runType}`)}{batch.remarks ? ` — ${batch.remarks}` : ''}</div>
             </div>
             <div className="p-3">
               <div className="text-xs text-muted-foreground">{t('summaryPaymentDate')}</div>
@@ -598,6 +612,118 @@ export default async function BatchPage({
                   </div>
                 ),
               )}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* a1d82340 STEP 5 — the consolidated money view. The approved plan's "one obvious home" for every
+          door money can arrive through. It ADDS no entry point and REMOVES none: r91 established that
+          three of four screens an earlier revision proposed retiring were sole writers, and that closing
+          a door is not reversible through configuration. So this reports; it never writes.
+
+          Rendered even when empty, because "nothing is queued" is exactly the fact an operator about to
+          press Generate needs, and an absent card cannot say it. */}
+      {batch.status === 'draft' && pendingMoney && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('pendingMoney.title')} count={pendingMoney.lines.length} />
+          <p className="px-4 pt-3 text-xs text-muted-foreground">{t('pendingMoney.hint')}</p>
+          {/* Rows that exist and pay nothing because a feature flag stops the kernel reading them. Kept
+              out of every total above and called out here instead — the alternative was to hide them,
+              which loses the fact that somebody keyed transactions into a dead end. */}
+          {pendingMoney.inertRows > 0 && (
+            <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+              {t('pendingMoney.inert', { n: pendingMoney.inertRows })}
+            </div>
+          )}
+          {pendingMoney.lines.length === 0 ? (
+            <p className="px-4 py-4 text-sm text-muted-foreground">{t('pendingMoney.empty')}</p>
+          ) : (
+            <div className="space-y-4 px-4 py-4">
+              <div className="flex flex-wrap gap-4 rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-xs">
+                <span>
+                  {t('pendingMoney.employees')} <span className="font-semibold tabular-nums">{pendingMoney.employees}</span>
+                </span>
+                <span>
+                  {t('pendingMoney.earnings')}{' '}
+                  <span className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                    {rm(pendingMoney.earnings)}
+                  </span>
+                </span>
+                <span>
+                  {t('pendingMoney.deductions')}{' '}
+                  <span className="font-semibold tabular-nums text-red-700 dark:text-red-400">
+                    {rm(pendingMoney.deductions)}
+                  </span>
+                </span>
+              </div>
+
+              {/* Per-door roll-up: which of the twelve doors this run's money actually came through. */}
+              <ul className="divide-y divide-border rounded-lg border border-border">
+                {pendingMoney.byDoor.map((d) => (
+                  <li key={d.door} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                    <span className="flex items-center gap-2">
+                      <span className="font-medium">{t(`pendingMoney.door.${d.door}`)}</span>
+                      <span className="text-xs text-muted-foreground">× {d.count}</span>
+                    </span>
+                    <span
+                      className={`tabular-nums font-medium ${
+                        d.total < 0 ? 'text-red-700 dark:text-red-400' : 'text-foreground'
+                      }`}
+                    >
+                      {rm(d.total)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* The lines themselves. Deliberately not paginated: a draft run's queued transactions are
+                  the thing being checked, and a pager would hide the tail behind a click at the exact
+                  moment the operator is asked to confirm the whole of it. */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">{t('colEmployee')}</th>
+                      <th className="px-3 py-2 font-medium">{t('pendingMoney.colSource')}</th>
+                      <th className="px-3 py-2 font-medium">{t('pendingMoney.colItem')}</th>
+                      <th className="px-3 py-2 text-right font-medium">{t('pendingMoney.colAmount')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {pendingMoney.lines.map((l, i) => (
+                      <tr key={`${l.employmentId}-${l.door}-${l.itemName ?? ''}-${i}`}>
+                        <td className="px-3 py-2">
+                          <span className="flex items-center gap-2">
+                            <EmployeeCode code={l.employeeCode} />
+                            <span className="font-medium">{l.employeeName}</span>
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            <span>{t(`pendingMoney.door.${l.door}`)}</span>
+                            {/* Provenance the door carries: 'attendance'/'manual' overtime, and the
+                                period-keyed txn that attach-on-generate has not stamped on yet. */}
+                            {l.note && (
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                {t(`pendingMoney.note.${l.note}`)}
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{l.itemName ?? '—'}</td>
+                        <td
+                          className={`px-3 py-2 text-right tabular-nums ${
+                            l.amount < 0 ? 'text-red-700 dark:text-red-400' : ''
+                          }`}
+                        >
+                          {rm(l.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </Card>
