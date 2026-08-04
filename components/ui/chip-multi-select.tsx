@@ -44,6 +44,17 @@
  * "{n} selected" past summaryThreshold). All are additive — omit them (as the leave eligibility pickers now
  * do) and the popover shows a plain checklist while the chips always render with their remove buttons.
  *
+ * Search (18103ba4, opt-in): passing `searchPlaceholder` puts a filter box at the top of the popover. The
+ * Leave Adjustments criteria builder offers ~20 pickers, several of them over catalogues with dozens of
+ * values, and the reporter asked for search on every one of them. State is popover-local and resets on
+ * close, so it can never affect what the form posts.
+ *
+ * ⚠️ WITH A FILTER ACTIVE, "Select all" MEANS "select everything I can currently see", ADDED to what is
+ * already picked — not "replace my selection with the whole catalogue". Anything else makes the pair
+ * (search, select all) actively dangerous: filter to "Finance", press Select all, and silently select all
+ * two hundred departments. When no filter is typed the visible set IS every option and the selection is
+ * replaced-by-superset, so every pre-existing caller behaves exactly as it did.
+ *
  * Dismissal & keyboard (b9c30be0 — the 2449fbb7 standardize-dropdown idiom, same as combobox.tsx and
  * multi-select-popover.tsx): while open, a document `mousedown` listener closes the popover when the event
  * target is outside the root ref. There is no full-viewport backdrop, so a click on any other control acts
@@ -67,8 +78,10 @@ export function ChipMultiSelect({
   label,
   selectAllLabel,
   clearAllLabel,
+  searchPlaceholder,
   allSelectedLabel,
   countLabelFor,
+  onSelectionChange,
   summaryThreshold = 4,
 }: {
   name: string;
@@ -84,10 +97,26 @@ export function ChipMultiSelect({
   selectAllLabel?: string;
   /** Opt-in: translated label for the "clear all" button. Omit to hide it. */
   clearAllLabel?: string;
+  /** Opt-in: translated placeholder for a filter box at the top of the popover. Omit to hide it. */
+  searchPlaceholder?: string;
   /** Opt-in: translated text shown (instead of chips) once every option is selected, e.g. "All selected". */
   allSelectedLabel?: string;
   /** Opt-in: translated collapsed summary when the selection count exceeds summaryThreshold, e.g. (n) => t('nSelected', { count: n }). */
   countLabelFor?: (count: number) => string;
+  /**
+   * Opt-in: called with the NEW selection whenever it changes, by any route (a row, Select all, Clear all,
+   * a chip's ×).
+   *
+   * ⚠️ WHY THIS EXISTS, found by rendering the page rather than by reading it. The rows are
+   * `<button type="button">`s, so toggling one fires NO `change` event — the hidden inputs are simply
+   * re-rendered. A parent that watches its `<form onChange>` therefore never hears about a chip selection
+   * at all: on the Leave Adjustments criteria builder the live matched count sat unchanged at "everyone"
+   * while the operator picked criteria, and only moved when they happened to touch a text or date field.
+   * A count that silently describes a different set from the one on screen is worse than no count.
+   *
+   * Only client parents may pass this (it is a function prop); a server component must not.
+   */
+  onSelectionChange?: (values: string[]) => void;
   /** Show individual chips up to this count; above it (and below "all"), collapse to countLabelFor. */
   summaryThreshold?: number;
 }) {
@@ -96,24 +125,49 @@ export function ChipMultiSelect({
     defaultSelected.filter((v) => options.some((o) => o.value === v)),
   );
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const captionId = useId();
   const labelOf = new Map(options.map((o) => [o.value, o.label]));
+  // The rows the popover currently shows. No search box ⇒ every option, so nothing about the unfiltered
+  // behaviour (including what "Select all" selects) changes for any pre-existing caller.
+  const visible =
+    searchPlaceholder == null || query.trim() === ''
+      ? options
+      : options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase()));
 
   // Close on outside click — document mousedown against the root ref (combobox.tsx idiom). No backdrop
   // element exists, so no <label> wrapper can ever re-activate the trigger and undo the close.
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        // A filter is a way of LOOKING at the list, not part of the selection. Dropping it on close keeps
+        // the next open honest: the popover always reopens showing everything.
+        setQuery('');
+      }
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
+  /**
+   * THE ONE WRITER. Every route that changes the selection goes through here so `onSelectionChange` can
+   * never be forgotten by one of them — the four call sites below used to be four separate `setSelected`
+   * calls, and a notification added to three of them is a bug that only shows up on the fourth.
+   *
+   * `next` is computed from the CURRENT `selected` at the call site rather than inside a state updater:
+   * calling a listener from inside an updater is a side effect React is free to run twice.
+   */
+  const apply = (next: string[]) => {
+    setSelected(next);
+    onSelectionChange?.(next);
+  };
+
   const toggleValue = (v: string) =>
-    setSelected((cur) => (cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]));
+    apply(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v]);
 
   // Collapsed summary (opt-in): "All selected" once everything is picked, else a "{n} selected" pill past
   // the chip threshold, else the removable chips. Falls back to chips whenever the labels aren't provided.
@@ -129,6 +183,7 @@ export function ChipMultiSelect({
         if (e.key === 'Escape' && open) {
           e.stopPropagation();
           setOpen(false);
+          setQuery('');
           triggerRef.current?.focus();
         }
       }}
@@ -145,7 +200,10 @@ export function ChipMultiSelect({
         <button
           ref={triggerRef}
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => {
+            if (open) setQuery('');
+            setOpen((o) => !o);
+          }}
           aria-expanded={open}
           aria-haspopup="true"
           aria-labelledby={label != null ? captionId : undefined}
@@ -164,7 +222,12 @@ export function ChipMultiSelect({
                 {selectAllLabel != null && (
                   <button
                     type="button"
-                    onClick={() => setSelected(options.map((o) => o.value))}
+                    onClick={() =>
+                      // UNION with what is already picked — see the header. Unfiltered this is exactly the
+                      // old "every option"; filtered it is "everything I can see", which is the only
+                      // reading that does not silently select the rest of the catalogue.
+                      apply([...selected, ...visible.map((o) => o.value).filter((v) => !selected.includes(v))])
+                    }
                     className="font-medium text-primary hover:underline"
                   >
                     {selectAllLabel}
@@ -173,7 +236,7 @@ export function ChipMultiSelect({
                 {clearAllLabel != null && (
                   <button
                     type="button"
-                    onClick={() => setSelected([])}
+                    onClick={() => apply([])}
                     className="font-medium text-muted-foreground hover:underline"
                   >
                     {clearAllLabel}
@@ -181,8 +244,20 @@ export function ChipMultiSelect({
                 )}
               </div>
             )}
+            {searchPlaceholder != null && (
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                // NO `name` — nothing inside the popover may post (see the form contract above); a named
+                // search box would land in getAll() and become a phantom criteria value.
+                className="mb-1 w-full rounded-md border border-input bg-card px-2 py-1 text-xs outline-none focus:border-primary"
+              />
+            )}
             <div className="max-h-56 overflow-y-auto">
-              {options.map((o) => (
+              {visible.map((o) => (
                 <button
                   key={o.value}
                   type="button"
@@ -232,7 +307,7 @@ export function ChipMultiSelect({
                     type="button"
                     aria-label={removeLabelFor(chipLabel)}
                     title={removeLabelFor(chipLabel)}
-                    onClick={() => setSelected((cur) => cur.filter((x) => x !== v))}
+                    onClick={() => apply(selected.filter((x) => x !== v))}
                     className="grid size-4 shrink-0 place-items-center rounded-full text-primary/70 transition-colors hover:bg-primary/20 hover:text-primary"
                   >
                     ×
