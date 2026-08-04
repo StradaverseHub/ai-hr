@@ -16,6 +16,7 @@ import { LogoutButton } from '@/components/logout-button';
 import { CompanySwitcher } from '@/components/company-switcher';
 import { TourLauncher } from '@/components/tour-launcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
+import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { visibleModuleCodes } from '@/lib/nav-entitlements';
@@ -220,6 +221,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             </div>
           </div>
           <OnboardingTour tours={tours} autoStartTourId={onboarded ? null : WELCOME_TOUR_ID} />
+          {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
+              the existing "show something once after login and remember the dismissal" surface. At most
+              ONE notice, chosen server-side; the slot renders null when nothing is due, so this costs an
+              already-cached employment lookup and nothing else on the overwhelming majority of loads. */}
+          <NoticePopupSlot s={session} />
           <Suspense fallback={null}>
             <ToastFromQuery />
           </Suspense>

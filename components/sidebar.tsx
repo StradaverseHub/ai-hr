@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   ListChecks,
   MessageSquareText,
+  Megaphone,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -282,6 +283,11 @@ const GROUPS: Group[] = [
       // Since ADR-0080 rung 7 the payroll nav lives on the payroll pack and mounts here by const
       // reference (PAYROLL_NODE — a flyout node since 1459e116, a flat row before that).
       PAYROLL_NODE,
+      // 6e122302 — Notice Board. A flat row rather than a node: it is one screen (its detail/new pages are
+      // routes on the same screen), and requireAdmin on every page is the enforcement — this row and the
+      // group's adminOnly flag are the courtesy. Deliberately NOT in MODULE_OF_HREF: the notice board is
+      // not a sellable module, so there is no entitlement to gate it on.
+      { href: '/admin/notice-board', labelKey: 'noticeBoard', icon: Megaphone },
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
       REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },

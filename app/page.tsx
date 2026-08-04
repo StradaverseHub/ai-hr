@@ -40,6 +40,7 @@ import { listDashboardCards, type EmployeeDashboardCard } from '@/core/dashboard
 import { DashboardCustomizer, type CustomizerCard } from '@/components/dashboard-customizer';
 import { saveDashboardLayoutAction, resetDashboardLayoutAction } from '@/app/dashboard-layout-actions';
 import { BUILTIN_ROLE_DASHBOARD_CARDS, type DashboardLayout } from '@/lib/dashboard-layout';
+import { NoticeBoardCardSlot } from '@/components/notice/notice-surfaces';
 
 const rm = (n: unknown) =>
   n == null
@@ -593,6 +594,11 @@ export default async function DashboardPage({
     recentlyJoined: recentlyJoinedCard,
     upcomingEvents: upcomingEventsCard,
     recentActivity: recentActivityCard,
+    // 6e122302 — the Notice Board card, for EVERY role: a notice targets an employment, and an admin or a
+    // manager is an employee who receives announcements like anyone else. The slot resolves its own
+    // employment and renders null when there is none, so it needs no role branch below. Its copy lives in
+    // its own single-namespace module for i18n coverage — see that file's header.
+    noticeBoard: <NoticeBoardCardSlot s={s} />,
   };
   if (role === 'employee') {
     cardNodes.leaveBalance = renderCard('leaveBalance');

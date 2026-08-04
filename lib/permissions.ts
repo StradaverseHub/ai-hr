@@ -294,6 +294,20 @@ export const SCREENS: readonly ScreenEntry[] = [
     hasScopeNote: true,
   },
   {
+    // 6e122302 — Notice Board. ONE screen with three routes: the listing, the setup form for a new notice,
+    // and one notice's detail/edit page. All three call requireAdmin(), so they are all guarded routes and
+    // test/function-access.test.ts fails BOTH ways if this list and the files on disk disagree — a guarded
+    // page.tsx absent from REGISTERED_ROUTES, and a registered route with no page. The two employee-facing
+    // routes (/notices and /notices/[id]) are deliberately absent: they carry no page guard (a plain
+    // session; the audience snapshot and RLS decide what the viewer sees), so they have nothing to report
+    // in a guard matrix and listing them would fail the no-stale-routes check.
+    screenKey: 'noticeBoard',
+    href: '/admin/notice-board',
+    labelKey: 'nav.noticeBoard',
+    guard: 'requireAdmin',
+    routes: ['/admin/notice-board', '/admin/notice-board/new', '/admin/notice-board/[id]'],
+  },
+  {
     screenKey: 'holidays',
     href: '/admin/holidays',
     labelKey: 'nav.holidays',

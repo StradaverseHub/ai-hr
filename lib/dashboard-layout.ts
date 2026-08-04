@@ -199,6 +199,11 @@ export const BUILTIN_DASHBOARD_CARDS: BuiltinDashboardCard[] = [
   { cardKey: 'upcomingEvents', name: 'Upcoming Events', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 5 },
   { cardKey: 'recentlyJoined', name: 'Recently Joined', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 6 },
   { cardKey: 'recentActivity', name: 'Recent Activity', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 7 },
+  // 6e122302 — the Notice Board card. displayOrder 11 puts it after EVERY card any role has today (the
+  // highest in use is latestPayrollRun at 10), so adding it is a pure append for all three roles rather
+  // than a reshuffle. MUST match the 0391 seed row exactly: this list is the fallback a tenant provisioned
+  // after that migration renders from, and the two disagreeing is a dashboard that differs by tenant age.
+  { cardKey: 'noticeBoard', name: 'Notice Board', cardType: 'information', href: '/notices', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 11 },
 ];
 
 /** cardKeys that carry a bespoke server-rendered node (vs a generic shortcut/action link). */
@@ -221,6 +226,10 @@ export const RENDERED_CARD_KEYS = [
   'attendanceOverview',
   'headcountByCompany',
   'latestPayrollRun',
+  // 6e122302 — the notice card renders a bespoke server node (the employee's live notices), not a generic
+  // shortcut off its href. Without this key the customizer would fall through to ShortcutCard and render a
+  // link where the announcements should be.
+  'noticeBoard',
 ] as const;
 export type RenderedCardKey = (typeof RENDERED_CARD_KEYS)[number];
 const RENDERED = new Set<string>(RENDERED_CARD_KEYS);
@@ -452,6 +461,10 @@ export const BUILTIN_ROLE_DASHBOARD_CARDS: Record<DashboardLayoutRole, BuiltinDa
     builtinCard('recentlyJoined'),
     builtinCard('recentActivity'),
     BUILTIN_ATTENDANCE_OVERVIEW,
+    // 6e122302 — every role gets the notice card, because a notice targets an EMPLOYMENT and a manager or
+    // an HR admin is an employee who receives announcements like anyone else. Giving it to the employee
+    // dashboard alone would hide from managers the notices they were personally sent.
+    builtinCard('noticeBoard'),
   ],
   hr_admin: [
     ...BUILTIN_HR_ADMIN_CARDS,
@@ -462,5 +475,6 @@ export const BUILTIN_ROLE_DASHBOARD_CARDS: Record<DashboardLayoutRole, BuiltinDa
     BUILTIN_ATTENDANCE_OVERVIEW,
     { cardKey: 'headcountByCompany', name: 'Headcount by Company', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 9 },
     { cardKey: 'latestPayrollRun', name: 'Latest Payroll Run', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 10 },
+    builtinCard('noticeBoard'),
   ],
 };
