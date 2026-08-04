@@ -5529,7 +5529,11 @@ export const statutoryPackSyncLog = pgTable('statutory_pack_sync_log', {
 // allowance line on the next payslip (payroll_input.claim_allowance). Mirrors the leave catalog/policy +
 // the request lifecycle (assertCanDecide + domain events). Receipts in a dedicated, claim-scoped table.
 
-export const claimStatusEnum = pgEnum('claim_status', ['pending', 'approved', 'rejected', 'cancelled', 'paid']);
+// e7eb5d83 stage 1 (0392) — 'draft' leads the list because it precedes 'pending' in the lifecycle. A draft
+// RESERVES NOTHING: core/claims.ts RESERVING_STATUSES is the single classification of which of these values
+// consume limit, and test/claims-draft-reservation.test.ts asserts this list and that classification agree
+// with the labels Postgres actually holds — so a value added here without a decision cannot ship.
+export const claimStatusEnum = pgEnum('claim_status', ['draft', 'pending', 'approved', 'rejected', 'cancelled', 'paid']);
 
 export const claimType = pgTable(
   'claim_type',
@@ -5695,7 +5699,16 @@ export const claimPolicy = pgTable(
      * same job_grade master maintained for Leave — no duplicate grade setup.
      */
     gradeId: uuid('grade_id').references(() => jobGrade.id),
-    /** NULL = unlimited. Annual cap on approved claims of this type per employee. */
+    /**
+     * NULL = unlimited. Annual cap on the total (pending+approved+paid) of this type per employee.
+     *
+     * e7eb5d83 — THIS COMMENT USED TO SAY "approved claims", AND THAT WAS NEVER WHAT THE CODE DID. The
+     * enforcement (core/claims.ts RESERVING_STATUSES) has always counted PENDING too, which is what makes a
+     * submitted claim a reservation: it consumes limit the moment it is filed and releases it by falling
+     * out of that set when it is rejected or cancelled. The stale wording was read as the specification and
+     * produced a board item describing a bug the code did not have. Draft claims are excluded — a draft
+     * reserves nothing.
+     */
     annualBudget: numeric('annual_budget', { precision: 12, scale: 2 }),
     /** NULL = no cap. Max amount of a single claim. */
     perClaimCap: numeric('per_claim_cap', { precision: 12, scale: 2 }),

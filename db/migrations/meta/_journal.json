@@ -2220,6 +2220,13 @@
       "when": 1781862491000,
       "tag": "0391_notice_dashboard_card",
       "breakpoints": true
+    },
+    {
+      "idx": 392,
+      "version": "7",
+      "when": 1781862492000,
+      "tag": "0392_claim_draft_status",
+      "breakpoints": true
     }
   ]
 }

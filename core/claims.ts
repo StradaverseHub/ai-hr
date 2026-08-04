@@ -248,7 +248,10 @@ export type ClaimBalanceRow = {
   typeName: string;
   /** null across the board ⇒ no limit configured for this employee's grade (unlimited). */
   annualLimit: number | null;
+  /** Total held against the annual limit this year: pending + approved + paid (drafts hold nothing). */
   usedThisYear: number;
+  /** The RESERVED slice of usedThisYear — filed but not yet decided. Included in usedThisYear, not extra. */
+  reservedThisYear: number;
   remainingThisYear: number | null;
   monthlyLimit: number | null;
   usedThisMonth: number;
@@ -587,7 +590,9 @@ export type EmployeeClaimType = {
  */
 export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: string): Promise<EmployeeClaimType[]> {
   const asOf = today();
-  const usedStatuses: ClaimStatus[] = ['pending', 'approved', 'paid'];
+  // The SAME set the submit check enforces against — the balance panel must show the employee the number
+  // the server will actually use, pending reservations included, or the screen and the refusal disagree.
+  const usedStatuses: ClaimStatus[] = [...RESERVING_STATUSES];
   return withTenant(ctx, async (tx) => {
     const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, employmentId)).limit(1);
     const gradeId = emp?.gradeId ?? null;
@@ -598,6 +603,10 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
         const items = await activeItemsFor(tx, t.id);
         const usedThisYear = await claimedInScope(tx, employmentId, t.id, 'year', asOf, usedStatuses);
         const usedThisMonth = await claimedInScope(tx, employmentId, t.id, 'month', asOf, usedStatuses);
+        // How much of usedThisYear is RESERVED rather than settled — i.e. filed and awaiting a decision.
+        // Broken out so the employee can see why their remaining balance is lower than their approved
+        // spend: a reservation the screen never mentions reads as the system losing money.
+        const reservedThisYear = await claimedInScope(tx, employmentId, t.id, 'year', asOf, ['pending']);
         const usedLifetime = policy?.lifetimeLimit != null ? await claimedInScope(tx, employmentId, t.id, 'lifetime', asOf, usedStatuses) : 0;
         const claimsUsedThisYear = await claimCountInScope(tx, employmentId, t.id, 'year', asOf, usedStatuses);
         const balance: ClaimBalanceRow = {
@@ -606,6 +615,7 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
           typeName: t.name,
           annualLimit: policy?.annualBudget ?? null,
           usedThisYear,
+          reservedThisYear,
           remainingThisYear: policy?.annualBudget == null ? null : Math.max(0, policy.annualBudget - usedThisYear),
           monthlyLimit: policy?.monthlyLimit ?? null,
           usedThisMonth,
@@ -644,7 +654,73 @@ export class ClaimError extends Error {
 
 const yearOf = (d: string): number => Number(d.slice(0, 4));
 
-type ClaimStatus = 'pending' | 'approved' | 'paid';
+// ─────────────────── Claim status: the ONE place the enum is classified (e7eb5d83) ───────────────────
+//
+// Every value of claim_status, and the single decision about which of them CONSUME LIMIT. A new status
+// added to the enum without being classified here is a claim that some reader silently cannot see — the
+// exact failure mode a new enum value invites. test/claims-draft-reservation.test.ts reads pg_enum and
+// fails if this list, db/schema.ts's pgEnum, the classification below, the i18n `claims.status_*` keys or
+// the /claims badge styles disagree, so the omission cannot ship quietly.
+
+/** Every claim_status label, in lifecycle order. Mirrors db/schema.ts claimStatusEnum exactly. */
+export const CLAIM_STATUSES = ['draft', 'pending', 'approved', 'rejected', 'cancelled', 'paid'] as const;
+export type ClaimRequestStatus = (typeof CLAIM_STATUSES)[number];
+
+/**
+ * THE RESERVATION. Statuses whose amounts are held against the employee's limit.
+ *
+ * This is a DERIVED reservation, not a stored counter, and that is the whole design. Submitting moves a
+ * claim INTO this set (limit consumed); rejecting, cancelling — or never submitting at all — leaves it
+ * OUT (limit released). There is no reserved-amount column to decrement, so a release cannot happen twice:
+ * a double-release would require the same row to leave the set twice, which the status column forbids and
+ * `SELECT … FOR UPDATE` in decideClaim/cancelClaim makes impossible even under concurrency. A stored
+ * counter would have been the obvious build and is strictly worse — silently freeing limit that is still
+ * consumed is a wrong answer nobody can see, whereas a derived sum is always exactly the rows that exist.
+ *
+ * 'draft' is deliberately absent: a saved-for-later claim holds nothing.
+ */
+export const RESERVING_STATUSES = ['pending', 'approved', 'paid'] as const;
+/** Already-decided consumption — what an APPROVAL is re-checked against (the claim under decision excluded). */
+export const SETTLED_STATUSES = ['approved', 'paid'] as const;
+/** Holds nothing: never filed, or filed and released. Complement of RESERVING_STATUSES over CLAIM_STATUSES. */
+export const NON_RESERVING_STATUSES = ['draft', 'rejected', 'cancelled'] as const;
+
+type ClaimStatus = (typeof RESERVING_STATUSES)[number];
+
+/**
+ * The advisory-lock key that serializes every limit decision for one (tenant × employee × claim type).
+ *
+ * WHY A LOCK AT ALL — this is the defect the item is really about. The limit checks are read-then-write:
+ * sum the reserved rows, compare, insert or update. Two transactions doing that at the same instant each
+ * read a sum that does not include the other's uncommitted row, both pass, and both commit — so the total
+ * lands over the configured limit with no error anywhere. It is invisible precisely because every
+ * individual check was correct. Serializing the pair closes it; nothing else does, short of SERIALIZABLE
+ * isolation for the whole application.
+ *
+ * WHY pg_advisory_xact_lock SPECIFICALLY:
+ *   • It is released by COMMIT **or ROLLBACK**, by Postgres, with no unlock call in this file. A lock this
+ *     code had to release by hand is a lock some future early-return leaks, and a leaked lock on the money
+ *     path wedges every claim for that employee.
+ *   • It is scoped to the pair that actually contends. Locking the claim_policy row would serialize every
+ *     employee on that type against each other; locking nothing at all is today's bug.
+ *   • It needs no schema, so it cannot drift from the rows it protects.
+ * hashtextextended gives a stable bigint from the key text (collisions merely over-serialize; they cannot
+ * corrupt, because the check that follows re-reads the real rows).
+ *
+ * Exported so tests can hold the SAME key from an independent session and prove the block is real rather
+ * than inferring it from a race that happened to come out right.
+ */
+export function claimLimitLockKey(tenantId: string, employmentId: string, claimTypeId: string): string {
+  return `claim-limit:${tenantId}:${employmentId}:${claimTypeId}`;
+}
+
+/** Take the (employee × type) limit lock for the rest of THIS transaction. Ordering: callers that also
+ *  lock a claim ROW must take this first, then the row — never the other way round, or two decisions on
+ *  different claims of the same pair can deadlock. */
+async function lockClaimLimit(tx: Tx, tenantId: string, employmentId: string, claimTypeId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${claimLimitLockKey(tenantId, employmentId, claimTypeId)}, 0))`);
+}
+
 /** Period scope for a limit check, resolved off the claim's incurred_on date (YYYY-MM-DD):
  *   'year'     → same calendar year   ·   'month' → same calendar month   ·   'lifetime' → all-time. */
 type LimitScope = 'year' | 'month' | 'lifetime';
@@ -713,17 +789,43 @@ type SubmitClaimInput = {
   hasReceipt?: boolean;
 };
 
-/** The submit body, running INSIDE a caller-provided tx so it can be composed atomically with a receipt
- *  write (see submitClaimWithAttachment). The date-format guard runs before the tx opens in the public
- *  wrappers; everything that touches the DB lives here so a downstream failure rolls the claim back too. */
-async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): Promise<{ id: string }> {
+/** What validation+pricing decides for a claim about to enter the reserved set. */
+type PricedClaim = { amount: number; quantityKm: number | null; claimItemId: string | null; taxable: boolean };
+
+/**
+ * Validate, price and RESERVE-CHECK one claim, inside the caller's transaction.
+ *
+ * Extracted from insertClaimTx (e7eb5d83) because a draft being submitted has to run the identical
+ * gauntlet a fresh submit does — same item rule, same receipt window, same authoritative pricing, same
+ * limits — and two copies of a limit check is how one of them ends up a version behind the other.
+ *
+ * It does NOT write. The caller performs the state change (INSERT for a new claim, UPDATE draft→pending
+ * for a draft) in the SAME transaction, so the lock taken here is still held when the reservation is
+ * actually taken. That co-location is the correctness property: the check and the write it authorises
+ * cannot be separated by another transaction's commit.
+ *
+ * `excludeId` keeps a row from counting itself. A draft is not in RESERVING_STATUSES so it never would —
+ * it is passed anyway, because "the row being priced is never part of the sum it is compared against" is a
+ * property worth holding unconditionally rather than one that depends on today's classification.
+ */
+async function priceAndCheckClaimTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: SubmitClaimInput & { excludeId?: string },
+): Promise<PricedClaim> {
+  // 1. THE LIMIT LOCK, before the first limit read and before any other lock. Everything from here to this
+  //    transaction's COMMIT is serialized against every other submit/approve for this (employee × type),
+  //    which is what makes the sums below a reservation rather than a guess.
+  await lockClaimLimit(tx, ctx.tenantId, p.employmentId, p.claimTypeId);
+
   // 2. Load the type + the claimant's grade + the grade-resolved active policy (also carries rateConfig).
   const [ct] = await tx.select().from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
   if (!ct) throw new ClaimError('Unknown or archived claim type');
   const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, p.employmentId)).limit(1);
   const gradeId = emp?.gradeId ?? null;
   const policy = await getActiveClaimPolicy(tx, p.claimTypeId, p.incurredOn, gradeId);
-  const committed: ClaimStatus[] = ['pending', 'approved', 'paid'];
+  const committed: ClaimStatus[] = [...RESERVING_STATUSES];
+  const excludeId = p.excludeId;
 
   // 3. Item validation (D5): if the type has ≥1 live item, an item is required and must belong to the type.
   const items = await activeItemsFor(tx, p.claimTypeId);
@@ -755,7 +857,7 @@ async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): 
     );
   }
   if (policy?.annualBudget != null) {
-    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'year', p.incurredOn, committed);
+    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'year', p.incurredOn, committed, excludeId);
     if (used + amount > policy.annualBudget) {
       const remaining = Math.max(0, policy.annualBudget - used);
       throw new ClaimError(
@@ -766,7 +868,7 @@ async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): 
     }
   }
   if (policy?.monthlyLimit != null) {
-    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'month', p.incurredOn, committed);
+    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'month', p.incurredOn, committed, excludeId);
     if (used + amount > policy.monthlyLimit) {
       const remaining = Math.max(0, policy.monthlyLimit - used);
       throw new ClaimError(
@@ -776,7 +878,7 @@ async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): 
     }
   }
   if (policy?.lifetimeLimit != null) {
-    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'lifetime', p.incurredOn, committed);
+    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'lifetime', p.incurredOn, committed, excludeId);
     if (used + amount > policy.lifetimeLimit) {
       const remaining = Math.max(0, policy.lifetimeLimit - used);
       throw new ClaimError(
@@ -786,7 +888,7 @@ async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): 
     }
   }
   if (policy?.maxClaimsPerYear != null) {
-    const count = await claimCountInScope(tx, p.employmentId, p.claimTypeId, 'year', p.incurredOn, committed);
+    const count = await claimCountInScope(tx, p.employmentId, p.claimTypeId, 'year', p.incurredOn, committed, excludeId);
     if (count + 1 > policy.maxClaimsPerYear) {
       throw new ClaimError(
         `You have reached the maximum of ${policy.maxClaimsPerYear} claim(s) allowed this year for this claim type.`,
@@ -797,7 +899,17 @@ async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): 
   // 6. Receipt-required check (type-level, unchanged).
   if (ct.requiresReceipt && !p.hasReceipt) throw new ClaimError('A receipt is required for this claim type');
 
-  // 7. Insert with the dependent item, mileage km, and computed amount.
+  return { amount, quantityKm, claimItemId, taxable: ct.defaultTaxable };
+}
+
+/** The submit body, running INSIDE a caller-provided tx so it can be composed atomically with a receipt
+ *  write (see submitClaimWithAttachment). The date-format guard runs before the tx opens in the public
+ *  wrappers; everything that touches the DB lives here so a downstream failure rolls the claim back too. */
+async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): Promise<{ id: string }> {
+  const { amount, quantityKm, claimItemId, taxable } = await priceAndCheckClaimTx(tx, ctx, p);
+
+  // Insert with the dependent item, mileage km, and computed amount — still inside the limit lock taken by
+  // priceAndCheckClaimTx, so the row joins the reserved set before any other transaction can read the sum.
   const [row] = await tx
     .insert(claimRequest)
     .values({
@@ -809,7 +921,7 @@ async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): 
       quantityKm: quantityKm == null ? null : quantityKm.toFixed(2),
       incurredOn: p.incurredOn,
       description: p.description ?? null,
-      taxable: ct.defaultTaxable,
+      taxable,
     })
     .returning({ id: claimRequest.id });
   await appendEvent(tx, {
@@ -822,7 +934,7 @@ async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): 
     // ADR-0030 Layer 0: amount + quantityKm live on claim_request[aggregateId]; reference, not cleartext in
     // the log (km × a readable per-km rate would reconstruct the redacted amount). claimItemId is safe (a
     // non-sensitive sub-category reference), so it is logged.
-    payload: { claimTypeId: p.claimTypeId, claimItemId, incurredOn: p.incurredOn, taxable: ct.defaultTaxable },
+    payload: { claimTypeId: p.claimTypeId, claimItemId, incurredOn: p.incurredOn, taxable },
   });
   return { id: row.id };
 }
@@ -864,14 +976,42 @@ export async function submitClaimWithAttachment(
   });
 }
 
-/** Approve or reject a pending claim. assertCanDecide bans self-approval + requires admin/active manager.
- *  On approve, the decider may confirm/override `taxable`, and the annual budget is re-checked. */
+/**
+ * Approve or reject a pending claim. assertCanDecide bans self-approval + requires admin/active manager.
+ * On approve, the decider may confirm/override `taxable`, and the annual budget is re-checked.
+ *
+ * TWO LOCKS, IN THIS ORDER, AND THE ORDER IS NOT ARBITRARY (e7eb5d83):
+ *
+ *   1. the (employee × type) advisory lock — so the re-check below and the UPDATE that acts on it cannot
+ *      be interleaved with another decision on a DIFFERENT claim of the same pair. Without it, two
+ *      approvers clicking at the same instant each read a settled total that excludes the other's
+ *      uncommitted approval, both pass, and the employee ends up approved past their limit with no error
+ *      raised anywhere. That is the wrong answer this item exists to remove.
+ *   2. SELECT … FOR UPDATE on the claim row itself — so the SAME claim cannot be decided twice. The status
+ *      read used to be an unlocked SELECT, which meant a concurrent approve+cancel (or two approves) could
+ *      both see 'pending', both write, and both append a decision event to a claim that only moved once.
+ *      Since the reservation is derived from status, a claim released twice is precisely a limit freed
+ *      twice — the failure mode a stored reserved-amount column would have made routine.
+ *
+ * Advisory-before-row is the fixed ordering everywhere in this file: taking the row first would let two
+ * decisions on different claims of one pair hold each other's next lock and deadlock.
+ */
 export async function decideClaim(
   ctx: SessionContext,
   p: { claimRequestId: string; decision: 'approve' | 'reject'; taxable?: boolean; deciderEmploymentId?: string | null },
 ): Promise<void> {
   await withTenant(ctx, async (tx) => {
-    const [claim] = await tx.select().from(claimRequest).where(eq(claimRequest.id, p.claimRequestId)).limit(1);
+    // Unlocked peek, ONLY to learn which (employee × type) lock this claim belongs to. Nothing is decided
+    // on it — the authoritative read is the FOR UPDATE one below, taken after the lock is held.
+    const [head] = await tx
+      .select({ employmentId: claimRequest.employmentId, claimTypeId: claimRequest.claimTypeId })
+      .from(claimRequest)
+      .where(eq(claimRequest.id, p.claimRequestId))
+      .limit(1);
+    if (!head) throw new ClaimError('Claim not found');
+    await lockClaimLimit(tx, ctx.tenantId, head.employmentId, head.claimTypeId);
+
+    const [claim] = await tx.select().from(claimRequest).where(eq(claimRequest.id, p.claimRequestId)).limit(1).for('update');
     if (!claim) throw new ClaimError('Claim not found');
     if (claim.status !== 'pending') throw new ClaimError('Only a pending claim can be decided');
     await assertCanDecide(tx, ctx, claim.employmentId, 'claim', scopeOf('claims.claim'));
@@ -881,7 +1021,7 @@ export async function decideClaim(
       const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, claim.employmentId)).limit(1);
       const policy = await getActiveClaimPolicy(tx, claim.claimTypeId, claim.incurredOn, emp?.gradeId ?? null);
       const amount = Number(claim.amount);
-      const settled: ClaimStatus[] = ['approved', 'paid'];
+      const settled: ClaimStatus[] = [...SETTLED_STATUSES];
       if (policy?.annualBudget != null) {
         const others = await claimedInScope(tx, claim.employmentId, claim.claimTypeId, 'year', claim.incurredOn, settled, claim.id);
         if (others + amount > policy.annualBudget) {
@@ -936,9 +1076,26 @@ export async function decideClaim(
   });
 }
 
-/** Cancel a pending claim (the claimant or an admin). */
+/**
+ * Cancel a pending claim (the claimant or an admin) — the RELEASE half of the reservation.
+ *
+ * There is nothing here that subtracts an amount, and that is the point: the claim leaves
+ * RESERVING_STATUSES, so the next sum simply does not include it. The only way this could release twice is
+ * if the status moved twice, which the row lock below forbids — the same lock decideClaim takes, so an
+ * approve and a cancel racing on one claim resolve to exactly one of the two, and the loser is told the
+ * claim is no longer pending instead of silently overwriting the winner.
+ */
 export async function cancelClaim(ctx: SessionContext, claimRequestId: string): Promise<void> {
   await withTenant(ctx, async (tx) => {
+    // Row lock FIRST (no limit read here, so no advisory lock is needed — and taking one would invert the
+    // advisory-before-row ordering decideClaim relies on).
+    const [locked] = await tx
+      .select({ id: claimRequest.id, status: claimRequest.status, employmentId: claimRequest.employmentId })
+      .from(claimRequest)
+      .where(eq(claimRequest.id, claimRequestId))
+      .limit(1)
+      .for('update');
+    if (!locked) throw new ClaimError('Claim not found');
     const [claim] = await tx
       .select({ id: claimRequest.id, status: claimRequest.status, employmentId: claimRequest.employmentId, personId: employment.personId })
       .from(claimRequest)
@@ -960,6 +1117,291 @@ export async function cancelClaim(ctx: SessionContext, claimRequestId: string): 
       subjectEmploymentId: claim.employmentId,
     });
   });
+}
+
+// ─────────────────────────── Draft claims (e7eb5d83 stage 1) ───────────────────────────
+//
+// A draft is a claim_request row in status 'draft'. It is NOT a separate object, and that was the design
+// decision: a parallel "draft claim" table would need every column claim_request has, would drift from it,
+// and would make "submit" a copy rather than a transition — losing the row's identity, its attachments and
+// its history at the exact moment it starts to matter.
+//
+// WHAT A DRAFT IS NOT:
+//   • not reserved — 'draft' is outside RESERVING_STATUSES, so a saved draft holds none of the limit;
+//   • not visible to an approver — listPendingClaims selects status = 'pending';
+//   • not payable — both payout paths select 'approved'/'paid', and 0392's CHECK refuses a draft that
+//     carries any payout provenance at all;
+//   • not notified — core/notifications.ts has no mapping for the draft events, so saving one raises
+//     nothing for anybody. The plan is explicit that a draft must not reach an approver.
+//
+// WHAT IS DELIBERATELY NOT CHECKED AT SAVE TIME: limits, the receipt requirement and the receipt-date
+// window. A draft is work in progress; refusing to SAVE it because the amount is over budget or the date is
+// still blank defeats the entire feature. Every one of those checks runs at SUBMIT, in
+// priceAndCheckClaimTx, against the policy in force THEN — a draft saved in December and submitted in
+// January is priced by January's rate, which is the only defensible answer.
+
+/** What an employee may set on a draft. Same shape as a submit, minus the receipt flag (a draft's receipt
+ *  is attached separately and is not required until submit). */
+export type DraftClaimInput = {
+  employmentId: string;
+  claimTypeId: string;
+  claimItemId?: string | null;
+  amount: number;
+  quantityKm?: number | null;
+  incurredOn: string;
+  description?: string | null;
+};
+
+/** Amount a draft SHOWS in the list. Provisional only — the authoritative amount is derived at submit from
+ *  the policy in force then. Returns 0 rather than throwing when the rate config cannot price the draft
+ *  yet (a mileage draft with no distance typed), because a half-filled draft is the normal case. */
+function provisionalAmount(rateConfig: ClaimRateConfig | null, p: { quantityKm?: number | null; enteredAmount?: number | null }): number {
+  try {
+    const n = computeClaimAmount(rateConfig, p);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** The claimant's own person id must match, or the caller is not the owner. Managers and admins can SEE a
+ *  draft through RLS (can_see_employment) — they may not edit, submit or delete one. A draft is private
+ *  working material until its author decides otherwise; an admin acting on someone's unsubmitted claim is
+ *  indistinguishable from filing a claim in their name. */
+async function assertDraftOwner(tx: Tx, ctx: SessionContext, employmentId: string): Promise<void> {
+  const [emp] = await tx.select({ personId: employment.personId }).from(employment).where(eq(employment.id, employmentId)).limit(1);
+  if (!emp) throw new ClaimError('Claim not found');
+  if (ctx.personId == null || emp.personId !== ctx.personId) {
+    throw new ClaimError('Only the claimant can edit or submit their own draft claim');
+  }
+}
+
+/**
+ * Create a draft, or update one the caller owns (pass `id`). Reserves nothing and notifies nobody.
+ *
+ * Validation is limited to what would make the row meaningless: a live claim type, an item that actually
+ * belongs to it when one is given, and a well-formed date. Note the item rule is LOOSER than submit's — a
+ * draft may omit an item the type will eventually require, because "I haven't chosen yet" is the point of
+ * a draft. Submit refuses it.
+ */
+export async function saveClaimDraft(
+  ctx: SessionContext,
+  p: DraftClaimInput & { id?: string },
+  attachment: { fileName: string; mimeType: string; content: Buffer } | null = null,
+): Promise<{ id: string }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn)) throw new ClaimError('Incurred date must be YYYY-MM-DD');
+  // Validated before the tx opens, exactly as submitClaimWithAttachment does, so a bad file never starts a
+  // draft write it will then have to roll back.
+  if (attachment) assertValidAttachment(attachment.mimeType, attachment.content);
+  return withTenant(ctx, async (tx) => {
+    await assertDraftOwner(tx, ctx, p.employmentId);
+    const [ct] = await tx.select().from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
+    if (!ct) throw new ClaimError('Unknown or archived claim type');
+    const items = await activeItemsFor(tx, p.claimTypeId);
+    let claimItemId: string | null = null;
+    if (p.claimItemId) {
+      if (!items.some((i) => i.id === p.claimItemId)) throw new ClaimError('That claim item does not belong to this claim type');
+      claimItemId = p.claimItemId;
+    }
+    const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, p.employmentId)).limit(1);
+    const policy = await getActiveClaimPolicy(tx, p.claimTypeId, p.incurredOn, emp?.gradeId ?? null);
+    const quantityKm = policy?.rateConfig?.kind === 'mileage_flat' ? (p.quantityKm ?? null) : null;
+    const amount = provisionalAmount(policy?.rateConfig ?? null, { quantityKm: p.quantityKm, enteredAmount: p.amount });
+    const values = {
+      claimTypeId: p.claimTypeId,
+      claimItemId,
+      amount: amount.toFixed(2),
+      quantityKm: quantityKm == null ? null : quantityKm.toFixed(2),
+      incurredOn: p.incurredOn,
+      description: p.description ?? null,
+      taxable: ct.defaultTaxable,
+    };
+
+    if (p.id) {
+      // Row lock before the status read: an edit racing this draft's own submit must not overwrite a claim
+      // that has already become pending (which would let an employee change a filed claim's amount).
+      const [existing] = await tx
+        .select({ id: claimRequest.id, status: claimRequest.status, employmentId: claimRequest.employmentId })
+        .from(claimRequest)
+        .where(eq(claimRequest.id, p.id))
+        .limit(1)
+        .for('update');
+      if (!existing) throw new ClaimError('Claim not found');
+      if (existing.status !== 'draft') throw new ClaimError('Only a draft claim can be edited');
+      await assertDraftOwner(tx, ctx, existing.employmentId);
+      await tx.update(claimRequest).set(values).where(eq(claimRequest.id, p.id));
+      if (attachment) {
+        await insertClaimAttachmentTx(tx, ctx, { claimRequestId: p.id, employmentId: p.employmentId, status: 'draft', ...attachment });
+      }
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'claim-request',
+        aggregateId: p.id,
+        eventType: 'claim-request.draft-saved',
+        actor: actorOf(ctx),
+        subjectEmploymentId: p.employmentId,
+        // ADR-0030 Layer 0: no amount in the log — it lives on claim_request[aggregateId].
+        payload: { claimTypeId: p.claimTypeId, claimItemId, incurredOn: p.incurredOn },
+      });
+      return { id: p.id };
+    }
+
+    const [row] = await tx
+      .insert(claimRequest)
+      .values({ tenantId: ctx.tenantId, employmentId: p.employmentId, status: 'draft', ...values })
+      .returning({ id: claimRequest.id });
+    if (attachment) {
+      await insertClaimAttachmentTx(tx, ctx, { claimRequestId: row.id, employmentId: p.employmentId, status: 'draft', ...attachment });
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-request',
+      aggregateId: row.id,
+      eventType: 'claim-request.draft-saved',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { claimTypeId: p.claimTypeId, claimItemId, incurredOn: p.incurredOn },
+    });
+    return { id: row.id };
+  });
+}
+
+/** Delete a draft the caller owns, with any receipt already attached to it. Hard delete, not a status
+ *  change: an unsubmitted claim never entered any ledger, so there is nothing for a tombstone to explain —
+ *  and a 'deleted' status would be a sixth thing every reader of the enum has to know about. */
+export async function deleteClaimDraft(ctx: SessionContext, claimRequestId: string): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const [claim] = await tx
+      .select({ id: claimRequest.id, status: claimRequest.status, employmentId: claimRequest.employmentId })
+      .from(claimRequest)
+      .where(eq(claimRequest.id, claimRequestId))
+      .limit(1)
+      .for('update');
+    if (!claim) throw new ClaimError('Claim not found');
+    if (claim.status !== 'draft') throw new ClaimError('Only a draft claim can be deleted');
+    await assertDraftOwner(tx, ctx, claim.employmentId);
+    await tx.delete(claimAttachment).where(eq(claimAttachment.claimRequestId, claim.id));
+    await tx.delete(claimRequest).where(eq(claimRequest.id, claim.id));
+    // Appended AFTER the delete and deliberately outside the aggregate's own row: the event is the only
+    // remaining record that the draft existed.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-request',
+      aggregateId: claim.id,
+      eventType: 'claim-request.draft-deleted',
+      actor: actorOf(ctx),
+      subjectEmploymentId: claim.employmentId,
+    });
+  });
+}
+
+/**
+ * Submit one or more of the caller's own drafts — the bulk "Submit Selected" the item asks for.
+ *
+ * ALL-OR-NOTHING, IN ONE TRANSACTION, AND THAT IS THE INTERESTING DECISION. Best-effort ("submit the ones
+ * that fit") is friendlier and is wrong here: the drafts in a batch compete for the SAME limit, so a
+ * partial success means the system silently chose which of the employee's claims to file, in whatever
+ * order the ids arrived. Rolling the whole batch back and naming the claim that did not fit leaves the
+ * choice with the person whose money it is.
+ *
+ * Each draft is checked against the state produced by the ones before it in the batch — the flip to
+ * 'pending' happens inside the same transaction, so the second draft's limit read already includes the
+ * first. A batch that fits individually but not collectively is refused, which is the case a per-claim
+ * loop over separate transactions would wave through.
+ *
+ * The (employee × type) locks are taken in sorted key order (priceAndCheckClaimTx takes them one per
+ * claim, and the batch is sorted by claim type first) so two employees' batches — or one employee's two
+ * tabs — can never hold each other's next lock.
+ */
+export async function submitDraftClaims(ctx: SessionContext, p: { ids: string[] }): Promise<{ submitted: number }> {
+  const ids = Array.from(new Set(p.ids.filter((s) => typeof s === 'string' && s.length > 0)));
+  if (ids.length === 0) throw new ClaimError('Select at least one draft claim to submit');
+  return withTenant(ctx, async (tx) => {
+    const drafts = await tx
+      .select({
+        id: claimRequest.id,
+        status: claimRequest.status,
+        employmentId: claimRequest.employmentId,
+        claimTypeId: claimRequest.claimTypeId,
+        claimItemId: claimRequest.claimItemId,
+        amount: claimRequest.amount,
+        quantityKm: claimRequest.quantityKm,
+        incurredOn: claimRequest.incurredOn,
+        description: claimRequest.description,
+        typeName: claimType.name,
+      })
+      .from(claimRequest)
+      .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
+      .where(inArray(claimRequest.id, ids))
+      // Locked up front, in id order, so two concurrent bulk submits over overlapping selections queue
+      // rather than both reading 'draft' and both filing the same claim twice.
+      .orderBy(claimRequest.id)
+      .for('update', { of: claimRequest });
+    if (drafts.length !== ids.length) throw new ClaimError('One or more of those claims no longer exists');
+
+    // Deterministic lock order for the advisory locks priceAndCheckClaimTx will take — sorted by the LOCK
+    // KEY itself, not by claim id. A batch holds several locks at once, so two batches acquiring the same
+    // keys in different orders is a textbook deadlock; ordering by the key makes any two batches agree.
+    // (One person can hold two employments, so the employment id is part of the key and of the sort.)
+    const lockKeyOf = (d: { employmentId: string; claimTypeId: string }) => claimLimitLockKey(ctx.tenantId, d.employmentId, d.claimTypeId);
+    const ordered = [...drafts].sort((a, b) => lockKeyOf(a).localeCompare(lockKeyOf(b)) || a.id.localeCompare(b.id));
+
+    for (const d of ordered) {
+      if (d.status !== 'draft') throw new ClaimError(`"${d.typeName}" is no longer a draft and cannot be submitted again`);
+      await assertDraftOwner(tx, ctx, d.employmentId);
+      const hasReceipt = await draftHasAttachment(tx, d.id);
+      let priced;
+      try {
+        priced = await priceAndCheckClaimTx(tx, ctx, {
+          employmentId: d.employmentId,
+          claimTypeId: d.claimTypeId,
+          claimItemId: d.claimItemId,
+          amount: Number(d.amount),
+          quantityKm: d.quantityKm == null ? null : Number(d.quantityKm),
+          incurredOn: d.incurredOn,
+          description: d.description,
+          hasReceipt,
+          excludeId: d.id,
+        });
+      } catch (e) {
+        // Name the claim. In a batch of five, "Amount must be greater than zero" with no subject is a
+        // message the employee cannot act on.
+        throw new ClaimError(`"${d.typeName}" (${d.incurredOn}) cannot be submitted: ${(e as Error).message}`);
+      }
+      // The transition IS the reservation, and it happens under the lock priceAndCheckClaimTx just took.
+      await tx
+        .update(claimRequest)
+        .set({
+          status: 'pending',
+          claimItemId: priced.claimItemId,
+          amount: priced.amount.toFixed(2),
+          quantityKm: priced.quantityKm == null ? null : priced.quantityKm.toFixed(2),
+          taxable: priced.taxable,
+        })
+        .where(eq(claimRequest.id, d.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'claim-request',
+        aggregateId: d.id,
+        // The SAME event a fresh submit appends: downstream (notifications, approval history, the audit
+        // trail) must not have to learn that a claim can arrive by two different names.
+        eventType: 'claim-request.submitted',
+        actor: actorOf(ctx),
+        subjectEmploymentId: d.employmentId,
+        payload: { claimTypeId: d.claimTypeId, claimItemId: priced.claimItemId, incurredOn: d.incurredOn, taxable: priced.taxable, fromDraft: true },
+      });
+    }
+    return { submitted: ordered.length };
+  });
+}
+
+/** Does this draft already carry a receipt? Decides the type-level requiresReceipt check at submit. */
+async function draftHasAttachment(tx: Tx, claimRequestId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(claimAttachment)
+    .where(eq(claimAttachment.claimRequestId, claimRequestId));
+  return Number(row?.n ?? 0) > 0;
 }
 
 /** Receipt MIME allowlist (fail-closed): only PDF / JPG / PNG. The action sniffs magic bytes to derive a
@@ -984,7 +1426,12 @@ async function insertClaimAttachmentTx(
   ctx: SessionContext,
   p: { claimRequestId: string; employmentId: string; status: string; fileName: string; mimeType: string; content: Buffer },
 ): Promise<{ id: string }> {
-  if (p.status !== 'pending') throw new ClaimError('Receipts can only be added while the claim is pending');
+  // e7eb5d83: 'draft' joins 'pending' here. A draft that could not carry its receipt would force the
+  // employee to keep the file until submit day, which is the paperwork the feature exists to remove — and
+  // the receipt REQUIREMENT is still enforced at submit, not at save, so this loosens nothing.
+  if (p.status !== 'pending' && p.status !== 'draft') {
+    throw new ClaimError('Receipts can only be added while the claim is a draft or pending');
+  }
   const [row] = await tx
     .insert(claimAttachment)
     .values({
@@ -1053,6 +1500,9 @@ export async function getClaimAttachment(
 
 export type ClaimRow = {
   id: string;
+  /** Carried so the Drafts list can re-open a draft in the submission form without a second read. */
+  claimTypeId: string;
+  claimItemId: string | null;
   typeCode: string;
   typeName: string;
   itemName: string | null;
@@ -1074,6 +1524,8 @@ export type ClaimRow = {
 function rowSelect() {
   return {
     id: claimRequest.id,
+    claimTypeId: claimRequest.claimTypeId,
+    claimItemId: claimRequest.claimItemId,
     typeCode: claimType.code,
     typeName: claimType.name,
     itemName: claimItem.name,
@@ -1110,6 +1562,8 @@ async function attachmentsByClaim(tx: Tx, claimIds: string[]) {
 
 type RawClaimRow = {
   id: string;
+  claimTypeId: string;
+  claimItemId: string | null;
   typeCode: string;
   typeName: string;
   itemName: string | null;
@@ -1130,6 +1584,8 @@ type RawClaimRow = {
 
 const toRow = (r: RawClaimRow, atts: Map<string, ClaimRow['attachments']>): ClaimRow => ({
   id: r.id,
+  claimTypeId: r.claimTypeId,
+  claimItemId: r.claimItemId,
   typeCode: r.typeCode,
   typeName: r.typeName,
   itemName: r.itemName,
