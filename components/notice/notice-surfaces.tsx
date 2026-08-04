@@ -61,6 +61,7 @@ export async function NoticePopupSlot({ s }: { s: SessionContext }) {
     <NoticePopup
       noticeId={due.id}
       title={due.title}
+      body={due.body}
       href={`/notices/${due.id}`}
       readLabel={t('popupRead')}
       dismissLabel={t('popupDismiss')}

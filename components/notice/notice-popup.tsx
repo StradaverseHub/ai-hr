@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
 
+import { Markdown } from '@/components/markdown';
 import { Button } from '@/components/ui';
 
 type Action = (fd: FormData) => void | Promise<void>;
@@ -32,6 +33,7 @@ type Action = (fd: FormData) => void | Promise<void>;
 export function NoticePopup({
   noticeId,
   title,
+  body,
   href,
   readLabel,
   dismissLabel,
@@ -39,6 +41,9 @@ export function NoticePopup({
 }: {
   noticeId: string;
   title: string;
+  /** The notice's Markdown. Rendered HERE, not just linked to — a popup that shows only a headline makes
+   *  the employee click through to learn anything, which is the interruption without the communication. */
+  body: string;
   href: string;
   readLabel: string;
   dismissLabel: string;
@@ -54,7 +59,14 @@ export function NoticePopup({
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
           <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
-          <Dialog.Description className="sr-only">{readLabel}</Dialog.Description>
+          {/* Radix requires a Description for the dialog's accessible name; the notice's own content is
+              the description, so it is not duplicated in a hidden one. */}
+          <Dialog.Description className="sr-only">{title}</Dialog.Description>
+          {/* Capped and scrollable: a long policy must not push the buttons off the bottom of the screen,
+              which would leave the employee with a modal they cannot dismiss. */}
+          <div className="mt-3 max-h-[50vh] overflow-y-auto pr-1">
+            <Markdown>{body}</Markdown>
+          </div>
           <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
             {/* Dismiss posts through a real form, so the record is written even if the navigation below
                 never happens. Dialog.Portal reparents this content to document.body — which is why the
