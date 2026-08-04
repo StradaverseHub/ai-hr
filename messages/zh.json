@@ -1366,8 +1366,6 @@
         "remarks": "备注",
         "icNumber": "身份识别号码 (NRIC)",
         "phone": "手机号码",
-        "gender": "性别",
-        "maritalStatus": "婚姻状况",
         "epfNumber": "EPF 号码",
         "socsoNumber": "SOCSO 号码",
         "taxNumber": "税号",
@@ -1425,14 +1423,6 @@
       "selectPrompt": "— 请选择 —",
       "yes": "是",
       "no": "否",
-      "gender": {
-        "male": "男",
-        "female": "女"
-      },
-      "marital": {
-        "single": "单身",
-        "married": "已婚"
-      },
       "citizenship": {
         "citizen": "公民",
         "pr": "永久居民",

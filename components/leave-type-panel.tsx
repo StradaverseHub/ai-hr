@@ -18,6 +18,9 @@ import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/
 import { ESS_VIEW_CHECKLIST_GROUPS } from '@/components/leave/entitlement-panel-config';
 import { applyLeaveFormulaTemplate, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
+// 35b7af0a — the shared person master lists, in a client-safe module so this client component can use the
+// real one instead of the hand-synced copy it used to carry.
+import { MARITAL_STATUSES } from '@/lib/person-vocabulary';
 import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -100,11 +103,18 @@ export type LeaveEligibilityRule = {
   employmentCategory?: string | string[];
 };
 
-/** The checkbox options the eligibility rule form renders. Order matches the mockup. The marital list mirrors
- *  the shared master enum (core/profile.ts MARITAL_STATUSES, #12129e77) — client components can't import the
- *  server module, so it's duplicated here in the same order; keep the two in sync. */
+/** The checkbox options the eligibility rule form renders. Order matches the mockup.
+ *
+ *  35b7af0a — the marital list is no longer a hand-synced copy. It IS the shared master list
+ *  (`lib/person-vocabulary.ts` MARITAL_STATUSES, #12129e77), which moved out of `core/profile.ts` into a
+ *  client-safe module precisely so client components like this one can import it instead of restating it.
+ *  The old comment here said "keep the two in sync"; that obligation is gone.
+ *
+ *  Gender stays a SHORTER, deliberate list: 'undisclosed' is a valid PROFILE value but never a rule value
+ *  (see core/admin.ts ELIGIBILITY_GENDER_OPTIONS and eligibilityUndisclosedNote), so this is a real
+ *  narrowing of the master list, not a drifted copy of it. */
 const ELIGIBILITY_GENDER_OPTIONS = ['male', 'female'] as const;
-const ELIGIBILITY_MARITAL_OPTIONS = ['single', 'married', 'divorced', 'widowed', 'separated', 'other'] as const;
+const ELIGIBILITY_MARITAL_OPTIONS = MARITAL_STATUSES;
 // Day Type Inclusion (feedback ef6d7146): the five day types, in the order the reporter listed them. Each
 // posts `dayType_<key>` when its toggle is on; the closed set mirrors core/leave.ts DAY_TYPE_INCLUSION_KEYS.
 const DAY_TYPE_INCLUSION_OPTIONS = ['offDay', 'restDay', 'publicHoliday', 'companyHoliday', 'shutdownDay'] as const;

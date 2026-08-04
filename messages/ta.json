@@ -1366,8 +1366,6 @@
         "remarks": "குறிப்புகள்",
         "icNumber": "அடையாள எண் (NRIC)",
         "phone": "கைப்பேசி எண்",
-        "gender": "பாலினம்",
-        "maritalStatus": "திருமண நிலை",
         "epfNumber": "EPF எண்",
         "socsoNumber": "SOCSO எண்",
         "taxNumber": "வரி எண்",
@@ -1425,14 +1423,6 @@
       "selectPrompt": "— தேர்ந்தெடுக்கவும் —",
       "yes": "ஆம்",
       "no": "இல்லை",
-      "gender": {
-        "male": "ஆண்",
-        "female": "பெண்"
-      },
-      "marital": {
-        "single": "திருமணமாகாதவர்",
-        "married": "திருமணமானவர்"
-      },
       "citizenship": {
         "citizen": "குடிமகன்",
         "pr": "நிரந்தர வதிவாளர்",

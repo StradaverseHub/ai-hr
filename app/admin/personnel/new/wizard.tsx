@@ -30,6 +30,8 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Check, AlertCircle } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
+// 35b7af0a group 1 — the Gender + Marital Status field group, shared with the Personnel profile card.
+import { PersonDetailsFields } from '@/components/person-details-fields';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DRAFT_STEPS,
@@ -483,28 +485,21 @@ export function EmployeeWizard({
               />
               <p className="mt-1 text-xs text-muted-foreground">{t('hints.dateOfBirth')}</p>
             </Field>
-            <Field label={t('fields.gender')}>
-              <select
-                className={inputCls}
-                value={data.profile?.gender ?? ''}
-                onChange={(e) => set('profile', { gender: e.target.value })}
-              >
-                <option value="">{t('notSet')}</option>
-                <option value="male">{t('gender.male')}</option>
-                <option value="female">{t('gender.female')}</option>
-              </select>
-            </Field>
-            <Field label={t('fields.maritalStatus')}>
-              <select
-                className={inputCls}
-                value={data.profile?.maritalStatus ?? ''}
-                onChange={(e) => set('profile', { maritalStatus: e.target.value })}
-              >
-                <option value="">{t('notSet')}</option>
-                <option value="single">{t('marital.single')}</option>
-                <option value="married">{t('marital.married')}</option>
-              </select>
-            </Field>
+            {/* 35b7af0a group 1 — Gender and Marital Status are no longer the wizard's own selects with
+                the wizard's own labels. They are the SAME field group the Personnel profile card renders
+                (components/person-details-fields.tsx), drawing on the master lists in
+                lib/person-vocabulary.ts. This is not only de-duplication: the wizard's private copy had
+                fallen four marital values and one gender value behind the profile screen, so HR could not
+                hire anybody as divorced, widowed, separated or undisclosed — while a leave rule written
+                for exactly those values was already possible (#12129e77). One list, one set of labels,
+                and a value HR can pick here is by construction one core/profile.ts will accept. */}
+            <PersonDetailsFields
+              mode="controlled"
+              gender={data.profile?.gender}
+              maritalStatus={data.profile?.maritalStatus}
+              onGenderChange={(v) => set('profile', { gender: v })}
+              onMaritalStatusChange={(v) => set('profile', { maritalStatus: v })}
+            />
           </div>
         )}
 

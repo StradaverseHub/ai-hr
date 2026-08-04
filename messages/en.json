@@ -1366,8 +1366,6 @@
         "remarks": "Remarks",
         "icNumber": "Identity No (NRIC)",
         "phone": "Mobile Phone Number",
-        "gender": "Gender",
-        "maritalStatus": "Marital status",
         "epfNumber": "EPF number",
         "socsoNumber": "SOCSO number",
         "taxNumber": "Tax number",
@@ -1425,14 +1423,6 @@
       "selectPrompt": "— Select —",
       "yes": "Yes",
       "no": "No",
-      "gender": {
-        "male": "Male",
-        "female": "Female"
-      },
-      "marital": {
-        "single": "Single",
-        "married": "Married"
-      },
       "citizenship": {
         "citizen": "Citizen",
         "pr": "Permanent resident",

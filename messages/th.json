@@ -1366,8 +1366,6 @@
         "remarks": "หมายเหตุ",
         "icNumber": "หมายเลขประจำตัว (NRIC)",
         "phone": "หมายเลขโทรศัพท์มือถือ",
-        "gender": "เพศ",
-        "maritalStatus": "สถานภาพสมรส",
         "epfNumber": "หมายเลข EPF",
         "socsoNumber": "หมายเลข SOCSO",
         "taxNumber": "หมายเลขภาษี",
@@ -1425,14 +1423,6 @@
       "selectPrompt": "— เลือก —",
       "yes": "ใช่",
       "no": "ไม่",
-      "gender": {
-        "male": "ชาย",
-        "female": "หญิง"
-      },
-      "marital": {
-        "single": "โสด",
-        "married": "สมรส"
-      },
       "citizenship": {
         "citizen": "พลเมือง",
         "pr": "ผู้มีถิ่นที่อยู่ถาวร",

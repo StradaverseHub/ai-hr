@@ -1366,8 +1366,6 @@
         "remarks": "Ghi chú",
         "icNumber": "Số định danh (NRIC)",
         "phone": "Số điện thoại di động",
-        "gender": "Giới tính",
-        "maritalStatus": "Tình trạng hôn nhân",
         "epfNumber": "Số EPF",
         "socsoNumber": "Số SOCSO",
         "taxNumber": "Mã số thuế",
@@ -1425,14 +1423,6 @@
       "selectPrompt": "— Chọn —",
       "yes": "Có",
       "no": "Không",
-      "gender": {
-        "male": "Nam",
-        "female": "Nữ"
-      },
-      "marital": {
-        "single": "Độc thân",
-        "married": "Đã kết hôn"
-      },
       "citizenship": {
         "citizen": "Công dân",
         "pr": "Thường trú nhân",

@@ -13,6 +13,9 @@ import { employeeStatutoryMy, employment, person, profileChangeRequest } from '.
 import { assertCanDecide } from './approvals';
 // 23ad620e — the emergency contact lives in its own per-person register; /me reads and writes the primary.
 import { primaryEmergencyContactSql, writeSingleEmergencyContactInTx } from './emergency-contacts';
+// 35b7af0a — the person master lists, defined in a CLIENT-SAFE module and re-exported below (see the note
+// there). Client components render the same lists this module validates saves against.
+import { GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
 
 const clean = (v: unknown): string | null => {
   const s = String(v ?? '').trim();
@@ -22,13 +25,19 @@ const oneOf = (v: unknown, allowed: readonly string[]): string | null => {
   const s = clean(v);
   return s && allowed.includes(s) ? s : null;
 };
-export const GENDERS = ['male', 'female', 'undisclosed'] as const;
-// Centralized marital-status master list (#12129e77). Every surface that lets a value be chosen for an
-// employee record — HR-set personnel card, ESS self-edit, and the leave-eligibility rule form — must draw
-// from this one list so a rule value (e.g. 'divorced') always has a reachable matching profile value.
-// 'other' is retained as a valid legacy value (existing rows may store it); the real-world set adds
-// divorced/widowed/separated.
-export const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed', 'separated', 'other'] as const;
+// Centralized person master lists (#12129e77). Every surface that lets a value be chosen for an employee
+// record — HR-set personnel card, the Create New Employee wizard, ESS self-edit, and the leave-eligibility
+// rule form — must draw from this one list so a rule value (e.g. 'divorced') always has a reachable
+// matching profile value.
+//
+// 35b7af0a — the DEFINITION now lives in `lib/person-vocabulary.ts` (imported at the top of this file) and
+// is only re-exported here. Two of those surfaces are CLIENT components and could not import this module at
+// all (it pulls in the database), so they carried hand-synced copies — and the Create New Employee wizard's
+// copy had silently fallen ONE value behind on gender and FOUR behind on marital status. Re-exported rather
+// than redefined, so every existing `import { MARITAL_STATUSES } from './profile'` keeps working AND keeps
+// the same array IDENTITY: core/admin.ts sets ELIGIBILITY_MARITAL_OPTIONS = MARITAL_STATUSES and
+// test/marital-master-enum.test.ts asserts that with `toBe`.
+export { GENDERS, MARITAL_STATUSES };
 
 export type ProfileChangeProposed = {
   // Pay-affecting statutory fields (employee_statutory_my).

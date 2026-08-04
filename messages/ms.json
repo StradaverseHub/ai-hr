@@ -1366,8 +1366,6 @@
         "remarks": "Catatan",
         "icNumber": "No. Identiti (NRIC)",
         "phone": "Nombor Telefon Bimbit",
-        "gender": "Jantina",
-        "maritalStatus": "Status perkahwinan",
         "epfNumber": "Nombor EPF",
         "socsoNumber": "Nombor SOCSO",
         "taxNumber": "Nombor cukai",
@@ -1425,14 +1423,6 @@
       "selectPrompt": "— Pilih —",
       "yes": "Ya",
       "no": "Tidak",
-      "gender": {
-        "male": "Lelaki",
-        "female": "Perempuan"
-      },
-      "marital": {
-        "single": "Bujang",
-        "married": "Berkahwin"
-      },
       "citizenship": {
         "citizen": "Warganegara",
         "pr": "Penduduk tetap",
