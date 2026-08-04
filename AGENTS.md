@@ -43,8 +43,10 @@ HEAD — create worktrees from `main` yourself.
 7. **Reproduce on production before agreeing a ticket's premise.** Check already-built → mislabelled
    → adjacent screen → diagnosis inverted → wider than reported, before "absent". Repeatedly, the
    reported fault was not the real one.
-8. **The deploy rsync has no `--delete`** — remove deleted files on the box by hand; proof of arrival
-   is a zero-change `rsync -azi --dry-run`, not `deploy.sh` succeeding.
+8. **The deploy rsync DOES carry `--delete`** (release.ts:71; verified r137 — corrected from an older
+   note here that said it did not). Keep it in any hand-rolled rsync; excluded paths like
+   `.env.production` are protected from deletion. Proof of arrival is a zero-change
+   `rsync -azi --dry-run`, not `deploy.sh` succeeding.
 9. **Board plans are plain text, one course of action** — approve carries no payload, so a plan that
    asks the reporter to choose can never be answered. Use the `feedback-plan` skill.
 10. **Don't re-diagnose the Postgres teardown checkpoint stall.** Results are final at `Duration`;
