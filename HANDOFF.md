@@ -18,69 +18,65 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-04 (r136 SHIPPED; r137 BUILT, NOT SHIPPED)
+## CURRENT STATE — snapshot 2026-08-04 (r137 SHIPPED)
 
-**`main@88a74787` is what runs. Production on 312 migrations. Next free migration number is `0386`.**
-No half-applied migration, no pending deploy. None of r134–r137 adds a migration.
+**`main@1e737a36` is what runs. Production on 312 migrations. Next free migration number is `0386`.**
+No half-applied migration, no pending deploy, nothing in flight. None of r134–r137 adds a migration.
+Verified after deploy: service active, `GET /` 401, `/login` 200, `rsync --dry-run` zero changes.
 
-### ⚠️ IN FLIGHT: `build/r137` at `e23038ee` — one clean full gate is all that is outstanding
+### The board — counted on production 2026-08-04 after r137
 
-`b1f984fe` + `38f1fd40`, paired. Code complete, tsc clean, render check clean. The last full gate was
-557 passed / 1 failed; that failure is fixed but NOT re-verified. Both ids are already `building` on
-the board; on ship run `improve:build-complete` then `improve:mark-deployed` for BOTH. **Read the r137
-entry at the bottom of this file before touching the branch** — it carries a trap no test and no
-render can see (a `localStorage` sub-step key that strands users without the remap).
+**`deployed = 569` · `approved = 17` · `cancelled = 12`. `building = 0`, `open = 0`, `contested = 0`,
+`planned = 0`.** Every remaining item is APPROVED and buildable — the board is waiting on us, not on
+the reporter, for the first time. `improve:pull` returns ONLY open+contested and hides `building`
+(that is how `a1d82340` stayed invisible for a week); use `pull-approved` and the DB.
 
-    cd .claude/worktrees/r137 && TEST_DB_NAMESPACE=r137x pnpm test > <log> 2>&1
+### THE 17 APPROVED ITEMS — sequenced into rounds from the plans' OWN sequencing sections
 
-### The board
+Migration numbers are pre-assigned so parallel agents cannot collide (next free `0386`).
 
-Last full count on production (2026-08-04, after r134): `deployed = 564` · `approved = 10` ·
-`open = 7` · `contested = 2` · `cancelled = 12` · `building = 0`. **Since that count, same day:**
-eleven items were planned (the board reached `open = 0`, `contested = 0` — no unplanned work left),
-the reporter approved nine within the hour (`approved` → 17), r135/r136 shipped
-`645e67c4`+`491c499f` and `afd0a87c`, and r137's two ids moved to `building`. So the detail is stale —
-**recount before planning.** `improve:pull` returns ONLY open+contested and hides `building` (that is
-how `a1d82340` stayed invisible for a week); use `pull-approved` and the DB.
+| round | items | migration | why grouped / sequenced |
+|---|---|---|---|
+| r138 | `7cd914b1` + `65f466e2` | 0386, 0387 | Both edit `components/leave-type-panel.tsx` (different sections) → one agent. **Both must precede `6e9a126e`**, which rewrites those files |
+| r139 | `7b5f18c3` → `1b87e8a0` | none | Both invent the same "System Settings list+detail" idiom, which **does not exist yet**. Hiring Defaults first (genuinely per-company); Movement reuses its shape and must NOT grow a company list |
+| r140 | `8590615a` → `35b7af0a` | 0388 | Same two files (`personnel/[employmentId]/page.tsx`, `new/wizard.tsx`). "Land 8590615a first or it adds fields to a screen being taken apart" |
+| r141 | `169e3c24` + `3c473773` | 0389 | Same display pipeline (payslip earnings buckets / transaction view). Keep `169e3c24` away from `2ef69d1e` — both edit the exact-set `EXPECTED_SET` in the nav test |
+| r142 | `44129979` | none | "Do NOT build alongside `2ef69d1e` or `7f6ca478`." Lands before both |
+| r143 | `7f6ca478` | none | Same reads as r142 → separate round. Only 3 statuses exist — do not invent Processing/Failed |
+| r144 | `18103ba4` | none | Needed `38f1fd40` first (shipped in r137) so "Adjustments" means one thing |
+| r145 | `6e122302` | 0390+ | MUST generalise `resolveAdjustmentTargets` out of `core/leave-adjustment.ts`, not copy it |
+| r146 | `e7eb5d83` stage 1 | 0391 | Stage 1 only (draft + limit reservation) — the real wrong-answer bug |
+| r147 | `7c834696` stage 1 | 0392+ | "Stage 1 must not share a release with any other attendance change" |
+| r148+ | `6e9a126e` | 0393+ | **OWN SESSION.** Drops `benefit_scheme`, `scheme_leave_entitlement`, `leave_policy` |
+| r149 | `93249794` | TBD | Waits on `6e9a126e`'s eligibility layer, else you build a second criteria engine |
+| r150 | `2ef69d1e` | TBD | Largest on the board, ship LAST. Pass 2 after `7c834696` |
 
-**Two items are `planned`, awaiting approve/reject:** `6e122302` (Notice Board) and `e7eb5d83`
-(Configurable Claims — **it hides a wrong answer, not an inconvenience**: `claimPolicy`'s own comment
-says limits cap APPROVED claims, so N pending claims each pass against the same remaining balance and
-can all be approved; its plan puts limit-reservation first and asks for the exposure to be counted on
-production).
-
-**Build order** (from the plans' own sequencing sections, as of r134's ten approved; `645e67c4` and
-`afd0a87c` have since shipped, `38f1fd40` is in r137):
-`7cd914b1` → `8590615a` → `169e3c24` → `6e9a126e` → `93249794` → `7c834696` → `2ef69d1e`.
-The nine newly-approved items are NOT yet sequenced against these — read their plans' sequencing
-sections before starting.
-
-- **`6e9a126e` IS THE BIG ONE.** Its approved plan stages it across three releases and it DROPS
-  `benefit_scheme`, `scheme_leave_entitlement` and `leave_policy`. It deserves a session of its own,
-  not the tail of one. **Its rev-3 claim that "all line numbers were re-verified" was FALSE at HEAD —
-  re-locate every anchor by symbol.** `93249794` (Generate Entitlement) waits on its eligibility
-  layer, or you build a second criteria engine.
-- **Watch: `3c473773`** — alleged LIVE payroll calculation fault (overtime pay-item classification +
-  employer-borne statutory contributions), raised off a real verification against employee `X000001`;
-  the reporter states these are "system logic issues rather than employee-specific issues". If
-  anything jumps the build order, this — but read it before assuming. `35b7af0a` and `1b87e8a0`
-  arrived with it.
+- **`6e9a126e` IS THE BIG ONE.** Its approved plan stages it across three releases. It deserves a
+  session of its own, not the tail of one. **Its rev-3 claim that "all line numbers were re-verified"
+  was FALSE at HEAD — re-locate every anchor by symbol.**
+- **`3c473773` alleges a LIVE payroll calculation fault** (overtime pay-item classification +
+  employer-borne statutory contributions), raised off a real verification against employee `X000001`.
+  Its own plan finds the employer-borne CALCULATION is correct and only the DISCLOSURE is missing —
+  resist "fixing" the arithmetic.
 
 ### Production measurements that change plans (taken 2026-08-04)
 
-- **`7cd914b1`'s data migration is a NO-OP**: rows with `carry_forward_percent > 0 AND
-  carry_forward_max > 0` = ZERO. Say so plainly rather than quietly shipping it. The reporter also
-  narrowed it: no Carry cap (days) when the option is percentage-of-remaining-balance; keep the carry
-  expiry boxes.
+- **`7cd914b1`'s data migration is a NO-OP — RE-CONFIRMED 2026-08-04 after r137**: rows with
+  `carry_forward_percent > 0 AND carry_forward_max > 0` = ZERO (only ANNUAL holds a cap, 10.00, and it
+  carries no percentage). Say so plainly rather than quietly shipping it. The reporter also narrowed
+  it: no Carry cap (days) when the option is percentage-of-remaining-balance; keep the carry expiry
+  boxes.
 - **`8590615a` is PARTLY BUILT**: `employment.contract_end_date` already exists on production;
   `contract_start_date` and `contract_remark` do not. Only 2 live contract employments, both lacking
   an end date. **`employment_type` lives on `assignment`, NOT `employment`** — a query against
   `employment.employment_type` errors.
-- **`65f466e2`**: there is NO entitlement validation on emergency leave. `core/leave.ts:1851`
+- **`65f466e2`**: there is NO entitlement validation on emergency leave. `core/leave.ts:1844`
   hardcodes `EMERGENCY_LEAVE_CODE = 'EMERGENCY'`; production's type is **`EL`**, already deducting
-  from ANNUAL. The same defect silently kills `REPLACEMENT`, `MATERNITY`, `PATERNITY` (production has
+  from ANNUAL, so the lookup at `:2479` returns nothing and `:2481` throws before any entitlement is
+  consulted. The same defect silently kills `REPLACEMENT`, `MATERNITY`, `PATERNITY` (production has
   `RL`, `MTL`, `PTL`) — so Emergency Leave is subject to the minimum-advance-notice rule it exists to
-  bypass, and `LOCKED_CODES` does not lock the statutory types.
+  bypass (`:3155`), and `LOCKED_CODES` (`core/admin.ts:3997`) does not lock the statutory types.
+  **All anchors re-located by symbol 2026-08-04; the plan's numbers had drifted by 5–35 lines.**
 - **`c459bff9`'s reject-path fork is MOOT**: `expireAgedLeave` has forfeited **0 rows / 0 days,
   ever** (only RL has expiry configured). Do not put that fork to the reporter again. Real split of
   the 54 `sys:` adjustment rows: `carry_forward_cap` 14/−550.67 · `profile_recalc` 13/−738.00 ·
@@ -347,8 +343,17 @@ grep — an empty result is a parser gap, not proof of no callers.
 - **"Is it stuck?" — read the LOG, never the process list.**
   `grep -E "Test Files|Tests |Duration" <log> | tail -4`. A `Duration` line means DONE regardless of
   the process table (vitest often does not exit after reporting; teardown takes minutes and emits
-  nothing). No `Duration` + growing log = still working. Only no-Duration + log not growing +
-  zero DB connections is a genuine hang.
+  nothing).
+  **CORRECTED r137: "no Duration + GROWING log = still working" is wrong for a redirected run.**
+  Vitest's reporter BUFFERS in non-TTY mode, so the log sits at its `[global-setup]` line and does
+  not grow at all for the entire run — 15 minutes of silence is the NORMAL healthy state, not a
+  symptom. **The liveness signal is the test-DB connection count**, which tracks real work:
+
+      psql -p 5433 -U postgres -d postgres -At \
+        -c "select count(*) from pg_stat_activity where datname like 'ai_hr_test%'"
+
+  Healthy mid-run is ~16–22 with several `active`. Genuine hang = no `Duration` AND zero connections.
+  A full suite now takes **~950 s** (558 files / 6612 tests), longer than the 761 s recorded earlier.
 - **Never `pgrep -f` a string your own waiter contains** — `until [ "$(pgrep -f 'vitest.mjs run' …`
   matches itself and waits forever.
 - **Read vitest's EXIT CODE and file count, never just the summary.** A file whose worker fails to
@@ -406,8 +411,12 @@ grep — an empty result is a parser gap, not proof of no callers.
 - ssh `-p 8288 ubuntu@203.142.6.241`; you may `sudo systemctl restart aihr` yourself.
 - Default `node` is v18 and predates `--env-file` — prefix `PATH=/opt/node20/bin:$PATH` or chase a
   phantom "bad option" bug.
-- **The deploy rsync has NO `--delete`.** A release that deletes a source file leaves it on the box,
-  where `next build` still compiles it (r128 failed exactly this way). List and remove by hand:
+- **CORRECTED r137: the deploy rsync DOES carry `--delete`.** `scripts/improve/release.ts:71` has it,
+  and r137's two deleted files were verified gone from the box afterwards. The older warning here
+  ("no `--delete`", from r128) is **wrong for the release path** — but `--delete` only protects you if
+  you actually pass it, so keep it in any hand-rolled rsync, and note excluded paths
+  (`node_modules`, `.next`, `.env*`) are protected from deletion, which is why `.env.production`
+  survives. Still worth listing what a release removes:
   `git diff --diff-filter=D --name-only <last-released-ref>..HEAD`.
 - **Proof a deploy arrived** is `rsync -azi --delete --dry-run` reporting ZERO changes afterwards —
   `deploy.sh` succeeding is not it (a broken pipe once left 93 stale files behind a green deploy).
@@ -503,74 +512,7 @@ method or carry-forward is WRONG.**
 
 ---
 
-# In-flight round
+**Nothing is in flight.** When a round is built but unshipped, its entry goes HERE and
+CURRENT STATE says so; on ship it moves to the top of `docs/HANDOFF-HISTORY.md`.
 
-## r137 — 2026-08-04 — BUILT BUT NOT SHIPPED. Read this before touching `build/r137`.
-
-**`b1f984fe` + `38f1fd40`, paired in one round. Code complete, tsc clean, render check clean, committed
-as `e23038ee` on `build/r137`. NOT MERGED, NOT DEPLOYED, NOT RE-GATED.**
-
-### ▶ TO RESUME: ONE CLEAN FULL GATE IS ALL THAT IS OUTSTANDING
-
-The last full gate was **557 files passed / 1 failed**. That failure is FIXED (see below) but the tree has
-not been re-gated since. Nothing else is in flight. Both items are already `building` on the board — run
-`improve:build-complete` then `improve:mark-deployed` for BOTH ids when it ships.
-
-    cd .claude/worktrees/r137 && TEST_DB_NAMESPACE=r137x pnpm test > <log> 2>&1
-
-### THE TRAP 38f1fd40 CARRIED, AND WHY THE TICKET COULD NOT BE TAKEN LITERALLY
-
-The Adjustments sub-step held TWO tools and the ticket named one. Besides the festive grant it hosted
-**Run Earned Accrual** — and after 962077a8 cleared the page header, that sub-step was its ONLY reachable
-mount. Deleting it as asked would have removed the only way to generate earned leave days **with no type
-error, no failing test and a green render**, because a slot that is never rendered looks exactly like a
-slot with nothing to show. It now lives in Service Based Entitlements beside Preview Scenario; the header
-is deliberately still empty (962077a8 is a shipped reporter decision, guarded by
-test/entitlement-header-actions-removal.test.ts).
-
-**Verified by RENDER, not by source**: `Run earned accrual` and its hint text are in the page payload, so
-the slot is genuinely composed. "Present in the file" would not have proved it.
-
-**The invisible half:** `entitlementSubStep` persists in `localStorage` under `leaveTypeCards:<id>`. A
-browser sitting on `'adjustments'` would fail key validation and snap back to sub-step 1. `RETIRED_ADJUSTMENTS_SUB_STEP`
-remaps it to `'service'`, copying bc9be1e8's existing pattern. **No test and no render can see a user
-stranded by its absence** — it is per-browser state.
-
-### A REAL BUG, CAUGHT BY THE REPO'S OWN GUARD — AND THE LESSON GENERALISES
-
-Deleting every `admin.leave` key starting with `festive` also deleted three GENERIC multi-select labels
-(`festiveSelectAll` / `festiveClearAll` / `festiveSelectedCount`) that the **surviving**
-`components/earned-accrual-card.tsx` shares. `test/i18n-coverage.test.ts` Check C caught it. Restored as
-`multiSelect*`.
-
-**A key's NAME is not evidence of who reads it.** The plan had already warned about this shape for
-`festiveCompanies` / `canGroupWide` / `companyNameById` (all kept, all consumed elsewhere) — and the same
-trap still landed one level down, in the message catalog. Grep for consumers before deleting by prefix.
-
-### AND AN OVERREACH, REVERTED
-
-Widening the new i18n guard by `benefit-scheme-config.tsx` + `leave-rule-preview.tsx` produced **540 false
-positives** — they bind their namespace in a shape the simple resolver reads wrongly. Narrowed back to the
-validated set, with the reason written into the file. A guard that cries wolf 540 times is worse than one
-with a known, documented edge. **The general case is already covered by i18n-coverage Check C** — which is
-precisely the test that caught the bug above.
-
-### b1f984fe WAS NOT A RENAME
-
-`leave.breakdown.field.available` — the Request Leave popup's second column header — existed in **NONE** of
-the six catalogs. The label the reporter asked us to rename was never rendering. Fourth MISSING_MESSAGE of
-this class. `test/leave-i18n-key-resolution.test.ts` now guards it, and was **NEGATIVE-TESTED**: with the
-key removed it fails naming the exact file and key. A guard nobody has watched fail is worth nothing.
-
-### ⚠ THREE SPAN-CUTTING MISTAKES, ALL CAUGHT BY ASSERTIONS IN THE SCRIPT
-
-Removing functions by index arithmetic went wrong three times: `rindex('/**')` walked past a `//`-commented
-declaration; brace-matching stopped on a `{` inside a comment; a "next top-level declaration" scan ended
-inside the FOLLOWING declaration's comment block. Each time an `assert` in the edit script caught it before
-writing, and the file was reverted rather than patched. **Put the assertion in the script.** Removing one
-element of a `Promise.all` tuple without removing its slot in the destructuring also silently shifted every
-later variable — tsc caught that one.
-
----
-
-**Shipped round entries (r66–r136): `docs/HANDOFF-HISTORY.md`.**
+**Shipped round entries (r66–r137): `docs/HANDOFF-HISTORY.md`.**

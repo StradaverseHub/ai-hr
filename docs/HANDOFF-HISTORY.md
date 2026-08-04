@@ -9,6 +9,71 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r137 — 2026-08-04 — SHIPPED. b1f984fe + 38f1fd40: the available-balance label renders, and Adjustments leaves the leave-type panel
+
+**Shipped as `main@1e737a36`. Gate: tsc clean · 558 files / 6612 tests passed · next build clean.
+No migration — production stayed on 312.** Built a session earlier and carried over unshipped; the
+outstanding clean gate was run and was green first time, so the earlier 1 failure was genuinely fixed.
+
+**The rsync DID carry the two deletions** (`components/festive-grant-card.tsx`,
+`test/festive-grant-step.test.ts`) because `--delete` is in the command — see the correction in
+Environment. Verified absent on the box afterwards.
+
+### THE TRAP 38f1fd40 CARRIED, AND WHY THE TICKET COULD NOT BE TAKEN LITERALLY
+
+The Adjustments sub-step held TWO tools and the ticket named one. Besides the festive grant it hosted
+**Run Earned Accrual** — and after 962077a8 cleared the page header, that sub-step was its ONLY reachable
+mount. Deleting it as asked would have removed the only way to generate earned leave days **with no type
+error, no failing test and a green render**, because a slot that is never rendered looks exactly like a
+slot with nothing to show. It now lives in Service Based Entitlements beside Preview Scenario; the header
+is deliberately still empty (962077a8 is a shipped reporter decision, guarded by
+test/entitlement-header-actions-removal.test.ts).
+
+**Verified by RENDER, not by source**: `Run earned accrual` and its hint text are in the page payload, so
+the slot is genuinely composed. "Present in the file" would not have proved it.
+
+**The invisible half:** `entitlementSubStep` persists in `localStorage` under `leaveTypeCards:<id>`. A
+browser sitting on `'adjustments'` would fail key validation and snap back to sub-step 1. `RETIRED_ADJUSTMENTS_SUB_STEP`
+remaps it to `'service'`, copying bc9be1e8's existing pattern. **No test and no render can see a user
+stranded by its absence** — it is per-browser state.
+
+### A REAL BUG, CAUGHT BY THE REPO'S OWN GUARD — AND THE LESSON GENERALISES
+
+Deleting every `admin.leave` key starting with `festive` also deleted three GENERIC multi-select labels
+(`festiveSelectAll` / `festiveClearAll` / `festiveSelectedCount`) that the **surviving**
+`components/earned-accrual-card.tsx` shares. `test/i18n-coverage.test.ts` Check C caught it. Restored as
+`multiSelect*`.
+
+**A key's NAME is not evidence of who reads it.** The plan had already warned about this shape for
+`festiveCompanies` / `canGroupWide` / `companyNameById` (all kept, all consumed elsewhere) — and the same
+trap still landed one level down, in the message catalog. Grep for consumers before deleting by prefix.
+
+### AND AN OVERREACH, REVERTED
+
+Widening the new i18n guard by `benefit-scheme-config.tsx` + `leave-rule-preview.tsx` produced **540 false
+positives** — they bind their namespace in a shape the simple resolver reads wrongly. Narrowed back to the
+validated set, with the reason written into the file. A guard that cries wolf 540 times is worse than one
+with a known, documented edge. **The general case is already covered by i18n-coverage Check C** — which is
+precisely the test that caught the bug above.
+
+### b1f984fe WAS NOT A RENAME
+
+`leave.breakdown.field.available` — the Request Leave popup's second column header — existed in **NONE** of
+the six catalogs. The label the reporter asked us to rename was never rendering. Fourth MISSING_MESSAGE of
+this class. `test/leave-i18n-key-resolution.test.ts` now guards it, and was **NEGATIVE-TESTED**: with the
+key removed it fails naming the exact file and key. A guard nobody has watched fail is worth nothing.
+
+### ⚠ THREE SPAN-CUTTING MISTAKES, ALL CAUGHT BY ASSERTIONS IN THE SCRIPT
+
+Removing functions by index arithmetic went wrong three times: `rindex('/**')` walked past a `//`-commented
+declaration; brace-matching stopped on a `{` inside a comment; a "next top-level declaration" scan ended
+inside the FOLLOWING declaration's comment block. Each time an `assert` in the edit script caught it before
+writing, and the file was reverted rather than patched. **Put the assertion in the script.** Removing one
+element of a `Promise.all` tuple without removing its slot in the destructuring also silently shifted every
+later variable — tsc caught that one.
+
+---
+
 ## r136 — 2026-08-04 — the org-wide Requests table leaves My Leave, and a false claim in our own tests
 
 **Shipped:** `afd0a87c`. **`main@88a74787`. 312 migrations — r136 ADDS NONE.**
