@@ -147,10 +147,29 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > 34:28 elapsed with zero DB connections and a complete result already in the log. So `until pgrep …; do`
 > as a completion waiter **can wait forever on a finished run**. Poll the log, not the process table.
 >
-> ### ⚠️⚠️⚠️ NEVER `pkill -9` VITEST — IT WEDGES THE CLUSTER MID-TEARDOWN (root cause, r136)
+> ### ⚠️⚠️⚠️ THE TEARDOWN CHECKPOINT WEDGE — WHAT IS ACTUALLY KNOWN (r136, twice corrected)
 >
-> **All three local-Postgres wedges in r136 trace to this one habit, and NOT to the antivirus.** The owner
-> confirmed Apex One already excludes `/opt/homebrew`, so the data directory was never being scanned.
+> **TWO ROOT-CAUSE CLAIMS WERE MADE AND BOTH WERE WRONG. Read this before making a third.**
+> First it was blamed on Apex One — the owner confirmed `/opt/homebrew` is already excluded. Then on
+> `pkill -9` during teardown — but a later wedge occurred with NO kill of any kind. Do not "explain" this
+> wedge again without evidence that survives the next occurrence.
+>
+> **WHAT IS ESTABLISHED, measured:** vitest's teardown DROPs its 10-11 worker databases; `DROP DATABASE`
+> forces an `immediate force wait` checkpoint; that checkpoint sometimes never completes. Signature:
+> `checkpoint starting` with no matching `checkpoint complete`, `pg_stat_bgwriter` counters FROZEN
+> (0/0 across a 20s sample), checkpointer burning 15-27% CPU, vitest itself blocked in state `SN` at 0%.
+> The cluster still serves ordinary connections while refusing every CREATE/DROP DATABASE — which is the
+> first thing the next gate's global-setup does, hence `CONNECT_TIMEOUT` from a cluster `psql` calls fine.
+> It predates this session (HANDOFF records it from r83).
+>
+> **THE WORKING RESPONSE — do this instead of waiting or theorising:**
+> 1. `Duration` in the log means the RESULTS ARE FINAL. Read them; teardown only frees databases.
+> 2. Do NOT wait for teardown and do NOT kill it. **Rebuild the cluster** — everything in it is
+>    disposable, the rebuild is under a minute, and it is deterministic. Recipe below.
+> 3. Then start the next gate. A fresh cluster also removes the leaked-database drag.
+>
+> Still avoid `pkill -9` on principle (an interrupted drop cannot help), but understand it is NOT the
+> cause and killing restraint alone will NOT prevent the wedge.
 >
 > After reporting its `Duration`, vitest runs a TEARDOWN that DROPS its 10-11 worker databases. That takes
 > MINUTES, emits nothing to the log until it finishes, and legitimately shows **zero test-DB connections**
