@@ -360,8 +360,7 @@
       "draftNoCompany": "尚未选择公司",
       "draftMissing": "还需 {count} 项",
       "draftReady": "可以创建",
-      "draftContinue": "继续",
-      "hiringDefaults": "入职默认设置"
+      "draftContinue": "继续"
     },
     "detail": {
       "backToPeople": "员工",
@@ -1370,11 +1369,7 @@
         "isResident": "税务居民",
         "taxCategory": "PCB 类别",
         "monthlyAllowance": "每月津贴",
-        "rateAmount": "费率金额",
-        "gender": "性别",
-        "maritalStatus": "婚姻状况",
-        "payMode": "计薪方式",
-        "paymentTerm": "支付周期"
+        "rateAmount": "费率金额"
       },
       "employmentType": {
         "full_time": "全职",
@@ -1398,8 +1393,7 @@
         "businessUnit": "仅用于筛选部门列表，不会保存到员工记录。",
         "hiredOn": "入职首日。创建之后，此日期只能通过异动事件更改。",
         "bankAccount": "银行与账号请同时填写，或都留空。",
-        "company": "先询问公司，因为它决定适用哪一套员工编号自动流水号设置。",
-        "rateAmount": "日薪或时薪方式必填。"
+        "company": "先询问公司，因为它决定适用哪一套员工编号自动流水号设置。"
       },
       "backLabel": "返回人事",
       "title": "创建新员工",
@@ -1459,37 +1453,7 @@
         "staleCode": "先前输入的员工编号“{code}”不会被使用，因为本公司已不再允许手动输入。",
         "removeCode": "移除",
         "draftCostsNothing": "保存为草稿不会占用任何编号。员工编号只在员工成功创建时才被占用。"
-      },
-      "gender": {
-        "male": "男",
-        "female": "女"
-      },
-      "marital": {
-        "single": "单身",
-        "married": "已婚"
-      },
-      "payMode": {
-        "monthly": "月薪",
-        "daily": "日薪",
-        "hourly": "时薪",
-        "custom_period": "自定义周期"
-      },
-      "paymentTerm": {
-        "monthly": "每月",
-        "weekly": "每周",
-        "biweekly": "每两周"
       }
-    },
-    "hiringDefaults": {
-      "title": "入职默认设置",
-      "description": "按公司设置的新员工与雇佣评估默认值。它们原本位于薪资计划界面，但薪资相关逻辑从不读取它们。",
-      "back": "员工",
-      "emptyScope": "当前范围内没有公司。",
-      "save": "保存",
-      "probationMonths": "默认试用期（月）",
-      "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。",
-      "reviewReminderDays": "评估提醒（结束日期前天数）",
-      "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
     }
   },
   "leave": {

@@ -360,8 +360,7 @@
       "draftNoCompany": "Syarikat belum dipilih",
       "draftMissing": "{count} masih diperlukan",
       "draftReady": "Sedia untuk dicipta",
-      "draftContinue": "Sambung",
-      "hiringDefaults": "Tetapan lalai pengambilan"
+      "draftContinue": "Sambung"
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -1370,11 +1369,7 @@
         "isResident": "Pemastautin cukai",
         "taxCategory": "Kategori PCB",
         "monthlyAllowance": "Elaun bulanan",
-        "rateAmount": "Jumlah kadar",
-        "gender": "Jantina",
-        "maritalStatus": "Status perkahwinan",
-        "payMode": "Mod bayaran",
-        "paymentTerm": "Tempoh bayaran"
+        "rateAmount": "Jumlah kadar"
       },
       "employmentType": {
         "full_time": "Sepenuh masa",
@@ -1398,8 +1393,7 @@
         "businessUnit": "Hanya menapis senarai jabatan. Ia tidak disimpan pada pekerja.",
         "hiredOn": "Hari pertama bekerja. Selepas penciptaan, tarikh ini hanya berubah melalui peristiwa pergerakan.",
         "bankAccount": "Isikan kedua-dua bank dan nombor akaun, atau tiada langsung.",
-        "company": "Ditanya dahulu kerana ia menentukan Tetapan Nombor Berjalan Automatik ID Pekerja yang digunakan.",
-        "rateAmount": "Diperlukan untuk mod bayaran harian atau sejam."
+        "company": "Ditanya dahulu kerana ia menentukan Tetapan Nombor Berjalan Automatik ID Pekerja yang digunakan."
       },
       "backLabel": "Kembali ke Personel",
       "title": "Cipta pekerja baharu",
@@ -1459,37 +1453,7 @@
         "staleCode": "ID Pekerja \"{code}\" yang dimasukkan sebelum ini tidak akan digunakan, kerana syarikat ini tidak lagi membenarkan Kunci Masuk Manual.",
         "removeCode": "Buang",
         "draftCostsNothing": "Menyimpan sebagai draf tidak menggunakan apa-apa. ID Pekerja hanya diambil apabila pekerja berjaya dicipta."
-      },
-      "gender": {
-        "male": "Lelaki",
-        "female": "Perempuan"
-      },
-      "marital": {
-        "single": "Bujang",
-        "married": "Berkahwin"
-      },
-      "payMode": {
-        "monthly": "Bulanan",
-        "daily": "Harian",
-        "hourly": "Sejam",
-        "custom_period": "Tempoh tersuai"
-      },
-      "paymentTerm": {
-        "monthly": "Bulanan",
-        "weekly": "Mingguan",
-        "biweekly": "Dua minggu sekali"
       }
-    },
-    "hiringDefaults": {
-      "title": "Tetapan Lalai Pengambilan",
-      "description": "Tetapan lalai setiap syarikat untuk pengambilan baharu dan penilaian pekerjaan. Dahulu ia berada pada skrin jadual gaji, di mana tiada apa-apa berkaitan gaji membacanya.",
-      "back": "Kakitangan",
-      "emptyScope": "Tiada syarikat dalam skop semasa.",
-      "save": "Simpan",
-      "probationMonths": "Tempoh percubaan lalai (bulan)",
-      "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
-      "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
-      "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
     }
   },
   "leave": {

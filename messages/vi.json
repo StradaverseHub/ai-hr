@@ -360,8 +360,7 @@
       "draftNoCompany": "Chưa chọn công ty",
       "draftMissing": "Còn thiếu {count}",
       "draftReady": "Sẵn sàng tạo",
-      "draftContinue": "Tiếp tục",
-      "hiringDefaults": "Mặc định tuyển dụng"
+      "draftContinue": "Tiếp tục"
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -1370,11 +1369,7 @@
         "isResident": "Cư trú thuế",
         "taxCategory": "Nhóm PCB",
         "monthlyAllowance": "Phụ cấp hàng tháng",
-        "rateAmount": "Mức đơn giá",
-        "gender": "Giới tính",
-        "maritalStatus": "Tình trạng hôn nhân",
-        "payMode": "Hình thức trả lương",
-        "paymentTerm": "Kỳ trả lương"
+        "rateAmount": "Mức đơn giá"
       },
       "employmentType": {
         "full_time": "Toàn thời gian",
@@ -1398,8 +1393,7 @@
         "businessUnit": "Chỉ để lọc danh sách phòng ban. Không lưu vào hồ sơ nhân viên.",
         "hiredOn": "Ngày làm việc đầu tiên. Sau khi tạo, ngày này chỉ thay đổi qua sự kiện điều động.",
         "bankAccount": "Nhập cả ngân hàng và số tài khoản, hoặc bỏ trống cả hai.",
-        "company": "Được hỏi trước vì nó quyết định Thiết lập Số chạy tự động Mã nhân viên nào được áp dụng.",
-        "rateAmount": "Bắt buộc với hình thức trả lương theo ngày hoặc theo giờ."
+        "company": "Được hỏi trước vì nó quyết định Thiết lập Số chạy tự động Mã nhân viên nào được áp dụng."
       },
       "backLabel": "Quay lại Nhân sự",
       "title": "Tạo nhân viên mới",
@@ -1459,37 +1453,7 @@
         "staleCode": "Mã nhân viên \"{code}\" đã nhập trước đó sẽ không được dùng, vì công ty này không còn cho phép nhập thủ công.",
         "removeCode": "Xóa mã",
         "draftCostsNothing": "Lưu bản nháp không tốn gì cả. Mã nhân viên chỉ bị lấy khi nhân viên được tạo thành công."
-      },
-      "gender": {
-        "male": "Nam",
-        "female": "Nữ"
-      },
-      "marital": {
-        "single": "Độc thân",
-        "married": "Đã kết hôn"
-      },
-      "payMode": {
-        "monthly": "Hàng tháng",
-        "daily": "Hàng ngày",
-        "hourly": "Theo giờ",
-        "custom_period": "Kỳ tùy chỉnh"
-      },
-      "paymentTerm": {
-        "monthly": "Hàng tháng",
-        "weekly": "Hàng tuần",
-        "biweekly": "Hai tuần một lần"
       }
-    },
-    "hiringDefaults": {
-      "title": "Mặc định tuyển dụng",
-      "description": "Giá trị mặc định theo từng công ty cho nhân viên mới và các kỳ đánh giá. Trước đây chúng nằm trên màn hình lịch trả lương, nơi không có phần nào của bảng lương đọc tới.",
-      "back": "Nhân sự",
-      "emptyScope": "Không có công ty nào trong phạm vi hiện tại.",
-      "save": "Lưu",
-      "probationMonths": "Thời gian thử việc mặc định (tháng)",
-      "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
-      "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
-      "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
     }
   },
   "leave": {

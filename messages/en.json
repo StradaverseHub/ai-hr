@@ -360,8 +360,7 @@
       "draftNoCompany": "No company chosen yet",
       "draftMissing": "{count} still needed",
       "draftReady": "Ready to create",
-      "draftContinue": "Continue",
-      "hiringDefaults": "Hiring defaults"
+      "draftContinue": "Continue"
     },
     "detail": {
       "backToPeople": "People",
@@ -1370,11 +1369,7 @@
         "isResident": "Tax resident",
         "taxCategory": "PCB category",
         "monthlyAllowance": "Monthly allowance",
-        "rateAmount": "Rate amount",
-        "gender": "Gender",
-        "maritalStatus": "Marital status",
-        "payMode": "Pay mode",
-        "paymentTerm": "Payment term"
+        "rateAmount": "Rate amount"
       },
       "employmentType": {
         "full_time": "Full-time",
@@ -1398,8 +1393,7 @@
         "businessUnit": "Narrows the department list only. It is not stored on the employee.",
         "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
         "bankAccount": "Give both the bank and the account number, or neither.",
-        "company": "Asked first because it decides which Employee ID Auto Running Number Setup applies.",
-        "rateAmount": "Required for a daily or hourly pay mode."
+        "company": "Asked first because it decides which Employee ID Auto Running Number Setup applies."
       },
       "backLabel": "Back to Personnel",
       "title": "Create new employee",
@@ -1459,37 +1453,7 @@
         "staleCode": "The Employee ID \"{code}\" entered earlier will not be used, because this company no longer allows Manual Key In.",
         "removeCode": "Remove it",
         "draftCostsNothing": "Saving as a draft costs nothing. The Employee ID is taken only when the employee is successfully created."
-      },
-      "gender": {
-        "male": "Male",
-        "female": "Female"
-      },
-      "marital": {
-        "single": "Single",
-        "married": "Married"
-      },
-      "payMode": {
-        "monthly": "Monthly",
-        "daily": "Daily",
-        "hourly": "Hourly",
-        "custom_period": "Custom period"
-      },
-      "paymentTerm": {
-        "monthly": "Monthly",
-        "weekly": "Weekly",
-        "biweekly": "Fortnightly"
       }
-    },
-    "hiringDefaults": {
-      "title": "Hiring Defaults",
-      "description": "Per-company defaults for new hires and employment reviews. They used to sit on the payroll schedule screen, where nothing about payroll read them.",
-      "back": "Personnel",
-      "emptyScope": "No companies in the current scope.",
-      "save": "Save",
-      "probationMonths": "Default probation period (months)",
-      "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
-      "reviewReminderDays": "Review reminders (days before end date)",
-      "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
     }
   },
   "leave": {

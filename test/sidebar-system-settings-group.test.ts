@@ -43,6 +43,11 @@ const TICKET_HREFS = [
 const ADMIN_GROUP_FLAT_HREFS = [
   '/admin/organization',
   '/admin/personnel',
+  // 6e122302 — the Notice Board is a flat row (one screen; its new/detail pages are routes on it),
+  // sitting after PAYROLL_NODE and before /analytics. Added here deliberately: this list is an EXACT
+  // set whose job is to catch a sibling accidentally CLIPPED by an edit, so a genuinely new row has to
+  // be declared rather than the guard being loosened.
+  '/admin/notice-board',
   '/analytics',
   '/admin/audit',
   '/admin/scheduled-actions',
