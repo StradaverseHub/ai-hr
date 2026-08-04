@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl';
 import { Badge, EmployeeName } from '@/components/ui';
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { deriveHistoryBreakdown } from './history-breakdown';
+import type { EmployerBorneKey } from '@/core/payslip-employer-borne';
 
 /**
  * Transaction History grid (feedback 5f8d8395 — R24 5db3ae48's deferred Phase C) — a client component so each
@@ -50,6 +51,13 @@ function Row({ label, value, muted }: { label: string; value: React.ReactNode; m
     </div>
   );
 }
+
+/** 3c473773 — the me.payslip label key for each employer-borne component. A computed t() key is invisible
+ *  to the i18n guard's literal scan, so the map is exhaustive over EmployerBorneKey and every value is a
+ *  key that already exists in all six catalogs (test/pay-display-category.test.ts pins that). */
+const EMPLOYER_BORNE_LABEL: Record<EmployerBorneKey, 'epf' | 'socso' | 'skbbk' | 'eis' | 'pcb'> = {
+  epf: 'epf', socso: 'socso', skbbk: 'skbbk', eis: 'eis', tax: 'pcb',
+};
 
 const COL_COUNT = 13; // toggle + 12 summary columns
 
@@ -134,10 +142,13 @@ export function HistoryTable({
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{rm(r.gross)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.epfEmployee)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.socsoEmployee)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.eisEmployee)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.pcb)}</td>
+                  {/* 3c473773 — the same employee-borne figures the expanded breakdown shows. Reading the
+                      raw blob here and the net figure there would put two contradictory numbers for one
+                      deduction on one screen. */}
+                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(b.employerBorne.employee.epf)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(b.employerBorne.employee.socso)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(b.employerBorne.employee.eis)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(b.employerBorne.employee.pcb)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(r.totalDeductions)}</td>
                   <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(r.net)}</td>
                   <td className="px-4 py-2.5">
@@ -175,6 +186,10 @@ export function HistoryTable({
                           )}
                           <Row label={tSlip('bonus')} value={rm(b.bonus)} />
                           <SubLines lines={b.componentsByBucket.bonus} fmt={rm} />
+                          {/* 3c473773 — the Claim box. Present ONLY when a pay item was deliberately
+                              categorised into it; the 0393 backfill never produces one, so no existing
+                              payslip grows a line and nothing moves off Allowances on release day. */}
+                          {b.claim > 0 && <Row label={tSlip('claim')} value={rm(b.claim)} />}
                           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
                             <span>{tSlip('grossPay')}</span>
                             <span className="tabular-nums">{rm(b.gross)}</span>
@@ -186,11 +201,18 @@ export function HistoryTable({
                           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                             {tSlip('deductionsHeading')}
                           </h3>
-                          <Row label={tSlip('epf')} value={rm(st.epfEmployee)} />
-                          <Row label={tSlip('socso')} value={rm(st.socsoEmployee)} />
-                          {Number(st.socsoSkbbk) > 0 && <Row label={tSlip('skbbk')} value={rm(st.socsoSkbbk)} />}
-                          <Row label={tSlip('eis')} value={rm(st.eisEmployee)} />
-                          <Row label={tSlip('pcb')} value={rm(st.pcb)} />
+                          {/* 3c473773 issue 2 — these are the EMPLOYEE-BORNE figures: the computed share less
+                              whatever the employer agreed to fund, read from this payslip's own stored
+                              snapshot. The engine has always moved the money; the payslip previously listed
+                              a deduction that had not been deducted, beside a total that excluded it, and
+                              the reporter reasonably concluded the setting was ignored. The FULL share is
+                              unchanged and still what PERKESO/KWSP/LHDN receive — it is restated in the
+                              disclosure block below. A payslip with no snapshot renders exactly as before. */}
+                          <Row label={tSlip('epf')} value={rm(b.employerBorne.employee.epf)} />
+                          <Row label={tSlip('socso')} value={rm(b.employerBorne.employee.socso)} />
+                          {Number(st.socsoSkbbk) > 0 && <Row label={tSlip('skbbk')} value={rm(b.employerBorne.employee.skbbk)} />}
+                          <Row label={tSlip('eis')} value={rm(b.employerBorne.employee.eis)} />
+                          <Row label={tSlip('pcb')} value={rm(b.employerBorne.employee.pcb)} />
                           {Number(st.cp38) > 0 && <Row label={tSlip('cp38')} value={rm(st.cp38)} />}
                           {/* Zakat — informational only: PCB is ALREADY net of this (LHDN §E.5 offset). Muted. */}
                           {Number(st.zakat) > 0 && (
@@ -201,6 +223,27 @@ export function HistoryTable({
                             <span className="tabular-nums">−{rm(b.totalDeductions)}</span>
                           </div>
                         </section>
+
+                        {/* ── Employer-borne statutory contributions (3c473773 issue 2) ──
+                            The named disclosure. Without it the deductions above simply do not add up on
+                            screen: an EPF share of 629.00 shows as 0.00 and nothing says where it went.
+                            Rendered only when this payslip's own blob records employer-borne funding, so a
+                            payslip issued before the setting existed is untouched. */}
+                        {b.employerBorne.any && (
+                          <section>
+                            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              {tSlip('employerBorneHeading')}
+                            </h3>
+                            {b.employerBorne.keys.map((k) => (
+                              <Row key={k} label={tSlip(EMPLOYER_BORNE_LABEL[k])} value={rm(b.employerBorne.borne[k])} />
+                            ))}
+                            <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
+                              <span>{tSlip('employerBorneTotal')}</span>
+                              <span className="tabular-nums">{rm(b.employerBorne.total)}</span>
+                            </div>
+                            <p className="mt-2 text-xs text-muted-foreground">{tSlip('employerBorneNote')}</p>
+                          </section>
+                        )}
 
                         {/* ── Employer Contributions ── */}
                         <section>

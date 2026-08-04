@@ -27,6 +27,8 @@ function row(overrides: Partial<ProcessedPayslipViewRow> = {}): ProcessedPayslip
     runType: 'regular',
     runSeq: 1,
     batchStatus: 'processed',
+    releasedAt: null,
+    version: 1,
     basic: '3000.00',
     allowance: '500.00',
     overtime: '120.00',

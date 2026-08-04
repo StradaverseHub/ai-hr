@@ -1,4 +1,6 @@
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
+import { payslipDisplayEarnings } from '@/core/pay-display-category';
+import { payslipEmployerBorne, type EmployerBorneView } from '@/core/payslip-employer-borne';
 
 /**
  * Pure derivation of the itemized History breakdown (feedback 5f8d8395) from a processed-payslip view row.
@@ -54,6 +56,9 @@ export type HistoryBreakdown = {
   otConvertAmount: number;
   overtime: number;
   bonus: number;
+  /** 3c473773 — a pay item declared into the Claim box. Zero (and unrendered) unless someone deliberately
+   *  categorised one, which is why no existing payslip grows a line. */
+  claim: number;
   gross: number;
   totalDeductions: number;
   net: number;
@@ -61,6 +66,11 @@ export type HistoryBreakdown = {
    *  efece4ce — it was computed and STORED on every payslip (`statutory.hrdf`) but shown nowhere, so an
    *  HR administrator had no way to verify the levy or reconcile the employer cost. */
   employerContributions: { epf: number; socso: number; eis: number; hrdf: number; total: number };
+  /** 3c473773 issue 2 — the employer-borne DISCLOSURE, read from this payslip's OWN stored snapshot. The
+   *  engine already moved these amounts onto the company; nothing on any screen said so, which is what made
+   *  a correct payroll look broken. `employerBorne.employee` is what actually came off take-home;
+   *  `employerBorne.reported` is the full share that still goes to KWSP / PERKESO / LHDN. */
+  employerBorne: EmployerBorneView;
   recordLines: RecordLine[];
   /** The pay items behind the summarised figures, as stored. Empty for a pre-862ed0ad run. */
   componentLines: ComponentLine[];
@@ -103,19 +113,26 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   // on most payslips today rather than being absent.
   const hrdf = num(st.hrdf);
   const componentLines = st.componentLines ?? [];
+  // 3c473773 — the boxes come from the payslip's OWN stamp when it carries one, and from the stored columns
+  // when it does not. Never re-derived from today's pay-item setup: a category changed in March must not
+  // rewrite what January's payslip said. `allowance` still carries otConvert inside it, so `allowanceNet`
+  // below is the identical expression it always was.
+  const disp = payslipDisplayEarnings(row);
   return {
     st,
-    basic: num(row.basic),
-    allowanceNet: num(row.allowance) - otConvertAmount,
+    basic: disp.basic,
+    allowanceNet: disp.allowance - otConvertAmount,
     otConvertAmount,
-    overtime: num(row.overtime),
-    bonus: num(row.bonus),
+    overtime: disp.overtime,
+    bonus: disp.bonus,
+    claim: disp.claim,
     gross: num(row.gross),
     totalDeductions: num(row.totalDeductions),
     net: num(row.net),
     // HRDF is added to the TOTAL as well as shown as its own line. Adding the row without the total
     // would leave the section's own arithmetic wrong — the failure this kind of change invites.
     employerContributions: { epf, socso, eis, hrdf, total: epf + socso + eis + hrdf },
+    employerBorne: payslipEmployerBorne(row.statutory),
     recordLines: st.recordLines ?? [],
     componentLines,
     componentsByBucket: groupByBucket(componentLines),

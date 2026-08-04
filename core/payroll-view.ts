@@ -36,6 +36,11 @@ import { employmentStatusSql } from './employment-status-sql';
 // (core/payroll is a pack boundary and core/payroll-view.ts is ALWAYS_ALLOWED — implementation files
 // import each other freely under ADR-0080 D9. No cycle: core/payroll does not import this module.)
 import { resolveBatchScopeFilter, type BatchScope } from './payroll';
+// 3c473773 — pure, db-free: which payslip box each earning belongs in, from the payslip's own stamp.
+import { payslipDisplayEarnings } from './pay-display-category';
+// 169e3c24 — the PCB drill-down's relief fallback (pure type; the explainer itself lives beside it).
+import type { PcbReliefBreakdown } from './pcb-explain';
+import { packFor } from '../localization/registry';
 // 97a9b0ab — the PURE re-run diff (no DB, no framework). Kept out of this file so the cause rules
 // are unit-testable without a database, and so the honesty constraint on the ruleset-version cause
 // lives beside the rules it constrains.
@@ -573,6 +578,11 @@ export type ProcessedPayslipViewRow = {
   runType: RunType;
   runSeq: number;
   batchStatus: string;
+  /** 169e3c24 — read-side additions so a payslip screen can state its publication state and revision
+   *  through lib/payroll-publication.ts, the same helper the batch page uses. Additive; no caller of this
+   *  read is affected by two extra columns. */
+  releasedAt: Date | null;
+  version: number;
   basic: string;
   allowance: string;
   overtime: string;
@@ -633,6 +643,9 @@ export function listProcessedPayslipsAcross(
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
         batchStatus: payrollBatch.status,
+        // 169e3c24 — publication state + revision count, resolved on screen through payrollPublicationState.
+        releasedAt: payrollBatch.releasedAt,
+        version: payslip.version,
         basic: payslip.basicSalary,
         allowance: payslip.allowance,
         overtime: payslip.overtimePay,
@@ -787,8 +800,18 @@ export function listPayrollRegisterAcross(
         return Number.isFinite(v) ? v : 0;
       };
       const { statutory: _statutory, ...rest } = r;
+      // 3c473773 — the EARNINGS columns follow this payslip's own box stamp, so the register cannot
+      // disagree with the payslip about which box an amount is in. The DEDUCTION and EMPLOYER columns
+      // below stay AS COMPUTED (the full employee share), which is this read's documented contract above
+      // and is also what is remitted to KWSP / PERKESO / LHDN — an employer-bears setting funds a share, it
+      // does not reduce it.
+      const disp = payslipDisplayEarnings(r);
       return {
         ...rest,
+        basic: disp.basic.toFixed(2),
+        allowance: disp.allowance.toFixed(2),
+        overtime: disp.overtime.toFixed(2),
+        bonus: disp.bonus.toFixed(2),
         epfEmployee: n('epfEmployee'),
         socsoEmployee: n('socsoEmployee'),
         socsoSkbbk: n('socsoSkbbk'),
@@ -802,6 +825,185 @@ export function listPayrollRegisterAcross(
         hrdf: n('hrdf'),
       };
     });
+  });
+}
+
+// ───────────────────── Individual Payslip (169e3c24) — one payslip, admin review ─────────────────────
+
+/** Everything the Individual Payslip screen and its PDF need for ONE payslip, beyond the figures. */
+export type PayslipReviewRow = ProcessedPayslipViewRow & {
+  companyReg: string | null;
+  currency: string;
+  department: string | null;
+  position: string | null;
+  jobGrade: string | null;
+  employmentType: string | null;
+  paymentMethod: string | null;
+  /** MASKED to the last four digits. The full number never leaves the server. */
+  bankAccountMasked: string | null;
+  bankName: string | null;
+  /** IC, or the passport number when there is no IC (a non-Malaysian employee). */
+  identityNumber: string | null;
+  identityIsPassport: boolean;
+  daysWorked: string | null;
+  otherDeductions: string;
+  employerCost: string;
+  payDate: string | null;
+};
+
+/**
+ * 169e3c24 — ONE payslip for admin review, company-scope fenced.
+ *
+ * DELIBERATELY NOT `payslipDetail`. That read carries the ESS RELEASE GATE (core/payroll.ts: a payslip is
+ * null until its batch is closed AND its release instant has passed), which is exactly right for the
+ * employee-facing screen and exactly wrong for a reviewer — the whole point of this screen is to check a
+ * run BEFORE anyone in the company sees it. The gate is not weakened, bypassed or parameterised; this is a
+ * different read with a different fence (scopedAdmin's companyIds), which is the same decision
+ * app/payroll/transaction-view already made and documented.
+ *
+ * Fails CLOSED on an empty scope, like every read in this file. An out-of-scope payslipId returns null,
+ * so a tampered URL is indistinguishable from a missing payslip.
+ *
+ * The bank account is masked HERE rather than on screen: `employee_statutory_my.bank_account_no` is
+ * PDPA-scoped financial data (core/pdpa.ts) and must not be emitted to the client at all, so the read
+ * never returns it.
+ */
+export function payslipForReview(
+  ctx: SessionContext,
+  p: { companyIds: string[]; payslipId: string },
+): Promise<PayslipReviewRow | null> {
+  if (p.companyIds.length === 0) return Promise.resolve(null); // fail closed — no scope, no payslip
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: payslip.id,
+        employmentId: payslip.employmentId,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        companyId: payrollBatch.companyId,
+        company: company.legalName,
+        companyReg: company.registrationNo,
+        currency: company.currency,
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
+        batchStatus: payrollBatch.status,
+        releasedAt: payrollBatch.releasedAt,
+        version: payslip.version,
+        basic: payslip.basicSalary,
+        allowance: payslip.allowance,
+        overtime: payslip.overtimePay,
+        bonus: payslip.bonus,
+        gross: payslip.grossPay,
+        statutory: payslip.statutory,
+        otherDeductions: payslip.otherDeductions,
+        totalDeductions: payslip.totalDeductions,
+        net: payslip.netPay,
+        employerCost: payslip.employerCost,
+        daysWorked: payslip.daysWorked,
+        payDate: payrollBatch.batchDate,
+        department: department.name,
+        position: position.title,
+        jobGrade: jobGrade.name,
+        employmentType: assignment.employmentType,
+        paymentMethod: employment.paymentMethod,
+        bankName: employeeStatutoryMy.bankName,
+        bankAccountNo: employeeStatutoryMy.bankAccountNo,
+        icNumber: employeeStatutoryMy.icNumber,
+        passportNumber: employeeStatutoryMy.passportNumber,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(and(eq(payslip.id, p.payslipId), inArray(payrollBatch.companyId, p.companyIds)))
+      .limit(1);
+    if (!row) return null;
+    const { bankAccountNo, icNumber, passportNumber, ...rest } = row;
+    const acct = (bankAccountNo ?? '').trim();
+    return {
+      ...rest,
+      // Last four only, and only when there are more than four digits to hide.
+      bankAccountMasked: acct ? (acct.length > 4 ? `••••${acct.slice(-4)}` : acct) : null,
+      // IC first; a non-Malaysian employee carries a passport instead (icNumber has been nullable since
+      // migration 0212). The screen labels which one it is showing rather than calling a passport an IC.
+      identityNumber: icNumber?.trim() || passportNumber?.trim() || null,
+      identityIsPassport: !icNumber?.trim() && !!passportNumber?.trim(),
+    };
+  });
+}
+
+/**
+ * 169e3c24 — the employee's CURRENT relief position, used only as the FALLBACK for a payslip calculated
+ * before the relief working was recorded on the slip itself.
+ *
+ * The caller must surface which of the two it is showing (`explainPcb` returns `reliefSource`). Silently
+ * substituting today's position for a closed month is the failure this exists to make visible, not to
+ * hide: an employee who has since married or had a child would otherwise see January explained with a
+ * relief position that did not exist in January.
+ *
+ * Resolved through the country pack (`packFor(company.country)`), so no MY-specific statutory logic is
+ * duplicated here — the amounts come from the same ruleset the run itself resolved.
+ */
+export function currentPcbReliefs(
+  ctx: SessionContext,
+  p: { companyIds: string[]; employmentId: string; asOf: string },
+): Promise<PcbReliefBreakdown | null> {
+  if (p.companyIds.length === 0) return Promise.resolve(null); // fail closed
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        country: company.country,
+        category: employeeStatutoryMy.taxCategory,
+        children: employeeStatutoryMy.numChildren,
+        disabled: employeeStatutoryMy.disabledIndividual,
+        disabledSpouse: employeeStatutoryMy.disabledSpouse,
+        childReliefMode: employeeStatutoryMy.childReliefMode,
+        childReliefTable: employeeStatutoryMy.childReliefTable,
+      })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(and(eq(employment.id, p.employmentId), inArray(employment.companyId, p.companyIds)))
+      .limit(1);
+    if (!row) return null;
+    const pack = packFor(row.country);
+    if (!pack) return null;
+    const rules = await pack.payroll.loadRuleset(tx, { asOf: p.asOf });
+    const r = rules.pcb?.reliefs;
+    if (!r) return null;
+    const category = Number(row.category ?? 1);
+    const children =
+      row.childReliefMode === 'auto_table' && pack.payroll.childReliefAmountFor
+        ? pack.payroll.childReliefAmountFor(row.childReliefTable, r)
+        : Number(row.children ?? 0) * r.perChild;
+    const spouse = category === 2 ? r.spouse : 0;
+    const disabledIndividual = row.disabled ? (r.disabledIndividual ?? 0) : 0;
+    const disabledSpouse = row.disabledSpouse && category === 2 ? (r.disabledSpouse ?? 0) : 0;
+    return {
+      individual: r.individual,
+      spouse,
+      children,
+      disabledIndividual,
+      disabledSpouse,
+      // LP is a per-MONTH figure, not a relief position — it is read off the payslip's own blob by
+      // explainPcb, never re-derived here.
+      lp: 0,
+      total: r.individual + spouse + children + disabledIndividual + disabledSpouse,
+    };
   });
 }
 

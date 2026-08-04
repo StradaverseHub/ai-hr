@@ -18,6 +18,7 @@ import type { ReportData } from '../lib/report-export';
 import { masterDataExport, leaveBalancesSummary, type ReportFilter } from './analytics';
 import { overtimeReport, attendanceDailyReport, performanceGoalReport, performanceReviewReport } from './reporting';
 import { listProcessedPayslipsAcross, listPayrollRegisterAcross } from './payroll-view';
+import { payslipDisplayEarnings } from './pay-display-category';
 import { listClaimTypes } from './claims';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -313,6 +314,8 @@ const PAYROLL_REGISTER: ReportDataset = {
       payrollCycle: r.payrollCycle,
       runSeq: r.runSeq,
       daysWorked: numStr(r.daysWorked),
+      // 3c473773 — listPayrollRegisterAcross already resolves these four through the payslip's own box
+      // stamp, so this mapping stays a straight pass-through.
       basic: numStr(r.basic),
       allowance: numStr(r.allowance),
       overtime: numStr(r.overtime),
@@ -373,10 +376,11 @@ const PAYROLL_HISTORY: ReportDataset = {
       company: r.company,
       payPeriod: r.payPeriod,
       runType: r.runType,
-      basic: numStr(r.basic),
-      allowance: numStr(r.allowance),
-      overtime: numStr(r.overtime),
-      bonus: numStr(r.bonus),
+      // 3c473773 — same box stamp as the register above, for the same reason.
+      ...(() => {
+        const d = payslipDisplayEarnings(r);
+        return { basic: numStr(d.basic), allowance: numStr(d.allowance), overtime: numStr(d.overtime), bonus: numStr(d.bonus) };
+      })(),
       gross: numStr(r.gross),
       totalDeductions: numStr(r.totalDeductions),
       net: numStr(r.net),

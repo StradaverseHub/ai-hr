@@ -68,6 +68,10 @@ export const PAYROLL_NAV_PHASE: Readonly<Record<string, number>> = {
   '/payroll/transactions': 2,
   '/payroll': 4,
   '/payroll/transaction-view': 5,
+  // 169e3c24 — Individual Payslip is the same REVIEW step as Transaction View: check one person's pay
+  // before it goes out. Same rank, and `sort` is stable, so it lands immediately after it (its literal
+  // position in PAYROLL_ADMIN_NAV) rather than depending on a guessed splice point.
+  '/payroll/individual-payslip': 5,
   '/payroll/reports': 7,
   // 956cec85 — filing comes AFTER the figures are reported: the last thing you do with a month.
   '/payroll/statutory-forms': 8,

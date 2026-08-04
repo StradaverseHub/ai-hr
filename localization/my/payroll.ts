@@ -345,6 +345,29 @@ export type PcbMonthResult = {
     pcbPaid: number;
     P1: number;
     P2?: number;
+    /**
+     * 169e3c24 — the RELIEF working behind P, recorded so a payslip can explain its own tax figure.
+     *
+     * Purely ADDITIVE keys inside the snapshot that is already stored on every payslip: no DDL, no
+     * existing payslip rewritten, and every equality assertion over the other keys still holds because
+     * both sides of a comparison gain the same fields.
+     *
+     * WHY IT MATTERS that this is stored rather than re-derived: an employee who marries or has a child
+     * changes `category` / `children`, and a tax panel that re-derived the reliefs would then explain a
+     * CLOSED payslip with a relief position that did not exist when it was calculated. Runs from this
+     * change onward explain themselves exactly as they were computed; earlier ones fall back to the
+     * employee's current position, and the panel must SAY which of the two it is showing.
+     */
+    reliefs: {
+      individual: number;
+      spouse: number;
+      children: number;
+      disabledIndividual: number;
+      disabledSpouse: number;
+      total: number;
+      /** The optional-deduction / TP1 total (Σ LP) already netted off P beside the reliefs. */
+      lp: number;
+    };
   };
 };
 
@@ -480,6 +503,17 @@ export function pcbMonth(p: {
       pcbPaid: round2(X),
       P1,
       ...(P2 !== undefined ? { P2 } : {}),
+      // 169e3c24 — the relief legs exactly as they entered `reliefs` above, so the tax panel restates the
+      // arithmetic that ran rather than an approximation of it.
+      reliefs: {
+        individual: pcb.reliefs.individual,
+        spouse: category === 2 ? pcb.reliefs.spouse : 0,
+        children: round2(childRelief),
+        disabledIndividual: disabledRelief,
+        disabledSpouse: disabledSpouseRelief,
+        total: round2(reliefs),
+        lp: round2(lp),
+      },
     },
   };
 }

@@ -2220,6 +2220,13 @@
       "when": 1781862491000,
       "tag": "0391_notice_dashboard_card",
       "breakpoints": true
+    },
+    {
+      "idx": 393,
+      "version": "7",
+      "when": 1781862493000,
+      "tag": "0393_pay_component_display_category",
+      "breakpoints": true
     }
   ]
 }

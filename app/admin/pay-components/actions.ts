@@ -85,6 +85,10 @@ function componentFields(formData: FormData): PayComponentInput {
     epfBonus2012: bool(formData, 'epfBonus2012'),
     pcbRemunerationType: (String(formData.get('pcbRemunerationType') ?? '') || null) as PcbRemunerationType | null,
     pcbExemptionCode: String(formData.get('pcbExemptionCode') ?? '') || null,
+    // Feedback 3c473773 — the Payroll Category (which box on the payslip this item prints in). The form
+    // ALWAYS supplies it, so a save is authoritative; blank ⇒ null ⇒ the box falls back to the pre-0393
+    // inference. It changes DISPLAY only — no statutory flag, base or form reads it.
+    displayCategory: String(formData.get('displayCategory') ?? '') || null,
   };
 }
 
