@@ -151,8 +151,26 @@ describe('fa3f4ccb · OUT OF SCOPE — the statutory protections that were NOT r
     expect(leaveSrc).toContain('throw new LeaveApplyNotAllowedError(lt?.name);');
   });
 
-  it('the updateLeaveType guard on lawful-entitlement codes is untouched', () => {
-    expect(adminSrc).toMatch(/STATUTORY_APPLY_CODES as readonly string\[\]\)\.includes\(before\.code\)/);
+  it('the updateLeaveType guard on lawful entitlements still stands — and now actually applies', () => {
+    // REWRITTEN (r138, 65f466e2). This used to pin the literal source
+    //   `(STATUTORY_APPLY_CODES as readonly string[]).includes(before.code)`.
+    // The INTENT was "fa3f4ccb must not have REMOVED this protection", and that intent is intact — but
+    // the assertion pinned an IMPLEMENTATION that was silently doing nothing on real tenants. Production
+    // codes its statutory types MTL/PTL, not MATERNITY/PATERNITY, so `includes(before.code)` was false for
+    // exactly the types the Employment Act names, and the guard protected nothing. 65f466e2 repointed it
+    // at the role marker.
+    //
+    // So this is NOT a weakened guard: the protection is asserted to still exist, and additionally to be
+    // reached through the role-aware test rather than the code-only one that could not fire.
+    expect(adminSrc).toMatch(/isStatutoryApplyType\(before\)/);
+    expect(adminSrc).toContain(
+      'is a statutory leave entitlement — employees must be able to apply for it.',
+    );
+    // And the helper must keep consulting the seeded codes, so an UNCLASSIFIED tenant — one whose rows
+    // migration 0387 could not match exactly — keeps precisely the protection it has today.
+    expect(read('/core/leave.ts')).toMatch(
+      /STATUTORY_APPLY_CODES as readonly string\[\]\)\.includes\(\(lt\.code \?\? ''\)\.toUpperCase\(\)\)/,
+    );
   });
 });
 
