@@ -16,7 +16,7 @@ export const btnPrimary =
 export const btnGhost =
   'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-input px-3 py-1.5 text-sm font-medium transition duration-150 ease-snappy hover:bg-accent hover:text-accent-foreground active:scale-[0.98]';
 
-// The house table look (the txn-grid convention) as shared constants, so admin tables can adopt the ONE
+// The house table look (the individual-transaction screen's convention) as shared constants, so admin tables can adopt the ONE
 // standard styling instead of hand-copying the class strings — which is exactly how System Labels drifted
 // out of sync in the first place. Use: wrapper div → tableWrapCls, <thead> → theadCls, each <th> → thCls,
 // <tbody> → tbodyCls.

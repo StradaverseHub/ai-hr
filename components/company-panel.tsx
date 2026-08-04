@@ -336,7 +336,7 @@ function StatutoryAuthorityCard({
           <span className="min-w-0 text-sm">
             {/* Dynamic message key (`authority_epf`, `authority_socso`, …) — one per entry in
                 STATUTORY_AUTHORITIES, present in all six locales. The `as never` cast is the repo's
-                existing convention for a computed key (see txn-grid.tsx). NOTE: the i18n-coverage test
+                existing convention for a computed key (the pattern the individual-transaction screen uses). NOTE: the i18n-coverage test
                 cannot see dynamic keys, so adding an authority means adding its label to all six
                 locales by hand. */}
             <span className="font-medium">{t(`authority_${authority}` as never)}</span>
