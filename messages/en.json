@@ -825,6 +825,12 @@
         "status_offboarding": "Offboarding",
         "status_terminated": "Terminated",
         "probationGroup": "Probation Information",
+        "contractGroup": "Contract Information",
+        "contractStartDate": "Contract Start Date",
+        "contractEndDate": "Contract End Date",
+        "contractRemark": "Remark",
+        "contractRemarkPlaceholder": "e.g. Initial 12-month employment contract. Renewable upon performance review.",
+        "contractNote": "Shown for contract employees only. The start date defaults to the Group Join Date until you save one, and the end date is the same date the contract expiry review watches.",
         "noticeGroup": "Notice Period Information",
         "resignationGroup": "Resignation Information",
         "value": "Value",
@@ -1344,12 +1350,11 @@
         "employmentType": "Employment type",
         "hiredOn": "Hire date",
         "provisionalEndOn": "Provisional end date",
+        "contractEndDate": "Contract end date",
         "basicSalary": "Initial basic salary (MYR)",
         "remarks": "Remarks",
         "icNumber": "Identity No (NRIC)",
         "phone": "Mobile Phone Number",
-        "gender": "Gender",
-        "maritalStatus": "Marital status",
         "epfNumber": "EPF number",
         "socsoNumber": "SOCSO number",
         "taxNumber": "Tax number",
@@ -1363,8 +1368,6 @@
         "isResident": "Tax resident",
         "taxCategory": "PCB category",
         "monthlyAllowance": "Monthly allowance",
-        "payMode": "Pay mode",
-        "paymentTerm": "Payment term",
         "rateAmount": "Rate amount"
       },
       "employmentType": {
@@ -1382,13 +1385,13 @@
       "orgLabelsEmptyForCompany": "No organization labels are configured for the selected company.",
       "hints": {
         "provisionalEndOn": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.",
+        "contractEndDate": "The contract expiry date — the last working day under this contract. It is stored as the contract end date on the Employment tab and drives the contract expiry review.",
         "employeeCode": "Letters, numbers and dashes, up to 30 characters. It must not already be in use.",
         "icNumber": "Optional — leave blank for a passport holder. If given, it must be a valid identity number for the company’s country.",
         "dateOfBirth": "Leave blank and it is taken from the identity number where possible.",
         "businessUnit": "Narrows the department list only. It is not stored on the employee.",
         "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
         "bankAccount": "Give both the bank and the account number, or neither.",
-        "rateAmount": "Required for a daily or hourly pay mode.",
         "company": "Asked first because it decides which Employee ID Auto Running Number Setup applies."
       },
       "backLabel": "Back to Personnel",
@@ -1406,29 +1409,10 @@
       "selectPrompt": "— Select —",
       "yes": "Yes",
       "no": "No",
-      "gender": {
-        "male": "Male",
-        "female": "Female"
-      },
-      "marital": {
-        "single": "Single",
-        "married": "Married"
-      },
       "citizenship": {
         "citizen": "Citizen",
         "pr": "Permanent resident",
         "non_citizen": "Non-citizen"
-      },
-      "payMode": {
-        "monthly": "Monthly",
-        "daily": "Daily",
-        "hourly": "Hourly",
-        "custom_period": "Custom period"
-      },
-      "paymentTerm": {
-        "monthly": "Monthly",
-        "weekly": "Weekly",
-        "biweekly": "Fortnightly"
       },
       "continueDraft": "Continue a draft ({count})",
       "untitledDraft": "Unnamed draft",

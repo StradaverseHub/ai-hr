@@ -817,6 +817,12 @@
         "status_offboarding": "Đang nghỉ việc",
         "status_terminated": "Đã chấm dứt",
         "probationGroup": "Thông tin thử việc",
+        "contractGroup": "Thông tin hợp đồng",
+        "contractStartDate": "Ngày bắt đầu hợp đồng",
+        "contractEndDate": "Ngày kết thúc hợp đồng",
+        "contractRemark": "Ghi chú",
+        "contractRemarkPlaceholder": "ví dụ: Hợp đồng lao động 12 tháng đầu tiên. Có thể gia hạn sau khi đánh giá hiệu suất.",
+        "contractNote": "Chỉ hiển thị cho nhân viên hợp đồng. Ngày bắt đầu mặc định theo Ngày gia nhập tập đoàn cho đến khi bạn lưu, và ngày kết thúc chính là ngày mà đợt rà soát hết hạn hợp đồng theo dõi.",
         "noticeGroup": "Thông tin thời gian báo trước",
         "resignationGroup": "Thông tin nghỉ việc",
         "value": "Giá trị",
@@ -1344,12 +1350,11 @@
         "employmentType": "Loại hợp đồng",
         "hiredOn": "Ngày tuyển dụng",
         "provisionalEndOn": "Ngày kết thúc tạm thời",
+        "contractEndDate": "Ngày kết thúc hợp đồng",
         "basicSalary": "Lương cơ bản ban đầu (MYR)",
         "remarks": "Ghi chú",
         "icNumber": "Số định danh (NRIC)",
         "phone": "Số điện thoại di động",
-        "gender": "Giới tính",
-        "maritalStatus": "Tình trạng hôn nhân",
         "epfNumber": "Số EPF",
         "socsoNumber": "Số SOCSO",
         "taxNumber": "Mã số thuế",
@@ -1363,8 +1368,6 @@
         "isResident": "Cư trú thuế",
         "taxCategory": "Nhóm PCB",
         "monthlyAllowance": "Phụ cấp hàng tháng",
-        "payMode": "Hình thức trả lương",
-        "paymentTerm": "Kỳ trả lương",
         "rateAmount": "Mức đơn giá"
       },
       "employmentType": {
@@ -1382,13 +1385,13 @@
       "orgLabelsEmptyForCompany": "Chưa có nhãn tổ chức nào được cấu hình cho công ty đã chọn.",
       "hints": {
         "provisionalEndOn": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có.",
+        "contractEndDate": "Ngày hết hạn hợp đồng — ngày làm việc cuối cùng theo hợp đồng này. Giá trị này được lưu làm ngày kết thúc hợp đồng ở tab Việc làm và kích hoạt đợt rà soát hết hạn hợp đồng.",
         "employeeCode": "Chữ cái, chữ số và dấu gạch ngang, tối đa 30 ký tự. Mã không được trùng với mã đang dùng.",
         "icNumber": "Không bắt buộc — để trống với người dùng hộ chiếu. Nếu nhập, phải là số định danh hợp lệ theo quốc gia của công ty.",
         "dateOfBirth": "Để trống thì hệ thống lấy từ số định danh nếu có thể.",
         "businessUnit": "Chỉ để lọc danh sách phòng ban. Không lưu vào hồ sơ nhân viên.",
         "hiredOn": "Ngày làm việc đầu tiên. Sau khi tạo, ngày này chỉ thay đổi qua sự kiện điều động.",
         "bankAccount": "Nhập cả ngân hàng và số tài khoản, hoặc bỏ trống cả hai.",
-        "rateAmount": "Bắt buộc với hình thức trả lương theo ngày hoặc theo giờ.",
         "company": "Được hỏi trước vì nó quyết định Thiết lập Số chạy tự động Mã nhân viên nào được áp dụng."
       },
       "backLabel": "Quay lại Nhân sự",
@@ -1406,29 +1409,10 @@
       "selectPrompt": "— Chọn —",
       "yes": "Có",
       "no": "Không",
-      "gender": {
-        "male": "Nam",
-        "female": "Nữ"
-      },
-      "marital": {
-        "single": "Độc thân",
-        "married": "Đã kết hôn"
-      },
       "citizenship": {
         "citizen": "Công dân",
         "pr": "Thường trú nhân",
         "non_citizen": "Không phải công dân"
-      },
-      "payMode": {
-        "monthly": "Hàng tháng",
-        "daily": "Hàng ngày",
-        "hourly": "Theo giờ",
-        "custom_period": "Kỳ tùy chỉnh"
-      },
-      "paymentTerm": {
-        "monthly": "Hàng tháng",
-        "weekly": "Hàng tuần",
-        "biweekly": "Hai tuần một lần"
       },
       "continueDraft": "Tiếp tục bản nháp ({count})",
       "untitledDraft": "Bản nháp chưa đặt tên",

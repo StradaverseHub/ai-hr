@@ -25,6 +25,8 @@ import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
+// 35b7af0a group 1 — the Gender + Marital Status field group, shared with the Create New Employee wizard.
+import { PersonDetailsFields } from '@/components/person-details-fields';
 // Direct Superior (dce55aff): the searchable employee picker reuses the shared Combobox — its label
 // carries "EMP-0008 – John Tan" so type-ahead matches Employee ID and name alike.
 import { Combobox } from '@/components/ui/combobox';
@@ -764,25 +766,14 @@ export default async function EmployeePage({
               {ageLabel ?? t('employmentInfo.notAvailable')}
             </p>
           </Field>
-          <Field label={t('gender')}>
-            <select name="gender" defaultValue={emp.gender ?? ''} className={inputCls}>
-              <option value="">{t('genderNotSet')}</option>
-              <option value="male">{t('genderMale')}</option>
-              <option value="female">{t('genderFemale')}</option>
-              <option value="undisclosed">{t('genderUndisclosed')}</option>
-            </select>
-          </Field>
-          <Field label={t('maritalStatus')}>
-            <select name="maritalStatus" defaultValue={emp.marital ?? ''} className={inputCls}>
-              <option value="">{t('maritalNotSet')}</option>
-              <option value="single">{t('maritalSingle')}</option>
-              <option value="married">{t('maritalMarried')}</option>
-              <option value="divorced">{t('maritalDivorced')}</option>
-              <option value="widowed">{t('maritalWidowed')}</option>
-              <option value="separated">{t('maritalSeparated')}</option>
-              <option value="other">{t('maritalOther')}</option>
-            </select>
-          </Field>
+          {/* 35b7af0a group 1 — Gender and Marital Status are now ONE shared field group
+              (components/person-details-fields.tsx), rendered identically here and on the Create New
+              Employee wizard. The option lists come from lib/person-vocabulary.ts, the same master lists
+              core/profile.ts validates saves against, so a value HR can pick is by construction a value
+              the server will accept. `mode="form"` keeps these inputs exactly what they were: uncontrolled
+              `name`/`defaultValue` selects inside this server-action form, and NO function prop crosses
+              the server→client boundary (the r123 fault). */}
+          <PersonDetailsFields mode="form" gender={emp.gender} maritalStatus={emp.marital} />
           <p className="text-xs text-muted-foreground sm:col-span-4">{t('maritalPcbNote')}</p>
           <div className="sm:col-span-4 flex justify-end">
             <button className={btnPrimary}>{t('saveComplianceFields')}</button>
@@ -3388,6 +3379,59 @@ export default async function EmployeePage({
               </Field>
             </div>
           </div>
+
+          {/* Contract Information (8590615a) — rendered ONLY for a contract employee, hidden for every other
+              type, exactly as the reporter asked. The gate reads the CURRENT open assignment (`current`,
+              resolved from the assignment history at the top of this render) because employment_type lives on
+              `assignment`, NOT on `employment` — the Employee Type shown read-only above comes from the same
+              place. When an employee's type later moves away from Contract the block simply disappears and the
+              stored dates and remark are left alone, never erased.
+
+              THE END DATE IS THE PRE-EXISTING employment-review column, not a new one. It was already
+              editable, but only as a bare "End Date" row inside Employment Review on the Others tab, which is
+              why the reporter could not find it. Both places now write `employment.contract_end_date`, so
+              contract-expiry review keeps working on whatever HR types here.
+
+              Contract Start Date pre-fills with the Group Join Date when nothing is recorded yet — a DISPLAY
+              default only; nothing is written until HR saves. The end date falls back to provisional_end_on so
+              a contract employee hired before this shipped still shows the expiry date the wizard captured. */}
+          {current?.employmentType === 'contract' && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.contractGroup')}</h4>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label={t('employmentInfo.contractStartDate')}>
+                  <input
+                    name="contractStartDate"
+                    type="date"
+                    required
+                    defaultValue={emp.contractStartDate ?? emp.hiredOn}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label={t('employmentInfo.contractEndDate')}>
+                  <input
+                    name="contractEndDate"
+                    type="date"
+                    required
+                    defaultValue={emp.contractEndDate ?? emp.provisionalEndOn ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+              <Field label={t('employmentInfo.contractRemark')}>
+                {/* taCls, not inputCls — inputCls fixes h-9, which collapses a multi-line box to one row.
+                    Same constant every other textarea on this page uses. */}
+                <textarea
+                  name="contractRemark"
+                  rows={3}
+                  defaultValue={emp.contractRemark ?? ''}
+                  className={taCls}
+                  placeholder={t('employmentInfo.contractRemarkPlaceholder')}
+                />
+              </Field>
+              <p className="text-xs text-muted-foreground">{t('employmentInfo.contractNote')}</p>
+            </div>
+          )}
 
           {/* Notice Period Information */}
           <div className="space-y-3">

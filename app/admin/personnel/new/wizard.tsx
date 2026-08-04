@@ -30,6 +30,10 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Check, AlertCircle } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
+// 35b7af0a group 1 — the Gender + Marital Status field group, shared with the Personnel profile card.
+import { PersonDetailsFields } from '@/components/person-details-fields';
+// 35b7af0a group 2 — the Pay Mode / Payment Term / Rate group, shared with the Personnel Payroll tab.
+import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DRAFT_STEPS,
@@ -112,6 +116,10 @@ export function EmployeeWizard({
 
   const companyId = data.employment?.companyId ?? '';
   const employeeCode = data.profile?.employeeCode ?? '';
+  // 8590615a — the single provisional/lifecycle end date the wizard captures MEANS the contract end date
+  // when the hire is a contract hire, so it is labelled that way (the field itself is unchanged). Mirrors
+  // the same 'full_time' default the probation-default logic in chooseCompany uses.
+  const isContractHire = (data.employment?.employmentType ?? 'full_time') === 'contract';
 
   // The Employee ID rule for the CHOSEN company, and the decision it produces. The option is passed to
   // the completeness rules only once a company is known — before that there is no rule to judge the ID
@@ -479,28 +487,21 @@ export function EmployeeWizard({
               />
               <p className="mt-1 text-xs text-muted-foreground">{t('hints.dateOfBirth')}</p>
             </Field>
-            <Field label={t('fields.gender')}>
-              <select
-                className={inputCls}
-                value={data.profile?.gender ?? ''}
-                onChange={(e) => set('profile', { gender: e.target.value })}
-              >
-                <option value="">{t('notSet')}</option>
-                <option value="male">{t('gender.male')}</option>
-                <option value="female">{t('gender.female')}</option>
-              </select>
-            </Field>
-            <Field label={t('fields.maritalStatus')}>
-              <select
-                className={inputCls}
-                value={data.profile?.maritalStatus ?? ''}
-                onChange={(e) => set('profile', { maritalStatus: e.target.value })}
-              >
-                <option value="">{t('notSet')}</option>
-                <option value="single">{t('marital.single')}</option>
-                <option value="married">{t('marital.married')}</option>
-              </select>
-            </Field>
+            {/* 35b7af0a group 1 — Gender and Marital Status are no longer the wizard's own selects with
+                the wizard's own labels. They are the SAME field group the Personnel profile card renders
+                (components/person-details-fields.tsx), drawing on the master lists in
+                lib/person-vocabulary.ts. This is not only de-duplication: the wizard's private copy had
+                fallen four marital values and one gender value behind the profile screen, so HR could not
+                hire anybody as divorced, widowed, separated or undisclosed — while a leave rule written
+                for exactly those values was already possible (#12129e77). One list, one set of labels,
+                and a value HR can pick here is by construction one core/profile.ts will accept. */}
+            <PersonDetailsFields
+              mode="controlled"
+              gender={data.profile?.gender}
+              maritalStatus={data.profile?.maritalStatus}
+              onGenderChange={(v) => set('profile', { gender: v })}
+              onMaritalStatusChange={(v) => set('profile', { maritalStatus: v })}
+            />
           </div>
         )}
 
@@ -646,14 +647,26 @@ export function EmployeeWizard({
                   movement-only afterwards. The wizard captures the one date, as the ticket asks. */}
               <p className="mt-1 text-xs text-muted-foreground">{t('hints.hiredOn')}</p>
             </Field>
-            <Field label={t('fields.provisionalEndOn')}>
+            {/* 8590615a — for a CONTRACT hire this one date is the contract end date, so it says so. The
+                field, its state and its draft key are unchanged (`provisionalEndOn`); only the label and the
+                hint switch, and `hireEmployee` now copies a contract hire's value into
+                `employment.contract_end_date` as well, which is what closes the two-homes gap: before this,
+                a contract hire's expiry lived in provisional_end_on while Employment Review wrote a
+                different column. Two literal `t()` calls rather than a computed key — a template key is
+                invisible to test/i18n-coverage.test.ts check C, and this file is single-namespace so both
+                keys are actually verified. For every other type the wording is exactly as it was. */}
+            <Field
+              label={isContractHire ? t('fields.contractEndDate') : t('fields.provisionalEndOn')}
+            >
               <input
                 type="date"
                 className={inputCls}
                 value={data.employment?.provisionalEndOn ?? ''}
                 onChange={(e) => set('employment', { provisionalEndOn: e.target.value })}
               />
-              <p className="mt-1 text-xs text-muted-foreground">{t('hints.provisionalEndOn')}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {isContractHire ? t('hints.contractEndDate') : t('hints.provisionalEndOn')}
+              </p>
             </Field>
           </div>
         )}
@@ -776,40 +789,31 @@ export function EmployeeWizard({
                 onChange={(e) => set('payroll', { monthlyAllowance: e.target.value })}
               />
             </Field>
-            <Field label={t('fields.payMode')}>
-              <select
-                className={inputCls}
-                value={data.payroll?.payMode ?? 'monthly'}
-                onChange={(e) => set('payroll', { payMode: e.target.value })}
-              >
-                <option value="monthly">{t('payMode.monthly')}</option>
-                <option value="daily">{t('payMode.daily')}</option>
-                <option value="hourly">{t('payMode.hourly')}</option>
-                <option value="custom_period">{t('payMode.custom_period')}</option>
-              </select>
-            </Field>
-            <Field label={t('fields.paymentTerm')}>
-              <select
-                className={inputCls}
-                value={data.payroll?.paymentTerm ?? 'monthly'}
-                onChange={(e) => set('payroll', { paymentTerm: e.target.value })}
-              >
-                <option value="monthly">{t('paymentTerm.monthly')}</option>
-                <option value="weekly">{t('paymentTerm.weekly')}</option>
-                <option value="biweekly">{t('paymentTerm.biweekly')}</option>
-              </select>
-            </Field>
-            <Field label={t('fields.rateAmount')}>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className={inputCls}
-                value={data.payroll?.rateAmount ?? ''}
-                onChange={(e) => set('payroll', { rateAmount: e.target.value })}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">{t('hints.rateAmount')}</p>
-            </Field>
+            {/* 35b7af0a group 2 — Pay Mode, Payment Term and Rate are the SAME component the Personnel
+                Payroll tab and the salary-history edit flow already used
+                (components/pay-structure-fields.tsx). The wizard's private copy had drifted in wording
+                (its Payment Term said "Fortnightly" where every other screen says "Bi-Weekly") and never
+                carried the rule: it showed a bare Rate box on every hire, including monthly ones where a
+                rate means nothing. Now the box appears only for a non-monthly pay mode, is labelled
+                "per day" / "per hour", and is required for daily/hourly — the same rule
+                `missingByStep` already enforced invisibly and `setCompensation` enforces server-side.
+
+                CLEARING THE RATE ON A SWITCH BACK TO MONTHLY is a wizard-only concern, hence the patch
+                here rather than inside the shared component. On the Personnel form the Rate input simply
+                unmounts and stops being submitted; the wizard holds a DRAFT object, so a rate typed under
+                "hourly" would otherwise sit invisibly in the draft and reach setCompensation on create. */}
+            <PayStructureFields
+              mode="controlled"
+              payMode={(data.payroll?.payMode ?? 'monthly') as PayModeOption}
+              paymentTerm={data.payroll?.paymentTerm ?? 'monthly'}
+              rateAmount={data.payroll?.rateAmount ?? ''}
+              onChange={(patch) =>
+                set('payroll', {
+                  ...patch,
+                  ...(patch.payMode === 'monthly' ? { rateAmount: '' } : {}),
+                })
+              }
+            />
             <Field label={t('fields.remarks')}>
               <input
                 className={inputCls}

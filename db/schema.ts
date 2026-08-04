@@ -833,6 +833,16 @@ export const employment = pgTable(
     probationEndDate: date('probation_end_date'),
     contractEndDate: date('contract_end_date'),
     internshipEndDate: date('internship_end_date'),
+    // Contract Employment Information (8590615a, migration 0388). These two and `contractEndDate` above are
+    // ONE group, maintained together in the Contract Information block on the Personnel Employment tab,
+    // which renders only when the CURRENT open assignment's employment_type is 'contract'. contract_end_date
+    // is the PRE-EXISTING column (0110) — the block writes that same column deliberately, so the employment
+    // review workflow keeps watching the one value HR maintains instead of a second copy of it. Both new
+    // columns are nullable with no backfill: null start means HR has not confirmed a start date yet (the
+    // screen pre-fills the Group Join Date as a display default and writes only on save). contract_remark is
+    // free text and deliberately NOT catalog-validated (see EMPLOYMENT_INFO_FIELD_CATEGORY in core/org.ts).
+    contractStartDate: date('contract_start_date'),
+    contractRemark: text('contract_remark'),
     // Wave 2 (ADR-0038 2C): the state this employment works in — drives which state public holidays
     // apply. Null falls back to the company's default_work_state, then national-only.
     workState: text('work_state'),

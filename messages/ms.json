@@ -817,6 +817,12 @@
         "status_offboarding": "Pemberhentian",
         "status_terminated": "Ditamatkan",
         "probationGroup": "Maklumat Percubaan",
+        "contractGroup": "Maklumat Kontrak",
+        "contractStartDate": "Tarikh Mula Kontrak",
+        "contractEndDate": "Tarikh Tamat Kontrak",
+        "contractRemark": "Catatan",
+        "contractRemarkPlaceholder": "cth. Kontrak pekerjaan 12 bulan yang pertama. Boleh diperbaharui selepas penilaian prestasi.",
+        "contractNote": "Dipaparkan untuk pekerja kontrak sahaja. Tarikh mula lalai kepada Tarikh Sertai Kumpulan sehingga anda menyimpannya, dan tarikh tamat ialah tarikh yang sama dipantau oleh semakan tamat kontrak.",
         "noticeGroup": "Maklumat Tempoh Notis",
         "resignationGroup": "Maklumat Peletakan Jawatan",
         "value": "Nilai",
@@ -1344,12 +1350,11 @@
         "employmentType": "Jenis pekerjaan",
         "hiredOn": "Tarikh ambil",
         "provisionalEndOn": "Tarikh tamat sementara",
+        "contractEndDate": "Tarikh tamat kontrak",
         "basicSalary": "Gaji asas permulaan (MYR)",
         "remarks": "Catatan",
         "icNumber": "No. Identiti (NRIC)",
         "phone": "Nombor Telefon Bimbit",
-        "gender": "Jantina",
-        "maritalStatus": "Status perkahwinan",
         "epfNumber": "Nombor EPF",
         "socsoNumber": "Nombor SOCSO",
         "taxNumber": "Nombor cukai",
@@ -1363,8 +1368,6 @@
         "isResident": "Pemastautin cukai",
         "taxCategory": "Kategori PCB",
         "monthlyAllowance": "Elaun bulanan",
-        "payMode": "Mod bayaran",
-        "paymentTerm": "Tempoh bayaran",
         "rateAmount": "Jumlah kadar"
       },
       "employmentType": {
@@ -1382,13 +1385,13 @@
       "orgLabelsEmptyForCompany": "Tiada label organisasi dikonfigurasikan untuk syarikat yang dipilih.",
       "hints": {
         "provisionalEndOn": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada.",
+        "contractEndDate": "Tarikh tamat kontrak — hari bekerja terakhir di bawah kontrak ini. Ia disimpan sebagai tarikh tamat kontrak pada tab Pekerjaan dan memacu semakan tamat kontrak.",
         "employeeCode": "Huruf, nombor dan sengkang, sehingga 30 aksara. Ia tidak boleh sedang digunakan.",
         "icNumber": "Pilihan — biarkan kosong bagi pemegang pasport. Jika diisi, ia mesti nombor pengenalan yang sah bagi negara syarikat.",
         "dateOfBirth": "Biarkan kosong dan ia diambil daripada nombor pengenalan jika boleh.",
         "businessUnit": "Hanya menapis senarai jabatan. Ia tidak disimpan pada pekerja.",
         "hiredOn": "Hari pertama bekerja. Selepas penciptaan, tarikh ini hanya berubah melalui peristiwa pergerakan.",
         "bankAccount": "Isikan kedua-dua bank dan nombor akaun, atau tiada langsung.",
-        "rateAmount": "Diperlukan untuk mod bayaran harian atau sejam.",
         "company": "Ditanya dahulu kerana ia menentukan Tetapan Nombor Berjalan Automatik ID Pekerja yang digunakan."
       },
       "backLabel": "Kembali ke Personel",
@@ -1406,29 +1409,10 @@
       "selectPrompt": "— Pilih —",
       "yes": "Ya",
       "no": "Tidak",
-      "gender": {
-        "male": "Lelaki",
-        "female": "Perempuan"
-      },
-      "marital": {
-        "single": "Bujang",
-        "married": "Berkahwin"
-      },
       "citizenship": {
         "citizen": "Warganegara",
         "pr": "Penduduk tetap",
         "non_citizen": "Bukan warganegara"
-      },
-      "payMode": {
-        "monthly": "Bulanan",
-        "daily": "Harian",
-        "hourly": "Sejam",
-        "custom_period": "Tempoh tersuai"
-      },
-      "paymentTerm": {
-        "monthly": "Bulanan",
-        "weekly": "Mingguan",
-        "biweekly": "Dua minggu sekali"
       },
       "continueDraft": "Sambung draf ({count})",
       "untitledDraft": "Draf tanpa nama",

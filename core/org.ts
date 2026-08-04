@@ -226,9 +226,28 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
     // materialising one. It happens ONLY here — after creation both dates are movement-only (setEmploymentInfo
     // gates them). NOTE: this is display/records-only. NOTHING reads join_date for entitlement; every service
     // band, minService gate and years-of-service figure reads hiredOn (see setEmploymentInfo's gate comment).
+    // 8590615a — THE TWO-HOMES FIX. A contract hire's end date used to land ONLY in `provisional_end_on`,
+    // while the Employment Review row wrote `contract_end_date`, so the same fact could sit in one column
+    // and be missing from the other. A contract hire now seeds BOTH: contract_end_date = the end date the
+    // wizard captured, contract_start_date = hiredOn (mirroring the joinDate = hiredOn seeding on the same
+    // insert — at creation the contract starts the day the employment does). provisional_end_on is still
+    // written unchanged, because full_time and intern hires depend on it and on the
+    // computeReviewWindow fallback that reads it. Non-contract hires are byte-identical to before.
+    const isContractHire = p.employmentType === 'contract';
     const [emp] = await tx
       .insert(employment)
-      .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn, joinDate: p.hiredOn, employeeCode, gradeId: p.gradeId ?? null, provisionalEndOn })
+      .values({
+        tenantId: ctx.tenantId,
+        personId,
+        companyId: p.companyId,
+        hiredOn: p.hiredOn,
+        joinDate: p.hiredOn,
+        employeeCode,
+        gradeId: p.gradeId ?? null,
+        provisionalEndOn,
+        contractStartDate: isContractHire ? p.hiredOn : null,
+        contractEndDate: isContractHire ? provisionalEndOn : null,
+      })
       .returning({ id: employment.id });
 
     // R81 (9cbf5e0d): the `status` column is GONE from `assignment` (migration 0331). A hire used to write
@@ -2085,6 +2104,14 @@ export type EmploymentInfoInput = {
   extendedConfirmationDate?: string | null;
   tenderResignationDate?: string | null;
   lastWorkingDate?: string | null;
+  /** Contract Employment Information (8590615a). Maintained together in the Employment tab's Contract
+   *  Information block, which renders ONLY when the current open assignment's employment_type is
+   *  'contract'. `contractEndDate` is the PRE-EXISTING 0110 review column — writing it from here is
+   *  deliberate (one date, one home: the employment review keeps watching what HR maintains).
+   *  undefined = untouched, ''/null = clear, exactly like every other field on this input. */
+  contractStartDate?: string | null;
+  contractEndDate?: string | null;
+  contractRemark?: string | null;
   orgBranch?: string | null;
   orgDivision?: string | null;
   orgRegion?: string | null;
@@ -2107,6 +2134,11 @@ const EMPLOYMENT_INFO_TEXT_FIELDS = [
   'orgTeam',
   'orgBase',
   'employmentCategory',
+  // 8590615a — the contract remark. In this list so it is normalised, written and carried into the
+  // before/after audit diff like every other text column; deliberately ABSENT from
+  // EMPLOYMENT_INFO_FIELD_CATEGORY below so it stays FREE TEXT and never reaches assertProfileValueAllowed.
+  // ("Renewable upon performance review" is not a catalog value and never will be.)
+  'contractRemark',
 ] as const;
 
 // 1001ff61 — each org/job text field is now backed by a profile_option catalog category. On save the new
@@ -2158,6 +2190,11 @@ const EMPLOYMENT_INFO_DATE_FIELDS = [
   // solely under the probationExtension movement tag), so the Employment Dates form can no longer set it.
   'tenderResignationDate',
   'lastWorkingDate',
+  // 8590615a — the contract period. contractEndDate is the pre-existing employment-review column (0110);
+  // it is accepted here so the Employment tab's Contract Information block and the Others tab's Employment
+  // Review row write the SAME date rather than two copies of it.
+  'contractStartDate',
+  'contractEndDate',
 ] as const;
 
 export async function setEmploymentInfo(
@@ -2274,6 +2311,11 @@ export async function setEmploymentInfo(
         finalConfirmationDate: employment.finalConfirmationDate,
         tenderResignationDate: employment.tenderResignationDate,
         lastWorkingDate: employment.lastWorkingDate,
+        // 8590615a — the contract group, in the before projection so the change-history diff carries all
+        // three (the payload's `before`/`after` are built from exactly this select).
+        contractStartDate: employment.contractStartDate,
+        contractEndDate: employment.contractEndDate,
+        contractRemark: employment.contractRemark,
         orgBranch: employment.orgBranch,
         orgDivision: employment.orgDivision,
         orgRegion: employment.orgRegion,
@@ -2367,6 +2409,42 @@ export async function setEmploymentInfo(
     }
     if (lastWorking && hire && lastWorking < hire) {
       throw new Error('Last working date cannot be earlier than the hire date.');
+    }
+
+    // 8590615a — the contract period, resolved against the RESULTING values like every check above.
+    const contractStart =
+      'contractStartDate' in set ? (set.contractStartDate as string | null) : before.contractStartDate;
+    const contractEnd = 'contractEndDate' in set ? (set.contractEndDate as string | null) : before.contractEndDate;
+    if (contractStart && hire && contractStart < hire) {
+      throw new Error('Contract start date cannot be earlier than the hire date.');
+    }
+    if (contractStart && contractEnd && contractEnd <= contractStart) {
+      throw new Error('Contract end date must be later than the contract start date.');
+    }
+    // Both dates are mandatory FOR A CONTRACT EMPLOYEE — but only when the submit actually carries the
+    // contract block. Two reasons this is gated rather than unconditional:
+    //   1. It must never retro-block a save that only touches probation or notice. Those submits do not
+    //      carry the contract fields at all (an absent field is `undefined`, never enters `set`), so they
+    //      skip this entirely — which also means we do not run the extra assignment query on every save.
+    //   2. Only the CURRENT open assignment knows whether this employee is on contract. `employment` has
+    //      no employment_type column — a query against employment.employment_type ERRORS — so the type is
+    //      resolved through `assignment`, with the same shape core/employment-review.ts:liveTypeAndDates
+    //      uses. Same tx, so it shares the RLS session and a violation aborts before the write.
+    if ('contractStartDate' in set || 'contractEndDate' in set) {
+      const [live] = await tx
+        .select({ employmentType: assignment.employmentType })
+        .from(assignment)
+        .where(
+          and(
+            eq(assignment.employmentId, p.employmentId),
+            isNull(assignment.validTo),
+            isNull(assignment.supersededAt),
+          ),
+        )
+        .limit(1);
+      if (live?.employmentType === 'contract' && !(contractStart && contractEnd)) {
+        throw new Error('Contract start date and contract end date are required for a contract employee.');
+      }
     }
 
     // finalConfirmationDate is DERIVED, never accepted from the caller: = extendedConfirmation ?? confirmation.
