@@ -267,6 +267,41 @@ describe('OT rounding — unchanged, and the request example it does NOT satisfy
     expect(applyOtRuleRows(20, 0, round(60))).toBe(0);
     expect(applyOtRuleRows(40, 0, round(60))).toBe(60);
   });
+
+  /**
+   * THE ONE ROUNDING BAND THAT EXISTS ON PRODUCTION, counted 2026-08-05: rule "A01", from 61 minutes to
+   * 119 minutes, round to 60. Written out with its real geometry — not a stand-in — because the generic
+   * case above cannot tell the owner what THEIR data does, and this band is the entire live exposure to
+   * the request's self-contradictory rounding examples.
+   *
+   * The band decides ZERO attendance days today (A01 is not the tenant default and no shift selects it),
+   * so this release moves nothing. It becomes live money the moment someone assigns A01 to a shift, and
+   * the difference is an hour of overtime per occurrence:
+   *
+   *      minutes worked over |  nearest (ships today)  |  round-up (the request's other example)
+   *              61 … 89     |          60             |            120
+   *              90 … 119    |         120             |            120
+   *
+   * If the owner picks round-up, THIS test is what fails, and its failure names the exact minutes that
+   * change. Do not "fix" it by editing the numbers — change applyOtRuleRows and re-derive the table.
+   */
+  it("production rule A01's real band (61→119, round-to 60): 61–89 round DOWN to 60 today", () => {
+    const a01 = rule({
+      otRows: [band({ fromMinutes: 61, toMinutes: 119, rounding: true, roundToMinutes: 60 })],
+    });
+    expect(applyOtRuleRows(61, 0, a01)).toBe(60);
+    expect(applyOtRuleRows(75, 0, a01)).toBe(60);
+    expect(applyOtRuleRows(89, 0, a01)).toBe(60);
+    // The halfway point tips upward — Math.round(1.5) is 2 — so the band is not uniformly downward.
+    expect(applyOtRuleRows(90, 0, a01)).toBe(120);
+    expect(applyOtRuleRows(119, 0, a01)).toBe(120);
+    // Outside the band nothing rounds at all: the table has no row covering these, and overtime past the
+    // last configured range is still counted in full (see splitOtMinutes' note on non-truncation).
+    expect(applyOtRuleRows(30, 0, a01)).toBe(30);
+    expect(applyOtRuleRows(60, 0, a01)).toBe(60);
+    expect(applyOtRuleRows(120, 0, a01)).toBe(120);
+    expect(applyOtRuleRows(130, 0, a01)).toBe(130);
+  });
 });
 
 // ─────────────────────────── LATENESS / EARLY OUT / DEDUCTIONS ───────────────────────────

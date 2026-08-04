@@ -5661,7 +5661,9 @@
       "applyDeductionsLabel": "Apply the lateness and early-out deductions",
       "applyDeductionsHint": "Off by default. Turning this on records a deduction for late arrivals and early departures from today onward — days already worked are never changed.",
       "deductionsFromLabel": "Deductions apply from",
-      "deductionsFromNone": "Not applied"
+      "deductionsFromNone": "Not applied",
+      "otLadderGapWarning": "Row {row} must start at {expected} minutes to continue from row {prev} — it starts at {actual}. Saving is blocked until the rows join up.",
+      "otLadderOpenEndedWarning": "Row {row} has no upper limit, so no row can follow it. Give it a “To” value or move it to the end."
     },
     "benefitScheme": {
       "groupsTitle": "Grade Groups",

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 
 // 88e94371 — the Overtime section editor for a "Lateness, Early Out & Overtime Settings" rule. A dynamic
 // table of OT time-bands (+ Add Row) plus the "Apply to Early Overtime" checkbox. Rows serialize into one
@@ -41,6 +41,8 @@ export type OtEditorLabels = {
   emptyHint: string;
   colPhRate: string;
   phRateNone: string;
+  ladderGapWarning: string;
+  ladderOpenEndedWarning: string;
 };
 
 // 7c834696 — '0' is now offered: that portion of overtime is RECORDED but not paid (request §7).
@@ -55,6 +57,36 @@ const ratesFor = (current: string): string[] =>
   current !== '' && !VARIABLE_RATES.some((v) => Number(v) === Number(current))
     ? [current, ...VARIABLE_RATES]
     : VARIABLE_RATES;
+/**
+ * The SAME ladder rule the server enforces (core/attendance-rule.ts validateOtLadder), evaluated live so a
+ * broken table announces itself the moment the rule is opened instead of ambushing the admin on Save.
+ *
+ * This matters because of one real rule on production: its band table predates any validation, so an admin
+ * who opens it to change something unrelated would otherwise be refused with an error about rows they never
+ * authored. Refusing is still correct — a table with a hole in it now decides which rate column overtime
+ * lands in — but being TOLD on open, next to the offending row, turns a blocked save into a visible ten-
+ * second repair. Returns a per-row message keyed by row index; rows not at fault get nothing.
+ */
+const ladderProblems = (rows: OtEditorRow[], labels: OtEditorLabels): Map<number, string> => {
+  const out = new Map<number, string>();
+  const to = (r: OtEditorRow) => (Number(r.toH) || 0) * 60 + (Number(r.toM) || 0);
+  const from = (r: OtEditorRow) => (Number(r.fromH) || 0) * 60 + (Number(r.fromM) || 0);
+  const fill = (t: string, v: Record<string, number>) =>
+    Object.entries(v).reduce((acc, [k, n]) => acc.split(`{${k}}`).join(String(n)), t);
+  for (let i = 0; i < rows.length; i++) {
+    if (to(rows[i]) <= from(rows[i]) && i !== rows.length - 1) {
+      out.set(i, fill(labels.ladderOpenEndedWarning, { row: i + 1 }));
+      continue;
+    }
+    if (i === 0) continue;
+    const prevTo = to(rows[i - 1]);
+    if (from(rows[i]) !== prevTo + 1) {
+      out.set(i, fill(labels.ladderGapWarning, { row: i + 1, prev: i, expected: prevTo + 1, actual: from(rows[i]) }));
+    }
+  }
+  return out;
+};
+
 /** The option string that represents a stored value, so string comparison in the select cannot miss. */
 const rateValue = (current: string): string =>
   VARIABLE_RATES.find((v) => Number(v) === Number(current)) ?? current;
@@ -78,6 +110,7 @@ export function AttendanceRuleOtEditor({
 }) {
   const [rows, setRows] = useState<OtEditorRow[]>(initialRows);
   const [applyEarly, setApplyEarly] = useState(initialApplyEarlyOt);
+  const problems = ladderProblems(rows, labels);
 
   const update = (i: number, patch: Partial<OtEditorRow>) =>
     setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -152,7 +185,8 @@ export function AttendanceRuleOtEditor({
             </thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr key={i} className="border-b border-border/60">
+                <Fragment key={i}>
+                <tr className={`border-b border-border/60 ${problems.has(i) ? 'bg-amber-50/60 dark:bg-amber-500/10' : ''}`}>
                   <td className="py-1.5 pr-2">
                     <div className="flex items-center gap-1">
                       <input type="number" min={0} value={r.fromH} onChange={(e) => update(i, { fromH: Number(e.target.value) })} className={numCls} aria-label={`${labels.colFrom} ${labels.hour}`} />
@@ -232,6 +266,14 @@ export function AttendanceRuleOtEditor({
                     </button>
                   </td>
                 </tr>
+                {problems.has(i) && (
+                  <tr className="border-b border-border/60 bg-amber-50/60 dark:bg-amber-500/10">
+                    <td colSpan={8} className="px-1 pb-1.5 text-xs text-amber-800 dark:text-amber-200">
+                      {problems.get(i)}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

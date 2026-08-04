@@ -5661,7 +5661,9 @@
       "applyDeductionsLabel": "Áp dụng khấu trừ đi muộn và về sớm",
       "applyDeductionsHint": "Mặc định tắt. Bật lên sẽ ghi nhận khấu trừ cho đi muộn và về sớm kể từ hôm nay — những ngày đã làm việc không bao giờ bị thay đổi.",
       "deductionsFromLabel": "Khấu trừ áp dụng từ",
-      "deductionsFromNone": "Không áp dụng"
+      "deductionsFromNone": "Không áp dụng",
+      "otLadderGapWarning": "Dòng {row} phải bắt đầu ở {expected} phút để nối tiếp dòng {prev} — nhưng nó bắt đầu ở {actual}. Không thể lưu cho đến khi các dòng nối liền nhau.",
+      "otLadderOpenEndedWarning": "Dòng {row} không có giới hạn trên nên không dòng nào có thể theo sau. Hãy nhập giá trị “Đến” hoặc chuyển nó xuống cuối."
     },
     "benefitScheme": {
       "groupsTitle": "Nhóm bậc",

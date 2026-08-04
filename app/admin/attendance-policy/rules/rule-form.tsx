@@ -62,6 +62,15 @@ export async function RuleForm({
     emptyHint: t('otEmptyHint'),
     colPhRate: t('otColPhRate'),
     phRateNone: t('otPhRateNone'),
+    // Passed as TEMPLATES with {placeholders} the island fills in — a formatter function would be a
+    // closure crossing the server→client boundary, which is the RSC bug this repo has shipped before.
+    //
+    // `t.raw`, NOT `t`: `{row}` is also ICU interpolation syntax, so plain `t()` demands the values HERE,
+    // where they do not exist yet — it fails with FORMATTING_ERROR and renders the key path on screen.
+    // Caught only by reading the dev log on a real render: the page still returned 200, tsc passed, and
+    // i18n coverage check C passed because the KEY exists — existing and formatting are different things.
+    ladderGapWarning: String(t.raw('otLadderGapWarning')),
+    ladderOpenEndedWarning: String(t.raw('otLadderOpenEndedWarning')),
   };
 
   return (

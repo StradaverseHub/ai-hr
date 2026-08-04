@@ -5661,7 +5661,9 @@
       "applyDeductionsLabel": "Kenakan potongan lewat dan balik awal",
       "applyDeductionsHint": "Dimatikan secara lalai. Menghidupkannya akan merekod potongan bagi kelewatan dan balik awal bermula hari ini — hari yang telah bekerja tidak pernah diubah.",
       "deductionsFromLabel": "Potongan berkuat kuasa dari",
-      "deductionsFromNone": "Tidak dikenakan"
+      "deductionsFromNone": "Tidak dikenakan",
+      "otLadderGapWarning": "Baris {row} mesti bermula pada {expected} minit untuk menyambung baris {prev} — ia bermula pada {actual}. Simpanan disekat sehingga baris bersambung.",
+      "otLadderOpenEndedWarning": "Baris {row} tiada had atas, jadi tiada baris boleh mengikutinya. Beri nilai “Hingga” atau pindahkannya ke hujung."
     },
     "benefitScheme": {
       "groupsTitle": "Kumpulan Gred",

@@ -5661,7 +5661,9 @@
       "applyDeductionsLabel": "启用迟到与早退扣减",
       "applyDeductionsHint": "默认关闭。开启后将从今天起记录迟到与早退的扣减——已经工作过的日子永远不会被更改。",
       "deductionsFromLabel": "扣减生效日期",
-      "deductionsFromNone": "未启用"
+      "deductionsFromNone": "未启用",
+      "otLadderGapWarning": "第 {row} 行必须从 {expected} 分钟开始才能接续第 {prev} 行——它从 {actual} 开始。在各行衔接之前无法保存。",
+      "otLadderOpenEndedWarning": "第 {row} 行没有上限，因此其后不能再有任何行。请填写“至”的数值，或将其移到最后。"
     },
     "benefitScheme": {
       "groupsTitle": "职级组",
