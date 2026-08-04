@@ -8,8 +8,9 @@
  * Three derivations the request asks for, all computed from what the attendance row already carries plus
  * the resolved schedule surfaced by the loaders — no new stored columns:
  *
- *  • otByRate    — split the day's single stored otMinutes + normal-within-schedule into the four
- *                  standard Malaysian OT rate buckets (1.0 / 1.5 / 2.0 / 3.0).
+ *  • otByRate    — the day's overtime by RATE COLUMN. 7c834696 stage 1 gave the engine somewhere to store
+ *                  a real, band-driven split, so this now PREFERS the stored figures and keeps the old
+ *                  read-time routing only as the fallback for rows nothing has re-derived.
  *  • flagOf      — the operational irregularity flag (Late / Under / Odd / none).
  *  • statusOf    — the v1 attendance Status (Present / Absent / Rest / OFF / PH / On-Leave).
  *
@@ -35,33 +36,86 @@ export type AttendanceDeriveRow = {
   /** Net scheduled work minutes for the resolved shift/policy that day; null on a no-work (rest/off) day. */
   scheduledMinutes: number | null;
   otMinutes: number | null;
+  // 7c834696 stage 1 — the STORED per-rate overtime split (migration 0394), written by the engine from the
+  // day's rule bands. NULL on any row no engine has touched since the release; otByRate falls back to the
+  // routing below when they are absent, so the two never disagree about a historical day.
+  otFlatMinutes?: number | null;
+  ot00Minutes?: number | null;
+  ot10Minutes?: number | null;
+  ot15Minutes?: number | null;
+  ot20Minutes?: number | null;
+  ot30Minutes?: number | null;
   /** True when the no-work day came from an EXPLICIT rostered rest day (→ "Rest"); a policy / default-shift
    *  pattern non-working day is "OFF". Only meaningful when the day resolves to rest_day. */
   isRosterRest: boolean;
 };
 
-/** The four rate buckets, in MINUTES. ot10 is normal-within-schedule; the premium buckets are the day's
- *  otMinutes routed by its frozen dayType. Sum(ot10..ot30) === workedMinutes (i.e. normal + otMinutes). */
-export type OtByRate = { ot10: number; ot15: number; ot20: number; ot30: number };
+/**
+ * The rate columns, in MINUTES, as the Records tables render them.
+ *
+ * `ot10` is NORMAL-within-schedule hours PLUS any overtime the rule categorised at 1.0× — it has always
+ * been the "normal hours" column and stage 1 did not change that. `flat` and `ot00` are new: a flat-rate
+ * band's hours, and hours at a configured rate of 0 ("record but do not pay").
+ *
+ * Sum(flat, ot00, ot10, ot15, ot20, ot30) === workedMinutes, exactly as before.
+ */
+export type OtByRate = { flat: number; ot00: number; ot10: number; ot15: number; ot20: number; ot30: number };
+
+/** The row shape otByRate reads. */
+type OtByRateInput = Pick<
+  AttendanceDeriveRow,
+  'workedMinutes' | 'otMinutes' | 'dayType' | 'otFlatMinutes' | 'ot00Minutes' | 'ot10Minutes' | 'ot15Minutes' | 'ot20Minutes' | 'ot30Minutes'
+>;
 
 /**
- * Split a day into the four OT rate columns the request asks for. There is NO stored per-rate OT — the
- * engine keeps a single scalar otMinutes + the frozen dayType — so we derive at read time (build direction):
+ * Split a day into the rate columns the request asks for.
+ *
+ * PREFERRED SOURCE — the STORED split (7c834696 stage 1). The engine now categorises a day's overtime
+ * through the rule's configured bands, progressively, and stores the result; when those columns are present
+ * this function just adds normal-within-schedule hours into the 1.0 column and hands them through.
+ *
+ * FALLBACK — the pre-7c834696 read-time guess, kept verbatim, for every row no engine has re-derived:
  *
  *   • normal-within-schedule  → OT 1.0   (workedMinutes − otMinutes)
- *   • the day's otMinutes routed by dayType:
- *        workday   → OT 1.5
- *        rest_day  → OT 2.0
- *        holiday   → OT 3.0
+ *   • the day's otMinutes routed by dayType:  workday → 1.5, rest_day → 2.0, holiday → 3.0
  *
- * The four therefore sum back to workedMinutes (= normal hours + otMinutes), the invariant the tests pin.
- * A no-attendance day (or null worked) has nothing to split → all zero (the caller renders those as "—").
+ * The fallback also catches a stored split that does NOT sum to the day's overtime. That can only happen if
+ * something wrote one of the two halves without the other, and in that case the SPLIT is the untrustworthy
+ * one — `otMinutes` is what payroll pays from. Trusting it blindly would let the table show a total that
+ * disagrees with the payslip, so the guard is deliberate rather than defensive noise.
+ *
+ * Either way the columns sum back to workedMinutes. A no-attendance day has nothing to split → all zero
+ * (the caller renders those as "—").
  */
-export function otByRate(row: Pick<AttendanceDeriveRow, 'workedMinutes' | 'otMinutes' | 'dayType'>): OtByRate {
+export function otByRate(row: OtByRateInput): OtByRate {
   const worked = row.workedMinutes ?? 0;
   const ot = Math.max(0, Math.min(row.otMinutes ?? 0, worked)); // OT can never exceed worked
   const normal = Math.max(0, worked - ot); // normal-within-schedule → 1.0×
-  const bucket = { ot10: normal, ot15: 0, ot20: 0, ot30: 0 };
+
+  const stored = {
+    flat: row.otFlatMinutes,
+    ot00: row.ot00Minutes,
+    ot10: row.ot10Minutes,
+    ot15: row.ot15Minutes,
+    ot20: row.ot20Minutes,
+    ot30: row.ot30Minutes,
+  };
+  const values = Object.values(stored);
+  if (values.every((v) => v != null)) {
+    const sum = values.reduce((a: number, v) => a + (v as number), 0);
+    if (sum === ot) {
+      return {
+        flat: stored.flat!,
+        ot00: stored.ot00!,
+        ot10: normal + stored.ot10!,
+        ot15: stored.ot15!,
+        ot20: stored.ot20!,
+        ot30: stored.ot30!,
+      };
+    }
+  }
+
+  const bucket: OtByRate = { flat: 0, ot00: 0, ot10: normal, ot15: 0, ot20: 0, ot30: 0 };
   if (ot > 0) {
     if (row.dayType === 'holiday') bucket.ot30 = ot;
     else if (row.dayType === 'rest_day') bucket.ot20 = ot;

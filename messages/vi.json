@@ -1959,7 +1959,9 @@
       "clockedInAt": "Đã chấm công vào lúc {time}",
       "sessionsToday": "{count, plural, one {# phiên hoàn thành hôm nay} other {# phiên hoàn thành hôm nay}}",
       "locationUnknown": "Địa điểm làm việc của bạn được xác định khi bạn chấm công vào"
-    }
+    },
+    "colOtFlat": "Tăng ca cố định",
+    "colOt00": "Tăng ca 0.0 (không trả)"
   },
   "org": {
     "title": "Sơ đồ tổ chức",
@@ -5368,7 +5370,8 @@
       "ruleFieldLabel": "Cài đặt Đi trễ, Về sớm & Tăng ca",
       "ruleFieldStandardDefault": "Tiêu chuẩn (mặc định)",
       "ruleDefaultSuffix": "(Tiêu chuẩn)",
-      "ruleInactiveSuffix": "(không hoạt động)"
+      "ruleInactiveSuffix": "(không hoạt động)",
+      "otApprovalGreater": "Dùng giá trị lớn hơn"
     },
     "payrollPermissions": {
       "title": "Quyền tính lương",
@@ -5651,7 +5654,14 @@
       "otEmptyHint": "Chưa có khoảng tăng ca. Dùng + Thêm dòng để xác định cách tính tăng ca.",
       "statutoryCapNote": "Hệ số tăng ca theo luật (1.5×, 2×, 3×) vẫn là mức tối thiểu hợp pháp và được đặt trong mức tăng ca của công ty. Các quy tắc này định hình và làm tròn tăng ca bên trên đó.",
       "save": "Lưu",
-      "cancel": "Hủy"
+      "cancel": "Hủy",
+      "otColPhRate": "Hệ số ngày lễ",
+      "otPhRateNone": "Giống hệ số thường",
+      "deductionsSectionTitle": "Khấu trừ lương",
+      "applyDeductionsLabel": "Áp dụng khấu trừ đi muộn và về sớm",
+      "applyDeductionsHint": "Mặc định tắt. Bật lên sẽ ghi nhận khấu trừ cho đi muộn và về sớm kể từ hôm nay — những ngày đã làm việc không bao giờ bị thay đổi.",
+      "deductionsFromLabel": "Khấu trừ áp dụng từ",
+      "deductionsFromNone": "Không áp dụng"
     },
     "benefitScheme": {
       "groupsTitle": "Nhóm bậc",

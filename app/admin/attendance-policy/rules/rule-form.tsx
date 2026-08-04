@@ -33,7 +33,10 @@ export async function RuleForm({
     toH: Math.floor(r.toMinutes / 60),
     toM: r.toMinutes % 60,
     ratePattern: r.ratePattern,
-    rate: Number(r.rate).toFixed(2),
+    // ONE decimal place on both sides — the variable-rate <select> compares option values as strings, and
+    // the old toFixed(2) ("1.50") matched none of them, so a saved 1.5 band reopened showing the wrong rate.
+    rate: Number(r.rate).toFixed(1),
+    phRate: r.phRate == null ? '' : Number(r.phRate).toFixed(1),
     rounding: r.rounding,
     roundToMinutes: r.roundToMinutes,
   }));
@@ -57,6 +60,8 @@ export async function RuleForm({
     applyEarlyOtLabel: t('applyEarlyOtLabel'),
     applyEarlyOtHint: t('applyEarlyOtHint'),
     emptyHint: t('otEmptyHint'),
+    colPhRate: t('otColPhRate'),
+    phRateNone: t('otPhRateNone'),
   };
 
   return (
@@ -133,6 +138,28 @@ export async function RuleForm({
             <input type="checkbox" name="includeGraceInEarlyOut" defaultChecked={rule?.includeGraceInEarlyOut ?? false} className="h-3.5 w-3.5 accent-primary" />
             {t('includeGraceInEarlyOut')}
           </label>
+        </Card>
+
+        {/* 7c834696 stage 1 — the deduction switch. The two "after X → deduct Y" pairs above were stored
+            and read by nothing until this release, so every rule's effective deduction has always been
+            zero. Turning them on for everybody at once would take minutes off people whose employer never
+            knew the field was live — hence a per-rule switch that ships OFF, with the start date stamped
+            by the server (never typed) so it can only ever be today or later. */}
+        <Card className="space-y-3 p-4">
+          <h2 className="text-sm font-semibold text-foreground">{t('deductionsSectionTitle')}</h2>
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+            <input type="checkbox" name="applyDeductions" defaultChecked={rule?.applyDeductions ?? false} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
+            <span>
+              <span className="font-medium text-foreground">{t('applyDeductionsLabel')}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{t('applyDeductionsHint')}</span>
+            </span>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            {t('deductionsFromLabel')}:{' '}
+            <span className="font-medium tabular-nums text-foreground">
+              {rule?.deductionsEffectiveFrom ?? t('deductionsFromNone')}
+            </span>
+          </p>
         </Card>
 
         {/* Section 3 — Overtime */}

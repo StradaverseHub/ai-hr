@@ -2234,6 +2234,20 @@
       "when": 1781862493000,
       "tag": "0393_pay_component_display_category",
       "breakpoints": true
+    },
+    {
+      "idx": 394,
+      "version": "7",
+      "when": 1781862494000,
+      "tag": "0394_attendance_calc_stage1",
+      "breakpoints": true
+    },
+    {
+      "idx": 395,
+      "version": "7",
+      "when": 1781862495000,
+      "tag": "0395_attendance_ot_split_backfill",
+      "breakpoints": true
     }
   ]
 }

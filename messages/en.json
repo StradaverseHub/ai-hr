@@ -1959,7 +1959,9 @@
       "clockedInAt": "Clocked in at {time}",
       "sessionsToday": "{count, plural, one {# completed session today} other {# completed sessions today}}",
       "locationUnknown": "Your work location is matched when you clock in"
-    }
+    },
+    "colOtFlat": "Flat OT",
+    "colOt00": "OT 0.0 (unpaid)"
   },
   "org": {
     "title": "Org chart",
@@ -5368,7 +5370,8 @@
       "ruleFieldLabel": "Lateness, Early Out & Overtime Settings",
       "ruleFieldStandardDefault": "Standard (default)",
       "ruleDefaultSuffix": "(Standard)",
-      "ruleInactiveSuffix": "(inactive)"
+      "ruleInactiveSuffix": "(inactive)",
+      "otApprovalGreater": "Use whichever is greater"
     },
     "payrollPermissions": {
       "title": "Payroll permissions",
@@ -5651,7 +5654,14 @@
       "otEmptyHint": "No overtime bands yet. Use + Add Row to define how overtime is calculated.",
       "statutoryCapNote": "Statutory overtime multipliers (1.5×, 2×, 3×) remain the legal minimum and are set in the company overtime rates. These rules shape and round overtime on top of that.",
       "save": "Save",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "otColPhRate": "PH rate",
+      "otPhRateNone": "Same as rate",
+      "deductionsSectionTitle": "Wage deductions",
+      "applyDeductionsLabel": "Apply the lateness and early-out deductions",
+      "applyDeductionsHint": "Off by default. Turning this on records a deduction for late arrivals and early departures from today onward — days already worked are never changed.",
+      "deductionsFromLabel": "Deductions apply from",
+      "deductionsFromNone": "Not applied"
     },
     "benefitScheme": {
       "groupsTitle": "Grade Groups",

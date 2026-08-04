@@ -1959,7 +1959,9 @@
       "clockedInAt": "Daftar masuk pada {time}",
       "sessionsToday": "{count, plural, one {# sesi selesai hari ini} other {# sesi selesai hari ini}}",
       "locationUnknown": "Lokasi kerja anda dipadankan semasa anda daftar masuk"
-    }
+    },
+    "colOtFlat": "OT Rata",
+    "colOt00": "OT 0.0 (tanpa bayaran)"
   },
   "org": {
     "title": "Carta organisasi",
@@ -5368,7 +5370,8 @@
       "ruleFieldLabel": "Tetapan Kelewatan, Balik Awal & Kerja Lebih Masa",
       "ruleFieldStandardDefault": "Standard (lalai)",
       "ruleDefaultSuffix": "(Standard)",
-      "ruleInactiveSuffix": "(tidak aktif)"
+      "ruleInactiveSuffix": "(tidak aktif)",
+      "otApprovalGreater": "Guna yang lebih besar"
     },
     "payrollPermissions": {
       "title": "Kebenaran gaji",
@@ -5651,7 +5654,14 @@
       "otEmptyHint": "Belum ada jalur lebih masa. Guna + Tambah Baris untuk menentukan cara lebih masa dikira.",
       "statutoryCapNote": "Pengganda lebih masa berkanun (1.5×, 2×, 3×) kekal sebagai minimum undang-undang dan ditetapkan dalam kadar lebih masa syarikat. Peraturan ini membentuk dan membundarkan lebih masa di atasnya.",
       "save": "Simpan",
-      "cancel": "Batal"
+      "cancel": "Batal",
+      "otColPhRate": "Kadar cuti umum",
+      "otPhRateNone": "Sama seperti kadar",
+      "deductionsSectionTitle": "Potongan gaji",
+      "applyDeductionsLabel": "Kenakan potongan lewat dan balik awal",
+      "applyDeductionsHint": "Dimatikan secara lalai. Menghidupkannya akan merekod potongan bagi kelewatan dan balik awal bermula hari ini — hari yang telah bekerja tidak pernah diubah.",
+      "deductionsFromLabel": "Potongan berkuat kuasa dari",
+      "deductionsFromNone": "Tidak dikenakan"
     },
     "benefitScheme": {
       "groupsTitle": "Kumpulan Gred",

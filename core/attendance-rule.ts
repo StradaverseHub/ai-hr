@@ -15,6 +15,7 @@
  * documented skips.
  */
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { attendancePolicy, attendanceRule, attendanceRuleOtRow, shift, type AttendanceOtRatePattern } from '../db/schema';
@@ -30,6 +31,8 @@ export type ResolvedOtRow = {
   toMinutes: number; // ≤ fromMinutes ⇒ open-ended upper bound
   ratePattern: AttendanceOtRatePattern;
   rate: number;
+  /** 7c834696 — the band's public-holiday multiplier; null ⇒ use `rate` (today's behaviour). */
+  phRate: number | null;
   rounding: boolean;
   roundToMinutes: number | null;
 };
@@ -39,6 +42,18 @@ export type ResolvedAttendanceRule = {
   lateGracePeriodMinutes: number;
   earlyGracePeriodMinutes: number;
   applyToEarlyOt: boolean;
+  // 7c834696 stage 1 — the lateness / early-out DEDUCTION pairs. Stored since 0204 and dropped by this
+  // resolver until now, which is precisely why nothing in the engine could ever act on them.
+  lateAfterMinutes: number;
+  lateDeductMinutes: number;
+  includeGraceInLateness: boolean;
+  earlyAfterMinutes: number;
+  earlyDeductMinutes: number;
+  includeGraceInEarlyOut: boolean;
+  /** Per-rule opt-in; FALSE on every rule at release. See core/attendance-calc.ts deductionsApplyOn. */
+  applyDeductions: boolean;
+  /** Stamped by the service on switch-on; deductions never exist for a date before it. */
+  deductionsEffectiveFrom: string | null;
   otRows: ResolvedOtRow[];
 };
 
@@ -47,10 +62,20 @@ export type ResolvedAttendanceRule = {
  * PURE + exported so the engine and the golden tests share one definition. Standard rules (no OT rows,
  * applyToEarlyOt=false) return the input unchanged, so today's OT stays byte-identical.
  *
- * NOTE (88e94371 GAP): the per-band `rate`/`ratePattern` describe how OT PAY is shaped, but pay still uses
- * the tenant-global statutory multipliers (1.5×/2×/3×) as the compliance cap — feeding custom band
- * multipliers into the payroll kernel is a deferred follow-up. This function applies only the rounding +
- * early-OT-inclusion behaviour, which is what the engine can honour today.
+ * SCOPE, CORRECTED BY 7c834696 STAGE 1: the per-band rate now DOES something — it decides which rate
+ * COLUMN a day's overtime minutes land in (core/attendance-calc.ts splitOtMinutes, called by the engine
+ * right after this). What is still true is that pay uses the tenant-global statutory multipliers
+ * (1.5×/2×/3×) as the compliance cap; feeding custom band multipliers into the payroll kernel remains a
+ * deferred follow-up. This function still owns ONLY rounding + early-OT inclusion, and it still decides
+ * `ot_minutes` — the canonical total everything downstream reads.
+ *
+ * UNRESOLVED, DELIBERATELY UNCHANGED: the request gives two rounding examples that no single rule
+ * satisfies. "0:01–0:59 with Round To 60 becomes 60 minutes" requires rounding UP (or at least never down
+ * to zero); "121 minutes at Round To 30 becomes 120, and 150 stays 150" is rounding to NEAREST, which is
+ * what the code below has always done and what 121→120 confirms. Under nearest, a 20-minute overtime with
+ * a Round-To of 60 becomes ZERO — which is the first example's complaint. Changing it would move
+ * `ot_minutes`, i.e. money, for every tenant with a rounding band, so it is NOT changed here on a guess:
+ * the count of affected rules has been requested from production and the owner picks the rule.
  */
 export function applyOtRuleRows(
   workdayOtMinutes: number,
@@ -68,7 +93,7 @@ export function applyOtRuleRows(
 }
 
 const toResolved = (
-  rule: { id: string; isDefault: boolean; lateGracePeriodMinutes: number; earlyGracePeriodMinutes: number; applyToEarlyOt: boolean },
+  rule: typeof attendanceRule.$inferSelect,
   rows: (typeof attendanceRuleOtRow.$inferSelect)[],
 ): ResolvedAttendanceRule => ({
   id: rule.id,
@@ -76,6 +101,14 @@ const toResolved = (
   lateGracePeriodMinutes: rule.lateGracePeriodMinutes,
   earlyGracePeriodMinutes: rule.earlyGracePeriodMinutes,
   applyToEarlyOt: rule.applyToEarlyOt,
+  lateAfterMinutes: rule.lateAfterMinutes,
+  lateDeductMinutes: rule.lateDeductMinutes,
+  includeGraceInLateness: rule.includeGraceInLateness,
+  earlyAfterMinutes: rule.earlyAfterMinutes,
+  earlyDeductMinutes: rule.earlyDeductMinutes,
+  includeGraceInEarlyOut: rule.includeGraceInEarlyOut,
+  applyDeductions: rule.applyDeductions,
+  deductionsEffectiveFrom: rule.deductionsEffectiveFrom ?? null,
   otRows: rows
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -84,6 +117,7 @@ const toResolved = (
       toMinutes: r.toMinutes,
       ratePattern: r.ratePattern,
       rate: Number(r.rate),
+      phRate: r.phRate == null ? null : Number(r.phRate),
       rounding: r.rounding,
       roundToMinutes: r.roundToMinutes,
     })),
@@ -222,6 +256,8 @@ export type OtRowInput = {
   toMinutes: number;
   ratePattern: AttendanceOtRatePattern;
   rate: number;
+  /** 7c834696 — optional public-holiday multiplier for this band; null ⇒ the band uses `rate`. */
+  phRate?: number | null;
   rounding: boolean;
   roundToMinutes: number | null;
 };
@@ -238,6 +274,9 @@ export type AttendanceRuleInput = {
   earlyDeductMinutes: number;
   includeGraceInEarlyOut: boolean;
   applyToEarlyOt: boolean;
+  /** 7c834696 — turn the lateness / early-out deductions ON for this rule. The EFFECTIVE-FROM date is not
+   *  an input: the service stamps it to today so a deduction can never reach a closed period. */
+  applyDeductions?: boolean;
   otRows: OtRowInput[];
 };
 
@@ -246,6 +285,37 @@ const nonNeg = (v: number, label: string): number => {
   if (!Number.isFinite(n) || n < 0) throw new Error(`${label} must be a non-negative whole number of minutes.`);
   return n;
 };
+
+/**
+ * 7c834696 stage 1 — the OT band table must describe a CONTINUOUS ladder, as the request specifies: no
+ * overlaps, no gaps, every next "From" exactly one minute past the previous "To". Until now nothing checked
+ * it, so a table with a hole in it saved silently and the hole only showed up as overtime landing in a
+ * column nobody expected. The message names the two rows at fault (1-based, as the editor numbers them),
+ * because "invalid OT bands" on a six-row table is not an actionable error.
+ *
+ * An open-ended band (To ≤ From) is still legal, but only as the LAST row — a table cannot continue past a
+ * band with no upper bound. This is validated on SAVE only: a rule stored before this release that breaks
+ * the rule keeps calculating (splitOtMinutes copes with it), and is refused the next time someone edits it.
+ */
+function validateOtLadder(rows: { fromMinutes: number; toMinutes: number }[]): void {
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const openEnded = r.toMinutes <= r.fromMinutes;
+    if (openEnded && i !== rows.length - 1) {
+      throw new Error(
+        `Overtime row ${i + 1} has no upper limit, so no row can follow it. Give row ${i + 1} a “To” value or move it to the end.`,
+      );
+    }
+    if (i === 0) continue;
+    const prev = rows[i - 1];
+    if (r.fromMinutes !== prev.toMinutes + 1) {
+      const kind = r.fromMinutes <= prev.toMinutes ? 'overlaps' : 'leaves a gap after';
+      throw new Error(
+        `Overtime row ${i + 1} ${kind} row ${i}: row ${i} ends at ${prev.toMinutes} minutes, so row ${i + 1} must start at ${prev.toMinutes + 1} minutes (it starts at ${r.fromMinutes}).`,
+      );
+    }
+  }
+}
 
 function normalizeInput(p: AttendanceRuleInput) {
   const name = p.name.trim();
@@ -256,27 +326,80 @@ function normalizeInput(p: AttendanceRuleInput) {
     const toMinutes = nonNeg(r.toMinutes, 'OT “To”');
     const ratePattern: AttendanceOtRatePattern = r.ratePattern === 'variable' ? 'variable' : 'flat';
     const rate = Number(r.rate);
+    // Zero is a legitimate multiplier — "record the hours but do not pay them" (request §7). It always was
+    // accepted here; what was missing was a way to CHOOSE it, which the editor now offers.
     if (!Number.isFinite(rate) || rate < 0) throw new Error('OT rate must be a non-negative number.');
+    const phRaw = r.phRate;
+    const phRate = phRaw == null || phRaw === ('' as unknown as number) ? null : Number(phRaw);
+    if (phRate != null && (!Number.isFinite(phRate) || phRate < 0)) {
+      throw new Error('Public-holiday OT rate must be a non-negative number.');
+    }
     const rounding = !!r.rounding;
     const roundToMinutes = rounding ? nonNeg(r.roundToMinutes ?? 0, 'Round-to') : null;
     if (rounding && (!roundToMinutes || roundToMinutes <= 0)) throw new Error('Choose a positive “Round to” value when rounding is on.');
-    return { fromMinutes, toMinutes, ratePattern, rate: rate.toFixed(2), rounding, roundToMinutes, sortOrder: i };
+    return {
+      fromMinutes,
+      toMinutes,
+      ratePattern,
+      rate: rate.toFixed(2),
+      phRate: phRate == null ? null : phRate.toFixed(2),
+      rounding,
+      roundToMinutes,
+      sortOrder: i,
+    };
   });
+  validateOtLadder(otRows);
+  // The request's "X cannot exceed Y" on each (after X minutes → deduct Y minutes) pair. Enforced HERE and
+  // not as a DB CHECK on purpose: rules saved since 0204 were never validated, so production may hold a row
+  // that breaks it and a CHECK would abort the migration. An offending stored rule keeps working and is
+  // refused the next time it is edited.
+  const lateAfter = nonNeg(p.lateAfterMinutes, 'Lateness “after”');
+  const lateDeduct = nonNeg(p.lateDeductMinutes, 'Lateness deduction');
+  if (lateAfter > 0 && lateDeduct > 0 && lateAfter > lateDeduct) {
+    throw new Error(
+      `Lateness: “after ${lateAfter} minutes” cannot be larger than “deduct ${lateDeduct} minutes”. Raise the deduction or lower the interval.`,
+    );
+  }
+  const earlyAfter = nonNeg(p.earlyAfterMinutes, 'Early-out “after”');
+  const earlyDeduct = nonNeg(p.earlyDeductMinutes, 'Early-out deduction');
+  if (earlyAfter > 0 && earlyDeduct > 0 && earlyAfter > earlyDeduct) {
+    throw new Error(
+      `Early out: “after ${earlyAfter} minutes” cannot be larger than “deduct ${earlyDeduct} minutes”. Raise the deduction or lower the interval.`,
+    );
+  }
   return {
     name,
     description: p.description?.trim() || null,
     status,
     lateGracePeriodMinutes: nonNeg(p.lateGracePeriodMinutes, 'Lateness grace period'),
-    lateAfterMinutes: nonNeg(p.lateAfterMinutes, 'Lateness “after”'),
-    lateDeductMinutes: nonNeg(p.lateDeductMinutes, 'Lateness deduction'),
+    lateAfterMinutes: lateAfter,
+    lateDeductMinutes: lateDeduct,
     includeGraceInLateness: !!p.includeGraceInLateness,
     earlyGracePeriodMinutes: nonNeg(p.earlyGracePeriodMinutes, 'Early-out grace period'),
-    earlyAfterMinutes: nonNeg(p.earlyAfterMinutes, 'Early-out “after”'),
-    earlyDeductMinutes: nonNeg(p.earlyDeductMinutes, 'Early-out deduction'),
+    earlyAfterMinutes: earlyAfter,
+    earlyDeductMinutes: earlyDeduct,
     includeGraceInEarlyOut: !!p.includeGraceInEarlyOut,
     applyToEarlyOt: !!p.applyToEarlyOt,
+    applyDeductions: !!p.applyDeductions,
     otRows,
   };
+}
+
+/**
+ * The forward-dating rule for the deduction switch, in one place so create and update cannot disagree.
+ *
+ * OFF ⇒ no start date at all (and the DB CHECK from 0394 makes the reverse — on with no date —
+ * unrepresentable). ON ⇒ keep the date already stamped if the switch was already on, otherwise stamp
+ * TODAY. The date is never taken from the caller, so there is no input through which a past date could be
+ * supplied and no window in which the engine would deduct from a period that is already closed.
+ */
+function resolveDeductionStart(
+  applyDeductions: boolean,
+  existing: { applyDeductions: boolean; deductionsEffectiveFrom: string | null } | null,
+): string | null {
+  if (!applyDeductions) return null;
+  if (existing?.applyDeductions && existing.deductionsEffectiveFrom) return existing.deductionsEffectiveFrom;
+  return todayInKualaLumpur();
 }
 
 const isUniqueViolation = (e: unknown): boolean => {
@@ -311,6 +434,8 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
           earlyDeductMinutes: n.earlyDeductMinutes,
           includeGraceInEarlyOut: n.includeGraceInEarlyOut,
           applyToEarlyOt: n.applyToEarlyOt,
+          applyDeductions: n.applyDeductions,
+          deductionsEffectiveFrom: resolveDeductionStart(n.applyDeductions, null),
         })
         .returning({ id: attendanceRule.id });
       ruleId = row.id;
@@ -327,7 +452,15 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
       aggregateId: ruleId,
       eventType: 'attendance-rule.created',
       actor: actorOf(ctx),
-      payload: { name: n.name, status: n.status, otRowCount: n.otRows.length, applyToEarlyOt: n.applyToEarlyOt },
+      payload: {
+        name: n.name,
+        status: n.status,
+        otRowCount: n.otRows.length,
+        applyToEarlyOt: n.applyToEarlyOt,
+        // 7c834696 — the deduction switch is money-adjacent; its state and its forward start date belong
+        // in the audit trail so "when did this rule start deducting" is answerable without archaeology.
+        applyDeductions: n.applyDeductions,
+      },
     });
     return { id: ruleId };
   });
@@ -338,6 +471,16 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
 export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } & AttendanceRuleInput): Promise<{ id: string }> {
   const n = normalizeInput(p);
   return withTenant(ctx, async (tx) => {
+    // Read the CURRENT switch state before writing: an already-on rule keeps the date it was stamped with,
+    // so re-saving a rule for an unrelated reason cannot silently move its deductions' start date forward.
+    const [before] = await tx
+      .select({
+        applyDeductions: attendanceRule.applyDeductions,
+        deductionsEffectiveFrom: attendanceRule.deductionsEffectiveFrom,
+      })
+      .from(attendanceRule)
+      .where(eq(attendanceRule.id, p.ruleId))
+      .limit(1);
     try {
       await tx
         .update(attendanceRule)
@@ -354,6 +497,8 @@ export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } 
           earlyDeductMinutes: n.earlyDeductMinutes,
           includeGraceInEarlyOut: n.includeGraceInEarlyOut,
           applyToEarlyOt: n.applyToEarlyOt,
+          applyDeductions: n.applyDeductions,
+          deductionsEffectiveFrom: resolveDeductionStart(n.applyDeductions, before ?? null),
           updatedAt: new Date(),
         })
         .where(eq(attendanceRule.id, p.ruleId));
@@ -372,7 +517,15 @@ export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } 
       aggregateId: p.ruleId,
       eventType: 'attendance-rule.updated',
       actor: actorOf(ctx),
-      payload: { name: n.name, status: n.status, otRowCount: n.otRows.length, applyToEarlyOt: n.applyToEarlyOt },
+      payload: {
+        name: n.name,
+        status: n.status,
+        otRowCount: n.otRows.length,
+        applyToEarlyOt: n.applyToEarlyOt,
+        // 7c834696 — the deduction switch is money-adjacent; its state and its forward start date belong
+        // in the audit trail so "when did this rule start deducting" is answerable without archaeology.
+        applyDeductions: n.applyDeductions,
+      },
     });
     return { id: p.ruleId };
   });
