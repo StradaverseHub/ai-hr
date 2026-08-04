@@ -1,17 +1,17 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
-import { requireAdmin } from '@/lib/authz';
 import { scopedAdmin } from '@/lib/scope';
 import { BatchNotDraftError } from '@/core/payroll';
 import { listIndividualTxnsAcross, listUnattachedTxnSummary } from '@/core/payroll-view';
-import { deriveExistingTxnContext, type ExistingTxnContextRow } from './existing-context';
+import { buildTxnPanel, type TxnPanel } from './existing-context';
 import {
   createIndividualTxnsBulk,
+  getIndividualTxn,
   updateIndividualTxn,
   deleteIndividualTxn,
   TxnDateOutOfPeriodError,
+  TxnNotFoundError,
   AmountNotPositiveError,
   CompanyMismatchError,
   ComponentRequiredError,
@@ -24,18 +24,26 @@ import {
   InvalidPayPeriodError,
   MissingTxnTargetError,
   isPayPeriod,
-  type BulkTxnRow,
+  type IndividualTxnDetail,
 } from '@/core/payroll-individual-txn';
 
-const back = (batchId: string, qs: string) =>
-  redirect(
-    batchId
-      ? `/payroll/transactions/individual?batchId=${encodeURIComponent(batchId)}&${qs}`
-      : `/payroll/transactions/individual?${qs}`,
-  );
+/**
+ * 44129979 — the server half of the redesigned Individual Transaction screen.
+ *
+ * Every action here returns a PLAIN RESULT rather than redirecting. The screen is one page with an
+ * employee list on the left and that employee's transactions on the right, and the request was explicit
+ * that saving, editing or deleting must refresh the listing "without reloading the entire page" — a
+ * redirect would throw away the operator's place in the list, their filters, and the form they are
+ * halfway through. The previous shape (redirect back with ?error=) belonged to a wizard that had nowhere
+ * to put an inline error.
+ *
+ * Scope fencing is the same rule on every one of them: `scopedAdmin` gives the companies this admin may
+ * act in, and a row or a target outside that set reads as "not found" / "out of scope" — never as a
+ * cross-company read or write. RLS isolates TENANTS; company scope is an application concern, so it is
+ * enforced here rather than assumed.
+ */
 
-/** Map a typed individual-transaction error to a friendly query/result key; otherwise its raw message. The
- *  key set is mirrored in page.tsx (server) + the wizard (client) so the same message resolves everywhere. */
+/** Map a typed individual-transaction error to a friendly key the client resolves against its catalog. */
 const txnErrorKey = (e: unknown): string =>
   e instanceof TxnDateOutOfPeriodError
     ? 'dateOutOfPeriod'
@@ -57,166 +65,167 @@ const txnErrorKey = (e: unknown): string =>
                     ? 'rowIncomplete'
                     : e instanceof InvalidPayPeriodError || e instanceof MissingTxnTargetError
                       ? 'periodInvalid'
-                      : e instanceof BatchNotDraftError
-                        ? 'notDraft'
-                        : (e as Error).message;
+                      : e instanceof TxnNotFoundError
+                        ? 'txnNotFound'
+                        : e instanceof BatchNotDraftError
+                          ? 'notDraft'
+                          : (e as Error).message;
 
-const num = (v: FormDataEntryValue | null): number | undefined => {
-  if (v == null || v === '') return undefined;
-  const n = Number(v);
-  return Number.isNaN(n) ? undefined : n;
-};
-const str = (v: FormDataEntryValue | null): string | undefined => {
-  const s = (v as string) ?? '';
-  return s.trim() === '' ? undefined : s;
-};
+export type TxnActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
-export type SaveGridResult = { ok: true; count: number } | { ok: false; error: string };
+/** One transaction as the create/edit form submits it. `quantity`/`unit` are descriptive (the request's
+ *  "Input Type" + "Quantity / Value"); `amount` is the figure that is actually paid. */
+export type TxnFormInput = {
+  employmentId: string;
+  companyId: string;
+  payPeriod: string;
+  /** A resolved draft run for that (company, month), or '' to key the row against the month itself. */
+  batchId: string;
+  kind: string;
+  componentId: string | null;
+  txnDate: string;
+  amount: number;
+  quantity: number | null;
+  unit: string | null;
+  notes: string | null;
+};
 
 /**
- * 1.2.2 — Save the whole Step-3 grid of one-off transactions for ONE OR MANY employees, in a SINGLE
- * transaction (createIndividualTxnsBulk). The target is EITHER one draft batch (batchId) OR — since
- * f1564110 Phase 2 — a (companyId, payPeriod) month when no draft run exists yet: the rows are saved
- * UNATTACHED and picked up automatically when the month's regular run is generated. The same grid is
- * recorded for every selected employee. Returns a plain result (NOT a redirect) so the client wizard can
- * PRESERVE the entered rows and show an inline error on failure — a stale-batch / company / scope / date /
- * amount failure must never discard a spreadsheet of work (C10). The grid rows AND the selected
- * employmentIds arrive as JSON hidden fields; the resolved target comes from the client's wizard state.
+ * Every one-off transaction already recorded for ONE employee, itemised, plus the totals of exactly those
+ * rows and any month whose money has already missed its payroll run.
+ *
+ * ON DEMAND, PER EMPLOYEE — which is the performance half of the request. The screen never loads every
+ * employee's transactions; it loads the selected employee's, narrowed further to one month when a month
+ * filter is set. `listIndividualTxnsAcross` is the SAME read the Transaction View's History tab uses and
+ * already takes `employmentId`, so this is a narrowing of an existing query, not a new one.
+ *
+ * The stranded-money read is `listUnattachedTxnSummary` — d0d2c9d1's population, unchanged. This screen
+ * consumes it to warn, and deliberately does not restate it as a status; see existing-context.ts.
+ *
+ * Read-only: no write, no domain event.
  */
-export async function saveIndividualTxnGridAction(formData: FormData): Promise<SaveGridResult> {
-  const s = await requireAdmin();
-  const batchId = String(formData.get('batchId') ?? '');
-  const companyId = String(formData.get('companyId') ?? '');
-  const payPeriod = String(formData.get('payPeriod') ?? '');
+export async function fetchEmployeeTxnPanelAction(input: {
+  employmentId: string;
+  companyId: string;
+  /** 'YYYY-MM', or '' for every month this employee has. */
+  payPeriod?: string;
+}): Promise<TxnPanel> {
+  const empty: TxnPanel = {
+    rows: [],
+    totals: { count: 0, total: '0.00', pendingCount: 0, pendingTotal: '0.00', processedCount: 0, processedTotal: '0.00' },
+    stranded: [],
+  };
+  const { s, scopeIds } = await scopedAdmin();
+  const companyId = input.companyId ?? '';
+  if (!companyId || !scopeIds.includes(companyId) || !input.employmentId) return empty;
+  // A malformed month narrows to nothing rather than silently widening to every month.
+  const period = input.payPeriod ?? '';
+  if (period !== '' && !isPayPeriod(period)) return empty;
+  const [year, month] = period ? period.split('-').map(Number) : [undefined, undefined];
 
-  let employmentIds: string[];
+  const [rows, stranded] = await Promise.all([
+    listIndividualTxnsAcross(s, { companyIds: [companyId], employmentId: input.employmentId, year, month }),
+    listUnattachedTxnSummary(s, { companyIds: [companyId], employmentId: input.employmentId, year, month }),
+  ]);
+  // The join, the status rule and the cent arithmetic live in a pure module so they are unit-testable
+  // without a session (test/existing-txn-context.test.ts) — the same split as history-breakdown.ts.
+  return buildTxnPanel(rows, stranded);
+}
+
+/**
+ * One row by id, for Edit and for Duplicate — the only place the picked Payroll Item Master component is
+ * read back, because the listing projection does not carry it (see getIndividualTxn's doc comment).
+ *
+ * Fenced to the caller's company scope: a row in a company this admin does not administer reads as absent.
+ */
+export async function fetchTxnDetailAction(input: { id: string }): Promise<IndividualTxnDetail | null> {
+  const { s, scopeIds } = await scopedAdmin();
+  if (!input.id) return null;
+  const row = await getIndividualTxn(s, { id: input.id });
+  if (!row || !scopeIds.includes(row.companyId)) return null;
+  return row;
+}
+
+/**
+ * Create ONE one-off transaction — the Add form, and equally the save of a Duplicate (a copy is an
+ * ordinary create of a row whose fields were prefilled from another; nothing about the write differs).
+ *
+ * It goes through `createIndividualTxnsBulk` with a single employee and a single row rather than
+ * `createIndividualTxn`, so the screen's writes run the SAME guard sequence as the bulk path it replaces:
+ * draft re-check inside the transaction, company match, batch-scope membership, date-in-period, amount>0,
+ * and the Phase-3 component rules. One create path, one set of rules.
+ *
+ * NOTE ON THE NAME: `DuplicateTxnRowError` below is the byte-for-byte duplicate ROW validation, not this
+ * screen's Duplicate action. They are unrelated — one rejects a double paste, the other copies a row on
+ * purpose — and the reader who conflates them will assume Duplicate is blocked.
+ */
+export async function createIndividualTxnAction(input: TxnFormInput): Promise<TxnActionResult> {
+  const { s, scopeIds } = await scopedAdmin();
+  if (!input.companyId || !scopeIds.includes(input.companyId)) return { ok: false, error: 'outOfScope' };
+  if (!input.employmentId) return { ok: false, error: 'noEmployeesSelected' };
+  if (!input.batchId && !isPayPeriod(input.payPeriod)) return { ok: false, error: 'periodInvalid' };
   try {
-    const rawIds = JSON.parse(String(formData.get('employmentIds') ?? '[]'));
-    employmentIds = Array.isArray(rawIds)
-      ? rawIds.filter((x): x is string => typeof x === 'string' && x !== '')
-      : [];
-  } catch {
-    return { ok: false, error: 'noEmployeesSelected' };
-  }
-  if (employmentIds.length === 0) return { ok: false, error: 'noEmployeesSelected' };
-  // Target validation mirrors the service's MissingTxnTargetError, caught before parsing the grid.
-  if (!batchId && !(companyId && isPayPeriod(payPeriod))) return { ok: false, error: 'periodInvalid' };
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(String(formData.get('rows') ?? '[]'));
-  } catch {
-    return { ok: false, error: 'rowIncomplete' };
-  }
-  if (!Array.isArray(parsed)) return { ok: false, error: 'rowIncomplete' };
-
-  // Drop fully-empty trailing rows (no kind, no date, no amount, no notes). What remains must be complete —
-  // the service re-validates each row, but a blank auto-added trailing row is expected and simply ignored.
-  const rows: BulkTxnRow[] = [];
-  for (const raw of parsed as Array<Record<string, unknown>>) {
-    const kind = typeof raw.kind === 'string' ? raw.kind.trim() : '';
-    const txnDate = typeof raw.txnDate === 'string' ? raw.txnDate.trim() : '';
-    const amountRaw = raw.amount;
-    const hasAmount = amountRaw !== '' && amountRaw != null;
-    const notes = typeof raw.notes === 'string' ? raw.notes.trim() : '';
-    const isEmpty = !kind && !txnDate && !hasAmount && !notes;
-    if (isEmpty) continue;
-    const amount = Number(amountRaw);
-    rows.push({
-      kind,
-      txnDate,
-      amount: Number.isNaN(amount) ? -1 : amount, // -1 ⇒ fails amount>0 guard for an incomplete row
-      notes: notes || null,
-      // Phase 3 — the picked Payroll Item Master item (validated + required-when-flag-on in the service).
-      componentId: typeof raw.componentId === 'string' && raw.componentId !== '' ? raw.componentId : null,
+    const { ids } = await createIndividualTxnsBulk(s, {
+      ...(input.batchId ? { batchId: input.batchId } : { companyId: input.companyId, payPeriod: input.payPeriod }),
+      employmentIds: [input.employmentId],
+      rows: [
+        {
+          kind: input.kind,
+          txnDate: input.txnDate,
+          amount: input.amount,
+          quantity: input.quantity,
+          unit: input.unit,
+          notes: input.notes,
+          componentId: input.componentId,
+        },
+      ],
     });
-  }
-  if (rows.length === 0) return { ok: false, error: 'rowIncomplete' };
-
-  try {
-    const { ids } = await createIndividualTxnsBulk(
-      s,
-      batchId ? { batchId, employmentIds, rows } : { companyId, payPeriod, employmentIds, rows },
-    );
     revalidatePath('/payroll/transactions/individual');
-    return { ok: true, count: ids.length };
+    return { ok: true, id: ids[0] };
   } catch (e) {
     return { ok: false, error: txnErrorKey(e) };
   }
 }
 
-/** 1.2.2 — edit an existing dated one-off transaction (draft-only, re-validated; amount>0 enforced in the
- *  service so this retained edit path agrees with the bulk save's validity rule). */
-export async function updateIndividualTxnAction(formData: FormData) {
-  const s = await requireAdmin();
-  const batchId = String(formData.get('batchId'));
+/**
+ * Edit one existing transaction in place. The service re-validates everything (draft-or-unattached,
+ * date-in-period, amount>0, component coherence), so this only fences the company scope first — an
+ * out-of-scope id must not even reach the service, or the failure would leak that the row exists.
+ */
+export async function updateIndividualTxnAction(
+  input: Omit<TxnFormInput, 'employmentId' | 'batchId' | 'payPeriod'> & { id: string },
+): Promise<TxnActionResult> {
+  const { s, scopeIds } = await scopedAdmin();
+  const existing = input.id ? await getIndividualTxn(s, { id: input.id }) : null;
+  if (!existing || !scopeIds.includes(existing.companyId)) return { ok: false, error: 'txnNotFound' };
   try {
     await updateIndividualTxn(s, {
-      id: String(formData.get('id')),
-      kind: String(formData.get('kind')),
-      txnDate: String(formData.get('txnDate')),
-      amount: num(formData.get('amount')) ?? 0,
-      quantity: num(formData.get('quantity')) ?? null,
-      unit: str(formData.get('unit')) ?? null,
-      notes: str(formData.get('notes')) ?? null,
+      id: input.id,
+      kind: input.kind,
+      txnDate: input.txnDate,
+      amount: input.amount,
+      quantity: input.quantity,
+      unit: input.unit,
+      notes: input.notes,
+      componentId: input.componentId,
     });
+    revalidatePath('/payroll/transactions/individual');
+    return { ok: true, id: input.id };
   } catch (e) {
-    back(batchId, `error=${encodeURIComponent(txnErrorKey(e))}`);
+    return { ok: false, error: txnErrorKey(e) };
   }
-  revalidatePath('/payroll/transactions/individual');
-  back(batchId, 'toast=saved');
 }
 
-/**
- * ec845c7d — "existing transactions for the selected employee visible while you enter a new one", and the
- * blind spot the approved plan insisted this redesign must not repeat: money keyed here that never reaches
- * a payslip.
- *
- * The unpaid figure is read through `listUnattachedTxnSummary` — the SAME read the Transaction View's
- * Outstanding tab uses (d0d2c9d1). That is deliberate and is the whole point: an entry screen that carried
- * its own idea of "unpaid" would eventually disagree with the screen the operator goes to when the number
- * looks wrong. Only the month's REGULAR run attaches these rows (core/payroll.ts, the `!subset &&
- * runType === 'regular'` guard), which is why an off-cycle or bonus run leaves them behind.
- *
- * Scale: one company, one month, then narrowed to the wizard's selected employees. Bounded by construction,
- * so it does not need the pagination framework — and deliberately does NOT load the company's whole
- * transaction set, which is the trap the plan called out for this screen.
- *
- * Read-only: no write, no domain event.
- */
-export async function fetchExistingTxnContextAction(input: {
-  companyId: string;
-  payPeriod: string;
-  employmentIds: string[];
-}): Promise<ExistingTxnContextRow[]> {
+/** Delete one transaction (allowed while unattached or on a draft run — the service enforces it). */
+export async function deleteIndividualTxnAction(input: { id: string }): Promise<TxnActionResult> {
   const { s, scopeIds } = await scopedAdmin();
-  const companyId = input.companyId ?? '';
-  // Scope fence: an out-of-scope companyId reads as "no company", never as a cross-company read. RLS
-  // isolates tenants only; company scope is an application concern (same guard as the page).
-  if (!companyId || !scopeIds.includes(companyId) || !isPayPeriod(input.payPeriod)) return [];
-  const wanted = new Set((input.employmentIds ?? []).filter(Boolean));
-  if (wanted.size === 0) return [];
-
-  const [year, month] = input.payPeriod.split('-').map(Number);
-  const [all, unattached] = await Promise.all([
-    listIndividualTxnsAcross(s, { companyIds: [companyId], year, month }),
-    listUnattachedTxnSummary(s, { companyIds: [companyId], year, month }),
-  ]);
-
-  // The join + the cent arithmetic live in a pure module so they are unit-testable without a session
-  // (test/existing-txn-context.test.ts) — the same split as history-breakdown.ts.
-  return deriveExistingTxnContext([...wanted], all, unattached);
-}
-
-/** 1.2.2 — delete a dated one-off transaction (draft-only). */
-export async function deleteIndividualTxnAction(formData: FormData) {
-  const s = await requireAdmin();
-  const batchId = String(formData.get('batchId'));
+  const existing = input.id ? await getIndividualTxn(s, { id: input.id }) : null;
+  if (!existing || !scopeIds.includes(existing.companyId)) return { ok: false, error: 'txnNotFound' };
   try {
-    await deleteIndividualTxn(s, { id: String(formData.get('id')) });
+    await deleteIndividualTxn(s, { id: input.id });
+    revalidatePath('/payroll/transactions/individual');
+    return { ok: true, id: input.id };
   } catch (e) {
-    back(batchId, `error=${encodeURIComponent(txnErrorKey(e))}`);
+    return { ok: false, error: txnErrorKey(e) };
   }
-  revalidatePath('/payroll/transactions/individual');
-  back(batchId, 'toast=deleted');
 }
