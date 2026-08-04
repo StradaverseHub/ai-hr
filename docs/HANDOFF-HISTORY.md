@@ -9,6 +9,62 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r139 — 2026-08-05 — seven items, six parallel workstreams, and four live bugs nobody had reported
+
+**Shipped `main@a2b6ddab`.** `6e122302` Notice Board · `e7eb5d83` claims stage 1 · `7f6ca478` payroll
+dashboard · `44129979` individual transactions · `3c473773` OT classification · `169e3c24` individual
+payslip · `18103ba4` leave adjustments. Gate: tsc clean · **574 files / 6892 tests** · next build clean
+· **upgrade rehearsal PASS**. Migrations 0390-0393 → production on **319**.
+
+### Decisions
+
+**PARALLELISM SCALED TO SIX WORKSTREAMS.** The recipe is in CURRENT STATE. The load-bearing part is
+that ownership was assigned by FUNCTION, not by file: three payroll items all needed
+`core/payroll-view.ts` and each was given named functions plus an instruction to stop and report
+rather than edit outside its lane. Zero collisions there. The only recurring conflict across six
+branches was `_journal.json`, which is structural — both sides append to one array.
+
+**MY OWN MERGE WAS THE WORST BUG OF THE ROUND.** A recursive object merge treats "absent on our side"
+as an addition by theirs. The Notice Board branch predated r138's retirement of four duplicate wizard
+label groups, so the merge silently RESURRECTED all four in all six catalogs. `wizard-personnel-shared-fields`
+caught it. Presence is a value: the base must decide whether absence means deleted or never-existed.
+The corrected merge lives at the reusable script referenced in Traps.
+
+**THE INTEGRATION GATE CAUGHT WHAT NO AGENT COULD SEE**, again: `/payroll/individual-payslip` was
+guarded on disk with no permissions column. The route came from one branch; the completeness check
+reads a shared registry only the merged tree exercises.
+
+**A GUARD WAS PROTECTING A LINE THAT COULD NEVER FIRE** (r138, repeated here because it generalises):
+before trusting a test named "X is untouched", check that X was ever doing anything.
+
+**FOUR LIVE DEFECTS FOUND BY BUILDING, NOT BY TICKETS** — the `?error=NEXT_REDIRECT` on every
+successful adjustment, the unserialized claims limit, the nested function prop returning 500 on every
+`/payroll` request, and a wizard that could not record four marital statuses. Three of the four were
+invisible to the entire test suite and surfaced only by rendering.
+
+**AGENTS REFUSED WORK CORRECTLY, THREE TIMES.** `3c473773` declined to switch `earningsOf` on the new
+category (it would have moved EPF/SOCSO/EIS/PCB, contradicting its own plan's promise) and built a
+display overlay instead. `18103ba4` refused three criteria axes that have no column anywhere and NAMED
+them on screen as unavailable. Claims stage 1 declined the `reserved_amount` column the plan asked
+for, because a stored counter is what gets double-decremented.
+
+### Environment
+
+**Five agents plus a full suite JAMS the cluster** — 15+ `DROP DATABASE` behind one checkpoint,
+everyone blocked including the agents. Sequence it: agents build with targeted tests, THEN the parent
+gates alone. Rebuilding mid-round destroys other agents' worker DBs, so the agents were right to wait
+it out rather than rebuild; the stalls cleared on their own each time, which continues to support
+"slow, not permanently wedged".
+
+**A foreground vitest that hits the harness timeout gets SIGKILLed mid-teardown and stalls the cluster
+for every namespace.** Run vitest backgrounded, redirected to a file, from the start.
+
+**The scratchpad directory is SHARED between parallel agents** — one agent's `dev.log` was overwritten
+by another's dev server, and the shared `ai_hr_dev` was re-created underneath a third mid-verification.
+Prefix scratch filenames per round.
+
+---
+
 ## r138 — 2026-08-05 — five items, four parallel workstreams, and a guard that was protecting nothing
 
 **Shipped `main@8a426d83`.** `7cd914b1` · `65f466e2` · `7b5f18c3` · `1b87e8a0` · `8590615a`, plus

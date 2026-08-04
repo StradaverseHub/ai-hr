@@ -18,71 +18,79 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-05 (r138 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-05 (r139 SHIPPED)
 
-**`main@8a426d83` is what runs. Production on 315 migrations. Next free migration number is `0392`**
-(0389 unused; `build/r141` holds 0390/0391 — see IN FLIGHT). No half-applied migration, no pending
-deploy. Verified after deploy: service active, `GET /` 401, `/login` 200, `rsync --dry-run` zero
-changes, and `0387` reported **7 classified / 18 NULL** exactly as measured beforehand.
+**`main@a2b6ddab` is what runs. Production on 319 migrations. Next free migration number is `0396`**
+(0389 and 0394/0395 unused — `build/r148` holds 0394/0395; 0389 was never claimed). No half-applied
+migration, no pending deploy. Verified after deploy: service active, `GET /` 401, `/login` 200,
+`rsync --dry-run` zero changes, notice tables present, claim `draft` enum present, `OT1_5` reclassified.
 
-### ⚠️ IN FLIGHT: `build/r141` — the Notice Board, BUILT AND NOT SHIPPED
+### The board — counted on production 2026-08-05 after r139
 
-`6e122302` release one: create/target/publish, admin listing, dashboard card, login popup.
-6 commits, tree clean, tsc + next build + 17 targeted test files green, render-checked.
-**It has NOT been through the integration gate and was built BEFORE r138 landed**, so it needs a
-rebase on `main` first: it touches `components/sidebar.tsx`, `lib/permissions.ts` and
-`test/harness.ts`, all of which r138 also changed. Migrations 0390/0391 — re-check their `when`
-against the deployed watermark before merging.
+**`deployed = 581` · `approved = 4` · `building = 1` · `cancelled = 12`. `open = 0`, `contested = 0`,
+`planned = 0`.**
 
-**IT DEVIATES FROM THE TICKET ON PURPOSE, AND THE REPORTER MUST BE TOLD.** They asked for a
-Word-like WYSIWYG editor (fonts, colours, tables, embedded video). It ships the Knowledge Base's
-MARKDOWN renderer instead, because storing raw HTML would make every notice a stored-XSS vector
-aimed at every employee in the company. That is a scope decision, not an oversight.
+**WHAT IS LEFT — five items, and four of them are genuinely sequential:**
 
-### The board — counted on production 2026-08-05 after r138
+| item | why it is not just "next" |
+|---|---|
+| `7c834696` Attendance engine | IN FLIGHT on `build/r148` (stage 1 only). Its own plan: "stage 1 must not share a release with any other attendance change." Migrations 0394/0395 assigned |
+| `6e9a126e` Entitlement redesign | **OWN SESSION.** Drops `benefit_scheme`, `scheme_leave_entitlement`, `leave_policy`. Archive to text FIRST, re-count the census on production, and **re-locate every anchor BY SYMBOL** — its rev-3 claim that line numbers were re-verified was false |
+| `93249794` Generate Entitlement | Waits on `6e9a126e`'s eligibility layer, or you build a SECOND criteria engine — the exact defect several plans complain about |
+| `2ef69d1e` Back pay | LAST. It posts through `createIndividualTxnsBulk` into the screen r139 just rebuilt, adds a run-type to the dashboard r139 just rebuilt, and rewrites the earnings fold `3c473773` just changed. Pass 2 waits on `7c834696` |
+| `35b7af0a` Create Employee wizard | `building` — groups 1-2 shipped (r138). Remaining: Date of Birth + Age (blocked on `completedYearsAt` living in `core/leave.ts`), and ~28 identity/org-cascade/statutory labels |
 
-**`deployed = 574` · `approved = 11` · `building = 1` · `cancelled = 12`. `open = 0`,
-`contested = 0`, `planned = 0`.** `improve:pull` returns ONLY open+contested and hides `building`
-(that is how `a1d82340` stayed invisible for a week); use `pull-approved` and the DB.
+### PARALLEL BUILDS WORK — r139 is the proof, and here is the recipe
 
-**`35b7af0a` is `building`, deliberately.** Its plan mandates group-by-group delivery; groups 1
-(Personal Details) and 2 (Pay structure) shipped in r138. Remaining: Date of Birth + Age (blocked on
-`completedYearsAt` living in `core/leave.ts` — a client-safe home for it means touching the leave
-engine), and ~28 identity/org-cascade/statutory labels.
+Six workstreams built seven items simultaneously. What made it work:
+- **The parent cuts every worktree from the integration branch** and hands each agent its migration
+  number UP FRONT. No agent picks its own.
+- **Ownership is assigned by FUNCTION, not by file.** Three payroll items all needed
+  `core/payroll-view.ts`; each was given specific functions and told to STOP AND REPORT rather than
+  edit outside its lane. Zero collisions in that file.
+- **Only ONE agent per round may own each exact-set registry** — `packs/payroll` nav +
+  `EXPECTED_SET`, `ADMIN_GROUP_FLAT_HREFS`, the dashboard card catalogue.
+- **Agents run only their own targeted tests, backgrounded.** The parent runs ONE integration gate.
+  Five agents plus a full suite jams the cluster (15+ `DROP DATABASE` behind one checkpoint).
+- **The integration gate earns its keep every time**: r139's single failure was
+  `/payroll/individual-payslip` guarded on disk with no permissions column — invisible to every agent
+  because the route came from one branch and the completeness check reads a shared registry.
 
-### THE REMAINING APPROVED ITEMS — sequenced from the plans' OWN sequencing sections
+### ⚠️ WHAT THE AGENTS FOUND THAT NOBODY REPORTED (all now fixed and live)
 
-Migration numbers are pre-assigned so parallel agents cannot collide (next free `0392`).
+- **Every SUCCESSFUL leave adjustment redirected to `?error=NEXT_REDIRECT`** — live since `491c499f`.
+  `redirect()` signals by THROWING, and a success toast inside the `try` let the service-error catch
+  swallow it. If you put a toast next to a redirect, the toast goes after.
+- **The claims limit check had no serialization at all.** Two concurrent RM600 approvals both passed
+  against a RM1000 limit — reproduced. Now an advisory lock taken before the first limit read, in the
+  same transaction as the state change. The ticket blamed a different mechanism entirely: the schema
+  COMMENT said limits count only approved claims; the CODE always summed pending+approved+paid.
+- **A function nested in an object-literal prop returned 500 on every `/payroll` request** while tsc,
+  the full suite AND `server-client-boundary` stayed green. The guard only looked at the top level of
+  an attribute value; it is now depth-aware for object-literal props.
+- **The Create Employee wizard could not record `divorced`, `widowed`, `separated` or `undisclosed`**
+  — it offered 2 genders and 2 marital statuses against the profile's 3 and 6.
 
-**PARALLEL WORKS, and r138 proved it:** four workstreams (one mine, three agents) built five items at
-once, in worktrees I cut from `main` myself, each with its own `TEST_DB_NAMESPACE` and a migration
-number assigned UP FRONT. The only merge conflict was `db/migrations/meta/_journal.json`, which is the
-one guaranteed collision when two branches each add a migration — resolve it as a UNION, then check
-`idx` uniqueness and that every new `when` clears the deployed watermark.
+### ⚠️ DECISIONS TAKEN THAT THE REPORTER SHOULD SEE
 
-| round | items | migration | why grouped / sequenced |
-|---|---|---|---|
-| ~~r138~~ | ~~`7cd914b1` + `65f466e2`~~ | 0386, 0387 | **SHIPPED** |
-| ~~r139~~ | ~~`7b5f18c3` + `1b87e8a0`~~ | none | **SHIPPED** |
-| ~~r140~~ | ~~`8590615a`~~ + `35b7af0a` | 0388 | **8590615a SHIPPED**; 35b7af0a partial, still `building` |
-| r141 | `6e122302` | 0390/0391 | **BUILT, NOT SHIPPED** — see IN FLIGHT above. Rebase on main first |
-| next | `169e3c24` + `3c473773` | 0392+ | Same display pipeline (payslip earnings buckets / transaction view). Keep `169e3c24` away from `2ef69d1e` — both edit the exact-set `EXPECTED_SET` in the nav test |
-| next | `44129979` | none | "Do NOT build alongside `2ef69d1e` or `7f6ca478`." Lands before both |
-| next | `7f6ca478` | none | Same reads as the above → separate round. Only 3 statuses exist — do not invent Processing/Failed |
-| next | `18103ba4` | none | Needed `38f1fd40` first (shipped in r137) so "Adjustments" means one thing |
-| next | `e7eb5d83` stage 1 | TBD | Stage 1 only (draft + limit reservation) — the real wrong-answer bug |
-| next | `7c834696` stage 1 | TBD | "Stage 1 must not share a release with any other attendance change" |
-| last | `6e9a126e` | TBD | **OWN SESSION.** Drops `benefit_scheme`, `scheme_leave_entitlement`, `leave_policy` |
-| last | `93249794` | TBD | Waits on `6e9a126e`'s eligibility layer, else you build a second criteria engine |
-| last | `2ef69d1e` | TBD | Largest on the board, ship LAST. Pass 2 after `7c834696` |
+- **Notice Board ships MARKDOWN, not the requested WYSIWYG** — owner-approved 2026-08-05. Storing raw
+  HTML would make every notice a stored-XSS vector aimed at every employee.
+- **`3c473773` did NOT change the statutory calculation.** Its build note said `earningsOf` should
+  switch on the new category — taken literally that moves EPF, SOCSO, EIS and PCB, contradicting the
+  same plan's promise. Shipped as a decoupled DISPLAY overlay; stored payslip columns unchanged.
+- **`18103ba4` refused Job Title / Employee Group / Employee Class** — no column, catalogue or import
+  field exists. The screen NAMES them as unavailable rather than silently omitting them.
+- **Claims stage 1 has no `reserved_amount` column**, deliberately: a stored counter is what gets
+  decremented twice and silently frees limit that is still consumed.
 
-- **`6e9a126e` IS THE BIG ONE.** Its approved plan stages it across three releases. It deserves a
-  session of its own, not the tail of one. **Its rev-3 claim that "all line numbers were re-verified"
-  was FALSE at HEAD — re-locate every anchor by symbol.**
-- **`3c473773` alleges a LIVE payroll calculation fault** (overtime pay-item classification +
-  employer-borne statutory contributions), raised off a real verification against employee `X000001`.
-  Its own plan finds the employer-borne CALCULATION is correct and only the DISCLOSURE is missing —
-  resist "fixing" the arithmetic.
+### FOLLOW-UPS MEASURED BUT NOT BUILT
+
+- **"Processed By" on the payroll dashboard is viable** — measured on production: 43 processed events,
+  **43 with a resolvable actor name**. The agent shipped the date alone because it could not verify
+  from its sandbox. It is now a two-join + one-`<td>` change.
+- **A company logo EXISTS** (`company_logo`, read by the report letterhead). `169e3c24`'s plan said
+  none existed and promised the reporter a payslip without one, so it shipped without — but a
+  letterhead is now cheap.
 
 ### Production measurements that change plans (taken 2026-08-04)
 
