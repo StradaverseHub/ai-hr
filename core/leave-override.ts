@@ -72,6 +72,19 @@ export type LeaveOverrideRule = {
   action: LeaveOverrideAction;
   /** DEFAULT OFF. A rule that exists but is off is configuration, not behaviour. */
   enabled: boolean;
+  /**
+   * 65f466e2 — WHICH leave type `convert_to_emergency` converts INTO, chosen by HR.
+   *
+   * Previously the target was found by looking up the hardcoded code literal 'EMERGENCY'. Production's
+   * Emergency Leave type is coded `EL`, so that lookup returned nothing and every conversion threw
+   * before any entitlement was consulted — the reported bug. The target is configuration, not something
+   * the software may assume about a tenant's catalogue.
+   *
+   * NULL/absent is meaningful and must stay supported: it means "fall back to the code lookup", so
+   * rules written before this field existed keep their exact current behaviour on deploy rather than
+   * changing shape underneath the tenant.
+   */
+  targetLeaveTypeId?: string | null;
 };
 
 /** The actions that CHANGE an application rather than refusing it — and therefore require the employee's
@@ -126,7 +139,25 @@ export function normalizeLeaveOverrideRules(v: unknown): LeaveOverrideRule[] {
     seen.add(key);
     // A non-boolean `enabled` reads as OFF. "Absent means on" is the one reading that could turn a rule
     // nobody configured into behaviour, so it is the one reading this must never take.
-    out.push({ trigger: r.trigger, action: r.action, enabled: r.enabled === true });
+    //
+    // 65f466e2 — the conversion target. Defensive in the same spirit as every other field here: only a
+    // non-empty string survives, and anything else becomes null, which the engine reads as "fall back to
+    // the code lookup" (today's behaviour). A malformed target must never become a conversion into some
+    // OTHER leave type; null is the safe landing, exactly as an unrecognised trigger is simply not a rule.
+    // The id is NOT verified to exist here — this function is pure and has no database. The engine
+    // resolves it and raises LeaveOverrideTargetMissingError if it has since been archived or deleted.
+    // THE KEY IS OMITTED WHEN THERE IS NO TARGET, not stored as null. This column is written back
+    // wholesale on every save, so emitting `targetLeaveTypeId: null` would add a key to every existing
+    // rule the first time anything is saved — a data change nobody asked for, on a JSONB column whose
+    // whole safety argument is that it is read defensively. It follows `roundingMethod`'s precedent in
+    // core/leave-compute.ts: an unset option omits its key so an untouched row round-trips byte-identical.
+    const target = typeof r.targetLeaveTypeId === 'string' && r.targetLeaveTypeId.trim() !== '' ? r.targetLeaveTypeId.trim() : null;
+    out.push({
+      trigger: r.trigger,
+      action: r.action,
+      enabled: r.enabled === true,
+      ...(target != null ? { targetLeaveTypeId: target } : {}),
+    });
   }
   return out;
 }

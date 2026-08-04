@@ -1843,6 +1843,58 @@ async function enforceLeaveYearApplicationLimit(
 // (approval chain, balance gate, ledger debit, payroll, history) reuses the existing code paths unchanged.
 export const EMERGENCY_LEAVE_CODE = 'EMERGENCY';
 
+/**
+ * 65f466e2 — THE ROLE MARKER, and why every comparison above should now go through it.
+ *
+ * `EMERGENCY_LEAVE_CODE` and `STATUTORY_APPLY_CODES` are the codes the PACK SEEDS. They are kept, because
+ * the seed still writes them and the backfill still matches on them — but they were never safe to compare
+ * a tenant's catalogue against. Production's catalogue was not seeded: its codes are EL, RL, MTL, PTL, so
+ * every `code === 'EMERGENCY'` comparison in this file was silently false and the behaviour behind it never
+ * ran. `leave_type.role` is the tenant-independent answer to "what IS this type".
+ *
+ * NULL role = unclassified = pre-65f466e2 behaviour. Every reader below therefore asks the role FIRST and
+ * falls back to the code, which is what keeps a tenant nobody has classified working exactly as before.
+ */
+export const LEAVE_TYPE_ROLES = [
+  'annual',
+  'sick',
+  'hospitalization',
+  'maternity',
+  'paternity',
+  'emergency',
+  'replacement',
+] as const;
+export type LeaveTypeRole = (typeof LEAVE_TYPE_ROLES)[number];
+
+/** The roles whose right to APPLY is statutory (EA 1955 s.60E/s.60F/s.37/s.60FA) — the role-side twin of
+ *  STATUTORY_APPLY_CODES. Emergency is NOT here: it is locked against editing, not statutorily applicable. */
+export const STATUTORY_APPLY_ROLES: readonly LeaveTypeRole[] = [
+  'annual',
+  'sick',
+  'hospitalization',
+  'maternity',
+  'paternity',
+];
+
+/** Does this leave type play `role`? Role wins; an unclassified row falls back to the seeded code, so
+ *  nothing changes for a tenant whose rows the backfill could not classify. */
+export function leaveTypeIs(
+  lt: { role?: string | null; code?: string | null } | null | undefined,
+  role: LeaveTypeRole,
+): boolean {
+  if (lt == null) return false;
+  if (lt.role != null && lt.role !== '') return lt.role === role;
+  const code = (lt.code ?? '').toUpperCase();
+  return code === role.toUpperCase();
+}
+
+/** Is this type one whose right to apply is statutory? Role first, seeded codes as the fallback. */
+export function isStatutoryApplyType(lt: { role?: string | null; code?: string | null } | null | undefined): boolean {
+  if (lt == null) return false;
+  if (lt.role != null && lt.role !== '') return STATUTORY_APPLY_ROLES.includes(lt.role as LeaveTypeRole);
+  return (STATUTORY_APPLY_CODES as readonly string[]).includes((lt.code ?? '').toUpperCase());
+}
+
 /** Round to 2 dp (mirrors the rest of the leave math). */
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -2246,6 +2298,11 @@ export type RequestLeaveResult = {
 const leaveTypeRequestColumns = {
   id: leaveType.id,
   code: leaveType.code,
+  // 65f466e2 — selected on every request path because the special-treatment gates below (Emergency's
+  // advance-notice exemption, the balance-source guards, the conversion) now ask the ROLE, not the code.
+  // Omitting it here would make every one of those gates read `undefined` and silently fall back to the
+  // code comparison that was already dead on this tenant.
+  role: leaveType.role,
   name: leaveType.name,
   counting: leaveType.counting,
   eligibility: leaveType.eligibility,
@@ -2377,7 +2434,7 @@ export async function requestLeave(
     // it would be the config-trap this panel already goes out of its way to avoid (see the hidden backdating /
     // advance-notice fields for EL). So: no source configured ⇒ the decomposition, byte-identical to today and
     // still the default; a source configured ⇒ EL takes the ordinary single-request path like any other type.
-    if (lt?.code === EMERGENCY_LEAVE_CODE && lt.balanceSourceTypeId == null) {
+    if (leaveTypeIs(lt, 'emergency') && lt.balanceSourceTypeId == null) {
       return requestEmergencyLeave(tx, ctx, p);
     }
 
@@ -2466,19 +2523,44 @@ export async function requestLeave(
       // A conversion out of Emergency Leave is meaningless (it is where conversions GO), and a type
       // converting to itself would loop. Both are refused by the vocabulary, but the guard is cheap and the
       // failure would be an infinite re-entry rather than a wrong answer.
-      if (rule?.action === 'convert_to_emergency' && lt?.code !== EMERGENCY_LEAVE_CODE) {
+      //
+      // 65f466e2 — the SELF-CONVERSION guard is now identity-based, not code-based. `lt.code !== 'EMERGENCY'`
+      // was never true on this tenant (its code is `EL`), so it protected nothing here; and with a
+      // configurable target, "converts to itself" can only be answered by comparing ids. A rule whose
+      // target IS this very type is treated as no rule at all — the ordinary refusal — which is the same
+      // safe landing normalizeLeaveOverrideRules takes for anything it cannot make sense of.
+      const convertsToSelf = rule?.targetLeaveTypeId != null && rule.targetLeaveTypeId === p.leaveTypeId;
+      if (rule?.action === 'convert_to_emergency' && !convertsToSelf && !leaveTypeIs(lt, 'emergency')) {
         // ROUTE THROUGH THE EXISTING ENGINE. The target type is read with the SAME column shape, so every
         // rule the ordinary path applies is applied to the converted application too — including, crucially,
         // Emergency Leave's own BALANCE DEDUCTION SOURCE. That is the point of 65f466e2 and the reason the
         // conversion must not invent a second path: Emergency is a CATEGORY, not an entitlement, so a
         // converted application still deducts from whatever source HR pointed Emergency Leave at (Annual),
         // exactly as a directly-filed Emergency application does.
-        const [target] = await tx
-          .select(leaveTypeRequestColumns)
-          .from(leaveType)
-          .where(and(eq(leaveType.code, EMERGENCY_LEAVE_CODE), isNull(leaveType.archivedAt)))
-          .limit(1);
-        if (!target) throw new LeaveOverrideTargetMissingError(EMERGENCY_LEAVE_CODE);
+        // 65f466e2 — THE TARGET IS CONFIGURATION, NOT A CODE THE SOFTWARE ASSUMES.
+        //
+        // This used to look up `code = 'EMERGENCY'` unconditionally. Production's Emergency Leave type is
+        // coded `EL`, so the query returned nothing, this threw LeaveOverrideTargetMissingError, and every
+        // employee who clicked "Yes" to the conversion prompt was refused — before any entitlement was
+        // consulted. The reporter read that refusal as "it is demanding an Emergency Leave entitlement";
+        // it never got that far. Any tenant who names their codes differently hit the same wall.
+        //
+        // Precedence: the rule's chosen target wins; absent one, fall back to the code lookup so rules
+        // written before this field existed behave exactly as they do today rather than changing on deploy.
+        const [target] = rule.targetLeaveTypeId
+          ? await tx
+              .select(leaveTypeRequestColumns)
+              .from(leaveType)
+              .where(and(eq(leaveType.id, rule.targetLeaveTypeId), isNull(leaveType.archivedAt)))
+              .limit(1)
+          : await tx
+              .select(leaveTypeRequestColumns)
+              .from(leaveType)
+              .where(and(eq(leaveType.code, EMERGENCY_LEAVE_CODE), isNull(leaveType.archivedAt)))
+              .limit(1);
+        // Still a real state, and still loud: the chosen type can be archived after the rule was written.
+        // The message names what was CHOSEN, so HR can see which configuration to repair.
+        if (!target) throw new LeaveOverrideTargetMissingError(rule.targetLeaveTypeId ?? EMERGENCY_LEAVE_CODE);
         const daysInAdvance = daysBetween(today, p.startDate);
         // CONFIRMATION IS A SERVICE CONCERN. Nothing is persisted without the employee's explicit
         // agreement to THIS rule — a client that skips the pop-out cannot submit a converted application.
@@ -2894,7 +2976,7 @@ export async function requestLeave(
       durationType === 'full_day' &&
       lt?.counting === 'working_days' &&
       !!lt?.perDateApproval &&
-      lt?.code !== 'REPLACEMENT' &&
+      !leaveTypeIs(lt, 'replacement') &&
       p.startDate !== p.endDate &&
       resolvedChain !== null &&
       !isMultiStepChain(resolvedChain.chain) &&
@@ -3087,7 +3169,7 @@ export async function previewLeaveDeduction(
       .limit(1);
     // Balance Deduction Source (cdf9ca48): EL only decomposes while it has NO configured source — the same
     // condition requestLeave branches on, so the preview never promises a split the submission will not make.
-    const isEmergencySplit = lt?.code === EMERGENCY_LEAVE_CODE && lt.balanceSourceTypeId == null;
+    const isEmergencySplit = leaveTypeIs(lt, 'emergency') && lt.balanceSourceTypeId == null;
     const balanceAvailable = await leaveBalance(tx, p.employmentId, lt?.balanceSourceTypeId ?? p.leaveTypeId);
 
     let days = 0;
@@ -3152,7 +3234,7 @@ export async function previewLeaveDeduction(
       const rules = normalizeLeaveOverrideRules(lt.overrideRules);
       const today = p.today ?? todayInKualaLumpur();
       const advance = resolveLeaveOverrideRule(rules, 'advance_notice_not_met');
-      if (advance && lt.code !== EMERGENCY_LEAVE_CODE && lacksMinAdvanceNotice(p.startDate, today, lt.minAdvanceDays ?? null)) {
+      if (advance && !leaveTypeIs(lt, 'emergency') && lacksMinAdvanceNotice(p.startDate, today, lt.minAdvanceDays ?? null)) {
         overrides.push({
           trigger: 'advance_notice_not_met',
           action: advance.action,
@@ -4056,7 +4138,7 @@ async function finalizeLeaveApproval(
   // later expiry/close re-debits the full credit (negative balance + spurious convert-to-pay). The flag
   // gates accrual/UI, not this consume-on-approve invariant — consumeReplacementLeaveTx is a safe no-op
   // when there is no active accrual to decrement.
-  if (lt?.code === 'REPLACEMENT') {
+  if (leaveTypeIs(lt, 'replacement')) {
     // ADR-0068 §4E guard: a partial (per-date) debit must never reach REPLACEMENT — §4C excludes REPLACEMENT
     // from per-date approval, so daysOverride is always undefined here. Assert it so a future regression that
     // wires per-date approval to a REPLACEMENT type fails loudly instead of under-consuming the TOIL register.
@@ -4650,7 +4732,7 @@ export async function requestLeaveCancellation(
       .from(leaveType)
       .where(eq(leaveType.id, req.leaveTypeId))
       .limit(1);
-    if (lt?.code === 'REPLACEMENT') {
+    if (leaveTypeIs(lt, 'replacement')) {
       // Restoring a REPLACEMENT day via the ledger without re-crediting the toil_accrual register would
       // reintroduce the ghost-credit / negative-balance bug — and there is no inverse of consumeReplacementLeaveTx.
       throw new LeaveCancellationNotAllowedError('replacement (time-off-in-lieu) leave cannot be cancelled');
@@ -5024,7 +5106,7 @@ export async function adminCancelLeave(
     // An APPROVED REPLACEMENT (time-off-in-lieu) leave already consumed the toil_accrual register at approval,
     // and there is no inverse of consumeReplacementLeaveTx — restoring it via the ledger would reintroduce the
     // ghost-credit bug. A PENDING replacement never consumed the register, so it cancels cleanly.
-    if (previousStatus === 'approved' && lt?.code === 'REPLACEMENT') {
+    if (previousStatus === 'approved' && leaveTypeIs(lt, 'replacement')) {
       throw new LeaveCancellationNotAllowedError('replacement (time-off-in-lieu) leave cannot be cancelled');
     }
 
@@ -5227,7 +5309,7 @@ export async function editLeaveRequest(
       .limit(1);
     if (!lt) throw new Error('leave type not found');
     // EMERGENCY / REPLACEMENT decompose or consume registers — never edited in place (v1).
-    if (lt.code === EMERGENCY_LEAVE_CODE || lt.code === 'REPLACEMENT') {
+    if (leaveTypeIs(lt, 'emergency') || leaveTypeIs(lt, 'replacement')) {
       throw new LeaveEditNotAllowedError('this leave type cannot be edited here');
     }
 

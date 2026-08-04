@@ -529,6 +529,11 @@ export function listLeaveTypes(
       .select({
         id: leaveType.id,
         code: leaveType.code,
+        // 65f466e2 — the role marker travels with every leave-type read, because the callers that decide
+        // "is this Emergency Leave" (app/leave/actions.ts's attachment backstop, the admin panel's
+        // statutory gates) must ask the role. Production codes its Emergency type `EL`, so a caller left
+        // comparing the code answers "no" for the very type it is asking about.
+        role: leaveType.role,
         name: leaveType.name,
         // 9816a5ad step 2: the consolidated rule columns, so the Leave Type panel can EDIT them.
         // Read here rather than via a second query — the panel renders one row per type already.
