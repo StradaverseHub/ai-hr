@@ -11,6 +11,13 @@ STATE before planning or building anything. It is a snapshot, not a log; keep it
 update it (replace stale lines, move shipped round entries to `docs/HANDOFF-HISTORY.md`, keep it
 under ~700 lines). A round is not finished until HANDOFF.md records it.
 
+**Understand code through the graph, not by grepping cold.** `.claude/worktrees/mainwt/graphify-out/`
+is a queryable knowledge graph of the whole codebase (run commands from mainwt):
+`graphify explain "<symbol>"` (every caller/import with file:line) · `graphify query "<question>"` ·
+`graphify path "A" "B"` · `graphify affected "X"` (reverse impact) · `graphify god-nodes`.
+**Every build must refresh it**: `graphify update .` in mainwt after any merge to main (seconds, no
+LLM; `--force` after big deletions). Details in HANDOFF.md → "The code graph".
+
 **Which tree you are on** — the repo ROOT is a scratch worktree on `local/root-scratch`, far behind
 main. **`main` lives at `.claude/worktrees/mainwt`.** Check `pwd`/branch in every gate command and
 read vitest's `RUN` line + file count; a gate in the wrong tree reports green for the wrong code
