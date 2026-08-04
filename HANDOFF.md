@@ -126,8 +126,30 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > ### ⚠️ REDIRECT LONG COMMANDS TO A FILE, NEVER A PIPE
 >
 > A backgrounded command whose stdout goes to an undrained pipe hangs forever at 0% CPU. Cost an hour this
-> round. `> file 2>&1` always. To tell a hang from slow work: a healthy vitest has ~10 child processes and
-> ~21 test-DB connections; a hung one has zero of both. CPU alone lies — both idle low.
+> round. `> file 2>&1` always.
+>
+> ### ⚠️⚠️ "IS IT STUCK?" — READ THE LOG, NEVER THE PROCESS LIST (corrected r136)
+>
+> **The old advice here said "a healthy vitest has ~10 child processes and ~21 test-DB connections; a hung
+> one has zero of both." THAT TEST IS AMBIGUOUS AND IT COSTS ~20 MINUTES EVERY TIME.** A run that has
+> FINISHED has exactly the same signature as a hung one — zero children, zero connections — so the test
+> reports "hung" for the single most common state, and you sit waiting on a gate that reported ages ago.
+>
+> **The unambiguous signal is in the log file**, written the moment vitest reports:
+>
+>     grep -E "Test Files|Tests |Duration" <gate.log> | tail -4
+>
+> A `Duration` line means the run is DONE, whatever the process list says. No `Duration` line plus a
+> growing log means it is still working. Only "no Duration line AND the log has not grown in minutes AND
+> zero connections" is a genuine hang.
+>
+> **VITEST OFTEN DOES NOT EXIT AFTER REPORTING.** Seen twice in r136 alone: the process sat at 23:55 and
+> 34:28 elapsed with zero DB connections and a complete result already in the log. So `until pgrep …; do`
+> as a completion waiter **can wait forever on a finished run**. Poll the log, not the process table.
+>
+> **AND NEVER `pgrep -f` A STRING YOUR OWN WAITER CONTAINS.** `until [ "$(pgrep -f 'vitest.mjs run' | wc -l)" = 0 ]`
+> never exits, because the waiting shell's own command line contains `vitest.mjs run` and matches itself.
+> This burned ~20 minutes in r135. Match on the binary path, or better, grep the log.
 >
 > ### WHAT IS BUILDABLE RIGHT NOW — 10 approved and unbuilt after r127
 >
