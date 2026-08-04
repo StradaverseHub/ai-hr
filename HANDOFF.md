@@ -5,13 +5,40 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-04, after r134 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-04, after r136 SHIPPED)
 
 > ## ▶ NEXT SESSION STARTS HERE
 >
-> **`main@e823082c` is what runs. Production on 312 migrations. Next free number is `0386`.** Nothing is
-> in flight: no unmerged build branch, no half-applied migration, no pending deploy. r134 added NO
-> migration.
+> **`main@88a74787` is what runs. Production on 312 migrations. Next free number is `0386`.** Nothing is
+> in flight: no unmerged build branch, no half-applied migration, no pending deploy. NONE of r134, r135 or
+> r136 added a migration.
+>
+> ### ▶ THREE ROUNDS SHIPPED 2026-08-04, AND THE BOARD IS NOW FULLY PLANNED
+>
+> `a1d82340` (r134) · `645e67c4` + `491c499f` (r135) · `afd0a87c` (r136).
+>
+> **THE BOARD HAS NO UNPLANNED WORK LEFT: `open = 0`, `contested = 0`.** Eleven items were planned this
+> session and the reporter approved nine of them within the hour, so **`approved` went from 10 to 17**.
+> Two more (`6e122302` Notice Board, `e7eb5d83` Configurable Claims) are `planned` and awaiting them.
+>
+> **FIVE OF THE ELEVEN REPORTED SOMETHING DIFFERENT FROM WHAT WAS ACTUALLY WRONG.** That is the single
+> most useful pattern to carry forward — reproduce on production BEFORE agreeing a plan's premise:
+> - `65f466e2` — there is NO entitlement validation. `core/leave.ts:1851` hardcodes
+>   `EMERGENCY_LEAVE_CODE = 'EMERGENCY'`; production's type is **`EL`**, already deducting from ANNUAL.
+>   The lookup finds nothing and throws. **The same defect silently kills `REPLACEMENT`, `MATERNITY` and
+>   `PATERNITY` too** (production has `RL`, `MTL`, `PTL`) — so Emergency Leave is itself subject to the
+>   minimum-advance-notice rule it exists to bypass, and `LOCKED_CODES` does not lock the statutory types.
+> - `b1f984fe` — the label is not misnamed, it **does not render**: `leave.breakdown.field.available`
+>   exists in NONE of the six catalogs. Fourth `MISSING_MESSAGE` of that class.
+> - `44129979` — two of its three complaints were already fixed (period-keyed entry since f1564110 Phase 2;
+>   the screen is already employee-first).
+> - `7f6ca478` / `1b87e8a0` / `18103ba4` — asked for statuses, columns and criteria that do not exist as
+>   data. `payrollStatusEnum` is `['draft','processed','closed']` — there is no Processing or Failed,
+>   because generation is synchronous and transactional: a failed run leaves NOTHING to display.
+>
+> **`e7eb5d83` HIDES A WRONG ANSWER, not an inconvenience.** `claimPolicy`'s own comment says limits cap
+> APPROVED claims, so N pending claims each pass the check against the same remaining balance and can all
+> be approved. Its plan puts limit-reservation first and asks for the exposure to be counted on production.
 >
 > ### ⚠️⚠️ THE LOCAL POSTGRES WAS NEVER BROKEN — APEX ONE WAS SCANNING THE DATA DIRECTORY
 >
@@ -1252,6 +1279,103 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r136 — 2026-08-04 — the org-wide Requests table leaves My Leave, and a false claim in our own tests
+
+**Shipped:** `afd0a87c`. **`main@88a74787`. 312 migrations — r136 ADDS NONE.**
+557 files / **6627 tests green**.
+
+**558 LINES OUT OF ONE PAGE**, 1573 → 1015. The visible section was a 208-line Card; the rest was its
+support: the header search form, filter panel and CSV/XLSX links (all fed it and nothing else), nine
+helper builders, `hasFilters` / `filterParams` / `withSort` / `activeFilterCount`, THREE validation
+whitelists (`LEAVE_STATUSES` / `LEAVE_DURATIONS` / `PENDING_STAGES` — they existed to narrow a tampered
+filter value before it reached SQL), an 18-key query contract and four imports. `app/leave/export/route.ts`
+is DELETED rather than left unreachable: r74 Decision 5 had already established this page was its only
+link in the entire source.
+
+**`emp` SURVIVED THE CULL** — it names the employee under inquiry (`inquiryEmploymentId`) and never
+belonged to the table. Everything else in that param block went.
+
+### A FALSE CLAIM IN OUR OWN TEST SUITE, CORRECTED
+
+`test/leave-records-cancel.test.ts` asserted the Requests table was **"the ONLY place"** an HR admin could
+edit, withdraw or partly give back their own leave. **Withdraw and give-back were never exclusive to it:**
+`components/planned-absences.tsx` gates `cancelEligible` (:147) and `selfCancelEligible` (:172) on
+`personId === viewerPersonId` with NO admin exclusion — only `adminCancelEligible` (:162) self-bans — and
+`planned-absences-grid.tsx` renders both dialogs off those flags for every viewer. Only **editing** a
+pending application is genuinely homeless for an admin. Both survivors are now asserted AT their real
+homes so the claim cannot rot again.
+
+`<EditLeaveDialog>` also SURVIVES in source and still serves an ordinary employee: it renders from
+`selfHistory`, which is `admin ? [] : …`. What an admin loses is REACHING it — the source keeps it.
+
+### THE PLAN'S TOUR INSTRUCTION COULD NOT BE FOLLOWED
+
+`lib/module-tours.json` had a leave step targeting `data-tour="leave-requests"` with **no roles filter**.
+After the removal an admin renders no such anchor, and `onboarding-tour.tsx` retries 25 × 140ms before
+falling back — a ~3.5s dead pause. `roles` is an ALLOW-list and cannot express "everyone except an admin",
+so the step is dropped with its i18n keys in all six locales.
+
+**The plan said to re-run `scripts/merge-guide-tours.mjs` rather than hand-edit. THAT IS NOT EXECUTABLE:**
+the script is explicitly a ONE-OFF taking a workflow-output JSON as `argv[1]`, and that input is not in
+the repo. `lib/module-tours.json` IS the source of truth. Hand-edited deliberately — do the same next time
+rather than hunting for a generator input that does not exist.
+
+### NINE ASSERTIONS INVERTED, NOT DELETED — and three self-inflicted traps in doing it
+
+Every rewritten test keeps the property it defended and re-points it at what survives. Three mistakes made
+while doing it, all the same shape and all worth avoiding:
+
+1. **A substring assertion matched its own prose.** `expect(src).not.toContain('listLeaveRequestsPage')`
+   failed because the page NAMES that function in a comment explaining where the vocabularies went. Assert
+   on the CALL (`listLeaveRequestsPage(session`) and the IMPORT, never the bare name. Third time this
+   session — r134's `tList(` and r135's `LEAVE_CONFIG_ROW` were the same trap.
+2. **A patch left the original's tail behind**, so one test asserted `not.toContain('<Pager')` AND
+   `toContain('<Pager')` four lines apart. Always re-read the whole `it` block after a partial replace.
+3. **Slice markers died with the code they anchored on.** Two tests sliced the page from the removed
+   card's own comment; the slice went empty and every assertion inside it silently passed or failed for
+   the wrong reason. Re-anchor on something that survives, and assert the slice is non-empty.
+
+### Gate
+
+557 files / 6627 tests green · tsc clean · `next build` clean · `/leave`, `/leave?emp=`,
+`/leave/employee-records`, `/leave/employee-balances`, `/approvals` all 200 with a dev log carrying no
+`MISSING_MESSAGE` · the removed section's STRUCTURAL markers confirmed absent from rendered markup (the
+i18n payload ships every catalog key, so string-presence in the HTML proves nothing — check markup).
+
+**⚠ THE `--delete` TRAP FIRED AGAIN.** `app/leave/export/route.ts` was still on the server after the
+rsync (4014 bytes, dated 1 Aug). Removed by hand before `deploy.sh`. That is TWO releases running.
+
+---
+
+## r135 — 2026-08-04 — Leave config becomes an expandable menu, and one item closed two
+
+**Shipped:** `645e67c4` — and it closed `491c499f`'s contest as well, because the reporter's contest
+reason was verbatim the same request. **`main@40f5ee00`.** 557 files / 6632 tests green.
+
+Leave config went from a flat sidebar row opening an EIGHT-tab strip to a collapsible node carrying those
+eight destinations. Copied 1459e116's payroll conversion line for line. Every href carried over character
+for character; `components/leave-tabs.tsx` deleted; six sibling components repointed at
+`components/claims-tabs.tsx`, which is now the reference copy for the house tab-strip idiom.
+
+**EIGHT, not the six the plan described** — `491c499f` and `4b0e76ae` each added a tab while this item
+waited. A plan's inventory is stale the moment anything else ships; re-derive it.
+
+### THE RENDER CHECK CAUGHT WHAT NO TEST COULD
+
+**`nav.leaveApproval` ALREADY EXISTED and is live** — `lib/permissions.ts:290` uses it to label the
+separate `leaveApproval` SCREEN ("Approval chain", left over from the standalone route 0d147b78
+absorbed). Moving the tab labels into `nav` collided with it, the pre-existing value silently won, and the
+menu rendered "Approval chain" where the reporter expects "Approval Workflow". Had the insert order gone
+the other way it would have silently RENAMED that other screen. The menu now takes its own
+`nav.leaveApprovalWorkflow`, and a guard asserts the two stay distinct.
+
+**Also: an error grep that silently matched nothing.** The first render pass reported "clean" while ten
+routes were returning 500 — the grep was anchored `^Error` and Next prints `⨯ Error:`. **Grep the dev log
+case-insensitively, unanchored.** That grep is the check three production bugs have been caught by; a
+false negative in it is worse than not running it.
+
+---
 
 ## r134 — 2026-08-04 — a1d82340 closed at last, and the antivirus that was never Postgres's fault
 
