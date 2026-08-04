@@ -10,7 +10,8 @@
  *
  * - Services (implementation files, reachable from outside ONLY via `packs/attendance/service`):
  *   `core/attendance.ts` (clock in/out, corrections, summaries, punch import),
- *   `core/attendance-rule.ts` (lateness/early-out/OT rule library), `core/attendance-derive.ts`
+ *   `core/attendance-rule.ts` (lateness/early-out/OT rule library), `core/attendance-calc.ts`
+ *   (7c834696 stage 1 — the pure lateness/early-out/OT-band arithmetic), `core/attendance-derive.ts`
  *   (status/flag/OT derivation), `core/attendance-device.ts` (R63–R65 device registration + gate),
  *   `core/attendance-allowance.ts` (attendance-triggered allowances), and
  *   `core/clocking-location.ts` — clocking sites ARE pack-owned: they exist solely for the clock

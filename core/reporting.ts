@@ -725,6 +725,13 @@ export async function attendanceDailyReport(
         status: attendance.status,
         workedMinutes: attendance.workedMinutes,
         otMinutes: attendance.otMinutes,
+        // 7c834696 stage 1 — the ENGINE's own lateness / early-out figures. This report has always had
+        // both columns, but derived them from the COMPANY policy's late_after / work_end, which is simply
+        // the wrong yardstick for anyone on a shift: a 22:00 night-shift worker was measured against a
+        // 09:15 office threshold. Where the engine has stored a figure it wins; where it has not (every
+        // row from before this release) the policy fallback below is unchanged.
+        storedLateMinutes: attendance.lateMinutes,
+        storedEarlyOutMinutes: attendance.earlyOutMinutes,
         remarks: attendance.remarks,
         geofenceStatus: attendance.checkInGeofenceStatus,
         clockingLocationName: clockingLocation.name,
@@ -778,8 +785,8 @@ export async function attendanceDailyReport(
         clockOut: _hhmm(r.checkOutAt),
         workingHours: r.workedMinutes == null ? null : r2(r.workedMinutes / 60),
         otHours: r.otMinutes == null ? null : r2(r.otMinutes / 60),
-        lateMinutes,
-        earlyOutMinutes: earlyOut,
+        lateMinutes: r.storedLateMinutes ?? lateMinutes,
+        earlyOutMinutes: r.storedEarlyOutMinutes ?? earlyOut,
         attendanceStatus: r.status,
         clockingLocation: r.clockingLocationName ?? null,
         geofencingStatus: r.geofenceStatus ?? null,

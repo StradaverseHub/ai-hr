@@ -117,7 +117,7 @@ export default async function DailyAttendancePage({
         </form>
         {/* Wide table — the extra columns scroll horizontally on narrow screens. */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[64rem] text-sm">
+          <table className="w-full min-w-[72rem] text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">{t('colEmployeeCode')}</th>
@@ -127,6 +127,10 @@ export default async function DailyAttendancePage({
                 <th className="px-3 py-2 font-medium">{t('colCheckOut')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colShiftHours')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colActualHours')}</th>
+                {/* 7c834696 stage 1 — Flat OT and the unpaid 0.0 band now have somewhere to land, so the
+                    six columns still add up to the Actual Hours beside them. */}
+                <th className="px-3 py-2 text-right font-medium">{t('colOtFlat')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('colOt00')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colOt10')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colOt15')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colOt20')}</th>
@@ -155,6 +159,8 @@ export default async function DailyAttendancePage({
                     <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.checkOutAt?.slice(0, 5) ?? '—'}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.scheduledMinutes)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.workedMinutes)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.flat) : '—'}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot00) : '—'}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot10) : '—'}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot15) : '—'}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot20) : '—'}</td>
@@ -203,7 +209,7 @@ export default async function DailyAttendancePage({
               })}
               {dayPage.length === 0 && (
                 <tr>
-                  <td colSpan={14} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={16} className="px-4 py-8 text-center text-muted-foreground">
                     {t('noEmployees')}
                   </td>
                 </tr>

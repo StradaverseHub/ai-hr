@@ -15,6 +15,18 @@ import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { enforceDeviceGateTx } from './attendance-device';
 import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
+// 7c834696 stage 1 — the pure per-day arithmetic lives in its own module so the release gate ("no bands,
+// deductions off ⇒ every figure byte-identical") can be asserted on the functions directly, without
+// fixtures. The two measurement helpers are aliased because `earlyOutMinutes` is also a local variable name
+// in deriveAttendance and the OT-side `earlyOtMinutes` (pre-shift overtime) is a different thing entirely.
+import {
+  deductionMinutes,
+  deductionsApplyOn,
+  earlyOutMinutes as earlyOutOf,
+  latenessMinutes as latenessOf,
+  splitOtMinutes,
+  type OtSplit,
+} from './attendance-calc';
 import { holidayDatesFor } from './holidays';
 import { approvedLeaveDates } from './leave';
 import { maybeAutoAccrueOnApprovalTx } from './toil';
@@ -352,6 +364,15 @@ type ResolvedSchedule = {
   // grace periods feed the late/early thresholds below (as a fallback UNDER any explicit per-shift grace, so
   // existing shifts stay identical).
   rule: ResolvedAttendanceRule | null;
+  // 7c834696 stage 1 — the schedule's OWN start/end and the EFFECTIVE grace minutes, resolved on EVERY
+  // branch including the company-policy one (which has no shift but does have work_start / work_end).
+  // Lateness and early-out are measured against these, so an employee on the policy branch and an employee
+  // on a shift are measured the same way instead of one of them silently getting no figure at all.
+  // `lateAfter` above stays the STATUS threshold and is unchanged; these are the MEASUREMENT inputs.
+  scheduledStart: string | null;
+  scheduledEnd: string | null;
+  lateGraceMinutes: number;
+  earlyGraceMinutes: number;
   crossesMidnight: boolean;
   // ec4cbf63: 'default-shift' / 'default-shift-rest' = resolved from employment.default_shift_id (no roster
   // row for the date). Diagnostic only — nothing downstream branches on source for pay except the hourly
@@ -411,6 +432,14 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     normalMinutesOverride: null,
     otRule: null,
     rule: defaultRule,
+    // The policy branch's schedule IS work_start → work_end, and its late grace is the policy's own
+    // (late_after − work_start) — the same figure `lateAfter` above is built from, so the measurement and
+    // the status threshold cannot drift apart. No explicit early-out grace exists at policy level, so the
+    // rule's supplies it (0 when there is no rule ⇒ early-out measured from the exact work end).
+    scheduledStart: pol.workStart,
+    scheduledEnd: pol.workEnd,
+    lateGraceMinutes: grace,
+    earlyGraceMinutes: defaultRule?.earlyGracePeriodMinutes ?? 0,
     crossesMidnight: false,
     source: 'policy',
   });
@@ -442,6 +471,10 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       normalMinutesOverride: ra.override ?? null,
       otRule: ra.otRule ?? null,
       rule,
+      scheduledStart: ra.start,
+      scheduledEnd: ra.end,
+      lateGraceMinutes: lateGrace,
+      earlyGraceMinutes: earlyGrace ?? 0,
       crossesMidnight: ra.crosses!,
       source: 'roster-shift',
     };
@@ -500,6 +533,10 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
         normalMinutesOverride: ds.override ?? null,
         otRule: ds.otRule ?? null,
         rule,
+        scheduledStart: ds.start,
+        scheduledEnd: ds.end,
+        lateGraceMinutes: lateGrace,
+        earlyGraceMinutes: earlyGrace ?? 0,
         crossesMidnight: ds.crosses,
         source: 'default-shift',
       };
@@ -518,16 +555,79 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   );
 }
 
+/**
+ * What one derived day looks like. `status` / `workedMinutes` / `otMinutes` are unchanged from before
+ * 7c834696; everything after them is new and ADDITIVE — no existing figure is computed differently.
+ * `otMinutes` remains the canonical overtime total and `otSplit` always sums back to it exactly.
+ */
+type DerivedDay = {
+  status: 'present' | 'late' | 'half_day';
+  workedMinutes: number | null;
+  otMinutes: number | null;
+  lateMinutes: number | null;
+  earlyOutMinutes: number | null;
+  underMinutes: number | null;
+  lateDeductMinutes: number | null;
+  earlyOutDeductMinutes: number | null;
+  otSplit: OtSplit | null;
+};
+
 /** Derive status + worked/OT minutes against a resolved schedule — the shared rule that check-in/out apply
- *  incrementally and a correction applies in one shot. Cross-midnight aware via spanMinutes(). */
+ *  incrementally and a correction applies in one shot. Cross-midnight aware via spanMinutes().
+ *
+ *  7c834696 stage 1 also derives the lateness / early-out / short-hours figures and the per-rate overtime
+ *  split. `attendanceDate` is required for exactly one reason: it is the date a deduction is gated against
+ *  (a rule's deductions only exist forward of its effective-from), and passing it makes that impossible to
+ *  forget at a call site. */
 function deriveAttendance(
   s: ResolvedSchedule,
   checkInAt: string,
   checkOutAt: string | null,
-): { status: 'present' | 'late' | 'half_day'; workedMinutes: number | null; otMinutes: number | null } {
+  attendanceDate: string,
+): DerivedDay {
   let status: 'present' | 'late' | 'half_day' =
     s.dayType === 'workday' && toMinutes(checkInAt) > toMinutes(s.lateAfter) ? 'late' : 'present';
-  if (!checkOutAt) return { status, workedMinutes: null, otMinutes: null };
+
+  // 7c834696 — the schedule's own timeline, resolved on every branch. anchorToShift is the SAME placement
+  // rule the OT window uses, so a 00:30 arrival on a 22:00 shift reads as 2.5h late rather than 21.5h early.
+  const schedStartAbs = s.scheduledStart != null ? toMinutes(s.scheduledStart) : null;
+  const inAbsSched = schedStartAbs != null ? anchorToShift(toMinutes(checkInAt), schedStartAbs) : null;
+  // The gate on the only downward-capable figures in this change. FALSE for every rule at release, and
+  // FALSE for any date before the rule's switch-on date, forever.
+  const deductible = deductionsApplyOn(s.rule, attendanceDate);
+  // Lateness is a workday concept measured against a schedule; rest-day / holiday work has no start to be
+  // late against (the same reason `status` never reads 'late' on those days).
+  const lateMinutes: number | null =
+    s.dayType === 'workday' && schedStartAbs != null && inAbsSched != null
+      ? latenessOf({
+          checkInAbs: inAbsSched,
+          startAbs: schedStartAbs,
+          graceMinutes: s.lateGraceMinutes,
+          includeGrace: s.rule?.includeGraceInLateness ?? false,
+        })
+      : null;
+  const lateDeduct: number | null =
+    lateMinutes == null
+      ? null
+      : deductible
+        ? deductionMinutes(lateMinutes, s.rule!.lateAfterMinutes, s.rule!.lateDeductMinutes)
+        : 0;
+
+  if (!checkOutAt) {
+    // An open day: worked/OT have always been null here and stay null, and so does everything that needs a
+    // clock-out. Lateness is already knowable, and the read layer already shows a 'late' status at this point.
+    return {
+      status,
+      workedMinutes: null,
+      otMinutes: null,
+      lateMinutes,
+      earlyOutMinutes: null,
+      underMinutes: null,
+      lateDeductMinutes: lateDeduct,
+      earlyOutDeductMinutes: null,
+      otSplit: null,
+    };
+  }
   // Half-day is a day-shift concept; skip it for cross-midnight shifts (checkout time-of-day is next-day).
   if (
     s.dayType === 'workday' &&
@@ -598,8 +698,74 @@ function deriveAttendance(
   if (s.dayType === 'workday' && otMinutes != null && s.rule) {
     otMinutes = applyOtRuleRows(otMinutes, 0, s.rule);
   }
-  return { status, workedMinutes, otMinutes };
+
+  // ── 7c834696 stage 1 · the figures that had nowhere to live before ──────────────────────────────────
+  // Everything below is derived FROM the values above and changes none of them. `otMinutes` is final at
+  // this point and stays the canonical total; the split only says how it is distributed.
+  const schedEndAbs =
+    s.scheduledEnd != null
+      ? s.crossesMidnight
+        ? toMinutes(s.scheduledEnd) + MINS_PER_DAY
+        : toMinutes(s.scheduledEnd)
+      : null;
+  const outAbsSched = inAbsSched != null ? inAbsSched + span : null;
+  let earlyOut: number | null = null;
+  let under: number | null = null;
+  if (s.dayType === 'workday') {
+    if (schedEndAbs != null && outAbsSched != null) {
+      earlyOut = earlyOutOf({
+        checkOutAbs: outAbsSched,
+        endAbs: schedEndAbs,
+        graceMinutes: s.earlyGraceMinutes,
+        includeGrace: s.rule?.includeGraceInEarlyOut ?? false,
+      });
+    }
+    // Short hours measured against the SAME normal-minutes figure the OT threshold uses (a manual
+    // override wins over the shift's span, exactly as it does for overtime) — so a day cannot be both
+    // short of its normal hours and over them.
+    under = Math.max(0, (s.normalMinutesOverride ?? s.scheduledMinutes) - workedMinutes);
+  }
+  const earlyOutDeduct: number | null =
+    earlyOut == null
+      ? null
+      : deductible
+        ? deductionMinutes(earlyOut, s.rule!.earlyAfterMinutes, s.rule!.earlyDeductMinutes)
+        : 0;
+
+  return {
+    status,
+    workedMinutes,
+    otMinutes,
+    lateMinutes,
+    earlyOutMinutes: earlyOut,
+    underMinutes: under,
+    lateDeductMinutes: lateDeduct,
+    earlyOutDeductMinutes: earlyOutDeduct,
+    otSplit: splitOtMinutes(otMinutes, s.dayType, s.rule),
+  };
 }
+
+/** The six per-rate columns as a DB value object. Null split ⇒ all six stay NULL ("no engine computed
+ *  this"), which is a different statement from six zeros and is what the read layer renders as "—". */
+const otSplitColumns = (split: OtSplit | null) => ({
+  otFlatMinutes: split?.flat ?? null,
+  ot00Minutes: split?.ot00 ?? null,
+  ot10Minutes: split?.ot10 ?? null,
+  ot15Minutes: split?.ot15 ?? null,
+  ot20Minutes: split?.ot20 ?? null,
+  ot30Minutes: split?.ot30 ?? null,
+});
+
+/** Every stage-1 figure of a derived day, as the columns migration 0394 added. One helper so the four
+ *  write paths (check-in, check-out, correction approval, punch import) cannot drift apart. */
+const stage1Columns = (d: DerivedDay) => ({
+  lateMinutes: d.lateMinutes,
+  earlyOutMinutes: d.earlyOutMinutes,
+  underMinutes: d.underMinutes,
+  lateDeductMinutes: d.lateDeductMinutes,
+  earlyOutDeductMinutes: d.earlyOutDeductMinutes,
+  ...otSplitColumns(d.otSplit),
+});
 
 // ─────────────────── 2.1.3 Hourly · shift-bounded payable hours ───────────────────
 //
@@ -748,7 +914,7 @@ function punchGeoValues(geo: GeofenceCheck) {
  */
 async function recomputeDayFromPunches(
   tx: Tx,
-  p: { attendanceId: string; sched: ResolvedSchedule; fallbackCheckInAt: string | null },
+  p: { attendanceId: string; attendanceDate: string; sched: ResolvedSchedule; fallbackCheckInAt: string | null },
 ): Promise<{
   status: 'present' | 'late' | 'half_day';
   workedMinutes: number | null;
@@ -771,10 +937,12 @@ async function recomputeDayFromPunches(
     // No punches and no fallback anchor — nothing to derive (defensive; a check-in always seeds one).
     return { status: 'present', workedMinutes: null, otMinutes: null, checkInAt: null, checkOutAt: null };
   }
-  const { status, workedMinutes, otMinutes } = deriveAttendance(p.sched, checkInAt, checkOutAt);
+  const d = deriveAttendance(p.sched, checkInAt, checkOutAt, p.attendanceDate);
+  const { status, workedMinutes, otMinutes } = d;
   await tx
     .update(attendance)
-    .set({ checkInAt, checkOutAt, status, workedMinutes, otMinutes })
+    // 7c834696: worked/OT are written exactly as before; the stage-1 columns are added alongside them.
+    .set({ checkInAt, checkOutAt, status, workedMinutes, otMinutes, ...stage1Columns(d) })
     .where(eq(attendance.id, p.attendanceId));
   return { status, workedMinutes, otMinutes, checkInAt, checkOutAt };
 }
@@ -868,6 +1036,7 @@ async function checkInTx(
 
     const derived = await recomputeDayFromPunches(tx, {
       attendanceId,
+      attendanceDate: p.date,
       sched,
       fallbackCheckInAt: p.time,
     });
@@ -1004,6 +1173,7 @@ async function checkOutTx(
     // at premium rates — classification here, monetization in payroll). Derived from first-in / last-out.
     const derived = await recomputeDayFromPunches(tx, {
       attendanceId: rec.id,
+      attendanceDate: p.date,
       sched,
       fallbackCheckInAt: rec.checkInAt,
     });
@@ -1151,6 +1321,19 @@ export function attendanceForDate(
         dayType: attendance.dayType,
         workedMinutes: attendance.workedMinutes,
         otMinutes: attendance.otMinutes,
+        // 7c834696 stage 1 — the stored per-day figures. NULL on every row that predates the engine that
+        // computes them; the read-time derivations treat NULL as "fall back to the old routing".
+        lateMinutes: attendance.lateMinutes,
+        earlyOutMinutes: attendance.earlyOutMinutes,
+        underMinutes: attendance.underMinutes,
+        lateDeductMinutes: attendance.lateDeductMinutes,
+        earlyOutDeductMinutes: attendance.earlyOutDeductMinutes,
+        otFlatMinutes: attendance.otFlatMinutes,
+        ot00Minutes: attendance.ot00Minutes,
+        ot10Minutes: attendance.ot10Minutes,
+        ot15Minutes: attendance.ot15Minutes,
+        ot20Minutes: attendance.ot20Minutes,
+        ot30Minutes: attendance.ot30Minutes,
         // ADR-0070: per-punch Clocking Location & Geofencing capture for the day table's Location column.
         checkInLat: attendance.checkInLat,
         checkInLng: attendance.checkInLng,
@@ -1283,6 +1466,19 @@ export type AttendanceRangeRow = {
   dayType: DayType | null;
   workedMinutes: number | null;
   otMinutes: number | null;
+  // 7c834696 stage 1 — the stored per-day figures (see core/attendance-derive.ts AttendanceDeriveRow for
+  // how the read layer treats a NULL: fall back to the pre-7c834696 routing, never to a confident zero).
+  lateMinutes: number | null;
+  earlyOutMinutes: number | null;
+  underMinutes: number | null;
+  lateDeductMinutes: number | null;
+  earlyOutDeductMinutes: number | null;
+  otFlatMinutes: number | null;
+  ot00Minutes: number | null;
+  ot10Minutes: number | null;
+  ot15Minutes: number | null;
+  ot20Minutes: number | null;
+  ot30Minutes: number | null;
   /** Explains a no-row day, same precedence as attendanceForDate: leave > holiday > rest day. */
   context: DayContext;
   // bbada39c — the individual row now carries the employee identity (the page used to read it from the
@@ -1330,6 +1526,19 @@ export function attendanceForEmploymentRange(
           dayType: attendance.dayType,
           workedMinutes: attendance.workedMinutes,
           otMinutes: attendance.otMinutes,
+          // 7c834696 stage 1 — the stored per-day figures. NULL on every row that predates the engine that
+          // computes them; the read-time derivations treat NULL as "fall back to the old routing".
+          lateMinutes: attendance.lateMinutes,
+          earlyOutMinutes: attendance.earlyOutMinutes,
+          underMinutes: attendance.underMinutes,
+          lateDeductMinutes: attendance.lateDeductMinutes,
+          earlyOutDeductMinutes: attendance.earlyOutDeductMinutes,
+          otFlatMinutes: attendance.otFlatMinutes,
+          ot00Minutes: attendance.ot00Minutes,
+          ot10Minutes: attendance.ot10Minutes,
+          ot15Minutes: attendance.ot15Minutes,
+          ot20Minutes: attendance.ot20Minutes,
+          ot30Minutes: attendance.ot30Minutes,
         })
         .from(attendance)
         .where(
@@ -1423,6 +1632,17 @@ export function attendanceForEmploymentRange(
         dayType: row?.dayType ?? null,
         workedMinutes: row?.workedMinutes ?? null,
         otMinutes: row?.otMinutes ?? null,
+        lateMinutes: row?.lateMinutes ?? null,
+        earlyOutMinutes: row?.earlyOutMinutes ?? null,
+        underMinutes: row?.underMinutes ?? null,
+        lateDeductMinutes: row?.lateDeductMinutes ?? null,
+        earlyOutDeductMinutes: row?.earlyOutDeductMinutes ?? null,
+        otFlatMinutes: row?.otFlatMinutes ?? null,
+        ot00Minutes: row?.ot00Minutes ?? null,
+        ot10Minutes: row?.ot10Minutes ?? null,
+        ot15Minutes: row?.ot15Minutes ?? null,
+        ot20Minutes: row?.ot20Minutes ?? null,
+        ot30Minutes: row?.ot30Minutes ?? null,
         context,
         employeeCode: emp.employeeCode,
         name: emp.name,
@@ -1680,7 +1900,7 @@ export function attendanceMonthSummary(
 
 // ───────────────────── Corrections (ADR-0011 Phase B) ─────────────────────
 
-export type OtApprovalMethod = 'requested' | 'system_calculated' | 'smaller_of';
+export type OtApprovalMethod = 'requested' | 'system_calculated' | 'smaller_of' | 'greater_of';
 
 /** ADR-0069: resolve the APPROVED overtime minutes from the employee's requested figure, the engine's live
  *  system-calculated figure, and the company's chosen method. Pure — the review UI shows both inputs live and
@@ -1700,6 +1920,10 @@ export function resolveApprovedOt(
       return Math.max(0, Math.trunc(sys));
     case 'smaller_of':
       return Math.max(0, Math.min(Math.trunc(requested), Math.trunc(sys)));
+    // 7c834696 stage 1 — the request has always listed four options; ADR-0069 shipped three. Nothing else
+    // about the resolution changes, and the default stays system_calculated.
+    case 'greater_of':
+      return Math.max(0, Math.max(Math.trunc(requested), Math.trunc(sys)));
   }
 }
 
@@ -1830,7 +2054,7 @@ export async function decideAttendanceCorrection(
         // day. For a clock correction that is the proposed punches; for an OT-only request it is the existing
         // approved attendance row's punches (resolved below). Computed live — never stored (ADR-0069).
         if (hasClockCorrection) {
-          systemOtForComparison = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut).otMinutes;
+          systemOtForComparison = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut, cor.attendanceDate).otMinutes;
         } else {
           const [existing] = await tx
             .select({ checkInAt: attendance.checkInAt, checkOutAt: attendance.checkOutAt })
@@ -1844,7 +2068,7 @@ export async function decideAttendanceCorrection(
             .limit(1);
           systemOtForComparison =
             existing?.checkInAt != null
-              ? deriveAttendance(sched, existing.checkInAt, existing.checkOutAt).otMinutes
+              ? deriveAttendance(sched, existing.checkInAt, existing.checkOutAt, cor.attendanceDate).otMinutes
               : null;
         }
         approvedOtMinutes = resolveApprovedOt(cor.requestedOtMinutes!, systemOtForComparison, otApprovalMethod);
@@ -1854,9 +2078,17 @@ export async function decideAttendanceCorrection(
       let eventPayload: Record<string, unknown>;
 
       if (hasClockCorrection) {
-        const d = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut);
+        const d = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut, cor.attendanceDate);
         // When OT was also requested, the approved (policy-adjusted) OT OVERRIDES the derived figure.
         const otMinutes = hasOtRequest ? approvedOtMinutes : d.otMinutes;
+        // 7c834696: when an approved OT figure OVERRIDES the engine's, the per-rate split has to be taken
+        // from the figure actually stored, or the buckets would stop summing to ot_minutes on exactly the
+        // days a human intervened. The measured lateness/early-out/short-hours come from the corrected
+        // punches (d) and are unaffected by the OT override.
+        const stage1 = {
+          ...stage1Columns(d),
+          ...otSplitColumns(otMinutes == null ? null : splitOtMinutes(otMinutes, dayType, sched.rule)),
+        };
         // ADR-0070: a correction always replaces both punches' geo-capture fields with null and leaves
         // method NULL (no 'correction' enum value, per the panel's scope-creep cut) — the disclosed,
         // approval-gated geofence bypass. Cutting this would leave a stale geofence attestation sitting
@@ -1874,6 +2106,7 @@ export async function decideAttendanceCorrection(
             dayType,
             workedMinutes: d.workedMinutes,
             otMinutes,
+            ...stage1,
             remarks: 'Corrected',
             checkInMethod: null,
             checkInLat: null,
@@ -1899,6 +2132,7 @@ export async function decideAttendanceCorrection(
               dayType,
               workedMinutes: d.workedMinutes,
               otMinutes,
+              ...stage1,
               remarks: 'Corrected',
               checkInMethod: null,
               checkInLat: null,
@@ -1947,7 +2181,15 @@ export async function decideAttendanceCorrection(
         }
         await tx
           .update(attendance)
-          .set({ otMinutes: approvedOtMinutes })
+          // 7c834696: the punches are untouched here, so lateness / early-out / short-hours keep whatever
+          // the engine already derived. Only the OT total moved, so only its split is rewritten — and it is
+          // rewritten from the stored figure, keeping the buckets summing to ot_minutes.
+          .set({
+            otMinutes: approvedOtMinutes,
+            ...otSplitColumns(
+              approvedOtMinutes == null ? null : splitOtMinutes(approvedOtMinutes, dayType, sched.rule),
+            ),
+          })
           .where(eq(attendance.id, existing.id));
         amendedId = existing.id;
         eventPayload = {
@@ -2216,7 +2458,7 @@ export async function setAttendancePolicy(
     throw new Error('A day cannot be both a Full working day and a Half working day.');
   }
   // ADR-0069: validate the OT-approval calculation option (when provided) against the 3-value enum.
-  const OT_METHODS: OtApprovalMethod[] = ['requested', 'system_calculated', 'smaller_of'];
+  const OT_METHODS: OtApprovalMethod[] = ['requested', 'system_calculated', 'smaller_of', 'greater_of'];
   if (p.otApprovalCalculation != null && !OT_METHODS.includes(p.otApprovalCalculation)) {
     throw new Error('Invalid overtime approval calculation option.');
   }
@@ -2413,7 +2655,7 @@ export async function importAttendancePunches(
       const checkIn = ordered[0].time;
       const checkOut = ordered.length > 1 ? ordered[ordered.length - 1].time : null;
       const sched = await scheduleFor(tx, g.employmentId, g.day);
-      const d = deriveAttendance(sched, checkIn, checkOut);
+      const d = deriveAttendance(sched, checkIn, checkOut, g.day);
       preview.push({
         employmentId: g.employmentId,
         name: g.name,
@@ -2445,6 +2687,7 @@ export async function importAttendancePunches(
             dayType: sched.dayType,
             workedMinutes: d.workedMinutes,
             otMinutes: d.otMinutes,
+            ...stage1Columns(d),
             remarks: 'Imported (terminal)',
             checkInMethod: 'import',
             checkInLat: null,
@@ -2470,6 +2713,7 @@ export async function importAttendancePunches(
               dayType: sched.dayType,
               workedMinutes: d.workedMinutes,
               otMinutes: d.otMinutes,
+              ...stage1Columns(d),
               remarks: 'Imported (terminal)',
               checkInMethod: 'import',
               checkInLat: null,

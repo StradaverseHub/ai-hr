@@ -13,6 +13,7 @@
  */
 export * from '../../core/attendance';
 export * from '../../core/attendance-allowance';
+export * from '../../core/attendance-calc';
 export * from '../../core/attendance-derive';
 export * from '../../core/attendance-device';
 export * from '../../core/attendance-rule';

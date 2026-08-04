@@ -47,27 +47,78 @@ afterAll(closeAll);
 
 // ─────────────────────────── A. Pure derivations ───────────────────────────
 
-describe('otByRate — derive the four rate buckets', () => {
+describe('otByRate — the rate buckets', () => {
   it('workday OT → 1.5×; the four sum back to workedMinutes', () => {
     // Worked 9h (540m), scheduled 8h → 60m OT on a workday.
     const r = otByRate({ workedMinutes: 540, otMinutes: 60, dayType: 'workday' });
-    expect(r).toEqual({ ot10: 480, ot15: 60, ot20: 0, ot30: 0 });
-    expect(r.ot10 + r.ot15 + r.ot20 + r.ot30).toBe(540); // = normal + otMinutes
+    // 7c834696 added `flat` and `ot00`; a row with no stored split still routes exactly as before.
+    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 480, ot15: 60, ot20: 0, ot30: 0 });
+    expect(r.flat + r.ot00 + r.ot10 + r.ot15 + r.ot20 + r.ot30).toBe(540); // = normal + otMinutes
   });
   it('rest-day work is all OT → 2.0×, no normal', () => {
     const r = otByRate({ workedMinutes: 300, otMinutes: 300, dayType: 'rest_day' });
-    expect(r).toEqual({ ot10: 0, ot15: 0, ot20: 300, ot30: 0 });
+    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 300, ot30: 0 });
   });
   it('holiday work → 3.0×', () => {
     const r = otByRate({ workedMinutes: 240, otMinutes: 240, dayType: 'holiday' });
-    expect(r).toEqual({ ot10: 0, ot15: 0, ot20: 0, ot30: 240 });
+    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 240 });
   });
   it('no OT → everything is normal 1.0×', () => {
     const r = otByRate({ workedMinutes: 480, otMinutes: 0, dayType: 'workday' });
-    expect(r).toEqual({ ot10: 480, ot15: 0, ot20: 0, ot30: 0 });
+    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 480, ot15: 0, ot20: 0, ot30: 0 });
   });
   it('a no-work day splits to zero', () => {
-    expect(otByRate({ workedMinutes: null, otMinutes: null, dayType: null })).toEqual({ ot10: 0, ot15: 0, ot20: 0, ot30: 0 });
+    expect(otByRate({ workedMinutes: null, otMinutes: null, dayType: null })).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 0 });
+  });
+
+  // ── 7c834696 stage 1 — the STORED split is preferred over the read-time guess ──────────────────────
+  it('a stored split wins over the day-type routing, and Flat OT finally has somewhere to land', () => {
+    const r = otByRate({
+      workedMinutes: 660,
+      otMinutes: 180,
+      dayType: 'workday',
+      otFlatMinutes: 0,
+      ot00Minutes: 30,
+      ot10Minutes: 0,
+      ot15Minutes: 90,
+      ot20Minutes: 60,
+      ot30Minutes: 0,
+    });
+    // 480 normal + the stored 1.0 bucket, then the stored bands verbatim — NOT 180 dumped into 1.5.
+    expect(r).toEqual({ flat: 0, ot00: 30, ot10: 480, ot15: 90, ot20: 60, ot30: 0 });
+    expect(r.flat + r.ot00 + r.ot10 + r.ot15 + r.ot20 + r.ot30).toBe(660);
+  });
+
+  it('a flat-rate day reports Flat OT and nothing in the premium columns', () => {
+    const r = otByRate({
+      workedMinutes: 600,
+      otMinutes: 120,
+      dayType: 'workday',
+      otFlatMinutes: 120,
+      ot00Minutes: 0,
+      ot10Minutes: 0,
+      ot15Minutes: 0,
+      ot20Minutes: 0,
+      ot30Minutes: 0,
+    });
+    expect(r).toEqual({ flat: 120, ot00: 0, ot10: 480, ot15: 0, ot20: 0, ot30: 0 });
+  });
+
+  it('a stored split that does NOT sum to the day overtime is ignored — ot_minutes is the authority', () => {
+    // Only reachable if one half of the pair were written without the other. The payslip pays from
+    // ot_minutes, so the table must never show a total that disagrees with it.
+    const r = otByRate({
+      workedMinutes: 540,
+      otMinutes: 60,
+      dayType: 'rest_day',
+      otFlatMinutes: 0,
+      ot00Minutes: 0,
+      ot10Minutes: 0,
+      ot15Minutes: 999,
+      ot20Minutes: 0,
+      ot30Minutes: 0,
+    });
+    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 480, ot15: 0, ot20: 60, ot30: 0 });
   });
 });
 
@@ -117,9 +168,15 @@ describe('attendanceForDate — shift code + scheduled minutes + OT split', () =
     expect(row.workedMinutes).toBe(540); // 9h
     expect(row.otMinutes).toBe(60); // 1h workday OT
     const ot = otByRate(row);
-    expect(ot).toEqual({ ot10: 480, ot15: 60, ot20: 0, ot30: 0 });
-    // Invariant: the four buckets sum back to the day's normal hours + otMinutes.
-    expect(ot.ot10 + ot.ot15 + ot.ot20 + ot.ot30).toBe((row.workedMinutes ?? 0));
+    expect(ot).toEqual({ flat: 0, ot00: 0, ot10: 480, ot15: 60, ot20: 0, ot30: 0 });
+    // Invariant: the buckets sum back to the day's normal hours + otMinutes.
+    expect(ot.flat + ot.ot00 + ot.ot10 + ot.ot15 + ot.ot20 + ot.ot30).toBe(row.workedMinutes ?? 0);
+    // 7c834696 — and the loader now surfaces the STORED split the engine wrote for the same day.
+    expect(row.ot15Minutes).toBe(60);
+    expect(row.otFlatMinutes).toBe(0);
+    expect(
+      (row.otFlatMinutes ?? 0) + (row.ot00Minutes ?? 0) + (row.ot10Minutes ?? 0) + (row.ot15Minutes ?? 0) + (row.ot20Minutes ?? 0) + (row.ot30Minutes ?? 0),
+    ).toBe(row.otMinutes);
   });
 
   it('resolves a rostered shift code (roster wins over any default)', async () => {

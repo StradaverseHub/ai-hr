@@ -116,7 +116,7 @@ export default async function IndividualAttendancePage({
         ) : (
           /* Wide table — the extra columns scroll horizontally on narrow screens. */
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[60rem] text-sm">
+            <table className="w-full min-w-[68rem] text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">{t('colDate')}</th>
@@ -126,6 +126,9 @@ export default async function IndividualAttendancePage({
                   <th className="px-3 py-2 font-medium">{t('colCheckOut')}</th>
                   <th className="px-3 py-2 text-right font-medium">{t('colShiftHours')}</th>
                   <th className="px-3 py-2 text-right font-medium">{t('colActualHours')}</th>
+                  {/* 7c834696 stage 1 — Flat OT + the unpaid 0.0 band; see the Daily tab for the note. */}
+                  <th className="px-3 py-2 text-right font-medium">{t('colOtFlat')}</th>
+                  <th className="px-3 py-2 text-right font-medium">{t('colOt00')}</th>
                   <th className="px-3 py-2 text-right font-medium">{t('colOt10')}</th>
                   <th className="px-3 py-2 text-right font-medium">{t('colOt15')}</th>
                   <th className="px-3 py-2 text-right font-medium">{t('colOt20')}</th>
@@ -155,6 +158,8 @@ export default async function IndividualAttendancePage({
                       <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.checkOutAt?.slice(0, 5) ?? '—'}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.scheduledMinutes)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.workedMinutes)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.flat) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot00) : '—'}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot10) : '—'}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot15) : '—'}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot20) : '—'}</td>
@@ -175,7 +180,7 @@ export default async function IndividualAttendancePage({
                     </tr>
                     {showTrail && (
                       <tr className="bg-muted/20">
-                        <td colSpan={13} className="px-3 py-2">
+                        <td colSpan={15} className="px-3 py-2">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                             <span className="font-medium uppercase tracking-wide">{t('punchTrail')}</span>
                             {punches.map((p, i) => (
@@ -200,7 +205,7 @@ export default async function IndividualAttendancePage({
                 })}
                 {dayPage.length === 0 && (
                   <tr>
-                    <td colSpan={13} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={15} className="px-4 py-8 text-center text-muted-foreground">
                       {t('noRecords')}
                     </td>
                   </tr>

@@ -1959,7 +1959,9 @@
       "clockedInAt": "已于 {time} 打卡上班",
       "sessionsToday": "{count, plural, one {今日已完成 # 个时段} other {今日已完成 # 个时段}}",
       "locationUnknown": "打卡时将匹配您的工作地点"
-    }
+    },
+    "colOtFlat": "固定加班",
+    "colOt00": "加班 0.0（不支薪）"
   },
   "org": {
     "title": "组织架构图",
@@ -5368,7 +5370,8 @@
       "ruleFieldLabel": "迟到、早退与加班设置",
       "ruleFieldStandardDefault": "标准（默认）",
       "ruleDefaultSuffix": "（标准）",
-      "ruleInactiveSuffix": "（停用）"
+      "ruleInactiveSuffix": "（停用）",
+      "otApprovalGreater": "采用较大的一方"
     },
     "payrollPermissions": {
       "title": "薪资权限",
@@ -5651,7 +5654,16 @@
       "otEmptyHint": "尚无加班区间。使用 + 添加行来定义加班的计算方式。",
       "statutoryCapNote": "法定加班倍率（1.5×、2×、3×）仍为法律最低标准，在公司加班费率中设置。这些规则在此基础上调整并对加班取整。",
       "save": "保存",
-      "cancel": "取消"
+      "cancel": "取消",
+      "otColPhRate": "公共假期倍率",
+      "otPhRateNone": "与倍率相同",
+      "deductionsSectionTitle": "工资扣减",
+      "applyDeductionsLabel": "启用迟到与早退扣减",
+      "applyDeductionsHint": "默认关闭。开启后将从今天起记录迟到与早退的扣减——已经工作过的日子永远不会被更改。",
+      "deductionsFromLabel": "扣减生效日期",
+      "deductionsFromNone": "未启用",
+      "otLadderGapWarning": "第 {row} 行必须从 {expected} 分钟开始才能接续第 {prev} 行——它从 {actual} 开始。在各行衔接之前无法保存。",
+      "otLadderOpenEndedWarning": "第 {row} 行没有上限，因此其后不能再有任何行。请填写“至”的数值，或将其移到最后。"
     },
     "benefitScheme": {
       "groupsTitle": "职级组",
