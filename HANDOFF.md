@@ -1227,8 +1227,12 @@ their expiry dates is trivially true and the screen move carries no data risk.
 failing**, both in `4b0e76ae`'s own new suites, which its agent never ran because the cluster was wedged.
 Both were TEST-side (a `vi.mock` missing `isAdmin`; a `.toMatch()` against a key the item itself deleted)
 and **no production code changed to fix them**. They were re-run in isolation — 2 files / 24 tests green —
-rather than re-running the whole 22-minute suite before the deadline. The other 552 files' results stand
-because nothing they exercise moved.
+rather than re-running the whole suite before the deadline, and r130 was deployed on that basis.
+
+**The full suite was then run against the deployed tree to close that gap: 554 files / 6618 tests, all
+passing, zero failures** (08:06–08:24, on a freshly rebuilt cluster). So the release is verified, not
+inferred. Recorded because "I reasoned the delta was safe" and "I ran it" are different claims, and only
+the second one is evidence.
 Render-verified on a real dev server, all 200 and dev log checked, not just status codes:
 `/`, `/admin/leave`, `/admin/leave/generate`, `/admin/leave/replacement`, `/admin/leave/entitlements`,
 `/admin/leave/adjustments`, `/admin/toil`, `/me`, `/leave`.
