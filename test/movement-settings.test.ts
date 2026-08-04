@@ -456,6 +456,10 @@ describe('476f23ed — the settings screen', () => {
       const msg = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
       expect(typeof msg?.nav?.movementSettings, `messages/${loc}.json missing nav.movementSettings`).toBe('string');
       const ms = msg?.movementSettings ?? {};
+      // THIS LIST IS THE ONLY THING PINNING THESE KEYS. The page opens TWO namespaces
+      // (movementSettings + people.detail.movement.eventType), and i18n-coverage Check C skips any
+      // multi-namespace file ENTIRELY — static keys included. A key added to the page and forgotten
+      // in a catalog renders raw with a fully green suite unless it is listed here.
       for (const k of [
         'title', 'description', 'behaviourNotice', 'catalogTitle', 'save', 'builtInBehaviour', 'inUse',
         'add', 'addTitle', 'addHint', 'addNamePlaceholder', 'addBehaviourPlaceholder',
@@ -463,13 +467,15 @@ describe('476f23ed — the settings screen', () => {
         'deactivateConfirmTitle', 'deactivateConfirmDescription',
         'activateConfirmTitle', 'activateConfirmDescription',
         'deleteConfirmTitle', 'deleteConfirmDescription',
+        // 1b87e8a0 — the row-listing redesign: toolbar, maintenance panel, empty state, Created cell.
+        'searchPlaceholder', 'createNew', 'edit', 'editTitle', 'editHint', 'cancel', 'empty', 'builtIn',
       ]) {
         expect(typeof ms[k], `messages/${loc}.json missing movementSettings.${k}`).toBe('string');
       }
-      for (const k of ['name', 'behaviour', 'status', 'action']) {
+      for (const k of ['name', 'behaviour', 'status', 'action', 'created']) {
         expect(typeof ms.columns?.[k], `messages/${loc}.json missing movementSettings.columns.${k}`).toBe('string');
       }
-      for (const k of ['active', 'inactive']) {
+      for (const k of ['active', 'inactive', 'all']) {
         expect(typeof ms.status?.[k], `messages/${loc}.json missing movementSettings.status.${k}`).toBe('string');
       }
     }
