@@ -2185,6 +2185,20 @@
       "when": 1781862485000,
       "tag": "0385_leave_year_config_reset",
       "breakpoints": true
+    },
+    {
+      "idx": 386,
+      "version": "7",
+      "when": 1781862486000,
+      "tag": "0386_carry_percent_clears_cap",
+      "breakpoints": true
+    },
+    {
+      "idx": 387,
+      "version": "7",
+      "when": 1781862487000,
+      "tag": "0387_leave_type_role",
+      "breakpoints": true
     }
   ]
 }

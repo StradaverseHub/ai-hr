@@ -92,6 +92,16 @@ describe('7cd914b1 — percentage of the remaining balance', () => {
   });
 });
 
+/**
+ * 7cd914b1 rev 2 — THESE FOUR CASES NOW GUARD THE HAND-EDITED-DATA PATH ONLY.
+ *
+ * The editor no longer offers a cap beside a percentage (percentage mode posts carryForwardMax=0) and
+ * migration 0386 cleared the rows that already held both, so a both-set row can no longer be produced
+ * through the UI. The clamp stays in the engine on purpose — it is the defence against a hand-written
+ * UPDATE, a restored dump, or a future writer that forgets — and these cases are what would catch its
+ * removal. Do NOT delete them as "unreachable": unreachable from the editor is not unreachable from the
+ * database, and a stored cap silently trimming a percentage is the exact defect this item reported.
+ */
 describe('7cd914b1 — percent and max are a CLAMP, not a choice', () => {
   it('the maximum is a ceiling on the percentage when both are set', () => {
     // 50% of 20 is 10, but the cap says 6.

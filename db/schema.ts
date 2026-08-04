@@ -1071,6 +1071,23 @@ export const reportingLineScope = pgTable(
 // ──────────────────────────── Leave ────────────────────────────
 // Slice 0 ships Annual only. Balance = signed sum of leave_ledger entries.
 
+/**
+ * 65f466e2 — the closed set of `leave_type.role` values, mirrored from core/leave.ts's LEAVE_TYPE_ROLES.
+ *
+ * Declared here as a literal rather than imported because this file deliberately imports nothing from
+ * `core/`. The two definitions are pinned to each other by test/leave-type-role.test.ts, the same way
+ * OPERATOR_REPORTER_LABEL is pinned against the string its migration hardcodes — so they cannot drift
+ * silently. The database enforces the same set (leave_type_role_check in migration 0387).
+ */
+export type LeaveTypeRoleValue =
+  | 'annual'
+  | 'sick'
+  | 'hospitalization'
+  | 'maternity'
+  | 'paternity'
+  | 'emergency'
+  | 'replacement';
+
 export const leaveType = pgTable('leave_type', {
   id: id(),
   tenantId: tenantId(),
@@ -1334,7 +1351,26 @@ export const leaveType = pgTable('leave_type', {
   // imports nothing from core/, and the vocabulary guard belongs at the boundary anyway
   // (normalizeLeaveOverrideRules drops anything it does not recognise, so an unrecognised pair reads as
   // "no rule" — i.e. today's refusal — rather than as behaviour nobody configured).
-  overrideRules: jsonb('override_rules').$type<{ trigger: string; action: string; enabled: boolean }[]>(),
+  // 65f466e2 — `targetLeaveTypeId` names WHICH type a convert_to_emergency rule converts into. Optional:
+  // absent means "fall back to the code lookup", so rules written before the field existed keep their
+  // exact behaviour. It is the fix for conversions failing on any tenant whose Emergency Leave is not
+  // literally coded 'EMERGENCY' (production's is `EL`).
+  overrideRules: jsonb('override_rules').$type<
+    { trigger: string; action: string; enabled: boolean; targetLeaveTypeId?: string | null }[]
+  >(),
+  /**
+   * 65f466e2 (migration 0387) — WHAT THIS LEAVE TYPE IS, independent of the tenant's own code and name.
+   *
+   * Special treatment used to key off code literals the software invented ('EMERGENCY', 'REPLACEMENT',
+   * 'MATERNITY', 'PATERNITY'). Production's codes are EL/RL/MTL/PTL, so every one of those comparisons was
+   * silently dead and three designed behaviours never applied — see the migration header for the list.
+   *
+   * NULL means UNCLASSIFIED and keeps pre-65f466e2 behaviour, which is what every row the backfill could
+   * not match exactly is left as. NEVER infer this from a balance source or a fuzzy name match: a wrong
+   * marker silently changes which statutory rules apply to real applications. Values are constrained in
+   * the database (leave_type_role_check).
+   */
+  role: text('role').$type<LeaveTypeRoleValue>(),
   // Leave Entitlement Formula Management (feedback 79011509, migration 0241): HR-owned, per-leave-type
   // plain-language EXPLANATIONS for each leave-view component — keyed by the widened explanation key set
   // (core/leave-formula.ts LEAVE_EXPLANATION_KEYS: the seven legacy §7 "Entitlement Calculation Breakdown"

@@ -4182,7 +4182,7 @@
         "carryPolicyLabel": "Chính sách chuyển tiếp",
         "carryNone": "Không (không chuyển tiếp)",
         "carryFixedMax": "Mức tối đa cố định",
-        "carryHelp": "Mức tối đa cố định giữ lại tối đa đến giới hạn; phần trăm giữ lại tỷ lệ đó của số dư còn nắm giữ vào cuối năm, với giới hạn đóng vai trò trần khi cả hai cùng được đặt. Các trường hết hạn quyết định khi nào phần chuyển tiếp hết hiệu lực (một ngày cụ thể, hoặc X tháng sau cuối năm).",
+        "carryHelp": "Mức tối đa cố định giữ lại tối đa đến giới hạn; phần trăm giữ lại tỷ lệ đó của số dư còn nắm giữ vào cuối năm. Hai lựa chọn này thay thế cho nhau — với phần trăm, chỉ phần trăm quyết định con số. Các trường hết hạn quyết định khi nào phần chuyển tiếp hết hiệu lực (một ngày cụ thể, hoặc X tháng sau cuối năm).",
         "carryStepHelp": "Cửa trước dẫn tới thiết lập chuyển tiếp của chính sách quyền lợi đang hiệu lực — điều khiển theo từng chính sách trong mục Điều kiện vẫn là nguồn dữ liệu gốc.",
         "carryAnnualOnly": "Chuyển tiếp chỉ áp dụng cho Nghỉ phép năm — số dư của loại này không được chuyển sang năm sau.",
         "noActivePolicy": "Chưa có chính sách quyền lợi đang hiệu lực — hãy thêm một chính sách trong mục Điều kiện trước.",
