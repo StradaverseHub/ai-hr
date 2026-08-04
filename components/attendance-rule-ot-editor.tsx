@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 
 // 88e94371 — the Overtime section editor for a "Lateness, Early Out & Overtime Settings" rule. A dynamic
 // table of OT time-bands (+ Add Row) plus the "Apply to Early Overtime" checkbox. Rows serialize into one
@@ -14,6 +14,8 @@ export type OtEditorRow = {
   toM: number;
   ratePattern: 'flat' | 'variable';
   rate: string;
+  /** 7c834696 — this band's public-holiday multiplier. '' ⇒ none set ⇒ the band uses `rate`. */
+  phRate: string;
   rounding: boolean;
   roundToMinutes: number | null;
 };
@@ -37,10 +39,65 @@ export type OtEditorLabels = {
   applyEarlyOtLabel: string;
   applyEarlyOtHint: string;
   emptyHint: string;
+  colPhRate: string;
+  phRateNone: string;
+  ladderGapWarning: string;
+  ladderOpenEndedWarning: string;
 };
 
-const VARIABLE_RATES = ['1.0', '1.5', '2.0', '3.0'];
+// 7c834696 — '0' is now offered: that portion of overtime is RECORDED but not paid (request §7).
+//
+// ADJACENT DEFECT FIXED HERE: these option values are compared by STRING, and the form loaded a saved rate
+// as `Number(rate).toFixed(2)` — so a band saved at 1.5 came back as "1.50", matched no option, and the
+// select silently displayed the FIRST rate instead. Re-saving the rule then wrote that wrong rate. Both
+// sides are now one decimal place, and a stored rate outside this list is offered as its own option rather
+// than being quietly rewritten.
+const VARIABLE_RATES = ['0.0', '1.0', '1.5', '2.0', '3.0'];
+const ratesFor = (current: string): string[] =>
+  current !== '' && !VARIABLE_RATES.some((v) => Number(v) === Number(current))
+    ? [current, ...VARIABLE_RATES]
+    : VARIABLE_RATES;
+/**
+ * The SAME ladder rule the server enforces (core/attendance-rule.ts validateOtLadder), evaluated live so a
+ * broken table announces itself the moment the rule is opened instead of ambushing the admin on Save.
+ *
+ * This matters because of one real rule on production: its band table predates any validation, so an admin
+ * who opens it to change something unrelated would otherwise be refused with an error about rows they never
+ * authored. Refusing is still correct — a table with a hole in it now decides which rate column overtime
+ * lands in — but being TOLD on open, next to the offending row, turns a blocked save into a visible ten-
+ * second repair. Returns a per-row message keyed by row index; rows not at fault get nothing.
+ */
+const ladderProblems = (rows: OtEditorRow[], labels: OtEditorLabels): Map<number, string> => {
+  const out = new Map<number, string>();
+  const to = (r: OtEditorRow) => (Number(r.toH) || 0) * 60 + (Number(r.toM) || 0);
+  const from = (r: OtEditorRow) => (Number(r.fromH) || 0) * 60 + (Number(r.fromM) || 0);
+  const fill = (t: string, v: Record<string, number>) =>
+    Object.entries(v).reduce((acc, [k, n]) => acc.split(`{${k}}`).join(String(n)), t);
+  for (let i = 0; i < rows.length; i++) {
+    if (to(rows[i]) <= from(rows[i]) && i !== rows.length - 1) {
+      out.set(i, fill(labels.ladderOpenEndedWarning, { row: i + 1 }));
+      continue;
+    }
+    if (i === 0) continue;
+    const prevTo = to(rows[i - 1]);
+    if (from(rows[i]) !== prevTo + 1) {
+      out.set(i, fill(labels.ladderGapWarning, { row: i + 1, prev: i, expected: prevTo + 1, actual: from(rows[i]) }));
+    }
+  }
+  return out;
+};
+
+/** The option string that represents a stored value, so string comparison in the select cannot miss. */
+const rateValue = (current: string): string =>
+  VARIABLE_RATES.find((v) => Number(v) === Number(current)) ?? current;
 const ROUND_TO = [15, 30, 60];
+
+/** The `From` a new row must start at: one minute past the last row's `To` (0 for the first row). */
+const nextFromMinutes = (rows: OtEditorRow[]): number => {
+  const last = rows[rows.length - 1];
+  if (!last) return 0;
+  return (Number(last.toH) || 0) * 60 + (Number(last.toM) || 0) + 1;
+};
 
 export function AttendanceRuleOtEditor({
   initialRows,
@@ -53,11 +110,27 @@ export function AttendanceRuleOtEditor({
 }) {
   const [rows, setRows] = useState<OtEditorRow[]>(initialRows);
   const [applyEarly, setApplyEarly] = useState(initialApplyEarlyOt);
+  const problems = ladderProblems(rows, labels);
 
   const update = (i: number, patch: Partial<OtEditorRow>) =>
     setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const addRow = () =>
-    setRows((rs) => [...rs, { fromH: 0, fromM: 0, toH: 0, toM: 0, ratePattern: 'flat', rate: '1.50', rounding: false, roundToMinutes: null }]);
+    setRows((rs) => [
+      ...rs,
+      // A new row starts where the previous one ended + 1 minute, which is exactly what the ladder
+      // validation demands — so "+ Add Row" produces a saveable table instead of one that is rejected.
+      {
+        fromH: Math.floor(nextFromMinutes(rs) / 60),
+        fromM: nextFromMinutes(rs) % 60,
+        toH: 0,
+        toM: 0,
+        ratePattern: 'flat',
+        rate: '1.5',
+        phRate: '',
+        rounding: false,
+        roundToMinutes: null,
+      },
+    ]);
   const removeRow = (i: number) => setRows((rs) => rs.filter((_, j) => j !== i));
 
   const serialized = JSON.stringify(
@@ -66,6 +139,7 @@ export function AttendanceRuleOtEditor({
       toMinutes: (Number(r.toH) || 0) * 60 + (Number(r.toM) || 0),
       ratePattern: r.ratePattern,
       rate: Number(r.rate) || 0,
+      phRate: r.phRate === '' ? null : Number(r.phRate) || 0,
       rounding: r.rounding,
       roundToMinutes: r.rounding ? r.roundToMinutes : null,
     })),
@@ -96,13 +170,14 @@ export function AttendanceRuleOtEditor({
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
                 <th className="py-1.5 pr-2 font-medium">{labels.colFrom}</th>
                 <th className="py-1.5 pr-2 font-medium">{labels.colTo}</th>
                 <th className="py-1.5 pr-2 font-medium">{labels.colPattern}</th>
                 <th className="py-1.5 pr-2 font-medium">{labels.colRate}</th>
+                <th className="py-1.5 pr-2 font-medium">{labels.colPhRate}</th>
                 <th className="py-1.5 pr-2 font-medium">{labels.colRounding}</th>
                 <th className="py-1.5 pr-2 font-medium">{labels.colRoundTo}</th>
                 <th className="py-1.5 font-medium">{labels.colRemove}</th>
@@ -110,7 +185,8 @@ export function AttendanceRuleOtEditor({
             </thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr key={i} className="border-b border-border/60">
+                <Fragment key={i}>
+                <tr className={`border-b border-border/60 ${problems.has(i) ? 'bg-amber-50/60 dark:bg-amber-500/10' : ''}`}>
                   <td className="py-1.5 pr-2">
                     <div className="flex items-center gap-1">
                       <input type="number" min={0} value={r.fromH} onChange={(e) => update(i, { fromH: Number(e.target.value) })} className={numCls} aria-label={`${labels.colFrom} ${labels.hour}`} />
@@ -135,13 +211,28 @@ export function AttendanceRuleOtEditor({
                   </td>
                   <td className="py-1.5 pr-2">
                     {r.ratePattern === 'variable' ? (
-                      <select value={r.rate} onChange={(e) => update(i, { rate: e.target.value })} className={selCls} aria-label={labels.colRate}>
-                        {VARIABLE_RATES.map((v) => (
+                      <select value={rateValue(r.rate)} onChange={(e) => update(i, { rate: e.target.value })} className={selCls} aria-label={labels.colRate}>
+                        {ratesFor(r.rate).map((v) => (
                           <option key={v} value={v}>{`${v}×`}</option>
                         ))}
                       </select>
                     ) : (
                       <input type="number" min={0} step="0.01" value={r.rate} onChange={(e) => update(i, { rate: e.target.value })} className={`${numCls} w-20`} aria-label={labels.colRate} />
+                    )}
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    {/* Blank = this band has no separate holiday multiplier and falls back to its ordinary
+                        rate, which is what every existing band does today. A FLAT band has no rate to pick,
+                        so it has no holiday rate to pick either. */}
+                    {r.ratePattern === 'variable' ? (
+                      <select value={rateValue(r.phRate)} onChange={(e) => update(i, { phRate: e.target.value })} className={selCls} aria-label={labels.colPhRate}>
+                        <option value="">{labels.phRateNone}</option>
+                        {ratesFor(r.phRate).map((v) => (
+                          <option key={v} value={v}>{`${v}×`}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </td>
                   <td className="py-1.5 pr-2">
@@ -175,6 +266,14 @@ export function AttendanceRuleOtEditor({
                     </button>
                   </td>
                 </tr>
+                {problems.has(i) && (
+                  <tr className="border-b border-border/60 bg-amber-50/60 dark:bg-amber-500/10">
+                    <td colSpan={8} className="px-1 pb-1.5 text-xs text-amber-800 dark:text-amber-200">
+                      {problems.get(i)}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

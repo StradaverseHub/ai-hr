@@ -34,6 +34,7 @@ function parseOtRows(raw: string): OtRowInput[] {
         toMinutes: Math.trunc(Number(x.toMinutes ?? 0)) || 0,
         ratePattern: x.ratePattern === 'variable' ? 'variable' : 'flat',
         rate: Number(x.rate ?? 0) || 0,
+        phRate: x.phRate == null || x.phRate === '' ? null : Number(x.phRate) || 0,
         rounding: x.rounding === true || x.rounding === 'true' || x.rounding === 'on',
         roundToMinutes: x.roundToMinutes == null || x.roundToMinutes === '' ? null : Math.trunc(Number(x.roundToMinutes)) || null,
       }));
@@ -56,6 +57,9 @@ function ruleFields(fd: FormData): AttendanceRuleInput {
     earlyDeductMinutes: num(fd, 'earlyDeductMinutes'),
     includeGraceInEarlyOut: bool(fd, 'includeGraceInEarlyOut'),
     applyToEarlyOt: bool(fd, 'applyToEarlyOt'),
+    // 7c834696 — the deduction switch. The effective-FROM date is deliberately not a form field: the
+    // service stamps it, so no request body can back-date a deduction into a closed payroll period.
+    applyDeductions: bool(fd, 'applyDeductions'),
     otRows: parseOtRows(String(fd.get('otRows') ?? '')),
   };
 }

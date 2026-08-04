@@ -17,7 +17,8 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { checkIn, checkOut } from '../core/attendance';
-import { assignDefaultShift, createShift, updateShift } from '../core/roster';
+import { assignDefaultShift, assignShift, createShift, updateShift } from '../core/roster';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   applyOtRuleRows,
   createAttendanceRule,
@@ -29,6 +30,12 @@ import {
 } from '../core/attendance-rule';
 
 const WED = '2026-07-01'; // ISO weekday 3
+/** Date-only arithmetic stays UTC; the tenant timezone was already applied when `today` was resolved. */
+const addDaysIso = (iso: string, n: number): string => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
 let b: Base;
 
 async function makeEmp() {
@@ -72,6 +79,15 @@ describe('applyOtRuleRows (pure)', () => {
     lateGracePeriodMinutes: 0,
     earlyGracePeriodMinutes: 0,
     applyToEarlyOt: false,
+    // 7c834696 — the deduction half of the rule, resolved for the first time in this release.
+    lateAfterMinutes: 0,
+    lateDeductMinutes: 0,
+    includeGraceInLateness: false,
+    earlyAfterMinutes: 0,
+    earlyDeductMinutes: 0,
+    includeGraceInEarlyOut: false,
+    applyDeductions: false,
+    deductionsEffectiveFrom: null,
     otRows: [],
     ...over,
   });
@@ -82,13 +98,13 @@ describe('applyOtRuleRows (pure)', () => {
   });
 
   it('rounds OT to the matching band round-to value (nearest)', () => {
-    const rule = ruleWith({ otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, rounding: true, roundToMinutes: 30 }] });
+    const rule = ruleWith({ otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, phRate: null, rounding: true, roundToMinutes: 30 }] });
     expect(applyOtRuleRows(70, 0, rule)).toBe(60); // 70 → nearest 30 = 60
     expect(applyOtRuleRows(80, 0, rule)).toBe(90); // 80 → nearest 30 = 90
   });
 
   it('folds early-OT in only when applyToEarlyOt is set', () => {
-    const band = [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat' as const, rate: 1.5, rounding: false, roundToMinutes: null }];
+    const band = [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat' as const, rate: 1.5, phRate: null, rounding: false, roundToMinutes: null }];
     expect(applyOtRuleRows(70, 20, ruleWith({ otRows: band, applyToEarlyOt: false }))).toBe(70);
     expect(applyOtRuleRows(70, 20, ruleWith({ otRows: band, applyToEarlyOt: true }))).toBe(90);
   });
@@ -274,5 +290,237 @@ describe('policy → Standard conversion + un-deletable + substrate', () => {
     const [row] = await owner.db.select({ ruleId: schema.shift.ruleId }).from(schema.shift).where(eq(schema.shift.id, shift.id));
     expect(row.ruleId).toBe(rule.id);
     expect(await eventTypesFor(b.tenantId, shift.id)).toContain('shift.updated');
+  });
+});
+
+
+// ─────────────────────── 7c834696 stage 1 ───────────────────────
+
+/** A complete rule input with everything off — the shape every rule in the product has today. */
+const inertRule = (over: Partial<Parameters<typeof createAttendanceRule>[1]> = {}) => ({
+  name: `R_${randomUUID().slice(0, 8)}`,
+  status: 'active' as const,
+  lateGracePeriodMinutes: 0,
+  lateAfterMinutes: 0,
+  lateDeductMinutes: 0,
+  includeGraceInLateness: false,
+  earlyGracePeriodMinutes: 0,
+  earlyAfterMinutes: 0,
+  earlyDeductMinutes: 0,
+  includeGraceInEarlyOut: false,
+  applyToEarlyOt: false,
+  otRows: [],
+  ...over,
+});
+const vband = (fromMinutes: number, toMinutes: number, rate: number) => ({
+  fromMinutes,
+  toMinutes,
+  ratePattern: 'variable' as const,
+  rate,
+  rounding: false,
+  roundToMinutes: null,
+});
+
+describe('7c834696 — the OT band ladder is validated on save', () => {
+  it('refuses OVERLAPPING bands and names both rows', async () => {
+    const a = adminCtx(b);
+    // Validation runs in normalizeInput, i.e. SYNCHRONOUSLY, before the transaction opens — so this is a
+    // plain throw, not a rejected promise, and a bad table never reaches the database at all.
+    expect(() =>
+      createAttendanceRule(a, inertRule({ otRows: [vband(0, 120, 1.5), vband(100, 180, 2)] })),
+    ).toThrow(/Overtime row 2 overlaps row 1/);
+  });
+
+  it('refuses a GAP between bands and names both rows', async () => {
+    const a = adminCtx(b);
+    expect(() =>
+      createAttendanceRule(a, inertRule({ otRows: [vband(0, 120, 1.5), vband(150, 180, 2)] })),
+    ).toThrow(/Overtime row 2 leaves a gap after row 1/);
+  });
+
+  it('refuses an open-ended band that is not the last row', async () => {
+    const a = adminCtx(b);
+    expect(() =>
+      createAttendanceRule(a, inertRule({ otRows: [vband(0, 0, 1.5), vband(121, 180, 2)] })),
+    ).toThrow(/row 1 has no upper limit/);
+  });
+
+  it('ACCEPTS a contiguous ladder ending open-ended, and a rate of 0', async () => {
+    const a = adminCtx(b);
+    const r = await createAttendanceRule(
+      a,
+      inertRule({ otRows: [vband(0, 60, 0), vband(61, 120, 1.5), vband(121, 0, 2)] }),
+    );
+    const saved = await getAttendanceRule(a, r.id);
+    expect(saved!.otRows).toHaveLength(3);
+    expect(Number(saved!.otRows[0].rate)).toBe(0);
+  });
+
+  it('refuses a lateness pair whose interval exceeds its deduction (the request’s X ≤ Y rule)', async () => {
+    const a = adminCtx(b);
+    expect(() =>
+      createAttendanceRule(a, inertRule({ lateAfterMinutes: 30, lateDeductMinutes: 10 })),
+    ).toThrow(/Lateness: .after 30 minutes. cannot be larger than .deduct 10 minutes./);
+    expect(() =>
+      createAttendanceRule(a, inertRule({ earlyAfterMinutes: 30, earlyDeductMinutes: 10 })),
+    ).toThrow(/Early out: .after 30 minutes. cannot be larger than .deduct 10 minutes./);
+  });
+
+  it('stores the per-band public-holiday rate, and null when none is given', async () => {
+    const a = adminCtx(b);
+    const r = await createAttendanceRule(
+      a,
+      inertRule({ otRows: [{ ...vband(0, 120, 1.5), phRate: 3 }, vband(121, 0, 2)] }),
+    );
+    const saved = await getAttendanceRule(a, r.id);
+    expect(Number(saved!.otRows[0].phRate)).toBe(3);
+    expect(saved!.otRows[1].phRate).toBeNull();
+  });
+});
+
+describe('7c834696 — bands CATEGORISE, and ot_minutes stays the total', () => {
+  it('a 3-hour overtime day under 0–2h@1.5 / 2–3h@2.0 stores 2h + 1h, summing to ot_minutes', async () => {
+    const a = adminCtx(b);
+    const rule = await createAttendanceRule(
+      a,
+      inertRule({ otRows: [vband(0, 120, 1.5), vband(121, 180, 2)] }),
+    );
+    const sh = await createShift(a, workdayShift({ ruleId: rule.id }));
+    const emp = await makeEmp();
+    await assignDefaultShift(a, { employmentId: emp, shiftId: sh.id });
+    await checkIn(a, { employmentId: emp, date: WED, time: '09:00:00' });
+    const out = await checkOut(a, { employmentId: emp, date: WED, time: '21:00:00' });
+    expect(out.otMinutes).toBe(180); // 09:00–21:00 is 3h past an 18:00 shift end
+
+    const [row] = await owner.db
+      .select()
+      .from(schema.attendance)
+      .where(eq(schema.attendance.employmentId, emp));
+    expect(row.ot15Minutes).toBe(120);
+    expect(row.ot20Minutes).toBe(60);
+    expect(row.otFlatMinutes).toBe(0);
+    expect(row.ot00Minutes).toBe(0);
+    expect(row.ot10Minutes).toBe(0);
+    expect(row.ot30Minutes).toBe(0);
+    // THE INVARIANT: categorising moves minutes between columns, it never changes the total payroll reads.
+    const sum =
+      row.otFlatMinutes! + row.ot00Minutes! + row.ot10Minutes! + row.ot15Minutes! + row.ot20Minutes! + row.ot30Minutes!;
+    expect(sum).toBe(row.otMinutes);
+    // ...and worked_minutes is untouched by any of it.
+    expect(row.workedMinutes).toBe(660);
+  });
+
+  it('a rule with NO bands stores the split the Records screens already showed', async () => {
+    const a = adminCtx(b);
+    const sh = await createShift(a, workdayShift()); // no rule ⇒ tenant Standard, no bands
+    const emp = await makeEmp();
+    await assignDefaultShift(a, { employmentId: emp, shiftId: sh.id });
+    await checkIn(a, { employmentId: emp, date: WED, time: '09:00:00' });
+    await checkOut(a, { employmentId: emp, date: WED, time: '19:00:00' });
+
+    const [row] = await owner.db
+      .select()
+      .from(schema.attendance)
+      .where(eq(schema.attendance.employmentId, emp));
+    expect(row.otMinutes).toBe(60);
+    expect(row.ot15Minutes).toBe(60); // workday → 1.5, exactly as otByRate always derived it
+    expect(row.otFlatMinutes).toBe(0);
+    expect(row.ot20Minutes).toBe(0);
+    expect(row.ot30Minutes).toBe(0);
+  });
+});
+
+describe('7c834696 — lateness / early-out are measured, and deductions are forward-dated only', () => {
+  const shiftWithGrace = (ruleId: string) => workdayShift({ ruleId });
+
+  it('measures lateness and short hours, and deducts NOTHING while the switch is off', async () => {
+    const a = adminCtx(b);
+    const rule = await createAttendanceRule(
+      a,
+      // A rule that WOULD deduct heavily if anyone turned it on.
+      inertRule({ lateGracePeriodMinutes: 15, lateAfterMinutes: 15, lateDeductMinutes: 30 }),
+    );
+    const sh = await createShift(a, shiftWithGrace(rule.id));
+    const emp = await makeEmp();
+    await assignDefaultShift(a, { employmentId: emp, shiftId: sh.id });
+    await checkIn(a, { employmentId: emp, date: WED, time: '09:40:00' });
+    await checkOut(a, { employmentId: emp, date: WED, time: '17:00:00' });
+
+    const [row] = await owner.db
+      .select()
+      .from(schema.attendance)
+      .where(eq(schema.attendance.employmentId, emp));
+    expect(row.lateMinutes).toBe(25); // 09:40 against a 09:15 threshold (grace not included)
+    expect(row.earlyOutMinutes).toBe(60); // 17:00 against an 18:00 end
+    // 09:40→17:00 = 440-minute span; the shift has a 60-minute break scalar and no break windows, so the
+    // engine's 6h cliff deducts the whole break → 380 worked, 100 short of the 480 scheduled.
+    expect(row.workedMinutes).toBe(380);
+    expect(row.underMinutes).toBe(100);
+    // The whole point: the figures exist, and the money figure is still zero.
+    expect(row.lateDeductMinutes).toBe(0);
+    expect(row.earlyOutDeductMinutes).toBe(0);
+  });
+
+  it('honours "include grace in lateness"', async () => {
+    const a = adminCtx(b);
+    const rule = await createAttendanceRule(
+      a,
+      inertRule({ lateGracePeriodMinutes: 15, includeGraceInLateness: true }),
+    );
+    const sh = await createShift(a, shiftWithGrace(rule.id));
+    const emp = await makeEmp();
+    await assignDefaultShift(a, { employmentId: emp, shiftId: sh.id });
+    await checkIn(a, { employmentId: emp, date: WED, time: '09:40:00' });
+    await checkOut(a, { employmentId: emp, date: WED, time: '18:00:00' });
+    const [row] = await owner.db
+      .select()
+      .from(schema.attendance)
+      .where(eq(schema.attendance.employmentId, emp));
+    expect(row.lateMinutes).toBe(40); // counted from 09:00, not from 09:15
+  });
+
+  it('switching deductions ON stamps TODAY and leaves every earlier day at zero', async () => {
+    const a = adminCtx(b);
+    const rule = await createAttendanceRule(
+      a,
+      inertRule({
+        lateGracePeriodMinutes: 15,
+        lateAfterMinutes: 15,
+        lateDeductMinutes: 30,
+        applyDeductions: true,
+      }),
+    );
+    const today = todayInKualaLumpur();
+    const saved = await getAttendanceRule(a, rule.id);
+    expect(saved!.applyDeductions).toBe(true);
+    // Server-stamped, never supplied by the caller — so it cannot be back-dated.
+    expect(saved!.deductionsEffectiveFrom).toBe(today);
+
+    const sh = await createShift(a, shiftWithGrace(rule.id));
+    // A PAST day (WED is 2026-07-01, well before any run of this suite): measured, never deducted.
+    const past = await makeEmp();
+    await assignDefaultShift(a, { employmentId: past, shiftId: sh.id });
+    await checkIn(a, { employmentId: past, date: WED, time: '09:40:00' });
+    await checkOut(a, { employmentId: past, date: WED, time: '18:00:00' });
+    const [pastRow] = await owner.db
+      .select()
+      .from(schema.attendance)
+      .where(eq(schema.attendance.employmentId, past));
+    expect(pastRow.lateMinutes).toBe(25);
+    expect(pastRow.lateDeductMinutes).toBe(0); // BEFORE the switch-on date ⇒ no money moves
+
+    // A day on/after the switch-on date does deduct. Rostered explicitly so the assertion does not depend
+    // on which weekday the suite happens to run on.
+    const future = addDaysIso(today, 30);
+    const later = await makeEmp();
+    await assignShift(a, { employmentId: later, shiftDate: future, shiftId: sh.id });
+    await checkIn(a, { employmentId: later, date: future, time: '09:40:00' });
+    await checkOut(a, { employmentId: later, date: future, time: '18:00:00' });
+    const [futureRow] = await owner.db
+      .select()
+      .from(schema.attendance)
+      .where(eq(schema.attendance.employmentId, later));
+    expect(futureRow.lateMinutes).toBe(25);
+    expect(futureRow.lateDeductMinutes).toBe(30); // floor(25 / 15) = 1 block × 30
   });
 });

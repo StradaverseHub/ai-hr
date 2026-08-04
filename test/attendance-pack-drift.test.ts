@@ -31,6 +31,9 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const BOUNDARIES = [
   'core/attendance',
   'core/attendance-allowance',
+  // 7c834696 stage 1 — the pure per-day calculation module. Declared as a boundary (not slipped into the
+  // debt allowlist) because it IS pack implementation, exactly like attendance-derive beside it.
+  'core/attendance-calc',
   'core/attendance-derive',
   'core/attendance-device',
   'core/attendance-rule',
@@ -42,6 +45,7 @@ const ALWAYS_ALLOWED = [
   'packs/attendance/', // the pack itself: wiring (index.ts) + service facade
   'core/attendance.ts', // implementation files import each other freely
   'core/attendance-allowance.ts',
+  'core/attendance-calc.ts',
   'core/attendance-derive.ts',
   'core/attendance-device.ts',
   'core/attendance-rule.ts',
@@ -64,7 +68,7 @@ describe('ADR-0080 D9: attendance pack import ratchet (rung 2)', () => {
       allowlist,
     }),
   );
-  // Union across the six boundary modules; violations/stale are derived against the union so an
+  // Union across the boundary modules; violations/stale are derived against the union so an
   // allowlist entry importing ANY boundary module is live, and stale only when it imports none.
   const importers = [...new Set(perBoundary.flatMap((r) => r.importers))].sort();
   const importerSet = new Set(importers);

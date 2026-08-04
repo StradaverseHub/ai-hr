@@ -3026,11 +3026,14 @@ export const attendanceCorrectionStatusEnum = pgEnum('attendance_correction_stat
 // ADR-0069 Attendance Request Management: how an APPROVED overtime request's minutes are resolved against the
 // system's own live-computed figure. `requested` = trust the employee's requested figure; `system_calculated`
 // = trust the engine's derived figure (default); `smaller_of` = the lower of the two (conservative). Company-
-// level (attendance_policy.ot_approval_calculation).
+// level (attendance_policy.ot_approval_calculation). 7c834696 stage 1 (migration 0394) added `greater_of`
+// — the request has always listed four options and ADR-0069 shipped three; nothing else about the
+// resolution changed.
 export const otApprovalCalculationEnum = pgEnum('ot_approval_calculation', [
   'requested',
   'system_calculated',
   'smaller_of',
+  'greater_of',
 ]);
 
 // Clocking Location & Geofencing (ADR-0070). 'pass' = the punch was within a matched assigned site's
@@ -3073,6 +3076,34 @@ export const attendance = pgTable(
     dayType: attendanceDayTypeEnum('day_type'),
     workedMinutes: integer('worked_minutes'),
     otMinutes: integer('ot_minutes'),
+    // ── 7c834696 stage 1 (migration 0394) · the figures the calculation engine can now derive ──────────
+    // ADDITIVE, every one of them. `ot_minutes` STAYS THE CANONICAL TOTAL — core/payroll.ts (OT prefill +
+    // the weekly cross-cycle read), core/reporting.ts and toil_accrual all read it and none of them looks
+    // at anything below. The five rate buckets SUM BACK to ot_minutes exactly: categorising MOVES minutes
+    // between columns, it never changes the total (pinned in test/attendance-stage1-calc.test.ts).
+    //
+    // NULL ≠ 0 here. NULL means "no engine computed this for this day" (history, or a day still open); the
+    // read layer renders it as "—". Migration 0395 backfills only the OT buckets, and only with the split
+    // the Records screens were already DERIVING at read time, so no displayed figure moves on release.
+    //
+    // Measured (NEUTRAL — new facts, nothing pays off them):
+    lateMinutes: integer('late_minutes'),
+    earlyOutMinutes: integer('early_out_minutes'),
+    underMinutes: integer('under_minutes'),
+    // Deductions (the only DOWNWARD-capable figures): non-zero ONLY when the day's paired rule has
+    // apply_deductions AND attendance_date >= that rule's deductions_effective_from. Never backfilled, so
+    // a closed payroll period can never acquire one retroactively.
+    lateDeductMinutes: integer('late_deduct_minutes'),
+    earlyOutDeductMinutes: integer('early_out_deduct_minutes'),
+    // Per-rate overtime split. ot00 = a configured rate of 0 — recorded, not payable — and it exists so
+    // the buckets still sum to ot_minutes when a rule uses a 0 band. These are OVERTIME ONLY: the "OT 1.0"
+    // COLUMN on screen is normal-within-schedule hours, which stays derived (worked − ot), not stored.
+    otFlatMinutes: integer('ot_flat_minutes'),
+    ot00Minutes: integer('ot00_minutes'),
+    ot10Minutes: integer('ot10_minutes'),
+    ot15Minutes: integer('ot15_minutes'),
+    ot20Minutes: integer('ot20_minutes'),
+    ot30Minutes: integer('ot30_minutes'),
     remarks: text('remarks'),
     // ── Clocking Location & Geofencing (ADR-0070) — per-punch capture, ALL nullable. Split per punch
     // (check-in vs check-out) rather than one set of columns per row so an import-in/web-out row, or a
@@ -3191,12 +3222,17 @@ export const attendancePolicy = pgTable(
 // 6da67ab7 (migration 0319) removed the company axis — see the company_id note below. The rule is chosen by
 // the SHIFT, and shifts are tenant-wide, so a per-company library was a filter with nothing behind it.
 //
-// SCOPE (88e94371): the grace-period fields ARE wired into the time engine (core/attendance.ts scheduleFor
-// — as a fallback under any explicit per-shift grace) and the OT rows drive OT-minute ROUNDING + early-OT
-// inclusion (applyOtRuleRows). The lateness/early-out `afterMinutes`/`deductMinutes` capture the reporter's
-// wage-deduction intent (stored + surfaced) but are NOT yet applied to pay — there is no deduction output on
-// the attendance engine today; that + per-band custom OT PAY multipliers (statutory 1.5×/2×/3× stay the
-// compliance cap) are a documented deferred GAP. The tenant-global statutory OT multipliers are untouched.
+// SCOPE — CORRECTED BY 7c834696 STAGE 1. The grace-period fields were already wired into the time engine
+// (core/attendance.ts scheduleFor, as a fallback under any explicit per-shift grace). What stage 1 added:
+//   • the lateness / early-out `afterMinutes` + `deductMinutes` pairs now PRODUCE a stored per-day figure
+//     (attendance.late_deduct_minutes / early_out_deduct_minutes) — gated on `apply_deductions` below,
+//     which ships FALSE, and never for a date before `deductions_effective_from`;
+//   • the OT rows now CATEGORISE, progressively, into the per-rate buckets on the attendance row, instead
+//     of only supplying a rounding step (applyOtRuleRows still owns rounding, unchanged).
+// STILL DEFERRED, deliberately: nothing MONETIZES the deduction figures — attendance reports categorised
+// results and payroll decides what they are worth (the request's own split), and no payroll path reads
+// them yet. Per-band custom OT PAY multipliers are likewise still not fed to the payroll kernel; the
+// tenant-global statutory 1.5×/2×/3× remain the compliance cap.
 export const attendanceRule = pgTable(
   'attendance_rule',
   {
@@ -3233,6 +3269,16 @@ export const attendanceRule = pgTable(
     // pure resolver applyOtRuleRows (unit-tested); the engine currently feeds 0 pre-shift OT minutes (early-OT
     // punch attribution is a deferred follow-up — documented GAP).
     applyToEarlyOt: boolean('apply_to_early_ot').notNull().default(false),
+    // ── 7c834696 stage 1 (migration 0394) · the deduction opt-in ──
+    // The after-X/deduct-Y pairs above have been editable since 0204 and read by NOTHING, so every rule's
+    // effective deduction today is zero. Turning them on for everyone at release would take minutes off
+    // people whose employer never knew the field was live — so the switch is PER RULE and ships FALSE.
+    // `deductionsEffectiveFrom` is stamped by the service (never typed by a human) to today-in-Kuala-Lumpur
+    // when the switch flips on, and cleared when it flips off; a DB CHECK (0394) makes "deductions on with
+    // no start date" unrepresentable. Deductions therefore only ever exist forward of the switch-on date —
+    // a closed payroll period cannot acquire one.
+    applyDeductions: boolean('apply_deductions').notNull().default(false),
+    deductionsEffectiveFrom: date('deductions_effective_from'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -3261,6 +3307,10 @@ export const attendanceRuleOtRow = pgTable(
     toMinutes: integer('to_minutes').notNull().default(0),
     ratePattern: text('rate_pattern').notNull().default('flat').$type<AttendanceOtRatePattern>(),
     rate: numeric('rate', { precision: 6, scale: 2 }).notNull().default('1.50'),
+    // 7c834696 stage 1 (migration 0394) — the multiplier this band uses when the attendance day is a
+    // PUBLIC HOLIDAY. NULL ⇒ fall back to `rate`, which is exactly today's behaviour, so a band only
+    // behaves differently on a holiday once someone fills this in.
+    phRate: numeric('ph_rate', { precision: 6, scale: 2 }),
     rounding: boolean('rounding').notNull().default(false),
     roundToMinutes: integer('round_to_minutes'),
     sortOrder: integer('sort_order').notNull().default(0),

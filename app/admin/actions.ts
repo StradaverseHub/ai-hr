@@ -1894,11 +1894,13 @@ export async function setAttendancePolicyAction(fd: FormData) {
     if (v === 'full') workingDays.push(d);
     else if (v === 'half') halfWorkingDays.push(d);
   }
-  // ADR-0069: how an approved overtime request's minutes are resolved (requested | system_calculated | smaller_of).
+  // ADR-0069 + 7c834696: how an approved overtime request's minutes are resolved
+  // (requested | system_calculated | smaller_of | greater_of). Anything unrecognised falls back to the
+  // default rather than throwing — this is a select, not free text.
   const otRaw = String(fd.get('otApprovalCalculation') ?? 'system_calculated');
   const otApprovalCalculation = (
-    otRaw === 'requested' || otRaw === 'smaller_of' ? otRaw : 'system_calculated'
-  ) as 'requested' | 'system_calculated' | 'smaller_of';
+    otRaw === 'requested' || otRaw === 'smaller_of' || otRaw === 'greater_of' ? otRaw : 'system_calculated'
+  ) as 'requested' | 'system_calculated' | 'smaller_of' | 'greater_of';
   try {
     await setAttendancePolicy(s, {
       companyId: String(fd.get('companyId') ?? ''),

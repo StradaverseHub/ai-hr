@@ -285,6 +285,7 @@ export default async function AttendancePolicyPage({
                       <option value="requested">{t('otApprovalRequested')}</option>
                       <option value="system_calculated">{t('otApprovalSystem')}</option>
                       <option value="smaller_of">{t('otApprovalSmaller')}</option>
+                      <option value="greater_of">{t('otApprovalGreater')}</option>
                     </select>
                   </Field>
                   <p className="mt-1.5 text-xs text-muted-foreground">{t('otApprovalCalcHint')}</p>
