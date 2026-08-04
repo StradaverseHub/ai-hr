@@ -159,7 +159,8 @@
     "scheduledActions": "Tugas Berjadual",
     "systemSettings": "Tetapan Sistem",
     "systemExplorer": "Peneroka kebergantungan",
-    "movementSettings": "Tetapan Pergerakan"
+    "movementSettings": "Tetapan Pergerakan",
+    "hiringDefaults": "Tetapan Lalai Pengambilan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -352,7 +353,6 @@
       "employeeIdLabel": "ID Pekerja",
       "employeeIdPlaceholder": "cth. EMP-0001",
       "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 30 aksara.",
-      "hiringDefaults": "Tetapan lalai pengambilan",
       "draftsHeading": "Pekerja baharu yang belum selesai",
       "draftsCount": "{count} draf",
       "draftUntitled": "Draf tanpa nama",
@@ -1328,17 +1328,6 @@
       "historyErrorsShown": "{count, plural, other {# baris tidak dapat diimport}}",
       "historyErrorsTruncated": "Memaparkan {shown} daripada {total} baris yang gagal.",
       "historyNoDetail": "Tiada butiran baris disimpan untuk import ini."
-    },
-    "hiringDefaults": {
-      "title": "Tetapan Lalai Pengambilan",
-      "description": "Tetapan lalai setiap syarikat untuk pengambilan baharu dan penilaian pekerjaan. Dahulu ia berada pada skrin jadual gaji, di mana tiada apa-apa berkaitan gaji membacanya.",
-      "back": "Kakitangan",
-      "emptyScope": "Tiada syarikat dalam skop semasa.",
-      "save": "Simpan",
-      "probationMonths": "Tempoh percubaan lalai (bulan)",
-      "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
-      "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
-      "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
     },
     "wizard": {
       "fields": {
@@ -7962,6 +7951,30 @@
       "active": "Aktif",
       "inactive": "Dimatikan"
     }
+  },
+  "hiringDefaults": {
+    "title": "Tetapan Lalai Pengambilan",
+    "description": "Nilai lalai setiap syarikat yang digunakan apabila HR mencipta pekerja. Pilih syarikat untuk menetapkan tempoh percubaan dan kekerapan peringatan penilaiannya.",
+    "catalogTitle": "Syarikat",
+    "searchPlaceholder": "Cari nama atau kod syarikat…",
+    "statusActive": "Aktif",
+    "statusInactive": "Tidak aktif",
+    "statusAll": "Semua",
+    "colCompany": "Syarikat",
+    "colCode": "Kod Syarikat",
+    "colProbation": "Percubaan (bulan)",
+    "colReminders": "Peringatan penilaian (hari)",
+    "colStatus": "Status",
+    "usingDefault": "Lalai sistem",
+    "edit": "Sunting",
+    "empty": "Tiada syarikat sepadan dengan carian ini.",
+    "emptyScope": "Tiada syarikat dalam skop semasa.",
+    "save": "Simpan",
+    "cancel": "Batal",
+    "probationMonths": "Tempoh percubaan lalai (bulan)",
+    "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
+    "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
+    "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
   },
   "replacementRequest": {
     "trigger": "+ Replacement Leave Request",

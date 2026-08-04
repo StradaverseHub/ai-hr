@@ -159,7 +159,8 @@
     "scheduledActions": "计划任务",
     "systemSettings": "系统设置",
     "systemExplorer": "依赖关系浏览器",
-    "movementSettings": "异动设置"
+    "movementSettings": "异动设置",
+    "hiringDefaults": "入职默认设置"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -352,7 +353,6 @@
       "employeeIdLabel": "员工编号",
       "employeeIdPlaceholder": "例如 EMP-0001",
       "employeeIdHint": "字母、数字和连字符；最多 30 个字符。",
-      "hiringDefaults": "入职默认设置",
       "draftsHeading": "未完成的新员工",
       "draftsCount": "{count} 份草稿",
       "draftUntitled": "未命名草稿",
@@ -1328,17 +1328,6 @@
       "historyErrorsShown": "{count, plural, other {# 行无法导入}}",
       "historyErrorsTruncated": "显示 {total} 个失败行中的 {shown} 个。",
       "historyNoDetail": "本次导入未保留行级明细。"
-    },
-    "hiringDefaults": {
-      "title": "入职默认设置",
-      "description": "按公司设置的新员工与雇佣评估默认值。它们原本位于薪资计划界面，但薪资相关逻辑从不读取它们。",
-      "back": "员工",
-      "emptyScope": "当前范围内没有公司。",
-      "save": "保存",
-      "probationMonths": "默认试用期（月）",
-      "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。",
-      "reviewReminderDays": "评估提醒（结束日期前天数）",
-      "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
     },
     "wizard": {
       "fields": {
@@ -7962,6 +7951,30 @@
       "active": "启用中",
       "inactive": "已关闭"
     }
+  },
+  "hiringDefaults": {
+    "title": "入职默认设置",
+    "description": "HR 创建员工时应用的按公司默认值。选择一家公司，设置其试用期长度与评估提醒节奏。",
+    "catalogTitle": "公司",
+    "searchPlaceholder": "搜索公司名称或代码…",
+    "statusActive": "启用",
+    "statusInactive": "停用",
+    "statusAll": "全部",
+    "colCompany": "公司",
+    "colCode": "公司代码",
+    "colProbation": "试用期（月）",
+    "colReminders": "评估提醒（天）",
+    "colStatus": "状态",
+    "usingDefault": "系统默认",
+    "edit": "编辑",
+    "empty": "没有符合此搜索条件的公司。",
+    "emptyScope": "当前范围内没有公司。",
+    "save": "保存",
+    "cancel": "取消",
+    "probationMonths": "默认试用期（月）",
+    "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。",
+    "reviewReminderDays": "评估提醒（结束日期前天数）",
+    "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
   },
   "replacementRequest": {
     "trigger": "+ Replacement Leave Request",

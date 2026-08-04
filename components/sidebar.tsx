@@ -31,6 +31,7 @@ import {
   Tags,
   Target,
   UserRound,
+  UserRoundPlus,
   Users,
   Wallet,
   type LucideIcon,
@@ -211,6 +212,12 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // add your own). A system-wide setup screen like its three siblings, so it lands here rather than as a
     // loose row; the types it governs are recorded from Personnel > Employment History > New Event.
     { href: '/admin/settings/movement', labelKey: 'movementSettings', icon: ArrowLeftRight, adminOnly: true },
+    // 7b5f18c3: Hiring Defaults — the per-company probation length and review-reminder cadence applied
+    // when HR creates an employee. It was a button in the top-right corner of the Personnel list, which
+    // is not where anyone looks for a system setup; this row is the OTHER HALF of its lib/permissions.ts
+    // registration and neither ships without the other (a row whose route is unregistered is refused by
+    // our own access check; a registered route with no row cannot be found).
+    { href: '/admin/settings/hiring-defaults', labelKey: 'hiringDefaults', icon: UserRoundPlus, adminOnly: true },
     // deec1691: System Analysis & Dependency Explorer. Unlike its three siblings this row is ALSO
     // entitlement-gated (MODULE_OF_HREF above): it is a sellable module that defaults OFF, so a tenant
     // that was not sold it never sees the row — and, unlike the role flags here, that hiding is backed

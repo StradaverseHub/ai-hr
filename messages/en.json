@@ -159,7 +159,8 @@
     "scheduledActions": "Scheduled actions",
     "systemSettings": "System Settings",
     "systemExplorer": "Dependency explorer",
-    "movementSettings": "Movement Settings"
+    "movementSettings": "Movement Settings",
+    "hiringDefaults": "Hiring Defaults"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -352,7 +353,6 @@
       "employeeIdLabel": "Employee ID",
       "employeeIdPlaceholder": "e.g. EMP-0001",
       "employeeIdHint": "Letters, numbers and dashes; up to 30 characters.",
-      "hiringDefaults": "Hiring defaults",
       "draftsHeading": "Unfinished new employees",
       "draftsCount": "{count} draft",
       "draftUntitled": "Unnamed draft",
@@ -1328,17 +1328,6 @@
       "historyErrorsShown": "{count, plural, one {# row could not be imported} other {# rows could not be imported}}",
       "historyErrorsTruncated": "Showing {shown} of {total} failed rows.",
       "historyNoDetail": "No row detail was kept for this import."
-    },
-    "hiringDefaults": {
-      "title": "Hiring Defaults",
-      "description": "Per-company defaults for new hires and employment reviews. They used to sit on the payroll schedule screen, where nothing about payroll read them.",
-      "back": "Personnel",
-      "emptyScope": "No companies in the current scope.",
-      "save": "Save",
-      "probationMonths": "Default probation period (months)",
-      "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
-      "reviewReminderDays": "Review reminders (days before end date)",
-      "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
     },
     "wizard": {
       "fields": {
@@ -7962,6 +7951,30 @@
       "active": "Active",
       "inactive": "Switched off"
     }
+  },
+  "hiringDefaults": {
+    "title": "Hiring Defaults",
+    "description": "Per-company defaults applied when HR creates an employee. Pick a company to set its probation length and review-reminder cadence.",
+    "catalogTitle": "Companies",
+    "searchPlaceholder": "Search company name or code…",
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
+    "statusAll": "All",
+    "colCompany": "Company",
+    "colCode": "Company Code",
+    "colProbation": "Probation (months)",
+    "colReminders": "Review reminders (days)",
+    "colStatus": "Status",
+    "usingDefault": "System default",
+    "edit": "Edit",
+    "empty": "No companies match this search.",
+    "emptyScope": "No companies in the current scope.",
+    "save": "Save",
+    "cancel": "Cancel",
+    "probationMonths": "Default probation period (months)",
+    "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
+    "reviewReminderDays": "Review reminders (days before end date)",
+    "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
   },
   "replacementRequest": {
     "trigger": "+ Replacement Leave Request",
