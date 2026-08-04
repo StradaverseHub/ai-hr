@@ -5,13 +5,20 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-04, after r136 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-04; r136 SHIPPED, r137 BUILT NOT SHIPPED)
 
 > ## ▶ NEXT SESSION STARTS HERE
 >
-> **`main@88a74787` is what runs. Production on 312 migrations. Next free number is `0386`.** Nothing is
-> in flight: no unmerged build branch, no half-applied migration, no pending deploy. NONE of r134, r135 or
-> r136 added a migration.
+> **`main@88a74787` is what runs. Production on 312 migrations. Next free number is `0386`.** No
+> half-applied migration, no pending deploy. None of r134-r137 adds a migration.
+>
+> ### ⚠️ ONE THING IS IN FLIGHT: `build/r137` at `e23038ee` — BUILT, NOT SHIPPED
+>
+> `b1f984fe` + `38f1fd40`, paired. Code complete, tsc clean, render check clean. **The only outstanding
+> step is ONE CLEAN FULL GATE** — the last one was 557 passed / 1 failed and that failure is fixed but not
+> re-verified. Both ids are already `building` on the board; on ship run `improve:build-complete` then
+> `improve:mark-deployed` for BOTH. Read the r137 entry before touching the branch — it carries a trap
+> that no test and no render can see.
 >
 > ### ▶ THREE ROUNDS SHIPPED 2026-08-04, AND THE BOARD IS NOW FULLY PLANNED
 >
@@ -1288,6 +1295,74 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r137 — 2026-08-04 — BUILT BUT NOT SHIPPED. Read this before touching `build/r137`.
+
+**`b1f984fe` + `38f1fd40`, paired in one round. Code complete, tsc clean, render check clean, committed
+as `e23038ee` on `build/r137`. NOT MERGED, NOT DEPLOYED, NOT RE-GATED.**
+
+### ▶ TO RESUME: ONE CLEAN FULL GATE IS ALL THAT IS OUTSTANDING
+
+The last full gate was **557 files passed / 1 failed**. That failure is FIXED (see below) but the tree has
+not been re-gated since. Nothing else is in flight. Both items are already `building` on the board — run
+`improve:build-complete` then `improve:mark-deployed` for BOTH ids when it ships.
+
+    cd .claude/worktrees/r137 && TEST_DB_NAMESPACE=r137x pnpm test > <log> 2>&1
+
+### THE TRAP 38f1fd40 CARRIED, AND WHY THE TICKET COULD NOT BE TAKEN LITERALLY
+
+The Adjustments sub-step held TWO tools and the ticket named one. Besides the festive grant it hosted
+**Run Earned Accrual** — and after 962077a8 cleared the page header, that sub-step was its ONLY reachable
+mount. Deleting it as asked would have removed the only way to generate earned leave days **with no type
+error, no failing test and a green render**, because a slot that is never rendered looks exactly like a
+slot with nothing to show. It now lives in Service Based Entitlements beside Preview Scenario; the header
+is deliberately still empty (962077a8 is a shipped reporter decision, guarded by
+test/entitlement-header-actions-removal.test.ts).
+
+**Verified by RENDER, not by source**: `Run earned accrual` and its hint text are in the page payload, so
+the slot is genuinely composed. "Present in the file" would not have proved it.
+
+**The invisible half:** `entitlementSubStep` persists in `localStorage` under `leaveTypeCards:<id>`. A
+browser sitting on `'adjustments'` would fail key validation and snap back to sub-step 1. `RETIRED_ADJUSTMENTS_SUB_STEP`
+remaps it to `'service'`, copying bc9be1e8's existing pattern. **No test and no render can see a user
+stranded by its absence** — it is per-browser state.
+
+### A REAL BUG, CAUGHT BY THE REPO'S OWN GUARD — AND THE LESSON GENERALISES
+
+Deleting every `admin.leave` key starting with `festive` also deleted three GENERIC multi-select labels
+(`festiveSelectAll` / `festiveClearAll` / `festiveSelectedCount`) that the **surviving**
+`components/earned-accrual-card.tsx` shares. `test/i18n-coverage.test.ts` Check C caught it. Restored as
+`multiSelect*`.
+
+**A key's NAME is not evidence of who reads it.** The plan had already warned about this shape for
+`festiveCompanies` / `canGroupWide` / `companyNameById` (all kept, all consumed elsewhere) — and the same
+trap still landed one level down, in the message catalog. Grep for consumers before deleting by prefix.
+
+### AND AN OVERREACH, REVERTED
+
+Widening the new i18n guard by `benefit-scheme-config.tsx` + `leave-rule-preview.tsx` produced **540 false
+positives** — they bind their namespace in a shape the simple resolver reads wrongly. Narrowed back to the
+validated set, with the reason written into the file. A guard that cries wolf 540 times is worse than one
+with a known, documented edge. **The general case is already covered by i18n-coverage Check C** — which is
+precisely the test that caught the bug above.
+
+### b1f984fe WAS NOT A RENAME
+
+`leave.breakdown.field.available` — the Request Leave popup's second column header — existed in **NONE** of
+the six catalogs. The label the reporter asked us to rename was never rendering. Fourth MISSING_MESSAGE of
+this class. `test/leave-i18n-key-resolution.test.ts` now guards it, and was **NEGATIVE-TESTED**: with the
+key removed it fails naming the exact file and key. A guard nobody has watched fail is worth nothing.
+
+### ⚠ THREE SPAN-CUTTING MISTAKES, ALL CAUGHT BY ASSERTIONS IN THE SCRIPT
+
+Removing functions by index arithmetic went wrong three times: `rindex('/**')` walked past a `//`-commented
+declaration; brace-matching stopped on a `{` inside a comment; a "next top-level declaration" scan ended
+inside the FOLLOWING declaration's comment block. Each time an `assert` in the edit script caught it before
+writing, and the file was reverted rather than patched. **Put the assertion in the script.** Removing one
+element of a `Promise.all` tuple without removing its slot in the destructuring also silently shifted every
+later variable — tsc caught that one.
+
+---
 
 ## r136 — 2026-08-04 — the org-wide Requests table leaves My Leave, and a false claim in our own tests
 
