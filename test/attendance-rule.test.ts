@@ -324,23 +324,25 @@ const vband = (fromMinutes: number, toMinutes: number, rate: number) => ({
 describe('7c834696 — the OT band ladder is validated on save', () => {
   it('refuses OVERLAPPING bands and names both rows', async () => {
     const a = adminCtx(b);
-    await expect(
+    // Validation runs in normalizeInput, i.e. SYNCHRONOUSLY, before the transaction opens — so this is a
+    // plain throw, not a rejected promise, and a bad table never reaches the database at all.
+    expect(() =>
       createAttendanceRule(a, inertRule({ otRows: [vband(0, 120, 1.5), vband(100, 180, 2)] })),
-    ).rejects.toThrow(/Overtime row 2 overlaps row 1/);
+    ).toThrow(/Overtime row 2 overlaps row 1/);
   });
 
   it('refuses a GAP between bands and names both rows', async () => {
     const a = adminCtx(b);
-    await expect(
+    expect(() =>
       createAttendanceRule(a, inertRule({ otRows: [vband(0, 120, 1.5), vband(150, 180, 2)] })),
-    ).rejects.toThrow(/Overtime row 2 leaves a gap after row 1/);
+    ).toThrow(/Overtime row 2 leaves a gap after row 1/);
   });
 
   it('refuses an open-ended band that is not the last row', async () => {
     const a = adminCtx(b);
-    await expect(
+    expect(() =>
       createAttendanceRule(a, inertRule({ otRows: [vband(0, 0, 1.5), vband(121, 180, 2)] })),
-    ).rejects.toThrow(/row 1 has no upper limit/);
+    ).toThrow(/row 1 has no upper limit/);
   });
 
   it('ACCEPTS a contiguous ladder ending open-ended, and a rate of 0', async () => {
@@ -356,12 +358,12 @@ describe('7c834696 — the OT band ladder is validated on save', () => {
 
   it('refuses a lateness pair whose interval exceeds its deduction (the request’s X ≤ Y rule)', async () => {
     const a = adminCtx(b);
-    await expect(
+    expect(() =>
       createAttendanceRule(a, inertRule({ lateAfterMinutes: 30, lateDeductMinutes: 10 })),
-    ).rejects.toThrow(/Lateness: .after 30 minutes. cannot be larger than .deduct 10 minutes./);
-    await expect(
+    ).toThrow(/Lateness: .after 30 minutes. cannot be larger than .deduct 10 minutes./);
+    expect(() =>
       createAttendanceRule(a, inertRule({ earlyAfterMinutes: 30, earlyDeductMinutes: 10 })),
-    ).rejects.toThrow(/Early out: .after 30 minutes. cannot be larger than .deduct 10 minutes./);
+    ).toThrow(/Early out: .after 30 minutes. cannot be larger than .deduct 10 minutes./);
   });
 
   it('stores the per-band public-holiday rate, and null when none is given', async () => {
@@ -450,7 +452,10 @@ describe('7c834696 — lateness / early-out are measured, and deductions are for
       .where(eq(schema.attendance.employmentId, emp));
     expect(row.lateMinutes).toBe(25); // 09:40 against a 09:15 threshold (grace not included)
     expect(row.earlyOutMinutes).toBe(60); // 17:00 against an 18:00 end
-    expect(row.underMinutes).toBe(115); // 480 scheduled − 365 worked
+    // 09:40→17:00 = 440-minute span; the shift has a 60-minute break scalar and no break windows, so the
+    // engine's 6h cliff deducts the whole break → 380 worked, 100 short of the 480 scheduled.
+    expect(row.workedMinutes).toBe(380);
+    expect(row.underMinutes).toBe(100);
     // The whole point: the figures exist, and the money figure is still zero.
     expect(row.lateDeductMinutes).toBe(0);
     expect(row.earlyOutDeductMinutes).toBe(0);
