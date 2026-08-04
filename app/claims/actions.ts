@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { myEmployment } from '@/core/read';
-import { cancelClaim, submitClaimWithAttachment } from '@/core/claims';
+import { cancelClaim, deleteClaimDraft, saveClaimDraft, submitClaimWithAttachment, submitDraftClaims } from '@/core/claims';
 
 const BASE = '/claims';
 const errorUrl = (e: unknown) => `${BASE}?error=${encodeURIComponent((e as Error).message)}`;
@@ -38,6 +38,13 @@ export type SubmitClaimState = { error: string | null };
  */
 export async function submitClaimAction(_prevState: SubmitClaimState, formData: FormData): Promise<SubmitClaimState> {
   const s = await getSession();
+  // e7eb5d83 — ONE form, two buttons. The submit BUTTON carries name="intent" value="draft", and a
+  // submitter's name/value is part of the FormData the browser posts, so the two paths need no second
+  // form and no duplicated fields. `draftId` is present only when the employee is editing an existing
+  // draft (?draft=<id> on the page), which is what turns Save into an update rather than a new row.
+  const intent = String(formData.get('intent') ?? '');
+  const draftId = String(formData.get('draftId') ?? '').trim() || undefined;
+  let toast = 'Claim submitted';
   try {
     const me = await myEmployment(s);
     // myEmployment is null when the account has no active employment; give a clear, actionable message
@@ -52,25 +59,62 @@ export async function submitClaimAction(_prevState: SubmitClaimState, formData: 
       if (!mimeType) throw new Error('Only PDF, JPG, or PNG files are allowed');
       attachment = { fileName: file.name, mimeType, content };
     }
-    await submitClaimWithAttachment(
-      s,
-      {
-        employmentId: me.employmentId,
-        claimTypeId: String(formData.get('claimTypeId')),
-        claimItemId: String(formData.get('claimItemId') ?? '').trim() || null,
-        amount: Number(formData.get('amount')),
-        quantityKm: numOrNull(formData.get('quantityKm')),
-        incurredOn: String(formData.get('incurredOn')),
-        description: String(formData.get('description') ?? '').trim() || null,
-        hasReceipt: hasFile,
-      },
-      attachment,
-    );
+    const fields = {
+      employmentId: me.employmentId,
+      claimTypeId: String(formData.get('claimTypeId')),
+      claimItemId: String(formData.get('claimItemId') ?? '').trim() || null,
+      amount: Number(formData.get('amount')),
+      quantityKm: numOrNull(formData.get('quantityKm')),
+      incurredOn: String(formData.get('incurredOn')),
+      description: String(formData.get('description') ?? '').trim() || null,
+    };
+    if (intent === 'draft') {
+      await saveClaimDraft(s, { ...fields, id: draftId }, attachment);
+      toast = 'Draft saved';
+    } else if (draftId) {
+      // Editing a draft and pressing Submit: persist the edits, then run the real submit transition on
+      // that same row. Two transactions, and deliberately so — the second is the one that takes the limit
+      // lock and reserves, and it must be the identical path the Drafts list uses. If it refuses (over
+      // limit, missing receipt), the SAVE still stands, so nothing the employee typed is lost.
+      await saveClaimDraft(s, { ...fields, id: draftId }, attachment);
+      await submitDraftClaims(s, { ids: [draftId] });
+    } else {
+      await submitClaimWithAttachment(s, { ...fields, hasReceipt: hasFile }, attachment);
+    }
     revalidatePath(BASE);
   } catch (e) {
     return { error: (e as Error).message };
   }
-  redirect(`${BASE}?toast=${encodeURIComponent('Claim submitted')}`);
+  redirect(`${BASE}?toast=${encodeURIComponent(toast)}`);
+}
+
+/** Bulk "Submit Selected" over the Drafts list. All-or-nothing in the service; the whole batch competes
+ *  for one limit, so a partial result would mean the system chose which claims to file. */
+export async function submitDraftsAction(formData: FormData) {
+  const s = await getSession();
+  let redirectTo: string;
+  try {
+    const ids = formData.getAll('draftIds').map(String).filter(Boolean);
+    const { submitted } = await submitDraftClaims(s, { ids });
+    revalidatePath(BASE);
+    redirectTo = `${BASE}?toast=${encodeURIComponent(`${submitted} claim(s) submitted`)}`;
+  } catch (e) {
+    redirectTo = errorUrl(e);
+  }
+  redirect(redirectTo);
+}
+
+export async function deleteDraftAction(formData: FormData) {
+  const s = await getSession();
+  let redirectTo: string;
+  try {
+    await deleteClaimDraft(s, String(formData.get('id')));
+    revalidatePath(BASE);
+    redirectTo = `${BASE}?toast=${encodeURIComponent('Draft deleted')}`;
+  } catch (e) {
+    redirectTo = errorUrl(e);
+  }
+  redirect(redirectTo);
 }
 
 export async function cancelClaimAction(formData: FormData) {
