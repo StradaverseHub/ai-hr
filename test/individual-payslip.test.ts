@@ -104,9 +104,11 @@ describe('169e3c24 — explaining the PCB figure from what the payslip recorded'
 describe('169e3c24 — the ESS release gate is not weakened, and no logo is invented', () => {
   it('the new PDF route does NOT read through payslipDetail', () => {
     const route = read('app/payroll/individual-payslip/[payslipId]/pdf/route.ts');
-    expect(route, 'payslipDetail carries the ESS release gate; the admin route must not call it').not.toContain(
-      'payslipDetail',
-    );
+    // The IMPORTS, not the prose — the file's header explains at length why it must not call payslipDetail,
+    // and a naive substring check would fail on its own explanation.
+    const imports = route.split('\n').filter((l) => l.trimStart().startsWith('import '));
+    expect(imports.join('\n'), 'payslipDetail carries the ESS release gate; the admin route must not import it')
+      .not.toContain('payslipDetail');
     expect(route).toContain('payslipForReview');
     expect(route, 'admin + company scope fence').toContain('scopedAdmin');
   });
@@ -182,7 +184,9 @@ afterAll(async () => {
   await closeAll();
 });
 
-async function hireWithPayslip(name: string, email: string, ic: string, period = '2026-05', basic = 5000) {
+/** Hire one employee, fully configured. NO batch — a company+period holds exactly ONE payroll process,
+ *  so the run is created once by `pay()` below rather than per employee. */
+async function hire(name: string, email: string, ic: string, basic = 5000) {
   const a = adminCtx(base);
   const e = await hireEmployee(a, {
     person: { fullName: name, primaryEmail: email },
@@ -200,10 +204,30 @@ async function hireWithPayslip(name: string, email: string, ic: string, period =
     bankName: 'Maybank',
     bankAccountNo: '512345678901',
   });
+  return e;
+}
+
+/** Run one regular payroll for the whole company in `period`. */
+async function pay(period: string) {
+  const a = adminCtx(base);
   const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: period });
   await generatePayslips(a, { batchId });
-  const [slip] = await listProcessedPayslipsAcross(a, { companyIds: [base.companyId], employmentId: e.employmentId });
-  return { ...e, payslipId: slip.id, batchId };
+  return batchId;
+}
+
+/** The one payslip this employee holds (after a single run). */
+async function slipIdOf(employmentId: string) {
+  const rows = await listProcessedPayslipsAcross(adminCtx(base), {
+    companyIds: [base.companyId],
+    employmentId,
+  });
+  return rows[0].id;
+}
+
+async function hireWithPayslip(name: string, email: string, ic: string, period = '2026-05', basic = 5000) {
+  const e = await hire(name, email, ic, basic);
+  await pay(period);
+  return { ...e, payslipId: await slipIdOf(e.employmentId) };
 }
 
 describe('169e3c24 — the admin review read', () => {
@@ -248,11 +272,11 @@ describe('169e3c24 — the admin review read', () => {
 
   it('year-to-date sums ONLY the chosen employee’s months in the chosen year', async () => {
     const a = adminCtx(base);
-    const me = await hireWithPayslip('Ytd Me', 'ytd.me@acme.test', '900101011405', '2026-01', 4000);
-    const other = await hireWithPayslip('Ytd Other', 'ytd.other@acme.test', '900101011406', '2026-01', 9000);
-    // A second month for the same person.
-    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-02' });
-    await generatePayslips(a, { batchId });
+    const me = await hire('Ytd Me', 'ytd.me@acme.test', '900101011405', 4000);
+    const other = await hire('Ytd Other', 'ytd.other@acme.test', '900101011406', 9000);
+    // Two months, both employees in each — one payroll process per company per period.
+    await pay('2026-01');
+    await pay('2026-02');
 
     const mine = await listProcessedPayslipsAcross(a, {
       companyIds: [base.companyId],

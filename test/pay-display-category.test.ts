@@ -229,8 +229,6 @@ describe('3c473773 — migration 0393 and the i18n keys the screens resolve', ()
 // ───────────────────────────── Behavioural: a real run through the kernel ─────────────────────────────
 
 let base: Base;
-let icSeq = 0;
-const nextIc = () => `9003030${String(40000 + icSeq++).slice(-5)}`;
 const idByCode = async (b: Base, code: string) =>
   (await listPayComponents(adminCtx(b))).find((c) => c.code === code)!.id;
 
@@ -240,18 +238,28 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb();
   base = await seedBase();
-  icSeq = 0;
+  icSeq2 = 0;
 });
 afterAll(async () => {
   await closeAll();
 });
 
 /**
- * One employee on basic 5,000 plus an "Overtime 1.5" pay code of 200 declared as ADDITIONAL remuneration
- * — the reporter's exact configuration (EPF off, SOCSO/EIS on, PCB additional). `displayCategory` is the
- * only thing that varies between runs.
+ * One employee on basic 5,000 plus an "Overtime 1.5"-shaped pay code of 200 declared as ADDITIONAL
+ * remuneration — the reporter's exact configuration (EPF off, SOCSO/EIS on, PCB additional). Only
+ * `displayCategory` varies.
+ *
+ * WHY ONE BATCH AND ONE PERIOD FOR ALL OF THEM. PCB depends on the month (the projection carries n = 12 −
+ * month), so comparing two employees calculated in DIFFERENT periods would report a statutory difference
+ * that has nothing to do with the box. Every employee below is paid in the SAME run, with identical
+ * inputs, so any difference between their statutory figures can only have come from the category — which
+ * is exactly the claim under test. A pay code's category is tenant-wide, so each variant needs its own
+ * code rather than its own run.
  */
-async function runWithCategory(displayCategory: string | null | undefined, email: string) {
+let icSeq2 = 0;
+const nextIc2 = () => `9003030${String(40000 + icSeq2++).slice(-5)}`;
+
+async function setupEmployee(code: string, displayCategory: string | null | undefined, email: string) {
   const a = adminCtx(base);
   const e = await hireEmployee(a, {
     person: { fullName: `OT ${email}`, primaryEmail: `${email}@acme.test` },
@@ -260,84 +268,91 @@ async function runWithCategory(displayCategory: string | null | undefined, email
     employmentType: 'full_time',
     hiredOn: '2026-01-01',
   });
-  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: nextIc() });
+  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: nextIc2() });
   await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
   await seedPayComponentCatalog(a);
   await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode(base, 'BASIC'), amount: 5000, effectiveFrom: '2026-01-01' });
   await upsertPayComponent(a, {
-    code: 'OT1_5', name: 'Overtime 1.5', kind: 'allowance',
+    code, name: 'Overtime 1.5', kind: 'allowance',
     includedInEpf: false, includedInSocsoEis: true, includedInPcb: true, includedInHrdfBase: false,
     isNonPayable: false, prorates: false, roundingMethod: 'none',
     epfBonus2012: false, pcbRemunerationType: 'additional', pcbExemptionCode: 'PCB_TAXABLE',
     ...(displayCategory === undefined ? {} : { displayCategory }),
   });
-  await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode(base, 'OT1_5'), amount: 200, effectiveFrom: '2026-01-01' });
+  await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode(base, code), amount: 200, effectiveFrom: '2026-01-01' });
+  return e.employmentId;
+}
 
+/** Pay everyone set up so far, once, in one regular run. */
+async function payAll() {
+  const a = adminCtx(base);
   const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
   await setModule(base.tenantId, 'typed_pay_components', 'active');
   const gated = await entitledCtx(base);
   await generatePayslips(gated, { batchId });
-  const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId, e.employmentId));
-  return ps;
+  const slipOf = async (employmentId: string) => {
+    const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId, employmentId));
+    return ps;
+  };
+  return slipOf;
 }
 
 describe('3c473773 — declaring the box moves the LABEL, never the MONEY', () => {
-  it('an unclassified overtime code still prints under Bonus (the fault, unchanged when nothing is set)', async () => {
-    const ps = await runWithCategory(null, 'unset');
-    expect(Number(ps.bonus)).toBeCloseTo(200, 2);
-    expect(Number(ps.overtimePay)).toBeCloseTo(0, 2);
-    const st = ps.statutory as Record<string, unknown>;
-    expect(st.displayEarnings, 'nothing re-categorised ⇒ no overlay ⇒ byte-identical').toBeUndefined();
-    expect(payslipDisplayEarnings(ps).bonus).toBeCloseTo(200, 2);
-  });
+  it('re-labels overtime without moving one cent of statutory money, and stamps nothing when nothing moved', async () => {
+    const unset = await setupEmployee('OT1_5_UNSET', null, 'unset');
+    const sameAsDefault = await setupEmployee('OT1_5_BONUS', 'bonus', 'sameasdefault');
+    const moved = await setupEmployee('OT1_5', 'overtime', 'moved');
+    const claimed = await setupEmployee('OT1_5_CLAIM', 'claim', 'claimed');
+    const slipOf = await payAll();
 
-  it('declaring the box it ALREADY prints in stamps nothing at all (byte-identical)', async () => {
-    const ps = await runWithCategory('bonus', 'sameasdefault');
-    const st = ps.statutory as Record<string, unknown>;
-    expect(st.displayEarnings).toBeUndefined();
-    expect(Number(ps.bonus)).toBeCloseTo(200, 2);
-  });
+    // ── THE FAULT, unchanged where nobody declared a box ──
+    const a = await slipOf(unset);
+    expect(Number(a.bonus), 'an unclassified overtime code still prints under Bonus').toBeCloseTo(200, 2);
+    expect(Number(a.overtimePay)).toBeCloseTo(0, 2);
+    expect((a.statutory as Record<string, unknown>).displayEarnings, 'nothing re-categorised ⇒ no overlay').toBeUndefined();
+    expect(payslipDisplayEarnings(a).bonus).toBeCloseTo(200, 2);
 
-  it('declaring Overtime shows it under Overtime, and changes no statutory figure', async () => {
-    const before = await runWithCategory(null, 'before');
-    const after = await runWithCategory('overtime', 'after');
+    // ── Declaring the box it ALREADY prints in stamps nothing at all ──
+    const b = await slipOf(sameAsDefault);
+    expect((b.statutory as Record<string, unknown>).displayEarnings).toBeUndefined();
+    expect(Number(b.bonus)).toBeCloseTo(200, 2);
 
-    // THE FIX: the display moves.
-    const d = payslipDisplayEarnings(after);
+    // ── THE FIX: the display moves ──
+    const c = await slipOf(moved);
+    const d = payslipDisplayEarnings(c);
     expect(d.overtime).toBeCloseTo(200, 2);
     expect(d.bonus).toBeCloseTo(0, 2);
 
-    // THE GUARANTEE: nothing else does. The stored columns keep the kernel's statutory bucketing (which
-    // is what EA / CP39 / KWSP / PERKESO read), and every statutory figure is identical to the cent. If
-    // the box had re-routed the kernel bucket instead, EPF (which excludes overtime but includes
-    // additional remuneration), SOCSO/EIS (the reverse) and PCB would all have moved.
-    expect(Number(after.bonus)).toBeCloseTo(Number(before.bonus), 2);
-    expect(Number(after.overtimePay)).toBeCloseTo(Number(before.overtimePay), 2);
-    expect(Number(after.grossPay)).toBeCloseTo(Number(before.grossPay), 2);
-    expect(Number(after.netPay)).toBeCloseTo(Number(before.netPay), 2);
-    expect(Number(after.totalDeductions)).toBeCloseTo(Number(before.totalDeductions), 2);
-    expect(Number(after.employerCost)).toBeCloseTo(Number(before.employerCost), 2);
-    const sa = after.statutory as Record<string, number>;
-    const sb = before.statutory as Record<string, number>;
+    // ── THE GUARANTEE: nothing else does ──
+    // The stored columns keep the kernel's statutory bucketing (which EA / CP39 / KWSP / PERKESO read),
+    // and every statutory figure is identical to the cent against an employee with identical inputs and
+    // no declared box. Had the box re-routed the KERNEL bucket instead, EPF (which excludes overtime but
+    // includes additional remuneration), SOCSO/EIS (the reverse) and PCB would all have moved.
+    expect(Number(c.bonus)).toBeCloseTo(Number(a.bonus), 2);
+    expect(Number(c.overtimePay)).toBeCloseTo(Number(a.overtimePay), 2);
+    expect(Number(c.grossPay)).toBeCloseTo(Number(a.grossPay), 2);
+    expect(Number(c.netPay)).toBeCloseTo(Number(a.netPay), 2);
+    expect(Number(c.totalDeductions)).toBeCloseTo(Number(a.totalDeductions), 2);
+    expect(Number(c.employerCost)).toBeCloseTo(Number(a.employerCost), 2);
+    const sc = c.statutory as Record<string, number>;
+    const sa = a.statutory as Record<string, number>;
     for (const k of ['epfEmployee', 'epfEmployer', 'socsoEmployee', 'socsoEmployer', 'socsoSkbbk', 'eisEmployee', 'eisEmployer', 'pcb'] as const) {
-      expect(Number(sa[k]), `statutory.${k} must not move`).toBeCloseTo(Number(sb[k]), 2);
+      expect(Number(sc[k]), `statutory.${k} must not move`).toBeCloseTo(Number(sa[k]), 2);
     }
-  });
 
-  it('the boxes still add up to gross — a breakdown cannot disagree with the total beside it', async () => {
-    const ps = await runWithCategory('overtime', 'reconciles');
-    const d = payslipDisplayEarnings(ps);
-    expect(d.basic + d.allowance + d.overtime + d.bonus + d.claim).toBeCloseTo(Number(ps.grossPay), 2);
-  });
+    // ── The boxes still add up to gross — a breakdown cannot disagree with the total beside it ──
+    expect(d.basic + d.allowance + d.overtime + d.bonus + d.claim).toBeCloseTo(Number(c.grossPay), 2);
 
-  it('a Claim box appears only when one was declared', async () => {
-    const plain = await runWithCategory('overtime', 'noclaim');
-    expect(payslipDisplayEarnings(plain).claim).toBeCloseTo(0, 2);
-    const claimed = await runWithCategory('claim', 'withclaim');
-    const d = payslipDisplayEarnings(claimed);
-    expect(d.claim).toBeCloseTo(200, 2);
-    expect(d.bonus).toBeCloseTo(0, 2);
-    expect(d.basic + d.allowance + d.overtime + d.bonus + d.claim).toBeCloseTo(Number(claimed.grossPay), 2);
+    // ── The Claim box appears only when one was declared ──
+    expect(d.claim, 'no Claim line on an overtime-boxed payslip').toBeCloseTo(0, 2);
+    const e = await slipOf(claimed);
+    const dc = payslipDisplayEarnings(e);
+    expect(dc.claim).toBeCloseTo(200, 2);
+    expect(dc.bonus).toBeCloseTo(0, 2);
+    expect(dc.basic + dc.allowance + dc.overtime + dc.bonus + dc.claim).toBeCloseTo(Number(e.grossPay), 2);
+    // …and it, too, moved no money.
+    expect(Number(e.grossPay)).toBeCloseTo(Number(a.grossPay), 2);
+    expect(Number(e.netPay)).toBeCloseTo(Number(a.netPay), 2);
   });
 
   it('the vocabulary the DB accepts is the vocabulary the app offers', () => {
