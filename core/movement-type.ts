@@ -69,6 +69,18 @@ export type MovementEventTypeRow = {
   builtIn: boolean;
   /** A domain_event already records this code — it can be deactivated but not deleted. */
   inUse: boolean;
+  /**
+   * When the ORGANISATION added this type. 1b87e8a0 wanted a "Last Updated" column; there is no
+   * updated_at on movement_event_type and adding one is a migration plus a write-path change that
+   * would be NULL for every existing row, so the settings screen shows Created instead — disclosed to
+   * the reporter as its own request rather than smuggled in.
+   *
+   * NULL FOR EVERY BUILT-IN, deliberately, and not merely when no overlay row exists. A built-in has
+   * been in the product since it shipped, so it has no creation date to show; and once a tenant
+   * renames or switches one off, the overlay row's created_at is the date of THAT edit, which under a
+   * column headed "Created" would be a plain lie. The screen renders built-ins as built-in instead.
+   */
+  createdAt: Date | null;
 };
 
 export class MovementTypeError extends Error {
@@ -164,6 +176,9 @@ export function listMovementEventTypes(ctx: SessionContext): Promise<MovementEve
         sortOrder: o?.sortOrder ?? i,
         builtIn: true,
         inUse: inUse.has(kind),
+        // Never o.createdAt: that is when the tenant first RENAMED or switched this built-in, not when
+        // the type came into being. See the field's doc comment.
+        createdAt: null,
       };
     });
     for (const [code, o] of overlay) {
@@ -178,6 +193,7 @@ export function listMovementEventTypes(ctx: SessionContext): Promise<MovementEve
         sortOrder: o.sortOrder,
         builtIn: false,
         inUse: inUse.has(code),
+        createdAt: o.createdAt,
       });
     }
     return rows;

@@ -159,7 +159,8 @@
     "scheduledActions": "Tác vụ theo lịch",
     "systemSettings": "Cài đặt hệ thống",
     "systemExplorer": "Trình khám phá phụ thuộc",
-    "movementSettings": "Cài đặt biến động"
+    "movementSettings": "Cài đặt biến động",
+    "hiringDefaults": "Mặc định tuyển dụng"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -352,7 +353,6 @@
       "employeeIdLabel": "Mã nhân viên",
       "employeeIdPlaceholder": "vd. EMP-0001",
       "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 30 ký tự.",
-      "hiringDefaults": "Mặc định tuyển dụng",
       "draftsHeading": "Nhân viên mới chưa hoàn tất",
       "draftsCount": "{count} bản nháp",
       "draftUntitled": "Bản nháp chưa đặt tên",
@@ -1328,17 +1328,6 @@
       "historyErrorsShown": "{count, plural, other {# hàng không nhập được}}",
       "historyErrorsTruncated": "Đang hiển thị {shown} trong {total} hàng lỗi.",
       "historyNoDetail": "Không có chi tiết hàng nào được lưu cho lần nhập này."
-    },
-    "hiringDefaults": {
-      "title": "Mặc định tuyển dụng",
-      "description": "Giá trị mặc định theo từng công ty cho nhân viên mới và các kỳ đánh giá. Trước đây chúng nằm trên màn hình lịch trả lương, nơi không có phần nào của bảng lương đọc tới.",
-      "back": "Nhân sự",
-      "emptyScope": "Không có công ty nào trong phạm vi hiện tại.",
-      "save": "Lưu",
-      "probationMonths": "Thời gian thử việc mặc định (tháng)",
-      "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
-      "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
-      "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
     },
     "wizard": {
       "fields": {
@@ -7956,12 +7945,46 @@
       "name": "Tên",
       "behaviour": "Việc nó làm",
       "status": "Trạng thái",
-      "action": "Thao tác"
+      "action": "Thao tác",
+      "created": "Ngày tạo"
     },
     "status": {
       "active": "Đang dùng",
-      "inactive": "Đã tắt"
-    }
+      "inactive": "Đã tắt",
+      "all": "Tất cả"
+    },
+    "searchPlaceholder": "Tìm loại sự kiện hoặc mã…",
+    "createNew": "+ Thêm sự kiện biến động",
+    "edit": "Sửa",
+    "editTitle": "Sửa loại sự kiện",
+    "editHint": "Đổi tên cho khớp với cách gọi của tổ chức bạn. Loại có sẵn giữ nguyên chức năng; chỉ loại do bạn tạo mới đổi được hành vi.",
+    "cancel": "Hủy",
+    "empty": "Không có loại sự kiện nào khớp với tìm kiếm này.",
+    "builtIn": "Có sẵn"
+  },
+  "hiringDefaults": {
+    "title": "Mặc định tuyển dụng",
+    "description": "Giá trị mặc định theo từng công ty được áp dụng khi HR tạo nhân viên. Chọn một công ty để đặt thời gian thử việc và nhịp nhắc đánh giá của công ty đó.",
+    "catalogTitle": "Công ty",
+    "searchPlaceholder": "Tìm tên hoặc mã công ty…",
+    "statusActive": "Đang hoạt động",
+    "statusInactive": "Ngưng hoạt động",
+    "statusAll": "Tất cả",
+    "colCompany": "Công ty",
+    "colCode": "Mã công ty",
+    "colProbation": "Thử việc (tháng)",
+    "colReminders": "Nhắc đánh giá (ngày)",
+    "colStatus": "Trạng thái",
+    "usingDefault": "Mặc định hệ thống",
+    "edit": "Sửa",
+    "empty": "Không có công ty nào khớp với tìm kiếm này.",
+    "emptyScope": "Không có công ty nào trong phạm vi hiện tại.",
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "probationMonths": "Thời gian thử việc mặc định (tháng)",
+    "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
+    "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
+    "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
   },
   "replacementRequest": {
     "trigger": "+ Replacement Leave Request",

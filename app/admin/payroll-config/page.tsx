@@ -167,7 +167,9 @@ export default async function PayrollConfigPage({
                   who came here looking for them is told where they went rather than finding a gap. */}
               <p className="text-xs text-muted-foreground">
                 {t('movedSettingsHint')}{' '}
-                <Link href="/admin/personnel/settings" className="font-medium text-primary hover:underline">
+                {/* 7b5f18c3 relocated Hiring Defaults into System Settings; the signpost follows the
+                    screen rather than leaning on the redirect stub. */}
+                <Link href="/admin/settings/hiring-defaults" className="font-medium text-primary hover:underline">
                   {t('movedHiringLink')}
                 </Link>
                 {' · '}

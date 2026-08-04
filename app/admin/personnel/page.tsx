@@ -177,16 +177,10 @@ export default async function PeoplePage({
                 {t('importCsv')}
               </Link>
             )}
-            {/* r79a (4fb8b75a step 3) — Hiring Defaults: probation months + review reminder cadence, moved
-                here from the Payroll Schedule screen, where neither had a payroll reader. */}
-            {isAdmin && (
-              <Link
-                href="/admin/personnel/settings"
-                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-              >
-                {t('hiringDefaults')}
-              </Link>
-            )}
+            {/* 7b5f18c3 — the Hiring Defaults button that used to sit here is GONE. It is a system setup,
+                not a daily HR action, and nobody looks for one in the top-right corner of the employee
+                list; it now lives at System Settings → Hiring Defaults. The old address still redirects
+                there, so a bookmark of the removed button's destination still lands somewhere real. */}
             <FilterPanel
               action="/admin/personnel"
               fields={filterFields}
