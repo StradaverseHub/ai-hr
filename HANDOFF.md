@@ -455,6 +455,26 @@ grep — an empty result is a parser gap, not proof of no callers.
 
 ## Traps — the durable ones (each cost at least a round; several recurred AFTER being written down)
 
+- **A NAIVE JSON DEEP-MERGE RESURRECTS DELETED KEYS — and the six message catalogs are where it bites.**
+  When two parallel branches both edit `messages/*.json`, git conflicts on the whole file and the
+  obvious fix is a recursive merge of the two objects. That is WRONG whenever either branch DELETED a
+  key: a branch cut before the deletion still carries it, so "present in theirs, absent in ours" looks
+  like an addition and the retired key comes back. Measured this session — r138 retired four wizard
+  label groups, r141 predated that, and the merge silently restored all four in all six catalogs.
+  **PRESENCE IS A VALUE. Consult the merge BASE for absence too:**
+  - in base · gone from one side · unchanged in the other ⇒ **DELETE**
+  - not in base · present on one side ⇒ ADD
+  - deleted one side · modified the other ⇒ deletion wins, and REPORT it
+  Get the base explicitly (`git merge-base HEAD^1 HEAD^2`) — the `:1` stage is gone once you commit.
+  Assert afterwards that BOTH sides' additions and each side's deletions survived; the guard that
+  caught this (`test/wizard-personnel-shared-fields.test.ts`) only exists because r140 wrote it.
+
+- **AN EXACT-SET NAV GUARD MUST BE UPDATED, NOT LOOSENED, WHEN A ROW IS LEGITIMATELY ADDED.**
+  `ADMIN_GROUP_FLAT_HREFS` (sidebar), `EXPECTED_SET` (payroll flyout) and the pack-drift allowlist all
+  fail when a new row appears — that is their job: they catch a sibling accidentally CLIPPED by an
+  edit. Declare the new row in the list. Only ONE agent per round may own each of these, or two
+  branches both edit the same literal.
+
 - **A `labelKey` IS NOT THE LABEL.** Resolve the key against `messages/en.json` before describing
   what a screen says — a plan written off key names proposed three renames that were all already
   live. A key's NAME is not evidence of who reads it either: grep consumers before deleting keys by
