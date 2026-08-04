@@ -388,11 +388,59 @@ describe('476f23ed — the settings screen', () => {
     expect(src).toContain('saveMovementEventTypeAction');
     expect(src).toContain('setMovementEventTypeActiveAction');
     expect(src).toContain('deleteMovementEventTypeAction');
-    // The only behaviour picker on the page is the ADD form's, and it is fed from the restricted set.
+    // The only behaviour picker on the page is the maintenance panel's, fed from the restricted set.
+    // 1b87e8a0 merged Add and Edit into ONE panel, so the count stays at one: the built-in branch of
+    // that panel renders a disabled read-only field, never a second <select name="behaviourKind">.
     expect(src).toContain('CONFIGURABLE_BEHAVIOUR_KINDS');
-    expect(src.match(/name="behaviourKind"/g) ?? [], 'exactly one behaviour picker: the Add form').toHaveLength(1);
+    expect(src.match(/name="behaviourKind"/g) ?? [], 'exactly one behaviour picker: the maintenance panel').toHaveLength(1);
+    expect(src, 'a built-in never gets an editable behaviour field').toContain('editing?.builtIn ? (');
     // Delete is rendered only for a custom type nothing uses — the affordance mirrors the service rule.
     expect(src).toContain('!r.builtIn && !r.inUse');
+  });
+
+  /**
+   * 1b87e8a0 — the card-per-type layout becomes a row listing in the shape the reporter named (the
+   * Employee ID setup page). What is asserted here is what the redesign PROMISED and what it refused:
+   * a table with Created (not Last Updated) and no Description column, one maintenance panel keyed off
+   * the address, search and sorting — and NO new migration to pay for any of it.
+   */
+  it('SOURCE GUARD: 1b87e8a0 row listing — one panel off the address, Created not Last Updated, no Description', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../app/admin/settings/movement/page.tsx'), 'utf8');
+    // A real table, and the Add affordance is a button opening the panel — not a card in the list.
+    expect(src).toContain('<table');
+    expect(src).toContain("t('createNew')");
+    expect(src).toMatch(/href=\{href\(\{ new: '1' \}\)\}/);
+    expect(src, 'edit opens the same panel from the row').toMatch(/href\(\{ edit: r\.code \}\)/);
+    // Search and sort, as promised.
+    expect(src).toContain('<SettingsSearch');
+    expect(src).toContain('<SortHeader');
+    // The two columns the reporter asked for that have nothing behind them must NOT have been faked.
+    expect(src).toContain("t('columns.created')");
+    expect(src, 'there is no updated_at to show').not.toContain('lastUpdated');
+    expect(src, 'movement_event_type has no description column').not.toContain("columns.description");
+    // A built-in has no creation date; the cell says so instead of showing the date of a rename.
+    expect(src).toContain("t('builtIn')");
+  });
+
+  it('the Created column is honest: NULL for every built-in, the real date for a custom type', async () => {
+    // Built-ins have no row at all until a tenant touches one, and once they do, that row's created_at
+    // is the date of the RENAME. Either way it is not a creation date, so the service reports null and
+    // the screen renders "Built-in". This is the guard on the claim, not on the rendering.
+    const before = await listMovementEventTypes(adminCtx(b));
+    expect(before.every((r) => r.builtIn)).toBe(true);
+    expect(before.every((r) => r.createdAt === null), 'an untouched built-in carries no date').toBe(true);
+
+    await saveMovementEventType(adminCtx(b), { code: 'transfer', label: 'Redeployment' });
+    const renamed = rowFor(await listMovementEventTypes(adminCtx(b)), 'transfer');
+    expect(renamed.label).toBe('Redeployment');
+    expect(renamed.createdAt, 'a renamed built-in still reports no creation date').toBeNull();
+
+    const { code } = await saveMovementEventType(adminCtx(b), {
+      label: 'Regional Assignment',
+      behaviourKind: 'secondment',
+    });
+    const custom = rowFor(await listMovementEventTypes(adminCtx(b)), code);
+    expect(custom.createdAt, 'the organisation’s own type carries the date it was added').toBeInstanceOf(Date);
   });
 
   it('the nav row exists and is labelled in all six locales', () => {

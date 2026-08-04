@@ -18,7 +18,13 @@ import {
 
 const PAGE = '/admin/settings/movement';
 
-async function run(write: () => Promise<void>) {
+/**
+ * `keepOnError` carries the maintenance panel back with the message (1b87e8a0). Since the redesign the
+ * Add/Edit form lives behind `?new=1` / `?edit=CODE`, so a bare `?error=` redirect would close the panel
+ * and throw away what the admin had typed — the old screen had the form permanently on the page and did
+ * not have this problem. Success still lands on the plain list, which is the whole point of a panel.
+ */
+async function run(write: () => Promise<void>, keepOnError?: string) {
   let errMsg: string | null = null;
   try {
     await write();
@@ -29,7 +35,10 @@ async function run(write: () => Promise<void>) {
   } catch (e) {
     errMsg = (e as Error).message;
   }
-  if (errMsg) redirect(`${PAGE}?error=${encodeURIComponent(errMsg)}`);
+  if (errMsg) {
+    const back = keepOnError ? `&${keepOnError}` : '';
+    redirect(`${PAGE}?error=${encodeURIComponent(errMsg)}${back}`);
+  }
   redirect(`${PAGE}?toast=Saved`);
 }
 
@@ -37,12 +46,14 @@ async function run(write: () => Promise<void>) {
 export async function saveMovementEventTypeAction(formData: FormData) {
   const s = await requireAdmin();
   const code = String(formData.get('code') ?? '').trim() || null;
-  await run(() =>
-    saveMovementEventType(s, {
-      code,
-      label: String(formData.get('label') ?? ''),
-      behaviourKind: String(formData.get('behaviourKind') ?? '').trim() || null,
-    }).then(() => undefined),
+  await run(
+    () =>
+      saveMovementEventType(s, {
+        code,
+        label: String(formData.get('label') ?? ''),
+        behaviourKind: String(formData.get('behaviourKind') ?? '').trim() || null,
+      }).then(() => undefined),
+    code ? `edit=${encodeURIComponent(code)}` : 'new=1',
   );
 }
 

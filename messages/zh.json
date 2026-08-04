@@ -7945,12 +7945,22 @@
       "name": "名称",
       "behaviour": "作用",
       "status": "状态",
-      "action": "操作"
+      "action": "操作",
+      "created": "创建日期"
     },
     "status": {
       "active": "启用中",
-      "inactive": "已关闭"
-    }
+      "inactive": "已关闭",
+      "all": "全部"
+    },
+    "searchPlaceholder": "搜索事件类型或代码…",
+    "createNew": "+ 新增异动事件",
+    "edit": "编辑",
+    "editTitle": "编辑事件类型",
+    "editHint": "按贵组织的用语重命名。内置类型的作用不变；只有自建类型可以改变其行为。",
+    "cancel": "取消",
+    "empty": "没有符合此搜索条件的事件类型。",
+    "builtIn": "内置"
   },
   "hiringDefaults": {
     "title": "入职默认设置",

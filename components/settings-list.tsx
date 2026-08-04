@@ -83,9 +83,16 @@ export function SettingsSearch({
 /** Active / Inactive / All — the three-way status filter every settings catalogue needs. */
 export type SettingsStatus = 'active' | 'inactive' | 'all';
 
-/** Parse `?status=`; anything unrecognised (including absent) means Active, the useful default. */
-export function parseSettingsStatus(raw: string | undefined): SettingsStatus {
-  return raw === 'inactive' || raw === 'all' ? raw : 'active';
+/**
+ * Parse `?status=`. Anything unrecognised (including absent) falls back — to Active for a catalogue
+ * you mostly browse live rows of, but callers pass 'all' where switching a row back ON is the reason
+ * you opened the screen and an Active default would hide exactly what you came for.
+ */
+export function parseSettingsStatus(
+  raw: string | undefined,
+  fallback: SettingsStatus = 'active',
+): SettingsStatus {
+  return raw === 'active' || raw === 'inactive' || raw === 'all' ? raw : fallback;
 }
 
 export function SettingsStatusFilter({

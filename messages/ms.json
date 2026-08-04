@@ -7945,12 +7945,22 @@
       "name": "Nama",
       "behaviour": "Fungsinya",
       "status": "Status",
-      "action": "Tindakan"
+      "action": "Tindakan",
+      "created": "Dicipta"
     },
     "status": {
       "active": "Aktif",
-      "inactive": "Dimatikan"
-    }
+      "inactive": "Dimatikan",
+      "all": "Semua"
+    },
+    "searchPlaceholder": "Cari jenis peristiwa atau kod…",
+    "createNew": "+ Tambah Peristiwa Pergerakan",
+    "edit": "Sunting",
+    "editTitle": "Sunting Jenis Peristiwa",
+    "editHint": "Namakan semula mengikut bahasa yang digunakan organisasi anda. Jenis terbina dalam mengekalkan fungsinya; hanya jenis anda sendiri boleh ditukar fungsinya.",
+    "cancel": "Batal",
+    "empty": "Tiada jenis peristiwa sepadan dengan carian ini.",
+    "builtIn": "Terbina dalam"
   },
   "hiringDefaults": {
     "title": "Tetapan Lalai Pengambilan",

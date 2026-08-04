@@ -7945,12 +7945,22 @@
       "name": "Tên",
       "behaviour": "Việc nó làm",
       "status": "Trạng thái",
-      "action": "Thao tác"
+      "action": "Thao tác",
+      "created": "Ngày tạo"
     },
     "status": {
       "active": "Đang dùng",
-      "inactive": "Đã tắt"
-    }
+      "inactive": "Đã tắt",
+      "all": "Tất cả"
+    },
+    "searchPlaceholder": "Tìm loại sự kiện hoặc mã…",
+    "createNew": "+ Thêm sự kiện biến động",
+    "edit": "Sửa",
+    "editTitle": "Sửa loại sự kiện",
+    "editHint": "Đổi tên cho khớp với cách gọi của tổ chức bạn. Loại có sẵn giữ nguyên chức năng; chỉ loại do bạn tạo mới đổi được hành vi.",
+    "cancel": "Hủy",
+    "empty": "Không có loại sự kiện nào khớp với tìm kiếm này.",
+    "builtIn": "Có sẵn"
   },
   "hiringDefaults": {
     "title": "Mặc định tuyển dụng",

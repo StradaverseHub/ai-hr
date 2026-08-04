@@ -78,8 +78,12 @@ describe('7b5f18c3 · Hiring Defaults lives in System Settings', () => {
 
   it('the old address still resolves — a bare redirect stub, deregistered from the access matrix', () => {
     const stub = read(OLD_PAGE);
-    expect(stub).toContain(`redirect(\``);
-    expect(stub, 'the stub forwards to the new index').toContain(INDEX_ROUTE);
+    // Assert the redirect CALL, not merely that the file mentions the address somewhere — the first
+    // draft of this test passed while a deliberately broken stub pointed at /admin/personnel, because
+    // the doc comment above it still named the right route.
+    expect(stub, 'the stub forwards to the new index').toMatch(
+      /redirect\(`\/admin\/settings\/hiring-defaults\$\{/,
+    );
     // A stub is not a guarded screen: no guard call, no data read, therefore no matrix column. Leaving
     // the route registered would fail function-access's "no stale routes" check instead.
     expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession/);

@@ -7945,12 +7945,22 @@
       "name": "Name",
       "behaviour": "What It Does",
       "status": "Status",
-      "action": "Action"
+      "action": "Action",
+      "created": "Created"
     },
     "status": {
       "active": "Active",
-      "inactive": "Switched off"
-    }
+      "inactive": "Switched off",
+      "all": "All"
+    },
+    "searchPlaceholder": "Search event type or code…",
+    "createNew": "+ Add Movement Event",
+    "edit": "Edit",
+    "editTitle": "Edit Event Type",
+    "editHint": "Rename it to match the language your organisation uses. A built-in type keeps what it does; only your own types can be re-pointed.",
+    "cancel": "Cancel",
+    "empty": "No event types match this search.",
+    "builtIn": "Built-in"
   },
   "hiringDefaults": {
     "title": "Hiring Defaults",
