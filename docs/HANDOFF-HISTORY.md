@@ -9,6 +9,76 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r138 — 2026-08-05 — five items, four parallel workstreams, and a guard that was protecting nothing
+
+**Shipped `main@8a426d83`.** `7cd914b1` · `65f466e2` · `7b5f18c3` · `1b87e8a0` · `8590615a`, plus
+groups 1-2 of `35b7af0a` (which stays `building` — its plan mandates group-by-group delivery).
+Gate: tsc clean · **564 files / 6700 tests** · next build clean · **upgrade rehearsal PASS**.
+Migrations 0386/0387/0388 → production on **315**.
+
+### Decisions
+
+**PARALLELISM: four workstreams at once, and it worked.** Three agents plus me, each in a worktree I
+cut from `main` (never `isolation: 'worktree'`, which cuts from the root scratch branch), each with
+its own `TEST_DB_NAMESPACE`, each handed a migration number UP FRONT, and each told NOT to run the
+full suite. I ran ONE integration gate. The only conflict was the journal — see below.
+
+**THE JOURNAL IS THE ONE GUARANTEED PARALLEL CONFLICT.** Both branches append to the end of the same
+array. Resolve as a UNION and then assert what actually matters: `idx` unique and ordered, and every
+NEW `when` above the highest existing one. NOTE a pre-existing violation on main (0230 → 0240 goes
+backwards) — a strict-monotonic assertion over the whole file will fail on history that is already
+deployed and harmless.
+
+**A GUARD CAN PIN AN IMPLEMENTATION THAT DOES NOTHING.** `statutory-floor-advisory` asserted the
+literal source `(STATUTORY_APPLY_CODES...).includes(before.code)` under the heading "protections that
+were NOT removed". That comparison was FALSE for exactly the types the Employment Act names, because
+production codes them MTL/PTL — so a test named "untouched" was guarding a line that had never once
+fired. Rewritten to assert the protection EXISTS, is reached role-aware, and keeps its seeded-code
+fallback. Likewise `leave-generate-page` asserted 0385's `when` beat every other entry, i.e. "0385 is
+the newest migration in the repo" — true only until the next migration. Both were asserting an
+implementation where they meant an invariant.
+
+**65f466e2 WAS MUCH BIGGER THAN THE TICKET.** The reporter reported a refused conversion. The cause
+was a hardcoded `'EMERGENCY'` code lookup against a tenant whose code is `EL` — and the same
+assumption sat at ~12 sites, ALL silently dead: Emergency Leave was itself gated by the
+minimum-advance-notice rule it exists to bypass, the statutory lock left Maternity/Paternity/Emergency
+editable, and the balance-source guards never fired. `leave_type.role` (0387) now carries
+tenant-independent identity. **The backfill never guesses** — two exact passes (seeded code, then
+exact pack name), and it REPORTS: production logged `7 classified, 18 left NULL`, matching the
+pre-build measurement exactly. A `LIKE` would have captured "Unpaid Medical Leave" as sick.
+**The class guard (`test/leave-type-role.test.ts`) found SEVEN more dead comparisons I had missed.**
+
+**AND THE FIRST FIX WOULD NOT HAVE FIXED PRODUCTION.** Target resolution was "chosen target, else code
+lookup" — and the code lookup is the broken thing, so it would have needed HR to configure a target
+first. Now: chosen target → role → seeded code, so it works on deploy with no configuration change.
+
+**A WIZARD THAT COULD NOT RECORD REAL PEOPLE (found by an agent, in nobody's ticket).** The Create
+Employee wizard offered 2 genders and 2 marital statuses; the profile screen offered 3 and 6. So
+`divorced`, `widowed`, `separated` and `undisclosed` were unrecordable AT HIRE. Both now read one
+shared list.
+
+**THE "STANDARD SYSTEM SETTINGS UI" ALREADY EXISTED.** Both `7b5f18c3` and `1b87e8a0` said it had to
+be invented; `/admin/pay-components` has shipped that exact shape for rounds. Lifted into
+`components/settings-list.tsx` rather than becoming a sixth private copy, with a test making "the
+standard is one thing" a failing condition.
+
+**A "Created" COLUMN WOULD HAVE BEEN A LIE.** Movement event types are an overlay: a built-in has no
+DB row until first edited, so `created_at` is the date of the RENAME. Built-ins now read "Built-in";
+only the organisation's own types show a date.
+
+**7cd914b1's MIGRATION IS A MEASURED NO-OP** — zero production rows had both a carry percentage and a
+cap. Shipped anyway as the invariant, and said so plainly rather than quietly.
+
+### Environment
+
+**The teardown checkpoint stall hit TWICE**, once with two teardowns blocked behind one checkpoint.
+Signature confirmed each time before acting (`CONNECT_TIMEOUT`, checkpointer 17% CPU, `DROP DATABASE`
+on `CheckpointStart`). Rebuild took under a minute; tests went from a 10-minute timeout to 6 seconds.
+**A fresh worktree has no `.env.local`** (it is gitignored) — copy it, or every test dies with
+"TEST_MIGRATION_DATABASE_URL must be set".
+
+---
+
 ## r137 — 2026-08-04 — SHIPPED. b1f984fe + 38f1fd40: the available-balance label renders, and Adjustments leaves the leave-type panel
 
 **Shipped as `main@1e737a36`. Gate: tsc clean · 558 files / 6612 tests passed · next build clean.

@@ -18,38 +18,63 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-04 (r137 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-05 (r138 SHIPPED)
 
-**`main@1e737a36` is what runs. Production on 312 migrations. Next free migration number is `0386`.**
-No half-applied migration, no pending deploy, nothing in flight. None of r134–r137 adds a migration.
-Verified after deploy: service active, `GET /` 401, `/login` 200, `rsync --dry-run` zero changes.
+**`main@8a426d83` is what runs. Production on 315 migrations. Next free migration number is `0392`**
+(0389 unused; `build/r141` holds 0390/0391 — see IN FLIGHT). No half-applied migration, no pending
+deploy. Verified after deploy: service active, `GET /` 401, `/login` 200, `rsync --dry-run` zero
+changes, and `0387` reported **7 classified / 18 NULL** exactly as measured beforehand.
 
-### The board — counted on production 2026-08-04 after r137
+### ⚠️ IN FLIGHT: `build/r141` — the Notice Board, BUILT AND NOT SHIPPED
 
-**`deployed = 569` · `approved = 17` · `cancelled = 12`. `building = 0`, `open = 0`, `contested = 0`,
-`planned = 0`.** Every remaining item is APPROVED and buildable — the board is waiting on us, not on
-the reporter, for the first time. `improve:pull` returns ONLY open+contested and hides `building`
+`6e122302` release one: create/target/publish, admin listing, dashboard card, login popup.
+6 commits, tree clean, tsc + next build + 17 targeted test files green, render-checked.
+**It has NOT been through the integration gate and was built BEFORE r138 landed**, so it needs a
+rebase on `main` first: it touches `components/sidebar.tsx`, `lib/permissions.ts` and
+`test/harness.ts`, all of which r138 also changed. Migrations 0390/0391 — re-check their `when`
+against the deployed watermark before merging.
+
+**IT DEVIATES FROM THE TICKET ON PURPOSE, AND THE REPORTER MUST BE TOLD.** They asked for a
+Word-like WYSIWYG editor (fonts, colours, tables, embedded video). It ships the Knowledge Base's
+MARKDOWN renderer instead, because storing raw HTML would make every notice a stored-XSS vector
+aimed at every employee in the company. That is a scope decision, not an oversight.
+
+### The board — counted on production 2026-08-05 after r138
+
+**`deployed = 574` · `approved = 11` · `building = 1` · `cancelled = 12`. `open = 0`,
+`contested = 0`, `planned = 0`.** `improve:pull` returns ONLY open+contested and hides `building`
 (that is how `a1d82340` stayed invisible for a week); use `pull-approved` and the DB.
 
-### THE 17 APPROVED ITEMS — sequenced into rounds from the plans' OWN sequencing sections
+**`35b7af0a` is `building`, deliberately.** Its plan mandates group-by-group delivery; groups 1
+(Personal Details) and 2 (Pay structure) shipped in r138. Remaining: Date of Birth + Age (blocked on
+`completedYearsAt` living in `core/leave.ts` — a client-safe home for it means touching the leave
+engine), and ~28 identity/org-cascade/statutory labels.
 
-Migration numbers are pre-assigned so parallel agents cannot collide (next free `0386`).
+### THE REMAINING APPROVED ITEMS — sequenced from the plans' OWN sequencing sections
+
+Migration numbers are pre-assigned so parallel agents cannot collide (next free `0392`).
+
+**PARALLEL WORKS, and r138 proved it:** four workstreams (one mine, three agents) built five items at
+once, in worktrees I cut from `main` myself, each with its own `TEST_DB_NAMESPACE` and a migration
+number assigned UP FRONT. The only merge conflict was `db/migrations/meta/_journal.json`, which is the
+one guaranteed collision when two branches each add a migration — resolve it as a UNION, then check
+`idx` uniqueness and that every new `when` clears the deployed watermark.
 
 | round | items | migration | why grouped / sequenced |
 |---|---|---|---|
-| r138 | `7cd914b1` + `65f466e2` | 0386, 0387 | Both edit `components/leave-type-panel.tsx` (different sections) → one agent. **Both must precede `6e9a126e`**, which rewrites those files |
-| r139 | `7b5f18c3` → `1b87e8a0` | none | Both invent the same "System Settings list+detail" idiom, which **does not exist yet**. Hiring Defaults first (genuinely per-company); Movement reuses its shape and must NOT grow a company list |
-| r140 | `8590615a` → `35b7af0a` | 0388 | Same two files (`personnel/[employmentId]/page.tsx`, `new/wizard.tsx`). "Land 8590615a first or it adds fields to a screen being taken apart" |
-| r141 | `169e3c24` + `3c473773` | 0389 | Same display pipeline (payslip earnings buckets / transaction view). Keep `169e3c24` away from `2ef69d1e` — both edit the exact-set `EXPECTED_SET` in the nav test |
-| r142 | `44129979` | none | "Do NOT build alongside `2ef69d1e` or `7f6ca478`." Lands before both |
-| r143 | `7f6ca478` | none | Same reads as r142 → separate round. Only 3 statuses exist — do not invent Processing/Failed |
-| r144 | `18103ba4` | none | Needed `38f1fd40` first (shipped in r137) so "Adjustments" means one thing |
-| r145 | `6e122302` | 0390+ | MUST generalise `resolveAdjustmentTargets` out of `core/leave-adjustment.ts`, not copy it |
-| r146 | `e7eb5d83` stage 1 | 0391 | Stage 1 only (draft + limit reservation) — the real wrong-answer bug |
-| r147 | `7c834696` stage 1 | 0392+ | "Stage 1 must not share a release with any other attendance change" |
-| r148+ | `6e9a126e` | 0393+ | **OWN SESSION.** Drops `benefit_scheme`, `scheme_leave_entitlement`, `leave_policy` |
-| r149 | `93249794` | TBD | Waits on `6e9a126e`'s eligibility layer, else you build a second criteria engine |
-| r150 | `2ef69d1e` | TBD | Largest on the board, ship LAST. Pass 2 after `7c834696` |
+| ~~r138~~ | ~~`7cd914b1` + `65f466e2`~~ | 0386, 0387 | **SHIPPED** |
+| ~~r139~~ | ~~`7b5f18c3` + `1b87e8a0`~~ | none | **SHIPPED** |
+| ~~r140~~ | ~~`8590615a`~~ + `35b7af0a` | 0388 | **8590615a SHIPPED**; 35b7af0a partial, still `building` |
+| r141 | `6e122302` | 0390/0391 | **BUILT, NOT SHIPPED** — see IN FLIGHT above. Rebase on main first |
+| next | `169e3c24` + `3c473773` | 0392+ | Same display pipeline (payslip earnings buckets / transaction view). Keep `169e3c24` away from `2ef69d1e` — both edit the exact-set `EXPECTED_SET` in the nav test |
+| next | `44129979` | none | "Do NOT build alongside `2ef69d1e` or `7f6ca478`." Lands before both |
+| next | `7f6ca478` | none | Same reads as the above → separate round. Only 3 statuses exist — do not invent Processing/Failed |
+| next | `18103ba4` | none | Needed `38f1fd40` first (shipped in r137) so "Adjustments" means one thing |
+| next | `e7eb5d83` stage 1 | TBD | Stage 1 only (draft + limit reservation) — the real wrong-answer bug |
+| next | `7c834696` stage 1 | TBD | "Stage 1 must not share a release with any other attendance change" |
+| last | `6e9a126e` | TBD | **OWN SESSION.** Drops `benefit_scheme`, `scheme_leave_entitlement`, `leave_policy` |
+| last | `93249794` | TBD | Waits on `6e9a126e`'s eligibility layer, else you build a second criteria engine |
+| last | `2ef69d1e` | TBD | Largest on the board, ship LAST. Pass 2 after `7c834696` |
 
 - **`6e9a126e` IS THE BIG ONE.** Its approved plan stages it across three releases. It deserves a
   session of its own, not the tail of one. **Its rev-3 claim that "all line numbers were re-verified"
