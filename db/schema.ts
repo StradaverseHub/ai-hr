@@ -3794,6 +3794,100 @@ export const notificationCursor = pgTable(
   (t) => [uniqueIndex('notification_cursor_tenant_uq').on(t.tenantId)],
 );
 
+// ─────────────────────── Notice Board (6e122302) ───────────────────────
+//
+// A notice is an announcement HR publishes to a RESOLVED SET of employments. Two tables:
+//
+//   notice            — the announcement itself: what it says, when it is visible, how it behaves.
+//   notice_recipient  — THE AUDIENCE SNAPSHOT, one row per (notice, employment), written AT PUBLISH.
+//
+// ── WHY THE AUDIENCE IS SNAPSHOT AND NOT RE-RESOLVED — the decision that matters most here ──────────────
+// It would be less code to store only the criteria and re-run the resolver on every read. It would also be
+// wrong. An employee who transfers department after a notice is published would silently LOSE a notice they
+// had already been sent — and, once acknowledgement ships, an acknowledgement report that changes
+// retrospectively is not a record of anything. So publishing RESOLVES the criteria once and persists the
+// employment ids; `notice.criteria` is kept alongside purely for disclosure ("who was this aimed at?").
+// `leave_adjustment_batch` is the same shape and the same reasoning.
+//
+// ── WHY THERE IS NO STATUS COLUMN ──────────────────────────────────────────────────────────────────────
+// Draft / Scheduled / Active / Expired are FUNCTIONS OF THE DATES plus published_at, and Archived is
+// archived_at. Storing a status would need a nightly job to flip it and would give it a way to be wrong.
+// `deriveNoticeStatus` (core/notice.ts) is the single definition, used by the listing, the reads and the
+// tests alike.
+export const notice = pgTable(
+  'notice',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    title: text('title').notNull(),
+    /** Markdown, rendered through components/markdown.tsx — the SAME renderer the Knowledge Base uses,
+     *  which passes no raw HTML through (no rehype-raw) and therefore cannot carry stored XSS. */
+    body: text('body').notNull(),
+    /** Visibility window. Both required: an announcement with no end date is a permanent fixture nobody
+     *  removes. `show_end_date` decides whether the employee is TOLD the end date, not whether one exists. */
+    startOn: date('start_on').notNull(),
+    endOn: date('end_on').notNull(),
+    showEndDate: boolean('show_end_date').notNull().default(false),
+    /** 'criteria' (resolved from filters) or 'individual' (explicitly picked) — the leave_adjustment_batch
+     *  vocabulary, because the same resolved set means different things and a re-publish can legitimately
+     *  reach different people. */
+    targetMode: text('target_mode').notNull().default('criteria'),
+    /** The criteria AS POSTED (core/org-criteria.ts OrgCriteria shape). Disclosure only — the audience that
+     *  counts is notice_recipient. An empty object means "everyone", which is why the screen shows a count. */
+    criteria: jsonb('criteria'),
+    /** Null ⇒ draft. Set once, at publish; a published notice is edited in place, never un-published (that
+     *  would strand the recipients who already saw it). Archive is the way to withdraw one. */
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    publishedByUserId: uuid('published_by_user_id').references(() => appUser.id),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    archivedByUserId: uuid('archived_by_user_id').references(() => appUser.id),
+    /** Should publishing raise a notification (which the existing engine may also deliver by email)? There
+     *  is deliberately no second mail path — see the `notice.published` entry in core/notifications.ts. */
+    notifyOnPublish: boolean('notify_on_publish').notNull().default(false),
+    popupEnabled: boolean('popup_enabled').notNull().default(false),
+    /** 'once' (default — show once per notice per employee, then never again) or 'until_acknowledged'
+     *  (keep showing while the notice is live). Decided in the plan rather than asked, because a notice
+     *  that reappears at every login is the fastest way to make people resent the product. */
+    popupFrequency: text('popup_frequency').notNull().default('once'),
+    createdByUserId: uuid('created_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('notice_tenant_window_idx').on(t.tenantId, t.startOn, t.endOn),
+    index('notice_tenant_created_idx').on(t.tenantId, t.createdAt),
+  ],
+);
+
+/**
+ * The audience snapshot. One row per (notice, employment), written when the notice is PUBLISHED.
+ *
+ * `firstViewedAt` is a VIEW marker, not an acknowledgement — it is what makes the dashboard card's "3 new"
+ * badge possible. `popupDismissedAt` is popup-frequency state and nothing else. Acknowledgement, when it
+ * ships, is its own row with its own evidence (name typed, agreement text, timestamp); it must not be
+ * conflated with either of these.
+ */
+export const noticeRecipient = pgTable(
+  'notice_recipient',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    noticeId: uuid('notice_id')
+      .notNull()
+      .references((): AnyPgColumn => notice.id, { onDelete: 'cascade' }),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    firstViewedAt: timestamp('first_viewed_at', { withTimezone: true }),
+    popupDismissedAt: timestamp('popup_dismissed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('notice_recipient_uq').on(t.noticeId, t.employmentId),
+    index('notice_recipient_employment_idx').on(t.tenantId, t.employmentId),
+  ],
+);
+
 export const profileChangeStatusEnum = pgEnum('profile_change_status', [
   'pending',
   'approved',

@@ -2185,6 +2185,20 @@
       "when": 1781862485000,
       "tag": "0385_leave_year_config_reset",
       "breakpoints": true
+    },
+    {
+      "idx": 390,
+      "version": "7",
+      "when": 1781862490000,
+      "tag": "0390_notice_board",
+      "breakpoints": true
+    },
+    {
+      "idx": 391,
+      "version": "7",
+      "when": 1781862491000,
+      "tag": "0391_notice_dashboard_card",
+      "breakpoints": true
     }
   ]
 }
