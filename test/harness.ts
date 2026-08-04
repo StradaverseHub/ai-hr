@@ -42,6 +42,11 @@ const ALL_TABLES = [
   // means a leaked row can't collide, but a surviving device would make a later gate test false-green).
   'employee_device',
   'notification', 'notification_pref', 'notification_delivery', 'notification_cursor',
+  // 6e122302 — the Notice Board. `notice_recipient` cascades from `notice`, but BOTH are listed for the
+  // ADR-0071 reason recorded further down: a table only ever cleared as a side effect is a table that
+  // stops being cleared the day the cascade path changes. A surviving notice would also make a later
+  // file's dashboard card or popup read a notice whose recipients belong to a deleted tenant.
+  'notice', 'notice_recipient',
   'tp1_relief',
   'employee_dependent',
   // 23ad620e — emergency-contact register: a leaked live 'primary' row would trip the partial unique
