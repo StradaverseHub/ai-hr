@@ -1379,8 +1379,6 @@
         "isResident": "Pemastautin cukai",
         "taxCategory": "Kategori PCB",
         "monthlyAllowance": "Elaun bulanan",
-        "payMode": "Mod bayaran",
-        "paymentTerm": "Tempoh bayaran",
         "rateAmount": "Jumlah kadar"
       },
       "employmentType": {
@@ -1405,7 +1403,6 @@
         "businessUnit": "Hanya menapis senarai jabatan. Ia tidak disimpan pada pekerja.",
         "hiredOn": "Hari pertama bekerja. Selepas penciptaan, tarikh ini hanya berubah melalui peristiwa pergerakan.",
         "bankAccount": "Isikan kedua-dua bank dan nombor akaun, atau tiada langsung.",
-        "rateAmount": "Diperlukan untuk mod bayaran harian atau sejam.",
         "company": "Ditanya dahulu kerana ia menentukan Tetapan Nombor Berjalan Automatik ID Pekerja yang digunakan."
       },
       "backLabel": "Kembali ke Personel",
@@ -1427,17 +1424,6 @@
         "citizen": "Warganegara",
         "pr": "Penduduk tetap",
         "non_citizen": "Bukan warganegara"
-      },
-      "payMode": {
-        "monthly": "Bulanan",
-        "daily": "Harian",
-        "hourly": "Sejam",
-        "custom_period": "Tempoh tersuai"
-      },
-      "paymentTerm": {
-        "monthly": "Bulanan",
-        "weekly": "Mingguan",
-        "biweekly": "Dua minggu sekali"
       },
       "continueDraft": "Sambung draf ({count})",
       "untitledDraft": "Draf tanpa nama",

@@ -43,6 +43,8 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 const WIZARD = 'app/admin/personnel/new/wizard.tsx';
 const PERSONNEL = 'app/admin/personnel/[employmentId]/page.tsx';
 const SHARED = 'components/person-details-fields.tsx';
+const PAY_STRUCTURE = 'components/pay-structure-fields.tsx';
+const SALARY_HISTORY = 'components/salary-history-table.tsx';
 const LEAVE_PANEL = 'components/leave-type-panel.tsx';
 
 let b: Base;
@@ -196,6 +198,76 @@ describe('§3 the wizard s duplicate labels are retired, not orphaned', () => {
   });
 });
 
+// ── §3b GROUP 2 — pay structure ───────────────────────────────────────────────────────────────────
+describe('§3b group 2 — Pay Mode / Payment Term / Rate is one component, not three copies', () => {
+  it('the wizard renders the component the Personnel screens already used', () => {
+    const src = read(WIZARD);
+    expect(src).toContain("from '@/components/pay-structure-fields'");
+    expect(src).toMatch(/<PayStructureFields[\s\S]*?mode="controlled"/);
+    // …and no longer builds the three fields itself.
+    expect(src).not.toContain("t('fields.payMode')");
+    expect(src).not.toContain("t('fields.paymentTerm')");
+    expect(src).not.toContain("t('payMode.");
+    expect(src).not.toContain("t('paymentTerm.");
+    expect(src).not.toContain("t('hints.rateAmount')");
+    for (const v of ['monthly', 'daily', 'hourly', 'custom_period', 'weekly', 'biweekly']) {
+      expect(src.includes(`<option value="${v}">`), `wizard still hardcodes ${v}`).toBe(false);
+    }
+  });
+
+  it('the two pre-existing callers keep the uncontrolled form behaviour they had', () => {
+    // `mode` is optional and defaults to 'form'. These two live inside server-action <form> blocks and
+    // MUST keep posting named inputs — a silent switch to controlled would post nothing and every salary
+    // revision would quietly lose its pay structure.
+    for (const f of [PERSONNEL, SALARY_HISTORY]) {
+      const call = read(f).match(/<PayStructureFields[\s\S]*?\/>/);
+      expect(call, `${f} must render PayStructureFields`).not.toBeNull();
+      expect(call![0], `${f} must not be switched to controlled`).not.toContain('mode="controlled"');
+      expect(call![0]).toContain('defaultPayMode');
+    }
+    const shared = read(PAY_STRUCTURE);
+    // The named inputs the form mode depends on are still emitted in that mode only.
+    expect(shared).toContain("{ name: 'payMode' }");
+    expect(shared).toContain("name: 'paymentTerm'");
+    expect(shared).toContain("name: 'rateAmount'");
+  });
+
+  it('the rate box is conditional on the pay mode in BOTH modes (one rule, not a per-screen one)', () => {
+    const shared = read(PAY_STRUCTURE);
+    // The conditional and the required-ness are expressed once, outside either mode branch.
+    expect(shared).toContain("{payMode !== 'monthly' && (");
+    expect(shared).toContain("const rateRequired = payMode === 'daily' || payMode === 'hourly';");
+  });
+
+  it('the wizard clears a stale rate when the pay mode goes back to monthly', () => {
+    // On the Personnel form the input unmounts and is simply not submitted. A DRAFT keeps what it holds,
+    // so without this a rate typed under "hourly" would survive invisibly into setCompensation.
+    expect(read(WIZARD)).toContain("...(patch.payMode === 'monthly' ? { rateAmount: '' } : {})");
+  });
+
+  it('the retired payroll labels are gone, but the one the review step still needs is kept', () => {
+    for (const loc of LOCALES) {
+      const msgs = JSON.parse(read(`messages/${loc}.json`));
+      const w = msgs.people.wizard;
+      expect(w.payMode, `${loc} people.wizard.payMode`).toBeUndefined();
+      expect(w.paymentTerm, `${loc} people.wizard.paymentTerm`).toBeUndefined();
+      expect(w.fields.payMode, `${loc} people.wizard.fields.payMode`).toBeUndefined();
+      expect(w.fields.paymentTerm, `${loc} people.wizard.fields.paymentTerm`).toBeUndefined();
+      expect(w.hints.rateAmount, `${loc} people.wizard.hints.rateAmount`).toBeUndefined();
+      // KEPT ON PURPOSE: missingByStep can return 'rateAmount' and the review step renders
+      // t(`fields.${f}`) — a computed key check C cannot see. Deleting it is a MISSING_MESSAGE on a
+      // screen HR actually reaches (a daily-paid hire with no rate).
+      expect(String(w.fields.rateAmount ?? '').trim(), `${loc} fields.rateAmount`).not.toBe('');
+      // The surviving definition both screens now read.
+      for (const k of ['payMode', 'paymentTerm', 'rateAmount', 'rateUnitDaily', 'rateUnitHourly',
+        'payMode_monthly', 'payMode_daily', 'payMode_hourly', 'payMode_custom_period',
+        'paymentTerm_monthly', 'paymentTerm_weekly', 'paymentTerm_biweekly']) {
+        expect(String(msgs.people.detail[k] ?? '').trim(), `${loc} people.detail.${k}`).not.toBe('');
+      }
+    }
+  });
+});
+
 // ── §4 behaviour ──────────────────────────────────────────────────────────────────────────────────
 describe('§4 a hire can now carry the values the wizard could not offer', () => {
   it('creates an employee with a marital status the old wizard had no option for', async () => {
@@ -245,6 +317,32 @@ describe('§5 a draft saved BEFORE this change still opens and still creates', (
     const p = await readPerson(emp.personId);
     expect(p.gender).toBe('male');
     expect(p.maritalStatus).toBe('single');
+  });
+
+  it('a pre-change draft that carries a daily pay structure still creates it intact', async () => {
+    const a = adminCtx(b);
+    // Group 2 changed which of these three inputs is VISIBLE, not where they are stored: payroll.payMode /
+    // paymentTerm / rateAmount are still plain strings in the same place. A draft written by the old
+    // wizard must therefore create exactly what it always did.
+    const { id } = await saveEmployeeDraft(a, {
+      data: draft({ payroll: { basicSalary: '4000', payMode: 'daily', paymentTerm: 'weekly', rateAmount: '180' } }),
+      currentStep: 4,
+    });
+    const reopened = await getEmployeeDraft(a, id);
+    expect(reopened!.data.payroll).toMatchObject({ payMode: 'daily', paymentTerm: 'weekly', rateAmount: '180' });
+
+    const { employmentId } = await completeEmployeeDraft(a, id);
+    const [comp] = await owner.db
+      .select({
+        payMode: schema.compensation.payMode,
+        paymentTerm: schema.compensation.paymentTerm,
+        rateAmount: schema.compensation.rateAmount,
+      })
+      .from(schema.compensation)
+      .where(eq(schema.compensation.employmentId, employmentId));
+    expect(comp.payMode).toBe('daily');
+    expect(comp.paymentTerm).toBe('weekly');
+    expect(Number(comp.rateAmount)).toBe(180);
   });
 
   it('a draft with NO personal details at all still creates (the fields stay optional)', async () => {

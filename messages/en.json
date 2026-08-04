@@ -1379,8 +1379,6 @@
         "isResident": "Tax resident",
         "taxCategory": "PCB category",
         "monthlyAllowance": "Monthly allowance",
-        "payMode": "Pay mode",
-        "paymentTerm": "Payment term",
         "rateAmount": "Rate amount"
       },
       "employmentType": {
@@ -1405,7 +1403,6 @@
         "businessUnit": "Narrows the department list only. It is not stored on the employee.",
         "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
         "bankAccount": "Give both the bank and the account number, or neither.",
-        "rateAmount": "Required for a daily or hourly pay mode.",
         "company": "Asked first because it decides which Employee ID Auto Running Number Setup applies."
       },
       "backLabel": "Back to Personnel",
@@ -1427,17 +1424,6 @@
         "citizen": "Citizen",
         "pr": "Permanent resident",
         "non_citizen": "Non-citizen"
-      },
-      "payMode": {
-        "monthly": "Monthly",
-        "daily": "Daily",
-        "hourly": "Hourly",
-        "custom_period": "Custom period"
-      },
-      "paymentTerm": {
-        "monthly": "Monthly",
-        "weekly": "Weekly",
-        "biweekly": "Fortnightly"
       },
       "continueDraft": "Continue a draft ({count})",
       "untitledDraft": "Unnamed draft",

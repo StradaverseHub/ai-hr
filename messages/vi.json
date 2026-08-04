@@ -1379,8 +1379,6 @@
         "isResident": "Cư trú thuế",
         "taxCategory": "Nhóm PCB",
         "monthlyAllowance": "Phụ cấp hàng tháng",
-        "payMode": "Hình thức trả lương",
-        "paymentTerm": "Kỳ trả lương",
         "rateAmount": "Mức đơn giá"
       },
       "employmentType": {
@@ -1405,7 +1403,6 @@
         "businessUnit": "Chỉ để lọc danh sách phòng ban. Không lưu vào hồ sơ nhân viên.",
         "hiredOn": "Ngày làm việc đầu tiên. Sau khi tạo, ngày này chỉ thay đổi qua sự kiện điều động.",
         "bankAccount": "Nhập cả ngân hàng và số tài khoản, hoặc bỏ trống cả hai.",
-        "rateAmount": "Bắt buộc với hình thức trả lương theo ngày hoặc theo giờ.",
         "company": "Được hỏi trước vì nó quyết định Thiết lập Số chạy tự động Mã nhân viên nào được áp dụng."
       },
       "backLabel": "Quay lại Nhân sự",
@@ -1427,17 +1424,6 @@
         "citizen": "Công dân",
         "pr": "Thường trú nhân",
         "non_citizen": "Không phải công dân"
-      },
-      "payMode": {
-        "monthly": "Hàng tháng",
-        "daily": "Hàng ngày",
-        "hourly": "Theo giờ",
-        "custom_period": "Kỳ tùy chỉnh"
-      },
-      "paymentTerm": {
-        "monthly": "Hàng tháng",
-        "weekly": "Hàng tuần",
-        "biweekly": "Hai tuần một lần"
       },
       "continueDraft": "Tiếp tục bản nháp ({count})",
       "untitledDraft": "Bản nháp chưa đặt tên",

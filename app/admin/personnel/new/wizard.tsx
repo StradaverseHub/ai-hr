@@ -32,6 +32,8 @@ import { Check, AlertCircle } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 // 35b7af0a group 1 — the Gender + Marital Status field group, shared with the Personnel profile card.
 import { PersonDetailsFields } from '@/components/person-details-fields';
+// 35b7af0a group 2 — the Pay Mode / Payment Term / Rate group, shared with the Personnel Payroll tab.
+import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DRAFT_STEPS,
@@ -787,40 +789,31 @@ export function EmployeeWizard({
                 onChange={(e) => set('payroll', { monthlyAllowance: e.target.value })}
               />
             </Field>
-            <Field label={t('fields.payMode')}>
-              <select
-                className={inputCls}
-                value={data.payroll?.payMode ?? 'monthly'}
-                onChange={(e) => set('payroll', { payMode: e.target.value })}
-              >
-                <option value="monthly">{t('payMode.monthly')}</option>
-                <option value="daily">{t('payMode.daily')}</option>
-                <option value="hourly">{t('payMode.hourly')}</option>
-                <option value="custom_period">{t('payMode.custom_period')}</option>
-              </select>
-            </Field>
-            <Field label={t('fields.paymentTerm')}>
-              <select
-                className={inputCls}
-                value={data.payroll?.paymentTerm ?? 'monthly'}
-                onChange={(e) => set('payroll', { paymentTerm: e.target.value })}
-              >
-                <option value="monthly">{t('paymentTerm.monthly')}</option>
-                <option value="weekly">{t('paymentTerm.weekly')}</option>
-                <option value="biweekly">{t('paymentTerm.biweekly')}</option>
-              </select>
-            </Field>
-            <Field label={t('fields.rateAmount')}>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className={inputCls}
-                value={data.payroll?.rateAmount ?? ''}
-                onChange={(e) => set('payroll', { rateAmount: e.target.value })}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">{t('hints.rateAmount')}</p>
-            </Field>
+            {/* 35b7af0a group 2 — Pay Mode, Payment Term and Rate are the SAME component the Personnel
+                Payroll tab and the salary-history edit flow already used
+                (components/pay-structure-fields.tsx). The wizard's private copy had drifted in wording
+                (its Payment Term said "Fortnightly" where every other screen says "Bi-Weekly") and never
+                carried the rule: it showed a bare Rate box on every hire, including monthly ones where a
+                rate means nothing. Now the box appears only for a non-monthly pay mode, is labelled
+                "per day" / "per hour", and is required for daily/hourly — the same rule
+                `missingByStep` already enforced invisibly and `setCompensation` enforces server-side.
+
+                CLEARING THE RATE ON A SWITCH BACK TO MONTHLY is a wizard-only concern, hence the patch
+                here rather than inside the shared component. On the Personnel form the Rate input simply
+                unmounts and stops being submitted; the wizard holds a DRAFT object, so a rate typed under
+                "hourly" would otherwise sit invisibly in the draft and reach setCompensation on create. */}
+            <PayStructureFields
+              mode="controlled"
+              payMode={(data.payroll?.payMode ?? 'monthly') as PayModeOption}
+              paymentTerm={data.payroll?.paymentTerm ?? 'monthly'}
+              rateAmount={data.payroll?.rateAmount ?? ''}
+              onChange={(patch) =>
+                set('payroll', {
+                  ...patch,
+                  ...(patch.payMode === 'monthly' ? { rateAmount: '' } : {}),
+                })
+              }
+            />
             <Field label={t('fields.remarks')}>
               <input
                 className={inputCls}
