@@ -147,6 +147,31 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > 34:28 elapsed with zero DB connections and a complete result already in the log. So `until pgrep …; do`
 > as a completion waiter **can wait forever on a finished run**. Poll the log, not the process table.
 >
+> ### ⚠️⚠️⚠️ NEVER `pkill -9` VITEST — IT WEDGES THE CLUSTER MID-TEARDOWN (root cause, r136)
+>
+> **All three local-Postgres wedges in r136 trace to this one habit, and NOT to the antivirus.** The owner
+> confirmed Apex One already excludes `/opt/homebrew`, so the data directory was never being scanned.
+>
+> After reporting its `Duration`, vitest runs a TEARDOWN that DROPS its 10-11 worker databases. That takes
+> MINUTES, emits nothing to the log until it finishes, and legitimately shows **zero test-DB connections**
+> the whole time — so it looks exactly like a finished-and-idle process. It is not. `DROP DATABASE` forces
+> an immediate checkpoint; SIGKILL in the middle leaves that checkpoint unable to complete, and the
+> cluster then accepts ordinary connections while refusing every CREATE/DROP DATABASE — which is the first
+> thing the next gate's global-setup does. Hence `CONNECT_TIMEOUT` from a cluster that `psql` says is fine.
+>
+> The evidence, from one wedge: last test statement 17:21:18 → `checkpoint starting: immediate force wait`
+> 17:21:20 → never completed, checkpointer spinning at 27% CPU for 29 minutes, and **no teardown line in
+> the gate log**. Every healthy run ends with `[global-setup] teardown dropped N database(s)`.
+>
+> **RULES:**
+> - **A lingering vitest process is almost always TEARDOWN, not a hang. Leave it alone.** It holds no
+>   connections and blocks nothing — start the next run under a different `TEST_DB_NAMESPACE` instead.
+> - If you genuinely must stop one, `kill` (SIGTERM) and let teardown drain. Never `-9`.
+> - **The teardown line is the true end-of-run marker.** `Duration` means the RESULTS are ready (safe to
+>   read); `teardown dropped N database(s)` means the process is actually finished.
+> - A wedged cluster shows: `checkpoint starting` with no matching `checkpoint complete`, and a
+>   checkpointer burning CPU. Confirm with the log before rebuilding — and know that you caused it.
+>
 > **AND NEVER `pgrep -f` A STRING YOUR OWN WAITER CONTAINS.** `until [ "$(pgrep -f 'vitest.mjs run' | wc -l)" = 0 ]`
 > never exits, because the waiting shell's own command line contains `vitest.mjs run` and matches itself.
 > This burned ~20 minutes in r135. Match on the binary path, or better, grep the log.
