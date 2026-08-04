@@ -4182,7 +4182,7 @@
         "carryPolicyLabel": "Carry forward policy",
         "carryNone": "None (no carry-forward)",
         "carryFixedMax": "Fixed maximum",
-        "carryHelp": "Fixed maximum keeps up to the cap; percentage keeps that share of the balance still held at year end, with the cap acting as a ceiling when both are set. The expiry fields decide when the carried portion lapses (a date, or X months after year-end).",
+        "carryHelp": "Fixed maximum keeps up to the cap; percentage keeps that share of the balance still held at year end. The two are alternatives — with percentage, the percentage alone decides the figure. The expiry fields decide when the carried portion lapses (a date, or X months after year-end).",
         "carryStepHelp": "A front door to the active entitlement policy's carry-forward settings — the per-policy controls under Eligibility remain the underlying truth.",
         "carryAnnualOnly": "Carry-forward applies to Annual Leave — this type's balance does not roll over.",
         "noActivePolicy": "No active entitlement policy yet — add one under Eligibility first.",

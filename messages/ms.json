@@ -4182,7 +4182,7 @@
         "carryPolicyLabel": "Polisi bawa ke hadapan",
         "carryNone": "Tiada (tiada bawa ke hadapan)",
         "carryFixedMax": "Maksimum tetap",
-        "carryHelp": "Maksimum tetap mengekalkan sehingga had; peratusan mengekalkan bahagian itu daripada baki yang masih ada pada akhir tahun, dengan had bertindak sebagai siling apabila kedua-duanya ditetapkan. Medan luput menentukan bila bahagian yang dibawa itu luput (satu tarikh, atau X bulan selepas akhir tahun).",
+        "carryHelp": "Maksimum tetap mengekalkan sehingga had; peratusan mengekalkan bahagian itu daripada baki yang masih ada pada akhir tahun. Kedua-duanya adalah pilihan alternatif — dengan peratusan, peratusan itu sahaja menentukan angkanya. Medan luput menentukan bila bahagian yang dibawa itu luput (satu tarikh, atau X bulan selepas akhir tahun).",
         "carryStepHelp": "Pintu hadapan kepada tetapan bawa-ke-hadapan polisi kelayakan aktif — kawalan per-polisi di bawah Kelayakan kekal sebagai sumber sebenar.",
         "carryAnnualOnly": "Bawa ke hadapan terpakai untuk Cuti Tahunan — baki jenis ini tidak dibawa ke tahun berikutnya.",
         "noActivePolicy": "Belum ada polisi kelayakan aktif — tambah satu di bawah Kelayakan dahulu.",

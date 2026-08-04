@@ -239,6 +239,12 @@ export function carryEnabled(pol: ResolvedPolicy | null | undefined): boolean {
  *   2. A percentage ⇒ that share of the balance actually held. 50% of 20 days is 10.
  *   3. A maximum ⇒ a CEILING, applied after the percentage. Both set ⇒ the smaller wins. This is a clamp,
  *      not a mode: `min()` cannot produce a figure the reporter did not authorise by both settings.
+ *      7cd914b1 rev 2 — THE EDITOR NO LONGER OFFERS THE TWO TOGETHER. Percentage mode posts
+ *      carryForwardMax=0, and migration 0386 cleared the rows that already held both, so this clamp is
+ *      unreachable from the UI for new saves. IT STAYS ON PURPOSE: it is the defence against a
+ *      hand-written UPDATE that sets both columns, and against a row restored from an old dump. Do not
+ *      "simplify" it away — a stored cap silently trimming a percentage is exactly the reported defect,
+ *      and this function is the only place that would still catch it.
  *   4. Neither set, carry on ⇒ 0 by construction (carryMax defaults to 0), unchanged from before.
  *
  * NOT ROUNDED HERE, deliberately. openLeaveYear rounds the ENTITLEMENT, never the carry-in — half of 7
