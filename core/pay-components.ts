@@ -56,6 +56,11 @@ export type { PcbRemunerationType } from '../localization/country-pack';
 
 const money = (v: number) => Number(v).toFixed(2);
 
+// Feedback 3c473773 — re-exported so callers (the maintenance form, its action, the tests) have one import
+// point for the payroll-category vocabulary, mirroring PCB_REMUNERATION_TYPES above.
+import { cleanDisplayCategory } from './pay-display-category';
+export { PAY_DISPLAY_CATEGORIES, cleanDisplayCategory, type PayDisplayCategory } from './pay-display-category';
+
 // ADR-0035 1A — constrained config vocabularies (stored as text, validated app-side).
 // EA-form lines map a component to a Borang EA / C.P.8A Part B line so EA totals reconcile (#14).
 export const EA_FORM_LINES = [
@@ -226,6 +231,11 @@ export type PayComponentInput = {
   epfBonus2012?: boolean;
   pcbRemunerationType?: PcbRemunerationType | null;
   pcbExemptionCode?: string | null;
+  // Feedback 3c473773 — the PAYROLL CATEGORY (which box on the payslip this item prints in). undefined ⇒
+  // "not supplied" ⇒ leave the stored value untouched, so the seed, the backfills and every pre-existing
+  // caller keep the classification migration 0393 wrote. '' / null ⇒ stored NULL ⇒ the box is inferred, as
+  // it was before 0393. An unrecognised value never persists (cleanDisplayCategory).
+  displayCategory?: string | null;
 };
 
 // ── LHDN PCB 2026 classification validation (feedback 09b554e9) ──
@@ -286,6 +296,12 @@ export class PayRuleInvalidError extends Error {
 }
 
 const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod) });
+// Feedback 3c473773 — payroll category storage. undefined ⇒ the field was not supplied ⇒ {} ⇒ the stored
+// value survives (this is what keeps the seed and the backfills from wiping migration 0393's work). A
+// supplied value is coerced to the closed vocabulary or NULL, so a tampered form never persists a box the
+// kernel would not recognise.
+const displayCategoryOf = (p: PayComponentInput) =>
+  p.displayCategory === undefined ? {} : { displayCategory: cleanDisplayCategory(p.displayCategory) };
 // LHDN PCB 2026 classification storage (feedback 09b554e9): all three undefined ⇒ "not supplied" ⇒ leave the
 // stored values untouched (legacy caller). Supplied: EPF Bonus 2012 only sticks with EPF ticked, and the two
 // PCB fields are cleared to null when PCB itself is unticked (an untaxed code carries no PCB classification).
@@ -352,7 +368,7 @@ export async function createPayComponent(ctx: SessionContext, p: PayComponentInp
 // The diffable catalog fields for the trimmed audit payload (changed field NAMES only — no values:
 // app/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
 // stream would violate the payload discipline the comment below enforces).
-const DIFF_FIELDS = ['name', 'label', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode'] as const;
+const DIFF_FIELDS = ['name', 'label', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory'] as const;
 
 // ── 61bf109d — dependency-graph plumbing ─────────────────────────────────────────────────────────────
 // A pay item may now be a percentage of ANOTHER pay item, or a formula that reads one, so the catalog is a
@@ -421,7 +437,7 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     let id: string;
     let changed: string[] = [];
     if (existing) {
-      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), rule, ...(label !== undefined ? { label } : {}) };
+      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), rule, ...(label !== undefined ? { label } : {}) };
       changed = DIFF_FIELDS.filter((f) => {
         if (!(f in next)) return false; // label omitted ⇒ untouched ⇒ not a change
         const a = (next as Record<string, unknown>)[f];
@@ -433,7 +449,7 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     } else {
       const [row] = await tx
         .insert(payComponent)
-        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), rule })
+        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), rule })
         .returning({ id: payComponent.id });
       id = row.id;
     }

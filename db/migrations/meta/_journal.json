@@ -2227,6 +2227,13 @@
       "when": 1781862492000,
       "tag": "0392_claim_draft_status",
       "breakpoints": true
+    },
+    {
+      "idx": 393,
+      "version": "7",
+      "when": 1781862493000,
+      "tag": "0393_pay_component_display_category",
+      "breakpoints": true
     }
   ]
 }

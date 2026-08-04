@@ -3,7 +3,7 @@
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { payslipDetail } from '@/core/payroll';
-import { renderPayslipPdf, type PayslipPdfData } from '@/lib/payslip-pdf';
+import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
 
@@ -17,35 +17,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
   const p = await payslipDetail(s, payslipId); // RLS-gated: own payslip or admin
   if (!p) return new Response('Not found', { status: 404 });
 
-  const st = (p.statutory ?? {}) as Record<string, number>;
-  const data: PayslipPdfData = {
-    employee: p.employee,
-    employeeCode: p.employeeCode,
-    company: p.company,
-    companyReg: p.companyReg,
-    payPeriod: p.payPeriod,
-    basic: num(p.basic),
-    allowance: num(p.allowance),
-    overtime: num(p.overtime),
-    bonus: num(p.bonus),
-    gross: num(p.gross),
-    epfEmployee: num(st.epfEmployee),
-    socsoEmployee: num(st.socsoEmployee),
-    socsoSkbbk: num(st.socsoSkbbk),
-    eisEmployee: num(st.eisEmployee),
-    pcb: num(st.pcb),
-    cp38: num(st.cp38),
-    otherDeductions: num(p.otherDeductions),
-    totalDeductions: num(p.totalDeductions),
-    net: num(p.net),
-    epfEmployer: num(st.epfEmployer),
-    socsoEmployer: num(st.socsoEmployer),
-    eisEmployer: num(st.eisEmployer),
-    employerCost: num(p.employerCost),
-    daysWorked: p.daysWorked != null ? num(p.daysWorked) : null,
-  };
-
+  // 3c473773 — the data is assembled by the shared builder so this PDF, the on-screen payslip and the
+  // admin review copy cannot disagree about which box an amount is in or whether the employer funded a
+  // deduction. It reads THIS payslip's stored snapshot, never today's settings.
   const t = await getTranslations('me.payslip');
+  const data = buildPayslipPdfData(p, {
+    epf: t('epf'), socso: t('socso'), skbbk: t('skbbk'), eis: t('eis'), tax: t('pcb'),
+  });
+
   const bytes = await renderPayslipPdf(data, {
     title: t('pdfTitle'),
     payPeriod: t('payPeriodLabel'),
@@ -70,6 +49,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
     totalEmployerCost: t('totalEmployerCost'),
     proratedNote: p.daysWorked != null ? t('proratedNote', { days: num(p.daysWorked) }) : '',
     generatedNote: t('generatedNote'),
+    claim: t('claim'),
+    employerBorne: t('employerBorneHeading'),
+    employerBorneTotal: t('employerBorneTotal'),
+    employerBorneNote: t('employerBorneNote'),
   });
 
   // Disambiguate the filename so two cycles in one month don't collide (and silently overwrite on

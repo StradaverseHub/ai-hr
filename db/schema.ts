@@ -4669,6 +4669,17 @@ export const payComponent = pgTable(
     // deduction) with its annual cap in the versioned statutory tables (localization/my/statutory-tables.ts).
     // Validated app-side against the selected remuneration type's list; NULL = legacy/unclassified.
     pcbExemptionCode: text('pcb_exemption_code'),
+    // Feedback 3c473773 — the PAYROLL CATEGORY: which box on the payslip this item's money appears in
+    // (basic / overtime / bonus / allowance / claim / deduction). PRESENTATION ONLY and independent of
+    // every statutory flag: the kernel's cash bucketing, every statutory base, and every EA/CP39/KWSP/
+    // PERKESO grouping are unchanged by it. It exists because the box was previously INFERRED from the
+    // tax treatment — an overtime code declared 'additional' remuneration (correct for LHDN) therefore
+    // printed under Bonus. NULL = unclassified ⇒ core/payroll.ts keeps inferring exactly as before, which
+    // is what stops a legacy row losing its box silently. Values constrained in the DB (0393) and
+    // app-side (core/pay-display-category.ts).
+    displayCategory: text('display_category').$type<
+      'basic' | 'overtime' | 'bonus' | 'allowance' | 'claim' | 'deduction' | null
+    >(),
     // Whether the amount prorates for a mid-period joiner/leaver.
     prorates: boolean('prorates').notNull().default(true),
     // Wave 1 (ADR-0035 1A): which annual EA-form (Borang EA / C.P.8A Part B) line this component maps to,

@@ -151,7 +151,7 @@
  * via `modulePackById('payroll')` and fails closed (D3) — and the country calculators already fail
  * closed on an unresolvable pack (D3, `countryPackInactive`). No entitlement machinery is built here.
  */
-import { ArrowLeftRight, Banknote, FileText, Landmark, Settings2, Table2, Wallet, Workflow } from 'lucide-react';
+import { ArrowLeftRight, Banknote, FileText, Landmark, ReceiptText, Settings2, Table2, Wallet, Workflow } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
 import { payrollNavRank } from './phases';
 
@@ -201,6 +201,10 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     { href: '/payroll', labelKey: 'payrollProcess', icon: Banknote },
     { href: '/payroll/transactions', labelKey: 'payrollTransactions', icon: ArrowLeftRight },
     { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView', icon: Table2 },
+    // 169e3c24 — the admin payslip review screen. The itemised breakdown it renders already existed on
+    // Transaction View → History; what was missing was a menu row that says "payslip", which is why the
+    // reporter concluded the screen did not exist. Ranked into the same REVIEW phase, beside it.
+    { href: '/payroll/individual-payslip', labelKey: 'payrollIndividualPayslip', icon: ReceiptText },
     { href: '/payroll/reports', labelKey: 'payrollReports', icon: FileText },
     // 956cec85 — the reporter asked for "a centralized location" for the statutory forms. The forms
     // themselves already existed on Reports; this row is the home they were missing.

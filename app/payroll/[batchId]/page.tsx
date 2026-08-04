@@ -21,6 +21,9 @@ import { packFor } from '@/localization/registry';
 import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
 import { listRecomputeDisclosure, listUnattachedTxnSummary, pendingBatchMoney, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
 import { payslipProvenance, type StatutoryLineKey } from '@/core/payslip-recompute';
+// 3c473773 — payslip boxes + the employer-borne disclosure, both read from each payslip's own snapshot.
+import { payslipDisplayEarnings } from '@/core/pay-display-category';
+import { payslipEmployerBorne } from '@/core/payslip-employer-borne';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -1002,8 +1005,14 @@ export default async function BatchPage({
             </thead>
             <tbody className="divide-y divide-border">
               {slipPage.rows.map((sl) => {
-                const st = sl.statutory as Record<string, number>;
                 const prov = payslipProvenance(sl.statutory);
+                // 3c473773 — the Bonus column reads the payslip's own box stamp (so an overtime code
+                // declared as additional remuneration no longer inflates Bonus here while reading Overtime
+                // on the payslip), and the five statutory columns are NET of anything the employer agreed
+                // to fund — the same figures the payslip and Transaction View show. Two screens printing
+                // different numbers for one deduction is the failure this enumeration exists to prevent.
+                const disp = payslipDisplayEarnings(sl);
+                const eb = payslipEmployerBorne(sl.statutory);
                 return (
                   <tr key={sl.id}>
                     <td className="px-4 py-2.5">
@@ -1019,13 +1028,13 @@ export default async function BatchPage({
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{rm(sl.gross)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
-                      {Number(sl.bonus) > 0 ? rm(sl.bonus) : '—'}
+                      {disp.bonus > 0 ? rm(disp.bonus) : '—'}
                     </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.epfEmployee)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.socsoEmployee)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.socsoSkbbk)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.eisEmployee)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.pcb)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(eb.employee.epf)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(eb.employee.socso)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(eb.employee.skbbk)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(eb.employee.eis)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(eb.employee.pcb)}</td>
                     <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(sl.net)}</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-xs text-muted-foreground">
                       <span className="font-mono">{prov.rulesetVersion ?? '—'}</span>

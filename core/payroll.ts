@@ -58,6 +58,9 @@ import { applyLoansForBatch } from './loans';
 import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
 import type { ShiftDifferential, PayRule, PayrollPolicyConfig } from '../db/schema';
 import { resolvePayComponentSet, type PayRuleScope } from './pay-rule';
+// Feedback 3c473773 — the payslip-box vocabulary. PRESENTATION ONLY: nothing imported here reaches a
+// statutory base, a stored payslip column, or any EA/CP39/KWSP/PERKESO grouping.
+import { defaultCategoryOfBucket, resolveDisplayCategory, type PayDisplayCategory } from './pay-display-category';
 import { resolveAssignedPolicy } from './payroll-policy';
 import {
   applyOvertimeCaps,
@@ -2587,6 +2590,12 @@ export async function generatePayslips(
       epfBonus2012: boolean;
       pcbRemunerationType: 'normal' | 'additional' | 'optional_deduction' | null;
       pcbExemptionCode: string | null;
+      // Feedback 3c473773 — the DISPLAY box (payroll category), migration 0393. Presentation only: it never
+      // reaches a statutory base, never changes the kernel bucket the amount is routed into, and never
+      // changes a stored payslip column. null = unclassified ⇒ the box is inferred from the bucket exactly
+      // as before. Backfilled to each row's CURRENT box, so a run is byte-identical unless someone has
+      // deliberately re-categorised an item.
+      displayCategory: string | null;
     };
     const recurringByEmp = new Map<string, CompRow[]>();
     const batchCompByEmp = new Map<string, CompRow[]>();
@@ -2610,6 +2619,9 @@ export async function generatePayslips(
         epfBonus2012: payComponent.epfBonus2012,
         pcbRemunerationType: payComponent.pcbRemunerationType,
         pcbExemptionCode: payComponent.pcbExemptionCode,
+        // Feedback 3c473773 — the declared payslip box (migration 0393). Read-only here; it is applied to
+        // the DISPLAY overlay in earningsOf and to nothing else.
+        displayCategory: payComponent.displayCategory,
       };
       const push = (map: Map<string, CompRow[]>, r: { employmentId: string; amount: string; prorateOverride?: boolean | null } & Omit<CompRow, 'amount' | 'prorateOverride'>) => {
         const list = map.get(r.employmentId) ?? [];
@@ -2700,6 +2712,10 @@ export async function generatePayslips(
           compEpfBonus2012: payComponent.epfBonus2012,
           compPcbRemunerationType: payComponent.pcbRemunerationType,
           compPcbExemptionCode: payComponent.pcbExemptionCode,
+          // Feedback 3c473773 — the catalog row's declared payslip box rides the one-off transaction too.
+          // This is the reporter's exact path: an Overtime 1.5 one-off landed in Bonus because the box was
+          // inferred from the pay code's PCB stream.
+          compDisplayCategory: payComponent.displayCategory,
         })
         .from(payrollIndividualTxn)
         .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
@@ -2753,10 +2769,12 @@ export async function generatePayslips(
                 epfBonus2012: t.compEpfBonus2012 ?? false,
                 pcbRemunerationType: t.compPcbRemunerationType ?? null,
                 pcbExemptionCode: t.compPcbExemptionCode ?? null,
+                // Feedback 3c473773 — display box from the catalog row (null ⇒ inferred, as before).
+                displayCategory: t.compDisplayCategory ?? null,
               }
             : t.kind === 'earning'
-              ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null }
-              : { code: 'TXN_DEDUCTION', name: t.notes ?? 'One-off deduction', kind: 'deduction', amount: amt, rounding: 'none', epf: false, socso: false, pcb: false, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null };
+              ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null }
+              : { code: 'TXN_DEDUCTION', name: t.notes ?? 'One-off deduction', kind: 'deduction', amount: amt, rounding: 'none', epf: false, socso: false, pcb: false, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null };
         const list = batchCompByEmp.get(t.employmentId) ?? [];
         list.push(row);
         batchCompByEmp.set(t.employmentId, list);
@@ -2833,6 +2851,21 @@ export async function generatePayslips(
       buckets: { bucket: PayComponentBucket; amount: number }[];
     };
 
+    // ── Feedback 3c473773 — the DISPLAY overlay ────────────────────────────────────────────────────────
+    // The buckets above are STATUTORY: `wage` feeds the EPF/SOCSO/EIS/PCB normal-wage base, `ot` feeds the
+    // overtime leg (EPF-exempt), `bonus` feeds additional remuneration (EPF + PCB difference method,
+    // outside SOCSO/EIS). They are NOT touched by anything below — moving an amount between them would
+    // change EPF, SOCSO, EIS and PCB, i.e. change what is filed with KWSP/PERKESO/LHDN for money that is
+    // being computed correctly today.
+    //
+    // What IS new is a second, parallel tally of the same amounts under the box each pay item DECLARES.
+    // Same money, same totals, different labels — see core/pay-display-category.ts for why the two
+    // questions were ever conflated. `moved` stays false unless someone deliberately re-categorised an
+    // item, and a run with moved===false stamps nothing at all, which is what keeps every other payslip
+    // byte-identical.
+    type DisplayTally = Record<PayDisplayCategory, number>;
+    const emptyTally = (): DisplayTally => ({ basic: 0, overtime: 0, bonus: 0, allowance: 0, claim: 0, deduction: 0 });
+
     const earningsOf = (
       e: { employmentId: string; basic: unknown; allowance: unknown },
       factor: number,
@@ -2842,6 +2875,11 @@ export async function generatePayslips(
       recordLines: { code: string; name: string; amount: number }[];
       componentLines: PayComponentLine[];
       lpDeclared: number; exemptionUsed: Record<string, number>;
+      // Feedback 3c473773 — the same component money tallied under each item's DECLARED payslip box, plus
+      // how much left the `ot` bucket for another box (the one direction whose display arithmetic has to be
+      // reconciled against the OT caps downstream). `displayMoved` is false whenever nothing was
+      // re-categorised, and the kernel then stamps no overlay at all.
+      display: DisplayTally; displayMoved: boolean; displayOtOutbound: number;
     } => {
       if (!typedComponents) {
         const basicRaw = Number(e.basic);
@@ -2862,6 +2900,11 @@ export async function generatePayslips(
           componentLines: [],
           lpDeclared: 0,
           exemptionUsed: {},
+          // Flag off ⇒ there are no typed pay items, so there is no declared box to honour and nothing to
+          // re-categorise. The legacy path stays exactly as it was.
+          display: emptyTally(),
+          displayMoved: false,
+          displayOtOutbound: 0,
         };
       }
       let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
@@ -2883,10 +2926,26 @@ export async function generatePayslips(
       /** Record a component's contribution. Enrolled LAZILY: a component that never moves cash (a
        *  record-only BIK) never appears here — it belongs to recordLines and would otherwise be listed
        *  twice, under a heading about money it does not affect. */
+      // Feedback 3c473773 — the display tally, filled at the SAME call sites as the statutory buckets so
+      // the two can never see different money. `currentCategory` is the box the component in hand declares
+      // (null ⇒ unclassified ⇒ resolveDisplayCategory falls back to the bucket's own box, byte-identical).
+      const display = emptyTally();
+      let displayMoved = false;
+      let displayOtOutbound = 0;
+      let currentCategory: string | null = null;
       const contributes = (bucket: PayComponentBucket, amount: number) => {
         if (!currentLine || amount === 0) return;
         if (currentLine.buckets.length === 0) componentLines.push(currentLine);
         currentLine.buckets.push({ bucket, amount });
+        const box = resolveDisplayCategory(currentCategory, bucket);
+        display[box] = round2(display[box] + amount);
+        if (box !== defaultCategoryOfBucket(bucket)) {
+          displayMoved = true;
+          // Money leaving the `ot` bucket is the one move the overlay cannot always express downstream: the
+          // stored overtime figure is the CAPPED one, so subtracting a pre-cap amount from it could go
+          // negative. Track it here; the kernel refuses to stamp the overlay if the cap ever bit.
+          if (bucket === 'ot') displayOtOutbound = round2(displayOtOutbound + amount);
+        }
       };
       // LHDN PCB 2026 (feedback 09b554e9) — this month's optional-deduction (LP) claims and per-code
       // exemption usage. `priorUsed` is the YTD usage replayed from the year's earlier slips; `exemptionUsed`
@@ -2953,6 +3012,8 @@ export async function generatePayslips(
         const prorate = c.prorateOverride ?? c.prorates;
         const applied = roundAmount(prorate ? resolved * factor : resolved, c.rounding);
         currentLine = { code: c.code, name: c.name, amount: applied, buckets: [] };
+        // Feedback 3c473773 — the box THIS item declares, read for the display tally only.
+        currentCategory = c.displayCategory ?? null;
         // ── LHDN PCB 2026 declared classification (feedback 09b554e9) ──
         // Optional Deduction: the amount reduces this month's PCB exactly like an approved TP1 deduction
         // (fed into LP₁ below), capped by the LP code's remaining ANNUAL headroom (YTD replay). Cash-wise
@@ -3021,7 +3082,7 @@ export async function generatePayslips(
         else if (c.epf && !c.socso) { bonusAmt = round2(bonusAmt + applied); contributes('bonus', applied); }
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, recordLines, componentLines, lpDeclared, exemptionUsed };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, recordLines, componentLines, lpDeclared, exemptionUsed, display, displayMoved, displayOtOutbound };
     };
 
     /** Age at the period end; null when DOB is not captured (treated as < 60). */
@@ -3537,6 +3598,36 @@ export async function generatePayslips(
         paymentSchedule = periods.map((pd, i) => ({ seq: pd.seq, from: pd.start, to: pd.end, amount: amounts[i] }));
       }
 
+      // ── Feedback 3c473773 — the display overlay, stamped ONLY when it says something ─────────────────
+      // The four stored columns keep the kernel's statutory bucketing (and every statutory form keeps
+      // reading them). This is the SAME money re-labelled under the boxes the pay items declare, so a
+      // payslip screen can print an overtime code under Overtime while LHDN still sees it as additional
+      // remuneration. Derived here, where the OT caps, the one-off OT and the converted OT excess are all
+      // in scope, so the overlay reconciles with grossPay by construction rather than by a screen's
+      // arithmetic (pinned by test/pay-display-category.test.ts).
+      //
+      //   allowance  keeps otConvertAmount inside it, exactly as the stored column does, so a caller that
+      //              subtracts otConvert for its own line keeps the identical expression.
+      //   overtime   is the stored (capped) figure, plus what moved in, less what moved out.
+      //
+      // NOT stamped when: nothing was re-categorised (⇒ every existing payslip and every ordinary run is
+      // byte-identical); an additional/off-cycle run (which pays only its additional remuneration and
+      // re-folds the same recurring components — the same reason componentLines is regular-run only); or an
+      // OT cap clipped an amount that also moved OUT of the overtime box, where subtracting a pre-cap
+      // figure from a post-cap one is not well defined. In every one of those cases the screens fall back
+      // to the stored columns, which is the correct answer and not a degraded one.
+      const otOutbound = Math.min(en.displayOtOutbound, slipOvertime);
+      const displayEarnings =
+        !isAdditionalRun && en.displayMoved && otOutbound === en.displayOtOutbound
+          ? {
+              basic: round2(slipBasic + en.display.basic),
+              allowance: round2(otConvertAmount + en.display.allowance),
+              overtime: round2(slipOvertime - en.overtime + en.display.overtime),
+              bonus: round2(bonus - en.bonus + en.display.bonus),
+              claim: round2(en.display.claim),
+            }
+          : null;
+
       await tx.insert(payslip).values({
         tenantId: ctx.tenantId,
         batchId: p.batchId,
@@ -3565,6 +3656,10 @@ export async function generatePayslips(
           // the run frequency is weekly/biweekly; absent ⇒ byte-identical monthly slip). The employer pays each
           // cycle's `amount` on its cadence; statutory contributions stay settled monthly on this same payslip.
           ...(paymentSchedule ? { paymentSchedule: { frequency: runFrequency, cycles: paymentSchedule } } : {}),
+          // Feedback 3c473773 — the payslip's OWN record of which box each figure belongs in, so a screen
+          // never has to re-derive it from today's pay-item setup (which would let a category changed in
+          // March silently rewrite January). Absent ⇒ read the stored columns, unchanged.
+          ...(displayEarnings ? { displayEarnings } : {}),
           // Feedback 0df0c635 — snapshot the EFFECTIVE per-employee HRDF subjectivity, ONLY when HR set an
           // explicit override (a null/untouched row stays absent ⇒ byte-identical to pre-flag slips). The
           // audited-inputs convention: a closed payslip records the setting as it was when it was computed.

@@ -1,7 +1,12 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import type { listPayComponents } from '@/core/pay-components';
-import { listPayComponents as loadPayComponents, listPayRulePreviewCandidates, ROUNDING_METHODS } from '@/core/pay-components';
+import {
+  listPayComponents as loadPayComponents,
+  listPayRulePreviewCandidates,
+  PAY_DISPLAY_CATEGORIES,
+  ROUNDING_METHODS,
+} from '@/core/pay-components';
 import { isStatutoryComponent } from '@/core/pay-rule';
 import { requireAdmin } from '@/lib/authz';
 import type { PayRule } from '@/core/pay-rule';
@@ -92,6 +97,19 @@ export async function ComponentForm({
                 <option value="non_payable">{t('kind_non_payable')}</option>
               </select>
             </Field>
+            {/* Feedback 3c473773 — Payroll Category. It decides WHICH BOX on the payslip this item's money
+                appears in, and nothing else: no statutory flag, no statutory base, and no EA / CP39 / KWSP
+                / PERKESO grouping reads it. It exists because the box used to be inferred from the tax
+                treatment, so an overtime code correctly declared as additional remuneration printed under
+                Bonus. Blank keeps that inference (which is what an unclassified legacy row does). */}
+            <Field label={t('colDisplayCategory')}>
+              <select name="displayCategory" defaultValue={component?.displayCategory ?? ''} className={inputCls}>
+                <option value="">{t('displayCategory_auto')}</option>
+                {PAY_DISPLAY_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{t(`displayCategory_${c}`)}</option>
+                ))}
+              </select>
+            </Field>
             <Field label={t('colStatus')}>
               <input
                 readOnly
@@ -99,6 +117,7 @@ export async function ComponentForm({
                 className={`${inputCls} opacity-60`}
               />
             </Field>
+            <p className="text-xs text-muted-foreground sm:col-span-3">{t('displayCategoryHint')}</p>
           </div>
         </Card>
 
