@@ -5,21 +5,99 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-04, after r130 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-04, after r134 SHIPPED)
 
 > ## ▶ NEXT SESSION STARTS HERE
 >
-> **`main@8cc11664` is what runs. Production on 312 migrations. Next free number is `0386`.** Nothing is
-> in flight: no unmerged build branch, no half-applied migration, no pending deploy.
+> **`main@e823082c` is what runs. Production on 312 migrations. Next free number is `0386`.** Nothing is
+> in flight: no unmerged build branch, no half-applied migration, no pending deploy. r134 added NO
+> migration.
+>
+> ### ⚠️⚠️ THE LOCAL POSTGRES WAS NEVER BROKEN — APEX ONE WAS SCANNING THE DATA DIRECTORY
+>
+> **This is the single most valuable line in this file for anyone who has fought the local cluster.** Every
+> wedge symptom this document accumulated over r83–r130 — the `CheckpointStart` wait, the frozen
+> `pg_stat_bgwriter` counters, the ten-minute startup walk holding DIRECTORY handles, `DROP DATABASE`
+> hanging forever, postgres processes that survive `kill -9` (uninterruptible kernel I/O), and
+> `postgres.js` `CONNECT_TIMEOUT` while plain `psql` connects fine — is what an endpoint scanner hooked
+> into the filesystem does to a database.
+>
+> **The owner excluded the path from Apex One on 2026-08-04. Measured, both ways:**
+>
+> | | before exclusion | after |
+> |---|---|---|
+> | cluster start | **10+ min** (never finished) | **< 1 s** |
+> | full suite | 2848 s, **98 failures** (50 × 30 s timeouts + TRUNCATE deadlocks) | **761 s, 6625/6625 green** |
+>
+> **So: 3.7× faster and the failures were never real.** Before you rebuild a "wedged" cluster again,
+> check the AV exclusion first. The rebuild recipe below still works and is still the right move for a
+> genuinely corrupt cluster — but a wedge on an EXCLUDED path is a different, and much rarer, animal.
+> The `.wedged-*` directories in `/opt/homebrew/var/` (28 of them, ~all disposable) are the archaeology
+> of this misdiagnosis.
+>
+> ### ⚠️ A 200 IS NOT A RENDER CHECK — r134 FOUND A THIRD ONE THIS WAY
+>
+> `app/payroll/[batchId]/page.tsx` read `t('runType.<cycle>')` under the `payroll.batch` namespace, which
+> has **never** contained `runType` (the four cycle names live under `payroll.list`, `payroll.process` and
+> `payrollCycleConfig`). **The Cycle field on EVERY payroll run detail page was a `MISSING_MESSAGE` in
+> production.** tsc green, 6618 tests green, `next build` green, route returns **200**. Visible in exactly
+> one place: the dev-server log on a real render.
+>
+> That is r123 (server/client boundary), r127 (twelve broken labels), and now r134 — **three in five
+> rounds, all found by rendering and none by the gate.** `test/payroll-run-type-label-namespace.test.ts`
+> now does it structurally: it walks every payroll source, resolves which translator binding each
+> `runType` call uses, maps it back to a namespace, and checks all six catalogs.
 >
 > **NINE of the ten approved items shipped in one night** (r127–r130): `491c499f`, `8fec719e`,
 > `56910869`, `65f466e2`, `fef49b9a`, `c459bff9`, `bc36c768`, `4b0e76ae`, `296fc027`. The gaps in the
 > migration numbers (0358, 0365, 0370, 0375/0376, 0380/0381, 0385) are deliberate — numbers were handed
 > out to parallel agents up front so they could not collide, which they had done the round before.
 >
-> **`6e9a126e` IS THE ONE LEFT, AND IT WAS NOT ATTEMPTED.** Its own approved plan stages it across three
-> releases and it DROPS `benefit_scheme`, `scheme_leave_entitlement` and `leave_policy`. It is the
-> umbrella over the entitlement layer and it deserves a session of its own, not the tail of one.
+> **`a1d82340` IS FINALLY CLOSED (r134).** It sat in `building` since 2026-07-29 with four of five steps
+> live. Step 5 is the consolidated money view — see the r134 entry for the twelve-door enumeration, which
+> had never been written down and which the plan under-counted as eight.
+>
+> **`6e9a126e` IS THE BIG ONE LEFT.** Its own approved plan stages it across three releases and it DROPS
+> `benefit_scheme`, `scheme_leave_entitlement` and `leave_policy`. It is the umbrella over the entitlement
+> layer and it deserves a session of its own, not the tail of one. **Its rev-3 claim that "all line numbers
+> were re-verified" was FALSE at HEAD and the plan says so itself — re-locate every anchor by symbol.**
+>
+> ### THE BOARD, COUNTED ON PRODUCTION 2026-08-04 AFTER r134
+>
+> **`deployed = 564` · `approved = 10` · `open = 7` · `contested = 2` · `cancelled = 12`. `building = 0`
+> for the first time in weeks.** `improve:pull` returns ONLY open+contested — it does NOT show `building`,
+> which is how `a1d82340` stayed invisible. Use `pull-approved` too, or query the DB for the real spread.
+>
+> **BUILD ORDER for the 10 approved, derived from the plans' own sequencing sections:**
+> `645e67c4` → `afd0a87c` → `38f1fd40` → `7cd914b1` → `8590615a` → `169e3c24` → `6e9a126e` →
+> `93249794` → `7c834696` → `2ef69d1e`.
+>
+> **`645e67c4` GOES FIRST AND ALSO RESOLVES `491c499f`'s CONTEST.** Its plan says "nothing must ship
+> before this item", and `491c499f`'s contest reason is verbatim the same request ("move this leave
+> adjustment in the Leave Config left-hand menu from a single line into an expandable group, the same way
+> Payroll and Attendance already work"). One build, two items. NOTE the plan is STALE on one point: it
+> describes six tabs and the strip has since grown to **eight** (`491c499f` and `4b0e76ae` added theirs).
+>
+> ### PRODUCTION COUNTS TAKEN 2026-08-04 — two plans change shape because of them
+>
+> - **`7cd914b1`'s DATA MIGRATION IS A NO-OP.** `leave_type` rows with `carry_forward_percent > 0 AND
+>   carry_forward_max > 0` = **ZERO**. Nothing has a percentage set at all; exactly one row has a day cap
+>   and it carries no percentage. The plan's own instruction: "If the production count is zero, the
+>   migration is a no-op and the release carries no data change at all — say so plainly rather than
+>   quietly shipping it."
+> - **`8590615a` IS PARTLY BUILT.** `employment.contract_end_date` ALREADY EXISTS on production;
+>   `contract_start_date` and `contract_remark` do not. The catching-up HR faces is **2 records** — there
+>   are only 2 live contract employments and both lack an end date (36 live: 33 full_time, 2 contract,
+>   1 part_time). **`employment_type` lives on `assignment`, NOT on `employment`** — a query against
+>   `employment.employment_type` errors.
+>
+> ### ⚠️ A NEW REPORTER ITEM ALLEGES A LIVE PAYROLL CALCULATION FAULT — `3c473773`, UNPLANNED
+>
+> "Correct Overtime Pay Item Classification and Employer-Borne Statutory Contribution Calculation", raised
+> off a real verification against employee `X000001`, and the reporter states plainly these are **"system
+> logic issues rather than employee-specific issues"**. It is `open` and unplanned. If anything on the
+> board deserves to jump the build order, it is this one — but read it before assuming, and plan it.
+> Two more arrived with it: `35b7af0a` (Create New Employee wizard) and `1b87e8a0` (Movement Settings).
 >
 > ### ⚠️ THE DEPLOY RSYNC HAS NO `--delete`
 >
@@ -1108,6 +1186,87 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r134 — 2026-08-04 — a1d82340 closed at last, and the antivirus that was never Postgres's fault
+
+**Shipped:** `a1d82340` step 5 (the consolidated money view) + a live `MISSING_MESSAGE` on every payroll
+run detail page. **`main@e823082c`. 312 migrations — r134 ADDS NONE.**
+`a1d82340` had been `building` since 2026-07-29.
+
+### THE ENUMERATION THE PLAN NEVER WROTE DOWN — TWELVE DOORS, NOT EIGHT
+
+The approved plan says "consolidate the eight places money can be added" and never listed them. Counted
+from the code, it is **twelve doors writing five tables**, and it is now written down in
+`core/payroll-view.ts` above `pendingBatchMoney`. Add to that register when a thirteenth opens.
+
+**The defect that mattered was not the count.** The draft run screen read `payroll_input` and nothing
+else (`batchInputRows`), so **four of the five tables were invisible until AFTER the payslip was
+generated**: `payroll_batch_component` (file import / attendance-allowance transfer / shift differential),
+`payroll_individual_txn` (attached AND period-keyed), `employment_pay_component` (fixed transactions). An
+operator pressed Generate unable to see most of what they were about to pay — which is precisely the
+reporter's own request §2 step 3, "Payroll Preview — Pending Transactions: 15".
+
+### Decisions — a1d82340 step 5
+
+**READ-ONLY, AND THAT IS THE WHOLE POINT.** r91 established that three of the four screens an earlier
+revision proposed retiring were SOLE WRITERS: "never used" and "no writer reachable" look identical in a
+row count, and closing a door is not reversible through configuration. So consolidation here means ONE
+PLACE TO SEE ALL TWELVE, not eleven deletions. `pendingBatchMoney` computes no money; it reports money
+other code already committed. Nothing about what reaches a payslip changed, which is why a step billed as
+"the only step that can alter a payslip" altered none.
+
+**PERIOD-KEYED INDIVIDUAL ROWS COUNT FOR A REGULAR RUN AND NOT FOR AN ADDITIONAL ONE.** A row keyed
+before the month's run existed carries `batch_id = NULL`; `generatePayslips` stamps it onto the month's
+REGULAR run (attach-on-generate, 0175). Omitting them would under-report the very figure being checked;
+counting them on a bonus run would claim it pays money the regular run will pay. Marked `unattached` so
+the screen says which it is.
+
+**THE KERNEL'S FEATURE GATES ARE MIRRORED, NOT IGNORED — the difference between a useful card and a lying
+one.** Three doors only pay when `TYPED_PAY_COMPONENTS_ENABLED` / `INDIVIDUAL_TXN_PAY_ENABLED` are on
+(and the second depends on the first). Rows behind an off flag are counted as `inertRows` and kept OUT of
+every total: counting them overstates what the run will pay, hiding them loses the fact that somebody
+keyed transactions into a dead end. Only `earning`/`deduction` individual rows ride that flag —
+`overtime`/`unpaid` fold regardless — and that asymmetry is mirrored exactly rather than approximated.
+
+**BASIC IS EXCLUDED ON PURPOSE,** both as compensation and as a `BASIC` fixed component. It is not money
+added through a door; it is the record the run is built from, already shown per employee. Including it
+buries twelve doors under the one figure never in question. `leave`-kind individual rows are excluded too
+— they are RECORD-ONLY in v1 and the kernel folds no money from them.
+
+### THE THIRD MISSING_MESSAGE IN FIVE ROUNDS, AND THE GATE SAW NONE OF THEM
+
+`app/payroll/[batchId]/page.tsx:453` read `t('runType.<cycle>')` bound to `payroll.batch` — a namespace
+that has **never** held `runType`. The labels live under `payroll.list`, `payroll.process` and
+`payrollCycleConfig`. **Every payroll run detail page in production rendered `MISSING_MESSAGE` in its
+Cycle field.** It is a valid `t()` call over a valid string, so: tsc green, 6618 tests green, `next build`
+green, route **200**. Found by rendering the page and grepping the dev log — the r130 method, third time
+it has paid.
+
+Fixed by reading the labels where they live (r130's rule: do not mint a fourth copy).
+`test/payroll-run-type-label-namespace.test.ts` generalises it: walk every payroll source, resolve which
+translator binding each `runType` call uses, map it back to a namespace, assert all six catalogs. **Its
+first draft failed against CORRECT code** — `tList(` ends in the two characters a bare `t(` needs, so the
+scan needs a `(?<![\w$])` boundary and must strip comments. A guard that reports right code as wrong is
+worse than no guard.
+
+### THE OPERATIONAL FINDING THAT OUTLIVES THIS ROUND: IT WAS APEX ONE ALL ALONG
+
+See the CURRENT STATE block. Every local-Postgres wedge symptom this file has accumulated since r83 is
+what an endpoint scanner does to a database directory. Excluding the path took cluster start from **10+
+minutes to under a second** and the full suite from **2848 s with 98 failures to 761 s with 6625/6625
+green**. The 98 were 50 × 30-second timeouts plus TRUNCATE deadlocks and two cascade assertions —
+**none of them real**. Two rebuild cycles were spent on a misdiagnosis before the owner named the cause.
+
+**The lesson for the next session is not "rebuild faster". It is: a green-looking diagnosis that requires
+the database to be mysteriously broken is usually the environment.** Also worth knowing: postgres
+processes that survive `kill -9` are in uninterruptible kernel I/O, which is itself the scanner's
+signature, not a Postgres bug.
+
+### Gate
+
+556 files / **6625 tests green** · tsc clean · `next build` clean · seven payroll routes rendered 200
+with a dev log carrying no `MISSING_MESSAGE` and no `FORMATTING_ERROR` · rsync verified by a zero-change
+`--dry-run` re-sync (r86's proof) · deploy clean, service active, `GET /` 401, `/login` 200.
 
 ## r130 — 2026-08-04 — 4b0e76ae and 296fc027, plus a bug r127 shipped that only a render could find
 
