@@ -80,14 +80,6 @@
         "placement": "top"
       },
       {
-        "id": "requests",
-        "target": "[data-tour=\"leave-requests\"]",
-        "route": "/leave",
-        "titleKey": "tour.leave.requests.title",
-        "bodyKey": "tour.leave.requests.body",
-        "placement": "top"
-      },
-      {
         "id": "config",
         "target": "[data-tour=\"leave-config\"]",
         "route": "/admin/leave",

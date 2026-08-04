@@ -118,99 +118,83 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     expect(leavePage).toContain('chips, or inline approve/reject');
   });
 
-  it('ENUMERATION: the register over every status lives only here — /approvals loads PENDING only', () => {
-    // /leave: the paged, sortable projection over all four statuses.
-    expect(leavePage).toContain('listLeaveRequestsPage(session, {');
-    expect(leavePage).toContain("const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;");
-    expect(leavePage).toContain("t('requestsTitle')");
-    // /approvals: pending rows, capped, and it never touches the paged projection.
+  it('ENUMERATION: the register over every status is GONE, and /approvals never replaced it', () => {
+    // INVERTED (afd0a87c). /leave no longer runs the paged, all-status projection at all.
+    expect(leavePage).not.toContain('listLeaveRequestsPage(session, {');
+    expect(leavePage).not.toContain("t('requestsTitle')");
+    // The point this test has always made still stands and is why the loss is worth recording:
+    // /approvals is NOT a substitute — pending rows only, capped at 200, no filters, no export.
     expect(approvalsPage).toContain("listLeaveRequests(s, scopeIds, 200, { status: 'pending' })");
     expect(approvalsPage).not.toMatch(/listLeaveRequestsPage/);
   });
 
-  it('ENUMERATION: the every-column filter set (0773bda9 + 8ec63139) lives only here', () => {
-    // The fourteen narrowings the reporter asked for, none of which /approvals offers.
-    for (const name of [
-      "name: 'q'",
-      "name: 'company'",
-      "name: 'bu'",
-      "name: 'dept'",
-      "name: 'loc'",
-      "name: 'emp'",
-      "name: 'duration'",
-      "name: 'type'",
-      "name: 'status'",
-      "name: 'from'",
-      "name: 'to'",
-      "name: 'appliedFrom'",
-      "name: 'appliedTo'",
-      "name: 'pendingWith'",
-      "name: 'approvedBy'",
-    ]) {
-      expect(leavePage.includes(name), name).toBe(true);
+  it('ENUMERATION: the every-column filter set is GONE — an accepted loss, not a relocation', () => {
+    // INVERTED. These fourteen narrowings existed on /leave and nowhere else; the reporter has accepted
+    // losing them rather than have them moved. Asserted absent from BOTH pages so a later edit cannot
+    // quietly reintroduce half a filter set with no table to narrow.
+    for (const name of ["name: 'q'", "name: 'company'", "name: 'bu'", "name: 'loc'", "name: 'duration'", "name: 'pendingWith'", "name: 'approvedBy'"]) {
+      expect(leavePage.includes(name), `/leave should no longer have ${name}`).toBe(false);
+      expect(approvalsPage.includes(name), `/approvals never had ${name}`).toBe(false);
     }
-    expect(leavePage).toContain('<FilterPanel');
-    // /approvals narrows by approval CATEGORY and sorts; it has no filter panel and no org narrowing.
-    expect(approvalsPage).not.toMatch(/<FilterPanel/);
     expect(approvalsPage).not.toMatch(/FilterChips/);
   });
 
-  it('ENUMERATION: the filtered export lives only here — removing the table would orphan /leave/export', () => {
-    expect(leavePage).toContain("const exportHref = (format: 'csv' | 'xlsx') =>");
-    expect(leavePage).toContain('/leave/export?');
-    // The route is real, and app/leave/page.tsx is its ONLY link in the entire application source. This is
-    // r74 Decision 5's finding, re-run: drop the table and the route becomes unreachable.
-    expect(() => read('app/leave/export/route.ts')).not.toThrow();
-    const linkers = sourceFiles().filter((f) => read(f).includes('/leave/export'));
-    expect(linkers).toEqual(['app/leave/page.tsx']);
-    // /approvals exports nothing.
+  it('ENUMERATION: the filtered export route is DELETED, not orphaned', () => {
+    // INVERTED. r74 Decision 5 found app/leave/page.tsx was the export route's ONLY link in the whole
+    // application, so removing the table would have stranded it. It is deleted in the same change.
+    expect(leavePage).not.toContain('/leave/export?');
+    expect(() => read('app/leave/export/route.ts')).toThrow();
+    expect(sourceFiles().filter((f) => read(f).includes('/leave/export'))).toEqual([]);
     expect(approvalsPage).not.toMatch(/exportHref/);
   });
 
-  it('ENUMERATION: admin cancel-on-behalf (22e68ff0) is not an approval and is not on /approvals', () => {
-    expect(leavePage).toContain('<AdminCancelLeaveDialog');
-    expect(leavePage).toContain('submitAction={adminCancelLeaveAction}');
-    // Cancelling an already-APPROVED leave is not a decision on a pending item, so the approvals inbox has
-    // no such control — its only leave-cancellation flow decides an employee's give-back REQUEST.
+  it('ENUMERATION: admin cancel-on-behalf moved OFF /leave and is not on /approvals either', () => {
+    // NOT a loss: fe3eb141 had already moved this action onto Employee Leave Record, and the dashboard
+    // calendar carries it too. /leave simply stops being a third home for it.
+    expect(leavePage).not.toContain('<AdminCancelLeaveDialog');
+    expect(recordsPage).toContain('<AdminCancelLeaveDialog');
+    expect(read('components/planned-absences-grid.tsx')).toContain('<AdminCancelLeaveDialog');
+    // Cancelling an already-APPROVED leave is not a decision on a pending item, so the approvals inbox
+    // still has no such control — its only cancellation flow decides an employee's give-back REQUEST.
     expect(approvalsPage).not.toMatch(/<AdminCancelLeaveDialog/);
     expect(approvalsPage).toContain('decideLeaveCancellationAction');
   });
 
-  it('ENUMERATION: own-row edit / withdraw / give-back are not on /approvals — it self-bans own rows', () => {
+  it('ENUMERATION: own-row controls survive for the SUBJECT, and /approvals still self-bans own rows', () => {
+    // The three subject-only dialogs stay in source and still serve an ordinary employee — they render
+    // from `selfHistory`, which is the viewer's own rows and is empty for an admin.
     for (const own of ['<EditLeaveDialog', '<CancelLeaveDialog', '<CancelDatesDialog']) {
       expect(leavePage.includes(own), own).toBe(true);
     }
-    // The mine() self-ban: on /approvals the viewer's OWN row shows a label, never a control. So for an HR
-    // admin — whose self-service blocks on /leave are suppressed by `ess` (8ec63139) — the Requests table
-    // is the only place their own pending request can be edited.
+    expect(leavePage).toContain('const selfHistory = admin ? [] :');
+    // The mine() self-ban is unchanged: on /approvals the viewer's OWN row shows a label, never a control.
     expect(approvalsPage).toContain('const mine = (personId: string | null) => s.personId != null && personId === s.personId;');
     expect(approvalsPage).toContain('{mine(r.personId) ? (');
     expect(approvalsPage).not.toMatch(/<EditLeaveDialog/);
     expect(leavePage).toContain('const ess = !admin;');
   });
 
-  it('ENUMERATION: the per-employee record screen is a PER-EMPLOYEE alternative, not a replacement', () => {
-    // /leave/employee-records answers "this ONE employee's history".
+  it('ENUMERATION: the per-employee record screen is still per-employee — it did NOT become a replacement', () => {
+    // Worth keeping precisely because the removal did not change it: the reporter has said they will
+    // redesign this screen separately, and until they do there is no org-wide view anywhere.
     expect(recordsPage).toContain('employmentIds: [selected.employmentId]');
-    // fe3eb141 MOVED the admin cancel-on-behalf action there, as the reporter asked — so this is now
-    // the ONE dialog the records page legitimately carries.
     expect(recordsPage).toContain('<AdminCancelLeaveDialog');
-    // The other three remain absent, and that is precisely why the Requests subsection cannot be
-    // deleted: they are SUBJECT-ONLY controls, and an admin on the records page is never the subject.
-    // For an HR admin (whose ESS blocks on /leave are suppressed by `ess`, 8ec63139) the Requests
-    // table is still the only place their OWN pending leave can be edited, withdrawn or partly given
-    // back. See test/leave-records-cancel.test.ts for the full hold-back enumeration.
+    // The three subject-only controls remain absent here, which is why an ADMIN editing their own pending
+    // request is the one capability with no home left. Disclosed and accepted in the approved plan.
     for (const absent of ['<EditLeaveDialog', '<CancelLeaveDialog', '<CancelDatesDialog']) {
       expect(recordsPage.includes(absent), absent).toBe(false);
     }
   });
 
-  it('the subsection is still mounted, behind the same admin gate as before', () => {
-    // Nothing about who sees it changed: the inquiry surface is admin-only, and the table sits inside it.
+  it('the subsection is REMOVED, and the inquiry surface it sat inside is untouched', () => {
+    // The admin landing view — the employee listing and its left-side nav — is what this page is now.
     expect(leavePage).toContain('{admin && (');
     expect(leavePage).toContain('<LeaveInquiryNav active="details"');
-    expect(leavePage).toContain('<Pager hrefFor={pagerHref}');
-    // And the reason is recorded where the next reader of this page will meet it.
-    expect(leavePage).toContain('KEPT AGAIN in r80');
+    // The retired table's pager goes with it.
+    expect(leavePage).not.toContain('<Pager hrefFor={pagerHref}');
+    // And the removal is recorded where the next reader of the page will meet it, replacing the two
+    // previous "KEPT" justifications rather than leaving them to be re-litigated a third time.
+    expect(leavePage).not.toContain('KEPT AGAIN in r80');
+    expect(leavePage).toContain('THE ORG-WIDE LEAVE-REQUEST TABLE IS GONE');
   });
 });

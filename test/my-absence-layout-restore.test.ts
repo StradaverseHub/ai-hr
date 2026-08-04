@@ -36,7 +36,9 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 /** Where the admin history table begins — everything after it is the admin branch. 8ec63139 removed the
  *  admin's own `{admin && secondaryBreakdownCard()}` card, which used to be this boundary. */
-const ADMIN_MARKER = '{/* Admin request history';
+// afd0a87c — was '{/* Admin request history', the removed table's own comment. The admin branch that
+// survives is the leave-inquiry surface, so slice from its opening guard instead.
+const ADMIN_MARKER = '{admin && (';
 /** The self-service render branch: breakdown + history columns. */
 const selfBranch = () => leavePage.slice(leavePage.indexOf('{!admin && ('), leavePage.indexOf(ADMIN_MARKER));
 /** The RSC entries builder that feeds LeaveHistoryCards (pre-translated data + action/outcome nodes). */
@@ -157,17 +159,21 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     expect(selfBranch().includes("t('requestsEmpty')")).toBe(true);
   });
 
-  it('the admin path keeps the full-width sortable/paginated table', () => {
+  it('the admin path is the employee listing now — the full-width table is gone', () => {
+    // INVERTED (afd0a87c). 56a0deb9 split this page by role and gave the admin the org-wide sortable,
+    // paginated request table. The reporter has since asked for that table to be removed outright, with
+    // no relocation, so the admin path is the Employee Details listing and its inquiry nav.
     const adminPart = leavePage.slice(leavePage.indexOf(ADMIN_MARKER));
-    expect(adminPart).toContain('data-tour="leave-requests"');
-    expect(adminPart).toContain("sortableTh('name'");
-    expect(adminPart).toContain('<AdminCancelLeaveDialog');
-    // fc776376 replaced this table's hand-rolled pager with the ONE shared <Pager>: it still shows a
-    // position counter, and now also a rows-per-page control that rides in the address. The requirement
-    // is that the admin table is still PAGINATED, not that it keeps its own copy of the chrome.
-    expect(adminPart).toContain('<Pager');
-    expect(adminPart).toContain('pageState(pq, total, history.length)');
-    expect(adminPart).toContain('colSpan={7}');
+    expect(adminPart).not.toContain("sortableTh('name'");
+    expect(adminPart).not.toContain('<AdminCancelLeaveDialog');
+    expect(adminPart).not.toContain('<Pager');
+    // fc776376's shared <Pager>, the page-state read and the 7-column body all belonged to that table
+    // and go with it. The Employee Details listing has its own numbered pager (inquiryPageWindow).
+    expect(adminPart).not.toContain('pageState(pq, total, history.length)');
+    expect(adminPart).not.toContain('colSpan={7}');
+    // What the admin lands on instead:
+    expect(adminPart).toContain('<LeaveInquiryNav active="details"');
+    expect(adminPart).toContain('inquiryPageWindow(edPage, employeePageCount)');
   });
 
   it('8ec63139: the admin no longer gets their OWN breakdown card above that table', () => {
@@ -177,8 +183,15 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     expect(selfBranch()).toContain('{secondaryBreakdownCard(');
   });
 
-  it('both branches carry the leave-requests tour anchor (one renders per role)', () => {
-    expect(leavePage.split('data-tour="leave-requests"').length - 1).toBe(2);
+  it('exactly one leave-requests tour anchor survives — the self-service card', () => {
+    // afd0a87c — was 2 (one per role branch). The admin branch's anchor went with its table. The tour
+    // step that targeted it is dropped from lib/module-tours.json in the same change, because `roles` is
+    // an allow-list and cannot express "every viewer EXCEPT an admin"; leaving it would strand the step
+    // on an anchor an admin never renders, and onboarding-tour.tsx retries 25 x 140ms before falling back
+    // to a centred card — a ~3.5s dead pause.
+    expect(leavePage.split('data-tour="leave-requests"').length - 1).toBe(1);
+    const tours = JSON.parse(read('lib/module-tours.json')) as { leave: { steps: { id: string }[] } };
+    expect(tours.leave.steps.map((s) => s.id)).not.toContain('requests');
   });
 });
 

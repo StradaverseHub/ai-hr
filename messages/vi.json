@@ -5879,10 +5879,6 @@
           "title": "Yêu cầu nghỉ phép",
           "body": "Mở khung này để điền ngày, loại nghỉ phép và lý do, rồi gửi yêu cầu để phê duyệt."
         },
-        "requests": {
-          "title": "Theo dõi các yêu cầu của bạn",
-          "body": "Mỗi yêu cầu đều xuất hiện ở đây cùng trạng thái của nó. Dùng các nhãn phía trên để lọc theo đang chờ, đã duyệt hoặc bị từ chối."
-        },
         "config": {
           "title": "Cấu hình loại nghỉ phép",
           "body": "Quản trị viên thiết lập loại nghỉ phép, mức hưởng và năm nghỉ phép tại đây. Đây là nơi quản lý chính sách và ngày lễ."

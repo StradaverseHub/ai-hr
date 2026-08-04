@@ -14,22 +14,30 @@
  *  1. IT IS THE ORG-WIDE REGISTER. Employee Leave Records is hard-narrowed to ONE employment
  *     (`employmentIds: [selected.employmentId]`), chosen from a picker. "Show me every pending leave
  *     across the group" has no other home. §2 asserts both shapes.
- *  2. EDIT A PENDING REQUEST (`EditLeaveDialog` → `editLeaveRequest`). Subject-only.
- *  3. WITHDRAW A PENDING REQUEST (`CancelLeaveDialog` → `cancelOwnLeave`). Subject-only.
- *  4. GIVE BACK DATES ON APPROVED LEAVE (`CancelDatesDialog` → `requestLeaveCancellation`). Subject-only.
- *     2–4 matter more than they look: `ess = !admin` on /leave suppresses an HR admin's own
- *     self-service blocks, and /approvals self-bans the viewer's own rows. So for an HR ADMIN the
- *     Requests table is the ONLY place their own leave can be edited, withdrawn or partly given back.
- *     They cannot move to Employee Leave Records, because an admin there is never the subject.
- *  5. ELEVEN FILTERS with no equivalent: company, business unit, department, location, employee
- *     (multi), duration, applied-from, applied-to, pending-with, approved-by, and `q` in the panel.
- *  6. THE FILTERED EXPORT `/leave/export`, whose only link in the entire application source is that
- *     page (already pinned by test/leave-requests-not-approvals.test.ts).
+ *  2. EDIT A PENDING REQUEST (`EditLeaveDialog` → `editLeaveRequest`). Subject-only. GENUINELY LOST.
+ *  3. WITHDRAW A PENDING REQUEST (`CancelLeaveDialog` → `cancelOwnLeave`). Subject-only. NOT LOST.
+ *  4. GIVE BACK DATES ON APPROVED LEAVE (`CancelDatesDialog` → `requestLeaveCancellation`). NOT LOST.
+ *
+ *     CORRECTION (afd0a87c). This file used to claim that for an HR ADMIN the Requests table was "the
+ *     ONLY place their own leave can be edited, withdrawn or partly given back". That was FALSE for 3
+ *     and 4. components/planned-absences.tsx gates `cancelEligible` and `selfCancelEligible` on
+ *     `personId === viewerPersonId` with NO admin exclusion — only `adminCancelEligible` carries a
+ *     self-ban — and planned-absences-grid.tsx renders both dialogs off those flags for every viewer.
+ *     So withdrawing and giving back your own leave both still work from the dashboard calendar,
+ *     bounded only by its visible week/month window. Only 2 (edit a pending request) is truly homeless
+ *     for an admin, and withdraw-and-reapply is the workaround. Disclosed in the approved plan.
+ *  5. ELEVEN FILTERS with no equivalent. GENUINELY LOST, disclosed and accepted.
+ *  6. THE FILTERED EXPORT `/leave/export`. Its route is DELETED in the same change rather than left
+ *     unreachable — an admin download nothing links to is worse than none.
+ *
+ * THE HOLD IS OVER. The reporter has asked plainly for the removal, with no relocation, and said they
+ * will redesign Employee Leave Record separately. §3 below therefore inverts from "HELD, and here is what
+ * it alone can do" into "REMOVED, and here is where each item now lives or that it is an accepted loss".
  *
  * Composition is asserted from SOURCE — the RSC pages cannot render in this suite (same precedent as
  * test/leave-inquiry-surfaces.test.ts). The gate helper is pure, so it is exercised directly.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { canAdminCancelLeave, LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '../lib/leave-status';
@@ -158,60 +166,58 @@ describe('§2 canAdminCancelLeave mirrors adminCancelLeave’s gates', () => {
   });
 });
 
-// ── §3 HELD: why the Requests subsection is still mounted ─────────────────────────────────────────
-describe('§3 the Requests subsection is HELD, and here is what it alone can do', () => {
-  it('1. it is the ORG-WIDE register; Employee Leave Records is one employee at a time', () => {
+// ── §3 REMOVED: where each capability went, or that its loss was accepted ─────────────────────────
+describe('§3 the Requests subsection is REMOVED — where each of its six capabilities went', () => {
+  it('1. the ORG-WIDE register is an ACCEPTED LOSS; Employee Leave Records stays one employee at a time', () => {
+    // The destination is unchanged and still per-employee, which is exactly why it is not a replacement.
     expect(recordsPage).toContain('employmentIds: [selected.employmentId]');
     expect(recordsPage).toContain('pickInquiryEmployee(employees, sp.emp)');
-    // /leave passes no employmentIds narrowing of its own — it lists everyone in scope.
-    expect(leavePage).toContain('companyIds: scopeIds');
-    expect(leavePage).not.toContain('employmentIds: [selected.employmentId]');
+    // And /leave no longer runs an unnarrowed org-wide request read at all.
+    expect(leavePage).not.toContain('listLeaveRequestsPage(session');
   });
 
-  it('2-4. edit / withdraw / give-back are SUBJECT-ONLY and cannot move to a per-employee admin screen', () => {
-    for (const dialog of ['<EditLeaveDialog', '<CancelLeaveDialog', '<CancelDatesDialog']) {
-      expect(leavePage.includes(dialog), dialog).toBe(true);
-      expect(recordsPage.includes(dialog), dialog).toBe(false);
-    }
-    // The reason they cannot move: each of the three services asserts the caller IS the subject, and
-    // an admin on Employee Leave Records is looking at somebody else by construction.
+  it('2. editing your OWN pending request is the one real loss for an admin', () => {
+    // EditLeaveDialog SURVIVES in source and still works for an ordinary employee — it is built from
+    // `selfHistory`, which is the viewer's own rows. What an ADMIN loses is reaching it: selfHistory is
+    // `admin ? [] : …`, so an admin renders no self-service rows and therefore no edit control, and
+    // Employee Leave Records cannot stand in because an admin there is never the subject. Withdraw-and-
+    // reapply is the workaround; disclosed in the approved plan.
+    expect(leavePage).toContain('<EditLeaveDialog');
+    expect(leavePage).toContain('const selfHistory = admin ? [] :');
+    expect(recordsPage.includes('<EditLeaveDialog')).toBe(false);
+    // The service is untouched — nothing about the ability was deleted, only the surface that reached it.
+    expect(read('core/leave.ts')).toContain('export async function editLeaveRequest');
+  });
+
+  it('3-4. withdraw and give-back are NOT lost — the dashboard calendar already carries both', () => {
+    // This is the claim the old header got wrong. Asserted at the surviving home so it cannot rot again.
+    const absences = read('components/planned-absences.tsx');
+    const grid = read('components/planned-absences-grid.tsx');
+    // Neither self-service gate excludes an admin; only the admin-cancel one self-bans.
+    expect(absences).toContain('const cancelEligible = (personId: string, l: Leave): boolean =>');
+    expect(absences).toContain('const selfCancelEligible = (personId: string, l: Leave): boolean =>');
+    expect(absences).toContain('(viewerPersonId == null || personId !== viewerPersonId) &&');
+    // …and the grid renders both dialogs off those flags for every viewer.
+    expect(grid).toContain('<CancelLeaveDialog');
+    expect(grid).toContain('<CancelDatesDialog');
+    // The services stay the authority and are untouched.
     const core = read('core/leave.ts');
-    expect(core).toContain('export async function editLeaveRequest');
     expect(core).toContain('export async function cancelOwnLeave');
     expect(core).toContain('export async function requestLeaveCancellation');
-    // And an HR admin's own self-service blocks on /leave are suppressed, so the Requests table is
-    // the only surface that shows them their own rows with controls.
-    expect(leavePage).toContain('const ess = !admin;');
   });
 
-  it('5. eleven filters exist only on the Requests subsection', () => {
-    const onlyThere = [
-      "name: 'company'",
-      "name: 'bu'",
-      "name: 'dept'",
-      "name: 'loc'",
-      "name: 'emp'",
-      "name: 'duration'",
-      "name: 'appliedFrom'",
-      "name: 'appliedTo'",
-      "name: 'pendingWith'",
-      "name: 'approvedBy'",
-    ];
-    for (const f of onlyThere) {
-      expect(leavePage.includes(f), `/leave should have ${f}`).toBe(true);
-      expect(recordsPage.includes(f), `records should NOT have ${f}`).toBe(false);
+  it('5. the eleven filters are an ACCEPTED LOSS — gone from /leave, never present on records', () => {
+    for (const f of ["name: 'bu'", "name: 'loc'", "name: 'duration'", "name: 'appliedFrom'", "name: 'appliedTo'", "name: 'pendingWith'", "name: 'approvedBy'"]) {
+      expect(leavePage.includes(f), `/leave should no longer have ${f}`).toBe(false);
+      expect(recordsPage.includes(f), `records never had ${f}`).toBe(false);
     }
   });
 
-  it('6. /leave/export would be orphaned by the removal', () => {
-    expect(leavePage).toContain('/leave/export?');
-    expect(recordsPage).not.toContain('/leave/export?');
-  });
-
-  it('the hold is recorded where the next reader of the page will meet it', () => {
-    // A finding that lives only in a report is a finding that gets re-litigated.
-    expect(recordsPage).toContain('STEP 2 — deleting the Requests subsection — IS NOT DONE');
-    expect(recordsPage).toContain('test/leave-records-cancel.test.ts');
+  it('6. /leave/export is DELETED, not left orphaned', () => {
+    expect(existsSync(root + 'app/leave/export/route.ts')).toBe(false);
+    expect(leavePage).not.toContain('/leave/export?');
+    // The surviving per-employee download is untouched.
+    expect(existsSync(root + 'app/leave/employee-records/export/route.ts')).toBe(true);
   });
 });
 

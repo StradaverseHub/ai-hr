@@ -182,7 +182,9 @@ describe('the export routes write nothing, so they survive suspension by constru
   it.each([
     'app/reports/export/route.ts',
     'app/analytics/export/route.ts',
-    'app/leave/export/route.ts',
+    // afd0a87c — app/leave/export/route.ts is DELETED. It was the filtered export for the org-wide leave
+    // register, whose only links in the whole application were on the section that has been removed; an
+    // unreachable admin download is worse than none. A route that does not exist cannot write.
   ])('%s performs no insert, update or event append', (path) => {
     const src = readFileSync(path, 'utf8');
     expect(src).not.toMatch(/\.insert\(/);

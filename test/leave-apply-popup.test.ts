@@ -45,7 +45,11 @@ describe('/leave: leave types are localized and sorted ONCE at the source', () =
     expect(sortAt).toBeGreaterThan(-1);
     // Every `leaveTypes.map(` / `leaveTypes` read that builds options must come after the sort.
     const consumers = [...page.matchAll(/leaveTypes\.map\(/g)].map((m) => m.index ?? -1);
-    expect(consumers.length).toBeGreaterThanOrEqual(4);
+    // afd0a87c — was >= 4. Two of the four consumers were the retired request table's leave-type filter
+    // options; removing the table removed them. The PROPERTY this test defends is unchanged and is the
+    // line below: whatever the count, every consumer reads the array AFTER the single sort. The count is
+    // kept only as a tripwire against the regex silently matching nothing and making that check vacuous.
+    expect(consumers.length).toBeGreaterThanOrEqual(1);
     for (const at of consumers) expect(at).toBeGreaterThan(sortAt);
   });
 

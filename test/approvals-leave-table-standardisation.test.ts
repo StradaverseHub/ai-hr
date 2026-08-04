@@ -85,23 +85,33 @@ describe('33bf1a2d — the leave-request cells are SHARED, not copied', () => {
     }
   });
 
-  it('BOTH tables consume the shared cells (the anti-drift seam)', () => {
-    for (const [file, src] of [
-      [APPROVALS, approvals],
-      [MY_LEAVE, myLeave],
-    ] as const) {
-      expect(src, `${file} must import the shared cells`).toMatch(
-        /from '@\/components\/leave\/leave-request-cells'/,
-      );
-      for (const name of ['LeaveEmployeeCell', 'LeaveTypeCell', 'LeaveDaysCell']) {
-        expect(src, `${file} must render <${name}>`).toContain(`<${name}`);
-      }
+  it('the surviving table consumes the shared cells, and the seam is still extracted', () => {
+    // afd0a87c — there is only ONE leave-request table left. My Leave's org-wide Requests table was
+    // removed at the reporter's request, so "BOTH tables" no longer has two sides.
+    //
+    // The seam is asserted MORE firmly rather than less: the whole point of extracting these cells was
+    // that the next surface to list leave requests reuses them instead of hand-writing a third copy.
+    // The reporter has said they will redesign Employee Leave Record separately — that is exactly the
+    // surface most likely to grow a table, and it must consume these.
+    expect(approvals, `${APPROVALS} must import the shared cells`).toMatch(
+      /from '@\/components\/leave\/leave-request-cells'/,
+    );
+    for (const name of ['LeaveEmployeeCell', 'LeaveTypeCell', 'LeaveDaysCell']) {
+      expect(approvals, `${APPROVALS} must render <${name}>`).toContain(`<${name}`);
     }
+    // The extracted module survives with all four cells exported, ready for that second consumer.
+    for (const name of ['LeaveEmployeeCell', 'LeaveTypeCell', 'LeaveDaysCell', 'LeaveAttachmentCell']) {
+      expect(cells, `${CELLS} must still export ${name}`).toContain(`export function ${name}(`);
+    }
+    // And My Leave must not quietly grow a hand-written replacement.
+    expect(myLeave.includes('<LeaveEmployeeCell'), 'My Leave has no leave-request table any more').toBe(false);
   });
 
-  it('neither table hand-writes the cell markup any more', () => {
-    // The type chip is built from styleFor(...).chip. If either page destructures it again, someone has
-    // copied the chip back inline and the two tables are free to drift apart a second time.
+  it('the surviving table does not hand-write the cell markup', () => {
+    // The type chip is built from styleFor(...).chip. If the page destructures it again, someone has
+    // copied the chip back inline and a future second table is free to drift from it.
+    // afd0a87c — MY_LEAVE is still scanned deliberately: it has no table now, so it must not acquire
+    // inline cell markup either.
     for (const [file, src] of [
       [APPROVALS, approvals],
       [MY_LEAVE, myLeave],
@@ -113,14 +123,12 @@ describe('33bf1a2d — the leave-request cells are SHARED, not copied', () => {
     // Same for the employee avatar: the ONLY <Avatar name={…}> left in the two request tables is the one
     // inside the shared cell. (app/leave/page.tsx keeps a separate Employee Details listing with its own
     // avatar, so this is asserted per-table, not per-file.)
-    // NB: `data-tour="leave-requests"` appears twice in app/leave/page.tsx (the self-service history card
-    // uses it too), so anchor on the Requests table's own heading instead.
-    const start = myLeave.indexOf("{t('requestsTitle')}");
-    expect(start, "My Leave → Requests table heading").toBeGreaterThan(-1);
-    const leaveRequestsTable = myLeave.slice(start);
-    expect(leaveRequestsTable, 'My Leave requests table must not render an Avatar directly').not.toContain(
-      '<Avatar',
-    );
+    // afd0a87c — My Leave's requests table is REMOVED, so there is no slice to scan. The promise it made
+    // is kept in a stronger form: My Leave must not render a request-table avatar ANYWHERE. Its Employee
+    // Details listing has its own avatar and is a different component, so anchor on the shared cell's own
+    // markup rather than on <Avatar in general.
+    expect(myLeave.includes("{t('requestsTitle')}"), 'the requests table is gone').toBe(false);
+    expect(myLeave, 'My Leave must not hand-write a leave-request cell').not.toContain('<LeaveEmployeeCell');
     expect(approvalsLeaveSection(), 'Approval Items leave table must not render an Avatar directly').not.toContain(
       '<Avatar',
     );

@@ -47,21 +47,32 @@ describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
       'submitAction={requestLeaveAction}',
       'previewAction={previewLeaveDeductionAction}',
       'deriveBalanceRow(b, bd ?? null)',
-      '<AdminCancelLeaveDialog',
     ]) {
       expect(leavePage.includes(kept), kept).toBe(true);
     }
+    // afd0a87c — AdminCancelLeaveDialog went with the request table, and is NOT a loss: cancelling
+    // someone else's leave lives on Employee Leave Record and on the dashboard calendar. Asserted at both
+    // surviving homes rather than merely dropped, so a later edit cannot quietly leave it homeless.
+    expect(leavePage.includes('<AdminCancelLeaveDialog')).toBe(false);
+    expect(read('app/leave/employee-records/page.tsx')).toContain('<AdminCancelLeaveDialog');
+    expect(read('components/planned-absences-grid.tsx')).toContain('<AdminCancelLeaveDialog');
   });
 
-  it('offers a filter for every column, all multi-select', () => {
-    // Employee and Days had no filter at all; company / BU / department / location were single-select.
-    for (const name of ["name: 'company'", "name: 'bu'", "name: 'dept'", "name: 'loc'", "name: 'emp'", "name: 'duration'", "name: 'type'", "name: 'status'"]) {
-      expect(leavePage.includes(name), name).toBe(true);
+  it('the every-column filter set is gone with the table it narrowed', () => {
+    // INVERTED. 8ec63139 asked for a filter on every column of the org-wide request table, and this
+    // asserted all eight existed and reached the read as lists. The table itself has now been removed at
+    // the reporter's request, so the filters have nothing to narrow. Their loss is disclosed and accepted
+    // in the approved plan; what must NOT happen is filters surviving with no table, or a read still
+    // running for a table nobody renders.
+    for (const name of ["name: 'bu'", "name: 'loc'", "name: 'duration'", "name: 'status'"]) {
+      expect(leavePage.includes(name), name).toBe(false);
     }
-    expect(leavePage.includes("kind: 'select',\n      name: 'company'")).toBe(false);
-    // Every one of them reaches the read as a list.
-    for (const param of ['filterCompanyIds:', 'businessUnitIds:', 'departmentIds:', 'locationIds:', 'employmentIds:', 'durationTypes:']) {
-      expect(leavePage.includes(param), param).toBe(true);
+    for (const param of ['businessUnitIds:', 'locationIds:', 'durationTypes:']) {
+      expect(leavePage.includes(param), param).toBe(false);
+    }
+    // The Employee Details listing keeps its OWN filters — company, department and employment status.
+    for (const name of ["name: 'edCompany'", "name: 'edDept'", "name: 'edStatus'"]) {
+      expect(leavePage.includes(name), name).toBe(true);
     }
   });
 
@@ -294,24 +305,31 @@ describe('650b6eb8: Employee Details — the tab an HR admin lands on', () => {
     expect(leavePage).toContain('const employeeHref = (employmentId: string) => `/leave/employee-balances?emp=${employmentId}`;');
   });
 
-  it('the two listings on the page cannot clear each other', () => {
-    // Every control of one listing carries the other's params — hidden inputs in the forms, `hidden` on
-    // the panel + chips. Without this, filtering employees would silently blank the leave-request table.
+  it('one listing remains, and it still carries its own state', () => {
+    // INVERTED. Two independently-filtered listings shared this page, so every control of one carried the
+    // other's params or filtering employees would silently blank the leave requests. afd0a87c removed the
+    // request table, so the invariant it protected no longer has two sides — and requestHiddenParams must
+    // be gone, not merely unused, or the next author will wire a control to an empty carrier.
     expect(leavePage).toContain('hidden={employeeHiddenParams}');
-    expect(leavePage).toContain('hidden={requestHiddenParams}');
+    expect(leavePage.includes('requestHiddenParams')).toBe(false);
     expect(panel).toContain('hidden?: readonly (readonly [string, string])[];');
-    // The employee listing's params are prefixed because q/page/company/dept/status are already spoken for.
+    // The employee listing's params stay prefixed: renaming them would break saved admin links.
     for (const param of ['edQ?: string', 'edPage?: string', 'edCompany?: string | string[]']) {
       expect(leavePage.includes(param), param).toBe(true);
     }
   });
 
-  it('the org-wide leave-request table 8ec63139 filtered is still on the page', () => {
-    // The redesign changes what an admin lands on, not what they can reach: dropping this table would
-    // undo the every-column filter the same reporter asked for in the same round.
-    expect(leavePage).toContain('listLeaveRequestsPage(session, {');
-    expect(leavePage).toContain("t('requestsTitle')");
-    expect(leavePage).toContain('/leave/export?');
+  it('the org-wide leave-request table is GONE — afd0a87c, and it took its export with it', () => {
+    // INVERTED. This asserted the table was still on the page, on the reasoning that dropping it would
+    // undo the every-column filter the same reporter asked for in the same round. The reporter has since
+    // asked plainly for the removal with no relocation, and said they will redesign Employee Leave Record
+    // separately. What is asserted now is that the removal was COMPLETE — a half-removed table leaves the
+    // read running for nobody, which is the expensive half.
+    expect(leavePage).not.toContain('listLeaveRequestsPage(session, {');
+    expect(leavePage).not.toContain("t('requestsTitle')");
+    expect(leavePage).not.toContain('/leave/export?');
+    // The employee listing this page is now ABOUT must survive it.
+    expect(leavePage).toContain('listEmployeesPage(session, {');
   });
 
   it('numbers the pages — 1 2 3 Next >, with the far ends always one click away', () => {
