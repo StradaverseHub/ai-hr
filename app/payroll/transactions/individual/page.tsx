@@ -3,21 +3,24 @@ import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { ErrorBanner, PageHeader } from '@/components/ui';
-import { TxnGrid, type WizardBatch, type WizardEmployee } from './txn-grid';
+import { TxnWorkspace, type TxnBatch, type TxnEmployee } from './txn-workspace';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 
 /**
- * 1.2.2 Individual Transaction — a guided four-step flow for one-off payroll items (feedback 65377ed0).
- * The whole page is the TxnGrid wizard: Step 1 search/filter + multi-select employees → Step 2 pick the
- * period + cycle (resolving or creating a draft batch, or a period-keyed target when no run exists yet) →
- * Step 3 an editable grid → Step 4 a review summary then one atomic Save.
+ * 1.2.2 Individual Transaction — one two-panel workspace for one-off payroll items (feedback 44129979,
+ * replacing 65377ed0's four-step wizard).
  *
- * The old "Unattached Transactions" ledger that used to sit below the wizard has been removed from the
- * screen (the reporter found it confusing). Its STORAGE mechanism is untouched: entering rows for a month
- * that has no draft run yet still saves them period-keyed (nullable batch), and generatePayslips attaches
- * them automatically when the month's regular run is created — so early entry keeps working and nothing is
- * deleted. No calc / attach behaviour changed; this is purely the on-screen surface.
+ * Employees on the left; the selected employee's existing one-off transactions, itemised, on the right,
+ * with Create / Edit / Delete / Duplicate in place. The transactions themselves are NOT loaded here: they
+ * are fetched per employee, on demand, by a server action (fetchEmployeeTxnPanelAction) — this page loads
+ * only what the left panel and the entry form need.
+ *
+ * STORAGE AND PAYROLL BEHAVIOUR ARE UNCHANGED by the redesign. Entering rows for a month that has no
+ * draft run still saves them period-keyed (nullable batch), and generatePayslips attaches them when the
+ * month's regular run is created — so early entry keeps working and nothing is deleted or recalculated.
+ * This is purely the on-screen surface.
  */
 export default async function IndividualTransactionPage({
   searchParams,
@@ -29,7 +32,7 @@ export default async function IndividualTransactionPage({
   const { error } = await searchParams;
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
   // f1564110 Phase 3 — with the kernel consuming this ledger, a NEW payable (earning/deduction) row must
-  // name a Payroll Item Master item (its statutory flags drive the treatment). The wizard hides the generic
+  // name a Payroll Item Master item (its statutory flags drive the treatment). The form hides the generic
   // earning/deduction options accordingly; the service re-enforces (ComponentRequiredError).
   const individualTxnPayOn = settingEnabledOrDefault(s, 'payroll.individual_txn_pay_enabled');
 
@@ -37,20 +40,20 @@ export default async function IndividualTransactionPage({
     listBatches(s, scopeIds),
     listEmployees(s, scopeIds),
     listCompanies(s),
-    listPayComponents(s), // Payroll Item Master — the wizard item picker is sourced from these active items.
+    listPayComponents(s), // Payroll Item Master — the form's item picker is sourced from these active items.
   ]);
   const draftBatches = allBatches.filter((b) => b.status === 'draft');
-  // Active payable earning/deduction items from the master (archived already excluded by listPayComponents).
-  const wizardPayItems = payComponents.map((c) => ({ id: c.id, code: c.code, name: c.name, kind: c.kind }));
+  const payItems = payComponents.map((c) => ({ id: c.id, code: c.code, name: c.name, kind: c.kind }));
 
-  // The wizard's Company pre-filter is view-only narrowing on the already access-fenced employee list, so
-  // scope the dropdown to the same authorised set (scopeIds) that listEmployees was fenced to — never let
-  // the dropdown widen the set. RLS already excludes archived companies here.
+  // The Company pre-filter is view-only narrowing on the already access-fenced employee list, so scope the
+  // dropdown to the same authorised set (scopeIds) that listEmployees was fenced to — never let the
+  // dropdown widen the set. RLS already excludes archived companies here. The currency rides along so the
+  // right panel labels its money by the COMPANY's currency rather than assuming ringgit (lib/money).
   const scopedCompanies = companies
     .filter((c) => scopeIds.includes(c.id))
-    .map((c) => ({ id: c.id, name: c.name }));
+    .map((c) => ({ id: c.id, name: c.name, currency: c.currency ?? null }));
 
-  const wizardEmployees: WizardEmployee[] = employees.map((e) => ({
+  const txnEmployees: TxnEmployee[] = employees.map((e) => ({
     employmentId: e.employmentId,
     name: e.name,
     employeeCode: e.employeeCode,
@@ -61,16 +64,16 @@ export default async function IndividualTransactionPage({
     position: e.position,
     company: e.company,
     companyId: e.companyId,
-    // Derive employment status from termination (matches the View page convention) — the Step-1 status filter.
+    // Derive employment status from termination (matches the View page convention) — the status filter.
     status: e.terminatedOn == null ? 'active' : 'ended',
   }));
-  const wizardBatches: WizardBatch[] = draftBatches.map((b) => ({
+  const txnBatches: TxnBatch[] = draftBatches.map((b) => ({
     id: b.id,
     companyId: b.companyId,
     payPeriod: b.payPeriod,
     runType: b.runType,
     runSeq: b.runSeq,
-    scope: (b as { scope?: WizardBatch['scope'] }).scope ?? null,
+    scope: (b as { scope?: TxnBatch['scope'] }).scope ?? null,
   }));
 
   const errorKeys = new Set([
@@ -83,14 +86,13 @@ export default async function IndividualTransactionPage({
     'rowIncomplete',
     'duplicateRow',
     'periodInvalid',
-    // f1564110 Phase 3 — component required/invalid on payable rows (kernel-consumed ledger).
     'componentRequired',
     'componentInvalid',
   ]);
   const errorMessage = error && errorKeys.has(error) ? t(`individual.${error}`) : error;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader
         back={{ href: '/payroll/transactions', label: t('title') }}
         title={t('individual.title')}
@@ -106,14 +108,16 @@ export default async function IndividualTransactionPage({
 
       <ErrorBanner message={errorMessage} />
 
-      {/* The four-step wizard is the whole screen (the old unattached ledger was removed — see the file docstring). */}
-      <TxnGrid
-        employees={wizardEmployees}
-        batches={wizardBatches}
+      <TxnWorkspace
+        employees={txnEmployees}
+        batches={txnBatches}
         companies={scopedCompanies}
-        payItems={wizardPayItems}
+        payItems={payItems}
         processHref="/payroll/process"
         requireComponent={individualTxnPayOn}
+        // Resolved on the SERVER through the tenant timezone: a browser an hour either side of MYT
+        // midnight would otherwise default a new transaction into the wrong month.
+        currentPeriod={todayInKualaLumpur().slice(0, 7)}
       />
     </div>
   );
