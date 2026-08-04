@@ -179,7 +179,8 @@ import {
 } from '../db/schema';
 
 /** ADR-0069: the set of "employmentId|leaveTypeId" keys with an ACTIVE frozen encashment snapshot, for the
- *  year-boundary sweeps (openLeaveYear, accrueEarnedLeave, expireCarriedLeave, grantAdHocLeave) to skip —
+ *  year-boundary sweeps (openLeaveYear, accrueEarnedLeave, expireCarriedLeave) to skip — the ad-hoc/festive
+ *  grant was a fourth until 38f1fd40 retired it; any future grant path must join this skip list —
  *  the DB trigger would reject the write anyway; skipping here avoids aborting the whole batch on one
  *  frozen employee. Read-only, no events.append (CLAUDE.md skip rule). */
 /** 491c499f — the same set, exported for core/leave-adjustment.ts. Re-implementing it there would give the
@@ -901,14 +902,6 @@ export class DuplicateLeaveApplicationError extends Error {
   }
 }
 
-// ADR-0066 festive / one-off grant: invalid input (bad days/date/leave-type) or an authority violation
-// (a company-scoped admin attempting a group-wide grant, or a grant for a company they don't administer).
-export class AdHocLeaveGrantError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AdHocLeaveGrantError';
-  }
-}
 
 // Supporting-document config: the applicant must supply a remark when the type sets employeeRemarkRequired.
 export class LeaveRemarkRequiredError extends Error {
@@ -5578,7 +5571,8 @@ export const STANDING_LEAVE_CODES = ['ANNUAL', 'SICK', 'HOSPITALIZATION'] as con
  * expireCarriedLeave's later expiry forfeit). Prefixed `sys:` — no human would type this, and
  * grantAdHocLeave only ever writes POSITIVE days (validated `days <= 0` throws), so a machine-forfeit
  * reason can never collide with a human festive-grant reason under the (leaveTypeId, effectiveOn,
- * reason) idempotency key (core/leave.ts grantAdHocLeave). Purely additive tagging — no behaviour
+ * reason) idempotency key — the shape grantAdHocLeave used before 38f1fd40 retired it, and the one any
+ * future grant path should reuse. Purely additive tagging — no behaviour
  * change to any forfeit amount, timing, or idempotency check (all of which stay reason-blind).
  */
 export const CARRY_FORFEIT_REASON_CAP = 'sys:carry_forward_cap';
@@ -8485,237 +8479,5 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
 // ADR-0066: this is why festive days escape annual carry-cap/forfeit). Expiry clawback is DEFERRED; `expiresOn`
 // is accepted and stored only as a payload/reason note (no sweep this pass).
 
-/** Credit `days` to every active employee of (companyId, leaveTypeId) as a dated `adjustment`. Returns the
- *  number of newly-credited employments (idempotent re-runs return 0 newly credited). */
-export async function grantAdHocLeave(
-  ctx: SessionContext,
-  p: {
-    /** Target company. null = group-wide (every active employment) — requires a GROUP admin. */
-    companyId: string | null;
-    leaveTypeId: string;
-    days: number;
-    reason: string;
-    /** Date the grant takes effect (the ledger `effective_on`). */
-    effectiveOn: string;
-    /** Optional metadata only — DEFERRED: no auto-clawback this pass (ADR-0066). Stored in the event payload. */
-    expiresOn?: string | null;
-  },
-) {
-  // ── Validation (before opening the transaction; a bad grant persists nothing) ──
-  // Order matters (re-plan round 5): the finite/positive check runs on the RAW value first (so NaN still
-  // yields "Days must be a positive number."), THEN the 0.5-increment check ALSO runs on the raw value —
-  // BEFORE the 2-dp rounding below. Halves are exact in binary floats, so raw*2 is an integer iff the value
-  // is a genuine half-day step; checking after rounding would silently accept e.g. 0.501 (rounds to 0.5).
-  const raw = Number(p.days);
-  if (!Number.isFinite(raw) || raw <= 0) throw new AdHocLeaveGrantError('Days must be a positive number.');
-  if (!Number.isInteger(raw * 2)) {
-    throw new AdHocLeaveGrantError('Days must be in 0.5 increments (e.g. 0.5, 1.0, 1.5, 2.0).');
-  }
-  if (raw > 366) throw new AdHocLeaveGrantError('Days cannot exceed 366.');
-  const days = Math.round(raw * 100) / 100;
-  const reason = p.reason?.trim();
-  if (!reason) throw new AdHocLeaveGrantError('A reason is required (e.g. "CNY 2026").');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveOn)) throw new AdHocLeaveGrantError('A valid effective date is required.');
 
-  // ── Authority (resolves the silent-partial-write critique): a group-wide grant needs a GROUP admin; a
-  // company-scoped grant needs admin authority over that company. A company-scoped admin attempting a
-  // group-wide grant is rejected outright — never silently scoped down. ──
-  // Back-compat: a roles-only session (no `grants`) is group-wide, exactly as withTenant treats it.
-  // withEffectiveGrants (lib/authz.ts) builds the effective grants the same way so isGroupAdmin / hasGrantFor
-  // see a group-wide admin (e.g. test adminCtx).
-  const effective: SessionContext = withEffectiveGrants(ctx);
-  if (p.companyId == null) {
-    if (!isGroupAdmin(effective)) {
-      throw new AdHocLeaveGrantError('A group-wide festive grant requires a group administrator.');
-    }
-  } else if (!(isGroupAdmin(effective) || hasGrantFor(effective, 'hr_admin', p.companyId))) {
-    throw new AdHocLeaveGrantError('You are not permitted to grant leave for this company.');
-  }
 
-  return withTenant(ctx, async (tx) => {
-    // Validate the leave type exists (visible) so a typo doesn't post orphaned ledger rows.
-    const [lt] = await tx
-      .select({ id: leaveType.id })
-      .from(leaveType)
-      .where(eq(leaveType.id, p.leaveTypeId))
-      .limit(1);
-    if (!lt) throw new AdHocLeaveGrantError('Leave type not found.');
-
-    // Target set = active employments as of effectiveOn. Edge rules (documented): include only employments
-    // hired on/before effectiveOn and not terminated before it (mirror openLeaveYear's terminatedOn >= start
-    // convention). Target by employment.companyId so multi-company employment isn't double-granted under one
-    // company-scoped grant.
-    const targets = await tx
-      .select({ employmentId: employment.id })
-      .from(employment)
-      .where(
-        and(
-          p.companyId != null ? eq(employment.companyId, p.companyId) : undefined,
-          lte(employment.hiredOn, p.effectiveOn),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, p.effectiveOn)),
-        ),
-      );
-    // Resolved cohort count = intent. Surfaced in the return so a partial write under can_see_employment RLS
-    // shows up as an explicit number, never a silent partial.
-    const targeted = targets.length;
-
-    // Idempotency (resolves the double-click critique): skip any employment that already has an adjustment
-    // for this exact (leaveTypeId, effectiveOn, reason) — re-running the identical grant is a no-op. Mirrors
-    // openLeaveYear's openedSet dedupe.
-    const existing = await tx
-      .select({ employmentId: leaveLedger.employmentId })
-      .from(leaveLedger)
-      .where(
-        and(
-          targeted > 0 ? inArray(leaveLedger.employmentId, targets.map((e) => e.employmentId)) : sql`false`,
-          eq(leaveLedger.leaveTypeId, p.leaveTypeId),
-          eq(leaveLedger.entryType, 'adjustment'),
-          eq(leaveLedger.effectiveOn, p.effectiveOn),
-          eq(leaveLedger.reason, reason),
-        ),
-      );
-    const already = new Set(existing.map((r) => r.employmentId));
-
-    // ADR-0069: skip any target employment with an ACTIVE frozen encashment snapshot for this leave type —
-    // the DB trigger would reject the write anyway; skipping here avoids aborting the whole grant on one
-    // frozen employee.
-    const frozenSet =
-      targeted > 0 ? await frozenSnapshotKeySet(tx, targets.map((e) => e.employmentId), [p.leaveTypeId]) : new Set<string>();
-
-    let granted = 0;
-    for (const e of targets) {
-      if (already.has(e.employmentId)) continue;
-      if (frozenSet.has(`${e.employmentId}|${p.leaveTypeId}`)) continue; // ADR-0069: balance frozen
-      await tx.insert(leaveLedger).values({
-        tenantId: ctx.tenantId,
-        employmentId: e.employmentId,
-        leaveTypeId: p.leaveTypeId,
-        entryType: 'adjustment',
-        days: days.toFixed(2),
-        effectiveOn: p.effectiveOn,
-        reason,
-      });
-      granted += 1;
-    }
-
-    // Substrate: ONE summary DomainEvent. The per-employment ledger rows are the per-item audit (deliberate
-    // skip documented inline, matching openLeaveYear / accrueEarnedLeave).
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-grant',
-      aggregateId: ctx.tenantId,
-      eventType: 'leave.ad-hoc.granted',
-      actor: actorOf(ctx),
-      payload: {
-        leaveTypeId: p.leaveTypeId,
-        companyId: p.companyId,
-        days,
-        count: granted,
-        targeted,
-        reason,
-        effectiveOn: p.effectiveOn,
-        expiresOn: p.expiresOn ?? null,
-      },
-    });
-    return { granted, targeted, days, reason, effectiveOn: p.effectiveOn };
-  });
-}
-
-// ═════════════════════ Multi-company festive grant (re-plan, round 5) ═════════════════════
-// One submission targets several companies at once. NOT atomic across companies — this is N sequential
-// per-company calls to the existing `grantAdHocLeave`, each its own `withTenant` transaction, its own
-// authority gate, and its own `leave.ad-hoc.granted` DomainEvent (companyId in the payload). The per-company
-// events ARE the per-company audit trail (core/admin.ts listAdHocLeaveGrants renders one row per event) — no
-// extra summary event is appended here (deliberate skip, same pattern as the shipped single-company grant).
-// A mid-loop failure leaves earlier companies granted and later ones not; the thrown error names the
-// companies completed so far and instructs HR to re-submit the identical form. The idempotency dedupe key
-// inside grantAdHocLeave (employmentId, leaveTypeId, entryType, effectiveOn, reason — DAYS EXCLUDED) means an
-// unchanged resubmit safely skips already-granted companies and only completes the rest. A resubmit with
-// CHANGED days or reason is treated as a brand-new grant — this is pre-existing single-company behavior,
-// deliberately left unaltered.
-
-/** Credit `days` to every active employee across MULTIPLE companies in one call. Loops the existing
- *  `grantAdHocLeave` per company (all-or-nothing pre-flight authority check; NOT an atomic transaction
- *  across companies — see the block comment above). */
-export async function grantAdHocLeaveMulti(
-  ctx: SessionContext,
-  p: {
-    companyIds: string[];
-    leaveTypeId: string;
-    days: number;
-    reason: string;
-    effectiveOn: string;
-    expiresOn?: string | null;
-  },
-) {
-  const dedupedIds = [...new Set(p.companyIds)];
-  if (dedupedIds.length === 0) throw new AdHocLeaveGrantError('Select at least one company.');
-
-  // ── Pre-flight authority (all-or-nothing): every selected company must be grantable BEFORE any write, so a
-  // forged request naming one company the admin cannot administer fails cleanly with none granted. The UI
-  // (app/admin/leave/page.tsx) already narrows the offered options to administered companies — this is a
-  // backstop against a tampered/forged submission, not the primary gate. grantAdHocLeave still re-checks
-  // authority per call below; nothing is bypassed. ──
-  const effective = withEffectiveGrants(ctx);
-  if (!isGroupAdmin(effective)) {
-    const denied = dedupedIds.filter((id) => !hasGrantFor(effective, 'hr_admin', id));
-    if (denied.length > 0) {
-      throw new AdHocLeaveGrantError(`You are not permitted to grant leave for: ${denied.join(', ')}.`);
-    }
-  }
-
-  // ── Resolve companies (id, legalName, archivedAt) via withTenant so RLS still applies. Unknown id → hard
-  // error (nothing granted). Archived companies are skipped as a defense-in-depth safety net ONLY — the
-  // form's options come from listCompanies (core/read.ts), which already excludes archived companies, so in
-  // normal use there is nothing to skip; this only matters against a stale or tampered submission. ──
-  const rows = await withTenant(ctx, (tx) =>
-    tx
-      .select({ id: company.id, legalName: company.legalName, archivedAt: company.archivedAt })
-      .from(company)
-      .where(inArray(company.id, dedupedIds)),
-  );
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  for (const id of dedupedIds) {
-    if (!byId.has(id)) throw new AdHocLeaveGrantError('Unknown company selected.');
-  }
-  const skipped: string[] = [];
-  const active = dedupedIds.filter((id) => {
-    const c = byId.get(id)!;
-    if (c.archivedAt != null) {
-      skipped.push(id);
-      return false;
-    }
-    return true;
-  });
-  if (active.length === 0) throw new AdHocLeaveGrantError('No active companies selected.');
-
-  // ── Sequential per-company grants (NOT atomic — see block comment above). ──
-  let granted = 0;
-  let targeted = 0;
-  const grantedNames: string[] = [];
-  for (const id of active) {
-    const legalName = byId.get(id)!.legalName;
-    try {
-      const res = await grantAdHocLeave(ctx, {
-        companyId: id,
-        leaveTypeId: p.leaveTypeId,
-        days: p.days,
-        reason: p.reason,
-        effectiveOn: p.effectiveOn,
-        expiresOn: p.expiresOn,
-      });
-      granted += res.granted;
-      targeted += res.targeted;
-      grantedNames.push(legalName);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      const doneList = grantedNames.length > 0 ? grantedNames.join(', ') : '(none)';
-      throw new AdHocLeaveGrantError(
-        `Granted for ${doneList}. Failed at ${legalName}: ${message} ` +
-          `Re-submit the same form unchanged to grant the remaining companies; already-granted companies will not be double-credited.`,
-      );
-    }
-  }
-
-  return { granted, targeted, companies: grantedNames.length, skipped: skipped.length };
-}

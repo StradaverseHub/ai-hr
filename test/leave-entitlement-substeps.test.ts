@@ -47,7 +47,8 @@ const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'adjustments'] as const;
+// 38f1fd40 — two sub-steps, not three: Adjustments is retired and Run Earned Accrual moved into Service.
+const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service'] as const;
 
 /** Slice the Entitlement card's segment (its CardTitle to the Condition card's CardTitle). */
 function entitlementSegment(): string {
@@ -79,7 +80,7 @@ describe('7b945408 · the Entitlement step REUSES the SubStepBar (three sub-step
   it('renders the shared SubStepBar inside the Entitlement card — no reinvented nested bar', () => {
     // bc9be1e8 removed 'policies' again: 1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments.
     expect(panelSrc).toContain(
-      "const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'adjustments'] as const",
+      "const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service'] as const",
     );
     const seg = entitlementSegment();
     expect(seg).toContain('<SubStepBar');
@@ -228,13 +229,17 @@ describe('bc9be1e8 + 0d9cf710 · Company Entitlements is gone; its timeline live
 });
 
 describe('7b945408 · Adjustments — the festive grant tool + the relocated Run Accrual action', () => {
-  it('the adjustments sub-step renders festiveGrantSection then the accrualSection slot', () => {
-    const adjustments = subStepSlice(entitlementSegment(), 'adjustments');
-    const festive = adjustments.indexOf('{festiveGrantSection}');
-    const accrual = adjustments.indexOf('{accrualSection}');
-    expect(festive).toBeGreaterThan(-1);
-    expect(accrual).toBeGreaterThan(festive);
-    expect(panelSrc).toContain('accrualSection?: ReactNode');
+  it('the SERVICE sub-step now carries the accrualSection slot, and festiveGrantSection is gone', () => {
+    // INVERTED (38f1fd40). This asserted the Adjustments sub-step rendered festiveGrantSection then
+    // accrualSection. The festive tool is deleted and Run Earned Accrual moved to Service Based
+    // Entitlements — deleting the sub-step without moving it would have removed the ONLY way to generate
+    // earned leave days, silently. Reachability is asserted here and in
+    // test/entitlement-adjustments-substep-removal.test.ts.
+    const service = subStepSlice(entitlementSegment(), 'service');
+    expect(service.indexOf('{accrualSection}'), 'accrualSection must render in the service sub-step').toBeGreaterThan(-1);
+    // It follows Preview Scenario, the tool it now sits beside.
+    expect(service.indexOf('{accrualSection}')).toBeGreaterThan(service.indexOf('{previewScenarioSection}'));
+    expect(panelSrc.includes('{festiveGrantSection}'), 'the festive slot is gone entirely').toBe(false);
   });
 
   it('the page composes the SAME EarnedAccrualDialog into the slot (page-level data prep, no fork)', () => {
@@ -262,13 +267,13 @@ describe('7b945408 · i18n — all six locales', () => {
     const en = JSON.parse(readFileSync(resolve(here, '../messages/en.json'), 'utf8'));
     expect(en.admin.leave.entitlementStep.schemes).toBe('Benefit Schemes');
     expect(en.admin.leave.entitlementStep.service).toBe('Service Based Entitlements');
-    expect(en.admin.leave.entitlementStep.adjustments).toBe('Adjustments');
+    expect(en.admin.leave.entitlementStep.adjustments, 'the retired sub-step title must be gone').toBeUndefined();
     for (const loc of LOCALES) {
       const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
       const leave = msgs?.admin?.leave ?? {};
       expect(typeof leave.entitlementStepsLabel, `${loc} entitlementStepsLabel`).toBe('string');
       const sub = leave.entitlementStep ?? {};
-      for (const key of ['schemes', 'service', 'adjustments', 'gradesCompanyWideBadge', 'previewHint', 'accrualHint']) {
+      for (const key of ['schemes', 'service', 'gradesCompanyWideBadge', 'previewHint', 'accrualHint']) {
         expect(typeof sub[key], `${loc}.admin.leave.entitlementStep.${key}`).toBe('string');
         expect((sub[key] as string).length, `${loc}.admin.leave.entitlementStep.${key} non-empty`).toBeGreaterThan(0);
       }

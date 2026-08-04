@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
-import { listAdHocLeaveGrants, listLeavePolicies } from '@/core/admin';
+import { listLeavePolicies } from '@/core/admin';
 // 4b0e76ae — the Leave Year Configuration section is GONE from Custom Settings, so the two reads that fed
 // it (listLeaveYearConfigs / leaveYearsWithRecords) went with it and their services no longer exist. What
 // this page still needs from the leave module is the ONE shared entitlement-year range, which the Run
@@ -31,7 +31,6 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { HalfDayCompanyPicker } from '@/components/leave/half-day-company-picker';
 import { LeaveTypePanel, type EntitlementPolicy, type LeaveEligibilityRule } from '@/components/leave-type-panel';
 import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
-import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
 import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
 import { LeaveRulePreviewDialog } from '@/components/leave/leave-rule-preview-dialog';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -115,7 +114,7 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, adHocGrants, gradeGroups, benefitSchemes, schemeEntitlements, sharedGroups, profileOptionsActive] =
+  const [types, policies, companies, grades, gradeGroups, benefitSchemes, schemeEntitlements, sharedGroups, profileOptionsActive] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
       listLeavePolicies(s),
@@ -125,7 +124,6 @@ export default async function LeaveEntitlementsPage({
       // dialog and BenefitSchemeConfig's grades prop. Archived rows still load so an existing grade-scoped
       // policy can render its grade name; the ACTIVE-only filters below are unchanged.
       listJobGrades(s, { includeArchived: true }),
-      listAdHocLeaveGrants(s),
       // Benefit Scheme & Leave Entitlement (b83c6a3b): the new configuration layer's data.
       listGradeGroups(s),
       listBenefitSchemes(s),
@@ -178,18 +176,6 @@ export default async function LeaveEntitlementsPage({
     .filter((p) => !p.validTo)
     .map((p) => ({ leaveTypeId: p.leaveTypeId, gradeId: p.gradeId, companyId: p.companyId, accrual: p.accrual }));
   const previewCompanies = companies.map((c) => ({ id: c.id, name: c.name, country: c.country }));
-  const recentGrants: FestiveGrantRow[] = adHocGrants.map((g) => ({
-    occurredAt: g.occurredAt.toISOString(),
-    companyName: g.companyId ? (companyNameById.get(g.companyId) ?? null) : null,
-    // fd7c8e20: the raw type id rides along so the embedded card can default-filter the list to its
-    // hosting leave type (display filter only — every grant row stays in this one shared array).
-    leaveTypeId: g.leaveTypeId ?? null,
-    leaveTypeName: g.leaveTypeId ? (typeNameById.get(g.leaveTypeId) ?? null) : null,
-    days: g.days,
-    count: g.count,
-    reason: g.reason,
-    effectiveOn: g.effectiveOn,
-  }));
   const todayIso = todayInKualaLumpur();
   // feedback 2c7c6385, re-pointed by 4b0e76ae: the Run-Earned-Accrual Leave-Year selector used to read the
   // managed leave_year_config records (9aa894a4) and fall back to a current-year..+6 range only when none
@@ -631,26 +617,6 @@ export default async function LeaveEntitlementsPage({
                     <p className="text-xs text-muted-foreground">{t('benefitSchemeHelp')}</p>
                   </div>
                   <BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} />
-                </div>
-              }
-              festiveGrantSection={
-                /* fd7c8e20 (ADR-0066): the One-Off / Festive Leave Grant tool, moved from the standalone
-                   page-bottom section into the Entitlement step (since 7b945408 it HEADS the Adjustments
-                   sub-step, so no top divider). Data prep (festiveCompanies, recentGrants) stays at page
-                   level and is shared by every panel — only the preselected leave type varies. -mx-4 lets
-                   the card's own px-4 gutters line up with the step's CardContent padding. */
-                <div className="space-y-1">
-                  <span className="text-xs font-medium text-muted-foreground">{t('festiveTitle')}</span>
-                  <div className="-mx-4">
-                    <FestiveGrantCard
-                      companies={festiveCompanies}
-                      canGroupWide={canGroupWide}
-                      leaveTypes={activeTypeOptions}
-                      recent={recentGrants}
-                      defaultDate={todayIso}
-                      defaultLeaveTypeId={lt.id}
-                    />
-                  </div>
                 </div>
               }
               halfDaySection={halfDaySection}

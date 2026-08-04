@@ -1924,40 +1924,6 @@ export function listLeavePolicies(ctx: SessionContext) {
   );
 }
 
-export type AdHocLeaveGrantRow = {
-  occurredAt: Date;
-  leaveTypeId: string | null;
-  companyId: string | null;
-  days: number | null;
-  count: number | null;
-  reason: string | null;
-  effectiveOn: string | null;
-};
-
-/** ADR-0066: recent festive / one-off grants, reconstructed from the `leave.ad-hoc.granted` event log
- *  (no dedicated table — the summary event is the record). Newest first. */
-export function listAdHocLeaveGrants(ctx: SessionContext, limit = 10) {
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({ occurredAt: domainEvent.occurredAt, payload: domainEvent.payload })
-      .from(domainEvent)
-      .where(eq(domainEvent.eventType, 'leave.ad-hoc.granted'))
-      .orderBy(desc(domainEvent.occurredAt))
-      .limit(limit);
-    return rows.map((r): AdHocLeaveGrantRow => {
-      const p = (r.payload ?? {}) as Record<string, unknown>;
-      return {
-        occurredAt: r.occurredAt,
-        leaveTypeId: (p.leaveTypeId as string | null) ?? null,
-        companyId: (p.companyId as string | null) ?? null,
-        days: p.days != null ? Number(p.days) : null,
-        count: p.count != null ? Number(p.count) : null,
-        reason: (p.reason as string | null) ?? null,
-        effectiveOn: (p.effectiveOn as string | null) ?? null,
-      };
-    });
-  });
-}
 
 // ───────────────────────── Public holiday calendar ─────────────────────────
 // Holidays are country-scoped (the attendance/leave working-day counters match on company.country),

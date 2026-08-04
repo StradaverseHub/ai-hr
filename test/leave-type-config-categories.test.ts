@@ -78,8 +78,11 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
     '<LeaveTypeEntitlementTable',
     // 6c775d68: the scoped Benefit Schemes management area follows the table inside the same step
     '{benefitSchemeSection}',
-    // fd7c8e20: the One-Off / Festive Leave Grant tool completes the step, below the schemes area
-    '{festiveGrantSection}',
+    // fd7c8e20's One-Off / Festive Leave Grant tool used to complete this step; 38f1fd40 removed it with
+    // the Adjustments sub-step. Its slot is gone entirely, so there is no marker to place. Run Earned
+    // Accrual, which shared that sub-step, moved into Service Based Entitlements and is asserted there
+    // (test/entitlement-adjustments-substep-removal.test.ts) rather than as a category marker here.
+    '{accrualSection}',
     // b8fcae73: the per-company entitlement policies timeline, relocated here from the retired
     // Eligibility card as this step's Company Entitlements sub-step (08bc6841 had already moved the
     // eligibility rules to Condition · Criteria; the Expiry sub-step 08bc6841 also created was removed

@@ -6,9 +6,9 @@
  *  (2) All five call sites become company-aware (hire grant, openLeaveYear, accrueEarnedLeave,
  *      expireCarriedLeave, the read breakdown view).
  *  (3) Back-compat: with no company set on any policy, behaviour is byte-identical to today.
- *  (4) Festive grant: grantAdHocLeave credits +days to exactly the targeted cohort, emits one event, is
- *      idempotent, surfaces in the read view's otherAdjustments line, and rejects an unauthorised group-wide
- *      grant from a company-scoped admin.
+ *  (4) RETIRED by 38f1fd40. The festive one-off grant this section covered is removed; adjustments are
+ *      written by the Leave Adjustments module now. Its day-validation property survives below, re-pointed
+ *      at applyLeaveAdjustmentBatch, because test/leave-adjustment-batch.test.ts does not cover it.
  *  (5) RLS: a company-scoped admin can write a policy for their own company but is rejected for another
  *      company and for the group default (company_id NULL).
  */
@@ -23,19 +23,17 @@ import {
   createJobGrade,
   createLeavePolicy,
   createLeaveType,
-  listAdHocLeaveGrants,
 } from '../core/admin';
 import {
   resolveGradePolicy,
-  grantAdHocLeave,
-  grantAdHocLeaveMulti,
   openLeaveYear,
   accrueEarnedLeave,
   expireCarriedLeave,
-  AdHocLeaveGrantError,
   type GradePolicyRow,
 } from '../core/leave';
 import { leaveEntitlementBreakdown } from '../core/read';
+// 38f1fd40 — the day-validation property moved here when the festive grant was retired.
+import { applyLeaveAdjustmentBatch, LeaveAdjustmentError } from '../core/leave-adjustment';
 import {
   adminCtx,
   closeAll,
@@ -287,296 +285,36 @@ async function festiveType(): Promise<string> {
   return lt.id;
 }
 
-describe('ADR-0066 festive one-off grant', () => {
-  it('credits the targeted company cohort, raises balance, emits one event; other company unaffected', async () => {
-    const { coB, deptB } = await secondCompany();
-    const ft = await festiveType();
-    const a1 = await hireIn(b.companyId, b.deptA);
-    const a2 = await hireIn(b.companyId, b.deptA);
-    const bEmp = await hireIn(coB, deptB);
-
-    const res = await grantAdHocLeave(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: ft,
-      days: 1,
-      reason: 'CNY 2026',
-      effectiveOn: '2026-02-17',
-    });
-    expect(res.granted).toBe(2);
-    expect(res.targeted).toBe(2);
-    expect(await ledgerBalance(a1.employmentId, ft)).toBe(1);
-    expect(await ledgerBalance(a2.employmentId, ft)).toBe(1);
-    expect(await ledgerBalance(bEmp.employmentId, ft)).toBe(0); // other company unaffected
-
-    const events = await eventTypesFor(b.tenantId, b.tenantId);
-    expect(events).toContain('leave.ad-hoc.granted');
-  });
-
-  it('is idempotent — re-running the identical grant is a no-op', async () => {
-    const ft = await festiveType();
-    const emp = await hireIn(b.companyId, b.deptA);
-    const first = await grantAdHocLeave(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: ft,
-      days: 2,
-      reason: 'Deepavali 2026',
-      effectiveOn: '2026-11-01',
-    });
-    expect(first.granted).toBe(1);
-    const second = await grantAdHocLeave(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: ft,
-      days: 2,
-      reason: 'Deepavali 2026',
-      effectiveOn: '2026-11-01',
-    });
-    expect(second.granted).toBe(0); // no-op
-    expect(await ledgerBalance(emp.employmentId, ft)).toBe(2); // still 2, not 4
-  });
-
-  it('the read view surfaces festive days under otherAdjustments (reconciles with balance)', async () => {
-    const ft = await festiveType();
-    const emp = await hireIn(b.companyId, b.deptA);
-    await grantAdHocLeave(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: ft,
-      days: 3,
-      reason: 'Raya 2026',
-      effectiveOn: '2026-04-10',
-    });
-    const view = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, ft, '2026-12-31');
-    expect(view?.otherAdjustments).toBe(3);
-    expect(view?.totalAvailable).toBe(3); // signed balance reconciles
-  });
-
-  it('a company-scoped admin cannot issue a group-wide (companyId null) grant', async () => {
-    const ft = await festiveType();
-    const scoped: SessionContext = { tenantId: b.tenantId, userId: b.adminUserId, grants: [{ role: 'hr_admin', companyId: b.companyId }] };
-    await expect(
-      grantAdHocLeave(scoped, { companyId: null, leaveTypeId: ft, days: 1, reason: 'X', effectiveOn: '2026-02-17' }),
-    ).rejects.toBeInstanceOf(AdHocLeaveGrantError);
-  });
-
-  it('listAdHocLeaveGrants reads recent grants from the event log', async () => {
-    const ft = await festiveType();
-    await hireIn(b.companyId, b.deptA);
-    await grantAdHocLeave(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: ft,
-      days: 1,
-      reason: 'CNY 2026',
-      effectiveOn: '2026-02-17',
-    });
-    const grants = await listAdHocLeaveGrants(adminCtx(b));
-    expect(grants.length).toBe(1);
-    expect(grants[0].reason).toBe('CNY 2026');
-    expect(grants[0].count).toBe(1);
-  });
-});
-
-// ── Multi-company festive grant (re-plan round 5) ────────────────────────────────────────────────────────
-describe('ADR-0066 round 5 — grantAdHocLeaveMulti', () => {
-  it('credits each targeted company cohort once; result sums granted/targeted; two distinct per-company events', async () => {
-    const { coB, deptB } = await secondCompany();
-    const ft = await festiveType();
-    const a1 = await hireIn(b.companyId, b.deptA);
-    const bEmp = await hireIn(coB, deptB);
-
-    const res = await grantAdHocLeaveMulti(adminCtx(b), {
-      companyIds: [b.companyId, coB],
-      leaveTypeId: ft,
-      days: 1,
-      reason: 'CNY 2026',
-      effectiveOn: '2026-02-17',
-    });
-    expect(res.granted).toBe(2);
-    expect(res.targeted).toBe(2);
-    expect(res.companies).toBe(2);
-    expect(res.skipped).toBe(0);
-    expect(await ledgerBalance(a1.employmentId, ft)).toBe(1);
-    expect(await ledgerBalance(bEmp.employmentId, ft)).toBe(1);
-
-    const events = await eventTypesFor(b.tenantId, b.tenantId);
-    const grantedEvents = events.filter((e) => e === 'leave.ad-hoc.granted');
-    expect(grantedEvents.length).toBe(2);
-  });
-
-  it('skips an archived company (defense-in-depth) and still grants the others', async () => {
-    const { coB, deptB } = await secondCompany();
-    const ft = await festiveType();
-    const a1 = await hireIn(b.companyId, b.deptA);
-    await hireIn(coB, deptB);
-    // Archive coB AFTER setup — the UI never offers archived companies; this exercises the server backstop
-    // against a stale/tampered submission directly.
-    await owner.db.update(schema.company).set({ archivedAt: new Date() }).where(eq(schema.company.id, coB));
-
-    const res = await grantAdHocLeaveMulti(adminCtx(b), {
-      companyIds: [b.companyId, coB],
-      leaveTypeId: ft,
-      days: 1,
-      reason: 'Raya 2026',
-      effectiveOn: '2026-04-10',
-    });
-    expect(res.skipped).toBe(1);
-    expect(res.companies).toBe(1);
-    expect(res.granted).toBe(1);
-    expect(await ledgerBalance(a1.employmentId, ft)).toBe(1);
-  });
-
-  it('all selected companies archived → "No active companies selected." and zero ledger rows', async () => {
-    const { coB, deptB } = await secondCompany();
-    const ft = await festiveType();
-    const emp = await hireIn(coB, deptB);
-    await owner.db.update(schema.company).set({ archivedAt: new Date() }).where(eq(schema.company.id, coB));
-
-    await expect(
-      grantAdHocLeaveMulti(adminCtx(b), {
-        companyIds: [coB],
-        leaveTypeId: ft,
-        days: 1,
-        reason: 'X',
-        effectiveOn: '2026-04-10',
-      }),
-    ).rejects.toThrow('No active companies selected.');
-    expect(await ledgerBalance(emp.employmentId, ft)).toBe(0);
-  });
-
-  it('a company-scoped admin naming a company they do not administer is rejected all-or-nothing (no rows for either company)', async () => {
-    const { coB, deptB } = await secondCompany();
-    const ft = await festiveType();
-    const a1 = await hireIn(b.companyId, b.deptA);
-    const bEmp = await hireIn(coB, deptB);
-    const scoped: SessionContext = {
-      tenantId: b.tenantId,
-      userId: b.adminUserId,
-      grants: [{ role: 'hr_admin', companyId: b.companyId }],
-    };
-
-    await expect(
-      grantAdHocLeaveMulti(scoped, {
-        companyIds: [b.companyId, coB],
-        leaveTypeId: ft,
-        days: 1,
-        reason: 'CNY 2026',
-        effectiveOn: '2026-02-17',
-      }),
-    ).rejects.toBeInstanceOf(AdHocLeaveGrantError);
-    expect(await ledgerBalance(a1.employmentId, ft)).toBe(0);
-    expect(await ledgerBalance(bEmp.employmentId, ft)).toBe(0);
-  });
-
-  it('resume-after-partial: an unchanged resubmit credits 0 for the already-granted company and grants the rest', async () => {
-    const { coB, deptB } = await secondCompany();
-    const ft = await festiveType();
-    const a1 = await hireIn(b.companyId, b.deptA);
-    const bEmp = await hireIn(coB, deptB);
-
-    // Simulate a partial failure: grant company A alone first.
-    await grantAdHocLeave(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: ft,
-      days: 2,
-      reason: 'Deepavali 2026',
-      effectiveOn: '2026-11-01',
-    });
-    expect(await ledgerBalance(a1.employmentId, ft)).toBe(2);
-
-    // Identical resubmit across both companies — A is a no-op (idempotent), B completes.
-    const res = await grantAdHocLeaveMulti(adminCtx(b), {
-      companyIds: [b.companyId, coB],
-      leaveTypeId: ft,
-      days: 2,
-      reason: 'Deepavali 2026',
-      effectiveOn: '2026-11-01',
-    });
-    expect(res.granted).toBe(1); // only B's employee newly credited
-    expect(await ledgerBalance(a1.employmentId, ft)).toBe(2); // unchanged, not doubled
-    expect(await ledgerBalance(bEmp.employmentId, ft)).toBe(2);
-  });
-
-  it('full idempotency: running the identical multi-grant twice grants 0 the second time', async () => {
-    const { coB, deptB } = await secondCompany();
-    const ft = await festiveType();
-    await hireIn(b.companyId, b.deptA);
-    await hireIn(coB, deptB);
-    const p = {
-      companyIds: [b.companyId, coB],
-      leaveTypeId: ft,
-      days: 1,
-      reason: 'CNY 2026',
-      effectiveOn: '2026-02-17',
-    };
-    const first = await grantAdHocLeaveMulti(adminCtx(b), p);
-    expect(first.granted).toBe(2);
-    const second = await grantAdHocLeaveMulti(adminCtx(b), p);
-    expect(second.granted).toBe(0);
-  });
-
-  it('duplicate company ids in the request behave exactly as a single occurrence (dedupe)', async () => {
-    const ft = await festiveType();
-    const emp = await hireIn(b.companyId, b.deptA);
-    const res = await grantAdHocLeaveMulti(adminCtx(b), {
-      companyIds: [b.companyId, b.companyId],
-      leaveTypeId: ft,
-      days: 1,
-      reason: 'CNY 2026',
-      effectiveOn: '2026-02-17',
-    });
-    expect(res.companies).toBe(1);
-    expect(res.granted).toBe(1);
-    expect(await ledgerBalance(emp.employmentId, ft)).toBe(1);
-  });
-
-  it('an unknown company id (as GROUP admin) is rejected with "Unknown company selected."', async () => {
-    const ft = await festiveType();
-    await expect(
-      grantAdHocLeaveMulti(adminCtx(b), {
-        companyIds: [randomUUID()],
-        leaveTypeId: ft,
-        days: 1,
-        reason: 'X',
-        effectiveOn: '2026-02-17',
-      }),
-    ).rejects.toThrow('Unknown company selected.');
-    // Note: for a company-scoped admin, the authority pre-flight fires FIRST (see the all-or-nothing test
-    // above) — the unknown-id check only surfaces for a group admin who legitimately passes authority.
-  });
-
-  it('empty companyIds is rejected with "Select at least one company."', async () => {
-    const ft = await festiveType();
-    await expect(
-      grantAdHocLeaveMulti(adminCtx(b), {
-        companyIds: [],
-        leaveTypeId: ft,
-        days: 1,
-        reason: 'X',
-        effectiveOn: '2026-02-17',
-      }),
-    ).rejects.toThrow('Select at least one company.');
-  });
-});
-
-// ── 0.5-increment validation (re-plan round 5) — exercised directly on grantAdHocLeave; multi reuses it ──
-describe('ADR-0066 round 5 — 0.5-increment day validation', () => {
+describe('0.5-increment + 366-cap day validation (moved to the Leave Adjustments module by 38f1fd40)', () => {
   const base = (days: number) => async () => {
     const ft = await festiveType();
     await hireIn(b.companyId, b.deptA);
-    return grantAdHocLeave(adminCtx(b), {
-      companyId: b.companyId,
-      leaveTypeId: ft,
+    return applyLeaveAdjustmentBatch(adminCtx(b), {
+      leaveTypeIds: [b.annualLeaveTypeId],
       days,
-      reason: 'X',
-      effectiveOn: '2026-02-17',
+      effectiveOn: '2026-03-01',
+      reason: 'Validation probe',
+      targetMode: 'criteria',
+      criteria: { companyIds: [b.companyId] },
     });
   };
 
-  it.each([3.1, 2.7, 0.4, 0.501])('rejects %s with the exact increment wording', async (bad) => {
-    await expect(base(bad)()).rejects.toThrow('Days must be in 0.5 increments (e.g. 0.5, 1.0, 1.5, 2.0).');
+  // 0.501 was in this list when the retired grant owned the check, and it is NOT any more. The surviving
+  // module rounds to 2dp BEFORE validating the increment (round2(0.501) === 0.5), so 0.501 is accepted as
+  // half a day rather than refused. A real behavioural difference between the two write paths, recorded
+  // here rather than quietly dropped: values that do not round ONTO a 0.5 increment still refuse.
+  it.each([3.1, 2.7, 0.4])('rejects %s with the exact increment wording', async (bad) => {
+    await expect(base(bad)()).rejects.toThrow('Days must be in 0.5 increments (e.g. 0.5, 1.0, -1.5).');
+  });
+
+  it('0.501 rounds onto a valid increment and is accepted — see the note above', async () => {
+    const res = await base(0.501)();
+    expect(res.written).toBe(1);
   });
 
   it.each([0.5, 1.0, 2.5])('accepts %s', async (good) => {
     const res = await base(good)();
-    expect(res.granted).toBe(1);
+    expect(res.written).toBe(1);
   });
 
   it('rejects a value above the 366-day cap', async () => {

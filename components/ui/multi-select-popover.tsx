@@ -60,7 +60,7 @@ export function MultiSelectPopover({
   searchPlaceholder: string;
   selectAllLabel: string;
   clearAllLabel: string;
-  /** Translated "{n} selected", e.g. (n) => t('festiveSelectedCount', { count: n }). */
+  /** Translated "{n} selected", e.g. (n) => t('multiSelectSelectedCount', { count: n }). */
   selectedCount: (n: number) => string;
   /** Opt-in form contract: emit one hidden <input name={name} value={id}> per selected id. */
   name?: string;
