@@ -500,6 +500,14 @@ grep — an empty result is a parser gap, not proof of no callers.
 - **i18n guard holes** (`test/i18n-coverage.test.ts` check C): it skips files using more than one
   namespace, and only matches LITERAL keys — `t(helperReturningKey(x))` is invisible. Prefer one
   namespace per file; for computed keys, test every value the helper can return.
+
+- **A KEY THAT EXISTS BUT CANNOT FORMAT IS INVISIBLE TO CHECK C — third hole, found r140.** Check C
+  asks whether the key resolves, and *existing* and *formatting* are different things. A message
+  containing `{row}`/`{expected}` is ICU interpolation, so a plain `t('…')` with no arguments THROWS
+  `FORMATTING_ERROR` at render and paints the literal key path on screen. **The route still returned
+  200, tsc passed, and check C passed.** Only the dev-server log on a real render showed it. Use
+  `t.raw()` when the braces are meant literally (e.g. a template a client island substitutes into),
+  and remember that placeholder-looking text is a formatting contract, not decoration.
 - **`rejects.toThrow()` passes on the WRONG throw** — a fixture failing NOT NULL before reaching the
   constraint under test reads as a pass. Assert the constraint NAME or match the real Postgres error
   via `.cause` (Drizzle wraps as "Failed query: …").
