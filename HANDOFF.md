@@ -12,8 +12,10 @@ any of them):**
   new block above a stale one. If a number changes (deployed head, next migration, board counts), the
   old number leaves the file.
 - **When a round ships:** update CURRENT STATE in place, move the round's entry to the TOP of
-  `docs/HANDOFF-HISTORY.md`, and delete the in-flight entry here. The high-value part of each entry is
-  **Decisions** — calls the tickets did not settle; those cannot be reconstructed from the diff.
+  `docs/HANDOFF-HISTORY.md`, delete the in-flight entry here, and **refresh the code graph**
+  (`graphify update .` in this worktree — incremental, seconds, no LLM). The high-value part of each
+  entry is **Decisions** — calls the tickets did not settle; those cannot be reconstructed from the
+  diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
 ## CURRENT STATE — snapshot 2026-08-04 (r136 SHIPPED; r137 BUILT, NOT SHIPPED)
@@ -244,6 +246,38 @@ Established pattern (r73–r137). The rules, each learned the hard way:
 - **Before running a Workflow here:** async agents are killed after 3 minutes of silence and this
   repo's test startup exceeds that — `.claude/settings.local.json` sets
   `CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS=600000`.
+
+## The code graph — query it before spelunking
+
+**`graphify-out/` in THIS worktree holds a knowledge graph of the whole codebase** (~13k nodes /
+~38k edges at r137-era — counts drift per round; the graph is the authority, not this line), built by
+[graphify](https://github.com/Graphify-Labs/graphify) from local tree-sitter AST (no API key, no
+LLM). ~99% of edges are EXTRACTED (explicit in the code), the rest INFERRED. It is **untracked by
+git and excluded from the deploy rsync** — it lives on disk here only, regenerable in ~a minute.
+
+**Use it FIRST when you need to understand code** — who calls what, with file:line, read from the
+tree rather than from this file's prose (line numbers in prose go stale; the graph does not — it
+already corrected one of this file's own citations). All commands run from this worktree:
+
+    graphify explain "applyLeaveTypeRules"     # a node + every caller/import, with file:line
+    graphify query "how does X reach Y?"       # BFS over the graph, --budget N tokens (default 2000)
+    graphify path "requestLeave" "core/payroll.ts"   # shortest path between two nodes
+    graphify affected "withTenant" --depth 2   # reverse traversal: what breaks if X changes
+    graphify god-nodes --top 20                # the architectural hubs
+    graphify-out/GRAPH_REPORT.md               # community map of the codebase (labels = hub node names)
+
+**Keep it current — every build updates it.** After shipping a round (or any merge to main):
+`graphify update .` — incremental re-extraction of changed files, seconds, no LLM. After a refactor
+that DELETES a lot of code, add `--force`. Rebuild from nothing: `graphify extract . --code-only`.
+
+**Known limitations:** the 313 `.sql` migration files are not parsed (`tree_sitter_sql` not
+installed — the live schema is the drizzle TS, which IS in the graph); community labels are
+hub-node names, not LLM prose (semantic naming needs `ANTHROPIC_API_KEY`); `graph.html` is not
+generated (the 5,000-node viz limit) — the CLI queries are the interface. **Symbols exported
+through destructuring under-report**: `explain "withTenant"` resolves to a `{ db, client,
+withTenant }` node with no caller edges, while a plain exported function (`applyLeaveTypeRules`)
+shows all 22. When `explain`/`affected` come back thin on a symbol you know is hot, fall back to
+grep — an empty result is a parser gap, not proof of no callers.
 
 ## Environment — read before you lose an hour
 

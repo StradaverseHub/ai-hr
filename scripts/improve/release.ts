@@ -71,7 +71,7 @@ export async function releaseBuiltItem(p: {
     '-az', '--delete',
     '-e', `ssh -p ${PORT} -o BatchMode=yes -o ConnectTimeout=12`,
     '--exclude', 'node_modules', '--exclude', '.next', '--exclude', '.git', '--exclude', '.env*',
-    '--exclude', '.turbo', '--exclude', 'coverage', '--exclude', '.claude',
+    '--exclude', '.turbo', '--exclude', 'coverage', '--exclude', '.claude', '--exclude', 'graphify-out',
     src, `${USER}@${HOST}:${DIR}/`,
   ]);
 

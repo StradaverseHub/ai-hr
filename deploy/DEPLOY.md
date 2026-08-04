@@ -54,7 +54,7 @@ There's no git remote configured, so copy the project up (from your Mac), exclud
 
 ```bash
 rsync -az --delete \
-  --exclude node_modules --exclude .next --exclude .git --exclude '.env*' \
+  --exclude node_modules --exclude .next --exclude .git --exclude '.env*' --exclude graphify-out \
   ~/Projects/ai-hr/  aihr@YOUR_SERVER_IP:/opt/ai-hr/
 ```
 

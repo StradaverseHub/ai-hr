@@ -63,3 +63,6 @@ AI-HR-Consultant-Feedback-Template.xlsx
 # Vitest browser mode: failure screenshots and attachments are run artifacts, not sources.
 test/__screenshots__/
 .vitest-attachments/
+
+# graphify code graph — local, regenerable (`graphify extract . --code-only`), ~16 MB; never commit or deploy
+graphify-out/
