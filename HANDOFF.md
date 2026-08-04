@@ -181,6 +181,15 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > `pkill -9` during teardown — but a later wedge occurred with NO kill of any kind. Do not "explain" this
 > wedge again without evidence that survives the next occurrence.
 >
+> **CORRECTION (r137, measured): AT LEAST ONE OF THESE WAS NOT A WEDGE — IT WAS SLOW.** An outstanding
+> checkpoint ran for roughly an HOUR and then completed on its own: `checkpoint starting` finally matched
+> `checkpoint complete`, `pg_stat_bgwriter` unfroze, the checkpointer fell from 30% CPU to 0%, and all 33
+> leftover worker databases were reclaimed. Every earlier "wedge" in this file was declared after minutes,
+> not an hour, and was then rebuilt — so **we never actually established that any of them was permanent.**
+> Treat "wedged" as an unproven diagnosis. The practical rule is unchanged (results are final at
+> `Duration`; rebuild if you need the database sooner) but the WORD is wrong and the 180s threshold in
+> .claude/gate-watch.sh was far too aggressive — corrected to 900s and to reporting rather than advising.
+>
 > **WHAT IS ESTABLISHED, measured:** vitest's teardown DROPs its 10-11 worker databases; `DROP DATABASE`
 > forces an `immediate force wait` checkpoint; that checkpoint sometimes never completes. Signature:
 > `checkpoint starting` with no matching `checkpoint complete`, `pg_stat_bgwriter` counters FROZEN
