@@ -28,6 +28,7 @@ import { PersonDetailsFields } from '../components/person-details-fields';
 import { PayStructureFields } from '../components/pay-structure-fields';
 import { BirthDateFields } from '../components/birth-date-fields';
 import { EpfRegistrationFields } from '../components/epf-registration-fields';
+import { BankAccountFields } from '../components/bank-account-fields';
 
 const wrap = (ui: ReactNode) =>
   render(
@@ -359,5 +360,77 @@ describe('group 4 — the two screens offer the SAME EPF citizenships, in the sa
     await userEvent.selectOptions(screen.getByLabelText('EPF citizenship'), 'pr');
     // One key per field, so the wizard's `set('statutory', patch)` merges without touching the other.
     expect(patches).toEqual([{ epfNumber: '9' }, { epfCitizenship: 'pr' }]);
+  });
+});
+
+// ── group 5 — employee bank details ───────────────────────────────────────────────────────────────
+describe('group 5 — the two screens offer the SAME bank catalog', () => {
+  it('renders an identical surface in form mode (Personnel card) and controlled mode (wizard)', () => {
+    const personnel = wrap(<BankAccountFields mode="form" bankName="CIMB Bank" bankAccountNo="1234567890" />);
+    const asPersonnel = surfaceOf(personnel.container);
+    personnel.unmount();
+
+    const wizard = wrap(
+      <BankAccountFields
+        mode="controlled"
+        bankName="CIMB Bank"
+        bankAccountNo="1234567890"
+        onChange={() => {}}
+      />,
+    );
+    expect(surfaceOf(wizard.container)).toEqual(asPersonnel);
+  });
+
+  it('the wizard picks from the catalog instead of accepting free text', () => {
+    // The whole point of the group: the Personnel card has been a catalog select since ef720d3a and the
+    // wizard was a bare input, so a hire could be created with a bank name no BNM code can be derived from.
+    const { container } = wrap(
+      <BankAccountFields mode="controlled" bankName="" bankAccountNo="" onChange={() => {}} />,
+    );
+    const select = container.querySelector('select')!;
+    const names = [...select.querySelectorAll('option')].map((o) => o.getAttribute('value'));
+    expect(names[0]).toBe(''); // the placeholder
+    expect(names).toContain('Maybank');
+    expect(names).toContain('CIMB Bank');
+    expect(names).toContain('Public Bank');
+    expect(names.length).toBe(30); // placeholder + the 29 BNM canonical names
+    // Only ONE free-text box remains, and it is the account number.
+    const inputs = [...container.querySelectorAll('input')];
+    expect(inputs).toHaveLength(1);
+  });
+
+  it('a hand-typed bank name from an older draft is preserved as its own option, not rewritten', () => {
+    // A screen that merely renders a stored value must never drop it — and a wizard draft saved before this
+    // change can hold anything HR typed.
+    const { container } = wrap(
+      <BankAccountFields mode="controlled" bankName="may bank" bankAccountNo="" onChange={() => {}} />,
+    );
+    const select = container.querySelector('select')!;
+    expect(select).toHaveValue('may bank');
+    expect([...select.querySelectorAll('option')][1].getAttribute('value')).toBe('may bank');
+  });
+
+  it('form mode posts the named values setBankAction reads; controlled mode reports patches', async () => {
+    const { container, unmount } = wrap(
+      <BankAccountFields mode="form" bankName="Maybank" bankAccountNo="55667788" />,
+    );
+    expect(container.querySelector('select')!.getAttribute('name')).toBe('bankName');
+    expect(container.querySelector('select')!).toHaveValue('Maybank');
+    expect(container.querySelector('input')!.getAttribute('name')).toBe('bankAccountNo');
+    expect(container.querySelector('input')!).toHaveValue('55667788');
+    unmount();
+
+    const patches: unknown[] = [];
+    wrap(
+      <BankAccountFields
+        mode="controlled"
+        bankName=""
+        bankAccountNo=""
+        onChange={(p) => patches.push(p)}
+      />,
+    );
+    await userEvent.selectOptions(screen.getByLabelText('Bank'), 'Public Bank');
+    await userEvent.type(screen.getByLabelText('Bank account'), '7');
+    expect(patches).toEqual([{ bankName: 'Public Bank' }, { bankAccountNo: '7' }]);
   });
 });

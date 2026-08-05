@@ -1360,8 +1360,6 @@
         "socsoNumber": "SOCSO 号码",
         "taxNumber": "税号",
         "dateOfBirth": "出生日期",
-        "bankName": "银行",
-        "bankAccountNo": "银行账号",
         "bankAccount": "银行信息",
         "numChildren": "子女人数",
         "eisEligible": "符合 EIS 资格",

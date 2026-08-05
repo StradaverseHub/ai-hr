@@ -1360,8 +1360,6 @@
         "socsoNumber": "Nombor SOCSO",
         "taxNumber": "Nombor cukai",
         "dateOfBirth": "Tarikh lahir",
-        "bankName": "Bank",
-        "bankAccountNo": "Nombor akaun bank",
         "bankAccount": "Maklumat bank",
         "numChildren": "Bilangan anak",
         "eisEligible": "Layak SIP",

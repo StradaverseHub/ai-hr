@@ -38,6 +38,8 @@ import { PayStructureFields, type PayModeOption } from '@/components/pay-structu
 import { BirthDateFields } from '@/components/birth-date-fields';
 // 35b7af0a group 4 — the EPF Number + EPF Citizenship group, shared with the Personnel Bank & Statutory tab.
 import { EpfRegistrationFields } from '@/components/epf-registration-fields';
+// 35b7af0a group 5 — the Bank + Bank Account Number group, shared with the Personnel Bank Information card.
+import { BankAccountFields } from '@/components/bank-account-fields';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DRAFT_STEPS,
@@ -683,21 +685,21 @@ export function EmployeeWizard({
 
         {step === 'statutory' && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label={t('fields.bankName')}>
-              <input
-                className={inputCls}
-                value={data.statutory?.bankName ?? ''}
-                onChange={(e) => set('statutory', { bankName: e.target.value })}
-              />
-            </Field>
-            <Field label={t('fields.bankAccountNo')}>
-              <input
-                className={inputCls}
-                value={data.statutory?.bankAccountNo ?? ''}
-                onChange={(e) => set('statutory', { bankAccountNo: e.target.value })}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">{t('hints.bankAccount')}</p>
-            </Field>
+            {/* 35b7af0a group 5 — Bank and Bank Account Number are the SAME field group the Personnel Bank
+                Information card renders (components/bank-account-fields.tsx). The wizard's Bank was a
+                FREE-TEXT box where that card has been a pick-from-the-BNM-catalog select since item
+                ef720d3a — so a hire could be created with "may bank" typed by hand, which reads fine to a
+                human, shows unremarkably on the Personnel screen, and only surfaces when the first salary
+                payment file is built for that employee. A bank name already typed into a draft is
+                preserved as its own option rather than silently rewritten. The all-or-nothing rule stays
+                the wizard's hint (missingByStep enforces it). */}
+            <BankAccountFields
+              mode="controlled"
+              bankName={data.statutory?.bankName}
+              bankAccountNo={data.statutory?.bankAccountNo}
+              hint={t('hints.bankAccount')}
+              onChange={(patch) => set('statutory', patch)}
+            />
             {/* 35b7af0a group 4 — EPF Number and EPF Citizenship are the SAME field group the Personnel
                 Bank & Statutory tab renders (components/epf-registration-fields.tsx). The wizard's private
                 copy had drifted in wording and carried a fourth "— Not set —" citizenship option that

@@ -1360,8 +1360,6 @@
         "socsoNumber": "SOCSO எண்",
         "taxNumber": "வரி எண்",
         "dateOfBirth": "பிறந்த தேதி",
-        "bankName": "வங்கி",
-        "bankAccountNo": "வங்கிக் கணக்கு எண்",
         "bankAccount": "வங்கி விவரங்கள்",
         "numChildren": "குழந்தைகளின் எண்ணிக்கை",
         "eisEligible": "EIS தகுதி",

@@ -1360,8 +1360,6 @@
         "socsoNumber": "SOCSO number",
         "taxNumber": "Tax number",
         "dateOfBirth": "Date of birth",
-        "bankName": "Bank",
-        "bankAccountNo": "Bank account number",
         "bankAccount": "Bank details",
         "numChildren": "Number of children",
         "eisEligible": "EIS eligible",

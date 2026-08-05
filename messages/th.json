@@ -1360,8 +1360,6 @@
         "socsoNumber": "หมายเลข SOCSO",
         "taxNumber": "หมายเลขภาษี",
         "dateOfBirth": "วันเกิด",
-        "bankName": "ธนาคาร",
-        "bankAccountNo": "เลขที่บัญชีธนาคาร",
         "bankAccount": "ข้อมูลธนาคาร",
         "numChildren": "จำนวนบุตร",
         "eisEligible": "มีสิทธิ์ EIS",

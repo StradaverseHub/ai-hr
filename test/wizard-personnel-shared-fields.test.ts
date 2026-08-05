@@ -45,6 +45,8 @@ const PERSONNEL = 'app/admin/personnel/[employmentId]/page.tsx';
 const SHARED = 'components/person-details-fields.tsx';
 const BIRTH_DATE = 'components/birth-date-fields.tsx';
 const EPF_FIELDS = 'components/epf-registration-fields.tsx';
+const BANK_FIELDS = 'components/bank-account-fields.tsx';
+const BANK_CARD = 'components/bank-info-card.tsx';
 const PAY_STRUCTURE = 'components/pay-structure-fields.tsx';
 const SALARY_HISTORY = 'components/salary-history-table.tsx';
 const LEAVE_PANEL = 'components/leave-type-panel.tsx';
@@ -405,6 +407,66 @@ describe('§3d group 4 — EPF Number + EPF Citizenship is one component, not tw
       // The surviving definition both screens now read.
       for (const k of ['epfNumber', 'epfCitizenship', 'epfCitizenshipCitizen', 'epfCitizenshipPr',
         'epfCitizenshipNonCitizen']) {
+        expect(String(msgs.people.detail[k] ?? '').trim(), `${loc} people.detail.${k}`).not.toBe('');
+      }
+    }
+  });
+});
+
+// ── §3e GROUP 5 — employee bank details ───────────────────────────────────────────────────────────
+describe('§3e group 5 — Bank + Bank Account Number is one component, and the wizard stops taking free text', () => {
+  it('both screens render the shared group', () => {
+    for (const f of [WIZARD, BANK_CARD]) {
+      const src = read(f);
+      expect(src, `${f} must import the shared group`).toContain("from '@/components/bank-account-fields'");
+      expect(src, `${f} must render it`).toContain('<BankAccountFields');
+    }
+    const wizard = read(WIZARD);
+    expect(wizard).not.toContain("t('fields.bankName')");
+    expect(wizard).not.toContain("t('fields.bankAccountNo')");
+  });
+
+  it('the wizard s bank is a CATALOG PICK now, not a free-text box', () => {
+    // The defect, stated plainly: the Personnel card has been a pick-from-the-BNM-catalog select since item
+    // ef720d3a, and the wizard was still a bare <input>. So a hire could be created with "may bank" typed by
+    // hand — invisible on every screen, and only surfacing when the first salary payment file is built.
+    const src = read(BANK_FIELDS);
+    expect(src).toContain("from '@/localization/registry.client'");
+    expect(src).toContain('const BANK_NAMES = clientCountryPacks().flatMap((p) => p.bankNames);');
+    expect(src).toContain('<select');
+    // A value already typed into a draft (or stored from before the catalog existed) is preserved as its own
+    // option rather than silently rewritten — a screen that merely renders a value must never drop it.
+    expect(src).toContain(
+      "const options = current && !BANK_NAMES.includes(current) ? [current, ...BANK_NAMES] : BANK_NAMES;",
+    );
+  });
+
+  it('the shared component is client-safe for a SERVER caller and stays single-namespace', () => {
+    const src = read(BANK_FIELDS);
+    expect(/^\s*['"]use client['"]\s*;/m.test(src.slice(0, 400))).toBe(true);
+    expect(src).not.toMatch(/from '(@\/|\.\.\/)?(db|core)\//);
+    // The card is itself a client island, so the no-closure rule is not at stake there — but the card must
+    // stay in the uncontrolled `form` mode its setBankAction reads out of FormData.
+    const call = read(BANK_CARD).match(/<BankAccountFields[\s\S]*?\/>/);
+    expect(call, 'the bank card must render BankAccountFields').not.toBeNull();
+    expect(call![0]).toContain('mode="form"');
+    expect(call![0]).not.toContain('mode="controlled"');
+    const namespaces = [...src.matchAll(/useTranslations\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]);
+    expect([...new Set(namespaces)]).toEqual(['people.detail']);
+  });
+
+  it('the retired bank labels are gone, but the two the wizard still renders are kept', () => {
+    for (const loc of LOCALES) {
+      const msgs = JSON.parse(read(`messages/${loc}.json`));
+      const w = msgs.people.wizard;
+      expect(w.fields.bankName, `${loc} people.wizard.fields.bankName`).toBeUndefined();
+      expect(w.fields.bankAccountNo, `${loc} people.wizard.fields.bankAccountNo`).toBeUndefined();
+      // KEPT: missingByStep returns 'bankAccount' when exactly one of the two is filled (half a bank
+      // instruction cannot pay anybody) and the Review step renders it through a computed t(`fields.${f}`).
+      expect(String(w.fields.bankAccount ?? '').trim(), `${loc} fields.bankAccount`).not.toBe('');
+      // KEPT: the all-or-nothing rule is still shown under the account number.
+      expect(String(w.hints.bankAccount ?? '').trim(), `${loc} hints.bankAccount`).not.toBe('');
+      for (const k of ['bank', 'bankAccount', 'bankSelectPlaceholder']) {
         expect(String(msgs.people.detail[k] ?? '').trim(), `${loc} people.detail.${k}`).not.toBe('');
       }
     }

@@ -1360,8 +1360,6 @@
         "socsoNumber": "Số SOCSO",
         "taxNumber": "Mã số thuế",
         "dateOfBirth": "Ngày sinh",
-        "bankName": "Ngân hàng",
-        "bankAccountNo": "Số tài khoản ngân hàng",
         "bankAccount": "Thông tin ngân hàng",
         "numChildren": "Số con",
         "eisEligible": "Đủ điều kiện EIS",
