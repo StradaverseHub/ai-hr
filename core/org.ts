@@ -10,7 +10,7 @@ import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } fr
 import { nextEmployeeCode } from './comp';
 import { generateEmployeeCode } from './employee-id-config';
 import { requireEmployeeCode } from '../lib/employee-code';
-import { a2cFirstYearEntitledToDate, applyMaxBalance, applyRounding, buildSchemeEntitlementResolver, composeEntitlement, isA2cFirstYear, isAccrualUnconfigured, isEarnedMethod, leaveTypeRuleColumns, resolveGradePolicy, type GradePolicyRow } from './leave';
+import { a2cFirstYearEntitledToDate, applyMaxBalance, applyRounding, composeEntitlement, isA2cFirstYear, isAccrualUnconfigured, isEarnedMethod, leaveTypeRuleColumns } from './leave';
 // 6e9a126e RELEASE TWO — the entitlement TEMPLATE resolver. Imported from its own module rather than
 // re-exported through core/leave, which core/org.ts already imports: one hop, no cycle either way.
 import { buildTemplateEntitlementResolver } from './entitlement-template';
@@ -38,7 +38,6 @@ import {
   costCenter,
   department,
   holidayGroup,
-  leavePolicy,
   leaveType,
   location,
   position,
@@ -322,9 +321,9 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
     }
 
     if (p.grantLeaveTypes?.length) {
-      // Entitlement = max(statutory floor, company policy). The floor comes from the
-      // company's country pack (law — not configurable); the admin-configured
-      // leave_policy may be MORE generous but is clamped at the floor, never below.
+      // Entitlement comes from the employee's winning ENTITLEMENT TEMPLATE band. The country pack's
+      // statutory floor is still resolved, but fa3f4ccb made it ADVISORY — it flags a below-minimum
+      // figure and never clamps one.
       const [co] = await tx
         .select({ country: company.country })
         .from(company)
@@ -332,42 +331,13 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
         .limit(1);
       const pack = packFor(co?.country);
       if (pack) {
-        const policies = await tx
-          .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
-          .from(leavePolicy)
-          .where(
-            and(
-              inArray(
-                leavePolicy.leaveTypeId,
-                p.grantLeaveTypes.map((t) => t.id),
-              ),
-              lte(leavePolicy.validFrom, p.hiredOn),
-              or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, p.hiredOn)),
-            ),
-          );
-        // 2E (ADR-0041): group by type so the grant resolves the policy for the new hire's grade
-        // (grade-specific → company-default → floor); with no grade this is the old most-generous pick.
-        const policyByType = new Map<string, GradePolicyRow[]>();
-        for (const pol of policies) {
-          const arr = policyByType.get(pol.leaveTypeId);
-          if (arr) arr.push(pol);
-          else policyByType.set(pol.leaveTypeId, [pol]);
-        }
-        // Auto-link entitlement (ae5b84d5): resolve the new hire's benefit scheme so the FIRST balance
-        // already comes from the matching Grade Group table (previously only the next year-open did).
-        // Runs after the assignment insert above (same tx), so the resolver's current-assignment
-        // employment-type lookup sees this hire. A brand-new employment has no manual override (null);
-        // no schemes configured ⇒ `() => null` ⇒ byte-identical grade-policy/floor behaviour.
-        const schemeDaysFor = await buildSchemeEntitlementResolver(
-          tx,
-          [{ employmentId: emp.id, companyId: p.companyId, gradeId: p.gradeId ?? null, overrideSchemeId: null }],
-          p.grantLeaveTypes.map((t) => t.id),
-        );
-        // 6e9a126e RELEASE TWO — the entitlement TEMPLATE layer, resolved AT THE HIRE DATE, the same date
-        // the policy read above is dated at. It runs after the assignment insert in this same transaction,
-        // so the eligibility resolver's department / position / employment-type read sees this hire; a
-        // brand-new employment has no earlier assignment version, so "as at the hire date" and "current"
-        // coincide here by construction. No templates ⇒ `isEmpty` ⇒ byte-identical grade-policy behaviour.
+        // 6e9a126e — the entitlement TEMPLATE layer, resolved AT THE HIRE DATE. Release three removed the
+        // two reads that stood here (the types' active `leave_policy` rows and the benefit-scheme
+        // resolver), so this is the whole entitlement resolution. It runs after the assignment insert in
+        // this same transaction, so the eligibility resolver's department / position / employment-type
+        // read sees this hire; a brand-new employment has no earlier assignment version, so "as at the
+        // hire date" and "current" coincide here by construction. No templates ⇒ `isEmpty` ⇒ nothing
+        // resolves ⇒ the `days <= 0` skip below writes no row at all.
         const templates = await buildTemplateEntitlementResolver(tx, {
           employmentIds: [emp.id],
           leaveTypeIds: p.grantLeaveTypes.map((t) => t.id),
@@ -393,22 +363,16 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           // They are credited +0.00 instead and lose nothing: saving the earning method for the type runs
           // the cohort catch-up that credits everything owed (reprojectEntitlementForLeaveTypeCohort).
           if (isAccrualUnconfigured(typeRulesById.get(lt.id))) continue;
-          // ADR-0066: scope to the new hire's company so a per-company UPFRONT entitlement reaches joiners.
-          // Leave Entitlement Rules Engine: a new hire has 0 completed years of service (explicit — the
-          // param is required so a band-configured policy resolves its 0-year band at hire).
-          // 9816a5ad step 2: the winning policy row supplies the DAYS; the leave TYPE supplies every rule.
-          // ae5b84d5: scheme band days (0-year band) supersede the policy days; 6e9a126e release two: a
-          // template band supersedes both. The SAME `composeEntitlement` openLeaveYear / accrueEarnedLeave
-          // / the recalc kernel use — a hire grant that resolved by any other route would disagree with the
-          // very next reprojection and post a permanent delta. fa3f4ccb: the EA floor is passed for the
-          // below-minimum flag only; it no longer clamps the hire grant.
+          // 9816a5ad step 2: the winning template band supplies the DAYS; the leave TYPE supplies every
+          // rule. The SAME `composeEntitlement` openLeaveYear / accrueEarnedLeave / the recalc kernel use —
+          // a hire grant that resolved by any other route would disagree with the very next reprojection
+          // and post a permanent delta. fa3f4ccb: the EA floor is passed for the below-minimum flag only;
+          // it no longer clamps the hire grant.
           const { days, policy: polFor } = composeEntitlement({
             floorDays: pack.leave.entitlement(lt.code, 0),
             // A new hire has 0 completed years of service (explicit — the argument is required so a
             // band-configured table resolves its 0-year band at hire).
             templateBand: templates.bandFor(emp.id, lt.id, 0),
-            schemeDays: schemeDaysFor(emp.id, lt.id, 0),
-            gradePolicy: resolveGradePolicy(policyByType.get(lt.id) ?? [], p.gradeId ?? null, p.companyId, 0),
             rules: typeRulesById.get(lt.id),
           });
           // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not the hire lump.

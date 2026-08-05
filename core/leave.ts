@@ -39,7 +39,6 @@ import {
   applyLeaveTypeRules,
   applyMaxBalance,
   applyRounding,
-  bandDaysFor,
   bandFor,
   bandCarryExpiry,
   bandCarryMax,
@@ -48,15 +47,13 @@ import {
   carryConfigured,
   carryEnabled,
   resolveCarryAllowance,
-  entitledDays,
-  // 6e9a126e RELEASE TWO — THE SINGLE COMPOSITION HOOK. Every granting engine and the projection kernel
-  // in this file resolve `template ?? scheme ?? policy` through this one function; nothing here composes
-  // the layers by hand any more.
+  // 6e9a126e — THE SINGLE COMPOSITION HOOK. Every granting engine and the projection kernel in this file
+  // resolve an employee's entitlement through this one function; nothing here composes layers by hand.
+  // Release three left it with ONE layer (the entitlement template's band) — see composeEntitlement.
   composeEntitlement,
-  templateOverPolicy,
+  policyFromTemplateBand,
   // 6e9a126e — "nothing configured is not zero days". Read inside composeEntitlement.
   noEntitlementOpinion,
-  hasAnyCarryExpiry,
   hasAnyLeaveTypeRule,
   isEngineRoundingMethod,
   // 8fec719e — the custom rounding table: the two choosable methods, the shared validator and the
@@ -79,24 +76,16 @@ import {
   validateServiceBands,
   lastRealDayOfMonth,
   parseCarryExpiry,
-  previewEntitlement,
-  resolveGradePolicy,
-  resolveEffectiveSchemeId,
-  schemeBandDays,
   DEFAULT_ROUNDING_THRESHOLD,
   ENGINE_ROUNDING_METHODS,
   resolveRoundingThreshold,
   roundingThresholdRanges,
   type AccrualConfig,
   type EngineRoundingMethod,
-  type BenefitSchemeRow,
   type CarryExpiry,
-  type GradePolicyRow,
   type LeaveRoundingMethod,
   type LeaveTypeRules,
-  type PreviewResult,
   type ResolvedPolicy,
-  type SchemeMatchSubject,
   type ServiceBand,
 } from './leave-compute';
 // Override Leave Application (56910869) — the rule vocabulary. Pure (no db), so the engine, the write
@@ -126,21 +115,18 @@ export {
   applyLeaveTypeRules,
   applyMaxBalance,
   applyRounding,
-  bandDaysFor,
   bandFor,
   bandCarryExpiry,
   bandCarryMax,
   bandMaxBalance,
   carryEnabled,
-  entitledDays,
-  // 6e9a126e RELEASE TWO — the single composition hook and its template overlay, re-exported like the
-  // rest of the pure module so tests and server callers can pin them from '@/core/leave'.
+  // 6e9a126e — the single composition hook and the template band's carrier, re-exported like the rest of
+  // the pure module so tests and server callers can pin them from '@/core/leave'.
   composeEntitlement,
-  templateOverPolicy,
+  policyFromTemplateBand,
   // 6e9a126e — re-exported like the rest of the pure module so tests and server callers can pin the
   // guard's predicate directly from '@/core/leave'.
   noEntitlementOpinion,
-  hasAnyCarryExpiry,
   hasAnyLeaveTypeRule,
   isEngineRoundingMethod,
   // 8fec719e — the custom rounding table surface, re-exported like the rest of the pure module.
@@ -162,43 +148,32 @@ export {
   validateServiceBands,
   lastRealDayOfMonth,
   parseCarryExpiry,
-  previewEntitlement,
-  resolveGradePolicy,
-  resolveEffectiveSchemeId,
-  schemeBandDays,
   DEFAULT_ROUNDING_THRESHOLD,
   ENGINE_ROUNDING_METHODS,
   resolveRoundingThreshold,
   roundingThresholdRanges,
   type AccrualConfig,
   type EngineRoundingMethod,
-  type BenefitSchemeRow,
   type CarryExpiry,
-  type GradePolicyRow,
   type LeaveRoundingMethod,
   type LeaveTypeRules,
-  type PreviewResult,
   type ResolvedPolicy,
-  type SchemeMatchSubject,
   type ServiceBand,
 };
 import {
   assignment,
   attendancePolicy,
-  benefitScheme,
   businessUnit,
   company,
   department,
   employment,
   gradeGroupMember,
   jobGrade,
-  schemeLeaveEntitlement,
   leaveApprovalStep,
   leaveCancellationRequest,
   leaveEncashmentSnapshot,
   leaveEntitlementRecalcAudit,
   leaveLedger,
-  leavePolicy,
   leaveRequest,
   leaveRequestAttachment,
   leaveRequestDate,
@@ -5822,136 +5797,6 @@ export const serviceYearsMonthsDaysAt = (
 };
 
 /**
- * Open a leave year: for every active employment hired before 1 Jan of `year`, post the
- * new year's accrual per standing type at the employee's CURRENT service band — so the
- * 2y/5y band upgrades happen here — resolved as max(statutory floor, company policy).
- *
- * Carry-forward: ANNUAL carries up to the policy's `carryForwardMax` (statutory default
- * 0 — s.60E expects leave taken within the year); the rest is forfeited via a negative
- * adjustment. SICK / HOSPITALIZATION are per-calendar-year entitlements and reset.
- *
- * Idempotent: a Jan-1 accrual for an (employment, type) pair marks that pair open — a
- * Jan-1 hire grant counts too, which is exactly right. Hires during `year` are skipped
- * entirely (their hire grant covers the year). Overdrawn balances are never "forfeited"
- * (the debt simply rolls and the new grant lands on top).
- */
-// ── Benefit Scheme entitlement resolution for the grant sweeps (feedback b83c6a3b) ───────────────────
-/** The per-employee attributes the scheme resolver needs beyond what the grant loops already select. */
-type SchemeEmp = {
-  employmentId: string;
-  companyId: string;
-  gradeId: string | null;
-  overrideSchemeId: string | null;
-};
-
-/**
- * Build the scheme-entitlement lookup used by openLeaveYear / accrueEarnedLeave. Pre-loads (all within the
- * current tenant tx): every benefit scheme, the grade→group membership map, the current-assignment
- * employment type per employee, and the scheme×leave-type service-band tables — then resolves each
- * employee's EFFECTIVE scheme once (override → auto-match → none via `resolveEffectiveSchemeId`). Returns a
- * closure `(employmentId, leaveTypeId, serviceYears) => number | null`: the scheme's band days for that
- * service length, or null when the employee has no scheme or the scheme has no entitlement for the type
- * (⇒ caller falls back to the grade leave_policy days). READ-ONLY — no events (CLAUDE.md skip rule).
- *
- * Exported (feedback ae5b84d5) so the hire grant (core/org.ts) and the recalc paths below can resolve the
- * SAME scheme entitlement the sweeps grant — no import cycle: core/org.ts already imports from this module
- * and this module never imports core/org.ts.
- */
-export async function buildSchemeEntitlementResolver(
-  tx: Tx,
-  emps: SchemeEmp[],
-  typeIds: string[],
-): Promise<(employmentId: string, leaveTypeId: string, serviceYears: number) => number | null> {
-  const empIds = emps.map((e) => e.employmentId);
-  if (empIds.length === 0 || typeIds.length === 0) return () => null;
-
-  const schemes = await tx
-    .select({
-      id: benefitScheme.id,
-      companyId: benefitScheme.companyId,
-      employmentType: benefitScheme.employmentType,
-      gradeGroupId: benefitScheme.gradeGroupId,
-      status: benefitScheme.status,
-    })
-    .from(benefitScheme);
-  // No schemes at all ⇒ pure back-compat: everyone resolves via the grade policy.
-  if (schemes.length === 0) return () => null;
-  const schemeRows: BenefitSchemeRow[] = schemes.map((s) => ({
-    id: s.id,
-    companyId: s.companyId,
-    employmentType: s.employmentType,
-    gradeGroupId: s.gradeGroupId,
-    status: s.status,
-  }));
-
-  // grade → group membership.
-  const distinctGradeIds = [...new Set(emps.map((e) => e.gradeId).filter((g): g is string => !!g))];
-  const gradeGroupByGrade = new Map<string, string>();
-  if (distinctGradeIds.length) {
-    const members = await tx
-      .select({ gradeId: gradeGroupMember.gradeId, gradeGroupId: gradeGroupMember.gradeGroupId })
-      .from(gradeGroupMember)
-      .where(inArray(gradeGroupMember.gradeId, distinctGradeIds));
-    for (const m of members) gradeGroupByGrade.set(m.gradeId, m.gradeGroupId);
-  }
-
-  // Current-assignment employment type per employee (validTo / supersededAt null = the current row).
-  const assigns = await tx
-    .select({ employmentId: assignment.employmentId, employmentType: assignment.employmentType })
-    .from(assignment)
-    .where(
-      and(
-        inArray(assignment.employmentId, empIds),
-        isNull(assignment.validTo),
-        isNull(assignment.supersededAt),
-      ),
-    );
-  const empTypeByEmp = new Map<string, string>();
-  for (const a of assigns) empTypeByEmp.set(a.employmentId, a.employmentType);
-
-  // Resolve each employee's effective scheme id once.
-  const schemeByEmp = new Map<string, string | null>();
-  for (const e of emps) {
-    const gradeGroupId = e.gradeId ? (gradeGroupByGrade.get(e.gradeId) ?? null) : null;
-    const sid = resolveEffectiveSchemeId(schemeRows, {
-      companyId: e.companyId,
-      employmentType: empTypeByEmp.get(e.employmentId) ?? null,
-      gradeGroupId,
-      overrideSchemeId: e.overrideSchemeId,
-    });
-    schemeByEmp.set(e.employmentId, sid);
-  }
-
-  // Scheme × leave-type service bands, only for the schemes actually resolved (bounded query).
-  const usedSchemeIds = [...new Set([...schemeByEmp.values()].filter((s): s is string => !!s))];
-  const bandsBySchemeType = new Map<string, unknown>();
-  if (usedSchemeIds.length) {
-    const ents = await tx
-      .select({
-        benefitSchemeId: schemeLeaveEntitlement.benefitSchemeId,
-        leaveTypeId: schemeLeaveEntitlement.leaveTypeId,
-        serviceBands: schemeLeaveEntitlement.serviceBands,
-      })
-      .from(schemeLeaveEntitlement)
-      .where(
-        and(
-          inArray(schemeLeaveEntitlement.benefitSchemeId, usedSchemeIds),
-          inArray(schemeLeaveEntitlement.leaveTypeId, typeIds),
-        ),
-      );
-    for (const en of ents) bandsBySchemeType.set(`${en.benefitSchemeId}|${en.leaveTypeId}`, en.serviceBands);
-  }
-
-  return (employmentId: string, leaveTypeId: string, serviceYears: number): number | null => {
-    const sid = schemeByEmp.get(employmentId);
-    if (!sid) return null;
-    const bands = bandsBySchemeType.get(`${sid}|${leaveTypeId}`);
-    if (bands === undefined) return null;
-    return schemeBandDays(bands, serviceYears);
-  };
-}
-
-/**
  * Feedback 9816a5ad step 2 — the ten type-level rule columns as a drizzle select shape.
  *
  * ONE definition, spread into every repointed `select({...})`, so no call site can read a different
@@ -6138,9 +5983,9 @@ export async function openLeaveYear(
     // this type", and it is the second one that decides whether a year-open owes the employee days.
     //
     // So the set is now: the statutory standing types, PLUS any non-archived type that carries a
-    // real configuration — an active grade policy at the year boundary, or a benefit-scheme
-    // entitlement. A festive type has neither, so it is still untouched here and still escapes
-    // carry-cap and forfeit exactly as ADR-0066 intends.
+    // real configuration — since 6e9a126e release three, an entitlement_template version in force at the
+    // year boundary, and nothing else. A festive type has none, so it is still untouched here and still
+    // escapes carry-cap and forfeit exactly as ADR-0066 intends.
     //
     // Nothing downstream needed widening to match: the statutory floor returns 0 for an unrecognised
     // code (localization/my/leave.ts entitlement default), the carry cap is already ANNUAL-only so a
@@ -6154,30 +5999,16 @@ export async function openLeaveYear(
       .select({ id: leaveType.id, code: leaveType.code, ...leaveTypeRuleColumns })
       .from(leaveType)
       .where(isNull(leaveType.archivedAt));
-    const policyConfigured = await tx
-      .selectDistinct({ id: leavePolicy.leaveTypeId })
-      .from(leavePolicy)
-      .where(
-        and(
-          lte(leavePolicy.validFrom, yearStart),
-          or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, yearStart)),
-        ),
-      );
-    const schemeConfigured = await tx
-      .selectDistinct({ id: schemeLeaveEntitlement.leaveTypeId })
-      .from(schemeLeaveEntitlement);
-    // 6e9a126e RELEASE TWO — THE THIRD LIMB. "Did an administrator configure entitlement days for this
-    // type" now has a third true answer: an entitlement_template version in force at the year boundary.
-    // Without this, a type configured ONLY through the new layer is never visited by a year-open — HR
-    // writes a table, watches it save, and never sees a day of it reach an employee, which is verbatim the
-    // defect 783bf55a / baea8e5b were raised for.
+    // 6e9a126e — THE ONLY LIMB LEFT. "Did an administrator configure entitlement days for this type" had
+    // three true answers (an active grade policy at the year boundary, a benefit-scheme entitlement, or an
+    // entitlement_template version in force); release three removed the first two with the tables behind
+    // them. Without this limb, a type configured through the new layer is never visited by a year-open —
+    // HR writes a table, watches it save, and never sees a day of it reach an employee, which is verbatim
+    // the defect 783bf55a / baea8e5b were raised for.
     const templateConfigured = await leaveTypeIdsWithTemplatesAt(tx, yearStart);
     // Filtered in memory rather than as a SQL subquery: leave_type is a small per-tenant table, and
     // an empty configured set is a normal state that several drizzle `inArray` forms handle badly.
-    const configuredIds = new Set([
-      ...[...policyConfigured, ...schemeConfigured].map((r) => r.id),
-      ...templateConfigured,
-    ]);
+    const configuredIds = new Set(templateConfigured);
     const standing = new Set<string>([...STANDING_LEAVE_CODES]);
     // 93249794 — the Leave Type scope is applied HERE, on top of the set above, and never in place of it.
     // A type the sweep would not have granted anyway does not become grantable by being picked on a form;
@@ -6234,44 +6065,11 @@ export async function openLeaveYear(
     // here avoids aborting the whole batch on one frozen employee.
     const frozenSet = await frozenSnapshotKeySet(tx, empIds, typeIds);
 
-    // 2E (ADR-0041): active policies per type as of Jan 1, grouped so each employee resolves the policy
-    // for their grade (resolveGradePolicy) — same resolution the hire grant uses.
-    const policies = await tx
-      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
-      .from(leavePolicy)
-      .where(
-        and(
-          inArray(leavePolicy.leaveTypeId, typeIds),
-          lte(leavePolicy.validFrom, yearStart),
-          or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, yearStart)),
-        ),
-      );
-    const policyByType = new Map<string, GradePolicyRow[]>();
-    for (const pol of policies) {
-      const arr = policyByType.get(pol.leaveTypeId);
-      if (arr) arr.push(pol);
-      else policyByType.set(pol.leaveTypeId, [pol]);
-    }
-
-    // Benefit Scheme & Leave Entitlement (b83c6a3b): resolve each employee's scheme entitlement days for the
-    // standing types. Returns null (fall back to grade policy) when no scheme is assigned/matched. Byte-
-    // identical behaviour for tenants with no schemes (the resolver short-circuits to `() => null`).
-    const schemeDaysFor = await buildSchemeEntitlementResolver(
-      tx,
-      emps.map((e) => ({
-        employmentId: e.employmentId,
-        companyId: e.companyId,
-        gradeId: e.gradeId,
-        overrideSchemeId: e.benefitSchemeId,
-      })),
-      typeIds,
-    );
-
-    // 6e9a126e RELEASE TWO — the entitlement TEMPLATE layer, resolved AT THE YEAR BOUNDARY. `yearStart` is
-    // the same instant the policy read above is dated at, so all three layers answer for the same moment:
-    // which template version was in force, which eligibility rule was in force, and which department /
-    // position / employment type the employee held THEN. No templates ⇒ `isEmpty` ⇒ every band below is
-    // null ⇒ `templateOverPolicy` hands back the policy untouched (see composeEntitlement).
+    // 6e9a126e — the entitlement TEMPLATE layer, resolved AT THE YEAR BOUNDARY. `yearStart` dates every
+    // part of the answer at the same instant: which template version was in force, which eligibility rule
+    // was in force, and which department / position / employment type the employee held THEN. Release three
+    // removed the two reads that used to sit here (the grade `leave_policy` rows for these types as of
+    // Jan 1, and the benefit-scheme resolver), so this is now the only entitlement read the sweep makes.
     const templates = await buildTemplateEntitlementResolver(tx, {
       employmentIds: empIds,
       leaveTypeIds: typeIds,
@@ -6316,21 +6114,15 @@ export async function openLeaveYear(
           rows.push(logRow(e.employmentId, t.id, 'frozen'));
           continue;
         }
-        // Leave Entitlement Rules Engine: `years` (service at year-open) drives custom band upgrades here,
-        // same as the statutory floor's own 2y/5y band upgrades.
-        // 9816a5ad step 2: the winning policy row still decides the DAYS; the LEAVE TYPE decides every
-        // rule (earning method / carry forward / rounding / maximum balance). A type step 1 never
-        // backfilled carries no rules and falls straight through to the policy's own — see
-        // `hasAnyLeaveTypeRule`.
-        // Benefit Scheme (b83c6a3b): a resolved scheme entitlement SUPERSEDES the grade policy days for this
-        // type. null ⇒ no scheme ⇒ use policy days. 6e9a126e release two: an entitlement TEMPLATE supersedes
-        // both. ONE shared composition (composeEntitlement) so this can never drift from the recalc kernel.
+        // Leave Entitlement Rules Engine: `years` (service at year-open) drives band upgrades here, same
+        // as the statutory floor's own 2y/5y band upgrades.
+        // 9816a5ad step 2: the winning entitlement template's band decides the DAYS; the LEAVE TYPE decides
+        // every rule (earning method / carry forward / rounding / maximum balance).
+        // ONE shared composition (composeEntitlement) so this can never drift from the recalc kernel.
         // fa3f4ccb: the statutory floor is passed for the below-minimum SIGNAL only — it no longer clamps.
         const { days, belowStatutoryFloor, policy: pol } = composeEntitlement({
           floorDays: pack.leave.entitlement(t.code, years),
           templateBand: templates.bandFor(e.employmentId, t.id, years),
-          schemeDays: schemeDaysFor(e.employmentId, t.id, years),
-          gradePolicy: resolveGradePolicy(policyByType.get(t.id) ?? [], e.gradeId, e.companyId, years),
           rules: t,
         });
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
@@ -6851,43 +6643,27 @@ export async function accrueEarnedLeave(
     const typeIds = types.map((t) => t.id);
     if (typeIds.length === 0) return { granted: 0, forfeits: 0, breakdown: [], packBlocked: [] };
 
-    const policies = await tx
-      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
-      .from(leavePolicy)
-      .where(
-        and(
-          inArray(leavePolicy.leaveTypeId, typeIds),
-          lte(leavePolicy.validFrom, p.asOf),
-          or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, p.asOf)),
-        ),
-      );
-    // 2E (ADR-0041): group active policies per type so each employee resolves the policy for their grade.
-    // A type is "earned" if ANY of its active policies is earned — that tells us which ledger rows to read
-    // for the already-accrued sum; the per-employee resolution below decides what actually accrues.
-    const policyByType = new Map<string, GradePolicyRow[]>();
-    for (const pol of policies) {
-      const arr = policyByType.get(pol.leaveTypeId);
-      if (arr) arr.push(pol);
-      else policyByType.set(pol.leaveTypeId, [pol]);
-    }
-    // 9816a5ad step 2: once a type carries its own rules, ITS earning method is the answer for every policy
-    // under it — the "any active policy is earned" scan below only still governs a type step 1 never
-    // reached (see hasAnyLeaveTypeRule). The `policyByType` membership test is deliberately KEPT on both
-    // branches: a type with no active policy row has no days to accrue and was never swept here.
-    const typeById = new Map(types.map((t) => [t.id, t]));
-    const earnedTypeIds = [...policyByType.entries()]
-      .filter(([id, rows]) => {
-        const t = typeById.get(id);
+    // WHICH TYPES DOES THIS SWEEP TOUCH — configuration first, then earning method.
+    //
+    // 6e9a126e release three replaced the configuration half. It used to be "the type has an ACTIVE
+    // leave_policy row at `asOf`", and the earning method was read from that row for a type step 1
+    // (9816a5ad) had never backfilled. Neither survives: there are no policy rows, so a type's earning
+    // method now comes from the LEAVE TYPE and from nowhere else, and "is anything configured" is answered
+    // by an entitlement_template version in force at `asOf`.
+    //
+    // The membership test is deliberately KEPT — a type with nothing configured has no days to accrue and
+    // was never swept here. It also decides which ledger rows are read back as "already accrued", so
+    // widening it would have this sweep reasoning about a type it must not touch.
+    const templateConfigured = await leaveTypeIdsWithTemplatesAt(tx, p.asOf);
+    const earnedTypeIds = types
+      .filter((t) => {
+        if (!templateConfigured.has(t.id)) return false;
         // bc36c768 — THE NOT-CONFIGURED GATE, ahead of method resolution. An unconfigured type is not an
-        // earned type and is not a lump type; it is a type that grants nothing until HR configures it. It
-        // must be excluded HERE and not merely inside the loop, because membership of `earnedTypeIds` also
-        // decides which ledger rows are read back as "already accrued" — including it would have this
-        // sweep reasoning about a type it must not touch.
+        // earned type and is not a lump type; it is a type that grants nothing until HR configures it.
         if (isAccrualUnconfigured(t)) return false;
-        if (hasAnyLeaveTypeRule(t)) return isEarnedMethod(t?.accrualMethod);
-        return rows.some((r) => isEarnedMethod((r.accrual as { method?: string } | null)?.method));
+        return isEarnedMethod(t.accrualMethod);
       })
-      .map(([id]) => id);
+      .map((t) => t.id);
     if (earnedTypeIds.length === 0) return { granted: 0, forfeits: 0, breakdown: [], packBlocked: [] };
 
     const emps = await tx
@@ -6915,25 +6691,10 @@ export async function accrueEarnedLeave(
     if (emps.length === 0) return { granted: 0, forfeits: 0, breakdown: [], packBlocked: [] };
     const empIds = emps.map((e) => e.employmentId);
 
-    // Benefit Scheme & Leave Entitlement (b83c6a3b): resolve each employee's scheme entitlement days for the
-    // earned types. When a scheme is assigned+matched and carries an entitlement for the type, its band days
-    // SUPERSEDE the grade policy's `days` as the annual accrual TARGET (the accrual cadence/method still
-    // comes from the earned grade policy). null ⇒ no scheme ⇒ use policy days (byte-identical back-compat).
-    const schemeDaysFor = await buildSchemeEntitlementResolver(
-      tx,
-      emps.map((e) => ({
-        employmentId: e.employmentId,
-        companyId: e.companyId,
-        gradeId: e.gradeId,
-        overrideSchemeId: e.benefitSchemeId,
-      })),
-      earnedTypeIds,
-    );
-
-    // 6e9a126e RELEASE TWO — the entitlement TEMPLATE layer for the earned types, resolved at the RUN date.
-    // `p.asOf` is what dates the policy read above, so both layers answer for the same moment. The BAND is
-    // still picked per (employee, type) at that pair's own cycle-start service length, below — dating the
-    // eligibility and dating the band are different questions and only the first one is `asOf`.
+    // 6e9a126e — the entitlement TEMPLATE layer for the earned types, resolved at the RUN date. `p.asOf`
+    // dates the same question `templateConfigured` above asked, so both answer for the same moment. The
+    // BAND is still picked per (employee, type) at that pair's own cycle-start service length, below —
+    // dating the eligibility and dating the band are different questions and only the first one is `asOf`.
     const templates = await buildTemplateEntitlementResolver(tx, {
       employmentIds: empIds,
       leaveTypeIds: earnedTypeIds,
@@ -7085,19 +6846,19 @@ export async function accrueEarnedLeave(
         const cyc = cycleFor(typeId, e.leaveCycle);
         const cycleStart = earnedCycleStart(e.hiredOn, p.asOf, cyc);
         const years = serviceYearsAt(e.hiredOn, cycleStart);
-        // 2E: this employee's grade may resolve to a lump (or no) policy even when the type is earned for
-        // another grade — accrue only when THEIR resolved policy is earned. ADR-0066: scoped to the
-        // employee's company so a company override drives their accrued amount.
+        // This employee may resolve NO entitlement template even when the type is configured for somebody
+        // else — accrue only when THEIR resolution yields an earned policy. A null carrier makes
+        // `pol?.method` undefined and the gate below skips them, which is the same shape the grade-policy
+        // resolution had and is why the guard needs no separate `noOpinion` branch here: `accrueEarnedLeave`
+        // only ever grants a POSITIVE shortfall, so an unconfigured employee accrues nothing rather than
+        // being clawed back.
         // Leave Entitlement Rules Engine: service measured at cycleStart (same as the 2D-2 comment above).
-        // 9816a5ad step 2: policy row decides the DAYS, the leave type decides every RULE.
-        // 6e9a126e release two: ONE composition for the whole resolution — a template supersedes the days
-        // and (where the band carries them) the carry columns; the earning METHOD is untouched by it, so
-        // the `isEarnedMethod` gate below still decides on exactly what it decided on before.
+        // 9816a5ad step 2: the template band decides the DAYS, the leave type decides every RULE — so the
+        // earning METHOD is untouched by the entitlement layer and the `isEarnedMethod` gate below decides
+        // on exactly what it decided on before.
         const composed = composeEntitlement({
           floorDays: pack.leave.entitlement(type.code, years),
           templateBand: templates.bandFor(e.employmentId, typeId, years),
-          schemeDays: schemeDaysFor(e.employmentId, typeId, years),
-          gradePolicy: resolveGradePolicy(policyByType.get(typeId) ?? [], e.gradeId, e.companyId, years),
           rules: type,
         });
         const pol = composed.policy;
@@ -7258,21 +7019,20 @@ export async function accrueEarnedLeave(
   });
 }
 
-// ── Policy-correction recalculation (feedback 49809272) ────────────────────────────────────────────
-/** The (gradeId, companyId) scope of a leave_policy row. null = all grades / group default. */
-export type PolicyScope = { gradeId: string | null; companyId: string | null };
-
+// ── Entitlement-correction recalculation (feedback 49809272) ───────────────────────────────────────
 /**
  * Pure per-employee current-cycle entitlement projection — the shared kernel used by BOTH recalc paths:
- * the policy-triggered `reprojectEntitlementForPolicy` (49809272) and the profile-triggered
- * `reprojectEntitlementForEmployment` (R45 7527ea5f). Given the employee's service facts + the active
- * policy rows for one leave type, it returns the entitlement that SHOULD be materialized to `asOf` for the
- * current cycle, plus that cycle's window start. Byte-identical to the granting engines (openLeaveYear /
- * the hire grant / accrueEarnedLeave): resolve the winning grade policy, apply the EA-1955 floor, then
- * project upfront (calendar-year, hire-month prorate for ANNUAL) or earned (elapsed periods only).
+ * the configuration-triggered `reprojectEntitlementForLeaveType` (49809272) and the profile-triggered
+ * `reprojectEntitlementForEmployment` (R45 7527ea5f). Given the employee's service facts + their winning
+ * entitlement-template band for one leave type, it returns the entitlement that SHOULD be materialized to
+ * `asOf` for the current cycle, plus that cycle's window start. Byte-identical to the granting engines
+ * (openLeaveYear / the hire grant / accrueEarnedLeave): resolve the band, apply the leave type's rules,
+ * then project upfront (calendar-year, hire-month prorate for ANNUAL) or earned (elapsed periods only).
  *
- * Returns null to signal a defensive SKIP: an anniversary company whose calendar-year re-resolution flips
- * the winner to an earned method (mixing windows) — the caller leaves that employee/type untouched.
+ * Returns null to signal a defensive SKIP — three different reasons, all meaning "leave this employee and
+ * type completely alone": the type is not configured (bc36c768), NOTHING resolves for this employee
+ * (`noOpinion`, the 6e9a126e guard), or an anniversary company's calendar-year re-resolution flips the
+ * winner to an earned method (mixing windows).
  */
 export function projectExpectedEntitlement(
   // Leave Year Type override (e1a51aea): `leaveCycle` is the EFFECTIVE cycle for the (type, company) pair —
@@ -7288,39 +7048,31 @@ export function projectExpectedEntitlement(
     terminatedOn?: string | null;
   },
   typeCode: string,
-  policyRows: GradePolicyRow[],
   floor: (code: string, years: number) => number,
   asOf: string,
-  /** Auto-link entitlement (ae5b84d5): the employee's benefit-scheme band days for this type at a given
-   *  service length (buildSchemeEntitlementResolver, partially applied by the caller). null = no scheme /
-   *  no entitlement for the type ⇒ fall back to the policy days. Called with the FINAL `years` — i.e.
-   *  AFTER the anniversary re-resolution below, so the hook always sees the same band anchor as `pol`.
-   *  Absent (undefined) ⇒ byte-identical pre-existing behaviour. */
-  schemeDaysForYears?: (years: number) => number | null,
   /** Anniversary to Calendar (f3a64d90): the RAW `leave_type.year_cycle_override` string — NOT the resolved
    *  cycle above (a2c resolves to 'calendar', which is deliberately indistinguishable from c2c). Only 'a2c'
    *  is load-bearing here, and only for ANNUAL in the employee's hire year. Absent ⇒ byte-identical
    *  pre-existing behaviour for every other caller. */
   yearCycleOverride?: string | null,
-  /** Feedback 9816a5ad step 2 — the leave TYPE's own rule columns. The winning `policyRows` entry still
-   *  supplies the DAYS; every rule (earning method / carry forward / rounding / maximum balance) comes
-   *  from here instead of from that row's `accrual` JSONB. Absent (undefined) or a type step 1 never
-   *  backfilled ⇒ byte-identical pre-consolidation behaviour (see `applyLeaveTypeRules`).
+  /** Feedback 9816a5ad step 2 — the leave TYPE's own rule columns. The template band supplies the DAYS;
+   *  every rule (earning method / carry forward / rounding / maximum balance) comes from here. Absent
+   *  (undefined) ⇒ no rules at all (see `applyLeaveTypeRules`).
    *
    *  This kernel is the reason the parameter exists rather than the callers overlaying afterwards: it
-   *  re-resolves the policy internally (the anniversary/upfront branch below), so an overlay applied by
-   *  the caller could only ever cover the FIRST resolution and the second would silently revert to the
-   *  policy's rules. */
+   *  re-resolves the entitlement internally (the anniversary/upfront branch below), so an overlay applied
+   *  by the caller could only ever cover the FIRST resolution and the second would silently lose the
+   *  type's rules. */
   typeRules?: LeaveTypeRules | null,
-  /** 6e9a126e RELEASE TWO — the employee's winning ENTITLEMENT TEMPLATE band at a given service length
-   *  (`buildTemplateEntitlementResolver(...).bandFor`, partially applied by the caller). null = no template
-   *  resolves ⇒ fall through to the scheme, then the policy. Absent (undefined) ⇒ byte-identical
-   *  pre-existing behaviour, which is what the pure unit tests of this kernel rely on.
+  /** 6e9a126e — the employee's winning ENTITLEMENT TEMPLATE band at a given service length
+   *  (`buildTemplateEntitlementResolver(...).bandFor`, partially applied by the caller). null = nothing
+   *  resolves for this employee, which is `noOpinion` and a SKIP. Absent (undefined) ⇒ the same, which is
+   *  what the pure unit tests of the non-entitlement branches of this kernel rely on.
    *
    *  A FUNCTION OF `years`, not a resolved band, for exactly the reason `typeRules` is a parameter rather
-   *  than a caller-side overlay: this kernel RE-RESOLVES the policy internally (the anniversary/upfront
-   *  branch below), and a band resolved once by the caller would pin the first resolution while the second
-   *  silently reverted to the policy's days. */
+   *  than a caller-side overlay: this kernel RE-RESOLVES internally (the anniversary/upfront branch below),
+   *  and a band resolved once by the caller would pin the first resolution while the second silently used
+   *  the wrong service length. */
   templateBandForYears?: (years: number) => ServiceBand | null,
 ): { expected: number; windowStart: string } | null {
   // bc36c768 — THE NOT-CONFIGURED GATE, first, before any method resolution.
@@ -7334,28 +7086,22 @@ export function projectExpectedEntitlement(
   const yearStart = `${asOf.slice(0, 4)}-01-01`;
   const cycleStartEarned = earnedCycleStart(emp.hiredOn, asOf, emp.leaveCycle);
   let years = serviceYearsAt(emp.hiredOn, cycleStartEarned);
-  // ⚠️ 6e9a126e release two — THE TEMPLATE JOINS THE POLICY RESOLUTION, THE SCHEME STAYS IN THE DAYS
-  // COMPOSITION, and the asymmetry is deliberate rather than an oversight.
-  //
-  // This kernel resolves the POLICY twice (the anniversary branch below re-anchors the band to the
-  // calendar year-open) but composes the DAYS exactly once, at the final years. A template is a
-  // policy-shaped thing — it can decide `method` where no leave_policy row matched at all, which is
-  // precisely what the earned/upfront probe below is asking — so it must be re-resolved with the policy.
-  // `schemeDaysForYears` is a caller-supplied DAYS hook and is still called exactly ONCE, with the final
-  // years, as it has been since ae5b84d5: this re-point must not start invoking a caller's closure twice.
-  const resolvePolicy = (y: number) => {
-    const gradePolicy = resolveGradePolicy(policyRows, emp.gradeId, emp.companyId, y);
+  // ⚠️ THE ENTITLEMENT IS RESOLVED TWICE AND COMPOSED ONCE. The anniversary branch below re-anchors the
+  // band to the calendar year-open, and the earned/upfront probe has to ask the SECOND resolution's rules,
+  // not the first's — so `resolveEntitlement` is a function of `years` rather than a value. The DAYS are
+  // then composed exactly once, at the final years, by the single shared `composeEntitlement`.
+  const resolveEntitlement = (y: number) => {
     const templateBand = templateBandForYears?.(y) ?? null;
-    return { gradePolicy, templateBand, pol: applyLeaveTypeRules(templateOverPolicy(gradePolicy, templateBand), typeRules) };
+    return { templateBand, pol: applyLeaveTypeRules(policyFromTemplateBand(templateBand), typeRules) };
   };
-  let resolved = resolvePolicy(years);
+  let resolved = resolveEntitlement(years);
   const earnedMethod = isEarnedMethod(resolved.pol?.method);
   if (!earnedMethod && cycleStartEarned !== yearStart) {
     // Anniversary company whose winner is upfront: re-resolve with service measured at the calendar
     // year-open (openLeaveYear's own band anchor). If a banded config flips the winner to an earned
     // method under these years, skip defensively rather than mix windows.
     years = serviceYearsAt(emp.hiredOn, yearStart);
-    resolved = resolvePolicy(years);
+    resolved = resolveEntitlement(years);
     if (isEarnedMethod(resolved.pol?.method)) return null;
   }
   // Anniversary to Calendar (f3a64d90): the first-year window is the CALENDAR year, whatever the resolved
@@ -7365,9 +7111,8 @@ export function projectExpectedEntitlement(
   const windowStart = !a2cFirstYear && earnedMethod ? cycleStartEarned : yearStart;
 
   // ⚠️ ONE-COMPOSITION INVARIANT — identical to openLeaveYear / the hire grant / accrueEarnedLeave: the
-  // resolved entitlement is `template ?? scheme ?? policy`, through the one shared composition
-  // (`composeEntitlement`). Both hooks receive the FINAL years (post-re-resolution above), matching the
-  // sweeps' own band anchor.
+  // resolved entitlement comes from the one shared composition (`composeEntitlement`), at the FINAL years
+  // (post-re-resolution above), matching the sweeps' own band anchor.
   // fa3f4ccb: the statutory floor no longer clamps, so a correction can now claw back BELOW the EA minimum
   // when that is what the configuration says — which is the requested behaviour, not a defect. `floor` is
   // still resolved and still passed, purely to feed the below-minimum flag.
@@ -7385,21 +7130,19 @@ export function projectExpectedEntitlement(
   // takes this branch. A safety property that lands in the same change as the hazard it guards has never
   // once been observed working without it.
   //
-  // The predicate is on the RESOLUTIONS, not the composed number: `pol` null (no policy row matched this
-  // employee's scope at all) and `pol` with `days: 0` (somebody typed zero) are different facts that
-  // `pol?.days ?? 0` flattens into the same 0. See `noEntitlementOpinion` for the full argument.
+  // The predicate is on the RESOLUTION, not the composed number: no band at all and a band saying 0 days
+  // (somebody typed zero) are different facts that `days ?? 0` flattens into the same 0. See
+  // `noEntitlementOpinion` for the full argument.
   //
-  // RELEASE TWO: the template layer is now one of the three resolutions this predicate reads, and it is
-  // read INSIDE `composeEntitlement` against the RAW grade policy — see `noEntitlementOpinion`'s own note
-  // on why the carrier must not be passed in its place.
+  // RELEASE THREE MADE THIS THE ONLY THING STANDING BETWEEN AN EMPTY CONFIGURATION AND A CLAWBACK. Both
+  // old layers are gone and both new tables are empty until the reporter retypes, so from the moment this
+  // ships EVERY employee/type pair takes this branch — and takes it on an ordinary profile save.
   //
   // ONE composition, at the FINAL years — the same `composeEntitlement` openLeaveYear, the hire grant and
   // accrueEarnedLeave call. `pol` below is its carrier, identical by construction to the probe's above.
   const composed = composeEntitlement({
     floorDays: floor(typeCode, years),
     templateBand: resolved.templateBand,
-    schemeDays: schemeDaysForYears?.(years) ?? null,
-    gradePolicy: resolved.gradePolicy,
     rules: typeRules,
   });
   if (composed.noOpinion) return null;
@@ -7571,32 +7314,9 @@ export async function reprojectA2cEntitlement(
   if (emps.length === 0) return none;
   const empIds = emps.map((e) => e.employmentId);
 
-  const policyRows: GradePolicyRow[] = await tx
-    .select({ gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
-    .from(leavePolicy)
-    .where(
-      and(
-        eq(leavePolicy.leaveTypeId, p.leaveTypeId),
-        lte(leavePolicy.validFrom, p.asOf),
-        or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, p.asOf)),
-      ),
-    );
-
-  // ae5b84d5: the auto-linked benefit-scheme band days feed `entitledDays` exactly as in every other
-  // pathway, so the a2c slice is taken off the SAME resolved entitlement the grant engines would use.
-  const schemeDaysFor = await buildSchemeEntitlementResolver(
-    tx,
-    emps.map((e) => ({
-      employmentId: e.employmentId,
-      companyId: e.companyId,
-      gradeId: e.gradeId,
-      overrideSchemeId: e.benefitSchemeId,
-    })),
-    [p.leaveTypeId],
-  );
-
-  // 6e9a126e RELEASE TWO — the entitlement TEMPLATE layer, resolved at the SAME `asOf` the policy read
-  // above is dated at, so the a2c slice is taken off the same resolved entitlement the grant engines use.
+  // 6e9a126e — the entitlement TEMPLATE layer, resolved at `asOf`, so the a2c slice is taken off the SAME
+  // resolved entitlement the grant engines would use. Release three removed the two reads that stood here
+  // (the type's active `leave_policy` rows and the benefit-scheme resolver).
   const templates = await buildTemplateEntitlementResolver(tx, {
     employmentIds: empIds,
     leaveTypeIds: [p.leaveTypeId],
@@ -7655,15 +7375,12 @@ export async function reprojectA2cEntitlement(
         terminatedOn: e.terminatedOn,
       },
       type.code,
-      policyRows,
       (c, y) => pack.leave.entitlement(c, y),
       p.asOf,
-      (years) => schemeDaysFor(e.employmentId, p.leaveTypeId, years),
       type.yearCycleOverride,
-      // 9816a5ad step 2: every RULE now comes from the leave TYPE; the winning policy row still
-      // supplies the DAYS. A type step 1 never backfilled falls through unchanged.
+      // 9816a5ad step 2: every RULE comes from the leave TYPE; the template band supplies the DAYS.
       type,
-      // 6e9a126e release two: this employee's winning template band supersedes the scheme and the policy.
+      // 6e9a126e: this employee's winning template band — the only source of days there is.
       (years) => templates.bandFor(e.employmentId, p.leaveTypeId, years),
     );
     if (!projected) continue;
@@ -7744,354 +7461,25 @@ export async function reprojectA2cEntitlement(
   return { affected, totalDelta, packBlocked };
 }
 
-/**
- * Configurable Earned Leave Entitlement Rules (feedback 49809272) — when an admin CORRECTS an
- * entitlement policy IN PLACE (updateLeavePolicy: same effective date, "fix a mis-typed value"), the
- * employees who were ALREADY granted under the old values this cycle must not keep a stale balance.
- * This helper re-projects the CURRENT cycle only and posts ONE compensating `adjustment` per affected
- * (employment) for the delta between what the corrected policy says should be materialized to date and
- * what the ledger already holds. Runs INSIDE updateLeavePolicy's transaction (takes the live `tx`).
- *
- * Guardrails (the approved-plan invariants — read before changing):
- *  - ONLY the current cycle. Closed prior years were governed by the version active at their year-open
- *    (validFrom/validTo model) and are never rewritten — the window sum below starts at the cycle open.
- *  - ONLY employees whose current-cycle entitlement is ALREADY MATERIALIZED (≥1 `accrual` row in the
- *    window). An un-granted employee is skipped: hire/openLeaveYear/accrueEarnedLeave will grant from
- *    the corrected policy when they run, and their idempotency markers can't see an adjustment — posting
- *    here would double-grant.
- *  - EA-FLOOR INVARIANT: expected = max(statutory floor, band-resolved policy days) — byte-identical to
- *    the granting engines (openLeaveYear / hire grant / accrueEarnedLeave). A correction below the floor
- *    only claws back down TO the floor.
- *  - Idempotent: prior `sys:policy_recalc:*` adjustments count into `alreadyPosted`, so re-saving the
- *    same values computes delta 0 and posts nothing.
- *  - Earned methods: re-projects elapsed periods to `asOf` only — future periods stay with the cron.
- *  - The adjustment is dated `asOf` (inside the cycle window), NOT the cycle start: a cycle-start date
- *    could be pre-hire for a mid-cycle joiner and would read as accrueEarnedLeave's 2D-3 boundary-forfeit
- *    marker (any adjustment dated exactly at the cycle start suppresses that cycle's carry sweep).
- *
- * Substrate: one `leave.entitlement.recalculated` DomainEvent per posted adjustment (the per-row audit),
- * subject-scoped to the employment; the caller's enriched `leave-policy.updated` event is the summary —
- * deliberately no extra bulk duplicate (openLeaveYear/accrueEarnedLeave convention).
- */
-export async function reprojectEntitlementForPolicy(
-  tx: Tx,
-  ctx: SessionContext,
-  p: {
-    policyId: string;
-    leaveTypeId: string;
-    /** `accrual` JSONB before / after the in-place correction. */
-    before: AccrualConfig | null;
-    after: AccrualConfig | null;
-    beforeScope: PolicyScope;
-    afterScope: PolicyScope;
-    /** The corrected row's validity window (post-update values). */
-    validFrom: string;
-    validTo: string | null;
-    /** Tenant-local (MYT) "today" — threaded from the action layer; anchors the current cycle. */
-    asOf: string;
-  },
-): Promise<{ affected: number; totalDelta: number; packBlocked: PackBlockedEmployment[] }> {
-  const none = { affected: 0, totalDelta: 0, packBlocked: [] as PackBlockedEmployment[] };
-
-  // 1. Recalculate only when the correction moves ENTITLEMENT (days / method / bands / rounding) or the
-  //    policy's scope. Carry-forward-only edits (cap, expiry, toggles) never changed what was granted — skip.
-  //    Method is normalized the way the writers persist it (absent ⇒ the lump-sum default). Bands are
-  //    canonical by construction (validated contiguous-ascending), so a JSON compare is stable.
-  //    ROUNDING RE-CREDIT (this ticket, reversing the b81d3c52 forward-only decision) — `roundingMethod` is
-  //    NOW part of this comparison: flipping the Rounding Method dropdown immediately re-figures every
-  //    already-granted balance to the tidied whole-day value, so the configured rule matches the displayed
-  //    entitlement without waiting for the next natural grant / top-up / year reset. `rounding` is normalized
-  //    the way the writer persists it (roundingAccrual, core/admin.ts) — 'up'/'down' pass through, anything
-  //    else (incl. absent) collapses to 'none', so a no-rounding vs absent row is NOT a false-positive change.
-  //    The effective-date guards below (validFrom > asOf, closed historical version) STILL protect frozen
-  //    prior years — a rounding flip only ever touches the CURRENT open cycle.
-  const norm = (a: AccrualConfig | null) => ({
-    annualDays: Number(a?.annualDays ?? 0),
-    method: a?.method || 'grant_on_hire_prorated',
-    bands: JSON.stringify(a?.serviceBands ?? null),
-    rounding: a?.roundingMethod === 'up' || a?.roundingMethod === 'down' ? a.roundingMethod : 'none',
-  });
-  const nb = norm(p.before);
-  const na = norm(p.after);
-  const entitlementChanged =
-    nb.annualDays !== na.annualDays ||
-    nb.method !== na.method ||
-    nb.bands !== na.bands ||
-    nb.rounding !== na.rounding;
-  const scopeChanged =
-    p.beforeScope.gradeId !== p.afterScope.gradeId || p.beforeScope.companyId !== p.afterScope.companyId;
-  if (!entitlementChanged && !scopeChanged) return none;
-  // A rounding-ONLY change (nothing else moved) posts its compensating row ACCRUAL-class instead of the
-  // usual `adjustment` (see the insert below): the tidied whole-day value must land ON the earned/entitled
-  // figure itself (leaveBalances.accrued / breakdown.cycleAccrual sum accrual-class only), matching the
-  // a2c precedent — not sit beside a raw figure as a separate correction. Days/method/bands/scope edits
-  // keep `adjustment` (byte-identical to every existing 49809272 recalc test).
-  const roundingOnlyChange =
-    nb.rounding !== na.rounding &&
-    nb.annualDays === na.annualDays &&
-    nb.method === na.method &&
-    nb.bands === na.bands &&
-    !scopeChanged;
-
-  // 2. Only a version ACTIVE at asOf can have driven this cycle's materialized grants. A forward-dated
-  //    version (validFrom > asOf) applies from its own date per effective-date logic; a closed historical
-  //    version governs frozen prior years. Neither recalculates — the effective-date model is preserved.
-  if (p.validFrom > p.asOf) return none;
-  if (p.validTo != null && p.validTo <= p.asOf) return none;
-
-  const [type] = await tx
-    // Leave Year Type override (e1a51aea): yearCycleOverride resolves the per-type effective cycle below.
-    // 9816a5ad step 2: the type's own rules ride along and are handed to the projection kernel below.
-    .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
-    .from(leaveType)
-    .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt)))
-    .limit(1);
-  if (!type) return none; // archived type: nothing grants it anymore
-
-  // 3. ALL active policies for the type as of asOf (accrueEarnedLeave's exact filters) — each employee's
-  //    winner is resolved among ALL of them (resolveGradePolicy), so a grade/company override that beats
-  //    the corrected policy naturally yields delta 0 for that employee.
-  const policyRows: GradePolicyRow[] = await tx
-    .select({
-      gradeId: leavePolicy.gradeId,
-      companyId: leavePolicy.companyId,
-      accrual: leavePolicy.accrual,
-    })
-    .from(leavePolicy)
-    .where(
-      and(
-        eq(leavePolicy.leaveTypeId, p.leaveTypeId),
-        lte(leavePolicy.validFrom, p.asOf),
-        or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, p.asOf)),
-      ),
-    );
-
-  // 4. Candidate employments = the UNION of the policy's before/after scope (a scope move must true up
-  //    BOTH the cohort that lost the rule and the one that gained it). null company/grade = match all.
-  //    Membership predicates mirror openLeaveYear/accrueEarnedLeave so the target set can't drift.
-  const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
-  const scopeCond = (s: PolicyScope) => {
-    const companyCond = s.companyId != null ? eq(employment.companyId, s.companyId) : undefined;
-    const gradeCond = s.gradeId != null ? eq(employment.gradeId, s.gradeId) : undefined;
-    if (companyCond && gradeCond) return and(companyCond, gradeCond);
-    return companyCond ?? gradeCond; // undefined = unbounded scope (group default, all grades)
-  };
-  const condBefore = scopeCond(p.beforeScope);
-  const condAfter = scopeCond(p.afterScope);
-  // Either side unbounded ⇒ the union is every employment (no scope filter).
-  const scopeFilter =
-    condBefore === undefined || condAfter === undefined ? undefined : or(condBefore, condAfter);
-  const emps = await tx
-    .select({
-      employmentId: employment.id,
-      hiredOn: employment.hiredOn,
-      country: company.country,
-      leaveCycle: company.leaveCycle,
-      gradeId: employment.gradeId,
-      companyId: employment.companyId,
-      // ae5b84d5: the manual scheme override — without it an override-assigned employee resolves to the
-      // wrong scheme below and gets a wrong delta.
-      benefitSchemeId: employment.benefitSchemeId,
-    })
-    .from(employment)
-    .innerJoin(company, eq(company.id, employment.companyId))
-    .where(
-      and(
-        lte(employment.hiredOn, p.asOf),
-        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
-        scopeFilter, // drizzle's and() drops undefined members
-      ),
-    );
-  if (emps.length === 0) return none;
-  const empIds = emps.map((e) => e.employmentId);
-
-  // Auto-link entitlement (ae5b84d5): resolve each cohort employee's scheme entitlement ONCE. A scheme-
-  // superseded employee's expected days now match what openLeaveYear/accrueEarnedLeave actually granted
-  // (scheme days), so a routine policy edit no longer claws those balances back (delta 0). No schemes ⇒
-  // the resolver short-circuits to `() => null` — byte-identical back-compat.
-  const schemeDaysFor = await buildSchemeEntitlementResolver(
-    tx,
-    emps.map((e) => ({
-      employmentId: e.employmentId,
-      companyId: e.companyId,
-      gradeId: e.gradeId,
-      overrideSchemeId: e.benefitSchemeId,
-    })),
-    [p.leaveTypeId],
-  );
-
-  // 6e9a126e RELEASE TWO — the entitlement TEMPLATE layer for this cohort, resolved at the SAME `asOf`.
-  // A template-superseded employee's expected days now match what the grant sweeps actually granted, so a
-  // routine policy edit does not claw those balances back — the identical argument ae5b84d5 made for the
-  // scheme resolver above, one layer up.
-  const templates = await buildTemplateEntitlementResolver(tx, {
-    employmentIds: empIds,
-    leaveTypeIds: [p.leaveTypeId],
-    asOf: p.asOf,
-  });
-
-  // 5. Bulk ledger read (never per-employee): trailing ~12 months covers every possible cycle start
-  //    (calendar Jan-1 and any anniversary month) — the accrueEarnedLeave pattern. Fetch the `accrual`
-  //    grants PLUS prior policy-/profile-recalc adjustments; all count as "already posted" (idempotency).
-  const accrualFrom = `${Number(p.asOf.slice(0, 4)) - 1}-${p.asOf.slice(5, 7)}-01`;
-  const ledgerRows = await tx
-    .select({
-      employmentId: leaveLedger.employmentId,
-      entryType: leaveLedger.entryType,
-      days: leaveLedger.days,
-      effectiveOn: leaveLedger.effectiveOn,
-    })
-    .from(leaveLedger)
-    .where(
-      and(
-        inArray(leaveLedger.employmentId, empIds),
-        eq(leaveLedger.leaveTypeId, p.leaveTypeId),
-        gte(leaveLedger.effectiveOn, accrualFrom),
-        or(
-          eq(leaveLedger.entryType, 'accrual'),
-          and(eq(leaveLedger.entryType, 'adjustment'), recalcAdjustmentReasonCond()),
-        ),
-      ),
-    );
-  const rowsBy = new Map<string, { entryType: string; days: number; effectiveOn: string }[]>();
-  for (const r of ledgerRows) {
-    const row = { entryType: r.entryType, days: Number(r.days), effectiveOn: r.effectiveOn };
-    const arr = rowsBy.get(r.employmentId);
-    if (arr) arr.push(row);
-    else rowsBy.set(r.employmentId, [row]);
-  }
-
-  // ADR-0069: never touch a balance frozen for encashment (the DB trigger would abort the whole tx).
-  const frozenSet = await frozenSnapshotKeySet(tx, empIds, [p.leaveTypeId]);
-
-  let affected = 0;
-  let totalDelta = 0;
-  // f3a64d90: employments whose a2c first-year ANNUAL correction is DELEGATED to reprojectA2cEntitlement
-  // after this loop (it posts accrual-class rows; this loop's `adjustment` is invisible to YTD Entitled).
-  const a2cDelegated: string[] = [];
-  const packBlocked: PackBlockedEmployment[] = [];
-  for (const e of emps) {
-    const pack = packFor(e.country);
-    if (!pack) {
-      packBlocked.push({ employmentId: e.employmentId, country: e.country ?? null, reason: 'country_pack_inactive' });
-      continue;
-    }
-    if (frozenSet.has(`${e.employmentId}|${p.leaveTypeId}`)) continue;
-
-    // Resolve the employee's winner + project the current-cycle entitlement via the shared kernel (same
-    // math the profile-triggered recalc uses). null ⇒ defensive skip (anniversary/earned window mix).
-    // Leave Year Type override (e1a51aea): the kernel receives the EFFECTIVE cycle for this (type,
-    // company) pair — a per-type 'a2a'/'c2c' override wins; null falls back to the company cycle.
-    const projected = projectExpectedEntitlement(
-      {
-        hiredOn: e.hiredOn,
-        leaveCycle: resolveLeaveYearCycle(type.yearCycleOverride, e.leaveCycle) ?? null,
-        gradeId: e.gradeId,
-        companyId: e.companyId,
-      },
-      type.code,
-      policyRows,
-      (c, y) => pack.leave.entitlement(c, y),
-      p.asOf,
-      // ae5b84d5: this employee's scheme band days supersede the policy days in the projection.
-      (years) => schemeDaysFor(e.employmentId, p.leaveTypeId, years),
-      // f3a64d90: the RAW override — 'a2c' day-slices the hire-year ANNUAL projection.
-      type.yearCycleOverride,
-      // 9816a5ad step 2: every RULE now comes from the leave TYPE; the winning policy row still
-      // supplies the DAYS. A type step 1 never backfilled falls through unchanged.
-      type,
-      // 6e9a126e release two: this employee's winning template band supersedes the scheme and the policy.
-      (years) => templates.bandFor(e.employmentId, p.leaveTypeId, years),
-    );
-    if (!projected) continue;
-    const { expected, windowStart } = projected;
-
-    // Anniversary to Calendar (f3a64d90): a2c's first ANNUAL year is corrected by reprojectA2cEntitlement,
-    // which posts ACCRUAL-class rows so "YTD Entitled" actually moves (this path's `adjustment` is invisible
-    // to that surface — see core/read.ts leaveBalances). DELEGATE rather than post a half-correction here.
-    if (isA2cFirstYear(type.yearCycleOverride, type.code, e.hiredOn, p.asOf)) {
-      a2cDelegated.push(e.employmentId);
-      continue;
-    }
-
-    const inWindow = (rowsBy.get(e.employmentId) ?? []).filter((r) => r.effectiveOn >= windowStart);
-    // Materialized-only guard (see the docblock): no `accrual` row this cycle ⇒ nothing to correct here.
-    if (!inWindow.some((r) => r.entryType === 'accrual')) continue;
-    const alreadyPosted = round2(inWindow.reduce((s, r) => s + r.days, 0));
-    const delta = round2(expected - alreadyPosted);
-    if (delta === 0) continue;
-
-    // Append-only ledger: the compensating row is signed. A rounding-only change posts it ACCRUAL-class so
-    // the tidied whole-day value lands ON the earned/entitled figure (leaveBalances.accrued /
-    // breakdown.cycleAccrual sum accrual-class only — the a2c precedent); every other correction stays an
-    // `adjustment` (the sanctioned ± channel the breakdown surfaces separately). Either class is read back
-    // into `alreadyPosted` next run (idempotent). A negative delta CAN push the balance below days already
-    // taken — a real over-granted situation (incl. downward rounding), surfaced honestly rather than hidden.
-    const [row] = await tx
-      .insert(leaveLedger)
-      .values({
-        tenantId: ctx.tenantId,
-        employmentId: e.employmentId,
-        leaveTypeId: p.leaveTypeId,
-        entryType: roundingOnlyChange ? 'accrual' : 'adjustment',
-        days: delta.toFixed(2),
-        effectiveOn: p.asOf,
-        reason: `${POLICY_RECALC_REASON_PREFIX}:${p.policyId}`,
-      })
-      .returning({ id: leaveLedger.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-ledger',
-      aggregateId: row.id,
-      eventType: 'leave.entitlement.recalculated',
-      actor: actorOf(ctx),
-      subjectEmploymentId: e.employmentId,
-      payload: {
-        policyId: p.policyId,
-        leaveTypeId: p.leaveTypeId,
-        employmentId: e.employmentId,
-        before: alreadyPosted,
-        after: expected,
-        delta,
-        cycleStart: windowStart,
-        reason: 'policy_recalc',
-      },
-    });
-    affected += 1;
-    totalDelta = round2(totalDelta + delta);
-  }
-  // f3a64d90: run the delegated a2c first-year corrections in the SAME transaction (accrual-class rows).
-  if (a2cDelegated.length > 0) {
-    const a2c = await reprojectA2cEntitlement(tx, ctx, {
-      leaveTypeId: p.leaveTypeId,
-      employmentIds: a2cDelegated,
-      asOf: p.asOf,
-      trigger: 'policy_recalc',
-    });
-    affected += a2c.affected;
-    totalDelta = round2(totalDelta + a2c.totalDelta);
-  }
-  return { affected, totalDelta, packBlocked };
-}
-
 // ── Profile-change recalculation (R45 7527ea5f) ────────────────────────────────────────────────────
 /**
  * Automatic Leave Entitlement Recalculation on profile / eligibility change (R45 7527ea5f).
  *
- * The counterpart to reprojectEntitlementForPolicy: that path fires when the POLICY moves; THIS path fires
- * when the EMPLOYEE's own profile moves — grade, grade group, employment type, confirmation status, or hire
- * date — any of which can change the resolved entitlement (a promotion to a grade with more days, passing
- * probation into a scheme, a corrected hire date shifting the service band). For the ONE changed employment
+ * The counterpart to `reprojectEntitlementForLeaveTypeCohort`: that path fires when the CONFIGURATION
+ * moves; THIS path fires when the EMPLOYEE's own profile moves — grade, department, position, employment
+ * type, confirmation status, or hire date — any of which can change which eligibility rule matches them
+ * (a promotion into a grade a different table covers, passing probation, a corrected hire date shifting
+ * the service band). For the ONE changed employment
  * it re-projects the current cycle across every active leave type and posts a compensating `adjustment`
  * (reason `sys:profile_recalc:<employmentId>`) for the delta between what the corrected profile SHOULD have
  * materialized to `asOf` and what the ledger already holds — then records an audit-history row and appends
  * one `leave.entitlement.recalculated` DomainEvent per corrected type.
  *
- * Same invariants as the policy path (they share `projectExpectedEntitlement`):
+ * Same invariants as every other `projectExpectedEntitlement` caller:
  *  - CURRENT cycle only (closed prior years, governed by their year-open version, are never rewritten).
  *  - MATERIALIZED-only: a type with no `accrual` row this cycle is skipped (the grant engines will grant
  *    from the new profile when they next run; posting here would double-grant).
- *  - EA-FLOOR: expected = max(statutory floor, band-resolved policy days).
+ *  - NO OPINION IS NOT ZERO: a type for which nothing resolves is SKIPPED, never clawed back to 0.
  *  - IDEMPOTENT: prior `sys:policy_recalc:*` AND `sys:profile_recalc:*` adjustments count into
  *    `alreadyPosted`, so re-running after a no-op profile save computes delta 0 and posts nothing.
  *  - FROZEN encashment snapshots are skipped (the DB trigger would abort the tx).
@@ -8117,8 +7505,6 @@ export async function reprojectEntitlementForEmployment(
         terminatedOn: employment.terminatedOn,
         country: company.country,
         leaveCycle: company.leaveCycle,
-        // ae5b84d5: the manual scheme override feeds the scheme resolver below.
-        benefitSchemeId: employment.benefitSchemeId,
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -8143,50 +7529,13 @@ export async function reprojectEntitlementForEmployment(
     if (types.length === 0) return none;
     const typeIds = types.map((t) => t.id);
 
-    // 3. All active policies for these types as of asOf, grouped by type (resolveGradePolicy picks the
-    //    employee's winner among them — exactly as openLeaveYear / accrueEarnedLeave do).
-    const policyRows = await tx
-      .select({
-        leaveTypeId: leavePolicy.leaveTypeId,
-        gradeId: leavePolicy.gradeId,
-        companyId: leavePolicy.companyId,
-        accrual: leavePolicy.accrual,
-      })
-      .from(leavePolicy)
-      .where(
-        and(
-          inArray(leavePolicy.leaveTypeId, typeIds),
-          lte(leavePolicy.validFrom, asOf),
-          or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, asOf)),
-        ),
-      );
-    const policyByType = new Map<string, GradePolicyRow[]>();
-    for (const r of policyRows) {
-      const arr = policyByType.get(r.leaveTypeId);
-      const row: GradePolicyRow = { gradeId: r.gradeId, companyId: r.companyId, accrual: r.accrual };
-      if (arr) arr.push(row);
-      else policyByType.set(r.leaveTypeId, [row]);
-    }
-
-    // Auto-link entitlement (ae5b84d5): resolve THIS employment's effective benefit scheme once across all
-    // active types, so the profile-triggered projection matches what the grant sweeps actually pay (scheme
-    // days supersede policy days; EA floor still clamps). No schemes ⇒ `() => null` (back-compat).
-    const schemeDaysFor = await buildSchemeEntitlementResolver(
-      tx,
-      [
-        {
-          employmentId: emp.employmentId,
-          companyId: emp.companyId,
-          gradeId: emp.gradeId,
-          overrideSchemeId: emp.benefitSchemeId,
-        },
-      ],
-      typeIds,
-    );
-
-    // 6e9a126e RELEASE TWO — the entitlement TEMPLATE layer for this ONE employment, resolved at `asOf`.
-    // This is the path an ordinary profile save triggers, so it is the path the "no opinion" guard has to
-    // be right on: a template that resolves is an OPINION and its days are what the projection expects.
+    // 3. THE ENTITLEMENT TEMPLATE LAYER for this ONE employment, resolved at `asOf`. Release three removed
+    //    the two reads that stood here (every type's active `leave_policy` rows, and this employment's
+    //    effective benefit scheme), so this is the whole entitlement resolution now.
+    //
+    //    This is the path an ordinary profile save triggers, so it is the path the "no opinion" guard has
+    //    to be right on: a template that resolves is an OPINION and its days are what the projection
+    //    expects; NOTHING resolving means post nothing at all, never zero.
     const templates = await buildTemplateEntitlementResolver(tx, {
       employmentIds: [p.employmentId],
       leaveTypeIds: typeIds,
@@ -8240,17 +7589,13 @@ export async function reprojectEntitlementForEmployment(
           companyId: emp.companyId,
         },
         type.code,
-        policyByType.get(type.id) ?? [],
         (c, y) => pack.leave.entitlement(c, y),
         asOf,
-        // ae5b84d5: the scheme band days for this type supersede the policy days in the projection.
-        (years) => schemeDaysFor(emp.employmentId, type.id, years),
         // f3a64d90: the RAW override — 'a2c' day-slices the hire-year ANNUAL projection.
         type.yearCycleOverride,
-        // 9816a5ad step 2: every RULE now comes from the leave TYPE; the winning policy row still
-        // supplies the DAYS. A type step 1 never backfilled falls through unchanged.
+        // 9816a5ad step 2: every RULE comes from the leave TYPE; the template band supplies the DAYS.
         type,
-        // 6e9a126e release two: this employee's winning template band supersedes the scheme and the policy.
+        // 6e9a126e: this employee's winning template band — the only source of days there is.
         (years) => templates.bandFor(emp.employmentId, type.id, years),
       );
       if (!projected) continue;
@@ -8327,85 +7672,11 @@ export async function reprojectEntitlementForEmployment(
 }
 
 /**
- * Auto-link entitlement to profile (feedback ae5b84d5) — the SCHEME-SIDE cohort recalculation. When HR
- * edits the Grade Group configuration itself (a scheme's entitlement bands, the scheme's identity/status,
- * or a grade group's membership), every employee the change can touch must be trued up — including
- * DOWNWARD earned corrections, which the monthly run alone can never post (accrueEarnedLeave only grants
- * when the shortfall is positive).
- *
- * Cohort resolution (deliberately a SUPERSET — an unaffected employee computes delta 0 and posts nothing):
- *  - `schemeId`  → every live employment in the scheme's company, PLUS any employment whose manual
- *                  override (`employment.benefit_scheme_id`) points at that scheme (any company).
- *  - `gradeIds`  → every live employment whose grade is in the list (the union of a grade group's
- *                  before/after membership — see updateGradeGroup).
- *
- * Then loops `reprojectEntitlementForEmployment` SEQUENTIALLY, best-effort per employee (log + continue):
- * a rare admin operation, so per-employee transactions are acceptable, and one frozen/hiccuping employee
- * never blocks the rest. MUST be called AFTER the config-write transaction has committed (the actions do),
- * never inside it — each per-employee recalc opens its own transaction and reads the committed config.
- * No summary event of its own: the config write appended its audit event, and every posted correction
- * carries its per-row `leave.entitlement.recalculated` event + recalc-audit row (the existing trail).
- */
-export async function reprojectEntitlementForSchemeCohort(
-  ctx: SessionContext,
-  p: { schemeId?: string; gradeIds?: string[]; trigger: string; asOf?: string },
-): Promise<{ employees: number; affected: number; totalDelta: number }> {
-  const asOf = p.asOf ?? todayInKualaLumpur();
-  const gradeIds = (p.gradeIds ?? []).filter(Boolean);
-  // Read-only candidate resolution (no events — CLAUDE.md skip rule). Same live-in-cycle window guard the
-  // granting engines use; reprojectEntitlementForEmployment re-checks it per employment anyway.
-  const empIds = await withTenant(ctx, async (tx) => {
-    const ids = new Set<string>();
-    const yearStart = `${asOf.slice(0, 4)}-01-01`;
-    const liveCond = () =>
-      and(
-        lte(employment.hiredOn, asOf),
-        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
-      );
-    if (p.schemeId) {
-      const [scheme] = await tx
-        .select({ companyId: benefitScheme.companyId })
-        .from(benefitScheme)
-        .where(eq(benefitScheme.id, p.schemeId))
-        .limit(1);
-      const memberCond = scheme
-        ? or(eq(employment.companyId, scheme.companyId), eq(employment.benefitSchemeId, p.schemeId))
-        : eq(employment.benefitSchemeId, p.schemeId);
-      const rows = await tx
-        .select({ id: employment.id })
-        .from(employment)
-        .where(and(liveCond(), memberCond));
-      for (const r of rows) ids.add(r.id);
-    }
-    if (gradeIds.length) {
-      const rows = await tx
-        .select({ id: employment.id })
-        .from(employment)
-        .where(and(liveCond(), inArray(employment.gradeId, gradeIds)));
-      for (const r of rows) ids.add(r.id);
-    }
-    return [...ids];
-  });
-
-  let affected = 0;
-  let totalDelta = 0;
-  for (const employmentId of empIds) {
-    try {
-      const res = await reprojectEntitlementForEmployment(ctx, { employmentId, asOf, trigger: p.trigger });
-      affected += res.affected;
-      totalDelta = round2(totalDelta + res.totalDelta);
-    } catch (e) {
-      // Best-effort per employee: the recalc is idempotent and self-heals on the next trigger — one
-      // failing employment must not abort the rest of the cohort.
-      console.error(`scheme-cohort recalc failed for employment ${employmentId}:`, e);
-    }
-  }
-  return { employees: empIds.length, affected, totalDelta };
-}
-
-/**
- * bc36c768 — THE CATCH-UP TRIGGER. The leave-type counterpart of `reprojectEntitlementForSchemeCohort`,
- * fired when a leave type's earning method is saved and the NOT-CONFIGURED marker is cleared.
+ * bc36c768 — THE CATCH-UP TRIGGER, fired when a leave type's earning method is saved and the
+ * NOT-CONFIGURED marker is cleared, and (6e9a126e release three) when an entitlement TEMPLATE or an
+ * ELIGIBILITY RULE for the type is written. It is the only configuration-side cohort recalc left: the
+ * scheme-side one (`reprojectEntitlementForSchemeCohort`) and the policy-side one
+ * (`reprojectEntitlementForPolicy`) went with the tables that triggered them.
  *
  * WHY IT HAD TO BE BUILT RATHER THAN ASSUMED. The reporter is promised that an employee hired while a
  * type is unconfigured is credited +0.00 and loses nothing, because configuring the type "then runs a
@@ -8415,10 +7686,9 @@ export async function reprojectEntitlementForSchemeCohort(
  * `reprojectEntitlementForEmployment` for them. The whole safety argument for the NOT-CONFIGURED state is
  * that its under-credit CORRECTS ITSELF; this is what makes that sentence true.
  *
- * COHORT RESOLUTION IS A DELIBERATE SUPERSET — every live employment, not only those whose resolved
- * policy is on this type. That mirrors the scheme-cohort precedent exactly and for the same reason: an
- * unaffected employee computes delta 0 and posts nothing, whereas a cohort filter that got the resolution
- * order subtly wrong would silently leave someone at +0.00 with no signal. (It is also the honest shape:
+ * COHORT RESOLUTION IS A DELIBERATE SUPERSET — every live employment, not only those an eligibility rule
+ * for this type matches. An unaffected employee computes delta 0 and posts nothing, whereas a cohort
+ * filter that got the resolution order subtly wrong would silently leave someone at +0.00 with no signal. (It is also the honest shape:
  * `reprojectEntitlementForEmployment` recalculates ALL of an employment's types in one pass, so there is
  * no per-type narrowing to be had inside it either. `leaveTypeId` is carried for the audit trigger and
  * because a future narrowing belongs behind this signature, not beside it.)
@@ -8446,8 +7716,8 @@ export async function reprojectEntitlementForSchemeCohort(
  * new writer and its own item. test/leave-earning-method-simplified.test.ts pins the gap so it cannot be
  * quietly forgotten or quietly "fixed" by loosening the guard.
  *
- * Sequential + best-effort per employee (log and continue), exactly as the scheme cohort: a rare admin
- * operation, and one frozen or hiccuping employment must never abort the rest of the cohort.
+ * Sequential + best-effort per employee (log and continue): a rare admin operation, and one frozen or
+ * hiccuping employment must never abort the rest of the cohort.
  */
 export async function reprojectEntitlementForLeaveTypeCohort(
   ctx: SessionContext,
@@ -8698,71 +7968,32 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
     if (emps.length === 0) return { swept: 0, forfeited: 0 };
     const empIds = emps.map((e) => e.employmentId);
 
-    // Every dated ANNUAL policy version (not just the currently-active one): the cycle being swept may be
-    // governed by the policy version that was active at that year's open. resolveGradePolicy below picks
-    // the most-generous one per (year, grade).
-    const policies = await tx
-      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual, validFrom: leavePolicy.validFrom, validTo: leavePolicy.validTo })
-      .from(leavePolicy)
-      .where(inArray(leavePolicy.leaveTypeId, typeIds));
-    // 6e9a126e RELEASE TWO — the ENTITLEMENT TEMPLATE side of the same two questions this block asks of
-    // leave_policy: "is there any configuration at all" and "how far back may this sweep reach".
+    // HOW FAR BACK MAY THIS SWEEP REACH — the back-compat boundary, and the "is anything configured at
+    // all" gate rolled into one.
     //
-    // ⚠️ BOTH LIMBS WERE POLICY-ONLY, AND THAT IS THE DEFECT THE APPROVED PLAN NAMES. `expireCarriedLeave`
-    // is a WRITER, not a reader, and its `policies.length === 0` early return means a tenant configured
-    // purely through the new layer would silently STOP HAVING ITS CARRY EXPIRY SWEPT — safe in direction
-    // (nobody loses a day that should not be lost) and wrong in fact (days that should have expired sit in
-    // balances forever). It is fixed HERE, in the release that re-points, rather than in the release that
-    // drops leave_policy, because a sweep that stops sweeping produces no error and no log line.
+    // ⚠️ THIS IS A WRITER, NOT A READER, and an early return here means the sweep SILENTLY STOPS SWEEPING:
+    // days that should have expired sit in balances forever, with no error and no log line. Release two
+    // added the entitlement_template limb beside the two leave_policy ones for exactly that reason;
+    // release three removed the leave_policy ones with the table, leaving the template version as the only
+    // boundary candidate there is.
     const earliestTemplate = await earliestTemplateYear(tx, typeIds);
-    if (policies.length === 0 && earliestTemplate == null) return { swept: 0, forfeited: 0 };
+    if (earliestTemplate == null) return { swept: 0, forfeited: 0 };
 
-    // The earliest leave-year a carry-expiry policy could apply to (back-compat boundary): the year of the
-    // earliest validFrom among policies that carry an expiry offset. Never sweep before it.
-    // Feedback 9d8cf621: a policy counts if it carries ANY carry-expiry — policy-level OR per service band
-    // (hasAnyCarryExpiry) — so a purely per-range expiry still sets the sweepable-year floor.
-    // 9816a5ad step 2: for a CONSOLIDATED type the carry expiry lives on the type, so every one of its
-    // policy VERSIONS is a boundary candidate iff the type itself carries an expiry. The per-policy scan
-    // (including hasAnyCarryExpiry's per-BAND arm) still governs a type step 1 never reached — and only
-    // that type, because a consolidated type deliberately stops reading per-band carry expiry entirely
-    // (see applyLeaveTypeRules). Widening the sweep window for an expiry the sweep would then never apply
-    // is the bug this branch exists to avoid.
-    const annualTypeById = new Map(annualTypes.map((t) => [t.id, t]));
-    const typeCarriesExpiry = (typeId: string): boolean | null => {
-      const t = annualTypeById.get(typeId);
-      if (!hasAnyLeaveTypeRule(t)) return null; // not consolidated ⇒ defer to the policy scan
-      // Routed through the same overlay the sweep itself uses, so the boundary and the per-year decision
-      // can never disagree about whether an expiry exists.
-      return applyLeaveTypeRules({ days: 0, carryMax: 0 }, t)?.carryExpiry != null;
-    };
-    const expiryPolicyYears = policies
-      .filter((pol) => typeCarriesExpiry(pol.leaveTypeId) ?? hasAnyCarryExpiry(pol.accrual as AccrualConfig | null))
-      .map((pol) => Number(pol.validFrom.slice(0, 4)));
-    // 6e9a126e release two: the earliest template version for these types is a boundary candidate on the
-    // same footing as a policy version. Whether the expiry actually EXISTS is still decided per swept year
-    // by `pol?.carryExpiry` inside the loop — which reads the leave TYPE for a consolidated type and the
-    // resolved band otherwise — so this only widens the window the loop is allowed to look at, never what
-    // it forfeits. Only consulted when the ANNUAL type itself carries an expiry: a template adds no second
-    // carry definition (see db/schema.ts's entitlement_template note), so there is nothing else to ask.
-    const templateBoundaryYears =
-      earliestTemplate != null && annualTypes.some((t) => typeCarriesExpiry(t.id) === true)
-        ? [earliestTemplate]
-        : [];
-    const boundaryYears = [...expiryPolicyYears, ...templateBoundaryYears];
-    if (boundaryYears.length === 0) return { swept: 0, forfeited: 0 };
-    const earliestYear = Math.min(...boundaryYears);
-
-    // For a given leave year, the policies active at its year-open (Jan 1). ADR-0066: carry companyId so
-    // the resolver short-circuits onto the employee's own company tier (never another company's carry-cap).
-    const activeAt = (yearOpen: string): GradePolicyRow[] =>
-      policies
-        .filter((pol) => pol.validFrom <= yearOpen && (pol.validTo == null || pol.validTo > yearOpen))
-        .map((pol) => ({ gradeId: pol.gradeId, companyId: pol.companyId, accrual: pol.accrual }));
+    // 9816a5ad step 2: the carry expiry lives on the leave TYPE. Routed through the same overlay the sweep
+    // itself uses, so the boundary and the per-year decision can never disagree about whether an expiry
+    // exists. Whether it actually applies is still decided per swept year by `pol?.carryExpiry` inside the
+    // loop, so this only widens the window the loop is allowed to look at, never what it forfeits. A
+    // template adds no second carry definition (see db/schema.ts's entitlement_template note), so the type
+    // is the only thing to ask.
+    const typeCarriesExpiry = (t: (typeof annualTypes)[number]): boolean =>
+      applyLeaveTypeRules({ days: 0, carryMax: 0 }, t)?.carryExpiry != null;
+    if (!annualTypes.some(typeCarriesExpiry)) return { swept: 0, forfeited: 0 };
+    const earliestYear = earliestTemplate;
 
     // ADR-0069: skip (employment, ANNUAL type) pairs with an ACTIVE frozen encashment snapshot.
     const frozenSet = await frozenSnapshotKeySet(tx, empIds, typeIds);
 
-    // 6e9a126e release two — ONE template resolver PER SWEPT LEAVE YEAR, memoised. The sweep walks
+    // 6e9a126e — ONE template resolver PER SWEPT LEAVE YEAR, memoised. The sweep walks
     // employments x types x years, and the year is the only axis the resolution depends on: which template
     // version and which eligibility rule were in force at `${y}-01-01`, and which department / position the
     // employee held THEN. Building it inside the innermost loop would rebuild it per employee; hoisting it
@@ -8795,13 +8026,12 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
           // band-vs-flat winner flip is only reachable when the employee's service band differed at that
           // year's open, so this must be computed per-y inside the loop, not hoisted.
           // 9816a5ad step 2: carry cap, enable flag and expiry all come from the leave TYPE now.
-          // 6e9a126e release two: the ENTITLEMENT TEMPLATE version in force at THAT year's open, resolved
-          // with that year's eligibility (department / position / employment type as at then, not today's)
-          // — `templatesAt` above is memoised per swept year for exactly that reason. It is laid under the
+          // 6e9a126e: the ENTITLEMENT TEMPLATE version in force at THAT year's open, resolved with that
+          // year's eligibility (department / position / employment type as at then, not today's) —
+          // `templatesAt` above is memoised per swept year for exactly that reason. It is laid under the
           // type's rules through the same one composition every engine uses.
           const pol = applyLeaveTypeRules(
-            templateOverPolicy(
-              resolveGradePolicy(activeAt(yearStart), e.gradeId, e.companyId, serviceYearsAt(e.hiredOn, yearStart)),
+            policyFromTemplateBand(
               (await templatesAt(yearStart)).bandFor(e.employmentId, t.id, serviceYearsAt(e.hiredOn, yearStart)),
             ),
             t,
