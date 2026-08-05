@@ -1,21 +1,26 @@
 /**
- * Pure leave-policy resolution + client-safe types/constants — RSC-SAFE: this module imports NO db/postgres.
+ * Pure entitlement resolution + client-safe types/constants — RSC-SAFE: this module imports NO db/postgres.
  *
  * Split out of core/leave.ts (which imports ../db/client → postgres at module scope) following the
- * core/loans-compute.ts precedent verbatim, so a client component (components/leave-rule-preview.tsx) can
- * import `resolveGradePolicy` / `previewEntitlement` + the constants without dragging postgres into the
- * browser bundle. `next build` rejects a 'use client' → core/leave → db/client edge as module-not-found;
- * tsc + vitest do NOT run `next build`, so that boundary must be kept clean by construction. core/leave.ts
- * imports and re-exports everything here, so server callers + tests keep importing from '@/core/leave'
- * (including core/admin.ts's isValidMonthDay import).
+ * core/loans-compute.ts precedent verbatim, so client components can import the pure band/rounding
+ * resolvers and the constants without dragging postgres into the browser bundle. `next build` rejects a
+ * 'use client' → core/leave → db/client edge as module-not-found; tsc + vitest do NOT run `next build`, so
+ * that boundary must be kept clean by construction. core/leave.ts imports and re-exports everything here,
+ * so server callers + tests keep importing from '@/core/leave' (including core/admin.ts's isValidMonthDay
+ * import).
  *
- * Leave Entitlement Rules Engine (feedback a0228655) — adds optional service-length bands ABOVE the flat
- * annualDays on a leave_policy (see AccrualConfig.serviceBands), resolved by `bandDaysFor`, plus a pure
- * `previewEntitlement` that runs the SAME resolveGradePolicy the server uses so the admin preview can never
- * disagree with the real engine.
+ * 6e9a126e RELEASE THREE — THE TWO OLD LAYERS ARE GONE FROM THIS FILE. `resolveGradePolicy` (the
+ * grade/company `leave_policy` resolver), `previewEntitlement`, `entitledDays`, `bandDaysFor`,
+ * `hasAnyCarryExpiry` and the whole benefit-scheme match (`resolveEffectiveSchemeId` / `schemeBandDays`)
+ * were deleted with the surface that fed them: nothing reads `leave_policy`, `benefit_scheme` or
+ * `scheme_leave_entitlement` any more, so a pure resolver over rows nobody loads is a trap, not a spare
+ * part. An entitlement template's band is now the ONLY source of days — see `composeEntitlement`.
+ *
+ * WHAT SURVIVED AND WHY: `bandFor` / `bandCarryMax` / `bandCarryExpiry` / `bandMaxBalance` /
+ * `validateServiceBands` are the SERVICE-BAND vocabulary, and `entitlement_template.service_bands` stores
+ * exactly that shape — core/entitlement-template.ts resolves through them. `AccrualConfig` survives as
+ * their argument shape (and `parseCarryExpiry`'s), not as a live storage format.
  */
-
-export type GradePolicyRow = { gradeId: string | null; accrual: unknown; companyId?: string | null };
 
 /** ADR-0038 carry-forward expiry: the month+day on which the carried-forward ANNUAL portion expires
  *  (e.g. {month:3, day:31} = 31 March of the leave year following the one it was carried into). Stored
@@ -197,10 +202,11 @@ export type AccrualConfig = {
   // include-monthly-earned-balance behaviour is deferred (see "Out of scope"); the flag round-trips so
   // the admin can configure it now.
   carryForwardIncludeEarned?: boolean;
-  /** Leave Entitlement Rules Engine: optional service-length bands ABOVE annualDays. Omitted (undefined) on
-   *  legacy policies ⇒ byte-identical resolution at any serviceYears (bandDaysFor falls back to annualDays).
-   *  Contiguous, first fromYears = 0, last toYears = null, at most MAX_SERVICE_BANDS bands — enforced at write time
-   *  (core/admin.ts); the resolver is DEFENSIVE and ignores a malformed array rather than throwing. */
+  /** Leave Entitlement Rules Engine: the service-length band table. Contiguous, first fromYears = 0, last
+   *  toYears = null, at most MAX_SERVICE_BANDS bands — enforced at write time (`validateServiceBands`); the
+   *  resolver (`bandFor`) is DEFENSIVE and ignores a malformed array rather than throwing. Since 6e9a126e
+   *  release three this is the ONLY field of this type anything still reads: it is the shape
+   *  `entitlement_template.service_bands` stores, wrapped by core/entitlement-template.ts. */
   serviceBands?: ServiceBand[];
   /** Feedback b81d3c52 — Rounding Method for this policy's calculated entitlement. PERSISTED ONLY when it
    *  is 'up' or 'down': a No-Rounding policy OMITS the key entirely, so a re-saved untouched row stays
@@ -230,8 +236,8 @@ export function carryEnabled(pol: ResolvedPolicy | null | undefined): boolean {
  * 7cd914b1 — HOW MANY DAYS MAY BE CARRIED, given the balance standing at year end.
  *
  * THE SINGLE DEFINITION. openLeaveYear, accrueEarnedLeave's cycle-boundary cap and the projection kernel
- * must all ask this one function, for the same reason `entitledDays` exists: three call sites that each
- * re-derive "how much carries" is how the ledger and the kernel come to disagree.
+ * must all ask this one function, for the same reason `composeEntitlement` exists: three call sites that
+ * each re-derive "how much carries" is how the ledger and the kernel come to disagree.
  *
  * The rule, in order:
  *   1. Carry off (`carryEnabled` false) ⇒ 0. Full forfeit, which is the existing "disable carry" behaviour
@@ -307,22 +313,19 @@ export function parseCarryExpiry(acc: AccrualConfig | null): CarryExpiry | null 
 }
 
 /**
- * Leave Entitlement Rules Engine — the matching band's days for `serviceYears`, else `annualDays`.
- * DEFENSIVE BY DESIGN (parseCarryExpiry / R4-crash-fix precedent): if `serviceBands` is not an array, or
- * any row is non-numeric/negative/mis-ordered/overlapping/non-contiguous, ignore bands entirely and fall
- * back to annualDays — never throw. This runs inside openLeaveYear / accrueEarnedLeave / expireCarriedLeave
- * cron loops where a bad JSONB row must not abort a tenant sweep; seeds and hand-written rows bypass
- * write-time validation, so the runtime path must tolerate garbage.
- */
-export function bandDaysFor(acc: AccrualConfig | null, serviceYears: number): number {
-  return bandFor(acc, serviceYears)?.days ?? Number(acc?.annualDays ?? 0);
-}
-
-/**
  * Leave Entitlement Rules Engine — the matching well-formed band for `serviceYears`, or null (no bands /
- * malformed / no match). Same defensive contract as `bandDaysFor` (never throws inside cron sweeps), but
- * returns the whole band so callers can also read its per-range overrides (feedback 9d8cf621:
- * carryForwardDays / carryForwardExpiry / maxBalanceDays). `bandDaysFor` is a thin `?.days` over this.
+ * malformed / no match). DEFENSIVE BY DESIGN (parseCarryExpiry / R4-crash-fix precedent): if
+ * `serviceBands` is not an array, or any row is non-numeric/negative/mis-ordered/overlapping/
+ * non-contiguous, ignore bands entirely and return null — never throw. This runs inside openLeaveYear /
+ * accrueEarnedLeave / expireCarriedLeave cron loops where a bad JSONB row must not abort a tenant sweep;
+ * seeds and hand-written rows bypass write-time validation, so the runtime path must tolerate garbage.
+ *
+ * Returns the whole band so callers can also read its per-range overrides (feedback 9d8cf621:
+ * carryForwardDays / carryForwardExpiry / maxBalanceDays).
+ *
+ * 6e9a126e release three deleted `bandDaysFor`, the `?.days ?? annualDays` wrapper over this: `annualDays`
+ * was the flat `leave_policy` figure a band sat ABOVE, and there is no policy row left to fall back to.
+ * An entitlement template is bands and nothing else, so the caller reads `bandFor(...)?.days`.
  */
 export function bandFor(acc: AccrualConfig | null, serviceYears: number): ServiceBand | null {
   const bands = acc?.serviceBands;
@@ -361,15 +364,11 @@ export function bandMaxBalance(band: ServiceBand | null | undefined): number | n
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 }
 
-/** Feedback 9d8cf621 — true iff a policy carries ANY carry-forward expiry, either policy-level
- *  (`parseCarryExpiry`) or on any well-formed service band. Used by `expireCarriedLeave` to compute the
- *  back-compat "earliest sweepable year" boundary so a purely per-range expiry is not missed. */
-export function hasAnyCarryExpiry(acc: AccrualConfig | null): boolean {
-  if (parseCarryExpiry(acc) != null) return true;
-  const bands = acc?.serviceBands;
-  if (!Array.isArray(bands) || bands.length === 0 || !isWellFormedBands(bands)) return false;
-  return bands.some((b) => bandCarryExpiry(b) != null);
-}
+// 6e9a126e release three deleted `hasAnyCarryExpiry`. It answered "does this leave_policy row carry a
+// carry-expiry anywhere, policy-level or per-band", and its ONE caller was `expireCarriedLeave`'s
+// unfiltered `leave_policy` scan — the back-compat arm that decided the earliest sweepable year for a type
+// step 1 (9816a5ad) never reached. With no policy rows to scan, the sweep reads the leave TYPE's own
+// carry-expiry columns and nothing else, which is what every consolidated type already used.
 
 /**
  * Feedback 9d8cf621 — Maximum Balance Days enforcement. Given the carry-in and the grant about to be
@@ -404,7 +403,7 @@ function round2dp(n: number): number {
  * year-open grant, the earned-accrual cumulative, the recalc kernel's projection and the admin preview —
  * so the credited balance, every ledger-derived display surface and the preview can never disagree.
  *
- * DEFENSIVE like `bandDaysFor` / `bandMaxBalance`: an unknown method string, null/undefined, or a
+ * DEFENSIVE like `bandFor` / `bandMaxBalance`: an unknown method string, null/undefined, or a
  * non-finite value passes straight through unchanged rather than throwing — these run inside cron sweeps
  * over hand-written / seeded JSONB where a bad row must not abort a tenant's whole sweep.
  *
@@ -601,7 +600,7 @@ export function applyRoundingBands(value: number, bands: unknown): number {
  */
 export const MAX_SERVICE_BANDS = 20;
 
-/** Validates the contiguity/shape invariant used by both the defensive resolver (bandDaysFor) and the
+/** Validates the contiguity/shape invariant used by both the defensive resolver (bandFor) and the
  *  write-time validator (core/admin.ts): every row numeric, days >= 0, fromYears integers >= 0, sorted with
  *  no gaps/overlaps, first fromYears = 0, last toYears = null, at most MAX_SERVICE_BANDS bands. */
 export function isWellFormedBands(bands: unknown): bands is ServiceBand[] {
@@ -628,15 +627,16 @@ export function isWellFormedBands(bands: unknown): bands is ServiceBand[] {
 
 /**
  * Leave Entitlement Rules Engine — write-time validation of the service-band array (the runtime resolver
- * `bandDaysFor` is separately DEFENSIVE for rows that bypass this, e.g. seeds/hand-written data). Throws a
+ * `bandFor` is separately DEFENSIVE for rows that bypass this, e.g. seeds/hand-written data). Throws a
  * plain-English Error naming the specific defect: integers for
  * fromYears/toYears, days >= 0, first band fromYears = 0, contiguous (each next fromYears = previous
  * toYears), last band toYears = null (open-ended), at most MAX_SERVICE_BANDS bands (20 since 6e9a126e).
 
  *
- * 6e9a126e MOVED IT HERE FROM core/admin.ts, byte-identical apart from the ceiling constant. It guards
- * THREE writers now — `createLeavePolicy`/`updateLeavePolicy` and `entitlement_template`'s create and
- * update — and it belongs beside `isWellFormedBands`, whose ceiling it must always match. A private copy
+ * 6e9a126e MOVED IT HERE FROM core/admin.ts, byte-identical apart from the ceiling constant. Release
+ * three retired the two `leave_policy` writers it also guarded, so `entitlement_template`'s create and
+ * update are now its only callers — and it belongs beside `isWellFormedBands`, whose ceiling it must
+ * always match. A private copy
  * per writer is the duplicate-maintenance defect this feedback item is about.
  */
 export function validateServiceBands(bands: ServiceBand[]): void {
@@ -700,12 +700,12 @@ export function validateServiceBands(bands: ServiceBand[]): void {
 //
 // THE TARGET STRUCTURE, in the reporter's words: "Annual Leave rules are the same for everyone and only
 // the entitlement days differ by grade." So Leave Year Type, Earning Method, Carry Forward Policy,
-// Rounding and Maximum Balance belong to the LEAVE TYPE; Benefit Scheme → Service Based Entitlements
-// controls DAYS ONLY. `resolveGradePolicy` keeps doing exactly what it did — it resolves the winning
-// policy row and its DAYS — and this overlay then replaces every RULE on the result with the type's own.
-// Splitting it this way is deliberate: the days half is the risky half (it is what the ledger is made of)
-// and it is left completely untouched, so a defect in step 2 can only ever be a wrong RULE, never a wrong
-// day count from the wrong policy row.
+// Rounding and Maximum Balance belong to the LEAVE TYPE; the entitlement layer controls DAYS ONLY. The
+// days resolver (release three: the entitlement template's band, `policyFromTemplateBand`) does exactly
+// what it did — it resolves the winning band and its DAYS — and this overlay then replaces every RULE on
+// the result with the type's own. Splitting it this way is deliberate: the days half is the risky half (it
+// is what the ledger is made of) and it is left completely untouched, so a defect in step 2 can only ever
+// be a wrong RULE, never a wrong day count from the wrong band.
 
 /** The ten step-1 `leave_type` rule columns, in the shape drizzle selects them. `numeric` columns arrive
  *  as STRINGS from postgres, so both spellings are accepted and normalised below. */
@@ -835,16 +835,16 @@ export function isUserRoundingMethod(v: unknown): v is UserRoundingMethod {
 export const LEGACY_ROUNDING_METHODS = ['up', 'down', 'nearest_half'] as const;
 
 /**
- * Overlay a leave type's own rules onto a policy resolved by `resolveGradePolicy`. DAYS ARE NEVER TOUCHED.
+ * Overlay a leave type's own rules onto the carrier `policyFromTemplateBand` resolved. DAYS ARE NEVER
+ * TOUCHED.
  *
  * Returns, in order:
- *   - `null` when `pol` is null. A null policy means NO policy row matched this employee's scope at all,
- *     and this function deliberately does NOT fabricate one from the type's rules. Synthesising a policy
- *     here would hand a carry cap, a rounding method and an earning method to employees who resolve no
- *     policy today (e.g. a company-scoped type where the employee's company has only other-grade rows),
- *     which is a behaviour change — and a balance change — that nothing in this item asked for. The
- *     entitlement DAYS for such an employee still come from the statutory floor / benefit scheme through
- *     `entitledDays`, exactly as before.
+ *   - `null` when `pol` is null. A null carrier means NO entitlement template resolved for this employee
+ *     and type at all, and this function deliberately does NOT fabricate one from the type's rules.
+ *     Synthesising a policy here would hand a carry cap, a rounding method and an earning method to
+ *     employees nothing is configured for — and, since release three, would turn `noEntitlementOpinion`'s
+ *     "nothing is set up" into a confident zero, which is exactly the clawback that guard exists to
+ *     prevent.
  *   - `pol` unchanged when the type carries no rules at all (see `hasAnyLeaveTypeRule`).
  *   - otherwise a policy with `days` from the resolved row and EVERY rule from the type.
  *
@@ -863,7 +863,7 @@ export const LEGACY_ROUNDING_METHODS = ['up', 'down', 'nearest_half'] as const;
  *   - carryExpiry: routed through `parseCarryExpiry` itself, so mode precedence and the 31-Feb rejection
  *     are literally the same code rather than a re-implementation that could drift;
  *   - carryForwardEnabled: a real boolean, else undefined (⇒ the `carryEnabled` cap > 0 back-compat rule);
- *   - roundingMethod: only 'up' / 'down' are honoured, matching `resolveGradePolicy` exactly;
+ *   - roundingMethod: filtered through `isEngineRoundingMethod`; 'none' / NULL ⇒ undefined (no rounding);
  *   - maxBalanceDays: a finite number >= 0, else null (no cap).
  */
 export function applyLeaveTypeRules(
@@ -918,92 +918,6 @@ export function applyLeaveTypeRules(
   };
 }
 
-/** Resolve the leave policy for an employee's grade among a type's active policies: the most-generous
- *  policy scoped to the employee's grade, else the most-generous null-grade (all-grades) policy, else
- *  null. With no grades assigned (employee + every policy null-grade) this is exactly the pre-2E
- *  "most generous active policy" pick, so existing behavior is unchanged.
- *
- *  ADR-0066 — PER-COMPANY SCOPE (strict short-circuit). When `employeeCompanyId` is provided, resolution
- *  happens entirely within ONE scope tier: if ANY active policy is scoped to the employee's company, the
- *  company-scoped subset RESOLVES the policy (grade-match beats null-grade, max-days within that subset) and
- *  the group (null-company) tier is NEVER consulted — so a company override ALWAYS wins for that company,
- *  even when it grants FEWER days than the group default. Otherwise we fall back to the group (null-company)
- *  subset, resolved exactly as before. Grade tiering (grade > null-grade) and the max-days "most generous"
- *  pick are preserved WITHIN whichever scope wins. When `employeeCompanyId` is undefined OR no row is
- *  company-scoped, behaviour is byte-identical to the pre-0066 resolver (the back-compat guarantee).
- *
- *  Leave Entitlement Rules Engine: `serviceYears` is REQUIRED (not defaulted) so every call site must
- *  supply it explicitly — a silent default would resolve the 0-year band without the caller intending it.
- *  The "most generous" comparison and all tiering operate on BAND-RESOLVED days (via `bandDaysFor`), so a
- *  policy with a lower flat `annualDays` but a higher band for this service length can still win. Back-compat:
- *  a policy with no `serviceBands` resolves to the same `annualDays` at any serviceYears (bandDaysFor no-op).
- */
-export function resolveGradePolicy(
-  rows: GradePolicyRow[],
-  employeeGradeId: string | null,
-  employeeCompanyId: string | null | undefined,
-  serviceYears: number,
-): ResolvedPolicy | null {
-  const pick = (subset: GradePolicyRow[]): ResolvedPolicy | null => {
-    let best: ResolvedPolicy | null = null;
-    for (const r of subset) {
-      const acc = r.accrual as AccrualConfig | null;
-      // Feedback 9d8cf621: resolve the winning band ONCE so days AND its per-range overrides
-      // (carryForwardDays / carryForwardExpiry / maxBalanceDays) all come from the SAME band.
-      const band = bandFor(acc, serviceYears);
-      const days = band?.days ?? Number(acc?.annualDays ?? 0);
-      // CRITICAL (panel): carryExpiry must be chosen from the SAME winning policy as days/carryMax/method.
-      // Assign it inside this block — never outside — or a rejected lower-`days` policy's expiry can leak
-      // onto the selected policy. The per-range band overrides ride along under the same discipline.
-      if (!best || days > best.days) {
-        // Feedback 9d8cf621: a per-range carry-forward cap on the winning band OVERRIDES the policy-level
-        // carryForwardMax; a per-range expiry OVERRIDES the policy-level carry-expiry. Absent ⇒ fall back.
-        const perRangeCarry = bandCarryMax(band);
-        const perRangeExpiry = bandCarryExpiry(band);
-        best = {
-          days,
-          carryMax: perRangeCarry ?? Math.max(0, Number(acc?.carryForwardMax ?? 0)),
-          method: acc?.method,
-          carryExpiry: perRangeExpiry ?? parseCarryExpiry(acc),
-          // Same discipline as carryExpiry above: take the enable flag from the SAME winning policy —
-          // never let a rejected lower-`days` policy's flag leak onto the selected one. Absent ⇒ undefined
-          // (the `carryEnabled` back-compat default then applies).
-          carryForwardEnabled:
-            typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : undefined,
-          // Feedback 9d8cf621: Maximum Balance Days from the winning band (null = no cap).
-          maxBalanceDays: bandMaxBalance(band),
-          // Feedback b81d3c52: the Rounding Method rides the SAME winning policy row as days/method —
-          // assigned INSIDE this block under the identical discipline as carryExpiry/carryForwardEnabled,
-          // so a rejected lower-`days` policy can never leak its rounding onto the selected one.
-          // Only real engine methods are honoured; anything else (absent / garbage) ⇒ undefined ⇒ none.
-          // 9f5164d8 widened the set here as well as on the type-level overlay, deliberately: an engine that
-          // honoured a method through one storage home and silently ignored it through the other is the
-          // shape of defect that takes a release to notice. Nothing writes 'nearest_half' into this JSONB
-          // today — the only editor writes the leave TYPE — so this is symmetry, not a live path.
-          roundingMethod: isEngineRoundingMethod(acc?.roundingMethod) ? acc.roundingMethod : undefined,
-          roundingThreshold: finiteOrNull(acc?.roundingThreshold),
-        };
-      }
-    }
-    return best;
-  };
-  // Resolve grade tiering (grade-match beats null-grade) within a single scope subset.
-  const resolveWithinScope = (scope: GradePolicyRow[]): ResolvedPolicy | null => {
-    const graded = employeeGradeId ? pick(scope.filter((r) => r.gradeId === employeeGradeId)) : null;
-    return graded ?? pick(scope.filter((r) => r.gradeId == null));
-  };
-  // ADR-0066 strict scope short-circuit: if the employee's company has ANY policy, resolve entirely
-  // within that company tier and NEVER fall back to group — even if the group default is more generous.
-  if (employeeCompanyId != null) {
-    const companyScope = rows.filter((r) => r.companyId === employeeCompanyId);
-    if (companyScope.length > 0) return resolveWithinScope(companyScope);
-  }
-  // Group tier: only null-company policies. Filtering to companyId == null keeps a company-scoped policy
-  // from leaking into the group fallback for employees of OTHER companies.
-  const groupScope = rows.filter((r) => r.companyId == null);
-  return resolveWithinScope(groupScope);
-}
-
 /**
  * THE STATUTORY FLOOR IS ADVISORY, NOT AN OVERRIDE (feedback fa3f4ccb).
  *
@@ -1025,251 +939,74 @@ export function belowStatutoryFloor(floorDays: number | null | undefined, days: 
   return floorDays != null && Number.isFinite(floorDays) && days < floorDays;
 }
 
-/** Leave Entitlement Rules Engine — the admin preview's result shape. Mirrors what resolveGradePolicy
- *  produces, plus which scope tier won and whether the resolved figure sits under the statutory minimum,
- *  so the UI can render the warning without duplicating the resolution logic. */
-export type PreviewResult = {
-  /** The statutory floor for this leave type / service length, or null when no pack applies (non-MY company).
-   *  fa3f4ccb: ADVISORY — it is what the warning quotes, never what the grant uses. */
-  floorDays: number | null;
-  /** The resolved policy's days (band-resolved), or null when no policy matches at all (no default exists). */
-  policyDays: number | null;
-  /** The final granted amount: the CONFIGURED figure (policyDays ?? 0), rounded. fa3f4ccb removed the
-   *  `max(floorDays, …)` clamp that used to sit here. */
-  days: number;
-  /** Which scope tier the winning policy came from. 'none' = no policy matched (nothing configured). */
-  scope: 'company' | 'group' | 'none';
-  /** fa3f4ccb (was `floorApplied`): the resolved figure is BELOW the statutory minimum. The rename is the
-   *  point — it used to mean "the floor overrode you", it now means "you are under the minimum, and we let
-   *  you". The UI reads exactly this rather than comparing the two numbers itself. */
-  belowStatutoryFloor: boolean;
-};
 
 /**
- * Leave Entitlement Rules Engine — runs the EXACT SAME resolveGradePolicy the server engines use, so the
- * admin preview can never disagree with a real grant. `floorDays` is passed in by the caller (the client
- * component imports `entitlement` from localization/my/leave directly — see components/leave-rule-preview.tsx
- * — because the full pack registry is not client-safe); pass null when no statutory pack applies.
+ * 6e9a126e RELEASE THREE — AN ENTITLEMENT TEMPLATE'S BAND, AS A RESOLVED POLICY CARRIER.
  *
- * fa3f4ccb: this and `entitledDays` MUST move together — the guarantee above is why the preview restates
- * the composition at all, and a preview that still clamped to the floor would promise days the engines no
- * longer grant.
- */
-export function previewEntitlement(
-  rows: GradePolicyRow[],
-  employeeGradeId: string | null,
-  employeeCompanyId: string | null,
-  serviceYears: number,
-  floorDays: number | null,
-): PreviewResult {
-  const policy = resolveGradePolicy(rows, employeeGradeId, employeeCompanyId, serviceYears);
-  const policyDays = policy?.days ?? null;
-  // Feedback b81d3c52 — the preview must show the TIDIED figure, because that is what the engines credit.
-  // Rounding is applied to the composed entitlement (the `entitledDays` equivalent) at exactly the point
-  // the granting engines apply it, so this function's docstring guarantee ("the admin preview can never
-  // disagree with the real engine") still holds once a Rounding Method is configured. `floorDays` /
-  // `policyDays` stay RAW so the UI can still quote the minimum in its warning.
-  const days = applyRounding(policyDays ?? 0, policy?.roundingMethod, policy?.roundingThreshold, policy?.roundingBands);
-  // Derive which scope tier actually won, mirroring resolveGradePolicy's own subset filters exactly —
-  // including the case where the company scope EXISTS but resolves to a policy days of 0 (i.e. the
-  // company has only other-grade rows and no null-grade default): scope is still 'company' (short-circuit
-  // never falls back to group), policyDays reflects whatever pick() returned (possibly null).
-  const companyScope = employeeCompanyId != null ? rows.filter((r) => r.companyId === employeeCompanyId) : [];
-  const scope: PreviewResult['scope'] = companyScope.length > 0 ? 'company' : policy ? 'group' : 'none';
-  return { floorDays, policyDays, days, scope, belowStatutoryFloor: belowStatutoryFloor(floorDays, days) };
-}
-
-// ── Benefit Scheme & Leave Entitlement resolution (feedback b83c6a3b) — RSC-SAFE, pure ───────────────
-// A friendlier configuration LAYER over the grade-scoped engine above. A benefit scheme names a
-// (company × employment_type × grade_group) target and carries per-leave-type service-band day tables
-// (scheme_leave_entitlement.serviceBands, the SAME ServiceBand shape resolved by `bandDaysFor`). An
-// employee resolves to ONE scheme — a manual override on their employment, else an auto-match — and that
-// scheme's entitlement days SUPERSEDE the grade leave_policy days. The EA-1955 floor still applies on top
-// (max(floor, schemeDays)) exactly as it does for policy days, so a scheme can never drop below statute.
-
-/** A benefit scheme's auto-match identity (the columns the resolver needs). `status` gates usability. */
-export type BenefitSchemeRow = {
-  id: string;
-  companyId: string;
-  employmentType: string;
-  gradeGroupId: string | null;
-  status: string; // 'active' | 'inactive'
-};
-
-/** The employee attributes that pick a scheme: their company, CURRENT-assignment employment type, the
- *  grade group their grade belongs to (null = ungrouped), and any manual override scheme id. */
-export type SchemeMatchSubject = {
-  companyId: string;
-  employmentType: string | null;
-  gradeGroupId: string | null;
-  overrideSchemeId: string | null;
-};
-
-/**
- * Resolve the effective benefit-scheme id for an employee. Precedence:
- *   1. Manual override — when `overrideSchemeId` points at an ACTIVE scheme, it wins outright (HR's
- *      explicit assignment on the employee record).
- *   2. Auto-match — the ACTIVE scheme whose (companyId, employmentType, gradeGroupId) all equal the
- *      employee's. The DB keeps at most one active scheme per that triple (partial-unique index), but the
- *      resolver is defensive: if several match it picks the lowest id (deterministic), never throws.
- *   3. Otherwise null — the employee falls back to the grade-scoped leave_policy (back-compat).
- * An override pointing at an INACTIVE / unknown scheme is ignored (falls through to auto-match), so
- * deactivating a scheme cleanly reverts its overridden employees to auto-match.
- */
-export function resolveEffectiveSchemeId(
-  schemes: BenefitSchemeRow[],
-  subject: SchemeMatchSubject,
-): string | null {
-  if (subject.overrideSchemeId) {
-    const ov = schemes.find((s) => s.id === subject.overrideSchemeId && s.status === 'active');
-    if (ov) return ov.id;
-  }
-  const matches = schemes.filter(
-    (s) =>
-      s.status === 'active' &&
-      s.companyId === subject.companyId &&
-      s.employmentType === subject.employmentType &&
-      s.gradeGroupId === subject.gradeGroupId,
-  );
-  if (matches.length === 0) return null;
-  return matches.slice().sort((a, b) => a.id.localeCompare(b.id))[0].id;
-}
-
-/**
- * The scheme entitlement days for a service length: the matching service band's `days`, else null.
- * REUSES `bandFor` (defensive — never throws on malformed JSONB inside cron sweeps) by wrapping the
- * scheme's stored `serviceBands` in an AccrualConfig. Returns null when the bands are absent / malformed
- * / non-matching, which the caller reads as "this scheme has no usable entitlement for this type — fall
- * back to the grade policy". A well-formed contiguous band set (from 0, open-ended last) always matches,
- * so a configured scheme returns its band days (possibly 0, an explicit "no days" — still supersedes).
- */
-export function schemeBandDays(serviceBands: unknown, serviceYears: number): number | null {
-  const band = bandFor({ serviceBands: serviceBands as ServiceBand[] } as AccrualConfig, serviceYears);
-  return band ? band.days : null;
-}
-
-/**
- * Auto-link entitlement to profile (feedback ae5b84d5) — the ONE composition of benefit-scheme days ×
- * grade-policy days used by EVERY granting/projection site (openLeaveYear, the hire grant,
- * accrueEarnedLeave, projectExpectedEntitlement): a resolved scheme entitlement SUPERSEDES the grade
- * policy days (even an explicit 0). `schemeDays` null = no scheme / no entitlement for the type ⇒ fall
- * back to the policy days. Keeping the formula in one pure helper removes the drift class the recalc/cron
- * idempotency depends on.
+ * Release two called this `templateOverPolicy(base, band)` and laid the band OVER whatever
+ * `resolveGradePolicy` had resolved from `leave_policy`. There is no `base` any more: nothing reads
+ * `leave_policy`, so the only thing that can resolve is the template's own band. What survives from that
+ * function is the half that mattered — it MATERIALISES A CARRIER OUT OF NOTHING, and that is still the
+ * point.
  *
- * fa3f4ccb — THE STATUTORY FLOOR NO LONGER CLAMPS. This used to be
- * `Math.max(floorDays, schemeDays ?? policyDays)`; the resolved value is now `schemeDays ?? policyDays`
- * and nothing else. See `belowStatutoryFloor` above for why (approved in writing, twice asked for) and
- * for the boundaries of the change.
+ * ⚠️ WHY THE CARRIER MUST EXIST AT ALL. `applyLeaveTypeRules(null, rules)` returns null, by design: a null
+ * policy stays null. Without a seed object here, every consolidated leave type would resolve carryMax 0 /
+ * no expiry for everybody once `leave_policy` was gone, and the Carry Forward report would print a closed
+ * year as "everything forfeited". Returning a `{ days, carryMax: 0 }` seed is what lets the leave TYPE's
+ * own rules (7cd914b1 / 9816a5ad) still reach the reader. This is the specific breakage the approved plan
+ * warned release three would cause, and this line is where it does not happen.
  *
- * `floorDays` STAYS in the signature and stays computed at every call site, and the helper returns it as
- * a FLAG rather than folding it into the number. Two reasons, both learned the hard way:
- *   - a screen that wants to warn "this is under the EA minimum" must read the same floor the engine saw,
- *     not recompute one of its own;
- *   - a silently-ignored argument is worse than no argument. Returning `{ days, belowStatutoryFloor }`
- *     means every input still has a job, and a reader can see at a glance that the floor informs but does
- *     not decide.
- * `floorDays` is supplied by the CALLER from the company's country pack and is 0 / null for jurisdictions
- * with no pack — those already ran with no floor, so this makes MY behave like everywhere else.
- *
- * 6e9a126e RELEASE TWO — `templateDays` IS A NEW FIRST-PRECEDENCE LAYER, ADDED AS A POSITIONAL PARAMETER.
- * The resolution is now `template ?? scheme ?? policy`, and the argument is positional and REQUIRED
- * deliberately: an optional trailing parameter would let a re-pointed engine forget to pass it and go on
- * compiling, resolving the old two-layer answer with nothing on screen to say so. Arity is the only
- * mechanism that makes `tsc` enumerate every composition site for the next person who adds a layer.
- * `null` (no template resolves for this employee/type) is what makes a tenant with no templates
- * byte-identical: `null ?? (schemeDays ?? policyDays)` is the pre-existing expression.
- */
-export function entitledDays(
-  floorDays: number,
-  templateDays: number | null,
-  schemeDays: number | null,
-  policyDays: number,
-): { days: number; belowStatutoryFloor: boolean } {
-  const days = templateDays ?? schemeDays ?? policyDays;
-  return { days, belowStatutoryFloor: belowStatutoryFloor(floorDays, days) };
-}
-
-/**
- * 6e9a126e RELEASE TWO — AN ENTITLEMENT TEMPLATE'S BAND, LAID OVER WHATEVER THE GRADE POLICY RESOLVED.
- *
- * ⚠️ `band === null` RETURNS `base` — THE SAME OBJECT, NOT A COPY. That identity is the whole back-compat
- * argument for this release: every engine site now reads
- * `applyLeaveTypeRules(templateOverPolicy(resolveGradePolicy(…), band), type)`, and for a tenant with no
- * entitlement templates `band` is always null, so the expression REDUCES to the one that was there before
- * this item — not to something that happens to compute the same number.
- *
- * WHAT A TEMPLATE SUPERSEDES, AND WHAT IT DOES NOT:
+ * WHAT THE BAND SUPPLIES, AND WHAT IT DOES NOT:
  *   - `days` — always, from the winning band. This is the layer's entire purpose.
  *   - `carryMax` / `carryExpiry` / `maxBalanceDays` — from the band's own per-range columns WHEN IT CARRIES
- *     THEM (`bandCarryMax` / `bandCarryExpiry` / `bandMaxBalance`, the exact readers `resolveGradePolicy`
- *     applies to a leave_policy band), else the base's. These are the reporter's own "Max Brought Forward"
- *     and "Max Entitled + Brought Forward" columns and they map to nothing else.
- *   - NOTHING ELSE. `method`, `accrualDay`, rounding and `carryPercent` keep their existing source. An
+ *     THEM (`bandCarryMax` / `bandCarryExpiry` / `bandMaxBalance`). These are the reporter's own "Max
+ *     Brought Forward" and "Max Entitled + Brought Forward" columns and they map to nothing else. Absent ⇒
+ *     the neutral 0 / null, which `applyLeaveTypeRules` then overwrites from the leave type.
+ *   - NOTHING ELSE. `method`, `accrualDay`, rounding and `carryPercent` come from the leave TYPE. An
  *     entitlement template is a DAY TABLE; it has no earning-method column, and inventing one here would
  *     make a template silently stop an earned type accruing.
  *
  * ⚠️ THIS ADDS NO SECOND CARRY DEFINITION, which db/schema.ts's `entitlement_template` note requires.
  * 7cd914b1 put carry forward on `leave_type`, and `applyLeaveTypeRules` overlays the type's rules WHOLESALE
- * over whatever this returns — so for the consolidated types (every type step 1 backfilled) the band's
- * carry columns are read and then discarded, exactly as a leave_policy band's are today. The precedence is
- * unchanged and there is still exactly one carry rule per leave type; what changed is only WHERE the
- * fallback figure comes from when no leave_policy row matched.
- *
- * ⚠️ IT ALSO MATERIALISES A CARRIER OUT OF NOTHING WHEN `base` IS NULL, AND THAT IS THE POINT.
- * `applyLeaveTypeRules(null, rules)` returns null — a null policy stays null, by design. So once
- * `leave_policy` is gone (release three) every consolidated type would resolve carryMax 0 / no expiry for
- * everybody, and the Carry Forward report would print a closed year as "everything forfeited". Returning a
- * `{ days, carryMax: 0 }` seed here is what lets the leave TYPE's rules still reach the reader. This is the
- * specific breakage the approved plan warns release three would cause.
+ * over whatever this returns — so for a consolidated type the band's carry columns are read and then
+ * discarded, exactly as a leave_policy band's were. There is still exactly one carry rule per leave type.
  */
-export function templateOverPolicy(
-  base: ResolvedPolicy | null,
-  band: ServiceBand | null,
-): ResolvedPolicy | null {
-  if (!band) return base;
-  const carry = bandCarryMax(band);
-  const expiry = bandCarryExpiry(band);
-  const maxBal = bandMaxBalance(band);
+export function policyFromTemplateBand(band: ServiceBand | null): ResolvedPolicy | null {
+  if (!band) return null;
   return {
-    ...(base ?? { days: 0, carryMax: 0 }),
     days: band.days,
-    carryMax: carry ?? base?.carryMax ?? 0,
-    carryExpiry: expiry ?? base?.carryExpiry ?? null,
-    maxBalanceDays: maxBal ?? base?.maxBalanceDays ?? null,
+    carryMax: bandCarryMax(band) ?? 0,
+    carryExpiry: bandCarryExpiry(band),
+    maxBalanceDays: bandMaxBalance(band),
   };
 }
 
 /**
- * 6e9a126e RELEASE TWO — THE SINGLE COMPOSITION HOOK. Every granting engine, the projection kernel and
- * every dated reader resolve an employee's entitlement HERE and nowhere else.
+ * 6e9a126e — THE SINGLE COMPOSITION HOOK. Every granting engine, the projection kernel and every dated
+ * reader resolve an employee's entitlement HERE and nowhere else.
  *
- * It exists because there were four hand-written copies of
+ * It exists because there were four hand-written copies of the resolve-then-overlay expression, and
+ * release two had to add a layer above both halves of it. Four edits that must agree is how openLeaveYear
+ * and the reprojection kernel come to disagree by a day and post a permanent oscillating delta — the
+ * failure mode `leaveTypeRuleColumns` already exists to prevent. One function, four call sites.
  *
- *     applyLeaveTypeRules(resolveGradePolicy(rows, gradeId, companyId, years), type)
- *     entitledDays(floor, schemeDays, pol?.days ?? 0)
- *
- * and this release had to add a layer above BOTH halves of that. Four edits that must agree is how
- * openLeaveYear and the reprojection kernel come to disagree by a day and post a permanent oscillating
- * delta — the failure mode `leaveTypeRuleColumns` and `entitledDays` already exist to prevent. One
- * function, four call sites, one place to add the fifth layer.
+ * RELEASE THREE COLLAPSED IT TO ONE LAYER. `schemeDays` and `gradePolicy` are gone from the signature
+ * because the tables behind them are gone from the code: `benefit_scheme` /`scheme_leave_entitlement` and
+ * `leave_policy` are read by nothing. Removing the PARAMETERS rather than passing `null` at every site is
+ * deliberate — a parameter that is always null is an invitation to re-point something at it, and arity is
+ * the only mechanism that makes `tsc` enumerate every composition site for whoever adds the next layer.
  *
  * The returned `policy` is THE CARRIER: the object every rule (earning method, carry cap, expiry,
- * rounding, maximum balance) must be read from. The returned `days` is the composed entitlement. They are
- * deliberately separate — `days` is `template ?? scheme ?? policy` (a benefit scheme supersedes DAYS and
- * carries no rules at all), while the carrier is `template ?? policy`.
+ * rounding, maximum balance) must be read from. The returned `days` is the composed entitlement.
  *
- * `noOpinion` is `noEntitlementOpinion` over the RESOLUTIONS, not the composed number — see that
- * function. A caller that gets `noOpinion` must post NOTHING (delta exactly 0), never 0 days.
+ * `noOpinion` is `noEntitlementOpinion` over the RESOLUTION, not the composed number — see that function.
+ * A caller that gets `noOpinion` must post NOTHING (delta exactly 0), never 0 days.
  */
 export function composeEntitlement(p: {
   /** Statutory floor for this type/service length. ADVISORY since fa3f4ccb — flagged, never applied. */
   floorDays: number;
   /** The winning entitlement template's band for this employee/type/service length, or null. */
   templateBand: ServiceBand | null;
-  /** The employee's benefit-scheme band days, or null. Unchanged: schemes supersede DAYS only. */
-  schemeDays: number | null;
-  /** `resolveGradePolicy(...)` — the RAW leave_policy resolution, BEFORE any overlay. */
-  gradePolicy: ResolvedPolicy | null;
   /** The leave TYPE's own rule columns (9816a5ad step 2). */
   rules: LeaveTypeRules | null | undefined;
 }): {
@@ -1278,65 +1015,50 @@ export function composeEntitlement(p: {
   policy: ResolvedPolicy | null;
   noOpinion: boolean;
 } {
-  const policy = applyLeaveTypeRules(templateOverPolicy(p.gradePolicy, p.templateBand), p.rules);
+  const policy = applyLeaveTypeRules(policyFromTemplateBand(p.templateBand), p.rules);
   const templateDays = p.templateBand ? p.templateBand.days : null;
-  const { days, belowStatutoryFloor: below } = entitledDays(
-    p.floorDays,
-    templateDays,
-    p.schemeDays,
-    // The RAW grade-policy days, never the carrier's: once a template wins, the carrier's `days` IS the
-    // template's, and passing it here would make the fallback argument silently equal the winner.
-    p.gradePolicy?.days ?? 0,
-  );
   return {
-    days,
-    belowStatutoryFloor: below,
+    // No template ⇒ 0 days AND `noOpinion` true, which is the caller's instruction to post nothing at all.
+    // The 0 is what a caller that IGNORES noOpinion would see, and it is never the granted figure.
+    days: templateDays ?? 0,
+    belowStatutoryFloor: belowStatutoryFloor(p.floorDays, templateDays ?? 0),
     policy,
-    noOpinion: noEntitlementOpinion({ templateDays, schemeDays: p.schemeDays, policy: p.gradePolicy }),
+    noOpinion: noEntitlementOpinion({ templateDays }),
   };
 }
 
 /**
- * 6e9a126e — "NOTHING IS SET UP" IS NOT "ZERO DAYS". THE GUARD, AND IT SHIPS BEFORE ANY CLEARING DOES.
+ * 6e9a126e — "NOTHING IS SET UP" IS NOT "ZERO DAYS". THE GUARD, AND IT SHIPPED BEFORE ANY CLEARING DID.
  *
- * `entitledDays` composes `schemeDays ?? policyDays`, and its callers pass `pol?.days ?? 0` — so an
- * employee for whom NO layer resolves anything composes to a confident **0**. That is fine while
- * something is always configured. It stops being fine the moment configuration can be absent:
+ * The composition used to be `schemeDays ?? policyDays` with callers passing `pol?.days ?? 0` — so an
+ * employee for whom NO layer resolved anything composed to a confident **0**. That was fine while
+ * something was always configured. It stopped being fine the moment configuration could be absent:
  *
  *   - `projectExpectedEntitlement` yields expected 0;
  *   - its callers compute `delta = 0 − alreadyPosted` and post a NEGATIVE `adjustment`;
  *   - the employee's remaining balance is driven down toward zero.
  *
  * That is a CLAWBACK OF DAYS PEOPLE ALREADY HOLD, triggered by an ordinary profile save (the reproject is
- * wired to `app/admin/personnel/[employmentId]/actions.ts`, `core/movement-apply.ts`,
- * `setEmploymentBenefitScheme`, `reprojectEntitlementForPolicy` and the scheme-cohort path). And the
- * statutory floor no longer props the figure up, because fa3f4ccb made it ADVISORY at the reporter's
- * written request. The approved plan promises the reporter that the reset moves nobody's balance; without
- * this guard that promise is false the first time anyone saves a profile.
+ * wired to `app/admin/personnel/[employmentId]/actions.ts`, `core/movement-apply.ts` and the leave-type
+ * rules writer). And the statutory floor no longer props the figure up, because fa3f4ccb made it ADVISORY
+ * at the reporter's written request. The approved plan promises the reporter that the reset moves nobody's
+ * balance; without this guard that promise is false the first time anyone saves a profile.
  *
- * SO THE GUARD IS BUILT NOW, IN THE RELEASE THAT CLEARS NOTHING, rather than in the release that clears.
- * A safety property that lands in the same change as the hazard has never been tested against the world
- * without it.
+ * THE GUARD WAS BUILT IN RELEASE ONE, THE RELEASE THAT CLEARED NOTHING, rather than in the release that
+ * clears. A safety property that lands in the same change as the hazard has never been tested against the
+ * world without it. RELEASE THREE IS THAT HAZARD — this is the function keeping every balance still during
+ * the blank window while the reporter retypes their configuration.
  *
  * The distinction it draws is between ABSENCE and an EXPLICIT ZERO:
- *   - no template, no scheme entitlement and no policy row ⇒ NO OPINION ⇒ the caller posts nothing;
- *   - a policy resolving 0 days, or a scheme band saying 0, is a real answer somebody typed ⇒ 0 days.
- * That is why the test is on the RESOLUTIONS, not on the composed number: `pol` non-null with `days: 0`
- * and `pol` null are different facts that `pol?.days ?? 0` flattens into the same 0.
+ *   - no entitlement template resolves for this employee and type ⇒ NO OPINION ⇒ the caller posts nothing;
+ *   - a template band saying 0 days is a real answer somebody typed ⇒ 0 days.
+ * That is why the test is on the RESOLUTION, not on the composed number: a band of 0 and no band at all
+ * are different facts that `days ?? 0` flattens into the same 0.
  *
- * `templateDays` was in the signature from release one and passed `null` by every caller, because the
- * entitlement_template layer existed but no engine read it. RELEASE TWO now passes the resolved template
- * days, and this function needed no edit — which is the whole reason it is a named predicate rather than
- * three `if`s inlined at the composition site. Its only caller is now `composeEntitlement`.
- *
- * ⚠️ `policy` MUST BE THE RAW `resolveGradePolicy` RESULT, not the carrier `templateOverPolicy` returns.
- * The carrier is non-null whenever a template resolves, so passing it would make this predicate ask "did
- * anything at all resolve" — which is true by construction and would never fire again.
+ * It kept the same shape through three releases and needed no edit as layers were added and removed —
+ * which is the whole reason it is a named predicate rather than an `if` inlined at the composition site.
+ * Its only caller is `composeEntitlement`.
  */
-export function noEntitlementOpinion(p: {
-  templateDays: number | null;
-  schemeDays: number | null;
-  policy: ResolvedPolicy | null;
-}): boolean {
-  return p.templateDays == null && p.schemeDays == null && p.policy == null;
+export function noEntitlementOpinion(p: { templateDays: number | null }): boolean {
+  return p.templateDays == null;
 }
