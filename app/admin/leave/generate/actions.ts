@@ -1,7 +1,7 @@
 'use server';
 
 import { requireAdmin } from '@/lib/authz';
-import { previewLeaveGeneration, type LeaveGenerationResult } from '@/core/leave-generation';
+import { previewLeaveGeneration, type LeaveGenerationResult } from '@/packs/leave/service';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
 
 /**

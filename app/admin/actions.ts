@@ -69,7 +69,7 @@ import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 // 93249794 — the Generate Entitlement run. `openLeaveYear` is no longer imported here: this file reaches
 // the grant sweep THROUGH core/leave-generation.ts, which calls it and writes the processing log, so the
 // engine has one entry point from the app layer instead of two.
-import { runLeaveGeneration } from '@/core/leave-generation';
+import { runLeaveGeneration } from '@/packs/leave/service';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
 // Override Leave Application (56910869): the trigger list the form iterates, so the card and the parser
 // cannot disagree about which rows exist.

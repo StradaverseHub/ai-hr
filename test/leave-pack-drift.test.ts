@@ -102,6 +102,9 @@ const ALWAYS_ALLOWED = [
   'core/benefit-scheme.ts',
   'core/entitlement-template.ts', // 6e9a126e — see the BOUNDARIES note above
   'core/entitlement-archive.ts', // 6e9a126e — see the BOUNDARIES note above
+  'core/leave-generation.ts', // 93249794 — a leave SERVICE (it drives openLeaveYear), so it is pack
+  // implementation, not a consumer. Declared here rather than allowlisted, following entitlement-template's
+  // precedent: the allowlist is audited debt that may only shrink.
   'app/leave/', // the My Absence self-service home (balances/apply/history/export)
   'app/admin/leave/', // leave config: type master, entitlements, rules, approval, payroll, import, audit
   'app/admin/leave-approval/', // approval templates + workflow matrix

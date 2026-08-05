@@ -7,7 +7,7 @@ import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin'
 import { listLocations } from '@/core/location';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { buildOrgCriteriaSections } from '@/core/org-criteria-form';
-import { listLeaveGenerationRuns } from '@/core/leave-generation';
+import { listLeaveGenerationRuns } from '@/packs/leave/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { GenerateForm } from '@/components/leave/generate-form';
 import { openLeaveYearAction } from '../../actions';
