@@ -27,6 +27,11 @@ const read = (rel: string) => readFileSync(resolve(ROOT, rel), 'utf8');
 const GENERATE_ROUTE = '/admin/leave/generate';
 const GENERATE_PAGE = 'app/admin/leave/generate/page.tsx';
 const ACTIONS = 'app/admin/actions.ts';
+/** 93249794 grew the page into the five-step flow. Everything interactive — including the <form> and the
+ *  year select — moved into this client component; the page stayed a server component and kept the import.
+ *  The assertions below FOLLOW the code rather than being relaxed: the promise this file makes is that the
+ *  grant sweep is reachable from exactly one place, and that promise is unchanged. */
+const GENERATE_FORM = 'components/leave/generate-form.tsx';
 
 const LOCALES = ['en', 'zh', 'ms', 'ta', 'th', 'vi'] as const;
 const msgs = (loc: string) => JSON.parse(read(`messages/${loc}.json`));
@@ -107,20 +112,32 @@ describe('4b0e76ae · the Generate Entitlement page is REACHABLE', () => {
     }
   });
 
-  it('the page re-uses admin.leave.yearLabel rather than minting a second year label', () => {
+  it('the flow re-uses admin.leave.yearLabel rather than minting a second year label', () => {
     // yearLabel sits inside the span an earlier revision named for deletion; it is KEPT for exactly this.
-    expect(read(GENERATE_PAGE)).toContain("t('yearLabel')");
+    // 93249794: the year select moved from the page into the step-1 section of the client form.
+    expect(read(GENERATE_FORM)).toContain("t('yearLabel')");
     for (const loc of LOCALES) {
       expect(typeof msgs(loc)?.admin?.leave?.yearLabel, `${loc} admin.leave.yearLabel`).toBe('string');
     }
   });
 
-  it('the page is a SERVER component passing no function props across a client boundary', () => {
-    // The r123 defect (test/server-client-boundary.test.ts) threw at RENDER and no gate step caught it.
-    // The cheapest defence is not mounting a client component at all: a plain form posting to the action.
+  it('the page is a SERVER component and the flow posts straight to the server action', () => {
+    // The r123/r124 defect (test/server-client-boundary.test.ts) threw at RENDER and no gate step caught
+    // it: a server component passed a translator CLOSURE to a client component. 4b0e76ae defended by not
+    // mounting a client component at all; 93249794 needs one (five steps, a live preview), so the defence
+    // is the AdjustmentForm contract instead — the page stays a server component, the client form reads
+    // its own copy with useTranslations, and the only functions crossing the boundary are SERVER ACTIONS,
+    // which React can serialise. Both halves are asserted so neither can quietly stop being true.
     const page = read(GENERATE_PAGE);
     expect(page.includes("'use client'")).toBe(false);
-    expect(page).toContain('<form action={openLeaveYearAction}');
+    // The action is handed to the form as a prop — a server action reference, never a translator.
+    expect(page).toContain('action={openLeaveYearAction}');
+    expect(page.includes('={t}'), 'no translator may cross the boundary').toBe(false);
+    const form = read(GENERATE_FORM);
+    expect(form.startsWith("'use client'")).toBe(true);
+    expect(form).toContain('<form ref={formRef} action={action}');
+    // The client form translates for ITSELF (one namespace, so the i18n guard's check C can see it).
+    expect(form).toContain("useTranslations('admin.leave')");
   });
 });
 

@@ -5926,6 +5926,98 @@ export const leaveEntitlementRecalcAudit = pgTable(
 );
 export type LeaveEntitlementRecalcAuditRow = typeof leaveEntitlementRecalcAudit.$inferSelect;
 
+// 93249794 — GENERATE ENTITLEMENT: the processing log (0399 / 0400).
+//
+// One row per RUN of the Generate Entitlement screen, plus one item row per (employment, leave type) the
+// run reached. The request asks for a downloadable log and an audit-trail record naming who ran what, over
+// which employees, with what result — none of which the `leave-year.opened` event's three integers can
+// answer, and none of which existed as a concept before this screen gave the sweep a scope.
+//
+// ⚠️ RECORDS, DECIDES NOTHING. No engine reads either table; deleting every row would move no employee's
+// entitlement by a day. openLeaveYear's idempotency marker is the LEDGER's own 1-January accrual row and
+// stays that way — 4b0e76ae had to clear leave_year_config precisely because a bookkeeping table LOOKED
+// like it gated the year-open. These two cannot acquire that ambiguity, because nothing consults them.
+//
+// Precedent: leave_entitlement_recalc_audit above (append-only, human-readable, written alongside the
+// ledger rows that carried the change) for the posture, and leave_adjustment_batch for the criteria
+// column — store what was ASKED, not what it resolved to, because re-running the same criteria later can
+// legitimately reach different people and that difference is the interesting part.
+export const leaveGenerationRun = pgTable(
+  'leave_generation_run',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** The app_user who pressed Process — generating entitlement is an administrative act. */
+    actorUserId: uuid('actor_user_id').references(() => appUser.id),
+    /** The entitlement year granted. Deliberately NOT a FK to leave_year_config: 4b0e76ae cleared that
+     *  table and removed its screen, and the year list is computed by `entitlementYearOptions`. */
+    leaveYear: integer('leave_year').notNull(),
+    /** The selected leave types, as posted. EMPTY = "every type this sweep grants" — a real, different
+     *  value, and what the unscoped run has always done. */
+    leaveTypeIds: jsonb('leave_type_ids').notNull().default(sql`'[]'::jsonb`),
+    /** 'criteria' | 'individual'. The same resolved set means different things. */
+    targetMode: text('target_mode').notNull(),
+    /** core/org-criteria.ts `OrgCriteria`. `{}` means EVERYONE and is a legitimate, deliberate value. */
+    criteria: jsonb('criteria').notNull().default(sql`'{}'::jsonb`),
+    /** The ids given directly in 'individual' mode; empty in criteria mode. */
+    employmentIds: jsonb('employment_ids').notNull().default(sql`'[]'::jsonb`),
+    /** How many employments the SELECTION resolved to, before the sweep's own year-boundary eligibility. */
+    employeesSelected: integer('employees_selected').notNull().default(0),
+    /** The three counters openLeaveYear returns, stored verbatim so the log and the engine agree. */
+    granted: integer('granted').notNull().default(0),
+    skipped: integer('skipped').notNull().default(0),
+    forfeits: integer('forfeits').notNull().default(0),
+    /** The reporter's "235 Successful / 3 Failed", counted in EMPLOYMENTS. PASSED = the employee ended
+     *  the run holding entitlement for at least one selected type — `granted` OR `already_open`, because
+     *  the sweep is idempotent and a re-run that reported the whole company as "failed" would be worse
+     *  than useless. FAILED = reached by the run and holding nothing for any of them. */
+    employeesPassed: integer('employees_passed').notNull().default(0),
+    employeesFailed: integer('employees_failed').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('leave_generation_run_tenant_idx').on(t.tenantId, t.createdAt)],
+);
+export type LeaveGenerationRunRow = typeof leaveGenerationRun.$inferSelect;
+
+// The per-employee lines. `outcome` is `LeaveYearGrantOutcome` from core/leave.ts — every value is a LABEL
+// on a branch openLeaveYear already had, never a new classification, which is what makes the preview and
+// the stored result the same verdict from one pass of one engine.
+export const leaveGenerationRunItem = pgTable(
+  'leave_generation_run_item',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => leaveGenerationRun.id, { onDelete: 'cascade' }),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    leaveTypeId: uuid('leave_type_id')
+      .notNull()
+      .references(() => leaveType.id),
+    /** Deliberately free text with no DB CHECK: a new engine branch must be able to start being logged in
+     *  the same commit that introduces it. Pinned to the TypeScript union by test/leave-generation.test.ts,
+     *  which is where a divergence is actually fixable. */
+    outcome: text('outcome').notNull(),
+    days: numeric('days', { precision: 6, scale: 2 }).notNull().default('0'),
+    carry: numeric('carry', { precision: 6, scale: 2 }).notNull().default('0'),
+    forfeit: numeric('forfeit', { precision: 6, scale: 2 }).notNull().default('0'),
+    /** fa3f4ccb: ADVISORY. The floor stopped clamping at the reporter's written request, so this records a
+     *  warning the engine computed and deliberately did not act on. */
+    belowStatutoryFloor: boolean('below_statutory_floor').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('leave_generation_run_item_run_idx').on(t.tenantId, t.runId),
+    index('leave_generation_run_item_employment_idx').on(t.tenantId, t.employmentId, t.leaveTypeId),
+    // One verdict per pair per run. A second row could only be a double-write, and a log that can
+    // double-count is a log nobody can reconcile against the ledger.
+    uniqueIndex('leave_generation_run_item_uq').on(t.runId, t.employmentId, t.leaveTypeId),
+  ],
+);
+export type LeaveGenerationRunItemRow = typeof leaveGenerationRunItem.$inferSelect;
+
 // Dependent sub-category under a claim type (e.g. TRAVEL → MILEAGE / PARKING / TOLL). The submission form
 // shows it as a dependent dropdown; mandatory only when the chosen type has ≥1 live item (enforced in the
 // service, not the schema — claim_request.claim_item_id stays nullable for legacy/zero-item types).
