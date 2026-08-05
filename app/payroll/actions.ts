@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
+  BatchNeedsRecalculationError,
   BatchNotCloseableError,
   BatchNotDraftError,
   BatchNotResettableError,
@@ -429,9 +430,15 @@ export async function closeAction(formData: FormData) {
     const msg =
       e instanceof BatchNotCloseableError
         ? t('closeNotProcessed')
-        : e instanceof PayrollPermissionDeniedError
-          ? t('closePermissionDenied')
-          : (e as Error).message;
+        : // 49e7e0a2 — the run's transactions changed after it was processed. The BUTTON is already
+          // hidden while that is true, so reaching here means a direct post or a mark that landed
+          // between the render and the submit; either way the operator gets the real reason, in their
+          // own language, rather than the service's raw English.
+          e instanceof BatchNeedsRecalculationError
+          ? t('closeBlockedRecalc')
+          : e instanceof PayrollPermissionDeniedError
+            ? t('closePermissionDenied')
+            : (e as Error).message;
     redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(`/payroll/${batchId}`);

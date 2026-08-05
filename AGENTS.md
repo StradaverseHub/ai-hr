@@ -54,7 +54,12 @@ HEAD — create worktrees from `main` yourself.
     CREATE/DROP from >5 minutes to 0.47s. If the cluster ever misbehaves, run
     `./scripts/dev-db-rebuild.sh` (<1 min, applies the settings and the `NOBYPASSRLS` role) rather
     than waiting, killing, or theorising.
-11. **NEVER run an agent and a gate against the same cluster at once.** Twice in one session that
+11. **NEVER `git stash` while parallel agents are running.** Stashes are REPO-GLOBAL, not per-worktree:
+    an agent ran `git stash pop` and got a DIFFERENT agent's stash into its tree. It was restored
+    intact via `git stash store`, but the two worktrees were one command away from silently mixing
+    each other's uncommitted work. Commit a WIP checkpoint instead — `git commit` is per-branch and
+    cannot collide.
+12. **NEVER run an agent and a gate against the same cluster at once.** Twice in one session that
     bloated WAL to 5GB and produced 32 false failures across files unrelated to the change. Agents
     run only their own targeted tests; the parent runs the single full gate, alone.
 

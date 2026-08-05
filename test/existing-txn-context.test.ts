@@ -70,19 +70,45 @@ describe('44129979 — the two statuses the ledger actually supports', () => {
   });
 
   it('offers Edit and Delete exactly where the service would accept them', () => {
-    // updateIndividualTxn / deleteIndividualTxn accept unattached or draft and throw BatchNotDraftError
-    // otherwise. A button that always fails is worse than a disabled one.
+    // updateIndividualTxn / deleteIndividualTxn accept unattached, draft or PROCESSED and throw
+    // BatchNotDraftError otherwise. A button that always fails is worse than a disabled one.
+    //
+    // 49e7e0a2 MOVED `processed` FROM false TO true, DELIBERATELY. Editing a processed run is now allowed
+    // because it routes through the recalculation mark rather than diverging silently; only `closed` —
+    // frozen in the app and by the 0011 database triggers — is still refused. An unrecognised status stays
+    // NOT editable for the same reason `txnStatusOf` degrades it to pending: absence of knowledge is not
+    // permission.
+    const panel = buildTxnPanel([
+      row({ id: 'unattached', batchStatus: null }),
+      row({ id: 'draft', batchStatus: 'draft' }),
+      row({ id: 'processed', batchStatus: 'processed' }),
+      row({ id: 'closed', batchStatus: 'closed' }),
+      row({ id: 'future', batchStatus: 'some_future_status' }),
+    ]);
+    expect(panel.rows.map((r) => [r.id, r.editable])).toEqual([
+      ['unattached', true],
+      ['draft', true],
+      ['processed', true],
+      ['closed', false],
+      ['future', false],
+    ]);
+  });
+
+  it('flags the rows whose edit costs a recalculation, and only those', () => {
+    // `status` says PAID; `recalcOnEdit` says CHANGING IT MAKES A PROCESSED RUN STALE. They used to be the
+    // same question — a paid row was a frozen row — and they are not any more. A closed row is paid and is
+    // not recalculable, so it must not claim to be.
     const panel = buildTxnPanel([
       row({ id: 'unattached', batchStatus: null }),
       row({ id: 'draft', batchStatus: 'draft' }),
       row({ id: 'processed', batchStatus: 'processed' }),
       row({ id: 'closed', batchStatus: 'closed' }),
     ]);
-    expect(panel.rows.map((r) => [r.id, r.editable])).toEqual([
-      ['unattached', true],
-      ['draft', true],
-      ['processed', false],
-      ['closed', false],
+    expect(panel.rows.map((r) => [r.id, r.status, r.recalcOnEdit])).toEqual([
+      ['unattached', 'pending', false],
+      ['draft', 'pending', false],
+      ['processed', 'processed', true],
+      ['closed', 'processed', false],
     ]);
   });
 

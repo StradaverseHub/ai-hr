@@ -18,9 +18,17 @@
  * that is not demonstrably paid degrades to `pending` — an unknown batch status is never proof of payment.
  *
  * EDITABILITY FOLLOWS THE SERVICE, NOT THE OTHER WAY ROUND. `updateIndividualTxn` / `deleteIndividualTxn`
- * accept a row while it is unattached or on a DRAFT batch and refuse it otherwise (BatchNotDraftError).
- * `editable` mirrors that rule so the row actions are disabled where the write would be rejected, rather
- * than offering a button that always fails.
+ * accept a row while it is unattached or on a batch in WRITABLE_BATCH_STATUSES and refuse it otherwise
+ * (BatchNotDraftError). `editable` mirrors that rule so the row actions are disabled where the write would
+ * be rejected, rather than offering a button that always fails.
+ *
+ * 49e7e0a2 WIDENED THAT SET TO INCLUDE `processed`, AND `editable` IS NOW INDEPENDENT OF `status`. Before
+ * this round the two were the same question — a paid row was a frozen row — and `editable: status ===
+ * 'pending'` said so in one expression. They have come apart: a row on a processed run HAS been paid
+ * (status 'processed') and may STILL be corrected (editable), because the correction marks the run for
+ * recalculation instead of quietly diverging from it. `recalcOnEdit` is what carries that second fact to
+ * the screen, so the operator is told what a save on this row will cost before they make it. A CLOSED run
+ * is still frozen, in the app and by the 0011 database triggers underneath it.
  *
  * STRANDED MONEY IS A SEPARATE QUESTION AND STAYS SEPARATE. `listUnattachedTxnSummary` (d0d2c9d1) answers
  * "which money was entered and never reached a payslip, and has the month's run already gone past it".
@@ -71,11 +79,32 @@ export type StrandedInputRow = {
 
 export type TxnPanelRow = TxnPanelInputRow & {
   status: TxnStatus;
-  /** True while the row may still be changed — mirrors the service's unattached-or-draft rule. */
+  /** True while the row may still be changed — mirrors the service's unattached / draft / processed rule. */
   editable: boolean;
   /** False while the row is period-keyed and waiting for the month's regular run to collect it. */
   attached: boolean;
+  /** True when changing this row makes an already-processed run's payslips, statutory figures and totals
+   *  stale, and marks that run for recalculation. */
+  recalcOnEdit: boolean;
 };
+
+/**
+ * The batch statuses in which a ledger row may still be written — the CLIENT-SIDE mirror of
+ * `WRITABLE_BATCH_STATUSES` (core/payroll-individual-txn.ts), kept as a literal here so this pure module
+ * (and the client component that consumes it) never imports the DB-touching service across the RSC
+ * boundary. The service is authoritative; this only decides whether a button is offered.
+ */
+const WRITABLE_BATCH_STATUSES = ['draft', 'processed'] as const;
+
+/**
+ * May this row still be changed? Unattached (no run yet) or on a run in a writable status. A `closed` run —
+ * and equally a status this build does not recognise — is NOT writable: the service refuses it and the
+ * 0011 triggers refuse it underneath, so offering the button would only produce a failed save.
+ */
+export function txnEditableOf(batchStatus: string | null | undefined): boolean {
+  if (batchStatus == null) return true;
+  return (WRITABLE_BATCH_STATUSES as readonly string[]).includes(batchStatus);
+}
 
 export type TxnPanelTotals = {
   count: number;
@@ -126,7 +155,13 @@ export function buildTxnPanel(
 ): TxnPanel {
   const panelRows: TxnPanelRow[] = rows.map((r) => {
     const status = txnStatusOf(r.batchStatus);
-    return { ...r, status, editable: status === 'pending', attached: r.batchStatus != null };
+    return {
+      ...r,
+      status,
+      editable: txnEditableOf(r.batchStatus),
+      attached: r.batchStatus != null,
+      recalcOnEdit: r.batchStatus === 'processed',
+    };
   });
 
   let totalC = 0;

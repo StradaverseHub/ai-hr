@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { scopedAdmin } from '@/lib/scope';
-import { BatchNotDraftError } from '@/core/payroll';
+import { BatchNotDraftError, batchEditImpact } from '@/core/payroll';
 import { listIndividualTxnsAcross, listUnattachedTxnSummary } from '@/core/payroll-view';
 import { buildTxnPanel, type TxnPanel } from './existing-context';
 import {
@@ -71,7 +71,61 @@ const txnErrorKey = (e: unknown): string =>
                           ? 'notDraft'
                           : (e as Error).message;
 
-export type TxnActionResult = { ok: true; id?: string } | { ok: false; error: string };
+export type TxnActionResult =
+  | {
+      ok: true;
+      id?: string;
+      /**
+       * 49e7e0a2 — the PROCESSED run this write just made stale, or undefined when nothing became stale
+       * (an unattached row, or a draft run, which recalculates by being generated).
+       *
+       * The screen uses it to link the operator straight to that run's selective reprocess. It is the
+       * ACTION's report of what it did, not a second derivation: the service marked the run inside the
+       * same transaction as the write, so this is never set for a write that did not land.
+       */
+      recalcBatchId?: string;
+    }
+  | { ok: false; error: string };
+
+/**
+ * 49e7e0a2 — what a save onto THIS run is about to make out of date, read on demand when the form
+ * resolves a processed run as its target.
+ *
+ * The three downstream facts come from `batchDownstreamWarnings`, which is the derivation
+ * `unlockClosedBatch` has used since 9bc442bc for the same question — deliberately shared rather than
+ * re-implemented, so the warning before an edit and the warning before an unlock cannot disagree.
+ *
+ * Fenced to the caller's company scope; a run in a company this admin does not administer reads as absent.
+ * Read-only: no write, no DomainEvent.
+ */
+export async function fetchBatchImpactAction(input: { batchId: string }): Promise<TxnBatchImpact | null> {
+  const { s, scopeIds } = await scopedAdmin();
+  if (!input.batchId) return null;
+  const impact = await batchEditImpact(s, { batchId: input.batchId });
+  if (!impact || !scopeIds.includes(impact.companyId)) return null;
+  return {
+    batchId: input.batchId,
+    status: impact.status,
+    payPeriod: impact.payPeriod,
+    needsRecalc: impact.needsRecalcAt != null,
+    recalcCount: impact.employmentIds.length,
+    paymentDisbursed: impact.paymentDisbursed,
+    statutoryFiled: impact.statutoryFiled,
+    statutoryReportCount: impact.statutoryReportCount,
+  };
+}
+
+/** Plain-data projection of `batchEditImpact` for the client component (no Date, no service types). */
+export type TxnBatchImpact = {
+  batchId: string;
+  status: 'draft' | 'processed' | 'closed';
+  payPeriod: string;
+  needsRecalc: boolean;
+  recalcCount: number;
+  paymentDisbursed: boolean;
+  statutoryFiled: boolean;
+  statutoryReportCount: number;
+};
 
 /** One transaction as the create/edit form submits it. `quantity`/`unit` are descriptive (the request's
  *  "Input Type" + "Quantity / Value"); `amount` is the figure that is actually paid. */
@@ -164,6 +218,9 @@ export async function createIndividualTxnAction(input: TxnFormInput): Promise<Tx
   if (!input.companyId || !scopeIds.includes(input.companyId)) return { ok: false, error: 'outOfScope' };
   if (!input.employmentId) return { ok: false, error: 'noEmployeesSelected' };
   if (!input.batchId && !isPayPeriod(input.payPeriod)) return { ok: false, error: 'periodInvalid' };
+  // 49e7e0a2 — read the target run's status BEFORE the write, so a successful save can report whether it
+  // landed on a processed run without re-reading (and possibly re-deciding) afterwards.
+  const targetImpact = input.batchId ? await batchEditImpact(s, { batchId: input.batchId }) : null;
   try {
     const { ids } = await createIndividualTxnsBulk(s, {
       ...(input.batchId ? { batchId: input.batchId } : { companyId: input.companyId, payPeriod: input.payPeriod }),
@@ -181,7 +238,11 @@ export async function createIndividualTxnAction(input: TxnFormInput): Promise<Tx
       ],
     });
     revalidatePath('/payroll/transactions/individual');
-    return { ok: true, id: ids[0] };
+    return {
+      ok: true,
+      id: ids[0],
+      ...(targetImpact?.status === 'processed' && input.batchId ? { recalcBatchId: input.batchId } : {}),
+    };
   } catch (e) {
     return { ok: false, error: txnErrorKey(e) };
   }
@@ -210,13 +271,20 @@ export async function updateIndividualTxnAction(
       componentId: input.componentId,
     });
     revalidatePath('/payroll/transactions/individual');
-    return { ok: true, id: input.id };
+    // `recalcOnEdit` is the SERVICE's own answer, read on the row that was about to be edited — not a
+    // second rule this file invents about which runs are stale.
+    return {
+      ok: true,
+      id: input.id,
+      ...(existing.recalcOnEdit && existing.batchId ? { recalcBatchId: existing.batchId } : {}),
+    };
   } catch (e) {
     return { ok: false, error: txnErrorKey(e) };
   }
 }
 
-/** Delete one transaction (allowed while unattached or on a draft run — the service enforces it). */
+/** Delete one transaction (allowed while unattached, or on a draft or processed run — the service
+ *  enforces it, and marks a processed run for recalculation as it goes). */
 export async function deleteIndividualTxnAction(input: { id: string }): Promise<TxnActionResult> {
   const { s, scopeIds } = await scopedAdmin();
   const existing = input.id ? await getIndividualTxn(s, { id: input.id }) : null;
@@ -224,7 +292,11 @@ export async function deleteIndividualTxnAction(input: { id: string }): Promise<
   try {
     await deleteIndividualTxn(s, { id: input.id });
     revalidatePath('/payroll/transactions/individual');
-    return { ok: true, id: input.id };
+    return {
+      ok: true,
+      id: input.id,
+      ...(existing.recalcOnEdit && existing.batchId ? { recalcBatchId: existing.batchId } : {}),
+    };
   } catch (e) {
     return { ok: false, error: txnErrorKey(e) };
   }
