@@ -182,44 +182,30 @@ forward, not a repair of history. Say that plainly rather than implying the paid
   none existed and promised the reporter a payslip without one, so it shipped without — but a
   letterhead is now cheap.
 
-### Production measurements that change plans (taken 2026-08-04)
+### Durable product facts from the 2026-08-04 measurements (the items themselves have all SHIPPED)
 
-- **`7cd914b1`'s data migration is a NO-OP — RE-CONFIRMED 2026-08-04 after r137**: rows with
-  `carry_forward_percent > 0 AND carry_forward_max > 0` = ZERO (only ANNUAL holds a cap, 10.00, and it
-  carries no percentage). Say so plainly rather than quietly shipping it. The reporter also narrowed
-  it: no Carry cap (days) when the option is percentage-of-remaining-balance; keep the carry expiry
-  boxes.
-- **`8590615a` is PARTLY BUILT**: `employment.contract_end_date` already exists on production;
-  `contract_start_date` and `contract_remark` do not. Only 2 live contract employments, both lacking
-  an end date. **`employment_type` lives on `assignment`, NOT `employment`** — a query against
+**Re-counted 2026-08-05: `7cd914b1`, `8590615a`, `65f466e2`, `c459bff9`, `2e3ec77d` and `9861b8a4`
+are all `deployed`, and `2e3ec77d`'s relief-stripping bug is verifiably fixed (the form now spreads
+`...base.pcb`).** The per-item measurement block and the two "awaiting the OWNER" findings that stood
+here were planning inputs for work that has since shipped — they are in `docs/HANDOFF-HISTORY.md`
+under their rounds. What survives is the handful of facts that outlive their tickets:
+
+- **`employment_type` lives on `assignment`, NOT `employment`** — a query against
   `employment.employment_type` errors.
-- **`65f466e2`**: there is NO entitlement validation on emergency leave. `core/leave.ts:1844`
-  hardcodes `EMERGENCY_LEAVE_CODE = 'EMERGENCY'`; production's type is **`EL`**, already deducting
-  from ANNUAL, so the lookup at `:2479` returns nothing and `:2481` throws before any entitlement is
-  consulted. The same defect silently kills `REPLACEMENT`, `MATERNITY`, `PATERNITY` (production has
-  `RL`, `MTL`, `PTL`) — so Emergency Leave is subject to the minimum-advance-notice rule it exists to
-  bypass (`:3155`), and `LOCKED_CODES` (`core/admin.ts:3997`) does not lock the statutory types.
-  **All anchors re-located by symbol 2026-08-04; the plan's numbers had drifted by 5–35 lines.**
-- **`c459bff9`'s reject-path fork is MOOT**: `expireAgedLeave` has forfeited **0 rows / 0 days,
-  ever** (only RL has expiry configured). Do not put that fork to the reporter again. Real split of
-  the 54 `sys:` adjustment rows: `carry_forward_cap` 14/−550.67 · `profile_recalc` 13/−738.00 ·
-  `a2c_recalc` 8/−25.67 · `policy_recalc` 19/−26.33. And deleting `scripts/expire-aged-leave.ts`
-  without first removing its `30 3 * * *` crontab line leaves cron firing at a missing file.
+- **`expireAgedLeave` has forfeited 0 rows / 0 days, ever** (only RL has expiry configured), and
+  deleting `scripts/expire-aged-leave.ts` without first removing its `30 3 * * *` crontab line leaves
+  cron firing at a missing file.
+- **`EMERGENCY_LEAVE_CODE = 'EMERGENCY'` is still hardcoded** (`core/leave.ts:1877`) while production's
+  type is `EL` — the constant is now documented as "the code the PACK SEEDS" and the resolver changed,
+  so **re-verify against the tree before reusing the old diagnosis**, which named line numbers that
+  have moved.
 - **Five of the eleven items planned 2026-08-04 reported something DIFFERENT from what was actually
   wrong** (`65f466e2`, `b1f984fe`, `44129979`, `7f6ca478`/`1b87e8a0`/`18103ba4` asked for payroll
   statuses/columns that do not exist as data — `payrollStatusEnum` is `['draft','processed','closed']`
   and generation is synchronous, so a failed run leaves NOTHING to display). **Reproduce on production
-  BEFORE agreeing a plan's premise.**
-
-### Two open items awaiting the OWNER (raised by r123, both live findings)
-
-- **`2e3ec77d` — a LIVE bug**: the advanced statutory editor silently strips the disabled-person tax
-  relief on every save (`statutory-config-form.tsx:186-192` rebuilds `pcb.reliefs` without spreading
-  the base; `payroll.ts:373` falls back to the built-in default, so the loss is invisible). Asks
-  whether any company has already lost a customised figure.
-- **`9861b8a4`** — `allow_negative_balance` does not bind at approval, so a balance cannot go negative
-  through apply-and-approve at all. **Do not relax `core/leave.ts:3386` without the owner's answer** —
-  fixing it immediately loosens every type that already has the switch on.
+  BEFORE agreeing a plan's premise.** The 2026-08-05 planning pass hit the same rate: of six items,
+  two were already built (`0bb0e303` rows 1-2, `bd89ccd8` entirely) and one asked to remove a payroll
+  premium it had mistaken for a calculation setting.
 
 ### Waiting on the owner, not on code
 
@@ -262,8 +248,9 @@ forward, not a repair of history. Say that plainly rather than implying the paid
   scope. Keep `floorDays` in the return shape; recomputing the floor in the UI is how figures drift.
 - **ANNUAL carry-forward expiry is 6 months** (`0333`, r85) — the reporter's policy change. "My
   carried leave disappeared early" is intended behaviour, not a bug.
-- **`c33d9bbb` is PARKED BY THE OWNER** (2026-07-31). It stays `contested` because the board has no
-  defer state. Writing a rev 2 would re-open a settled decision.
+- **`c33d9bbb` is PARKED BY THE OWNER** (2026-07-31) and is now `cancelled` on the board — re-counted
+  2026-08-05, correcting an older line here that said it "stays `contested`". Either way, writing a
+  rev 2 would re-open a settled decision.
 - **`reporter_label` is DISPLAY ONLY** — `raiseFeedback` stamps `'CLAUDE AI'`. **Never "simplify" this
   into a synthetic person + employment**: `reporter_employment_id` drives RLS `can_see_employment()`
   and a fake employment row would join `openLeaveYear`, payroll and every employee list.
