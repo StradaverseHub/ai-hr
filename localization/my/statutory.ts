@@ -235,7 +235,8 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
   // step for anyone who entered a bank account or an EPF number but no Identity No — a field no step marks
   // required, and one item e3ce0d4d made optional precisely so passport holders could be hired. ic_number has
   // been nullable since 0212 and its (tenant_id, ic_number) uniqueness partial since 0214, so null rows coexist.
-  const icNumber = (p.icNumber ?? '').trim() ? normalizeIC(p.icNumber as string) : null;
+  const icRaw = (p.icNumber ?? '').trim();
+  const icNumber = icRaw ? normalizeIC(icRaw) : null;
   if (icNumber !== null && !isValidIC(icNumber)) throw new InvalidICError();
   const taxCategory = [1, 2, 3].includes(Number(p.taxCategory)) ? Number(p.taxCategory) : 1;
   const numChildren = Math.max(0, Math.floor(Number(p.numChildren) || 0));
