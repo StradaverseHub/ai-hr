@@ -232,6 +232,12 @@ export const leavePack: ModulePack = {
     // so the redesigned Leave Year module can pick its own shape without a drop/recreate.
     { table: 'leave_year_config', note: 'tenant-wide leave-year records — EMPTY and unreferenced since 4b0e76ae' },
     { table: 'leave_entitlement_recalc_audit', note: 'audit trail of entitlement reprojections' },
+    // 93249794 — the Generate Entitlement processing log (0399/0400). Declared here because ADR-0080 D11
+    // criterion 2 is about what the pack OWNS, not about what any engine reads: nothing reads these two,
+    // and that is stated in their schema comments so nobody later mistakes the run row for a gate on the
+    // year-open the way leave_year_config was mistaken for one.
+    { table: 'leave_generation_run', note: 'one row per Generate Entitlement run: who, which year/types, which criteria, the counts' },
+    { table: 'leave_generation_run_item', note: 'per (employment, leave type) verdict of a generation run — the downloadable log' },
     { table: 'leave_encashment_policy', note: 'encashment ORP divisor + eligibility policy' },
     { table: 'leave_encashment_snapshot', note: 'resignation-approval frozen encashable-day snapshot (ADR-0069)' },
   ],

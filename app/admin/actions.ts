@@ -49,7 +49,6 @@ import {
   LeaveTypeRuleError,
 } from '@/core/admin';
 import {
-  openLeaveYear,
   accrueEarnedLeave,
   asOfForLeaveYear,
   reprojectEntitlementForSchemeCohort,
@@ -67,6 +66,11 @@ import {
   type ServiceBand,
 } from '@/core/leave';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
+// 93249794 — the Generate Entitlement run. `openLeaveYear` is no longer imported here: this file reaches
+// the grant sweep THROUGH core/leave-generation.ts, which calls it and writes the processing log, so the
+// engine has one entry point from the app layer instead of two.
+import { runLeaveGeneration } from '@/core/leave-generation';
+import { orgCriteriaFromFields } from '@/core/org-criteria';
 // Override Leave Application (56910869): the trigger list the form iterates, so the card and the parser
 // cannot disagree about which rows exist.
 import { LEAVE_OVERRIDE_TRIGGERS, type LeaveOverrideAction } from '@/core/leave-override';
@@ -1126,14 +1130,49 @@ export async function deleteHolidayGroupAction(formData: FormData) {
 // Idempotent by construction: openLeaveYear's dedupe set is built from the ledger's existing accrual rows
 // at the year start, NOT from any configuration table, so pressing Generate twice never double-grants and
 // clearing leave_year_config (migration 0385) cannot cause one either.
+// 93249794 GREW THIS ACTION RATHER THAN MINTING A SECOND ONE, and that is a deliberate choice about the
+// guard above it. `test/leave-generate-page.test.ts` asserts this action has EXACTLY ONE caller, because
+// losing its last caller is a year-end failure discovered in January. A new `runLeaveGenerationAction`
+// beside it would have left this one uncalled and the guard asserting a fiction — the wizard would work
+// and the assertion protecting the year-open would be protecting nothing. So the wizard posts HERE, the
+// unscoped post is byte-identical to the plain button it replaces (no types picked, no criteria ⇒ the
+// whole-tenant sweep), and there is still exactly one route from a browser to `openLeaveYear`.
+//
+// The body delegates to `runLeaveGeneration` (core/leave-generation.ts), which calls the SAME
+// `openLeaveYear` and then writes the processing log. It does not re-derive a single day.
 export async function openLeaveYearAction(formData: FormData) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const year = Number(formData.get('year'));
-  let res = { granted: 0, skipped: 0, forfeits: 0 };
+  const targetMode = formData.get('targetMode') === 'individual' ? 'individual' : 'criteria';
+  let res: Awaited<ReturnType<typeof runLeaveGeneration>>;
   try {
     if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error('Invalid year');
-    res = await openLeaveYear(s, { year });
+    res = await runLeaveGeneration(s, {
+      year,
+      // Empty ⇒ every type this sweep grants, exactly as the bare button did.
+      leaveTypeIds: formData.getAll('leaveTypeIds').map(String).filter(Boolean),
+      targetMode,
+      // THE SHARED READER (core/org-criteria.ts). The hand-rolled alternative lists the field names itself,
+      // so every axis added there has to be remembered in a second place — and the one that gets forgotten
+      // posts fine, resolves to nothing, and narrows nobody.
+      criteria:
+        targetMode === 'criteria'
+          ? orgCriteriaFromFields(
+              (name) => formData.getAll(name).map(String),
+              (name) => {
+                const v = formData.get(name);
+                return v == null ? null : String(v);
+              },
+            )
+          : undefined,
+      employmentIds:
+        targetMode === 'individual'
+          ? String(formData.get('employmentIdsRaw') ?? '')
+              .split(/[\s,]+/)
+              .filter(Boolean)
+          : undefined,
+    });
   } catch (e) {
     fail(GENERATE, e);
   }

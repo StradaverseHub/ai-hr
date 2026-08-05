@@ -27,7 +27,15 @@ import { ORG_CRITERIA_FIELDS, ORG_CRITERIA_RANGE_FIELDS } from '../core/org-crit
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (p: string) => readFileSync(resolve(here, '..', p), 'utf8');
-const pageSrc = read('app/admin/leave/adjustments/page.tsx');
+/**
+ * 93249794 REPOINTED THIS FROM THE PAGE TO THE SHARED BUILDER, and it is the same assertion about the same
+ * names. The four criteria sections moved verbatim out of `app/admin/leave/adjustments/page.tsx` into
+ * `core/org-criteria-form.ts` so the Generate Entitlement screen consumes ONE list rather than a copy of
+ * it — the duplicate-maintenance defect 6e9a126e exists to remove, reproduced one layer above the
+ * resolver. Following the source is the point: this file guards that every criteria control posts a name
+ * the resolver understands, and that is now true of BOTH screens at once instead of one of them.
+ */
+const pageSrc = read('core/org-criteria-form.ts');
 const formSrc = read('components/leave/adjustment-form.tsx');
 const actionsSrc = read('app/admin/leave/adjustments/actions.ts');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
@@ -97,7 +105,7 @@ describe('18103ba4 · A. every criteria control posts a name the resolver unders
 
   it('the four groups the reporter asked for are the sections', () => {
     for (const key of ['sectionCompany', 'sectionEmployment', 'sectionEmployee', 'sectionService']) {
-      expect(pageSrc).toContain(`tCrit('${key}')`);
+      expect(pageSrc).toContain(`t.crit('${key}')`);
     }
   });
 });
@@ -118,7 +126,7 @@ describe('18103ba4 · B. the three fields the schema does not hold stay out', ()
   it('the screen SAYS they are unavailable rather than silently omitting them', () => {
     // The reporter listed all three. Leaving them off with no explanation sends someone hunting for a
     // field that was promised; the note names them and says what would have to happen first.
-    expect(pageSrc).toContain("tCrit('absentNote')");
+    expect(pageSrc).toContain("t.crit('absentNote')");
     const en = JSON.parse(read('messages/en.json')) as Record<string, never>;
     const note = (en as never as { admin: { leave: { adjustmentsCriteria: { absentNote: string } } } }).admin.leave
       .adjustmentsCriteria.absentNote;
