@@ -15,10 +15,18 @@ import { normalizeLeaveFormulaConfig, type LeaveFormulaConfig } from './leave-fo
 import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
 import { isCurrencyCode } from '../lib/currencies';
 import { visibleLabelIdsCondition } from './system-labels';
+// 6e9a126e — the new entitlement layer's in-use counts. Imported for deleteLeaveType's guard, which today
+// counts leave_policy rows and must keep refusing a configured type once that table is gone.
+import { countEligibilityRulesForLeaveType, countTemplatesForLeaveType } from './entitlement-template';
 import { isLoginBlocked } from './employment-status';
 import {
   isValidMonthDay,
-  isWellFormedBands,
+  // 6e9a126e — the write-time band validator, moved into the pure module (beside `isWellFormedBands`, the
+  // defensive resolver whose ceiling it must match) so the three writers — leave_policy here, and
+  // entitlement_template's create and update — share ONE definition. `isWellFormedBands` and
+  // `MAX_SERVICE_BANDS` left this file's import list with it: they were only ever used INSIDE the
+  // validator, and an unused import of the constant is how a second literal creeps back in.
+  validateServiceBands,
   LEAVE_DURATION_TYPES,
   reprojectEntitlementForPolicy,
   todayInKualaLumpur,
@@ -974,61 +982,11 @@ function roundingAccrual(
   return method === 'up' || method === 'down' ? { roundingMethod: method } : {};
 }
 
-/**
- * Leave Entitlement Rules Engine — write-time validation of the service-band array (the runtime resolver
- * `bandDaysFor` is separately DEFENSIVE for rows that bypass this, e.g. seeds/hand-written data). Throws a
- * plain-English Error (matching this file's convention) naming the specific defect: integers for
- * fromYears/toYears, days >= 0, first band fromYears = 0, contiguous (each next fromYears = previous
- * toYears), last band toYears = null (open-ended), max 10 bands.
- */
-function validateServiceBands(bands: ServiceBand[]): void {
-  if (bands.length === 0) throw new Error('Service bands: provide at least one band, or remove the block entirely.');
-  if (bands.length > 10) throw new Error('Service bands: at most 10 bands are allowed.');
-  for (const b of bands) {
-    if (!Number.isInteger(b.fromYears) || b.fromYears < 0) {
-      throw new Error('Service bands: "from" years must be a whole number ≥ 0.');
-    }
-    if (b.toYears !== null && (!Number.isInteger(b.toYears) || b.toYears <= b.fromYears)) {
-      throw new Error('Service bands: "to" years must be a whole number greater than "from", or left open-ended.');
-    }
-    if (typeof b.days !== 'number' || !Number.isFinite(b.days) || b.days < 0) {
-      throw new Error('Service bands: days must be zero or a positive number.');
-    }
-    // Feedback 9d8cf621 — per-range entitlement columns (all optional; absent/null = "no override"). The
-    // runtime resolver is separately defensive, but reject a genuinely bad value at write time so HR gets a
-    // clear message instead of a silently-ignored override.
-    if (b.carryForwardDays != null && (typeof b.carryForwardDays !== 'number' || !Number.isFinite(b.carryForwardDays) || b.carryForwardDays < 0)) {
-      throw new Error('Service bands: carry-forward days must be zero or a positive number.');
-    }
-    if (b.maxBalanceDays != null && (typeof b.maxBalanceDays !== 'number' || !Number.isFinite(b.maxBalanceDays) || b.maxBalanceDays < 0)) {
-      throw new Error('Service bands: maximum balance days must be zero or a positive number.');
-    }
-    const hasMonth = b.carryForwardExpiryMonth != null;
-    const hasDay = b.carryForwardExpiryDay != null;
-    if (hasMonth !== hasDay) {
-      throw new Error('Service bands: carry-forward expiry needs both a month and a day, or neither.');
-    }
-    if (hasMonth && hasDay && !isValidMonthDay(Number(b.carryForwardExpiryMonth), Number(b.carryForwardExpiryDay))) {
-      throw new Error('Service bands: carry-forward expiry must be a real calendar date (valid month and day).');
-    }
-  }
-  if (bands[0].fromYears !== 0) {
-    throw new Error('Service bands: the first band must start at 0 years (no gap before it).');
-  }
-  if (bands[bands.length - 1].toYears !== null) {
-    throw new Error('Service bands: the last band must be open-ended (no "to" years) so every service length is covered.');
-  }
-  for (let i = 1; i < bands.length; i++) {
-    if (bands[i].fromYears !== bands[i - 1].toYears) {
-      throw new Error('Service bands: bands must be contiguous — each band\'s "from" must equal the previous band\'s "to" (no gaps or overlaps).');
-    }
-  }
-  if (!isWellFormedBands(bands)) {
-    // Defence-in-depth: should be unreachable given the checks above, but never persist something the
-    // resolver itself would reject as malformed.
-    throw new Error('Service bands: the band list is not well-formed.');
-  }
-}
+// 6e9a126e — `validateServiceBands` MOVED to core/leave-compute.ts, unchanged, and is imported above.
+// It now guards THREE writers instead of one (leave_policy here, and entitlement_template's create +
+// update), and it lives next to `isWellFormedBands`, the defensive resolver whose ceiling it must match.
+// Keeping a private copy here while a second writer grew its own would be the duplicate-maintenance
+// defect this whole feedback item is about.
 
 /** Leave Entitlement Rules Engine — tri-state persistence for `serviceBands` (the carryFlagsAccrual
  *  precedent, generalised): `undefined` = PRESERVE the current row's bands (only meaningful on update — the
@@ -4515,12 +4473,29 @@ export function archiveLeaveType(ctx: SessionContext, p: { id: string; archived:
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: p.archived ? 'leave-type.archived' : 'leave-type.unarchived', actor: actorOf(ctx), payload: {} });
   });
 }
+/**
+ * ⚠️ THE IN-USE GUARD IS LOAD-BEARING, AND ONE OF ITS LIMBS IS ON DEATH ROW.
+ *
+ * `leave_policy` is one of the three things it counts, and 6e9a126e's release three DROPS that table. If
+ * that limb simply disappeared with it, a leave type carrying live entitlement configuration would become
+ * silently DELETABLE — a delete that takes the configuration with it and leaves the ledger rows that were
+ * granted under it pointing at nothing.
+ *
+ * So the replacement limbs are added HERE, in release one, at the same time as the tables they count.
+ * They are inert today (nothing writes entitlement_template yet) and they are correct the moment anything
+ * does, which is the whole reason they land now rather than in the change that removes the old one.
+ */
 export async function deleteLeaveType(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
     const [req] = await tx.select({ n: sql<number>`count(*)::int` }).from(leaveRequest).where(eq(leaveRequest.leaveTypeId, p.id));
     const [led] = await tx.select({ n: sql<number>`count(*)::int` }).from(leaveLedger).where(eq(leaveLedger.leaveTypeId, p.id));
     const [pol] = await tx.select({ n: sql<number>`count(*)::int` }).from(leavePolicy).where(eq(leavePolicy.leaveTypeId, p.id));
-    if ((req?.n ?? 0) + (led?.n ?? 0) + (pol?.n ?? 0) > 0) throw new InUseError('leave type');
+    // 6e9a126e — the new entitlement layer counts too, from the day it exists. Templates are counted
+    // across EVERY version (a superseded table still referenced this type), and rules through their
+    // template rather than a denormalised copy of the leave type that could disagree with it.
+    const tpl = await countTemplatesForLeaveType(tx, p.id);
+    const elig = await countEligibilityRulesForLeaveType(tx, p.id);
+    if ((req?.n ?? 0) + (led?.n ?? 0) + (pol?.n ?? 0) + tpl + elig > 0) throw new InUseError('leave type');
     await tx.delete(leaveType).where(eq(leaveType.id, p.id));
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: 'leave-type.deleted', actor: actorOf(ctx), payload: {} });
   });

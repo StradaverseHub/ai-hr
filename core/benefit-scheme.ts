@@ -19,7 +19,7 @@ import {
   leaveType,
   schemeLeaveEntitlement,
 } from '../db/schema';
-import { isWellFormedBands, type ServiceBand } from './leave-compute';
+import { isWellFormedBands, MAX_SERVICE_BANDS, type ServiceBand } from './leave-compute';
 // ae5b84d5 — the profile-side recalc engine trues an employee's current-cycle balance up after a manual
 // scheme override changes. No import cycle: core/leave.ts never imports this module.
 import { reprojectEntitlementForEmployment } from './leave';
@@ -44,7 +44,7 @@ function coerceStatus(v: string | undefined): SchemeStatus {
   return v === 'inactive' ? 'inactive' : 'active';
 }
 
-/** Validate a scheme entitlement's service bands (contiguous from 0, open-ended last, ≤10). Reuses the
+/** Validate a scheme entitlement's service bands (contiguous from 0, open-ended last, ≤MAX_SERVICE_BANDS). Reuses the
  *  engine's `isWellFormedBands` so a scheme entitlement can never persist a shape the resolver would reject. */
 function validateBands(bands: ServiceBand[]): void {
   if (!Array.isArray(bands) || bands.length === 0) {
@@ -52,7 +52,7 @@ function validateBands(bands: ServiceBand[]): void {
   }
   if (!isWellFormedBands(bands)) {
     throw new Error(
-      'Leave entitlement: bands must be contiguous, start at 0 years, end open-ended, and have zero/positive days (max 10 bands).',
+      `Leave entitlement: bands must be contiguous, start at 0 years, end open-ended, and have zero/positive days (at most ${MAX_SERVICE_BANDS} bands).`,
     );
   }
 }

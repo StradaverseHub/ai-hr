@@ -4951,7 +4951,8 @@
       "adjustmentsIssueInactive": "{count} nhân viên chưa/không còn làm việc vào ngày hiệu lực. Họ vẫn sẽ được điều chỉnh.",
       "adjustmentsIssueNotEligible": "{count} nhân viên không đủ điều kiện cho {leaveType} vào ngày hiệu lực.",
       "adjustmentsIssueFrozen": "{count} số dư {leaveType} đang bị đóng băng để quy đổi và sẽ bị bỏ qua.",
-      "adjustmentsRemarksNote": "Không có ô ghi chú riêng. Lý do ở trên là điều nhân viên nhìn thấy trên hồ sơ nghỉ phép, hãy viết vào đó."
+      "adjustmentsRemarksNote": "Không có ô ghi chú riêng. Lý do ở trên là điều nhân viên nhìn thấy trên hồ sơ nghỉ phép, hãy viết vào đó.",
+      "configurationRecordAction": "Bản ghi cấu hình"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -5835,6 +5836,32 @@
       "empTypePartTime": "Part-time",
       "empTypeContract": "Contract",
       "empTypeIntern": "Intern"
+    },
+    "entitlementArchive": {
+      "pageTitle": "Bản ghi cấu hình quyền lợi",
+      "pageDescription": "Bản ghi chỉ đọc của Chế độ phúc lợi và các quy tắc quyền lợi theo công ty / ngạch đang được cấu hình.",
+      "intro": "Đây là bản ghi bằng văn bản của mọi con số quyền lợi hiện đang được cấu hình, được lập trước khi bất cứ thứ gì có thể bị xóa. Mỗi dòng cho biết những gì đã được thiết lập, áp dụng cho ai và giá trị bao nhiêu, để đọc lại và nhập vào các bảng quyền lợi mới.",
+      "notAnUndo": "Đây là danh sách để nhập lại, không phải nút hoàn tác. Khôi phục thiết lập cũ nghĩa là nhập lại nó.",
+      "feedsNothing": "Nó không cung cấp dữ liệu cho bất cứ thứ gì và không thay đổi con số nào. Không có số dư, quyền lợi hay hồ sơ nghỉ phép nào bị ảnh hưởng bởi trang này.",
+      "emptyTitle": "Chưa ghi nhận gì",
+      "emptyBody": "Bản ghi được lập tự động. Nếu trống, nghĩa là không có cấu hình Chế độ phúc lợi hoặc quyền lợi theo công ty / ngạch để ghi nhận.",
+      "captureLabel": "Bản ghi lập ngày",
+      "show": "Hiển thị",
+      "downloadCsv": "Tải xuống dạng CSV",
+      "backToEntitlements": "Quay lại Quyền lợi",
+      "colLayer": "Cấu hình tại",
+      "colScheme": "Chế độ phúc lợi",
+      "colLeaveType": "Loại nghỉ phép",
+      "colCompany": "Công ty",
+      "colGrade": "Ngạch",
+      "colEmploymentType": "Loại hình lao động",
+      "colEntitlement": "Quyền lợi",
+      "colInForce": "Hiệu lực",
+      "colNote": "Ghi chú",
+      "layerScheme": "Chế độ phúc lợi",
+      "layerPolicy": "Quy tắc công ty / ngạch",
+      "allCompanies": "Tất cả công ty (mặc định tập đoàn)",
+      "allGrades": "Tất cả ngạch"
     }
   },
   "topbar": {

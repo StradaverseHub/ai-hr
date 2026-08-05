@@ -48,6 +48,12 @@ describe('ADR-0080 rung 6: leave pack registration', () => {
       'grade_group_member',
       'benefit_scheme',
       'scheme_leave_entitlement',
+      // 6e9a126e RELEASE ONE — the replacement layer, ADDED rather than swapped in. The three rows above
+      // stay until release three drops the tables; this list is UPDATED, never loosened, exactly as the
+      // nav exact-set guards are.
+      'entitlement_template',
+      'entitlement_eligibility_rule',
+      'entitlement_reset_archive',
       'leave_shared_group',
       'leave_shared_group_member',
       'leave_ledger',

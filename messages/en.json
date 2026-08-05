@@ -4951,7 +4951,8 @@
       "adjustmentsIssueInactive": "{count} employees were not employed on the effective date. They will still be adjusted.",
       "adjustmentsIssueNotEligible": "{count} employees do not qualify for {leaveType} on the effective date.",
       "adjustmentsIssueFrozen": "{count} {leaveType} balances are frozen for encashment and will be skipped.",
-      "adjustmentsRemarksNote": "There is no separate remarks field. The reason above is what the employee sees on their leave record, so write it there."
+      "adjustmentsRemarksNote": "There is no separate remarks field. The reason above is what the employee sees on their leave record, so write it there.",
+      "configurationRecordAction": "Configuration record"
     },
     "holidays": {
       "pageTitle": "Public holidays",
@@ -5835,6 +5836,32 @@
       "empTypePartTime": "Part-time",
       "empTypeContract": "Contract",
       "empTypeIntern": "Intern"
+    },
+    "entitlementArchive": {
+      "pageTitle": "Entitlement configuration record",
+      "pageDescription": "A read-only record of the Benefit Scheme and company / grade entitlement rules configured today.",
+      "intro": "This is the written record of every entitlement figure currently configured, taken before anything can be cleared. Each row shows what was set up, who it applied to and what it was worth, so the figures can be read off here and retyped into the new entitlement tables rather than remembered.",
+      "notAnUndo": "This is a listing to retype from, not an undo button. Restoring the old setup means entering it again.",
+      "feedsNothing": "It feeds nothing and changes no number. No balance, no entitlement and no leave record is affected by anything on this page.",
+      "emptyTitle": "Nothing recorded yet",
+      "emptyBody": "The record is taken automatically. If this is empty, there was no Benefit Scheme or company / grade entitlement configuration to record.",
+      "captureLabel": "Record taken",
+      "show": "Show",
+      "downloadCsv": "Download as CSV",
+      "backToEntitlements": "Back to Entitlements",
+      "colLayer": "Configured in",
+      "colScheme": "Benefit scheme",
+      "colLeaveType": "Leave type",
+      "colCompany": "Company",
+      "colGrade": "Grade",
+      "colEmploymentType": "Employment type",
+      "colEntitlement": "Entitlement",
+      "colInForce": "In force",
+      "colNote": "Note",
+      "layerScheme": "Benefit scheme",
+      "layerPolicy": "Company / grade rule",
+      "allCompanies": "All companies (group default)",
+      "allGrades": "All grades"
     }
   },
   "topbar": {

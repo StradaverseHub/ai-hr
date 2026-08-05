@@ -203,6 +203,14 @@ export const leavePack: ModulePack = {
     { table: 'grade_group_member', note: 'job-grade ↔ grade-group membership' },
     { table: 'benefit_scheme', note: 'friendlier entitlement scheme over leave_policy (per employment-type)' },
     { table: 'scheme_leave_entitlement', note: 'per-scheme per-leave-type service-band entitlement table' },
+    // 6e9a126e RELEASE ONE — the replacement layer, ADDED beside the two rows above rather than instead of
+    // them. Release one removes nothing: benefit_scheme, scheme_leave_entitlement and leave_policy still
+    // resolve every live figure and stay in this list until release three drops them, at which point those
+    // three rows go and these three stay. grade_group / grade_group_member are KEPT PERMANENTLY — leave
+    // approval routing scopes on them.
+    { table: 'entitlement_template', note: 'named, effective-dated service-band day table for one leave type' },
+    { table: 'entitlement_eligibility_rule', note: 'who gets which entitlement template (core/org-criteria criteria, effective-dated)' },
+    { table: 'entitlement_reset_archive', note: 'read-only text record of the scheme + policy configuration the reset clears' },
     // r88 1ef1cf95 — a shared group is tenant-level now, not per benefit scheme, so it sits beside the
     // scheme tables rather than under them. Same audited surface, honest names (migration 0339).
     { table: 'leave_shared_group', note: 'a shared allowance pooled across several leave types' },

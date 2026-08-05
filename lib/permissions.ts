@@ -282,6 +282,12 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/leave',
       '/admin/leave/import',
       '/admin/leave/entitlements',
+      // 6e9a126e — the read-only record of the entitlement configuration the redesign's release three
+      // clears. Same admin surface, same requireAdmin guard the leaveConfig screen declares, so it is a
+      // ROUTE on this screenKey rather than a new one (the /admin/leave/generate precedent below).
+      // REGISTERING IT IS NOT COSMETIC: test/function-access.test.ts fails BOTH ways — a guarded page.tsx
+      // absent from REGISTERED_ROUTES, and a registered route with no page on disk.
+      '/admin/leave/entitlements/archive',
       // 491c499f — same admin surface, same requireAdmin guard, so it is a ROUTE rather than a new
       // screenKey (the /admin/personnel precedent above).
       '/admin/leave/adjustments',

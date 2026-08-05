@@ -57,3 +57,10 @@ export * from '../../core/replacement-eligibility';
 // facade rather than adding an entry to the audited debt allowlist.
 export * from '../../core/replacement-request';
 export * from '../../core/benefit-scheme';
+// 6e9a126e RELEASE ONE — the entitlement redesign's new layer (named templates + eligibility rules) and
+// the read-only record of what the eventual reset clears. Registered in BOTH BOUNDARIES and ALWAYS_ALLOWED
+// in test/leave-pack-drift.test.ts for the reason the notes above give: a new leave-pack module that is not
+// a BOUNDARY is simply unguarded, and silencing the guard with an allowlist entry would grow a list
+// documented to only ever shrink.
+export * from '../../core/entitlement-template';
+export * from '../../core/entitlement-archive';

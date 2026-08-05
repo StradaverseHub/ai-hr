@@ -1721,6 +1721,204 @@ export const schemeLeaveEntitlement = pgTable(
   ],
 );
 
+// ── Entitlement redesign (feedback 6e9a126e, RELEASE ONE — migrations 0396/0397/0398) ────────────────
+//
+// THE THREE LAYERS THE REPORTER ASKED FOR, and nothing else:
+//
+//     leave_type  →  entitlement_template  →  entitlement_eligibility_rule
+//
+// A TEMPLATE is a NAMED service-band day table for ONE leave type ("Grade 12-15 Permanent", "Contract",
+// "Executive"). An ELIGIBILITY RULE says WHO gets which template. That replaces benefit_scheme +
+// scheme_leave_entitlement (which copied the same band table inside every scheme it applied to) AND
+// leave_policy (an older company/grade layer that could quietly win instead).
+//
+// ⚠️ RELEASE ONE ADDS; IT REMOVES NOTHING. benefit_scheme, scheme_leave_entitlement,
+// employment.benefit_scheme_id and leave_policy all stand untouched and still resolve every live figure.
+// The engines do NOT read these tables yet — release two re-points them through the one shared
+// composition (`entitledDays`), release three archives and clears the old layers. Shipping the storage
+// and its resolver first, inert, is the same staging 9816a5ad step 1 and 7c834696 stage 1 used: an
+// editor that writes configuration nothing reads is worse than no editor, so the editors land in
+// release two beside the engine reads that make them mean something.
+//
+// ── WHY BOTH TABLES ARE EFFECTIVE-DATED ───────────────────────────────────────────────────────────────
+// THREE readers resolve entitlement AT A PAST DATE today — the Carry Forward report (core/analytics.ts,
+// per employee at THEIR own cycle open), expireCarriedLeave's year sweep, and the /me + admin balance
+// breakdown (core/read.ts, validFrom <= asOf < validTo). leave_policy carries validFrom/validTo and those
+// three depend on it. A replacement without dating would answer a closed year with today's figures, which
+// contradicts the request's own "maintaining all existing calculation capabilities". So an edit CLOSES the
+// running version (validTo = the effective date) and INSERTS a successor, exactly as
+// createLeavePolicy/updateLeavePolicy already do.
+//
+// ── WHY A lineage_id AND NOT A NAME ───────────────────────────────────────────────────────────────────
+// An eligibility rule must keep pointing at "the Executive table" across every future version of it. A FK
+// to a VERSION row goes stale the moment that version is superseded (and would have to be rewritten on
+// every edit, which is how a rule silently ends up on a closed version). A FK to the NAME cannot survive
+// a rename. `lineage_id` is the stable identity of the table-through-time: version 1 carries its own id
+// as its lineage, every successor inherits it, and resolution is "the version of THIS lineage in force on
+// THAT date". Rules point at the lineage, never at a version.
+export const entitlementTemplate = pgTable(
+  'entitlement_template',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Stable identity ACROSS versions. The first version carries its own id here; successors inherit it. */
+    lineageId: uuid('lineage_id').notNull(),
+    /** The leave type this table hands out days for. The reporter's own hierarchy puts Leave Type ABOVE the
+     *  template, and it is what lets deleteLeaveType still refuse a type that carries live configuration
+     *  once leave_policy is gone (core/admin.ts's in-use guard). CONSTANT across a lineage — a successor
+     *  version may change the name and the bands, never the type it belongs to. */
+    leaveTypeId: uuid('leave_type_id')
+      .notNull()
+      .references(() => leaveType.id),
+    /** HR's own name for the table ("Grade 12-15 Permanent", "Contract", "Part Time", "Executive"). */
+    name: text('name').notNull(),
+    /** ServiceBand[] — the SAME JSONB shape scheme_leave_entitlement and leave_policy.accrual already use,
+     *  resolved by the SAME `bandDaysFor` / `isWellFormedBands`. Carried forward UNCHANGED on purpose: the
+     *  reporter's four columns map exactly (From/To Year(s) → fromYears/toYears, Entitled Days → days,
+     *  Max Brought Forward → carryForwardDays, Max Entitled + Brought Forward → maxBalanceDays), and a new
+     *  band shape would fork the one piece of this area that is already right.
+     *
+     *  ⚠️ THE TEMPLATE GROWS NO SECOND CARRY DEFINITION. 7cd914b1 put carry forward (cap AND percentage) on
+     *  `leave_type` and applyLeaveTypeRules overlays it wholesale. `carryForwardDays` survives inside the
+     *  band JSONB because the ServiceBand type is shared verbatim, but a CONSOLIDATED type deliberately
+     *  stops reading per-band carry (see applyLeaveTypeRules) — so there is exactly one carry rule per
+     *  leave type and this table adds none. */
+    serviceBands: jsonb('service_bands').notNull(),
+    validFrom: date('valid_from').notNull(),
+    /** Exclusive, nullable. NULL = the running version. */
+    validTo: date('valid_to'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // At most ONE running version per lineage — the invariant the close-then-insert writer maintains and
+    // the resolver relies on. Enforced here rather than only in the service, because "two open versions"
+    // is a state no reader has a defined answer for.
+    uniqueIndex('entitlement_template_open_uq').on(t.tenantId, t.lineageId).where(sql`valid_to is null`),
+    // Two RUNNING tables of the same name under one leave type are indistinguishable in a picker.
+    uniqueIndex('entitlement_template_name_uq')
+      .on(t.tenantId, t.leaveTypeId, sql`lower(${t.name})`)
+      .where(sql`valid_to is null`),
+    index('entitlement_template_type_idx').on(t.tenantId, t.leaveTypeId),
+    index('entitlement_template_lineage_idx').on(t.lineageId),
+  ],
+);
+
+// entitlement_eligibility_rule = WHO gets which template, as at a date.
+//
+// ── THE CRITERIA ARE core/org-criteria.ts's OrgCriteria, NOT A NEW VOCABULARY ─────────────────────────
+// This item exists because the same question was answered in several places at once. Minting a THIRD
+// "who does this apply to" engine to fix that would be self-defeating, so the criteria stored here are the
+// EXACT object `resolveOrgCriteriaTargets` already resolves for bulk Leave Adjustments (491c499f) and the
+// Notice Board (6e122302), widened by 18103ba4. Every dimension the reporter listed is already in it:
+// Company, Employment Type, Grade, Department, Position, Division, Gender, Minimum Service (as
+// minYearsOfService) and Probation Status (as confirmationStatuses) — plus the rest of the eight
+// Organisation-Assignment axes, business unit, cost centre, location and the other demographics.
+//
+// It is also the module that already resolves EVERY axis AS AT a date, which is the requirement the
+// approval matcher (`ruleMatches`, fed attributes as of NOW by its caller) could not have met: department,
+// position, business unit, cost centre, location and employment type come from the `assignment` version in
+// force on `asOf`, and employment status / confirmation status / years of service are computed against it.
+//
+// RESIDUAL, and it is stated on screen rather than hidden: gender, nationality, religion, race and
+// job GRADE are undated columns, so a past-date answer is EXACT for the dated axes and CURRENT-VALUE for
+// those. That is a schema fact, not a choice made here.
+export const entitlementEligibilityRule = pgTable(
+  'entitlement_eligibility_rule',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Stable identity across versions — see entitlement_template.lineageId. */
+    lineageId: uuid('lineage_id').notNull(),
+    /** HR's name for the population ("Executives, Peninsular", "Contract staff"). Shown when the screen
+     *  explains WHICH rule won, which the plan promises is never a guess. */
+    name: text('name').notNull(),
+    /** The template LINEAGE this population is assigned to. Not a version id — see the header above. There
+     *  is deliberately no FK: a lineage is not a row, and pointing the FK at one version would be the exact
+     *  staleness the lineage exists to remove. The service refuses a lineage that has no template. */
+    templateLineageId: uuid('template_lineage_id').notNull(),
+    /** core/org-criteria.ts `OrgCriteria`. Typed structurally: this file imports nothing from core/. An
+     *  EMPTY object is a real, meaningful value — it means "everyone", exactly as it does for the Notice
+     *  Board — and it is how a tenant expresses a single default table. */
+    criteria: jsonb('criteria').notNull(),
+    validFrom: date('valid_from').notNull(),
+    validTo: date('valid_to'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('entitlement_eligibility_rule_open_uq')
+      .on(t.tenantId, t.lineageId)
+      .where(sql`valid_to is null`),
+    index('entitlement_eligibility_rule_template_idx').on(t.tenantId, t.templateLineageId),
+    index('entitlement_eligibility_rule_window_idx').on(t.tenantId, t.validFrom, t.validTo),
+  ],
+);
+
+// entitlement_reset_archive = THE WRITTEN RECORD OF WHAT THE RESET WILL CLEAR. A record, not a mechanism.
+//
+// The plan promises the reporter: "you read the old figures off that record while you retype them". The
+// clearing is irreversible and the archive's completeness is the ONLY promise it makes, so the capture
+// runs NOW — in release one, before any clearing capability exists — and re-runs immediately before the
+// reset in release three. Every column is TEXT, denormalised, so it stays readable after the tables it
+// describes are gone.
+//
+// ⚠️ IT COPIES leave_shared_group_reset_archive's TABLE SHAPE, NOT ITS ZERO-READER POSTURE. That table
+// (0342) is documented as never read and never joined, and test/shared-leave-group-single-mechanism.test.ts
+// actively asserts no core file reads it — which is exactly the gap this item must not repeat. This one
+// HAS a reader: a read-only admin listing with a CSV download at /admin/leave/entitlements/archive.
+//
+// ONE table for BOTH cleared layers, discriminated by `layer`, rather than two: the reporter reads one
+// list, and a single capture transaction cannot half-succeed across two tables.
+export const entitlementResetArchive = pgTable(
+  'entitlement_reset_archive',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // NOT `createdAt()`: that helper hardcodes the COLUMN NAME `created_at`, and this column is
+    // `captured_at`. `leave_shared_group_reset_archive` above declares `capturedAt: createdAt()` and
+    // therefore does not match its own migration either — invisible there only because nothing ever reads
+    // that table, which is the whole posture this item is not repeating.
+    capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
+    /** Which capture run wrote this row. The archive is re-captured before the reset, so a tag is what
+     *  lets the listing show the LATEST record rather than silently interleaving two snapshots taken
+     *  months apart. */
+    captureTag: text('capture_tag').notNull(),
+    /** 'scheme' (benefit_scheme × scheme_leave_entitlement) | 'policy' (leave_policy). */
+    layer: text('layer').notNull(),
+    /** Scheme side: the scheme's name. Policy side: NULL. */
+    schemeName: text('scheme_name'),
+    /** Scheme side: the scheme's grouping label. Policy side: NULL. */
+    schemeCategory: text('scheme_category'),
+    /** Both sides: the leave type's name (and code, so a retyper can find it again). */
+    leaveTypeName: text('leave_type_name'),
+    leaveTypeCode: text('leave_type_code'),
+    /** Both sides: the company this configuration applied to. NULL on the policy side = the group default,
+     *  which is rendered as such rather than left blank. */
+    companyName: text('company_name'),
+    /** Scheme side: the grade GROUP the scheme targeted. Policy side: NULL. */
+    schemeGradeGroupName: text('scheme_grade_group_name'),
+    /** Scheme side: the grades inside that group, comma separated — the group survives the reset, but the
+     *  record has to say who the table actually reached. Policy side: NULL. */
+    schemeGradeGroupMembers: text('scheme_grade_group_members'),
+    /** Policy side: the single grade the policy was scoped to. NULL = all grades. */
+    gradeName: text('grade_name'),
+    /** Scheme side: the employment type the scheme targeted. Policy side: NULL. */
+    employmentType: text('employment_type'),
+    /** BOTH SIDES, and it is the point of the whole table: the figures, rendered as readable text. Scheme
+     *  side = the band table written out. Policy side = the accrual figures written out. */
+    entitlementText: text('entitlement_text'),
+    /** Both sides: the dates it was in force between, as text. The scheme layer is undated, so the scheme
+     *  side records that honestly ('—') rather than inventing a window. */
+    validFromText: text('valid_from_text'),
+    validToText: text('valid_to_text'),
+    /** Free-text notes the capture attaches (e.g. "scheme carries no entitlement rows"). */
+    note: text('note'),
+  },
+  (t) => [
+    index('entitlement_reset_archive_tenant_idx').on(t.tenantId, t.captureTag),
+    index('entitlement_reset_archive_layer_idx').on(t.tenantId, t.layer),
+  ],
+);
+
 // leave_shared_group (r88, feedback 1ef1cf95 — migration 0342) = a SHARED LEAVE GROUP: several leave types
 // drawing on ONE pooled allowance (e.g. "Special Leave: 10 days a year shared, max 3 days per application").
 //
@@ -1788,7 +1986,12 @@ export const leaveSharedGroupMember = pgTable(
 export const leaveSharedGroupResetArchive = pgTable('leave_shared_group_reset_archive', {
   id: id(),
   tenantId: tenantId(),
-  capturedAt: createdAt(),
+  // 6e9a126e — CORRECTED. This said `createdAt()`, which hardcodes the column name `created_at`; the real
+  // column migration 0342 created is `captured_at`, so any drizzle read of this table threw
+  // `column "created_at" does not exist`. It never did, because nothing has ever read this table — which
+  // is exactly the posture entitlement_reset_archive deliberately does not copy. Found by hitting the
+  // identical mistake on the new table, where a reader exists and the test caught it immediately.
+  capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
   benefitSchemeName: text('benefit_scheme_name'),
   groupName: text('group_name').notNull(),
   totalLimitDays: text('total_limit_days'),

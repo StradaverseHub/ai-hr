@@ -4951,7 +4951,8 @@
       "adjustmentsIssueInactive": "{count} pekerja tidak bekerja pada tarikh berkuat kuasa. Mereka tetap akan dilaraskan.",
       "adjustmentsIssueNotEligible": "{count} pekerja tidak layak untuk {leaveType} pada tarikh berkuat kuasa.",
       "adjustmentsIssueFrozen": "{count} baki {leaveType} dibekukan untuk penunaian dan akan dilangkau.",
-      "adjustmentsRemarksNote": "Tiada medan catatan berasingan. Sebab di atas ialah apa yang dilihat pekerja pada rekod cuti mereka, jadi tulislah di situ."
+      "adjustmentsRemarksNote": "Tiada medan catatan berasingan. Sebab di atas ialah apa yang dilihat pekerja pada rekod cuti mereka, jadi tulislah di situ.",
+      "configurationRecordAction": "Rekod konfigurasi"
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -5835,6 +5836,32 @@
       "empTypePartTime": "Part-time",
       "empTypeContract": "Contract",
       "empTypeIntern": "Intern"
+    },
+    "entitlementArchive": {
+      "pageTitle": "Rekod konfigurasi kelayakan",
+      "pageDescription": "Rekod baca sahaja bagi Skim Faedah dan peraturan kelayakan syarikat / gred yang dikonfigurasikan hari ini.",
+      "intro": "Ini ialah rekod bertulis bagi setiap angka kelayakan yang dikonfigurasikan sekarang, diambil sebelum apa-apa boleh dikosongkan. Setiap baris menunjukkan apa yang ditetapkan, kepada siapa ia dikenakan dan nilainya, supaya angka itu boleh dibaca di sini dan ditaip semula ke dalam jadual kelayakan baharu.",
+      "notAnUndo": "Ini ialah senarai untuk ditaip semula, bukan butang buat asal. Memulihkan tetapan lama bermakna memasukkannya semula.",
+      "feedsNothing": "Ia tidak menyuap apa-apa dan tidak mengubah sebarang angka. Tiada baki, kelayakan atau rekod cuti terjejas oleh apa-apa di halaman ini.",
+      "emptyTitle": "Tiada rekod lagi",
+      "emptyBody": "Rekod diambil secara automatik. Jika ini kosong, tiada konfigurasi Skim Faedah atau kelayakan syarikat / gred untuk direkodkan.",
+      "captureLabel": "Rekod diambil",
+      "show": "Papar",
+      "downloadCsv": "Muat turun sebagai CSV",
+      "backToEntitlements": "Kembali ke Kelayakan",
+      "colLayer": "Dikonfigurasikan dalam",
+      "colScheme": "Skim faedah",
+      "colLeaveType": "Jenis cuti",
+      "colCompany": "Syarikat",
+      "colGrade": "Gred",
+      "colEmploymentType": "Jenis pekerjaan",
+      "colEntitlement": "Kelayakan",
+      "colInForce": "Berkuat kuasa",
+      "colNote": "Nota",
+      "layerScheme": "Skim faedah",
+      "layerPolicy": "Peraturan syarikat / gred",
+      "allCompanies": "Semua syarikat (lalai kumpulan)",
+      "allGrades": "Semua gred"
     }
   },
   "topbar": {

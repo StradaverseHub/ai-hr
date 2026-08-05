@@ -74,6 +74,12 @@ const BOUNDARIES = [
   // 296fc027 Step 2 — the employee replacement-leave request path. In BOTH lists, same reasoning.
   'core/replacement-request',
   'core/benefit-scheme',
+  // 6e9a126e — the entitlement redesign's new layer + its archive reader. In BOTH lists, same reasoning as
+  // the notes above: as BOUNDARIES they are guarded like their siblings, and in ALWAYS_ALLOWED they may
+  // import the pack back, because leave implementation files import each other freely. No allowlist entry
+  // is added — the only outside importer is app/admin/leave/, which is already always-allowed.
+  'core/entitlement-template',
+  'core/entitlement-archive',
 ];
 
 /** The pack surface (see packs/leave/index.ts header): wiring/facade, implementation, routes. */
@@ -94,6 +100,8 @@ const ALWAYS_ALLOWED = [
   'core/replacement-eligibility.ts', // 296fc027 — see the BOUNDARIES note above
   'core/replacement-request.ts', // 296fc027 Step 2 — see the BOUNDARIES note above
   'core/benefit-scheme.ts',
+  'core/entitlement-template.ts', // 6e9a126e — see the BOUNDARIES note above
+  'core/entitlement-archive.ts', // 6e9a126e — see the BOUNDARIES note above
   'app/leave/', // the My Absence self-service home (balances/apply/history/export)
   'app/admin/leave/', // leave config: type master, entitlements, rules, approval, payroll, import, audit
   'app/admin/leave-approval/', // approval templates + workflow matrix

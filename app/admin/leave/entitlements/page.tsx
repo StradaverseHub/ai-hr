@@ -457,9 +457,17 @@ export default async function LeaveEntitlementsPage({
              the ONLY header action now — the Run Accrual and Preview Scenario buttons d778d2d3 parked here
              moved into the Entitlement step's sub-steps (7b945408's accrualSection / previewScenarioSection
              slots above), where the related configuration lives. */
-          <Link href="/admin/leave/import" className={btnPrimary}>
-            {t('importAction')}
-          </Link>
+          <div className="flex items-center gap-3">
+            {/* 6e9a126e — the read-only record of everything the entitlement redesign's release three
+                clears. Reachable FROM this screen, as the approved plan says, and deliberately NOT in the
+                sidebar: it is a reference document for a migration in progress, not a place anyone works. */}
+            <Link href="/admin/leave/entitlements/archive" className="text-sm underline">
+              {t('configurationRecordAction')}
+            </Link>
+            <Link href="/admin/leave/import" className={btnPrimary}>
+              {t('importAction')}
+            </Link>
+          </div>
         }
       />
       <ErrorBanner message={error} />

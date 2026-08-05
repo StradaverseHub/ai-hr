@@ -4951,7 +4951,8 @@
       "adjustmentsIssueInactive": "{count} 名员工在生效日期并未在职，但仍会被调整。",
       "adjustmentsIssueNotEligible": "{count} 名员工在生效日期不符合 {leaveType} 的资格。",
       "adjustmentsIssueFrozen": "{count} 项 {leaveType} 余额已因兑现而冻结，将被跳过。",
-      "adjustmentsRemarksNote": "系统没有单独的备注栏。上面的原因就是员工在假期记录中看到的内容，请写在那里。"
+      "adjustmentsRemarksNote": "系统没有单独的备注栏。上面的原因就是员工在假期记录中看到的内容，请写在那里。",
+      "configurationRecordAction": "配置记录"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -5835,6 +5836,32 @@
       "empTypePartTime": "Part-time",
       "empTypeContract": "Contract",
       "empTypeIntern": "Intern"
+    },
+    "entitlementArchive": {
+      "pageTitle": "假期额度配置记录",
+      "pageDescription": "当前已配置的福利方案与公司 / 职级额度规则的只读记录。",
+      "intro": "这是当前所有额度数字的书面记录，在任何内容可被清除之前生成。每一行显示配置了什么、适用于谁、数值是多少，以便直接从这里读取数字并重新录入新的额度表。",
+      "notAnUndo": "这是供重新录入的清单，不是撤销按钮。恢复旧配置意味着重新输入一遍。",
+      "feedsNothing": "它不向任何计算提供数据，也不改变任何数字。本页面不影响任何余额、额度或休假记录。",
+      "emptyTitle": "尚无记录",
+      "emptyBody": "记录会自动生成。如果此处为空，说明当时没有福利方案或公司 / 职级额度配置可供记录。",
+      "captureLabel": "记录生成于",
+      "show": "显示",
+      "downloadCsv": "下载为 CSV",
+      "backToEntitlements": "返回额度配置",
+      "colLayer": "配置于",
+      "colScheme": "福利方案",
+      "colLeaveType": "假期类型",
+      "colCompany": "公司",
+      "colGrade": "职级",
+      "colEmploymentType": "雇佣类型",
+      "colEntitlement": "额度",
+      "colInForce": "生效期间",
+      "colNote": "备注",
+      "layerScheme": "福利方案",
+      "layerPolicy": "公司 / 职级规则",
+      "allCompanies": "全部公司（集团默认）",
+      "allGrades": "全部职级"
     }
   },
   "topbar": {
