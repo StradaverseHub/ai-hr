@@ -26,14 +26,6 @@ nothing in flight. Verified after deploy: service active, `GET /` 401, `/login` 
 `rsync -azi --delete --dry-run` **zero changes**, migration `0403`'s three columns + partial index
 present, and the three files this release deletes confirmed gone from the box.
 
-### ⚠️ r159 SHIPPED NINE ITEMS — THREE HAD BEEN SITTING ON `main` UNDEPLOYED
-
-The version of this file r159 replaced said `main@eb47382b` was running with "no pending deploy". It
-was false: **r158's three items (`49e7e0a2`, `f3ae3245`, `f1123afd`) had merged and never shipped,
-migration `0403` included.** No board query or branch scan would have found it — only a dry-run rsync
-against the box did. **Run that first, every round** (recipe under "Before planning ANYTHING"); the
-full lesson is the first trap below.
-
 ### The board — counted on production 2026-08-05 after the r160 planning pass (owner role; `DATABASE_URL` is RLS-blocked)
 
 **`deployed = 585` · `approved = 5` · `planned = 6` · `building = 2` · `cancelled = 12`.
@@ -99,19 +91,12 @@ has not (stamped 2026-08-05; both were null, so the board could not say which re
 
 ### 6e9a126e — releases ONE and TWO are live and INERT; release THREE is the owner's call
 
-**Verified on production after r159: `entitlement_template` = 0 rows, `leave_generation_run` = 0 rows**,
-so every figure still resolves through the unchanged old path. Proved structurally, not by comparing
-numbers: `templateOverPolicy(base, null)` returns the SAME OBJECT, so each engine's expression
-*reduces* to the one that was there before (`test/entitlement-template-repoint.test.ts`, `toBe` plus a
-negative control). Every engine now composes through ONE hook, `composeEntitlement`
-(core/leave-compute.ts); the editors are live at `/admin/leave/entitlements/templates`. **Nothing was
-dropped or cleared** — that is release three, and it is the OWNER'S decision, not a build task.
-
-**Before planning release three, re-read the carry-forward defect** it already fixed (history, r159):
-`carryForwardReport` reads the carry CAP, not entitlement days, and `applyLeaveTypeRules(null, rules)`
-returns NULL — the day `leave_policy` goes, every closed year would print "everything forfeited".
-Dropping tables is where that class of bug lands. `build/r154` is squashed and ancestrally unrelated to
-what shipped; ignore it.
+**Nothing was dropped or cleared** — that is release three, and it is the OWNER'S decision, not a
+build task. The live constraints on it are in the `building` bullet above (the 400 unmigrated rows,
+the `1ae7f3ab`+`4fdb69b2` ordering). **The evidence that one and two are inert, and the carry-forward
+defect to re-read before planning three, moved to `docs/HANDOFF-HISTORY.md` → r159 Decisions on
+2026-08-05** — read it there rather than re-deriving it. `build/r154` is squashed and ancestrally
+unrelated to what shipped; ignore it.
 
 ### ⚠️⚠️ THE DELETE GUARD IS WRONG, IT IS LIVE, AND IT EXPLAINS A REPORTED BUG
 

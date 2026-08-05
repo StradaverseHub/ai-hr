@@ -17,6 +17,21 @@ migration `0403`) · `df00b85f` · `706d34e8` · `18103ba4` · `1b87e8a0` · `35
 
 ### Decisions — the part the diff cannot reconstruct
 
+**`6e9a126e` releases ONE and TWO are live and INERT — how that was proved.** (Moved out of HANDOFF's
+CURRENT STATE on 2026-08-05 to hold the line under ~700; the live constraints on release three stay
+there, this is the evidence behind them.) Verified on production after r159: `entitlement_template`
+= 0 rows, `leave_generation_run` = 0 rows, so every figure still resolves through the unchanged old
+path. Proved STRUCTURALLY rather than by comparing numbers: `templateOverPolicy(base, null)` returns
+the SAME OBJECT, so each engine's expression *reduces* to the one that was there before
+(`test/entitlement-template-repoint.test.ts`, `toBe` plus a negative control). Every engine now
+composes through ONE hook, `composeEntitlement` (core/leave-compute.ts); the editors are live at
+`/admin/leave/entitlements/templates`. Nothing was dropped or cleared — that is release three, and it
+is the OWNER'S decision, not a build task. Before planning release three, re-read the carry-forward
+defect it already fixed: `carryForwardReport` reads the carry CAP, not entitlement days, and
+`applyLeaveTypeRules(null, rules)` returns NULL — the day `leave_policy` goes, every closed year would
+print "everything forfeited". Dropping tables is where that class of bug lands. `build/r154` is
+squashed and ancestrally unrelated to what shipped; ignore it.
+
 **Production was a release behind `main` and nothing on the board or in the branch list said so.**
 r158 had merged and never shipped. CURRENT STATE asserted the opposite, all three items still read
 `approved`, and the documented unshipped-round check only scans `build/*` branches — which merged work
