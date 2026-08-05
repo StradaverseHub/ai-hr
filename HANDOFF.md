@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-06 (r160 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-06 (r161 SHIPPED)
 
-**`main@7cae348b` is what runs. Production on 327 migrations. Next free migration number is `0404`**
+**`main@6d9cb102` is what runs. Production on 327 migrations. Next free migration number is `0404`**
 (0389, 0401 and 0402 were never claimed and are dead; r160 added NO migration). No half-applied
 migration, no pending deploy, nothing in flight. Verified after deploy: service `active`, `GET /` 401,
 and `rsync -azi --delete --dry-run` reporting **zero changes**.
@@ -81,12 +81,18 @@ authority, not the board field.**
   proof that releases one and two are inert, and the carry-forward defect to re-read before planning
   three, are in `docs/HANDOFF-HISTORY.md` → r159 Decisions; read them there rather than re-deriving.
   `build/r154` is squashed and ancestrally unrelated to what shipped — ignore it in any branch scan.
-- **`35b7af0a` — groups 1-2 (r138), 3-5 (r159) and group 6 (r160) are live. 24 labels remain**, measured
-  not estimated. Group 6 was Tax Category: the Personnel card had always named five circumstances while
-  the wizard labelled its options "1", "2" and "3", so a hire needed the LHDN numbering by heart and a
-  wrong pick is invisible afterwards — it is simply the wrong monthly tax until someone notices. Both now
-  render `components/tax-category-field.tsx`. Remaining: the identity, org-cascade and residual statutory
-  groups. **3 of the defined keys only LOOK retirable — see the computed-key trap below; they are pinned
+- **`35b7af0a` — groups 1-2 (r138), 3-5 (r159), 6 (r160) and 7 (r161) are live. 22 labels remain**,
+  measured not estimated. Group 6 shared Tax Category; group 7 shared SOCSO/EIS, where the wizard was a
+  whole consolidation behind — it offered the legacy "EIS eligible" yes/no with NO SOCSO category, so a
+  hire created there could not be put in First or Second category.
+  **THE REMAINING 22 ARE MOSTLY NOT WORTH SHARING, and that is a finding, not fatigue.** `fullName`,
+  `primaryEmail`, `phone`, `taxNumber` and friends already render the SAME control on both screens —
+  extracting them prevents no defect while touching the org-cascade selects (company-scoped, interlinked)
+  and `employeeCode` (whose Auto/Manual rule is deliberately wizard-only). **ONE genuine drift is left:
+  IDENTITY.** Personnel gates NRIC vs passport on nationality (`357faecf`) through a live client island;
+  the wizard shows a bare IC box and does not collect nationality at all — which is also why group 7's
+  IC-derived SOCSO default cannot fire there. That is the last group worth building.
+  **3 of the defined keys only LOOK retirable — see the computed-key trap below; they are pinned
   by test and deleting them breaks real screens.** The `8590615a` overlap is GONE (it is deployed).
 
 ### THE DELETE GUARD IS FIXED (r160) — and the durable lesson is the count, not the fix
