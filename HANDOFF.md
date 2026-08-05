@@ -406,6 +406,18 @@ correct response is to rebuild it, which takes under a minute and loses nothing,
 vitest worker databases and a reseedable `ai_hr_dev`. **PRODUCTION IS A DIFFERENT MACHINE. Never copy
 these settings to a server.**
 
+**⚠️ THE FIX DOES NOT MAKE CONCURRENCY FREE — `run the gate alone` still stands.** `fsync = off`
+removed the CHECKPOINT stall, which was the wedge. It does not remove a SECOND, different contention
+point: `DROP DATABASE ... WITH (FORCE)` terminates other backends' connections, and several of those
+at once pile up on **`IPC / ProcSignalBarrier`** rather than `CheckpointStart`. Observed with four
+agents running vitest simultaneously after the fix. Different wait event, different cause, same
+practical rule: **agents run only their own targeted tests; the parent runs the full gate alone.**
+
+**AND THE SYMPTOM LIES.** A `CONNECT_TIMEOUT` inside `globalSetup` is reported by vitest as
+**"No test files found, exiting with code 1"** — which reads as a filter/path mistake, not a database
+problem. If you see that message and your paths are right, look at `pg_stat_activity` before touching
+the command line.
+
 **`-m immediate stop` buys a full WAL replay.** After stopping that way, a 2.2 GB replay ran for 11+
 minutes before accepting connections. Everything local is disposable, so **wipe instead of replaying**
 — the rebuild script does exactly that.
