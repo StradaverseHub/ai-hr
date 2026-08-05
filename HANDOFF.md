@@ -60,10 +60,10 @@ plan was written — **the measurements are IN the plans; quote them rather than
   WRONG; that is just "everyone has a salary".**
 
 **STILL `building`, both deliberately partial. `improve:pull` HIDES `building`, so nothing but this
-file will ever surface them.** Their board `build_ref` was stamped 2026-08-05 and is now STALE for
-`35b7af0a` (it still says 25 labels / groups 6+ unbuilt, and names an `8590615a` overlap that is
-deployed). Updating it was refused as an out-of-scope production write, so **the bullets below are the
-authority, not the board field.**
+file will ever surface them.** Both board `build_ref` values were CORRECTED on production 2026-08-06
+(owner-authorised) and now match the bullets below — `35b7af0a` had still been claiming 25 labels,
+groups 6+ unbuilt and an `8590615a` overlap that is deployed. Keep them in step: the reporter reads the
+board, not this file.
 
 - **`6e9a126e` — releases ONE (r141) and TWO (r159) are live. RELEASE THREE IS DATA-BLOCKED, not
   merely awaiting a decision.** Measured on production 2026-08-05: `leave_policy` **67** rows,
