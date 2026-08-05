@@ -41,11 +41,46 @@ verified by comparing both screens) · `2ef69d1e` (Back Pay — the largest thin
 plus three approved overnight.
 
 **STILL `building`, both deliberately partial:**
-- `6e9a126e` — release ONE shipped in r141 (new layer alongside the old, nothing dropped). Releases
-  two (re-point the engines, ship the editors) and three (archive-then-clear, drop the three old
-  tables) remain. **This is the largest remaining work on the board and wants its own session.**
+- `6e9a126e` — release ONE shipped in r141. **RELEASE TWO IS BUILT AND INTEGRATED BUT NOT SHIPPED —
+  see the section below.** Release three (archive-then-clear, drop the three old tables) remains and
+  is the OWNER'S decision, not a build task.
 - `35b7af0a` — groups 1-2 shipped in r138. Remaining: Date of Birth + Age (blocked on
   `completedYearsAt` living in `core/leave.ts`), and ~28 identity/org-cascade/statutory labels.
+
+### ⚠️ 6e9a126e RELEASE TWO — BUILT, GATED ON ITS OWN FILES, INTEGRATED, **NOT DEPLOYED**
+
+**Where it is:** integrated into `build/r159-int` as `afeaf6b8`. `build/r154` holds the same tree under
+a squashed commit and is now ancestrally unrelated — **ignore `build/r154`, it is fully represented in
+the integration branch.** Nothing has merged to `main` and nothing is deployed.
+
+**What it does.** Every granting engine, the projection kernel and all three past-date readers now
+resolve `template ?? scheme ?? policy` through ONE hook, `composeEntitlement` (core/leave-compute.ts).
+`entitledDays` gained `templateDays` as a REQUIRED POSITIONAL parameter — arity is the mechanism that
+made tsc enumerate every composition site. The two editor screens landed at
+`/admin/leave/entitlements/templates`. **Nothing was dropped or cleared.**
+
+**Why deploying it is low-risk:** production has ZERO rows in both new tables, so every figure still
+resolves through the unchanged old path — proved STRUCTURALLY rather than by comparing numbers:
+`templateOverPolicy(base, null)` returns the SAME OBJECT, so each engine's expression *reduces* to the
+one that was there before (`test/entitlement-template-repoint.test.ts` asserts it with `toBe`, plus a
+negative control so "identical" cannot be satisfied by a resolver that never runs).
+
+**The defect it fixed that nobody reported:** `carryForwardReport` never reads entitlement DAYS — it
+reads the carry cap — and `applyLeaveTypeRules(null, rules)` returns NULL. The day `leave_policy` goes,
+the carrier vanishes and every closed year prints as "everything forfeited". `expireCarriedLeave` had
+the twin: its `policies.length === 0` early return meant a template-only tenant would silently stop
+having carry expiry swept. Both fixed here, in the release that re-points, NOT the one that drops.
+
+**Verification done:** 23 targeted files 399/403 → the 4 failures were 9816a5ad's static
+source-pattern assertions (the overlay moved inside `composeEntitlement`); UPDATED not loosened, plus
+a new assertion that `composeEntitlement` is not an empty shell. Re-ran 47/47 green. Tripwire
+`test/leave-approval-grade-group.test.ts` green and BYTE-UNEDITED. Render check clean (0
+MISSING_MESSAGE, 0 FORMATTING_ERROR; both ICU keys proved *interpolated* in the rendered HTML).
+4 of 5 mutations watched fail with the exact predicted wrong answers.
+
+**What has NOT run: the full suite and `next build`.** Migrations `0401`/`0402` were allocated and
+NOT used — release two adds no DDL, and the gap is deliberate. **Next free migration number is still
+`0401`.**
 
 ### ⚠️⚠️ THE DELETE GUARD IS WRONG, IT IS LIVE, AND IT EXPLAINS A REPORTED BUG
 
@@ -418,6 +453,15 @@ root and the old settings traded one for the other.
 **REBUILD WITH ONE COMMAND — `./scripts/dev-db-rebuild.sh`.** It applies the settings, creates the
 roles (`NOBYPASSRLS`, which still costs an hour if you forget), and verifies. `--purge` also deletes
 previously moved-aside clusters. Use it instead of hand-rolling `initdb`; the settings are the point.
+
+**⚠️ THE FIX REMOVED THE STALL, NOT THE HAZARD. Killing a vitest client mid-teardown still orphans a
+`DROP DATABASE` server-side**, which `pkill`/`TaskStop` cannot stop. r154's chain: orphaned DROP stuck
+on `CheckpointDone` 6+ min → `CONNECT_TIMEOUT 127.0.0.1:5433` on every later run **while `psql`
+connected fine** (that asymmetry is the tell) → cancelling it marked the DB INVALID
+(`datconnlimit = -2`) → **each cleanup attempt created another one.** Left behind and inert unless a
+gate uses those namespaces: `ai_hr_test_w_r154ns2`, `ai_hr_test_w_r159v1`. Diagnose via
+`select datname from pg_database where datconnlimit = -2`. **Do not chain cleanup attempts — run the
+rebuild script once the cluster is idle.**
 
 **The settings, and the trade, stated plainly:** `fsync = off`, `synchronous_commit = off`,
 `full_page_writes = off`, `wal_level = minimal`, `max_wal_size = 1GB` (SMALLER, not bigger),

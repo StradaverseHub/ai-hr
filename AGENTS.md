@@ -54,11 +54,19 @@ HEAD — create worktrees from `main` yourself.
     CREATE/DROP from >5 minutes to 0.47s. If the cluster ever misbehaves, run
     `./scripts/dev-db-rebuild.sh` (<1 min, applies the settings and the `NOBYPASSRLS` role) rather
     than waiting, killing, or theorising.
-11. **NEVER `git stash` while parallel agents are running.** Stashes are REPO-GLOBAL, not per-worktree:
-    an agent ran `git stash pop` and got a DIFFERENT agent's stash into its tree. It was restored
-    intact via `git stash store`, but the two worktrees were one command away from silently mixing
-    each other's uncommitted work. Commit a WIP checkpoint instead — `git commit` is per-branch and
-    cannot collide.
+11. **COMMIT A WIP CHECKPOINT BEFORE ANY COMMAND THAT CAN UNDO A FILE.** Two agents lost work this way
+    on 2026-08-05, by different mechanisms with one cause — uncommitted work has no undo.
+    - `git stash` is REPO-GLOBAL, not per-worktree: an agent ran `git stash pop` and got a DIFFERENT
+      agent's stash into its tree (restored via `git stash store`, but the two worktrees were one
+      command away from silently mixing uncommitted work).
+    - `git checkout -- <file>` reverts to **HEAD, not to your working state**. r154 used it to undo
+      each mutation in a watched-fail script and destroyed a whole release's uncommitted edits to
+      three core files on the FIRST run. Revert a deliberate mutation from a `cp` copy taken up front.
+    `git commit` is per-branch and cannot collide. Checkpoint first, then experiment.
+11b. **DO NOT REWRITE A COMMIT ANOTHER AGENT MAY ALREADY HAVE INTEGRATED.** r154 squashed two commits
+    with `git reset --soft` after the integrator had already merged them; the trees were identical so
+    nothing was lost, but the branch and its integrated copy stopped being ancestrally related. Once
+    you have pushed work an integrator can see, only ADD commits.
 12. **NEVER run an agent and a gate against the same cluster at once.** Twice in one session that
     bloated WAL to 5GB and produced 32 false failures across files unrelated to the change. Agents
     run only their own targeted tests; the parent runs the single full gate, alone.
