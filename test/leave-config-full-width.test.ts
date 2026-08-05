@@ -51,7 +51,9 @@ const TAB_CONTENT_COMPONENTS = [
   'app/admin/leave/import/leave-ledger-import.tsx',
   'app/admin/leave-approval/editor.tsx',
   'app/admin/leave-approval/rule-builder.tsx',
-  'app/admin/leave-approval/workflow-matrix.tsx',
+  // 706d34e8 — workflow-matrix.tsx is DELETED with the per-rule Approval Workflows list it rendered, so
+  // there is no longer a file here for a width cap to reappear in. Removing the entry is the shrink that
+  // follows the deletion, not a relaxation: every surviving approval component is still scanned below.
   'app/admin/leave-approval/template-manager.tsx',
   'app/admin/leave-approval/step-list-editor.tsx',
   'app/admin/leave-approval/escalation-editor.tsx',
