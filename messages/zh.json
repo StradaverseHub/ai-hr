@@ -8258,7 +8258,9 @@
     "editHint": "按贵组织的用语重命名。内置类型的作用不变；只有自建类型可以改变其行为。",
     "cancel": "取消",
     "empty": "没有符合此搜索条件的事件类型。",
-    "builtIn": "内置"
+    "builtIn": "内置",
+    "saving": "正在保存…",
+    "close": "关闭"
   },
   "hiringDefaults": {
     "title": "入职默认设置",

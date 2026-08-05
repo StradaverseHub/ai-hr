@@ -8258,7 +8258,9 @@
     "editHint": "Namakan semula mengikut bahasa yang digunakan organisasi anda. Jenis terbina dalam mengekalkan fungsinya; hanya jenis anda sendiri boleh ditukar fungsinya.",
     "cancel": "Batal",
     "empty": "Tiada jenis peristiwa sepadan dengan carian ini.",
-    "builtIn": "Terbina dalam"
+    "builtIn": "Terbina dalam",
+    "saving": "Menyimpan…",
+    "close": "Tutup"
   },
   "hiringDefaults": {
     "title": "Tetapan Lalai Pengambilan",

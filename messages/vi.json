@@ -8258,7 +8258,9 @@
     "editHint": "Đổi tên cho khớp với cách gọi của tổ chức bạn. Loại có sẵn giữ nguyên chức năng; chỉ loại do bạn tạo mới đổi được hành vi.",
     "cancel": "Hủy",
     "empty": "Không có loại sự kiện nào khớp với tìm kiếm này.",
-    "builtIn": "Có sẵn"
+    "builtIn": "Có sẵn",
+    "saving": "Đang lưu…",
+    "close": "Đóng"
   },
   "hiringDefaults": {
     "title": "Mặc định tuyển dụng",
