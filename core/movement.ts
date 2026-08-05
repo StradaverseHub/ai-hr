@@ -48,6 +48,7 @@ import {
 import { isTerminationReasonCode, terminationTypeForReason } from './termination-reason';
 import {
   COMPARISON_KINDS,
+  INTERCHANGEABLE_COMPARISON_KINDS,
   MOVEMENT_KINDS,
   isComparisonKind,
   type ComparisonKind,
@@ -66,7 +67,7 @@ import {
  * so every existing importer of core/movement is untouched. The move exists to break one import cycle:
  * core/movement-type.ts (the configurable catalogue) needs the built-in kind list, and this module needs
  * the catalogue to resolve a tenant's own event type — a leaf module both can import is the whole fix. */
-export { COMPARISON_KINDS, MOVEMENT_KINDS, isComparisonKind };
+export { COMPARISON_KINDS, INTERCHANGEABLE_COMPARISON_KINDS, MOVEMENT_KINDS, isComparisonKind };
 export type { ComparisonKind, MovementKind };
 
 /** One row of the Employment History list. `id` is the domain_event id, or the pseudo-id 'hired' when
@@ -146,6 +147,14 @@ export type MovementReversal = {
   reason: string | null;
   /** true when the rollback was the first half of an EDIT (reverse + re-apply), false for a plain Rollback. */
   corrected: boolean;
+  /**
+   * bd89ccd8 — true when the movement was still PENDING when it was undone, i.e. it never applied and
+   * never will. Derived, never stored: it is `scheduled && !appliedAt` read off the same projection that
+   * decides the status. The screen calls that action Cancel rather than Roll Back, so the badge it leaves
+   * has to say Cancelled — a confirmation promising "this event will never apply" followed by a row
+   * labelled Reversed is the same mismatch between word and deed that 10fcf6df was about.
+   */
+  cancelled: boolean;
   /**
    * 10fcf6df — WHO rolled it back. The plan promises the movement stays in the history "together with who
    * did it and when"; `at` was already there, this is the other half. Resolved from the reversal event's
@@ -697,6 +706,9 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
           at: e.occurredAt,
           reason: (p.reason as string | null) ?? null,
           corrected: p.corrected === true,
+          // bd89ccd8 — filled in after the loop, from the row this reversal refers to: only the projection
+          // knows whether that row had applied by then.
+          cancelled: false,
           // 10fcf6df — resolved to a name after the loop, in ONE query for every reversal on the page.
           by: null,
         });
@@ -743,6 +755,9 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
   for (const r of rows) {
     r.reversed = reversals.get(r.id) ?? null;
     r.appliedAt = applications.get(r.id) ?? null;
+    // bd89ccd8 — a movement that was scheduled and never applied was CANCELLED, not rolled back. Both
+    // facts are on the row, so the distinction costs nothing and keeps the badge honest.
+    if (r.reversed) r.reversed.cancelled = r.scheduled && !r.appliedAt;
   }
 
   rows.sort((a, b) => {
@@ -802,13 +817,31 @@ const STATE_CHANGING_EVENT_TYPES = new Set(
   ),
 );
 
-/** A flat-column leg is undone field by field. A leg that also moved a LIFECYCLE date (confirmation,
- *  resignation, probation) is out of scope: those derive from one another (finalConfirmationDate) and are
- *  maintained on their own screens. */
+/**
+ * 3ced1040 — the LIFECYCLE dates an `employment.info.updated` leg may carry and still be undone from
+ * Employment History. Only the confirmation pair, and only because Confirmation is now a comparison kind:
+ * a Confirmation that could not be rolled back would be the ONE comparison movement with no way to
+ * correct a mistake, which is the opposite of what "behave like Promotion" asked for.
+ *
+ * `finalConfirmationDate` is here because setEmploymentInfo DERIVES it on the same save and so lists it in
+ * the event's own `fields`; it is never restored directly — putting the confirmation date back re-derives
+ * it, which is also what keeps it consistent with an extended probation date this movement never touched.
+ *
+ * The other lifecycle dates stay out of scope, unchanged: resignation, probation extension and the two
+ * join dates are moved by kinds that are NOT comparison kinds, they derive from one another, and each is
+ * maintained on its own screen with its own gates.
+ */
+const REVERSIBLE_INFO_DATE_FIELDS: readonly string[] = ['confirmationDate', 'finalConfirmationDate'];
+
+/** A flat-column leg is undone field by field, and since 3ced1040 so is the confirmation date a
+ *  Confirmation movement writes alongside it. Any OTHER lifecycle date on the leg puts the whole movement
+ *  out of correction's reach (see REVERSIBLE_INFO_DATE_FIELDS). */
 function infoLegIsFlatOnly(e: RawEvent): boolean {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fields: string[] = Array.isArray((e.payload as any)?.fields) ? (e.payload as any).fields : [];
-  return fields.every((f) => (MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f));
+  return fields.every(
+    (f) => (MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f) || REVERSIBLE_INFO_DATE_FIELDS.includes(f),
+  );
 }
 
 type Correctability = { canReverse: boolean; canEdit: boolean; stateChanging: boolean };
@@ -1171,6 +1204,9 @@ export type MovementCurrentState = {
   currency: string | null;
   payMode: string | null;
   paymentTerm: string | null;
+  /** 3ced1040 — the date a Confirmation movement moves. Read like every other current value so the delta
+   *  rule covers it: re-confirming on the date already stored is a no-op, not a second history row. */
+  confirmationDate: string | null;
 } & Record<MovementFlatField, string | null>;
 
 async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCurrentState> {
@@ -1178,6 +1214,7 @@ async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCur
     .select({
       gradeId: employment.gradeId,
       companyName: company.legalName,
+      confirmationDate: employment.confirmationDate,
       orgDivision: employment.orgDivision,
       orgRegion: employment.orgRegion,
       orgBranch: employment.orgBranch,
@@ -1256,6 +1293,7 @@ async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCur
     currency: comp?.currency ?? null,
     payMode: comp?.payMode ?? null,
     paymentTerm: comp?.paymentTerm ?? null,
+    confirmationDate: emp.confirmationDate,
     orgDivision: emp.orgDivision,
     employmentCategory: emp.employmentCategory,
     orgRegion: emp.orgRegion,
@@ -1386,6 +1424,18 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
   const dPayMode = delta(p.payMode, cur.payMode);
   const dPaymentTerm = delta(p.paymentTerm, cur.paymentTerm);
 
+  /**
+   * 3ced1040 — the CONFIRMATION delta. The confirmation date is not a field on the form: it IS the
+   * movement's effective date, so the delta is that date against the one already stored.
+   *
+   * Counting it as a delta rather than exempting Confirmation from the nothingChanged guard is the
+   * deliberate choice the plan asked to pin. The reporter requires confirming WITHOUT a salary
+   * adjustment, and this gives them that — the confirmation is itself the change, so the movement saves
+   * with an empty right-hand column — while keeping the guard's real job: re-submitting the same
+   * confirmation date on an already-confirmed employee still changes nothing and is still refused.
+   */
+  const dConfirmation = p.kind === 'confirmation' ? delta(p.effectiveDate, cur.confirmationDate) : undefined;
+
   const assignmentChanged =
     dDept !== undefined || dPos !== undefined || dBu !== undefined || dLoc !== undefined || !!dType;
   const gradeChanged = dGrade !== undefined;
@@ -1399,8 +1449,11 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
     dSalary !== undefined ||
     (hasComp && (dCurrency !== undefined || dPayMode !== undefined || dPaymentTerm !== undefined));
 
+  const confirmationChanged = dConfirmation !== undefined;
+
   const nothingChanged =
-    !assignmentChanged && !gradeChanged && !flatChanged && !managerChanged && !compChanged;
+    !assignmentChanged && !gradeChanged && !flatChanged && !managerChanged && !compChanged &&
+    !confirmationChanged;
   if (dSalary !== undefined && (!Number.isFinite(dSalary) || dSalary < 0)) {
     throw new Error('A valid basic salary amount is required.');
   }
@@ -1426,12 +1479,16 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
     add('payMode', cur.payMode, dPayMode);
     add('paymentTerm', cur.paymentTerm, dPaymentTerm);
   }
+  // Named in `fields` too, so two pending confirmations of the same employee resolve against each other
+  // through supersededScheduledIds exactly as two pending raises do.
+  add('confirmationDate', cur.confirmationDate, dConfirmation);
 
   return {
     cur,
     dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat,
-    dSalary, dCurrency, dPayMode, dPaymentTerm,
+    dSalary, dCurrency, dPayMode, dPaymentTerm, dConfirmation,
     assignmentChanged, gradeChanged, flatChanged, managerChanged, compChanged, hasComp,
+    confirmationChanged,
     nothingChanged,
     changes,
     fields: changes.map((c) => c.field),
@@ -1470,8 +1527,8 @@ async function applyComparisonMovementTx(
     const d = movementDeltas(p, cur);
     const {
       dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat,
-      dSalary, dCurrency, dPayMode, dPaymentTerm,
-      assignmentChanged, gradeChanged, flatChanged, compChanged,
+      dSalary, dCurrency, dPayMode, dPaymentTerm, dConfirmation,
+      assignmentChanged, gradeChanged, flatChanged, compChanged, confirmationChanged,
     } = d;
 
     if (d.nothingChanged) {
@@ -1526,10 +1583,21 @@ async function applyComparisonMovementTx(
       );
     }
 
-    if (flatChanged) {
+    // 3ced1040 — the flat org columns and the CONFIRMATION DATE share one leg, because they share one
+    // writer. Confirmation is a comparison kind now, and the date it sets rides on the same
+    // setEmploymentInfo call rather than a second one: two calls would be two `employment.info.updated`
+    // events for one movement, and the rollback would have to undo them in the right order to be correct.
+    // setEmploymentInfo re-derives finalConfirmationDate from it, which is what flips the derived
+    // Employee Status from Probation to Confirmed — there is no status column to write.
+    if (flatChanged || confirmationChanged) {
       await setEmploymentInfo(
         ctx,
-        { employmentId: p.employmentId, ...flat, movement: tag({ withRemarks: true }) },
+        {
+          employmentId: p.employmentId,
+          ...flat,
+          ...(confirmationChanged ? { confirmationDate: dConfirmation } : {}),
+          movement: tag({ withRemarks: true }),
+        },
         tx,
       );
     }
@@ -2028,14 +2096,12 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
   const remarks = p.remarks?.trim() || null;
   const endDate = p.endDate?.trim() || null;
 
+  // 3ced1040 — the `confirmation` case that stood here is GONE, not moved. It wrote the date through
+  // setEmploymentInfo and nothing else; Confirmation is a comparison kind now, so this switch is never
+  // reached for it and leaving the case behind would be a second writer that only a future refactor
+  // would discover was dead. The two remaining date movements below keep their cases: neither is a
+  // comparison kind, because each moves exactly one date and a Current/After grid would just restate it.
   switch (p.kind) {
-    case 'confirmation':
-      return setEmploymentInfo(ctx, {
-        employmentId: p.employmentId,
-        confirmationDate: p.effectiveDate,
-        movement: { type: 'confirmation', remarks, groupId: randomUUID() },
-      });
-
     // 89ea527b — Join Date Change: the employee's commencement date with the CURRENT employing company moves
     // (internal company transfer, rehire into another group company, restructure). The effective date IS the
     // new Join Date. The Group Join Date is deliberately untouched — group service continues across the move,
@@ -2256,12 +2322,47 @@ export class MovementNotCorrectableError extends Error {
   }
 }
 
+/**
+ * bd89ccd8 — a rollback or correction arrived with no reason.
+ *
+ * THE FIELD WAS ALWAYS THERE AND ALWAYS OPTIONAL, and the measurement is what settles it: of the eleven
+ * rollbacks performed on production, TEN recorded no reason at all. `employment.movement.reversed` already
+ * carries who and when; without the why it is a record that something was undone by someone, which is not
+ * an audit trail — and an audit control nobody fills in is not a control.
+ *
+ * ENFORCED IN THE SERVICE, not only in the dialog, because the dialog is not the only caller and a UI-only
+ * requirement is a suggestion. A CORRECTION is held to the same rule for the same reason: an Edit IS a
+ * rollback (reverseMovementTx with `corrected: true`), it appends the identical event with the identical
+ * nullable field, and requiring the reason on one but not the other would leave the control routable
+ * around by clicking the other button.
+ */
+export class MovementReasonRequiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MovementReasonRequiredError';
+  }
+}
+
 function assertMovementAdmin(ctx: SessionContext, what: string): void {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error(`Only an admin can ${what}.`);
   }
 }
+
+/**
+ * 3ced1040 — a correction may re-classify a movement inside its family, never across it (see
+ * INTERCHANGEABLE_COMPARISON_KINDS). Confirmation is a comparison kind but its own family of one: turning
+ * a Transfer into a Confirmation would move the employee off probation as a side effect of a re-label, and
+ * turning a Confirmation into a Transfer would silently drop the date the event exists to record. Same
+ * posture, and the same message, as the termination guard.
+ *
+ * `from` is the row's CATALOGUE CODE and `to` the resolved behaviour kind, which is fine here precisely
+ * because Confirmation is not a configurable behaviour: no tenant type can carry it, so its code is always
+ * the built-in one.
+ */
+const crossesConfirmation = (from: string, to: string): boolean =>
+  (from === 'confirmation') !== (to === 'confirmation');
 
 /** Undo ONE leg of a movement. `tag` marks every compensating write as a companion of the rollback, so the
  *  projection keeps rendering exactly one row per movement. */
@@ -2354,16 +2455,25 @@ async function reverseLegTx(
           orgSection: employment.orgSection,
           orgLine: employment.orgLine,
           orgBase: employment.orgBase,
+          confirmationDate: employment.confirmationDate,
         })
         .from(employment)
         .where(eq(employment.id, employmentId))
         .limit(1);
       if (!cur) return;
-      const restore: Partial<Record<MovementFlatField, string | null>> = {};
+      const restore: Partial<Record<MovementFlatField | 'confirmationDate', string | null>> = {};
       for (const f of MOVEMENT_FLAT_FIELDS) {
         if (!fields.includes(f)) continue;
         if ((cur[f] ?? null) !== (after[f] ?? null)) continue; // a later movement owns this column now
         restore[f] = before[f] ?? null;
+      }
+      // 3ced1040 — the confirmation date a Confirmation movement wrote, undone on exactly the same
+      // last-write-wins rule as the flat columns above: restore it only while the stored value is still
+      // the one THIS movement put there. Clearing it back to null is the normal case (the employee was on
+      // probation before), and setEmploymentInfo re-derives finalConfirmationDate from the result, so the
+      // employee returns to Probation without this module ever touching a status.
+      if (fields.includes('confirmationDate') && (cur.confirmationDate ?? null) === (after.confirmationDate ?? null)) {
+        restore.confirmationDate = before.confirmationDate ?? null;
       }
       if (Object.keys(restore).length) {
         await setEmploymentInfo(ctx, { employmentId, ...restore, movement: tag }, tx);
@@ -2484,21 +2594,33 @@ async function reverseMovementTx(
  * 10fcf6df — the screen called this Delete until r88. It never deleted anything: the reporter reasonably
  * expected a deletion to leave the employee's details alone, saw them change, and read that as the record
  * being removed without being undone. The affordance is now labelled Roll Back, which is what it does.
+ *
+ * bd89ccd8 — and the REASON is now compulsory here rather than optional in the dialog (see
+ * MovementReasonRequiredError). This is also the path that CANCELS a pending movement: the scheduling
+ * event wrote nothing, so its reversal is the reversal event alone and the sweep then skips it. One
+ * reversal path, two labels on the screen — a second writer would grow its own copy of the closed-payroll
+ * and superseded guards, which is the bug this shape exists to avoid.
  */
 export async function reverseMovementEvent(
   ctx: SessionContext,
   p: { employmentId: string; movementId: string; reason?: string | null },
 ) {
   assertMovementAdmin(ctx, 'roll back a movement');
+  const reason = p.reason?.trim() || null;
+  if (!reason) {
+    throw new MovementReasonRequiredError('A reason is required. Record why this movement event is being rolled back.');
+  }
   return withTenant(ctx, async (tx) => {
-    await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, p.reason?.trim() || null, false);
+    await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, false);
     return { employmentId: p.employmentId };
   });
 }
 
 export type EditMovementInput = CreateMovementInput & {
   movementId: string;
-  /** Free-text "reason for the change" (audit-trail requirement 4 — optional but recommended). */
+  /** Free-text "reason for the change" (audit-trail requirement 4). bd89ccd8 — MANDATORY since a
+   *  correction is a rollback wearing another name; still typed optional so the field can be absent from
+   *  the call and refused by the service rather than by the type. */
   reason?: string | null;
 };
 
@@ -2526,6 +2648,12 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
     throw new Error('A valid effective date (YYYY-MM-DD) is required.');
   }
   const reason = p.reason?.trim() || null;
+  // bd89ccd8 — same rule as a plain rollback, because a correction performs one. Checked before anything
+  // is written, alongside the effective-date format, so a half-applied rollback can never commit behind a
+  // missing-reason message.
+  if (!reason) {
+    throw new MovementReasonRequiredError('A reason is required. Record why this movement event is being corrected.');
+  }
   const remarks = p.remarks?.trim() || null;
   const endDate = p.endDate?.trim() || null;
 
@@ -2571,7 +2699,7 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
           ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
           : applyTerminationTx(tx, ctx, p.employmentId, plan);
       }
-      if (!isComparisonKind(p.kind)) {
+      if (!isComparisonKind(p.kind) || crossesConfirmation(row.kind, p.kind)) {
         throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
       }
       if (p.kind === 'employmentTypeChange' && !p.employmentType) {
@@ -2643,7 +2771,7 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
       return { employmentId: p.employmentId };
     }
 
-    if (!isComparisonKind(p.kind)) {
+    if (!isComparisonKind(p.kind) || crossesConfirmation(row.kind, p.kind)) {
       throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
     }
     if (p.kind === 'employmentTypeChange' && !p.employmentType) {

@@ -449,9 +449,10 @@ export async function createMovementEventAction(formData: FormData) {
     // termination that took effect via the cron got a recomputed entitlement while one keyed for today did
     // not, until some unrelated trigger happened to fire. Best-effort and idempotent, exactly as the other
     // kinds are. This is NOT the leave PAYOUT, which the approved plan defers to the final-settlement step.
+    // 3ced1040 — `confirmation` used to be named here explicitly and is not any more: it is a comparison
+    // kind now, so isComparisonKind covers it. The set is otherwise unchanged.
     if (
       isComparisonKind(p.kind) ||
-      p.kind === 'confirmation' ||
       p.kind === 'probationExtension' ||
       p.kind === 'groupJoinDateCorrection' ||
       p.kind === 'termination'
