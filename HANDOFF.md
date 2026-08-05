@@ -186,10 +186,9 @@ on OPEN, in the same wording as the save error, so it is visible rather than a s
 ### Waiting on the owner, not on code
 
 1. **`usage:capture` is the ONLY unscheduled sweep, and the gap BLEEDS** — usage cannot be
-   backfilled, so every unscheduled day is permanently unbillable. Five jobs DO run via a crontab
-   installed 2026-07-21: `accrue-earned` (monthly, 1st 02:00) · `review-sweep` (daily 03:00) ·
-   `expire-aged-leave` (daily 03:30) · `expire-carry` (yearly, 1 Apr 03:00) · `provision-runner`
-   (every minute). **Verify with `crontab -l` as `ubuntu`, NOT `systemctl list-timers`** (no timers
+   backfilled, so every unscheduled day is permanently unbillable. **FOUR** jobs run (verified with `crontab -l` on 2026-08-05): `accrue-earned` (monthly, 1st 02:00),
+   `review-sweep` (daily 03:00), `expire-carry` (yearly, 1 Apr 03:00) and `provision-runner` (every
+   minute). **`expire-aged-leave` is NOT among them** — an older note here claimed five including it. **Verify with `crontab -l` as `ubuntu`, NOT `systemctl list-timers`** (no timers
    exist). Suggested: daily 01:00, ahead of the leave sweeps.
 2. **Slice 6's deploy-failing flip** (unclassifiable company: warning → failed deploy) needs explicit
    confirmation before shipping — right end state, deliberate foot-gun.
@@ -605,10 +604,10 @@ method or carry-forward is WRONG.**
    | 0–4 | **DONE** (invitation privesc fix · schema · `isModuleEnabled` (`a38ed02f`, 50 sites) · gate classification · nav/page gating) |
    | 5 | **DONE r97–r100** except the admin setup notification (no natural key on `notification`) |
    | 6 | **steps 1–5 done** (r102/r103/r110/r111/r115). Remaining: sweep reports for one-jurisdiction assumptions · per-country subtotals + mixed-currency refusal · the deploy-failing flip (**confirm first**) |
-   | 7 | **NOT BUILT** (`ai_hr_platform` appears in zero files) |
-   | 8 | **NOT BUILT** (audit chain still env + gate script) |
+   | 7 | **PARTLY BUILT — the old "appears in zero files" note was STALE.** `core/platform-usage.ts` (148 lines), `test/platform-plane.test.ts` (203) and the `ai_hr_platform` role definition in `deploy/bootstrap-db.sql` all exist. **But the role does NOT exist on production** (only `ai_hr_app`) — written, never provisioned |
+   | 8 | **PARTLY BUILT — also stale.** `core/audit-chain-arming.ts` (90 lines) exists, and it documents a real hazard: **DISARMING THE CHAIN IS NEITHER REVERSIBLE NOR VISIBLE.** Events appended while the gate is off carry `chain_seq IS NULL`, so they are ABSENT from the chain rather than breaking it; re-arming links onto the last chained event, every `prev_hash` matches, and `verifyTenantChain()` returns valid over a log with an unprotected hole — the DPO surface renders a green "intact". Decide whether that gate should be removable at all |
    | 9 | **mostly done** (r104/r105/r108/r109). Remaining: CLOSURE (dual-controlled, own retention check) · REACTIVATION (suspended window excluded from expiry clocks) |
-   | 10 | **meter shipped r113, verified against production.** Remaining: the dashboard · scheduling the sweep (owner decision) |
+   | 10 | **THE METER HAS RUN EXACTLY ONCE.** Verified 2026-08-05: `usage_snapshot` holds **8 rows, all dated 2026-08-02** — one distinct day. **`usage:capture` IS NOT IN THE CRONTAB.** Usage CANNOT be backfilled, so every unscheduled day is permanently unbillable and the count grows daily. One crontab line fixes it (suggested 01:00, ahead of the 02:00/03:00 leave sweeps so it meters the day before they mutate it). The dashboard that reads it is also unbuilt |
    Slice 9's enforcement is inert in production today (both tenants `active`); `apply-dunning` is
    report-only and unscheduled.
 5. **Test-DB teardown is FIXED — kept so nobody "fixes" it again.** `test/global-setup.ts:298`,
