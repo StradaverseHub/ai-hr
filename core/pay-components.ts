@@ -181,6 +181,57 @@ export function listEmploymentPayComponents(ctx: SessionContext, employmentId: s
   );
 }
 
+/** One row of `listEmploymentPayComponents`, which `getEmploymentPayComponent` returns exactly one of. */
+export type EmploymentPayComponentRow = Awaited<ReturnType<typeof listEmploymentPayComponents>>[number];
+
+/**
+ * f3ae3245 — ONE recurring fixed item by id, for the dedicated View/Edit page.
+ *
+ * Same projection as `listEmploymentPayComponents` so the page and the list can never describe the same
+ * row differently — one shape, narrowed to one id, rather than a second query with its own columns.
+ *
+ * Matched on `employmentId` as well as `id` for the same reason every write path in this file does: RLS
+ * fences the TENANT, company scope is an application concern, and the caller fences that. A row that is
+ * superseded (removed) reads as absent, exactly as it does in the list — a URL to a removed item must not
+ * resurrect it on screen.
+ *
+ * Read-only: no write, no DomainEvent. Returns null rather than throwing so the page can `notFound()`.
+ */
+export function getEmploymentPayComponent(
+  ctx: SessionContext,
+  p: { id: string; employmentId: string },
+): Promise<EmploymentPayComponentRow | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: employmentPayComponent.id,
+        componentId: payComponent.id,
+        code: payComponent.code,
+        name: payComponent.name,
+        kind: payComponent.kind,
+        amount: employmentPayComponent.amount,
+        validFrom: employmentPayComponent.validFrom,
+        validTo: employmentPayComponent.validTo,
+        currency: employmentPayComponent.currency,
+        prorateOverride: employmentPayComponent.prorateOverride,
+        prorates: payComponent.prorates,
+        remarks: employmentPayComponent.remarks,
+        runType: employmentPayComponent.runType,
+      })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .where(
+        and(
+          eq(employmentPayComponent.id, p.id),
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  });
+}
+
 export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx.select().from(payComponent).where(eq(payComponent.tenantId, ctx.tenantId)).orderBy(payComponent.code);
