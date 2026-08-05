@@ -18,29 +18,25 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-06 (r162 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-06 (r163 SHIPPED)
 
-**`main@0369f954` is what runs. Production on 327 migrations. Next free migration number is `0404`**
-(0389, 0401 and 0402 were never claimed and are dead; r160 added NO migration). No half-applied
+**`main@32311122` is what runs. Production on 328 migrations. Next free migration number is `0404`**
+(0389, 0401 and 0402 were never claimed and are dead). `0404` shipped with r163; next free is `0405`. No half-applied
 migration, no pending deploy, nothing in flight. Verified after deploy: service `active`, `GET /` 401,
 and `rsync -azi --delete --dry-run` reporting **zero changes**.
 
 ### The board — counted on production 2026-08-06 after r162 (owner role; `DATABASE_URL` is RLS-blocked)
 
-**`deployed = 593` · `building = 3` · `approved = 2` · `open = 1` · `cancelled = 12`. `contested` and
+**`deployed = 594` · `building = 3` · `approved = 1` · `open = 1` · `cancelled = 12`. `contested` and
 `planned` are ZERO.** Re-count rather than trusting this line.
 
-**r160/r161/r162 shipped NINE board items between them.** The reporter approved all six plans pushed on
-2026-08-05, so `approved` rose while items shipped.
+**r160/r161/r162/r163 shipped TEN board items between them on 2026-08-05/06.**
 
-**THE 2 APPROVED AND UNBUILT:**
-- `a00c4f64` (Team Leave Tracker) — an agent BUILT it on `build/r162-d-tracker` (31 files, 823
-  insertions) but was interrupted and committed a checkpoint its own message labels **UNVERIFIED**. It
-  was deliberately NOT merged. Verify that branch before trusting any of it.
-- `2ef69d1e` (Back Pay — the largest thing left, must go LAST). Its plan's mandatory pre-build count is
-  DONE, measured 2026-08-06: **26 compensation rows / 22 employees / 3 periods** were keyed AFTER the
-  payroll they should have affected, 9 with a real salary difference, moving in BOTH directions (one is
-  6000 → 5500). The naive query — valid_from before the last payslip — returns 41/36 and is WRONG.
+**THE 1 APPROVED AND UNBUILT:** `2ef69d1e` (Back Pay — the largest thing left, must go LAST). Its
+plan's mandatory pre-build count is DONE, measured 2026-08-06: **26 compensation rows / 22 employees /
+3 periods** were keyed AFTER the payroll they should have affected, 9 with a real salary difference,
+moving in BOTH directions (one is 6000 → 5500). The naive query — valid_from before the last payslip —
+returns 41/36 and is WRONG; that is just "everyone has a salary".
 
 **`open = 1` is `4861bcbb`, raised BY US** (reporter_label CLAUDE AI) on 2026-08-06: it asks the reporter
 for the DATE to clear the old entitlement setup, with the re-counted figures. See the `6e9a126e` bullet.

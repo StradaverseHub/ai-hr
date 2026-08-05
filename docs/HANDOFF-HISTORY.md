@@ -9,6 +9,39 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r163 — 2026-08-06 — a00c4f64, the Leave Calendar leaves the Dashboard
+
+**Shipped:** `a00c4f64`. Merge `32311122`, migration `0404`. Gate 589/589 across three chunks with NO
+re-runs, and an upgrade rehearsal PASS on a populated database.
+
+### Decisions
+
+**The plan named ONE pointer at the old location; there were FOUR.** Found by following the calendar
+rather than the ticket: the Personnel profile's View Calendar deep link, the HR-admin cancel dialog's
+`back="/"` return surface, and `PlannedAbsencesPanel`'s three hardcoded `/` URL writes. That last one
+would have been felt first — paging to another week on `/leave/tracker` would have bounced the viewer
+to the Dashboard mid-task. `usePathname()` leaves dashboard behaviour byte-identical.
+
+**Deleting the seeded card rows, not deactivating them.** Deactivating leaves a re-activate button in
+the HR Card Library for a MANDATORY card with nothing to render. Deleting is also what makes saved
+personal layouts self-heal: `normalizeDashboardLayout` filters `selected` AND `order` through the live
+catalogue, so the key drops on read and, no longer mandatory, is never force-re-added — which is why
+no `app_user.dashboard_layout` migration is owed.
+
+**Three i18n strings had become FALSE**, not merely stale: `templateRow2Desc` and `templateDerivedNote`
+render UNCONDITIONALLY on Settings → Dashboard → Templates, so every HR admin was being told the Leave
+Calendar is pinned full width for every employee.
+
+**The nav row is ungated on purpose** — Manage gates per row, every employee saw this calendar on their
+dashboard, and a managerUp row would have been a silent permissions removal for plain staff (the
+`a324a4b3` regression class). Verified by rendering AS a plain employee, not by reading the flag.
+
+### The gate, for contrast with r162
+
+589/589 green first time, ~480s per chunk, no re-runs — because the cluster had itself. r162's three
+red chunks the same night were the same suite on the same machine with agents alive alongside it.
+**That is the cost of breaking rule 12, measured.**
+
 ## r162 — 2026-08-06 — five approved items built by parallel agents, and a gate that read RED while being green
 
 **Shipped:** `35524d1f` · `0bb0e303` · `3ced1040` · `bd89ccd8` · `7c834696` points 1/2/4.
