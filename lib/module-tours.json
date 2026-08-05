@@ -82,7 +82,7 @@
       {
         "id": "config",
         "target": "[data-tour=\"leave-config\"]",
-        "route": "/admin/leave",
+        "route": "/admin/leave/entitlements",
         "titleKey": "tour.leave.config.title",
         "bodyKey": "tour.leave.config.body",
         "placement": "top",

@@ -66,8 +66,23 @@ describe('Personnel — Bank & Statutory tab (40ef71a0)', () => {
     // moved to the dedicated Identification & Tax card (setTaxAction) and icNumber to its own Profile-tab form
     // (setIcAction); both still exist on the page (icNumber here, taxNumber in identity-tax-card.tsx). epfNumber
     // + socsoNumber stay in the statutory form.
-    for (const field of ['epfNumber', 'socsoNumber']) {
-      expect(PAGE.includes(`name="${field}"`), `missing statutory input ${field}`).toBe(true);
+    //
+    // WHY THIS GUARD EXISTS, restated because 35b7af0a group 4 moved one of the two: setStatutoryAction is a
+    // FULL-ROW OVERWRITE, so a named input that stops being mounted does not merely disappear — it silently
+    // wipes the stored column on the next save. What must hold is that the input is EMITTED INSIDE that form,
+    // not that its markup is literally in this file. socsoNumber is still inline; epfNumber (with
+    // epfCitizenship) is now rendered by components/epf-registration-fields.tsx in its uncontrolled `form`
+    // mode, from inside the same <form>.
+    expect(PAGE.includes('name="socsoNumber"'), 'missing statutory input socsoNumber').toBe(true);
+    const formStart = PAGE.indexOf('<form action={setStatutoryAction}');
+    const formEnd = PAGE.indexOf('</form>', formStart);
+    const statutoryForm = PAGE.slice(formStart, formEnd);
+    expect(formStart).toBeGreaterThan(-1);
+    expect(statutoryForm.includes('<EpfRegistrationFields'), 'EPF group left the statutory form').toBe(true);
+    expect(statutoryForm.includes('mode="form"'), 'EPF group must stay uncontrolled + named here').toBe(true);
+    const EPF = fs.readFileSync(path.resolve(__dirname, '../components/epf-registration-fields.tsx'), 'utf8');
+    for (const field of ['epfNumber', 'epfCitizenship']) {
+      expect(EPF.includes(`name: '${field}'`), `missing statutory input ${field}`).toBe(true);
     }
     // Item e3ce0d4d — the IC input moved into the nationality-conditional IdentityFields client
     // component; the Profile tab wires it via setIcAction={setIcAction}. taxNumber remains on the

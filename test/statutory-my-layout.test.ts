@@ -20,6 +20,22 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const page = read('app/admin/personnel/[employmentId]/page.tsx');
 const identityTaxCard = read('components/identity-tax-card.tsx');
 
+/**
+ * Item 35b7af0a group 4 moved EPF Number + EPF Citizenship out of this page and into a shared field group
+ * rendered by BOTH this screen and the Create New Employee wizard. The inputs did not change — in
+ * `mode="form"` the group still emits plain `name` + `defaultValue` inputs, and it is still rendered inside
+ * the single <form action={setStatutoryAction}>, so the full-row overwrite still carries them.
+ *
+ * The wipe guard therefore FOLLOWS the fields into the component rather than dropping the two assertions.
+ * Dropping them is the tempting fix and the wrong one: these are the assertions that catch a field
+ * vanishing from the POST, which silently wipes stored data. Extraction is not deletion, so the guard has
+ * to learn where the inputs went. The `mode="form"` check below is the other half — a controlled-mode
+ * render would emit `value`/`onChange` and NO `name`, quietly leaving the field out of the overwrite while
+ * the raw string `name="epfNumber"` still existed in the component file.
+ */
+const epfRegistrationFields = read('components/epf-registration-fields.tsx');
+const statutoryFormSources = page + epfRegistrationFields;
+
 describe('Statutory (Malaysia) layout: lives in the Bank & Statutory tab', () => {
   it('renders {bankCard} + {statutoryCard} in the bankStatutory tab panel, with Identity/Tax merged into statutoryCard', () => {
     // R24 40ef71a0 relocated statutory into its own Bank & Statutory tab. Item ef720d3a split the bank fields
@@ -86,11 +102,43 @@ describe('Statutory (Malaysia) layout: every statutory input stays mounted (full
     'name="tp3PcbPaid"',
   ];
 
+  /**
+   * A field is mounted whether it is written as a JSX attribute (`name="epfNumber"`) or as a form-mode
+   * prop object that a shared field group spreads onto the input (`name: 'epfNumber'`, 35b7af0a group 4).
+   * Both compile to the same posted input, so both satisfy the wipe guard; accepting only the first
+   * spelling would fail every future field extraction for a purely cosmetic reason.
+   */
+  const isMounted = (attr: string): boolean => {
+    const field = attr.slice('name="'.length, -1);
+    return (
+      statutoryFormSources.includes(`name="${field}"`) ||
+      statutoryFormSources.includes(`name: '${field}'`)
+    );
+  };
+
   for (const input of requiredInputs) {
     it(`${input} is still present in the statutory form`, () => {
-      expect(page.includes(input)).toBe(true);
+      expect(isMounted(input)).toBe(true);
     });
   }
+
+  it('renders the shared EPF field group in form mode, inside the setStatutoryAction form', () => {
+    // Both halves matter. The group must be rendered here at all (otherwise the two EPF inputs are simply
+    // absent from the POST no matter what the component file contains), and it must be rendered in FORM
+    // mode (controlled mode emits value/onChange and no `name`, so the full-row overwrite would wipe both
+    // columns while every string assertion above still passed).
+    const at = page.indexOf('<EpfRegistrationFields');
+    expect(at, '<EpfRegistrationFields is rendered by the statutory card').toBeGreaterThan(-1);
+    const tag = page.slice(at, page.indexOf('/>', at));
+    expect(tag, 'rendered in form mode, not controlled mode').toContain('mode="form"');
+
+    const formStart = page.lastIndexOf('<form action={setStatutoryAction}', at);
+    expect(formStart, 'the group sits inside the setStatutoryAction form').toBeGreaterThan(-1);
+    expect(
+      page.indexOf('</form>', formStart),
+      'the group is rendered before that form closes',
+    ).toBeGreaterThan(at);
+  });
 });
 
 describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, tax fields in the dedicated card', () => {

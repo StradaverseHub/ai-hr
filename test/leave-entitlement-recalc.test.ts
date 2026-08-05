@@ -370,14 +370,26 @@ describe('ae5b84d5 — kernel: entitledDays + the scheme hook in projectExpected
 
   // fa3f4ccb — the statutory floor NO LONGER CLAMPS. It is still passed in and still resolved; all it
   // produces now is the `belowStatutoryFloor` warning flag, which is what the admin surfaces read.
+  // 6e9a126e release two — the signature gained `templateDays` as the FIRST-precedence layer, positional
+  // and required. `null` in that slot is the pre-existing two-layer expression, which is what every
+  // assertion below re-pins.
   it('entitledDays: scheme supersedes policy (even 0), null falls back, floor only FLAGS', () => {
-    expect(entitledDays(8, null, 12).days).toBe(12); // no scheme ⇒ policy
-    expect(entitledDays(8, 15, 12).days).toBe(15); // scheme supersedes policy
-    expect(entitledDays(16, 10, 20).days).toBe(10); // a below-floor scheme is GRANTED, not clamped to 16
-    expect(entitledDays(16, 10, 20).belowStatutoryFloor).toBe(true); // …and flagged
-    expect(entitledDays(8, 0, 12).days).toBe(0); // an explicit scheme 0 supersedes policy; nothing clamps it
-    expect(entitledDays(8, 0, 12).belowStatutoryFloor).toBe(true);
-    expect(entitledDays(8, 15, 12).belowStatutoryFloor).toBe(false); // above the minimum ⇒ no warning
+    expect(entitledDays(8, null, null, 12).days).toBe(12); // no scheme ⇒ policy
+    expect(entitledDays(8, null, 15, 12).days).toBe(15); // scheme supersedes policy
+    expect(entitledDays(16, null, 10, 20).days).toBe(10); // a below-floor scheme is GRANTED, not clamped to 16
+    expect(entitledDays(16, null, 10, 20).belowStatutoryFloor).toBe(true); // …and flagged
+    expect(entitledDays(8, null, 0, 12).days).toBe(0); // an explicit scheme 0 supersedes policy; nothing clamps it
+    expect(entitledDays(8, null, 0, 12).belowStatutoryFloor).toBe(true);
+    expect(entitledDays(8, null, 15, 12).belowStatutoryFloor).toBe(false); // above the minimum ⇒ no warning
+  });
+
+  // 6e9a126e release two — the template layer, at the SAME level of the composition as the two above.
+  it('entitledDays: a template supersedes the scheme AND the policy; an explicit template 0 still wins', () => {
+    expect(entitledDays(8, 18, 15, 12).days).toBe(18); // template beats scheme beats policy
+    expect(entitledDays(8, 18, null, 12).days).toBe(18); // …with no scheme in the middle
+    expect(entitledDays(8, 0, 15, 12).days).toBe(0); // an explicit template 0 is an answer somebody typed
+    expect(entitledDays(8, 0, 15, 12).belowStatutoryFloor).toBe(true);
+    expect(entitledDays(8, null, 15, 12).days).toBe(15); // no template ⇒ the pre-6e9a126e answer, exactly
   });
 
   it('the hook supersedes policy days; a below-minimum hook is granted as configured; null hook is a no-op', () => {

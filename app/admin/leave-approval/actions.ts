@@ -5,13 +5,9 @@ import { getSession } from '@/lib/session';
 // e4238594 — the _redirects imports (ENTITLEMENTS / fail / okEntitlements) and getTranslations went with
 // the 4e9a4d59 wrappers below; this file redirects to its own PAGE only. Those helpers are still used
 // widely elsewhere under app/admin — nothing was removed from _redirects itself.
-import {
-  archiveLeaveApprovalRule,
-  createLeaveApprovalRule,
-  setLeaveEscalationPolicy,
-  updateLeaveApprovalRule,
-  type LeaveApprovalRuleInput,
-} from '@/core/leave-approval-policy';
+// 706d34e8 — the rule create/update/archive imports went with the per-rule actions (see the block below).
+// The core functions still exist and are still exercised; this FILE simply no longer reaches for them.
+import { setLeaveEscalationPolicy } from '@/core/leave-approval-policy';
 import {
   assignApprovalTemplate,
   createApprovalTemplate,
@@ -26,8 +22,6 @@ import {
 // 0d147b78: the approval editor now lives on the Approval Workflow tab of Leave Settings; post-action
 // redirects land there (the old /admin/leave-approval route 308-redirects here too).
 const PAGE = '/admin/leave/approval';
-
-type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
 
 /** R51 722904dc — save a company's Approval Escalation Settings (enable + working-day threshold +
  *  recipient rule). Auth guard stays the page's scopedSession/getSession posture like every other action
@@ -48,85 +42,31 @@ export async function saveLeaveEscalationPolicyAction(formData: FormData) {
   redirect(`${PAGE}?toast=${encodeURIComponent('Escalation settings saved')}`);
 }
 
-/** 4e9a4d59 — the parse+persist CORE of the rule save, shared verbatim by the standalone Approvals-screen
- *  action and the leave-type-workspace wrapper. It throws on failure; each caller owns its own redirect
- *  contract (that is the ONLY difference between the two entry points). Returns whether it was an update,
- *  which the standalone action needs for its created/updated wording. */
-async function persistApprovalRule(s: Awaited<ReturnType<typeof getSession>>, formData: FormData): Promise<boolean> {
-  const ruleId = str(formData.get('ruleId'));
-  const input: LeaveApprovalRuleInput = {
-    companyId: String(formData.get('companyId') ?? ''),
-    ruleName: str(formData.get('ruleName')),
-    leaveTypeId: str(formData.get('leaveTypeId')),
-    businessUnitId: str(formData.get('businessUnitId')),
-    departmentId: str(formData.get('departmentId')),
-    positionId: str(formData.get('positionId')),
-    gradeId: str(formData.get('gradeId')),
-    // R41 72800eda — grade-GROUP scoping + Default(template)/Custom(levels) workflow type.
-    gradeGroupId: str(formData.get('gradeGroupId')),
-    templateId: str(formData.get('templateId')),
-    employmentType: employmentTypeOrNull(formData.get('employmentType')),
-    minDays: numOrNull(formData.get('minDays')),
-    maxDays: numOrNull(formData.get('maxDays')),
-    levels: parseLevels(formData),
-  };
-  const reason = str(formData.get('reason')); // 4ec5a940 — optional "why" for the audit trail
-  if (ruleId) await updateLeaveApprovalRule(s, ruleId, input, { reason });
-  else await createLeaveApprovalRule(s, input);
-  return ruleId != null;
-}
-
-/** 4e9a4d59 — the persist core of the rule archive, shared by both entry points (throws on failure). */
-async function persistArchiveApprovalRule(
-  s: Awaited<ReturnType<typeof getSession>>,
-  formData: FormData,
-): Promise<void> {
-  await archiveLeaveApprovalRule(
-    s,
-    String(formData.get('ruleId') ?? ''),
-    String(formData.get('companyId') ?? ''),
-  );
-}
-
-/** Create or update a scoped approval rule (ADR-0071). A ruleId in the form switches to update. */
-export async function saveLeaveApprovalRuleAction(formData: FormData) {
-  const s = await getSession();
-  let wasUpdate = false;
-  try {
-    wasUpdate = await persistApprovalRule(s, formData);
-  } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
-  }
-  redirect(`${PAGE}?toast=${encodeURIComponent(wasUpdate ? 'Rule updated' : 'Rule created')}`);
-}
-
-/** Archive (soft-delete) a scoped approval rule (ADR-0071). */
-export async function archiveLeaveApprovalRuleAction(formData: FormData) {
-  const s = await getSession();
-  try {
-    await persistArchiveApprovalRule(s, formData);
-  } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
-  }
-  redirect(`${PAGE}?toast=${encodeURIComponent('Rule deleted')}`);
-}
-
-// e4238594 RETIRED the two 4e9a4d59 wrappers that stood here
-// (saveLeaveApprovalRuleFromEntitlementsAction / archiveLeaveApprovalRuleFromEntitlementsAction).
+// ─── 706d34e8 (r155): THE PER-RULE WRITE PATH IS GONE FROM THIS FILE. Third and last removal here. ───
 //
-// They existed only so a save posted from the leave type workspace's Approval Workflow sub-step returned
-// to that type instead of the Approvals screen. That sub-step is gone — it duplicated the Approval
-// Workflow tab — so the wrappers had no caller left, and a server action with no caller retires WITH its
-// screen (the r100 base-chain precedent — 241817ef step 2 retired that action the same way) rather than
-// lingering as a second, unreachable write path into the same rules.
+// What stood here, in the order it was retired:
+//   1. e4238594 retired the two 4e9a4d59 wrappers (…FromEntitlementsAction) when the leave-type
+//      workspace's embedded Approval Workflow sub-step was deleted as a duplicate of the Approval tab.
+//   2. 241817ef step 2 (r94) retired the company base-chain action when its section left the page.
+//   3. 706d34e8 now retires the two STANDALONE rule actions and the persist helpers behind them, because
+//      the Approval Workflows matrix — their only remaining caller — left the page in the same commit.
 //
-// The precedent's action is deliberately NOT named here: test/leave-approval-page-restructure.test.ts
-// asserts this file does not contain that identifier ANYWHERE, comments included, because a caller-less
-// server action is still an addressable endpoint. Naming it even in prose would redden that guard.
+// Each time the rule has been identical and it is worth stating once more: A SERVER ACTION WITH NO SCREEN
+// IS STILL AN ADDRESSABLE ENDPOINT. Leaving these would keep a write path into leave_approval_policy that
+// nothing on any screen shows — which is the silent-configuration problem 241817ef exists to end.
 //
-// THE SHARED CORE IS UNTOUCHED: persistApprovalRule / persistArchiveApprovalRule above still back the
-// standalone saveLeaveApprovalRuleAction / archiveLeaveApprovalRuleAction, which are what the Approval tab
-// posts. Only the two redirect wrappers went.
+// The other two actions' identifiers are deliberately NOT spelled here: test/leave-approval-page-restructure
+// .test.ts asserts this file does not contain them ANYWHERE, comments included.
+//
+// THE SERVICES SURVIVE. core/leave-approval-policy.ts keeps createLeaveApprovalRule /
+// updateLeaveApprovalRule / archiveLeaveApprovalRule and every reader — resolveApprovalChain routes on
+// these rows, core/leave-approval-consolidation.ts rewrites them, and test/leave-approval-rule-matrix.test.ts
+// drives them directly. Removing a screen is not removing a service. What is gone is the HTTP-reachable
+// wrapper, not the domain operation, so a future editor (or a conversion script) still has one.
+//
+// ASSIGNMENT IS NOW THE ONLY WRITE PATH into these rows from a screen: assignApprovalTemplateAction /
+// unassignApprovalTemplateAction below, via core/leave-approval-template.ts, which inserts and archives the
+// same leave_approval_policy rows with a template_id stamped on them.
 
 // ──────────────── 6fadb036 (R17): reusable templates + tenant default + bulk assignment ────────────────
 
@@ -250,9 +190,6 @@ function numOrNull(v: FormDataEntryValue | null): number | null {
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
-function employmentTypeOrNull(v: FormDataEntryValue | null): EmploymentType | null {
-  const s = typeof v === 'string' ? v.trim() : '';
-  return (['full_time', 'part_time', 'contract', 'intern'] as const).includes(s as EmploymentType)
-    ? (s as EmploymentType)
-    : null;
-}
+// 706d34e8 — employmentTypeOrNull() and its EmploymentType alias went with the per-rule save that was
+// their only caller. The Assign Template path never parsed an employment type from the form: it derives
+// one from the chosen benefit scheme inside core/leave-approval-template.ts (22de47c4).

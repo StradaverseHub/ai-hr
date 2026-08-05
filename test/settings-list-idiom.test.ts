@@ -13,8 +13,10 @@
  * drift the pairing was meant to prevent. This is the ratchet.
  *
  * IT IS NOT A DEMAND THAT THE SCREENS LOOK IDENTICAL. Hiring Defaults is per-company and edits on a
- * dedicated route; Movement Settings is a flat catalogue and edits in a ?new=/?edit= panel. Shared
- * conventions, different screens. Only the LIST half is pinned here.
+ * dedicated route; Movement Settings is a flat catalogue and edits in a modal over the list (1b87e8a0
+ * re-build — the reporter rejected the form-under-the-list panel it shipped with, because a form below
+ * the list costs you your place in the list). Shared conventions, different screens. Only the LIST half
+ * is pinned here; test/movement-settings.test.ts pins that screen's Add/Edit surface.
  */
 import fs from 'node:fs';
 import path from 'node:path';

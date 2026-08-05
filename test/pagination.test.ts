@@ -165,7 +165,9 @@ describe('fc776376 — one implementation, not a sixth', () => {
       'components/function-access-grid.tsx',
       'components/grade-labels-grid.tsx',
       'components/system-labels-grid.tsx',
-      'app/admin/leave-approval/workflow-matrix.tsx',
+      // 706d34e8 — app/admin/leave-approval/workflow-matrix.tsx STOOD HERE and the file is deleted (the
+      // per-rule Approval Workflows list was removed from /admin/leave/approval and it had no other
+      // importer). A config grid that no longer exists cannot grow pagination; the entry goes with it.
       'app/payroll/configuration/pcb/page.tsx',
       'app/payroll/configuration/skbbk/page.tsx',
       'app/admin/personnel/import/employee-import.tsx',

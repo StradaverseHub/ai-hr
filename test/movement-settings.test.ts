@@ -76,6 +76,18 @@ async function hireOne() {
 const rowFor = (rows: Awaited<ReturnType<typeof listMovementEventTypes>>, code: string) =>
   rows.find((r) => r.code === code)!;
 
+/**
+ * Source with comments removed, for the guards below.
+ *
+ * These files EXPLAIN the shapes the guards assert — the dialog's header says in prose why
+ * `defaultValue` would be wrong, and a raw `not.toContain('defaultValue')` failed on that sentence
+ * while the code was already correct. Scan the code, not the prose (same helper, same reason, as
+ * test/settings-list-idiom.test.ts). It also stops a comment from SATISFYING a positive assertion.
+ * The `[^:]` guard keeps `https://` intact.
+ */
+const codeOnly = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
 describe('476f23ed — the catalogue is an overlay on the built-in kinds', () => {
   it('a tenant that has configured nothing sees the built-in list, in order, all active', async () => {
     const rows = await listMovementEventTypes(adminCtx(b));
@@ -384,16 +396,29 @@ describe('476f23ed — deletion is refused where it would damage history', () =>
 
 describe('476f23ed — the settings screen', () => {
   it('SOURCE GUARD: the page offers rename, switch off and add, and never a behaviour picker for a built-in', () => {
-    const src = fs.readFileSync(path.resolve(__dirname, '../app/admin/settings/movement/page.tsx'), 'utf8');
-    expect(src).toContain('saveMovementEventTypeAction');
+    const src = codeOnly(
+      fs.readFileSync(path.resolve(__dirname, '../app/admin/settings/movement/page.tsx'), 'utf8'),
+    );
+    const dialog = codeOnly(
+      fs.readFileSync(
+        path.resolve(__dirname, '../app/admin/settings/movement/movement-type-dialog.tsx'),
+        'utf8',
+      ),
+    );
+    // The save moved into the dialog island with the form; the row actions stayed on the page.
+    expect(dialog).toContain('saveMovementEventTypeAction');
     expect(src).toContain('setMovementEventTypeActiveAction');
     expect(src).toContain('deleteMovementEventTypeAction');
-    // The only behaviour picker on the page is the maintenance panel's, fed from the restricted set.
-    // 1b87e8a0 merged Add and Edit into ONE panel, so the count stays at one: the built-in branch of
-    // that panel renders a disabled read-only field, never a second <select name="behaviourKind">.
+    // The only behaviour picker is the dialog's, fed from the restricted set the PAGE computes (the
+    // island must not import core/movement-type — that pulls the pg driver through db/client).
     expect(src).toContain('CONFIGURABLE_BEHAVIOUR_KINDS');
-    expect(src.match(/name="behaviourKind"/g) ?? [], 'exactly one behaviour picker: the maintenance panel').toHaveLength(1);
-    expect(src, 'a built-in never gets an editable behaviour field').toContain('editing?.builtIn ? (');
+    expect(dialog, 'the island reads no domain module').not.toContain("from '@/core/");
+    expect(
+      dialog.match(/name="behaviourKind"/g) ?? [],
+      'exactly one behaviour picker, and it lives in the dialog',
+    ).toHaveLength(1);
+    expect(src, 'the page renders no editor of its own any more').not.toContain('name="behaviourKind"');
+    expect(dialog, 'a built-in never gets an editable behaviour field').toContain('builtIn ? (');
     // Delete is rendered only for a custom type nothing uses — the affordance mirrors the service rule.
     expect(src).toContain('!r.builtIn && !r.inUse');
   });
@@ -401,16 +426,18 @@ describe('476f23ed — the settings screen', () => {
   /**
    * 1b87e8a0 — the card-per-type layout becomes a row listing in the shape the reporter named (the
    * Employee ID setup page). What is asserted here is what the redesign PROMISED and what it refused:
-   * a table with Created (not Last Updated) and no Description column, one maintenance panel keyed off
-   * the address, search and sorting — and NO new migration to pay for any of it.
+   * a table with Created (not Last Updated) and no Description column, search and sorting — and NO new
+   * migration to pay for any of it. The Add/Edit surface has its own guard below.
    */
-  it('SOURCE GUARD: 1b87e8a0 row listing — one panel off the address, Created not Last Updated, no Description', () => {
-    const src = fs.readFileSync(path.resolve(__dirname, '../app/admin/settings/movement/page.tsx'), 'utf8');
-    // A real table, and the Add affordance is a button opening the panel — not a card in the list.
+  it('SOURCE GUARD: 1b87e8a0 row listing — Created not Last Updated, no Description, no pager', () => {
+    // codeOnly: this page's header explains, in prose, that it shows Created and NOT "Last Updated"
+    // or a Description column — exactly the words the negatives below look for.
+    const src = codeOnly(
+      fs.readFileSync(path.resolve(__dirname, '../app/admin/settings/movement/page.tsx'), 'utf8'),
+    );
+    // A real table, and the Add affordance is a button in the toolbar — not a card in the list.
     expect(src).toContain('<table');
     expect(src).toContain("t('createNew')");
-    expect(src).toMatch(/href=\{href\(\{ new: '1' \}\)\}/);
-    expect(src, 'edit opens the same panel from the row').toMatch(/href\(\{ edit: r\.code \}\)/);
     // Search and sort, as promised.
     expect(src).toContain('<SettingsSearch');
     expect(src).toContain('<SortHeader');
@@ -420,6 +447,93 @@ describe('476f23ed — the settings screen', () => {
     expect(src, 'movement_event_type has no description column').not.toContain("columns.description");
     // A built-in has no creation date; the cell says so instead of showing the date of a rename.
     expect(src).toContain("t('builtIn')");
+  });
+
+  /**
+   * 1b87e8a0 RE-BUILD — the reporter contested the shipped screen: "displays the Add or Edit Event form
+   * at the bottom of the existing page, which is not user-friendly and results in a poor user
+   * experience." They were right. The first build copied the Employee ID Auto Running Number page's
+   * idiom for consistency, and that idiom puts the form BELOW the list — so opening it scrolled you off
+   * the row you were working on and closing it did not put you back.
+   *
+   * WHAT THIS GUARD HOLDS, and why each line is here rather than in prose:
+   *
+   *  1. ONE surface, and it is a MODAL. Not a modal *and* a panel, and not a modal *and* a side sheet:
+   *     a second Add/Edit affordance is how a screen ends up with two ways to do one thing.
+   *  2. THE PANEL IS GONE, not hidden behind a flag. `?new=`/`?edit=` with it — leaving the address
+   *     mechanism in place next to client state gives "is the form open" two sources of truth, which is
+   *     exactly how the bottom panel grows back.
+   *  3. A REJECTED SAVE KEEPS THE DIALOG OPEN WITH THE TYPING INTACT. Two things are needed and BOTH
+   *     are asserted: the action must RETURN its refusal (a redirect navigates the route out from under
+   *     an open dialog), and the fields must be CONTROLLED, because React 19 resets an uncontrolled
+   *     `<form action={…}>` once the action settles — success or failure. `defaultValue` here would
+   *     silently wipe a half-typed name on the one path this is meant to protect, with a green suite.
+   *  4. THE PAGE STAYS A SERVER COMPONENT feeding the island serialisable values only.
+   */
+  it('SOURCE GUARD: 1b87e8a0 re-build — Add/Edit is a dialog over the list, never a panel under it', () => {
+    const dir = path.resolve(__dirname, '../app/admin/settings/movement');
+    const rawPage = fs.readFileSync(path.join(dir, 'page.tsx'), 'utf8');
+    const rawDialog = fs.readFileSync(path.join(dir, 'movement-type-dialog.tsx'), 'utf8');
+    // Every assertion below runs on the CODE. These three files document the very shapes being
+    // asserted, so prose could both fail a negative and satisfy a positive. The two directive checks
+    // stay on the raw source, because where 'use client' sits in the file IS the thing being checked.
+    const page = codeOnly(rawPage);
+    const dialog = codeOnly(rawDialog);
+    const actions = codeOnly(fs.readFileSync(path.join(dir, 'actions.ts'), 'utf8'));
+
+    // 1. ONE surface: a Radix modal, in its own client island.
+    expect(rawDialog).toMatch(/^'use client';/);
+    expect(dialog).toContain("from '@radix-ui/react-dialog'");
+    expect(dialog).toContain('<Dialog.Content');
+    expect(page).toContain('<MovementTypeDialog');
+    expect(page, 'the page opens the dialog from the toolbar AND from every row').toMatch(
+      /triggerClassName=\{btnPrimary\}[\s\S]*triggerClassName=\{rowActionCls\}/,
+    );
+
+    // 2. The panel under the list is gone, and so is the address mechanism that opened it.
+    expect(page, 'no maintenance panel below the table').not.toContain('showPanel');
+    expect(page, 'no ?new= / ?edit= alongside the dialog').not.toMatch(/\bsp\.(new|edit)\b/);
+    expect(page).not.toMatch(/new: '1'/);
+    expect(page, 'the page renders no add/edit form of its own').not.toContain('name="label"');
+    expect(page).not.toContain('saveMovementEventTypeAction');
+
+    // 3a. The save RETURNS its outcome; only the row actions redirect.
+    const save = actions.slice(
+      actions.indexOf('export async function saveMovementEventTypeAction'),
+      actions.indexOf('export async function setMovementEventTypeActiveAction'),
+    );
+    expect(save, 'the save function was found').not.toBe('');
+    expect(save, 'a redirect would close the dialog and lose the typing').not.toContain('redirect(');
+    expect(save).toContain('return { ok: false, error:');
+    expect(save).toContain('return { ok: true }');
+    expect(actions, 'the row actions still redirect, deliberately').toContain('redirect(`${PAGE}?error=');
+
+    // 3b. useActionState over that action, and CONTROLLED fields so React 19's post-action form reset
+    //     cannot wipe what the admin typed.
+    expect(dialog).toContain('useActionState');
+    expect(dialog).toMatch(/value=\{label\}[\s\S]*onChange=\{\(e\) => setLabel\(e\.target\.value\)\}/);
+    expect(dialog).toMatch(/value=\{behaviourKind\}[\s\S]*onChange=\{\(e\) => setBehaviourKind\(e\.target\.value\)\}/);
+    expect(dialog, 'an uncontrolled field is reset by React when the action settles').not.toContain(
+      'defaultValue',
+    );
+    // 3c. …AND the reset itself is cancelled. Controlled state alone is NOT enough, which is only
+    //     visible by rendering: React resets the <form> after the action, and while a controlled text
+    //     input survives (React keeps its defaultValue in step), a controlled <select> does NOT — the
+    //     DOM snapped back to the first option while React still held the chosen one, so a refused save
+    //     showed "Transfer" over a form that would have saved "Promotion". Reproduced on a dev server,
+    //     fixed by cancelling the reset, and pinned here because nothing else can see it.
+    expect(dialog, 'the post-action form reset must be cancelled').toMatch(
+      /onReset=\{\(e\) => e\.preventDefault\(\)\}/,
+    );
+    // The error paints IN the dialog rather than as a page-level banner behind it.
+    expect(dialog).toContain('<ErrorBanner message={state.error} />');
+
+    // 4. Server page, serialisable props only: no t() and no useTranslations inside the island, so
+    //    every label crosses the boundary as a plain string.
+    expect(rawPage).not.toMatch(/^\s*['"]use client['"]\s*;/m);
+    expect(dialog, 'labels arrive pre-translated from the server page').not.toMatch(
+      /useTranslations|getTranslations/,
+    );
   });
 
   it('the Created column is honest: NULL for every built-in, the real date for a custom type', async () => {
@@ -467,8 +581,11 @@ describe('476f23ed — the settings screen', () => {
         'deactivateConfirmTitle', 'deactivateConfirmDescription',
         'activateConfirmTitle', 'activateConfirmDescription',
         'deleteConfirmTitle', 'deleteConfirmDescription',
-        // 1b87e8a0 — the row-listing redesign: toolbar, maintenance panel, empty state, Created cell.
+        // 1b87e8a0 — the row-listing redesign: toolbar, empty state, Created cell.
         'searchPlaceholder', 'createNew', 'edit', 'editTitle', 'editHint', 'cancel', 'empty', 'builtIn',
+        // 1b87e8a0 re-build — the two strings the modal needs that the bottom panel never did: the
+        // submit button's pending label, and the ✕'s accessible name.
+        'saving', 'close',
       ]) {
         expect(typeof ms[k], `messages/${loc}.json missing movementSettings.${k}`).toBe('string');
       }

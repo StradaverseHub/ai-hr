@@ -266,12 +266,18 @@ export const SCREENS: readonly ScreenEntry[] = [
   // ── Admin leave / attendance / claims config (requireAdmin) ──
   {
     screenKey: 'leaveConfig',
-    href: '/admin/leave',
+    // df00b85f — the canonical href is ENTITLEMENTS now. `/admin/leave` retired its Summary listing and
+    // is an unguarded redirect stub pointing here, and a stub is not a screen this grid can describe.
+    href: '/admin/leave/entitlements',
     labelKey: 'nav.leaveConfig',
     guard: 'requireAdmin',
     // R13 0d147b78: leave config split into route-based tabs (approval tab is scopedSession → own screen below).
     // 1e4eb8af retired the Application Rules tab; /admin/leave/application-rules is now an unguarded redirect
     // stub, so it is deliberately NOT listed here (a stub has nothing to guard — the fbdeee87 precedent).
+    // df00b85f retired the Summary listing the SAME way: `/admin/leave` is now a redirect stub to
+    // /admin/leave/entitlements, so it left `routes` in the same commit that emptied the page. This is not
+    // optional bookkeeping — test/function-access.test.ts fails BOTH ways, and the direction that bites
+    // here is "no stale routes": a registered route whose page no longer calls a guard.
     // 645e67c4 added /admin/leave/replacement, and 296fc027 made it the HOME of replacement-leave
     // CONFIGURATION (the policy editor moved onto it from /admin/toil, which keeps the balance ledger and
     // the two settlement sweeps). Still a ROUTE rather than a new screenKey — same admin surface behind
@@ -279,7 +285,6 @@ export const SCREENS: readonly ScreenEntry[] = [
     // separately below: the two screens are gated differently ON PURPOSE, because the sweeps must stay
     // reachable when the `toil` entitlement lapses and configuration must not.
     routes: [
-      '/admin/leave',
       '/admin/leave/import',
       '/admin/leave/entitlements',
       // 6e9a126e — the read-only record of the entitlement configuration the redesign's release three
@@ -288,6 +293,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       // REGISTERING IT IS NOT COSMETIC: test/function-access.test.ts fails BOTH ways — a guarded page.tsx
       // absent from REGISTERED_ROUTES, and a registered route with no page on disk.
       '/admin/leave/entitlements/archive',
+      // 6e9a126e RELEASE TWO — the Entitlement Tables + Employee Eligibility editor. Same admin surface,
+      // same requireAdmin guard, so it is a ROUTE on this screenKey rather than a new one. Registering it
+      // is not paperwork: test/function-access.test.ts fails BOTH ways — a guarded page.tsx absent from
+      // REGISTERED_ROUTES, and a registered route with no page on disk.
+      '/admin/leave/entitlements/templates',
       // 491c499f — same admin surface, same requireAdmin guard, so it is a ROUTE rather than a new
       // screenKey (the /admin/personnel precedent above).
       '/admin/leave/adjustments',

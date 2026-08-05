@@ -18,6 +18,10 @@ export const ENTITLEMENTS = '/admin/leave/entitlements';
 export const ADJUSTMENTS = '/admin/leave/adjustments';
 /** 4b0e76ae — the Generate Entitlement screen. openLeaveYearAction returns here with the grant counts. */
 export const GENERATE = '/admin/leave/generate';
+/** 6e9a126e release two — the Entitlement Tables + Employee Eligibility editor (the reporter's steps 1
+ *  and 2). Its saves return here rather than to ENTITLEMENTS: the two steps are one screen and an operator
+ *  writing a table then assigning it must not be bounced back into the Leave Type workspace between them. */
+export const ENTITLEMENT_TEMPLATES = '/admin/leave/entitlements/templates';
 
 export function fail(path: string, e: unknown): never {
   redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);

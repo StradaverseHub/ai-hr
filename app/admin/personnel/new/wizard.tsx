@@ -34,6 +34,12 @@ import { Button, Card, Field, inputCls } from '@/components/ui';
 import { PersonDetailsFields } from '@/components/person-details-fields';
 // 35b7af0a group 2 — the Pay Mode / Payment Term / Rate group, shared with the Personnel Payroll tab.
 import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
+// 35b7af0a group 3 — the Date of Birth + read-only Age group, shared with the Personnel profile card.
+import { BirthDateFields } from '@/components/birth-date-fields';
+// 35b7af0a group 4 — the EPF Number + EPF Citizenship group, shared with the Personnel Bank & Statutory tab.
+import { EpfRegistrationFields } from '@/components/epf-registration-fields';
+// 35b7af0a group 5 — the Bank + Bank Account Number group, shared with the Personnel Bank Information card.
+import { BankAccountFields } from '@/components/bank-account-fields';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DRAFT_STEPS,
@@ -478,15 +484,21 @@ export function EmployeeWizard({
                 onChange={(e) => set('profile', { phone: e.target.value })}
               />
             </Field>
-            <Field label={t('fields.dateOfBirth')}>
-              <input
-                type="date"
-                className={inputCls}
-                value={data.profile?.dateOfBirth ?? ''}
-                onChange={(e) => set('profile', { dateOfBirth: e.target.value })}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">{t('hints.dateOfBirth')}</p>
-            </Field>
+            {/* 35b7af0a group 3 — Date of Birth is the SAME field group the Personnel profile card renders
+                (components/birth-date-fields.tsx), and it brings the Age with it. The wizard had a bare date
+                box and NO age, because the age counter lived in core/leave.ts — a server module a client
+                component cannot import — so "Age (auto-calculated)", which the reporter listed as a Profile
+                field, simply did not exist at hire. The counter now lives in lib/completed-years.ts and both
+                screens read it. Age is display-only: no draft key, no column, recomputed on every render.
+                The wizard's own guidance about deriving a blank DOB from the identity number is passed in as
+                the hint, so nothing is lost by sharing the field. */}
+            <BirthDateFields
+              mode="controlled"
+              dateOfBirth={data.profile?.dateOfBirth}
+              today={today}
+              hint={t('hints.dateOfBirth')}
+              onChange={(v) => set('profile', { dateOfBirth: v })}
+            />
             {/* 35b7af0a group 1 — Gender and Marital Status are no longer the wizard's own selects with
                 the wizard's own labels. They are the SAME field group the Personnel profile card renders
                 (components/person-details-fields.tsx), drawing on the master lists in
@@ -673,28 +685,37 @@ export function EmployeeWizard({
 
         {step === 'statutory' && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label={t('fields.bankName')}>
-              <input
-                className={inputCls}
-                value={data.statutory?.bankName ?? ''}
-                onChange={(e) => set('statutory', { bankName: e.target.value })}
-              />
-            </Field>
-            <Field label={t('fields.bankAccountNo')}>
-              <input
-                className={inputCls}
-                value={data.statutory?.bankAccountNo ?? ''}
-                onChange={(e) => set('statutory', { bankAccountNo: e.target.value })}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">{t('hints.bankAccount')}</p>
-            </Field>
-            <Field label={t('fields.epfNumber')}>
-              <input
-                className={inputCls}
-                value={data.statutory?.epfNumber ?? ''}
-                onChange={(e) => set('statutory', { epfNumber: e.target.value })}
-              />
-            </Field>
+            {/* 35b7af0a group 5 — Bank and Bank Account Number are the SAME field group the Personnel Bank
+                Information card renders (components/bank-account-fields.tsx). The wizard's Bank was a
+                FREE-TEXT box where that card has been a pick-from-the-BNM-catalog select since item
+                ef720d3a — so a hire could be created with "may bank" typed by hand, which reads fine to a
+                human, shows unremarkably on the Personnel screen, and only surfaces when the first salary
+                payment file is built for that employee. A bank name already typed into a draft is
+                preserved as its own option rather than silently rewritten. The all-or-nothing rule stays
+                the wizard's hint (missingByStep enforces it). */}
+            <BankAccountFields
+              mode="controlled"
+              bankName={data.statutory?.bankName}
+              bankAccountNo={data.statutory?.bankAccountNo}
+              hint={t('hints.bankAccount')}
+              onChange={(patch) => set('statutory', patch)}
+            />
+            {/* 35b7af0a group 4 — EPF Number and EPF Citizenship are the SAME field group the Personnel
+                Bank & Statutory tab renders (components/epf-registration-fields.tsx). The wizard's private
+                copy had drifted in wording and carried a fourth "— Not set —" citizenship option that
+                cannot be stored: `epf_citizenship` is NOT NULL DEFAULT 'citizen', so leaving it blank at
+                hire produced 'citizen' anyway and the profile screen then showed "Malaysian citizen" for a
+                foreign worker whose recruiter had deliberately left it unset. Three real choices now, the
+                same three on both screens. The default is DISPLAYED, not written into the draft —
+                completeEmployeeDraft creates the statutory row only when some statutory field is non-blank
+                (hasAnyStatutory), so writing 'citizen' just because the field was shown would conjure a
+                statutory row for every hire that has none today. */}
+            <EpfRegistrationFields
+              mode="controlled"
+              epfNumber={data.statutory?.epfNumber}
+              epfCitizenship={data.statutory?.epfCitizenship}
+              onChange={(patch) => set('statutory', patch)}
+            />
             <Field label={t('fields.socsoNumber')}>
               <input
                 className={inputCls}
@@ -729,18 +750,6 @@ export function EmployeeWizard({
                 value={data.statutory?.numChildren ?? ''}
                 onChange={(e) => set('statutory', { numChildren: e.target.value })}
               />
-            </Field>
-            <Field label={t('fields.epfCitizenship')}>
-              <select
-                className={inputCls}
-                value={data.statutory?.epfCitizenship ?? ''}
-                onChange={(e) => set('statutory', { epfCitizenship: e.target.value })}
-              >
-                <option value="">{t('notSet')}</option>
-                <option value="citizen">{t('citizenship.citizen')}</option>
-                <option value="pr">{t('citizenship.pr')}</option>
-                <option value="non_citizen">{t('citizenship.non_citizen')}</option>
-              </select>
             </Field>
             <Field label={t('fields.eisEligible')}>
               <select

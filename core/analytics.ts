@@ -39,8 +39,12 @@ import {
   resolveCarryBreakdown,
   resolveGradePolicy,
   serviceYearsAt,
+  // 6e9a126e RELEASE TWO — the entitlement TEMPLATE overlay. This report is one of the three readers that
+  // must answer for a PAST date, so it composes through the same helper the engines do.
+  templateOverPolicy,
   type GradePolicyRow,
 } from './leave';
+import { buildTemplateEntitlementResolver } from './entitlement-template';
 import {
   assignment,
   company,
@@ -969,6 +973,37 @@ export async function carryForwardReport(
       .groupBy(leaveLedger.employmentId);
     const debitByEmp = new Map(debitRows.map((r) => [r.employmentId, Number(r.taken)]));
 
+    // 6e9a126e RELEASE TWO — THE TEMPLATE LAYER, RESOLVED AT EACH EMPLOYEE'S OWN CYCLE OPEN.
+    //
+    // ⚠️ THIS IS THE READER THE APPROVED PLAN SINGLES OUT AS THE ONE RELEASE THREE WOULD BREAK, and the
+    // mechanism is not the entitlement days — this report never reads them. It is that
+    // `applyLeaveTypeRules(null, rules)` returns NULL. Once leave_policy is gone `resolveGradePolicy`
+    // resolves nothing, the leave TYPE's carry cap and expiry never reach this line, `carryMax` reads 0 and
+    // a closed year prints as "everything forfeited". `templateOverPolicy` materialises the carrier from
+    // the winning template band, so the type's rules still land.
+    //
+    // ONE RESOLVER PER DISTINCT CYCLE OPEN, not one per employee: the cycle start is the only axis the
+    // resolution depends on, and a calendar-cycle tenant has exactly one. Resolving at the employee's OWN
+    // cycle open (rather than 1 January) is what makes the eligibility answer for an anniversary-cycle
+    // employee the department and position they held when THEIR year opened.
+    //
+    // ⚠️ AND THE POLICY LAYER BESIDE IT STILL FILTERS AT `yearStart`, NOT AT `cycleStart` — a pre-existing
+    // inconsistency (the comment below has always said "this cycle's open (yearStart)"). It is left exactly
+    // as it was: changing which policy VERSION an anniversary-cycle employee's closed year resolves would
+    // move figures this release is required not to move. The two dates coincide for every calendar-cycle
+    // tenant, which is the only shape configured today.
+    const templatesAtCycle = new Map<string, Awaited<ReturnType<typeof buildTemplateEntitlementResolver>>>();
+    for (const cs of new Set(cycleStartByEmp.values())) {
+      templatesAtCycle.set(
+        cs,
+        await buildTemplateEntitlementResolver(tx, {
+          employmentIds: inScopeIds,
+          leaveTypeIds: [leaveTypeId],
+          asOf: cs,
+        }),
+      );
+    }
+
     const rows: CarryForwardReportRow[] = [];
     for (const e of inScopeEmps) {
       const cycleStart = cycleStartByEmp.get(e.employmentId)!;
@@ -980,7 +1015,12 @@ export async function carryForwardReport(
         .map((pol) => ({ gradeId: pol.gradeId, companyId: pol.companyId, accrual: pol.accrual }));
       // 9816a5ad step 2: days from the winning policy row, every RULE from the leave type.
       const policy = applyLeaveTypeRules(
-        resolveGradePolicy(activeAtOpen, e.gradeId, e.companyId, serviceYearsAt(e.hiredOn, yearStart)),
+        templateOverPolicy(
+          resolveGradePolicy(activeAtOpen, e.gradeId, e.companyId, serviceYearsAt(e.hiredOn, yearStart)),
+          templatesAtCycle
+            .get(cycleStart)!
+            .bandFor(e.employmentId, leaveTypeId, serviceYearsAt(e.hiredOn, cycleStart)),
+        ),
         annualType,
       );
       const carryMax = policy?.carryMax ?? 0;

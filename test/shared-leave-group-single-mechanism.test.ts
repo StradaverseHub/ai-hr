@@ -128,12 +128,31 @@ describe('1ef1cf95 · sharing caps what is TAKEN, never what is GRANTED', () => 
     // the comment two lines above entitledDays that RECORDS the change ("was Math.max(...); the resolved
     // value is now ..."). A guard that greps raw source will eventually match a comment citing the very
     // invariant it protects — r86 hit that four times in one integration. Match code, not prose.
+    // UPDATED AGAIN (6e9a126e release 2), and for the same reason it was inverted in r88: this guard's
+    // subject is "NO SHARED-GROUP DAY FIGURE MAY BECOME AN ENTITLEMENT SOURCE", not the literal arity.
+    // Release 2 added `templateDays` as a FOURTH input — the entitlement TEMPLATE layer, which is a
+    // legitimate day source and the whole point of that item. Pinning "exactly three inputs" would have
+    // asserted an implementation detail against the change it was never about. What must stay true is
+    // that the fourth input is the template and NOT a shared-group figure, and that the floor still does
+    // not override configuration.
     const code = computeSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    expect(code).toContain('const days = schemeDays ?? policyDays;');
-    expect(code).not.toContain('Math.max(floorDays, schemeDays ?? policyDays)');
-    expect(computeSrc).toMatch(
-      /export function entitledDays\(\s*floorDays: number,\s*schemeDays: number \| null,\s*policyDays: number,\s*\): \{ days: number; belowStatutoryFloor: boolean \}/,
+    // The precedence chain, in full: template beats scheme beats policy.
+    expect(code).toContain('const days = templateDays ?? schemeDays ?? policyDays;');
+    // The floor advises, it does not override (fa3f4ccb, twice-instructed by the reporter).
+    expect(code).not.toMatch(/Math\.max\(\s*floorDays/);
+    // THE REAL INVARIANT: every day-source parameter is named, and none of them is a shared-group one.
+    const sig = computeSrc.match(
+      /export function entitledDays\(([\s\S]*?)\): \{ days: number; belowStatutoryFloor: boolean \}/,
     );
+    expect(sig, 'entitledDays must keep its named-parameter signature').toBeTruthy();
+    const params = sig![1]
+      .split(',')
+      .map((p) => p.split(':')[0].trim())
+      .filter(Boolean);
+    expect(params).toEqual(['floorDays', 'templateDays', 'schemeDays', 'policyDays']);
+    // Belt and braces: no shared-group vocabulary may appear in the kernel at all (asserted above for
+    // combinedLimit; this catches a rename).
+    expect(params.some((p) => /shared|group|combined/i.test(p))).toBe(false);
     // floorDays must still REACH the caller as a signal, or the warning has no source and the UI would
     // have to recompute the floor — which is how two figures drift apart.
     expect(computeSrc).toContain('belowStatutoryFloor: belowStatutoryFloor(floorDays, days)');
