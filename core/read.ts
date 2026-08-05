@@ -23,11 +23,14 @@ import {
   leaveTypeRuleColumns,
   resolveGradePolicy,
   serviceYearsAt,
+  // 6e9a126e RELEASE TWO — the entitlement TEMPLATE overlay, for the balance breakdown's past-date read.
+  templateOverPolicy,
   workingDatesForSpan,
   workingDatesForSpans,
   type GradePolicyRow,
   type LeaveEligibility,
 } from './leave';
+import { buildTemplateEntitlementResolver } from './entitlement-template';
 // 23ad620e — "the" emergency contact is now the highest-priority row of the per-person register.
 import { primaryEmergencyContactSql } from './emergency-contacts';
 import {
@@ -2353,13 +2356,30 @@ export function leaveEntitlementBreakdown(
           sql`(${leavePolicy.validTo} is null or ${leavePolicy.validTo} > ${asOf})`,
         ),
       );
+    // 6e9a126e RELEASE TWO — the entitlement TEMPLATE version in force ON `asOf`, with the employee's
+    // department / position / employment type resolved as at that same date. This is the third of the
+    // three PAST-DATE readers: /me and the admin balance breakdown both accept an `asOf`, and a breakdown
+    // for a closed year that quietly explained itself with today's configuration would be exactly the
+    // capability the request said to keep ("maintaining all existing calculation capabilities").
+    //
+    // ⚠️ RLS: entitlement_template and entitlement_eligibility_rule are TENANT-READ, admin-write (0396),
+    // deliberately — this screen is reached by an ordinary employee looking at their own balance, and an
+    // admin-gated read would leave them looking at a breakdown that contradicts their own ledger.
+    const templates = await buildTemplateEntitlementResolver(tx, {
+      employmentIds: [employmentId],
+      leaveTypeIds: [leaveTypeId],
+      asOf,
+    });
     // ADR-0066: resolve under the employee's company so /me + admin show the per-company entitlement.
     // Leave Entitlement Rules Engine: service measured at cycleStart keeps carryMax/expiry/earned-flag and
     // the tie-break consistent with the banded winner. This does NOT change currentYearEntitlement below
     // (ledger-derived) — the banded number reaches /me only via the ledger, after a hire grant/year-open.
     // 9816a5ad step 2: days from the winning policy row, every RULE from the leave type.
     const policy = applyLeaveTypeRules(
-      resolveGradePolicy(policies as GradePolicyRow[], emp.gradeId, emp.companyId, serviceYearsAt(emp.hiredOn, cycleStart)),
+      templateOverPolicy(
+        resolveGradePolicy(policies as GradePolicyRow[], emp.gradeId, emp.companyId, serviceYearsAt(emp.hiredOn, cycleStart)),
+        templates.bandFor(employmentId, leaveTypeId, serviceYearsAt(emp.hiredOn, cycleStart)),
+      ),
       type,
     );
     const earned = isEarnedMethod(policy?.method);

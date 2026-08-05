@@ -47,18 +47,24 @@ describe('fa3f4ccb · the pack still reports a real statutory band (the yardstic
 
 describe('fa3f4ccb · the composition: configured wins, the minimum only flags', () => {
   it('entitledDays resolves to scheme ?? policy, whatever the floor says', () => {
-    expect(entitledDays(8, null, 12).days).toBe(12);
-    expect(entitledDays(8, 15, 12).days).toBe(15);
+    // 6e9a126e release two: `templateDays` is the new first slot; `null` there is this file's own
+    // pre-existing two-layer composition, unchanged.
+    expect(entitledDays(8, null, null, 12).days).toBe(12);
+    expect(entitledDays(8, null, 15, 12).days).toBe(15);
     // The case the whole item is about: a configured 5 under an 8-day minimum stays 5.
-    expect(entitledDays(8, null, 5).days).toBe(5);
-    expect(entitledDays(8, 5, 12).days).toBe(5);
+    expect(entitledDays(8, null, null, 5).days).toBe(5);
+    expect(entitledDays(8, null, 5, 12).days).toBe(5);
+    // …and a template under the minimum is granted as configured too — the floor did not come back for
+    // the new layer.
+    expect(entitledDays(8, 5, 15, 12).days).toBe(5);
   });
 
   it('entitledDays raises belowStatutoryFloor exactly when the RESOLVED figure is under the minimum', () => {
-    expect(entitledDays(8, null, 5).belowStatutoryFloor).toBe(true);
-    expect(entitledDays(8, null, 8).belowStatutoryFloor).toBe(false); // equal is not below
-    expect(entitledDays(8, 15, 5).belowStatutoryFloor).toBe(false); // the SCHEME wins ⇒ judge the winner
-    expect(entitledDays(8, 5, 15).belowStatutoryFloor).toBe(true); // …and likewise the other way round
+    expect(entitledDays(8, null, null, 5).belowStatutoryFloor).toBe(true);
+    expect(entitledDays(8, null, null, 8).belowStatutoryFloor).toBe(false); // equal is not below
+    expect(entitledDays(8, null, 15, 5).belowStatutoryFloor).toBe(false); // the SCHEME wins ⇒ judge the winner
+    expect(entitledDays(8, null, 5, 15).belowStatutoryFloor).toBe(true); // …and likewise the other way round
+    expect(entitledDays(8, 5, 15, 20).belowStatutoryFloor).toBe(true); // the TEMPLATE wins ⇒ judge that
   });
 
   it('belowStatutoryFloor is inert where no statutory pack applies (every non-MY company today)', () => {
@@ -75,7 +81,7 @@ describe('fa3f4ccb · the admin preview cannot disagree with a real grant', () =
 
   it('preview and engine return the SAME number for a below-minimum configuration', () => {
     const preview = previewEntitlement(rows(5), null, null, 0, MY_ANNUAL_FLOOR_0Y);
-    const engine = entitledDays(MY_ANNUAL_FLOOR_0Y, null, 5);
+    const engine = entitledDays(MY_ANNUAL_FLOOR_0Y, null, null, 5);
     expect(preview.days).toBe(engine.days);
     expect(preview.belowStatutoryFloor).toBe(engine.belowStatutoryFloor);
     expect(preview.days).toBe(5);

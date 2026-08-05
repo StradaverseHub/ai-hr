@@ -288,6 +288,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       // REGISTERING IT IS NOT COSMETIC: test/function-access.test.ts fails BOTH ways — a guarded page.tsx
       // absent from REGISTERED_ROUTES, and a registered route with no page on disk.
       '/admin/leave/entitlements/archive',
+      // 6e9a126e RELEASE TWO — the Entitlement Tables + Employee Eligibility editor. Same admin surface,
+      // same requireAdmin guard, so it is a ROUTE on this screenKey rather than a new one. Registering it
+      // is not paperwork: test/function-access.test.ts fails BOTH ways — a guarded page.tsx absent from
+      // REGISTERED_ROUTES, and a registered route with no page on disk.
+      '/admin/leave/entitlements/templates',
       // 491c499f — same admin surface, same requireAdmin guard, so it is a ROUTE rather than a new
       // screenKey (the /admin/personnel precedent above).
       '/admin/leave/adjustments',
