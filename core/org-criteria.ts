@@ -208,6 +208,37 @@ export function orgCriteriaFromFields(
   return out;
 }
 
+/**
+ * 6e9a126e — HOW SPECIFIC IS THIS CRITERIA SET? Higher = narrower.
+ *
+ * The entitlement eligibility layer needs "where two rules could both apply, the more specific one wins,
+ * and the screen tells you which one won so it is never a guess" (the approved plan's words). That needs a
+ * total order over criteria objects, and it belongs HERE rather than in the entitlement module: it is a
+ * property of the criteria vocabulary, it has to move whenever an axis is added, and `93249794` will want
+ * the same ranking when it adopts this layer.
+ *
+ * The count is of RESTRICTED AXES, matching `core/leave-approval-policy.ts`'s `specificity` exactly (which
+ * counts non-null scoping dimensions). Each range PAIR counts once — "hired between 2020 and 2024" is one
+ * narrowing decision, not two — for the same reason `dayRangeWidth` treats min/max as a single dimension.
+ *
+ * DELIBERATELY NOT WEIGHTED, and deliberately blind to how many VALUES an axis lists. "Company = A" and
+ * "Company = A, B, C, D" both score 1. Weighting axes would be an opinion about which of Department and
+ * Grade is "more specific" that nobody has expressed and that could not be explained on screen; counting
+ * list length would make a rule quietly change rank when someone adds a company to it. Equal scores are a
+ * real tie and are broken by the caller with a rule the operator can read.
+ */
+export function orgCriteriaSpecificity(criteria: OrgCriteria | null | undefined): number {
+  const c = (criteria ?? {}) as Record<string, unknown>;
+  let n = 0;
+  // The same emptiness test `isUnrestrictedOrgCriteria` applies, so "specificity 0" and "unrestricted" can
+  // never disagree — an empty string is an unfilled box, not a narrowing.
+  const set = (f: string) => c[f] != null && c[f] !== '';
+  for (const f of ORG_CRITERIA_FIELDS) if (nonEmpty(c[f] as string[] | undefined).length > 0) n++;
+  if (ORG_CRITERIA_DATE_FIELDS.some(set)) n++;
+  if (ORG_CRITERIA_NUMBER_FIELDS.some(set)) n++;
+  return n;
+}
+
 /** True when no axis is restricted — i.e. this criteria object means EVERYONE. Callers must warn on it. */
 export function isUnrestrictedOrgCriteria(criteria: OrgCriteria | null | undefined): boolean {
   const c = (criteria ?? {}) as Record<string, unknown>;
@@ -256,7 +287,25 @@ function sqlIn(expr: SQL<unknown>, values: string[]): SQL<boolean> {
  */
 export async function resolveOrgCriteriaTargets(
   tx: Tx,
-  p: { criteria: OrgCriteria; asOf: string },
+  p: {
+    criteria: OrgCriteria;
+    asOf: string;
+    /**
+     * 6e9a126e — an OPTIONAL restriction to a known set of employments, applied ON TOP of the criteria.
+     *
+     * The entitlement eligibility layer asks the INVERSE of the bulk-action question: not "who does this
+     * rule reach" but "which of this employee's rules match, as at this date". Answering that by resolving
+     * every rule's whole target set and testing membership is correct but scans the tenant once per rule.
+     * With this, the same predicate runs against ONE employment and returns [] or [id].
+     *
+     * It is a RESTRICTION, never a widening: an empty / absent array means NO RESTRICTION, which is this
+     * module's semantics for every other axis and is what keeps the existing Leave Adjustments and Notice
+     * Board callers byte-identical. Deliberately NOT part of `OrgCriteria`: it is not a criterion an
+     * administrator picks, it is the caller narrowing the search space, and putting it in the stored
+     * object would let a saved rule pin itself to a hardcoded list of people.
+     */
+    employmentIds?: string[];
+  },
 ): Promise<string[]> {
   const c = (p.criteria ?? {}) as OrgCriteria & Record<string, string[] | undefined>;
   const conds = [
@@ -264,6 +313,9 @@ export async function resolveOrgCriteriaTargets(
     sql`${employment.hiredOn} <= ${p.asOf}`,
     or(isNull(employment.terminatedOn), gte(employment.terminatedOn, p.asOf)),
   ];
+
+  const scopeIds = nonEmpty(p.employmentIds);
+  if (scopeIds.length) conds.push(inArray(employment.id, scopeIds));
 
   const companyIds = nonEmpty(c.companyIds);
   if (companyIds.length) conds.push(inArray(employment.companyId, companyIds));

@@ -199,7 +199,7 @@ export type AccrualConfig = {
   carryForwardIncludeEarned?: boolean;
   /** Leave Entitlement Rules Engine: optional service-length bands ABOVE annualDays. Omitted (undefined) on
    *  legacy policies ⇒ byte-identical resolution at any serviceYears (bandDaysFor falls back to annualDays).
-   *  Contiguous, first fromYears = 0, last toYears = null, max 10 bands — enforced at write time
+   *  Contiguous, first fromYears = 0, last toYears = null, at most MAX_SERVICE_BANDS bands — enforced at write time
    *  (core/admin.ts); the resolver is DEFENSIVE and ignores a malformed array rather than throwing. */
   serviceBands?: ServiceBand[];
   /** Feedback b81d3c52 — Rounding Method for this policy's calculated entitlement. PERSISTED ONLY when it
@@ -586,11 +586,26 @@ export function applyRoundingBands(value: number, bands: unknown): number {
   return value;
 }
 
+/**
+ * 6e9a126e — THE BAND CEILING. Twenty, and it MUST equal core/admin.ts's write-time limit.
+ *
+ * These are the defensive resolver and the write-time validator for the SAME array. If they disagree the
+ * writer accepts a table the resolver then silently rejects as malformed — which does not throw, it just
+ * resolves to no band, i.e. the wrong number of days with nothing on screen to say so. So the constant is
+ * declared ONCE here and imported by core/admin.ts's `validateServiceBands`; there is no second literal to
+ * forget.
+ *
+ * The reporter asked for HR-defined service ranges instead of the three hardcoded ones and did NOT name a
+ * ceiling — 20 is OUR number, stated in the plan's business half. It only ever widens: every existing
+ * table (production's are all 3 bands) stays valid, and nobody loses a band.
+ */
+export const MAX_SERVICE_BANDS = 20;
+
 /** Validates the contiguity/shape invariant used by both the defensive resolver (bandDaysFor) and the
  *  write-time validator (core/admin.ts): every row numeric, days >= 0, fromYears integers >= 0, sorted with
- *  no gaps/overlaps, first fromYears = 0, last toYears = null, max 10 bands. */
+ *  no gaps/overlaps, first fromYears = 0, last toYears = null, at most MAX_SERVICE_BANDS bands. */
 export function isWellFormedBands(bands: unknown): bands is ServiceBand[] {
-  if (!Array.isArray(bands) || bands.length === 0 || bands.length > 10) return false;
+  if (!Array.isArray(bands) || bands.length === 0 || bands.length > MAX_SERVICE_BANDS) return false;
   for (const b of bands) {
     if (b == null || typeof b !== 'object') return false;
     const row = b as Record<string, unknown>;
@@ -609,6 +624,73 @@ export function isWellFormedBands(bands: unknown): bands is ServiceBand[] {
   // band had toYears === null the next band's fromYears (a number) could never equal it, so the
   // contiguity check above already rejects that shape.
   return true;
+}
+
+/**
+ * Leave Entitlement Rules Engine — write-time validation of the service-band array (the runtime resolver
+ * `bandDaysFor` is separately DEFENSIVE for rows that bypass this, e.g. seeds/hand-written data). Throws a
+ * plain-English Error naming the specific defect: integers for
+ * fromYears/toYears, days >= 0, first band fromYears = 0, contiguous (each next fromYears = previous
+ * toYears), last band toYears = null (open-ended), at most MAX_SERVICE_BANDS bands (20 since 6e9a126e).
+
+ *
+ * 6e9a126e MOVED IT HERE FROM core/admin.ts, byte-identical apart from the ceiling constant. It guards
+ * THREE writers now — `createLeavePolicy`/`updateLeavePolicy` and `entitlement_template`'s create and
+ * update — and it belongs beside `isWellFormedBands`, whose ceiling it must always match. A private copy
+ * per writer is the duplicate-maintenance defect this feedback item is about.
+ */
+export function validateServiceBands(bands: ServiceBand[]): void {
+  if (bands.length === 0) throw new Error('Service bands: provide at least one band, or remove the block entirely.');
+  // 6e9a126e — the ceiling is imported, not restated. This validator and `isWellFormedBands` (the defensive
+  // resolver's twin) must move together or the writer accepts a table the resolver rejects as malformed —
+  // which does not throw, it resolves to NO band, i.e. a wrong day count with nothing on screen to say so.
+  if (bands.length > MAX_SERVICE_BANDS) {
+    throw new Error(`Service bands: at most ${MAX_SERVICE_BANDS} bands are allowed.`);
+  }
+  for (const b of bands) {
+    if (!Number.isInteger(b.fromYears) || b.fromYears < 0) {
+      throw new Error('Service bands: "from" years must be a whole number ≥ 0.');
+    }
+    if (b.toYears !== null && (!Number.isInteger(b.toYears) || b.toYears <= b.fromYears)) {
+      throw new Error('Service bands: "to" years must be a whole number greater than "from", or left open-ended.');
+    }
+    if (typeof b.days !== 'number' || !Number.isFinite(b.days) || b.days < 0) {
+      throw new Error('Service bands: days must be zero or a positive number.');
+    }
+    // Feedback 9d8cf621 — per-range entitlement columns (all optional; absent/null = "no override"). The
+    // runtime resolver is separately defensive, but reject a genuinely bad value at write time so HR gets a
+    // clear message instead of a silently-ignored override.
+    if (b.carryForwardDays != null && (typeof b.carryForwardDays !== 'number' || !Number.isFinite(b.carryForwardDays) || b.carryForwardDays < 0)) {
+      throw new Error('Service bands: carry-forward days must be zero or a positive number.');
+    }
+    if (b.maxBalanceDays != null && (typeof b.maxBalanceDays !== 'number' || !Number.isFinite(b.maxBalanceDays) || b.maxBalanceDays < 0)) {
+      throw new Error('Service bands: maximum balance days must be zero or a positive number.');
+    }
+    const hasMonth = b.carryForwardExpiryMonth != null;
+    const hasDay = b.carryForwardExpiryDay != null;
+    if (hasMonth !== hasDay) {
+      throw new Error('Service bands: carry-forward expiry needs both a month and a day, or neither.');
+    }
+    if (hasMonth && hasDay && !isValidMonthDay(Number(b.carryForwardExpiryMonth), Number(b.carryForwardExpiryDay))) {
+      throw new Error('Service bands: carry-forward expiry must be a real calendar date (valid month and day).');
+    }
+  }
+  if (bands[0].fromYears !== 0) {
+    throw new Error('Service bands: the first band must start at 0 years (no gap before it).');
+  }
+  if (bands[bands.length - 1].toYears !== null) {
+    throw new Error('Service bands: the last band must be open-ended (no "to" years) so every service length is covered.');
+  }
+  for (let i = 1; i < bands.length; i++) {
+    if (bands[i].fromYears !== bands[i - 1].toYears) {
+      throw new Error('Service bands: bands must be contiguous — each band\'s "from" must equal the previous band\'s "to" (no gaps or overlaps).');
+    }
+  }
+  if (!isWellFormedBands(bands)) {
+    // Defence-in-depth: should be unreachable given the checks above, but never persist something the
+    // resolver itself would reject as malformed.
+    throw new Error('Service bands: the band list is not well-formed.');
+  }
 }
 
 // ── Type-level leave RULES (feedback 9816a5ad, STEP 2 OF 3) ─────────────────────────────────────────
@@ -1096,4 +1178,45 @@ export function entitledDays(
 ): { days: number; belowStatutoryFloor: boolean } {
   const days = schemeDays ?? policyDays;
   return { days, belowStatutoryFloor: belowStatutoryFloor(floorDays, days) };
+}
+
+/**
+ * 6e9a126e — "NOTHING IS SET UP" IS NOT "ZERO DAYS". THE GUARD, AND IT SHIPS BEFORE ANY CLEARING DOES.
+ *
+ * `entitledDays` composes `schemeDays ?? policyDays`, and its callers pass `pol?.days ?? 0` — so an
+ * employee for whom NO layer resolves anything composes to a confident **0**. That is fine while
+ * something is always configured. It stops being fine the moment configuration can be absent:
+ *
+ *   - `projectExpectedEntitlement` yields expected 0;
+ *   - its callers compute `delta = 0 − alreadyPosted` and post a NEGATIVE `adjustment`;
+ *   - the employee's remaining balance is driven down toward zero.
+ *
+ * That is a CLAWBACK OF DAYS PEOPLE ALREADY HOLD, triggered by an ordinary profile save (the reproject is
+ * wired to `app/admin/personnel/[employmentId]/actions.ts`, `core/movement-apply.ts`,
+ * `setEmploymentBenefitScheme`, `reprojectEntitlementForPolicy` and the scheme-cohort path). And the
+ * statutory floor no longer props the figure up, because fa3f4ccb made it ADVISORY at the reporter's
+ * written request. The approved plan promises the reporter that the reset moves nobody's balance; without
+ * this guard that promise is false the first time anyone saves a profile.
+ *
+ * SO THE GUARD IS BUILT NOW, IN THE RELEASE THAT CLEARS NOTHING, rather than in the release that clears.
+ * A safety property that lands in the same change as the hazard has never been tested against the world
+ * without it.
+ *
+ * The distinction it draws is between ABSENCE and an EXPLICIT ZERO:
+ *   - no template, no scheme entitlement and no policy row ⇒ NO OPINION ⇒ the caller posts nothing;
+ *   - a policy resolving 0 days, or a scheme band saying 0, is a real answer somebody typed ⇒ 0 days.
+ * That is why the test is on the RESOLUTIONS, not on the composed number: `pol` non-null with `days: 0`
+ * and `pol` null are different facts that `pol?.days ?? 0` flattens into the same 0.
+ *
+ * `templateDays` is already in the signature and is passed `null` by every caller in release one — the
+ * entitlement_template layer exists but no engine reads it yet. Release two passes the resolved template
+ * days here and the guard needs no edit, which is the whole reason it is a named predicate rather than
+ * three `if`s inlined at the composition site.
+ */
+export function noEntitlementOpinion(p: {
+  templateDays: number | null;
+  schemeDays: number | null;
+  policy: ResolvedPolicy | null;
+}): boolean {
+  return p.templateDays == null && p.schemeDays == null && p.policy == null;
 }

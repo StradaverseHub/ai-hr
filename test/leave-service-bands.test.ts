@@ -22,6 +22,9 @@ import {
   bandFor,
   bandMaxBalance,
   hasAnyCarryExpiry,
+  // 6e9a126e — the band ceiling, imported rather than restated, so this test moves with the constant.
+  isWellFormedBands,
+  MAX_SERVICE_BANDS,
   previewEntitlement,
   resolveGradePolicy,
   type AccrualConfig,
@@ -299,10 +302,32 @@ describe('Leave Entitlement Rules Engine — band validation (admin.ts write-tim
     expect(acc.serviceBands).toEqual(bands);
   });
 
-  it('rejects more than 10 bands', async () => {
+  // 6e9a126e RAISED THE CEILING 10 → 20, in BOTH places at once (core/leave-compute's isWellFormedBands
+  // and core/admin's write-time validator, which now share the one MAX_SERVICE_BANDS constant). The
+  // reporter asked for HR-defined service ranges instead of three hardcoded ones; 20 is our number and it
+  // only ever widens, so no existing table loses a band. The count is UPDATED here rather than the
+  // assertion loosened — a band-count test that stopped naming a number would stop catching the two halves
+  // drifting apart, which is the failure that resolves to NO band and therefore a silently wrong day count.
+  it(`rejects more than ${MAX_SERVICE_BANDS} bands`, async () => {
+    const over = MAX_SERVICE_BANDS + 1;
     const many: ServiceBand[] = [];
-    for (let i = 0; i < 11; i++) many.push({ fromYears: i, toYears: i === 10 ? null : i + 1, days: 10 });
-    await expect(create(many)).rejects.toThrow(/10 bands/i);
+    for (let i = 0; i < over; i++) {
+      many.push({ fromYears: i, toYears: i === over - 1 ? null : i + 1, days: 10 });
+    }
+    await expect(create(many)).rejects.toThrow(new RegExp(`${MAX_SERVICE_BANDS} bands`, 'i'));
+  });
+
+  it(`accepts exactly ${MAX_SERVICE_BANDS} bands — and the RESOLVER accepts them too`, async () => {
+    // The pair, asserted together. If only the validator had moved, this table would persist and then
+    // resolve to no band at all: not an error, just the wrong number of days with nothing on screen.
+    const bands: ServiceBand[] = [];
+    for (let i = 0; i < MAX_SERVICE_BANDS; i++) {
+      bands.push({ fromYears: i, toYears: i === MAX_SERVICE_BANDS - 1 ? null : i + 1, days: 10 + i });
+    }
+    expect(isWellFormedBands(bands)).toBe(true);
+    const row = await create(bands);
+    const acc = await readAccrual(row.id);
+    expect(acc.serviceBands).toHaveLength(MAX_SERVICE_BANDS);
   });
 });
 
