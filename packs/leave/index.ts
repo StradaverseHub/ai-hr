@@ -111,7 +111,6 @@ import {
   CalendarPlus,
   ClipboardList,
   GitBranch,
-  LayoutList,
   Repeat2,
   ScrollText,
   SlidersHorizontal,
@@ -174,7 +173,19 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
   icon: SlidersHorizontal,
   group: 'admin',
   children: [
-    { href: '/admin/leave', labelKey: 'leaveSummary', icon: LayoutList },
+    // df00b85f — THE "SUMMARY" CHILD IS GONE, and Entitlements is the first entry.
+    //
+    // `/admin/leave` was a 127-line read-only master listing (code / name / description / paid / status)
+    // whose only controls were an Edit link INTO Entitlements and a delete. Entitlements already renders
+    // the full per-type panel with the same rename / archive / delete controls, so the row was a second
+    // door onto one screen's worth of settings — the duplication complaint 26e76a9f and e4238594 have
+    // each answered once already on this same surface.
+    //
+    // The ROUTE survives as a redirect stub (app/admin/leave/page.tsx → /admin/leave/entitlements) so
+    // saved links, the leave-type master actions' ok(LEAVE)/fail(LEAVE) targets in app/admin/actions.ts
+    // and the import page's back link all still land somewhere real. A stub is NOT a guarded page, so it
+    // also left lib/permissions.ts's leaveConfig `routes` in the same change — test/function-access.test.ts
+    // fails on a registered route with no guarded page on disk, which is why that is one move, not two.
     { href: '/admin/leave/entitlements', labelKey: 'leaveEntitlements', icon: ClipboardList },
     { href: '/admin/leave/adjustments', labelKey: 'leaveAdjustments', icon: SlidersHorizontal },
     { href: '/admin/leave/generate', labelKey: 'leaveGenerate', icon: CalendarPlus },

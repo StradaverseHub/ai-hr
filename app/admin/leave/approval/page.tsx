@@ -1,27 +1,24 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listDepartments, listJobGrades, listLeaveTypes } from '@/core/read';
-import { listBusinessUnits, listPositions } from '@/core/admin';
-import { getLeaveEscalationPolicy, isCompanyDefaultApprovalRule, listLeaveApprovalRules } from '@/core/leave-approval-policy';
+import { listCompanies, listJobGrades, listLeaveTypes } from '@/core/read';
+import { getLeaveEscalationPolicy } from '@/core/leave-approval-policy';
 import { listApprovalTemplates, listTemplateAssignments } from '@/core/leave-approval-template';
-import { listBenefitSchemes, listGradeGroups } from '@/core/benefit-scheme';
+import { listBenefitSchemes } from '@/core/benefit-scheme';
 import { bySchemeDisplayOrder, normalizeSchemeText } from '@/lib/benefit-scheme-label';
-import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+// `SectionHeader` was imported here and unused BEFORE 706d34e8 (the two sections use plain <h2>s); dropped
+// while this import line was being edited anyway, so the file lints clean.
+import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { LeaveEscalationEditor, type EscalationLabels } from '../../leave-approval/escalation-editor';
 import {
   ApprovalAssignmentManager,
   ApprovalTemplateManager,
   type TemplateManagerLabels,
 } from '../../leave-approval/template-manager';
-import { WorkflowMatrix } from '../../leave-approval/workflow-matrix';
-import { buildWorkflowMatrixLabels } from '../../leave-approval/matrix-labels';
 import {
-  archiveLeaveApprovalRuleAction,
   assignApprovalTemplateAction,
   deleteApprovalTemplateAction,
   duplicateApprovalTemplateAction,
   saveApprovalTemplateAction,
-  saveLeaveApprovalRuleAction,
   saveLeaveEscalationPolicyAction,
   setApprovalTemplateActiveAction,
   setTenantDefaultTemplateAction,
@@ -40,10 +37,43 @@ import {
  *
  * 9b0d99f3 — Approval Workflow Refactoring & Assignment Simplification. The page is split into two
  * headed sections: (1) APPROVAL TEMPLATE CREATION (build the flow and its steps) and (2) ASSIGNMENT
- * TEMPLATE (who it applies to) — the assignments table, the scoped WorkflowMatrix (grade group,
- * condition, advanced scope) and the per-company base chain + escalation, the last of which is now a
+ * TEMPLATE (who it applies to) — the assignments table and the per-company escalation, the latter now a
  * compact one-line-per-company disclosure list instead of a full-height Card per company. Pure
  * presentation: no data model, no resolve/gate path, no action wiring changed.
+ *
+ * ── 706d34e8 (r155) — THE PER-RULE "Approval Workflows" LIST IS GONE. Read this before adding it back.
+ *
+ * The page used to end with a WorkflowMatrix: a table of every non-default `leave_approval_policy` row
+ * with an Add / Edit / Delete popup posting saveLeaveApprovalRuleAction / archiveLeaveApprovalRuleAction.
+ * It was a SECOND editor over the same rows the Assignment Template section above it creates — which is
+ * the duplication the reporter named, and the same complaint e4238594 answered by deleting this matrix's
+ * embedded twin from the Entitlements page.
+ *
+ * WHAT MAKES THE REMOVAL SAFE, STATED SO IT CAN BE RE-CHECKED:
+ *   - `assignApprovalTemplate` (core/leave-approval-template.ts) INSERTS/UPDATES the very same
+ *     `leave_approval_policy` rows, stamping `template_id`. The assignment section is a real maintainer
+ *     of these rows, not a view of a different table.
+ *   - `listTemplateAssignments` lists EVERY active row with `template_id is not null` — including the
+ *     all-wildcard company-default row. So no template-driven rule became invisible, and each one is
+ *     still individually unassignable by ruleId inside the grouped list.
+ *   - Rows with `template_id IS NULL` are the ONLY ones this matrix could show and the assignment list
+ *     cannot. `core/leave-approval-consolidation.ts` calls exactly that set (plus wildcard-leave-type
+ *     rows) LEGACY, and 241817ef step 2 converted them on production via
+ *     scripts/convert-approval-rules.ts, proving routing identical before and after in one transaction.
+ *     A dry run of that script is the standing check: a non-zero legacy count means this removal would
+ *     strand configuration and the matrix has to come back before it can be zero again.
+ *   - Nothing can create a new template-less rule now, because this was its only entry point.
+ *
+ * WHAT THE REMOVAL DOES COST, HONESTLY: this matrix was the only surface that could SET or SHOW a rule's
+ * business unit / department / position scope, and the only one offering a Custom (per-rule levels) chain.
+ * `convertLegacyApprovalRules` PRESERVES those three columns, so a converted row may still carry them —
+ * it keeps routing (resolveApprovalChain reads it) and stays listed and removable in the assignment list,
+ * but its org scope is no longer displayed or editable. That is a real narrowing of the configuration
+ * surface, not a no-op, and it is the thing to re-open if HR reports "I cannot find where this rule is set".
+ *
+ * The SERVICES are untouched: core/leave-approval-policy.ts keeps createLeaveApprovalRule /
+ * updateLeaveApprovalRule / archiveLeaveApprovalRule and every reader, because resolveApprovalChain and
+ * core/leave-approval-consolidation.ts still run on these rows. Removing a screen is not removing a service.
  */
 export default async function LeaveApprovalTabPage({
   searchParams,
@@ -58,22 +88,20 @@ export default async function LeaveApprovalTabPage({
   const companies = all.filter((c) => scopeIds.includes(c.id));
   const companyIds = companies.map((c) => c.id);
 
-  const [leaveTypesAll, departmentsAll, positionsAll, businessUnitsAll, gradesAll, gradeGroupsAll, schemesAll] =
-    await Promise.all([
-      listLeaveTypes(s),
-      companyIds.length ? listDepartments(s, { companyIds }) : Promise.resolve([]),
-      companyIds.length ? listPositions(s, { companyIds }) : Promise.resolve([]),
-      companyIds.length ? listBusinessUnits(s, { companyIds }) : Promise.resolve([]),
-      listJobGrades(s),
-      listGradeGroups(s),
-      // 22de47c4 — the Assign Template employee scope is the benefit scheme, so the schemes come along.
-      listBenefitSchemes(s),
-    ]);
+  // 706d34e8 — departments / positions / business units / grade groups and the per-company RULE list went
+  // with the WorkflowMatrix; they fed nothing else on this page. Removing the reads, not just the render,
+  // is the point (the e4238594 precedent: an embed's data prep left behind is a fan of queries per render
+  // for a screen nobody sees). `gradesAll` and `leaveTypesAll` STAY — the Assign Template form uses both.
+  const [leaveTypesAll, gradesAll, schemesAll] = await Promise.all([
+    listLeaveTypes(s),
+    listJobGrades(s),
+    // 22de47c4 — the Assign Template employee scope is the benefit scheme, so the schemes come along.
+    listBenefitSchemes(s),
+  ]);
 
   const rows = await Promise.all(
     companies.map(async (c) => ({
       company: c,
-      rules: await listLeaveApprovalRules(s, c.id),
       // R51 722904dc — per-company Approval Escalation Settings. r79 0322 — read for EVERY company now:
       // they are no longer hidden behind a per-company multi-step switch, because there is no such switch.
       esc: await getLeaveEscalationPolicy(s, c.id),
@@ -185,11 +213,6 @@ export default async function LeaveApprovalTabPage({
     remove: t('remove'),
     dragToReorder: t('dragToReorder'),
   };
-  // e1a51aea: the matrix label bag (incl. its nested step-list labels) is built by the shared helper
-  // (matrix-labels.ts) so the per-type Approval Workflow sub-step on the Entitlements page renders the
-  // IDENTICAL matrix — one label source, no drift. Byte-identical to the inline bag this page used to build.
-  const workflowLabels = buildWorkflowMatrixLabels(t);
-
   return (
     <div className="space-y-6">
       <PageHeader title={t('title')} description={t('description')} />
@@ -313,42 +336,11 @@ export default async function LeaveApprovalTabPage({
               }
             />
 
-            {/* R41 72800eda — the configured workflows summary table + View/Edit popup (across all companies).
-                9b0d99f3 2.i/2.ii/2.iv — this is where grade group, the condition (min/max days) and the
-                advanced scope dropdown live, so it sits under the Assignment Template heading. */}
-            <WorkflowMatrix
-              rows={rows.flatMap(({ rules }) =>
-                rules
-                  .filter((r) => !isCompanyDefaultApprovalRule(r))
-                  .map((r) => ({
-                    id: r.id,
-                    companyId: r.companyId,
-                    ruleName: r.ruleName,
-                    leaveTypeId: r.leaveTypeId,
-                    gradeGroupId: r.gradeGroupId,
-                    businessUnitId: r.businessUnitId,
-                    departmentId: r.departmentId,
-                    positionId: r.positionId,
-                    gradeId: r.gradeId,
-                    employmentType: r.employmentType,
-                    minDays: r.minDays,
-                    maxDays: r.maxDays,
-                    levels: r.levels,
-                    templateId: r.templateId,
-                  })),
-              )}
-              companies={companies.map((c) => ({ id: c.id, label: c.name }))}
-              leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
-              gradeGroups={gradeGroupsAll.filter((g) => !g.archived).map((g) => ({ id: g.id, label: g.name }))}
-              grades={gradesAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` }))}
-              businessUnits={businessUnitsAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}`, companyId: x.companyId }))}
-              departments={departmentsAll.map((x) => ({ id: x.id, label: x.name, companyId: x.companyId }))}
-              positions={positionsAll.map((x) => ({ id: x.id, label: x.title, companyId: x.companyId }))}
-              templates={templates.filter((t2) => t2.active).map((t2) => ({ id: t2.id, label: t2.name }))}
-              actions={{ save: saveLeaveApprovalRuleAction, archive: archiveLeaveApprovalRuleAction }}
-              labels={workflowLabels}
-            />
-
+            {/* 706d34e8 — the R41 72800eda "Approval Workflows" summary table + View/Edit/Delete popup
+                STOOD HERE and is gone. See this file's header for what made that safe, what it costs, and
+                the dry run (scripts/convert-approval-rules.ts) that re-checks the precondition. Nothing
+                stands in its place: rev-1 of the e4238594 removal offered a pointer-to-the-other-screen
+                placeholder and the reporter rejected it, and the same reasoning applies to a stub here. */}
           </section>
         </>
       )}

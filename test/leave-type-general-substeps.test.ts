@@ -37,7 +37,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
 const subStepBarSrc = readFileSync(resolve(here, '../components/leave-sub-step-bar.tsx'), 'utf8');
 const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
-const matrixSrc = readFileSync(resolve(here, '../app/admin/leave-approval/workflow-matrix.tsx'), 'utf8');
 const approvalPageSrc = readFileSync(resolve(here, '../app/admin/leave/approval/page.tsx'), 'utf8');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
@@ -328,33 +327,44 @@ describe('e4238594 · the Approval Workflow sub-step is GONE, and nothing is str
     expect(pageSrc).not.toMatch(/const approvalMatrixShared =/);
   });
 
-  it('the STANDALONE Approval tab still renders the matrix over non-default rules — the real home survives', () => {
-    // This is what makes the removal safe rather than merely tidy: every rule the embed could edit was
-    // type-scoped and non-default, and the tab renders a strict superset of them.
-    expect(approvalPageSrc).toContain('WorkflowMatrix');
-    expect(approvalPageSrc).toContain('buildWorkflowMatrixLabels');
-    expect(approvalPageSrc).toContain('isCompanyDefaultApprovalRule');
+  /**
+   * 706d34e8 (r155) OVERTOOK THIS ASSERTION, and the honest thing is to say so rather than delete it.
+   *
+   * It read: "the STANDALONE Approval tab still renders the matrix over non-default rules — the real home
+   * survives", and that was e4238594's whole safety argument — the embed could only edit type-scoped,
+   * non-default rules, and the tab showed a strict superset. The tab has since dropped the matrix too, so
+   * the superset claim moved DOWN a layer rather than evaporating: the Assignment Template section on that
+   * same tab creates these rows (`assignApprovalTemplate` stamps `template_id` onto
+   * `leave_approval_policy`) and lists every active row that carries one, so nothing e4238594's embed
+   * maintained became unreachable. What DID go is the ability to author a template-less rule at all — and
+   * that is the property that makes both removals compose instead of stranding rows between them.
+   */
+  it('the rows the embed maintained are still maintained — by ASSIGNMENT, on the same tab', () => {
+    // Commentary stripped first: the page's own header explains the removal and therefore NAMES the matrix.
+    // Forbidding that would forbid explaining the change, which is the r134 mistake.
+    const approvalCode = approvalPageSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[^\n]*?\/\/[^\n]*$/gm, '');
+    expect(approvalCode).not.toContain('WorkflowMatrix');
+    expect(approvalPageSrc).toContain('<ApprovalAssignmentManager');
+    expect(approvalPageSrc).toContain('listTemplateAssignments');
+    const template = readFileSync(resolve(here, '../core/leave-approval-template.ts'), 'utf8');
+    // The assignment service writes the same table the embed's matrix edited — that is the load-bearing fact.
+    expect(template).toContain('leaveApprovalPolicy');
+    expect(template).toContain('export async function assignApprovalTemplate');
+    expect(template).toContain('export async function listTemplateAssignments');
   });
 
-  it('the standalone actions still reuse the shared persist helpers — only the wrappers retired', () => {
+  it('no per-rule write path survives its screen — the wrappers went at e4238594, the rest at 706d34e8', () => {
     const approvalActionsSrc = readFileSync(resolve(here, '../app/admin/leave-approval/actions.ts'), 'utf8');
-    for (const [action, helper] of [
-      ['saveLeaveApprovalRuleAction', 'persistApprovalRule'],
-      ['archiveLeaveApprovalRuleAction', 'persistArchiveApprovalRule'],
-    ] as const) {
-      const start = approvalActionsSrc.indexOf(`export async function ${action}(`);
-      expect(start, `${action} exists`).toBeGreaterThan(-1);
-      const body = approvalActionsSrc.slice(start, approvalActionsSrc.indexOf('\n}', start));
-      expect(body.includes(`${helper}(s, formData)`), `${action} reuses ${helper}`).toBe(true);
-    }
-    // The 4e9a4d59 stay-on-this-type wrappers had no caller once the embed went (the r100 precedent).
+    // The 4e9a4d59 stay-on-this-type wrappers had no caller once the embed went (the r100 precedent)…
     expect(approvalActionsSrc).not.toContain('export async function saveLeaveApprovalRuleFromEntitlementsAction');
     expect(approvalActionsSrc).not.toContain('export async function archiveLeaveApprovalRuleFromEntitlementsAction');
-  });
-
-  it('WorkflowMatrix keeps its defaultLeaveTypeId seeding for the tab that still uses it', () => {
-    expect(matrixSrc).toContain('defaultLeaveTypeId');
-    expect(matrixSrc).toContain('initial={row ? row.leaveTypeId : defaultLeaveTypeId}');
+    // …and 706d34e8 removed the matrix those wrappers' standalone twins served, so the twins and their
+    // shared persist helpers went the same way. This used to assert the twins still existed and reused the
+    // helpers; it is inverted rather than deleted so re-introducing an unreachable writer is a visible
+    // decision. The DOMAIN operations in core/leave-approval-policy.ts are untouched and still exercised.
+    expect(approvalActionsSrc).not.toContain('saveLeaveApprovalRuleAction');
+    expect(approvalActionsSrc).not.toContain('archiveLeaveApprovalRuleAction');
+    expect(approvalActionsSrc).not.toContain('persistApprovalRule');
   });
 });
 
