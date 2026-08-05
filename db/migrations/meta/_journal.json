@@ -2290,6 +2290,13 @@
       "when": 1781862503000,
       "tag": "0403_payroll_recalc_mark",
       "breakpoints": true
+    },
+    {
+      "idx": 404,
+      "version": "7",
+      "when": 1781862504000,
+      "tag": "0404_leave_calendar_off_dashboard",
+      "breakpoints": true
     }
   ]
 }

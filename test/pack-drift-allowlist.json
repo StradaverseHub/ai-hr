@@ -34,7 +34,6 @@
     "app/delegations/actions.ts",
     "app/delegations/page.tsx",
     "app/me/actions.ts",
-    "app/page.tsx",
     "app/roster/actions.ts",
     "app/roster/page.tsx",
     "components/benefit-scheme-config.tsx",

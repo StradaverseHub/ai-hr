@@ -36,13 +36,15 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 describe('calendar focus deep link', () => {
   const id = '11111111-2222-3333-4444-555555555555';
 
-  it('builds a team-view dashboard href that lands on the calendar card', () => {
+  it('builds a team-view href that lands on the Leave Calendar', () => {
+    // a00c4f64 — the destination moved from the dashboard (with a '#planned-absences' anchor jump to the
+    // card) to the Team Leave Tracker, which IS the calendar and needs no fragment.
     const href = buildCalendarFocusHref(id);
-    expect(href).toBe(`/?view=team&${CALENDAR_FOCUS_PARAM}=${id}#planned-absences`);
+    expect(href).toBe(`/leave/tracker?view=team&${CALENDAR_FOCUS_PARAM}=${id}`);
   });
 
   it('round-trips through the parser', () => {
-    const qs = new URLSearchParams(buildCalendarFocusHref(id).split('?')[1].split('#')[0]);
+    const qs = new URLSearchParams(buildCalendarFocusHref(id).split('?')[1]);
     expect(parseCalendarFocus(qs.get(CALENDAR_FOCUS_PARAM) ?? undefined)).toBe(id);
   });
 
@@ -66,10 +68,13 @@ describe('726ac8c2 drift guards', () => {
     expect(page).toContain('subordinateLeaveSummary');
   });
 
-  it('the dashboard validates ?focus= and passes it to the calendar', () => {
-    const page = read('app/page.tsx');
+  it('the calendar page validates ?focus= and passes it to the calendar', () => {
+    // a00c4f64: the page that reads ?focus= is the Team Leave Tracker now, not the dashboard. Both halves
+    // are asserted — the tracker DOES read it, and the dashboard no longer pretends to.
+    const page = read('app/leave/tracker/page.tsx');
     expect(page).toContain('parseCalendarFocus');
     expect(page).toContain('focusPersonId={absFocusPersonId}');
+    expect(read('app/page.tsx')).not.toContain('parseCalendarFocus');
   });
 
   it('the grid paints the highlight class and expires it on the shared timeout', () => {

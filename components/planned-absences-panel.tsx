@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactNode, useState, useTransition } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { AbsenceViewSwitch } from '@/components/absence-view-switch';
 import { CalendarRangeSwitch } from '@/components/calendar-range-switch';
@@ -100,6 +100,14 @@ export function PlannedAbsencesPanel({
   const [optimistic, setOptimistic] = useState<{ target: string; base: string } | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
+  // a00c4f64 — the three URL writes below used to hardcode '/', because the calendar only ever rendered
+  // on the dashboard. It now also renders at /leave/tracker, where a hardcoded '/' would have thrown the
+  // viewer back to the dashboard the first time they paged to another week. Reading the CURRENT path
+  // keeps every existing dashboard behaviour byte-identical (pathname is '/' there) and makes the panel
+  // reusable wherever it is mounted.
+  const pathname = usePathname();
+  /** Current path + the given query string — the panel's own URL, never another screen's. */
+  const selfHref = (qs: string) => (qs ? `${pathname}?${qs}` : pathname);
 
   const effectiveAnchor =
     anchorOverride && anchorOverride.base === anchorIso ? anchorOverride.value : anchorIso;
@@ -134,7 +142,7 @@ export function PlannedAbsencesPanel({
     if (nextAnchor) params.set('abs', nextAnchor);
     else params.delete('abs');
     const qs = params.toString();
-    startTransition(() => router.push(qs ? `/?${qs}` : '/', { scroll: false }));
+    startTransition(() => router.push(selfHref(qs), { scroll: false }));
   };
 
   const changeView = (next: 'my' | 'team') => {
@@ -144,7 +152,7 @@ export function PlannedAbsencesPanel({
     if (next === 'team') params.set('view', 'team');
     else params.delete('view');
     const qs = params.toString();
-    window.history.replaceState(null, '', qs ? `/?${qs}` : '/');
+    window.history.replaceState(null, '', selfHref(qs));
   };
 
   // ed76f6b0: the Week/Month toggle, mirroring changeView — pure client state + URL/cookie sync, zero
@@ -172,7 +180,7 @@ export function PlannedAbsencesPanel({
     // Session memory: cosmetic preference, client-written (NOT httpOnly), no max-age ⇒ session-scoped.
     document.cookie = `leave_calendar_view=${next}; path=/; samesite=lax`;
     const qs = params.toString();
-    window.history.replaceState(null, '', qs ? `/?${qs}` : '/');
+    window.history.replaceState(null, '', selfHref(qs));
   };
 
   return (

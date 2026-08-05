@@ -66,8 +66,9 @@ export default async function DashboardCardConfigPage({
   );
 
   // Derived fixed-row template (R44 → 2806443b): a card is pinned to the full-width fixed second row ONLY
-  // when it is the Leave Calendar (lib/dashboard-layout FIXED_ROW_KEYS) — the same shared rule the employee
-  // customizer uses, so the Templates explainer and the Preview show the SAME partition employees get.
+  // when lib/dashboard-layout FIXED_ROW_KEYS names it — the same shared rule the employee customizer uses,
+  // so the Templates explainer and the Preview show the SAME partition employees get. That list is EMPTY
+  // since a00c4f64 took the Leave Calendar off the dashboard, so the preview's row 2 is empty too.
   const isPinned = (c: DashboardCardRow) => isFixedRowKey(c.cardKey);
   // The Templates/Preview sections show the default EMPLOYEE dashboard (their long-standing meaning), so
   // manager/hr_admin-only cards (audience, 9606c59f) are filtered out of the projection.
