@@ -8258,7 +8258,9 @@
     "editHint": "Rename it to match the language your organisation uses. A built-in type keeps what it does; only your own types can be re-pointed.",
     "cancel": "Cancel",
     "empty": "No event types match this search.",
-    "builtIn": "Built-in"
+    "builtIn": "Built-in",
+    "saving": "Saving…",
+    "close": "Close"
   },
   "hiringDefaults": {
     "title": "Hiring Defaults",

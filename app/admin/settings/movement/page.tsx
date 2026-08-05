@@ -1,5 +1,4 @@
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { CONFIGURABLE_BEHAVIOUR_KINDS, listMovementEventTypes } from '@/core/movement-type';
@@ -10,7 +9,6 @@ import {
   PageHeader,
   SectionHeader,
   btnPrimary,
-  inputCls,
   tableWrapCls,
   tbodyCls,
   theadCls,
@@ -30,11 +28,8 @@ import {
   type SortDir,
 } from '@/components/settings-list';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import {
-  deleteMovementEventTypeAction,
-  saveMovementEventTypeAction,
-  setMovementEventTypeActiveAction,
-} from './actions';
+import { MovementTypeDialog, type MovementTypeDialogLabels } from './movement-type-dialog';
+import { deleteMovementEventTypeAction, setMovementEventTypeActiveAction } from './actions';
 
 const PAGE = '/admin/settings/movement';
 
@@ -44,10 +39,28 @@ const PAGE = '/admin/settings/movement';
  * WHAT 1b87e8a0 CHANGED, AND ONLY THAT. The screen was a card per event type with a rename box inside
  * each one and an Add card sitting in the list. It is now the row listing the reporter asked for, in the
  * shape /admin/pay-components and Employee ID already use: a toolbar of [Add · search · status filter],
- * the house table, row actions on the right, and ONE maintenance panel driven by `?new=1` / `?edit=CODE`.
- * The toolbar pieces come from components/settings-list.tsx, which is the same module the relocated
- * Hiring Defaults list uses — that shared import is what makes "the standard" one thing instead of two,
- * and test/settings-list-idiom.test.ts fails if either screen drifts off it.
+ * the house table, and row actions on the right. The toolbar pieces come from components/settings-list
+ * .tsx, which is the same module the relocated Hiring Defaults list uses — that shared import is what
+ * makes "the standard" one thing instead of two, and test/settings-list-idiom.test.ts fails if either
+ * screen drifts off it.
+ *
+ * ⚠️ THE RE-BUILD: ADD/EDIT IS A MODAL, NOT A PANEL UNDER THE LIST. The first build opened the form in
+ * a card at the BOTTOM of the page via `?new=1` / `?edit=CODE`, copying the Employee ID Auto Running
+ * Number screen for consistency. The reporter contested it — "not user-friendly … a poor user
+ * experience" — and they were right: a form below the list means you lose your place in the list, and
+ * on a catalogue whose rows you scan and switch on and off, your place IS the work. It is now
+ * movement-type-dialog.tsx, a client island holding nothing but "is it open". Consequences worth
+ * knowing before editing this file:
+ *   • The list never moves. Opening Add or Edit is not a navigation, so scroll, search, sort and the
+ *     status filter all stay exactly as they were, and Radix hands focus back to the row's own Edit
+ *     button on close.
+ *   • `?new=`/`?edit=` are GONE, not kept alongside. Two sources of truth for "is the form open" is
+ *     precisely how the bottom panel would grow back.
+ *   • THE PAGE STAYS A SERVER COMPONENT and passes the island serialisable values only — strings,
+ *     booleans, and arrays of {value,label} computed HERE. Not a function, and not a function nested
+ *     inside an object-literal prop either: that variant returned 500 on every request this week while
+ *     tsc, the suite and the boundary guard all stayed green (test/server-client-boundary.test.ts is
+ *     now depth-aware for it).
  *
  * NOT THE SAME SHAPE AS HIRING DEFAULTS, on purpose. That screen is per-company and needs a list of
  * companies plus a page per company; this one is a flat catalogue and must not grow a list it does not
@@ -88,8 +101,6 @@ export default async function MovementSettingsPage({
     status?: string;
     sort?: string;
     dir?: string;
-    edit?: string;
-    new?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -149,24 +160,49 @@ export default async function MovementSettingsPage({
       return dir === 'desc' ? -by : by;
     });
 
-  /** Keep the whole view in the address when one control changes. */
-  const href = (over: Partial<{ q: string; status: SettingsStatus; sort: string; dir: SortDir; edit: string; new: string }>) => {
-    const next = { q, status, sort, dir, edit: undefined as string | undefined, new: undefined as string | undefined, ...over };
+  /** Keep the whole view in the address when one control changes. Only the LIST's controls live in the
+   *  address now — the Add/Edit dialog is client state and deliberately leaves no trace here. */
+  const href = (over: Partial<{ q: string; status: SettingsStatus; sort: string; dir: SortDir }>) => {
+    const next = { q, status, sort, dir, ...over };
     const usp = new URLSearchParams();
     if (next.q) usp.set('q', next.q);
     if (next.status !== 'all') usp.set('status', next.status);
     if (next.sort !== 'catalog') usp.set('sort', next.sort);
     if (next.dir !== 'asc') usp.set('dir', next.dir);
-    if (next.edit) usp.set('edit', next.edit);
-    if (next.new) usp.set('new', next.new);
     const qs = usp.toString();
     return qs ? `${PAGE}?${qs}` : PAGE;
   };
   const sortHref = (col: 'name' | 'status' | 'created') =>
     href({ sort: col, dir: sort === col && dir === 'asc' ? 'desc' : 'asc' });
 
-  const editing = sp.edit ? (rows.find((r) => r.code === sp.edit) ?? null) : null;
-  const showPanel = Boolean(editing || sp.new);
+  /** The only behaviours a tenant may point one of its OWN types at — the consequence-free ones. Built
+   *  in the server component and handed over as plain {value,label} rows: the island must never import
+   *  core/movement-type (it pulls the pg driver through db/client) and must never be handed a
+   *  translator. */
+  const behaviourOptions = CONFIGURABLE_BEHAVIOUR_KINDS.map((k) => ({
+    value: k as string,
+    label: shippedLabel(k),
+  }));
+  /** Add and Edit differ only in their words; the dialog itself is one component. */
+  const addLabels: MovementTypeDialogLabels = {
+    title: t('addTitle'),
+    hint: t('addHint'),
+    name: t('columns.name'),
+    namePlaceholder: t('addNamePlaceholder'),
+    behaviour: t('columns.behaviour'),
+    behaviourPlaceholder: t('addBehaviourPlaceholder'),
+    builtInBehaviour: t('builtInBehaviour'),
+    submit: t('add'),
+    saving: t('saving'),
+    cancel: t('cancel'),
+    close: t('close'),
+  };
+  const editLabels: MovementTypeDialogLabels = {
+    ...addLabels,
+    title: t('editTitle'),
+    hint: t('editHint'),
+    submit: t('save'),
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -181,9 +217,17 @@ export default async function MovementSettingsPage({
         <SectionHeader title={t('catalogTitle')} count={visible.length} />
 
         <SettingsToolbar>
-          <Link href={href({ new: '1' })} className={btnPrimary}>
-            {t('createNew')}
-          </Link>
+          <MovementTypeDialog
+            triggerLabel={t('createNew')}
+            triggerClassName={btnPrimary}
+            code={null}
+            builtIn={false}
+            initialLabel=""
+            initialBehaviourKind=""
+            behaviourLabel=""
+            behaviourOptions={behaviourOptions}
+            labels={addLabels}
+          />
           <SettingsSearch
             action={PAGE}
             value={q}
@@ -223,7 +267,7 @@ export default async function MovementSettingsPage({
             </thead>
             <tbody className={tbodyCls}>
               {visible.map((r) => (
-                <tr key={r.code} className={editing?.code === r.code ? 'bg-primary/5' : undefined}>
+                <tr key={r.code}>
                   <td className="px-3 py-2">
                     <div className={r.active ? 'font-medium' : 'font-medium text-muted-foreground'}>
                       {displayLabel(r)}
@@ -247,9 +291,19 @@ export default async function MovementSettingsPage({
                   </td>
                   <td className="px-3 py-2">
                     <div className={rowActionsCls}>
-                      <Link href={href({ edit: r.code })} className={rowActionCls}>
-                        {t('edit')}
-                      </Link>
+                      {/* Edit opens over the list. Closing it returns focus to THIS button, so the row
+                          you were working on is still the row you are looking at. */}
+                      <MovementTypeDialog
+                        triggerLabel={t('edit')}
+                        triggerClassName={rowActionCls}
+                        code={r.code}
+                        builtIn={r.builtIn}
+                        initialLabel={displayLabel(r)}
+                        initialBehaviourKind={r.behaviourKind}
+                        behaviourLabel={shippedLabel(r.behaviourKind)}
+                        behaviourOptions={behaviourOptions}
+                        labels={editLabels}
+                      />
                       <form action={setMovementEventTypeActiveAction} className="inline-flex">
                         <input type="hidden" name="code" value={r.code} />
                         <input type="hidden" name="active" value={r.active ? 'false' : 'true'} />
@@ -297,69 +351,6 @@ export default async function MovementSettingsPage({
           </table>
         </div>
       </Card>
-
-      {/* ONE maintenance panel for both Add and Edit, keyed off the address (the Employee ID mechanism):
-          no client state to persist, and a link is enough to open or close it. */}
-      {showPanel && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={editing ? t('editTitle') : t('addTitle')} />
-          <form action={saveMovementEventTypeAction} className="flex flex-col gap-3 p-4">
-            <p className="text-sm text-muted-foreground">{editing ? t('editHint') : t('addHint')}</p>
-            {editing && <input type="hidden" name="code" value={editing.code} />}
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">{t('columns.name')}</span>
-                <input
-                  name="label"
-                  required
-                  defaultValue={editing ? displayLabel(editing) : ''}
-                  className={`${inputCls} w-64`}
-                  placeholder={t('addNamePlaceholder')}
-                />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">{t('columns.behaviour')}</span>
-                {/* EXACTLY ONE behaviour picker on this page, and it is never offered for a built-in:
-                    a built-in keeps its built-in meaning, so the field is read-only there. The service
-                    refuses a re-point independently, but an affordance that cannot work is a bug. */}
-                {editing?.builtIn ? (
-                  <input
-                    className={`${inputCls} w-64`}
-                    value={shippedLabel(editing.behaviourKind)}
-                    readOnly
-                    disabled
-                  />
-                ) : (
-                  <select
-                    name="behaviourKind"
-                    required
-                    defaultValue={editing?.behaviourKind ?? ''}
-                    className={`${inputCls} w-64`}
-                  >
-                    <option value="" disabled>
-                      {t('addBehaviourPlaceholder')}
-                    </option>
-                    {CONFIGURABLE_BEHAVIOUR_KINDS.map((k) => (
-                      <option key={k} value={k}>
-                        {shippedLabel(k)}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {editing?.builtIn && (
-                  <span className="text-xs text-muted-foreground">{t('builtInBehaviour')}</span>
-                )}
-              </label>
-            </div>
-            <div className="flex items-center gap-3">
-              <button className={btnPrimary}>{editing ? t('save') : t('add')}</button>
-              <Link href={href({})} className="text-sm font-medium text-muted-foreground hover:text-foreground">
-                {t('cancel')}
-              </Link>
-            </div>
-          </form>
-        </Card>
-      )}
     </div>
   );
 }
