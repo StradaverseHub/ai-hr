@@ -314,9 +314,11 @@ describe('10fcf6df — Rollback restores the employee, it does not erase the rec
     expect(page.includes("t('movement.cancelConfirmTitle')")).toBe(true);
     expect(page.includes("t('movement.cancelConfirmDescription')")).toBe(true);
     expect(
-      page.match(/reverseMovementEventAction/g)?.length,
-      'exactly ONE reversal writer — Cancel is a relabel of Rollback, never a second path',
+      page.match(/<form action=\{reverseMovementEventAction\}/g)?.length,
+      'exactly ONE reversal form — Cancel is a relabel of Rollback, never a second path',
     ).toBe(1);
+    // …and no delete action grew beside it.
+    expect(page.includes('deleteMovementEventAction'), 'no second, erasing writer').toBe(false);
     // bd89ccd8 — the reason is mandatory in the dialog too (the service refuses a blank one regardless).
     expect(page.includes("reasonField={{ name: 'reason'")).toBe(true);
     expect(page.includes('required: true'), 'the rollback reason field is mandatory').toBe(true);

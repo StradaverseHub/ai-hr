@@ -1553,6 +1553,39 @@ async function applyComparisonMovementTx(
       return t;
     };
 
+    // 3ced1040 — the flat org columns and the CONFIRMATION DATE share one leg, because they share one
+    // writer. Confirmation is a comparison kind now, and the date it sets rides on the same
+    // setEmploymentInfo call rather than a second one: two calls would be two `employment.info.updated`
+    // events for one movement, and the rollback would have to undo them in the right order to be correct.
+    // setEmploymentInfo re-derives finalConfirmationDate from it, which is what flips the derived
+    // Employee Status from Probation to Confirmed — there is no status column to write.
+    const infoLeg = async () => {
+      if (!flatChanged && !confirmationChanged) return;
+      await setEmploymentInfo(
+        ctx,
+        {
+          employmentId: p.employmentId,
+          ...flat,
+          ...(confirmationChanged ? { confirmationDate: dConfirmation } : {}),
+          movement: tag({ withRemarks: true }),
+        },
+        tx,
+      );
+    };
+
+    /**
+     * 3ced1040 — a CONFIRMATION runs its info leg FIRST, so that leg (and not whichever other one happens
+     * to come first) takes the primary tag and owns the history row.
+     *
+     * This is not cosmetic. The row's Effective Date is read off the PRIMARY event, and only this leg
+     * carries the confirmation date. `employment.grade.changed` is not effective-dated at all — the
+     * projection falls back to the day it was KEYED — so a confirmation that also moved job grade would
+     * put today's date on the very row that exists to record the confirmation date. Hoisting the leg
+     * that knows the date is the whole fix, and it is scoped to this kind: for every other comparison
+     * kind an info leg projects the keyed date too, so leading with it would move the same fault around.
+     */
+    if (confirmationChanged) await infoLeg();
+
     if (assignmentChanged) {
       // ONE assignment writer for every comparison kind, Transfer included. transferEmployee is NOT used
       // here even though Transfer is its historical path: it silently drops business_unit_id on the new
@@ -1583,24 +1616,8 @@ async function applyComparisonMovementTx(
       );
     }
 
-    // 3ced1040 — the flat org columns and the CONFIRMATION DATE share one leg, because they share one
-    // writer. Confirmation is a comparison kind now, and the date it sets rides on the same
-    // setEmploymentInfo call rather than a second one: two calls would be two `employment.info.updated`
-    // events for one movement, and the rollback would have to undo them in the right order to be correct.
-    // setEmploymentInfo re-derives finalConfirmationDate from it, which is what flips the derived
-    // Employee Status from Probation to Confirmed — there is no status column to write.
-    if (flatChanged || confirmationChanged) {
-      await setEmploymentInfo(
-        ctx,
-        {
-          employmentId: p.employmentId,
-          ...flat,
-          ...(confirmationChanged ? { confirmationDate: dConfirmation } : {}),
-          movement: tag({ withRemarks: true }),
-        },
-        tx,
-      );
-    }
+    // Every other kind keeps the info leg where it always was — after grade, before the reporting line.
+    if (!confirmationChanged) await infoLeg();
 
     // `dManager != null` rather than the equivalent `managerChanged` flag purely so TypeScript keeps the
     // narrowing to a non-null string through the call below (the flag is computed in movementDeltas, so
@@ -2795,6 +2812,8 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
       (!p.employmentType || p.employmentType === cur.employmentType) &&
       (p.basicSalary === undefined || Number(p.basicSalary) === Number(cur.basicSalary ?? NaN)) &&
       MOVEMENT_FLAT_FIELDS.every((f) => same(p[f], cur[f]));
+    // 3ced1040 — a Confirmation's own field, the confirmation date, needs no line here: it IS the
+    // effective date, so `datesUnchanged` already covers every way it can move.
     if (datesUnchanged && valuesUnchanged) throw new MovementNoChangeError();
 
     await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
@@ -2805,7 +2824,9 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
       // half-applied rollback must not commit behind a message about "no changes to record".
       if (e instanceof MovementNoChangeError) {
         throw new MovementNoChangeError(
-          'The corrected event would leave nothing changed — use Delete to roll the movement back instead.',
+          // bd89ccd8 — said "use Delete" until now. There has been no Delete since r88 (10fcf6df), so the
+          // one message that still named it was sending HR to look for a button that is not there.
+          'The corrected event would leave nothing changed — use Roll Back to undo the movement instead.',
         );
       }
       throw e;
