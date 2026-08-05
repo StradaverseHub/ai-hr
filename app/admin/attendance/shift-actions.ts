@@ -40,8 +40,6 @@ function shiftFields(formData: FormData) {
   const differential =
     DIFF_KINDS.includes(dk as (typeof DIFF_KINDS)[number]) && dv > 0 ? { kind: dk as (typeof DIFF_KINDS)[number], value: dv } : null;
   const overrideRaw = String(formData.get('normalMinutesOverride') ?? '').trim();
-  const lateGraceRaw = String(formData.get('lateGraceMinutes') ?? '').trim();
-  const earlyLeaveGraceRaw = String(formData.get('earlyLeaveGraceMinutes') ?? '').trim();
   // R17 3e8350db — per-shift "OT Rules". A checkbox posts otEligible='on' when TICKED; an unchecked box
   // posts nothing ⇒ ineligible. Optional min-block / daily-cap minutes. The service collapses a fully-default
   // rule (eligible, no min, no cap) back to null, so a shift that touched none of these stays legacy.
@@ -62,9 +60,11 @@ function shiftFields(formData: FormData) {
     breakMinutes: Number(formData.get('breakMinutes') ?? 0),
     breakPeriods: parseBreakPeriods(String(formData.get('breakPeriods') ?? '')),
     normalMinutesOverride: overrideRaw === '' ? null : Number(overrideRaw),
-    // R17 3e8350db — optional per-shift grace windows (blank ⇒ null ⇒ inherit company-policy behaviour).
-    lateGraceMinutes: lateGraceRaw === '' ? null : Number(lateGraceRaw),
-    earlyLeaveGraceMinutes: earlyLeaveGraceRaw === '' ? null : Number(earlyLeaveGraceRaw),
+    // 7c834696 rev 2 point 4 — lateGraceMinutes / earlyLeaveGraceMinutes are deliberately NOT listed here.
+    // The form dropped both inputs (grace belongs to the rule now), and this is a full-row overwrite path:
+    // posting a blank would write null and silently clear any stored per-shift override on every save.
+    // Omitting the keys leaves them undefined, which normalizeShiftInput/updateShift preserve — the same
+    // pattern otRule and ruleId already use for exactly this reason (88e94371).
     // 88e94371 — OT shaping moved to the attendance-rule library; the shift picks a rule via this dropdown.
     // Blank ⇒ null (fall back to the company Standard rule). otRule is intentionally NOT posted here, so the
     // service preserves any pre-existing per-shift OT-shape override untouched.

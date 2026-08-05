@@ -92,10 +92,12 @@ export type ShiftInput = {
    *  attendance_policy.working_days. Null/empty ⇒ no pattern; the shift cannot drive roster generation. */
   weeklyPattern?: number[] | null;
   /** R17 3e8350db — per-shift late grace (minutes): lateness is measured from shift-start + this. Null ⇒
-   *  inherit the company-policy grace (core/attendance.ts). */
+   *  inherit the company-policy grace (core/attendance.ts). UNDEFINED ⇒ leave the stored value unchanged
+   *  (7c834696 rev 2: the shift form dropped this input in favour of the rule's grace, so saving a shift
+   *  must not clear an override a caller never asked about). */
   lateGraceMinutes?: number | null;
   /** R17 3e8350db — per-shift early-leave grace (minutes): a checkout before shift-end − this is short.
-   *  Null ⇒ inherit the legacy shift-midpoint threshold. */
+   *  Null ⇒ inherit the legacy shift-midpoint threshold. UNDEFINED ⇒ leave unchanged, as above. */
   earlyLeaveGraceMinutes?: number | null;
   /** R17 3e8350db — the reporter's per-shift "OT Rules". Shapes WORKDAY OT accrual (eligibility / minimum
    *  block / daily cap); statutory multipliers stay company-level. Null ⇒ legacy behaviour. UNDEFINED ⇒
@@ -120,8 +122,10 @@ type NormalizedShift = {
   breakPeriods: BreakPeriod[] | null;
   normalMinutesOverride: number | null;
   weeklyPattern: number[] | null;
-  lateGraceMinutes: number | null;
-  earlyLeaveGraceMinutes: number | null;
+  // UNDEFINED ⇒ omit from the write (preserve stored value); null ⇒ explicitly clear. Same contract as
+  // otRule / ruleId below, for the same reason: the field's editor no longer lives on the shift form.
+  lateGraceMinutes: number | null | undefined;
+  earlyLeaveGraceMinutes: number | null | undefined;
   // 88e94371 — UNDEFINED ⇒ omit from the write (preserve stored value); null ⇒ explicitly clear.
   otRule: ShiftOtRule | null | undefined;
   ruleId: string | null | undefined;
@@ -193,11 +197,14 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     weeklyPattern = days;
   }
 
-  // R17 3e8350db — per-shift grace windows. Blank/absent ⇒ null (inherit the legacy behaviour); when
+  // R17 3e8350db — per-shift grace windows. Explicit null ⇒ clear (inherit the legacy behaviour); when
   // supplied they must be non-negative integers. No upper bound beyond the shift span is enforced (a grace
   // larger than the span simply means "never late" / "always short", which is a valid operational choice).
-  const grace = (v: number | null | undefined, label: string): number | null => {
-    if (v == null) return null;
+  // 7c834696 rev 2 — UNDEFINED is now distinct from null and PRESERVES the stored value: the shift form no
+  // longer offers these boxes, and a form that cannot show a field must not be able to erase it.
+  const grace = (v: number | null | undefined, label: string): number | null | undefined => {
+    if (v === undefined) return undefined;
+    if (v === null) return null;
     const g = Math.trunc(v);
     if (!Number.isFinite(g) || g < 0) throw new Error(`${label} must be a non-negative number of minutes`);
     return g;
@@ -278,8 +285,9 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
           normalMinutesOverride: n.normalMinutesOverride,
           weeklyPattern: n.weeklyPattern,
           crossesMidnight: n.crossesMidnight,
-          lateGraceMinutes: n.lateGraceMinutes,
-          earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
+          // A brand-new row has nothing to preserve, so undefined collapses to null here (unlike updateShift).
+          lateGraceMinutes: n.lateGraceMinutes ?? null,
+          earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes ?? null,
           otRule: n.otRule ?? null,
           ruleId: n.ruleId ?? null,
           differential: n.differential,
@@ -305,8 +313,8 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
         breakPeriods: n.breakPeriods,
         normalMinutesOverride: n.normalMinutesOverride,
         weeklyPattern: n.weeklyPattern,
-        lateGraceMinutes: n.lateGraceMinutes,
-        earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
+        lateGraceMinutes: n.lateGraceMinutes ?? null,
+        earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes ?? null,
         otRule: n.otRule ?? null,
         ruleId: n.ruleId ?? null,
         hasDifferential: !!n.differential,
@@ -337,10 +345,10 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
           normalMinutesOverride: n.normalMinutesOverride,
           weeklyPattern: n.weeklyPattern,
           crossesMidnight: n.crossesMidnight,
-          lateGraceMinutes: n.lateGraceMinutes,
-          earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
-          // 88e94371 — omit when undefined so a form that no longer carries these fields preserves the stored
-          // value (drizzle skips undefined keys in .set).
+          // 88e94371 + 7c834696 rev 2 — omit when undefined so a form that no longer carries these fields
+          // preserves the stored value (drizzle skips undefined keys in .set).
+          ...(n.lateGraceMinutes === undefined ? {} : { lateGraceMinutes: n.lateGraceMinutes }),
+          ...(n.earlyLeaveGraceMinutes === undefined ? {} : { earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes }),
           ...(n.otRule === undefined ? {} : { otRule: n.otRule }),
           ...(n.ruleId === undefined ? {} : { ruleId: n.ruleId }),
           differential: n.differential,
@@ -366,8 +374,8 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
         breakPeriods: n.breakPeriods,
         normalMinutesOverride: n.normalMinutesOverride,
         weeklyPattern: n.weeklyPattern,
-        lateGraceMinutes: n.lateGraceMinutes,
-        earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
+        ...(n.lateGraceMinutes === undefined ? {} : { lateGraceMinutes: n.lateGraceMinutes }),
+        ...(n.earlyLeaveGraceMinutes === undefined ? {} : { earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes }),
         ...(n.otRule === undefined ? {} : { otRule: n.otRule }),
         ...(n.ruleId === undefined ? {} : { ruleId: n.ruleId }),
         hasDifferential: !!n.differential,
