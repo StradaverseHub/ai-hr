@@ -51,9 +51,12 @@
 #   AIHR_RAMDISK_GB=0 ./scripts/dev-db-rebuild.sh   rebuild ON DISK (the old behaviour)
 #   AIHR_RAMDISK_GB=8 ./scripts/dev-db-rebuild.sh   a bigger RAM disk
 #
-# SIZING: 5 GB by default on an 18 GB machine. Steady state is ~1 GB of worker databases plus WAL that
-# now stays near max_wal_size (1 GB), so 5 GB is roughly 2x headroom. If Postgres ever PANICs with "No
-# space left on device", raise AIHR_RAMDISK_GB rather than moving back to disk.
+# SIZING: 8 GB by default on an 18 GB machine. A 5 GB volume was tried first and FILLED — the RAM disk
+# makes unlinks free but does not reduce how much WAL the suite GENERATES, and the old 1GB/5min
+# checkpoint settings let it accumulate faster than it was retired. The checkpoint settings below now
+# bound it, so expect ~1-2 GB in use and treat the rest as headroom. If Postgres ever dies with "No
+# space left on device", raise AIHR_RAMDISK_GB rather than moving back to disk — on disk this workload
+# is far worse, not better.
 set -uo pipefail
 
 PG16="${PG16:-/opt/homebrew/opt/postgresql@16/bin}"   # keg-only: PG14 shadows psql/initdb on PATH
@@ -68,7 +71,7 @@ sleep 1
 pkill -f "postgres.*$(basename "$DATA")" 2>/dev/null
 sleep 1
 
-RAMDISK_GB="${AIHR_RAMDISK_GB:-5}"
+RAMDISK_GB="${AIHR_RAMDISK_GB:-8}"
 MOUNT="${DATA}-ram"          # the RAM disk itself
 REAL="$MOUNT/data"           # PGDATA lives one level DOWN — see below
 is_mounted() { mount | grep -q " on $MOUNT "; }
@@ -124,14 +127,22 @@ full_page_writes = off
 wal_level = minimal
 max_wal_senders = 0
 
-# SMALLER, NOT BIGGER. Raising max_wal_size to "relieve" the checkpoint is backwards — it lets more
-# dirty data accumulate, so the FORCED checkpoint has more to flush. It also let WAL reach 5GB, at
-# which point resetDb()'s ~100-table TRUNCATE started losing lock races and produced 32 false test
-# failures across files unrelated to the change under test.
-max_wal_size = 1GB
-min_wal_size = 256MB
-checkpoint_timeout = 5min
-checkpoint_completion_target = 0.9
+# CHECKPOINT OFTEN AND CHEAPLY. This is the tuning the RAM disk makes possible, and it is the opposite
+# of what you would do on a real disk.
+#
+# max_wal_size is a SOFT trigger: it asks for a checkpoint, but WAL keeps growing until that checkpoint
+# COMPLETES, and no segment can be retired before the last checkpoint's redo point. At 1GB / 5min this
+# workload — 10 workers, a ~100-table TRUNCATE per test file — outran retirement and WAL climbed to
+# 10.7GB on disk, and filled a 5GB RAM disk outright (the cluster then crashed and could not replay,
+# because there was no room to replay INTO). Both are the same failure at different speeds.
+#
+# On RAM a checkpoint costs ~2.6s of writes and effectively nothing to unlink, so taking one every
+# minute is cheap and bounds WAL at roughly a minute's worth. Steady state lands near 1GB against the
+# 8GB volume, which is why the volume is headroom rather than a working size.
+max_wal_size = 512MB
+min_wal_size = 128MB
+checkpoint_timeout = 1min
+checkpoint_completion_target = 0.5
 
 shared_buffers = 512MB
 CONF
