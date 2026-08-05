@@ -280,36 +280,32 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     ).not.toMatch(/!moduleOn\s*\?\s*null\s*:/);
     const formEnd = cfg.indexOf('</form>', formAt);
     const form = cfg.slice(formAt, formEnd);
-    // Every named control in the form is disabled without the module — asserted PER CONTROL, by name.
+    // ⚠️ 1cf5b37c INVERTED THIS ASSERTION, and the inversion IS the item — read before restoring it.
     //
-    // This used to be arithmetic: `disabled === controls - 1`, with the -1 explained as "the hidden
-    // companyId input" (review r2). That encodes "there is exactly one hidden field", so adding a second
-    // one — or rendering a control through a component instead of a raw tag — fails the test for a reason
-    // that has nothing to do with the entitlement gate. A guard that cries wolf is a guard people
-    // weaken, which this same file argues against two assertions up. Naming the exemptions says the
-    // actual rule, and a new ungated field now fails with a message naming the field.
-    const EXEMPT_CONTROLS = new Set([
-      'companyId', // hidden, carries the row identity — not something the user edits
-    ]);
-    // No `s` flag needed (and tsconfig's target forbids it): `[^>]` is a negated class, so it already
-    // crosses newlines — which multi-line JSX controls like `allowFirstScheduleEligible` require.
+    // It used to require every named control to carry `disabled={!moduleOn}` and the submit to render only
+    // with the module on. That gate is exactly what made Leave Config → Replacement Leave look like an
+    // unfinished placeholder to the reporter: a complete editor with every control dead and no Save.
+    // `toil` is absent from tenant_module on production, so that is what they actually saw. The owner
+    // approved letting the screen be configured ahead of purchase.
+    //
+    // WHAT REPLACES IT IS A STRONGER STATEMENT, not a weaker one. The old assertion protected against a
+    // tenant configuring a module it had not bought — a commercial worry. The real hazard was always that
+    // it might ACCRUE something, and that is now asserted directly in test/toil.test.ts: an unentitled
+    // tenant with an ENABLED policy row still has accrueToil refuse. So this file checks the two facts
+    // that remain its business: the form is reachable and editable, and the sweeps are still not here.
     const tags = [...form.matchAll(/<(?:input|select)\b[^>]*>/g)].map((m) => m[0]);
     expect(tags.length, 'the policy form must still have controls').toBeGreaterThan(5);
-    let gated = 0;
     for (const tag of tags) {
       const name = /name="([^"]+)"/.exec(tag)?.[1];
       expect(name, `a control in the policy form has no name= attribute: ${tag.slice(0, 60)}`).toBeDefined();
-      if (EXEMPT_CONTROLS.has(name!)) continue;
-      gated += 1;
       expect(
-        tag.includes('disabled={!moduleOn}'),
-        `the '${name}' control in the TOIL policy form is not disabled without the module. Every field ` +
-          'here is frozen onto each accrual at accrual time, so an unentitled tenant editing it is ' +
-          'configuring a module it has not bought.',
-      ).toBe(true);
+        tag.includes('disabled={!'),
+        `the '${name}' control is still entitlement-disabled. 1cf5b37c removed that gate so the screen ` +
+          'stops reading as an unfinished placeholder; what keeps it safe is that accrual refuses ' +
+          'without the module (test/toil.test.ts), not that the form is dead.',
+      ).toBe(false);
     }
-    expect(gated, 'the control scan found no editable fields — the regex has drifted').toBeGreaterThan(4);
-    expect(form, 'and the submit must not be offered at all').toContain('{moduleOn && <button');
+    expect(form, 'and the submit is always offered now').not.toContain('{moduleOn && <button');
     // The form used to have to sit ABOVE the settlement card so gating it could not drag the sweeps with
     // it. 296fc027 makes that structurally impossible instead of positionally: they are different files,
     // asserted above. The stronger statement is that this page has no policy form left at all.

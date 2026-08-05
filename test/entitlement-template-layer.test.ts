@@ -22,7 +22,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee, setEmploymentAssignment } from '../core/org';
-import { createLeaveType, deleteLeaveType, InUseError } from '../core/admin';
+import { createLeaveType, deleteLeaveType } from '../core/admin';
 import {
   beatsEligibility,
   createEligibilityRule,
@@ -38,7 +38,10 @@ import {
 } from '../core/entitlement-template';
 import { isWellFormedBands, MAX_SERVICE_BANDS, type ServiceBand } from '../core/leave-compute';
 import { withTenant } from '../db/client';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+// 4fdb69b2 — the cascade/refusal assertions read the rows back as the owner, outside RLS.
+import * as schema from '../db/schema';
+import { eq } from 'drizzle-orm';
 
 let b: Base;
 const uniqEmail = () => `tmpl_${randomUUID().slice(0, 8)}@t.local`;
@@ -434,23 +437,75 @@ describe('the tie-break, and what a past-date answer cannot reconstruct', () => 
   });
 });
 
-describe('deleteLeaveType keeps refusing a configured type after leave_policy is gone', () => {
-  it('a leave type carrying an entitlement template cannot be deleted', async () => {
+describe('deleteLeaveType and the entitlement layer, after 4fdb69b2 made the delete CASCADE', () => {
+  /**
+   * ⚠️ THIS TEST WAS INVERTED BY 1ae7f3ab + 4fdb69b2, and the inversion is deliberate — read this before
+   * "restoring" it.
+   *
+   * As written for 6e9a126e it asserted that an entitlement template BLOCKS the delete. The concern behind
+   * it was real and is quoted in the original comment: a delete that takes live entitlement configuration
+   * with it would orphan the ledger rows granted under it.
+   *
+   * 4fdb69b2 is the reporter's answer to that, approved after they were told the alternative: they asked
+   * for the configuration to be cleared automatically rather than by hand ("please automatically remove
+   * all approval workflow references, balance source mappings, entitlement mappings, and any other backend
+   * dependencies"). So an entitlement template is CONFIG and is now cascaded.
+   *
+   * THE ORIGINAL CONCERN IS STILL HONOURED, by a stronger rule than the one it asked for: the orphaned-
+   * ledger case cannot arise, because leave_ledger and leave_request are HISTORY and refuse the delete
+   * outright. You can only delete a configured type that nobody has ever taken leave under. Both halves
+   * are asserted below, so weakening either one fails here.
+   */
+  it('cascades the entitlement template when the type has no leave history', async () => {
     const ctx = adminCtx(b);
     const lt = await createLeaveType(ctx, { code: `SPECIAL${randomUUID().slice(0, 4)}`, name: 'Special leave' });
-    // Deletable while nothing references it…
     const spare = await createLeaveType(ctx, { code: `SPARE${randomUUID().slice(0, 4)}`, name: 'Spare' });
     await deleteLeaveType(ctx, { id: spare.id });
 
-    await createEntitlementTemplate(ctx, {
+    const tpl = await createEntitlementTemplate(ctx, {
       leaveTypeId: lt.id,
       name: 'Special table',
       serviceBands: flat(3),
       validFrom: '2026-01-01',
     });
-    // …and refused once it carries configuration. WATCHED FAIL: without the new limbs this deletes
-    // cleanly the day leave_policy is dropped, taking the configuration with it and orphaning any ledger
-    // rows granted under it.
-    await expect(deleteLeaveType(ctx, { id: lt.id })).rejects.toBeInstanceOf(InUseError);
+    expect(tpl.id, 'the template really exists before the delete').toBeTruthy();
+
+    await deleteLeaveType(ctx, { id: lt.id });
+
+    const templates = await owner.db
+      .select({ id: schema.entitlementTemplate.id })
+      .from(schema.entitlementTemplate)
+      .where(eq(schema.entitlementTemplate.leaveTypeId, lt.id));
+    expect(templates, 'the template goes with the type — that is the cascade').toHaveLength(0);
+  });
+
+  it('REFUSES when the type carries leave history, so no ledger row is ever orphaned', async () => {
+    // This is the half that replaces the old assertion, and it is the one that actually protects the
+    // ledger. A configured type that somebody has taken leave under cannot be deleted at all.
+    const ctx = adminCtx(b);
+    const lt = await createLeaveType(ctx, { code: `USED${randomUUID().slice(0, 4)}`, name: 'Used leave' });
+    await createEntitlementTemplate(ctx, {
+      leaveTypeId: lt.id,
+      name: 'Used table',
+      serviceBands: flat(3),
+      validFrom: '2026-01-01',
+    });
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId,
+      employmentId: (await hire({ hiredOn: '2026-01-01' })).employmentId,
+      leaveTypeId: lt.id,
+      entryType: 'adjustment',
+      days: '1.00',
+      effectiveOn: '2026-01-05',
+      reason: 'orphan guard',
+    });
+
+    await expect(deleteLeaveType(ctx, { id: lt.id })).rejects.toThrow(/leave_ledger/);
+
+    const still = await owner.db
+      .select({ id: schema.entitlementTemplate.id })
+      .from(schema.entitlementTemplate)
+      .where(eq(schema.entitlementTemplate.leaveTypeId, lt.id));
+    expect(still, 'a refused delete cascades nothing').toHaveLength(1);
   });
 });

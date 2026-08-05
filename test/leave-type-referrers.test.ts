@@ -124,6 +124,34 @@ describe('the declared referrer set matches the live schema', () => {
     }
   });
 
+  it('nothing references the tables the cascade deletes, so it needs no second level', () => {
+    // The cascade removes config rows and then the leave type. If any of those config tables were
+    // themselves referenced by something else, the delete would abort on a nested foreign-key violation —
+    // which is the SAME raw 23503 at the admin that these two items exist to remove, just one level down.
+    // Verified against the live schema rather than assumed, and pinned here so a future table that hangs
+    // off (say) leave_policy has to be dealt with deliberately.
+    const cascaded = configReferrers()
+      .filter((r) => !r.viaTemplateLineage)
+      .map((r) => r.table);
+    return owner.db
+      .execute(sql`
+        select ccu.table_name as referenced, tc.table_name as referrer
+        from information_schema.table_constraints tc
+        join information_schema.key_column_usage kcu on kcu.constraint_name = tc.constraint_name
+        join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name
+        where tc.constraint_type = 'FOREIGN KEY' and tc.table_name <> ccu.table_name
+      `)
+      .then((rows) => {
+        const offenders = (rows as unknown as { referenced: string; referrer: string }[]).filter(
+          (r) => cascaded.includes(r.referenced) && !cascaded.includes(r.referrer),
+        );
+        expect(
+          offenders.map((o) => `${o.referrer} -> ${o.referenced}`),
+          'a table now references one the cascade deletes; deleting it would raise a nested FK error',
+        ).toEqual([]);
+      });
+  });
+
   it('never cascades a table that holds leave people took', () => {
     const cascaded = configReferrers().map((r) => r.table);
     for (const historyTable of ['leave_request', 'leave_ledger', 'leave_encashment_snapshot']) {
