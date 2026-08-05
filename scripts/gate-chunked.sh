@@ -35,8 +35,13 @@ echo "▸ tree: $(pwd)  branch: $(git branch --show-current)"
 # macOS ships bash 3.2, which has no `mapfile` and no associative arrays. Read the list the portable
 # way rather than assuming a modern bash — the script otherwise dies with "mapfile: command not found"
 # only once someone actually runs it.
+# BOTH vitest projects, or this "full suite" is not one: node runs test/**/*.test.ts and dom runs
+# test/**/*.dom.test.tsx. Globbing only the first silently dropped five files. The browser project
+# (*.browser.test.tsx) is deliberately outside `pnpm vitest run` and stays out here too.
 ALL=()
-while IFS= read -r f; do ALL+=("$f"); done < <(ls test/*.test.ts | sort)
+while IFS= read -r f; do ALL+=("$f"); done < <(
+  { find test -name '*.test.ts'; find test -name '*.dom.test.tsx'; } | sort
+)
 TOTAL=${#ALL[@]}
 echo "▸ $TOTAL test files across $CHUNKS chunks"
 
@@ -59,6 +64,13 @@ for ((c = 0; c < CHUNKS; c++)); do
   pnpm vitest run "${FILES[@]}" > "$LOG" 2>&1
   RC=$?
   LINE=$(grep -E "^ *Test Files" "$LOG" | tail -1)
+  # (N) at the end of the Test Files line is the number vitest actually counted.
+  COUNTED=$(echo "$LINE" | grep -oE '\([0-9]+\)$' | tr -d '()')
+  if [ -n "$COUNTED" ] && [ "$COUNTED" != "${#FILES[@]}" ]; then
+    echo "  ⚠️  ASKED FOR ${#FILES[@]} FILES, VITEST COUNTED $COUNTED — a file that fails to spawn is"
+    echo "      not counted at all, so this is a RED gate however the pass/fail numbers read."
+    RC=1
+  fi
   TESTS=$(grep -E "^ *Tests " "$LOG" | tail -1)
   DUR=$(grep -E "^ *Duration" "$LOG" | tail -1)
   DISK=$(df -P /opt/homebrew/var/aihr-pg16-ram 2>/dev/null | awk 'NR==2{print $5}')
