@@ -51,12 +51,11 @@
 #   AIHR_RAMDISK_GB=0 ./scripts/dev-db-rebuild.sh   rebuild ON DISK (the old behaviour)
 #   AIHR_RAMDISK_GB=8 ./scripts/dev-db-rebuild.sh   a bigger RAM disk
 #
-# SIZING: 8 GB by default on an 18 GB machine. A 5 GB volume was tried first and FILLED — the RAM disk
-# makes unlinks free but does not reduce how much WAL the suite GENERATES, and the old 1GB/5min
-# checkpoint settings let it accumulate faster than it was retired. The checkpoint settings below now
-# bound it, so expect ~1-2 GB in use and treat the rest as headroom. If Postgres ever dies with "No
-# space left on device", raise AIHR_RAMDISK_GB rather than moving back to disk — on disk this workload
-# is far worse, not better.
+# SIZING: 8 GB by default on an 18 GB machine. Steady state is min_wal_size (3 GB) of recycled segments
+# plus ~0.4 GB of worker databases, so about 3.5 GB in use and the rest is headroom. Two smaller volumes
+# were tried and FILLED (5 GB, then 8 GB) before the real cause was found — see min_wal_size below; the
+# volume size was never the fix. If Postgres dies with "No space left on device", check that checkpoints
+# report "recycled" rather than "removed" BEFORE reaching for a bigger volume.
 set -uo pipefail
 
 PG16="${PG16:-/opt/homebrew/opt/postgresql@16/bin}"   # keg-only: PG14 shadows psql/initdb on PATH
@@ -127,20 +126,27 @@ full_page_writes = off
 wal_level = minimal
 max_wal_senders = 0
 
-# CHECKPOINT OFTEN AND CHEAPLY. This is the tuning the RAM disk makes possible, and it is the opposite
-# of what you would do on a real disk.
+# ⚠️ min_wal_size IS THE SETTING THAT MATTERED ALL ALONG. RAISE IT. DO NOT SHRINK IT.
 #
-# max_wal_size is a SOFT trigger: it asks for a checkpoint, but WAL keeps growing until that checkpoint
-# COMPLETES, and no segment can be retired before the last checkpoint's redo point. At 1GB / 5min this
-# workload — 10 workers, a ~100-table TRUNCATE per test file — outran retirement and WAL climbed to
-# 10.7GB on disk, and filled a 5GB RAM disk outright (the cluster then crashed and could not replay,
-# because there was no room to replay INTO). Both are the same failure at different speeds.
+# Every checkpoint in this cluster's history reported "N removed, 0 recycled". `removed` means the
+# segment was UNLINKED; `recycled` means it was renamed and reused. PostgreSQL keeps segments for reuse
+# only up to min_wal_size and unlinks everything beyond it — so min_wal_size = 128MB guaranteed that this
+# workload unlinked essentially every segment it produced, thousands of them per run.
 #
-# On RAM a checkpoint costs ~2.6s of writes and effectively nothing to unlink, so taking one every
-# minute is cheap and bounds WAL at roughly a minute's worth. Steady state lands near 1GB against the
-# 8GB volume, which is why the volume is headroom rather than a working size.
-max_wal_size = 512MB
-min_wal_size = 128MB
+# That single fact explains the entire saga:
+#   • checkpoint `total` tracked segments removed (~8s each on disk, ~0.7s each on a RAM disk) while
+#     `write` stayed flat at ~3s and `sync` was ~0;
+#   • slow checkpoints could not finish inside checkpoint_timeout, so WAL grew, so there was more to
+#     unlink next time — 10.7GB on disk, and a filled 5GB then 8GB RAM disk;
+#   • and the older advice in this repo to make max_wal_size/min_wal_size SMALLER made it strictly worse,
+#     because a smaller min_wal_size unlinks more. The 4GB experiment that "made it worse" was misread:
+#     WAL grew because checkpoints were slow, not because the setting was large.
+#
+# So: keep a large pool of segments in rotation. Recycling is a rename — no create, no unlink, and
+# nothing for an on-access scanner to inspect. Expect "0 removed, N recycled" and a WAL directory that
+# sits at a stable size instead of thrashing.
+min_wal_size = 3GB
+max_wal_size = 1GB
 checkpoint_timeout = 1min
 checkpoint_completion_target = 0.5
 
