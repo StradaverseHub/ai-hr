@@ -34,10 +34,11 @@ migration `0403` included.** No board query or branch scan would have found it �
 against the box did. **Run that first, every round** (recipe under "Before planning ANYTHING"); the
 full lesson is the first trap below.
 
-### The board — counted on production 2026-08-05 after r159 (owner role; `DATABASE_URL` is RLS-blocked)
+### The board — counted on production 2026-08-05 after the r160 planning pass (owner role; `DATABASE_URL` is RLS-blocked)
 
-**`deployed = 585` · `approved = 5` · `contested = 2` · `open = 2` · `building = 2` · `cancelled = 12`.
-`planned` is now ZERO** — every plan pushed on 2026-08-05 has been answered.
+**`deployed = 585` · `approved = 5` · `planned = 6` · `building = 2` · `cancelled = 12`.
+`open` and `contested` are now ZERO** — every plannable item carries a fresh plan awaiting the
+reporter. The board moves under this file between rounds; re-count rather than trusting this line.
 
 **THE 5 APPROVED AND UNBUILT** — nothing else is built and waiting:
 - `1ae7f3ab` + `4fdb69b2` — **BUILD THESE AS ONE CHANGE.** Same defect from two directions; see the
@@ -45,9 +46,32 @@ full lesson is the first trap below.
 - `1cf5b37c` (Replacement Leave config) · `fef49b9a` (paid/unpaid split, DISPLAY only)
 - `2ef69d1e` (Back Pay — the largest thing left, must go LAST)
 
-**`open = 2` and `contested = 2` are NEW since the last snapshot and have not been looked at.** The
-previous snapshot's "nothing is open and nothing is contested" no longer holds — the board moves
-under this file between rounds, so re-count rather than trusting the line above.
+**THE 6 PLANNED, AWAITING APPROVAL** (pushed 2026-08-05; every premise reproduced in source AND
+measured on production first — the measurements are IN the plans, quote them rather than re-running):
+- `0bb0e303` rev 2 — My Attendance needs a third row, Attendance Request. Rows 1 and 2 already ship;
+  the request forms live inside `app/me/page.tsx:287-406` and move to a new `/attendance/requests`.
+- `7c834696` rev 2 — the reporter's four amendments to shipped stage 1. Points 1/2/4 are cheap;
+  point 3 (the calculation breakdown) is the only engine work. **Point 4 is a trap: "Difference /
+  Value (RM/%)" is NOT a calculation setting** — it is `shift.differential`, the premium
+  `core/payroll.ts:1968` prefills, live on 2 of 9 shifts. Late/early grace ARE free to remove
+  (0 shifts carry either). All 9 rules still have deductions OFF, which is most of why the reporter
+  says the settings do nothing.
+- `35524d1f` — Create Employee refuses a blank Identity No when any statutory field is filled.
+  Fix at `setStatutoryProfileMY` (`localization/my/statutory.ts:236`), mirroring `setIcProfileMY`.
+  **No migration: `ic_number` is already nullable and its unique index is already partial.** Same
+  fault also blocks the Personnel EPF/SOCSO save for an IC-less employee (wider than reported).
+- `a00c4f64` — Team Leave Tracker. The calendar is the dashboard's FIXED full-width row and is
+  `mandatory` in `dashboard_card_config` for both tenants; moving it needs a data migration for those
+  two rows plus `FIXED_ROW_KEYS`/`CARD_META.teamAwayToday.href`. Saved user layouts need none —
+  `normalizeDashboardLayout` filters unknown keys.
+- `3ced1040` — Confirmation becomes a COMPARISON kind (like Promotion) with a confirmation-date leg.
+  `movement_event_type` has ZERO rows, so no tenant override to consider. Watch `MovementNoChangeError`
+  (a confirmation with no salary change must still save) and the reversal path.
+- `bd89ccd8` (raised 2026-08-05 19:59, after that day's pull) — asks for Delete on movement events.
+  **ALREADY BUILT as Roll Back + Edit, and a hard delete was settled AGAINST (`9064cffb` option a,
+  Delete renamed by `10fcf6df` in r88). Do not re-add it.** Roll Back on a PENDING movement already
+  cancels it outright. The real gaps: the reason is optional (**10 of 11 rollbacks on production
+  recorded none**) and a pending row wears the same wording as a live one.
 
 **STILL `building`, both deliberately partial. `improve:pull` HIDES `building`, so nothing but this
 file will ever surface them — both now carry a `build_ref` describing exactly what shipped and what
@@ -742,10 +766,13 @@ method or carry-forward is WRONG.**
 
 ---
 
-**Nothing is in flight.** r159 shipped and is verified on production. When a round is built but
-unshipped, its entry goes HERE and CURRENT STATE says so; on ship it moves to the top of
-`docs/HANDOFF-HISTORY.md`. **"Nothing in flight" is a claim about BRANCHES — it is not a claim that
-`main` has been deployed. Prove that separately with the dry-run rsync above; r159 exists because
-those two were conflated.**
+**Nothing is in flight.** r159 shipped and is verified on production; the 2026-08-05 planning pass
+after it wrote NO code — it pushed six plans and this snapshot, nothing more. Both pre-planning checks
+were run first and both were clean: the dry-run rsync reported ZERO changes (production matches
+`main`), and the only unmerged `build/*` branches are the three known-stale ones (`r71`, `r83`, and
+`r154`, which is squashed and ancestrally unrelated). When a round is built but unshipped, its entry
+goes HERE and CURRENT STATE says so; on ship it moves to the top of `docs/HANDOFF-HISTORY.md`.
+**"Nothing in flight" is a claim about BRANCHES — it is not a claim that `main` has been deployed.
+Prove that separately with the dry-run rsync above; r159 exists because those two were conflated.**
 
 **Shipped round entries (r66–r159): `docs/HANDOFF-HISTORY.md`.**
