@@ -159,7 +159,8 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
 describe('sidebar Attendance group — Clock in/out and Records are the staff node (5249d43f)', () => {
   // Clock in/out and Records were the staff node from 0bb0e303; rev2 moved Records into the merged menu;
   // rev3 moved that menu behind the group-level admin gate and so sent Records back. Clock in/out never
-  // moved at all. "Clock first" is measured here, and is again "first of two".
+  // moved at all. "Clock first" is measured here — and since 0bb0e303 rev2 it is first of THREE, not two:
+  // Attendance Request joined them (declared in its own `it` below).
   const node = nodeBlock('MY_ATTENDANCE_NAV');
 
   it('keeps Clock in/out first, with Records beside it and neither in the config node', () => {
@@ -189,6 +190,30 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
       fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8'),
     ) as { nav: Record<string, string> };
     expect(en.nav.attendanceClock).toBe('Clock in/out');
+  });
+
+  // 0bb0e303 rev2 — the third staff row. DECLARED here rather than letting the assertions above simply
+  // tolerate it: this guard's whole value is that the membership of the self-service node is written
+  // down, so a row that arrives without a line here is still a failure.
+  it('carries Attendance Request THIRD, ungated, exactly once across the rail', () => {
+    const clockIdx = node.indexOf(`'/attendance/clock'`);
+    const recordsIdx = node.indexOf(`{ href: '/attendance',`);
+    const requestsIdx = node.indexOf(`'/attendance/requests'`);
+    expect(requestsIdx, 'Attendance Request is a child of My Attendance').toBeGreaterThan(-1);
+    expect(clockIdx, 'Clock in/out still precedes it').toBeLessThan(requestsIdx);
+    expect(recordsIdx, 'Records still precedes it').toBeLessThan(requestsIdx);
+
+    // NOT in the config node: that node sits in the group-gated Administration section, where a
+    // self-service row renders for administrators and nobody else — which for a request form staff are
+    // meant to file themselves would be a silent removal, not a menu tidy-up.
+    expect(nodeBlock('ATTENDANCE_NAV').indexOf(`'/attendance/requests'`), 'not in the config node').toBe(-1);
+
+    const line = node.split('\n').find((l) => l.includes(`'/attendance/requests'`));
+    expect(line, 'Attendance Request row exists').toBeDefined();
+    expect(line, 'Attendance Request carries no visibility gate').not.toMatch(/adminOnly|managerUp/);
+    expect(line, 'labelled by the new nav key').toContain(`labelKey: 'attendanceRequest'`);
+
+    expect(countQuoted(SRC, '/attendance/requests')).toBe(1);
   });
 });
 

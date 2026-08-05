@@ -142,6 +142,7 @@
     "attendanceAllowance": "வருகை கொடுப்பனவு",
     "attendanceClock": "உள்/வெளி பதிவு",
     "attendanceRecords": "பதிவுகள்",
+    "attendanceRequest": "வருகைக் கோரிக்கை",
     "clockingLocation": "நேரப் பதிவு இடம்",
     "attendanceImport": "இறக்குமதி",
     "mobilePreview": "மொபைல் ஆப் முன்னோட்டம்",
@@ -2256,6 +2257,7 @@
     "travelRemarksPlaceholder": "நீங்கள் எங்கு, ஏன் வெளியில் இருந்தீர்கள்",
     "requestTravelButton": "பயண கோரிக்கையை சமர்ப்பிக்கவும்",
     "attendanceRequest": "வருகைக் கோரிக்கை",
+    "requestsDescription": "வருகைத் திருத்தம், கூடுதல் நேரம் அல்லது பயணக் கோரிக்கையைச் சமர்ப்பிக்கவும். ஒவ்வொன்றும் உங்கள் அனுமதியாளரிடம் செல்லும்.",
     "overtimeRequest": "கூடுதல் நேரக் கோரிக்கை",
     "travelRequest": "பயணக் கோரிக்கை",
     "requestOvertime": "கூடுதல் நேரக் கோரிக்கையைச் சமர்ப்பிக்கவும்",
@@ -2276,6 +2278,7 @@
     "emergencyAddressLabel": "அவசரத் தொடர்பு முகவரி",
     "tabsEmpty": "இங்கே காட்ட எதுவும் இல்லை.",
     "viewAttendanceHistory": "எனது முழு வருகைப் பதிவைப் பார்க்கவும்",
+    "fileAttendanceRequest": "வருகை, கூடுதல் நேரம் அல்லது பயணக் கோரிக்கையைச் சமர்ப்பிக்கவும்",
     "dateBreakdown": {
       "title": "தேதி விவரத்தைக் காண்க",
       "approved": "அங்கீகரிக்கப்பட்டது",

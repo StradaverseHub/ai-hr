@@ -142,6 +142,7 @@
     "attendanceAllowance": "出勤津贴",
     "attendanceClock": "上下班打卡",
     "attendanceRecords": "记录",
+    "attendanceRequest": "考勤申请",
     "clockingLocation": "打卡地点",
     "attendanceImport": "导入",
     "mobilePreview": "移动应用预览",
@@ -2256,6 +2257,7 @@
     "travelRemarksPlaceholder": "外勤地点及原因",
     "requestTravelButton": "提交出差申请",
     "attendanceRequest": "考勤申请",
+    "requestsDescription": "提交考勤更正、加班或出差申请。每项申请都会送交您的审批人。",
     "overtimeRequest": "加班申请",
     "travelRequest": "出差申请",
     "requestOvertime": "提交加班申请",
@@ -2276,6 +2278,7 @@
     "emergencyAddressLabel": "紧急联系人地址",
     "tabsEmpty": "这里暂无内容。",
     "viewAttendanceHistory": "查看我的完整考勤记录",
+    "fileAttendanceRequest": "提交考勤、加班或出差申请",
     "dateBreakdown": {
       "title": "查看日期明细",
       "approved": "已批准",

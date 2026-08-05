@@ -142,6 +142,7 @@
     "attendanceAllowance": "Phụ cấp chuyên cần",
     "attendanceClock": "Chấm công vào/ra",
     "attendanceRecords": "Hồ sơ",
+    "attendanceRequest": "Yêu cầu chấm công",
     "clockingLocation": "Địa điểm chấm công",
     "attendanceImport": "Nhập",
     "mobilePreview": "Xem trước ứng dụng di động",
@@ -2256,6 +2257,7 @@
     "travelRemarksPlaceholder": "Nơi và lý do bạn làm việc bên ngoài",
     "requestTravelButton": "Gửi yêu cầu công tác",
     "attendanceRequest": "Yêu cầu chấm công",
+    "requestsDescription": "Gửi yêu cầu điều chỉnh chấm công, tăng ca hoặc công tác. Mỗi yêu cầu sẽ được chuyển đến người phê duyệt của bạn.",
     "overtimeRequest": "Yêu cầu tăng ca",
     "travelRequest": "Yêu cầu công tác",
     "requestOvertime": "Gửi yêu cầu tăng ca",
@@ -2276,6 +2278,7 @@
     "emergencyAddressLabel": "Địa chỉ liên hệ khẩn cấp",
     "tabsEmpty": "Không có gì để hiển thị.",
     "viewAttendanceHistory": "Xem toàn bộ lịch sử chấm công của tôi",
+    "fileAttendanceRequest": "Gửi yêu cầu chấm công, tăng ca hoặc công tác",
     "dateBreakdown": {
       "title": "Xem chi tiết theo ngày",
       "approved": "Đã duyệt",

@@ -142,6 +142,7 @@
     "attendanceAllowance": "เบี้ยขยันการเข้างาน",
     "attendanceClock": "ลงเวลาเข้า-ออก",
     "attendanceRecords": "บันทึก",
+    "attendanceRequest": "คำขอเวลาทำงาน",
     "clockingLocation": "สถานที่ลงเวลา",
     "attendanceImport": "นำเข้า",
     "mobilePreview": "ตัวอย่างแอปมือถือ",
@@ -2256,6 +2257,7 @@
     "travelRemarksPlaceholder": "สถานที่และเหตุผลที่คุณทำงานนอกสถานที่",
     "requestTravelButton": "ส่งคำขอเดินทาง",
     "attendanceRequest": "คำขอเวลาทำงาน",
+    "requestsDescription": "ยื่นคำขอแก้ไขเวลาทำงาน คำขอทำงานล่วงเวลา หรือคำขอเดินทาง แต่ละคำขอจะส่งไปยังผู้อนุมัติของคุณ",
     "overtimeRequest": "คำขอทำงานล่วงเวลา",
     "travelRequest": "คำขอเดินทาง",
     "requestOvertime": "ส่งคำขอทำงานล่วงเวลา",
@@ -2276,6 +2278,7 @@
     "emergencyAddressLabel": "ที่อยู่ผู้ติดต่อฉุกเฉิน",
     "tabsEmpty": "ไม่มีข้อมูลที่จะแสดง",
     "viewAttendanceHistory": "ดูประวัติการเข้างานทั้งหมดของฉัน",
+    "fileAttendanceRequest": "ยื่นคำขอเวลาทำงาน คำขอทำงานล่วงเวลา หรือคำขอเดินทาง",
     "dateBreakdown": {
       "title": "ดูรายละเอียดแต่ละวัน",
       "approved": "อนุมัติแล้ว",

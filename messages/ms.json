@@ -142,6 +142,7 @@
     "attendanceAllowance": "Elaun kehadiran",
     "attendanceClock": "Daftar masuk/keluar",
     "attendanceRecords": "Rekod",
+    "attendanceRequest": "Permohonan Kehadiran",
     "clockingLocation": "Lokasi merekod masa",
     "attendanceImport": "Import",
     "mobilePreview": "Pratonton Apl Mudah Alih",
@@ -2256,6 +2257,7 @@
     "travelRemarksPlaceholder": "Di mana dan sebab anda berada di luar pejabat",
     "requestTravelButton": "Hantar permohonan perjalanan",
     "attendanceRequest": "Permohonan Kehadiran",
+    "requestsDescription": "Hantar permohonan pembetulan kehadiran, kerja lebih masa atau perjalanan. Setiap satu dihantar kepada pelulus anda.",
     "overtimeRequest": "Permohonan Kerja Lebih Masa",
     "travelRequest": "Permohonan Perjalanan",
     "requestOvertime": "Hantar permohonan kerja lebih masa",
@@ -2276,6 +2278,7 @@
     "emergencyAddressLabel": "Alamat hubungan kecemasan",
     "tabsEmpty": "Tiada apa-apa untuk dipaparkan.",
     "viewAttendanceHistory": "Lihat sejarah kehadiran penuh saya",
+    "fileAttendanceRequest": "Hantar permohonan kehadiran, kerja lebih masa atau perjalanan",
     "dateBreakdown": {
       "title": "Lihat pecahan tarikh",
       "approved": "Diluluskan",
