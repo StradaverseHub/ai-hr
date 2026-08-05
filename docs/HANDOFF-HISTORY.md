@@ -9,6 +9,68 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r141 — 2026-08-05 — 6e9a126e release ONE: the new entitlement layer, built alongside the old
+
+**Shipped `main@668ec3dc`.** Gate: tsc clean · **578 files / 6978 tests** · next build clean ·
+**upgrade rehearsal PASS**. Migrations 0396/0397/0398 → production on **324**.
+**Item stays `building`** — this is one release of three; it is not satisfied until the old layer is
+retired.
+
+### Decisions
+
+**NOTHING WAS DROPPED, CLEARED OR RE-POINTED.** Verified on production after deploy: archive holds
+**294 scheme + 67 policy rows**, the old layer is untouched at **41/292/67**, and the two new config
+tables are **empty**. The 294 is the tell — 292 entitlement rows PLUS the 2 schemes that have none,
+preserved by a LEFT JOIN. The agent watched an INNER JOIN make those two vanish silently.
+
+**THE CENSUS CHANGED THE ITEM'S RISK PROFILE, and getting it right took two corrections.** First read:
+`employment.benefit_scheme_id` is NULL on all 26, therefore the scheme layer is orphaned and dropping
+it is free. **WRONG** — that column is only the per-employee OVERRIDE. `resolveEffectiveSchemeId`
+matches on **(companyId, employmentType-from-the-current-assignment-row, gradeGroupId)**. Measured
+properly: **9 of 26 employments resolve through a scheme**, 17 fall through to `leave_policy`. The
+archive is load-bearing, not ceremonial. (Also: HANDOFF's "12 of 41 schemes unfilled" was stale — 2.)
+
+**THE PLAN'S ANCHORS WERE WRONG BY UP TO +550 LINES** — an order of magnitude worse than the 5-35
+seen elsewhere this session, and its rev-3 explicitly claimed they had been re-verified.
+`STANDING_LEAVE_CODES` cited at 5116, actually 5666. Full drift table in the agent's report.
+**Re-locate by symbol, always.**
+
+**THE ELIGIBILITY LAYER REUSES `core/org-criteria.ts` — no third criteria engine.** The plan proposed
+`ruleMatches` from the approval policy; that is handed its attributes AS OF NOW, so dating the rule
+rows alone would still answer a closed year with today's department. `resolveOrgCriteriaTargets` reads
+the `assignment` version in force on `asOf`. All nine dimensions the reporter listed were already in
+its vocabulary. **`93249794` can adopt this directly** — `templateDaysForYears()` returns the same
+`(years) => number | null` contract as `buildSchemeEntitlementResolver`, so release two swaps which
+resolver fills the slot rather than changing the composition.
+
+**THE EDITOR SCREENS WERE DELIBERATELY NOT BUILT**, against the plan's "stage 1 = screens only". No
+engine reads these tables until release two, and an editor that writes configuration nothing reads is
+worse than none: HR types a table, sees no change, and concludes the product is broken. The ARCHIVE
+reader shipped, because the plan promises it before anything can clear.
+
+**THE NO-OPINION GUARD SHIPPED NOW, NOT WITH THE CLEARING.** Without it the reset posts NEGATIVE
+balance corrections. It changes live behaviour, so it went through the full 578-file gate rather than
+its own batch — the agent's 29-file run was necessary and not sufficient.
+
+**A LATENT CRASH, FIXED:** `leave_shared_group_reset_archive.capturedAt` was declared with a helper
+that hardcodes column `created_at`; the real column is `captured_at`, so any drizzle read of that
+table would throw. Invisible only because nothing reads it. The agent made the identical mistake on
+its own new table — where a reader DOES exist — and caught it there.
+
+**The capture is a SQL FUNCTION, not a migration-embedded INSERT**, so release three's pre-reset
+re-capture cannot become a second copy of the rendering, and so it can be tested against real rows
+instead of running forever against an empty database. 0398 ABORTS if captured policy rows ≠
+`leave_policy` rows.
+
+### What the archive cannot reconstruct — stated in code, pinned by test
+
+`gender`, `nationality`, `religion`, `race` (on `person`) and job `grade` (on `employment`) are **not
+effective-dated anywhere in this schema**, so a past-date eligibility answer is exact for the dated
+axes and current-value for those five. The benefit-scheme layer carries **no dates at all**; the
+archive records that rather than inventing a window.
+
+---
+
 ## r140 — 2026-08-05 — the attendance engine starts calculating, and it ships inert by measurement
 
 **Shipped `main@00de9851`.** `7c834696` stage 1. Gate: tsc clean · **575 files / 6939 tests** ·

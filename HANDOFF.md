@@ -18,13 +18,14 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-05 (r140 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-05 (r141 SHIPPED)
 
-**`main@00de9851` is what runs. Production on 321 migrations. Next free migration number is `0396`**
+**`main@668ec3dc` is what runs. Production on 324 migrations. Next free migration number is `0399`**
 (0389 was never claimed and is dead). No half-applied migration, no pending deploy, nothing in flight.
 Verified after deploy: service active, `GET /` 401, `/login` 200, `rsync --dry-run` zero changes, and
-**the attendance backfill's invariant holds on real data — 151 rows written, the six OT rate buckets
-summing to exactly `ot_minutes` (5940 = 5940), zero mismatched rows.**
+**the attendance backfill's invariant holds on real data** (151 rows, the six OT rate buckets summing
+to exactly `ot_minutes`, 5940 = 5940, zero mismatched rows) **and r141's archive captured 294 scheme +
+67 policy rows with the old layer untouched at 41/292/67 and the new tables empty.**
 
 ### The board — counted on production 2026-08-05 after r140
 
@@ -35,6 +36,7 @@ summing to exactly `ot_minutes` (5940 = 5940), zero mismatched rows.**
 
 | item | why it is not just "next" |
 |---|---|
+| ~~`6e9a126e` release ONE~~ | **SHIPPED r141** — new layer alongside the old, nothing dropped. Item is `building`, NOT done: releases two (re-point the engines, ship the editors) and three (archive-then-clear, drop the old tables) remain |
 | ~~`7c834696` Attendance stage 1~~ | **SHIPPED r140.** Stages 2 (flexi-shift + cut-off) and 3 (transparency + simulator) remain, and stage 3 depends on stage 1's stored figures. **TWO OWNER DECISIONS ARE OPEN — see below** |
 | `6e9a126e` Entitlement redesign | **OWN SESSION.** Drops `benefit_scheme`, `scheme_leave_entitlement`, `leave_policy`. Archive to text FIRST, re-count the census on production, and **re-locate every anchor BY SYMBOL** — its rev-3 claim that line numbers were re-verified was false |
 | `93249794` Generate Entitlement | Waits on `6e9a126e`'s eligibility layer, or you build a SECOND criteria engine — the exact defect several plans complain about |
