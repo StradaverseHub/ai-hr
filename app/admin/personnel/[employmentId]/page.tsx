@@ -27,6 +27,8 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
 // 35b7af0a group 1 — the Gender + Marital Status field group, shared with the Create New Employee wizard.
 import { PersonDetailsFields } from '@/components/person-details-fields';
+// 35b7af0a group 3 — the Date of Birth + read-only Age field group, shared with the same wizard.
+import { BirthDateFields } from '@/components/birth-date-fields';
 // Direct Superior (dce55aff): the searchable employee picker reuses the shared Combobox — its label
 // carries "EMP-0008 – John Tan" so type-ahead matches Employee ID and name alike.
 import { Combobox } from '@/components/ui/combobox';
@@ -75,9 +77,9 @@ import { TERMINATION_REASONS } from '@/core/termination-reason';
 import { listMovementEventTypes } from '@/core/movement-type';
 import { MovementNewEvent } from './movement-new-event';
 import { serviceYearsMonthsAt, serviceYearsMonthsDaysAt } from '@/core/leave';
-// 9d13221c — Age beside Date of Birth: shared completed-years helper (kept a separate import so the
-// cc681bd5 import line above stays byte-identical for its drift-guard test).
-import { completedYearsAt } from '@/core/leave';
+// 9d13221c — the Age figure beside Date of Birth no longer needs an import here at all: 35b7af0a group 3
+// moved both the derivation and the two Fields into components/birth-date-fields.tsx, which reads the same
+// counter from the client-safe lib/completed-years.ts so the wizard can render it too.
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import {
   closedPayrollPeriodsFor,
@@ -475,13 +477,13 @@ export default async function EmployeePage({
     { key: 'others', label: t('tabs.others') },
   ];
 
-  // 9d13221c — Age beside Date of Birth: completed whole years from the stored DOB to today, recomputed
-  // on every render so each profile open shows that day's exact age (it increments the day the birthday
+  // 9d13221c — Age beside Date of Birth: completed whole years from the stored DOB to today, recomputed on
+  // every render so each profile open shows that day's exact age (it increments the day the birthday
   // arrives — a 29-Feb birthday increments on 1 Mar in common years). Read-only + display-only: the age is
-  // never stored, never an input, and never audited (DOB edits keep their existing audit trail); a DOB save
-  // re-renders this page so the figure refreshes immediately. Blank DOB → "Not Available".
-  const ageYears = completedYearsAt(emp.dateOfBirth, today);
-  const ageLabel = ageYears === null ? null : t('ageYears', { years: ageYears });
+  // never stored, never an input, and never audited (DOB edits keep their existing audit trail).
+  // 35b7af0a group 3 — the derivation and the two Fields moved INTO components/birth-date-fields.tsx, which
+  // both this card and the Create New Employee wizard render; only `today` is passed down (this page still
+  // owns "what date is it", through the tenant timezone).
 
   // ── PROFILE ────────────────────────────────────────────────────────────────
   // b4682879 — modular redesign: three organised cards (Personal Details, Contact & Address, Emergency
@@ -755,17 +757,14 @@ export default async function EmployeePage({
           className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
         >
           <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <Field label={t('birthDate')}>
-            <input id="profile-dob-input" name="dateOfBirth" type="date" defaultValue={emp.dateOfBirth ?? ''} className={inputCls} />
-          </Field>
-          {/* 9d13221c — read-only Age beside Date of Birth: system-calculated (muted text, deliberately
-              NOT an input — nothing to type, nothing to save), derived fresh from the stored DOB on every
-              render. "Not Available" when no DOB is recorded (shares the cc681bd5 fallback key). */}
-          <Field label={t('age')}>
-            <p className="flex h-9 items-center text-sm text-muted-foreground">
-              {ageLabel ?? t('employmentInfo.notAvailable')}
-            </p>
-          </Field>
+          {/* 35b7af0a group 3 — Date of Birth and the read-only Age (9d13221c) are now ONE shared field
+              group (components/birth-date-fields.tsx), rendered identically here and on the Create New
+              Employee wizard, which previously had a bare DOB box and no Age at all. `mode="form"` keeps
+              these inputs exactly what they were: an uncontrolled `name`/`defaultValue` date input inside
+              this server-action form, with NO function prop crossing the server→client boundary (the r123
+              fault). `inputId` is not cosmetic — components/ic-dob-autofill.tsx finds this field by that id
+              and writes the DOB derived from a MyKad number straight onto the DOM node. */}
+          <BirthDateFields mode="form" inputId="profile-dob-input" dateOfBirth={emp.dateOfBirth} today={today} />
           {/* 35b7af0a group 1 — Gender and Marital Status are now ONE shared field group
               (components/person-details-fields.tsx), rendered identically here and on the Create New
               Employee wizard. The option lists come from lib/person-vocabulary.ts, the same master lists

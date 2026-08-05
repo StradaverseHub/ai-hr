@@ -43,6 +43,7 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 const WIZARD = 'app/admin/personnel/new/wizard.tsx';
 const PERSONNEL = 'app/admin/personnel/[employmentId]/page.tsx';
 const SHARED = 'components/person-details-fields.tsx';
+const BIRTH_DATE = 'components/birth-date-fields.tsx';
 const PAY_STRUCTURE = 'components/pay-structure-fields.tsx';
 const SALARY_HISTORY = 'components/salary-history-table.tsx';
 const LEAVE_PANEL = 'components/leave-type-panel.tsx';
@@ -268,6 +269,82 @@ describe('§3b group 2 — Pay Mode / Payment Term / Rate is one component, not 
   });
 });
 
+// ── §3c GROUP 3 — Date of Birth + Age ─────────────────────────────────────────────────────────────
+describe('§3c group 3 — Date of Birth carries the Age, and the age counter has one definition', () => {
+  it('both screens render the shared group', () => {
+    for (const f of [WIZARD, PERSONNEL]) {
+      const src = read(f);
+      expect(src, `${f} must import the shared group`).toContain("from '@/components/birth-date-fields'");
+      expect(src, `${f} must render it`).toContain('<BirthDateFields');
+    }
+  });
+
+  it('neither screen builds its own date-of-birth box or age figure any more', () => {
+    const wizard = read(WIZARD);
+    // The wizard's own label is no longer RENDERED (the key survives — see the catalog assertion below).
+    expect(wizard).not.toContain("t('fields.dateOfBirth')");
+    expect(wizard).not.toContain("name: 'dateOfBirth'");
+    const page = read(PERSONNEL);
+    // The page no longer derives the age itself, and no longer needs the server-only helper at all.
+    expect(page).not.toContain('completedYearsAt');
+    expect(page).not.toContain("<Field label={t('age')}>");
+  });
+
+  it('the age counter is defined ONCE, in a client-safe module, and re-exported by identity', () => {
+    const lib = read('lib/completed-years.ts');
+    // Client-safe means exactly this: no database, no server module, nothing that drags one in. The wizard
+    // is a client component — that is the whole reason it never had an Age field.
+    expect(lib).not.toMatch(/from '(\.\.\/)?(db|core)\//);
+    expect(lib).toContain('export const serviceYearsAt');
+    expect(lib).toContain('export const completedYearsAt');
+    // core/leave.ts keeps the old door open for its server callers (core/read.ts, core/analytics.ts, the
+    // entitlement engine, four test files) — imported and re-exported, never redeclared.
+    const leave = read('core/leave.ts');
+    expect(leave).toContain("import { serviceYearsAt, completedYearsAt } from '../lib/completed-years';");
+    expect(leave).toContain('export { serviceYearsAt, completedYearsAt };');
+    expect(leave).not.toMatch(/export const (serviceYearsAt|completedYearsAt)\b/);
+  });
+
+  it('the shared component is client-safe for a SERVER caller and stays single-namespace', () => {
+    const src = read(BIRTH_DATE);
+    expect(/^\s*['"]use client['"]\s*;/m.test(src.slice(0, 400))).toBe(true);
+    const call = read(PERSONNEL).match(/<BirthDateFields[\s\S]*?\/>/);
+    expect(call, 'the personnel page must render BirthDateFields').not.toBeNull();
+    expect(call![0]).not.toMatch(/=\{\s*\(/); // no arrow-function prop crosses the RSC boundary
+    expect(call![0]).toContain('mode="form"');
+    const namespaces = [...src.matchAll(/useTranslations\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]);
+    expect([...new Set(namespaces)]).toEqual(['people.detail']);
+  });
+
+  it('the IC → DOB autofill still has the DOM id it writes into', () => {
+    // components/ic-dob-autofill.tsx fills the field by document.getElementById(dobInputId).value — a raw
+    // DOM write with no React event. Losing the id (or making the input controlled) breaks item 354a500d
+    // silently: no type error, no failing assertion anywhere else, just an autofill that stops arriving.
+    // The writer and the field must name the SAME id, and they live in two different files.
+    expect(read('components/personnel-identity.tsx')).toContain('dobInputId="profile-dob-input"');
+    expect(read(PERSONNEL)).toContain('inputId="profile-dob-input"');
+    expect(read(BIRTH_DATE)).toContain('defaultValue: stored');
+    expect(read(BIRTH_DATE)).toContain('id: props.inputId');
+  });
+
+  it('the wizard label key is KEPT in all six catalogs, because the Review step still computes it', () => {
+    for (const loc of LOCALES) {
+      const msgs = JSON.parse(read(`messages/${loc}.json`));
+      // missingByStep returns the field name 'dateOfBirth' for a malformed draft date, and the Review step
+      // renders t(`fields.${f}`) — a computed key check C cannot see. Deleting this would be a
+      // MISSING_MESSAGE on a screen HR reaches by typing a bad date. Same rule as fields.rateAmount.
+      expect(String(msgs.people.wizard.fields.dateOfBirth ?? '').trim(), `${loc} fields.dateOfBirth`).not.toBe('');
+      // The wizard's own hint is still shown UNDER the shared field — nothing was lost by sharing it.
+      expect(String(msgs.people.wizard.hints.dateOfBirth ?? '').trim(), `${loc} hints.dateOfBirth`).not.toBe('');
+      // The surviving label definition — the one both screens now read.
+      for (const k of ['birthDate', 'age', 'ageYears']) {
+        expect(String(msgs.people.detail[k] ?? '').trim(), `${loc} people.detail.${k}`).not.toBe('');
+      }
+      expect(String(msgs.people.detail.employmentInfo.notAvailable ?? '').trim()).not.toBe('');
+    }
+  });
+});
+
 // ── §4 behaviour ──────────────────────────────────────────────────────────────────────────────────
 describe('§4 a hire can now carry the values the wizard could not offer', () => {
   it('creates an employee with a marital status the old wizard had no option for', async () => {
@@ -343,6 +420,29 @@ describe('§5 a draft saved BEFORE this change still opens and still creates', (
     expect(comp.payMode).toBe('daily');
     expect(comp.paymentTerm).toBe('weekly');
     expect(Number(comp.rateAmount)).toBe(180);
+  });
+
+  it('a pre-change draft carrying a date of birth still reopens on it and still stores it', async () => {
+    const a = adminCtx(b);
+    // Group 3 added an Age BESIDE the date, and the age is not stored — so the draft payload is byte-for-byte
+    // what the old wizard wrote: profile.dateOfBirth, a plain yyyy-mm-dd string in the same place. No version
+    // marker is needed because no key moved; this asserts that claim rather than trusting it.
+    const { id } = await saveEmployeeDraft(a, {
+      data: draft({ profile: { ...draft().profile, dateOfBirth: '1990-01-01' } }),
+      currentStep: 2,
+    });
+    const reopened = await getEmployeeDraft(a, id);
+    expect(reopened!.data.profile?.dateOfBirth).toBe('1990-01-01');
+    // Nothing named 'age' was invented in the payload — an age that is saved is wrong the next day.
+    expect(reopened!.data.profile).not.toHaveProperty('age');
+
+    const { employmentId } = await completeEmployeeDraft(a, id);
+    const [emp] = await owner.db
+      .select({ personId: schema.employment.personId })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, employmentId));
+    const p = await readPerson(emp.personId);
+    expect(p.dateOfBirth).toBe('1990-01-01');
   });
 
   it('a draft with NO personal details at all still creates (the fields stay optional)', async () => {

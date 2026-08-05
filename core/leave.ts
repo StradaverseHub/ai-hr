@@ -13,6 +13,10 @@ import { scopeOf } from '../lib/delegation-scope';
 import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
 import { resolveApprovalChain } from './leave-approval-policy';
 import { todayInKualaLumpur } from '../lib/hr-date';
+// 35b7af0a group 3 — the whole-year calendar counters, defined in a CLIENT-SAFE module and re-exported
+// below (see the note beside that export). Imported here so every use INSIDE this file keeps binding the
+// same function, and so `@/core/leave` stays their public server-side door.
+import { serviceYearsAt, completedYearsAt } from '../lib/completed-years';
 import { consumeReplacementLeaveTx } from './toil';
 import {
   holidayDatesFor,
@@ -5738,19 +5742,17 @@ const recalcAdjustmentReasonCond = () =>
     like(leaveLedger.reason, `${PROFILE_RECALC_REASON_PREFIX}:%`),
   );
 
-/** Completed years of service at a date (calendar-accurate, not /365.25). */
-export const serviceYearsAt = (hiredOn: string, asOf: string): number => {
-  const h = new Date(`${hiredOn}T00:00:00Z`);
-  const a = new Date(`${asOf}T00:00:00Z`);
-  let y = a.getUTCFullYear() - h.getUTCFullYear();
-  if (
-    a.getUTCMonth() < h.getUTCMonth() ||
-    (a.getUTCMonth() === h.getUTCMonth() && a.getUTCDate() < h.getUTCDate())
-  ) {
-    y -= 1;
-  }
-  return Math.max(0, y);
-};
+/**
+ * 35b7af0a group 3 — `serviceYearsAt` and `completedYearsAt` are DEFINED in `lib/completed-years.ts` and
+ * only re-exported here. The Create New Employee wizard is a client component and cannot import this module
+ * (it pulls in the database), so the Age figure the reporter asked for could not exist there at all; moving
+ * the two-line calendar math to a client-safe module is what lets ONE counter serve both screens instead of
+ * a browser-side copy that drifts. Re-exported rather than redefined so every existing
+ * `import { serviceYearsAt } from '@/core/leave'` — core/read.ts, core/analytics.ts, the entitlement engine
+ * below, and four test files — keeps working against the SAME function identity. See lib/person-vocabulary.ts
+ * for the same move, made for the same reason.
+ */
+export { serviceYearsAt, completedYearsAt };
 
 /**
  * Length of service between `hiredOn` and `asOf` broken into whole years + residual whole months — the
@@ -5802,20 +5804,6 @@ export const serviceYearsMonthsDaysAt = (
   const days = Math.round((a.getTime() - anchor) / 86_400_000);
   return { years: Math.floor(months / 12), months: months % 12, days };
 };
-
-/**
- * Completed whole years between `from` and `asOf` — the anniversary-accurate counter behind the read-only
- * Age figure beside Date of Birth on the Personal Details card (feedback 9d13221c). Delegates to
- * serviceYearsAt, so the two can never disagree: the count increments ON the anniversary day itself and
- * never before — a 29-Feb birthday therefore increments on 1 Mar in common years (28-Feb is still before
- * the anniversary). A null/blank `from` returns null (the card shows "Not Available"); an `asOf` before
- * `from` clamps to 0. Pure + display-only: the age is never stored and never audited (DOB edits keep their
- * existing audit trail) — callers recompute against the current date on every view, so the figure is always
- * that day's exact age with zero maintenance. Future age consumers (analytics, retirement reports,
- * directory columns) should reuse THIS helper rather than reinventing the calendar math.
- */
-export const completedYearsAt = (from: string | null | undefined, asOf: string): number | null =>
-  from ? serviceYearsAt(from, asOf) : null;
 
 /**
  * Open a leave year: for every active employment hired before 1 Jan of `year`, post the

@@ -34,6 +34,8 @@ import { Button, Card, Field, inputCls } from '@/components/ui';
 import { PersonDetailsFields } from '@/components/person-details-fields';
 // 35b7af0a group 2 — the Pay Mode / Payment Term / Rate group, shared with the Personnel Payroll tab.
 import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
+// 35b7af0a group 3 — the Date of Birth + read-only Age group, shared with the Personnel profile card.
+import { BirthDateFields } from '@/components/birth-date-fields';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DRAFT_STEPS,
@@ -478,15 +480,21 @@ export function EmployeeWizard({
                 onChange={(e) => set('profile', { phone: e.target.value })}
               />
             </Field>
-            <Field label={t('fields.dateOfBirth')}>
-              <input
-                type="date"
-                className={inputCls}
-                value={data.profile?.dateOfBirth ?? ''}
-                onChange={(e) => set('profile', { dateOfBirth: e.target.value })}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">{t('hints.dateOfBirth')}</p>
-            </Field>
+            {/* 35b7af0a group 3 — Date of Birth is the SAME field group the Personnel profile card renders
+                (components/birth-date-fields.tsx), and it brings the Age with it. The wizard had a bare date
+                box and NO age, because the age counter lived in core/leave.ts — a server module a client
+                component cannot import — so "Age (auto-calculated)", which the reporter listed as a Profile
+                field, simply did not exist at hire. The counter now lives in lib/completed-years.ts and both
+                screens read it. Age is display-only: no draft key, no column, recomputed on every render.
+                The wizard's own guidance about deriving a blank DOB from the identity number is passed in as
+                the hint, so nothing is lost by sharing the field. */}
+            <BirthDateFields
+              mode="controlled"
+              dateOfBirth={data.profile?.dateOfBirth}
+              today={today}
+              hint={t('hints.dateOfBirth')}
+              onChange={(v) => set('profile', { dateOfBirth: v })}
+            />
             {/* 35b7af0a group 1 — Gender and Marital Status are no longer the wizard's own selects with
                 the wizard's own labels. They are the SAME field group the Personnel profile card renders
                 (components/person-details-fields.tsx), drawing on the master lists in
