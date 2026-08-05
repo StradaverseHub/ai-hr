@@ -138,6 +138,47 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
   });
 });
 
+/**
+ * 0bb0e303 rev2 — the third My Attendance row, Attendance Request.
+ *
+ * The reporter listed three things staff should reach from the menu: clock in/out, their own record, and
+ * an attendance request. The first two shipped with rev1. The third existed as a fold-out on /me, which is
+ * why the item came back — a capability nobody can find is, from the reporter's chair, absent.
+ *
+ * The confidentiality concern this file exists for cuts the OTHER way for this row. The two assertions
+ * below are therefore about NOT over-restricting: the row must be ungated and its page must not acquire a
+ * page guard, because either would put a self-service request form behind an approval-side gate. The data
+ * is already safe without one — every one of the three actions re-resolves the caller server-side
+ * (resolveMe) and writes only the caller's own employment, and the lists the page renders are RLS-scoped
+ * reads of the caller's own rows, which is the same property the executed test below pins for records.
+ */
+describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that way', () => {
+  const mine = attendancePack.navNodes!.find((n) => n.labelKey === 'myAttendance')!;
+
+  it('adds the row to My Attendance, ungated, in the reporter’s order', () => {
+    expect(mine.children.map((c) => c.href)).toEqual([
+      '/attendance/clock',
+      '/attendance',
+      '/attendance/requests',
+    ]);
+    const row = mine.children.find((c) => c.href === '/attendance/requests')!;
+    expect({ adminOnly: row.adminOnly, managerUp: row.managerUp }).toEqual({
+      adminOnly: undefined,
+      managerUp: undefined,
+    });
+    expect(row.labelKey).toBe('attendanceRequest');
+  });
+
+  it('the page carries NO admin/manager page guard — it is the employee’s own request form', () => {
+    // The inverse of the it.each above, and deliberate. requireAdmin/scopedAdmin on this page would lock
+    // every employee out of filing their own request; the page resolves the session and the caller's own
+    // employment exactly as /me and the clock portal do.
+    const src = read('app/attendance/requests/page.tsx');
+    expect(src).not.toMatch(/requireAdmin\(|scopedAdmin\(/);
+    expect(src, 'resolves the caller’s own employment').toContain('myEmployment(s)');
+  });
+});
+
 describe('0bb0e303 — a plain employee cannot read a colleague’s attendance', () => {
   let base: Base;
   beforeAll(async () => {
