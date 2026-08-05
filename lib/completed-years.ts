@@ -8,9 +8,14 @@
  * even though the reporter listed "Age (auto-calculated)" as a Profile field. The alternative was a second
  * copy of the calendar math in the browser, and a second copy is the thing this whole item exists to remove.
  *
- * `core/leave.ts` imports from here and RE-EXPORTS both names, so every existing
- * `import { serviceYearsAt } from '@/core/leave'` (core/read.ts, core/analytics.ts, the leave engine itself
- * and four test files) keeps working untouched, against the same function identity.
+ * `core/leave.ts` imports from here and RE-EXPORTS both names, so every existing import of
+ * `serviceYearsAt` against the `@/core/leave` specifier (core/read.ts, core/analytics.ts, the leave engine
+ * itself and four test files) keeps working untouched, against the same function identity.
+ *
+ * That sentence is deliberately NOT written as a literal import statement. test/helpers/import-ratchet.ts
+ * scans source with a regex and does not strip comments, so a quoted `from '…'` inside a comment is read as
+ * a real edge: spelling it out here made the leave pack-drift guard fail against a file that imports
+ * nothing at all. See that helper's header — comment blindness can only ever ADD edges, never hide one.
  *
  * Nothing here touches a clock or a timezone: both inputs are already yyyy-mm-dd calendar dates and the math
  * is pure UTC date arithmetic. That is deliberate — the repo's rule is that date-only ARITHMETIC stays UTC

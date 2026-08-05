@@ -19,6 +19,17 @@
  * forms resolve: '@/…' (tsconfig alias), relative paths, and bare repo-root paths
  * (e.g. 'localization/my/…'). Framework-free on purpose (no vitest import), like
  * test/helpers/sidebar-source.ts: callers assert on the returned arrays with their own messages.
+ *
+ * COMMENTS ARE NOT STRIPPED, and that is a deliberate trade rather than an oversight. A doc comment that
+ * quotes an import statement therefore reads as a real edge — 35b7af0a group 3 lost time to exactly this:
+ * lib/completed-years.ts imports NOTHING, but its header explained which specifier the re-export preserves
+ * and the leave ratchet reported it as a new boundary violation. Diagnose it by opening the flagged file
+ * and looking for a quoted specifier inside a comment before believing the edge is real.
+ *
+ * The trade: stripping comments needs a real tokenizer, because a regex stripper mangles '//' inside
+ * string literals and would start MISSING imports. Comment blindness can only ever ADD edges (a noisy,
+ * visible failure); a sloppy stripper would HIDE them (a silent one). For a leak guard, failing loud in
+ * the safe direction is the correct bias — so fix the comment, never the scan.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
