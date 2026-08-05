@@ -425,9 +425,18 @@ describe('step 2 — the call sites now read the rules from the TYPE (static)', 
   // DAYS half, which step 2 deliberately does not touch) but every RULE now comes off the leave type —
   // either by applying the overlay itself, or by handing the type row to the projectExpectedEntitlement
   // kernel, which applies it internally.
+  //
+  // ⚠️ 6e9a126e RELEASE TWO MOVED THE OVERLAY, IT DID NOT REMOVE IT — and this list was UPDATED rather
+  // than loosened, which is the same call the entitlement plan makes for the assign-template panel's
+  // static block. `openLeaveYear` and `accrueEarnedLeave` no longer spell `applyLeaveTypeRules(` in their
+  // own bodies; they call `composeEntitlement(`, the ONE shared composition, which applies that overlay
+  // internally (core/leave-compute.ts) on top of the new entitlement-template layer. Pinning
+  // `composeEntitlement(` is STRICTLY NARROWER than pinning `applyLeaveTypeRules(`: there is exactly one
+  // function that can satisfy it, and the test below proves that function still overlays. Weakening this
+  // to "contains either" would let a future edit drop the overlay at one site and stay green.
   it.each([
-    ['openLeaveYear', 'applyLeaveTypeRules('],
-    ['accrueEarnedLeave', 'applyLeaveTypeRules('],
+    ['openLeaveYear', 'composeEntitlement('],
+    ['accrueEarnedLeave', 'composeEntitlement('],
     ['reprojectEntitlementForPolicy', 'projectExpectedEntitlement('],
     ['reprojectA2cEntitlement', 'projectExpectedEntitlement('],
   ])('%s resolves its rules from leave_type', (fn, resolver) => {
@@ -444,9 +453,24 @@ describe('step 2 — the call sites now read the rules from the TYPE (static)', 
     // The kernel re-resolves the policy on the anniversary/upfront branch. An overlay applied by the
     // CALLER would only ever cover the first resolution and the second would silently revert to the
     // policy's own rules — a bug that would show up as a recalc oscillating against the ledger forever.
+    //
+    // ⚠️ 6e9a126e RELEASE TWO MADE THIS STRUCTURAL RATHER THAN COUNTED. The two resolutions used to be two
+    // hand-written copies of the same expression, and this test counted them. They are now ONE `resolvePolicy`
+    // closure INVOKED twice — which is a stronger guarantee of the same property, because two copies can
+    // drift apart and one definition cannot. The assertion follows the mechanism: exactly one definition,
+    // which must overlay, and exactly two invocations.
     const body = bodyOf('projectExpectedEntitlement');
-    const overlays = body.match(/applyLeaveTypeRules\(resolveGradePolicy\(policyRows/g) ?? [];
-    expect(overlays, 'both resolutions must be overlaid').toHaveLength(2);
+    // ONE policy resolution, ONE overlay, TWO invocations. Each number is load-bearing:
+    //  - a second `resolveGradePolicy(policyRows` would be the hand-written copy this replaced;
+    //  - a second (or zero) `applyLeaveTypeRules(templateOverPolicy(` would mean the overlay is applied
+    //    somewhere else, or not at all;
+    //  - fewer than two invocations would mean the anniversary re-resolution stopped happening.
+    expect(body.match(/resolveGradePolicy\(policyRows/g) ?? [], 'exactly one policy resolution').toHaveLength(1);
+    expect(
+      body.match(/applyLeaveTypeRules\(templateOverPolicy\(/g) ?? [],
+      'that one resolution must be overlaid with the type rules',
+    ).toHaveLength(1);
+    expect(body.match(/\bresolvePolicy\(/g) ?? [], 'and it must be invoked twice').toHaveLength(2);
   });
 
   it('every engine that resolves a leave RULE has been repointed — none left reading leave_policy alone', () => {
@@ -464,12 +488,34 @@ describe('step 2 — the call sites now read the rules from the TYPE (static)', 
       ['core/read.ts', 'the leave entitlement breakdown'],
       ['core/analytics.ts', 'the carry-forward report'],
     ];
+    //
+    // ⚠️ 6e9a126e RELEASE TWO: `core/org.ts`'s hire grant now reaches the overlay through
+    // `composeEntitlement` and no longer names `applyLeaveTypeRules` itself. Both spellings are accepted
+    // HERE and nowhere else, and the acceptance is closed immediately below by asserting that
+    // `composeEntitlement` is not an empty shell — without that second assertion this list could be
+    // satisfied by a composition that had quietly stopped overlaying, which is the exact defect it exists
+    // to catch.
+    const OVERLAY_MECHANISMS = ['applyLeaveTypeRules', 'composeEntitlement'];
     const offenders: string[] = [];
     for (const [file, label] of sites) {
       const src = readFileSync(resolve(root, file), 'utf8');
-      if (!src.includes('applyLeaveTypeRules')) offenders.push(`${file} (${label})`);
+      if (!OVERLAY_MECHANISMS.some((m) => src.includes(m))) offenders.push(`${file} (${label})`);
     }
     expect(offenders, `these rule readers were not repointed:\n${offenders.join('\n')}`).toEqual([]);
+  });
+
+  it('the shared composition IS the overlay — the second accepted mechanism is not an empty shell', () => {
+    // The guard above accepts `composeEntitlement` as evidence that a file applies the leave type's rules.
+    // That is only true while composeEntitlement actually applies them, so it is asserted rather than
+    // assumed: the day this stops holding, every engine silently reverts to the policy's own rules and the
+    // list above would still be empty.
+    const computeSrc = readFileSync(resolve(root, 'core/leave-compute.ts'), 'utf8');
+    const start = computeSrc.indexOf('export function composeEntitlement(');
+    expect(start, 'composeEntitlement not found in core/leave-compute.ts').toBeGreaterThanOrEqual(0);
+    const body = computeSrc.slice(start, start + 2000);
+    expect(body, 'composeEntitlement must apply the leave type rules').toContain(
+      'applyLeaveTypeRules(templateOverPolicy(p.gradePolicy, p.templateBand), p.rules)',
+    );
   });
 
   it('the days half is untouched — no engine resolves DAYS from the leave type', () => {
