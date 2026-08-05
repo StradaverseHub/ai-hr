@@ -68,11 +68,14 @@ afterAll(async () => {
 
 /** Create a bare leave type directly, so a test can choose exactly which references it carries. */
 async function makeType(code: string, name: string, balanceSourceTypeId?: string): Promise<string> {
+  // leave_type_code_shape (migration 0031) is ^[A-Z][A-Z0-9_]{1,31}$ — a lowercase suffix from randomUUID
+  // fails the CHECK, which is a fixture bug that reads exactly like a product bug.
+  const safeCode = code.toUpperCase();
   const [row] = await owner.db
     .insert(schema.leaveType)
     .values({
       tenantId: b.tenantId,
-      code,
+      code: safeCode,
       name,
       paid: true,
       ...(balanceSourceTypeId ? { balanceSourceTypeId } : {}),
