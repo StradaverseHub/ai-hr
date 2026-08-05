@@ -1170,14 +1170,130 @@ export function schemeBandDays(serviceBands: unknown, serviceYears: number): num
  *     not decide.
  * `floorDays` is supplied by the CALLER from the company's country pack and is 0 / null for jurisdictions
  * with no pack — those already ran with no floor, so this makes MY behave like everywhere else.
+ *
+ * 6e9a126e RELEASE TWO — `templateDays` IS A NEW FIRST-PRECEDENCE LAYER, ADDED AS A POSITIONAL PARAMETER.
+ * The resolution is now `template ?? scheme ?? policy`, and the argument is positional and REQUIRED
+ * deliberately: an optional trailing parameter would let a re-pointed engine forget to pass it and go on
+ * compiling, resolving the old two-layer answer with nothing on screen to say so. Arity is the only
+ * mechanism that makes `tsc` enumerate every composition site for the next person who adds a layer.
+ * `null` (no template resolves for this employee/type) is what makes a tenant with no templates
+ * byte-identical: `null ?? (schemeDays ?? policyDays)` is the pre-existing expression.
  */
 export function entitledDays(
   floorDays: number,
+  templateDays: number | null,
   schemeDays: number | null,
   policyDays: number,
 ): { days: number; belowStatutoryFloor: boolean } {
-  const days = schemeDays ?? policyDays;
+  const days = templateDays ?? schemeDays ?? policyDays;
   return { days, belowStatutoryFloor: belowStatutoryFloor(floorDays, days) };
+}
+
+/**
+ * 6e9a126e RELEASE TWO — AN ENTITLEMENT TEMPLATE'S BAND, LAID OVER WHATEVER THE GRADE POLICY RESOLVED.
+ *
+ * ⚠️ `band === null` RETURNS `base` — THE SAME OBJECT, NOT A COPY. That identity is the whole back-compat
+ * argument for this release: every engine site now reads
+ * `applyLeaveTypeRules(templateOverPolicy(resolveGradePolicy(…), band), type)`, and for a tenant with no
+ * entitlement templates `band` is always null, so the expression REDUCES to the one that was there before
+ * this item — not to something that happens to compute the same number.
+ *
+ * WHAT A TEMPLATE SUPERSEDES, AND WHAT IT DOES NOT:
+ *   - `days` — always, from the winning band. This is the layer's entire purpose.
+ *   - `carryMax` / `carryExpiry` / `maxBalanceDays` — from the band's own per-range columns WHEN IT CARRIES
+ *     THEM (`bandCarryMax` / `bandCarryExpiry` / `bandMaxBalance`, the exact readers `resolveGradePolicy`
+ *     applies to a leave_policy band), else the base's. These are the reporter's own "Max Brought Forward"
+ *     and "Max Entitled + Brought Forward" columns and they map to nothing else.
+ *   - NOTHING ELSE. `method`, `accrualDay`, rounding and `carryPercent` keep their existing source. An
+ *     entitlement template is a DAY TABLE; it has no earning-method column, and inventing one here would
+ *     make a template silently stop an earned type accruing.
+ *
+ * ⚠️ THIS ADDS NO SECOND CARRY DEFINITION, which db/schema.ts's `entitlement_template` note requires.
+ * 7cd914b1 put carry forward on `leave_type`, and `applyLeaveTypeRules` overlays the type's rules WHOLESALE
+ * over whatever this returns — so for the consolidated types (every type step 1 backfilled) the band's
+ * carry columns are read and then discarded, exactly as a leave_policy band's are today. The precedence is
+ * unchanged and there is still exactly one carry rule per leave type; what changed is only WHERE the
+ * fallback figure comes from when no leave_policy row matched.
+ *
+ * ⚠️ IT ALSO MATERIALISES A CARRIER OUT OF NOTHING WHEN `base` IS NULL, AND THAT IS THE POINT.
+ * `applyLeaveTypeRules(null, rules)` returns null — a null policy stays null, by design. So once
+ * `leave_policy` is gone (release three) every consolidated type would resolve carryMax 0 / no expiry for
+ * everybody, and the Carry Forward report would print a closed year as "everything forfeited". Returning a
+ * `{ days, carryMax: 0 }` seed here is what lets the leave TYPE's rules still reach the reader. This is the
+ * specific breakage the approved plan warns release three would cause.
+ */
+export function templateOverPolicy(
+  base: ResolvedPolicy | null,
+  band: ServiceBand | null,
+): ResolvedPolicy | null {
+  if (!band) return base;
+  const carry = bandCarryMax(band);
+  const expiry = bandCarryExpiry(band);
+  const maxBal = bandMaxBalance(band);
+  return {
+    ...(base ?? { days: 0, carryMax: 0 }),
+    days: band.days,
+    carryMax: carry ?? base?.carryMax ?? 0,
+    carryExpiry: expiry ?? base?.carryExpiry ?? null,
+    maxBalanceDays: maxBal ?? base?.maxBalanceDays ?? null,
+  };
+}
+
+/**
+ * 6e9a126e RELEASE TWO — THE SINGLE COMPOSITION HOOK. Every granting engine, the projection kernel and
+ * every dated reader resolve an employee's entitlement HERE and nowhere else.
+ *
+ * It exists because there were four hand-written copies of
+ *
+ *     applyLeaveTypeRules(resolveGradePolicy(rows, gradeId, companyId, years), type)
+ *     entitledDays(floor, schemeDays, pol?.days ?? 0)
+ *
+ * and this release had to add a layer above BOTH halves of that. Four edits that must agree is how
+ * openLeaveYear and the reprojection kernel come to disagree by a day and post a permanent oscillating
+ * delta — the failure mode `leaveTypeRuleColumns` and `entitledDays` already exist to prevent. One
+ * function, four call sites, one place to add the fifth layer.
+ *
+ * The returned `policy` is THE CARRIER: the object every rule (earning method, carry cap, expiry,
+ * rounding, maximum balance) must be read from. The returned `days` is the composed entitlement. They are
+ * deliberately separate — `days` is `template ?? scheme ?? policy` (a benefit scheme supersedes DAYS and
+ * carries no rules at all), while the carrier is `template ?? policy`.
+ *
+ * `noOpinion` is `noEntitlementOpinion` over the RESOLUTIONS, not the composed number — see that
+ * function. A caller that gets `noOpinion` must post NOTHING (delta exactly 0), never 0 days.
+ */
+export function composeEntitlement(p: {
+  /** Statutory floor for this type/service length. ADVISORY since fa3f4ccb — flagged, never applied. */
+  floorDays: number;
+  /** The winning entitlement template's band for this employee/type/service length, or null. */
+  templateBand: ServiceBand | null;
+  /** The employee's benefit-scheme band days, or null. Unchanged: schemes supersede DAYS only. */
+  schemeDays: number | null;
+  /** `resolveGradePolicy(...)` — the RAW leave_policy resolution, BEFORE any overlay. */
+  gradePolicy: ResolvedPolicy | null;
+  /** The leave TYPE's own rule columns (9816a5ad step 2). */
+  rules: LeaveTypeRules | null | undefined;
+}): {
+  days: number;
+  belowStatutoryFloor: boolean;
+  policy: ResolvedPolicy | null;
+  noOpinion: boolean;
+} {
+  const policy = applyLeaveTypeRules(templateOverPolicy(p.gradePolicy, p.templateBand), p.rules);
+  const templateDays = p.templateBand ? p.templateBand.days : null;
+  const { days, belowStatutoryFloor: below } = entitledDays(
+    p.floorDays,
+    templateDays,
+    p.schemeDays,
+    // The RAW grade-policy days, never the carrier's: once a template wins, the carrier's `days` IS the
+    // template's, and passing it here would make the fallback argument silently equal the winner.
+    p.gradePolicy?.days ?? 0,
+  );
+  return {
+    days,
+    belowStatutoryFloor: below,
+    policy,
+    noOpinion: noEntitlementOpinion({ templateDays, schemeDays: p.schemeDays, policy: p.gradePolicy }),
+  };
 }
 
 /**
@@ -1208,10 +1324,14 @@ export function entitledDays(
  * That is why the test is on the RESOLUTIONS, not on the composed number: `pol` non-null with `days: 0`
  * and `pol` null are different facts that `pol?.days ?? 0` flattens into the same 0.
  *
- * `templateDays` is already in the signature and is passed `null` by every caller in release one — the
- * entitlement_template layer exists but no engine reads it yet. Release two passes the resolved template
- * days here and the guard needs no edit, which is the whole reason it is a named predicate rather than
- * three `if`s inlined at the composition site.
+ * `templateDays` was in the signature from release one and passed `null` by every caller, because the
+ * entitlement_template layer existed but no engine read it. RELEASE TWO now passes the resolved template
+ * days, and this function needed no edit — which is the whole reason it is a named predicate rather than
+ * three `if`s inlined at the composition site. Its only caller is now `composeEntitlement`.
+ *
+ * ⚠️ `policy` MUST BE THE RAW `resolveGradePolicy` RESULT, not the carrier `templateOverPolicy` returns.
+ * The carrier is non-null whenever a template resolves, so passing it would make this predicate ask "did
+ * anything at all resolve" — which is true by construction and would never fire again.
  */
 export function noEntitlementOpinion(p: {
   templateDays: number | null;
