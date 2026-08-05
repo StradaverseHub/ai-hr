@@ -114,14 +114,35 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(note).toMatch(/changes nothing today/i);
   });
 
-  it('stays READ-ONLY rather than hidden when the add-on is not switched on', () => {
+  // 1cf5b37c INVERTED THIS TEST, and the inversion is the item. It used to assert that every control
+  // was disabled and no Save rendered without the add-on — which is exactly what made the reporter read
+  // a finished screen as an unfinished placeholder. The screen is now always editable for an admin.
+  //
+  // What must NOT change is that the entitlement still decides whether anything is BANKED, so the two
+  // halves are asserted separately: the page no longer disables anything, and the accrual gate is still
+  // read (and still enforced inside core/toil.ts, covered by the behavioural tests in this file).
+  it('is EDITABLE for an admin even when the add-on is not switched on', () => {
     const src = read(PAGE_REL);
-    // Replacement leave is a chargeable add-on: the page must remain VISIBLE (so an admin can review what
-    // is configured) with every control disabled and no Save button. Hiding it would contradict the
-    // moduleOff banner and strand an admin who has to reason about an outstanding liability.
-    expect(src).toContain('isModuleEnabledOrFalse');
-    expect(src).toContain('disabled={!moduleOn}');
-    expect(src).toContain('{moduleOn && <button');
+    expect(src, 'the entitlement is still read, for the banner').toContain('isModuleEnabledOrFalse');
+    expect(src, 'no control may be disabled by the entitlement any more').not.toContain('disabled={!');
+    expect(src, 'Save renders unconditionally').not.toContain('&& <button className={btnPrimary}>');
+  });
+
+  it('still tells the admin that nothing accrues until the add-on is on', () => {
+    const src = read(PAGE_REL);
+    expect(src).toContain("{!accrualLive && (");
+    const banner = String(getPath(load('en'), 'admin.replacementLeave.moduleOff'));
+    // The old wording claimed the settings "cannot be changed". That is now false, and a banner that
+    // contradicts the screen is worse than no banner.
+    expect(banner).not.toMatch(/cannot be changed/i);
+    expect(banner).toMatch(/not part of this account's plan/i);
+  });
+
+  it('no longer cross-links to the legacy Time Off In Lieu page', () => {
+    const src = read(PAGE_REL);
+    // The reporter asked for this submenu to be self-contained. The link the OTHER way still exists and
+    // is asserted below — removing it would strand an admin on the legacy page.
+    expect(src).not.toContain('href="/admin/toil"');
   });
 
   // ── The half of the move that is easiest to undo by accident ───────────────────────────────────────
@@ -153,9 +174,15 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(src).toContain('const showSettlement = moduleOn || outstanding');
   });
 
-  it('the two screens cross-link BOTH ways, so neither reads as a deleted feature', () => {
-    expect(read(PAGE_REL)).toContain('href="/admin/toil"');
+  // 1cf5b37c MADE THIS ONE-DIRECTIONAL, deliberately. The reporter asked for the Leave Config submenu
+  // to be self-contained and told us to leave the legacy module alone, so the link from the new screen
+  // to /admin/toil is gone. The link the other way MUST survive: an admin who lands on the legacy page
+  // still has to be told where configuration went, which is the half that stops a move reading as a
+  // deletion. Asserting the removal here as well as in the 1cf5b37c block above is deliberate — this is
+  // the test that would otherwise be "fixed" by putting the link back.
+  it('the legacy page still links HERE, and this page no longer links back', () => {
     expect(read(TOIL_REL)).toContain('href="/admin/leave/replacement"');
+    expect(read(PAGE_REL)).not.toContain('href="/admin/toil"');
   });
 
   // ── The boundary that took a page down three rounds ago ────────────────────────────────────────────
@@ -191,8 +218,11 @@ describe('296fc027 · Replacement Leave configuration page', () => {
       'admin.replacementLeave.expiryHint',
       'admin.replacementLeave.leaveFrom',
       'admin.replacementLeave.leaveFromRecordedOnly',
-      'admin.replacementLeave.ledgerMovedNote',
-      'admin.replacementLeave.ledgerMovedLink',
+      // 1cf5b37c — ledgerMovedNote / ledgerMovedLink are GONE. They keyed the cross-link from this
+      // screen to the legacy /admin/toil page, and the reporter asked for this submenu to be
+      // self-contained. The link on /admin/toil pointing HERE stays (admin.toilPolicy.configMoved*
+      // below), because an admin who lands on the legacy page still needs to be told where
+      // configuration went — the removal was one-directional on purpose.
       'admin.replacementLeave.pickerSearch',
       'admin.replacementLeave.pickerSelectAll',
       'admin.replacementLeave.pickerClearAll',

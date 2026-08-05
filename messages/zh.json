@@ -1363,7 +1363,6 @@
         "numChildren": "子女人数",
         "eisEligible": "符合 EIS 资格",
         "isResident": "税务居民",
-        "taxCategory": "PCB 类别",
         "monthlyAllowance": "每月津贴",
         "rateAmount": "费率金额"
       },
@@ -1372,11 +1371,6 @@
         "part_time": "兼职",
         "contract": "合同工",
         "intern": "实习生"
-      },
-      "taxCategory": {
-        "1": "单身",
-        "2": "已婚 · 配偶无业",
-        "3": "已婚 · 配偶在职"
       },
       "none": "— 无 —",
       "orgLabelsEmptyForCompany": "所选公司未配置任何组织标签。",
@@ -1774,7 +1768,8 @@
       "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
       "convertConfirm": "Yes — submit this as Emergency Leave.",
       "splitConfirm": "Yes — I agree to the unpaid days."
-    }
+    },
+    "unpaidPortionLabel": "无薪假"
   },
   "attendance": {
     "title": "考勤",
@@ -4488,7 +4483,9 @@
       "unarchive": "取消归档",
       "archive": "归档",
       "deleteTypeConfirmTitle": "删除此休假类型？",
-      "deleteTypeConfirmDescription": "它未被任何地方引用，因此将被永久删除。",
+      "deleteTypeConfirmDescription": "此操作将永久删除该假期类型及其所有配置，且无法撤销。",
+      "deleteTypeCascadeRules": "以下审批规则将随之删除：{names}。",
+      "deleteTypeCascadeBalanceSource": "{names} 目前从此类型获取假期余额。删除后该设置将被清除——{names} 不会被删除，但在有人申请之前需要重新指定余额来源。",
       "deleteConfirmLabel": "删除",
       "delete": "删除",
       "statutoryMinimum": "法定最低标准 (MY)",
@@ -5852,9 +5849,7 @@
       "noCompanies": "No companies in your scope.",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
-      "moduleOff": "Replacement leave is not switched on for this account. You can review the settings here, but they cannot be changed and no new credits will be granted.",
-      "ledgerMovedNote": "The running balance ledger and the settle-and-expire actions stay on",
-      "ledgerMovedLink": "Time Off In Lieu",
+      "moduleOff": "补休不在此账户的套餐内，因此尚未累积任何额度。您现在即可在此设置——启用该附加功能后设置将立即生效。",
       "enabledLabel": "Enable replacement leave for this company",
       "enabledHint": "Approved rest-day and public-holiday overtime can be banked as replacement leave instead of paid as cash.",
       "accrualBasis": "Accrual basis",

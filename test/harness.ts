@@ -136,10 +136,75 @@ export async function migrateTestDb() {
   // Intentionally empty — see the note above.
 }
 
+
+/**
+ * The ~100-table TRUNCATE, made to fail FAST and retry instead of hanging.
+ *
+ * ## The bug this fixes, measured 2026-08-06
+ *
+ * There are TWO connection pools open on every worker database: `owner` (this file, used for the
+ * TRUNCATE) and the application's own pool in db/client.ts, which every `withTenant` call in the code
+ * under test uses. Both are up to ten connections.
+ *
+ * `TRUNCATE ... CASCADE` takes an AccessExclusiveLock on all ~100 tables. If ANY app-pool connection
+ * still holds a lock from the test that just finished, the TRUNCATE queues behind it — and because it
+ * already holds locks of its own by then, the two can deadlock outright. The server log shows exactly
+ * that: "Process A waits for AccessExclusiveLock ... blocked by process B. Process B waits for
+ * RowShareLock ... blocked by process A."
+ *
+ * Without a lock_timeout that wait is UNBOUNDED, so what should be a fast reset became a 15-minute hang
+ * that vitest eventually reported as "Hook timed out in 30000ms" — in `beforeEach`, in whichever file
+ * happened to draw the short straw. A full run produced seventeen such failures across nine unrelated
+ * files, with ZERO assertion failures among them. Every one of them was this.
+ *
+ * ## Why a timeout + retry rather than something cleverer
+ *
+ * `lock_timeout` turns an unbounded wait into a fast, named failure, and a lock held by a
+ * just-finished test clears in milliseconds — so a couple of retries is all it takes. The last attempt
+ * terminates any OTHER backend on this database first: between tests nothing should legitimately be
+ * in flight, so a connection still holding locks is either a leak or a straggler, and postgres.js
+ * transparently reconnects the app pool afterwards.
+ *
+ * What this deliberately does NOT do is raise the hook timeout, which would hide the wait rather than
+ * remove it, and would keep every one of those runs 15 minutes long.
+ */
+async function truncateAllTables(): Promise<void> {
+  const sqlText = `TRUNCATE ${ALL_TABLES.join(', ')} RESTART IDENTITY CASCADE`;
+  const ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    try {
+      // ONE transaction, deliberately. `SET LOCAL` only has meaning inside a transaction, and the pool
+      // gives no guarantee that a bare SET and the TRUNCATE that follows land on the SAME connection —
+      // so setting it separately could time out a different connection and leave this one unbounded.
+      // Sending both in one multi-statement string does not work either: drizzle's execute goes through
+      // the extended protocol, which refuses multiple commands.
+      await owner.db.transaction(async (tx) => {
+        await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+        await tx.execute(sql.raw(sqlText));
+      });
+      return;
+    } catch (e) {
+      const msg = String((e as Error)?.message ?? e);
+      const lockish = /lock_timeout|deadlock detected|canceling statement/i.test(msg);
+      if (!lockish || attempt === ATTEMPTS) throw e;
+      // Last try: clear anything else still attached to this database, then go again.
+      if (attempt === ATTEMPTS - 1) {
+        await owner.db
+          .execute(
+            sql`select pg_terminate_backend(pid) from pg_stat_activity
+                where datname = current_database() and pid <> pg_backend_pid()`,
+          )
+          .catch(() => {});
+      }
+      await new Promise((r) => setTimeout(r, 250 * attempt));
+    }
+  }
+}
+
 export async function resetDb() {
   // Overrides are per-test state; leaking them across files is the ADR-0071 isolation bug in a new coat.
   clearHarnessEntitlementOverrides();
-  await owner.db.execute(sql.raw(`TRUNCATE ${ALL_TABLES.join(', ')} RESTART IDENTITY CASCADE`));
+  await truncateAllTables();
   // ADR-0072: TRUNCATE tenant also drops the reserved system tenant that pre-auth auth events FK to
   // (app.append_auth_event stamps tenant 0…0 for login-failed / reset-request). Re-seed it (idempotent)
   // so the auth-audit writer keeps working across tests. Real tenants are seeded per-test as usual.

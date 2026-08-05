@@ -47,6 +47,8 @@ const BIRTH_DATE = 'components/birth-date-fields.tsx';
 const EPF_FIELDS = 'components/epf-registration-fields.tsx';
 const BANK_FIELDS = 'components/bank-account-fields.tsx';
 const BANK_CARD = 'components/bank-info-card.tsx';
+const TAX_FIELD = 'components/tax-category-field.tsx';
+const TAX_CARD = 'components/identity-tax-card.tsx';
 const PAY_STRUCTURE = 'components/pay-structure-fields.tsx';
 const SALARY_HISTORY = 'components/salary-history-table.tsx';
 const LEAVE_PANEL = 'components/leave-type-panel.tsx';
@@ -470,6 +472,99 @@ describe('§3e group 5 — Bank + Bank Account Number is one component, and the 
         expect(String(msgs.people.detail[k] ?? '').trim(), `${loc} people.detail.${k}`).not.toBe('');
       }
     }
+  });
+});
+
+describe('§3f group 6 — Tax Category is one component, and the wizard stops labelling it "1", "2", "3"', () => {
+  it('both screens render the shared control', () => {
+    for (const f of [WIZARD, TAX_CARD]) {
+      const src = read(f);
+      expect(src, `${f} must import the shared control`).toContain('tax-category-field');
+      expect(src, `${f} must render it`).toContain('<TaxCategoryField');
+    }
+    expect(read(WIZARD)).not.toContain("t('fields.taxCategory')");
+  });
+
+  it('the wizard NAMES the five circumstances instead of numbering three', () => {
+    // The defect, stated plainly: the Personnel card has always offered Single / Married & spouse not
+    // working / Married & spouse working / Divorced with children / None. The wizard offered options
+    // labelled literally "1", "2" and "3", so creating a hire required knowing the LHDN numbering by
+    // heart — and a category chosen wrongly here is invisible afterwards. It is simply the wrong monthly
+    // tax, every month, until somebody notices.
+    const wizard = read(WIZARD);
+    for (const k of ['taxCategory.1', 'taxCategory.2', 'taxCategory.3']) {
+      expect(wizard, `the numbered label ${k} must be gone`).not.toContain(k);
+    }
+    const src = read(TAX_FIELD);
+    for (const k of [
+      'taxCategorySingle',
+      'taxCategoryMarriedSpouseNotWorking',
+      'taxCategoryMarriedSpouseWorking',
+      'taxCategoryDivorcedWithKids',
+      'taxCategoryNone',
+    ]) {
+      expect(src, `the shared control must offer ${k}`).toContain(k);
+    }
+  });
+
+  it('keeps the 5 -> 3 value mapping EXACTLY, duplicates included', () => {
+    // Two options sharing a value is deliberate and must not be "tidied": they are different circumstances
+    // that LHDN taxes identically, and HR picks the one that describes the employee rather than doing the
+    // mapping in their head. Collapsing them would silently remove a choice from the screen.
+    // Read from the SOURCE rather than imported: this file is a static-source guard throughout, and the
+    // component is a 'use client' .tsx that a node test should not be pulling into its module graph.
+    const src = read(TAX_FIELD);
+    const list = src.slice(src.indexOf('TAX_CATEGORY_OPTIONS = ['), src.indexOf('] as const;'));
+    const values = [...list.matchAll(/value: '(\d)'/g)].map((m) => m[1]);
+    const keys = [...list.matchAll(/key: '([A-Za-z]+)'/g)].map((m) => m[1]);
+    expect(values).toEqual(['1', '2', '3', '3', '1']);
+    expect(new Set(keys).size, 'five distinct labels').toBe(5);
+  });
+
+  it('the shared control is client-safe, single-namespace, and each screen uses the right mode', () => {
+    const src = read(TAX_FIELD);
+    expect(/^\s*['"]use client['"]\s*;/m.test(src.slice(0, 400))).toBe(true);
+    expect(src).not.toMatch(/from '(@\/|\.\.\/)?(db|core)\//);
+    const namespaces = [...src.matchAll(/useTranslations\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]);
+    expect([...new Set(namespaces)]).toEqual(['people.detail']);
+
+    // The card POSTS through FormData, so it must stay uncontrolled and keep the name.
+    const cardCall = read(TAX_CARD).match(/<TaxCategoryField[\s\S]*?\/>/);
+    expect(cardCall).not.toBeNull();
+    expect(cardCall![0]).toContain('mode="form"');
+    // The wizard holds its draft in state and submits JSON, so it must be controlled and carry NO name —
+    // r159's lesson: a guard grepping for name="taxCategory" must not conclude that this one posts.
+    const wizardCall = read(WIZARD).match(/<TaxCategoryField[\s\S]*?\/>/);
+    expect(wizardCall).not.toBeNull();
+    expect(wizardCall![0]).toContain('mode="controlled"');
+    expect(wizardCall![0]).not.toContain('name=');
+  });
+
+  it('the retired numbered labels are gone from every catalog, and the named ones exist', () => {
+    for (const loc of LOCALES) {
+      const msgs = JSON.parse(read(`messages/${loc}.json`));
+      expect(msgs.people.wizard.fields.taxCategory, `${loc} fields.taxCategory`).toBeUndefined();
+      expect(msgs.people.wizard.taxCategory, `${loc} wizard.taxCategory.*`).toBeUndefined();
+      for (const k of [
+        'taxCategoryLabel',
+        'taxCategorySingle',
+        'taxCategoryMarriedSpouseNotWorking',
+        'taxCategoryMarriedSpouseWorking',
+        'taxCategoryDivorcedWithKids',
+        'taxCategoryNone',
+      ]) {
+        expect(String(msgs.people.detail[k] ?? '').trim(), `${loc} people.detail.${k}`).not.toBe('');
+      }
+    }
+  });
+
+  it('retiring fields.taxCategory is safe from the computed-key trap', () => {
+    // r159 nearly deleted three keys that survive no literal grep because the Review step renders
+    // t(`fields.${f}`) from whatever missingByStep returns. Checked by READING the function, not grepping:
+    // it never pushes 'taxCategory', so nothing can ask for the retired key.
+    const schema = read('lib/employee-draft-schema.ts');
+    const fn = schema.slice(schema.indexOf('export function missingByStep'));
+    expect(fn.slice(0, fn.indexOf('export function missingForCreation'))).not.toContain("'taxCategory'");
   });
 });
 

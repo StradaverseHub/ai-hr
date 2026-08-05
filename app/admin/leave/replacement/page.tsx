@@ -1,5 +1,4 @@
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { listCompanies, listDepartments, listEmployees, listJobGrades } from '@/core/read';
@@ -32,13 +31,22 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
  * CONFIGURATION tab that is read-only without the module — would have quietly re-gated it. Configuration
  * and settlement are gated differently on purpose; they therefore live on different screens, cross-linked.
  *
- * READ-ONLY WITHOUT THE MODULE, NOT HIDDEN. Replacement leave is a chargeable add-on; without it, every
- * control here is disabled and no Save button renders, but the page still shows what is configured. That
- * is existing behaviour carried over verbatim from the screen this form came from, and the reasoning is
- * carried over with it: every field on this form is FROZEN onto each accrual at accrual time, so an admin
- * asked to settle an outstanding liability must be able to SEE the settings that decide how it settles.
- * Reviewing is not configuring; only the second is what the entitlement withholds. `setToilPolicy`
- * asserts the same thing server-side — disabling the controls only stops the UI offering a refused save.
+ * EDITABLE WITHOUT THE ADD-ON AS OF 1cf5b37c — this paragraph used to say the opposite, so read the
+ * change rather than the memory. The screen previously rendered every control disabled with no Save
+ * whenever the `toil` entitlement was absent, which is precisely why the reporter read it as an
+ * unfinished placeholder: it looks identical to a page nobody built. It is now always editable for an
+ * administrator.
+ *
+ * What the entitlement still governs is whether anything is BANKED. `accrueToil`,
+ * `maybeAutoAccrueOnApprovalTx` and the employee request path each check it themselves, so a tenant
+ * without the add-on can describe how replacement leave would work and cannot cause one accrual. The
+ * banner near the top says exactly that, and it is the honest statement — the old wording claimed the
+ * settings "cannot be changed", which is no longer true.
+ *
+ * The commercial half of the original argument does survive: every field here is FROZEN onto each
+ * accrual at accrual time, so a policy configured today takes effect verbatim the day the add-on is
+ * bought. That was the reason `setToilPolicy` carried an entitlement assert; see its header for why the
+ * owner accepted removing it.
  *
  * SERVER/CLIENT BOUNDARY: `ReplacementEligibilityPicker` is a client component and receives ONLY
  * serialisable props — option arrays and a plain `labels` object of already-translated strings. No `t`
@@ -53,7 +61,18 @@ export default async function LeaveReplacementPage({
   const t = await getTranslations('admin.leave');
   const tr = await getTranslations('admin.replacementLeave');
   const { error, warning, saved } = await searchParams;
-  const moduleOn = isModuleEnabledOrFalse(s, 'toil');
+  // 1cf5b37c — TWO QUESTIONS, NOT ONE. They used to be the same flag, which is why this screen looked
+  // like an unfinished placeholder: `toil` is not in the tenant's modules, so every control rendered
+  // disabled with no Save.
+  //
+  //   • `accrualLive` — does replacement leave actually BANK days for this tenant? Still the `toil`
+  //     entitlement, unchanged, and still enforced inside core/toil.ts on every accrual path.
+  //   • configuring   — may an admin EDIT these settings? Now yes, always. Saving writes configuration
+  //     and cannot cause an accrual; see setToilPolicy's header for the full argument.
+  //
+  // Switching `toil` on to make this screen editable would also have lit up the legacy /admin/toil page,
+  // which the reporter explicitly asked us to leave alone. That is the decoupling this item is about.
+  const accrualLive = isModuleEnabledOrFalse(s, 'toil');
 
   const companies = await listCompanies(s);
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
@@ -136,23 +155,16 @@ export default async function LeaveReplacementPage({
         </div>
       )}
 
-      {!moduleOn && (
+      {!accrualLive && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           {tr('moduleOff')}
         </div>
       )}
 
-      {/* Cross-link BOTH WAYS (the other half is on app/admin/toil/page.tsx). An admin who lands here
-          looking for the balance ledger or the settle/expire buttons must be told where they went, or the
-          split reads as a feature having been deleted. */}
-      <Card className="p-4">
-        <p className="text-sm text-muted-foreground">
-          {tr('ledgerMovedNote')}{' '}
-          <Link href="/admin/toil" className="font-medium text-primary hover:underline">
-            {tr('ledgerMovedLink')}
-          </Link>
-        </p>
-      </Card>
+      {/* 1cf5b37c — THE CROSS-LINK TO /admin/toil IS GONE, on purpose. It pointed at the legacy module
+          the reporter told us to ignore, and they asked for this submenu to be self-contained. The
+          ledger and the two settlement sweeps still live there and are unchanged; nothing about that
+          page moved, was unlocked, or was retired by this item. */}
 
       {visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">{tr('noCompanies')}</p>
@@ -182,7 +194,7 @@ export default async function LeaveReplacementPage({
                 <input type="hidden" name="companyId" value={c.id} />
 
                 <label className="flex items-start gap-2.5">
-                  <input type="checkbox" name="enabled" defaultChecked={p.enabled} disabled={!moduleOn} className="mt-0.5 h-4 w-4 accent-primary disabled:opacity-60" />
+                  <input type="checkbox" name="enabled" defaultChecked={p.enabled} className="mt-0.5 h-4 w-4 accent-primary disabled:opacity-60" />
                   <span>
                     <span className="text-sm font-medium text-foreground">{tr('enabledLabel')}</span>
                     <span className="block text-xs text-muted-foreground">{tr('enabledHint')}</span>
@@ -191,13 +203,13 @@ export default async function LeaveReplacementPage({
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field label={tr('accrualBasis')}>
-                    <select name="accrualBasis" defaultValue={p.accrualBasis} disabled={!moduleOn} className={inputCls}>
+                    <select name="accrualBasis" defaultValue={p.accrualBasis} className={inputCls}>
                       <option value="hours_worked">{tr('basisHoursWorked')}</option>
                       <option value="premium_equivalent">{tr('basisPremiumEquivalent')}</option>
                     </select>
                   </Field>
                   <Field label={tr('onExpiry')}>
-                    <select name="onExpiry" defaultValue={p.onExpiry} disabled={!moduleOn} className={inputCls}>
+                    <select name="onExpiry" defaultValue={p.onExpiry} className={inputCls}>
                       <option value="convert_to_pay">{tr('expiryConvertToPay')}</option>
                       <option value="lapse">{tr('expiryLapse')}</option>
                     </select>
@@ -212,16 +224,16 @@ export default async function LeaveReplacementPage({
                   <SectionHeader title={tr('expiryTitle')} />
                   <div className="grid grid-cols-1 gap-3 px-0 pt-3 sm:grid-cols-3">
                     <Field label={tr('expiryUnit')}>
-                      <select name="expiryUnit" defaultValue={p.expiryUnit} disabled={!moduleOn} className={inputCls}>
+                      <select name="expiryUnit" defaultValue={p.expiryUnit} className={inputCls}>
                         <option value="days">{tr('expiryUnitDays')}</option>
                         <option value="months">{tr('expiryUnitMonths')}</option>
                       </select>
                     </Field>
                     <Field label={tr('expiryDays')}>
-                      <input type="number" name="expiryDays" min={1} max={730} required defaultValue={p.expiryDays} disabled={!moduleOn} className={inputCls} />
+                      <input type="number" name="expiryDays" min={1} max={730} required defaultValue={p.expiryDays} className={inputCls} />
                     </Field>
                     <Field label={tr('expiryMonths')}>
-                      <input type="number" name="expiryMonths" min={1} max={24} required defaultValue={p.expiryMonths} disabled={!moduleOn} className={inputCls} />
+                      <input type="number" name="expiryMonths" min={1} max={24} required defaultValue={p.expiryMonths} className={inputCls} />
                     </Field>
                   </div>
                   <p className="mt-1.5 text-xs text-muted-foreground">{tr('expiryHint')}</p>
@@ -234,7 +246,7 @@ export default async function LeaveReplacementPage({
                     intention and a promise the system does not keep. */}
                 <div>
                   <Field label={tr('leaveFrom')}>
-                    <select name="replacementLeaveFrom" defaultValue={p.replacementLeaveFrom} disabled={!moduleOn} className={inputCls}>
+                    <select name="replacementLeaveFrom" defaultValue={p.replacementLeaveFrom} className={inputCls}>
                       <option value="working_hours">{tr('leaveFromWorkingHours')}</option>
                       <option value="overtime">{tr('leaveFromOvertime')}</option>
                       <option value="working_hours_and_overtime">{tr('leaveFromBoth')}</option>
@@ -250,7 +262,7 @@ export default async function LeaveReplacementPage({
                     type="checkbox"
                     name="allowFirstScheduleEligible"
                     defaultChecked={p.allowFirstScheduleEligible}
-                    disabled={!moduleOn}
+                   
                     className="mt-0.5 h-4 w-4 accent-amber-600 disabled:opacity-60"
                   />
                   <span>
@@ -260,7 +272,7 @@ export default async function LeaveReplacementPage({
                 </label>
 
                 <label className="flex items-start gap-2.5">
-                  <input type="checkbox" name="autoAccrueOnApproval" defaultChecked={p.autoAccrueOnApproval} disabled={!moduleOn} className="mt-0.5 h-4 w-4 accent-primary disabled:opacity-60" />
+                  <input type="checkbox" name="autoAccrueOnApproval" defaultChecked={p.autoAccrueOnApproval} className="mt-0.5 h-4 w-4 accent-primary disabled:opacity-60" />
                   <span>
                     <span className="text-sm font-medium text-foreground">{tr('autoAccrueLabel')}</span>
                     <span className="block text-xs text-muted-foreground">{tr('autoAccrueHint')}</span>
@@ -268,7 +280,7 @@ export default async function LeaveReplacementPage({
                 </label>
 
                 <label className="flex items-start gap-2.5">
-                  <input type="checkbox" name="carryForwardAtYearEnd" defaultChecked={p.carryForwardAtYearEnd} disabled={!moduleOn} className="mt-0.5 h-4 w-4 accent-primary disabled:opacity-60" />
+                  <input type="checkbox" name="carryForwardAtYearEnd" defaultChecked={p.carryForwardAtYearEnd} className="mt-0.5 h-4 w-4 accent-primary disabled:opacity-60" />
                   <span>
                     <span className="text-sm font-medium text-foreground">{tr('carryForwardLabel')}</span>
                     <span className="block text-xs text-muted-foreground">{tr('carryForwardHint')}</span>
@@ -284,7 +296,7 @@ export default async function LeaveReplacementPage({
                       type="checkbox"
                       name="employeeRequestEnabled"
                       defaultChecked={p.employeeRequestEnabled}
-                      disabled={!moduleOn}
+                     
                       className="mt-0.5 h-4 w-4 accent-primary disabled:opacity-60"
                     />
                     <span>
@@ -300,12 +312,12 @@ export default async function LeaveReplacementPage({
                       options={eligibilityOptions}
                       defaultSelected={defaultSelected}
                       labels={pickerLabels}
-                      disabled={!moduleOn}
+                     
                     />
                   </div>
                 </div>
 
-                {moduleOn && <button className={btnPrimary}>{tr('save')}</button>}
+                <button className={btnPrimary}>{tr('save')}</button>
               </form>
             </Card>
           );

@@ -153,9 +153,37 @@ describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, ta
 
   it('the Identification & Tax card carries the tax inputs (setTaxAction)', () => {
     expect(page.includes('action={setTaxAction}') || identityTaxCard.includes('action={action}')).toBe(true);
-    for (const input of ['name="taxNumber"', 'name="taxCategory"', 'name="taxResidency"', 'name="numChildren"', 'name="childReliefMode"', 'name="employerBearsTax"']) {
+    // taxCategory is NOT in this list any more — 35b7af0a group 6 extracted it into a shared component so
+    // the Create Employee wizard renders the identical control. It is asserted separately below.
+    for (const input of ['name="taxNumber"', 'name="taxResidency"', 'name="numChildren"', 'name="childReliefMode"', 'name="employerBearsTax"']) {
       expect(identityTaxCard.includes(input), `${input} should exist in identity-tax-card.tsx`).toBe(true);
     }
+  });
+
+  /**
+   * ⚠️ A GUARD THAT READS ONE FILE'S SOURCE BREAKS WHEN A FIELD IS EXTRACTED INTO A COMPONENT, AND THE
+   * TEMPTING FIX DELETES THE PROTECTION. This is the r159 lesson applied to its own next occurrence.
+   *
+   * `name="taxCategory"` stopped appearing in identity-tax-card.tsx when group 6 moved the control into
+   * components/tax-category-field.tsx. Dropping the assertion would have been wrong: this is a card whose
+   * action reads the field out of FormData, so a field that stops posting silently stops being saved.
+   *
+   * Following the string alone would also be wrong — the component contains the name whether or not the
+   * card still renders it, and the component's `controlled` mode emits value/onChange with NO name at all.
+   * So the guard needs all THREE facts, exactly as r159 recorded:
+   *   ① the field exists in the component,
+   *   ② the card renders that component,
+   *   ③ it renders it in the mode that actually posts.
+   */
+  it('the extracted Tax Category still POSTS from this card (all three facts, per r159)', () => {
+    const field = read('components/tax-category-field.tsx');
+    expect(field.includes("name={props.name ?? 'taxCategory'}"), '① the field exists in the component').toBe(
+      true,
+    );
+    expect(identityTaxCard.includes('<TaxCategoryField'), '② the card renders the component').toBe(true);
+    const call = identityTaxCard.match(/<TaxCategoryField[\s\S]*?\/>/);
+    expect(call, 'the card must render TaxCategoryField').not.toBeNull();
+    expect(call![0].includes('mode="form"'), '③ in the mode that posts, not the controlled one').toBe(true);
   });
 
   it('exposes the four Income Tax Resident options incl. the new REP / Knowledge Worker statuses', () => {

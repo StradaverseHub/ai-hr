@@ -1363,7 +1363,6 @@
         "numChildren": "จำนวนบุตร",
         "eisEligible": "มีสิทธิ์ EIS",
         "isResident": "ผู้มีถิ่นที่อยู่ทางภาษี",
-        "taxCategory": "ประเภท PCB",
         "monthlyAllowance": "เบี้ยเลี้ยงรายเดือน",
         "rateAmount": "จำนวนอัตรา"
       },
@@ -1372,11 +1371,6 @@
         "part_time": "พาร์ทไทม์",
         "contract": "สัญญาจ้าง",
         "intern": "ฝึกงาน"
-      },
-      "taxCategory": {
-        "1": "โสด",
-        "2": "สมรส · คู่สมรสไม่ทำงาน",
-        "3": "สมรส · คู่สมรสทำงาน"
       },
       "none": "— ไม่มี —",
       "orgLabelsEmptyForCompany": "ไม่มีป้ายกำกับองค์กรที่กำหนดค่าไว้สำหรับบริษัทที่เลือก",
@@ -1774,7 +1768,8 @@
       "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
       "convertConfirm": "Yes — submit this as Emergency Leave.",
       "splitConfirm": "Yes — I agree to the unpaid days."
-    }
+    },
+    "unpaidPortionLabel": "ลาไม่รับค่าจ้าง"
   },
   "attendance": {
     "title": "การเข้างาน",
@@ -4488,7 +4483,9 @@
       "unarchive": "ยกเลิกเก็บถาวร",
       "archive": "เก็บถาวร",
       "deleteTypeConfirmTitle": "ลบประเภทการลานี้?",
-      "deleteTypeConfirmDescription": "ไม่ได้ถูกอ้างอิงที่ใด จึงลบออกอย่างถาวรได้",
+      "deleteTypeConfirmDescription": "การดำเนินการนี้จะลบประเภทการลาและการตั้งค่าทั้งหมดอย่างถาวร และไม่สามารถย้อนกลับได้",
+      "deleteTypeCascadeRules": "กฎการอนุมัติเหล่านี้จะถูกลบไปด้วย: {names}",
+      "deleteTypeCascadeBalanceSource": "{names} ใช้ยอดวันลาจากประเภทนี้อยู่ การลบจะล้างการตั้งค่านั้น — {names} ไม่ถูกลบ แต่ต้องกำหนดแหล่งยอดวันลาใหม่ก่อนที่จะมีผู้ยื่นขอ",
       "deleteConfirmLabel": "ลบ",
       "delete": "ลบ",
       "statutoryMinimum": "ขั้นต่ำตามกฎหมาย (MY)",
@@ -5852,9 +5849,7 @@
       "noCompanies": "No companies in your scope.",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
-      "moduleOff": "Replacement leave is not switched on for this account. You can review the settings here, but they cannot be changed and no new credits will be granted.",
-      "ledgerMovedNote": "The running balance ledger and the settle-and-expire actions stay on",
-      "ledgerMovedLink": "Time Off In Lieu",
+      "moduleOff": "การลาชดเชยไม่ได้อยู่ในแพ็กเกจของบัญชีนี้ จึงยังไม่มีการสะสมวันลา คุณตั้งค่าไว้ล่วงหน้าที่นี่ได้ — การตั้งค่าจะมีผลทันทีที่เปิดใช้ส่วนเสริมนี้",
       "enabledLabel": "Enable replacement leave for this company",
       "enabledHint": "Approved rest-day and public-holiday overtime can be banked as replacement leave instead of paid as cash.",
       "accrualBasis": "Accrual basis",

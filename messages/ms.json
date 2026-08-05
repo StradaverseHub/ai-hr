@@ -1363,7 +1363,6 @@
         "numChildren": "Bilangan anak",
         "eisEligible": "Layak SIP",
         "isResident": "Pemastautin cukai",
-        "taxCategory": "Kategori PCB",
         "monthlyAllowance": "Elaun bulanan",
         "rateAmount": "Jumlah kadar"
       },
@@ -1372,11 +1371,6 @@
         "part_time": "Separuh masa",
         "contract": "Kontrak",
         "intern": "Pelatih"
-      },
-      "taxCategory": {
-        "1": "Bujang",
-        "2": "Berkahwin · pasangan tidak bekerja",
-        "3": "Berkahwin · pasangan bekerja"
       },
       "none": "— Tiada —",
       "orgLabelsEmptyForCompany": "Tiada label organisasi dikonfigurasikan untuk syarikat yang dipilih.",
@@ -1774,7 +1768,8 @@
       "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
       "convertConfirm": "Yes — submit this as Emergency Leave.",
       "splitConfirm": "Yes — I agree to the unpaid days."
-    }
+    },
+    "unpaidPortionLabel": "Cuti Tanpa Gaji"
   },
   "attendance": {
     "title": "Kehadiran",
@@ -4488,7 +4483,9 @@
       "unarchive": "Nyaharkib",
       "archive": "Arkib",
       "deleteTypeConfirmTitle": "Padam jenis cuti ini?",
-      "deleteTypeConfirmDescription": "Ia tidak dirujuk di mana-mana, jadi ini membuangnya secara kekal.",
+      "deleteTypeConfirmDescription": "Ini membuang jenis cuti ini dan semua tetapannya secara kekal. Tindakan ini tidak boleh dibatalkan.",
+      "deleteTypeCascadeRules": "Peraturan kelulusan berikut akan dibuang bersamanya: {names}.",
+      "deleteTypeCascadeBalanceSource": "{names} kini mengambil baki cutinya daripada jenis ini. Membuangnya akan mengosongkan tetapan itu — {names} tidak dibuang, tetapi ia memerlukan sumber baki baharu sebelum sesiapa memohon.",
       "deleteConfirmLabel": "Padam",
       "delete": "Padam",
       "statutoryMinimum": "Minimum berkanun (MY)",
@@ -5852,9 +5849,7 @@
       "noCompanies": "No companies in your scope.",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
-      "moduleOff": "Replacement leave is not switched on for this account. You can review the settings here, but they cannot be changed and no new credits will be granted.",
-      "ledgerMovedNote": "The running balance ledger and the settle-and-expire actions stay on",
-      "ledgerMovedLink": "Time Off In Lieu",
+      "moduleOff": "Cuti gantian bukan sebahagian daripada pelan akaun ini, jadi tiada kredit dibankkan lagi. Anda boleh menyediakannya di sini sekarang — tetapan akan berkuat kuasa sebaik sahaja tambahan itu dihidupkan.",
       "enabledLabel": "Enable replacement leave for this company",
       "enabledHint": "Approved rest-day and public-holiday overtime can be banked as replacement leave instead of paid as cash.",
       "accrualBasis": "Accrual basis",

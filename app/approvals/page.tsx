@@ -52,6 +52,10 @@ import {
   BulkRowCheckbox,
 } from './bulk-selection';
 import { isOvertimeCorrection, type BulkRow, type BulkCategory } from '@/lib/approvals-bulk';
+// fef49b9a — the SHARED paid/unpaid derivation. The manager's list and the employee's own history must
+// not each do their own subtraction; that is how two screens come to disagree about one request.
+import { leaveDisplaySplit } from '@/lib/leave-split';
+import { listLeaveTypes } from '@/core/read';
 
 /** Category-panel return params (2dec6406): every decide form carries the current category + sort so the
  *  action's redirect lands back on the SAME filtered view (success and error paths alike). */
@@ -125,6 +129,9 @@ export default async function ApprovalsPage({
   const category = parseApprovalCategory(categoryParam, { admin });
   const t = await getTranslations('approvals');
   const tLeave = await getTranslations('leave'); // Emergency Leave (0106) — group label for EL child rows
+  // fef49b9a — the tenant's own name for unpaid leave, resolved once for the whole page rather than per
+  // row. Undefined when the tenant has no UNPAID type; leaveDisplaySplit then uses the translated label.
+  const unpaidTypeName = (await listLeaveTypes(s)).find((lt) => lt.code === 'UNPAID')?.name;
   const decideLabels = {
     yourRequest: t('yourRequest'),
     approve: t('approve'),
@@ -477,6 +484,15 @@ export default async function ApprovalsPage({
                       durationType={r.durationType}
                       fromTime={r.fromTime}
                       toTime={r.toTime}
+                      // fef49b9a — so a manager sees what they are approving BEFORE opening it. It stays
+                      // ONE request with one approve action; only the day breakdown is shown.
+                      splitRows={leaveDisplaySplit({
+                        leaveTypeName: r.leaveType,
+                        days: r.days,
+                        unpaidDays: r.unpaidDays,
+                        unpaidTypeName,
+                        unpaidFallbackLabel: tLeave('unpaidPortionLabel'),
+                      })}
                     />
                   </td>
                   {/* 33bf1a2d: Attachment. `hasDocument` is already part of the shared leave-request

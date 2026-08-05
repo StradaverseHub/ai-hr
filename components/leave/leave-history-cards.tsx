@@ -40,6 +40,10 @@ export type LeaveHistoryEntry = {
   startDate: string;
   endDate: string;
   days: number;
+  /** fef49b9a — the paid/unpaid breakdown, PRE-TRANSLATED and pre-split by lib/leave-split.ts on the
+   *  server (this island translates nothing). null when the request was fully covered by the balance,
+   *  which is the common case and renders exactly as before. */
+  splitRows: { label: string; days: number; unpaid: boolean }[] | null;
   /** Pre-translated card duration suffix (half-day / hourly session); null for full-day rows. */
   sessionSuffix: string | null;
   /** Pre-translated panel Session value — always present ("Full day" default, hourly incl. its window). */
@@ -126,6 +130,22 @@ export function LeaveHistoryCards({ entries, locale }: { entries: LeaveHistoryEn
             </div>
             <p className="mt-2 text-sm tabular-nums text-muted-foreground">{range(e)}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">{durationLine(e)}</p>
+            {/* fef49b9a — the breakdown, when the balance did not cover the whole application. It is ONE
+                request with one approve action; this only says how the days were charged. Rendered under
+                the duration line rather than replacing the type name above, so a split request still
+                reads as the type the employee applied for. */}
+            {e.splitRows && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {e.splitRows.map((row, i) => (
+                  <span key={row.label + i}>
+                    {i > 0 && ' · '}
+                    <span className={row.unpaid ? 'text-amber-700 dark:text-amber-400' : undefined}>
+                      {row.label} {row.days}
+                    </span>
+                  </span>
+                ))}
+              </p>
+            )}
             <button
               type="button"
               onClick={() => openDetails(e.id)}
@@ -172,6 +192,21 @@ export function LeaveHistoryCards({ entries, locale }: { entries: LeaveHistoryEn
                       {selected.groupLabel && (
                         <span className="ml-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                           {selected.groupLabel}
+                        </span>
+                      )}
+                      {/* fef49b9a — the breakdown, on the detail panel as well as the card. This is where
+                          an employee comes to find out how much of it was actually paid, so a single
+                          combined line is the least useful place to leave it. */}
+                      {selected.splitRows && (
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {selected.splitRows.map((row, i) => (
+                            <span key={row.label + i}>
+                              {i > 0 && ' · '}
+                              <span className={row.unpaid ? 'text-amber-700 dark:text-amber-400' : undefined}>
+                                {row.label} {row.days}
+                              </span>
+                            </span>
+                          ))}
                         </span>
                       )}
                     </>,

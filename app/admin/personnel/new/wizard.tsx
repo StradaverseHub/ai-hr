@@ -40,6 +40,7 @@ import { BirthDateFields } from '@/components/birth-date-fields';
 import { EpfRegistrationFields } from '@/components/epf-registration-fields';
 // 35b7af0a group 5 — the Bank + Bank Account Number group, shared with the Personnel Bank Information card.
 import { BankAccountFields } from '@/components/bank-account-fields';
+import { TaxCategoryField } from '@/components/tax-category-field';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DRAFT_STEPS,
@@ -730,18 +731,18 @@ export function EmployeeWizard({
                 onChange={(e) => set('statutory', { taxNumber: e.target.value })}
               />
             </Field>
-            <Field label={t('fields.taxCategory')}>
-              <select
-                className={inputCls}
-                value={data.statutory?.taxCategory ?? ''}
-                onChange={(e) => set('statutory', { taxCategory: e.target.value })}
-              >
-                <option value="">{t('notSet')}</option>
-                <option value="1">{t('taxCategory.1')}</option>
-                <option value="2">{t('taxCategory.2')}</option>
-                <option value="3">{t('taxCategory.3')}</option>
-              </select>
-            </Field>
+            {/* 35b7af0a group 6 — Tax Category is the SAME control the Personnel Identification & Tax
+                card renders (components/tax-category-field.tsx). The wizard's private select labelled its
+                options "1", "2" and "3"; the Personnel card has always named the five circumstances they
+                stand for. Whoever creates the hire now sees exactly what whoever edits it sees, which is
+                the point of this item — a category picked wrongly here is invisible afterwards and is
+                simply the wrong monthly tax until somebody notices. */}
+            <TaxCategoryField
+              mode="controlled"
+              value={data.statutory?.taxCategory}
+              onChange={(taxCategory) => set('statutory', { taxCategory })}
+              notSetLabel={t('notSet')}
+            />
             <Field label={t('fields.numChildren')}>
               <input
                 type="number"

@@ -37,7 +37,10 @@ import {
 } from '../db/schema';
 import { cleanReplacementEligibility } from './replacement-eligibility';
 import { packFor } from '../localization/registry';
-import { assertModuleEnabled, isModuleEnabled } from './entitlements';
+// 1cf5b37c — `assertModuleEnabled` left this import when setToilPolicy's entitlement gate was removed
+// (see its header for why). `isModuleEnabled` STAYS: it still gates both accrual paths, which is what
+// makes configuring-without-the-module inert rather than merely unbilled.
+import { isModuleEnabled } from './entitlements';
 import { isAdmin } from '../lib/authz';
 
 export class ToilDisabledError extends Error {
@@ -253,9 +256,38 @@ export type ToilPolicyInput = {
  * days must convert to pay and may never lapse, and both sweeps read the per-accrual `expiryAction` /
  * `carryForwardAtYearEnd` frozen at accrual, not this policy. Winding down needs the ledger and the two
  * sweeps; it does not need to re-tune FUTURE accrual, which is precisely what the entitlement governs.
+ *
+ * ── 1cf5b37c (2026-08-05) — THE ENTITLEMENT GATE ABOVE WAS REMOVED FROM THIS WRITER, DELIBERATELY ────
+ *
+ * Everything the paragraphs above say is still true, so read this before putting it back.
+ *
+ * The reporter's complaint was that Leave Config → Replacement Leave looks like an unfinished
+ * placeholder: every control disabled, no Save. It is not a placeholder — it is a complete editor that
+ * the `toil` entitlement renders read-only, and `toil` is not in `tenant_module` for the tenant
+ * (verified on production 2026-08-05; `toil_policy` also holds ZERO rows). The approved plan's
+ * instruction is to let the new Leave Config screen become editable WITHOUT switching `toil` on, because
+ * that same flag also lights up the legacy app/admin/toil page the reporter told us to leave alone.
+ *
+ * WHAT THIS DOES NOT DO, and it is the reason the change is safe: it does not let anybody accrue
+ * anything. Saving a policy here writes CONFIGURATION and nothing else. Every path that can actually
+ * bank a day still checks the entitlement on its own —
+ *   • `accrueToil` (:757) throws ToilDisabledError when the module is off;
+ *   • `maybeAutoAccrueOnApprovalTx` (:838) returns false before it reads the policy at all;
+ *   • the employee request path is gated the same way.
+ * So a tenant without `toil` can now describe how replacement leave WOULD work and cannot cause a single
+ * accrual, and the two settlement sweeps are untouched in both states. That is exactly the constraint the
+ * plan sets: the new screen's gate must not change sweep behaviour.
+ *
+ * THE ORIGINAL CONCERN SURVIVES IN ONE RESPECT and is now the customer's to hold rather than the code's:
+ * these fields are FROZEN onto each accrual at accrual time, so a policy configured today takes effect
+ * verbatim the day `toil` is purchased. The screen says so on its face. That was a commercial argument
+ * for the gate, not a data-integrity one, and the owner has approved letting the customer configure ahead
+ * of purchase. `assertAdminCtx` still applies, so this is admin-only, never employee-reachable.
  */
 export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
-  assertModuleEnabled(ctx, 'toil');
+  // Own message — the default one talks about running the sweeps, which is not what this refuses.
+  if (!isAdminCtx(ctx))
+    throw new ToilSweepForbiddenError('Only an HR administrator may change the replacement-leave settings.');
   if (!Number.isInteger(p.expiryDays) || p.expiryDays < 1 || p.expiryDays > 730)
     throw new Error('Expiry days must be a whole number between 1 and 730.');
   // 296fc027: the months count gets its OWN bound rather than sharing the days one. 24 months is the same
