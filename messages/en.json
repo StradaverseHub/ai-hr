@@ -1356,12 +1356,10 @@
         "remarks": "Remarks",
         "icNumber": "Identity No (NRIC)",
         "phone": "Mobile Phone Number",
-        "socsoNumber": "SOCSO number",
         "taxNumber": "Tax number",
         "dateOfBirth": "Date of birth",
         "bankAccount": "Bank details",
         "numChildren": "Number of children",
-        "eisEligible": "EIS eligible",
         "isResident": "Tax resident",
         "monthlyAllowance": "Monthly allowance",
         "rateAmount": "Rate amount"

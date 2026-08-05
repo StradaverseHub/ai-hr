@@ -130,6 +130,27 @@ export interface CountryPackClient {
     dobFromIC: (ic: string, now?: Date) => string | null;
   };
 
+  /**
+   * Client-safe STATUTORY vocabulary — pure functions only, no db surface.
+   *
+   * 35b7af0a group 7 added this slice so a shared field component can apply the SAME default on the
+   * wizard as the Personnel screen applies server-side. Before it, the wizard had no way to reach
+   * `defaultSocsoEisNumber` without importing the server pack, so it simply left the number blank and
+   * hires created there arrived with an empty SOCSO/EIS number.
+   */
+  statutory: {
+    /**
+     * The SOCSO & EIS number to show/persist: for a local employee with a blank number, their
+     * (normalised) national ID — the scheme registers locals under it. Returns undefined when the
+     * jurisdiction has no opinion, so the caller keeps whatever is stored.
+     */
+    defaultSocsoEisNumber: (args: {
+      socsoNumber?: string | null;
+      icNumber?: string | null;
+      nationality?: string | null;
+    }) => string | undefined;
+  };
+
   /** Client-safe statutory-leave vocabulary. */
   leave: {
     /** Statutory floor: entitlement in days for a leave-type code at completed years of service. */

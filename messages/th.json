@@ -1356,12 +1356,10 @@
         "remarks": "หมายเหตุ",
         "icNumber": "หมายเลขประจำตัว (NRIC)",
         "phone": "หมายเลขโทรศัพท์มือถือ",
-        "socsoNumber": "หมายเลข SOCSO",
         "taxNumber": "หมายเลขภาษี",
         "dateOfBirth": "วันเกิด",
         "bankAccount": "ข้อมูลธนาคาร",
         "numChildren": "จำนวนบุตร",
-        "eisEligible": "มีสิทธิ์ EIS",
         "isResident": "ผู้มีถิ่นที่อยู่ทางภาษี",
         "monthlyAllowance": "เบี้ยเลี้ยงรายเดือน",
         "rateAmount": "จำนวนอัตรา"

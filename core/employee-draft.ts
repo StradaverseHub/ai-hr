@@ -307,7 +307,17 @@ export async function completeEmployeeDraft(
       taxNumber: str(s.taxNumber),
       taxCategory: numOrUndef(s.taxCategory),
       numChildren: numOrUndef(s.numChildren),
-      eisEligible: boolOrUndef(s.eisEligible),
+      // 35b7af0a group 7 — the wizard now sends the CATEGORY, matching the Personnel screen and item
+      // a7271737's consolidation. setStatutoryProfileMY derives the legacy booleans from it.
+      //
+      // BACK-COMPAT, and it is the whole reason this is not a one-line swap: a draft saved BEFORE this
+      // change carries the legacy `eisEligible: 'yes' | 'no'` and no categories at all. Map it forward
+      // so that draft still creates exactly the employee it always would have — 'no' is the scheme off,
+      // anything else is the automatic derivation, which is what boolOrUndef(...)===false meant.
+      socsoCategory: str(s.socsoCategory) as 'auto' | 'first' | 'second' | 'none' | undefined,
+      eisCategory:
+        (str(s.eisCategory) as 'auto' | 'none' | undefined) ??
+        (boolOrUndef(s.eisEligible) === false ? 'none' : undefined),
       isResident: boolOrUndef(s.isResident),
       epfCitizenship: citizenship(s.epfCitizenship),
       bankName: str(s.bankName),

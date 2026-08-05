@@ -1356,12 +1356,10 @@
         "remarks": "Catatan",
         "icNumber": "No. Identiti (NRIC)",
         "phone": "Nombor Telefon Bimbit",
-        "socsoNumber": "Nombor SOCSO",
         "taxNumber": "Nombor cukai",
         "dateOfBirth": "Tarikh lahir",
         "bankAccount": "Maklumat bank",
         "numChildren": "Bilangan anak",
-        "eisEligible": "Layak SIP",
         "isResident": "Pemastautin cukai",
         "monthlyAllowance": "Elaun bulanan",
         "rateAmount": "Jumlah kadar"

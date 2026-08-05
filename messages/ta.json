@@ -1356,12 +1356,10 @@
         "remarks": "குறிப்புகள்",
         "icNumber": "அடையாள எண் (NRIC)",
         "phone": "கைப்பேசி எண்",
-        "socsoNumber": "SOCSO எண்",
         "taxNumber": "வரி எண்",
         "dateOfBirth": "பிறந்த தேதி",
         "bankAccount": "வங்கி விவரங்கள்",
         "numChildren": "குழந்தைகளின் எண்ணிக்கை",
-        "eisEligible": "EIS தகுதி",
         "isResident": "வரி வதிவாளர்",
         "monthlyAllowance": "மாதாந்திர படி",
         "rateAmount": "விகிதத் தொகை"

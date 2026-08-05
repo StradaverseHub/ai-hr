@@ -49,6 +49,8 @@ const BANK_FIELDS = 'components/bank-account-fields.tsx';
 const BANK_CARD = 'components/bank-info-card.tsx';
 const TAX_FIELD = 'components/tax-category-field.tsx';
 const TAX_CARD = 'components/identity-tax-card.tsx';
+const SOCSO_FIELDS = 'components/socso-eis-fields.tsx';
+const PERSONNEL_PAGE = 'app/admin/personnel/[employmentId]/page.tsx';
 const PAY_STRUCTURE = 'components/pay-structure-fields.tsx';
 const SALARY_HISTORY = 'components/salary-history-table.tsx';
 const LEAVE_PANEL = 'components/leave-type-panel.tsx';
@@ -565,6 +567,92 @@ describe('§3f group 6 — Tax Category is one component, and the wizard stops l
     const schema = read('lib/employee-draft-schema.ts');
     const fn = schema.slice(schema.indexOf('export function missingByStep'));
     expect(fn.slice(0, fn.indexOf('export function missingForCreation'))).not.toContain("'taxCategory'");
+  });
+});
+
+describe('§3g group 7 — SOCSO / EIS is one group, and the wizard catches up a whole consolidation', () => {
+  it('both screens render the shared group', () => {
+    for (const f of [WIZARD, PERSONNEL_PAGE]) {
+      const src = read(f);
+      expect(src, `${f} must import the shared group`).toContain('socso-eis-fields');
+      expect(src, `${f} must render it`).toContain('<SocsoEisFields');
+    }
+  });
+
+  it('the wizard offers the CATEGORY controls it never had, not the legacy boolean', () => {
+    // The defect: item a7271737 made the category the single per-scheme control on the Personnel
+    // screen, replacing Subject-to-SOCSO / Subject-to-EIS. The wizard never followed — it still asked
+    // one "EIS eligible" yes/no and had NO SOCSO category at all, so a hire created there could not be
+    // put in SOCSO First or Second category, and the same employee on Personnel showed a different
+    // question with more answers.
+    const wizard = read(WIZARD);
+    expect(wizard, 'the legacy EIS boolean control is gone').not.toContain("t('fields.eisEligible')");
+    expect(wizard, 'and its bare SOCSO number box is gone').not.toContain("t('fields.socsoNumber')");
+    const src = read(SOCSO_FIELDS);
+    expect(src).toContain("SOCSO_CATEGORIES = ['auto', 'first', 'second', 'none']");
+    expect(src).toContain("EIS_CATEGORIES = ['auto', 'none']");
+  });
+
+  it('the IC-derived number default reaches the client WITHOUT dragging the server pack in', () => {
+    // defaultSocsoEisNumber is pure but lived in statutory.ts, which imports db/client. Sharing the
+    // group meant extracting it to a leaf; importing it from statutory.ts instead would put the
+    // database driver into every client bundle that reads jurisdiction vocabulary.
+    const leaf = read('localization/my/socso-eis.ts');
+    expect(leaf).toContain('export const defaultSocsoEisNumber');
+    expect(leaf, 'the leaf must have no server deps').not.toMatch(/from '(\.\.\/)*(db|core)\//);
+    expect(read('localization/my/statutory.ts'), 'server callers keep their import').toContain(
+      "export { defaultSocsoEisNumber } from './socso-eis'",
+    );
+    expect(read('localization/my/client.ts'), 'the client pack serves it').toContain('defaultSocsoEisNumber');
+    expect(read(SOCSO_FIELDS), 'the component reads it through the CLIENT registry').toContain(
+      "from '@/localization/registry.client'",
+    );
+  });
+
+  it('a draft saved BEFORE this change still maps forward', () => {
+    // The legacy draft carries eisEligible 'yes' | 'no' and no categories. 'no' meant the scheme off,
+    // which is eisCategory 'none'; anything else meant the automatic derivation. Mapping it in the
+    // WRITER (not the component) is what lets an old draft create exactly the employee it always would.
+    const draft = read('core/employee-draft.ts');
+    expect(draft).toContain("boolOrUndef(s.eisEligible) === false ? 'none' : undefined");
+    // And the legacy field stays declared, or an old draft would not even typecheck on open.
+    expect(read('lib/employee-draft-schema.ts')).toContain('eisEligible?: string;');
+  });
+
+  it('the shared group is client-safe, single-namespace, and each screen uses the right mode', () => {
+    const src = read(SOCSO_FIELDS);
+    expect(/^\s*['"]use client['"]\s*;/m.test(src.slice(0, 400))).toBe(true);
+    expect(src).not.toMatch(/from '(@\/|\.\.\/)?(db|core)\//);
+    const namespaces = [...src.matchAll(/useTranslations\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]);
+    expect([...new Set(namespaces)]).toEqual(['people.detail']);
+
+    const cardCall = read(PERSONNEL_PAGE).match(/<SocsoEisFields[\s\S]*?\/>/);
+    expect(cardCall).not.toBeNull();
+    expect(cardCall![0], 'the card POSTs through FormData').toContain('mode="form"');
+    const wizardCall = read(WIZARD).match(/<SocsoEisFields[\s\S]*?\/>/);
+    expect(wizardCall).not.toBeNull();
+    expect(wizardCall![0], 'the wizard holds a draft in state').toContain('mode="controlled"');
+  });
+
+  it('the retired labels are gone from every catalog and the Personnel keys exist', () => {
+    for (const loc of LOCALES) {
+      const msgs = JSON.parse(read(`messages/${loc}.json`));
+      expect(msgs.people.wizard.fields.socsoNumber, `${loc} fields.socsoNumber`).toBeUndefined();
+      expect(msgs.people.wizard.fields.eisEligible, `${loc} fields.eisEligible`).toBeUndefined();
+      for (const k of [
+        'socsoEisNumber',
+        'socsoCategoryLabel',
+        'socsoCategoryAuto',
+        'socsoCategoryFirst',
+        'socsoCategorySecond',
+        'socsoCategoryNone',
+        'eisCategoryLabel',
+        'eisCategoryAuto',
+        'eisCategoryNone',
+      ]) {
+        expect(String(msgs.people.detail[k] ?? '').trim(), `${loc} people.detail.${k}`).not.toBe('');
+      }
+    }
   });
 });
 

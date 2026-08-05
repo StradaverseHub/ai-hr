@@ -1356,12 +1356,10 @@
         "remarks": "Ghi chú",
         "icNumber": "Số định danh (NRIC)",
         "phone": "Số điện thoại di động",
-        "socsoNumber": "Số SOCSO",
         "taxNumber": "Mã số thuế",
         "dateOfBirth": "Ngày sinh",
         "bankAccount": "Thông tin ngân hàng",
         "numChildren": "Số con",
-        "eisEligible": "Đủ điều kiện EIS",
         "isResident": "Cư trú thuế",
         "monthlyAllowance": "Phụ cấp hàng tháng",
         "rateAmount": "Mức đơn giá"

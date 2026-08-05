@@ -41,6 +41,7 @@ import { EpfRegistrationFields } from '@/components/epf-registration-fields';
 // 35b7af0a group 5 — the Bank + Bank Account Number group, shared with the Personnel Bank Information card.
 import { BankAccountFields } from '@/components/bank-account-fields';
 import { TaxCategoryField } from '@/components/tax-category-field';
+import { SocsoEisFields } from '@/components/socso-eis-fields';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DRAFT_STEPS,
@@ -717,13 +718,30 @@ export function EmployeeWizard({
               epfCitizenship={data.statutory?.epfCitizenship}
               onChange={(patch) => set('statutory', patch)}
             />
-            <Field label={t('fields.socsoNumber')}>
-              <input
-                className={inputCls}
-                value={data.statutory?.socsoNumber ?? ''}
-                onChange={(e) => set('statutory', { socsoNumber: e.target.value })}
-              />
-            </Field>
+            {/* 35b7af0a group 7 — SOCSO/EIS is the SAME group the Personnel Bank & Statutory tab renders
+                (components/socso-eis-fields.tsx). The wizard was a whole consolidation behind: item
+                a7271737 made the CATEGORY the single per-scheme control on that screen, and the wizard
+                still offered the legacy "EIS eligible" yes/no with no SOCSO category at all — so a hire
+                created here could not be put in SOCSO First or Second category, and the same employee
+                opened on Personnel a minute later showed a different question with more answers. The
+                number also now defaults to a Malaysian employee's IC exactly as that card does. */}
+            <SocsoEisFields
+              mode="controlled"
+              value={{
+                socsoNumber: data.statutory?.socsoNumber,
+                socsoCategory: data.statutory?.socsoCategory,
+                eisCategory: data.statutory?.eisCategory,
+              }}
+              icNumber={data.profile?.icNumber}
+              // The wizard does not collect NATIONALITY — it is not one of its fields — so the
+              // IC-derived number default cannot fire here and the box stays blank until someone types
+              // one. That is deliberate rather than a guess: defaultSocsoEisNumber keys on nationality,
+              // and inferring "Malaysian" from a 12-digit IC would put a foreign worker's SOCSO number
+              // in silently. The Personnel screen, which does know the nationality, still defaults it.
+              nationality={undefined}
+              country="MY"
+              onChange={(patch) => set('statutory', patch)}
+            />
             <Field label={t('fields.taxNumber')}>
               <input
                 className={inputCls}
@@ -752,17 +770,7 @@ export function EmployeeWizard({
                 onChange={(e) => set('statutory', { numChildren: e.target.value })}
               />
             </Field>
-            <Field label={t('fields.eisEligible')}>
-              <select
-                className={inputCls}
-                value={data.statutory?.eisEligible ?? ''}
-                onChange={(e) => set('statutory', { eisEligible: e.target.value })}
-              >
-                <option value="">{t('notSet')}</option>
-                <option value="yes">{t('yes')}</option>
-                <option value="no">{t('no')}</option>
-              </select>
-            </Field>
+
             <Field label={t('fields.isResident')}>
               <select
                 className={inputCls}
