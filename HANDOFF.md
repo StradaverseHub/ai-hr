@@ -18,48 +18,34 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-06 (r161 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-06 (r162 SHIPPED)
 
-**`main@6d9cb102` is what runs. Production on 327 migrations. Next free migration number is `0404`**
+**`main@0369f954` is what runs. Production on 327 migrations. Next free migration number is `0404`**
 (0389, 0401 and 0402 were never claimed and are dead; r160 added NO migration). No half-applied
 migration, no pending deploy, nothing in flight. Verified after deploy: service `active`, `GET /` 401,
 and `rsync -azi --delete --dry-run` reporting **zero changes**.
 
-### The board — counted on production 2026-08-06 after r160 shipped (owner role; `DATABASE_URL` is RLS-blocked)
+### The board — counted on production 2026-08-06 after r162 (owner role; `DATABASE_URL` is RLS-blocked)
 
-**`deployed = 589` · `approved = 7` · `building = 2` · `cancelled = 12`. `open`, `contested` and
-`planned` are all ZERO.** The board moves under this file between rounds; re-count rather than trusting
-this line.
+**`deployed = 593` · `building = 3` · `approved = 2` · `open = 1` · `cancelled = 12`. `contested` and
+`planned` are ZERO.** Re-count rather than trusting this line.
 
-**THE REPORTER APPROVED ALL SIX PLANS pushed on 2026-08-05**, which is why `approved` went 5 → 7 while
-four items shipped. Every premise in them was reproduced in source AND measured on production before the
-plan was written — **the measurements are IN the plans; quote them rather than re-running.**
+**r160/r161/r162 shipped NINE board items between them.** The reporter approved all six plans pushed on
+2026-08-05, so `approved` rose while items shipped.
 
-**THE 7 APPROVED AND UNBUILT:**
-- `0bb0e303` rev 2 — My Attendance needs a third row, Attendance Request. Rows 1 and 2 already ship; the
-  request forms live inside `app/me/page.tsx:287-406` and move to a new `/attendance/requests`.
-- `7c834696` rev 2 — four amendments to shipped attendance stage 1. Points 1/2/4 are cheap; point 3 (the
-  calculation breakdown) is the only engine work. **Point 4 is a trap: "Difference / Value (RM/%)" is NOT
-  a calculation setting** — it is `shift.differential`, the premium `core/payroll.ts:1968` prefills, live
-  on 2 of 9 shifts. Late/early grace ARE free to remove (0 shifts carry either). All 9 rules still have
-  deductions OFF, which is most of why the reporter says the settings do nothing.
-- `35524d1f` — Create Employee refuses a blank Identity No when any statutory field is filled. Fix at
-  `setStatutoryProfileMY` (`localization/my/statutory.ts:236`), mirroring `setIcProfileMY`. **No
-  migration: `ic_number` is already nullable and its unique index is already partial.**
-- `a00c4f64` — Team Leave Tracker. The calendar is the dashboard's FIXED full-width row and is
-  `mandatory` in `dashboard_card_config` for both tenants.
-- `3ced1040` — Confirmation becomes a COMPARISON kind (like Promotion). `movement_event_type` has ZERO
-  rows, so no tenant override to consider. Watch `MovementNoChangeError`.
-- `bd89ccd8` — asks for Delete on movement events. **ALREADY BUILT as Roll Back + Edit, and a hard
-  delete was settled AGAINST (`9064cffb`). Do not re-add it.** The real gaps are the mandatory reason
-  (**10 of 11 rollbacks recorded none**) and pending-row wording.
-- `2ef69d1e` (Back Pay — the largest thing left, must go LAST). **Its plan's mandatory pre-build count is
-  DONE, measured 2026-08-06: 26 compensation rows / 22 employees / 3 periods were keyed AFTER the payroll
-  they should have affected, 9 of them with a real salary difference, and it moves in BOTH directions
-  (one is 6000 → 5500). The naive query — valid_from before the last payslip — returns 41/36 and is
-  WRONG; that is just "everyone has a salary".**
+**THE 2 APPROVED AND UNBUILT:**
+- `a00c4f64` (Team Leave Tracker) — an agent BUILT it on `build/r162-d-tracker` (31 files, 823
+  insertions) but was interrupted and committed a checkpoint its own message labels **UNVERIFIED**. It
+  was deliberately NOT merged. Verify that branch before trusting any of it.
+- `2ef69d1e` (Back Pay — the largest thing left, must go LAST). Its plan's mandatory pre-build count is
+  DONE, measured 2026-08-06: **26 compensation rows / 22 employees / 3 periods** were keyed AFTER the
+  payroll they should have affected, 9 with a real salary difference, moving in BOTH directions (one is
+  6000 → 5500). The naive query — valid_from before the last payslip — returns 41/36 and is WRONG.
 
-**STILL `building`, both deliberately partial. `improve:pull` HIDES `building`, so nothing but this
+**`open = 1` is `4861bcbb`, raised BY US** (reporter_label CLAUDE AI) on 2026-08-06: it asks the reporter
+for the DATE to clear the old entitlement setup, with the re-counted figures. See the `6e9a126e` bullet.
+
+**STILL `building`, all three deliberately partial. `improve:pull` HIDES `building`, so nothing but this
 file will ever surface them.** Both board `build_ref` values were CORRECTED on production 2026-08-06
 (owner-authorised) and now match the bullets below — `35b7af0a` had still been claiming 25 labels,
 groups 6+ unbuilt and an `8590615a` overlap that is deployed. Keep them in step: the reporter reads the
@@ -81,6 +67,13 @@ board, not this file.
   proof that releases one and two are inert, and the carry-forward defect to re-read before planning
   three, are in `docs/HANDOFF-HISTORY.md` → r159 Decisions; read them there rather than re-deriving.
   `build/r154` is squashed and ancestrally unrelated to what shipped — ignore it in any branch scan.
+- **`7c834696` — points 1, 2 and 4 shipped in r162; POINT 3 IS NOT BUILT.** Point 1 (OT 1.0 no longer
+  carries normal hours) was display-only — the stored split was already correct. Point 2 added the
+  Lateness / Early Out columns from figures migration 0394 already stores. Point 4 removed the obsolete
+  grace inputs but KEPT the shift-differential PAY fields, relabelled — they are `shift.differential`,
+  the premium `core/payroll.ts` prefills, live on 2 of 9 shifts. **Remaining: point 3, the per-figure
+  calculation breakdown and hover** — engine work, and the only part needing a new stored trace. Its
+  board `build_ref` is NULL; this bullet is the record.
 - **`35b7af0a` — groups 1-2 (r138), 3-5 (r159), 6 (r160) and 7 (r161) are live. 22 labels remain**,
   measured not estimated. Group 6 shared Tax Category; group 7 shared SOCSO/EIS, where the wizard was a
   whole consolidation behind — it offered the legacy "EIS eligible" yes/no with NO SOCSO category, so a

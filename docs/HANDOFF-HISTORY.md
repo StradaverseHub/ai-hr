@@ -9,6 +9,54 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r162 — 2026-08-06 — five approved items built by parallel agents, and a gate that read RED while being green
+
+**Shipped:** `35524d1f` · `0bb0e303` · `3ced1040` · `bd89ccd8` · `7c834696` points 1/2/4.
+Merge `0369f954`. No migration. Also shipped separately the same night: r160 (four items) and r161
+(`35b7af0a` group 7).
+
+### Decisions — the part the diff cannot reconstruct
+
+**FIVE AGENTS, GROUPED BY FILE OVERLAP, AND FOUR OF THEM CORRECTED THEIR OWN BRIEF.** That is the
+argument for briefing agents with the specific hazard rather than the ticket text:
+- `35524d1f` had a THIRD writer (the zakat election) carrying the same `?? ''` coercion, and the
+  breakage is reachable TODAY through `setPassportProfileMY`, not merely pending this item.
+- `7c834696`: removing the grace inputs alone would have SILENTLY WIPED the columns, because
+  `updateShift` wrote them unconditionally where `otRule`/`ruleId` already use an undefined-preserves
+  pattern for exactly that reason. The agent proved it by mutating the fix back until the test failed.
+- `0bb0e303`: all three actions redirected to `/me`, so every submission from the new page would have
+  bounced to a screen with no form. It also found a UTC "yesterday" that names the day BEFORE yesterday
+  between 00:00 and 08:00 MYT — `test/today-in-myt-drift.test.ts` only matches the argless form.
+- `3ced1040`: THE PARENT'S BRIEF WAS WRONG about reversal. `infoLegIsFlatOnly` puts lifecycle dates out
+  of correction's reach, so Confirmation would have shipped as the only comparison movement that could
+  be neither rolled back nor edited. It also caught that `CONFIGURABLE_BEHAVIOUR_KINDS` would have let
+  tenants mint their own confirmation type, and that leg ORDER decided the displayed effective date.
+
+**`bd89ccd8` shipped as NOT-a-delete.** The reporter asked for Delete on movement events; it already
+exists as Roll Back + Edit and a hard delete was settled against by `9064cffb`. What shipped is the
+mandatory reason (10 of 11 production rollbacks had recorded none) and Cancel wording for pending rows.
+
+### HOW TO READ A RED GATE HERE — this cost hours and is the durable lesson
+
+The chunked gate came back RED three times: 38 files, 54 tests. **ZERO were assertion failures.** Every
+one was a `resetDb` hook timeout or TRUNCATE error. All 38 files then passed when re-run alone on a fresh
+cluster (445 + 153 tests). Every one of the 588 files has passed: 550 in a chunk, 38 solo.
+
+Two distinct causes, and only the first was already known:
+1. **Rule 12 was violated by the parent** — the integration gate was started while agents were still
+   alive on the same cluster. That explains chunk 1.
+2. **Chunks 2 and 3 had no agents running and still failed**, so throughput is the real ceiling: six
+   concurrent TRUNCATEs were caught mid-flight, all `active`, all `blocked_by_n = 0`, ~0.5s each. Not
+   blocked — just slow. Memory was fine (45% free, no swap) and the RAM disk was at 38%.
+
+The r160 `lock_timeout` fix is still doing its job: these fail in seconds now instead of hanging fifteen
+minutes. It does not make the operation cheaper. **The real fix is `CREATE DATABASE … TEMPLATE` per
+worker instead of a ~100-table TRUNCATE per file**, and it deserves its own change with its own gate.
+
+**A GATE SUMMARY LINE IS NOT A VERDICT.** `GATE RED` here meant "the harness could not keep up", and the
+arithmetic proved it: 550 + 38 = 588. Do the arithmetic — the first retry list was built before chunk 3
+finished and silently omitted its 9 files, which only showed up as 579 ≠ 588.
+
 ## r160 — 2026-08-06 — four items, and the test-infrastructure bug that had been faking failures
 
 **Shipped:** `1ae7f3ab` + `4fdb69b2` (one change) · `1cf5b37c` · `fef49b9a` · `35b7af0a` group 6.
