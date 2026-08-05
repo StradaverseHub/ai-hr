@@ -9,6 +9,62 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r160 — 2026-08-06 — four items, and the test-infrastructure bug that had been faking failures
+
+**Shipped:** `1ae7f3ab` + `4fdb69b2` (one change) · `1cf5b37c` · `fef49b9a` · `35b7af0a` group 6.
+Merge `7cae348b`. No migration, no deletions. Gate: 586/586 files, 7140 tests, 3 chunks, all exit 0.
+
+### Decisions — the part the diff cannot reconstruct
+
+**The leave-type referrer list is TWELVE, and no human list will stay correct.** Both approved plans and
+HANDOFF said eleven; `leave_generation_run_item` had arrived with `6e9a126e` release two. So the fix is
+not better arithmetic in two places — `core/leave-type-refs.ts` is the single declaration, both the
+`inUse` predicate and `deleteLeaveType` are generated from it, and the test compares it against
+`information_schema` in BOTH directions. A thirteenth table fails the suite until someone declares what
+deleting should do about it. Dispositions: `history` refuses, `config` cascades in one transaction, the
+self-reference is NULLED on the other type. `inUse` consequently changed meaning to "has history".
+
+**`setToilPolicy`'s entitlement gate was REMOVED, reversing ADR-0077 slice 3 review r2.** That gate is
+what made Leave Config → Replacement Leave render every control dead with no Save, which the reporter
+read as an unfinished placeholder — `toil` is absent from `tenant_module` on production. Safe because
+configuring cannot bank a day: every accrual path keeps its own check, and the old test's inertness half
+is kept verbatim, now asserting that an unentitled tenant with an ENABLED policy still cannot accrue.
+The commercial half of the original argument survives and is now the customer's: these fields freeze
+onto each accrual, so a policy set today takes effect the day the add-on is bought.
+
+**Three existing tests were INVERTED rather than deleted**, each with the reason written into it: the
+entitlement-template delete guard (config now cascades; the ledger is protected by the stronger rule
+that history refuses outright), the toil-expiry "form is disabled" assertion, and the replacement-leave
+read-only assertion. A fourth guard broke because group 6 extracted a field into a component — repaired
+with the three facts r159 prescribed (field exists in the component, the card renders it, and in the
+mode that posts), not by dropping the check.
+
+### THE INFRASTRUCTURE FINDING — this is the one worth remembering
+
+`resetDb()`'s ~100-table TRUNCATE ran with **no `lock_timeout`** while a SECOND connection pool (the
+app's own, used by every `withTenant` call) still held locks from the previous test. Unbounded wait,
+frequent deadlock: a millisecond reset became a 15-minute hang reported as `Hook timed out in 30000ms`
+in an unrelated file.
+
+One chunk of 194 files produced 17 failures across 9 files with **ZERO assertion failures**; another 194
+files of the same commit passed 194/194 in 136s. After the fix that chunk went **1170s → 149s and
+green**. *A red gate containing no assertion failures is a harness problem.*
+
+This retires a long-standing misdiagnosis: HANDOFF attributed "32 false failures across unrelated files"
+to WAL pressure. The WAL work is real and was also done — every checkpoint had reported `0 recycled`
+because `min_wal_size` was 128MB, so segments were UNLINKED rather than renamed, at ~8s each; the
+cluster now runs on a RAM disk with `min_wal_size = 3GB`. But it was treating a symptom.
+
+`scripts/gate-chunked.sh` runs the suite in chunks (the suite still generates ~10GB of WAL per run, more
+than this machine retires in real time). It also covers **both** vitest projects — the first version
+silently skipped the five `.dom.test.tsx` files — and asserts vitest counted as many files as it was
+asked to run.
+
+**Two wrong turns, recorded so nobody repeats them:** a 5GB then an 8GB RAM disk both FILLED before
+`min_wal_size` was understood, and the first `tsc`/`next build` of the release was accidentally run in
+`mainwt` on `main` rather than the build branch — caught only by the `pwd` check the standing orders
+require.
+
 ## r159 — 2026-08-05 — nine items, five workstreams, and a release that had been sitting on `main`
 
 **Shipped:** `49e7e0a2` · `f3ae3245` · `f1123afd` (all three merged in r158 and never deployed, with

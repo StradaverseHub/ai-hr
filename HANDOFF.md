@@ -18,56 +18,52 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-05 (r159 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-06 (r160 SHIPPED)
 
-**`main@aafd96cd` is what runs. Production on 327 migrations. Next free migration number is `0404`**
-(0389, 0401 and 0402 were never claimed and are dead). No half-applied migration, no pending deploy,
-nothing in flight. Verified after deploy: service active, `GET /` 401, `/login` 200,
-`rsync -azi --delete --dry-run` **zero changes**, migration `0403`'s three columns + partial index
-present, and the three files this release deletes confirmed gone from the box.
+**`main@7cae348b` is what runs. Production on 327 migrations. Next free migration number is `0404`**
+(0389, 0401 and 0402 were never claimed and are dead; r160 added NO migration). No half-applied
+migration, no pending deploy, nothing in flight. Verified after deploy: service `active`, `GET /` 401,
+and `rsync -azi --delete --dry-run` reporting **zero changes**.
 
-### The board — counted on production 2026-08-05 after the r160 planning pass (owner role; `DATABASE_URL` is RLS-blocked)
+### The board — counted on production 2026-08-06 after r160 shipped (owner role; `DATABASE_URL` is RLS-blocked)
 
-**`deployed = 585` · `approved = 5` · `planned = 6` · `building = 2` · `cancelled = 12`.
-`open` and `contested` are now ZERO** — every plannable item carries a fresh plan awaiting the
-reporter. The board moves under this file between rounds; re-count rather than trusting this line.
+**`deployed = 589` · `approved = 7` · `building = 2` · `cancelled = 12`. `open`, `contested` and
+`planned` are all ZERO.** The board moves under this file between rounds; re-count rather than trusting
+this line.
 
-**THE 5 APPROVED AND UNBUILT** — nothing else is built and waiting:
-- `1ae7f3ab` + `4fdb69b2` — **BUILD THESE AS ONE CHANGE.** Same defect from two directions; see the
-  delete-guard section below. `4fdb69b2` moved planned → approved during r159.
-- `1cf5b37c` (Replacement Leave config) · `fef49b9a` (paid/unpaid split, DISPLAY only)
-- `2ef69d1e` (Back Pay — the largest thing left, must go LAST)
+**THE REPORTER APPROVED ALL SIX PLANS pushed on 2026-08-05**, which is why `approved` went 5 → 7 while
+four items shipped. Every premise in them was reproduced in source AND measured on production before the
+plan was written — **the measurements are IN the plans; quote them rather than re-running.**
 
-**THE 6 PLANNED, AWAITING APPROVAL** (pushed 2026-08-05; every premise reproduced in source AND
-measured on production first — the measurements are IN the plans, quote them rather than re-running):
-- `0bb0e303` rev 2 — My Attendance needs a third row, Attendance Request. Rows 1 and 2 already ship;
-  the request forms live inside `app/me/page.tsx:287-406` and move to a new `/attendance/requests`.
-- `7c834696` rev 2 — the reporter's four amendments to shipped stage 1. Points 1/2/4 are cheap;
-  point 3 (the calculation breakdown) is the only engine work. **Point 4 is a trap: "Difference /
-  Value (RM/%)" is NOT a calculation setting** — it is `shift.differential`, the premium
-  `core/payroll.ts:1968` prefills, live on 2 of 9 shifts. Late/early grace ARE free to remove
-  (0 shifts carry either). All 9 rules still have deductions OFF, which is most of why the reporter
-  says the settings do nothing.
-- `35524d1f` — Create Employee refuses a blank Identity No when any statutory field is filled.
-  Fix at `setStatutoryProfileMY` (`localization/my/statutory.ts:236`), mirroring `setIcProfileMY`.
-  **No migration: `ic_number` is already nullable and its unique index is already partial.** Same
-  fault also blocks the Personnel EPF/SOCSO save for an IC-less employee (wider than reported).
+**THE 7 APPROVED AND UNBUILT:**
+- `0bb0e303` rev 2 — My Attendance needs a third row, Attendance Request. Rows 1 and 2 already ship; the
+  request forms live inside `app/me/page.tsx:287-406` and move to a new `/attendance/requests`.
+- `7c834696` rev 2 — four amendments to shipped attendance stage 1. Points 1/2/4 are cheap; point 3 (the
+  calculation breakdown) is the only engine work. **Point 4 is a trap: "Difference / Value (RM/%)" is NOT
+  a calculation setting** — it is `shift.differential`, the premium `core/payroll.ts:1968` prefills, live
+  on 2 of 9 shifts. Late/early grace ARE free to remove (0 shifts carry either). All 9 rules still have
+  deductions OFF, which is most of why the reporter says the settings do nothing.
+- `35524d1f` — Create Employee refuses a blank Identity No when any statutory field is filled. Fix at
+  `setStatutoryProfileMY` (`localization/my/statutory.ts:236`), mirroring `setIcProfileMY`. **No
+  migration: `ic_number` is already nullable and its unique index is already partial.**
 - `a00c4f64` — Team Leave Tracker. The calendar is the dashboard's FIXED full-width row and is
-  `mandatory` in `dashboard_card_config` for both tenants; moving it needs a data migration for those
-  two rows plus `FIXED_ROW_KEYS`/`CARD_META.teamAwayToday.href`. Saved user layouts need none —
-  `normalizeDashboardLayout` filters unknown keys.
-- `3ced1040` — Confirmation becomes a COMPARISON kind (like Promotion) with a confirmation-date leg.
-  `movement_event_type` has ZERO rows, so no tenant override to consider. Watch `MovementNoChangeError`
-  (a confirmation with no salary change must still save) and the reversal path.
-- `bd89ccd8` (raised 2026-08-05 19:59, after that day's pull) — asks for Delete on movement events.
-  **ALREADY BUILT as Roll Back + Edit, and a hard delete was settled AGAINST (`9064cffb` option a,
-  Delete renamed by `10fcf6df` in r88). Do not re-add it.** Roll Back on a PENDING movement already
-  cancels it outright. The real gaps: the reason is optional (**10 of 11 rollbacks on production
-  recorded none**) and a pending row wears the same wording as a live one.
+  `mandatory` in `dashboard_card_config` for both tenants.
+- `3ced1040` — Confirmation becomes a COMPARISON kind (like Promotion). `movement_event_type` has ZERO
+  rows, so no tenant override to consider. Watch `MovementNoChangeError`.
+- `bd89ccd8` — asks for Delete on movement events. **ALREADY BUILT as Roll Back + Edit, and a hard
+  delete was settled AGAINST (`9064cffb`). Do not re-add it.** The real gaps are the mandatory reason
+  (**10 of 11 rollbacks recorded none**) and pending-row wording.
+- `2ef69d1e` (Back Pay — the largest thing left, must go LAST). **Its plan's mandatory pre-build count is
+  DONE, measured 2026-08-06: 26 compensation rows / 22 employees / 3 periods were keyed AFTER the payroll
+  they should have affected, 9 of them with a real salary difference, and it moves in BOTH directions
+  (one is 6000 → 5500). The naive query — valid_from before the last payslip — returns 41/36 and is
+  WRONG; that is just "everyone has a salary".**
 
 **STILL `building`, both deliberately partial. `improve:pull` HIDES `building`, so nothing but this
-file will ever surface them — both now carry a `build_ref` describing exactly what shipped and what
-has not (stamped 2026-08-05; both were null, so the board could not say which release held what).**
+file will ever surface them.** Their board `build_ref` was stamped 2026-08-05 and is now STALE for
+`35b7af0a` (it still says 25 labels / groups 6+ unbuilt, and names an `8590615a` overlap that is
+deployed). Updating it was refused as an out-of-scope production write, so **the bullets below are the
+authority, not the board field.**
 
 - **`6e9a126e` — releases ONE (r141) and TWO (r159) are live. RELEASE THREE IS DATA-BLOCKED, not
   merely awaiting a decision.** Measured on production 2026-08-05: `leave_policy` **67** rows,
@@ -76,52 +72,47 @@ has not (stamped 2026-08-05; both were null, so the board could not say which re
   `template ?? scheme ?? policy`, so with the new layer empty everything still falls through to the
   old one; dropping it without migrating those 400 rows first would resolve every entitlement to the
   statutory floor. **A data migration must come first, and it does not exist yet.**
-  Two more constraints from its own plan: it must land AFTER `1ae7f3ab`+`4fdb69b2`, because dropping
-  `leave_policy` silently removes one of the five limbs `deleteLeaveType`'s in-use guard counts
-  (`core/admin.ts:4490-4498` — release two already added the template/eligibility limbs); and
-  `employment.benefit_scheme_id` is already at **0** rows, so that column alone is safe.
-- **`35b7af0a` — groups 1-2 (r138) and groups 3-5 (r159) are live. 25 labels remain**, measured not
-  estimated: 28 `people.wizard.fields.*` keys are defined and 25 still rendered — the identity,
-  org-cascade and statutory groups. Date of Birth + Age shipped by moving `completedYearsAt` out of
-  server-only `core/leave.ts` into client-safe `lib/completed-years.ts`, so the wizard and the profile
-  render one control against one function identity. **The other 3 keys only LOOK retirable — see the
-  computed-key trap below; they are pinned by test and deleting them breaks real screens.**
-  Sequencing: overlaps `8590615a` (contract employment info), which ADDS profile fields — land that
-  first or it adds them to a screen being taken apart.
+  **The OTHER blocker is CLEARED as of r160**: `1ae7f3ab`+`4fdb69b2` shipped, and `deleteLeaveType` no
+  longer hand-counts limbs. `core/leave-type-refs.ts` is the single declaration and
+  `test/leave-type-referrers.test.ts` compares it against the live foreign keys **in both directions**,
+  so dropping `leave_policy` now FAILS THE SUITE until its disposition is updated, instead of silently
+  removing a guard. `employment.benefit_scheme_id` is already at **0** rows, so that column alone is safe.
+  **Nothing has been dropped or cleared — release three is the OWNER'S decision, not a build task.** The
+  proof that releases one and two are inert, and the carry-forward defect to re-read before planning
+  three, are in `docs/HANDOFF-HISTORY.md` → r159 Decisions; read them there rather than re-deriving.
+  `build/r154` is squashed and ancestrally unrelated to what shipped — ignore it in any branch scan.
+- **`35b7af0a` — groups 1-2 (r138), 3-5 (r159) and group 6 (r160) are live. 24 labels remain**, measured
+  not estimated. Group 6 was Tax Category: the Personnel card had always named five circumstances while
+  the wizard labelled its options "1", "2" and "3", so a hire needed the LHDN numbering by heart and a
+  wrong pick is invisible afterwards — it is simply the wrong monthly tax until someone notices. Both now
+  render `components/tax-category-field.tsx`. Remaining: the identity, org-cascade and residual statutory
+  groups. **3 of the defined keys only LOOK retirable — see the computed-key trap below; they are pinned
+  by test and deleting them breaks real screens.** The `8590615a` overlap is GONE (it is deployed).
 
-### 6e9a126e — releases ONE and TWO are live and INERT; release THREE is the owner's call
+### THE DELETE GUARD IS FIXED (r160) — and the durable lesson is the count, not the fix
 
-**Nothing was dropped or cleared** — that is release three, and it is the OWNER'S decision, not a
-build task. The live constraints on it are in the `building` bullet above (the 400 unmigrated rows,
-the `1ae7f3ab`+`4fdb69b2` ordering). **The evidence that one and two are inert, and the carry-forward
-defect to re-read before planning three, moved to `docs/HANDOFF-HISTORY.md` → r159 Decisions on
-2026-08-05** — read it there rather than re-deriving it. `build/r154` is squashed and ancestrally
-unrelated to what shipped; ignore it.
+`deleteLeaveType` counted FIVE tables, `listLeaveTypes`' `inUse` predicate counted THREE, and the
+database carries **TWELVE** foreign keys to `leave_type`. So Delete was offered on a type Postgres would
+refuse and the admin got a raw 23503 — the reported "Special Leave cannot be deleted".
 
-### ⚠️⚠️ THE DELETE GUARD IS WRONG, IT IS LIVE, AND IT EXPLAINS A REPORTED BUG
+**Both plans and this file said ELEVEN. The twelfth, `leave_generation_run_item`, arrived with
+`6e9a126e` release two and no hand-written list caught up.** That is the lesson worth keeping: a list of
+referrers maintained by hand is wrong the moment anyone adds a table.
 
-**ELEVEN tables carry a foreign key to `leave_type`. `deleteLeaveType` counts FIVE. `listLeaveTypes`'
-`inUse` predicate counts THREE.** So the panel offers Delete on a type the database will refuse, and
-the admin gets a raw foreign-key error instead of an explanation.
+So there is no list any more. `core/leave-type-refs.ts` declares each referrer with a disposition —
+`history` REFUSES the delete, `config` is CASCADED with it in one transaction, and the self-reference
+`leave_type.balance_source_type_id` is NULLED on the OTHER type (deleting Caregiver Leave because it
+drew from Special Leave would be catastrophic). Both the button predicate and the delete guard are
+GENERATED from it, and `test/leave-type-referrers.test.ts` fails if the declaration and the live foreign
+keys disagree in either direction, or if a cascaded table ever acquires a referrer of its own.
 
-**This is exactly why the reporter says Special Leave cannot be deleted.** Measured on production: SPL
-has zero rows in all five counted tables, but **2 `leave_approval_policy` rows** (both on the Custom
-Leave Approval template) and **`CGL` Caregiver Leave points at it through `balance_source_type_id`** —
-the self-reference, the easiest of the eleven to miss.
+**`inUse` CHANGED MEANING and it is easy to misread:** it is now "this type has HISTORY", not "anything
+points at it", because configuration no longer blocks a delete. A type carrying only policies and
+approval rules is correctly deletable and shows Delete.
 
-Uncounted: `leave_approval_policy` · `leave_encashment_snapshot` · `leave_entitlement_recalc_audit` ·
-`leave_shared_group_member` · `leave_type.balance_source_type_id` · `replacement_leave_request` ·
-`scheme_leave_entitlement`.
-
-**`core/read.ts` around line 1770 documents this hazard for job grades and requires the button
-predicate and the delete guard to stay byte-identical.** `1ae7f3ab` and `4fdb69b2` rev 3 are the same
-defect from two directions — **build them as ONE change.** Fixing five tables and leaving six is the
-same bug with a shorter fuse.
-
-**The reporter was told TWICE that Special Leave was deletable, and both answers were wrong** — the
-query measured the tables the GUARD counts instead of the tables that REFERENCE the row. **To test
-whether a row can be deleted, enumerate its foreign-key referrers from `information_schema`, never the
-application's own in-use list — that list is the very thing under suspicion.**
+**`core/read.ts` around line 1770 documents the identical hazard for job grades** and requires the
+button predicate and the delete guard to stay byte-identical. That rule is now structural for leave
+types rather than remembered.
 
 ### ⚠️ DECISIONS TAKEN THAT THE REPORTER SHOULD SEE
 
@@ -424,68 +415,60 @@ grep — an empty result is a parser gap, not proof of no callers.
   `git worktree remove` deletes the DIRECTORY, not the branch; the only thing removal can lose is
   uncommitted work — check `git -C <path> status --porcelain`, not `git log main..<branch>`.
 
-### Local Postgres (16.14) — THE WEDGE IS FIXED. Read this before believing anything older.
+### Local Postgres — THE CAUSE WAS A LOCK BUG IN THE HARNESS, NOT THE CLUSTER (corrected r160)
 
-- Data dir **`/opt/homebrew/var/aihr-pg16`**, binaries **`/opt/homebrew/opt/postgresql@16/bin`**
-  (keg-only — PG14 shadows `psql` on PATH, use the explicit path or `pnpm db:start`). Port **5433**.
+- Data dir **`/opt/homebrew/var/aihr-pg16`** (now a SYMLINK to a RAM disk, below), binaries
+  **`/opt/homebrew/opt/postgresql@16/bin`** (keg-only — PG14 shadows `psql` on PATH, use the explicit
+  path or `pnpm db:start`). Port **5433**.
 
-**⚠️ THE ROOT CAUSE WAS FOUND AND FIXED ON 2026-08-05, AND MOST OF THIS FILE'S OLD ADVICE WAS WRONG.**
+**⚠️ EVERY EARLIER VERSION OF THIS SECTION BLAMED THE CLUSTER, AND r160 LOST HOURS TO THAT.** The
+`fsync=off` fix is real and is applied; it is simply not what was producing "false failures across files
+unrelated to the change". Read this before re-tuning anything.
 
-`DROP DATABASE` forces an **immediate, waited checkpoint**. With `fsync = on` that checkpoint fsyncs
-every dirty file before returning, and every other `DROP` queues behind it. That is the whole wedge —
-not Trend Micro, not `pkill -9` during teardown, not leaked databases. Those were bystanders.
+**THE ACTUAL BUG: `resetDb()`'s TRUNCATE had no `lock_timeout`, and TWO connection pools sit on every
+worker database** — `owner` (test/harness.ts, which issues the TRUNCATE) and the application's own pool
+(db/client.ts) used by every `withTenant` call in the code under test. `TRUNCATE … CASCADE` takes an
+AccessExclusiveLock on ~100 tables, so any app-pool connection still holding a lock from the test that
+just finished blocks it — and with locks held on both sides they deadlock outright (the server log shows
+"Process A waits for AccessExclusiveLock … blocked by B; B waits for RowShareLock … blocked by A").
+With no timeout that wait is **unbounded**: a millisecond reset became a 15-minute hang, surfacing as
+`Hook timed out in 30000ms` in `beforeEach` of whichever file drew the short straw.
 
-**Measured on an IDLE, freshly-rebuilt cluster:** four `CREATE`/`DROP DATABASE` statements **did not
-finish in five minutes**. After the fix the same four take **0.47 s**, and a full harness cycle
-(11 creates + 11 drops) takes **2.3 s**. A four-file DB-backed batch that had been failing went from
-150–320 s per file to **15 s for all four, with teardown completing cleanly.**
+**THE EVIDENCE IT WAS NEVER THE CODE, and the shape to look for next time:** one chunk of 194 files
+produced 17 failures across 9 unrelated files — 7 hook timeouts, 3 TRUNCATE errors, and **ZERO assertion
+failures**. Another 194 files of the same commit passed 194/194 in 136s. After the fix the first chunk
+went **1170s → 149s and green**. *If a red gate contains no assertion failures, suspect the harness.*
 
-**THE OLD ADVICE IN THIS FILE MADE IT WORSE.** It said to raise `max_wal_size` to 4 GB and
-`checkpoint_timeout` to 30 min "to take pressure off the checkpoint". That is backwards: more dirty
-data accumulates, so the FORCED checkpoint at `DROP DATABASE` has more to flush. It also let WAL reach
-**5 GB**, at which point `resetDb()`'s ~100-table TRUNCATE began losing lock races and produced
-**32 false failures across files unrelated to the change under test**. Both failure modes had the same
-root and the old settings traded one for the other.
+Fixed in `test/harness.ts`: `lock_timeout = 5s` plus a bounded retry, inside ONE transaction (`SET LOCAL`
+is meaningless outside one, and with a pool a bare `SET` can land on a different connection than the
+TRUNCATE; a `;`-joined multi-statement does not work either, because drizzle's `execute` uses the
+extended protocol). The last attempt terminates other backends on the database. **Deliberately NOT a
+raised hook timeout** — that hides the wait and keeps such runs 15 minutes long.
 
-**REBUILD WITH ONE COMMAND — `./scripts/dev-db-rebuild.sh`.** It applies the settings, creates the
-roles (`NOBYPASSRLS`, which still costs an hour if you forget), and verifies. `--purge` also deletes
-previously moved-aside clusters. Use it instead of hand-rolling `initdb`; the settings are the point.
+**WAL: the second, genuinely separate problem — and `min_wal_size` is the setting that mattered.** Every
+checkpoint in this repo's history reported `N removed, 0 recycled`. `removed` = unlinked; `recycled` =
+renamed and reused. PostgreSQL only keeps segments for reuse up to `min_wal_size`, which was **128MB**,
+so this workload unlinked essentially every segment it produced. Checkpoint `total` tracked segments
+removed (~8s each on disk) while `write` stayed flat at ~3s and `sync` was ~0 — so slow checkpoints let
+WAL grow, which meant more to unlink. **The old advice here to make `max_wal_size`/`min_wal_size`
+SMALLER was backwards**: a smaller `min_wal_size` unlinks more.
 
-**⚠️ THE FIX REMOVED THE STALL, NOT THE HAZARD. Killing a vitest client mid-teardown still orphans a
-`DROP DATABASE` server-side**, which `pkill`/`TaskStop` cannot stop. r154's chain: orphaned DROP stuck
-on `CheckpointDone` 6+ min → `CONNECT_TIMEOUT 127.0.0.1:5433` on every later run **while `psql`
-connected fine** (that asymmetry is the tell) → cancelling it marked the DB INVALID
-(`datconnlimit = -2`) → **each cleanup attempt created another one.** Left behind and inert unless a
-gate uses those namespaces: `ai_hr_test_w_r154ns2`, `ai_hr_test_w_r159v1`. Diagnose via
-`select datname from pg_database where datconnlimit = -2`. **Do not chain cleanup attempts — run the
-rebuild script once the cluster is idle.**
+`./scripts/dev-db-rebuild.sh` now: puts the data directory on an **8GB RAM disk** (mounted at
+`<DATA>-ram` with `<DATA>` a symlink, because `initdb` refuses a mount point as PGDATA), sets
+`min_wal_size = 3GB` so segments RECYCLE, and keeps `fsync=off` and friends. Opt out with
+`AIHR_RAMDISK_GB=0`. **A RAM disk does not survive a reboot — re-run the script.**
 
-**The settings, and the trade, stated plainly:** `fsync = off`, `synchronous_commit = off`,
-`full_page_writes = off`, `wal_level = minimal`, `max_wal_size = 1GB` (SMALLER, not bigger),
-`checkpoint_timeout = 5min`, `shared_buffers = 512MB`. A crash can now corrupt this cluster — and the
-correct response is to rebuild it, which takes under a minute and loses nothing, because it holds only
-vitest worker databases and a reseedable `ai_hr_dev`. **PRODUCTION IS A DIFFERENT MACHINE. Never copy
-these settings to a server.**
+**THE SUITE STILL GENERATES MORE WAL THAN THIS MACHINE RETIRES IN REAL TIME** (~10GB per full run), so
+`./scripts/gate-chunked.sh` runs it in 3 chunks, rebuilding the cluster between each, and no chunk gets
+past ~73% of the volume. It covers **586 files — both vitest projects** (`test/**/*.test.ts` +
+`test/**/*.dom.test.tsx`) and asserts that vitest COUNTED as many files as it was asked to run, because
+a file whose worker fails to spawn is not counted at all and reads as green. The real cure is in the
+harness — a ~100-table TRUNCATE per test file where `CREATE DATABASE … TEMPLATE` would write a fraction
+of the WAL — and that is worth doing deliberately, not at the end of a release.
 
-**⚠️ THE FIX DOES NOT MAKE CONCURRENCY FREE — `run the gate alone` still stands.** `fsync = off`
-removed the CHECKPOINT stall, which was the wedge. It does not remove a SECOND, different contention
-point: `DROP DATABASE ... WITH (FORCE)` terminates other backends' connections, and several of those
-at once pile up on **`IPC / ProcSignalBarrier`** rather than `CheckpointStart`. Observed with four
-agents running vitest simultaneously after the fix. Different wait event, different cause, same
-practical rule: **agents run only their own targeted tests; the parent runs the full gate alone.**
-
-**AND THE SYMPTOM LIES.** A `CONNECT_TIMEOUT` inside `globalSetup` is reported by vitest as
-**"No test files found, exiting with code 1"** — which reads as a filter/path mistake, not a database
-problem. If you see that message and your paths are right, look at `pg_stat_activity` before touching
-the command line.
-
-**`-m immediate stop` buys a full WAL replay.** After stopping that way, a 2.2 GB replay ran for 11+
-minutes before accepting connections. Everything local is disposable, so **wipe instead of replaying**
-— the rebuild script does exactly that.
-
-**Apex One** real-time scanning of the data directory was a genuine, separate problem and the owner
-excluded the path on 2026-08-04 (cluster start 10+ min → <1 s; suite 2848 s with 98 fake failures →
-761 s green). Keep the exclusion. It was never the whole story.
+**Apex One** real-time scanning of the data directory was excluded by the owner on 2026-08-04 and that
+exclusion should stay; the ~8s-per-unlink cost measured on disk is consistent with it not covering
+everything. The RAM disk sidesteps the question entirely.
 
 ### Running and reading test gates
 
