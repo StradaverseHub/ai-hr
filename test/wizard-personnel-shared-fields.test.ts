@@ -44,6 +44,7 @@ const WIZARD = 'app/admin/personnel/new/wizard.tsx';
 const PERSONNEL = 'app/admin/personnel/[employmentId]/page.tsx';
 const SHARED = 'components/person-details-fields.tsx';
 const BIRTH_DATE = 'components/birth-date-fields.tsx';
+const EPF_FIELDS = 'components/epf-registration-fields.tsx';
 const PAY_STRUCTURE = 'components/pay-structure-fields.tsx';
 const SALARY_HISTORY = 'components/salary-history-table.tsx';
 const LEAVE_PANEL = 'components/leave-type-panel.tsx';
@@ -345,6 +346,71 @@ describe('§3c group 3 — Date of Birth carries the Age, and the age counter ha
   });
 });
 
+// ── §3d GROUP 4 — EPF registration ────────────────────────────────────────────────────────────────
+describe('§3d group 4 — EPF Number + EPF Citizenship is one component, not two copies', () => {
+  it('both screens render the shared group and neither builds the citizenship list itself', () => {
+    for (const f of [WIZARD, PERSONNEL]) {
+      const src = read(f);
+      expect(src, `${f} must import the shared group`).toContain("from '@/components/epf-registration-fields'");
+      expect(src, `${f} must render it`).toContain('<EpfRegistrationFields');
+      for (const v of ['citizen', 'pr', 'non_citizen']) {
+        expect(src.includes(`<option value="${v}">`), `${f} still hardcodes ${v}`).toBe(false);
+      }
+    }
+    const wizard = read(WIZARD);
+    expect(wizard).not.toContain("t('fields.epfNumber')");
+    expect(wizard).not.toContain("t('fields.epfCitizenship')");
+    expect(wizard).not.toContain("t('citizenship.");
+  });
+
+  it('the shared component is client-safe for a SERVER caller and stays single-namespace', () => {
+    const src = read(EPF_FIELDS);
+    expect(/^\s*['"]use client['"]\s*;/m.test(src.slice(0, 400))).toBe(true);
+    // No DB import from a 'use client' module — the option list is a declared mirror of the pg enum, the
+    // same arrangement components/pay-structure-fields.tsx uses for the pay unions.
+    expect(src).not.toMatch(/from '(@\/|\.\.\/)?(db|core)\//);
+    const call = read(PERSONNEL).match(/<EpfRegistrationFields[\s\S]*?\/>/);
+    expect(call, 'the personnel page must render EpfRegistrationFields').not.toBeNull();
+    expect(call![0]).not.toMatch(/=\{\s*\(/); // no arrow-function prop crosses the RSC boundary
+    expect(call![0]).toContain('mode="form"');
+    expect(call![0]).not.toContain('mode="controlled"');
+    const namespaces = [...src.matchAll(/useTranslations\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]);
+    expect([...new Set(namespaces)]).toEqual(['people.detail']);
+  });
+
+  it('the option list matches the pg enum exactly — no blank member the column cannot hold', () => {
+    // `epf_citizenship` is NOT NULL DEFAULT 'citizen'. The wizard's fourth "— Not set —" option therefore
+    // promised a state that has never been storable: it produced 'citizen' anyway, and the Personnel screen
+    // then read back "Malaysian citizen" for a foreign worker whose recruiter had left it deliberately blank.
+    // Read as source rather than imported: this is a node-project test file and the component is a
+    // 'use client' .tsx (the DOM project renders it for real — see the sibling .dom.test.tsx).
+    expect(read(EPF_FIELDS)).toContain(
+      "export const EPF_CITIZENSHIP_OPTIONS = ['citizen', 'pr', 'non_citizen'] as const;",
+    );
+    const schema = read('db/schema.ts');
+    expect(schema).toContain("pgEnum('epf_citizenship', ['citizen', 'pr', 'non_citizen'])");
+    expect(schema).toContain("epfCitizenship: epfCitizenshipEnum('epf_citizenship').notNull().default('citizen')");
+    expect(read(EPF_FIELDS)).not.toContain('<option value="">');
+  });
+
+  it('the wizard s duplicate EPF labels are gone from all six catalogs', () => {
+    for (const loc of LOCALES) {
+      const msgs = JSON.parse(read(`messages/${loc}.json`));
+      const w = msgs.people.wizard;
+      expect(w.fields.epfNumber, `${loc} people.wizard.fields.epfNumber`).toBeUndefined();
+      expect(w.fields.epfCitizenship, `${loc} people.wizard.fields.epfCitizenship`).toBeUndefined();
+      expect(w.citizenship, `${loc} people.wizard.citizenship`).toBeUndefined();
+      // KEPT: 'notSet' is still rendered by the wizard's remaining tax/EIS/resident selects.
+      expect(String(w.notSet ?? '').trim(), `${loc} people.wizard.notSet`).not.toBe('');
+      // The surviving definition both screens now read.
+      for (const k of ['epfNumber', 'epfCitizenship', 'epfCitizenshipCitizen', 'epfCitizenshipPr',
+        'epfCitizenshipNonCitizen']) {
+        expect(String(msgs.people.detail[k] ?? '').trim(), `${loc} people.detail.${k}`).not.toBe('');
+      }
+    }
+  });
+});
+
 // ── §4 behaviour ──────────────────────────────────────────────────────────────────────────────────
 describe('§4 a hire can now carry the values the wizard could not offer', () => {
   it('creates an employee with a marital status the old wizard had no option for', async () => {
@@ -443,6 +509,46 @@ describe('§5 a draft saved BEFORE this change still opens and still creates', (
       .where(eq(schema.employment.id, employmentId));
     const p = await readPerson(emp.personId);
     expect(p.dateOfBirth).toBe('1990-01-01');
+  });
+
+  it('a pre-change draft whose EPF citizenship was left "— Not set —" creates exactly what it always did', async () => {
+    const a = adminCtx(b);
+    // The old wizard wrote `epfCitizenship: ''` when HR picked its "— Not set —" option. Group 4 removed
+    // that option (the column is NOT NULL DEFAULT 'citizen', so it never meant anything), and a draft that
+    // already holds the blank must still open and still create the same row it would have created before.
+    //
+    // ⚠️ THE IC IS SUPPLIED HERE ON PURPOSE, and its absence is a LIVE DEFECT this test found but does NOT
+    // fix (it is a write-path bug, not a field-definition one, and picking the right cure — skip the
+    // statutory write, or store a null IC — is a statutory decision, not a refactor):
+    // `completeEmployeeDraft` calls `pack.statutory.set` whenever ANY statutory field is non-blank
+    // (`hasAnyStatutory`) and passes `icNumber ?? ''`, and `setStatutoryProfileMY` opens with
+    // `if (!isValidIC(p.icNumber)) throw new InvalidICError()`. So a draft that fills in a bank account or
+    // an EPF number but leaves Identity No blank — which the wizard explicitly allows, because item
+    // e3ce0d4d made the IC optional for passport holders — fails at "Create Employee" with "Invalid
+    // Malaysian IC number (expected 12 digits)" for a field no step marked required. Reproduced by
+    // dropping `icNumber` from the draft below.
+    const { id } = await saveEmployeeDraft(a, {
+      data: draft({
+        profile: { ...draft().profile, icNumber: '900101015555' },
+        statutory: { epfNumber: 'E-778899', epfCitizenship: '' },
+      }),
+      currentStep: 3,
+    });
+    const reopened = await getEmployeeDraft(a, id);
+    expect(reopened!.data.statutory).toMatchObject({ epfNumber: 'E-778899', epfCitizenship: '' });
+
+    const { employmentId } = await completeEmployeeDraft(a, id);
+    const [emp] = await owner.db
+      .select({ personId: schema.employment.personId })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, employmentId));
+    const [st] = await owner.db
+      .select({ epfNumber: schema.employeeStatutoryMy.epfNumber, epfCitizenship: schema.employeeStatutoryMy.epfCitizenship })
+      .from(schema.employeeStatutoryMy)
+      .where(eq(schema.employeeStatutoryMy.personId, emp.personId));
+    expect(st.epfNumber).toBe('E-778899');
+    // The column default — the value the removed "— Not set —" option produced all along.
+    expect(st.epfCitizenship).toBe('citizen');
   });
 
   it('a draft with NO personal details at all still creates (the fields stay optional)', async () => {

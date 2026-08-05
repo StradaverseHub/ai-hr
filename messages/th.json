@@ -1357,7 +1357,6 @@
         "remarks": "หมายเหตุ",
         "icNumber": "หมายเลขประจำตัว (NRIC)",
         "phone": "หมายเลขโทรศัพท์มือถือ",
-        "epfNumber": "หมายเลข EPF",
         "socsoNumber": "หมายเลข SOCSO",
         "taxNumber": "หมายเลขภาษี",
         "dateOfBirth": "วันเกิด",
@@ -1365,7 +1364,6 @@
         "bankAccountNo": "เลขที่บัญชีธนาคาร",
         "bankAccount": "ข้อมูลธนาคาร",
         "numChildren": "จำนวนบุตร",
-        "epfCitizenship": "สถานะสัญชาติ EPF",
         "eisEligible": "มีสิทธิ์ EIS",
         "isResident": "ผู้มีถิ่นที่อยู่ทางภาษี",
         "taxCategory": "ประเภท PCB",
@@ -1411,11 +1409,6 @@
       "selectPrompt": "— เลือก —",
       "yes": "ใช่",
       "no": "ไม่",
-      "citizenship": {
-        "citizen": "พลเมือง",
-        "pr": "ผู้มีถิ่นที่อยู่ถาวร",
-        "non_citizen": "ไม่ใช่พลเมือง"
-      },
       "continueDraft": "ทำฉบับร่างต่อ ({count})",
       "untitledDraft": "ฉบับร่างไม่มีชื่อ",
       "stepOf": "ขั้นตอนที่ {current} จาก {total}",

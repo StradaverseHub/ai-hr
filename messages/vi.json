@@ -1357,7 +1357,6 @@
         "remarks": "Ghi chú",
         "icNumber": "Số định danh (NRIC)",
         "phone": "Số điện thoại di động",
-        "epfNumber": "Số EPF",
         "socsoNumber": "Số SOCSO",
         "taxNumber": "Mã số thuế",
         "dateOfBirth": "Ngày sinh",
@@ -1365,7 +1364,6 @@
         "bankAccountNo": "Số tài khoản ngân hàng",
         "bankAccount": "Thông tin ngân hàng",
         "numChildren": "Số con",
-        "epfCitizenship": "Quốc tịch EPF",
         "eisEligible": "Đủ điều kiện EIS",
         "isResident": "Cư trú thuế",
         "taxCategory": "Nhóm PCB",
@@ -1411,11 +1409,6 @@
       "selectPrompt": "— Chọn —",
       "yes": "Có",
       "no": "Không",
-      "citizenship": {
-        "citizen": "Công dân",
-        "pr": "Thường trú nhân",
-        "non_citizen": "Không phải công dân"
-      },
       "continueDraft": "Tiếp tục bản nháp ({count})",
       "untitledDraft": "Bản nháp chưa đặt tên",
       "stepOf": "Bước {current}/{total}",

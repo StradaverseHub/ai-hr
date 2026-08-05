@@ -27,6 +27,7 @@ import messages from '../messages/en.json';
 import { PersonDetailsFields } from '../components/person-details-fields';
 import { PayStructureFields } from '../components/pay-structure-fields';
 import { BirthDateFields } from '../components/birth-date-fields';
+import { EpfRegistrationFields } from '../components/epf-registration-fields';
 
 const wrap = (ui: ReactNode) =>
   render(
@@ -40,7 +41,12 @@ const optionsOf = (el: HTMLElement) =>
   [...el.querySelectorAll('option')].map((o) => `${o.getAttribute('value')}=${o.textContent}`);
 
 /** The whole rendered surface as "label → options / text", so two renders compare in one assertion instead
- *  of one assertion per field (a per-field list is a list somebody forgets to extend). */
+ *  of one assertion per field (a per-field list is a list somebody forgets to extend).
+ *
+ *  WHAT IT DELIBERATELY DOES NOT COMPARE: caller-supplied hint text. Two screens asking for the same field
+ *  may legitimately explain it differently — the wizard tells HR that a blank Date of Birth is taken from
+ *  the identity number, which is true only at hire — and that is guidance, not a field definition. The
+ *  label, the control type and the OPTION SET are the field definition, and those are what must match. */
 const surfaceOf = (container: HTMLElement) =>
   [...container.querySelectorAll('label')].map((l) => {
     const caption = l.querySelector('span')?.textContent ?? '';
@@ -267,5 +273,91 @@ describe('group 3 — Date of Birth carries the auto-calculated Age on BOTH scre
 
     rerender(page('2000-07-15'));
     expect(within(container).getByText('26 Years')).toBeInTheDocument();
+  });
+});
+
+// ── group 4 — EPF registration ────────────────────────────────────────────────────────────────────
+describe('group 4 — the two screens offer the SAME EPF citizenships, in the same words', () => {
+  it('renders an identical surface in form mode (Personnel) and controlled mode (wizard)', () => {
+    const personnel = wrap(<EpfRegistrationFields mode="form" epfNumber="123456789" epfCitizenship="pr" />);
+    const asPersonnel = surfaceOf(personnel.container);
+    personnel.unmount();
+
+    const wizard = wrap(
+      <EpfRegistrationFields mode="controlled" epfNumber="123456789" epfCitizenship="pr" onChange={() => {}} />,
+    );
+    expect(surfaceOf(wizard.container)).toEqual(asPersonnel);
+  });
+
+  it('offers exactly the three values the column can hold, in the Personnel wording', () => {
+    // The wizard used to say "Citizen / Permanent resident / Non-citizen" AND offer a fourth "— Not set —"
+    // that `epf_citizenship NOT NULL DEFAULT 'citizen'` has never been able to store: choosing it produced
+    // 'citizen' anyway, and the profile screen then showed "Malaysian citizen" for a foreign worker whose
+    // recruiter had deliberately left it blank.
+    wrap(<EpfRegistrationFields mode="controlled" epfNumber="" epfCitizenship="" onChange={() => {}} />);
+    expect(optionsOf(screen.getByLabelText('EPF citizenship'))).toEqual([
+      'citizen=Malaysian citizen',
+      'pr=Permanent resident (PR)',
+      'non_citizen=Non-citizen (foreign worker)',
+    ]);
+  });
+
+  it('an unset or unrecognised value DISPLAYS the column default without being written anywhere', () => {
+    // Displayed, not written: completeEmployeeDraft creates the Malaysian statutory row only when some
+    // statutory field is non-blank (hasAnyStatutory), so a default written into the draft merely because
+    // the field was rendered would conjure a statutory row for every hire that has none today. Rendering
+    // must therefore be silent — not one patch until HR actually picks something.
+    const patches: unknown[] = [];
+    const { unmount } = wrap(
+      <EpfRegistrationFields
+        mode="controlled"
+        epfNumber=""
+        epfCitizenship=""
+        onChange={(p) => patches.push(p)}
+      />,
+    );
+    expect(screen.getByLabelText('EPF citizenship')).toHaveValue('citizen');
+    expect(patches).toEqual([]);
+    unmount();
+
+    // A legacy / half-written draft value falls back the same way rather than leaving the select showing an
+    // option it is not actually set to.
+    wrap(
+      <EpfRegistrationFields
+        mode="controlled"
+        epfNumber=""
+        epfCitizenship="alien"
+        onChange={(p) => patches.push(p)}
+      />,
+    );
+    expect(screen.getByLabelText('EPF citizenship')).toHaveValue('citizen');
+    expect(patches).toEqual([]);
+  });
+
+  it('form mode posts the named values setStatutoryAction reads, and passes NO handler', () => {
+    const { container } = wrap(
+      <EpfRegistrationFields mode="form" epfNumber="123456789" epfCitizenship="non_citizen" />,
+    );
+    expect(container.querySelector('input')!.getAttribute('name')).toBe('epfNumber');
+    expect(container.querySelector('input')!).toHaveValue('123456789');
+    const select = container.querySelector('select')!;
+    expect(select.getAttribute('name')).toBe('epfCitizenship');
+    expect(select).toHaveValue('non_citizen');
+  });
+
+  it('controlled mode reports each change as a patch the draft can merge', async () => {
+    const patches: unknown[] = [];
+    wrap(
+      <EpfRegistrationFields
+        mode="controlled"
+        epfNumber=""
+        epfCitizenship="citizen"
+        onChange={(p) => patches.push(p)}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText('EPF number'), '9');
+    await userEvent.selectOptions(screen.getByLabelText('EPF citizenship'), 'pr');
+    // One key per field, so the wizard's `set('statutory', patch)` merges without touching the other.
+    expect(patches).toEqual([{ epfNumber: '9' }, { epfCitizenship: 'pr' }]);
   });
 });

@@ -29,6 +29,8 @@ import { IdentityFields, IdentityProvider, NationalityField } from '@/components
 import { PersonDetailsFields } from '@/components/person-details-fields';
 // 35b7af0a group 3 — the Date of Birth + read-only Age field group, shared with the same wizard.
 import { BirthDateFields } from '@/components/birth-date-fields';
+// 35b7af0a group 4 — the EPF Number + EPF Citizenship field group, shared with the same wizard.
+import { EpfRegistrationFields } from '@/components/epf-registration-fields';
 // Direct Superior (dce55aff): the searchable employee picker reuses the shared Combobox — its label
 // carries "EMP-0008 – John Tan" so type-ahead matches Employee ID and name alike.
 import { Combobox } from '@/components/ui/combobox';
@@ -2243,16 +2245,19 @@ export default async function EmployeePage({
           </legend>
           <p className="text-xs text-muted-foreground">{t('epfElectionHint')}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t('epfNumber')}>
-              <input name="epfNumber" defaultValue={statutory?.epfNumber ?? ''} placeholder="123456789" className={inputCls} />
-            </Field>
-            <Field label={t('epfCitizenship')}>
-              <select name="epfCitizenship" defaultValue={statutory?.epfCitizenship ?? 'citizen'} className={inputCls}>
-                <option value="citizen">{t('epfCitizenshipCitizen')}</option>
-                <option value="pr">{t('epfCitizenshipPr')}</option>
-                <option value="non_citizen">{t('epfCitizenshipNonCitizen')}</option>
-              </select>
-            </Field>
+            {/* 35b7af0a group 4 — EPF Number and EPF Citizenship are now ONE shared field group
+                (components/epf-registration-fields.tsx), rendered identically here and on the Create New
+                Employee wizard. The wizard's private copy said "Citizen / Permanent resident /
+                Non-citizen" against this card's "Malaysian citizen / Permanent resident (PR) /
+                Non-citizen (foreign worker)", and offered a fourth "— Not set —" option that
+                `epf_citizenship NOT NULL DEFAULT 'citizen'` has never been able to store. `mode="form"`
+                keeps these inputs exactly what they were: uncontrolled name/defaultValue inputs inside
+                this full-row setStatutoryAction form, with no function prop crossing the RSC boundary. */}
+            <EpfRegistrationFields
+              mode="form"
+              epfNumber={statutory?.epfNumber}
+              epfCitizenship={statutory?.epfCitizenship}
+            />
             {/* EPF election (1C): rate fields appear only for voluntary_excess (client island). */}
             <EpfElection
               mode={statutory?.epfMode ?? null}

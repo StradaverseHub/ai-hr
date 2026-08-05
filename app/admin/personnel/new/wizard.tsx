@@ -36,6 +36,8 @@ import { PersonDetailsFields } from '@/components/person-details-fields';
 import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
 // 35b7af0a group 3 — the Date of Birth + read-only Age group, shared with the Personnel profile card.
 import { BirthDateFields } from '@/components/birth-date-fields';
+// 35b7af0a group 4 — the EPF Number + EPF Citizenship group, shared with the Personnel Bank & Statutory tab.
+import { EpfRegistrationFields } from '@/components/epf-registration-fields';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DRAFT_STEPS,
@@ -696,13 +698,22 @@ export function EmployeeWizard({
               />
               <p className="mt-1 text-xs text-muted-foreground">{t('hints.bankAccount')}</p>
             </Field>
-            <Field label={t('fields.epfNumber')}>
-              <input
-                className={inputCls}
-                value={data.statutory?.epfNumber ?? ''}
-                onChange={(e) => set('statutory', { epfNumber: e.target.value })}
-              />
-            </Field>
+            {/* 35b7af0a group 4 — EPF Number and EPF Citizenship are the SAME field group the Personnel
+                Bank & Statutory tab renders (components/epf-registration-fields.tsx). The wizard's private
+                copy had drifted in wording and carried a fourth "— Not set —" citizenship option that
+                cannot be stored: `epf_citizenship` is NOT NULL DEFAULT 'citizen', so leaving it blank at
+                hire produced 'citizen' anyway and the profile screen then showed "Malaysian citizen" for a
+                foreign worker whose recruiter had deliberately left it unset. Three real choices now, the
+                same three on both screens. The default is DISPLAYED, not written into the draft —
+                completeEmployeeDraft creates the statutory row only when some statutory field is non-blank
+                (hasAnyStatutory), so writing 'citizen' just because the field was shown would conjure a
+                statutory row for every hire that has none today. */}
+            <EpfRegistrationFields
+              mode="controlled"
+              epfNumber={data.statutory?.epfNumber}
+              epfCitizenship={data.statutory?.epfCitizenship}
+              onChange={(patch) => set('statutory', patch)}
+            />
             <Field label={t('fields.socsoNumber')}>
               <input
                 className={inputCls}
@@ -737,18 +748,6 @@ export function EmployeeWizard({
                 value={data.statutory?.numChildren ?? ''}
                 onChange={(e) => set('statutory', { numChildren: e.target.value })}
               />
-            </Field>
-            <Field label={t('fields.epfCitizenship')}>
-              <select
-                className={inputCls}
-                value={data.statutory?.epfCitizenship ?? ''}
-                onChange={(e) => set('statutory', { epfCitizenship: e.target.value })}
-              >
-                <option value="">{t('notSet')}</option>
-                <option value="citizen">{t('citizenship.citizen')}</option>
-                <option value="pr">{t('citizenship.pr')}</option>
-                <option value="non_citizen">{t('citizenship.non_citizen')}</option>
-              </select>
             </Field>
             <Field label={t('fields.eisEligible')}>
               <select
