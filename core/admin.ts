@@ -15,9 +15,14 @@ import { normalizeLeaveFormulaConfig, type LeaveFormulaConfig } from './leave-fo
 import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
 import { isCurrencyCode } from '../lib/currencies';
 import { visibleLabelIdsCondition } from './system-labels';
-// 6e9a126e — the new entitlement layer's in-use counts. Imported for deleteLeaveType's guard, which today
-// counts leave_policy rows and must keep refusing a configured type once that table is gone.
-import { countEligibilityRulesForLeaveType, countTemplatesForLeaveType } from './entitlement-template';
+// 1ae7f3ab + 4fdb69b2 — the ONE declaration of what references a leave type, shared with
+// listLeaveTypes' inUse predicate. Two hand-written lists are what drifted into the reported bug.
+//
+// This REPLACED an import of countTemplatesForLeaveType / countEligibilityRulesForLeaveType from
+// ./entitlement-template, which 6e9a126e added here for deleteLeaveType's guard. Those two counters are
+// still exported and still used by their own tests; deleteLeaveType no longer calls them because the
+// entitlement layer is now declared like every other referrer rather than special-cased in the guard.
+import { configReferrers, historyReferrers } from './leave-type-refs';
 import { isLoginBlocked } from './employment-status';
 import {
   isValidMonthDay,
@@ -4473,29 +4478,91 @@ export function archiveLeaveType(ctx: SessionContext, p: { id: string; archived:
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: p.archived ? 'leave-type.archived' : 'leave-type.unarchived', actor: actorOf(ctx), payload: {} });
   });
 }
+/** Thrown when a leave type cannot be deleted because real leave history hangs off it. Names the tables
+ *  that hold it, so the admin is told WHICH kind of history rather than "in use". */
+export class LeaveTypeHasHistoryError extends Error {
+  constructor(public readonly holders: { table: string; rows: number }[]) {
+    const what = holders.map((h) => `${h.table} (${h.rows})`).join(', ');
+    super(
+      `This leave type cannot be deleted because leave has been recorded under it: ${what}. Archive it instead — archiving hides it from new applications and keeps the records intact.`,
+    );
+    this.name = 'LeaveTypeHasHistoryError';
+  }
+}
+
 /**
- * ⚠️ THE IN-USE GUARD IS LOAD-BEARING, AND ONE OF ITS LIMBS IS ON DEATH ROW.
+ * Delete a leave type, taking its CONFIGURATION with it (items 1ae7f3ab + 4fdb69b2, one change).
  *
- * `leave_policy` is one of the three things it counts, and 6e9a126e's release three DROPS that table. If
- * that limb simply disappeared with it, a leave type carrying live entitlement configuration would become
- * silently DELETABLE — a delete that takes the configuration with it and leaves the ledger rows that were
- * granted under it pointing at nothing.
+ * ## What changed, and why the old guard was not merely incomplete
  *
- * So the replacement limbs are added HERE, in release one, at the same time as the tables they count.
- * They are inert today (nothing writes entitlement_template yet) and they are correct the moment anything
- * does, which is the whole reason they land now rather than in the change that removes the old one.
+ * The old body counted five tables and refused if any held a row, while `listLeaveTypes` decided which
+ * BUTTON to show from a different list of three, and the database carries TWELVE foreign keys. So Delete
+ * was offered on types Postgres would refuse — Special Leave being the reported case, blocked by two
+ * approval rules and by Caregiver Leave drawing its balance from it, neither of which either list counted.
+ *
+ * Both lists are gone. `core/leave-type-refs.ts` is now the only declaration, and this function and the
+ * `inUse` predicate are both generated from it, so the button and the guard cannot span different tables.
+ *
+ * ## The cascade, and the line it does not cross
+ *
+ * The reporter asked for the configuration to be cleared automatically rather than by hand. So `config`
+ * referrers are deleted here, in ONE transaction with the type itself — a partial cascade is impossible;
+ * if any statement fails the type and every reference survive untouched.
+ *
+ * `history` referrers are NOT cascaded and never will be. "Remove all backend dependencies" meant
+ * configuration; nobody asked to erase leave people actually took. When history exists this REFUSES and
+ * says which table holds it, and the panel offers Archive instead.
+ *
+ * The self-reference is nulled on the OTHER type, not cascaded — deleting Caregiver Leave because it
+ * pointed at Special Leave would be catastrophic.
+ *
+ * ## The limb that was on death row is now safe by construction
+ *
+ * The previous comment here warned that `leave_policy` is one of the counted tables and that 6e9a126e's
+ * release three DROPS it, so the limb had to be replaced before the table went. That hazard is now
+ * structural rather than remembered: the drift test fails the moment the declared set stops matching the
+ * live foreign keys, in either direction, so removing the table forces the declaration to be updated.
  */
 export async function deleteLeaveType(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx.select({ n: sql<number>`count(*)::int` }).from(leaveRequest).where(eq(leaveRequest.leaveTypeId, p.id));
-    const [led] = await tx.select({ n: sql<number>`count(*)::int` }).from(leaveLedger).where(eq(leaveLedger.leaveTypeId, p.id));
-    const [pol] = await tx.select({ n: sql<number>`count(*)::int` }).from(leavePolicy).where(eq(leavePolicy.leaveTypeId, p.id));
-    // 6e9a126e — the new entitlement layer counts too, from the day it exists. Templates are counted
-    // across EVERY version (a superseded table still referenced this type), and rules through their
-    // template rather than a denormalised copy of the leave type that could disagree with it.
-    const tpl = await countTemplatesForLeaveType(tx, p.id);
-    const elig = await countEligibilityRulesForLeaveType(tx, p.id);
-    if ((req?.n ?? 0) + (led?.n ?? 0) + (pol?.n ?? 0) + tpl + elig > 0) throw new InUseError('leave type');
+    // 1. REFUSE on history. Counted from the shared declaration, so this can never count a different set
+    //    of tables from the predicate that decided to show the button.
+    //    The table and column come from the declaration and go through sql.identifier (quoted, never
+    //    interpolated); the id is BOUND as a parameter. Building this string by hand would put a value
+    //    from a form into raw SQL.
+    const holders: { table: string; rows: number }[] = [];
+    for (const ref of historyReferrers()) {
+      const rows = (await tx.execute(
+        sql`select count(*)::int as n from ${sql.identifier(ref.table)} where ${sql.identifier(ref.column)} = ${p.id}::uuid`,
+      )) as unknown as { n: number }[];
+      const n = Number(rows[0]?.n ?? 0);
+      if (n > 0) holders.push({ table: ref.table, rows: n });
+    }
+    if (holders.length > 0) throw new LeaveTypeHasHistoryError(holders);
+
+    // 2. Clear the SELF-reference on other types. Their balance source becomes null; they are not touched
+    //    otherwise and are certainly not deleted.
+    await tx
+      .update(leaveType)
+      .set({ balanceSourceTypeId: null })
+      .where(eq(leaveType.balanceSourceTypeId, p.id));
+
+    // 3. Cascade CONFIG, in declaration order so children precede parents. entitlement_eligibility_rule
+    //    reaches the type through its template's lineage rather than a foreign key, which is why the
+    //    declaration carries the join instead of a plain column match.
+    for (const ref of configReferrers()) {
+      if (ref.viaTemplateLineage) {
+        await tx.execute(
+          sql`delete from ${sql.identifier(ref.table)} where ${sql.identifier(ref.column)} in (
+                select lineage_id from entitlement_template where leave_type_id = ${p.id}::uuid)`,
+        );
+        continue;
+      }
+      await tx.execute(
+        sql`delete from ${sql.identifier(ref.table)} where ${sql.identifier(ref.column)} = ${p.id}::uuid`,
+      );
+    }
+
     await tx.delete(leaveType).where(eq(leaveType.id, p.id));
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: 'leave-type.deleted', actor: actorOf(ctx), payload: {} });
   });

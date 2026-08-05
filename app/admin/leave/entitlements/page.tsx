@@ -534,6 +534,11 @@ export default async function LeaveEntitlementsPage({
               paid={lt.paid}
               archived={!!lt.archivedAt}
               inUse={lt.inUse}
+              // 4fdb69b2 — what a delete would cascade, by name, for the confirmation. Both come straight
+              // from listLeaveTypes; the driver returns a Postgres text[] as a JS array, and the projection
+              // coalesces to '{}' so these are never null.
+              cascadeApprovalRules={lt.cascadeApprovalRules ?? []}
+              cascadeBalanceSourceOf={lt.cascadeBalanceSourceOf ?? []}
               isAnnual={lt.code === 'ANNUAL'}
               // 9816a5ad step 2: the consolidated rules live on the TYPE now, so the Earning Method and
               // Carry Forward sub-steps read and write them here rather than through a policy row.

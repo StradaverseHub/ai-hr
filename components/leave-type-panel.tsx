@@ -1579,6 +1579,8 @@ export function LeaveTypePanel({
   paid,
   archived,
   inUse,
+  cascadeApprovalRules,
+  cascadeBalanceSourceOf,
   isAnnual,
   floor0,
   eligibility,
@@ -1651,6 +1653,10 @@ export function LeaveTypePanel({
   paid: boolean;
   archived: boolean;
   inUse: boolean;
+  /** 4fdb69b2 — what a delete would cascade, BY NAME, for the confirmation. Empty arrays render nothing. */
+  cascadeApprovalRules: string[];
+  /** Leave types whose balance source is THIS type; deleting clears their source (they are not deleted). */
+  cascadeBalanceSourceOf: string[];
   isAnnual: boolean;
   floor0: number;
   eligibility: LeaveEligibilityRule | null;
@@ -2298,12 +2304,31 @@ export function LeaveTypePanel({
               ) : (
                 <form action={deleteTypeAction}>
                   <input type="hidden" name="id" value={id} />
+                  {/* 4fdb69b2 — THE CONFIRMATION IS PART OF THE FEATURE, not decoration. Deleting now
+                      cascades the type's configuration, and one branch of that cascade changes a leave
+                      type that is NOT being deleted: any type drawing its balance from this one has that
+                      source cleared. So the dialog NAMES what goes rather than counting it, and names the
+                      affected other type explicitly. The reporter asked not to clear these references by
+                      hand; they did not ask to be kept in the dark about them.
+                      Both lists are usually empty, in which case the wording is exactly what it was. */}
                   <ConfirmSubmit
                     size="sm"
                     variant="ghost"
                     className="text-destructive hover:text-destructive"
                     title={t('deleteTypeConfirmTitle')}
-                    description={t('deleteTypeConfirmDescription')}
+                    description={[
+                      t('deleteTypeConfirmDescription'),
+                      cascadeApprovalRules.length > 0
+                        ? t('deleteTypeCascadeRules', { names: cascadeApprovalRules.join(', ') })
+                        : null,
+                      cascadeBalanceSourceOf.length > 0
+                        ? t('deleteTypeCascadeBalanceSource', {
+                            names: cascadeBalanceSourceOf.join(', '),
+                          })
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join('\n\n')}
                     confirmLabel={t('deleteConfirmLabel')}
                   >
                     {t('delete')}

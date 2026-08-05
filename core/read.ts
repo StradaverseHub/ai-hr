@@ -31,6 +31,10 @@ import {
   type LeaveEligibility,
 } from './leave';
 import { buildTemplateEntitlementResolver } from './entitlement-template';
+// 1ae7f3ab + 4fdb69b2 — the ONE declaration of what references a leave type. listLeaveTypes' inUse
+// predicate is generated from it, and so is deleteLeaveType's guard; two hand-written lists are what
+// drifted into the bug both items describe.
+import { leaveTypeInUseSqlText } from './leave-type-refs';
 // 23ad620e — "the" emergency contact is now the highest-priority row of the per-person register.
 import { primaryEmergencyContactSql } from './emergency-contacts';
 import {
@@ -633,7 +637,31 @@ export function listLeaveTypes(
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         archivedAt: leaveType.archivedAt,
-        inUse: sql<boolean>`exists (select 1 from leave_request lr where lr.leave_type_id = leave_type.id) or exists (select 1 from leave_ledger ll where ll.leave_type_id = leave_type.id) or exists (select 1 from leave_policy lp where lp.leave_type_id = leave_type.id)`,
+        // 1ae7f3ab + 4fdb69b2 — GENERATED, not hand-written, from core/leave-type-refs.ts. This predicate
+        // and deleteLeaveType's guard are the pair that had drifted (three tables here, five there, twelve
+        // in the database), which is the job-grade hazard documented at listJobGrades below happening again
+        // to leave types. Both sides now read historyReferrers(), so they cannot span different table sets;
+        // test/leave-type-referrers.test.ts fails if they ever do, and fails again if a new table starts
+        // referencing leave_type without a declared disposition.
+        //
+        // NOTE THE MEANING CHANGED with the cascade (4fdb69b2): inUse is now "this type has HISTORY", not
+        // "anything points at it". Configuration is cascaded by the delete, so a type carrying only
+        // policies and approval rules is deletable and correctly shows Delete.
+        inUse: sql<boolean>`${sql.raw(leaveTypeInUseSqlText('leave_type.id'))}`,
+        // 4fdb69b2 — WHAT THE CASCADE WILL TAKE, BY NAME. The reporter asked not to clear the references
+        // by hand; they did not ask not to be told. The confirmation names these rather than counting
+        // them, because one of them changes the behaviour of a DIFFERENT leave type that is NOT being
+        // deleted: any type drawing its balance from this one loses that source. Naming "Caregiver Leave"
+        // is the difference between an informed press and a surprise.
+        //
+        // Projected here rather than fetched per type on open: the panel renders every type already, and a
+        // confirmation that has to wait on a round trip is a confirmation people click through.
+        cascadeApprovalRules: sql<string[]>`coalesce((
+          select array_agg(coalesce(lap.rule_name, 'Approval rule') order by lap.rule_name nulls last)
+          from leave_approval_policy lap where lap.leave_type_id = leave_type.id), '{}')`,
+        cascadeBalanceSourceOf: sql<string[]>`coalesce((
+          select array_agg(o.name order by o.name)
+          from leave_type o where o.balance_source_type_id = leave_type.id), '{}')`,
       })
       .from(leaveType)
       .where(opts.includeArchived ? undefined : isNull(leaveType.archivedAt));
