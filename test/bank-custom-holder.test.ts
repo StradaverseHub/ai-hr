@@ -51,6 +51,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const PAGE = read('app/admin/personnel/[employmentId]/page.tsx');
 const CARD = read('components/bank-info-card.tsx');
+// 35b7af0a group 5 — the two employee bank fields the wizard now shares with this card.
+const FIELDS = read('components/bank-account-fields.tsx');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('Bank card — source layout (ef720d3a)', () => {
@@ -67,18 +69,27 @@ describe('Bank card — source layout (ef720d3a)', () => {
   it('gives the bank fields their own partial-save card (BankInfoCard), removing free-text bank from the statutory form', () => {
     // The statutory overwrite form no longer carries a bankName input (moved to the select in the card).
     expect(PAGE.includes('name="bankName"')).toBe(false);
-    // The card renders a select for the bank + the two custom-holder switches + gated inputs.
-    expect(CARD.includes('name="bankName"')).toBe(true);
-    expect(CARD.includes('<select name="bankName"')).toBe(true);
+    // 35b7af0a group 5 — the bank SELECT and the account-number input moved one file further, into
+    // components/bank-account-fields.tsx, so the Create New Employee wizard renders the same two fields
+    // instead of its own free-text bank box. The card still owns the form, the action and the custom-holder
+    // switches; what it now composes rather than builds is the pair of employee bank fields.
+    expect(CARD.includes('<BankAccountFields')).toBe(true);
+    expect(CARD.includes('mode="form"')).toBe(true);
+    expect(FIELDS.includes("name: 'bankName'")).toBe(true);
+    expect(FIELDS.includes("name: 'bankAccountNo'")).toBe(true);
+    expect(FIELDS.includes('<select')).toBe(true);
     for (const f of ['enableCustomHolderName', 'customHolderName', 'enableCustomHolderId', 'customHolderId']) {
       expect(CARD.includes(`name="${f}"`), `missing card input ${f}`).toBe(true);
     }
   });
 
   it('(b) sources the bank dropdown from the BNM catalog (29 canonical names incl. Maybank/CIMB)', () => {
-    // Rung 5b (ADR-0080 D4): the card reads the CLIENT-SAFE pack registry, not localization/my
+    // Rung 5b (ADR-0080 D4): the picker reads the CLIENT-SAFE pack registry, not localization/my
     // directly; the MY entry's bankNames is pinned below as exactly the BNM canonical projection.
-    expect(CARD.includes("from '@/localization/registry.client'")).toBe(true);
+    // 35b7af0a group 5 — the catalog moved with the fields into components/bank-account-fields.tsx, so BOTH
+    // screens draw the same 29 names. Neither file may reach past the registry.
+    expect(FIELDS.includes("from '@/localization/registry.client'")).toBe(true);
+    expect(FIELDS.includes("from '@/localization/my/bank-files/bnm-codes'")).toBe(false);
     expect(CARD.includes("from '@/localization/my/bank-files/bnm-codes'")).toBe(false);
     expect(myClientPack.bankNames).toEqual(BNM_BANKS.map((b) => b.canonical));
     expect(BNM_BANKS.length).toBe(29);

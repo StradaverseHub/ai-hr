@@ -2,7 +2,9 @@
 
 import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { clientCountryPacks } from '@/localization/registry.client';
+// 35b7af0a group 5 — the Bank + Bank Account Number field group, shared with the Create New Employee
+// wizard. The BNM catalog it renders moved with it (it was this file's module-level BANK_NAMES).
+import { BankAccountFields } from '@/components/bank-account-fields';
 
 // Inlined from components/ui (server module) so this stays a clean client island — same pattern as
 // components/epf-election.tsx.
@@ -19,13 +21,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
     </label>
   );
 }
-
-/** Canonical bank names for the picker (item ef720d3a), served by the CLIENT-SAFE pack registry
- *  (ADR-0080 rung 5b, D4): each pack's `bankNames` is its jurisdiction's payment-directory projection
- *  (MY: the BNM catalog the bank-file builders already use, so a picked value normalises cleanly and its
- *  BNM code stays derivable via tryBnmCodeForBankName). Union across packs in catalog order (the four
- *  common MY banks first) — MY-only today, byte-identical to the old direct BNM_BANKS import. */
-const BANK_NAMES = clientCountryPacks().flatMap((p) => p.bankNames);
 
 export type BankInfoDefaults = {
   bankName: string | null;
@@ -59,9 +54,9 @@ export function BankInfoCard({
   const [enableName, setEnableName] = useState(defaults.enableCustomHolderName);
   const [enableId, setEnableId] = useState(defaults.enableCustomHolderId);
 
-  // Preserve a legacy / non-catalog bank name so an existing value isn't silently dropped from the picker.
-  const current = defaults.bankName?.trim() || '';
-  const options = current && !BANK_NAMES.includes(current) ? [current, ...BANK_NAMES] : BANK_NAMES;
+  // The catalog, and the rule that preserves a legacy / non-catalog bank name so an existing value isn't
+  // silently dropped from the picker, moved into BankAccountFields with the fields themselves (35b7af0a
+  // group 5) — the wizard needs both and had neither.
 
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm">
@@ -78,19 +73,17 @@ export function BankInfoCard({
             {t('bankGroupEmployee')}
           </legend>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t('bank')}>
-              <select name="bankName" defaultValue={current} className={inputCls}>
-                <option value="">{t('bankSelectPlaceholder')}</option>
-                {options.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('bankAccount')}>
-              <input name="bankAccountNo" defaultValue={defaults.bankAccountNo ?? ''} className={inputCls} />
-            </Field>
+            {/* 35b7af0a group 5 — Bank and Bank Account Number are now ONE shared field group
+                (components/bank-account-fields.tsx), rendered identically here and on the Create New
+                Employee wizard. The wizard had a FREE-TEXT bank box against this card's catalog picker, so
+                a hire could be created with hand-typed text that no BNM code can be derived from and that
+                only surfaces when a payment file is built. `mode="form"` keeps these inputs exactly what
+                they were: uncontrolled name/defaultValue inputs inside this setBankAction form. */}
+            <BankAccountFields
+              mode="form"
+              bankName={defaults.bankName}
+              bankAccountNo={defaults.bankAccountNo}
+            />
           </div>
         </fieldset>
 
