@@ -148,9 +148,10 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
     const selected = ['recentActivity', 'leaveBalance', 'upcomingEvents'];
     await setDashboardLayout(ctx, { selected, order: selected }, CARDS);
     const saved = await getDashboardLayout(ctx, CARDS);
-    // selected preserved (order-preserving) + the mandatory Leave Calendar force-included (2806443b);
-    // order covers every available card exactly once.
-    expect(saved.selected).toEqual([...selected, 'plannedAbsences']);
+    // selected preserved (order-preserving); order covers every available card exactly once. a00c4f64:
+    // the mandatory Leave Calendar used to be force-appended here — it left the catalogue with the move,
+    // and no card is mandatory any more, so a saved selection is now exactly what was saved.
+    expect(saved.selected).toEqual(selected);
     expect(new Set(saved.order)).toEqual(new Set(ALL_KEYS));
     expect(saved.order.slice(0, 3)).toEqual(selected);
   });
@@ -158,24 +159,27 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
   it('reads a LEGACY order-only array as "everything shown, in that order" (backward compatible)', async () => {
     const ctx = await newEmployeeCtx();
     // Write a legacy order-only array straight through the seam (pre-578a2fcf shape, with the "cards" block).
-    await withRawSeam(ctx, ['recentActivity', 'cards', 'plannedAbsences']);
+    // a00c4f64 leaves 'plannedAbsences' in the fixture deliberately: a real legacy array contains it, and
+    // the point is that a key no longer in the catalogue is DROPPED on read — which is why the move needs
+    // no app_user.dashboard_layout migration.
+    await withRawSeam(ctx, ['recentActivity', 'cards', 'plannedAbsences', 'upcomingEvents']);
     const saved = await getDashboardLayout(ctx, CARDS);
     expect(new Set(saved.selected)).toEqual(new Set(ALL_KEYS)); // legacy showed everything
+    expect(saved.order).not.toContain('plannedAbsences');
     // The legacy "cards" block flattened into its three summary cardKeys, in place.
     expect(saved.order.slice(0, 5)).toEqual([
       'recentActivity',
       'leaveBalance',
       'nextHoliday',
       'pendingTasks',
-      'plannedAbsences',
+      'upcomingEvents',
     ]);
   });
 
   it('Reset to Default clears the saved layout back to the HR default', async () => {
     const ctx = await newEmployeeCtx();
     await setDashboardLayout(ctx, { selected: ['recentActivity'], order: ['recentActivity'] }, CARDS);
-    // The mandatory Leave Calendar (2806443b) is force-included alongside the chosen card.
-    expect((await getDashboardLayout(ctx, CARDS)).selected).toEqual(['recentActivity', 'plannedAbsences']);
+    expect((await getDashboardLayout(ctx, CARDS)).selected).toEqual(['recentActivity']);
     await resetDashboardLayout(ctx);
     expect(new Set((await getDashboardLayout(ctx, CARDS)).selected)).toEqual(new Set(ALL_KEYS));
   });
@@ -185,13 +189,12 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
     const c = await newEmployeeCtx();
     const selA = ['recentActivity', 'leaveBalance'];
     await setDashboardLayout(a, { selected: selA, order: selA }, CARDS);
-    // C has saved nothing → still HR default; and saving C must not disturb A. The mandatory Leave
-    // Calendar (2806443b) rides along in every saved selection.
+    // C has saved nothing → still HR default; and saving C must not disturb A.
     expect(new Set((await getDashboardLayout(c, CARDS)).selected)).toEqual(new Set(ALL_KEYS));
     const selC = ['upcomingEvents', 'recentlyJoined'];
     await setDashboardLayout(c, { selected: selC, order: selC }, CARDS);
-    expect((await getDashboardLayout(a, CARDS)).selected).toEqual([...selA, 'plannedAbsences']);
-    expect((await getDashboardLayout(c, CARDS)).selected).toEqual([...selC, 'plannedAbsences']);
+    expect((await getDashboardLayout(a, CARDS)).selected).toEqual(selA);
+    expect((await getDashboardLayout(c, CARDS)).selected).toEqual(selC);
   });
 
   it('appends NO domain event (deliberate substrate carve-out for a cosmetic UI pref)', async () => {
@@ -215,9 +218,9 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
     const selMgr = ['upcomingReminders', 'teamAwayToday'];
     await setDashboardLayout(ctx, { selected: selEmp, order: selEmp }, CARDS, 'employee');
     await setDashboardLayout(ctx, { selected: selMgr, order: selMgr }, MGR_CARDS, 'manager');
-    // Each role slot round-trips against its own catalog; the mandatory calendar rides along in both.
-    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual([...selEmp, 'plannedAbsences']);
-    expect((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected).toEqual([...selMgr, 'plannedAbsences']);
+    // Each role slot round-trips against its own catalog.
+    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(selEmp);
+    expect((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected).toEqual(selMgr);
     // The hr_admin slot was never saved → its HR default.
     const adminCards = BUILTIN_ROLE_DASHBOARD_CARDS.hr_admin;
     expect(new Set((await getDashboardLayout(ctx, adminCards, 'hr_admin')).selected)).toEqual(
@@ -228,7 +231,7 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
   it('a LEGACY flat stored value reads as the EMPLOYEE layout; other roles get their default', async () => {
     const ctx = await newEmployeeCtx();
     await withRawSeam(ctx, { selected: ['recentActivity'], order: ['recentActivity'] }); // pre-9606c59f shape
-    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity', 'plannedAbsences']);
+    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity']);
     expect(new Set((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected)).toEqual(
       new Set(MGR_CARDS.map((c) => c.cardKey)),
     );
@@ -239,8 +242,8 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
     await withRawSeam(ctx, { selected: ['recentActivity'], order: ['recentActivity'] });
     const selMgr = ['approvalRequests'];
     await setDashboardLayout(ctx, { selected: selMgr, order: selMgr }, MGR_CARDS, 'manager');
-    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity', 'plannedAbsences']);
-    expect((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected).toEqual(['approvalRequests', 'plannedAbsences']);
+    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity']);
+    expect((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected).toEqual(['approvalRequests']);
   });
 
   it('Reset is per-role: clearing the manager slot leaves the employee layout untouched (and vice versa)', async () => {
@@ -253,7 +256,7 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
     expect(new Set((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected)).toEqual(
       new Set(MGR_CARDS.map((c) => c.cardKey)), // back to the manager HR default
     );
-    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity', 'plannedAbsences']);
+    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity']);
     // Resetting the last remaining slot stores NULL again (the pre-9606c59f reset).
     await resetDashboardLayout(ctx, 'employee');
     expect(new Set((await getDashboardLayout(ctx, CARDS, 'employee')).selected)).toEqual(new Set(ALL_KEYS));

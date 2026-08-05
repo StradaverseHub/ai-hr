@@ -90,6 +90,7 @@
     "people": "Nhân sự",
     "orgChart": "Sơ đồ tổ chức",
     "myAbsence": "Nghỉ phép của tôi",
+    "teamLeaveTracker": "Theo dõi nghỉ phép của nhóm",
     "attendance": "Chấm công",
     "myAttendance": "Chấm công của tôi",
     "manage": "Quản lý",
@@ -238,7 +239,7 @@
     "shortcutsLimitToast": "Chỉ có thể hiển thị tối đa {max} lối tắt. Hãy xóa bớt một trước.",
     "reorderCardAria": "Sắp xếp lại {card}",
     "pinnedBadge": "Đã ghim",
-    "pinnedRowHint": "Lịch nghỉ phép được ghim và luôn hiển thị trên bảng điều khiển của bạn.",
+    "pinnedRowHint": "Các thẻ được ghim tại đây luôn hiển thị trên bảng điều khiển của bạn.",
     "emptyDashboardHint": "Chưa chọn thẻ nào. Dùng Thêm thẻ để chọn nội dung hiển thị.",
     "saveChanges": "Lưu thay đổi",
     "cancel": "Hủy",
@@ -1774,6 +1775,10 @@
       "splitConfirm": "Yes — I agree to the unpaid days."
     },
     "unpaidPortionLabel": "Nghỉ không lương"
+  },
+  "leaveTracker": {
+    "title": "Theo dõi nghỉ phép của nhóm",
+    "description": "Ai nghỉ và nghỉ khi nào — phép của bạn, và của nhóm bạn nếu bạn có cấp dưới trực tiếp."
   },
   "attendance": {
     "title": "Chấm công",
@@ -5152,6 +5157,7 @@
       "scope": {
         "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",
         "leave": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
+        "leaveTracker": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
         "attendance": "Mọi người đều có thể mở; bạn thấy chấm công của mình, quản lý và quản trị viên thấy của cấp dưới.",
         "approvals": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
@@ -8114,10 +8120,10 @@
       "templateShortcuts": "Hàng lối tắt — thẻ nhỏ (tối đa {max})",
       "templateShortcutsDesc": "Các thẻ loại Lối tắt nằm ở hàng riêng bên dưới hàng trên. Nhân viên chọn tối đa {max} thẻ và tự đặt thứ tự.",
       "templateRow2": "Hàng thứ hai — cố định",
-      "templateRow2Desc": "Chỉ Lịch nghỉ phép được ghim tại đây, trải rộng toàn bộ chiều ngang, cho mọi nhân viên và không thể gỡ bỏ.",
+      "templateRow2Desc": "Các thẻ toàn chiều ngang được ghim tại đây cho mọi nhân viên và không thể gỡ bỏ. Hiện chưa có thẻ nào dùng hàng này.",
       "templateRow3": "Bên dưới — khu vực cá nhân hóa",
       "templateRow3Desc": "Các thẻ được chọn còn lại xếp chồng tại đây theo thứ tự mỗi nhân viên đã lưu.",
-      "templateDerivedNote": "Bố cục này hiện được suy ra tự động từ ghim Lịch nghỉ phép. Một mẫu do HR sở hữu và có thể chỉnh trực tiếp được lên kế hoạch cho giai đoạn sau.",
+      "templateDerivedNote": "Bố cục này hiện được suy ra tự động từ định nghĩa thẻ. Một mẫu do HR sở hữu và có thể chỉnh trực tiếp được lên kế hoạch cho giai đoạn sau.",
       "contentTitle": "Nội dung",
       "contentIntro": "Đăng nội dung của tổ chức lên bảng điều khiển. Khu vực này sắp ra mắt.",
       "contentAnnouncements": "Thông báo",

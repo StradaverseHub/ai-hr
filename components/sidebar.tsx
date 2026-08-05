@@ -123,6 +123,10 @@ const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find
 // concern.
 const LEAVE_LINKS = modulePackById('leave')!.navLinks!;
 const LEAVE_ABSENCE_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'main')!;
+// a00c4f64 — "Team Leave Tracker", the Leave Calendar's own screen after it left the Dashboard. It goes
+// in the Manage group (the reporter asked for it there) and carries NO gate, which is the point: the
+// group gates per row, and every employee could see this calendar before the move.
+const LEAVE_TRACKER_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'manage')!;
 
 // 645e67c4 — leave's own horizontal tab strip (components/leave-tabs.tsx) is retired in favour of this
 // flyout, so the leave pack's Administration-group contribution went from a flat row (LEAVE_CONFIG_ROW,
@@ -256,6 +260,7 @@ const GROUPS: Group[] = [
     labelKey: 'manage',
     items: [
       { href: '/personnel', labelKey: 'people', icon: Users },
+      LEAVE_TRACKER_ROW,
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ROW,
       // a324a4b3 rev3: Roster + Import come back here as FLAT rows. rev2 put them inside the Attendance

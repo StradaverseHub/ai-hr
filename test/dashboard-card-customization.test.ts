@@ -93,8 +93,11 @@ describe('normalizeDashboardLayout (pure add / remove / mandatory / drop)', () =
   });
 
   it('legacy order-only array → everything shown, "cards" block flattened in place', () => {
+    // a00c4f64 — 'plannedAbsences' is deliberately still in the fixture: it is exactly what a legacy
+    // saved array contains, and it must now be DROPPED (the Leave Calendar left the catalogue for its own
+    // screen) without disturbing the position of anything around it.
     const { selected, order } = normalizeDashboardLayout(
-      ['recentActivity', 'cards', 'plannedAbsences'],
+      ['recentActivity', 'cards', 'plannedAbsences', 'upcomingEvents'],
       BUILTIN_DASHBOARD_CARDS,
     );
     expect(new Set(selected)).toEqual(new Set(BUILTIN_DASHBOARD_CARDS.map((c) => c.cardKey)));
@@ -103,8 +106,9 @@ describe('normalizeDashboardLayout (pure add / remove / mandatory / drop)', () =
       'leaveBalance',
       'nextHoliday',
       'pendingTasks',
-      'plannedAbsences',
+      'upcomingEvents',
     ]);
+    expect(order).not.toContain('plannedAbsences');
   });
 
   it('empty card config falls back to the built-in catalog (never blank)', () => {
@@ -205,20 +209,23 @@ describe('dashboard cards — end-to-end read + persistence', () => {
     await seedCards([
       { cardKey: 'leaveBalance', name: 'Leave Balance', cardType: 'information', defaultDisplay: true, displayOrder: 1 }, // audience defaults to {employee}
       { cardKey: 'teamAwayToday', name: 'Team Away Today', cardType: 'information', defaultDisplay: true, displayOrder: 2, audience: ['manager'] },
-      { cardKey: 'plannedAbsences', name: 'Leave Calendar', cardType: 'information', defaultDisplay: true, mandatory: true, displayOrder: 3, audience: ['employee', 'manager', 'hr_admin'] },
+      // a00c4f64 renamed this fixture off 'plannedAbsences' (the Leave Calendar left the catalogue for its
+      // own screen). What the spec needs is A card shared by all three audiences AND mandatory; the key is
+      // arbitrary, and naming a card that no longer exists would read as a claim that it does.
+      { cardKey: 'sharedSection', name: 'Shared Section', cardType: 'information', defaultDisplay: true, mandatory: true, displayOrder: 3, audience: ['employee', 'manager', 'hr_admin'] },
       { cardKey: 'headcountByCompany', name: 'Headcount by Company', cardType: 'information', defaultDisplay: true, displayOrder: 4, audience: ['hr_admin'] },
     ]);
     const ctx = await newEmployeeCtx();
     expect((await listDashboardCards(ctx, 'employee')).map((c) => c.cardKey)).toEqual([
       'leaveBalance',
-      'plannedAbsences',
+      'sharedSection',
     ]);
     expect((await listDashboardCards(ctx, 'manager')).map((c) => c.cardKey)).toEqual([
       'teamAwayToday',
-      'plannedAbsences',
+      'sharedSection',
     ]);
     expect((await listDashboardCards(ctx, 'hr_admin')).map((c) => c.cardKey)).toEqual([
-      'plannedAbsences',
+      'sharedSection',
       'headcountByCompany',
     ]);
     // A save can never smuggle an out-of-role card in: normalisation against the role catalog drops it.
@@ -230,6 +237,6 @@ describe('dashboard cards — end-to-end read + persistence', () => {
       'manager',
     );
     const layout = await getDashboardLayout(ctx, mgrCards, 'manager');
-    expect(layout.selected).toEqual(['teamAwayToday', 'plannedAbsences']); // hr_admin-only card dropped; mandatory calendar kept
+    expect(layout.selected).toEqual(['teamAwayToday', 'sharedSection']); // hr_admin-only card dropped; mandatory card kept
   });
 });

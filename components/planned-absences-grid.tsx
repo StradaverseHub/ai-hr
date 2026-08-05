@@ -127,8 +127,9 @@ export function PlannedAbsencesGrid({
   const focusRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusActive) return;
-    // The card itself is reached by the href's #planned-absences anchor; this brings the ROW into view
-    // inside the roster. Honoured explicitly for reduced motion — the global CSS reset cannot suppress
+    // a00c4f64: the calendar is the whole page now, so arriving on /leave/tracker already lands on it —
+    // no anchor jump to pair with. This still brings the ROW into view inside the roster, which is the
+    // half that always mattered. Honoured explicitly for reduced motion — the global CSS reset cannot suppress
     // a JS smooth-scroll option (same reasoning as app/approvals/attention-on-arrival.tsx).
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     focusRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'nearest' });
@@ -238,7 +239,8 @@ export function PlannedAbsencesGrid({
                 const showCancel = !!cancelAction && !!l.cancelEligible;
                 // feedback 22e68ff0: an HR admin can immediately cancel this pill on the employee's behalf. Same
                 // compact XCircle trigger convention as the employee give-back, but opens AdminCancelLeaveDialog
-                // (confirmation + optional reason) and posts the on-behalf action with back="/".
+                // (confirmation + optional reason) and posts the on-behalf action with the calendar's own page as
+                // the return surface (a00c4f64 moved that from the dashboard to /leave/tracker).
                 const showAdminCancel = !!adminCancelAction && !!l.adminCancelEligible;
                 // item c9a19e34: the viewer self-withdraws their own PENDING pill (immediate, no dates picker).
                 const showSelfCancel = !!selfCancelAction && !!l.selfCancelEligible;
@@ -309,7 +311,7 @@ export function PlannedAbsencesGrid({
                     {showAdminCancel && (
                       <AdminCancelLeaveDialog
                         leaveRequestId={l.id}
-                        back="/"
+                        back="/leave/tracker"
                         submitAction={adminCancelAction!}
                         trigger={
                           <button

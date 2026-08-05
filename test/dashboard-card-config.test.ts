@@ -242,6 +242,10 @@ describe('Dashboard Card Master — migration seed', () => {
   it('the 0299 statements widen the shared cards to all roles and seed the manager/admin sets (idempotently)', async () => {
     // Replay the real migration SQL against the freshly-seeded tenant (the harness template predates
     // seedBase's tenants, so the CROSS JOIN seeds no-op at migrate time — 0212-test pattern).
+    //
+    // This spec is scoped to 0212 → 0296 → 0299 and deliberately stops there, so `plannedAbsences` still
+    // appears below: it is what THOSE migrations produce. a00c4f64's 0404 deletes that row afterwards —
+    // the post-0404 catalogue is asserted in test/dashboard-fixed-row.test.ts, which replays the full chain.
     const seed0212 = readFileSync(path.join(__dirname, '..', 'db', 'migrations', '0212_dashboard_card_config.sql'), 'utf8')
       .split('--> statement-breakpoint')
       .pop()!;
