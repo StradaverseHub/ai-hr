@@ -75,9 +75,19 @@ export type OrgCriteriaLabels = {
 /**
  * The reporter's four groups, in their order. Every `name` is a field the shared resolver understands.
  *
- * Moved here VERBATIM from app/admin/leave/adjustments/page.tsx (18103ba4) — the field list, the order, the
- * labels and the comments are unchanged, so the Adjustments screen offers exactly what it offered before
- * and `test/leave-adjustment-step-flow.test.ts` is asserting the same thing about the same names.
+ * Moved here VERBATIM from app/admin/leave/adjustments/page.tsx (18103ba4) — the field list, the labels and
+ * the comments came across unchanged, and `test/leave-adjustment-step-flow.test.ts` asserts the same thing
+ * about the same names.
+ *
+ * 18103ba4 (r155) then REGROUPED one axis: employmentCategory sits under Employment Information rather than
+ * Employee Information (it is a fact about the employment, like grade / position / cost centre beside it),
+ * and gender leads what remains of the person-level group. Nothing was added or removed, and no `name`
+ * changed — so the posted fields, the criteria object and `resolveOrgCriteriaTargets` are untouched and no
+ * saved or in-flight selection targets a different set of people.
+ *
+ * ⚠️ THIS FILE FEEDS TWO SCREENS. Because there is one list, that regrouping lands on Leave Adjustments AND
+ * on Generate Entitlement together — which is the property this module exists to guarantee, but it does mean
+ * a change here is never local to the screen that prompted it.
  */
 export function buildOrgCriteriaSections(c: OrgCriteriaCatalogues, t: OrgCriteriaLabels): CriteriaSection[] {
   const active = (category: ProfileOptionCategory): CriteriaOption[] =>
@@ -123,13 +133,29 @@ export function buildOrgCriteriaSections(c: OrgCriteriaCatalogues, t: OrgCriteri
         { name: 'gradeIds', label: t.crit('jobGrade'), kind: 'multi', options: c.grades.map((g) => ({ value: g.id, label: g.name })) },
         { name: 'positionIds', label: t.crit('position'), kind: 'multi', options: c.positions.map((p) => ({ value: p.id, label: p.title })) },
         { name: 'costCenterIds', label: t.crit('costCentre'), kind: 'multi', options: c.costCenters.map((x) => ({ value: x.id, label: `${x.code} — ${x.name}` })) },
+        // 18103ba4 (r155) — EMPLOYMENT CATEGORY MOVED HERE FROM "Employee Information", and was NOT deleted.
+        //
+        // The reporter's words were "remove all fields contained within it", but employmentCategory is a
+        // LIVE narrowing axis (`employment.employment_category`, resolved by core/org-criteria.ts and read
+        // by the leave-eligibility engine — see test/leave-org-criteria.ts's BACKWARD-COMPAT case). Dropping
+        // the control would silently widen every adjustment and every entitlement generation that relies on
+        // it, and it would do so without an error: an axis that is not offered narrows nobody. It is a fact
+        // about the EMPLOYMENT, not about the person, so it belongs in this group and it stays offered.
+        //
+        // This is a REGROUPING ONLY: the `name` is unchanged, so the posted field, the criteria object and
+        // `resolveOrgCriteriaTargets` are untouched — no adjustment or generation targets a different set of
+        // people because of this commit.
+        org('employmentCategory'),
       ],
     },
     {
       key: 'employee',
       title: t.crit('sectionEmployee'),
       fields: [
-        org('employmentCategory'),
+        // 18103ba4 (r155) — gender leads this group now that employmentCategory has moved up into
+        // Employment Information. What remains under "Employee Information" is exactly the person-level
+        // demographics, which is what the heading claims.
+        //
         // PDPA s.40 sensitive demographics, read from `person`. Asked for by name — see the header of
         // core/org-criteria.ts for why that mattered before they were implemented.
         { name: 'genders', label: t.crit('gender'), kind: 'multi', options: [

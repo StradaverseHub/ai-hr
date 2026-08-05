@@ -24,6 +24,7 @@ import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { ORG_CRITERIA_FIELDS, ORG_CRITERIA_RANGE_FIELDS } from '../core/org-criteria';
+import { buildOrgCriteriaSections } from '../core/org-criteria-form';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (p: string) => readFileSync(resolve(here, '..', p), 'utf8');
@@ -227,5 +228,69 @@ describe('18103ba4 · the new copy exists in all six catalogues', () => {
       for (const k of critKeys) if (!dict.admin.leave.adjustmentsCriteria[k]) missing.push(`${loc}…adjustmentsCriteria.${k}`);
     }
     expect(missing, missing.join('\n')).toEqual([]);
+  });
+});
+
+/**
+ * 18103ba4 (r155) · D. WHICH GROUP EACH AXIS SITS IN.
+ *
+ * Employment Category was being offered under "Employee Information", beside gender / nationality /
+ * religion / race. Those four are facts about the PERSON; employment category is a fact about the
+ * EMPLOYMENT, and it reads from `employment.employment_category` exactly like job grade, position and cost
+ * centre one group up. The reporter found the grouping misleading and they were right.
+ *
+ * ASSERTED AGAINST THE BUILT SECTIONS, not the source text, because the thing that matters is what an
+ * operator sees under each heading — and because the same call feeds BOTH the Leave Adjustments screen and
+ * the Generate Entitlement screen (93249794 made `buildOrgCriteriaSections` the one list). A source-string
+ * check would pass on a field that had been moved into a group that is never rendered.
+ *
+ * THE FIELD WAS NOT DELETED, and that is the load-bearing half of this block. The reporter's words were
+ * "remove all fields contained within it"; employmentCategory is a live narrowing axis the leave
+ * eligibility engine reads (test/leave-org-criteria.test.ts drives it), so removing the control would
+ * silently WIDEN every adjustment and every generation that uses it — an axis that is not offered narrows
+ * nobody, and nothing throws. The approved plan discloses that and offers a reject path instead.
+ */
+describe('18103ba4 (r155) · D. the criteria groups say what they hold', () => {
+  /** The builder needs catalogues + three translators; key-echoing translators keep the labels assertable. */
+  const sections = () =>
+    buildOrgCriteriaSections(
+      {
+        companies: [], departments: [], grades: [], positions: [],
+        costCenters: [], businessUnits: [], locations: [], profileOptions: {},
+      },
+      { crit: (k) => k, org: (k) => k, employmentType: (k) => k },
+    );
+  const fieldNames = (key: string) => sections().find((s) => s.key === key)!.fields.map((f) => f.name);
+
+  it('employmentCategory is offered under Employment Information, last, after cost centre', () => {
+    const employment = fieldNames('employment');
+    expect(employment).toContain('employmentCategory');
+    expect(employment[employment.length - 1]).toBe('employmentCategory');
+    expect(employment[employment.length - 2]).toBe('costCenterIds');
+  });
+
+  it('Employee Information is the person-level demographics only, and gender leads it', () => {
+    expect(fieldNames('employee')).toEqual(['genders', 'nationalities', 'religions', 'races']);
+  });
+
+  it('the move is a REGROUPING: the same set of axes is still offered, none added, none dropped', () => {
+    // Every axis the four groups offer, flattened. If a move ever loses a field, this is what catches it —
+    // the per-group assertions above would happily pass on three groups and a hole.
+    const all = sections().flatMap((s) => s.fields.map((f) => f.name));
+    expect(new Set(all).size, 'no axis is offered twice').toBe(all.length);
+    expect(all).toContain('employmentCategory');
+    for (const name of ['genders', 'nationalities', 'religions', 'races', 'costCenterIds', 'gradeIds']) {
+      expect(all, `${name} still offered`).toContain(name);
+    }
+    // The posted names are the contract; a regrouping that changed one would re-target every saved rule.
+    const known = new Set([...ORG_CRITERIA_FIELDS, ...ORG_CRITERIA_RANGE_FIELDS]);
+    expect(all.filter((n) => !known.has(n))).toEqual([]);
+  });
+
+  it('the "these three do not exist as data" note stays on Employee Information', () => {
+    // The note names Job Title / Employee Group / Employee Class. It hangs off the group the reporter asked
+    // for them in, and a field move through that group is exactly when a note gets dropped by accident.
+    const employee = sections().find((s) => s.key === 'employee')!;
+    expect(employee.note).toBe('absentNote');
   });
 });
