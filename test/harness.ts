@@ -47,6 +47,10 @@ const ALL_TABLES = [
   // stops being cleared the day the cascade path changes. A surviving notice would also make a later
   // file's dashboard card or popup read a notice whose recipients belong to a deleted tenant.
   'notice', 'notice_recipient',
+  // 6e9a126e — the entitlement redesign's three tables. Listed explicitly per the convention above: a
+  // leaked template would trip the (tenant, leave_type, lower(name)) partial-unique index in a later test
+  // file, and a leaked archive row would be counted by the listing/CSV assertions.
+  'entitlement_template', 'entitlement_eligibility_rule', 'entitlement_reset_archive',
   'tp1_relief',
   'employee_dependent',
   // 23ad620e — emergency-contact register: a leaked live 'primary' row would trip the partial unique

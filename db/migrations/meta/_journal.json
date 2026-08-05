@@ -2248,6 +2248,27 @@
       "when": 1781862495000,
       "tag": "0395_attendance_ot_split_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 396,
+      "version": "7",
+      "when": 1781862496000,
+      "tag": "0396_entitlement_template_and_eligibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 397,
+      "version": "7",
+      "when": 1781862497000,
+      "tag": "0397_entitlement_reset_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 398,
+      "version": "7",
+      "when": 1781862498000,
+      "tag": "0398_entitlement_reset_archive_capture",
+      "breakpoints": true
     }
   ]
 }

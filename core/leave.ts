@@ -38,6 +38,8 @@ import {
   carryEnabled,
   resolveCarryAllowance,
   entitledDays,
+  // 6e9a126e — "nothing configured is not zero days". Used by projectExpectedEntitlement below.
+  noEntitlementOpinion,
   hasAnyCarryExpiry,
   hasAnyLeaveTypeRule,
   isEngineRoundingMethod,
@@ -55,6 +57,10 @@ import {
   type UserRoundingMethod,
   isValidMonthDay,
   isWellFormedBands,
+  // 6e9a126e — the band ceiling and the shared write-time band validator, so core/admin.ts and
+  // core/entitlement-template.ts hold ONE definition between them instead of a literal each.
+  MAX_SERVICE_BANDS,
+  validateServiceBands,
   lastRealDayOfMonth,
   parseCarryExpiry,
   previewEntitlement,
@@ -111,6 +117,9 @@ export {
   bandMaxBalance,
   carryEnabled,
   entitledDays,
+  // 6e9a126e — re-exported like the rest of the pure module so tests and server callers can pin the
+  // guard's predicate directly from '@/core/leave'.
+  noEntitlementOpinion,
   hasAnyCarryExpiry,
   hasAnyLeaveTypeRule,
   isEngineRoundingMethod,
@@ -127,6 +136,10 @@ export {
   type UserRoundingMethod,
   isValidMonthDay,
   isWellFormedBands,
+  // 6e9a126e — the band ceiling and the shared write-time band validator, so core/admin.ts and
+  // core/entitlement-template.ts hold ONE definition between them instead of a literal each.
+  MAX_SERVICE_BANDS,
+  validateServiceBands,
   lastRealDayOfMonth,
   parseCarryExpiry,
   previewEntitlement,
@@ -7138,7 +7151,31 @@ export function projectExpectedEntitlement(
   // fa3f4ccb: the statutory floor no longer clamps, so a correction can now claw back BELOW the EA minimum
   // when that is what the configuration says — which is the requested behaviour, not a defect. `floor` is
   // still resolved and still passed, purely to feed the below-minimum flag.
-  const { days } = entitledDays(floor(typeCode, years), schemeDaysForYears?.(years) ?? null, pol?.days ?? 0);
+  const schemeDays = schemeDaysForYears?.(years) ?? null;
+
+  // 6e9a126e — THE "NO OPINION" GUARD. NOTHING CONFIGURED IS NOT ZERO DAYS.
+  //
+  // ⚠️ SAME CONTRACT AS THE bc36c768 GATE ABOVE: return null (SKIP), never 0. All three callers read null
+  // as "leave this employee/type completely alone" (`if (!projected) continue`), so no ledger row is
+  // written and the delta is exactly 0.00. Returning 0 would make each caller compute `0 − alreadyPosted`
+  // and post a NEGATIVE compensating adjustment clawing back days already credited — driving live
+  // balances toward zero on an ordinary profile save.
+  //
+  // THIS SHIPS IN THE RELEASE THAT CLEARS NOTHING, ON PURPOSE. Release three empties the entitlement
+  // configuration the reporter asked to reset; from that moment every unconfigured employee/type pair
+  // takes this branch. A safety property that lands in the same change as the hazard it guards has never
+  // once been observed working without it.
+  //
+  // The predicate is on the RESOLUTIONS, not the composed number: `pol` null (no policy row matched this
+  // employee's scope at all) and `pol` with `days: 0` (somebody typed zero) are different facts that
+  // `pol?.days ?? 0` flattens into the same 0. See `noEntitlementOpinion` for the full argument.
+  //
+  // `templateDays: null` — entitlement_template exists as of release one but NO engine reads it yet
+  // (release two re-points the engines through this same composition). When it does, it passes the
+  // resolved template days here and this call needs no other change.
+  if (noEntitlementOpinion({ templateDays: null, schemeDays, policy: pol })) return null;
+
+  const { days } = entitledDays(floor(typeCode, years), schemeDays, pol?.days ?? 0);
   let expected: number;
   if (a2cFirstYear) {
     // ⚠️ bc36c768 — THE a2c DIVERGENCE IS SCOPED HERE, NOT FIXED, AND THIS ITEM DOES NOT CLOSE IT. This
