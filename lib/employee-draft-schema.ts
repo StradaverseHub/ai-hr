@@ -62,6 +62,13 @@ export type EmployeeDraftStatutory = {
   taxNumber?: string;
   taxCategory?: string;
   numChildren?: string;
+  /** 35b7af0a group 7 — the SOCSO / EIS contribution categories item a7271737 made the single
+   *  per-scheme control on the Personnel screen. 'auto' keeps the PERKESO derivation, 'none' is the
+   *  scheme off, and SOCSO additionally offers 'first' / 'second'. */
+  socsoCategory?: string;
+  eisCategory?: string;
+  /** LEGACY, kept so a draft saved before group 7 still opens and still creates the same employee.
+   *  The wizard no longer writes it; completeEmployeeDraft maps 'no' forward to eisCategory 'none'. */
   eisEligible?: string;
   isResident?: string;
   epfCitizenship?: string;

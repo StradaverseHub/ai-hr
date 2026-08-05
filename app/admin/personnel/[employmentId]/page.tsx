@@ -37,6 +37,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
+import { SocsoEisFields } from '@/components/socso-eis-fields';
 import { SameAsPermanentAddress } from '@/components/same-as-permanent-address';
 import {
   addDelegationAction,
@@ -2291,49 +2292,25 @@ export default async function EmployeePage({
           </legend>
           <input type="hidden" name="nationality" value={emp.nationality ?? ''} />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label={t('socsoEisNumber')}>
-              <input
-                name="socsoNumber"
-                defaultValue={
-                  countryPack?.statutory.defaultSocsoEisNumber({
-                    socsoNumber: statutory?.socsoNumber,
-                    icNumber: statutory?.icNumber,
-                    nationality: emp.nationality,
-                  }) ?? ''
-                }
-                className={inputCls}
-              />
-            </Field>
-          </div>
-          {/* Item a7271737 — SOCSO / EIS contribution CATEGORY selects. Consolidation (reporter-approved): the
-              category is the single per-scheme control, replacing the old Subject-to-SOCSO / Subject-to-EIS
-              checkboxes ('No contribution' = the scheme off). 'Auto' keeps the automatic PERKESO age/citizenship
-              derivation. SKBBK stays its own switch (not part of the SOCSO category). */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t('socsoCategoryLabel')}>
-              <select
-                name="socsoCategory"
-                defaultValue={statutory?.socsoCategory ?? 'auto'}
-                title={t('socsoCategoryHint')}
-                className={inputCls}
-              >
-                <option value="auto">{t('socsoCategoryAuto')}</option>
-                <option value="first">{t('socsoCategoryFirst')}</option>
-                <option value="second">{t('socsoCategorySecond')}</option>
-                <option value="none">{t('socsoCategoryNone')}</option>
-              </select>
-            </Field>
-            <Field label={t('eisCategoryLabel')}>
-              <select
-                name="eisCategory"
-                defaultValue={statutory?.eisCategory ?? 'auto'}
-                title={t('eisCategoryHint')}
-                className={inputCls}
-              >
-                <option value="auto">{t('eisCategoryAuto')}</option>
-                <option value="none">{t('eisCategoryNone')}</option>
-              </select>
-            </Field>
+            {/* 35b7af0a group 7 — the SAME group the Create Employee wizard now renders
+                (components/socso-eis-fields.tsx). Names, options and the IC-derived number default are
+                carried over verbatim; this card still posts socsoNumber / socsoCategory / eisCategory
+                exactly as before. The wizard was a whole consolidation behind: it offered the legacy
+                "EIS eligible" yes/no that item a7271737 replaced, and no SOCSO category at all. */}
+            <SocsoEisFields
+              mode="form"
+              defaults={{
+                socsoNumber: statutory?.socsoNumber,
+                socsoCategory: statutory?.socsoCategory,
+                eisCategory: statutory?.eisCategory,
+              }}
+              icNumber={statutory?.icNumber}
+              nationality={emp.nationality}
+              // This page already resolves its pack as packFor('MY') at the top; passing the same
+              // literal keeps behaviour byte-identical. Widening the page to the company's own country
+              // is a real change and belongs to whoever does it, not to a field-sharing commit.
+              country="MY"
+            />
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">

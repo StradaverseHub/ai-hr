@@ -15,6 +15,7 @@ import type { CountryPackClient } from '../country-pack';
 import { dobFromIC, isMalaysianNationality } from './ic-dob';
 import { entitlement } from './leave';
 import { BNM_BANKS } from './bank-files/bnm-codes';
+import { defaultSocsoEisNumber } from './socso-eis';
 
 export const myClientPack: CountryPackClient = {
   country: 'MY',
@@ -23,6 +24,11 @@ export const myClientPack: CountryPackClient = {
     isLocalNationality: isMalaysianNationality,
     // Item 354a500d — MyKad YYMMDD → DOB (century rule: most-recent-non-future).
     dobFromIC,
+  },
+  statutory: {
+    // 35b7af0a group 7 — the SAME default the Personnel card applies server-side, so the wizard's
+    // shared SOCSO/EIS group cannot drift from it. From ./socso-eis, a db-free leaf (see its header).
+    defaultSocsoEisNumber,
   },
   leave: {
     // The EA-1955 statutory floor the leave-rule preview shows (same resolver the server engines use).

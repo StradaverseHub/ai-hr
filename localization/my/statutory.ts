@@ -150,19 +150,10 @@ export { isMalaysianNationality };
  * entered value are returned untouched. Used by setStatutoryAction (server-side normalisation) and mirrored
  * as the form default on the detail page.
  */
-export const defaultSocsoEisNumber = (args: {
-  socsoNumber?: string | null;
-  icNumber?: string | null;
-  nationality?: string | null;
-}): string | undefined => {
-  const entered = (args.socsoNumber ?? '').trim();
-  if (entered) return entered;
-  if (isMalaysianNationality(args.nationality) && args.icNumber) {
-    const ic = normalizeIC(args.icNumber);
-    if (isValidIC(ic)) return ic;
-  }
-  return undefined;
-};
+// 35b7af0a group 7 — MOVED to ./socso-eis, a db-free leaf, so the shared SOCSO/EIS field group can
+// apply the same default on the CLIENT wizard as this screen applies server-side. Re-exported here so
+// every existing server caller (setStatutoryAction, the Personnel RSC page) is unchanged.
+export { defaultSocsoEisNumber } from './socso-eis';
 
 // SOCSO / EIS contribution-category override (item a7271737). The category is the single per-scheme control on
 // the SOCSO & EIS card; the setter derives the legacy subject_to_socso / eis_eligible booleans from it.

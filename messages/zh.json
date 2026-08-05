@@ -1356,12 +1356,10 @@
         "remarks": "备注",
         "icNumber": "身份识别号码 (NRIC)",
         "phone": "手机号码",
-        "socsoNumber": "SOCSO 号码",
         "taxNumber": "税号",
         "dateOfBirth": "出生日期",
         "bankAccount": "银行信息",
         "numChildren": "子女人数",
-        "eisEligible": "符合 EIS 资格",
         "isResident": "税务居民",
         "monthlyAllowance": "每月津贴",
         "rateAmount": "费率金额"

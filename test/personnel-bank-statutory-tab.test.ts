@@ -73,7 +73,6 @@ describe('Personnel — Bank & Statutory tab (40ef71a0)', () => {
     // not that its markup is literally in this file. socsoNumber is still inline; epfNumber (with
     // epfCitizenship) is now rendered by components/epf-registration-fields.tsx in its uncontrolled `form`
     // mode, from inside the same <form>.
-    expect(PAGE.includes('name="socsoNumber"'), 'missing statutory input socsoNumber').toBe(true);
     const formStart = PAGE.indexOf('<form action={setStatutoryAction}');
     const formEnd = PAGE.indexOf('</form>', formStart);
     const statutoryForm = PAGE.slice(formStart, formEnd);
@@ -83,6 +82,21 @@ describe('Personnel — Bank & Statutory tab (40ef71a0)', () => {
     const EPF = fs.readFileSync(path.resolve(__dirname, '../components/epf-registration-fields.tsx'), 'utf8');
     for (const field of ['epfNumber', 'epfCitizenship']) {
       expect(EPF.includes(`name: '${field}'`), `missing statutory input ${field}`).toBe(true);
+    }
+    // 35b7af0a group 7 — socsoNumber followed epfNumber out of this file into a shared group, so the
+    // inline `name="socsoNumber"` assertion that stood here would now fail for a cosmetic reason. It is
+    // REPLACED, not dropped: the same three facts the EPF block above checks, because this is a wipe
+    // guard and losing the input silently clears socso_number / socso_category / eis_category on the
+    // next full-row save. The category selects join it — a7271737 made them the control that matters.
+    const SOCSO = fs.readFileSync(path.resolve(__dirname, '../components/socso-eis-fields.tsx'), 'utf8');
+    expect(statutoryForm.includes('<SocsoEisFields'), 'SOCSO/EIS group left the statutory form').toBe(true);
+    const socsoTag = statutoryForm.slice(statutoryForm.indexOf('<SocsoEisFields'));
+    expect(
+      socsoTag.slice(0, socsoTag.indexOf('/>')).includes('mode="form"'),
+      'SOCSO/EIS group must stay uncontrolled + named here',
+    ).toBe(true);
+    for (const field of ['socsoNumber', 'socsoCategory', 'eisCategory']) {
+      expect(SOCSO.includes(`name="${field}"`), `missing statutory input ${field}`).toBe(true);
     }
     // Item e3ce0d4d — the IC input moved into the nationality-conditional IdentityFields client
     // component; the Profile tab wires it via setIcAction={setIcAction}. taxNumber remains on the

@@ -34,7 +34,11 @@ const identityTaxCard = read('components/identity-tax-card.tsx');
  * the raw string `name="epfNumber"` still existed in the component file.
  */
 const epfRegistrationFields = read('components/epf-registration-fields.tsx');
-const statutoryFormSources = page + epfRegistrationFields;
+// 35b7af0a group 7 — SOCSO/EIS moved into a shared group, exactly as EPF did at group 4. Its source
+// joins the wipe-guard corpus below for the same reason: the inputs still POST, they are just declared
+// one file across.
+const socsoEisFields = read('components/socso-eis-fields.tsx');
+const statutoryFormSources = page + epfRegistrationFields + socsoEisFields;
 
 describe('Statutory (Malaysia) layout: lives in the Bank & Statutory tab', () => {
   it('renders {bankCard} + {statutoryCard} in the bankStatutory tab panel, with Identity/Tax merged into statutoryCard', () => {
@@ -129,6 +133,25 @@ describe('Statutory (Malaysia) layout: every statutory input stays mounted (full
     // columns while every string assertion above still passed).
     const at = page.indexOf('<EpfRegistrationFields');
     expect(at, '<EpfRegistrationFields is rendered by the statutory card').toBeGreaterThan(-1);
+    const tag = page.slice(at, page.indexOf('/>', at));
+    expect(tag, 'rendered in form mode, not controlled mode').toContain('mode="form"');
+
+    const formStart = page.lastIndexOf('<form action={setStatutoryAction}', at);
+    expect(formStart, 'the group sits inside the setStatutoryAction form').toBeGreaterThan(-1);
+    expect(
+      page.indexOf('</form>', formStart),
+      'the group is rendered before that form closes',
+    ).toBeGreaterThan(at);
+  });
+
+  it('renders the shared SOCSO/EIS group in form mode, inside the setStatutoryAction form', () => {
+    // 35b7af0a group 7, and the SAME three facts the EPF assertion above checks — because the string
+    // assertions alone are now satisfiable by the component file while the page renders nothing, or
+    // renders it in controlled mode, which emits value/onChange and NO `name`. On a full-row overwrite
+    // that silently clears socso_number, socso_category and eis_category. This is a wipe guard: it must
+    // get harder when a field is extracted, not softer.
+    const at = page.indexOf('<SocsoEisFields');
+    expect(at, '<SocsoEisFields is rendered by the statutory card').toBeGreaterThan(-1);
     const tag = page.slice(at, page.indexOf('/>', at));
     expect(tag, 'rendered in form mode, not controlled mode').toContain('mode="form"');
 
