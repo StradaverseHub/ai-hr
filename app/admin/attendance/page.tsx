@@ -91,13 +91,6 @@ export default async function ShiftSettingsPage({
                               ⊕
                             </span>
                           )}
-                          {(sh.lateGraceMinutes != null || sh.earlyLeaveGraceMinutes != null) && (
-                            <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                              {sh.lateGraceMinutes != null && t('lateGraceBadge', { minutes: sh.lateGraceMinutes })}
-                              {sh.lateGraceMinutes != null && sh.earlyLeaveGraceMinutes != null && ' · '}
-                              {sh.earlyLeaveGraceMinutes != null && t('earlyLeaveGraceBadge', { minutes: sh.earlyLeaveGraceMinutes })}
-                            </span>
-                          )}
                         </td>
                         <td className="px-4 py-2.5">
                           <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
@@ -224,29 +217,13 @@ export default async function ShiftSettingsPage({
               defaultBreakMinutes={editing ? String(editing.breakMinutes) : '60'}
               defaultOverride={editing?.normalMinutesOverride != null ? String(editing.normalMinutesOverride) : ''}
             />
-            {/* R17 3e8350db — per-shift grace windows (minutes). Blank ⇒ inherit the company policy. */}
-            <Field label={t('lateGraceLabel')}>
-              <input
-                name="lateGraceMinutes"
-                type="number"
-                min={0}
-                placeholder={t('graceInherit')}
-                defaultValue={editing?.lateGraceMinutes != null ? String(editing.lateGraceMinutes) : ''}
-                className={`${inputCls} w-28`}
-                aria-label={t('lateGraceLabel')}
-              />
-            </Field>
-            <Field label={t('earlyLeaveGraceLabel')}>
-              <input
-                name="earlyLeaveGraceMinutes"
-                type="number"
-                min={0}
-                placeholder={t('graceInherit')}
-                defaultValue={editing?.earlyLeaveGraceMinutes != null ? String(editing.earlyLeaveGraceMinutes) : ''}
-                className={`${inputCls} w-28`}
-                aria-label={t('earlyLeaveGraceLabel')}
-              />
-            </Field>
+            {/* 7c834696 rev 2 point 4 — the per-shift Late Grace / Early Out Grace INPUTS are gone. Grace is
+                set in one place now: the rule picked below. The shift.late_grace_minutes /
+                early_leave_grace_minutes COLUMNS and their precedence in core/attendance.ts (explicit shift
+                grace → rule grace → policy-derived) deliberately stay — a future per-shift override needs
+                somewhere to land, and the fallback chain is what keeps a row carrying one safe. Because this
+                form is a full-row overwrite, shift-actions.ts now OMITS the two keys rather than posting
+                blanks, so saving a shift preserves any stored override instead of nulling it. */}
             {/* 88e94371 — the shift's attendance-calculation rule ("Lateness, Early Out & Overtime Settings").
                 Replaces the old per-shift OT-Rules field: OT shaping + lateness/early-out grace now live in the
                 reusable rule library. Blank ⇒ the tenant's Standard rule is applied automatically. */}
@@ -266,27 +243,40 @@ export default async function ShiftSettingsPage({
                 ))}
               </select>
             </Field>
-            <select
-              name="differentialKind"
-              defaultValue={editing?.differential?.kind ?? ''}
-              className={inputCls}
-              aria-label={t('diffLabel')}
-            >
-              <option value="">{t('diffNone')}</option>
-              <option value="percent">{t('diffPercent')}</option>
-              <option value="flat_hourly">{t('diffFlatHourly')}</option>
-              <option value="flat_per_shift">{t('diffPerShift')}</option>
-            </select>
-            <input
-              name="differentialValue"
-              type="number"
-              min={0}
-              step="0.01"
-              placeholder={t('diffValue')}
-              defaultValue={editing?.differential?.value ?? ''}
-              className={`${inputCls} w-24`}
-              aria-label={t('diffValue')}
-            />
+            {/* 7c834696 rev 2 point 4 — these two are PAY, not a calculation setting, and sitting unlabelled
+                next to the grace boxes is what made them read as one. core/payroll.ts prefillShiftDifferential
+                reads shift.differential to prefill a payroll component (percent / flat-hourly / flat-per-shift),
+                so removing them would leave live premiums unmaintainable. Grouped under their own heading
+                instead, which is the fix the reporter actually needs. */}
+            <fieldset className="w-full">
+              <legend className="mb-1.5 text-sm font-medium text-foreground">
+                {t('shiftPremiumLegend')}{' '}
+                <span className="font-normal text-muted-foreground">({t('shiftPremiumHint')})</span>
+              </legend>
+              <div className="flex flex-wrap items-end gap-2">
+                <select
+                  name="differentialKind"
+                  defaultValue={editing?.differential?.kind ?? ''}
+                  className={inputCls}
+                  aria-label={t('diffLabel')}
+                >
+                  <option value="">{t('diffNone')}</option>
+                  <option value="percent">{t('diffPercent')}</option>
+                  <option value="flat_hourly">{t('diffFlatHourly')}</option>
+                  <option value="flat_per_shift">{t('diffPerShift')}</option>
+                </select>
+                <input
+                  name="differentialValue"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder={t('diffValue')}
+                  defaultValue={editing?.differential?.value ?? ''}
+                  className={`${inputCls} w-24`}
+                  aria-label={t('diffValue')}
+                />
+              </div>
+            </fieldset>
             {/* Mon–Sun Working/Rest toggle — same has-[:checked] row as the working-days editor. Checked =
                 working day; unchecked = rest. New shift defaults Mon–Fri. */}
             <fieldset className="w-full">

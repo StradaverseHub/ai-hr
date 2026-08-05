@@ -15,14 +15,17 @@ const fmtMin = (m: number | null | undefined) =>
   m == null ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 /** OT columns render as decimal hours (2 dp), matching the request's example (0.50 / 1.00). */
 const fmtHours2 = (m: number) => (m / 60).toFixed(2);
+/** Lateness / Early Out are small figures — "12m" reads better than "0h 12m". NULL stays an em dash: it
+ *  means no engine computed the day, which is not at all the same claim as "on time". */
+const fmtShort = (m: number | null | undefined) =>
+  m == null ? '—' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 
 /**
  * Attendance > Records — Daily Attendance tab. Enhanced verification table (feedback bbada39c): employee
  * code + name split into two columns, the assigned Shift Code, scheduled-vs-actual hours, the day's
- * overtime split into the four Malaysian rate buckets (OT 1.0 / 1.5 / 2.0 / 3.0 — DERIVED at read time from
- * the single stored otMinutes + frozen dayType, so they sum back to worked hours), a single always-present
- * Status (Absent in red only) and an operational Flag (Late / Under / Odd). The check-in / check-out
- * controls (the Approved/Lock action area) and the Company / Department / Date filters are unchanged.
+ * lateness and early-out, the day's overtime split across the rate buckets, a single always-present Status
+ * (Absent in red only) and an operational Flag (Late / Under / Odd). The check-in / check-out controls (the
+ * Approved/Lock action area) and the Company / Department / Date filters are unchanged.
  *
  * Read-only: no DomainEvent — this view persists nothing new (the substrate skip is deliberate).
  */
@@ -117,7 +120,7 @@ export default async function DailyAttendancePage({
         </form>
         {/* Wide table — the extra columns scroll horizontally on narrow screens. */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[72rem] text-sm">
+          <table className="w-full min-w-[80rem] text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">{t('colEmployeeCode')}</th>
@@ -127,8 +130,12 @@ export default async function DailyAttendancePage({
                 <th className="px-3 py-2 font-medium">{t('colCheckOut')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colShiftHours')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colActualHours')}</th>
-                {/* 7c834696 stage 1 — Flat OT and the unpaid 0.0 band now have somewhere to land, so the
-                    six columns still add up to the Actual Hours beside them. */}
+                {/* 7c834696 rev 2 point 2 — Lateness / Early Out, in the position the reporter specified:
+                    after Actual Working Hours, before the OT columns. Stored since migration 0394. */}
+                <th className="px-3 py-2 text-right font-medium">{t('colLateness')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('colEarlyOut')}</th>
+                {/* 7c834696 rev 2 point 1 — the six OT columns are OVERTIME ONLY and sum to the day's OT,
+                    not to the Actual Hours beside them. Normal hours are that column's job. */}
                 <th className="px-3 py-2 text-right font-medium">{t('colOtFlat')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colOt00')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colOt10')}</th>
@@ -159,6 +166,10 @@ export default async function DailyAttendancePage({
                     <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.checkOutAt?.slice(0, 5) ?? '—'}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.scheduledMinutes)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.workedMinutes)}</td>
+                    {/* NULL, not 0, for a day no engine has computed — an em dash rather than a confident
+                        "on time". Days before the stage-1 release carry null and read as "—". */}
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtShort(r.lateMinutes)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtShort(r.earlyOutMinutes)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.flat) : '—'}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot00) : '—'}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot10) : '—'}</td>
@@ -209,7 +220,7 @@ export default async function DailyAttendancePage({
               })}
               {dayPage.length === 0 && (
                 <tr>
-                  <td colSpan={16} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={18} className="px-4 py-8 text-center text-muted-foreground">
                     {t('noEmployees')}
                   </td>
                 </tr>

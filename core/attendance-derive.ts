@@ -53,11 +53,11 @@ export type AttendanceDeriveRow = {
 /**
  * The rate columns, in MINUTES, as the Records tables render them.
  *
- * `ot10` is NORMAL-within-schedule hours PLUS any overtime the rule categorised at 1.0× — it has always
- * been the "normal hours" column and stage 1 did not change that. `flat` and `ot00` are new: a flat-rate
- * band's hours, and hours at a configured rate of 0 ("record but do not pay").
+ * EVERY ONE OF THEM IS OVERTIME. `ot10` is overtime a rule categorised at 1.0× and nothing else; `flat` is
+ * a flat-rate band's hours and `ot00` hours at a configured rate of 0 ("record but do not pay").
  *
- * Sum(flat, ot00, ot10, ot15, ot20, ot30) === workedMinutes, exactly as before.
+ * Sum(flat, ot00, ot10, ot15, ot20, ot30) === the day's otMinutes. Normal-within-schedule hours are NOT in
+ * here — they are the Actual Working Hours column, which already carries the day's whole worked total.
  */
 export type OtByRate = { flat: number; ot00: number; ot10: number; ot15: number; ot20: number; ot30: number };
 
@@ -68,29 +68,32 @@ type OtByRateInput = Pick<
 >;
 
 /**
- * Split a day into the rate columns the request asks for.
+ * Split a day's OVERTIME into the rate columns the request asks for.
  *
- * PREFERRED SOURCE — the STORED split (7c834696 stage 1). The engine now categorises a day's overtime
- * through the rule's configured bands, progressively, and stores the result; when those columns are present
- * this function just adds normal-within-schedule hours into the 1.0 column and hands them through.
+ * 7c834696 rev 2 point 1 — normal working hours no longer land in OT 1.0. Until now this function added
+ * `workedMinutes − otMinutes` into the 1.0 column, which is why a plain 9-hour day with an hour of overtime
+ * showed 8.00 (or 9.00, when the rule's band was itself at 1.0) under a heading that says OT. The reporter
+ * is right that that is a display fault and nothing more: the STORED buckets have always been overtime-only
+ * (db/schema.ts), and migration 0395 wrote ot10_minutes = 0 for history rather than back-filling normal
+ * hours into it. Removing the addition is therefore a read-layer change with no data behind it.
  *
- * FALLBACK — the pre-7c834696 read-time guess, kept verbatim, for every row no engine has re-derived:
+ * PREFERRED SOURCE — the STORED split (7c834696 stage 1): the engine categorises the day's overtime through
+ * the rule's configured bands, progressively, and stores the result. Handed through verbatim.
  *
- *   • normal-within-schedule  → OT 1.0   (workedMinutes − otMinutes)
- *   • the day's otMinutes routed by dayType:  workday → 1.5, rest_day → 2.0, holiday → 3.0
+ * FALLBACK — the pre-7c834696 read-time routing of the day's otMinutes, for every row no engine has
+ * re-derived: workday → 1.5, rest_day → 2.0, holiday → 3.0.
  *
  * The fallback also catches a stored split that does NOT sum to the day's overtime. That can only happen if
  * something wrote one of the two halves without the other, and in that case the SPLIT is the untrustworthy
  * one — `otMinutes` is what payroll pays from. Trusting it blindly would let the table show a total that
  * disagrees with the payslip, so the guard is deliberate rather than defensive noise.
  *
- * Either way the columns sum back to workedMinutes. A no-attendance day has nothing to split → all zero
- * (the caller renders those as "—").
+ * Either way the columns sum back to the day's otMinutes, never to workedMinutes. A no-attendance day has
+ * nothing to split → all zero (the caller renders those as "—").
  */
 export function otByRate(row: OtByRateInput): OtByRate {
   const worked = row.workedMinutes ?? 0;
   const ot = Math.max(0, Math.min(row.otMinutes ?? 0, worked)); // OT can never exceed worked
-  const normal = Math.max(0, worked - ot); // normal-within-schedule → 1.0×
 
   const stored = {
     flat: row.otFlatMinutes,
@@ -107,7 +110,7 @@ export function otByRate(row: OtByRateInput): OtByRate {
       return {
         flat: stored.flat!,
         ot00: stored.ot00!,
-        ot10: normal + stored.ot10!,
+        ot10: stored.ot10!,
         ot15: stored.ot15!,
         ot20: stored.ot20!,
         ot30: stored.ot30!,
@@ -115,7 +118,7 @@ export function otByRate(row: OtByRateInput): OtByRate {
     }
   }
 
-  const bucket: OtByRate = { flat: 0, ot00: 0, ot10: normal, ot15: 0, ot20: 0, ot30: 0 };
+  const bucket: OtByRate = { flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 0 };
   if (ot > 0) {
     if (row.dayType === 'holiday') bucket.ot30 = ot;
     else if (row.dayType === 'rest_day') bucket.ot20 = ot;

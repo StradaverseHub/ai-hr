@@ -3299,8 +3299,10 @@ export const attendance = pgTable(
     lateDeductMinutes: integer('late_deduct_minutes'),
     earlyOutDeductMinutes: integer('early_out_deduct_minutes'),
     // Per-rate overtime split. ot00 = a configured rate of 0 — recorded, not payable — and it exists so
-    // the buckets still sum to ot_minutes when a rule uses a 0 band. These are OVERTIME ONLY: the "OT 1.0"
-    // COLUMN on screen is normal-within-schedule hours, which stays derived (worked − ot), not stored.
+    // the buckets still sum to ot_minutes when a rule uses a 0 band. These are OVERTIME ONLY, and since
+    // 7c834696 rev 2 the SCREEN says so too: the "OT 1.0" column used to add normal-within-schedule hours
+    // (worked − ot) on top at read time, which is the display fault the reporter raised. Normal hours are
+    // the Actual Working Hours column now; nothing stored here ever carried them.
     otFlatMinutes: integer('ot_flat_minutes'),
     ot00Minutes: integer('ot00_minutes'),
     ot10Minutes: integer('ot10_minutes'),
