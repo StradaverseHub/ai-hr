@@ -728,21 +728,18 @@ export default async function EmployeePage({
               legacySuffix={t('optionLegacySuffix')}
             />
           </Field>
-          <Field label={t('nationality')}>
-            {/* 59047802 — searchable combobox over the full ISO 3166-1 nationality set; emits the same
-                single `nationality` value (via a hidden input) so setPersonAction is unchanged. e3ce0d4d —
-                wrapped as NationalityField so a change also pushes the live value into IdentityProvider,
-                driving the IC ⇄ Passport switch in the identity block below without a page reload. */}
-            <NationalityField
-              name="nationality"
-              value={emp.nationality}
-              options={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
-              placeholder={t('optionNotSet')}
-              searchPlaceholder={t('nationalitySearchPlaceholder')}
-              noResultsLabel={t('nationalityNoResults')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
-          </Field>
+          {/* 59047802 — searchable combobox over the full ISO 3166-1 nationality set; emits the same
+              single `nationality` value (via a hidden input) so setPersonAction is unchanged. e3ce0d4d —
+              wrapped as NationalityField so a change also pushes the live value into IdentityProvider,
+              driving the IC ⇄ Passport switch in the identity block below without a page reload.
+              35b7af0a group 8 — the label and the four picker captions now live inside the shared group
+              (components/identity-fields.tsx), which the Create New Employee wizard renders too, so this
+              page passes only what a server component can: the value and the tenant's catalog. */}
+          <NationalityField
+            name="nationality"
+            value={emp.nationality}
+            options={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
+          />
           {/* Item 52a30630 — Holiday Calendar RELOCATED to the Attendance tab (holidayCalendarCard →
               setEmploymentHolidayCalendarAction) and Grade RELOCATED to the Leave tab (gradeCard →
               setEmploymentGradeAction). HTML forms can't span tab panels, so both selects physically moved
