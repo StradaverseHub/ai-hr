@@ -9,6 +9,8 @@ import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-di
 import { adminCancelLeaveAction } from '@/app/leave/actions';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { durationLabel } from '@/lib/leave-duration';
+// fef49b9a — the shared paid/unpaid derivation (see lib/leave-split.ts on why it is not four subtractions).
+import { leaveDisplaySplit } from '@/lib/leave-split';
 import { canAdminCancelLeave, LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { Pager, type PagerHrefOver } from '@/components/pager';
@@ -207,6 +209,10 @@ export default async function EmployeeLeaveRecordPage({
   // 08:00 Malaysian time — including, on this very screen, the Final Approval Date column that
   // fe3eb141 anchors its Cancel action to. Same class as the r85 `core/movement.ts` fault.
   const day = (v: Date | string | null) => (v ? todayInKualaLumpur(new Date(v)) : '—');
+  // fef49b9a — the tenant's own name for unpaid leave, resolved once for the page. Undefined when the
+  // tenant has no UNPAID type, in which case leaveDisplaySplit uses the translated fallback label.
+  const unpaidTypeName = leaveTypes.find((lt) => lt.code === 'UNPAID')?.name;
+
 
   return (
     <div className="mx-auto max-w-[100rem] space-y-6">
@@ -348,6 +354,30 @@ export default async function EmployeeLeaveRecordPage({
                             {durationLabel(t, r.durationType, r.hours)}
                           </span>
                         )}
+                        {/* fef49b9a — HR's Employee Leave Record shows the same breakdown as the employee's
+                            own history and the approver's list, from the SAME derivation. Four screens
+                            doing their own subtraction is how they come to disagree. */}
+                        {(() => {
+                          const rows = leaveDisplaySplit({
+                            leaveTypeName: r.leaveType,
+                            days: r.days,
+                            unpaidDays: r.unpaidDays,
+                            unpaidTypeName,
+                            unpaidFallbackLabel: t('unpaidPortionLabel'),
+                          });
+                          return rows.length > 1 ? (
+                            <div className="text-[10px] font-medium text-muted-foreground">
+                              {rows.map((row, i) => (
+                                <span key={row.label + i}>
+                                  {i > 0 && ' · '}
+                                  <span className={row.unpaid ? 'text-amber-700 dark:text-amber-400' : undefined}>
+                                    {row.label} {row.days}
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : null;
+                        })()}
                       </td>
                       <td className="whitespace-nowrap px-2 py-2">{r.typeCode ?? r.leaveType}</td>
                       <td className="px-3 py-2">

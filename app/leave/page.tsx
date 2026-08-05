@@ -57,6 +57,8 @@ import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '@/lib/le
 // time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
 import { durationLabel } from '@/lib/leave-duration';
+// fef49b9a — ONE derivation of the paid/unpaid breakdown, shared with the other three surfaces.
+import { leaveDisplaySplit } from '@/lib/leave-split';
 import { LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
 import {
   requestLeaveAction,
@@ -192,6 +194,12 @@ export default async function LeavePage({
   // agree instead of one popup being ordered and another not. NOT pushed into core/read.ts listLeaveTypes —
   // the admin master listing has its own ordering.
   leaveTypes.sort((a, b) => a.name.localeCompare(b.name, locale, { sensitivity: 'base' }));
+  // fef49b9a — the tenant's OWN name for unpaid leave, so the breakdown says what their catalogue says.
+  // Matched on the UNPAID code, which is the same lookup core/leave.ts already uses for the Emergency
+  // decomposition (core/leave.ts:3480). The approved plan asked for the leave-type ROLE marker instead,
+  // but LeaveTypeRoleValue has no `unpaid` member — noted rather than silently diverging. Undefined when
+  // the tenant has no such type, in which case leaveDisplaySplit falls back to a translated label.
+  const unpaidTypeName = leaveTypes.find((lt) => lt.code === 'UNPAID')?.name;
   const active = employees.filter((e) => !e.terminatedOn);
 
   // Request Leave (feedback 48e69709): the apply form moved from a collapsed Card at the page bottom into a
@@ -467,6 +475,20 @@ export default async function LeavePage({
       startDate: r.startDate,
       endDate: r.endDate,
       days: Number(r.days),
+      // fef49b9a — the paid/unpaid breakdown, derived ONCE by lib/leave-split.ts and pre-translated here
+      // because LeaveHistoryCards is a client island that translates nothing. `unpaidTypeName` comes from
+      // the tenant's OWN unpaid leave type (resolved above) rather than a hardcoded string, so a tenant
+      // that renamed it sees its own name; the fallback is a translated label.
+      splitRows: (() => {
+        const rows = leaveDisplaySplit({
+          leaveTypeName: r.leaveType,
+          days: r.days,
+          unpaidDays: r.unpaidDays,
+          unpaidTypeName,
+          unpaidFallbackLabel: t('unpaidPortionLabel'),
+        });
+        return rows.length > 1 ? rows : null;
+      })(),
       sessionSuffix,
       sessionLabel: `${sessionSuffix ?? t('duration.full_day')}${hourlyWindow}`,
       statusKey: isPartial ? 'partial' : r.status,

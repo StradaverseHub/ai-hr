@@ -1774,7 +1774,8 @@
       "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
       "convertConfirm": "Yes — submit this as Emergency Leave.",
       "splitConfirm": "Yes — I agree to the unpaid days."
-    }
+    },
+    "unpaidPortionLabel": "ลาไม่รับค่าจ้าง"
   },
   "attendance": {
     "title": "การเข้างาน",

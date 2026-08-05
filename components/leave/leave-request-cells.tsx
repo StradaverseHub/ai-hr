@@ -100,12 +100,18 @@ export function LeaveDaysCell({
   durationType,
   fromTime,
   toTime,
+  splitRows,
 }: {
   days: string | number;
   durationSuffix?: string | null;
   durationType?: string | null;
   fromTime?: string | null;
   toTime?: string | null;
+  /** fef49b9a — the paid/unpaid breakdown when the balance did not cover the whole application. Built by
+   *  lib/leave-split.ts on the server and PRE-TRANSLATED; null/absent for the ordinary fully-covered case,
+   *  which renders byte-identically to before. Landing it in the shared Days cell rather than in each
+   *  page is what stops the manager's list and the HR record disagreeing about the same request. */
+  splitRows?: { label: string; days: number; unpaid: boolean }[] | null;
 }) {
   return (
     <>
@@ -117,6 +123,20 @@ export function LeaveDaysCell({
         <span className="ml-1 text-[10px] font-medium text-muted-foreground">
           {fromTime.slice(0, 5)}–{toTime.slice(0, 5)}
         </span>
+      )}
+      {/* The breakdown sits UNDER the total rather than replacing it: the request is still one request for
+          that many days, and an approver is approving all of them in one action. */}
+      {splitRows && splitRows.length > 1 && (
+        <div className="mt-0.5 text-[10px] font-medium text-muted-foreground">
+          {splitRows.map((row, i) => (
+            <span key={row.label + i}>
+              {i > 0 && ' · '}
+              <span className={row.unpaid ? 'text-amber-700 dark:text-amber-400' : undefined}>
+                {row.label} {row.days}
+              </span>
+            </span>
+          ))}
+        </div>
       )}
     </>
   );

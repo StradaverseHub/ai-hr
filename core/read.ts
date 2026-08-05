@@ -788,6 +788,16 @@ const leaveRequestSelection = {
   startDate: leaveRequest.startDate,
   endDate: leaveRequest.endDate,
   days: leaveRequest.days,
+  // fef49b9a — THE SPLIT WAS ALWAYS STORED, IT WAS NEVER SHOWN. When a balance does not cover an
+  // application the engine charges what it can and records the shortfall here, on the SAME row: the
+  // request stays one request, with one date range and one approve action. Five production rows carry a
+  // non-zero value. Projecting it is the whole of the read-layer gap — every surface below renders the
+  // total under the original leave type, so four days Annual + one day Unpaid reads as five days Annual.
+  //
+  // NOT to be confused with the Emergency Leave decomposition, which genuinely creates ANNUAL + UNPAID
+  // CHILD ROWS under a shared parentGroupId and already displays as separate rows. Different mechanism;
+  // they must not be merged.
+  unpaidDays: leaveRequest.unpaidDays,
   durationType: leaveRequest.durationType,
   hours: leaveRequest.hours,
   // Hourly-leave time window (0129): surfaced on the admin/leave history table AND the approvals inbox
