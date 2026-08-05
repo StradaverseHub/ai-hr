@@ -219,6 +219,36 @@ describe('every pointer at the old location follows the calendar', () => {
     expect(panel).not.toMatch(/`\/\?\$\{qs\}`/);
     expect(panel.match(/selfHref\(qs\)/g) ?? []).toHaveLength(3);
   });
+
+  it('no user-visible copy still describes the Leave Calendar as the pinned full-width card', () => {
+    // The pointers above are all hrefs; these are PROSE, and they are the half a code-only sweep misses.
+    // Two of them render UNCONDITIONALLY on Settings → Dashboard → Templates (templateRow2Desc at
+    // app/admin/settings/dashboard/page.tsx:464, templateDerivedNote at :479), so after the move an HR
+    // admin was being told a card that no longer exists is pinned across the full width. The third
+    // (dashboard.pinnedRowHint) sits behind `fixedKeys.length > 0` and is unreachable while
+    // FIXED_ROW_KEYS is empty — generalised anyway, because that list is kept for the NEXT full-width
+    // card and the hint would have come back naming the wrong one.
+    const en = JSON.parse(read('messages/en.json')) as Record<string, Record<string, unknown>>;
+    // The Templates explainer reads `dashboardCardConfig.manage` (page.tsx:46), not the `dashboard` namespace.
+    const manage = (en.dashboardCardConfig as Record<string, Record<string, string>>).manage;
+    for (const [key, text] of [
+      ['dashboard.pinnedRowHint', en.dashboard.pinnedRowHint as string],
+      ['dashboardCardConfig.manage.templateRow2Desc', manage.templateRow2Desc],
+      ['dashboardCardConfig.manage.templateDerivedNote', manage.templateDerivedNote],
+    ] as const) {
+      expect(text, `${key} is missing`).toBeTruthy();
+      expect(text, `${key} still names the Leave Calendar`).not.toMatch(/Leave Calendar/i);
+    }
+    // All three are called with NO arguments, so a translator reintroducing an ICU placeholder would
+    // throw FORMATTING_ERROR at render — which tsc, the suite and `next build` all pass.
+    for (const loc of LOCALES) {
+      const m = JSON.parse(read(`messages/${loc}.json`)) as Record<string, Record<string, unknown>>;
+      const c = (m.dashboardCardConfig as Record<string, Record<string, string>>).manage;
+      for (const v of [m.dashboard.pinnedRowHint as string, c.templateRow2Desc, c.templateDerivedNote]) {
+        expect(v, `${loc}: unexpected ICU argument`).not.toMatch(/[{}]/);
+      }
+    }
+  });
 });
 
 describe('migration 0404 is journalled (a .sql file alone silently never runs)', () => {

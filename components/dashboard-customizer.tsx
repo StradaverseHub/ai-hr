@@ -10,10 +10,10 @@
  *
  * Normal mode: render the employee's selected cards in their saved order + a "Customize Dashboard" button.
  * Customize mode (feedback dashgrid → 2806443b, Shortcuts row 3d2bc793): a @dnd-kit 2-D grid in FOUR areas
- *   — a draggable top row of up to 4 cards, the Shortcuts row, a fixed full-width row holding ONLY the
- *   Leave Calendar (FIXED_ROW_KEYS), and a flexible area below the calendar for every remaining selected
- *   card (also draggable — the top row and that area share one flat order; the 4-card slice decides which
- *   grid a card lands in).
+ *   — a draggable top row of up to 4 cards, the Shortcuts row, a fixed full-width row (FIXED_ROW_KEYS,
+ *   EMPTY since a00c4f64 moved the Leave Calendar to its own screen, so that row renders nothing today),
+ *   and a flexible area below it for every remaining selected card (also draggable — the top row and that
+ *   area share one flat order; the 4-card slice decides which grid a card lands in).
  *   The live render IS the preview, plus
  *   • Add Card — a menu of employee-selectable cards not currently shown.
  *   • Remove (×) on each optional card; mandatory cards refuse removal with a shake + the message
@@ -23,9 +23,9 @@
  *
  * Action / Shortcut cards (cardType 'action' | 'shortcut') that have no bespoke server node render as a
  * clickable ShortcutCard linking straight to their configured destination (leave / claims / payslip / ...).
- * Shortcut-typed cards additionally gather into their own SHORTCUTS row between the top row and the pinned
- * calendar (feedback 3d2bc793): up to MAX_SHORTCUTS of them, ordered by the employee, reorderable within
- * that row only. 'action' cards stay ordinary top-row cards — Pending Tasks renders a bespoke node.
+ * Shortcut-typed cards additionally gather into their own SHORTCUTS row between the top row and the fixed
+ * row (feedback 3d2bc793): up to MAX_SHORTCUTS of them, ordered by the employee, reorderable within that
+ * row only. 'action' cards stay ordinary top-row cards — Pending Tasks renders a bespoke node.
  */
 
 import { type ReactNode, useMemo, useRef, useState, useTransition } from 'react';
@@ -233,8 +233,9 @@ export function DashboardCustomizer({
   );
 
   // Row assignment (feedback dashgrid → 2806443b, Shortcuts row 3d2bc793) is DERIVED, never persisted:
-  // the Leave Calendar (lib/dashboard-layout FIXED_ROW_KEYS) is pinned to the full-width second row, and
-  // cards HR typed 'shortcut' gather into the Shortcuts row. Everything else — including the 'action'
+  // a card named by lib/dashboard-layout FIXED_ROW_KEYS is pinned to the full-width second row (that list
+  // is empty since a00c4f64, so nothing pins today), and cards HR typed 'shortcut' gather into the
+  // Shortcuts row. Everything else — including the 'action'
   // Pending Tasks card, which has a bespoke node and belongs in the top row — is an ordinary
   // draggable/removable card; a card HR marked mandatory still refuses removal with the shake.
   const isPinned = (key: string): boolean => isFixedRowKey(key);
@@ -556,7 +557,7 @@ export function DashboardCustomizer({
                   </p>
                 )}
               </div>
-              {/* Row 2 — the fixed full-width Leave Calendar row (not draggable, not removable). */}
+              {/* Row 2 — the fixed full-width row (not draggable, not removable). Empty today. */}
               {fixedKeys.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">{t('pinnedRowHint')}</p>
@@ -569,7 +570,7 @@ export function DashboardCustomizer({
                   </div>
                 </div>
               )}
-              {/* Row 3 — the flexible area below the calendar (5th+ non-pinned cards, still draggable). */}
+              {/* Row 3 — the flexible area below it (5th+ non-pinned cards, still draggable). */}
               {row3Keys.length > 0 && (
                 <div className={`grid gap-4 ${gridColsFor(row3Keys.length)}`}>
                   {row3Keys.map((key) => (
@@ -609,7 +610,7 @@ export function DashboardCustomizer({
               ))}
             </div>
           )}
-          {/* Row 2 — the fixed full-width Leave Calendar row. */}
+          {/* Row 2 — the fixed full-width row. Empty today. */}
           {fixedKeys.length > 0 && (
             <div className={`grid gap-6 ${gridColsFor(fixedKeys.length)}`}>
               {fixedKeys.map((key) => (
@@ -617,7 +618,7 @@ export function DashboardCustomizer({
               ))}
             </div>
           )}
-          {/* Row 3 — everything else, below the calendar. */}
+          {/* Row 3 — everything else, below it. */}
           {row3Keys.length > 0 && (
             <div className={`grid gap-6 ${gridColsFor(row3Keys.length)}`}>
               {row3Keys.map((key) => (
