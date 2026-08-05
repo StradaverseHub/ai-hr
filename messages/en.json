@@ -1363,7 +1363,6 @@
         "numChildren": "Number of children",
         "eisEligible": "EIS eligible",
         "isResident": "Tax resident",
-        "taxCategory": "PCB category",
         "monthlyAllowance": "Monthly allowance",
         "rateAmount": "Rate amount"
       },
@@ -1372,11 +1371,6 @@
         "part_time": "Part-time",
         "contract": "Contract",
         "intern": "Intern"
-      },
-      "taxCategory": {
-        "1": "Single",
-        "2": "Married · spouse not working",
-        "3": "Married · spouse working"
       },
       "none": "— None —",
       "orgLabelsEmptyForCompany": "No organization labels are configured for the selected company.",

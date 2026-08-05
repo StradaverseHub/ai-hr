@@ -1363,7 +1363,6 @@
         "numChildren": "Số con",
         "eisEligible": "Đủ điều kiện EIS",
         "isResident": "Cư trú thuế",
-        "taxCategory": "Nhóm PCB",
         "monthlyAllowance": "Phụ cấp hàng tháng",
         "rateAmount": "Mức đơn giá"
       },
@@ -1372,11 +1371,6 @@
         "part_time": "Bán thời gian",
         "contract": "Hợp đồng",
         "intern": "Thực tập"
-      },
-      "taxCategory": {
-        "1": "Độc thân",
-        "2": "Đã kết hôn · vợ/chồng không đi làm",
-        "3": "Đã kết hôn · vợ/chồng đi làm"
       },
       "none": "— Không có —",
       "orgLabelsEmptyForCompany": "Chưa có nhãn tổ chức nào được cấu hình cho công ty đã chọn.",

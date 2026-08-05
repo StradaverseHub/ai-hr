@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
+import { TaxCategoryField } from './tax-category-field';
 
 // Inlined design tokens (server module) so this stays a clean client island — same pattern as bank-info-card.tsx.
 const inputCls =
@@ -144,16 +145,10 @@ export function IdentityTaxCard({
               {/* Grey placeholder example; the sample seed value is no longer defaulted in (item 8b5334db). */}
               <input name="taxNumber" defaultValue={defaults.taxNumber ?? ''} placeholder="IG1234567890" className={inputCls} />
             </Field>
-            <Field label={t('taxCategoryLabel')}>
-              {/* 5 labels → LHDN integer values (Single/None→1, Spouse-not-working→2, Spouse-working/Divorced→3). */}
-              <select name="taxCategory" defaultValue={String(defaults.taxCategory ?? 1)} className={inputCls}>
-                <option value="1">{t('taxCategorySingle')}</option>
-                <option value="2">{t('taxCategoryMarriedSpouseNotWorking')}</option>
-                <option value="3">{t('taxCategoryMarriedSpouseWorking')}</option>
-                <option value="3">{t('taxCategoryDivorcedWithKids')}</option>
-                <option value="1">{t('taxCategoryNone')}</option>
-              </select>
-            </Field>
+            {/* 35b7af0a group 6 — the SAME control the Create Employee wizard now renders. The option
+                list, its order and the 5→3 value mapping moved into components/tax-category-field.tsx
+                VERBATIM: this card still posts `taxCategory` with the same values it always did. */}
+            <TaxCategoryField mode="form" defaultValue={defaults.taxCategory} />
             <Field label={t('incomeTaxResident')}>
               <select name="taxResidency" defaultValue={defaults.taxResidency || 'resident'} className={inputCls}>
                 <option value="resident">{t('taxResidencyResident')}</option>
