@@ -458,6 +458,13 @@ export default async function LeaveEntitlementsPage({
              moved into the Entitlement step's sub-steps (7b945408's accrualSection / previewScenarioSection
              slots above), where the related configuration lives. */
           <div className="flex items-center gap-3">
+            {/* 6e9a126e RELEASE TWO — the reporter's new two-step entitlement setup (a named day table,
+                then who gets it). Reached FROM this screen for the same reason the record below is: while
+                both layers are live, the entry point belongs beside the old one rather than replacing a
+                sidebar row that still leads somewhere real. */}
+            <Link href="/admin/leave/entitlements/templates" className="text-sm underline">
+              {t('entitlementTablesAction')}
+            </Link>
             {/* 6e9a126e — the read-only record of everything the entitlement redesign's release three
                 clears. Reachable FROM this screen, as the approved plan says, and deliberately NOT in the
                 sidebar: it is a reference document for a migration in progress, not a place anyone works. */}

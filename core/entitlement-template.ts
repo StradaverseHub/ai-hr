@@ -9,18 +9,23 @@
  * applied to — 292 copies behind 41 schemes on production) and leave_policy (an older company/grade layer
  * that could quietly win instead).
  *
- * ── WHAT THIS RELEASE DELIBERATELY DOES NOT DO ────────────────────────────────────────────────────────
- * NOTHING HERE IS READ BY ANY GRANTING ENGINE YET, and nothing old is removed. openLeaveYear, the hire
- * grant, accrueEarnedLeave and projectExpectedEntitlement still compose `scheme ?? policy` exactly as they
- * did; benefit_scheme, scheme_leave_entitlement, employment.benefit_scheme_id and leave_policy are all
- * untouched. Release two re-points those engines through the single shared composition so that resolution
- * becomes `template ?? scheme ?? policy`; release three archives, clears and drops.
+ * ── WHERE THIS SITS AFTER RELEASE TWO ─────────────────────────────────────────────────────────────────
+ * RELEASE ONE shipped the storage, the versioning writer and the resolver, read by nothing.
  *
- * There are also no EDITOR SCREENS in this release, on purpose. An editor that writes configuration no
- * engine reads is worse than no editor: HR would type a table, see nothing change, and reasonably
- * conclude the feature is broken. The editors land in release two, in the same change as the engine reads
- * that give them meaning — the staging 9816a5ad step 1 and 7c834696 stage 1 both used. What ships now is
- * the storage, its versioning writer, and the resolver those screens and `93249794` will consume.
+ * RELEASE TWO (this state) re-points every granting engine, the projection kernel and all three dated
+ * readers through ONE composition — `composeEntitlement`, core/leave-compute.ts — so resolution is now
+ * `template ?? scheme ?? policy`, and ships the editor screens the storage was waiting for. NOTHING OLD IS
+ * REMOVED: benefit_scheme, scheme_leave_entitlement, employment.benefit_scheme_id and leave_policy all
+ * still resolve, and a tenant with no entitlement_template rows takes the `isEmpty` short-circuit in
+ * `buildTemplateEntitlementResolver` below, at which point every composition reduces to the expression it
+ * was before this item existed.
+ *
+ * RELEASE THREE archives, clears and drops. It is the owner's decision and nothing here anticipates it
+ * beyond making the readers survive it.
+ *
+ * The editors landed in release two rather than one on purpose: an editor that writes configuration no
+ * engine reads is worse than no editor — HR would type a table, see nothing change, and reasonably
+ * conclude the feature is broken. Same staging 9816a5ad step 1 and 7c834696 stage 1 both used.
  *
  * ── WHY THE CRITERIA ARE core/org-criteria.ts, NOT A NEW MATCHER ──────────────────────────────────────
  * This item exists because "who does this apply to" is answered in several places at once. Building a
@@ -50,7 +55,7 @@
  * and it is not fixable inside this item — it needs those columns to become dated facts. It is surfaced
  * by `UNDATED_ELIGIBILITY_AXES` below so a screen can say so instead of implying precision it lacks.
  */
-import { and, asc, eq, isNull, lte, or, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lte, or, gt, sql } from 'drizzle-orm';
 
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
@@ -352,6 +357,90 @@ export async function updateEligibilityRule(
   });
 }
 
+/**
+ * RELEASE TWO — STOP a table or a rule from a date, without deleting anything.
+ *
+ * ⚠️ THERE IS NO DELETE ON EITHER TABLE, DELIBERATELY. Three readers answer for a PAST date; a row removed
+ * from history makes every closed year they can reach silently re-resolve against whatever is left. Closing
+ * the running version at `validTo` says "this stopped applying on that date", which is the true statement
+ * and the one the dated readers can act on. It is also reversible by writing a new version.
+ *
+ * Retiring a TEMPLATE deliberately does NOT touch the rules pointing at it: from `validTo` onward those
+ * rules resolve no template in force and simply stop matching, which is the same outcome as deleting them
+ * and keeps the record of what was configured. The screen shows the count so this is never a surprise.
+ */
+export async function retireEntitlementTemplate(
+  ctx: SessionContext,
+  p: { lineageId: string; validTo: string },
+): Promise<void> {
+  return withTenant(ctx, async (tx) => {
+    const [open] = await tx
+      .select()
+      .from(entitlementTemplate)
+      .where(and(eq(entitlementTemplate.lineageId, p.lineageId), isNull(entitlementTemplate.validTo)))
+      .limit(1);
+    if (!open) throw new Error('That entitlement table has no running version to stop.');
+    if (open.validFrom >= p.validTo) {
+      throw new Error('An entitlement table cannot stop on or before the day it started.');
+    }
+    await tx
+      .update(entitlementTemplate)
+      .set({ validTo: p.validTo })
+      .where(eq(entitlementTemplate.id, open.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'entitlement_template',
+      aggregateId: open.id,
+      eventType: 'entitlement-template.retired',
+      payload: { lineageId: p.lineageId, validTo: p.validTo },
+      actor: actorOf(ctx),
+    });
+  });
+}
+
+/** Stop an eligibility rule from a date. Same reasoning as `retireEntitlementTemplate`. */
+export async function retireEligibilityRule(
+  ctx: SessionContext,
+  p: { lineageId: string; validTo: string },
+): Promise<void> {
+  return withTenant(ctx, async (tx) => {
+    const [open] = await tx
+      .select()
+      .from(entitlementEligibilityRule)
+      .where(
+        and(eq(entitlementEligibilityRule.lineageId, p.lineageId), isNull(entitlementEligibilityRule.validTo)),
+      )
+      .limit(1);
+    if (!open) throw new Error('That eligibility rule has no running version to stop.');
+    if (open.validFrom >= p.validTo) {
+      throw new Error('An eligibility rule cannot stop on or before the day it started.');
+    }
+    await tx
+      .update(entitlementEligibilityRule)
+      .set({ validTo: p.validTo })
+      .where(eq(entitlementEligibilityRule.id, open.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'entitlement_eligibility_rule',
+      aggregateId: open.id,
+      eventType: 'entitlement-eligibility.retired',
+      payload: { lineageId: p.lineageId, validTo: p.validTo },
+      actor: actorOf(ctx),
+    });
+  });
+}
+
+/** How many eligibility rules point at each template lineage — what the retire confirmation must show. */
+export async function eligibilityRuleCountsByTemplate(
+  ctx: SessionContext,
+  p?: { asOf?: string },
+): Promise<Map<string, number>> {
+  const rules = await listEligibilityRules(ctx, p);
+  const out = new Map<string, number>();
+  for (const r of rules) out.set(r.templateLineageId, (out.get(r.templateLineageId) ?? 0) + 1);
+  return out;
+}
+
 /** Every eligibility rule version in force on `asOf` (default: every version). */
 export async function listEligibilityRules(
   ctx: SessionContext,
@@ -407,16 +496,79 @@ export function beatsEligibility(a: EligibilityRuleRow, b: EligibilityRuleRow): 
  * when no rule matches — which the caller must read as NO OPINION, never as zero days
  * (`noEntitlementOpinion`, core/leave-compute.ts).
  *
- * NOT WIRED INTO ANY GRANTING ENGINE IN THIS RELEASE. It is the function release two plugs into the one
- * shared composition, and the one `93249794` (Generate Entitlement) adopts for its "who does this apply
- * to" step instead of building a second criteria engine.
+ * THE EXPLAIN PATH. Release two wires the ENGINES through `buildTemplateEntitlementResolver` below (a
+ * sweep needs one ranking for a batch, not one per employee); this remains the single-employee entry the
+ * screens and `93249794` (Generate Entitlement) use to show WHICH rule won, and it is now a thin delegate
+ * so the two can never rank differently.
  */
 export async function resolveEntitlementForEmployment(
   tx: Tx,
   p: { employmentId: string; leaveTypeId: string; asOf: string },
 ): Promise<ResolvedEntitlement | null> {
-  const templates = await activeTemplatesAt(tx, p.asOf, p.leaveTypeId);
-  if (templates.size === 0) return null;
+  // RELEASE TWO — delegated rather than duplicated. This was the whole matcher in release one; the engines
+  // need the same answer for a SWEEP of employments, and two rankings of the same rules is precisely the
+  // duplicate-resolution defect this item exists to remove. The batched builder is the one implementation
+  // and this is its one-employee, one-type case.
+  const resolver = await buildTemplateEntitlementResolver(tx, {
+    employmentIds: [p.employmentId],
+    leaveTypeIds: [p.leaveTypeId],
+    asOf: p.asOf,
+  });
+  return resolver.winnerFor(p.employmentId, p.leaveTypeId);
+}
+
+/**
+ * 6e9a126e RELEASE TWO — THE BATCHED TEMPLATE RESOLVER THE ENGINES READ.
+ *
+ * Deliberately the SAME SHAPE as `buildSchemeEntitlementResolver` (core/leave.ts): pre-load everything the
+ * decision needs in a bounded number of queries, then hand back a synchronous closure the grant loops call
+ * per (employment, leave type, service years). The engines are `for` loops over employments × types inside
+ * one transaction; a resolver that awaited per iteration would turn a sweep into thousands of round-trips.
+ *
+ * ⚠️ THE SHORT-CIRCUIT IS THE BACK-COMPAT GUARANTEE, and it is first. No entitlement_template row in force
+ * on `asOf` for any of these leave types ⇒ `bandFor` is `() => null` and every caller's
+ * `templateOverPolicy(base, null)` returns `base` UNCHANGED. That is ONE indexed query for a tenant that
+ * has not migrated, and the same `if (schemes.length === 0) return () => null` argument the scheme resolver
+ * has carried since ae5b84d5.
+ *
+ * COST: one query for the templates, one for the rules, then ONE membership query per candidate RULE —
+ * each restricted to the employments in scope via `resolveOrgCriteriaTargets`' `employmentIds` narrowing.
+ * The rule count is the number of populations HR describes (tens), not a data volume, and it does not grow
+ * with the employee count. The alternative — asking per (employment, rule) — is the same answer at
+ * employments × rules queries, which is what release one's single-employee path did and why it is now the
+ * degenerate case of this one rather than a second implementation.
+ *
+ * ⚠️ `asOf` DATES EVERYTHING: which template VERSION is in force, which rule VERSION is in force, AND which
+ * department / position / business unit / employment type the employee held. That last one is the
+ * requirement the approved plan flagged as "specified but not designed" — `resolveOrgCriteriaTargets`
+ * reads the `assignment` row in force on `asOf`, so a report for a closed year matches people on where
+ * they sat THEN. Grade, gender, nationality, religion and race are undated columns in this schema and are
+ * therefore matched at today's value however far back `asOf` reaches (`UNDATED_ELIGIBILITY_AXES`).
+ */
+export type TemplateEntitlementResolver = {
+  /** The winning template's band for this employee/type at this service length, or null (no template). */
+  bandFor: (employmentId: string, leaveTypeId: string, serviceYears: number) => ServiceBand | null;
+  /** The full explain record — which rule won, how specific it was, and what else matched. */
+  winnerFor: (employmentId: string, leaveTypeId: string) => ResolvedEntitlement | null;
+  /** True when nothing was configured at all: the caller may skip every template branch. */
+  isEmpty: boolean;
+};
+
+export async function buildTemplateEntitlementResolver(
+  tx: Tx,
+  p: { employmentIds: string[]; leaveTypeIds: string[]; asOf: string },
+): Promise<TemplateEntitlementResolver> {
+  const empty: TemplateEntitlementResolver = {
+    bandFor: () => null,
+    winnerFor: () => null,
+    isEmpty: true,
+  };
+  const empIds = [...new Set(p.employmentIds.filter(Boolean))];
+  const typeIds = [...new Set(p.leaveTypeIds.filter(Boolean))];
+  if (empIds.length === 0 || typeIds.length === 0) return empty;
+
+  const templates = await activeTemplatesAt(tx, p.asOf, typeIds);
+  if (templates.size === 0) return empty;
 
   const ruleRows = (
     await tx
@@ -430,39 +582,121 @@ export async function resolveEntitlementForEmployment(
       )
   )
     .map(toRuleRow)
+    // A rule pointing at a lineage with no version in force on `asOf` is not a match — it is a rule whose
+    // table had not been written yet (or had been closed) at that date. Silently resolving it against some
+    // OTHER version would be the staleness the lineage design exists to remove.
     .filter((r) => templates.has(r.templateLineageId));
-  if (ruleRows.length === 0) return null;
+  if (ruleRows.length === 0) return empty;
 
-  // One membership query per candidate rule, each restricted to this single employment. The alternative —
-  // resolving every rule's full target set and testing membership — is the same answer at a whole-tenant
-  // scan apiece, and the number of rules is the number of populations HR describes (tens), not a data
-  // volume.
-  const matched: EligibilityRuleRow[] = [];
+  // employmentId → the rules that match it, unranked. One query per rule, narrowed to the batch.
+  const matchedByEmp = new Map<string, EligibilityRuleRow[]>();
   for (const rule of ruleRows) {
-    const hit = await resolveOrgCriteriaTargets(tx, {
+    const hits = await resolveOrgCriteriaTargets(tx, {
       criteria: rule.criteria,
       asOf: p.asOf,
-      employmentIds: [p.employmentId],
+      employmentIds: empIds,
     });
-    if (hit.length > 0) matched.push(rule);
+    for (const id of hits) {
+      const arr = matchedByEmp.get(id);
+      if (arr) arr.push(rule);
+      else matchedByEmp.set(id, [rule]);
+    }
   }
-  if (matched.length === 0) return null;
+  if (matchedByEmp.size === 0) return empty;
 
-  const ranked = matched.slice().sort((a, b) => (beatsEligibility(a, b) ? -1 : beatsEligibility(b, a) ? 1 : 0));
-  const winner = ranked[0];
-  const template = templates.get(winner.templateLineageId)!;
-  return {
-    ruleName: winner.name,
-    ruleLineageId: winner.lineageId,
-    templateName: template.name,
-    templateLineageId: template.lineageId,
-    serviceBands: template.serviceBands,
-    specificity: orgCriteriaSpecificity(winner.criteria),
-    // Everything else that matched, so the screen can show WHY this one won rather than asserting it.
-    alsoMatched: ranked
-      .slice(1)
-      .map((r) => ({ ruleName: r.name, specificity: orgCriteriaSpecificity(r.criteria) })),
+  // Ranked once per (employment, leave type) and memoised — the grant loops ask for the same pair at
+  // several service lengths (the anniversary re-resolution in projectExpectedEntitlement asks twice for
+  // the same employee), and ranking is pure.
+  const winners = new Map<string, ResolvedEntitlement | null>();
+  const winnerFor = (employmentId: string, leaveTypeId: string): ResolvedEntitlement | null => {
+    const key = `${employmentId}|${leaveTypeId}`;
+    if (winners.has(key)) return winners.get(key)!;
+    const candidates = (matchedByEmp.get(employmentId) ?? []).filter(
+      (r) => templates.get(r.templateLineageId)?.leaveTypeId === leaveTypeId,
+    );
+    let out: ResolvedEntitlement | null = null;
+    if (candidates.length > 0) {
+      const ranked = candidates
+        .slice()
+        .sort((a, b) => (beatsEligibility(a, b) ? -1 : beatsEligibility(b, a) ? 1 : 0));
+      const winner = ranked[0];
+      const template = templates.get(winner.templateLineageId)!;
+      out = {
+        ruleName: winner.name,
+        ruleLineageId: winner.lineageId,
+        templateName: template.name,
+        templateLineageId: template.lineageId,
+        serviceBands: template.serviceBands,
+        specificity: orgCriteriaSpecificity(winner.criteria),
+        // Everything else that matched, so a screen can show WHY this one won rather than asserting it.
+        alsoMatched: ranked
+          .slice(1)
+          .map((r) => ({ ruleName: r.name, specificity: orgCriteriaSpecificity(r.criteria) })),
+      };
+    }
+    winners.set(key, out);
+    return out;
   };
+
+  return {
+    winnerFor,
+    bandFor: (employmentId, leaveTypeId, serviceYears) => {
+      const won = winnerFor(employmentId, leaveTypeId);
+      if (!won) return null;
+      // `bandFor` from core/leave-compute is the SAME defensive resolver leave_policy and the benefit
+      // schemes go through: a malformed table resolves to null (⇒ fall through to scheme/policy) rather
+      // than throwing inside an overnight sweep.
+      return bandFor({ serviceBands: won.serviceBands } as AccrualConfig, serviceYears);
+    },
+    isEmpty: false,
+  };
+}
+
+/**
+ * 6e9a126e RELEASE TWO — WHICH LEAVE TYPES CARRY AN ENTITLEMENT TEMPLATE IN FORCE ON `asOf`.
+ *
+ * `openLeaveYear` decides WHICH TYPES a year-open grants by asking "did an administrator configure
+ * entitlement days for this type" (items 783bf55a / baea8e5b), and until this release the answer was
+ * "a live leave_policy version, or a scheme entitlement row". A type configured ONLY through the new layer
+ * would have been skipped entirely — HR would write a table, watch it save, and never see a day of it
+ * reach anybody. That is the exact defect those two items were raised for; this is its third limb.
+ */
+export async function leaveTypeIdsWithTemplatesAt(tx: Tx, asOf: string): Promise<Set<string>> {
+  const rows = await tx
+    .selectDistinct({ id: entitlementTemplate.leaveTypeId })
+    .from(entitlementTemplate)
+    .where(
+      and(
+        lte(entitlementTemplate.validFrom, asOf),
+        or(isNull(entitlementTemplate.validTo), gt(entitlementTemplate.validTo, asOf)),
+      ),
+    );
+  return new Set(rows.map((r) => r.id));
+}
+
+/**
+ * 6e9a126e RELEASE TWO — THE EARLIEST LEAVE YEAR `expireCarriedLeave` MAY SWEEP ON THE TEMPLATE SIDE.
+ *
+ * That sweep's back-compat boundary is "the year of the earliest `validFrom` among configurations that
+ * carry a carry-expiry", and it returns early when there are NO leave_policy rows at all. Both limbs are
+ * policy-only today, so a tenant configured purely through templates would silently stop having its carry
+ * expiry swept — safe in direction (nothing is forfeited) and wrong in fact. Returns null when no template
+ * version for these types exists, which keeps the boundary exactly where it was for every tenant that has
+ * not migrated.
+ *
+ * Deliberately NOT filtered on whether the band carries an expiry: the sweep's own `typeCarriesExpiry`
+ * branch decides that from the leave TYPE (post-9816a5ad, that is where carry expiry lives), and the
+ * per-band arm is applied there against the resolved band. Filtering here as well would need a second copy
+ * of that precedence.
+ */
+export async function earliestTemplateYear(tx: Tx, leaveTypeIds: string[]): Promise<number | null> {
+  const typeIds = [...new Set(leaveTypeIds.filter(Boolean))];
+  if (typeIds.length === 0) return null;
+  const [row] = await tx
+    .select({ earliest: sql<string | null>`min(${entitlementTemplate.validFrom})::text` })
+    .from(entitlementTemplate)
+    .where(inArray(entitlementTemplate.leaveTypeId, typeIds));
+  return row?.earliest ? Number(row.earliest.slice(0, 4)) : null;
 }
 
 /**
@@ -511,18 +745,18 @@ export async function countEligibilityRulesForLeaveType(tx: Tx, leaveTypeId: str
 
 // ── internals ────────────────────────────────────────────────────────────────────────────────────────
 
-/** The template version in force on `asOf` for each lineage of one leave type, keyed by lineage. */
+/** The template version in force on `asOf` for each lineage of these leave types, keyed by lineage. */
 async function activeTemplatesAt(
   tx: Tx,
   asOf: string,
-  leaveTypeId: string,
+  leaveTypeIds: string[],
 ): Promise<Map<string, EntitlementTemplateRow>> {
   const rows = await tx
     .select()
     .from(entitlementTemplate)
     .where(
       and(
-        eq(entitlementTemplate.leaveTypeId, leaveTypeId),
+        inArray(entitlementTemplate.leaveTypeId, leaveTypeIds),
         lte(entitlementTemplate.validFrom, asOf),
         or(isNull(entitlementTemplate.validTo), gt(entitlementTemplate.validTo, asOf)),
       ),
