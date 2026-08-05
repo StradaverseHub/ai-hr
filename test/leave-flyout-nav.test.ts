@@ -51,7 +51,12 @@ const NODE = leavePack.navNodes!.find((n) => n.group === 'admin')!;
  * as a subset, because a set guard that only checks "contains" stops noticing a deletion.
  */
 const RETIRED_STRIP: readonly { href: string; labelKey: string }[] = [
-  { href: '/admin/leave', labelKey: 'leaveSummary' },
+  // df00b85f — `{ '/admin/leave', 'leaveSummary' }` STOOD HERE and is DELIBERATELY GONE, not lost.
+  //
+  // This list is an exact-set guard, so it fails on a clipped sibling; the only correct way to retire a
+  // destination is to delete its line here in the same commit that deletes the row, which is what this is.
+  // The two properties the removal has to keep are asserted below by their own tests rather than by this
+  // list: the ROUTE still resolves (as a redirect stub, so no bookmark 404s) and Entitlements is now first.
   { href: '/admin/leave/entitlements', labelKey: 'leaveEntitlements' },
   { href: '/admin/leave/adjustments', labelKey: 'leaveAdjustments' },
   { href: '/admin/leave/generate', labelKey: 'leaveGenerate' },
@@ -77,6 +82,52 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       expect(exists(routeFile(child.href)), `${child.href} has no route file`).toBe(true);
       // A row whose route is unregistered is invisible or refused by our own access check.
       expect(permissions, `${child.href} is not registered in lib/permissions.ts`).toContain(`'${child.href}'`);
+    }
+  });
+
+  /**
+   * df00b85f — the Summary entry is retired and Entitlements leads the menu.
+   *
+   * The listing it opened (code / name / description / paid / status, an Edit link INTO Entitlements, a
+   * delete) is rendered in full by the Entitlements per-type panel, so the row was a second door onto one
+   * screen's settings. Three things make the removal safe rather than merely tidy, and each is pinned:
+   * the route still resolves so no saved link 404s; the stub carries NO page guard, which is what lets
+   * `/admin/leave` leave lib/permissions.ts without test/function-access.test.ts reddening in either
+   * direction; and the label key retires WITH the row instead of lingering as an untranslatable orphan.
+   */
+  it('the Summary row is gone and Entitlements is first', () => {
+    expect(NODE.children.map((c) => c.href)).not.toContain('/admin/leave');
+    expect(NODE.children[0].href).toBe('/admin/leave/entitlements');
+    expect(read('packs/leave/index.ts')).not.toContain("labelKey: 'leaveSummary'");
+  });
+
+  it('/admin/leave survives as an UNGUARDED redirect stub — bookmarks land, the grid stays honest', () => {
+    const stub = read('app/admin/leave/page.tsx');
+    expect(stub, 'the route file must still exist').toContain("redirect(");
+    expect(stub).toContain('/admin/leave/entitlements');
+    // A stub is not a guarded page. If it ever calls one of these, test/function-access.test.ts's
+    // reverse-completeness check fails — because the route is (correctly) no longer registered.
+    expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession|requirePayrollAccess/);
+    const permissions = read('lib/permissions.ts');
+    expect(permissions).not.toContain("'/admin/leave',");
+    // The screen column survives, re-pointed at the page a reader can actually open.
+    expect(permissions).toContain("href: '/admin/leave/entitlements'");
+  });
+
+  /**
+   * This assertion ABSORBS test/leave-summary-tab-rename.test.ts, which df00b85f deleted. That file
+   * guarded the "Leave Types" → "Summary" rename of this row's label in six locales; the row is gone, so
+   * the rename has no subject, and the only thing left worth pinning about that key is that it went away
+   * cleanly. It lives here because this file owns the menu.
+   */
+  it("nav.leaveSummary is pruned in all six catalogues, and people.detail.leaveSummary is NOT", () => {
+    // r137 deleted three shared labels by prefix and broke a surviving consumer. The key removed here was
+    // grepped first: `nav.leaveSummary` had exactly ONE reader, the row above. The identically-named key
+    // under people.detail is a DIFFERENT label (the personnel profile's leave summary card) and must live.
+    for (const loc of LOCALES) {
+      const dict = JSON.parse(read(`messages/${loc}.json`));
+      expect(dict.nav.leaveSummary, `${loc}: nav.leaveSummary must be pruned`).toBeUndefined();
+      expect(dict.people.detail.leaveSummary, `${loc}: people.detail.leaveSummary must survive`).toBeTruthy();
     }
   });
 

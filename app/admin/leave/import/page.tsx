@@ -11,8 +11,11 @@ export default async function LeaveImportPage() {
 
   return (
     <div className="space-y-6">
+      {/* df00b85f — Back points at ENTITLEMENTS, which is where this page is reached from and where the
+          retired /admin/leave Summary listing now redirects. Aiming Back at the redirect stub would still
+          arrive, but through a wasted hop. */}
       <PageHeader
-        back={{ href: '/admin/leave', label: t('backLabel') }}
+        back={{ href: '/admin/leave/entitlements', label: t('backLabel') }}
         title={t('title')}
         description={t('description')}
         actions={

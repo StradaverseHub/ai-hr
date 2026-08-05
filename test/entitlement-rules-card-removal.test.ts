@@ -77,10 +77,24 @@ describe('26e76a9f: the Types tab no longer renders the Entitlement rules card',
     expect(typesPage.includes('listLeavePolicies')).toBe(false);
   });
 
-  it('keeps the read-only leave-type master listing with its Entitlements deep-link + delete action', () => {
-    expect(typesPage).toMatch(/typeMasterTitle/);
-    expect(typesPage).toMatch(/\/admin\/leave\/entitlements#type-\$\{lt\.id\}/);
-    expect(typesPage).toMatch(/deleteLeaveTypeAction/);
+  /**
+   * df00b85f — THE MASTER LISTING IS GONE TOO, and this assertion inverted with it.
+   *
+   * It used to read "keeps the read-only leave-type master listing with its Entitlements deep-link +
+   * delete action". 26e76a9f had already stripped this tab down to that listing, whose Edit link went to
+   * Entitlements and whose only other control was a delete — and the Entitlements per-type panel carries
+   * the same rename / archive / delete. So the tab was a table whose every row pointed at the screen next
+   * to it. The route stays as a redirect stub; the CAPABILITY had to be proven still reachable, which is
+   * the second half of this test rather than a claim in a commit message.
+   */
+  it('retires the master listing as a redirect stub, and Entitlements still owns type deletion', () => {
+    expect(typesPage).toContain("redirect(");
+    expect(typesPage).toContain('/admin/leave/entitlements');
+    expect(typesPage).not.toMatch(/typeMasterTitle/);
+    // The delete the listing offered is NOT lost — it is wired on the Entitlements tab, which is where
+    // the Edit link used to send you anyway.
+    expect(entitlementsPage).toMatch(/deleteLeaveTypeAction/);
+    expect(entitlementsPage).toMatch(/deleteTypeAction=\{deleteLeaveTypeAction\}/);
   });
 });
 
