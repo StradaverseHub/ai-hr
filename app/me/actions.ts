@@ -376,6 +376,14 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   return (e as Error).message;
 }
 
+/**
+ * 0bb0e303 rev2 — the three self-service request forms moved off /me onto their own My Attendance page,
+ * so these three actions land the employee back where they posted from. The ACTIONS did not move or fork
+ * (one implementation, one approval route); only the screen they answer to did. They stay in this file
+ * because they are ESS actions sharing resolveMe() with the rest of /me's self-service writes.
+ */
+const REQUESTS_PAGE = '/attendance/requests';
+
 // R45 3707cba9 — "Attendance Request": a PURE clock-in/out correction (date + optional check-in/out +
 // mandatory reason). Overtime moved to its own myRequestOvertime request; the OT field is gone from here.
 export async function myRequestCorrection(formData: FormData) {
@@ -393,10 +401,10 @@ export async function myRequestCorrection(formData: FormData) {
       reason: reason || undefined,
     });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${REQUESTS_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/me');
-  redirect('/me?toast=Attendance+request+submitted');
+  revalidatePath(REQUESTS_PAGE);
+  redirect(`${REQUESTS_PAGE}?toast=Attendance+request+submitted`);
 }
 
 // R45 3707cba9 — "Overtime Request": OT-only, reusing the proven correction engine (requestedOtMinutes set,
@@ -411,7 +419,7 @@ export async function myRequestOvertime(formData: FormData) {
   if (otHoursRaw.length > 0) {
     const hrs = Number(otHoursRaw);
     if (!Number.isFinite(hrs) || hrs < 0) {
-      redirect(`/me?error=${encodeURIComponent('Overtime hours must be a non-negative number.')}`);
+      redirect(`${REQUESTS_PAGE}?error=${encodeURIComponent('Overtime hours must be a non-negative number.')}`);
     }
     requestedOtMinutes = Math.round(hrs * 60);
   }
@@ -423,10 +431,10 @@ export async function myRequestOvertime(formData: FormData) {
       reason: reason || undefined,
     });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${REQUESTS_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/me');
-  redirect('/me?toast=Overtime+request+submitted');
+  revalidatePath(REQUESTS_PAGE);
+  redirect(`${REQUESTS_PAGE}?toast=Overtime+request+submitted`);
 }
 
 /** ADR-0069: submit a Travel Request (off-site work window). Same approvals inbox, same decide flow. */
@@ -438,10 +446,10 @@ export async function myRequestTravel(formData: FormData) {
   try {
     await requestTravel(s, { employmentId, travelFrom, travelTo, remarks: remarks || undefined });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${REQUESTS_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/me');
-  redirect('/me?toast=Travel+requested');
+  revalidatePath(REQUESTS_PAGE);
+  redirect(`${REQUESTS_PAGE}?toast=Travel+requested`);
 }
 
 export async function myUpdateContact(formData: FormData) {

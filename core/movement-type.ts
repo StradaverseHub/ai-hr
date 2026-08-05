@@ -32,7 +32,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { movementEventType } from '../db/schema';
-import { COMPARISON_KINDS, MOVEMENT_KINDS, type MovementKind } from './movement';
+import { INTERCHANGEABLE_COMPARISON_KINDS, MOVEMENT_KINDS, type MovementKind } from './movement';
 
 /**
  * The behaviour kinds a CUSTOM type may map onto.
@@ -43,9 +43,14 @@ import { COMPARISON_KINDS, MOVEMENT_KINDS, type MovementKind } from './movement'
  * does. Everything absent from this list is absent on purpose: Termination ends employment, Confirmation
  * completes probation, Probation Extension moves the confirmation date, Blacklist gates rehire, and both
  * join-date corrections move leave entitlement. Those keep their built-in meaning even when renamed.
+ *
+ * 3ced1040 — this reads INTERCHANGEABLE_COMPARISON_KINDS rather than COMPARISON_KINDS, and the distinction
+ * is load-bearing. Confirmation became a comparison kind (same grid, same writer) but it still completes
+ * probation, so it stays off this list exactly as the paragraph above says it must; spreading the wider
+ * list here would have handed tenants the power to invent one as a silent side effect of that change.
  */
 export const CONFIGURABLE_BEHAVIOUR_KINDS: readonly MovementKind[] = [
-  ...COMPARISON_KINDS,
+  ...INTERCHANGEABLE_COMPARISON_KINDS,
   'secondment',
   'actingPosition',
 ];

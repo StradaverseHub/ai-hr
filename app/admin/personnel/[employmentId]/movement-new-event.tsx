@@ -86,10 +86,14 @@ const KINDS = [
 
 /** 89ea527b — kinds whose Effective Date is the VALUE being set, not the day a separate change takes effect.
  *  They get an explicit hint, because "Effective Date" alone reads as "when does this apply" and here the
- *  answer is "this IS the new date". */
-const DATE_VALUE_KINDS: readonly string[] = ['joinDateChange', 'groupJoinDateCorrection'];
+ *  answer is "this IS the new date".
+ *  3ced1040 — Confirmation belongs here too, and now needs the hint more than either of the others: it is
+ *  the only one that ALSO shows the comparison grid, so without a word the date reads as "when the pay
+ *  rise applies" rather than "the day this person is confirmed". It is both. */
+const DATE_VALUE_KINDS: readonly string[] = ['joinDateChange', 'groupJoinDateCorrection', 'confirmation'];
 
 // Mirrors core/movement.ts COMPARISON_KINDS — the kinds that render the Current / After grid.
+// 3ced1040 added `confirmation` to both; the two lists must move together or the grid does not render.
 const COMPARISON_KINDS: readonly string[] = [
   'transfer',
   'promotion',
@@ -99,6 +103,7 @@ const COMPARISON_KINDS: readonly string[] = [
   'orgAssignmentChange',
   'employmentTypeChange',
   'reportingLineChange',
+  'confirmation',
 ];
 
 /** 66a63bd6 — the movement being corrected. Absent = the New Event form, unchanged. */
@@ -369,7 +374,11 @@ export function MovementNewEvent({
             />
             {DATE_VALUE_KINDS.includes(behaviour) && (
               <span className="text-xs text-muted-foreground">
-                {behaviour === 'joinDateChange' ? t('form.joinDateChangeHint') : t('form.groupJoinDateCorrectionHint')}
+                {behaviour === 'joinDateChange'
+                  ? t('form.joinDateChangeHint')
+                  : behaviour === 'confirmation'
+                    ? t('form.confirmationHint')
+                    : t('form.groupJoinDateCorrectionHint')}
               </span>
             )}
           </label>
@@ -462,10 +471,14 @@ export function MovementNewEvent({
 
         {edit && (
           // Audit-trail requirement 4: WHY the record was corrected, alongside the who/what/when the
-          // ledger already captures. Optional — a blank reason must never block a correction.
+          // ledger already captures.
+          // bd89ccd8 — MANDATORY now. A correction rolls the movement back before replaying it, so it
+          // leaves the same `employment.movement.reversed` entry a plain rollback does; ten of the eleven
+          // reversals on production carried no reason, and that is the audit gap. `required` here only
+          // spares the round trip — editMovementEvent refuses a blank reason on its own.
           <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
             {t('form.correctionReason')}
-            <input name="reason" maxLength={200} className={inputCls} />
+            <input name="reason" required maxLength={200} className={inputCls} />
           </label>
         )}
       </div>

@@ -18,6 +18,7 @@ import {
   CalendarDays,
   CalendarRange,
   Clock,
+  FilePen,
   FileUp,
   HandCoins,
   Hourglass,
@@ -84,6 +85,16 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
   ] as const;
 
+  // Rows added to the pack SINCE the pre-retrofit capture. EXPECTED is a frozen historical oracle — it is
+  // the sidebar literal as it stood, and rewriting it would destroy the only record of what parity means —
+  // so a genuinely new row is DECLARED here instead. The parity assertions below then hold unchanged for
+  // the ten original rows, while an undeclared eleventh still fails: growth has to be deliberate.
+  const ADDED_SINCE = [
+    // 0bb0e303 rev2 — Attendance Request, the third self-service row. Ungated like Clock in/out and
+    // Records: the forms it opens are the caller's own requests (see the node in packs/attendance/index.ts).
+    { href: '/attendance/requests', labelKey: 'attendanceRequest', icon: FilePen },
+  ] as const;
+
   // 0bb0e303 split the node three ways and a324a4b3 rev2 merged two of the three back, so parity is
   // no longer "one node with ten rows in order" and no longer "three nodes by audience" either.
   // The guarantee that MATTERS survives every regrouping and is what is asserted below: every
@@ -117,14 +128,19 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       '/admin/locations', // Clocking location
       '/admin/toil', // Time off in lieu
     ]);
-    // Self-service keeps Clock in/out first (5249d43f) with Records beside it.
+    // Self-service keeps Clock in/out first (5249d43f) with Records beside it, and Attendance Request
+    // third (0bb0e303 rev2) — the reporter's order: clock in and out, look at your record, file a request.
     const mine = NODES.find((n) => n.labelKey === 'myAttendance')!;
-    expect(mine.children.map((c) => c.href)).toEqual(['/attendance/clock', '/attendance']);
+    expect(mine.children.map((c) => c.href)).toEqual([
+      '/attendance/clock',
+      '/attendance',
+      '/attendance/requests',
+    ]);
   });
 
   it('keeps every pre-retrofit row exactly once, with identical icon refs and gates', () => {
-    expect(flattened).toHaveLength(EXPECTED.length);
-    EXPECTED.forEach((want) => {
+    expect(flattened).toHaveLength(EXPECTED.length + ADDED_SINCE.length);
+    [...EXPECTED, ...ADDED_SINCE].forEach((want) => {
       const got = flattened.filter((c) => c.href === want.href);
       expect(got, `${want.href} appears exactly once`).toHaveLength(1);
       expect(got[0].labelKey, `${want.href} labelKey`).toBe(want.labelKey);
@@ -140,8 +156,12 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // Widened to string[]: EXPECTED is `as const`, so map() yields a union of the ten literal hrefs
     // and indexOf() then refuses a plain string. The comparison is by position, not by literal type.
     const wantOrder: string[] = EXPECTED.map((r) => r.href);
+    // Rows added since the capture (ADDED_SINCE) have no pre-retrofit position to preserve, so they are
+    // excluded from the sequence rather than compared against one — but they still have to be DECLARED:
+    // the unknown-row assertion below is what keeps this from becoming "any new href is fine".
+    const added: string[] = ADDED_SINCE.map((r) => r.href);
     for (const container of [...NODES.map((n) => ({ name: n.group, rows: n.children })), { name: 'navLinks', rows: MANAGE_LINKS }]) {
-      const positions = container.rows.map((c) => wantOrder.indexOf(c.href));
+      const positions = container.rows.filter((c) => !added.includes(c.href)).map((c) => wantOrder.indexOf(c.href));
       expect(positions, `${container.name} keeps pre-retrofit order`).toEqual([...positions].sort((a, b) => a - b));
       expect(positions.every((i) => i >= 0), `${container.name} has no unknown row`).toBe(true);
     }
@@ -218,8 +238,16 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // rev2 pulled Records up into the merged menu; rev3 sent it back, because that menu now lives in the
     // group-gated Administration section and a self-service row inside it would render for nobody but
     // administrators. Clock in/out stays first (5249d43f).
+    // 0bb0e303 rev2 added the third row, Attendance Request. It is the one row of the three whose gating
+    // could plausibly be argued either way — the forms it opens end up in a manager's approvals inbox —
+    // so it is pinned here: a gate on it would take the request forms away from the staff who file them,
+    // which is the opposite of what the item asked for.
     const mine = NODES.find((n) => n.labelKey === 'myAttendance')!;
-    expect(mine.children.map((c) => c.href)).toEqual(['/attendance/clock', '/attendance']);
+    expect(mine.children.map((c) => c.href)).toEqual([
+      '/attendance/clock',
+      '/attendance',
+      '/attendance/requests',
+    ]);
     // The invariant that has held through every regrouping: nothing gated lives in the ungated node.
     expect(mine.children.every((c) => !c.adminOnly && !c.managerUp)).toBe(true);
   });
@@ -235,7 +263,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     expect(registerAll, 'registers the pack (static side-effect import)').toContain(`import '@/packs/attendance'`);
     expect(sidebar, 'sidebar pulls in the shared pack wiring').toContain(`import '@/packs/register-all'`);
     expect(sidebar, 'resolves the node through the registry').toContain(`modulePackById('attendance')`);
-    for (const { href } of EXPECTED) {
+    for (const { href } of [...EXPECTED, ...ADDED_SINCE]) {
       expect(sidebar.includes(`'${href}'`), `${href} no longer hardcoded in sidebar.tsx`).toBe(false);
     }
   });

@@ -3,10 +3,16 @@
  *
  * THE RELEASE GATE, in the approved plan's own words: "a rule with no bands and deductions off must leave
  * every existing derived figure byte-identical". The first describe block below is that gate, and it is
- * written the only way a byte-identical claim is worth anything — by keeping a VERBATIM COPY of the
- * pre-7c834696 read-time routing in this file and asserting the new code agrees with it across a matrix,
- * rather than by re-stating today's expected numbers by hand (which would only prove the new code agrees
- * with what I believed today's numbers were).
+ * written the only way such a claim is worth anything — by keeping a VERBATIM COPY of the pre-7c834696
+ * read-time routing in this file and asserting the new code agrees with it across a matrix, rather than by
+ * re-stating today's expected numbers by hand (which would only prove the new code agrees with what I
+ * believed today's numbers were).
+ *
+ * 7c834696 rev 2 narrowed the gate for ONE column and one column only: OT 1.0 no longer carries normal
+ * working hours, which is the display fault the reporter raised. The gate now asserts that the difference
+ * from the old routing is exactly `worked − ot` in ot10 and zero everywhere else — a stricter statement
+ * than "identical" would have been for the other five columns, and the reason it was narrowed instead of
+ * deleted. STORED figures are untouched by that change; nothing below writes anything.
  *
  * No DB, no fixtures, no clock: every function under test is total in its arguments.
  */
@@ -75,7 +81,24 @@ function otByRate_beforeStage1(row: { worked: number | null; ot: number | null; 
   return bucket;
 }
 
-describe('RELEASE GATE — no bands + deductions off leaves every derived figure byte-identical', () => {
+/**
+ * 7c834696 rev 2 point 1 MOVED one column on purpose, so the gate below is narrowed rather than deleted —
+ * a gate that is simply removed the first time it fires proves nothing about the release after it.
+ *
+ * What the reporter asked for: OT 1.0 must stop showing normal working hours. What that permits to change
+ * is therefore EXACTLY the `worked − ot` component the old routing added into ot10, and nothing else. So
+ * the gate keeps the verbatim pre-stage-1 copy and the full matrix, and asserts three things per row:
+ *   1. the PREMIUM columns (1.5 / 2.0 / 3.0) are still byte-identical to the old routing,
+ *   2. `flat` and `ot00` are still empty for a no-bands rule,
+ *   3. ot10 differs from the old value by precisely the normal-hours component — no more, no less.
+ * (3) is what makes this a gate: any other drift in ot10, in either direction, fails it.
+ */
+const normalOf = (m: { worked: number | null; ot: number | null }) => {
+  const worked = m.worked ?? 0;
+  return Math.max(0, worked - Math.max(0, Math.min(m.ot ?? 0, worked)));
+};
+
+describe('RELEASE GATE — no bands + deductions off moves NOTHING except normal hours out of OT 1.0', () => {
   // A matrix that covers every branch the old routing had: each day type, no OT, some OT, all-OT, and the
   // pathological OT-exceeds-worked row a correction can produce.
   const MATRIX: { worked: number | null; ot: number | null; dayType: DayType | null }[] = [];
@@ -93,7 +116,7 @@ describe('RELEASE GATE — no bands + deductions off leaves every derived figure
     }
   }
 
-  it('the stored split written by a no-bands rule reproduces the OLD read-time routing exactly', () => {
+  it('the stored split written by a no-bands rule keeps the OLD premium routing, minus the normal hours', () => {
     for (const m of MATRIX) {
       const split = splitOtMinutes(m.ot, m.dayType ?? 'workday', rule()); // no bands
       const now = otByRate({
@@ -108,20 +131,52 @@ describe('RELEASE GATE — no bands + deductions off leaves every derived figure
         ot30Minutes: split.ot30,
       });
       const before = otByRate_beforeStage1(m);
-      expect({ ot10: now.ot10, ot15: now.ot15, ot20: now.ot20, ot30: now.ot30 }, JSON.stringify(m)).toEqual(before);
+      expect({ ot15: now.ot15, ot20: now.ot20, ot30: now.ot30 }, JSON.stringify(m)).toEqual({
+        ot15: before.ot15,
+        ot20: before.ot20,
+        ot30: before.ot30,
+      });
+      // The whole of the difference, and the only difference: the normal-within-schedule hours.
+      expect(now.ot10, JSON.stringify(m)).toBe(before.ot10 - normalOf(m));
       // The two NEW columns are empty, so nothing appears on screen that was not there before.
       expect(now.flat, JSON.stringify(m)).toBe(0);
       expect(now.ot00, JSON.stringify(m)).toBe(0);
     }
   });
 
-  it('a row with NO stored split at all still renders exactly as it did before', () => {
+  it('a row with NO stored split at all behaves identically — the fallback moved the same one thing', () => {
     for (const m of MATRIX) {
       const now = otByRate({ workedMinutes: m.worked, otMinutes: m.ot, dayType: m.dayType });
-      expect({ ot10: now.ot10, ot15: now.ot15, ot20: now.ot20, ot30: now.ot30 }, JSON.stringify(m)).toEqual(
-        otByRate_beforeStage1(m),
-      );
+      const before = otByRate_beforeStage1(m);
+      expect({ ot15: now.ot15, ot20: now.ot20, ot30: now.ot30 }, JSON.stringify(m)).toEqual({
+        ot15: before.ot15,
+        ot20: before.ot20,
+        ot30: before.ot30,
+      });
+      expect(now.ot10, JSON.stringify(m)).toBe(before.ot10 - normalOf(m));
       expect(now.flat + now.ot00, JSON.stringify(m)).toBe(0);
+    }
+  });
+
+  it('the columns now sum to the day OVERTIME, and Actual Working Hours carries the worked total', () => {
+    for (const m of MATRIX) {
+      const split = splitOtMinutes(m.ot, m.dayType ?? 'workday', rule());
+      const now = otByRate({
+        workedMinutes: m.worked,
+        otMinutes: m.ot,
+        dayType: m.dayType,
+        otFlatMinutes: split.flat,
+        ot00Minutes: split.ot00,
+        ot10Minutes: split.ot10,
+        ot15Minutes: split.ot15,
+        ot20Minutes: split.ot20,
+        ot30Minutes: split.ot30,
+      });
+      const worked = m.worked ?? 0;
+      // OT is clamped to worked: an approved-OT override cannot make the columns exceed the day.
+      expect(now.flat + now.ot00 + now.ot10 + now.ot15 + now.ot20 + now.ot30, JSON.stringify(m)).toBe(
+        Math.max(0, Math.min(m.ot ?? 0, worked)),
+      );
     }
   });
 
