@@ -166,7 +166,12 @@ export const isEisCategory = (v: string): v is EisCategory => (EIS_CATEGORIES as
 
 export type StatutoryInput = {
   personId: string;
-  icNumber: string;
+  /** Item 35524d1f — the MyKad IC is OPTIONAL (null/blank ⇒ stored null), matching setIcProfileMY: a passport
+   *  holder has none, and refusing the whole statutory row over it discarded their bank and EPF details. The
+   *  key stays REQUIRED even though the value is nullable, deliberately: this setter is a full-row overwrite,
+   *  so a caller that simply forgot the field would silently wipe a stored IC — a compile error is the guard.
+   *  Pass the stored value on a read-modify-write; pass null only when you mean "this person has no IC". */
+  icNumber: string | null;
   epfNumber?: string;
   socsoNumber?: string;
   taxNumber?: string;
@@ -224,7 +229,14 @@ export type StatutoryInput = {
 };
 
 export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInput) {
-  if (!isValidIC(p.icNumber)) throw new InvalidICError();
+  // Item 35524d1f — the same rule setIcProfileMY has carried since 55865c32: a BLANK IC is accepted and
+  // stored as null; any NON-blank value stays strict 12-digit MyKad. This opened with a bare
+  // `if (!isValidIC(...)) throw`, which rejected '' as well, so the Create Employee wizard failed at its last
+  // step for anyone who entered a bank account or an EPF number but no Identity No — a field no step marks
+  // required, and one item e3ce0d4d made optional precisely so passport holders could be hired. ic_number has
+  // been nullable since 0212 and its (tenant_id, ic_number) uniqueness partial since 0214, so null rows coexist.
+  const icNumber = (p.icNumber ?? '').trim() ? normalizeIC(p.icNumber as string) : null;
+  if (icNumber !== null && !isValidIC(icNumber)) throw new InvalidICError();
   const taxCategory = [1, 2, 3].includes(Number(p.taxCategory)) ? Number(p.taxCategory) : 1;
   const numChildren = Math.max(0, Math.floor(Number(p.numChildren) || 0));
   const money = (v: number | null | undefined) =>
@@ -245,7 +257,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
   const subjectToSocso = socsoCategory !== 'none';
   const eisEligible = eisCategory !== 'none';
   const values = {
-    icNumber: normalizeIC(p.icNumber),
+    icNumber,
     epfNumber: p.epfNumber ?? null,
     socsoNumber: p.socsoNumber ?? null,
     taxNumber: p.taxNumber ?? null,
@@ -840,8 +852,10 @@ export class NoIcYetError extends Error {
 /**
  * Item 8b5334db — save ONLY the icNumber column on employee_statutory_my. IC was relocated from the Bank &
  * Statutory card to the Profile tab (following the R34 TP3 split precedent), so it needs its own partial setter.
- * IC is the SEED of the statutory row (it is the notNull identity), so unlike setTp3/setBank this UPSERTS: it
- * creates the row when the person has none yet. Validates the IC (12 digits) and appends `employee.ic.updated`.
+ * IC is a SEED of the statutory row, so unlike setTp3/setBank this UPSERTS: it creates the row when the person
+ * has none yet. (It is no longer the row's notNull identity — the column has been nullable since 0212 and
+ * setPassportProfileMY seeds a passport-identified row with no IC at all; that older claim has been corrected.)
+ * Validates the IC (12 digits) and appends `employee.ic.updated`.
  * Persisting to the SAME column keeps setStatutoryAction's IC-derived SOCSO/EIS + EPF-number defaults working.
  *
  * Item 55865c32 — the Identity No (NRIC) field now shows for EVERY employee (the NRIC form is no longer hidden

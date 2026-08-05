@@ -301,7 +301,11 @@ export async function completeEmployeeDraft(
   if (icNumber || hasAnyStatutory(s)) {
     await pack.statutory.set(ctx, {
       personId,
-      icNumber: icNumber ?? '',
+      // Item 35524d1f — null, not ''. The setter used to reject a blank IC, so a draft carrying any statutory
+      // detail (an EPF number, a bank account) but no Identity No failed HERE, after hireEmployee had already
+      // committed the employee. Nothing in the wizard marks Identity No required, and e3ce0d4d made it
+      // optional for passport holders; the statutory row is now stored with a null IC instead.
+      icNumber: icNumber ?? null,
       epfNumber: str(s.epfNumber),
       socsoNumber: str(s.socsoNumber),
       taxNumber: str(s.taxNumber),
