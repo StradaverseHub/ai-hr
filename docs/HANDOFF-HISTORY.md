@@ -9,6 +9,62 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r159 — 2026-08-05 — nine items, five workstreams, and a release that had been sitting on `main`
+
+**Shipped:** `49e7e0a2` · `f3ae3245` · `f1123afd` (all three merged in r158 and never deployed, with
+migration `0403`) · `df00b85f` · `706d34e8` · `18103ba4` · `1b87e8a0` · `35b7af0a` groups 3-5 ·
+`6e9a126e` release 2 of 3. Merge `aafd96cd`; gated tree `4540face`.
+
+### Decisions — the part the diff cannot reconstruct
+
+**Production was a release behind `main` and nothing on the board or in the branch list said so.**
+r158 had merged and never shipped. CURRENT STATE asserted the opposite, all three items still read
+`approved`, and the documented unshipped-round check only scans `build/*` branches — which merged work
+does not appear in. A dry-run rsync against the box found it in seconds. That check is now step 1 of
+orientation in HANDOFF.md, and "merged is not deployed" is a standing trap.
+
+**The four gate failures were guard drift, and every guard was updated rather than retired.** The
+first full suite run on the merged tree failed 4 tests in 3 files; no product logic was wrong. Two of
+the three guards protect against silent DATA LOSS, so the distinction mattered:
+
+- `leave-pack-drift` flagged `lib/completed-years.ts`, **a file that imports nothing**. The ratchet
+  scans by regex and does not strip comments, and the file's header quoted the specifier
+  `core/leave.ts` re-exports. Reworded the comment. **Deliberately did NOT add an allowlist entry** —
+  that list is audited debt that only shrinks, and there was no debt to record — and deliberately did
+  not "fix" the scanner: a regex comment-stripper mangles `//` inside string literals and would start
+  missing real imports. Comment blindness only ever ADDS edges (fails loud); a sloppy stripper HIDES
+  them (fails silent). The trade is now documented in the helper.
+- `statutory-my-layout` + `epf-info-card` broke because `35b7af0a` group 4 extracted EPF Number and
+  Citizenship into a shared component. Dropping the two assertions was the tempting fix and the wrong
+  one — they are what catches a field vanishing from a full-row overwrite and wiping the column.
+  Following the string alone would ALSO have been a weakening: the component holds the name whether or
+  not the page renders it, and controlled mode emits `value`/`onChange` with no `name`. The guard now
+  pins all three facts — field in the component, page renders it, rendered in `form` mode inside the
+  `setStatutoryAction` form — and learned that `name: 'epfNumber'` mounts an input exactly as
+  `name="epfNumber"` does. Both rewrites were mutation-tested and failed with the predicted assertions.
+
+**`6e9a126e` release two shipped INERT, and that was verified on production rather than argued.**
+`entitlement_template` and `leave_generation_run` both hold 0 rows after deploy, so every figure still
+resolves through the unchanged old path. Releases three (archive-then-clear, drop the three old tables)
+stays the owner's decision; `6e9a126e` and `35b7af0a` were left `building` on purpose.
+
+**`35b7af0a`'s Date-of-Birth blocker dissolved rather than being worked around.** The handoff recorded
+Age as blocked on `completedYearsAt` living in server-only `core/leave.ts`. Group 3 moved the calendar
+math to a client-safe `lib/completed-years.ts` and re-exported it, so the wizard and the profile render
+one control against one function identity instead of a second copy in the browser.
+
+### The gate
+
+tsc clean · `pnpm vitest run` **584 files / 7104 tests, 0 failures** · `next build` clean ·
+`upgrade-rehearsal build/r153-int` **PASS over a populated database** (r153-int's tree is byte-identical
+to what production ran, so the baseline was the real upgrade) · render check on 9 changed routes:
+**0 MISSING_MESSAGE, 0 FORMATTING_ERROR**. Post-deploy: service active, `/` 401, `/login` 200,
+`0403`'s three columns + partial index present, 3 deleted files gone from the box, and a **zero-change
+`rsync --dry-run`** as proof of arrival.
+
+Local note: `ai_hr_dev` had no schema (the cluster rebuild recreated it empty), so the render check
+needed `pnpm db:migrate` before `db:seed`. Nothing to do with the release.
+
 ## r142 — 2026-08-05 — 93249794 Generate Entitlement: aim the engine, never re-derive it
 
 **Shipped `main@eb47382b`.** Gate: tsc clean · **580 files / 7010 tests** · next build clean ·

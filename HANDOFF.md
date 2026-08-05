@@ -18,69 +18,60 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-05 (r142 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-05 (r159 SHIPPED)
 
-**`main@eb47382b` is what runs. Production on 326 migrations. Next free migration number is `0401`**
-(0389 was never claimed and is dead). No half-applied migration, no pending deploy, nothing in flight.
-Verified after deploy: service active, `GET /` 401, `/login` 200, `rsync --dry-run` zero changes, both
-leave-generation tables present.
+**`main@aafd96cd` is what runs. Production on 327 migrations. Next free migration number is `0404`**
+(0389, 0401 and 0402 were never claimed and are dead). No half-applied migration, no pending deploy,
+nothing in flight. Verified after deploy: service active, `GET /` 401, `/login` 200,
+`rsync -azi --delete --dry-run` **zero changes**, migration `0403`'s three columns + partial index
+present, and the three files this release deletes confirmed gone from the box.
 
-### The board — counted on production 2026-08-05 after r142
+### ⚠️ r159 SHIPPED NINE ITEMS — THREE HAD BEEN SITTING ON `main` UNDEPLOYED
 
-**`deployed = 580` · `planned = 7` · `approved = 5` · `building = 2` · `cancelled = 12`.
-NOTHING is open and NOTHING is contested — every item on the board has a plan.**
+The version of this file r159 replaced said `main@eb47382b` was running with "no pending deploy". It
+was false: **r158's three items (`49e7e0a2`, `f3ae3245`, `f1123afd`) had merged and never shipped,
+migration `0403` included.** No board query or branch scan would have found it — only a dry-run rsync
+against the box did. **Run that first, every round** (recipe under "Before planning ANYTHING"); the
+full lesson is the first trap below.
 
-**THE 7 PLANNED, all pushed 2026-08-05, awaiting approve/reject:** `18103ba4` (Leave Adjustments field
-regrouping) · `fef49b9a` (paid/unpaid split DISPLAY only) · `4fdb69b2` rev 3 (Special Leave delete —
-see the guard section below) · `706d34e8` (remove the Approval Workflow list; all 263 rules are
-template-backed, ZERO standalone, so nothing is stranded) · `1ae7f3ab` and `f1123afd` (both
-OPERATOR-RAISED by this loop, not by the reporter) · `1cf5b37c` rev 2 (Replacement Leave config).
+### The board — counted on production 2026-08-05 after r159 (owner role; `DATABASE_URL` is RLS-blocked)
 
-**THE 5 APPROVED AND UNBUILT:** `df00b85f` (remove the Summary menu — Quick, and its redundancy was
-verified by comparing both screens) · `2ef69d1e` (Back Pay — the largest thing left, must go LAST) ·
-plus three approved overnight.
+**`deployed = 585` · `approved = 5` · `contested = 2` · `open = 2` · `building = 2` · `cancelled = 12`.
+`planned` is now ZERO** — every plan pushed on 2026-08-05 has been answered.
 
-**STILL `building`, both deliberately partial:**
-- `6e9a126e` — release ONE shipped in r141. **RELEASE TWO IS BUILT AND INTEGRATED BUT NOT SHIPPED —
-  see the section below.** Release three (archive-then-clear, drop the three old tables) remains and
-  is the OWNER'S decision, not a build task.
-- `35b7af0a` — groups 1-2 shipped in r138. Remaining: Date of Birth + Age (blocked on
-  `completedYearsAt` living in `core/leave.ts`), and ~28 identity/org-cascade/statutory labels.
+**THE 5 APPROVED AND UNBUILT** — nothing else is built and waiting:
+- `1ae7f3ab` + `4fdb69b2` — **BUILD THESE AS ONE CHANGE.** Same defect from two directions; see the
+  delete-guard section below. `4fdb69b2` moved planned → approved during r159.
+- `1cf5b37c` (Replacement Leave config) · `fef49b9a` (paid/unpaid split, DISPLAY only)
+- `2ef69d1e` (Back Pay — the largest thing left, must go LAST)
 
-### ⚠️ 6e9a126e RELEASE TWO — BUILT, GATED ON ITS OWN FILES, INTEGRATED, **NOT DEPLOYED**
+**`open = 2` and `contested = 2` are NEW since the last snapshot and have not been looked at.** The
+previous snapshot's "nothing is open and nothing is contested" no longer holds — the board moves
+under this file between rounds, so re-count rather than trusting the line above.
 
-**Where it is:** integrated into `build/r159-int` as `afeaf6b8`. `build/r154` holds the same tree under
-a squashed commit and is now ancestrally unrelated — **ignore `build/r154`, it is fully represented in
-the integration branch.** Nothing has merged to `main` and nothing is deployed.
+**STILL `building`, both deliberately partial and both correct to leave that way:**
+- `6e9a126e` — releases ONE (r141) and **TWO (r159)** are now live. Release three (archive-then-clear,
+  drop the three old tables) remains and is the **OWNER'S decision, not a build task.**
+- `35b7af0a` — groups 1-2 (r138) and **groups 3-5 (r159)** are live. Date of Birth + Age shipped:
+  `completedYearsAt` moved out of `core/leave.ts` into `lib/completed-years.ts`, which is client-safe,
+  so the wizard renders the same control as the profile. Remaining: ~28 identity/org-cascade/statutory
+  labels.
 
-**What it does.** Every granting engine, the projection kernel and all three past-date readers now
-resolve `template ?? scheme ?? policy` through ONE hook, `composeEntitlement` (core/leave-compute.ts).
-`entitledDays` gained `templateDays` as a REQUIRED POSITIONAL parameter — arity is the mechanism that
-made tsc enumerate every composition site. The two editor screens landed at
-`/admin/leave/entitlements/templates`. **Nothing was dropped or cleared.**
+### 6e9a126e — releases ONE and TWO are live and INERT; release THREE is the owner's call
 
-**Why deploying it is low-risk:** production has ZERO rows in both new tables, so every figure still
-resolves through the unchanged old path — proved STRUCTURALLY rather than by comparing numbers:
-`templateOverPolicy(base, null)` returns the SAME OBJECT, so each engine's expression *reduces* to the
-one that was there before (`test/entitlement-template-repoint.test.ts` asserts it with `toBe`, plus a
-negative control so "identical" cannot be satisfied by a resolver that never runs).
+**Verified on production after r159: `entitlement_template` = 0 rows, `leave_generation_run` = 0 rows**,
+so every figure still resolves through the unchanged old path. Proved structurally, not by comparing
+numbers: `templateOverPolicy(base, null)` returns the SAME OBJECT, so each engine's expression
+*reduces* to the one that was there before (`test/entitlement-template-repoint.test.ts`, `toBe` plus a
+negative control). Every engine now composes through ONE hook, `composeEntitlement`
+(core/leave-compute.ts); the editors are live at `/admin/leave/entitlements/templates`. **Nothing was
+dropped or cleared** — that is release three, and it is the OWNER'S decision, not a build task.
 
-**The defect it fixed that nobody reported:** `carryForwardReport` never reads entitlement DAYS — it
-reads the carry cap — and `applyLeaveTypeRules(null, rules)` returns NULL. The day `leave_policy` goes,
-the carrier vanishes and every closed year prints as "everything forfeited". `expireCarriedLeave` had
-the twin: its `policies.length === 0` early return meant a template-only tenant would silently stop
-having carry expiry swept. Both fixed here, in the release that re-points, NOT the one that drops.
-
-**Verification done:** 23 targeted files 399/403 → the 4 failures were 9816a5ad's static
-source-pattern assertions (the overlay moved inside `composeEntitlement`); UPDATED not loosened, plus
-a new assertion that `composeEntitlement` is not an empty shell. Re-ran 47/47 green. Tripwire
-`test/leave-approval-grade-group.test.ts` green and BYTE-UNEDITED. Render check clean (0
-MISSING_MESSAGE, 0 FORMATTING_ERROR; both ICU keys proved *interpolated* in the rendered HTML).
-4 of 5 mutations watched fail with the exact predicted wrong answers.
-
-**What has NOT run: the full suite and `next build`.** Migrations `0401`/`0402` were allocated and
-NOT used — release two adds no DDL, and the gap is deliberate. **Next free migration number is still
-`0401`.**
+**Before planning release three, re-read the carry-forward defect** it already fixed (history, r159):
+`carryForwardReport` reads the carry CAP, not entitlement days, and `applyLeaveTypeRules(null, rules)`
+returns NULL — the day `leave_policy` goes, every closed year would print "everything forfeited".
+Dropping tables is where that class of bug lands. `build/r154` is squashed and ancestrally unrelated to
+what shipped; ignore it.
 
 ### ⚠️⚠️ THE DELETE GUARD IS WRONG, IT IS LIVE, AND IT EXPLAINS A REPORTED BUG
 
@@ -102,43 +93,10 @@ predicate and the delete guard to stay byte-identical.** `1ae7f3ab` and `4fdb69b
 defect from two directions — **build them as ONE change.** Fixing five tables and leaving six is the
 same bug with a shorter fuse.
 
-### ⚠️ I TOLD THE REPORTER TWICE THAT SPECIAL LEAVE WAS DELETABLE. BOTH TIMES I WAS WRONG.
-
-I measured the tables the GUARD counts instead of the tables that REFERENCE the row. The schema knew;
-my query never asked it. **When testing whether a row can be deleted, enumerate its foreign-key
-referrers from `information_schema` — never the application's own in-use list, which is the very
-thing under suspicion.**
-
-### PARALLEL BUILDS WORK — r139 is the proof, and here is the recipe
-
-Six workstreams built seven items simultaneously. What made it work:
-- **The parent cuts every worktree from the integration branch** and hands each agent its migration
-  number UP FRONT. No agent picks its own.
-- **Ownership is assigned by FUNCTION, not by file.** Three payroll items all needed
-  `core/payroll-view.ts`; each was given specific functions and told to STOP AND REPORT rather than
-  edit outside its lane. Zero collisions in that file.
-- **Only ONE agent per round may own each exact-set registry** — `packs/payroll` nav +
-  `EXPECTED_SET`, `ADMIN_GROUP_FLAT_HREFS`, the dashboard card catalogue.
-- **Agents run only their own targeted tests, backgrounded.** The parent runs ONE integration gate.
-  Five agents plus a full suite jams the cluster (15+ `DROP DATABASE` behind one checkpoint).
-- **The integration gate earns its keep every time**: r139's single failure was
-  `/payroll/individual-payslip` guarded on disk with no permissions column — invisible to every agent
-  because the route came from one branch and the completeness check reads a shared registry.
-
-### ⚠️ WHAT THE AGENTS FOUND THAT NOBODY REPORTED (all now fixed and live)
-
-- **Every SUCCESSFUL leave adjustment redirected to `?error=NEXT_REDIRECT`** — live since `491c499f`.
-  `redirect()` signals by THROWING, and a success toast inside the `try` let the service-error catch
-  swallow it. If you put a toast next to a redirect, the toast goes after.
-- **The claims limit check had no serialization at all.** Two concurrent RM600 approvals both passed
-  against a RM1000 limit — reproduced. Now an advisory lock taken before the first limit read, in the
-  same transaction as the state change. The ticket blamed a different mechanism entirely: the schema
-  COMMENT said limits count only approved claims; the CODE always summed pending+approved+paid.
-- **A function nested in an object-literal prop returned 500 on every `/payroll` request** while tsc,
-  the full suite AND `server-client-boundary` stayed green. The guard only looked at the top level of
-  an attribute value; it is now depth-aware for object-literal props.
-- **The Create Employee wizard could not record `divorced`, `widowed`, `separated` or `undisclosed`**
-  — it offered 2 genders and 2 marital statuses against the profile's 3 and 6.
+**The reporter was told TWICE that Special Leave was deletable, and both answers were wrong** — the
+query measured the tables the GUARD counts instead of the tables that REFERENCE the row. **To test
+whether a row can be deleted, enumerate its foreign-key referrers from `information_schema`, never the
+application's own in-use list — that list is the very thing under suspicion.**
 
 ### ⚠️ DECISIONS TAKEN THAT THE REPORTER SHOULD SEE
 
@@ -313,12 +271,32 @@ box, which migrates, seeds catalogs, runs backfills and restarts. **The server h
 **Health check.** `GET /` returning **401** is CORRECT — the password gate, not a failure. Check
 `systemctl is-active aihr` and curl `http://127.0.0.1:3000/` from the box.
 
-**Before planning ANYTHING, check for an unshipped round** — r86 was 13 finished items sitting
-unmerged while `main` stood at r85, and a finished round nobody shipped looks exactly like no round:
+**Before planning ANYTHING, run BOTH of these checks. Neither one finds what the other does.**
 
-    for b in $(git branch --list 'build/*' | tr -d ' *'); do \
-      n=$(git log --oneline main..$b | wc -l | tr -d ' '); \
+**1. Is `main` itself ahead of production?** (r159: it was, by a whole release.) This is the check
+that did not exist before r159 and the only one that would have caught r158 sitting merged and
+undeployed. It costs seconds and needs no branch archaeology:
+
+    cd .claude/worktrees/mainwt && rsync -azi --delete --dry-run \
+      -e "ssh -p 8288 -o BatchMode=yes" \
+      --exclude node_modules --exclude .next --exclude .git --exclude '.env*' \
+      --exclude .turbo --exclude coverage --exclude .claude --exclude graphify-out \
+      ./ ubuntu@203.142.6.241:/opt/ai-hr/
+
+Zero lines = production matches `main`. Anything else is an undeployed release, no matter what
+CURRENT STATE claims. **Do this before trusting any "what runs" line in this file, including the one
+above** — that line has been wrong.
+
+**2. Is there an unshipped BRANCH?** — r86 was 13 finished items sitting unmerged while `main` stood
+at r85, and a finished round nobody shipped looks exactly like no round:
+
+    for b in $(git for-each-ref --format='%(refname:short)' refs/heads/build); do \
+      n=$(git rev-list --count main..$b); \
       [ "$n" != 0 ] && echo "$b: $n unmerged"; done
+
+(Use `for-each-ref`, not `git branch --list | tr -d ' *'` — the old form here mangled the `+` marker
+git prints for branches checked out in another worktree and produced a screenful of
+`unknown revision +build/rNNN`.)
 
 Then LOOK at what it prints — the count alone lies (`build/r71` reports 4 unmerged commits whose
 content reached main by another route). Confirm with `git diff --stat main <branch>`: main deleting
@@ -367,6 +345,13 @@ Established pattern (r73–r137). The rules, each learned the hard way:
 - **Every agent needs its own `TEST_DB_NAMESPACE`** — without it they drop each other's template
   mid-run and both result sets become noise. A fresh worktree has no `node_modules`.
 - **Group by FILE OVERLAP, never by theme.** If two items touch the same screen, one agent.
+- **Ownership is assigned by FUNCTION, not by file** (r139, six workstreams / seven items, zero
+  collisions). Three payroll items all needed `core/payroll-view.ts`; each was given named functions
+  and told to STOP AND REPORT rather than edit outside its lane.
+- **Only ONE agent per round may own each exact-set registry** — `packs/payroll` nav + `EXPECTED_SET`,
+  `ADMIN_GROUP_FLAT_HREFS`, the dashboard card catalogue. Two branches editing the same literal is a
+  guaranteed conflict, and r159 hit the same class from the other side: two workstreams independently
+  tripping one drift guard.
 - **Anything cross-cutting runs SOLO and LAST**, against the settled tree.
 - **Tell each agent the traps its items will hit** — the guards it must not weaken, the writers that
   recently broke. The best results come from briefs that name the specific hazard.
@@ -588,6 +573,37 @@ excluded the path on 2026-08-04 (cluster start 10+ min → <1 s; suite 2848 s wi
 
 ## Traps — the durable ones (each cost at least a round; several recurred AFTER being written down)
 
+- **MERGED IS NOT DEPLOYED, AND THIS FILE HAS ASSERTED OTHERWISE (r159).** r158 was merged to `main`,
+  including migration `0403`, and never shipped; CURRENT STATE said "no pending deploy, nothing in
+  flight" and the board still showed all three items `approved`. Every signal agreed and every signal
+  was wrong. The failure mode is structural, not careless: the unshipped-round check reads `build/*`
+  branches, and merged work has none; the board reads status, and nobody had called `build-start`.
+  **A dry-run rsync against the box is the only cheap ground truth for "what is actually running".**
+  Corollary — after a merge, the deploy is not optional bookkeeping you can leave for the next round:
+  the next agent will read `main` as shipped.
+
+- **THE IMPORT RATCHET DOES NOT STRIP COMMENTS, so a comment that quotes an import is read as a real
+  edge (r159).** `lib/completed-years.ts` imports NOTHING, and the leave pack-drift guard failed it
+  anyway: its header explained which specifier `core/leave.ts` re-exports, spelled as a literal
+  `from '…'`, and `test/helpers/import-ratchet.ts` matched it. **Before believing a drift violation,
+  open the flagged file and look for a quoted specifier inside a comment.** The fix is to reword the
+  comment — never to add an allowlist entry (that list is audited debt and only shrinks) and never to
+  "fix" the scan: a regex comment-stripper mangles `//` inside string literals and would start MISSING
+  imports. Comment blindness can only ADD edges, which fails loud; the alternative fails silent. That
+  trade is now written into the helper's header.
+
+- **A GUARD THAT READS ONE FILE'S SOURCE BREAKS WHEN A FIELD IS EXTRACTED INTO A COMPONENT — and the
+  tempting fix deletes the protection (r159).** `35b7af0a` group 4 moved EPF Number/Citizenship into a
+  shared component; three static-source guards stopped finding `name="epfNumber"` on the page. Two of
+  them are wipe guards on a FULL-ROW overwrite form, where a field missing from the POST silently
+  clears the column — exactly what must not be dropped. Following the string alone is also wrong: the
+  component contains the name whether or not the page still renders it, and `mode="controlled"` emits
+  `value`/`onChange` with **no `name` at all**. So a guard that follows an extraction needs three
+  things, not one: the field exists in the component, the page renders that component, and it renders
+  it in the mode that actually posts. Note also that a form-mode prop object (`name: 'epfNumber'`)
+  mounts an input exactly as a JSX attribute (`name="epfNumber"`) does — accept both spellings or
+  every future extraction fails for a cosmetic reason.
+
 - **A NAIVE JSON DEEP-MERGE RESURRECTS DELETED KEYS — and the six message catalogs are where it bites.**
   When two parallel branches both edit `messages/*.json`, git conflicts on the whole file and the
   obvious fix is a recursive merge of the two objects. That is WRONG whenever either branch DELETED a
@@ -608,6 +624,10 @@ excluded the path on 2026-08-04 (cluster start 10+ min → <1 s; suite 2848 s wi
   edit. Declare the new row in the list. Only ONE agent per round may own each of these, or two
   branches both edit the same literal.
 
+- **`redirect()` SIGNALS BY THROWING, so a success toast next to one gets swallowed.** A toast inside
+  the same `try` is caught by the service-error handler and every SUCCESSFUL action redirects to
+  `?error=NEXT_REDIRECT` — live for a whole release in the leave adjustment writer. Put the toast
+  AFTER the redirect, never beside it.
 - **A `labelKey` IS NOT THE LABEL.** Resolve the key against `messages/en.json` before describing
   what a screen says — a plan written off key names proposed three renames that were all already
   live. A key's NAME is not evidence of who reads it either: grep consumers before deleting keys by
@@ -698,7 +718,10 @@ method or carry-forward is WRONG.**
 
 ---
 
-**Nothing is in flight.** When a round is built but unshipped, its entry goes HERE and
-CURRENT STATE says so; on ship it moves to the top of `docs/HANDOFF-HISTORY.md`.
+**Nothing is in flight.** r159 shipped and is verified on production. When a round is built but
+unshipped, its entry goes HERE and CURRENT STATE says so; on ship it moves to the top of
+`docs/HANDOFF-HISTORY.md`. **"Nothing in flight" is a claim about BRANCHES — it is not a claim that
+`main` has been deployed. Prove that separately with the dry-run rsync above; r159 exists because
+those two were conflated.**
 
-**Shipped round entries (r66–r137): `docs/HANDOFF-HISTORY.md`.**
+**Shipped round entries (r66–r159): `docs/HANDOFF-HISTORY.md`.**
