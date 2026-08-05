@@ -189,7 +189,7 @@ describe('reverseMovementEvent — Rollback is recorded as a visible reversal', 
     });
     const promotion = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'promotion')!;
 
-    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: promotion.id });
+    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: promotion.id, reason: 'Keyed in error' });
 
     expect((await openAssignment(hire.employmentId)).departmentId).toBe(b.deptA);
     const emp = await employmentRow(hire.employmentId);
@@ -213,7 +213,7 @@ describe('reverseMovementEvent — Rollback is recorded as a visible reversal', 
     const rows = await movementHistory(adminCtx(b), hire.employmentId);
     const change = rows.filter((r) => r.kind === 'reportingLineChange').pop()!;
 
-    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: change.id });
+    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: change.id, reason: 'Keyed in error' });
 
     const [line] = await owner.db
       .select()
@@ -235,7 +235,7 @@ describe('reverseMovementEvent — Rollback is recorded as a visible reversal', 
     const hired = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'hired')!;
     expect(hired.canReverse).toBe(false);
     await expect(
-      reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: hired.id }),
+      reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: hired.id, reason: 'Keyed in error' }),
     ).rejects.toBeInstanceOf(MovementNotCorrectableError);
 
     await createMovementEvent(adminCtx(b), {
@@ -257,7 +257,7 @@ describe('reverseMovementEvent — Rollback is recorded as a visible reversal', 
     await expect(
       reverseMovementEvent(
         { tenantId: b.tenantId, userId: b.adminUserId, roles: ['employee'] },
-        { employmentId: hire.employmentId, movementId: hired.id },
+        { employmentId: hire.employmentId, movementId: hired.id, reason: 'Keyed in error' },
       ),
     ).rejects.toThrow(/only an admin/i);
   });
@@ -291,6 +291,7 @@ describe('editMovementEvent — a correction is a replay through the same writer
         effectiveDate: '2026-06-01',
         remarks: 'Reorg',
         departmentId: b.deptB,
+        reason: 'Re-saved unchanged',
       }),
     ).rejects.toBeInstanceOf(MovementNoChangeError);
 
@@ -368,6 +369,7 @@ describe('editMovementEvent — a correction is a replay through the same writer
       effectiveDate: '2026-05-01',
       departmentId: b.deptB,
       businessUnitId: bu.id,
+      reason: 'Business unit was missed',
     });
 
     const open = await openAssignment(hire.employmentId);
@@ -408,6 +410,7 @@ describe('editMovementEvent — a correction is a replay through the same writer
         kind: 'transfer',
         effectiveDate: '2026-03-01',
         departmentId: b.deptA,
+        reason: 'Wrong department',
       }),
     ).rejects.toThrow(/most recent movement/i);
   });
@@ -433,7 +436,7 @@ describe('editMovementEvent — a correction is a replay through the same writer
       (r) => r.kind === 'orgAssignmentChange',
     );
 
-    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: moves[0].id });
+    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: moves[0].id, reason: 'Keyed in error' });
 
     // The later movement still owns the column — rolling back the earlier one must not resurrect its value.
     expect((await employmentRow(hire.employmentId)).orgDivision).toBe('Wholesale');
@@ -461,7 +464,7 @@ describe('payroll interaction — block on closed, warn on processed, never repr
     expect(move.canReverse).toBe(false);
     expect(move.canEdit).toBe(false);
     await expect(
-      reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: move.id }),
+      reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: move.id, reason: 'Keyed in error' }),
     ).rejects.toThrow(/closed payroll/i);
     // Nothing moved: the salary in force is still the one the closed run paid against.
     expect((await openCompensation(hire.employmentId)).basicSalary).toBe('5000.00');
@@ -517,7 +520,7 @@ describe('payroll interaction — block on closed, warn on processed, never repr
     expect(move.payrollWarning).toBe(true);
     expect(move.canReverse).toBe(true);
 
-    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: move.id });
+    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: move.id, reason: 'Keyed in error' });
     expect((await openCompensation(hire.employmentId)).basicSalary).toBe('4000.00');
     // The payslip is evidence of what was paid — a correction never rewrites it.
     const [slip] = await owner.db
