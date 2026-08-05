@@ -49,9 +49,14 @@ HEAD — create worktrees from `main` yourself.
    `rsync -azi --dry-run`, not `deploy.sh` succeeding.
 9. **Board plans are plain text, one course of action** — approve carries no payload, so a plan that
    asks the reporter to choose can never be answered. Use the `feedback-plan` skill.
-10. **Don't re-diagnose the Postgres teardown checkpoint stall.** Results are final at `Duration`;
-    if you need the DB, rebuild the cluster (<1 min, recipe in HANDOFF.md) — `ai_hr_app` must be
-    `NOBYPASSRLS`.
+10. **The Postgres wedge is FIXED (2026-08-05) — don't re-diagnose it.** `DROP DATABASE` forces an
+    immediate checkpoint that fsyncs everything; `fsync=off` on this disposable cluster took four
+    CREATE/DROP from >5 minutes to 0.47s. If the cluster ever misbehaves, run
+    `./scripts/dev-db-rebuild.sh` (<1 min, applies the settings and the `NOBYPASSRLS` role) rather
+    than waiting, killing, or theorising.
+11. **NEVER run an agent and a gate against the same cluster at once.** Twice in one session that
+    bloated WAL to 5GB and produced 32 false failures across files unrelated to the change. Agents
+    run only their own targeted tests; the parent runs the single full gate, alone.
 
 **Deploy is automatic after a green gate** (owner's standing override of ADR-0045): tsc → full suite
 → `next build` → rehearsal (if migration) → merge → rsync → `deploy.sh` → verify → mark deployed.

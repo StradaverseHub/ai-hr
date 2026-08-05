@@ -373,49 +373,47 @@ grep — an empty result is a parser gap, not proof of no callers.
   `git worktree remove` deletes the DIRECTORY, not the branch; the only thing removal can lose is
   uncommitted work — check `git -C <path> status --porcelain`, not `git log main..<branch>`.
 
-### Local Postgres (16.14)
+### Local Postgres (16.14) — THE WEDGE IS FIXED. Read this before believing anything older.
 
 - Data dir **`/opt/homebrew/var/aihr-pg16`**, binaries **`/opt/homebrew/opt/postgresql@16/bin`**
-  (keg-only — PG14 still shadows `psql` on PATH, use the explicit path or `pnpm db:start`/`db:stop`).
-  Port **5433**. Production has always been 16.14; local matched it at r97.
-- **Apex One (Trend Micro) was real-time scanning the data directory until 2026-08-04**, when the
-  owner excluded the path. Measured: cluster start 10+ min → **<1 s**; full suite 2848 s with 98 fake
-  failures → **761 s, all green**. Most historical "wedge" lore predates the exclusion — check the
-  exclusion still stands before diagnosing slowness.
-- **The teardown checkpoint stall is real but NOT understood.** Two root-cause claims (Apex One,
-  `pkill -9` during teardown) were both DISPROVEN, and r137 measured one "wedge" completing on its own
-  after ~1 hour — "wedged" was never actually established as permanent. Do not write a third
-  diagnosis without evidence that survives the next occurrence. What is established: vitest's
-  teardown DROPs its worker DBs; `DROP DATABASE` forces an immediate checkpoint; that checkpoint
-  sometimes stalls (signature: `checkpoint starting` with no `checkpoint complete`,
-  `pg_stat_bgwriter` counters frozen, checkpointer burning 15–27% CPU) while the cluster serves
-  ordinary connections but refuses every CREATE/DROP DATABASE — hence `CONNECT_TIMEOUT` from a
-  cluster `psql` calls fine.
-- **The working response:** results are FINAL at the log's `Duration` line — read them; teardown only
-  frees databases. If you need the database sooner, **rebuild** (recipe below, under a minute) rather
-  than waiting or killing. Never `pkill -9` (an interrupted drop cannot help). `.claude/gate-watch.sh`
-  reports at 900 s.
-- **Rebuild recipe** (everything local is disposable — dev + test DBs):
+  (keg-only — PG14 shadows `psql` on PATH, use the explicit path or `pnpm db:start`). Port **5433**.
 
-      PG16=/opt/homebrew/opt/postgresql@16/bin
-      $PG16/pg_ctl -D /opt/homebrew/var/aihr-pg16 -m immediate stop   # -m fast cannot stop a checkpoint stall
-      mv /opt/homebrew/var/aihr-pg16 /opt/homebrew/var/aihr-pg16.wedged-$(date +%H%M)   # mv, not rm -rf
-      $PG16/initdb -U postgres -D /opt/homebrew/var/aihr-pg16 --encoding=UTF8 --locale=en_US.UTF-8
-      # append to postgresql.conf: max_wal_size = 4GB / checkpoint_timeout = 30min
-      $PG16/pg_ctl -D /opt/homebrew/var/aihr-pg16 -o "-p 5433" -l <log> start
-      psql -p 5433 -U postgres -d postgres \
-        -c "CREATE ROLE ai_hr_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;" \
-        -c "CREATE DATABASE ai_hr_dev OWNER ai_hr_app;" \
-        -c "CREATE DATABASE ai_hr_test OWNER ai_hr_app;"
+**⚠️ THE ROOT CAUSE WAS FOUND AND FIXED ON 2026-08-05, AND MOST OF THIS FILE'S OLD ADVICE WAS WRONG.**
 
-  **`NOBYPASSRLS` is the detail that costs an hour** — a superuser `ai_hr_app` bypasses RLS and ~18
-  tests fail in a way that reads as a security regression in the code. Authority:
-  `deploy/bootstrap-db.sql`. The `.wedged-*` directories in `/opt/homebrew/var/` are disposable.
-- **WAL bloat degrades a long session**: after ~5 full suites `pg_wal` reaches GBs and `resetDb()`
-  starts LOSING deadlock races. Symptom: ONE unrelated file fails with 22–27 hook timeouts and passes
-  in isolation; the buried error is `TRUNCATE … deadlock detected`. The tell is printed every run:
-  `global-setup` timing drifting from 3–10 s toward 18–24 s. **Rebuild the cluster; do not conclude
-  "flaky test".**
+`DROP DATABASE` forces an **immediate, waited checkpoint**. With `fsync = on` that checkpoint fsyncs
+every dirty file before returning, and every other `DROP` queues behind it. That is the whole wedge —
+not Trend Micro, not `pkill -9` during teardown, not leaked databases. Those were bystanders.
+
+**Measured on an IDLE, freshly-rebuilt cluster:** four `CREATE`/`DROP DATABASE` statements **did not
+finish in five minutes**. After the fix the same four take **0.47 s**, and a full harness cycle
+(11 creates + 11 drops) takes **2.3 s**. A four-file DB-backed batch that had been failing went from
+150–320 s per file to **15 s for all four, with teardown completing cleanly.**
+
+**THE OLD ADVICE IN THIS FILE MADE IT WORSE.** It said to raise `max_wal_size` to 4 GB and
+`checkpoint_timeout` to 30 min "to take pressure off the checkpoint". That is backwards: more dirty
+data accumulates, so the FORCED checkpoint at `DROP DATABASE` has more to flush. It also let WAL reach
+**5 GB**, at which point `resetDb()`'s ~100-table TRUNCATE began losing lock races and produced
+**32 false failures across files unrelated to the change under test**. Both failure modes had the same
+root and the old settings traded one for the other.
+
+**REBUILD WITH ONE COMMAND — `./scripts/dev-db-rebuild.sh`.** It applies the settings, creates the
+roles (`NOBYPASSRLS`, which still costs an hour if you forget), and verifies. `--purge` also deletes
+previously moved-aside clusters. Use it instead of hand-rolling `initdb`; the settings are the point.
+
+**The settings, and the trade, stated plainly:** `fsync = off`, `synchronous_commit = off`,
+`full_page_writes = off`, `wal_level = minimal`, `max_wal_size = 1GB` (SMALLER, not bigger),
+`checkpoint_timeout = 5min`, `shared_buffers = 512MB`. A crash can now corrupt this cluster — and the
+correct response is to rebuild it, which takes under a minute and loses nothing, because it holds only
+vitest worker databases and a reseedable `ai_hr_dev`. **PRODUCTION IS A DIFFERENT MACHINE. Never copy
+these settings to a server.**
+
+**`-m immediate stop` buys a full WAL replay.** After stopping that way, a 2.2 GB replay ran for 11+
+minutes before accepting connections. Everything local is disposable, so **wipe instead of replaying**
+— the rebuild script does exactly that.
+
+**Apex One** real-time scanning of the data directory was a genuine, separate problem and the owner
+excluded the path on 2026-08-04 (cluster start 10+ min → <1 s; suite 2848 s with 98 fake failures →
+761 s green). Keep the exclusion. It was never the whole story.
 
 ### Running and reading test gates
 
