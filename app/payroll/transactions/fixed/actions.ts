@@ -8,6 +8,7 @@ import {
   FixedTransactionAmountError,
   FixedTransactionDateError,
   FixedTransactionNotFoundError,
+  FixedTransactionPaidError,
   UnsupportedFixedCurrencyError,
   archiveEmploymentPayComponent,
   endEmploymentPayComponent,
@@ -79,9 +80,14 @@ function fixedErrorKey(e: unknown): string {
       ? 'currencyUnsupported'
       : e instanceof FixedTransactionAmountError
         ? 'amountError'
-        : e instanceof FixedTransactionNotFoundError
-          ? 'notFound'
-          : (e as Error).message;
+        : // f1123afd — removal refused because the item was paid on a processed payslip. Mapped to a
+          // localised key rather than falling through to `(e as Error).message`, which would put the
+          // service's raw English into the URL and onto the screen.
+          e instanceof FixedTransactionPaidError
+          ? 'paidOnPayslip'
+          : e instanceof FixedTransactionNotFoundError
+            ? 'notFound'
+            : (e as Error).message;
 }
 
 /**
@@ -180,9 +186,16 @@ export async function archiveFixedTransactionAction(formData: FormData) {
   try {
     await archiveEmploymentPayComponent(s, { id, employmentId });
   } catch (e) {
-    return back(employmentId, `error=${encodeURIComponent(fixedErrorKey(e))}`);
+    // f1123afd — a REFUSED removal goes back to the item's own page, not to the list. The message tells
+    // the operator to end it from a date instead, and that form is on that page; bouncing them to the
+    // list would make them find their way back to the thing they were told to do.
+    return redirect(
+      `/payroll/transactions/fixed/${encodeURIComponent(id)}?employmentId=${encodeURIComponent(employmentId)}&error=${encodeURIComponent(fixedErrorKey(e))}`,
+    );
   }
 
   revalidatePath('/payroll/transactions/fixed');
+  // A successful removal DOES go to the list: the item's page no longer has an item to show (the read
+  // excludes superseded rows), so returning to it would be a 404.
   return back(employmentId, 'toast=deleted');
 }

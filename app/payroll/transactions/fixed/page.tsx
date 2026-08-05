@@ -1,31 +1,45 @@
+import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import { listEmploymentPayComponents, listPayComponents, FIXED_TRANSACTION_CYCLES } from '@/core/pay-components';
-import { Badge, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { EmployeePicker, type PickerEmployee } from './employee-picker';
 import { FixedToolbar } from './add-fixed-dialog';
-import {
-  updateFixedTransactionAction,
-  endFixedTransactionAction,
-  archiveFixedTransactionAction,
-} from './actions';
+import { FixedTxnList, type FixedTxnRow } from './fixed-list';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
- * Fixed Transaction (feedback b7fc8583) — a SELF-CONTAINED screen. Pick an employee (mandatory, via
- * ?employmentId=), then add a recurring fixed pay component directly here: pay item, Payroll Cycle, amount,
- * start/(optional)end date, remarks. The existing fixed transactions for the selected employee list below,
- * each marked active or ended. Writes route through the event-logged setEmploymentPayComponent — the SAME
- * aggregate the people-detail editor uses (that deep per-employee editor stays as the alternate entry point).
+ * Fixed Transaction (feedback b7fc8583, redesigned by f3ae3245) — recurring per-employee pay items.
  *
- * The Payroll Cycle is captured + stored + shown but does NOT route which payroll run pays the item in this
- * build (payout follows the valid_from/valid_to window, exactly as recurring amounts work today). See the PR
- * scope note — steering payout by cycle is a deliberate follow-up that would touch payroll processing.
+ * f3ae3245 REDESIGNED THE SURFACE AND CHANGED NO BUSINESS LOGIC. What moved:
+ *  - The employee list was a wide card across the TOP; it is now a side panel, matching Individual
+ *    Transaction, sharing the identical collapse control (components/collapsible-employee-panel.tsx,
+ *    built once for both screens because NEITHER had one).
+ *  - The item list had no search, no sorting and no paging. It has all three now, which matters most on
+ *    this screen precisely because every edit ADDS a row (see the versioning note below).
+ *  - Edit unfolded a form INSIDE the Action cell of the row you clicked. It is now a dedicated page,
+ *    `fixed/[id]`, where the effective-dating warning can be stated properly rather than as one line
+ *    squeezed beside a Save button.
+ *
+ * WHAT WAS DELIBERATELY NOT CHANGED, though "match Individual Transaction" could be read as asking for it:
+ *  - ADD still opens a MODAL. That was an approved decision of its own (ee21508c: the always-on add form
+ *    was replaced by a button so the LIST is the primary surface). Individual's Add is inline; matching it
+ *    would silently reverse ee21508c, so it stays and the reversal is raised rather than assumed.
+ *  - No Input / Input Type / Input Value / Calculated Amount columns. They do not exist for a recurring
+ *    item — they are the one-off ledger's quantity/unit — and empty columns are worse than absent ones.
+ *  - The Payroll Cycle field stays, though the request's sketch omitted it: it is mandatory on Add.
+ *
+ * The Payroll Cycle is captured + stored + shown but does NOT route which payroll run pays the item
+ * (payout follows the valid_from/valid_to window). Unchanged by this redesign.
  */
+
+/** One cookie per screen — Individual and Fixed collapse independently (49e7e0a2 / f3ae3245). */
+export const FIXED_PANEL_COOKIE = 'txn_fixed_panel';
+
 export default async function FixedTransactionPage({
   searchParams,
 }: {
@@ -35,16 +49,18 @@ export default async function FixedTransactionPage({
   const t = await getTranslations('payroll.transactions');
   const { employmentId, error } = await searchParams;
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
+  // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
+  const panelDefaultOpen = (await cookies()).get(FIXED_PANEL_COOKIE)?.value !== '0';
 
   const employees = await listEmployees(s, scopeIds);
-  // SCOPE-GUARD the param (mirror individual/page.tsx line 36): the ?employmentId= must be in the admin's
+  // SCOPE-GUARD the param (mirror individual/page.tsx): the ?employmentId= must be in the admin's
   // scoped list. Company scope is an application concern (RLS only isolates tenants), so without this an
   // admin could cross-company read/write by URL tampering. An out-of-scope param is treated as no selection.
   const selected = employmentId && employees.some((e) => e.employmentId === employmentId) ? employmentId : null;
-  const selectedEmp = selected ? employees.find((e) => e.employmentId === selected) ?? null : null;
+  const selectedEmp = selected ? (employees.find((e) => e.employmentId === selected) ?? null) : null;
 
   // Step-1 search/filter panel source (feedback ee21508c). Derive employment status ('active' when not
-  // terminated, else 'ended') for the Status filter — matches the Individual Transaction wizard convention.
+  // terminated, else 'ended') for the Status filter — matches the Individual Transaction convention.
   const pickerEmployees: PickerEmployee[] = employees.map((e) => ({
     employmentId: e.employmentId,
     name: e.name,
@@ -63,13 +79,43 @@ export default async function FixedTransactionPage({
     : [[], []];
   const activeComponents = components.filter((c) => c.archivedAt == null);
 
+  // ENDED is derived against the TENANT timezone, on the server. Deriving it in the browser would call an
+  // item ended a day early or late for anyone whose device clock sits either side of MYT midnight.
   const today = todayInKualaLumpur();
+  const rows: FixedTxnRow[] = existing.map((r) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    amount: r.amount,
+    currency: r.currency ?? null,
+    validFrom: r.validFrom,
+    validTo: r.validTo,
+    runType: r.runType,
+    remarks: r.remarks,
+    ended: r.validTo != null && r.validTo < today,
+  }));
+  // Pre-translated cycle labels: the list is a client component and these live in a DIFFERENT namespace
+  // (`payroll.transactions.individual.cycle.*`), so resolving them there would make it a two-namespace
+  // file — the shape i18n-coverage check C skips ENTIRELY, static keys included.
+  const cycleLabels = Object.fromEntries(
+    FIXED_TRANSACTION_CYCLES.map((c) => [c, t(`individual.cycle.${c}` as never)]),
+  ) as Record<string, string>;
+
   // Friendly error keys thrown by the action → localised; anything else is a raw message.
-  const errorKeys = new Set(['dateError', 'currencyUnsupported', 'amountError', 'required', 'outOfScope', 'notFound']);
+  const errorKeys = new Set([
+    'dateError',
+    'currencyUnsupported',
+    'amountError',
+    'required',
+    'outOfScope',
+    'notFound',
+    // f1123afd — removal refused because the item was paid on a processed payslip.
+    'paidOnPayslip',
+  ]);
   const errorMessage = error && errorKeys.has(error) ? t(`fixed.${error}`) : error;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader
         back={{ href: '/payroll/transactions', label: t('title') }}
         title={t('fixed.title')}
@@ -85,30 +131,44 @@ export default async function FixedTransactionPage({
 
       <ErrorBanner message={errorMessage} />
 
-      <Card className="p-4">
-        <h2 className="text-sm font-medium">{t('fixed.pickEmployee')}</h2>
-        {employees.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">{t('fixed.empty')}</p>
-        ) : (
-          <div className="mt-3">
-            <EmployeePicker employees={pickerEmployees} selectedId={selected} />
-          </div>
-        )}
-      </Card>
-
-      {selectedEmp && (
-        <>
+      <CollapsibleEmployeePanel
+        defaultOpen={panelDefaultOpen}
+        cookieKey={FIXED_PANEL_COOKIE}
+        hideLabel={t('fixed.hideEmployees')}
+        showLabel={t('fixed.showEmployees')}
+        collapsedTitle={t('fixed.pickEmployee')}
+        panel={
           <Card className="p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
-                <span>
-                  {t('fixed.employeeId')}:{' '}
-                  <span className="font-medium text-foreground">{selectedEmp.employeeCode ?? '—'}</span>
-                </span>
-                <span>
-                  {t('fixed.employeeName')}:{' '}
-                  <span className="font-medium text-foreground">{selectedEmp.name}</span>
-                </span>
+            <h2 className="text-sm font-medium">{t('fixed.pickEmployee')}</h2>
+            {employees.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">{t('fixed.empty')}</p>
+            ) : (
+              <div className="mt-3">
+                <EmployeePicker employees={pickerEmployees} selectedId={selected} />
+              </div>
+            )}
+          </Card>
+        }
+      >
+        {!selectedEmp && (
+          <Card className="px-6 py-16 text-center">
+            <p className="text-sm font-medium text-foreground">{t('fixed.pickEmployeeTitle')}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t('fixed.pickEmployeeBody')}</p>
+          </Card>
+        )}
+
+        {selectedEmp && (
+          <Card className="overflow-hidden">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+              <div className="min-w-0">
+                <EmployeeName
+                  code={selectedEmp.employeeCode}
+                  name={selectedEmp.name}
+                  className="text-sm font-semibold text-foreground"
+                />
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {selectedEmp.company} · {selectedEmp.department ?? '—'} · {selectedEmp.position ?? '—'}
+                </p>
               </div>
               <FixedToolbar
                 employmentId={selected!}
@@ -117,151 +177,27 @@ export default async function FixedTransactionPage({
                 cycles={FIXED_TRANSACTION_CYCLES}
               />
             </div>
-          </Card>
 
-          <Card className="overflow-hidden">
-            <SectionHeader title={t('fixed.title')} count={existing.length} />
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">{t('fixed.payrollItem')}</th>
-                    <th className="px-4 py-2 text-right font-medium">{t('fixed.amount')}</th>
-                    <th className="px-4 py-2 font-medium">{t('fixed.payrollCycle')}</th>
-                    <th className="px-4 py-2 font-medium">{t('fixed.startDate')}</th>
-                    <th className="px-4 py-2 font-medium">{t('fixed.endDate')}</th>
-                    <th className="px-4 py-2 font-medium">{t('fixed.status')}</th>
-                    <th className="px-4 py-2 text-right font-medium">{t('fixed.actions')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {existing.map((r) => {
-                    // ENDED once the inclusive end-date is in the past; otherwise ACTIVE.
-                    const ended = r.validTo != null && r.validTo < today;
-                    return (
-                      <tr key={r.id}>
-                        <td className="px-4 py-2.5">
-                          <span className="font-mono text-xs">{r.code}</span>{' '}
-                          <span className="text-muted-foreground">{r.name}</span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-medium tabular-nums">{Number(r.amount).toFixed(2)}</td>
-                        <td className="px-4 py-2.5">
-                          {/* Legacy + people-editor rows have null run_type → show "unspecified". New writes
-                              from this screen always carry a cycle (the select is required). */}
-                          {r.runType ? t(`individual.cycle.${r.runType}`) : t('fixed.cycleUnspecified')}
-                        </td>
-                        <td className="px-4 py-2.5 tabular-nums">{r.validFrom}</td>
-                        <td className="px-4 py-2.5 tabular-nums">{r.validTo ?? '—'}</td>
-                        <td className="px-4 py-2.5">
-                          <Badge variant={ended ? 'default' : 'success'}>
-                            {ended ? t('fixed.statusEnded') : t('fixed.statusActive')}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-2.5">
-                          {/* Full lifecycle maintenance (feedback 1e2704f2): Edit (versions the value from a
-                              new effective date), Stop (end-date it — keeps paying through, then drops from
-                              payroll), Remove (void — excluded from payroll and hidden). Mirrors the proven
-                              Individual page pattern. */}
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <details className="group">
-                              <summary className="cursor-pointer list-none rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted">
-                                {t('fixed.edit')}
-                              </summary>
-                              <form
-                                action={updateFixedTransactionAction}
-                                className="mt-2 grid grid-cols-2 gap-2 rounded-md border border-border bg-muted/30 p-3 text-left"
-                              >
-                                <input type="hidden" name="employmentId" value={selected!} />
-                                <input type="hidden" name="id" value={r.id} />
-                                <label className="text-[10px] uppercase text-muted-foreground">
-                                  {t('fixed.amount')}
-                                  <input name="amount" type="number" min="0.01" step="0.01" defaultValue={r.amount} className={`${inputCls} text-right`} />
-                                </label>
-                                <label className="text-[10px] uppercase text-muted-foreground">
-                                  {t('fixed.payrollCycle')}
-                                  <select name="runType" defaultValue={r.runType ?? ''} className={inputCls}>
-                                    <option value="">—</option>
-                                    {FIXED_TRANSACTION_CYCLES.map((c) => (
-                                      <option key={c} value={c}>
-                                        {t(`individual.cycle.${c}`)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <label className="text-[10px] uppercase text-muted-foreground">
-                                  {t('fixed.startDate')}
-                                  <input name="effectiveFrom" type="date" defaultValue={r.validFrom} className={inputCls} />
-                                </label>
-                                <label className="text-[10px] uppercase text-muted-foreground">
-                                  {t('fixed.endDate')}
-                                  <input name="effectiveTo" type="date" defaultValue={r.validTo ?? ''} className={inputCls} />
-                                </label>
-                                <label className="col-span-2 text-[10px] uppercase text-muted-foreground">
-                                  {t('fixed.remarks')}
-                                  <input name="remarks" type="text" defaultValue={r.remarks ?? ''} className={inputCls} />
-                                </label>
-                                <p className="col-span-2 text-[10px] text-muted-foreground">{t('fixed.editHint')}</p>
-                                <div className="col-span-2 flex justify-end">
-                                  <Button type="submit" size="sm">
-                                    {t('fixed.save')}
-                                  </Button>
-                                </div>
-                              </form>
-                            </details>
-                            {!ended && (
-                              <details className="group">
-                                <summary className="cursor-pointer list-none rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted">
-                                  {t('fixed.stop')}
-                                </summary>
-                                <form
-                                  action={endFixedTransactionAction}
-                                  className="mt-2 grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-left"
-                                >
-                                  <input type="hidden" name="employmentId" value={selected!} />
-                                  <input type="hidden" name="id" value={r.id} />
-                                  <label className="text-[10px] uppercase text-muted-foreground">
-                                    {t('fixed.stopDate')}
-                                    <input name="effectiveTo" type="date" required min={r.validFrom} defaultValue={today} className={inputCls} />
-                                  </label>
-                                  <p className="text-[10px] text-muted-foreground">{t('fixed.stopHint')}</p>
-                                  <div className="flex justify-end">
-                                    <Button type="submit" size="sm" variant="secondary">
-                                      {t('fixed.stopConfirm')}
-                                    </Button>
-                                  </div>
-                                </form>
-                              </details>
-                            )}
-                            <form action={archiveFixedTransactionAction}>
-                              <input type="hidden" name="employmentId" value={selected!} />
-                              <input type="hidden" name="id" value={r.id} />
-                              <ConfirmSubmit
-                                size="sm"
-                                title={t('fixed.deleteTitle')}
-                                description={t('fixed.deleteBody')}
-                                confirmLabel={t('fixed.delete')}
-                              >
-                                {t('fixed.delete')}
-                              </ConfirmSubmit>
-                            </form>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {existing.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                        {t('fixed.noTransactions')}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <SectionHeader title={t('fixed.title')} count={rows.length} />
+
+            {/* A CHANGE ADDS A LINE — said here, and again in full on the item's own page. Editing a
+                recurring item closes the current value from the chosen date and starts a new one, so the
+                history stays intact and nobody is paid twice for the same period. A bigger screen makes
+                the extra rows MORE visible, so saying nothing would have made the redesign harder to
+                understand rather than easier. */}
+            <p className="border-b border-border bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
+              {t('fixed.versioningNote')}
+            </p>
+
+            <FixedTxnList
+              rows={rows}
+              employmentId={selected!}
+              cycleLabels={cycleLabels}
+              cycleUnspecifiedLabel={t('fixed.cycleUnspecified')}
+            />
           </Card>
-        </>
-      )}
+        )}
+      </CollapsibleEmployeePanel>
     </div>
   );
 }

@@ -5,14 +5,17 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Badge, Button, Card, EmployeeName, Field, inputCls } from '@/components/ui';
+import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { formatMoney } from '@/lib/money';
 import {
   createIndividualTxnAction,
   deleteIndividualTxnAction,
+  fetchBatchImpactAction,
   fetchEmployeeTxnPanelAction,
   fetchTxnDetailAction,
   updateIndividualTxnAction,
   type TxnActionResult,
+  type TxnBatchImpact,
 } from './actions';
 import type { TxnPanel, TxnPanelRow } from './existing-context';
 
@@ -92,6 +95,8 @@ export type TxnBatch = {
   runType: 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
   runSeq: number;
   scope: { departmentIds?: string[]; employmentIds?: string[] } | null;
+  /** 49e7e0a2 — the two statuses this ledger may be written on. A `closed` run is never handed here. */
+  status: 'draft' | 'processed';
 };
 
 export type TxnPayItem = { id: string; code: string; name: string; kind: string };
@@ -144,6 +149,8 @@ export function TxnWorkspace({
   processHref,
   requireComponent,
   currentPeriod,
+  panelDefaultOpen,
+  panelCookieKey,
 }: {
   employees: TxnEmployee[];
   batches: TxnBatch[];
@@ -155,6 +162,9 @@ export function TxnWorkspace({
   /** Today's month in the TENANT timezone, resolved on the server. Deriving it in the browser would put
    *  a transaction in the wrong month for anyone whose device clock sits in a different day. */
   currentPeriod: string;
+  /** 49e7e0a2 — the employee panel's persisted collapse state, resolved from the cookie on the server. */
+  panelDefaultOpen: boolean;
+  panelCookieKey: string;
 }) {
   const t = useTranslations('payroll.transactions.individual');
 
@@ -195,6 +205,15 @@ export function TxnWorkspace({
   const [page, setPage] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // ── 49e7e0a2 — what a save onto the resolved run would make out of date, and what a save already did ──
+  const [impactState, setImpactState] = useState<{ key: string; impact: TxnBatchImpact | null }>({
+    key: '',
+    impact: null,
+  });
+  /** The processed run a save has just marked for recalculation. Set from the ACTION's own report, so it
+   *  can never claim a mark for a save that did not land. */
+  const [recalcBatchId, setRecalcBatchId] = useState<string | null>(null);
 
   // ── The form ──
   const [form, setForm] = useState<FormState | null>(null);
@@ -288,6 +307,7 @@ export function TxnWorkspace({
     setRowQuery('');
     setExpandedId(null);
     setConfirmDeleteId(null);
+    setRecalcBatchId(null);
   };
   const changePeriodFilter = (period: string) => {
     setPeriodFilter(period);
@@ -373,6 +393,42 @@ export function TxnWorkspace({
     if (form.batchId && eligibleBatches.some((b) => b.id === form.batchId)) return form.batchId;
     return eligibleBatches.length === 1 ? eligibleBatches[0].id : '';
   }, [form, eligibleBatches]);
+
+  /** The run a save would land on, as a batch record (not just its id) — the form needs its status. */
+  const targetBatch = useMemo(
+    () => (resolvedBatchId ? (eligibleBatches.find((b) => b.id === resolvedBatchId) ?? null) : null),
+    [resolvedBatchId, eligibleBatches],
+  );
+  const targetProcessed = targetBatch?.status === 'processed';
+
+  /**
+   * Fetch what the target run has already sent downstream, but ONLY when the target is processed — a
+   * draft run has produced no payslip, no bank file and no statutory return, so there is nothing to warn
+   * about and no reason to spend a round trip finding that out.
+   *
+   * Stored WITH the key it answers and "is this current?" DERIVED, exactly as the employee panel above
+   * does it, and for the same two reasons: a slow reply for a run the operator has moved off can never
+   * paint over the one on screen, and clearing on a key change needs no synchronous setState inside the
+   * effect (which is a cascading render, and which the lint rightly refuses).
+   */
+  const impactKey = targetProcessed && resolvedBatchId ? resolvedBatchId : '';
+  useEffect(() => {
+    if (!impactKey) return;
+    let live = true;
+    fetchBatchImpactAction({ batchId: impactKey })
+      .then((r) => {
+        if (live) setImpactState({ key: impactKey, impact: r?.batchId === impactKey ? r : null });
+      })
+      .catch(() => {
+        // A failed read must never block entry. The "this run is processed" warning below does not depend
+        // on it — only the extra detail about the payment file and the statutory returns does.
+        if (live) setImpactState({ key: impactKey, impact: null });
+      });
+    return () => {
+      live = false;
+    };
+  }, [impactKey]);
+  const impact = impactState.key === impactKey ? impactState.impact : null;
 
   const monthBounds = useMemo(() => {
     if (!isPeriod(formPeriod)) return null;
@@ -527,6 +583,7 @@ export function TxnWorkspace({
       }
       setFormError(null);
       refreshPanel();
+      if (res.recalcBatchId) setRecalcBatchId(res.recalcBatchId);
       toast.success(t(f.mode === 'edit' ? 'updated' : 'created'));
       if (addAnother && f.mode === 'create') openForm(blankForm(f.payPeriod));
       else closeForm();
@@ -539,6 +596,7 @@ export function TxnWorkspace({
       setConfirmDeleteId(null);
       if (res.ok) {
         refreshPanel();
+        if (res.recalcBatchId) setRecalcBatchId(res.recalcBatchId);
         toast.success(t('deleted'));
         if (form?.id === id) closeForm();
       } else {
@@ -581,6 +639,8 @@ export function TxnWorkspace({
       const res = await runSave(f);
       if (res.ok) {
         toast.success(t(f.mode === 'edit' ? 'updated' : 'created'));
+        // Deliberately NOT carried across the switch: the banner names a run the operator is leaving, and
+        // the run's own page (and its History) is where the mark persists. `completeSwitch` clears it.
         completeSwitch();
       } else {
         setPendingEmployeeId(null);
@@ -609,9 +669,15 @@ export function TxnWorkspace({
   );
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
-      {/* ────────────────── LEFT PANEL — employees ────────────────── */}
-      <Card className="overflow-hidden">
+    <CollapsibleEmployeePanel
+      defaultOpen={panelDefaultOpen}
+      cookieKey={panelCookieKey}
+      hideLabel={t('hideEmployees')}
+      showLabel={t('showEmployees')}
+      collapsedTitle={t('employeesPanel')}
+      panel={
+        /* ────────────────── LEFT PANEL — employees ────────────────── */
+        <Card className="overflow-hidden">
         <div className="border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-foreground">{t('employeesPanel')}</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">{t('employeesPanelHint')}</p>
@@ -695,13 +761,14 @@ export function TxnWorkspace({
             );
           })}
         </div>
-        {capped && (
-          <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
-            {t('showingCapped', { cap: EMPLOYEE_CAP, total: filteredEmployees.length })}
-          </p>
-        )}
-      </Card>
-
+          {capped && (
+            <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+              {t('showingCapped', { cap: EMPLOYEE_CAP, total: filteredEmployees.length })}
+            </p>
+          )}
+        </Card>
+      }
+    >
       {/* ────────────────── RIGHT PANEL — that employee's one-off transactions ────────────────── */}
       <Card className="overflow-hidden">
         {!selected && (
@@ -769,6 +836,22 @@ export function TxnWorkspace({
                   {t('strandedHint')}{' '}
                   <Link className="underline underline-offset-2" href="/payroll/transaction-view?tab=outstanding">
                     {t('alreadyOutstanding')}
+                  </Link>
+                </p>
+              </div>
+            )}
+
+            {/* 49e7e0a2 — the save landed on a processed run, so that run's payslips, statutory figures
+                and totals no longer match the transactions behind them. This is the operator's route to
+                putting them right; the mark itself lives on the run and refuses Close until it is
+                cleared, so leaving this screen does not lose it. */}
+            {recalcBatchId && (
+              <div className="border-b border-border bg-amber-50 px-4 py-2.5 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-300">
+                <p className="font-medium">{t('recalcNeededTitle')}</p>
+                <p className="mt-1">
+                  {t('recalcNeededBody')}{' '}
+                  <Link href={`/payroll/${recalcBatchId}`} className="font-medium underline underline-offset-2">
+                    {t('recalcNeededLink')}
                   </Link>
                 </p>
               </div>
@@ -907,6 +990,23 @@ export function TxnWorkspace({
                     {t('identicalWarning')}
                   </p>
                 )}
+                {/* 49e7e0a2 — WHAT THIS SAVE IS ABOUT TO MAKE OUT OF DATE. Shown before Save, not after,
+                    because after is too late: by the time a run is Processed the payslips exist, the
+                    statutory figures have moved and the bank file and returns are exportable. The first
+                    line always appears for a processed run; the two below it appear only when that
+                    particular run has actually sent something out, so the warning never overstates. */}
+                {targetProcessed && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+                    <p className="font-medium">{t('processedEditTitle')}</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                      {impact?.paymentDisbursed && <li>{t('processedEditPaymentExported')}</li>}
+                      {impact?.statutoryFiled && (
+                        <li>{t('processedEditStatutoryFiled', { count: impact.statutoryReportCount })}</li>
+                      )}
+                      <li>{t('processedEditMarksRecalc')}</li>
+                    </ul>
+                  </div>
+                )}
                 {formError && <p className="text-sm text-destructive">{formError}</p>}
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -1002,7 +1102,14 @@ export function TxnWorkspace({
                                 <Detail label={t('colRemarks')} value={r.notes ?? '—'} />
                               </div>
                             </dl>
+                            {/* Two different statements, and they used to be one. `lockedHint` is now the
+                                CLOSED case only — genuinely frozen, in the app and by the 0011 triggers.
+                                A row on a processed run is still editable, and what the operator needs to
+                                know there is the price of editing it, not that they cannot. */}
                             {!r.editable && <p className="mt-2 text-amber-700 dark:text-amber-400">{t('lockedHint')}</p>}
+                            {r.editable && r.recalcOnEdit && (
+                              <p className="mt-2 text-amber-700 dark:text-amber-400">{t('paidEditableHint')}</p>
+                            )}
                           </td>
                         </tr>
                       )}
@@ -1069,7 +1176,7 @@ export function TxnWorkspace({
           </div>
         </div>
       )}
-    </div>
+    </CollapsibleEmployeePanel>
   );
 }
 

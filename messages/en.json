@@ -2951,7 +2951,10 @@
           "manual": "keyed manually",
           "unattached": "not yet attached"
         }
-      }
+      },
+      "recalcBannerTitle": "This run needs recalculation for {n} employee(s).",
+      "recalcBannerBody": "One-off transactions were added, changed or removed after this run was processed, so the payslips, statutory figures and totals below are the earlier numbers. Recalculate the affected employees in the panel further down; the run cannot be closed until that is done.",
+      "closeBlockedRecalc": "This run cannot be closed until the employees whose transactions changed after processing have been recalculated."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -3313,7 +3316,25 @@
         "cancel": "Cancel",
         "export": "Export",
         "exportSoon": "Export is coming soon.",
-        "refresh": "Refresh"
+        "refresh": "Refresh",
+        "hideEmployees": "Hide employee list",
+        "showEmployees": "Show employee list",
+        "pickEmployeeTitle": "Pick an employee",
+        "pickEmployeeBody": "Their recurring pay items appear here once you choose someone from the list.",
+        "searchTxnPlaceholder": "Search pay item, amount, date or remarks",
+        "nShown": "{count} shown",
+        "noMatches": "No recurring pay items match your search.",
+        "viewEdit": "View / Edit",
+        "prevPage": "Previous",
+        "nextPage": "Next",
+        "pageOf": "Page {page} of {total}",
+        "detailSubtitle": "View or change this recurring pay item.",
+        "currentAmount": "Current amount",
+        "versioningTitle": "Changing this item does not overwrite it.",
+        "versioningBody": "Saving closes the current value from the effective date you choose and starts a new one, so the history stays intact and nobody is paid twice for the same period. That means each change adds a line to the list.",
+        "versioningNote": "A change adds a line: editing an item closes its current value from the chosen date and starts a new one, so the history stays intact.",
+        "deleteHint": "Removing an item hides it and excludes it from all future payroll. If it has already been paid on a processed payslip it cannot be removed — end it from a date instead, which stops future payments while leaving what was already paid untouched.",
+        "paidOnPayslip": "This recurring item has already been paid on a processed payslip, so it cannot be removed. End it from a date instead — that stops future payments and leaves what was already paid intact."
       },
       "individual": {
         "title": "Individual Transaction",
@@ -3349,7 +3370,7 @@
         "monthLabel": "Month",
         "cycleLabel": "Pay cycle",
         "dateOutOfPeriod": "The transaction date is outside the selected pay-period month.",
-        "notDraft": "This batch is no longer a draft — transactions can only be changed before the batch is finalized.",
+        "notDraft": "This payroll run is closed, so its transactions can no longer be changed.",
         "kindLabel": {
           "earning": "Earning",
           "deduction": "Deduction",
@@ -3481,7 +3502,7 @@
         "duplicate": "Duplicate",
         "createdOn": "Created on",
         "createdBy": "Created by",
-        "lockedHint": "This transaction is on a payroll run that has already been processed, so it can no longer be changed or removed.",
+        "lockedHint": "This transaction is on a payroll run that has been closed, so it can no longer be changed or removed.",
         "prevPage": "Previous",
         "nextPage": "Next",
         "pageOf": "Page {page} of {total}",
@@ -3496,7 +3517,17 @@
         "updated": "Transaction updated.",
         "deleted": "Transaction deleted.",
         "noTxnsYet": "No one-off transactions for this employee yet.",
-        "deleteTxnBody": "This permanently removes the transaction. It cannot be undone."
+        "deleteTxnBody": "This permanently removes the transaction. It cannot be undone.",
+        "hideEmployees": "Hide employee list",
+        "showEmployees": "Show employee list",
+        "processedEditTitle": "This payroll run has already been processed.",
+        "processedEditPaymentExported": "A bank payment file has already been exported for it.",
+        "processedEditStatutoryFiled": "{count} statutory return(s) have already been recorded for this month.",
+        "processedEditMarksRecalc": "Saving marks the run as needing recalculation, and it cannot be closed until that is done.",
+        "recalcNeededTitle": "This payroll run now needs recalculation.",
+        "recalcNeededBody": "Its payslips, statutory figures and totals no longer match the transactions behind them.",
+        "recalcNeededLink": "Recalculate the affected employees",
+        "paidEditableHint": "This transaction has already been paid on a processed run. It can still be corrected, and doing so marks the run for recalculation."
       },
       "tp1": {
         "title": "TP1 Relief",

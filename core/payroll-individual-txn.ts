@@ -24,7 +24,13 @@ import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { company, employment, payComponent, payrollBatch, payrollIndividualTxn, person, type PayrollTxnKind } from '../db/schema';
-import { BatchNotDraftError, daysInMonth, resolveBatchScopeFilter, type BatchScope } from './payroll';
+import {
+  BatchNotDraftError,
+  daysInMonth,
+  markBatchNeedsRecalc,
+  resolveBatchScopeFilter,
+  type BatchScope,
+} from './payroll';
 import { settingEnabled } from './entitlements';
 
 const money = (v: number) => Number(v).toFixed(2);
@@ -247,17 +253,24 @@ export type TxnTarget = { batchId: string } | { companyId: string; payPeriod: st
 async function resolveTxnTarget(
   tx: Tx,
   p: { batchId?: string | null; companyId?: string | null; payPeriod?: string | null },
-): Promise<{ batchId: string | null; companyId: string; payPeriod: string; scope: BatchScope | null }> {
+): Promise<{
+  batchId: string | null;
+  companyId: string;
+  payPeriod: string;
+  scope: BatchScope | null;
+  /** null for the unattached case — there is no run to be stale. */
+  status: WritableBatchStatus | null;
+}> {
   if (p.batchId) {
-    const { payPeriod, companyId, scope } = await loadDraftBatch(tx, p.batchId);
-    return { batchId: p.batchId, companyId, payPeriod, scope };
+    const { payPeriod, companyId, scope, status } = await loadWritableBatch(tx, p.batchId);
+    return { batchId: p.batchId, companyId, payPeriod, scope, status };
   }
   if (!p.companyId || !p.payPeriod) throw new MissingTxnTargetError();
   if (!isPayPeriod(p.payPeriod)) throw new InvalidPayPeriodError(p.payPeriod);
   // The company must exist in-tenant (RLS also scopes it); fail loudly rather than insert a dangling FK.
   const [co] = await tx.select({ id: company.id }).from(company).where(eq(company.id, p.companyId)).limit(1);
   if (!co) throw new MissingTxnTargetError();
-  return { batchId: null, companyId: p.companyId, payPeriod: p.payPeriod, scope: null };
+  return { batchId: null, companyId: p.companyId, payPeriod: p.payPeriod, scope: null, status: null };
 }
 
 export type IndividualTxnRow = {
@@ -281,13 +294,38 @@ function periodBounds(payPeriod: string): { periodStart: string; periodEnd: stri
   return { periodStart, periodEnd };
 }
 
-/** Load a draft batch (or throw if not draft / not found). Returns period + company + scope so the bulk
- *  wrapper can enforce the C3 (company match) and C4 (scope membership) correctness guards. Exported for
- *  the bulk wrapper (C5); the single-row methods below keep using it too, ignoring the extra columns. */
-export async function loadDraftBatch(
+/**
+ * The batch statuses in which this ledger may still be WRITTEN.
+ *
+ * 49e7e0a2 WIDENED THIS FROM 'draft' ALONE, AND THE MEASUREMENT IS THE ARGUMENT. Every payroll run on
+ * production sits at `processed` — not one draft and not one closed run exists — so a draft-only write
+ * window is not a narrow inconvenience, it is a permanent freeze, and the only way to correct a one-off
+ * transaction was to reset the whole run.
+ *
+ * `closed` is NOT here and never will be: it is trigger-frozen by 0011_payroll_immutability.sql, so an
+ * app that appeared to permit it would be offering an edit the database rejects. A status this build does
+ * not recognise is refused for the same reason `getIndividualTxn` reports it as not editable — the
+ * mistake that matters is permitting a write onto figures that have been paid without saying so.
+ */
+export const WRITABLE_BATCH_STATUSES = ['draft', 'processed'] as const;
+export type WritableBatchStatus = (typeof WRITABLE_BATCH_STATUSES)[number];
+
+/**
+ * Load a batch this ledger may write to (or throw if closed / not found). Returns period + company +
+ * scope so the bulk wrapper can enforce the C3 (company match) and C4 (scope membership) correctness
+ * guards, plus the STATUS, which the callers need for one reason: a write that lands on a `processed`
+ * run has just made that run's payslips, statutory figures and totals disagree with their inputs, and
+ * must mark it for recalculation in the same transaction.
+ *
+ * `BatchNotDraftError` is kept as the thrown type deliberately rather than renamed. It is caught by name
+ * in the transaction actions and mapped to on-screen copy, it is asserted by tests across the suite, and
+ * what it means — "this run is not in a state this write is allowed on" — has not changed. Only the set
+ * of allowed states has. The copy behind it now says "closed", which is what it now means.
+ */
+export async function loadWritableBatch(
   tx: Tx,
   batchId: string,
-): Promise<{ payPeriod: string; companyId: string; scope: BatchScope | null }> {
+): Promise<{ payPeriod: string; companyId: string; scope: BatchScope | null; status: WritableBatchStatus }> {
   const [batch] = await tx
     .select({
       status: payrollBatch.status,
@@ -299,8 +337,13 @@ export async function loadDraftBatch(
     .where(eq(payrollBatch.id, batchId))
     .limit(1);
   if (!batch) throw new BatchNotDraftError();
-  if (batch.status !== 'draft') throw new BatchNotDraftError();
-  return { payPeriod: batch.payPeriod, companyId: batch.companyId, scope: (batch.scope as BatchScope | null) ?? null };
+  if (!WRITABLE_BATCH_STATUSES.includes(batch.status as WritableBatchStatus)) throw new BatchNotDraftError();
+  return {
+    payPeriod: batch.payPeriod,
+    companyId: batch.companyId,
+    scope: (batch.scope as BatchScope | null) ?? null,
+    status: batch.status as WritableBatchStatus,
+  };
 }
 
 /** Validate that txnDate falls within the period; throw TxnDateOutOfPeriodError otherwise. Exported for
@@ -355,7 +398,15 @@ export type IndividualTxnDetail = {
   notes: string | null;
   /** True while `updateIndividualTxn` / `deleteIndividualTxn` would accept this row. */
   editable: boolean;
+  /** 49e7e0a2 — the row sits on a run that is already PROCESSED, so changing it makes that run's payslips,
+   *  statutory figures and totals stale and marks it for recalculation. */
+  recalcOnEdit: boolean;
 };
+
+/** Narrow a stored batch status to one this ledger may write to. A null status is the unattached case and
+ *  is handled by the callers (no batch ⇒ no batch gate), not here. */
+export const isWritableBatchStatus = (v: string | null | undefined): v is WritableBatchStatus =>
+  v != null && (WRITABLE_BATCH_STATUSES as readonly string[]).includes(v);
 
 /**
  * 44129979 — read ONE ledger row by id, for the redesigned screen's Edit and Duplicate actions.
@@ -396,10 +447,14 @@ export function getIndividualTxn(ctx: SessionContext, p: { id: string }): Promis
     const { batchStatus, ...rest } = row;
     return {
       ...rest,
-      // The write guard is "unattached, or attached to a DRAFT batch" (loadDraftBatch throws otherwise).
-      // Anything else — including a status this build does not know — is reported as not editable, because
-      // the mistake that matters is offering an edit the service will refuse.
-      editable: row.batchId == null || batchStatus === 'draft',
+      // The write guard is "unattached, or attached to a batch in WRITABLE_BATCH_STATUSES"
+      // (loadWritableBatch throws otherwise). Anything else — a closed run, or a status this build does not
+      // know — is reported as not editable, because the mistake that matters is offering an edit the
+      // service will refuse.
+      editable: row.batchId == null || isWritableBatchStatus(batchStatus),
+      /** 49e7e0a2 — true when saving this edit will make a PROCESSED run's figures stale. The screen warns
+       *  on it; the service marks the run for recalculation either way. */
+      recalcOnEdit: batchStatus === 'processed',
       companyId: rest.companyId as string,
       payPeriod: rest.payPeriod as string,
     } satisfies IndividualTxnDetail;
@@ -481,6 +536,12 @@ export function createIndividualTxn(
         txnDate: p.txnDate,
       },
     });
+    // 49e7e0a2 — a row added to an ALREADY-PROCESSED run is money the payslips on that run do not know
+    // about. Mark it in the same transaction as the insert: an unmarked processed run is exactly the
+    // silent drift this window would otherwise create.
+    if (target.batchId != null && target.status === 'processed') {
+      await markBatchNeedsRecalc(tx, ctx, { batchId: target.batchId, employmentIds: [p.employmentId] });
+    }
     return { id: row.id };
   });
 }
@@ -623,6 +684,12 @@ export function createIndividualTxnsBulk(
         ids.push(row.id);
       }
     }
+    // 49e7e0a2 — one mark for the whole submission, naming every payee it touched, appended once rather
+    // than once per row: the mark is a statement about the RUN, and N identical marks would be N history
+    // entries saying the same thing.
+    if (target.batchId != null && target.status === 'processed') {
+      await markBatchNeedsRecalc(tx, ctx, { batchId: target.batchId, employmentIds });
+    }
     return { ids };
   });
 }
@@ -659,10 +726,11 @@ export function updateIndividualTxn(
       .where(eq(payrollIndividualTxn.id, p.id))
       .limit(1);
     if (!existing) throw new TxnNotFoundError(p.id); // distinct from BatchNotDraftError (real non-draft case)
-    // Attached ⇒ the owning batch must still be draft (the batch's payPeriod is authoritative). Unattached ⇒
-    // no batch gate; the row's own stamped payPeriod (0175 CHECK guarantees it) bounds the date.
-    const payPeriod =
-      existing.batchId != null ? (await loadDraftBatch(tx, existing.batchId)).payPeriod : existing.payPeriod!;
+    // Attached ⇒ the owning batch must still be writable — draft or processed, never closed (the batch's
+    // payPeriod is authoritative). Unattached ⇒ no batch gate; the row's own stamped payPeriod (0175 CHECK
+    // guarantees it) bounds the date.
+    const batch = existing.batchId != null ? await loadWritableBatch(tx, existing.batchId) : null;
+    const payPeriod = batch != null ? batch.payPeriod : existing.payPeriod!;
     const nextKind = p.kind ?? existing.kind;
     if (!isTxnKind(nextKind)) throw new InvalidTxnKindError(nextKind);
     if (p.unit != null && !isTxnUnit(p.unit)) throw new InvalidTxnUnitError(p.unit);
@@ -692,7 +760,15 @@ export function updateIndividualTxn(
     if (p.unit !== undefined) patch.unit = p.unit ?? null;
     if (p.notes !== undefined) patch.notes = p.notes ?? null;
     if (Object.keys(patch).length > 0) {
+      // 49e7e0a2 — stamp WHEN this row changed. Written only alongside a real field change, so a no-op
+      // patch stays a no-op and an untouched row keeps a NULL updated_at, which is what makes
+      // "created before processing but edited after it" answerable at all.
+      patch.updatedAt = new Date();
       await tx.update(payrollIndividualTxn).set(patch).where(eq(payrollIndividualTxn.id, p.id));
+      // The figures on a processed run were computed from the value that just changed.
+      if (batch?.status === 'processed' && existing.batchId != null) {
+        await markBatchNeedsRecalc(tx, ctx, { batchId: existing.batchId, employmentIds: [existing.employmentId] });
+      }
     }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -725,8 +801,15 @@ export function deleteIndividualTxn(ctx: SessionContext, p: { id: string }): Pro
       .where(eq(payrollIndividualTxn.id, p.id))
       .limit(1);
     if (!existing) throw new TxnNotFoundError(p.id); // distinct from BatchNotDraftError (real non-draft case)
-    if (existing.batchId != null) await loadDraftBatch(tx, existing.batchId); // unattached ⇒ no batch gate
+    // Unattached ⇒ no batch gate. Attached ⇒ draft or processed; a CLOSED run still refuses.
+    const batch = existing.batchId != null ? await loadWritableBatch(tx, existing.batchId) : null;
     await tx.delete(payrollIndividualTxn).where(eq(payrollIndividualTxn.id, p.id));
+    // 49e7e0a2 — removing a row from a processed run takes money OFF a payslip that has already been paid
+    // and filed. The row is gone (the deleted event is the record of it), so the mark is the only thing
+    // left saying the run's figures no longer match; it is written in the same transaction as the delete.
+    if (batch?.status === 'processed' && existing.batchId != null) {
+      await markBatchNeedsRecalc(tx, ctx, { batchId: existing.batchId, employmentIds: [existing.employmentId] });
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-individual-txn',

@@ -32,7 +32,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips } from '../core/payroll';
+import { closeBatch, createBatch, generatePayslips } from '../core/payroll';
 import {
   createIndividualTxn,
   createIndividualTxnsBulk,
@@ -191,15 +191,42 @@ describe('1.2.2 Individual Transaction', () => {
     ).resolves.toMatchObject({ id: expect.any(String) });
   });
 
-  // ───────────────────── draft gate ─────────────────────
+  // ───────────────────── the write gate (widened by 49e7e0a2) ─────────────────────
 
-  it('after generatePayslips (processed), create/update/delete all throw BatchNotDraftError', async () => {
+  /**
+   * UPDATED DELIBERATELY BY 49e7e0a2, NOT LOOSENED TO SUIT A CHANGE. This test used to assert that a
+   * PROCESSED run refused every write. That rule is gone on purpose: every payroll run on production sits
+   * at processed, so it was a permanent freeze rather than a narrow guard. What replaced it is not an
+   * unlock — a write onto a processed run now marks the run for recalculation and Close refuses until that
+   * is cleared, which is asserted in full in test/payroll-txn-edit-after-processing.test.ts.
+   *
+   * What this file keeps asserting is the half that did NOT change: a CLOSED run refuses everything, and
+   * `BatchNotDraftError` is still the refusal.
+   */
+  it('after generatePayslips (processed), create/update/delete are ALLOWED and mark the run for recalculation', async () => {
     const { a, employmentId, batchId } = await hireWithBatch();
     const { id } = await createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 50 });
 
     await generatePayslips(a, { batchId });
     const [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
     expect(batch.status).toBe('processed');
+
+    await expect(
+      createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-11', amount: 10 }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+    await expect(updateIndividualTxn(a, { id, amount: 60 })).resolves.toMatchObject({ id });
+    await expect(deleteIndividualTxn(a, { id })).resolves.toMatchObject({ id });
+
+    const [marked] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+    expect(marked.needsRecalcAt).not.toBeNull();
+    expect(marked.recalcEmploymentIds).toEqual([employmentId]);
+  });
+
+  it('a CLOSED run still refuses create/update/delete with BatchNotDraftError', async () => {
+    const { a, employmentId, batchId } = await hireWithBatch();
+    const { id } = await createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 50 });
+    await generatePayslips(a, { batchId });
+    await closeBatch(a, { batchId });
 
     await expect(
       createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-11', amount: 10 }),
@@ -524,9 +551,12 @@ describe('1.2.2 Individual Transaction', () => {
     expect(events).toHaveLength(0);
   });
 
-  it('draft gate: bulk save against a processed batch throws BatchNotDraftError, nothing persists', async () => {
+  /** 49e7e0a2 — the bulk path's gate moved with the single-row path's: closed refuses, processed does not.
+   *  Asserted on a CLOSED run, which is the state the gate now describes. */
+  it('write gate: bulk save against a CLOSED batch throws BatchNotDraftError, nothing persists', async () => {
     const { a, employmentId, batchId } = await hireWithBatch('2026-05');
     await generatePayslips(a, { batchId });
+    await closeBatch(a, { batchId });
     await expect(
       createIndividualTxnsBulk(a, {
         batchId,

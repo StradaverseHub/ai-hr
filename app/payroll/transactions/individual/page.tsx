@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
@@ -22,6 +23,9 @@ import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlem
  * month's regular run is created — so early entry keeps working and nothing is deleted or recalculated.
  * This is purely the on-screen surface.
  */
+/** One cookie per screen — Individual and Fixed collapse independently (49e7e0a2 / f3ae3245). */
+export const INDIVIDUAL_PANEL_COOKIE = 'txn_individual_panel';
+
 export default async function IndividualTransactionPage({
   searchParams,
 }: {
@@ -30,6 +34,10 @@ export default async function IndividualTransactionPage({
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
   const { error } = await searchParams;
+  // 49e7e0a2 — the employee panel's collapsed/expanded choice, resolved on the SERVER from the cookie so
+  // first paint is already correct (the same pattern collapsible-card-section documents). Absent cookie ⇒
+  // expanded, which is exactly today's layout for anyone who never touches the control.
+  const panelDefaultOpen = (await cookies()).get(INDIVIDUAL_PANEL_COOKIE)?.value !== '0';
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
   // f1564110 Phase 3 — with the kernel consuming this ledger, a NEW payable (earning/deduction) row must
   // name a Payroll Item Master item (its statutory flags drive the treatment). The form hides the generic
@@ -42,7 +50,11 @@ export default async function IndividualTransactionPage({
     listCompanies(s),
     listPayComponents(s), // Payroll Item Master — the form's item picker is sourced from these active items.
   ]);
-  const draftBatches = allBatches.filter((b) => b.status === 'draft');
+  // 49e7e0a2 — the form used to be handed DRAFT runs only, which is why a processed run could not even be
+  // named as a target. Both writable statuses are offered now; `closed` is not, because the service
+  // refuses it and the 0011 database triggers refuse it underneath, so listing one would only produce a
+  // save that always fails. The status rides along so the form can warn before it lands on a processed run.
+  const writableBatches = allBatches.filter((b) => b.status === 'draft' || b.status === 'processed');
   const payItems = payComponents.map((c) => ({ id: c.id, code: c.code, name: c.name, kind: c.kind }));
 
   // The Company pre-filter is view-only narrowing on the already access-fenced employee list, so scope the
@@ -67,13 +79,14 @@ export default async function IndividualTransactionPage({
     // Derive employment status from termination (matches the View page convention) — the status filter.
     status: e.terminatedOn == null ? 'active' : 'ended',
   }));
-  const txnBatches: TxnBatch[] = draftBatches.map((b) => ({
+  const txnBatches: TxnBatch[] = writableBatches.map((b) => ({
     id: b.id,
     companyId: b.companyId,
     payPeriod: b.payPeriod,
     runType: b.runType,
     runSeq: b.runSeq,
     scope: (b as { scope?: TxnBatch['scope'] }).scope ?? null,
+    status: b.status === 'processed' ? 'processed' : 'draft',
   }));
 
   const errorKeys = new Set([
@@ -86,6 +99,9 @@ export default async function IndividualTransactionPage({
     'rowIncomplete',
     'duplicateRow',
     'periodInvalid',
+    // `notDraft` (above) is BatchNotDraftError. 49e7e0a2 did not add a key for it: the throw is unchanged,
+    // only the set of states it fires on narrowed to `closed`, so the COPY behind the existing key was
+    // rewritten to say that instead of "no longer a draft".
     'componentRequired',
     'componentInvalid',
   ]);
@@ -115,6 +131,8 @@ export default async function IndividualTransactionPage({
         payItems={payItems}
         processHref="/payroll/process"
         requireComponent={individualTxnPayOn}
+        panelDefaultOpen={panelDefaultOpen}
+        panelCookieKey={INDIVIDUAL_PANEL_COOKIE}
         // Resolved on the SERVER through the tenant timezone: a browser an hour either side of MYT
         // midnight would otherwise default a new transaction into the wrong month.
         currentPeriod={todayInKualaLumpur().slice(0, 7)}

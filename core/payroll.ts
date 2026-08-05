@@ -91,6 +91,28 @@ export class BatchNotDraftError extends Error {
   }
 }
 
+/**
+ * 49e7e0a2 — Close is refused while the run still owes a recalculation.
+ *
+ * The window that lets a one-off transaction be corrected after a run is processed is only safe because
+ * the run cannot be FINALISED on figures that no longer match the transactions behind them. This is the
+ * guard that makes it so. It names the employments that are waiting so the message can send the operator
+ * straight to the selective reprocess with the right people already picked.
+ *
+ * ⚠️ CURRENTLY UNREACHABLE ON PRODUCTION, AND BUILT ANYWAY. Every payroll run measured on 2026-08-05 sits
+ * at `processed`; not one has ever been closed, so nothing exercises this path today. It is the thing that
+ * makes the editing window safe the day someone does close a run, and it is much cheaper to build now than
+ * to discover missing then.
+ */
+export class BatchNeedsRecalculationError extends Error {
+  constructor(public readonly employmentIds: string[]) {
+    super(
+      `This payroll run cannot be closed until ${employmentIds.length} employee${employmentIds.length === 1 ? '' : 's'} ${employmentIds.length === 1 ? 'is' : 'are'} recalculated: its transactions changed after it was processed.`,
+    );
+    this.name = 'BatchNeedsRecalculationError';
+  }
+}
+
 /** Payroll Reset (feedback a03b2d9b): the batch is not in the one state a reset is defined for.
  *  Draft = nothing to reset; Closed = permanently immutable (0011 trigger is the DB backstop). */
 export class BatchNotResettableError extends Error {
@@ -218,6 +240,178 @@ const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 export function daysInMonth(year: number, month1: number): number {
   if (month1 === 2 && ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0)) return 29;
   return DAYS_IN_MONTH[month1 - 1];
+}
+
+// ─────────── 49e7e0a2 — the recalculation mark (see payroll_batch.needsRecalcAt in db/schema.ts) ───────────
+
+/** What a run owes: the instant it was marked, and the employments whose figures are stale. */
+export type BatchRecalcState = { needsRecalcAt: Date | null; employmentIds: string[] };
+
+const asIdArray = (v: unknown): string[] =>
+  Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && x.length > 0))] : [];
+
+/**
+ * Mark a PROCESSED run as owing a recalculation for these employments, inside the caller's transaction.
+ *
+ * Called by the one-off transaction ledger (core/payroll-individual-txn.ts) on every add / change / remove
+ * that lands on a run which has already been processed. It is deliberately a no-op for a draft run: a
+ * draft has no payslips, so nothing can be stale.
+ *
+ * The batch row is locked FOR UPDATE first. The employment set is a read-modify-write, and two admins
+ * editing two employees on the same run at the same time would otherwise be able to drop one of them —
+ * which is precisely the silent loss this whole mechanism exists to prevent.
+ *
+ * Appends `payroll-batch.recalc-required` so the run's own History says when its inputs moved and for whom
+ * (references only — no amounts; ADR-0030 Layer 0).
+ */
+export async function markBatchNeedsRecalc(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { batchId: string; employmentIds: string[] },
+): Promise<void> {
+  const adding = asIdArray(p.employmentIds);
+  if (adding.length === 0) return;
+  const [row] = await tx
+    .select({ status: payrollBatch.status, ids: payrollBatch.recalcEmploymentIds, at: payrollBatch.needsRecalcAt })
+    .from(payrollBatch)
+    .where(eq(payrollBatch.id, p.batchId))
+    .for('update')
+    .limit(1);
+  // A draft run recalculates by being generated; a closed run cannot be written at all (the ledger's own
+  // guard refuses first, and 0011 is the DB backstop). Neither is a mark.
+  if (!row || row.status !== 'processed') return;
+  const next = [...new Set([...asIdArray(row.ids), ...adding])];
+  await tx
+    .update(payrollBatch)
+    .set({ needsRecalcAt: row.at ?? new Date(), recalcEmploymentIds: next })
+    .where(eq(payrollBatch.id, p.batchId));
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'payroll-batch',
+    aggregateId: p.batchId,
+    eventType: 'payroll-batch.recalc-required',
+    actor: actorOf(ctx),
+    payload: { employmentIds: next, addedEmploymentIds: adding },
+  });
+}
+
+/**
+ * Clear the mark for the employments that have just been recalculated. When nothing is left waiting, the
+ * timestamp is cleared with the set — the two are always written together, so "marked but nobody waiting"
+ * is not a state this can produce.
+ *
+ * `employmentIds: null` clears the whole mark, which is what a full regenerate and a reset-to-draft do:
+ * both replace or destroy every payslip on the run, so nothing can still be stale afterwards.
+ */
+export async function clearBatchRecalc(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { batchId: string; employmentIds: string[] | null },
+): Promise<void> {
+  const [row] = await tx
+    .select({ ids: payrollBatch.recalcEmploymentIds, at: payrollBatch.needsRecalcAt })
+    .from(payrollBatch)
+    .where(eq(payrollBatch.id, p.batchId))
+    .for('update')
+    .limit(1);
+  if (!row || row.at == null) return;
+  const done = p.employmentIds == null ? null : new Set(asIdArray(p.employmentIds));
+  const remaining = done == null ? [] : asIdArray(row.ids).filter((id) => !done.has(id));
+  await tx
+    .update(payrollBatch)
+    .set({
+      needsRecalcAt: remaining.length > 0 ? row.at : null,
+      recalcEmploymentIds: remaining.length > 0 ? remaining : null,
+    })
+    .where(eq(payrollBatch.id, p.batchId));
+  if (remaining.length === 0) {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: p.batchId,
+      eventType: 'payroll-batch.recalc-cleared',
+      actor: actorOf(ctx),
+      payload: {},
+    });
+  }
+}
+
+/**
+ * What a run has already sent downstream — a payment file exported, statutory returns recorded.
+ *
+ * EXTRACTED, NOT REWRITTEN. `unlockClosedBatch` has derived exactly these three facts since 9bc442bc, for
+ * exactly this purpose (warn before touching a run whose figures have already left the building). The
+ * Individual Transaction screen needs the same warning before it saves an edit onto a processed run, and a
+ * second implementation of "has this been paid and filed" is a second answer waiting to disagree with the
+ * first. `unlockClosedBatch` now calls this.
+ */
+export async function batchDownstreamWarnings(
+  tx: Tx,
+  p: { batchId: string; companyId: string; payPeriod: string },
+): Promise<{ paymentDisbursed: boolean; statutoryFiled: boolean; statutoryReportCount: number }> {
+  const [{ n: paymentExports } = { n: 0 }] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(domainEvent)
+    .where(and(eq(domainEvent.aggregateId, p.batchId), eq(domainEvent.eventType, 'payroll-batch.payment-summary.exported')));
+  const statReports = await tx
+    .select({ id: statutoryReport.id })
+    .from(statutoryReport)
+    .where(and(eq(statutoryReport.companyId, p.companyId), eq(statutoryReport.periodKey, p.payPeriod)));
+  return {
+    paymentDisbursed: Number(paymentExports) > 0,
+    statutoryFiled: statReports.length > 0,
+    statutoryReportCount: statReports.length,
+  };
+}
+
+/**
+ * 49e7e0a2 — read a run's recalculation mark together with what it has already sent downstream, for the
+ * warning the Individual Transaction screen shows BEFORE a save lands on a processed run.
+ *
+ * Read-only: no write, no DomainEvent. Returns null for an id this session cannot see (RLS fences the
+ * tenant; the caller fences the company scope).
+ */
+export function batchEditImpact(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<
+  | null
+  | (BatchRecalcState & {
+      companyId: string;
+      status: 'draft' | 'processed' | 'closed';
+      payPeriod: string;
+      paymentDisbursed: boolean;
+      statutoryFiled: boolean;
+      statutoryReportCount: number;
+    })
+> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({
+        status: payrollBatch.status,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        needsRecalcAt: payrollBatch.needsRecalcAt,
+        ids: payrollBatch.recalcEmploymentIds,
+      })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) return null;
+    const warnings = await batchDownstreamWarnings(tx, {
+      batchId: p.batchId,
+      companyId: batch.companyId,
+      payPeriod: batch.payPeriod,
+    });
+    return {
+      companyId: batch.companyId,
+      status: batch.status,
+      payPeriod: batch.payPeriod,
+      needsRecalcAt: batch.needsRecalcAt,
+      employmentIds: asIdArray(batch.ids),
+      ...warnings,
+    };
+  });
 }
 
 /** Payroll Process wizard (1d) — default payment date for a 'YYYY-MM' period from the company's
@@ -3788,6 +3982,10 @@ export async function generatePayslips(
           employmentIds: emps.map((e) => e.employmentId),
         },
       });
+      // 49e7e0a2 — these employees' figures now match their transactions again, so the recalculation mark
+      // is cleared FOR THEM ONLY. A reprocess that covers some of the waiting employees leaves the rest
+      // marked, which is the whole point: Close stays refused until every stale employee is dealt with.
+      await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
       return { reprocessed: emps.length, headcount: batch.employeeCount, totals: deltaTotals };
     }
 
@@ -3795,6 +3993,10 @@ export async function generatePayslips(
       .update(payrollBatch)
       .set({ status: 'processed', employeeCount: emps.length, totals })
       .where(eq(payrollBatch.id, p.batchId));
+    // 49e7e0a2 — a full draft→processed generation writes every payslip on the run from the current
+    // inputs, so nothing on it can still be stale. (Reaching here means the run was draft, and a draft is
+    // never marked; this clears the mark a reset→regenerate cycle would otherwise have to remember to.)
+    await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: null });
 
     // 1.2.8 Loan instalments reserved on this batch are now on a finalized payslip → advance the loan ledger
     // (decrement outstanding, increment instalments_paid, mark applied, auto-settle) — ADR-0060 two-phase.
@@ -3879,7 +4081,14 @@ export async function generatePayslips(
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ status: payrollBatch.status, payPeriodId: payrollBatch.payPeriodId, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod })
+      .select({
+        status: payrollBatch.status,
+        payPeriodId: payrollBatch.payPeriodId,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        needsRecalcAt: payrollBatch.needsRecalcAt,
+        recalcEmploymentIds: payrollBatch.recalcEmploymentIds,
+      })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
@@ -3887,6 +4096,14 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     // Granular RBAC (9bc442bc): payroll.close (configurable per company/tenant), not a coarse admin check.
     await assertPayrollPermission(tx, ctx, 'payroll.close', batch.companyId);
     if (batch.status !== 'processed') throw new BatchNotCloseableError();
+    // 49e7e0a2 — a run whose one-off transactions changed after it was processed is NOT closeable until
+    // those employees have been recalculated. Close is the point of no return: it releases payslips to
+    // employees and cascades the pay period shut, so finalising figures that no longer match their inputs
+    // is the one outcome the post-processing editing window must not be able to produce. Thrown BEFORE any
+    // write, so a refused close changes nothing.
+    if (batch.needsRecalcAt != null) {
+      throw new BatchNeedsRecalculationError(asIdArray(batch.recalcEmploymentIds));
+    }
     // Step 6 (f3148da1) — compute the payslip RELEASE instant NOW, under this admin session (which can read the
     // company release config; the ESS employee session cannot, so the gate must be materialized here, not at
     // read time). We read the company's release config + pay-day and derive releasedAt from the close instant;
@@ -4117,6 +4334,12 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
     // (Per-payslip history lives on the earlier processed-batch events; the batch-level reset event
     // below records the count — same convention as teardownDraftChildren's child deletes.)
     const clearedSlips = await tx.delete(payslip).where(eq(payslip.batchId, p.batchId)).returning({ id: payslip.id });
+    // 49e7e0a2 — clear the recalculation mark BEFORE the status goes back to draft. Every payslip on the
+    // run has just been deleted, so there is no longer a stale figure for it to describe; leaving it set
+    // would block the Close of the run that eventually replaces these payslips for a staleness that no
+    // longer exists. (Order matters: clearBatchRecalc appends its event against the batch, and doing it
+    // first keeps the history reading processed → recalc-cleared → reset.)
+    await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: null });
     await tx
       .update(payrollBatch)
       .set({ status: 'draft', totals: null, employeeCount: 0 })
@@ -4305,20 +4528,14 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
     await assertPayrollPermission(tx, ctx, 'payroll.unlock', batch.companyId);
     if (batch.status !== 'closed') throw new BatchNotUnlockableError();
 
-    // Warning flags (reporter req.: warn if payment disbursed or statutory submission filed).
-    const [{ n: paymentExports } = { n: 0 }] = await tx
-      .select({ n: sql<number>`count(*)::int` })
-      .from(domainEvent)
-      .where(and(eq(domainEvent.aggregateId, p.batchId), eq(domainEvent.eventType, 'payroll-batch.payment-summary.exported')));
-    const statReports = await tx
-      .select({ id: statutoryReport.id })
-      .from(statutoryReport)
-      .where(and(eq(statutoryReport.companyId, batch.companyId), eq(statutoryReport.periodKey, batch.payPeriod)));
-    const warnings = {
-      paymentDisbursed: Number(paymentExports) > 0,
-      statutoryFiled: statReports.length > 0,
-      statutoryReportCount: statReports.length,
-    };
+    // Warning flags (reporter req.: warn if payment disbursed or statutory submission filed). 49e7e0a2
+    // moved the derivation into `batchDownstreamWarnings` so the Individual Transaction screen can show the
+    // SAME facts before it saves an edit onto a processed run — one implementation, one answer.
+    const warnings = await batchDownstreamWarnings(tx, {
+      batchId: p.batchId,
+      companyId: batch.companyId,
+      payPeriod: batch.payPeriod,
+    });
 
     // Flip status via the 0011 escape hatch (transaction-local; cleared at COMMIT — see migration 0163).
     await tx.execute(sql`select set_config('app.unlock_batch', ${p.batchId}, true)`);

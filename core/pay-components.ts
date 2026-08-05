@@ -16,6 +16,7 @@ import {
   payrollBatch,
   payrollBatchComponent,
   payrollInput,
+  payslip,
   person,
 } from '../db/schema';
 import { countryPacks } from '../localization/registry';
@@ -179,6 +180,57 @@ export function listEmploymentPayComponents(ctx: SessionContext, employmentId: s
       )
       .orderBy(payComponent.code, employmentPayComponent.validFrom),
   );
+}
+
+/** One row of `listEmploymentPayComponents`, which `getEmploymentPayComponent` returns exactly one of. */
+export type EmploymentPayComponentRow = Awaited<ReturnType<typeof listEmploymentPayComponents>>[number];
+
+/**
+ * f3ae3245 — ONE recurring fixed item by id, for the dedicated View/Edit page.
+ *
+ * Same projection as `listEmploymentPayComponents` so the page and the list can never describe the same
+ * row differently — one shape, narrowed to one id, rather than a second query with its own columns.
+ *
+ * Matched on `employmentId` as well as `id` for the same reason every write path in this file does: RLS
+ * fences the TENANT, company scope is an application concern, and the caller fences that. A row that is
+ * superseded (removed) reads as absent, exactly as it does in the list — a URL to a removed item must not
+ * resurrect it on screen.
+ *
+ * Read-only: no write, no DomainEvent. Returns null rather than throwing so the page can `notFound()`.
+ */
+export function getEmploymentPayComponent(
+  ctx: SessionContext,
+  p: { id: string; employmentId: string },
+): Promise<EmploymentPayComponentRow | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: employmentPayComponent.id,
+        componentId: payComponent.id,
+        code: payComponent.code,
+        name: payComponent.name,
+        kind: payComponent.kind,
+        amount: employmentPayComponent.amount,
+        validFrom: employmentPayComponent.validFrom,
+        validTo: employmentPayComponent.validTo,
+        currency: employmentPayComponent.currency,
+        prorateOverride: employmentPayComponent.prorateOverride,
+        prorates: payComponent.prorates,
+        remarks: employmentPayComponent.remarks,
+        runType: employmentPayComponent.runType,
+      })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .where(
+        and(
+          eq(employmentPayComponent.id, p.id),
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  });
 }
 
 export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
@@ -979,6 +1031,91 @@ export function endEmploymentPayComponent(
 }
 
 /**
+ * f1123afd — thrown when a recurring fixed item is removed after it has already been paid on a PROCESSED
+ * payslip. The payslip and the statutory submission it fed cannot be amended by removing the item
+ * afterwards, so the removal is refused outright, matching how Individual Transaction protects a paid
+ * one-off. `payPeriod` is the month the evidence was found in, so the message can be specific.
+ *
+ * The right action in that situation is `endEmploymentPayComponent` — end it from a date, which stops
+ * future payment and leaves what was already paid intact. The refusal message names it.
+ */
+export class FixedTransactionPaidError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly payPeriod: string,
+  ) {
+    super(
+      `Pay item "${code}" was paid on a processed payslip for ${payPeriod} and cannot be removed. End it from a date instead.`,
+    );
+    this.name = 'FixedTransactionPaidError';
+  }
+}
+
+/**
+ * Has this recurring item been paid on a payslip that has already been produced?
+ *
+ * ⚠️ READ THE LIMITATION BEFORE RELYING ON THIS — it is real, it is stated on purpose, and it was not
+ * papered over.
+ *
+ * WHAT THE PAYSLIP ACTUALLY STORES. There is no payslip LINE table. `payslip` holds aggregate columns
+ * (basicSalary, allowance, overtimePay, bonus, grossPay, otherDeductions, netPay, employerCost) plus a
+ * `statutory` jsonb. The per-item detail lives inside that jsonb, in two arrays the kernel stamps:
+ *   • `statutory.componentLines[] = { code, name, amount, buckets[] }` — every component that MOVED CASH
+ *     (feedback 862ed0ad, shipped 2026-08-01);
+ *   • `statutory.recordLines[]  = { code, name, amount }` — record-only / non-payable components.
+ * Both are keyed by the CATALOG CODE. Neither carries `employment_pay_component.id`, so there is no
+ * stored link to the specific effective-dated ROW that produced the money — only to the pay item.
+ *
+ * WHAT THIS FUNCTION THEREFORE DOES, AND WHY IT IS NOT A GUESS. It reads the payslip's OWN STORED
+ * FIGURES — the code list the run actually stamped — and requires all three of:
+ *   1. a payslip for this employment on a batch that is `processed` or `closed`;
+ *   2. that batch's stored `payPeriod` inside THIS ROW'S OWN effective window (month-level, exactly the
+ *      predicate the kernel selects on: valid_from <= period end AND (valid_to IS NULL OR >= period
+ *      start)) — which is what attributes the line to this row rather than a sibling for the same code;
+ *   3. this row's component code named in that slip's stored `componentLines` / `recordLines`.
+ * Nothing here re-derives ELIGIBILITY from today's catalog configuration — no flags, no rules, no
+ * proration are consulted. A payslip is a historical document, and recomputing what it "should" have
+ * contained is how history gets rewritten.
+ *
+ * THE GAP, STATED PLAINLY. Payslips generated BEFORE 862ed0ad shipped carry no `componentLines` key at
+ * all — the kernel's own comment says the detail "was never stored before, so the runs already completed
+ * cannot be itemised retrospectively". For those slips this returns null and the removal is ALLOWED. That
+ * is deliberate: refusing on the absence of evidence would block the removal of every recurring item on a
+ * system whose payslips predate the stamping, and "this component was probably in that payslip" is not a
+ * basis for refusing an admin action. The guard therefore grows teeth with every run generated from here
+ * on, and is honest about the ones behind it.
+ *
+ * Read-only, and cheap: one indexed lookup per removal over one employee's payslips.
+ */
+async function paidPayslipEvidence(
+  tx: Tx,
+  p: { employmentId: string; code: string; validFrom: string; validTo: string | null },
+): Promise<{ payPeriod: string; batchId: string } | null> {
+  const slips = await tx
+    .select({ payPeriod: payrollBatch.payPeriod, status: payrollBatch.status, batchId: payslip.batchId, statutory: payslip.statutory })
+    .from(payslip)
+    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+    .where(eq(payslip.employmentId, p.employmentId));
+  // The window, month-level, from the ROW'S OWN dates — its identity, not "today's configuration".
+  const fromMonth = p.validFrom.slice(0, 7);
+  const toMonth = p.validTo != null ? p.validTo.slice(0, 7) : null;
+  for (const s of slips) {
+    // 'draft' cannot appear (a draft has no payslips), but the set is stated positively rather than as
+    // "not draft" so an unrecognised status never counts as proof that someone was paid.
+    if (s.status !== 'processed' && s.status !== 'closed') continue;
+    if (s.payPeriod < fromMonth) continue;
+    if (toMonth != null && s.payPeriod > toMonth) continue;
+    const st = (s.statutory ?? {}) as {
+      componentLines?: { code?: unknown }[];
+      recordLines?: { code?: unknown }[];
+    };
+    const lines = [...(st.componentLines ?? []), ...(st.recordLines ?? [])];
+    if (lines.some((l) => l?.code === p.code)) return { payPeriod: s.payPeriod, batchId: s.batchId };
+  }
+  return null;
+}
+
+/**
  * Enhancement (feedback 1e2704f2) — REMOVE/ARCHIVE (void) a recurring fixed item: set `supersededAt = now()`.
  * The kernel then excludes it ENTIRELY (its select requires supersededAt IS NULL) and
  * listEmploymentPayComponents drops it from the screen — the true "delete/archive ⇒ no longer used in
@@ -991,8 +1128,15 @@ export function archiveEmploymentPayComponent(
 ) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
-      .select({ id: employmentPayComponent.id })
+      .select({
+        id: employmentPayComponent.id,
+        code: payComponent.code,
+        name: payComponent.name,
+        validFrom: employmentPayComponent.validFrom,
+        validTo: employmentPayComponent.validTo,
+      })
       .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
       .where(
         and(
           eq(employmentPayComponent.id, p.id),
@@ -1002,6 +1146,15 @@ export function archiveEmploymentPayComponent(
       )
       .limit(1);
     if (!row) throw new FixedTransactionNotFoundError();
+    // f1123afd — REFUSE when this item has already been paid on a processed payslip. Before this the
+    // only refusal was "the row does not exist"; nothing checked whether the money had gone out.
+    const paid = await paidPayslipEvidence(tx, {
+      employmentId: p.employmentId,
+      code: row.code,
+      validFrom: row.validFrom,
+      validTo: row.validTo,
+    });
+    if (paid) throw new FixedTransactionPaidError(row.code, paid.payPeriod);
     await tx
       .update(employmentPayComponent)
       .set({ supersededAt: new Date() })

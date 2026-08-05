@@ -418,6 +418,12 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/transaction-view',
       '/payroll/transactions',
       '/payroll/transactions/fixed',
+      // f3ae3245: the dedicated View/Edit page for ONE recurring fixed item, replacing the form that
+      // unfolded inside a table cell. Same scopedAdmin guard as its list — it is the same data, one row
+      // at a time. (This list is EXACT by design: the reverse-completeness test in
+      // test/function-access.test.ts fails the build for a guarded page.tsx with no column, which is how
+      // a new screen is stopped from being invisible on the access grid.)
+      '/payroll/transactions/fixed/[id]',
       '/payroll/transactions/individual',
       '/payroll/transactions/tp1',
       '/payroll/transactions/zakat',
