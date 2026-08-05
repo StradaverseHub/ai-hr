@@ -6017,8 +6017,104 @@ export type PackBlockedEmployment = {
   reason: 'country_pack_inactive';
 };
 
-export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
-  return withTenant(ctx, async (tx) => {
+/**
+ * 93249794 — WHAT THIS SWEEP DECIDED ABOUT ONE (employment, leave type) PAIR.
+ *
+ * ⚠️ EVERY VALUE HERE IS A LABEL ON A BRANCH THAT ALREADY EXISTED. Not one of them changes what the sweep
+ * does, and that is the entire design: the Generate Entitlement screen's "Validation & Preview" step is a
+ * DRY RUN OF THIS FUNCTION, so its verdict for an employee is — by construction, not by agreement — the
+ * verdict the real run will reach. The plan's own words: "build it as a DRY RUN over the same resolver the
+ * real run uses, not a separate list of checks. Anything else drifts."
+ *
+ * That is why there is no `validateLeaveGeneration` anywhere in this codebase. A second function asking
+ * "would this employee get days?" is a second definition of entitlement, which the item's build notes name
+ * as "the single worst outcome available here". The outcomes below are read off the ONE pass.
+ *
+ * The reporter's requested validation list maps onto them honestly, and where it does not, the mapping is
+ * stated rather than faked:
+ *   • "Missing Service Based Entitlement" / "Missing Leave Balance" / "Missing required Leave Type
+ *     configuration" ⇒ `no_entitlement` — the composition (`entitledDays`) resolved 0 days or less.
+ *   • "Missing Earning Method"                             ⇒ `unconfigured_method` (bc36c768's marker).
+ *   • "Duplicate entitlement records"                      ⇒ `already_open` (the idempotency marker row).
+ *   • "Invalid employee configuration"                     ⇒ `pack_blocked` (no active country pack).
+ *   • "Missing Company assignment" is not reachable: `employment.company_id` is NOT NULL and the sweep
+ *     INNER JOINs company, so an employment without one is not a row this loop can see.
+ *   • "Missing Leave Year Type" is not an error for THIS sweep: openLeaveYear is calendar-anchored by
+ *     definition (it grants at 1 January), so a company's leave_cycle cannot make it fail.
+ *   • "Missing Grade" is not an error either — `resolveGradePolicy` accepts a null grade and matches the
+ *     company/default rows. Reporting it as a failure would tell HR to fix something that is not broken.
+ */
+export type LeaveYearGrantOutcome =
+  /** An accrual row was (or would be) written for this pair, at `days`. */
+  | 'granted'
+  /** bc36c768: the type carries the not-configured marker, so the grant is forced to 0. The marker row is
+   *  still written — carry-forward and expiry depend on it. `granted` counts it, exactly as before. */
+  | 'unconfigured_method'
+  /** This pair already has an accrual row at 1 January — a re-run, not a duplicate. Counted in `skipped`. */
+  | 'already_open'
+  /** ADR-0069: an active frozen encashment snapshot locks the balance. Counted in `skipped`. */
+  | 'frozen'
+  /** ADR-0040: an earned method accrues through the year via accrueEarnedLeave, not this lump grant. */
+  | 'earned_method'
+  /** The composition resolved 0 days or fewer, so nothing is owed and no row is written. */
+  | 'no_entitlement'
+  /** ADR-0077 slice 6: the company's country pack is not active, so nothing can be computed. */
+  | 'pack_blocked';
+
+/** One line of the per-employee generation log — the same row the preview shows and the CSV downloads. */
+export type LeaveYearGrantRow = {
+  employmentId: string;
+  leaveTypeId: string;
+  outcome: LeaveYearGrantOutcome;
+  /** The accrual days posted (or that would be posted). 0 on every non-granting outcome. */
+  days: number;
+  /** Carry brought into the new year after the cap and the max-balance clamp. */
+  carry: number;
+  /** Prior-year balance above the carry allowance, forfeited at the boundary. */
+  forfeit: number;
+  /** fa3f4ccb: advisory only — the resolved figure is under the statutory minimum for the type. */
+  belowStatutoryFloor: boolean;
+};
+
+export type OpenLeaveYearResult = {
+  granted: number;
+  skipped: number;
+  forfeits: number;
+  packBlocked: PackBlockedEmployment[];
+  /** 93249794 — the per-pair log, accumulated in the SAME pass that writes. See LeaveYearGrantOutcome. */
+  rows: LeaveYearGrantRow[];
+};
+
+/**
+ * Post a leave year's entitlement for every eligible employment: grant, cap the carry-forward and forfeit
+ * the excess. Idempotent on its own `openedSet`, which is read from the LEDGER rather than from any
+ * configuration table — so a second run grants nothing twice.
+ *
+ * 93249794 ADDED THREE OPTIONAL PARAMETERS AND NO NEW ARITHMETIC. They are the same three the Run Earned
+ * Accrual button's scope+preview (2c7c6385) added to `accrueEarnedLeave`, in the same shape and for the
+ * same reason — a preview that does not share the commit's pass is a preview that can lie:
+ *
+ *   • `leaveTypeIds`   — narrow WHICH types this run grants. Applied AFTER the "which types this sweep
+ *                        grants" set is computed, so it can only ever narrow that set, never widen it.
+ *   • `employmentIds`  — narrow WHO it reaches. Resolved by the CALLER through
+ *                        `resolveOrgCriteriaTargets` (core/org-criteria.ts) — this function deliberately
+ *                        knows nothing about criteria, because "who does this apply to" already has one
+ *                        answer in this codebase and a second one here would be the duplicate-maintenance
+ *                        defect item 6e9a126e exists to remove.
+ *   • `dryRun`         — compute everything, write NOTHING (no ledger rows, no event). The returned
+ *                        counters and `rows` are exactly what a real run would produce.
+ *
+ * ABSENT ⇒ NO RESTRICTION ON THAT AXIS, so the bare `openLeaveYear(s, { year })` call is byte-identical to
+ * what it was before this item.
+ */
+export async function openLeaveYear(
+  ctx: SessionContext,
+  p: { year: number; leaveTypeIds?: string[]; employmentIds?: string[]; dryRun?: boolean },
+): Promise<OpenLeaveYearResult> {
+  const scopeTypeIds = (p.leaveTypeIds ?? []).filter(Boolean);
+  const scopeEmpIds = (p.employmentIds ?? []).filter(Boolean);
+  const dryRun = p.dryRun === true;
+  return withTenant(ctx, async (tx): Promise<OpenLeaveYearResult> => {
     const yearStart = `${p.year}-01-01`;
 
     // WHICH TYPES THIS SWEEP GRANTS — items 783bf55a and baea8e5b.
@@ -6070,7 +6166,14 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
     // an empty configured set is a normal state that several drizzle `inArray` forms handle badly.
     const configuredIds = new Set([...policyConfigured, ...schemeConfigured].map((r) => r.id));
     const standing = new Set<string>([...STANDING_LEAVE_CODES]);
-    const types = allTypes.filter((t) => standing.has(t.code) || configuredIds.has(t.id));
+    // 93249794 — the Leave Type scope is applied HERE, on top of the set above, and never in place of it.
+    // A type the sweep would not have granted anyway does not become grantable by being picked on a form;
+    // the wizard can only ever ask for LESS than the unscoped run. Empty ⇒ every type this sweep grants.
+    const types = allTypes.filter(
+      (t) =>
+        (standing.has(t.code) || configuredIds.has(t.id)) &&
+        (scopeTypeIds.length === 0 || scopeTypeIds.includes(t.id)),
+    );
     const emps = await tx
       .select({
         employmentId: employment.id,
@@ -6086,9 +6189,17 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         and(
           lt(employment.hiredOn, yearStart),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+          // 93249794 — the employee scope, already resolved by the caller through
+          // resolveOrgCriteriaTargets. A RESTRICTION, never a widening: an employment that is not active
+          // at the year boundary is still excluded by the two conditions above, whatever the form asked
+          // for. Empty ⇒ every eligible employment (the pre-existing unscoped sweep).
+          scopeEmpIds.length ? inArray(employment.id, scopeEmpIds) : undefined,
         ),
       );
-    if (types.length === 0 || emps.length === 0) return { granted: 0, skipped: 0, forfeits: 0 };
+    const rows: LeaveYearGrantRow[] = [];
+    if (types.length === 0 || emps.length === 0) {
+      return { granted: 0, skipped: 0, forfeits: 0, packBlocked: [], rows };
+    }
     const empIds = emps.map((e) => e.employmentId);
     const typeIds = types.map((t) => t.id);
 
@@ -6162,6 +6273,10 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
       const pack = packFor(e.country);
       if (!pack) {
         packBlocked.push({ employmentId: e.employmentId, country: e.country ?? null, reason: 'country_pack_inactive' });
+        // 93249794: log it PER TYPE as well, so the preview's per-employee error table can name what the
+        // employee is missing for each leave type they were selected for. `packBlocked` above is unchanged
+        // — this is an additional record of the same skip, not a second decision about it.
+        for (const t of types) rows.push(logRow(e.employmentId, t.id, 'pack_blocked'));
         continue;
       }
       const years = serviceYearsAt(e.hiredOn, yearStart);
@@ -6169,10 +6284,12 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         const key = `${e.employmentId}|${t.id}`;
         if (openedSet.has(key)) {
           skipped += 1;
+          rows.push(logRow(e.employmentId, t.id, 'already_open'));
           continue;
         }
         if (frozenSet.has(key)) {
           skipped += 1; // ADR-0069: leave balance frozen for encashment
+          rows.push(logRow(e.employmentId, t.id, 'frozen'));
           continue;
         }
         // Leave Entitlement Rules Engine: `years` (service at year-open) drives custom band upgrades here,
@@ -6186,14 +6303,24 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
           t,
         );
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
-        if (isEarnedMethod(pol?.method)) continue;
+        if (isEarnedMethod(pol?.method)) {
+          rows.push(logRow(e.employmentId, t.id, 'earned_method'));
+          continue;
+        }
         // Benefit Scheme (b83c6a3b): a resolved scheme entitlement SUPERSEDES the grade policy days for this
         // type. null ⇒ no scheme ⇒ use policy days. One shared composition (entitledDays, feedback
         // ae5b84d5) so this can never drift from the recalc kernel. fa3f4ccb: the statutory floor is passed
         // for the below-minimum SIGNAL only — it no longer clamps the granted figure.
         const schemeDays = schemeDaysFor(e.employmentId, t.id, years);
-        const { days } = entitledDays(pack.leave.entitlement(t.code, years), schemeDays, pol?.days ?? 0);
-        if (days <= 0) continue;
+        const { days, belowStatutoryFloor } = entitledDays(
+          pack.leave.entitlement(t.code, years),
+          schemeDays,
+          pol?.days ?? 0,
+        );
+        if (days <= 0) {
+          rows.push(logRow(e.employmentId, t.id, 'no_entitlement'));
+          continue;
+        }
         const before = balanceBy.get(key) ?? 0;
         // Carry forward, for EVERY leave type (7cd914b1). This used to read
         // `t.code === 'ANNUAL' && carryEnabled(pol)`, which meant a non-annual type could not carry
@@ -6243,44 +6370,75 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         const { carry, grant: grantDays } = applyMaxBalance(rawCarry, grantRounded, pol?.maxBalanceDays);
         const forfeit = Math.max(0, before - carry);
         if (forfeit > 0) {
-          await tx.insert(leaveLedger).values({
-            tenantId: ctx.tenantId,
-            employmentId: e.employmentId,
-            leaveTypeId: t.id,
-            entryType: 'adjustment',
-            days: (-forfeit).toFixed(2),
-            effectiveOn: yearStart,
-            reason: CARRY_FORFEIT_REASON_CAP,
-          });
+          // 93249794 dryRun: compute the identical forfeit and write NOTHING. The counter still moves, so
+          // the preview reports the same `forfeits` the commit will — preview-must-not-lie (2c7c6385).
+          if (!dryRun) {
+            await tx.insert(leaveLedger).values({
+              tenantId: ctx.tenantId,
+              employmentId: e.employmentId,
+              leaveTypeId: t.id,
+              entryType: 'adjustment',
+              days: (-forfeit).toFixed(2),
+              effectiveOn: yearStart,
+              reason: CARRY_FORFEIT_REASON_CAP,
+            });
+          }
           forfeits += 1;
         }
         // Feedback 9d8cf621: post the (possibly Maximum-Balance-clamped) grant. The row is ALWAYS written —
         // even at 0 days when the cap is already reached — because it is openLeaveYear's own idempotency
         // open-marker (openedSet) and the expiry sweep's "year was opened" marker.
-        await tx.insert(leaveLedger).values({
-          tenantId: ctx.tenantId,
+        if (!dryRun) {
+          await tx.insert(leaveLedger).values({
+            tenantId: ctx.tenantId,
+            employmentId: e.employmentId,
+            leaveTypeId: t.id,
+            entryType: 'accrual',
+            days: grantDays.toFixed(2),
+            effectiveOn: yearStart,
+          });
+        }
+        granted += 1;
+        rows.push({
           employmentId: e.employmentId,
           leaveTypeId: t.id,
-          entryType: 'accrual',
-          days: grantDays.toFixed(2),
-          effectiveOn: yearStart,
+          // The bc36c768 marker is reported as its OWN outcome rather than as "granted 0 days", because
+          // "HR has not chosen an earning method" and "the configuration says zero" are different facts
+          // and only the first is something HR can go and fix. The behaviour is identical either way —
+          // the row is written and `granted` counts it, exactly as before this item.
+          outcome: isAccrualUnconfigured(t) ? 'unconfigured_method' : 'granted',
+          days: grantDays,
+          carry,
+          forfeit,
+          belowStatutoryFloor,
         });
-        granted += 1;
       }
     }
 
     // One summary event; the ledger rows are the per-item audit (high-volume per-item
     // writes with their own append-only table — deliberate substrate skip).
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-year',
-      aggregateId: ctx.tenantId,
-      eventType: 'leave-year.opened',
-      actor: actorOf(ctx),
-      payload: { year: p.year, granted, skipped, forfeits },
-    });
-    return { granted, skipped, forfeits, packBlocked };
+    //
+    // 93249794 dryRun: a PREVIEW MUST LEAVE NO TRACE, so the event is skipped entirely — the same rule
+    // accrueEarnedLeave's preview follows. The Generate Entitlement screen appends its OWN
+    // `leave-generation.run` event on the commit path (core/leave-generation.ts), carrying the scope this
+    // event has no field for.
+    if (!dryRun) {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'leave-year',
+        aggregateId: ctx.tenantId,
+        eventType: 'leave-year.opened',
+        actor: actorOf(ctx),
+        payload: { year: p.year, granted, skipped, forfeits },
+      });
+    }
+    return { granted, skipped, forfeits, packBlocked, rows };
   });
+}
+
+/** A non-granting log line — every one of these outcomes moves no days, so the four numbers are fixed. */
+function logRow(employmentId: string, leaveTypeId: string, outcome: LeaveYearGrantOutcome): LeaveYearGrantRow {
+  return { employmentId, leaveTypeId, outcome, days: 0, carry: 0, forfeit: 0, belowStatutoryFloor: false };
 }
 
 // ── Earned accrual (ADR-0040 / 2D-1) ──────────────────────────────────────────────────────────────

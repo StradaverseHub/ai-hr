@@ -5,12 +5,10 @@ import { listLeaveTypes, listCompanies, listDepartments, listJobGrades } from '@
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { listLeaveAdjustmentBatches } from '@/core/leave-adjustment';
-import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
-import { CONFIRMATION_STATUSES } from '@/core/org-criteria';
-import { EMPLOYMENT_STATUSES } from '@/core/employment-status';
+import { buildOrgCriteriaSections } from '@/core/org-criteria-form';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
-import { AdjustmentForm, type CriteriaSection } from '@/components/leave/adjustment-form';
+import { AdjustmentForm } from '@/components/leave/adjustment-form';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
@@ -83,100 +81,18 @@ export default async function LeaveAdjustmentsPage({
       companyIds.length ? listLocations(s, companyIds) : Promise.resolve([]),
     ]);
 
-  // The eight org axes come from the same profile-option catalogue the leave-type Condition step reads, so
-  // both screens offer the same vocabulary rather than two lists that drift.
-  const orgOptions = Object.fromEntries(
-    ORG_ASSIGNMENT_CRITERIA.map((c) => [
-      c.key as string,
-      {
-        label: tOrg(c.labelKey),
-        // ProfileOptionRow carries value + label; the eligibility engine matches on the stored VALUE, so that
-        // is what the criteria post — showing the label while posting the value is the whole point.
-        options: (profileOptions[c.category] ?? [])
-          .filter((o) => o.isActive)
-          .map((o) => ({ value: o.value, label: o.label })),
-      },
-    ]),
-  );
-  const org = (key: string) => ({ name: key, kind: 'multi' as const, ...orgOptions[key] });
-  const catalogue = (category: 'nationality' | 'religion' | 'race') =>
-    (profileOptions[category] ?? []).filter((o) => o.isActive).map((o) => ({ value: o.value, label: o.label }));
-
   /**
-   * The reporter's four groups, in their order. Every `name` is a field the shared resolver understands.
+   * The criteria builder — THE SHARED ONE, not a copy.
    *
-   * WHAT IS NOT HERE, AND WHY: Job Title, Employee Group and Employee Class. The schema holds no column,
-   * catalogue or import field for any of the three — they are absent rather than unwired — so a picker for
-   * them could only match nobody or everybody. `adjustmentsCriteria.absentNote` says so on the screen
-   * instead of leaving the operator hunting for a field that was promised.
+   * 93249794 moved these four sections out of this file into `core/org-criteria-form.ts` verbatim, because
+   * the Generate Entitlement screen asks the identical question and copying the list would have reproduced
+   * the duplicate-maintenance defect one layer above the resolver: two pickers, one of which quietly stops
+   * offering an axis the other has. Everything this screen offered before, it offers now, from one list.
    */
-  const criteriaSections: CriteriaSection[] = [
-    {
-      key: 'company',
-      title: tCrit('sectionCompany'),
-      fields: [
-        { name: 'companyIds', label: tCrit('company'), kind: 'multi', options: companies.map((c) => ({ value: c.id, label: c.name })) },
-        { name: 'businessUnitIds', label: tCrit('businessUnit'), kind: 'multi', options: businessUnits.map((b) => ({ value: b.id, label: `${b.code} — ${b.name}` })) },
-        org('orgDivision'),
-        { name: 'departmentIds', label: tCrit('department'), kind: 'multi', options: departments.map((d) => ({ value: d.id, label: d.name })) },
-        org('orgSection'),
-        org('orgTeam'),
-        org('orgBranch'),
-        { name: 'locationIds', label: tCrit('location'), kind: 'multi', options: locations.map((l) => ({ value: l.id, label: `${l.code} — ${l.name}` })) },
-        // Region / Line / Base were narrowing options here BEFORE this item and are not on the reporter's
-        // list. Dropping them to match the mock exactly would be a silent removal of working behaviour, so
-        // they stay, in the group they belong to.
-        org('orgRegion'),
-        org('orgLine'),
-        org('orgBase'),
-      ],
-    },
-    {
-      key: 'employment',
-      title: tCrit('sectionEmployment'),
-      fields: [
-        { name: 'employmentTypes', label: tCrit('employmentType'), kind: 'multi', options: ['full_time', 'part_time', 'contract', 'intern'].map((v) => ({ value: v, label: tEmploymentType(v) })) },
-        // DERIVED, as at the effective date — core/employment-status.ts, via its SQL twin. Not a stored
-        // column, which is why it can be resolved for a backdated adjustment at all.
-        { name: 'employmentStatuses', label: tCrit('employeeStatus'), kind: 'multi', options: EMPLOYMENT_STATUSES.map((v) => ({ value: v, label: tCrit(`status_${v}`) })) },
-        { name: 'gradeIds', label: tCrit('jobGrade'), kind: 'multi', options: grades.map((g) => ({ value: g.id, label: g.name })) },
-        { name: 'positionIds', label: tCrit('position'), kind: 'multi', options: positions.map((p) => ({ value: p.id, label: p.title })) },
-        { name: 'costCenterIds', label: tCrit('costCentre'), kind: 'multi', options: costCenters.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` })) },
-      ],
-    },
-    {
-      key: 'employee',
-      title: tCrit('sectionEmployee'),
-      fields: [
-        org('employmentCategory'),
-        // PDPA s.40 sensitive demographics, read from `person`. Asked for by name in the request — see the
-        // header of core/org-criteria.ts for why that mattered before they were implemented.
-        { name: 'genders', label: tCrit('gender'), kind: 'multi', options: [
-          { value: 'male', label: tCrit('genderMale') },
-          { value: 'female', label: tCrit('genderFemale') },
-          { value: 'undisclosed', label: tCrit('genderUndisclosed') },
-        ] },
-        { name: 'nationalities', label: tCrit('nationality'), kind: 'multi', options: catalogue('nationality') },
-        { name: 'religions', label: tCrit('religion'), kind: 'multi', options: catalogue('religion') },
-        { name: 'races', label: tCrit('race'), kind: 'multi', options: catalogue('race') },
-      ],
-      note: tCrit('absentNote'),
-    },
-    {
-      key: 'service',
-      title: tCrit('sectionService'),
-      fields: [
-        { name: 'hiredFrom', label: tCrit('hiredFrom'), kind: 'date' },
-        { name: 'hiredTo', label: tCrit('hiredTo'), kind: 'date' },
-        // DERIVED from the hire date AS AT the effective date, never stored — see yearsOfServiceSql.
-        { name: 'minYearsOfService', label: tCrit('minYears'), kind: 'number' },
-        { name: 'maxYearsOfService', label: tCrit('maxYears'), kind: 'number' },
-        // ONE axis for the reporter's "Confirmation Status" AND "Probation Status": they are the same
-        // predicate, and two controls for one rule is how they start disagreeing.
-        { name: 'confirmationStatuses', label: tCrit('confirmationStatus'), kind: 'multi', options: CONFIRMATION_STATUSES.map((v) => ({ value: v, label: v === 'confirmed' ? tCrit('confirmed') : tCrit('onProbation') })) },
-      ],
-    },
-  ];
+  const criteriaSections = buildOrgCriteriaSections(
+    { companies, departments, grades, positions, costCenters, businessUnits, locations, profileOptions },
+    { crit: tCrit, org: tOrg, employmentType: tEmploymentType },
+  );
 
   return (
     <div className="space-y-6">

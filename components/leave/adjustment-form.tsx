@@ -12,15 +12,15 @@ type Opt = { value: string; label: string };
 type Action = (fd: FormData) => void | Promise<void>;
 
 /**
- * One criteria control. `kind` decides what it posts and how the live count reads it back:
- *  - 'multi'  → a ChipMultiSelect, posting 0..n values under `name` (read with getAll)
- *  - 'date'   → an <input type=date>, posting 0..1 values (read with get)
- *  - 'number' → an <input type=number>, likewise
+ * One criteria control — the SHARED shape, declared once in `core/org-criteria-form.ts` alongside the
+ * builder that produces it, and re-exported here so this file's existing importers keep compiling.
+ *
  * Every field arrives already labelled and already option-loaded from the SERVER page — nothing here
- * decides what an axis means, which is what keeps the picker and the resolver from drifting apart.
+ * decides what an axis means, which is what keeps the picker and the resolver from drifting apart. It is a
+ * TYPE-only import, erased at compile time, so no server module is pulled into this client bundle.
  */
-export type CriteriaField = { name: string; label: string; kind: 'multi' | 'date' | 'number'; options?: Opt[] };
-export type CriteriaSection = { key: string; title: string; fields: CriteriaField[]; note?: string };
+export type { CriteriaField, CriteriaSection } from '@/core/org-criteria-form';
+import type { CriteriaSection } from '@/core/org-criteria-form';
 
 /** What the live-count / validation server action answers. Counts, never names — see previewLeaveAdjustmentBatch. */
 export type AdjustmentPreview = {

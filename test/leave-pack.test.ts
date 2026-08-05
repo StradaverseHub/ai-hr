@@ -68,6 +68,11 @@ describe('ADR-0080 rung 6: leave pack registration', () => {
       'toil_accrual',
       'leave_year_config',
       'leave_entitlement_recalc_audit',
+      // 93249794 — the Generate Entitlement processing log. This list is an EXACT-SET guard: it is
+      // UPDATED when a row is legitimately added, never loosened, because its job is to catch a sibling
+      // accidentally clipped by an edit.
+      'leave_generation_run',
+      'leave_generation_run_item',
       'leave_encashment_policy',
       'leave_encashment_snapshot',
     ]);

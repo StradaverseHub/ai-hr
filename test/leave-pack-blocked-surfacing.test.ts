@@ -39,9 +39,15 @@ describe('no leave sweep skips an employment silently', () => {
   });
 
   it('surfaces the blocked list on every sweep that can produce one', () => {
-    expect(SRC).toContain('return { granted, skipped, forfeits, packBlocked };');
-    expect(SRC).toContain('return { granted, forfeits, breakdown, packBlocked };');
-    expect((SRC.match(/return \{ affected, totalDelta, packBlocked \};/g) ?? []).length).toBe(2);
+    // CORRECTED (93249794): these pinned the EXACT return literal, so adding a field to a sweep's
+    // result broke a guard whose subject — "packBlocked reaches the caller" — was never in question.
+    // openLeaveYear grew `rows` (the per-employee verdicts the dry run needs) and this failed while
+    // packBlocked was still right there in the same return. Same mistake two guards made in r138:
+    // asserting an implementation where they meant an invariant. Now each sweep's return must CARRY
+    // packBlocked; what else rides along is that sweep's business.
+    expect(SRC).toMatch(/return \{ granted, skipped, forfeits, packBlocked[^}]*\};/);
+    expect(SRC).toMatch(/return \{ granted, forfeits, breakdown, packBlocked[^}]*\};/);
+    expect((SRC.match(/return \{ affected, totalDelta, packBlocked[^}]*\};/g) ?? []).length).toBe(2);
   });
 
   // An early "nothing to do" return must still carry the field, or callers have to defend against

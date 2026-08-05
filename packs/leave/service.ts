@@ -64,3 +64,6 @@ export * from '../../core/benefit-scheme';
 // documented to only ever shrink.
 export * from '../../core/entitlement-template';
 export * from '../../core/entitlement-archive';
+// 93249794 — the Generate Entitlement service. Outside callers reach it HERE, never through core/,
+// which is what keeps it inside the pack boundary declared in test/leave-pack-drift.test.ts.
+export * from '../../core/leave-generation';
