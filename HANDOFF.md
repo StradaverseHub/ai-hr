@@ -49,13 +49,29 @@ full lesson is the first trap below.
 previous snapshot's "nothing is open and nothing is contested" no longer holds — the board moves
 under this file between rounds, so re-count rather than trusting the line above.
 
-**STILL `building`, both deliberately partial and both correct to leave that way:**
-- `6e9a126e` — releases ONE (r141) and **TWO (r159)** are now live. Release three (archive-then-clear,
-  drop the three old tables) remains and is the **OWNER'S decision, not a build task.**
-- `35b7af0a` — groups 1-2 (r138) and **groups 3-5 (r159)** are live. Date of Birth + Age shipped:
-  `completedYearsAt` moved out of `core/leave.ts` into `lib/completed-years.ts`, which is client-safe,
-  so the wizard renders the same control as the profile. Remaining: ~28 identity/org-cascade/statutory
-  labels.
+**STILL `building`, both deliberately partial. `improve:pull` HIDES `building`, so nothing but this
+file will ever surface them — both now carry a `build_ref` describing exactly what shipped and what
+has not (stamped 2026-08-05; both were null, so the board could not say which release held what).**
+
+- **`6e9a126e` — releases ONE (r141) and TWO (r159) are live. RELEASE THREE IS DATA-BLOCKED, not
+  merely awaiting a decision.** Measured on production 2026-08-05: `leave_policy` **67** rows,
+  `benefit_scheme` **41**, `scheme_leave_entitlement` **292** — against **0** in both
+  `entitlement_template` and `entitlement_eligibility_rule`. Release two made the engines resolve
+  `template ?? scheme ?? policy`, so with the new layer empty everything still falls through to the
+  old one; dropping it without migrating those 400 rows first would resolve every entitlement to the
+  statutory floor. **A data migration must come first, and it does not exist yet.**
+  Two more constraints from its own plan: it must land AFTER `1ae7f3ab`+`4fdb69b2`, because dropping
+  `leave_policy` silently removes one of the five limbs `deleteLeaveType`'s in-use guard counts
+  (`core/admin.ts:4490-4498` — release two already added the template/eligibility limbs); and
+  `employment.benefit_scheme_id` is already at **0** rows, so that column alone is safe.
+- **`35b7af0a` — groups 1-2 (r138) and groups 3-5 (r159) are live. 25 labels remain**, measured not
+  estimated: 28 `people.wizard.fields.*` keys are defined and 25 still rendered — the identity,
+  org-cascade and statutory groups. Date of Birth + Age shipped by moving `completedYearsAt` out of
+  server-only `core/leave.ts` into client-safe `lib/completed-years.ts`, so the wizard and the profile
+  render one control against one function identity. **The other 3 keys only LOOK retirable — see the
+  computed-key trap below; they are pinned by test and deleting them breaks real screens.**
+  Sequencing: overlaps `8590615a` (contract employment info), which ADDS profile fields — land that
+  first or it adds them to a screen being taken apart.
 
 ### 6e9a126e — releases ONE and TWO are live and INERT; release THREE is the owner's call
 
@@ -643,7 +659,15 @@ excluded the path on 2026-08-04 (cluster start 10+ min → <1 s; suite 2848 s wi
   shipped had never merged (r76); slice 2 had no round entry and looked skipped but was live at 50
   call sites. Verify with `git log -S <symbol> main` before trusting any claim here.
 - **i18n guard holes** (`test/i18n-coverage.test.ts` check C): it skips files using more than one
-  namespace, and only matches LITERAL keys — `t(helperReturningKey(x))` is invisible. Prefer one
+  namespace, and only matches LITERAL keys — `t(helperReturningKey(x))` is invisible.
+  **THE SAME BLINDNESS MAKES "UNUSED KEY" A FALSE POSITIVE, and r159 nearly deleted three on it.**
+  `fields.rateAmount`, `fields.dateOfBirth` and `fields.bankAccount` survive no literal grep, because
+  the wizard's Review step renders `t(`fields.${f}`)` from whatever `missingByStep` returns
+  (`app/admin/personnel/new/wizard.tsx:849`). Deleting them is a MISSING_MESSAGE on screens HR really
+  reaches: a daily-paid hire with no rate, a malformed date, half a bank instruction. All three are
+  pinned non-empty in all six catalogs by `test/wizard-personnel-shared-fields.test.ts`, and both
+  component headers say so. **Before deleting any key, grep for the COMPUTED form (`` t(`prefix. ``)
+  as well as the literal — absence from a literal grep is not evidence.** Prefer one
   namespace per file; for computed keys, test every value the helper can return.
 
 - **A KEY THAT EXISTS BUT CANNOT FORMAT IS INVISIBLE TO CHECK C — third hole, found r140.** Check C
