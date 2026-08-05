@@ -238,7 +238,8 @@ export function PlannedAbsencesGrid({
                 const showCancel = !!cancelAction && !!l.cancelEligible;
                 // feedback 22e68ff0: an HR admin can immediately cancel this pill on the employee's behalf. Same
                 // compact XCircle trigger convention as the employee give-back, but opens AdminCancelLeaveDialog
-                // (confirmation + optional reason) and posts the on-behalf action with back="/".
+                // (confirmation + optional reason) and posts the on-behalf action with the calendar's own page as
+                // the return surface (a00c4f64 moved that from the dashboard to /leave/tracker).
                 const showAdminCancel = !!adminCancelAction && !!l.adminCancelEligible;
                 // item c9a19e34: the viewer self-withdraws their own PENDING pill (immediate, no dates picker).
                 const showSelfCancel = !!selfCancelAction && !!l.selfCancelEligible;
@@ -309,7 +310,7 @@ export function PlannedAbsencesGrid({
                     {showAdminCancel && (
                       <AdminCancelLeaveDialog
                         leaveRequestId={l.id}
-                        back="/"
+                        back="/leave/tracker"
                         submitAction={adminCancelAction!}
                         trigger={
                           <button

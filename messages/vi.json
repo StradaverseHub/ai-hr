@@ -90,6 +90,7 @@
     "people": "Nhân sự",
     "orgChart": "Sơ đồ tổ chức",
     "myAbsence": "Nghỉ phép của tôi",
+    "teamLeaveTracker": "Theo dõi nghỉ phép của nhóm",
     "attendance": "Chấm công",
     "myAttendance": "Chấm công của tôi",
     "manage": "Quản lý",
@@ -1768,6 +1769,10 @@
       "splitConfirm": "Yes — I agree to the unpaid days."
     },
     "unpaidPortionLabel": "Nghỉ không lương"
+  },
+  "leaveTracker": {
+    "title": "Theo dõi nghỉ phép của nhóm",
+    "description": "Ai nghỉ và nghỉ khi nào — phép của bạn, và của nhóm bạn nếu bạn có cấp dưới trực tiếp."
   },
   "attendance": {
     "title": "Chấm công",
@@ -5142,6 +5147,7 @@
       "scope": {
         "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",
         "leave": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
+        "leaveTracker": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
         "attendance": "Mọi người đều có thể mở; bạn thấy chấm công của mình, quản lý và quản trị viên thấy của cấp dưới.",
         "approvals": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",

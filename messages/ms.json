@@ -90,6 +90,7 @@
     "people": "Kakitangan",
     "orgChart": "Carta organisasi",
     "myAbsence": "Cuti Saya",
+    "teamLeaveTracker": "Penjejak Cuti Pasukan",
     "attendance": "Kehadiran",
     "myAttendance": "Kehadiran Saya",
     "manage": "Urus",
@@ -1768,6 +1769,10 @@
       "splitConfirm": "Yes — I agree to the unpaid days."
     },
     "unpaidPortionLabel": "Cuti Tanpa Gaji"
+  },
+  "leaveTracker": {
+    "title": "Penjejak Cuti Pasukan",
+    "description": "Siapa tiada dan bila — cuti anda sendiri, dan cuti pasukan anda jika anda mempunyai bawahan langsung."
   },
   "attendance": {
     "title": "Kehadiran",
@@ -5142,6 +5147,7 @@
       "scope": {
         "people": "Semua orang boleh membukanya; senarai dihadkan kepada orang yang anda dibenarkan lihat.",
         "leave": "Semua orang boleh membukanya; anda lihat cuti sendiri, pengurus dan pentadbir lihat laporan mereka.",
+        "leaveTracker": "Semua orang boleh membukanya; anda lihat cuti sendiri, pengurus dan pentadbir lihat laporan mereka.",
         "attendance": "Semua orang boleh membukanya; anda lihat kehadiran sendiri, pengurus dan pentadbir lihat laporan mereka.",
         "approvals": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "roster": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",

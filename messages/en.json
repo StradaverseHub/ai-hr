@@ -90,6 +90,7 @@
     "people": "Personnel",
     "orgChart": "Org chart",
     "myAbsence": "My Leave",
+    "teamLeaveTracker": "Team Leave Tracker",
     "attendance": "Attendance",
     "myAttendance": "My Attendance",
     "manage": "Manage",
@@ -1768,6 +1769,10 @@
       "splitConfirm": "Yes — I agree to the unpaid days."
     },
     "unpaidPortionLabel": "Unpaid Leave"
+  },
+  "leaveTracker": {
+    "title": "Team Leave Tracker",
+    "description": "Who is away and when — your own leave, and your team’s if you have direct reports."
   },
   "attendance": {
     "title": "Attendance",
@@ -5142,6 +5147,7 @@
       "scope": {
         "people": "Everyone can open this; the list is limited to the people you are allowed to see.",
         "leave": "Everyone can open this; you see your own leave, managers and admins see their reports.",
+        "leaveTracker": "Everyone can open this; you see your own leave, managers and admins see their reports.",
         "attendance": "Everyone can open this; you see your own attendance, managers and admins see their reports.",
         "approvals": "Managers and above; what appears follows your actual reporting lines.",
         "roster": "Managers and above; what appears follows your actual reporting lines.",

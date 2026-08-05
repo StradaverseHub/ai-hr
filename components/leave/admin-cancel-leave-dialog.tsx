@@ -17,7 +17,7 @@ type Action = (fd: FormData) => void | Promise<void>;
  * on the Dashboard leave calendar (a compact XCircle icon inside the leave pill, via the `trigger`
  * prop — same pattern as CancelDatesDialog). Clicking opens a confirmation dialog with an optional reason
  * field; submitting posts `adminCancelLeaveAction` with `leaveRequestId`, `reason`, and a whitelisted `back`
- * surface ('/leave', '/leave/employee-records' or '/'). The service re-runs every eligibility gate
+ * surface ('/leave', '/leave/employee-records' or '/leave/tracker'). The service re-runs every eligibility gate
  * authoritatively.
  */
 export function AdminCancelLeaveDialog({
@@ -25,12 +25,12 @@ export function AdminCancelLeaveDialog({
   back,
   backEmp,
   submitAction,
-  // Calendar entry point: the dashboard passes a COMPACT icon trigger on the leave pill instead of the default
-  // labelled button the Leave page uses. When omitted, the Leave-page labelled button renders.
+  // Calendar entry point: the Team Leave Tracker passes a COMPACT icon trigger on the leave pill instead of the
+  // default labelled button the Leave page uses. When omitted, the Leave-page labelled button renders.
   trigger,
 }: {
   leaveRequestId: string;
-  back: '/leave' | '/leave/employee-records' | '/';
+  back: '/leave' | '/leave/employee-records' | '/leave/tracker';
   /** Employee Leave Records only: the employment being viewed. That page selects an employee via
    *  `?emp=`, so a bare redirect would silently jump the admin to a DIFFERENT employee's records
    *  right after they cancelled something. The action re-validates this as a uuid. */

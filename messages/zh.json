@@ -90,6 +90,7 @@
     "people": "员工",
     "orgChart": "组织架构图",
     "myAbsence": "我的休假",
+    "teamLeaveTracker": "团队休假追踪",
     "attendance": "考勤",
     "myAttendance": "我的考勤",
     "manage": "管理",
@@ -1768,6 +1769,10 @@
       "splitConfirm": "Yes — I agree to the unpaid days."
     },
     "unpaidPortionLabel": "无薪假"
+  },
+  "leaveTracker": {
+    "title": "团队休假追踪",
+    "description": "谁休假、何时休假——你自己的假期，若你有直属下属还包括团队的假期。"
   },
   "attendance": {
     "title": "考勤",
@@ -5142,6 +5147,7 @@
       "scope": {
         "people": "所有人都可打开；列表仅限于你有权查看的人员。",
         "leave": "所有人都可打开；你查看自己的假期，经理和管理员查看下属的假期。",
+        "leaveTracker": "所有人都可打开；你查看自己的假期，经理和管理员查看下属的假期。",
         "attendance": "所有人都可打开；你查看自己的考勤，经理和管理员查看下属的考勤。",
         "approvals": "经理及以上；显示内容取决于你实际的汇报线。",
         "roster": "经理及以上；显示内容取决于你实际的汇报线。",
