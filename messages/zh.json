@@ -3225,7 +3225,10 @@
           "manual": "手动录入",
           "unattached": "尚未挂接"
         }
-      }
+      },
+      "recalcBannerTitle": "此批次需要为 {n} 位员工重新计算。",
+      "recalcBannerBody": "此批次处理完成后有一次性交易被新增、修改或删除，因此下方的工资单、法定金额和合计仍是旧数据。请在下方面板中重新计算受影响的员工；在完成之前无法结账。",
+      "closeBlockedRecalc": "在处理后交易发生变更的员工完成重新计算之前，无法结账此批次。"
     },
     "transactions": {
       "title": "交易",
@@ -3349,7 +3352,7 @@
         "monthLabel": "月份",
         "cycleLabel": "发薪周期",
         "dateOutOfPeriod": "交易日期不在所选发薪周期月份内。",
-        "notDraft": "此批次已不再是草稿——只能在批次最终确定前修改交易。",
+        "notDraft": "此薪资批次已结账，其交易无法再更改。",
         "kindLabel": {
           "earning": "收入",
           "deduction": "扣除",
@@ -3481,7 +3484,7 @@
         "duplicate": "复制",
         "createdOn": "创建日期",
         "createdBy": "创建人",
-        "lockedHint": "此交易属于已处理的薪资计算，因此不能再修改或删除。",
+        "lockedHint": "此交易属于已结账的薪资批次，无法再更改或删除。",
         "prevPage": "上一页",
         "nextPage": "下一页",
         "pageOf": "第 {page} 页，共 {total} 页",
@@ -3496,7 +3499,17 @@
         "updated": "交易已更新。",
         "deleted": "交易已删除。",
         "noTxnsYet": "该员工暂无一次性交易。",
-        "deleteTxnBody": "此操作将永久删除该交易，且无法撤销。"
+        "deleteTxnBody": "此操作将永久删除该交易，且无法撤销。",
+        "hideEmployees": "隐藏员工列表",
+        "showEmployees": "显示员工列表",
+        "processedEditTitle": "此薪资批次已处理完成。",
+        "processedEditPaymentExported": "该批次的银行付款文件已导出。",
+        "processedEditStatutoryFiled": "本月已记录 {count} 份法定申报。",
+        "processedEditMarksRecalc": "保存后该批次将被标记为需要重新计算，在完成之前无法结账。",
+        "recalcNeededTitle": "此薪资批次现在需要重新计算。",
+        "recalcNeededBody": "其工资单、法定金额和合计已与背后的交易不一致。",
+        "recalcNeededLink": "重新计算受影响的员工",
+        "paidEditableHint": "此交易已在已处理的批次中支付。仍可更正，更正后该批次会被标记为需要重新计算。"
       },
       "tp1": {
         "title": "TP1 减免",

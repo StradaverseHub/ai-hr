@@ -4676,6 +4676,23 @@ export const payrollBatch = pgTable(
     // employee session cannot, so the gate must NOT re-read that config). NULL = not yet closed OR (for legacy
     // batches, backfilled to created_at) already released. myPayslips/payslipDetail gate on releasedAt <= now.
     releasedAt: timestamp('released_at', { withTimezone: true }),
+    // ── 49e7e0a2 (0403) — the recalculation mark ──────────────────────────────────────────────────────
+    // Set the moment a one-off transaction is added, changed or removed on a run that is ALREADY
+    // processed. It is the difference between "editing after processing" and "quietly editing a figure
+    // that has been paid and filed": the run carries a visible, queryable statement that its payslips,
+    // statutory figures and totals no longer agree with the transactions behind them, and `closeBatch`
+    // refuses while it is set. NULL = the run's figures match its inputs.
+    //
+    // NOT a fourth payroll status. `payrollStatusEnum` is exactly ['draft','processed','closed'] and this
+    // build adds nothing to it — the mark is an ATTRIBUTE of a processed run, so nothing that switches on
+    // status has to learn a new value.
+    needsRecalcAt: timestamp('needs_recalc_at', { withTimezone: true }),
+    // The employments whose figures are known to be stale — exactly the set to hand to the existing
+    // selective reprocess (generatePayslips reprocessSubset). A jsonb array rather than a child table
+    // because it is a small, wholly-owned attribute of the batch row, read and written only in the same
+    // transaction that already holds that row. Cleared per employment as each is reprocessed; when the
+    // set empties, `needs_recalc_at` goes back to NULL with it (the two are always written together).
+    recalcEmploymentIds: jsonb('recalc_employment_ids').$type<string[]>(),
     createdAt: createdAt(),
   },
   (t) => [
@@ -5164,6 +5181,13 @@ export const payrollIndividualTxn = pgTable(
     // One of TXN_UNITS ('amount'|'qty'|'hours'|'days'|'units'); validated app-side (mirror ROUNDING_METHODS).
     unit: text('unit'),
     notes: text('notes'),
+    // 49e7e0a2 (0403) — when this row was last CHANGED. Null on every legacy row and on a row that has
+    // never been edited since it was keyed, so `created_at` remains the only timestamp for those. It
+    // exists because the one staleness detector this codebase had — `arrivedAfterProcessing`
+    // (core/payroll-view.ts) — is `max(created_at) > processedAt` and is therefore BLIND to an edit of a
+    // row that was keyed before processing. With editing allowed after a run is processed, that blindness
+    // becomes the whole hazard, so the edit stamps its own instant.
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [

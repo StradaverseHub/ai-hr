@@ -2951,7 +2951,10 @@
           "manual": "keyed manually",
           "unattached": "not yet attached"
         }
-      }
+      },
+      "recalcBannerTitle": "This run needs recalculation for {n} employee(s).",
+      "recalcBannerBody": "One-off transactions were added, changed or removed after this run was processed, so the payslips, statutory figures and totals below are the earlier numbers. Recalculate the affected employees in the panel further down; the run cannot be closed until that is done.",
+      "closeBlockedRecalc": "This run cannot be closed until the employees whose transactions changed after processing have been recalculated."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -3349,7 +3352,7 @@
         "monthLabel": "Month",
         "cycleLabel": "Pay cycle",
         "dateOutOfPeriod": "The transaction date is outside the selected pay-period month.",
-        "notDraft": "This batch is no longer a draft — transactions can only be changed before the batch is finalized.",
+        "notDraft": "This payroll run is closed, so its transactions can no longer be changed.",
         "kindLabel": {
           "earning": "Earning",
           "deduction": "Deduction",
@@ -3481,7 +3484,7 @@
         "duplicate": "Duplicate",
         "createdOn": "Created on",
         "createdBy": "Created by",
-        "lockedHint": "This transaction is on a payroll run that has already been processed, so it can no longer be changed or removed.",
+        "lockedHint": "This transaction is on a payroll run that has been closed, so it can no longer be changed or removed.",
         "prevPage": "Previous",
         "nextPage": "Next",
         "pageOf": "Page {page} of {total}",
@@ -3496,7 +3499,17 @@
         "updated": "Transaction updated.",
         "deleted": "Transaction deleted.",
         "noTxnsYet": "No one-off transactions for this employee yet.",
-        "deleteTxnBody": "This permanently removes the transaction. It cannot be undone."
+        "deleteTxnBody": "This permanently removes the transaction. It cannot be undone.",
+        "hideEmployees": "Hide employee list",
+        "showEmployees": "Show employee list",
+        "processedEditTitle": "This payroll run has already been processed.",
+        "processedEditPaymentExported": "A bank payment file has already been exported for it.",
+        "processedEditStatutoryFiled": "{count} statutory return(s) have already been recorded for this month.",
+        "processedEditMarksRecalc": "Saving marks the run as needing recalculation, and it cannot be closed until that is done.",
+        "recalcNeededTitle": "This payroll run now needs recalculation.",
+        "recalcNeededBody": "Its payslips, statutory figures and totals no longer match the transactions behind them.",
+        "recalcNeededLink": "Recalculate the affected employees",
+        "paidEditableHint": "This transaction has already been paid on a processed run. It can still be corrected, and doing so marks the run for recalculation."
       },
       "tp1": {
         "title": "TP1 Relief",

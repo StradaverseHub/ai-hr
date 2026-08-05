@@ -3225,7 +3225,10 @@
           "manual": "dimasukkan secara manual",
           "unattached": "belum dilampirkan"
         }
-      }
+      },
+      "recalcBannerTitle": "Proses ini perlu dikira semula untuk {n} pekerja.",
+      "recalcBannerBody": "Transaksi sekali sahaja telah ditambah, diubah atau dibuang selepas proses ini diproses, jadi slip gaji, angka berkanun dan jumlah di bawah adalah nombor terdahulu. Kira semula pekerja yang terlibat dalam panel di bawah; proses ini tidak boleh ditutup sehingga selesai.",
+      "closeBlockedRecalc": "Proses ini tidak boleh ditutup sehingga pekerja yang transaksinya berubah selepas pemprosesan dikira semula."
     },
     "transactions": {
       "title": "Transaksi",
@@ -3349,7 +3352,7 @@
         "monthLabel": "Bulan",
         "cycleLabel": "Kitaran gaji",
         "dateOutOfPeriod": "Tarikh transaksi berada di luar bulan tempoh gaji yang dipilih.",
-        "notDraft": "Kelompok ini bukan lagi draf — transaksi hanya boleh diubah sebelum kelompok dimuktamadkan.",
+        "notDraft": "Proses gaji ini telah ditutup, jadi transaksinya tidak boleh diubah lagi.",
         "kindLabel": {
           "earning": "Pendapatan",
           "deduction": "Potongan",
@@ -3481,7 +3484,7 @@
         "duplicate": "Salin",
         "createdOn": "Dicipta pada",
         "createdBy": "Dicipta oleh",
-        "lockedHint": "Transaksi ini berada dalam larian gaji yang telah diproses, jadi ia tidak boleh diubah atau dibuang lagi.",
+        "lockedHint": "Transaksi ini berada dalam proses gaji yang telah ditutup, jadi ia tidak boleh diubah atau dibuang lagi.",
         "prevPage": "Sebelumnya",
         "nextPage": "Seterusnya",
         "pageOf": "Halaman {page} daripada {total}",
@@ -3496,7 +3499,17 @@
         "updated": "Transaksi dikemas kini.",
         "deleted": "Transaksi dipadam.",
         "noTxnsYet": "Tiada transaksi sekali sahaja untuk pekerja ini lagi.",
-        "deleteTxnBody": "Ini membuang transaksi secara kekal. Ia tidak boleh dibatalkan."
+        "deleteTxnBody": "Ini membuang transaksi secara kekal. Ia tidak boleh dibatalkan.",
+        "hideEmployees": "Sembunyikan senarai pekerja",
+        "showEmployees": "Tunjukkan senarai pekerja",
+        "processedEditTitle": "Proses gaji ini telah pun diproses.",
+        "processedEditPaymentExported": "Fail pembayaran bank telah pun dieksport untuknya.",
+        "processedEditStatutoryFiled": "{count} penyata berkanun telah pun direkodkan untuk bulan ini.",
+        "processedEditMarksRecalc": "Menyimpan akan menandakan proses ini perlu dikira semula, dan ia tidak boleh ditutup sehingga selesai.",
+        "recalcNeededTitle": "Proses gaji ini kini perlu dikira semula.",
+        "recalcNeededBody": "Slip gaji, angka berkanun dan jumlahnya tidak lagi sepadan dengan transaksi di sebaliknya.",
+        "recalcNeededLink": "Kira semula pekerja yang terlibat",
+        "paidEditableHint": "Transaksi ini telah pun dibayar dalam proses yang telah diproses. Ia masih boleh dibetulkan, dan berbuat demikian akan menandakan proses itu untuk dikira semula."
       },
       "tp1": {
         "title": "Pelepasan TP1",

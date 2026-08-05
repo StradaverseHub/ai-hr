@@ -76,6 +76,13 @@ export default async function BatchPage({
   // so the two screens cannot start disagreeing about what "published" means. batchDetail does a bare
   // select() of the batch row, so releasedAt is already in hand — no extra read.
   const pubState = payrollPublicationState(batch);
+  // 49e7e0a2 — the run's recalculation mark. Set when a one-off transaction is added, changed or removed
+  // AFTER the run was processed; `closeBatch` refuses while it is set. `batchDetail` does a bare select()
+  // of the batch row, so both columns are already in hand — no extra read.
+  const needsRecalc = batch.needsRecalcAt != null;
+  const recalcEmploymentIds = Array.isArray(batch.recalcEmploymentIds)
+    ? batch.recalcEmploymentIds.filter((x): x is string => typeof x === 'string')
+    : [];
   const PUBLICATION_LABEL: Record<PayrollPublicationState, string> = {
     draft: t('publishStateDraft'),
     unpublished: t('publishStateUnpublished'),
@@ -280,23 +287,32 @@ export default async function BatchPage({
                 )}
               </form>
             )}
-            {batch.status === 'processed' && (
-              <form action={closeAction}>
-                <input type="hidden" name="batchId" value={batch.id} />
-                {/* ef31d251 — Close is the step that publishes pay to employees and fans out a
-                    payslip.ready notification to every one of them, and it was a plain button that
-                    said nothing about either. variant="secondary" is mandatory: ConfirmSubmit
-                    defaults to 'destructive' (red), and closing a run is not destructive. */}
-                <ConfirmSubmit
-                  variant="secondary"
-                  title={t('closeConfirmTitle')}
-                  description={t('closeConfirmBody', { n: slips.length })}
-                  confirmLabel={t('closeConfirmYes')}
-                >
+            {batch.status === 'processed' &&
+              // 49e7e0a2 — Close is refused by `closeBatch` while the run owes a recalculation, so the
+              // button is not offered while that is true. The service throw is the authority (this is a
+              // second surface, not the guard); what the screen adds is not making the operator discover
+              // the refusal by pressing the button that publishes pay to every employee.
+              (needsRecalc ? (
+                <Button type="button" variant="secondary" disabled title={t('closeBlockedRecalc')}>
                   {t('closeBatch')}
-                </ConfirmSubmit>
-              </form>
-            )}
+                </Button>
+              ) : (
+                <form action={closeAction}>
+                  <input type="hidden" name="batchId" value={batch.id} />
+                  {/* ef31d251 — Close is the step that publishes pay to employees and fans out a
+                      payslip.ready notification to every one of them, and it was a plain button that
+                      said nothing about either. variant="secondary" is mandatory: ConfirmSubmit
+                      defaults to 'destructive' (red), and closing a run is not destructive. */}
+                  <ConfirmSubmit
+                    variant="secondary"
+                    title={t('closeConfirmTitle')}
+                    description={t('closeConfirmBody', { n: slips.length })}
+                    confirmLabel={t('closeConfirmYes')}
+                  >
+                    {t('closeBatch')}
+                  </ConfirmSubmit>
+                </form>
+              ))}
             {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED-only — never draft (nothing to reset;
                 delete-draft is 4f00d8f0's flow) and never closed (permanently immutable). The
                 ConfirmSubmit dialog carries the reporter's confirmation copy; processed-only and
@@ -328,6 +344,18 @@ export default async function BatchPage({
       {batch.status === 'processed' && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400">
           🔒 {t('lockedNote')}
+        </div>
+      )}
+
+      {/* 49e7e0a2 — THE RUN SAYS ITS OWN FIGURES ARE STALE. Set when a one-off transaction was added,
+          changed or removed after this run was processed. Until the named employees are recalculated the
+          payslips, the statutory figures and the totals on this page are the OLD numbers, and Close is
+          refused (closeBatch throws BatchNeedsRecalculationError). The recalculation panel further down
+          arrives with exactly these people already ticked. */}
+      {needsRecalc && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+          <div className="font-medium">⚠ {t('recalcBannerTitle', { n: recalcEmploymentIds.length })}</div>
+          <p className="mt-1">{t('recalcBannerBody')}</p>
         </div>
       )}
 
@@ -1169,6 +1197,7 @@ export default async function BatchPage({
             <ReprocessPanel
               batchId={batch.id}
               employees={slips.map((sl) => ({ employmentId: sl.employmentId, employeeCode: sl.employeeCode, name: sl.name }))}
+              preselectedIds={recalcEmploymentIds}
             />
           </div>
         </Card>

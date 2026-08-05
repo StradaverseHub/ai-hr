@@ -3225,7 +3225,10 @@
           "manual": "nhập thủ công",
           "unattached": "chưa gắn vào đợt"
         }
-      }
+      },
+      "recalcBannerTitle": "Kỳ lương này cần tính lại cho {n} nhân viên.",
+      "recalcBannerBody": "Các giao dịch một lần đã được thêm, sửa hoặc xóa sau khi kỳ lương này được xử lý, nên phiếu lương, các khoản theo luật định và tổng cộng bên dưới là số liệu cũ. Hãy tính lại cho những nhân viên bị ảnh hưởng ở bảng phía dưới; kỳ lương không thể đóng cho đến khi hoàn tất.",
+      "closeBlockedRecalc": "Không thể đóng kỳ lương này cho đến khi những nhân viên có giao dịch thay đổi sau khi xử lý được tính lại."
     },
     "transactions": {
       "title": "Giao dịch",
@@ -3349,7 +3352,7 @@
         "monthLabel": "Tháng",
         "cycleLabel": "Chu kỳ lương",
         "dateOutOfPeriod": "Ngày giao dịch nằm ngoài tháng của kỳ lương đã chọn.",
-        "notDraft": "Đợt này không còn là bản nháp — chỉ có thể thay đổi giao dịch trước khi đợt được hoàn tất.",
+        "notDraft": "Kỳ lương này đã đóng nên không thể thay đổi các giao dịch của nó nữa.",
         "kindLabel": {
           "earning": "Thu nhập",
           "deduction": "Khoản khấu trừ",
@@ -3481,7 +3484,7 @@
         "duplicate": "Sao chép",
         "createdOn": "Ngày tạo",
         "createdBy": "Người tạo",
-        "lockedHint": "Giao dịch này thuộc một kỳ lương đã được xử lý, nên không thể thay đổi hay xóa nữa.",
+        "lockedHint": "Giao dịch này thuộc một kỳ lương đã đóng nên không thể thay đổi hoặc xóa.",
         "prevPage": "Trước",
         "nextPage": "Sau",
         "pageOf": "Trang {page} / {total}",
@@ -3496,7 +3499,17 @@
         "updated": "Đã cập nhật giao dịch.",
         "deleted": "Đã xóa giao dịch.",
         "noTxnsYet": "Nhân viên này chưa có giao dịch một lần nào.",
-        "deleteTxnBody": "Thao tác này xóa vĩnh viễn giao dịch và không thể hoàn tác."
+        "deleteTxnBody": "Thao tác này xóa vĩnh viễn giao dịch và không thể hoàn tác.",
+        "hideEmployees": "Ẩn danh sách nhân viên",
+        "showEmployees": "Hiện danh sách nhân viên",
+        "processedEditTitle": "Kỳ lương này đã được xử lý.",
+        "processedEditPaymentExported": "Tệp thanh toán ngân hàng cho kỳ này đã được xuất.",
+        "processedEditStatutoryFiled": "{count} tờ khai theo luật định đã được ghi nhận cho tháng này.",
+        "processedEditMarksRecalc": "Việc lưu sẽ đánh dấu kỳ lương cần tính lại và không thể đóng kỳ cho đến khi hoàn tất.",
+        "recalcNeededTitle": "Kỳ lương này hiện cần được tính lại.",
+        "recalcNeededBody": "Phiếu lương, các khoản theo luật định và tổng cộng không còn khớp với các giao dịch phía sau.",
+        "recalcNeededLink": "Tính lại cho những nhân viên bị ảnh hưởng",
+        "paidEditableHint": "Giao dịch này đã được chi trả trong một kỳ đã xử lý. Vẫn có thể sửa, và việc sửa sẽ đánh dấu kỳ lương cần tính lại."
       },
       "tp1": {
         "title": "Miễn giảm TP1",

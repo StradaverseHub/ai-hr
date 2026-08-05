@@ -17,12 +17,20 @@ export type ReprocessEmployee = { employmentId: string; employeeCode: string | n
 export function ReprocessPanel({
   batchId,
   employees,
+  preselectedIds,
 }: {
   batchId: string;
   employees: ReprocessEmployee[];
+  /**
+   * 49e7e0a2 — the employments the run itself says are stale (payroll_batch.recalcEmploymentIds), ticked
+   * on arrival. Editing a one-off transaction on a processed run is the thing that produces this list, and
+   * making the operator re-derive by hand which people they just changed is how the wrong subset gets
+   * reprocessed. Plain data, resolved on the server; the ticks stay editable.
+   */
+  preselectedIds?: string[];
 }) {
   const t = useTranslations('payroll.batch');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(preselectedIds ?? []));
   // Idempotency token (feedback 9bc442bc, reporter req.): posted with the submit so a double-click / retry
   // reuses the SAME reprocess job server-side instead of enqueuing a duplicate. Stable per mount; a fresh
   // token is minted on the next render after the page reloads on success.
