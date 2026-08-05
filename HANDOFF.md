@@ -18,30 +18,61 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-05 (r141 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-05 (r142 SHIPPED)
 
-**`main@668ec3dc` is what runs. Production on 324 migrations. Next free migration number is `0399`**
+**`main@eb47382b` is what runs. Production on 326 migrations. Next free migration number is `0401`**
 (0389 was never claimed and is dead). No half-applied migration, no pending deploy, nothing in flight.
-Verified after deploy: service active, `GET /` 401, `/login` 200, `rsync --dry-run` zero changes, and
-**the attendance backfill's invariant holds on real data** (151 rows, the six OT rate buckets summing
-to exactly `ot_minutes`, 5940 = 5940, zero mismatched rows) **and r141's archive captured 294 scheme +
-67 policy rows with the old layer untouched at 41/292/67 and the new tables empty.**
+Verified after deploy: service active, `GET /` 401, `/login` 200, `rsync --dry-run` zero changes, both
+leave-generation tables present.
 
-### The board — counted on production 2026-08-05 after r140
+### The board — counted on production 2026-08-05 after r142
 
-**`deployed = 582` · `approved = 3` · `building = 1` · `cancelled = 12`. `open = 0`, `contested = 0`,
-`planned = 0`.**
+**`deployed = 580` · `planned = 7` · `approved = 5` · `building = 2` · `cancelled = 12`.
+NOTHING is open and NOTHING is contested — every item on the board has a plan.**
 
-**WHAT IS LEFT — five items, and four of them are genuinely sequential:**
+**THE 7 PLANNED, all pushed 2026-08-05, awaiting approve/reject:** `18103ba4` (Leave Adjustments field
+regrouping) · `fef49b9a` (paid/unpaid split DISPLAY only) · `4fdb69b2` rev 3 (Special Leave delete —
+see the guard section below) · `706d34e8` (remove the Approval Workflow list; all 263 rules are
+template-backed, ZERO standalone, so nothing is stranded) · `1ae7f3ab` and `f1123afd` (both
+OPERATOR-RAISED by this loop, not by the reporter) · `1cf5b37c` rev 2 (Replacement Leave config).
 
-| item | why it is not just "next" |
-|---|---|
-| ~~`6e9a126e` release ONE~~ | **SHIPPED r141** — new layer alongside the old, nothing dropped. Item is `building`, NOT done: releases two (re-point the engines, ship the editors) and three (archive-then-clear, drop the old tables) remain |
-| ~~`7c834696` Attendance stage 1~~ | **SHIPPED r140.** Stages 2 (flexi-shift + cut-off) and 3 (transparency + simulator) remain, and stage 3 depends on stage 1's stored figures. **TWO OWNER DECISIONS ARE OPEN — see below** |
-| `6e9a126e` Entitlement redesign | **OWN SESSION.** Drops `benefit_scheme`, `scheme_leave_entitlement`, `leave_policy`. Archive to text FIRST, re-count the census on production, and **re-locate every anchor BY SYMBOL** — its rev-3 claim that line numbers were re-verified was false |
-| `93249794` Generate Entitlement | Waits on `6e9a126e`'s eligibility layer, or you build a SECOND criteria engine — the exact defect several plans complain about |
-| `2ef69d1e` Back pay | LAST. It posts through `createIndividualTxnsBulk` into the screen r139 just rebuilt, adds a run-type to the dashboard r139 just rebuilt, and rewrites the earnings fold `3c473773` just changed. Pass 2 waits on `7c834696` |
-| `35b7af0a` Create Employee wizard | `building` — groups 1-2 shipped (r138). Remaining: Date of Birth + Age (blocked on `completedYearsAt` living in `core/leave.ts`), and ~28 identity/org-cascade/statutory labels |
+**THE 5 APPROVED AND UNBUILT:** `df00b85f` (remove the Summary menu — Quick, and its redundancy was
+verified by comparing both screens) · `2ef69d1e` (Back Pay — the largest thing left, must go LAST) ·
+plus three approved overnight.
+
+**STILL `building`, both deliberately partial:**
+- `6e9a126e` — release ONE shipped in r141 (new layer alongside the old, nothing dropped). Releases
+  two (re-point the engines, ship the editors) and three (archive-then-clear, drop the three old
+  tables) remain. **This is the largest remaining work on the board and wants its own session.**
+- `35b7af0a` — groups 1-2 shipped in r138. Remaining: Date of Birth + Age (blocked on
+  `completedYearsAt` living in `core/leave.ts`), and ~28 identity/org-cascade/statutory labels.
+
+### ⚠️⚠️ THE DELETE GUARD IS WRONG, IT IS LIVE, AND IT EXPLAINS A REPORTED BUG
+
+**ELEVEN tables carry a foreign key to `leave_type`. `deleteLeaveType` counts FIVE. `listLeaveTypes`'
+`inUse` predicate counts THREE.** So the panel offers Delete on a type the database will refuse, and
+the admin gets a raw foreign-key error instead of an explanation.
+
+**This is exactly why the reporter says Special Leave cannot be deleted.** Measured on production: SPL
+has zero rows in all five counted tables, but **2 `leave_approval_policy` rows** (both on the Custom
+Leave Approval template) and **`CGL` Caregiver Leave points at it through `balance_source_type_id`** —
+the self-reference, the easiest of the eleven to miss.
+
+Uncounted: `leave_approval_policy` · `leave_encashment_snapshot` · `leave_entitlement_recalc_audit` ·
+`leave_shared_group_member` · `leave_type.balance_source_type_id` · `replacement_leave_request` ·
+`scheme_leave_entitlement`.
+
+**`core/read.ts` around line 1770 documents this hazard for job grades and requires the button
+predicate and the delete guard to stay byte-identical.** `1ae7f3ab` and `4fdb69b2` rev 3 are the same
+defect from two directions — **build them as ONE change.** Fixing five tables and leaving six is the
+same bug with a shorter fuse.
+
+### ⚠️ I TOLD THE REPORTER TWICE THAT SPECIAL LEAVE WAS DELETABLE. BOTH TIMES I WAS WRONG.
+
+I measured the tables the GUARD counts instead of the tables that REFERENCE the row. The schema knew;
+my query never asked it. **When testing whether a row can be deleted, enumerate its foreign-key
+referrers from `information_schema` — never the application's own in-use list, which is the very
+thing under suspicion.**
 
 ### PARALLEL BUILDS WORK — r139 is the proof, and here is the recipe
 

@@ -9,6 +9,59 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r142 — 2026-08-05 — 93249794 Generate Entitlement: aim the engine, never re-derive it
+
+**Shipped `main@eb47382b`.** Gate: tsc clean · **580 files / 7010 tests** · next build clean ·
+**upgrade rehearsal PASS**. Migrations 0399/0400 → production on **326**.
+
+### Decisions
+
+**THE GUARD THAT EARNED ITS KEEP, and it is the lesson of this round.** The first implementation passed
+an EMPTY `employmentIds` list to the engine and then zeroed the returned counters. `openLeaveYear`
+reads empty as **NO RESTRICTION** — so criteria matching NOBODY would have **granted the entire
+tenant** while the screen reported "0 granted". Silent, wrong, and in the ledger rather than on screen.
+It was caught for exactly one reason: **the test asserts on the LEDGER, not on the return value.** A
+test that trusted the return value would have passed and confirmed the lie.
+
+**ONE COMPOSITION, MADE CHECKABLE.** `previewLeaveGeneration` and `runLeaveGeneration` are one
+`openLeaveYear` call site with one `dryRun` flag, and the module provably cannot reach `entitledDays`,
+`bandFor`, `applyRounding` or `buildSchemeEntitlementResolver` — a module that cannot reach them
+cannot grow a second answer. Step 2 reuses `core/org-criteria.ts` rather than forking a third criteria
+engine, proven by asserting the module names none of the criteria axes (a forked matcher must name the
+axes it filters on) and holds exactly one `.from(employment)`, the display lookup.
+
+**THE PLAN WOULD HAVE SHIPPED A PERMANENTLY BROKEN SCREEN.** It said to source the Entitlement Year
+dropdown from `leave_year_config` — but 0385 emptied that table and deleted every writer, so the
+dropdown would have rendered empty forever with no way to fill it. Used the computed year options.
+
+**THE EXTRACTION FROM A SHIPPED SCREEN WAS PROVEN PURE, NOT ASSERTED.** Pulling the criteria picker
+into `core/org-criteria-form.ts` touched the live Leave Adjustments page, so the diff was
+machine-checked against the previous commit: 18 criteria names identical and in the same order, four
+sections with identical keys and order, resolver-behaviour tests untouched and green.
+
+### Two boundary failures the integration gate caught, and one it did not
+
+`core/leave-generation.ts` is a leave SERVICE, so it belongs in the pack BOUNDARIES list and behind
+`packs/leave/service`, not in the debt allowlist — that list is audited debt and may only shrink,
+which the guard says in its own failure message. And `leave-pack-blocked-surfacing` pinned exact return
+literals, so `openLeaveYear` growing a `rows` field broke a guard whose subject (packBlocked reaching
+the caller) was never in question. **Third time this session a guard asserted an implementation where
+it meant an invariant.**
+
+### ⚠️ A GATE RUN THAT LOOKED LIKE A 32-FAILURE REGRESSION AND WAS NOT
+
+A re-gate returned **32 failures across 13 unrelated files** — holidays, claims, audit chain, payroll
+cycle. None touched by the change. The tells, all present: `Hook timed out` inside `resetDb()`,
+**30 deadlock/TRUNCATE hits**, **WAL at 5.0 GB**, individual files taking 150-320s instead of seconds,
+and `global-setup` healthy at 1.1s when the run STARTED — so the cluster degraded during the run.
+Rebuild took WAL to 16 MB; the same tree then passed **580/580 files, 7010/7010 tests, zero deadlocks**
+in 1221s versus 1845s. **Do not conclude "flaky test"; read the `Caused by` line and the WAL size.**
+
+**The cause was sequencing, again: an agent was resumed and ran tests against the same cluster as the
+gate.** Agents and gates must not share the database. That is now twice in one session.
+
+---
+
 ## r141 — 2026-08-05 — 6e9a126e release ONE: the new entitlement layer, built alongside the old
 
 **Shipped `main@668ec3dc`.** Gate: tsc clean · **578 files / 6978 tests** · next build clean ·
