@@ -1462,6 +1462,11 @@ export function attendanceForDate(
         ot15Minutes: attendance.ot15Minutes,
         ot20Minutes: attendance.ot20Minutes,
         ot30Minutes: attendance.ot30Minutes,
+        // 7c834696 point 3 — the WORKING behind the figures above, so the Records hover can show how each
+        // one was arrived at. NULL on every row written before migration 0411 and on any row nothing has
+        // re-derived since; core/attendance-explain.ts turns that into "no working was recorded", which is
+        // the honest answer. It is never reconstructed at read time (see core/attendance-trace.ts).
+        calcTrace: attendance.calcTrace,
         // ADR-0070: per-punch Clocking Location & Geofencing capture for the day table's Location column.
         checkInLat: attendance.checkInLat,
         checkInLng: attendance.checkInLng,
@@ -1607,6 +1612,11 @@ export type AttendanceRangeRow = {
   ot15Minutes: number | null;
   ot20Minutes: number | null;
   ot30Minutes: number | null;
+  /** 7c834696 point 3 — the stored working behind the figures above. Typed `unknown` on purpose: the only
+   *  legitimate consumer is core/attendance-explain.ts, whose whole contract is that it validates the
+   *  version itself and reports `unavailable` on anything it does not recognise. Typing it as the current
+   *  trace shape would invite a caller to read `.overtime.minutes` off a row written by an older build. */
+  calcTrace: unknown;
   /** Explains a no-row day, same precedence as attendanceForDate: leave > holiday > rest day. */
   context: DayContext;
   // bbada39c — the individual row now carries the employee identity (the page used to read it from the
@@ -1667,6 +1677,8 @@ export function attendanceForEmploymentRange(
           ot15Minutes: attendance.ot15Minutes,
           ot20Minutes: attendance.ot20Minutes,
           ot30Minutes: attendance.ot30Minutes,
+          // 7c834696 point 3 — the working behind the figures above (see attendanceForDate for the why).
+          calcTrace: attendance.calcTrace,
         })
         .from(attendance)
         .where(
@@ -1771,6 +1783,7 @@ export function attendanceForEmploymentRange(
         ot15Minutes: row?.ot15Minutes ?? null,
         ot20Minutes: row?.ot20Minutes ?? null,
         ot30Minutes: row?.ot30Minutes ?? null,
+        calcTrace: row?.calcTrace ?? null,
         context,
         employeeCode: emp.employeeCode,
         name: emp.name,

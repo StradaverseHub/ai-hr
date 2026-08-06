@@ -3,22 +3,16 @@ import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
 import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
+import { explainAttendanceDay } from '@/core/attendance-explain';
 import { listEmployees } from '@/core/read';
 import { Card, ErrorBanner, PageHeader, SectionHeader, inputCls, Button } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
+import { AttendanceFigureCells } from '@/components/attendance-figure-cells';
+import { fmtMin } from '@/components/attendance-format';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
-
-const fmtMin = (m: number | null | undefined) =>
-  m == null ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
-/** OT columns render as decimal hours (2 dp), matching the request's example (0.50 / 1.00). */
-const fmtHours2 = (m: number) => (m / 60).toFixed(2);
-/** Lateness / Early Out are small figures — "12m" reads better than "0h 12m". NULL stays an em dash: it
- *  means no engine computed the day, which is not at all the same claim as "on time". */
-const fmtShort = (m: number | null | undefined) =>
-  m == null ? '—' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 
 const firstOfMonth = (iso: string) => `${iso.slice(0, 7)}-01`;
 const dayName = (iso: string) =>
@@ -165,15 +159,16 @@ export default async function IndividualAttendancePage({
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.scheduledMinutes)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.workedMinutes)}</td>
                       {/* NULL, not 0, for a day no engine has computed — an em dash rather than a confident
-                          "on time". Days before the stage-1 release carry null and read as "—". */}
-                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtShort(r.lateMinutes)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtShort(r.earlyOutMinutes)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.flat) : '—'}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot00) : '—'}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot10) : '—'}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot15) : '—'}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot20) : '—'}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot30) : '—'}</td>
+                          "on time". Days before the stage-1 release carry null and read as "—".
+                          7c834696 point 3 — the same eight figures carry their working here as on the
+                          Daily tab, from the SAME island, so the two tabs cannot explain a day differently. */}
+                      <AttendanceFigureCells
+                        lateMinutes={r.lateMinutes}
+                        earlyOutMinutes={r.earlyOutMinutes}
+                        ot={ot}
+                        hasRow={r.attendanceId != null}
+                        explanation={explainAttendanceDay(r.calcTrace)}
+                      />
                       <td className="px-3 py-2.5">
                         {/* Only Absent in red; every other status uses the standard text colour. */}
                         <span className={`capitalize ${status === 'absent' ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
