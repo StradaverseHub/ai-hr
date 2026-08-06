@@ -61,7 +61,7 @@ import {
   reprojectEntitlementForLeaveTypeCohort,
   PROFILE_RECALC_REASON_PREFIX,
 } from '../core/leave';
-import { applyRounding, bandFor, type ServiceBand } from '../core/leave-compute';
+import { applyRounding, bandFor, type LeaveRoundingMethod, type ServiceBand } from '../core/leave-compute';
 import { annualEntitlement } from '../localization/my/leave';
 import { leaveEntitlementBreakdown } from '../core/read';
 import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
@@ -101,7 +101,8 @@ const storedRounding = async (): Promise<string | null> => {
  */
 const entitlement = async (p: {
   annualDays: number;
-  roundingMethod?: string;
+  /** The stored VALUE, not a currently-choosable one — see the header on 'up' / 'down'. */
+  roundingMethod?: LeaveRoundingMethod;
   method?: string;
   validFrom?: string;
 }) => {
