@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { DEFAULT_PAYROLL_CYCLES } from '@/core/payroll-cycle';
+import { DEFAULT_PAYROLL_CYCLES } from '@/packs/payroll/service';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { CurrencySelect } from '@/components/currency-select';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/countries';
