@@ -4,6 +4,9 @@ import { useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { CalendarDays } from 'lucide-react';
 import { Button, inputCls } from '@/components/ui';
+// 4a1abc4a: the per-date days must print like the request TOTAL in the row this popover opens from
+// (LeaveDaysCell). Leaving one of them raw would put the drift INSIDE a single screen.
+import { formatDays } from '@/lib/day-format';
 import { decideLeaveDatesAction } from './actions';
 
 // ADR-0068 §6 / R17 600be8ac / R18 7e532d23 — the per-date DECISION TABLE of ONE per-date-approval leave
@@ -145,7 +148,7 @@ export function LeaveDateBreakdown({
                     <tr key={d.id} className="align-top">
                       <td className="py-1.5 pr-2 tabular-nums">{d.leaveDate}</td>
                       <td className="py-1.5 pr-2 text-muted-foreground">{weekday(d.leaveDate)}</td>
-                      <td className="py-1.5 pr-2 text-right tabular-nums text-muted-foreground">{Number(d.days)}</td>
+                      <td className="py-1.5 pr-2 text-right tabular-nums text-muted-foreground">{formatDays(d.days)}</td>
                       <td className="py-1.5 pr-2">
                         {isPending ? (
                           <div className="inline-flex overflow-hidden rounded-md border border-border">

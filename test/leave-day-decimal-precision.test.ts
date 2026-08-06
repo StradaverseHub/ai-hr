@@ -177,8 +177,12 @@ describe('4a1abc4a · rounding bands keep THREE decimals, and that is not an ove
 });
 
 describe('4a1abc4a · ONE formatter, and it stays one', () => {
-  // The eleven surfaces that render or accept a day figure. The list is the point: the reported fault was
-  // that two of them disagreed, and the only durable fix is that none of them formats for itself.
+  // Every surface that renders or accepts a day figure in the leave module. The list is the point: the
+  // reported fault was that two of them disagreed, and the only durable fix is that none formats for itself.
+  //
+  // Four of these were found by RENDERING, not by reading code — the Employee Leave Record printed a bare
+  // "3" one nav tab away from Employee Balances' "3.00", which is the reporter's complaint verbatim and is
+  // invisible to a grep for `toFixed`.
   const SURFACES = [
     '/components/leave/leave-balance-table.tsx',
     '/components/leave/leave-cards.tsx',
@@ -194,7 +198,24 @@ describe('4a1abc4a · ONE formatter, and it stays one', () => {
     '/app/leave/employee-balances/export/route.ts',
     '/app/admin/leave/entitlements/templates/page.tsx',
     '/components/leave/adjustment-form.tsx',
+    '/app/leave/employee-records/page.tsx',
+    '/app/leave/employee-records/export/route.ts',
+    '/app/approvals/leave-date-breakdown.tsx',
+    '/components/leave-duration-fields.tsx',
+    '/components/leave/replacement-leave-request-dialog.tsx',
   ];
+
+  it('no leave surface still prints a RAW day count', () => {
+    // The fault a `toFixed` grep cannot see: a screen that never formatted at all. `{Number(r.days)}` and a
+    // bare `{row.days}` are how the Employee Leave Record came to show "3" beside Employee Balances' "3.00".
+    for (const rel of SURFACES) {
+      const src = codeOnly(read(rel));
+      expect(src, `${rel} prints a raw day count`).not.toMatch(/\{Number\([a-z]\.days\)\}/);
+      // The lookbehind spares `value={r.days}` — an input's own state is raw text by design (it has to be
+      // typeable); it is the on-blur tidier's job, not the formatter's.
+      expect(src, `${rel} prints a raw day count`).not.toMatch(/(?<!=)\{[a-z]+\.days\}/);
+    }
+  });
 
   it('every day-rendering surface imports the shared helper', () => {
     for (const rel of SURFACES) {

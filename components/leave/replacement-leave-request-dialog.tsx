@@ -5,6 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button, Field, btnPrimary, inputCls } from '../ui';
+import { normalizeDayText } from '@/lib/day-format';
 
 type Action = (fd: FormData) => void | Promise<void>;
 
@@ -181,6 +182,13 @@ export function ReplacementLeaveRequestDialog({
                           step={0.5}
                           value={r.days}
                           onChange={(e) => patch(r.key, 'days', e.target.value)}
+                          // 4a1abc4a: tidy to 2dp on blur so the credit typed here and the credit later
+                          // read off the Replacement Leave panel are written the same way. Only patches on
+                          // a real change, and a blank/half-typed cell is left for the form to refuse.
+                          onBlur={(e) => {
+                            const next = normalizeDayText(e.currentTarget.value);
+                            if (next !== e.currentTarget.value) patch(r.key, 'days', next);
+                          }}
                           className={inputCls}
                         />
                       </div>
