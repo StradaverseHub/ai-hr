@@ -816,6 +816,11 @@ const groupEventsOf = (events: RawEvent[], row: ProjectedRow): RawEvent[] =>
  * second, weaker copy of them.
  */
 const REVERSIBLE_EVENT_TYPES = new Set([
+  // b7b22514 — the Entity Transfer's company leg. reverseLegTx knows how to undo it (put the company back,
+  // under the same last-write-wins rule the flat columns get), so it belongs here — and MUST: this set is
+  // an allowlist, and an unlisted leg makes the WHOLE movement uncorrectable. A company move with no way
+  // to roll it back would be the one comparison movement HR could not take back.
+  'employment.company.transferred',
   'assignment.transferred',
   'employment.assignment.changed',
   'employment.grade.changed',
@@ -859,7 +864,15 @@ const STATE_CHANGING_EVENT_TYPES = new Set(
  * join dates are moved by kinds that are NOT comparison kinds, they derive from one another, and each is
  * maintained on its own screen with its own gates.
  */
-const REVERSIBLE_INFO_DATE_FIELDS: readonly string[] = ['confirmationDate', 'finalConfirmationDate'];
+const REVERSIBLE_INFO_DATE_FIELDS: readonly string[] = [
+  'confirmationDate',
+  'finalConfirmationDate',
+  // b7b22514 — the current-company Join Date an Entity Transfer moves. It rides on the info leg beside the
+  // flat columns, and reverseLegTx restores it there on the identical last-write-wins test — so without it
+  // named here, `infoLegIsFlatOnly` would see a date it does not recognise and quietly make every Entity
+  // Transfer uncorrectable. That is the failure mode this list produces: not an error, an absent button.
+  'joinDate',
+];
 
 /** A flat-column leg is undone field by field, and since 3ced1040 so is the confirmation date a
  *  Confirmation movement writes alongside it. Any OTHER lifecycle date on the leg puts the whole movement
@@ -2670,6 +2683,11 @@ async function reverseLegTx(
      * NOT re-checked for cross-company coherence. Going back is going back to a state that was coherent
      * when it was left, and the assignment / reporting-line legs of the same movement are reversed by their
      * own cases in this switch, from their own stored before-values, inside this transaction.
+     *
+     * The compensating event is UNTAGGED, like `employment.assignment.superseded` and
+     * `reporting-line.reverted` beside it. A movement tag would put it in the reversed movement's own
+     * group, and REVERSIBLE_EVENT_TYPES is an allowlist over the whole group — so the movement would
+     * become uncorrectable BY BEING CORRECTED. The as-of replay does not need a tag; it walks sequences.
      */
     case 'employment.company.transferred': {
       const before = (p.before ?? {}) as Record<string, unknown>;
@@ -2706,7 +2724,6 @@ async function reverseLegTx(
           before: { companyId: after.companyId ?? null },
           after: { companyId: restoreTo },
           reversalOf: e.id,
-          movement: tag,
         },
       });
       return;
