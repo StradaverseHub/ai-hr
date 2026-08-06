@@ -23,8 +23,16 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createJobGrade, createLeaveType } from '../core/admin';
 import { hireEmployee } from '../core/org';
 import { openLeaveYear } from '../core/leave';
-import { createGradeGroup, createBenefitScheme, upsertSchemeEntitlement } from '../core/benefit-scheme';
-import { adminCtx, closeAll, ledgerBalance, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  ledgerBalance,
+  migrateTestDb,
+  resetDb,
+  seedBase,
+  seedEntitlement,
+  type Base,
+} from './harness';
 
 let b: Base;
 
@@ -53,28 +61,30 @@ async function hire(gradeId: string, hiredOn = '2018-01-01') {
 
 /**
  * The reporter's exact setup: a CUSTOM leave type carrying a Service-Based Entitlement of 3 days,
- * configured against the employee's own company / employment type / grade group, so every criterion
- * in resolveEffectiveSchemeId matches and the only thing left that can drop it is the code allowlist.
+ * configured so that it resolves for this employee and the only thing left that can drop it is the code
+ * allowlist.
+ *
+ * 6e9a126e RELEASE THREE — this used to build a benefit scheme (grade group × company × employment type)
+ * and a `scheme_leave_entitlement` row. Those three tables are dropped; the SERVICE-BAND ENTITLEMENT they
+ * carried is now an entitlement template plus an eligibility rule narrowed to the employee's grade. The
+ * bands are byte-identical and so is what this file is actually testing: whether the granting sweep visits
+ * a leave type whose CODE is not one of the three hardcoded standing strings. The grade is kept as the
+ * targeting axis so the rule still has to MATCH — a template assigned to everybody would let the test pass
+ * even if eligibility resolution were broken.
  */
 async function customTypeWithServiceEntitlement(code: string, name: string, days = 3) {
   const ctx = adminCtx(b);
   const type = await createLeaveType(ctx, { code, name, paid: true });
   const grade = await createJobGrade(ctx, { code: `G_${code.slice(0, 4)}`, name: `Grade ${code}` });
-  const group = await createGradeGroup(ctx, { name: `${code} group`, gradeIds: [grade.id] });
-  const scheme = await createBenefitScheme(ctx, {
-    companyId: b.companyId,
-    employmentType: 'full_time',
-    gradeGroupId: group.id,
-    name: `${code} scheme ${randomUUID().slice(0, 8)}`,
-    status: 'active',
-  });
-  await upsertSchemeEntitlement(ctx, {
-    benefitSchemeId: scheme.id,
+  const template = await seedEntitlement(ctx, {
     leaveTypeId: type.id,
-    // Contiguous from 0, open-ended last — the shape schemeBandDays always matches.
+    // Contiguous from 0, open-ended last — the shape bandDaysFor always matches.
     serviceBands: [{ fromYears: 0, toYears: null, days }],
+    gradeId: grade.id,
+    name: `${code} entitlement ${randomUUID().slice(0, 8)}`,
+    validFrom: '2010-01-01',
   });
-  return { type, grade, group, scheme };
+  return { type, grade, template };
 }
 
 describe('783bf55a — a Service-Based Entitlement on a custom leave type must reach the balance', () => {
