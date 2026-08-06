@@ -28,10 +28,33 @@ after deploy: 329 migrations applied, `feedback_attachment_stage_ck` reads
 `submitted|contested|refuted|plan` on production, service `active`, BUILD_ID `w7rHG4QSdGTUk4-Ij2don`,
 `GET /` 401, and `rsync -azi --delete --dry-run` reporting **zero changes**.
 
-### The board — counted on production 2026-08-06 after r164 (owner role; `DATABASE_URL` is RLS-blocked)
+### The board — counted on production 2026-08-06 after r165 (owner role; `DATABASE_URL` is RLS-blocked)
 
-**`deployed = 594` · `cancelled = 12` · `approved = 2` · `contested = 2` · `building = 2` · `open = 1`.
-`planned` is ZERO.** Re-count rather than trusting this line.
+**`deployed = 594` · `cancelled = 12` · `planned = 4` · `approved = 2` · `building = 2`. `open` and
+`contested` are BOTH ZERO.** Re-count rather than trusting this line.
+
+**ALL FOUR PLANNED ITEMS CARRY A MOCKUP** (the first use of r165), each pinned to its current revision:
+`e7eb5d83` rev 2 · `4861bcbb` rev 2 · `b7b22514` rev 1 · `e440991b` rev 1. Sources are in
+`docs/mockups/*.html`; re-render with `pnpm mockup`.
+
+**WHAT REPRODUCING FIRST FOUND THIS ROUND — four items, and the ticket was wrong about scope on three:**
+- **`e7eb5d83` (claims, "delete everything and rebuild"): ZERO claims have ever been filed**, and 4 limit
+  rows exist against **55 job grades with NOT ONE grade-scoped limit**. `claim_policy` already carries
+  `grade_id` — the grade-by-grade limits they asked for are a SCREEN problem over data that exists. The
+  form designer is genuinely absent; mileage exists as ONE flat `ratePerKm` scalar with no table.
+  A rebuild is safe (no data) and unnecessary (the model is fine) — the plan concedes both.
+- **`b7b22514` (Entity Transfer): the reporter's proposed DATA MODEL ALREADY EXISTS, verbatim.**
+  `employment.hired_on` IS "Group Join Date" (never changes, already the anchor for leave service bands,
+  payroll proration and EA forms) and `join_date` is the current-entity date. The real gap is that
+  `transferEmployee` (core/org.ts:507) takes NO companyId — no movement can change company at all. And
+  the `movement_event_type` catalogue CANNOT solve it: core/movement-kinds.ts is explicit that a tenant
+  "may never make a type of its own BE a Termination", so a catalogue row would map onto the built-in
+  `transfer` kind, which cannot move company.
+- **`e440991b` (payroll process, 7 points): points 2 and 3 ARE ALREADY BUILT** — step-period.tsx already
+  tags already-processed companies and disables run cycles, and `payroll_reprocess_job` holds **30 rows
+  on production**. Point 4 asks us to REVERSE their own earlier "fully traceable" request (9bc442bc ask
+  #4); the plan says so rather than quietly doing it. Point 7 is half done — year already defaults
+  through the tenant clock, month does not.
 
 **THE REPORTER WORKED THE BOARD ON 2026-08-06 ~11:11-11:44, MID-DEPLOY.** Four changes landed while r164
 was shipping, and two of them are the most important things on the board:

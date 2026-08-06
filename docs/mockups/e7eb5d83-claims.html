@@ -1,0 +1,102 @@
+<meta charset="utf-8">
+<title>e7eb5d83 — Claims: limits by job grade, form designer, mileage rates</title>
+<!--
+  Mockup for e7eb5d83 (Configurable Claim Management), plan revision 2.
+  Answers the reporter's three contest questions IN THEIR ORDER, one panel each.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 9px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px;margin-bottom:20px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border)}
+  .r{text-align:right}
+  .split{display:grid;grid-template-columns:250px 1fr;gap:14px}
+  .glist{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .glist div{padding:7px 10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between}
+  .glist div:last-child{border-bottom:0}
+  .glist .on{background:color-mix(in srgb,var(--primary) 9%,white);box-shadow:inset 3px 0 0 var(--primary);font-weight:600}
+  .cnt{color:var(--mf);font-size:11px;font-weight:400}
+  .crumb{font-size:12px;color:var(--mf);margin-bottom:7px}
+  .crumb b{color:var(--fg)}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .have{background:var(--muted);color:var(--mf)}
+  .fieldrow{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);
+            border-radius:9px;margin-bottom:6px;background:#fff}
+  .grip{color:#c8c9d6;font-size:14px}
+  .ftype{font-size:10.5px;color:var(--mf);background:var(--muted);padding:1px 7px;border-radius:5px}
+  .req{font-size:10.5px;color:#b45309;background:#fef3c7;padding:1px 7px;border-radius:5px}
+  .add{border:1px dashed var(--border);border-radius:9px;padding:7px 9px;color:var(--primary);font-weight:600;font-size:12px}
+  .note{font-size:11.5px;color:var(--mf);margin-top:9px}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Claim limits — by job grade, then drill in <span class="chip have">data already exists</span></h2>
+  <p class="q">“The claim limit I want to list down by each job grade, then when I click into the particular job grade, all the claim list by row and follow by claim limit.”</p>
+  <div class="split">
+    <div>
+      <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:5px">Job grade</div>
+      <div class="glist">
+        <div><span>M1 — Manager</span><span class="cnt">4 set</span></div>
+        <div class="on"><span>M2 — Senior Manager</span><span class="cnt">4 set</span></div>
+        <div><span>E1 — Executive</span><span class="cnt">2 set</span></div>
+        <div><span>E2 — Senior Executive</span><span class="cnt">none</span></div>
+        <div><span>G1 — General</span><span class="cnt">none</span></div>
+      </div>
+      <p class="note">All 55 grades, searchable. “none” means that grade falls back to the company-wide limit.</p>
+    </div>
+    <div>
+      <div class="crumb">Job grade › <b>M2 — Senior Manager</b></div>
+      <table>
+        <thead><tr><th>Claim type</th><th class="r">Per claim</th><th class="r">Monthly</th><th class="r">Yearly</th><th class="r">Max / year</th></tr></thead>
+        <tbody>
+          <tr><td>Medical</td><td class="r">300.00</td><td class="r">—</td><td class="r">3,000.00</td><td class="r">—</td></tr>
+          <tr><td style="padding-left:24px;color:var(--mf)">↳ Dental</td><td class="r">150.00</td><td class="r">—</td><td class="r">600.00</td><td class="r">2</td></tr>
+          <tr><td style="padding-left:24px;color:var(--mf)">↳ Optical</td><td class="r">400.00</td><td class="r">—</td><td class="r">400.00</td><td class="r">1</td></tr>
+          <tr><td>Travel</td><td class="r">—</td><td class="r">1,500.00</td><td class="r">12,000.00</td><td class="r">—</td></tr>
+          <tr><td>Mileage</td><td class="r">—</td><td class="r">800.00</td><td class="r">—</td><td class="r">—</td></tr>
+        </tbody>
+      </table>
+      <p class="note">One row per claim type, sub-types indented under their parent. Edit in place; blank means no limit at this level.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Design the form for each claim type <span class="chip new">genuinely new</span></h2>
+  <p class="q">“Where I can designed my claim form field for each of the claim?”</p>
+  <div class="crumb">Claim type › <b>Travel</b> › Form</div>
+  <div class="fieldrow"><span class="grip">⠿</span><span style="flex:1">Amount</span><span class="ftype">Money</span><span class="req">Required</span><span class="chip have">built in</span></div>
+  <div class="fieldrow"><span class="grip">⠿</span><span style="flex:1">Date incurred</span><span class="ftype">Date</span><span class="req">Required</span><span class="chip have">built in</span></div>
+  <div class="fieldrow"><span class="grip">⠿</span><span style="flex:1">Receipt</span><span class="ftype">File</span><span class="req">Required</span><span class="chip have">built in</span></div>
+  <div class="fieldrow"><span class="grip">⠿</span><span style="flex:1">Destination</span><span class="ftype">Text</span><span class="req">Required</span></div>
+  <div class="fieldrow"><span class="grip">⠿</span><span style="flex:1">Purpose of trip</span><span class="ftype">Dropdown · 4 options</span></div>
+  <div class="fieldrow"><span class="grip">⠿</span><span style="flex:1">Project code</span><span class="ftype">Text</span></div>
+  <div class="add">+ Add field — Text · Number · Money · Date · Dropdown · Yes/No · File</div>
+  <p class="note">Each claim type gets its own field list. The four built-in fields stay on every form and cannot be removed; everything below them is yours to add, reorder and mark required.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Mileage rate table <span class="chip have">one flat rate today</span></h2>
+  <p class="q">“Where is the mileage claim rate table?”</p>
+  <table>
+    <thead><tr><th>From</th><th>To</th><th>Vehicle</th><th class="r">Rate / km</th><th>Effective from</th></tr></thead>
+    <tbody>
+      <tr><td>0 km</td><td>500 km</td><td>Car — under 1,600cc</td><td class="r">0.60</td><td>01 Jan 2026</td></tr>
+      <tr><td>501 km</td><td>no limit</td><td>Car — under 1,600cc</td><td class="r">0.45</td><td>01 Jan 2026</td></tr>
+      <tr><td>0 km</td><td>500 km</td><td>Car — 1,600cc and above</td><td class="r">0.70</td><td>01 Jan 2026</td></tr>
+      <tr><td>0 km</td><td>no limit</td><td>Motorcycle</td><td class="r">0.30</td><td>01 Jan 2026</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Today there is ONE flat rate per claim type, with no bands and no vehicle. This replaces it with a table, dated so a rate change does not rewrite last year’s claims.</p>
+</div>
