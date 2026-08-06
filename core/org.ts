@@ -2089,17 +2089,19 @@ export async function transferEmploymentCompanyTx(
     newCompanyId: string;
     effectiveDate: string;
     /**
-     * The placement the employee lands on, ALREADY RESOLVED by the caller to "what it will be after this
-     * movement" — the submitted value where HR moved the field, the stored value where they did not. This
-     * function does not diff; it checks that the result is coherent with the destination company.
+     * The placement DELTAS only — `undefined` means the movement does not move this field, exactly as it
+     * does everywhere else in this module. The carried-forward values are read from the open assignment and
+     * reporting line BELOW rather than passed in, and that is the point: the caller cannot forget to hand
+     * over a field it has no control on. Cost centre is the field that proves it — nothing on the movement
+     * form can move it, so it is ALWAYS carried forward, and a carried-forward old-company cost centre is
+     * precisely the dangling reference the changed-only guards elsewhere cannot see.
      */
     placement: {
-      departmentId: string | null;
-      positionId: string | null;
-      businessUnitId: string | null;
-      costCenterId: string | null;
-      locationId: string | null;
-      managerEmploymentId: string | null;
+      departmentId?: string | null;
+      positionId?: string | null;
+      businessUnitId?: string | null;
+      locationId?: string | null;
+      managerEmploymentId?: string | null;
     };
     movement: MovementTag;
   },
@@ -2127,7 +2129,49 @@ export async function transferEmploymentCompanyTx(
   if (!(adminRes as unknown as { ok: boolean }[])[0]?.ok) throw new DestinationCompanyNotAdministered();
 
   // ── Cross-company coherence, checked BEFORE the flip so a refusal leaves nothing half-done ──
-  const { placement: pl } = p;
+  // The state the movement starts from: the OPEN assignment version and the OPEN administrative reporting
+  // line — the same rows every other writer in this module treats as "current".
+  const [curAsg] = await tx
+    .select({
+      departmentId: assignment.departmentId,
+      positionId: assignment.positionId,
+      businessUnitId: assignment.businessUnitId,
+      costCenterId: assignment.costCenterId,
+      locationId: assignment.locationId,
+    })
+    .from(assignment)
+    .where(
+      and(
+        eq(assignment.employmentId, p.employmentId),
+        isNull(assignment.validTo),
+        isNull(assignment.supersededAt),
+      ),
+    )
+    .limit(1);
+  const [curRl] = await tx
+    .select({ managerEmploymentId: reportingLine.managerEmploymentId })
+    .from(reportingLine)
+    .where(
+      and(
+        eq(reportingLine.subordinateEmploymentId, p.employmentId),
+        eq(reportingLine.lineType, 'administrative'),
+        isNull(reportingLine.validTo),
+        isNull(reportingLine.supersededAt),
+      ),
+    )
+    .limit(1);
+  /** The value this field will hold AFTER the movement: the delta if it moved, the stored value if not. */
+  const after = (d: string | null | undefined, stored: string | null): string | null =>
+    d === undefined ? stored : d;
+  const pl = {
+    departmentId: after(p.placement.departmentId, curAsg?.departmentId ?? null),
+    positionId: after(p.placement.positionId, curAsg?.positionId ?? null),
+    businessUnitId: after(p.placement.businessUnitId, curAsg?.businessUnitId ?? null),
+    // Never a delta — no movement surface can move it. Always the carried-forward value.
+    costCenterId: curAsg?.costCenterId ?? null,
+    locationId: after(p.placement.locationId, curAsg?.locationId ?? null),
+    managerEmploymentId: after(p.placement.managerEmploymentId, curRl?.managerEmploymentId ?? null),
+  };
   const guardLabel = async (
     kind: 'department' | 'position' | 'cost_center' | 'business_unit',
     labelId: string | null,
