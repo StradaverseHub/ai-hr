@@ -99,6 +99,11 @@ export const STATUTORY_COMPONENT_CODES: readonly string[] = [
 ];
 const statutorySet = new Set(STATUTORY_COMPONENT_CODES);
 
+/** The reserved pay code for basic salary. Already a magic string in the kernel (core/payroll.ts skips it
+ *  in the component loop and pins the authoritative Personnel figure under it); named here because
+ *  2da9937a's aggregate is the second thing that has to know the BASIC component is not a normal pay item. */
+export const BASIC_PAY_CODE = 'BASIC';
+
 /**
  * Is this pay code a statutory component? TRUE for a reserved statutory CODE, and for any component whose
  * catalog kind is `contribution` — that kind exists precisely to model a statutory contribution line, so it
@@ -285,6 +290,12 @@ export function payRuleReadsFixedAllowanceTotal(rule: PayRule | null): boolean {
  */
 export function isFixedAllowanceComponent(code: string, kind: string | null | undefined, rule: PayRule | null): boolean {
   if (kind !== 'allowance') return false;
+  // BASIC IS NOT AN ALLOWANCE, whatever the catalog row says. It is seeded with kind 'allowance' and no
+  // rule (localization/my/pay-components.ts), so it satisfies every other clause here — and counting it
+  // would have silently added basic salary to the total in the reporter's OWN formula,
+  // `Basic + All Fixed Allowance`, paying basic twice. The kernel already treats the BASIC component as
+  // inert for exactly this class of reason (feedback 64fb5e48: Personnel is the only source of basic pay).
+  if (normCode(code) === BASIC_PAY_CODE) return false;
   if (isStatutoryComponent(code, kind)) return false;
   return rule == null || rule.kind === 'fixed';
 }
@@ -607,7 +618,11 @@ export function resolvePayComponentSet(
     // Every instance of a code shares the catalog's kind and rule, so these are properties of the GROUP.
     // Folded conservatively anyway (all instances must agree to count as fixed; any instance reading the
     // aggregate makes the group read it) so a caller assembling a set by hand cannot half-satisfy either.
-    const fa = isFixedAllowanceComponent(code, c.kind, c.rule);
+    // A caller-PINNED code is authoritative from elsewhere and inert as a component (BASIC — see
+    // AUTHORITATIVE PRE-SEEDS). Its row's amount is not money this engine pays, so it is not money the
+    // aggregate may total. Belt and braces with isFixedAllowanceComponent's own BASIC clause: this one
+    // holds for any future pinned code, that one holds when there is no caller to pin anything.
+    const fa = !pinned.has(code) && isFixedAllowanceComponent(code, c.kind, c.rule);
     const ra = payRuleReadsFixedAllowanceTotal(c.rule);
     if (g) {
       g.idx.push(i);

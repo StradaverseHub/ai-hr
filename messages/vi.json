@@ -7406,7 +7406,7 @@
       "CYCLE": "Các mục lương này phụ thuộc lẫn nhau thành vòng lặp. Hãy sửa một mục để chuỗi có điểm kết thúc.",
       "UNKNOWN_COMPONENT": "Hãy chọn một mục lương đang tồn tại và còn hoạt động.",
       "STATUTORY_FORBIDDEN": "EPF, SOCSO, EIS và PCB do luật định và không thể tính bằng công thức.",
-      "UNSAFE_DIVISION": "Bạn chỉ có thể chia cho một số cố định khác không."
+      "UNSAFE_DIVISION": "Bạn không thể chia cho không. Hãy chọn một giá trị khác để chia."
     },
     "assistButton": "Hỗ trợ bằng AI",
     "assistTitle": "Mô tả cách tính khoản này",
@@ -7451,7 +7451,10 @@
     "previewInputs": "Các mục lương đã dùng",
     "previewNone": "Không có nhân viên nào để kiểm tra.",
     "previewNote": "Hiển thị cho một kỳ ĐẦY ĐỦ, trước khi chia theo tỷ lệ và làm tròn — bảng lương áp dụng những bước đó khi chạy.",
-    "previewFailed": "Không thể tính kết quả cho nhân viên đó."
+    "previewFailed": "Không thể tính kết quả cho nhân viên đó.",
+    "operand_fixed_allowances": "Tất cả phụ cấp cố định",
+    "formulaDivisionNote": "Bạn có thể chia cho một giá trị thực tế như số ngày hoặc số giờ làm việc. Nếu giá trị đó bằng không đối với một nhân viên, mục lương này sẽ không trả gì cho nhân viên đó và họ sẽ được liệt kê trong đợt chạy lương để bạn kiểm tra — đợt chạy luôn hoàn tất.",
+    "previewZeroDivisor": "Mục này trả RM 0,00 cho nhân viên này vì \"{divisor}\" bằng không ở bước {step}. Đợt chạy lương vẫn sẽ hoàn tất và nhân viên này sẽ được liệt kê để bạn kiểm tra."
   },
   "review": {
     "title": "Đánh giá",

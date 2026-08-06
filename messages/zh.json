@@ -7406,7 +7406,7 @@
       "CYCLE": "这些薪资项目相互循环依赖。请修改其中一项，使依赖链有终点。",
       "UNKNOWN_COMPONENT": "请选择一个存在且仍在启用的薪资项目。",
       "STATUTORY_FORBIDDEN": "EPF、SOCSO、EIS 和 PCB 由法律规定，不能通过公式计算。",
-      "UNSAFE_DIVISION": "只能除以一个非零的固定数值。"
+      "UNSAFE_DIVISION": "不能除以零。请选择其他数值作为除数。"
     },
     "assistButton": "AI 协助",
     "assistTitle": "描述应如何计算",
@@ -7451,7 +7451,10 @@
     "previewInputs": "使用的薪资项目",
     "previewNone": "没有可供核对的员工。",
     "previewNote": "按完整周期显示，此为按比例分摊和舍入之前的数值——薪资运行时才会应用这些处理。",
-    "previewFailed": "无法为该员工计算结果。"
+    "previewFailed": "无法为该员工计算结果。",
+    "operand_fixed_allowances": "所有固定津贴",
+    "formulaDivisionNote": "您可以除以实时数值，例如工作天数或工作时数。若某位员工的该数值为零，此薪资项目对该员工不发放任何金额，并会在薪资运行中列出供您查看——运行始终会完成。",
+    "previewZeroDivisor": "此项对该员工发放 RM 0.00，因为第 {step} 步的「{divisor}」为零。薪资运行仍会完成，该员工将被列出供您查看。"
   },
   "review": {
     "title": "评估",
