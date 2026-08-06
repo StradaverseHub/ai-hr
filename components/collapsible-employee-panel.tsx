@@ -32,6 +32,11 @@ import { EmployeeName, Field, inputCls } from '@/components/ui';
  * captions would stop being a single-namespace file, and check C of the i18n guard skips those entirely.
  * So the fallback BUYS coverage on the consumer page rather than spending it.
  */
+// 7c834696-adjacent, found in r168 verification: EVERY toggle here is `print:hidden`.
+// app/payroll/individual-payslip/page.tsx wraps the PAYSLIP in this shell, and a payslip is the one
+// thing on any of these screens that is actually printed. Every other chrome element on that page is
+// already print:hidden and the global sheet (app/globals.css) hides only <aside>/<header>, so without
+// this a Save-as-PDF emitted a stray "Hide employee list" line above the letterhead.
 export function CollapsibleEmployeePanel({
   panel,
   children,
@@ -80,7 +85,7 @@ export function CollapsibleEmployeePanel({
             type="button"
             onClick={toggle}
             aria-expanded="true"
-            className="flex w-full items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex w-full items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground print:hidden"
           >
             <span aria-hidden>☰</span>
             {hide}
@@ -96,7 +101,7 @@ export function CollapsibleEmployeePanel({
             onClick={toggle}
             aria-expanded="false"
             title={show}
-            className="flex w-full items-center justify-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:h-40 lg:flex-col"
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:h-40 lg:flex-col print:hidden"
           >
             <span aria-hidden>◀</span>
             <span className="lg:[writing-mode:vertical-rl]">{railTitle}</span>
