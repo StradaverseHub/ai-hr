@@ -1,0 +1,72 @@
+<meta charset="utf-8"><title>4861bcbb — what removing Grade Groups costs</title>
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+ h2{font-size:14px;margin:0 0 4px}.sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .big{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;text-align:center;margin-bottom:6px}
+ .stat{border:1px solid var(--border);border-radius:12px;padding:14px}
+ .stat.bad{border-color:#fca5a5;background:#fef2f2}
+ .stat .n{font-size:34px;font-weight:800;line-height:1.05}
+ .stat .k{font-size:11.5px;color:var(--mf);margin-top:4px}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;padding:6px 9px;background:var(--muted)}
+ td{padding:6px 9px;border-top:1px solid var(--border)}
+ .r{text-align:right}
+ .two{display:grid;grid-template-columns:1fr 34px 1fr;gap:10px;align-items:center;margin-top:10px}
+ .b{border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12.5px}
+ .b.now{border-color:#6ee7b7;background:#ecfdf5}
+ .b.after{border-color:#fca5a5;background:#fef2f2}
+ .ar{text-align:center;font-weight:700;color:var(--mf)}
+ .warn{background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:14px;font-size:12.5px}
+</style>
+<div class="card">
+ <h2>“Please remove Grade Group also” — here is what that costs</h2>
+ <p class="sub">Counted on your live system today.</p>
+ <div class="big">
+  <div class="stat"><div class="n">16</div><div class="k">grade groups</div></div>
+  <div class="stat bad"><div class="n">205</div><div class="k">leave approval rules that point at one</div></div>
+  <div class="stat"><div class="n">261</div><div class="k">approval rules you have in total</div></div>
+ </div>
+ <p class="sub" style="text-align:center;margin:10px 0 0"><b>79% of your leave approval routing is scoped by grade group.</b></p>
+</div>
+<div class="card">
+ <h2>The groups, and how many rules each one carries</h2>
+ <table>
+  <thead><tr><th>Grade group</th><th class="r">Approval rules</th></tr></thead>
+  <tbody>
+   <tr><td>GRADE 16-19 (PERMANENT)</td><td class="r">25</td></tr>
+   <tr><td>GRADE >= 19 (CONTRACT)</td><td class="r">20</td></tr>
+   <tr><td>GRADE H (CONTRACT)</td><td class="r">20</td></tr>
+   <tr><td>GRADE H (PERMANENT)</td><td class="r">20</td></tr>
+   <tr><td>GRADE 12-18 (CONTRACT)</td><td class="r">20</td></tr>
+   <tr><td>GRADE 20-23 (PERMANENT)</td><td class="r">20</td></tr>
+   <tr><td>GRADE 12-15 (PERMANENT)</td><td class="r">20</td></tr>
+   <tr><td>Part Time</td><td class="r">20</td></tr>
+   <tr><td style="color:var(--mf)">…and 8 more, 5 rules each</td><td class="r" style="color:var(--mf)">40</td></tr>
+  </tbody>
+ </table>
+</div>
+<div class="card">
+ <h2>What happens to a rule when its group is gone</h2>
+ <div class="two">
+  <div class="b now"><b>Today</b><br>“Grade 16-19 permanent, 3 days or more → Head of Department, then HR.”<br>
+   Applies to the people in that group and nobody else.</div>
+  <div class="ar">→</div>
+  <div class="b after"><b>With no grade group</b><br>“3 days or more → Head of Department, then HR.”<br>
+   <b>Applies to EVERY employee</b> — a rule with no scope matches anyone.</div>
+ </div>
+ <p class="sub" style="margin-top:11px">All 205 become rules that match everybody, and they then compete with each other. The eight groups carrying
+  20 rules each collapse onto identical scopes — which the system already refuses as duplicates when you try to
+  create them by hand.</p>
+</div>
+<div class="card warn">
+ <b>So we have not removed them, and we would rather you decided this knowing the number.</b> Grade groups no longer
+ have anything to do with entitlement — that part is genuinely gone. What is left of them is approval routing, and it
+ is most of yours. If you still want them removed, tell us which of these you want and we will do it:
+ <ul style="margin:8px 0 0">
+  <li><b>Remove the groups and the 205 rules together</b>, and re-key approval routing from scratch alongside the entitlement setup.</li>
+  <li><b>Keep them</b>, renamed if the name is what bothers you — they are grade bands for approvals now, not benefit schemes.</li>
+ </ul>
+</div>
