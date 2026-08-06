@@ -9,6 +9,38 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r164 — 35b7af0a group 8 (Identity), the last genuine wizard/Personnel drift  ·  2026-08-06
+
+Shipped `main@f0a85dfb`. One item, no migration. Gate 589/589 files, 7,222 tests.
+
+**Decisions**
+
+- **The wizard collected no nationality at all, and that was the whole defect.** Personnel gates NRIC vs
+  passport on nationality (357faecf) through a live client island. Every hire the wizard created landed
+  with `nationality` NULL — the exact state in which Personnel HIDES the Identity No card — and it is
+  also why group 7's IC-derived SOCSO default had nothing to fire on. One shared group
+  (`components/identity-fields.tsx`) fixes both.
+- **`Combobox`'s `name` prop became OPTIONAL rather than the group faking a controlled mode.** Omit it and
+  NO hidden input renders, so the wizard's copy posts nothing and a source guard grepping for `name="…"`
+  can never conclude that it submits. That keeps the r159 wipe-guard lesson intact instead of loosening
+  the guard to accommodate a new caller.
+- **THE RED GATE WAS THE HARNESS, AND THE DIAGNOSTIC RULE PAID FOR ITSELF AGAIN.** A plain `npx vitest run`
+  reported 293 of 589 files failed. `AssertionError` count across the whole 9,641-line log: **ZERO**. The
+  RAM disk was at 94% and the cluster was dead. `scripts/gate-chunked.sh` — which exists for exactly this
+  and whose header documents the same failure at 285 files — returned 589/589 green on the same commit.
+  **Do not read a red gate before grepping it for `AssertionError`.**
+- **`pgrep -f` matched the waiter's own command string, again.** The deploy poller ran
+  `pgrep -c -f deploy/deploy.sh` from an ssh command that itself contained `deploy/deploy.sh`, so it read
+  `RUNNING=2` forever while the deploy had already printed "✅ Deployed + restarted" on the first poll.
+  This is AGENTS.md mistake #3 and it cost ten minutes.
+- **An agent and a gate shared the cluster, again (mistake #12) — this time because a background Workflow
+  from an earlier turn was still live when the gate started.** Its agent noticed 11 backends across
+  `ai_hr_test_w1..w10`, stopped its own DB work and said so. Chunk 1 still came back 197/197.
+  **A background job you launched and forgot is indistinguishable from a rule violation.**
+- **The remaining 21 wizard labels are deliberately NOT shared.** They already render the same control on
+  both screens; extracting them prevents no defect while touching company-scoped org-cascade selects and
+  `employeeCode`'s deliberately wizard-only Auto/Manual rule.
+
 ## r163 — 2026-08-06 — a00c4f64, the Leave Calendar leaves the Dashboard
 
 **Shipped:** `a00c4f64`. Merge `32311122`, migration `0404`. Gate 589/589 across three chunks with NO

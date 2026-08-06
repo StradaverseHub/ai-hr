@@ -18,17 +18,34 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-06 (r163 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-06 (r164 SHIPPED)
 
-**`main@32311122` is what runs. Production on 328 migrations. Next free migration number is `0404`**
-(0389, 0401 and 0402 were never claimed and are dead). `0404` shipped with r163; next free is `0405`. No half-applied
-migration, no pending deploy, nothing in flight. Verified after deploy: service `active`, `GET /` 401,
-and `rsync -azi --delete --dry-run` reporting **zero changes**.
+**`main@f0a85dfb` is what runs. Production on 328 migrations. Next free migration number is `0405`**
+(0389, 0401 and 0402 were never claimed and are dead) — **but `0405` is CLAIMED by the unmerged release
+three branch (`when: 1781862505000`), so anything else must take `0406` / `1781862506000`.** r164 carried
+NO migration. No half-applied migration, no pending deploy, nothing in flight. Verified after deploy:
+BUILD_ID moved `G64CFabi3HFgRIraIZ1px` → `qpfIFW7MoOVKlb6bRZ4Ks`, service `active`, `GET /` 401, and
+`rsync -azi --delete --dry-run` reporting **zero changes**.
 
-### The board — counted on production 2026-08-06 after r162 (owner role; `DATABASE_URL` is RLS-blocked)
+### The board — counted on production 2026-08-06 after r164 (owner role; `DATABASE_URL` is RLS-blocked)
 
-**`deployed = 594` · `building = 3` · `approved = 1` · `open = 1` · `cancelled = 12`. `contested` and
-`planned` are ZERO.** Re-count rather than trusting this line.
+**`deployed = 594` · `cancelled = 12` · `approved = 2` · `contested = 2` · `building = 2` · `open = 1`.
+`planned` is ZERO.** Re-count rather than trusting this line.
+
+**THE REPORTER WORKED THE BOARD ON 2026-08-06 ~11:11-11:44, MID-DEPLOY.** Four changes landed while r164
+was shipping, and two of them are the most important things on the board:
+
+- **`e7eb5d83` (Configurable Claim Management) went DEPLOYED → CONTESTED**: *"the whole thing is crap, can
+  you delete everything and based on my request to rebuild again?"* They want per-claim-type designable
+  form fields, a mileage claim RATE TABLE, and claim limits listed BY JOB GRADE with drill-down to the
+  claim rows and limits. This is a rebuild, not a patch. **It is also the clearest evidence yet for why
+  plans need a VISUAL before the build** — see "Plans must carry a mockup" below.
+- **`4861bcbb` was CONTESTED, and the contest IS the answer** (see the `6e9a126e` bullet).
+- **`da4af51f` (Individual Payslip redesign) was APPROVED** — ready to build, unstarted.
+- **`e440991b` is NEW and open**: Payroll Process workflow, SEVEN numbered points (Back button, processed
+  companies read-only, Reprocess, drop Recalculation History into the Audit Trail, drill down from the
+  payslip list, an .xlsx Transaction Detail Report, and default the filter to the current year+month).
+  Unplanned.
 
 **r160/r161/r162/r163 shipped TEN board items between them on 2026-08-05/06.**
 
@@ -38,17 +55,53 @@ plan's mandatory pre-build count is DONE, measured 2026-08-06: **26 compensation
 moving in BOTH directions (one is 6000 → 5500). The naive query — valid_from before the last payslip —
 returns 41/36 and is WRONG; that is just "everyone has a salary".
 
-**`open = 1` is `4861bcbb`, raised BY US** (reporter_label CLAUDE AI) on 2026-08-06: it asks the reporter
-for the DATE to clear the old entitlement setup, with the re-counted figures. See the `6e9a126e` bullet.
+### Plans must carry a MOCKUP, not just prose — decided 2026-08-06
 
-**STILL `building`, all three deliberately partial. `improve:pull` HIDES `building`, so nothing but this
-file will ever surface them.** Both board `build_ref` values were CORRECTED on production 2026-08-06
-(owner-authorised) and now match the bullets below — `35b7af0a` had still been claiming 25 labels,
-groups 6+ unbuilt and an `8590615a` overlap that is deployed. Keep them in step: the reporter reads the
-board, not this file.
+**The board's communication is one-directional and it is measurable: of 151 attachments, 143 are
+IMAGES.** The reporter speaks in screenshots; we answer with ~6,000 characters of plain text that the
+board renders RAW (no Markdown). They approve a paragraph and receive a screen — and `e7eb5d83` came
+back as "the whole thing is crap" after shipping. **Owner's decision: design the UI/UX at PLAN time and
+attach it, before building. Build it as untracked operator tooling (no board item), ahead of `7c834696`
+point 3.**
 
-- **`6e9a126e` — releases ONE (r141) and TWO (r159) are live. RELEASE THREE IS DATA-BLOCKED, not
-  merely awaiting a decision.** Measured on production 2026-08-05: `leave_policy` **67** rows,
+Most of the machinery already exists and must not be rebuilt: `feedback_attachment` carries
+`content` / `mime_type` / `stage` / `plan_revision` with RLS; `/feedback/attachment/[id]?inline=1`
+already serves the stored mime with `Content-Disposition: inline`, so a PNG opens in the browser today;
+and `app/feedback/[id]/page.tsx:109` already groups attachments by stage and shows the plan version.
+**What is missing is one stage.** `feedback_attachment_stage_ck` allows only
+`submitted | contested | refuted` — all REPORTER-side. Add `plan`, and extend
+`feedback_attachment_stage_revision_ck` so `plan` REQUIRES a non-null `plan_revision`: a re-planned item
+whose old mockup floated free would show a picture of a plan that no longer exists. Render it beside the
+PLAN (page bottom), not in the reporter's screenshot block at the top, and render images INLINE rather
+than as the current `↗ filename` link — if they have to click, most will not.
+
+**The standing caution: a mockup is a PROMISE, and a picture cannot hedge.** The `da4af51f` plan says
+"we will show every line we have and totals where we do not" — that sentence has no honest visual. Label
+mockups as layout sketches and keep anything genuinely uncertain in words, or we manufacture a NEW class
+of "not up to standard" complaint.
+
+**STILL `building`, both deliberately partial. `improve:pull` HIDES `building`, so nothing but this
+file will ever surface them.** Keep their `build_ref` in step with the bullets below: the reporter reads
+the board, not this file.
+
+- **`6e9a126e` — releases ONE (r141) and TWO (r159) are live. RELEASE THREE IS BUILT BUT UNMERGED, and
+  THE REPORTER HAS NOW SAID GO** (contest on `4861bcbb`, 2026-08-06): *"Remove the existing Benefit
+  Schemes, entitlement templates, service-based entitlement tables, company/grade entitlement rules, and
+  any backend relationships related to the old entitlement framework, so the new entitlement module
+  starts from a clean state. The entitlement configuration should start from zero, while everything else
+  remains untouched."* No date was given — they simply said do it.
+  **TWO THINGS IN THAT SENTENCE NEED CARE BEFORE ANYONE ACTS ON IT.**
+  1. They also name **entitlement templates** — the NEW layer. Both `entitlement_template` and
+     `entitlement_eligibility_rule` are at **0 rows**, so clearing them is a no-op today. Do NOT read it
+     as "drop the new tables too"; it means "start from zero", which is already true of them.
+  2. **"any backend relationships related to the old entitlement framework" is WIDER than what the owner
+     authorised.** The owner named exactly four objects on 2026-08-06: `leave_policy`, `benefit_scheme`,
+     `scheme_leave_entitlement`, `employment.benefit_scheme_id`. `grade_group` / `grade_group_member`
+     LOOK like the old framework and are NOT — **205 live `leave_approval_policy` rows scope by them**,
+     and dropping them silently unscopes every one. Keep them, say so in the re-plan, and do not widen
+     the drop on the strength of the reporter's phrasing alone.
+
+  Measured on production 2026-08-05: `leave_policy` **67** rows,
   `benefit_scheme` **41**, `scheme_leave_entitlement` **292** — against **0** in both
   `entitlement_template` and `entitlement_eligibility_rule`. Release two made the engines resolve
   `template ?? scheme ?? policy`, so with the new layer empty everything still falls through to the
@@ -59,7 +112,16 @@ board, not this file.
   `test/leave-type-referrers.test.ts` compares it against the live foreign keys **in both directions**,
   so dropping `leave_policy` now FAILS THE SUITE until its disposition is updated, instead of silently
   removing a guard. `employment.benefit_scheme_id` is already at **0** rows, so that column alone is safe.
-  **Nothing has been dropped or cleared — release three is the OWNER'S decision, not a build task.** The
+  **Nothing has been dropped or cleared yet.** The build lives on `build/r163-g-release3` (migration
+  `0405` written; `db/schema.ts`, `packs/leave` satelliteTables, the `leave_policy` disposition and ~102
+  test errors still to do) plus `build/r163g-ui` and `build/r163g-picker` from the finishing workflow.
+  **Three findings from that workflow contradict the handover doc and must not be re-derived:** the
+  grade-group CRUD UI lived INSIDE `components/benefit-scheme-config.tsx` (the file the brief said to
+  delete while also saying grade groups must stay — mutually exclusive; it was extracted to its own
+  component, and following the brief literally would have left the 205 approval rules pointing at groups
+  nobody could create or re-staff); `db/seed.ts:13` imports the removed `createLeavePolicy` and is on
+  nobody's list; and `admin.entitlementTemplates.coexistNote` still tells HR that nothing old has been
+  removed, which becomes false the moment this deploys. The
   proof that releases one and two are inert, and the carry-forward defect to re-read before planning
   three, are in `docs/HANDOFF-HISTORY.md` → r159 Decisions; read them there rather than re-deriving.
   `build/r154` is squashed and ancestrally unrelated to what shipped — ignore it in any branch scan.
@@ -70,19 +132,18 @@ board, not this file.
   the premium `core/payroll.ts` prefills, live on 2 of 9 shifts. **Remaining: point 3, the per-figure
   calculation breakdown and hover** — engine work, and the only part needing a new stored trace. Its
   board `build_ref` is NULL; this bullet is the record.
-- **`35b7af0a` — groups 1-2 (r138), 3-5 (r159), 6 (r160) and 7 (r161) are live. 22 labels remain**,
-  measured not estimated. Group 6 shared Tax Category; group 7 shared SOCSO/EIS, where the wizard was a
-  whole consolidation behind — it offered the legacy "EIS eligible" yes/no with NO SOCSO category, so a
-  hire created there could not be put in First or Second category.
-  **THE REMAINING 22 ARE MOSTLY NOT WORTH SHARING, and that is a finding, not fatigue.** `fullName`,
-  `primaryEmail`, `phone`, `taxNumber` and friends already render the SAME control on both screens —
-  extracting them prevents no defect while touching the org-cascade selects (company-scoped, interlinked)
-  and `employeeCode` (whose Auto/Manual rule is deliberately wizard-only). **ONE genuine drift is left:
-  IDENTITY.** Personnel gates NRIC vs passport on nationality (`357faecf`) through a live client island;
-  the wizard shows a bare IC box and does not collect nationality at all — which is also why group 7's
-  IC-derived SOCSO default cannot fire there. That is the last group worth building.
-  **3 of the defined keys only LOOK retirable — see the computed-key trap below; they are pinned
-  by test and deleting them breaks real screens.** The `8590615a` overlap is GONE (it is deployed).
+- **`35b7af0a` — DONE and DEPLOYED in r164.** Groups 1-2 (r138), 3-5 (r159), 6 (r160), 7 (r161) and
+  **8 — Identity (r164)**. Group 8 was the last genuine drift: Personnel gated NRIC vs passport on
+  nationality (`357faecf`) through a live client island while the wizard showed a bare IC box and
+  collected NO nationality at all, so every hire it created landed with `nationality` NULL — the exact
+  state in which Personnel HIDES the Identity No card, and the reason group 7's IC-derived SOCSO default
+  could not fire there. `components/identity-fields.tsx` is now one shared group used by both screens.
+  **THE REMAINING 21 LABELS ARE DELIBERATELY NOT SHARED, and that is a measured finding, not fatigue** —
+  `fullName`, `primaryEmail`, `phone`, `taxNumber` and friends already render the SAME control on both
+  screens, so extracting them prevents no defect while touching the company-scoped org-cascade selects
+  and `employeeCode`, whose Auto/Manual rule is deliberately wizard-only. **3 of the defined keys only
+  LOOK retirable — see the computed-key trap below; the Review step renders them through a computed
+  `t(fields.$f)`, they are pinned by test, and deleting them breaks real screens.**
 
 ### THE DELETE GUARD IS FIXED (r160) — and the durable lesson is the count, not the fix
 
