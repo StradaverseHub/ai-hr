@@ -67,13 +67,15 @@ import {
   createCompany,
   createCostCenter,
   createDepartment,
-  createLeavePolicy,
   createLeaveType,
-  deleteLeavePolicy,
   revokeRole,
   setCompanyParent,
-  updateLeavePolicy,
 } from '../core/admin';
+// 6e9a126e RELEASE THREE — createLeavePolicy / updateLeavePolicy / deleteLeavePolicy went with
+// leave_policy (migration 0405). The entitlement DAYS these cases configure come from a template + an
+// eligibility rule now; `seedEntitlement` is the harness fixture that writes both, and the two writers
+// this file still needs for the dated-supersede and stop-a-table cases are imported directly.
+import { retireEntitlementTemplate, updateEntitlementTemplate } from '../core/entitlement-template';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
 import {

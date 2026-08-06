@@ -24,9 +24,14 @@
  * applicationSpanDays() in core/leave.ts is the only production code that moves.
  *
  * Harness notes follow test/combined-leave-limit.test.ts: requests and approvals run as adminCtx (the cap is
- * a data rule with no admin bypass), the employee is pinned to the scheme by manual override so resolution
- * never depends on grade-group wiring, and leave types are allowNegativeBalance so the balance gates stay
- * out of the way of the cap under test.
+ * a data rule with no admin bypass), and leave types are allowNegativeBalance so the balance gates stay out
+ * of the way of the cap under test.
+ *
+ * 6e9a126e RELEASE THREE — the fixtures used to create a benefit_scheme and pin the employee to it, from
+ * back when a shared group was owned by a scheme. r88/1ef1cf95 already moved groups to TENANT level and
+ * nothing here has read the scheme since; migration 0405 drops the table, so those lines went. Every
+ * assertion below is untouched: the per-application cap and the pool total both resolve from
+ * leave_shared_group / leave_shared_group_member, which is what these cases always measured.
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -40,7 +45,6 @@ import {
   CombinedLeaveLimitExceededError,
   CombinedLeaveApplicationTooLongError,
 } from '../core/leave';
-import { createBenefitScheme, setEmploymentBenefitScheme } from '../core/benefit-scheme';
 // r88/1ef1cf95 — shared groups are no longer owned by a benefit scheme, so their CRUD moved out of
 // core/benefit-scheme.ts into its own tenant-level module.
 import {
@@ -85,18 +89,11 @@ async function grant(employmentId: string, leaveTypeId: string, days: number): P
   });
 }
 
-/** The reporter's own configuration: an employee pinned to a scheme, and their SEVEN special-leave types.
- *  Named after the codes in the request (Caregiver, Compassionate, Natural Disaster, Examination,
- *  Graduation, Marriage, Study) so the worked example below reads the way they wrote it. */
+/** The reporter's own configuration: an employee and their SEVEN special-leave types. Named after the
+ *  codes in the request (Caregiver, Compassionate, Natural Disaster, Examination, Graduation, Marriage,
+ *  Study) so the worked example below reads the way they wrote it. */
 async function fixture() {
   const ctx = adminCtx(b);
-  const scheme = await createBenefitScheme(ctx, {
-    companyId: b.companyId,
-    employmentType: 'full_time',
-    gradeGroupId: null,
-    name: `Special leave scheme ${randomUUID().slice(0, 8)}`,
-    status: 'active',
-  });
   const types = {
     CGL: await leaveType('CGL'),
     CPL: await leaveType('CPL'),
@@ -113,9 +110,8 @@ async function fixture() {
     employmentType: 'full_time',
     hiredOn: '2020-01-01',
   });
-  await setEmploymentBenefitScheme(ctx, { employmentId: emp.employmentId, benefitSchemeId: scheme.id });
   for (const id of Object.values(types)) await grant(emp.employmentId, id, 50);
-  return { ctx, scheme, types, employmentId: emp.employmentId };
+  return { ctx, types, employmentId: emp.employmentId };
 }
 
 /** The Special Leave Group exactly as the plan describes it: the seven types, 10 days a year, 3 per
@@ -123,7 +119,6 @@ async function fixture() {
  *  that exists in a database today. */
 async function specialLeaveGroup(
   ctx: Awaited<ReturnType<typeof fixture>>['ctx'],
-  scheme: { id: string },
   types: Record<string, string>,
   maxDaysPerApplication: number | null,
 ) {
@@ -151,8 +146,8 @@ beforeEach(async () => {
 
 describe("1ef1cf95 · the reporter's worked example, end to end", () => {
   it('Marriage 3 approved + Compassionate 2 + Examination 3 = 8 of 10, leaving 2 for any of the seven', async () => {
-    const { ctx, scheme, types, employmentId } = await fixture();
-    await specialLeaveGroup(ctx, scheme, types, 3);
+    const { ctx, types, employmentId } = await fixture();
+    await specialLeaveGroup(ctx, types, 3);
 
     // Marriage 3 — APPROVED, so the pool is charged through the approval path as well as the submit one.
     const mrl = await requestLeave(ctx, {
@@ -174,8 +169,8 @@ describe("1ef1cf95 · the reporter's worked example, end to end", () => {
   });
 
   it('REFUSAL 1 (the pool): a 4th application for 3 days is refused because only 2 days remain', async () => {
-    const { ctx, scheme, types, employmentId } = await fixture();
-    await specialLeaveGroup(ctx, scheme, types, 3);
+    const { ctx, types, employmentId } = await fixture();
+    await specialLeaveGroup(ctx, types, 3);
     const mrl = await requestLeave(ctx, { employmentId, leaveTypeId: types.MRL, startDate: '2026-06-01', endDate: '2026-06-03', today: TODAY });
     await decideLeave(ctx, { leaveRequestId: mrl.leaveRequestId, decision: 'approved' });
     await requestLeave(ctx, { employmentId, leaveTypeId: types.CPL, startDate: '2026-07-06', endDate: '2026-07-07', today: TODAY });
@@ -197,8 +192,8 @@ describe("1ef1cf95 · the reporter's worked example, end to end", () => {
   });
 
   it('REFUSAL 2 (the cap): a single 4-day application is refused with all 10 pool days available', async () => {
-    const { ctx, scheme, types, employmentId } = await fixture();
-    await specialLeaveGroup(ctx, scheme, types, 3);
+    const { ctx, types, employmentId } = await fixture();
+    await specialLeaveGroup(ctx, types, 3);
 
     // Nothing has been taken: the entire 10-day pool is free. The application is still refused, because
     // 4 calendar days exceeds the group's 3-days-per-application cap.
@@ -220,8 +215,8 @@ describe("1ef1cf95 · the reporter's worked example, end to end", () => {
   });
 
   it('the cap applies to every member type, not just the one it was set from', async () => {
-    const { ctx, scheme, types, employmentId } = await fixture();
-    await specialLeaveGroup(ctx, scheme, types, 3);
+    const { ctx, types, employmentId } = await fixture();
+    await specialLeaveGroup(ctx, types, 3);
     for (const [label, id] of Object.entries(types)) {
       await expect(
         requestLeave(ctx, { employmentId, leaveTypeId: id, startDate: '2026-06-01', endDate: '2026-06-04', today: TODAY }),
@@ -233,8 +228,8 @@ describe("1ef1cf95 · the reporter's worked example, end to end", () => {
 
 describe('1ef1cf95 · the cap measures CALENDAR days (the documented reading of "consecutive")', () => {
   it('exactly at the cap passes; one day over is refused (boundary)', async () => {
-    const { ctx, scheme, types, employmentId } = await fixture();
-    await specialLeaveGroup(ctx, scheme, types, 3);
+    const { ctx, types, employmentId } = await fixture();
+    await specialLeaveGroup(ctx, types, 3);
     await expect(
       requestLeave(ctx, { employmentId, leaveTypeId: types.NDL, startDate: '2026-06-01', endDate: '2026-06-03', today: TODAY }),
     ).resolves.toBeTruthy();
@@ -249,13 +244,6 @@ describe('1ef1cf95 · the cap measures CALENDAR days (the documented reading of 
     // says the cap counts calendar days. If the reporter meant working days, this assertion is the one that
     // flips — and applicationSpanDays() in core/leave.ts is the only production code that changes with it.
     const ctx = adminCtx(b);
-    const scheme = await createBenefitScheme(ctx, {
-      companyId: b.companyId,
-      employmentType: 'full_time',
-      gradeGroupId: null,
-      name: `Working-day scheme ${randomUUID().slice(0, 8)}`,
-      status: 'active',
-    });
     const wdA = await leaveType('WDA', 'working_days');
     const wdB = await leaveType('WDB', 'working_days');
     const emp = await hireEmployee(ctx, {
@@ -265,7 +253,6 @@ describe('1ef1cf95 · the cap measures CALENDAR days (the documented reading of 
       employmentType: 'full_time',
       hiredOn: '2020-01-01',
     });
-    await setEmploymentBenefitScheme(ctx, { employmentId: emp.employmentId, benefitSchemeId: scheme.id });
     await grant(emp.employmentId, wdA, 50);
     await grant(emp.employmentId, wdB, 50);
     await createLeaveSharedGroup(ctx, {
@@ -282,8 +269,8 @@ describe('1ef1cf95 · the cap measures CALENDAR days (the documented reading of 
 
 describe('1ef1cf95 · a group with no cap behaves exactly as it did before 0327', () => {
   it('a null cap lets a long application through, and the shared pool still refuses an over-total one', async () => {
-    const { ctx, scheme, types, employmentId } = await fixture();
-    await specialLeaveGroup(ctx, scheme, types, null);
+    const { ctx, types, employmentId } = await fixture();
+    await specialLeaveGroup(ctx, types, null);
     // 6 days in ONE application — refused outright by a 3-day cap, but this group sets none.
     await expect(
       requestLeave(ctx, { employmentId, leaveTypeId: types.MRL, startDate: '2026-06-01', endDate: '2026-06-06', today: TODAY }),
@@ -295,8 +282,8 @@ describe('1ef1cf95 · a group with no cap behaves exactly as it did before 0327'
   });
 
   it('a leave type in NO group is never capped', async () => {
-    const { ctx, scheme, types, employmentId } = await fixture();
-    await specialLeaveGroup(ctx, scheme, types, 3);
+    const { ctx, types, employmentId } = await fixture();
+    await specialLeaveGroup(ctx, types, 3);
     const outsider = await leaveType('OUT');
     await grant(employmentId, outsider, 50);
     await expect(
@@ -307,8 +294,8 @@ describe('1ef1cf95 · a group with no cap behaves exactly as it did before 0327'
 
 describe('1ef1cf95 · the cap is enforced on the APPROVAL path too', () => {
   it('a cap introduced after submission blocks the approval instead of letting it through', async () => {
-    const { ctx, scheme, types, employmentId } = await fixture();
-    const pool = await specialLeaveGroup(ctx, scheme, types, null);
+    const { ctx, types, employmentId } = await fixture();
+    const pool = await specialLeaveGroup(ctx, types, null);
     // Submitted while the group had no cap — 4 days, accepted.
     const req = await requestLeave(ctx, {
       employmentId,
@@ -331,8 +318,8 @@ describe('1ef1cf95 · the cap is enforced on the APPROVAL path too', () => {
   });
 
   it('an application within the cap still approves (the approval check is not a blanket refusal)', async () => {
-    const { ctx, scheme, types, employmentId } = await fixture();
-    await specialLeaveGroup(ctx, scheme, types, 3);
+    const { ctx, types, employmentId } = await fixture();
+    await specialLeaveGroup(ctx, types, 3);
     const req = await requestLeave(ctx, {
       employmentId,
       leaveTypeId: types.EXM,
@@ -348,15 +335,15 @@ describe('1ef1cf95 · the cap is enforced on the APPROVAL path too', () => {
 
 describe('1ef1cf95 · configuring the cap', () => {
   it('create → list round-trips the cap; it is null when never set', async () => {
-    const { ctx, scheme, types } = await fixture();
-    await specialLeaveGroup(ctx, scheme, types, 3);
+    const { ctx, types } = await fixture();
+    await specialLeaveGroup(ctx, types, 3);
     const [row] = await listLeaveSharedGroups(ctx);
     expect(row).toMatchObject({ name: 'Special Leave Group', totalLimitDays: 10, maxDaysPerApplication: 3 });
   });
 
   it('update sets and CLEARS the cap (it is an absolute set, not a patch)', async () => {
-    const { ctx, scheme, types } = await fixture();
-    const pool = await specialLeaveGroup(ctx, scheme, types, null);
+    const { ctx, types } = await fixture();
+    const pool = await specialLeaveGroup(ctx, types, null);
     const ids = Object.values(types);
     let [row] = await listLeaveSharedGroups(ctx);
     expect(row.maxDaysPerApplication).toBeNull();
@@ -397,7 +384,7 @@ describe('1ef1cf95 · configuring the cap', () => {
   });
 
   it('rejects a zero, negative or absurd cap rather than storing a group nobody can apply to', async () => {
-    const { ctx, scheme, types } = await fixture();
+    const { ctx, types } = await fixture();
     const ids = Object.values(types);
     for (const bad of [0, -1]) {
       await expect(
@@ -412,8 +399,8 @@ describe('1ef1cf95 · configuring the cap', () => {
   it('the DB refuses a non-positive cap even when the validator is bypassed (the CHECK carried forward into 0342)', async () => {
     // Defence in depth: the named CHECK is the guarantee an importer or a hand-written UPDATE cannot store
     // a cap that would refuse every application. Asserted through the driver error, not the ORM wrapper.
-    const { ctx, scheme, types } = await fixture();
-    const pool = await specialLeaveGroup(ctx, scheme, types, 3);
+    const { ctx, types } = await fixture();
+    const pool = await specialLeaveGroup(ctx, types, 3);
     const attempt = owner.db.execute(
       sql`update leave_shared_group set max_days_per_application = 0 where id = ${pool.id}`,
     );
