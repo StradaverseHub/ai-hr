@@ -215,6 +215,16 @@ export default async function EmployeePage({
       ? { href: '/org', label: t('backToOrg') }
       : { href: '/admin/personnel', label: t('backToPeople') };
 
+  // c002b3c3 — reproduced while asserting the scope guard, and PRE-EXISTING (unchanged from main): a
+  // route segment that is not a uuid reached the query verbatim, so `/admin/personnel/not-a-uuid` came
+  // back as a Postgres `invalid input syntax for type uuid` and a 500 error screen, where every other
+  // unreachable id gives a 404. The shape check is not the access control — `employeeDetail` still is,
+  // and it is what refuses a well-formed id belonging to a company outside the session's scope. This
+  // only stops a malformed id from becoming a crash instead of the "no such employee" it means. Worth
+  // fixing here because this item puts a control on the page whose whole job is to hand this route ids.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(employmentId)) notFound();
+
   const emp = await employeeDetail(s, employmentId);
   if (!emp) notFound();
   const today = todayInKualaLumpur();

@@ -221,6 +221,20 @@ describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-s
     expect(src).toContain('if (!emp) notFound();');
   });
 
+  it('a MALFORMED employmentId 404s instead of 500ing, and the shape check never replaces the scope check', () => {
+    const src = read(PROFILE);
+    // Reproduced on a dev server: `/admin/personnel/not-a-uuid` used to reach the query verbatim and
+    // return a Postgres "invalid input syntax for type uuid" 500. A page whose new search box exists to
+    // hand this route ids should answer "no such employee" for every id it cannot resolve, not crash
+    // for one shape of them.
+    expect(src).toContain('if (!UUID_RE.test(employmentId)) notFound();');
+    // ORDER MATTERS: the shape check is a pre-filter, not the guard. `employeeDetail` must still run
+    // for every well-formed id — that is what refuses one belonging to another company.
+    expect(src.indexOf('UUID_RE.test(employmentId)')).toBeLessThan(
+      src.indexOf('const emp = await employeeDetail(s, employmentId);'),
+    );
+  });
+
   it('the island is a client island whose props are plain data only', () => {
     const src = read(ISLAND);
     expect(src.startsWith("'use client'")).toBe(true);
