@@ -168,7 +168,9 @@ describe('Approval Workflow page — two headed sections', () => {
     // 2.iii escalation is inside the assignment section now.
     expect(section2).toContain('<LeaveEscalationEditor');
     // The assignment form still carries the 2.i condition (min/max days) and the 22de47c4 employee scope.
-    expect(section2).toContain('schemes={schemesAll');
+    // 6e9a126e release three renamed that scope's feed with the layer it reads (benefit schemes →
+    // entitlement eligibility rules); what is asserted is that the section still HAS one.
+    expect(section2).toContain('eligibilityRules={eligibilityRulesAll');
   });
 
   /**

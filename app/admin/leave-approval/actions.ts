@@ -137,21 +137,23 @@ export async function setTenantDefaultTemplateAction(formData: FormData) {
   redirect(`${PAGE}?toast=${encodeURIComponent(templateId ? 'Default flow set' : 'Default flow cleared')}`);
 }
 
-/** Bulk-assign a template to many companies × many leave types × many grades in one action (multi-select).
- *  bb3938b9 — grades and the leave-duration condition are optional: posting none of them keeps the
- *  pre-existing "applies to every grade, any duration" assignment shape. */
+/** Bulk-assign a template to many companies × many leave types × many populations in one action
+ *  (multi-select). bb3938b9 — the population and the leave-duration condition are optional: posting none of
+ *  them keeps the pre-existing "applies to everyone, any duration" assignment shape. */
 export async function assignApprovalTemplateAction(formData: FormData) {
   const s = await getSession();
   const templateId = String(formData.get('templateId') ?? '');
   const companyIds = formData.getAll('companyIds').map(String).filter(Boolean);
   const leaveTypeIds = formData.getAll('leaveTypeIds').map(String).filter(Boolean);
-  // 22de47c4 — the employee scope is chosen as BENEFIT SCHEMES now, not job grades (the service maps each
-  // to the grade group + employment type it stands for).
-  const benefitSchemeIds = formData.getAll('benefitSchemeIds').map(String).filter(Boolean);
+  // 22de47c4 — the employee scope is chosen as a named POPULATION, not as job grades (the service maps each
+  // to the grade group + employment type it stands for). 6e9a126e release three moved the source of those
+  // populations from benefit schemes to entitlement eligibility rules; what is posted is a rule LINEAGE id,
+  // because a rule edit closes the running version and inserts a successor.
+  const eligibilityRuleIds = formData.getAll('eligibilityRuleIds').map(String).filter(Boolean);
   const minDays = numOrNull(formData.get('minDays'));
   const maxDays = numOrNull(formData.get('maxDays'));
   try {
-    await assignApprovalTemplate(s, { templateId, companyIds, leaveTypeIds, benefitSchemeIds, minDays, maxDays });
+    await assignApprovalTemplate(s, { templateId, companyIds, leaveTypeIds, eligibilityRuleIds, minDays, maxDays });
   } catch (e) {
     redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
@@ -192,4 +194,4 @@ function numOrNull(v: FormDataEntryValue | null): number | null {
 }
 // 706d34e8 — employmentTypeOrNull() and its EmploymentType alias went with the per-rule save that was
 // their only caller. The Assign Template path never parsed an employment type from the form: it derives
-// one from the chosen benefit scheme inside core/leave-approval-template.ts (22de47c4).
+// one from the chosen population inside core/leave-approval-template.ts (22de47c4).

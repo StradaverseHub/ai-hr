@@ -32,21 +32,22 @@ export type AssignmentRow = {
   maxDays: number | null;
 };
 
-/** 22de47c4 — one benefit scheme as the Assign Template picker offers it. `gradeGroupId` + `employmentType`
- *  are what an assignment to this scheme actually writes, and so also how a saved assignment is matched back
- *  to the scheme it names.
+/** 22de47c4 — one named employee POPULATION as the Assign Template picker offers it. 6e9a126e release three
+ *  made that population an entitlement ELIGIBILITY RULE (it was a benefit scheme, and that layer is gone);
+ *  `id` is therefore the rule's LINEAGE id, the identity that survives an edit.
  *
- *  r76 22de47c4 — TWO strings, on purpose. `name` is the scheme's own name and nothing else: it is all the
- *  PICKER shows, one line per scheme. `label` still spells out the grade group + employment type as well,
- *  because the saved-assignments table names an assignment's target with it and needs to say which scope
- *  was written. The item asked for the picker; keeping them apart is what stops it changing anything else. */
-export type SchemeOption = {
+ *  `scopes` is what an assignment to this population actually writes, and so also how a saved assignment is
+ *  matched back to the population it names. It is a LIST because a rule may name several employment types
+ *  or several grade groups, where a scheme was always exactly one pair. EMPTY means the rule cannot be
+ *  expressed on the rule matrix at all — the tick is disabled and the service refuses it with the reason.
+ *
+ *  `companyIds` EMPTY means the rule names no company axis, i.e. it applies to every company. */
+export type EligibilityRuleOption = {
   id: string;
-  companyId: string;
   name: string;
-  label: string;
-  gradeGroupId: string | null;
-  employmentType: string;
+  companyIds: string[];
+  scopes: { gradeGroupId: string | null; employmentType: string | null }[];
+  assignable: boolean;
 };
 
 export type TemplateManagerLabels = {
@@ -78,18 +79,19 @@ export type TemplateManagerLabels = {
   selectCompanies: string;
   selectLeaveTypes: string;
   // bb3938b9 — the two criteria panels added to the Assign Template row, plus their shared panel controls.
-  // 22de47c4 — the employee-scope panel lists BENEFIT SCHEMES; `legacyGradeScope` labels an assignment
-  // written against a job grade before that change, and `schemeScopeUnknown` an assignment whose scope no
-  // longer matches any scheme (the "fail loudly at configuration time" case).
-  selectBenefitSchemes: string;
+  // 22de47c4 — the employee-scope panel lists named POPULATIONS (entitlement eligibility rules since
+  // 6e9a126e release three); `legacyGradeScope` labels an assignment written against a job grade before
+  // that change, and `ruleScopeUnknown` an assignment whose scope no longer matches any rule (the "fail
+  // loudly at configuration time" case).
+  selectEligibilityRules: string;
   selectAll: string;
   deselectAll: string;
   panelNoneMeansAll: string;
   panelPickAtLeastOne: string;
-  noBenefitSchemes: string;
-  schemeNoGradeGroup: string;
+  noEligibilityRules: string;
+  ruleNotAssignable: string;
   legacyGradeScope: string;
-  schemeScopeUnknown: string;
+  ruleScopeUnknown: string;
   conditions: string;
   addCondition: string;
   conditionOperator: string;
@@ -318,7 +320,7 @@ export function ApprovalAssignmentManager({
   companies,
   leaveTypes,
   grades,
-  schemes,
+  eligibilityRules,
   escalation,
   actions,
   labels,
@@ -329,8 +331,9 @@ export function ApprovalAssignmentManager({
   leaveTypes: Option[];
   /** Job grades — no longer a criteria panel (22de47c4), kept only to NAME a legacy grade-scoped row. */
   grades: Option[];
-  /** 22de47c4 — benefit schemes, the employee-scope criteria panel of the Assign Template row. */
-  schemes: SchemeOption[];
+  /** 22de47c4 — the named populations that are the employee-scope criteria panel of the Assign Template
+   *  row. Entitlement eligibility rules since 6e9a126e release three. */
+  eligibilityRules: EligibilityRuleOption[];
   /** r79 0322 — the relocated Approval Escalation Settings, rendered by the page (server) and slotted in
    *  here. A slot, not a re-implementation: the editor component and its server action are untouched, so
    *  the settings the nightly sweep reads stay readable through the move. */
@@ -352,19 +355,22 @@ export function ApprovalAssignmentManager({
     return `${labels.leaveDuration} < ${a.maxDays}`;
   };
 
-  /** 22de47c4 — the benefit scheme an assignment row targets, matched back on the two dimensions the
-   *  assignment writes. A scoped row that matches NO scheme (its group was re-pointed, the scheme was
-   *  deleted) is labelled as unresolvable rather than shown as unscoped: an assignment whose target cannot
-   *  be named is exactly what has to fail loudly at configuration time instead of quietly at approval time. */
-  const schemeText = (a: AssignmentRow): { label: string; unresolved: boolean } | null => {
+  /** 22de47c4 — the named population an assignment row targets, matched back on the two dimensions the
+   *  assignment writes. A scoped row that matches NO rule (its group was re-pointed, the rule was retired)
+   *  is labelled as unresolvable rather than shown as unscoped: an assignment whose target cannot be named
+   *  is exactly what has to fail loudly at configuration time instead of quietly at approval time.
+   *
+   *  FIRST match wins, and the row is named after it. Two rules CAN resolve to one pair — approval routing
+   *  cannot tell them apart, which is why the assignment writes one row for both (see `scopesFor` in
+   *  core/leave-approval-template.ts). Naming one of them is honest about what the row actually scopes to. */
+  const ruleText = (a: AssignmentRow): { label: string; unresolved: boolean } | null => {
     if (a.gradeGroupId == null && a.employmentType == null) return null;
-    const hit = schemes.find(
-      (s) =>
-        s.companyId === a.companyId &&
-        s.gradeGroupId === a.gradeGroupId &&
-        s.employmentType === a.employmentType,
+    const hit = eligibilityRules.find(
+      (r) =>
+        (r.companyIds.length === 0 || r.companyIds.includes(a.companyId)) &&
+        r.scopes.some((s) => s.gradeGroupId === a.gradeGroupId && s.employmentType === a.employmentType),
     );
-    return hit ? { label: hit.label, unresolved: false } : { label: labels.schemeScopeUnknown, unresolved: true };
+    return hit ? { label: hit.name, unresolved: false } : { label: labels.ruleScopeUnknown, unresolved: true };
   };
 
   return (
@@ -415,9 +421,9 @@ export function ApprovalAssignmentManager({
                           {g.rows.map((a) => (
                             <li key={a.ruleId} className="flex flex-wrap items-center gap-2">
                               <Badge variant="accent">{nameOf(leaveTypes, a.leaveTypeId)}</Badge>
-                              {schemeText(a) && (
-                                <Badge variant={schemeText(a)!.unresolved ? 'warning' : 'default'}>
-                                  {schemeText(a)!.label}
+                              {ruleText(a) && (
+                                <Badge variant={ruleText(a)!.unresolved ? 'warning' : 'default'}>
+                                  {ruleText(a)!.label}
                                 </Badge>
                               )}
                               {/* An assignment written before 22de47c4 still targets a job grade. It keeps
@@ -461,7 +467,7 @@ export function ApprovalAssignmentManager({
             templates={templates.filter((x) => x.active)}
             companies={companies}
             leaveTypes={leaveTypes}
-            schemes={schemes}
+            eligibilityRules={eligibilityRules}
             assignAction={actions.assign}
             labels={labels}
             onCancel={() => setAssigning(false)}
@@ -639,7 +645,7 @@ function AssignForm({
   templates,
   companies,
   leaveTypes,
-  schemes,
+  eligibilityRules,
   assignAction,
   labels,
   onCancel,
@@ -647,30 +653,36 @@ function AssignForm({
   templates: TemplateRow[];
   companies: Option[];
   leaveTypes: Option[];
-  schemes: SchemeOption[];
+  eligibilityRules: EligibilityRuleOption[];
   assignAction: (fd: FormData) => void | Promise<void>;
   labels: TemplateManagerLabels;
   onCancel: () => void;
 }) {
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [selectedLeaveTypes, setSelectedLeaveTypes] = useState<string[]>([]);
-  const [selectedSchemes, setSelectedSchemes] = useState<string[]>([]);
+  const [selectedRules, setSelectedRules] = useState<string[]>([]);
 
-  // 22de47c4 — a scheme belongs to ONE company, so the panel narrows to the companies actually chosen.
-  // Offering every scheme would invite picking one the assignment then quietly drops.
+  // 22de47c4 — the panel narrows to the companies actually chosen. Offering a population from a company
+  // nobody selected would invite picking one the assignment then quietly drops. A rule that names NO
+  // company applies to every company, so it is always offered.
   //
-  // r76 22de47c4 — each option is the scheme's NAME, nothing beneath it: one line per scheme. The grade
-  // group and employment type used to be appended here, which restated what the tenant had already typed
-  // into the name. The order is the shared display order (lib/benefit-scheme-label), already applied by the
-  // page — the list arrives sorted, so the panel does not re-sort it.
-  const schemeOptions: Option[] = (
-    selectedCompanies.length === 0 ? schemes : schemes.filter((s) => selectedCompanies.includes(s.companyId))
-  ).map((s) => ({ id: s.id, label: s.name }));
-  // A scheme with no grade group covers the UNGROUPED population, which the rule matrix cannot express (a
-  // null grade group there is a wildcard). The service refuses it; saying so on the tick rather than after
-  // a failed save is the difference between a rule and a puzzle.
-  const ungroupedScheme = (id: string) => schemes.find((s) => s.id === id)?.gradeGroupId == null;
-  const pickedUngrouped = selectedSchemes.filter(ungroupedScheme);
+  // r76 22de47c4 — each option is the population's NAME, nothing beneath it: one line each. The grade group
+  // and employment type used to be appended here, which restated what the tenant had already typed into the
+  // name — and an eligibility rule's name IS the tenant's word for that population ("Executives,
+  // Peninsular"). The list arrives sorted by name from core, so the panel does not re-sort it.
+  const ruleOptions: Option[] = (
+    selectedCompanies.length === 0
+      ? eligibilityRules
+      : eligibilityRules.filter(
+          (r) => r.companyIds.length === 0 || r.companyIds.some((c) => selectedCompanies.includes(c)),
+        )
+  ).map((r) => ({ id: r.id, label: r.name }));
+  // A rule that narrows by something the rule matrix has no column for (department, gender, service length)
+  // cannot be turned into an assignment without covering the employees it leaves out. The service refuses it
+  // with the reason; saying so on the tick rather than after a failed save is the difference between a rule
+  // and a puzzle.
+  const notAssignable = (id: string) => eligibilityRules.find((r) => r.id === id)?.assignable === false;
+  const pickedNotAssignable = selectedRules.filter(notAssignable);
 
   // Conditions panel — the leave-duration range the rule matrix already scopes on (min/max days). Off by
   // default, which posts empty strings and so keeps the assignment unbounded exactly as before.
@@ -724,25 +736,25 @@ function AssignForm({
             hint={labels.panelPickAtLeastOne}
           />
 
-          {/* 22de47c4 — the employee scope is the BENEFIT SCHEME, the same thing leave eligibility and
-              entitlement are driven by, so a grade added to a scheme is picked up by approval routing
-              without anyone opening this screen. */}
+          {/* 22de47c4 — the employee scope is the named population that entitlement is already driven by
+              (the entitlement eligibility rule, since 6e9a126e release three), so a grade added to that
+              population is picked up by approval routing without anyone opening this screen. */}
           <CriteriaPanel
-            name="benefitSchemeIds"
-            legend={labels.selectBenefitSchemes}
-            options={schemeOptions}
-            selected={selectedSchemes}
-            setSelected={setSelectedSchemes}
+            name="eligibilityRuleIds"
+            legend={labels.selectEligibilityRules}
+            options={ruleOptions}
+            selected={selectedRules}
+            setSelected={setSelectedRules}
             labels={labels}
             hint={labels.panelNoneMeansAll}
-            emptyText={labels.noBenefitSchemes}
+            emptyText={labels.noEligibilityRules}
             /* r76 22de47c4 — the descriptive text is gone from the option; this badge is KEPT. It is not a
-               description of the scheme, it is the reason Assign is disabled two elements below
-               (`disabled={pickedUngrouped.length > 0}`): a scheme with no grade group matches nobody, and
-               the service refuses it. Removing it would leave a dead button with no stated cause. Same
-               reasoning as the Companies panel's multi-approval-off marker. */
+               description of the population, it is the reason Assign is disabled two elements below
+               (`disabled={pickedNotAssignable.length > 0}`): the rule matrix cannot scope on what this rule
+               narrows by, and the service refuses it. Removing it would leave a dead button with no stated
+               cause. Same reasoning as the Companies panel's multi-approval-off marker. */
             renderExtra={(o) =>
-              ungroupedScheme(o.id) ? <Badge variant="warning">{labels.schemeNoGradeGroup}</Badge> : null
+              notAssignable(o.id) ? <Badge variant="warning">{labels.ruleNotAssignable}</Badge> : null
             }
           />
 
@@ -813,12 +825,12 @@ function AssignForm({
         <input type="hidden" name="minDays" value={minDays} />
         <input type="hidden" name="maxDays" value={maxDays} />
 
-        {pickedUngrouped.length > 0 && (
-          <p className="text-xs text-amber-700 dark:text-amber-400">{labels.schemeNoGradeGroup}</p>
+        {pickedNotAssignable.length > 0 && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">{labels.ruleNotAssignable}</p>
         )}
         <div className="flex items-center gap-2">
-          {/* The service refuses an ungrouped scheme too — this only saves the round trip. */}
-          <Button type="submit" size="sm" disabled={pickedUngrouped.length > 0}>
+          {/* The service refuses such a rule too, and names the axis — this only saves the round trip. */}
+          <Button type="submit" size="sm" disabled={pickedNotAssignable.length > 0}>
             {labels.assign}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
