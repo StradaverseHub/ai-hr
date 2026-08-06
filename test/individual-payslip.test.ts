@@ -120,15 +120,37 @@ describe('169e3c24 — the ESS release gate is not weakened, and no logo is inve
     expect(core).toContain('if (!released) return null;');
   });
 
-  it('builds no logo upload, and renders no logo', () => {
-    // THE PLAN WAS STALE HERE. It asserted "no company logo exists anywhere in the system today", and a
-    // `company_logo` bytea side table has since shipped (db/schema.ts; read by the custom-report export
-    // letterhead). So the reason for leaving the letterhead logo-less is no longer "there is nowhere to
-    // store one" — it is that the approved plan told the reporter this would ship without one, and
-    // wiring it in is a separate, visible change to a document people file. Reported, not done quietly.
+  it('renders the company’s OWN logo, conditionally, and still builds no logo storage of its own', () => {
+    // THIS GUARD CHANGED SIDES IN r168a, AND THE HISTORY MATTERS BECAUSE IT IS WHY IT WAS EVER WRITTEN.
+    //
+    // 169e3c24's plan asserted "no company logo exists anywhere in the system today". That was already
+    // false when it shipped — a `company_logo` bytea side table existed — so this guard was written to
+    // pin the ABSENCE and to record that the absence was now a promise to the reporter rather than a
+    // technical limit: the plan had told them it would ship without one, and adding it quietly to a
+    // document people file would have been a change nobody approved.
+    //
+    // da4af51f is that approval. So the guard is UPDATED to the new truth rather than deleted — deleting
+    // it would drop the half that never expired, which is that this screen must not grow a logo upload,
+    // a second copy of the bytes, or storage of its own. It reads what Organization already owns.
     const page = read('app/payroll/individual-payslip/page.tsx');
-    expect(page, 'no logo upload or storage is built here').not.toMatch(/uploadLogo|setCompanyLogo|companyLogo/);
-    expect(page, 'and none is rendered').not.toMatch(/<img/);
+    const codeOnly = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+    // (a) STILL no upload, no writer, no second store. The header explains the history at length, so this
+    //     is asserted against the code with comments stripped or it fails on its own explanation.
+    expect(codeOnly, 'the payslip screen must not upload or write a logo').not.toMatch(
+      /uploadLogo|setCompanyLogo|removeCompanyLogo|getCompanyLogo/,
+    );
+
+    // (b) It renders the logo through the EXISTING serve route, so the payslip cannot show a different
+    //     mark from the rest of the product, and no new endpoint appears for one screen.
+    expect(codeOnly, 'the letterhead renders a logo now').toMatch(/<img/);
+    expect(codeOnly).toContain('/admin/organization/logo/');
+
+    // (c) CONDITIONALLY. `hasLogo` comes from listCompanies (an EXISTS against the side table, never the
+    //     blob). An <img> rendered unconditionally 404s into a broken-image icon on a payslip, which is
+    //     worse than the clean text letterhead this used to have — so the condition IS the feature.
+    expect(codeOnly).toContain('hasLogo');
+    expect(codeOnly).toMatch(/companyHasLogo\s*&&/);
   });
 
   it('the pack-drift allowlist did not GROW (a ratchet may only shrink)', () => {
