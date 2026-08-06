@@ -1,8 +1,15 @@
 /**
- * ADR-0040 2D-1 — earned leave accrual. An earned policy (earned_monthly / earned_quarterly) is NOT
- * granted as a lump at hire or year-open; accrueEarnedLeave tops it up to the amount earned by `asOf`,
- * idempotently, pro-rated from the join month. Over a full cycle the total equals max(EA-floor, policy
- * days), so the statutory floor still holds. Lump-sum policies are unaffected.
+ * ADR-0040 2D-1 — earned leave accrual. An earned configuration (earned_monthly / earned_quarterly) is
+ * NOT granted as a lump at hire or year-open; accrueEarnedLeave tops it up to the amount earned by
+ * `asOf`, idempotently, pro-rated from the join month. Lump-sum configurations are unaffected.
+ *
+ * 6e9a126e RELEASE THREE — REPOINTED, NOT REWRITTEN. Every day count below is unchanged; only where the
+ * configuration is stored moved. The dropped `leave_policy.accrual` JSONB said two different kinds of
+ * thing at once — the DAYS and the RULES — and the two halves now live in the two places 9816a5ad split
+ * them into: DAYS in an entitlement template's band (`seedEntitlement`), RULES (earning method, carry
+ * cap) on the LEAVE TYPE's own columns, which is where `applyLeaveTypeRules` reads them from. `policy()`
+ * below takes the same argument object it always took and routes each key to its new home, so the
+ * arithmetic these tests exist for is asserted against exactly the figures it was.
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +17,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { accrueEarnedLeave } from '../core/leave';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 let b: Base;
 const balanceOf = async (employmentId: string) => {
@@ -20,10 +27,22 @@ const balanceOf = async (employmentId: string) => {
     .where(and(eq(schema.leaveLedger.employmentId, employmentId), eq(schema.leaveLedger.leaveTypeId, b.annualLeaveTypeId)));
   return Number(r.bal);
 };
-const policy = (accrual: unknown) =>
-  owner.db
-    .insert(schema.leavePolicy)
-    .values({ tenantId: b.tenantId, leaveTypeId: b.annualLeaveTypeId, accrual, validFrom: '2026-01-01' });
+/** The old `leave_policy.accrual` JSONB, split across its two new homes. Days → the entitlement template's
+ *  single 0..∞ band; earning method and carry cap → the leave TYPE's rule columns, which is the only place
+ *  `applyLeaveTypeRules` looks. Passing NEITHER rule leaves the type unruled, which is the lump-sum path. */
+const policy = async (p: { annualDays: number; method?: string; carryForwardMax?: number }) => {
+  await seedEntitlement(adminCtx(b), {
+    leaveTypeId: b.annualLeaveTypeId,
+    annualDays: p.annualDays,
+    validFrom: '2026-01-01',
+  });
+  const rules: Record<string, unknown> = {};
+  if (p.method !== undefined) rules.accrualMethod = p.method;
+  if (p.carryForwardMax !== undefined) rules.carryForwardMax = String(p.carryForwardMax);
+  if (Object.keys(rules).length > 0) {
+    await owner.db.update(schema.leaveType).set(rules).where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+  }
+};
 const hire = (hiredOn: string) =>
   hireEmployee(adminCtx(b), {
     person: { fullName: 'Acc', primaryEmail: `acc_${randomUUID().slice(0, 8)}@t.local` },

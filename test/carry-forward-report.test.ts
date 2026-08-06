@@ -15,17 +15,29 @@
  *  - Anniversary-cycle EARNED employees get a BLANK expiry (not a projected date) — expireCarriedLeave's
  *    Jan-1 "open marker" check never covers them, a real engine gap the plan flags out of scope.
  *  - Population includes same-year leavers (terminatedOn >= Jan 1 of the reported year).
+ *
+ * 6e9a126e RELEASE THREE — REPOINTED, and this is the reader the approved plan named as the one release
+ * three would break, so every figure below is load-bearing rather than incidental. The report resolves an
+ * employee's carry cap and expiry AT THEIR OWN CYCLE OPEN; the dropped `leave_policy` was the dated thing
+ * that used to carry them. The DATING SURVIVED — an entitlement template is effective-dated the same
+ * close-then-insert way — so the cap and expiry are configured HERE on the template's service BAND
+ * (`carryForwardDays` / `carryForwardExpiryMonth` / `Day`), which keeps test (d)'s "a past-year report uses
+ * the version active at that year's open" a real assertion about real dated versions rather than a
+ * fixture detail. Test (c) is the exception and says why in place: it needs an EARNING METHOD, which lives
+ * on the leave TYPE, and a type carrying any rule has its whole rule set overlaid — so (c) configures the
+ * cap and expiry on the type beside the method.
  */
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee, terminateEmployment } from '../core/org';
-import { createLeavePolicy, setCompanyLeaveCycle } from '../core/admin';
+import { setCompanyLeaveCycle } from '../core/admin';
+import { updateEntitlementTemplate } from '../core/entitlement-template';
 import { openLeaveYear, expireCarriedLeave, accrueEarnedLeave } from '../core/leave';
 import { carryForwardReport } from '../core/analytics';
 import { leaveEntitlementBreakdown } from '../core/read';
-import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 let b: Base;
 
@@ -41,18 +53,28 @@ const hire = (hiredOn: string, name = 'CFR') =>
     grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
   });
 
+/** The same ANNUAL configuration these tests always used, on the template layer: one open-ended band
+ *  carrying the days, the carry cap and the expiry offset. The leave type is left UNRULED on purpose —
+ *  `policyForDatedReader` then hands the report the band's own cap and expiry, which is what makes them
+ *  effective-dated. */
 const annualPolicy = (p: {
   annualDays?: number;
   carryForwardMax?: number;
   expiry?: { month: number; day: number } | null;
   from?: string;
 }) =>
-  createLeavePolicy(adminCtx(b), {
+  seedEntitlement(adminCtx(b), {
     leaveTypeId: b.annualLeaveTypeId,
-    annualDays: p.annualDays ?? 12,
-    carryForwardMax: p.carryForwardMax ?? 5,
-    carryForwardExpiryMonth: p.expiry?.month ?? null,
-    carryForwardExpiryDay: p.expiry?.day ?? null,
+    serviceBands: [
+      {
+        fromYears: 0,
+        toYears: null,
+        days: p.annualDays ?? 12,
+        carryForwardDays: p.carryForwardMax ?? 5,
+        carryForwardExpiryMonth: p.expiry?.month ?? null,
+        carryForwardExpiryDay: p.expiry?.day ?? null,
+      },
+    ],
     validFrom: p.from ?? '2025-01-01',
   });
 
@@ -129,15 +151,23 @@ describe('carryForwardReport — reconciles with the real engine', () => {
 
   it('(c) anniversary-cycle earned employee: 2D-3 forfeit tagged, lands in the right year row, expiry blank', async () => {
     await setCompanyLeaveCycle(adminCtx(b), { companyId: b.companyId, cycle: 'anniversary' });
-    await createLeavePolicy(adminCtx(b), {
+    // The one test here that needs an EARNING METHOD. A method can only be configured on the leave type,
+    // and `applyLeaveTypeRules` overlays a ruled type's whole rule set over the band — so the cap and
+    // expiry must ride the type alongside it, or they would be overwritten with the type's NULLs.
+    await seedEntitlement(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 12,
-      carryForwardMax: 5,
-      carryForwardExpiryMonth: 3,
-      carryForwardExpiryDay: 31,
-      method: 'earned_monthly',
       validFrom: '2026-01-01',
     });
+    await owner.db
+      .update(schema.leaveType)
+      .set({
+        accrualMethod: 'earned_monthly',
+        carryForwardMax: '5',
+        carryForwardExpiryMonth: 3,
+        carryForwardExpiryDay: 31,
+      })
+      .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
     const emp = await hireEmployee(adminCtx(b), {
       person: { fullName: 'AnnivCFR', primaryEmail: `anniv_cfr_${randomUUID().slice(0, 8)}@t.local` },
       companyId: b.companyId,
@@ -160,15 +190,20 @@ describe('carryForwardReport — reconciles with the real engine', () => {
     expect(row!.forfeitedAtExpiry).toBe(0);
   });
 
-  it('(d) policy cap/expiry changed between years → past-year report uses the version active at that year open', async () => {
-    // 2025-vintage policy: cap 5. Superseded from 2027 by a cap-10 version.
+  it('(d) entitlement cap/expiry changed between years → past-year report uses the version active at that year open', async () => {
+    // 2025-vintage table: cap 5. Superseded from 2027 by a cap-10 version of the SAME lineage.
     const p1 = await annualPolicy({ annualDays: 12, carryForwardMax: 5, from: '2025-01-01' });
     const emp = await hire('2025-01-01');
     await openLeaveYear(adminCtx(b), { year: 2026 }); // uses cap 5: before 12, carry 5, forfeit 7 → 17
 
-    // Close out the old version and open a more generous one from 2027.
-    await owner.db.update(schema.leavePolicy).set({ validTo: '2027-01-01' }).where(eq(schema.leavePolicy.id, p1.id));
-    await annualPolicy({ annualDays: 12, carryForwardMax: 10, from: '2027-01-01' });
+    // Supersede the running version from 2027 with a more generous one. `updateEntitlementTemplate` is
+    // close-then-insert on one lineage, which is exactly what the hand-written `validTo` update below it
+    // used to simulate on leave_policy — one eligibility rule keeps pointing at the lineage throughout.
+    await updateEntitlementTemplate(adminCtx(b), {
+      lineageId: p1.lineageId,
+      serviceBands: [{ fromYears: 0, toYears: null, days: 12, carryForwardDays: 10 }],
+      validFrom: '2027-01-01',
+    });
     await openLeaveYear(adminCtx(b), { year: 2027 }); // uses cap 10 now: before 17-? see balance; carry up to 10
 
     const r2026 = await report(2026);
