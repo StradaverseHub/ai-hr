@@ -7317,7 +7317,10 @@
     "historySuperseded": "Đã được thay bằng kế hoạch mới",
     "historyCurrent": "Kế hoạch hiện tại — chờ bạn xem xét",
     "historyGap": "{n} phiên bản trước của kế hoạch này không được lưu. Lịch sử kế hoạch bắt đầu được ghi từ 28/07/2026.",
-    "historyEmpty": "Chưa ghi nhận lịch sử kế hoạch."
+    "historyEmpty": "Chưa ghi nhận lịch sử kế hoạch.",
+    "attachStage_plan": "Thiết kế kèm theo kế hoạch",
+    "planMockupsHeading": "Giao diện sẽ trông như thế nào",
+    "planMockupsCaveat": "Đây là bản phác thảo bố cục, không phải màn hình hoàn chỉnh — câu chữ, khoảng cách và màu sắc sẽ khác. Những gì kế hoạch mô tả bằng lời thay vì hình ảnh thì vẫn chưa được chốt."
   },
   "taxRelief": {
     "title": "Giảm trừ thuế cá nhân (TP1)",

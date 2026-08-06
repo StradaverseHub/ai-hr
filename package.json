@@ -32,6 +32,7 @@
     "improve:block": "node --import tsx scripts/improve/cli.ts block",
     "improve:unblock": "node --import tsx scripts/improve/cli.ts unblock",
     "improve:push-plan": "node --import tsx scripts/improve/cli.ts push-plan",
+    "mockup": "node --import tsx scripts/mockup/render.ts",
     "improve:build-start": "node --import tsx scripts/improve/cli.ts build-start",
     "improve:build-complete": "node --import tsx scripts/improve/cli.ts build-complete",
     "improve:release": "node --import tsx scripts/improve/cli.ts release",

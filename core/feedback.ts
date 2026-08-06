@@ -89,8 +89,14 @@ export async function addFeedbackAttachment(
      * What the reporter was doing when they attached it (0321). Omitted ⇒ 'submitted', which keeps every
      * existing caller byte-identical. A contest or refute attachment records the revision it ANSWERS —
      * read here rather than passed in, so the caller cannot mislabel which round an image belongs to.
+     *
+     * 0406 adds `plan`, the one stage that is NOT the reporter: it is US answering THEM with a mockup of
+     * the screen a plan proposes. It takes the same treatment for the same reason — the revision is read
+     * from the item, so a mockup always names the plan it illustrates and can never be filed against a
+     * version that has since been replaced. ATTACH IT AFTER THE PLAN IS PUSHED, not before: the revision
+     * read here is the item's CURRENT one, and a mockup attached first would name the outgoing plan.
      */
-    stage?: 'submitted' | 'contested' | 'refuted';
+    stage?: 'submitted' | 'contested' | 'refuted' | 'plan';
   },
 ): Promise<{ id: string }> {
   if (p.content.byteLength === 0) throw new FeedbackError('Empty file');
@@ -808,8 +814,17 @@ export type FeedbackPlanRevisionRow = typeof feedbackPlanRevision.$inferSelect;
 export type FeedbackBlockRow = typeof feedbackBlock.$inferSelect;
 
 export type FeedbackDetail = typeof feedbackRequest.$inferSelect & {
-  /** 0321 — stage/planRevision say WHICH round each image belongs to, so the page can group them. */
-  attachments: { id: string; fileName: string; sizeBytes: number; stage: string; planRevision: number | null }[];
+  /** 0321 — stage/planRevision say WHICH round each image belongs to, so the page can group them.
+   *  0406 — mimeType joins them so the page can render a `plan` mockup inline and leave anything that is
+   *  not an image (a PDF, say) in the link list, instead of emitting a broken <img>. */
+  attachments: {
+    id: string;
+    fileName: string;
+    sizeBytes: number;
+    stage: string;
+    planRevision: number | null;
+    mimeType: string;
+  }[];
   /** Resolved from blockedById so the board can name what it is waiting on rather than show a bare id. */
   blockedBy: { id: string; title: string; status: FeedbackStatus } | null;
   /**
@@ -841,6 +856,11 @@ export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDe
         sizeBytes: feedbackAttachment.sizeBytes,
         stage: feedbackAttachment.stage,
         planRevision: feedbackAttachment.planRevision,
+        // 0406 — the detail page renders a `plan` mockup INLINE and everything else as a link, so it has
+        // to know whether the bytes are an image. Selected rather than guessed from the file extension:
+        // the mime is what the attachment route actually serves, and a .png named .txt would otherwise
+        // render as a broken image.
+        mimeType: feedbackAttachment.mimeType,
       })
       .from(feedbackAttachment)
       .where(eq(feedbackAttachment.feedbackRequestId, id));

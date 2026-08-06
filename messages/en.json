@@ -7317,7 +7317,10 @@
     "historySuperseded": "Replaced by a newer plan",
     "historyCurrent": "Current plan — awaiting your review",
     "historyGap": "{n} earlier version(s) of this plan were not kept. Plan history started being recorded on 28 July 2026; anything before that was overwritten.",
-    "historyEmpty": "No plan history recorded yet."
+    "historyEmpty": "No plan history recorded yet.",
+    "attachStage_plan": "Design shown with the plan",
+    "planMockupsHeading": "How it will look",
+    "planMockupsCaveat": "A sketch of the layout, not the finished screen — wording, spacing and colours will differ. Anything the plan describes in words rather than showing is not settled yet."
   },
   "taxRelief": {
     "title": "Personal Tax Relief (TP1)",

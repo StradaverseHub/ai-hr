@@ -7317,7 +7317,10 @@
     "historySuperseded": "已被新方案取代",
     "historyCurrent": "目前方案 — 等待您審閱",
     "historyGap": "此方案有 {n} 個較早版本未保留。方案歷史自 2026 年 7 月 28 日起記錄，之前的版本已被覆寫。",
-    "historyEmpty": "尚未記錄方案歷史。"
+    "historyEmpty": "尚未記錄方案歷史。",
+    "attachStage_plan": "随方案附上的设计",
+    "planMockupsHeading": "界面预览",
+    "planMockupsCaveat": "这是版面草图，不是最终界面——文字、间距和颜色都会有所不同。方案中以文字说明而未以图示呈现的部分尚未确定。"
   },
   "taxRelief": {
     "title": "个人税务减免 (TP1)",

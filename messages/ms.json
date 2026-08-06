@@ -7317,7 +7317,10 @@
     "historySuperseded": "Digantikan oleh pelan yang lebih baharu",
     "historyCurrent": "Pelan semasa — menunggu semakan anda",
     "historyGap": "{n} versi terdahulu pelan ini tidak disimpan. Sejarah pelan mula direkodkan pada 28 Julai 2026; sebelum itu ia ditulis ganti.",
-    "historyEmpty": "Tiada sejarah pelan direkodkan lagi."
+    "historyEmpty": "Tiada sejarah pelan direkodkan lagi.",
+    "attachStage_plan": "Reka bentuk ditunjukkan bersama pelan",
+    "planMockupsHeading": "Rupanya nanti",
+    "planMockupsCaveat": "Lakaran susun atur, bukan skrin siap — perkataan, jarak dan warna akan berbeza. Apa-apa yang pelan ini terangkan dengan perkataan dan bukan ditunjukkan, belum dimuktamadkan."
   },
   "taxRelief": {
     "title": "Pelepasan Cukai Peribadi (TP1)",

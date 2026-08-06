@@ -10,11 +10,19 @@
  * reporter answered. READ IT BEFORE BUILDING — an item that was blocked and released carries its answer
  * ONLY there. `blocked_reason` is cleared on unblock, so by the time the item reaches pull-approved the
  * question and its answer have left feedback_request entirely.
- *   echo '{"id","tenantId","reporterEmploymentId","plan","model"}' | pnpm improve:push-plan
+ *   echo '{"id","tenantId","reporterEmploymentId","plan","model","mockupPaths"?}' | pnpm improve:push-plan
  *   echo '{"id","tenantId","reporterEmploymentId","buildRef"}'     | pnpm improve:mark-deployed
  *
  * push-plan / mark-deployed read their argument as JSON on stdin (plans contain newlines/quotes).
+ *
+ * `mockupPaths` (0406) is a list of image files to show the reporter WITH the plan — the design of the
+ * screen it proposes, before anything is built. Of 151 attachments on production, 143 are images: the
+ * reporter communicates in pictures and until now every plan answered in prose. Render them with
+ * `pnpm mockup <in.html> <out.png>`, and read scripts/mockup/README.md first — a mockup is a PROMISE, and
+ * a picture cannot hedge the way a sentence can.
  */
+import { basename, extname } from 'node:path';
+import { readFileSync } from 'node:fs';
 import {
   markBlocked,
   markBuildCompleted,
@@ -24,10 +32,27 @@ import {
   pullApproved,
   pullBlocked,
   pullPlannable,
-  pushPlan,
+  pushPlanWithMockups,
   raiseFeedback,
 } from './remote';
 import { releaseBuiltItem } from './release';
+
+/** Mime for the handful of image types a mockup is ever going to be. Explicit rather than a lookup
+ *  dependency, and it THROWS on anything else: the board renders `plan` attachments inline as an <img>,
+ *  so a mislabelled octet-stream would render as a broken image on the reporter's screen. */
+function mimeOf(file: string): string {
+  const byExt: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+  };
+  const mime = byExt[extname(file).toLowerCase()];
+  if (!mime) throw new Error(`mockup ${file}: only png/jpg/webp/gif/svg can be shown inline on the board`);
+  return mime;
+}
 
 function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -77,8 +102,19 @@ async function main() {
     }
     case 'push-plan': {
       const p = JSON.parse(await readStdin());
-      pushPlan(p);
-      console.log(`pushed plan for ${p.id} (status → planned)`);
+      // 0406 — `mockupPaths: ["/abs/before.png", …]` attaches design images to the plan being pushed.
+      // Read here rather than passed as base64 in the JSON: a plan payload is already large, and a file
+      // path is what the caller actually has. Omit the key and this is byte-identical to before.
+      const mockups = (p.mockupPaths ?? []).map((f: string) => ({
+        fileName: basename(f),
+        mimeType: mimeOf(f),
+        content: readFileSync(f),
+      }));
+      pushPlanWithMockups({ ...p, mockups });
+      console.log(
+        `pushed plan for ${p.id} (status → planned)` +
+          (mockups.length ? ` with ${mockups.length} mockup(s): ${mockups.map((m: { fileName: string }) => m.fileName).join(', ')}` : ''),
+      );
       break;
     }
     case 'build-start': {
