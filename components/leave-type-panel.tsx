@@ -20,6 +20,16 @@ import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
 // 35b7af0a — the shared person master lists, in a client-safe module so this client component can use the
 // real one instead of the hand-synced copy it used to carry.
 import { MARITAL_STATUSES } from '@/lib/person-vocabulary';
+// 4a1abc4a — ONE way to print a number of days, shared with every balance screen (see lib/day-format.ts).
+// The band table passes ROUNDING_BAND_DECIMALS because its figures are FRACTIONS of a day, compared at 3dp
+// by checkRoundingBands; every other field here is a whole-day quantity and takes the 2dp default.
+import {
+  ROUNDING_BAND_DECIMALS,
+  formatDayInput,
+  formatDays,
+  normalizeDayFieldOnBlur,
+  normalizeDayText,
+} from '@/lib/day-format';
 import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -159,8 +169,13 @@ const roundingMethodValue = (m?: LeaveRoundingMethod | null): LeaveRoundingMetho
 const ROUNDING_EXAMPLE_RAW = Math.round((14 / 12) * 100) / 100;
 
 /** 8fec719e — three decimal places, the precision the reporter's tables are written at and the one
- *  `checkRoundingBands` / `applyRoundingBands` compare and snap to. */
-const bandText = (v: number) => v.toFixed(3);
+ *  `checkRoundingBands` / `applyRoundingBands` compare and snap to.
+ *
+ *  4a1abc4a DELIBERATELY LEFT AT THREE while standardising every other day figure to two. A band is not a
+ *  number of days; it is a FRACTION of one, in [0,1]. Printing a 0.125 boundary as "0.13" would be a lie on
+ *  screen, and the on-blur tidier below would then write that lie back as the rule. The shared formatter is
+ *  still the one doing the printing — precision is its parameter, which is the whole reason it takes one. */
+const bandText = (v: number) => formatDays(v, { decimals: ROUNDING_BAND_DECIMALS });
 
 /**
  * 8fec719e — ONE EDITOR ROW. The three figures are held as STRINGS, deliberately, for the reason the
@@ -227,6 +242,20 @@ function RoundingBandsEditor({
   const patch = (i: number, field: 'from' | 'to' | 'result', v: string) =>
     setRows(rows.map((r, j) => (j === i ? { ...r, [field]: v, ...(field === 'from' ? { fromIsHint: false } : {}) } : r)));
 
+  // 4a1abc4a — tidy a cell to the band precision when the administrator clicks away, so what was typed and
+  // what is posted look the same ("0.5" becomes "0.500", the shape every other row is written in).
+  //
+  // It patches ONLY when the text actually changes, and that is not an optimisation: `patch` clears
+  // `fromIsHint`, so an unconditional blur handler would strip the From cell's light-grey "suggestion"
+  // styling merely because someone tabbed through it. `normalizeDayText` leaves a blank cell blank and a
+  // half-typed one alone, which keeps `checkRoundingBands` calling that row broken rather than reading the
+  // empty box as a legal 0.
+  const tidyCell =
+    (i: number, field: 'from' | 'to' | 'result') => (e: { currentTarget: { value: string } }) => {
+      const next = normalizeDayText(e.currentTarget.value, ROUNDING_BAND_DECIMALS);
+      if (next !== e.currentTarget.value) patch(i, field, next);
+    };
+
   const addRow = () => {
     // The suggestion the request asks for: the next band starts where the last one ended. When there is no
     // row yet the decimal range starts at 0.000, which is the only sensible first From.
@@ -263,6 +292,7 @@ function RoundingBandsEditor({
                     step="0.001"
                     value={r.from}
                     onChange={(e) => patch(i, 'from', e.target.value)}
+                    onBlur={tidyCell(i, 'from')}
                     aria-label={t('subStep.roundingBandFrom')}
                     // The light-grey suggestion. Styling only — the value is real, posted and editable.
                     className={cn(inputCls, 'w-24', r.fromIsHint && 'text-muted-foreground/60')}
@@ -276,6 +306,7 @@ function RoundingBandsEditor({
                     step="0.001"
                     value={r.to}
                     onChange={(e) => patch(i, 'to', e.target.value)}
+                    onBlur={tidyCell(i, 'to')}
                     aria-label={t('subStep.roundingBandTo')}
                     className={cn(inputCls, 'w-24')}
                   />
@@ -288,6 +319,7 @@ function RoundingBandsEditor({
                     step="0.001"
                     value={r.result}
                     onChange={(e) => patch(i, 'result', e.target.value)}
+                    onBlur={tidyCell(i, 'result')}
                     aria-label={t('subStep.roundingBandResult')}
                     className={cn(inputCls, 'w-24')}
                   />
@@ -737,8 +769,10 @@ function EarningMethodForm({
       {rounding !== 'none' && (
         <p className="text-xs text-muted-foreground">
           {t('subStep.roundingWorkedExample', {
-            raw: ROUNDING_EXAMPLE_RAW.toFixed(2),
-            rounded: applyRounding(ROUNDING_EXAMPLE_RAW, rounding, null, rowsToBands(bandRows)).toFixed(2),
+            // 4a1abc4a: the worked example is a number of DAYS, so it prints at the day precision (2dp)
+            // through the shared formatter — not at the band precision of the table above it.
+            raw: formatDays(ROUNDING_EXAMPLE_RAW),
+            rounded: formatDays(applyRounding(ROUNDING_EXAMPLE_RAW, rounding, null, rowsToBands(bandRows))),
           })}
         </p>
       )}
@@ -816,7 +850,11 @@ function CarryPolicyForm({
                   min="0"
                   max="100"
                   step="0.01"
-                  defaultValue={pct ?? ''}
+                  // 4a1abc4a: numeric(5,2) in the database, so it is shown and tidied at 2dp. Blank stays
+                  // blank — this field is `required`, and a box pre-filled with "0.00" would let someone
+                  // satisfy that requirement by pressing save without ever choosing a percentage.
+                  defaultValue={formatDayInput(pct)}
+                  onBlur={normalizeDayFieldOnBlur}
                   required
                   className={`${inputCls} w-24`}
                 />
@@ -837,7 +875,17 @@ function CarryPolicyForm({
           ) : (
             <>
               <Field label={t('carryCapLabel')}>
-                <input name="carryForwardMax" type="number" min="0" step="0.5" defaultValue={cap} className={`${inputCls} w-24`} />
+                {/* 4a1abc4a: `cap` is numeric(6,2) and defaults to 0 when unset, so this box is never
+                    blank — it shows "0.00" for "carry nothing", which is what a zero cap means here. */}
+                <input
+                  name="carryForwardMax"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  defaultValue={formatDayInput(cap)}
+                  onBlur={normalizeDayFieldOnBlur}
+                  className={`${inputCls} w-24`}
+                />
               </Field>
               {/* Fixed Maximum means no percentage: post an empty value so a previously-stored percentage
                   is CLEARED rather than left behind to win the resolution silently. */}
@@ -945,7 +993,10 @@ function NegativeBalanceForm({
               // would mean "may go arbitrarily far below zero", which nobody should be able to set by
               // leaving a box empty. The service refuses it too; this is the fast, readable half.
               required
-              defaultValue={maxNegativeBalance ?? ''}
+              // 4a1abc4a: numeric(6,2). Blank stays blank — see the `required` note above; an unset floor
+              // must look unset, not like a configured zero.
+              defaultValue={formatDayInput(maxNegativeBalance)}
+              onBlur={normalizeDayFieldOnBlur}
               className={cn(inputCls, 'w-full')}
             />
           </Field>
@@ -1033,7 +1084,9 @@ function ApplicationLimitsForm({
               type="number"
               min="0.5"
               step="0.5"
-              defaultValue={maxDaysPerLeaveYear ?? ''}
+              // 4a1abc4a: numeric(6,2), a number of days — 2dp like every other day figure.
+              defaultValue={formatDayInput(maxDaysPerLeaveYear)}
+              onBlur={normalizeDayFieldOnBlur}
               className={cn(inputCls, 'w-full')}
             />
           </Field>
@@ -1145,7 +1198,10 @@ function MaxConsecutiveForm({
               type="number"
               min="0.5"
               step="0.5"
-              defaultValue={maxConsecutiveDays ?? ''}
+              // 4a1abc4a: numeric(6,2), a number of days — 2dp. Blank stays blank; the action reads a blank
+              // maximum as a clear of BOTH this and the unit, so a "0.00" here would configure a real cap.
+              defaultValue={formatDayInput(maxConsecutiveDays)}
+              onBlur={normalizeDayFieldOnBlur}
               className={cn(inputCls, 'w-full')}
             />
           </Field>
