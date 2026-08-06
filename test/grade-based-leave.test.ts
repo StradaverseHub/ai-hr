@@ -44,9 +44,18 @@ const annualBalance = async (employmentId: string) => {
   return Number(r.bal);
 };
 const grade = (code: string, name: string) => createJobGrade(adminCtx(b), { code, name });
-/** Was `createLeavePolicy({ annualDays, gradeId })`: a template holding the days + a rule holding the who. */
+/** Was `createLeavePolicy({ annualDays, gradeId })`: a template holding the days + a rule holding the who.
+ *  The NAME is passed explicitly because a named table is now a first-class object: one running version per
+ *  (tenant, leave type, name) is a partial-unique index, so two fixtures for one leave type must be two
+ *  differently-named tables — which is the point of the layer, not an obstacle to it. */
 const policy = (annualDays: number, gradeId: string | null) =>
-  seedEntitlement(adminCtx(b), { leaveTypeId: b.annualLeaveTypeId, annualDays, gradeId, validFrom: '2026-01-01' });
+  seedEntitlement(adminCtx(b), {
+    leaveTypeId: b.annualLeaveTypeId,
+    annualDays,
+    gradeId,
+    validFrom: '2026-01-01',
+    name: gradeId ? `Grade table ${annualDays}` : `Default table ${annualDays}`,
+  });
 // Hire on 1 Jan so ANNUAL grants in full (no mid-year pro-ration) → the balance IS the entitlement.
 const hire = (gradeId: string | null) =>
   hireEmployee(adminCtx(b), {

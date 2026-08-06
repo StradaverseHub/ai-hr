@@ -91,7 +91,10 @@ async function secondCompany(): Promise<{ coB: string; deptB: string }> {
   return { coB, deptB: dept.id };
 }
 
-/** Was `createLeavePolicy({ annualDays, companyId, gradeId })` — the days in a template, the scope in a rule. */
+/** Was `createLeavePolicy({ annualDays, companyId, gradeId })` — the days in a template, the scope in a rule.
+ *  The NAME is passed explicitly: one running version per (tenant, leave type, name) is a partial-unique
+ *  index, so several fixtures for one leave type have to be several NAMED tables. That is the layer working
+ *  as designed — "the Company A table" is a thing an operator points a rule at — not a fixture workaround. */
 const policy = (annualDays: number, companyId: string | null, gradeId: string | null = null) =>
   seedEntitlement(adminCtx(b), {
     leaveTypeId: b.annualLeaveTypeId,
@@ -99,6 +102,7 @@ const policy = (annualDays: number, companyId: string | null, gradeId: string | 
     companyId,
     gradeId,
     validFrom: '2026-01-01',
+    name: `${companyId ? 'Company' : 'Default'}${gradeId ? '+grade' : ''} table ${annualDays}`,
   });
 
 /** The earning METHOD is a leave-TYPE rule since 9816a5ad — it was never a per-company decision, and the
@@ -213,12 +217,14 @@ describe('ADR-0066 per-company entitlement — call sites', () => {
       serviceBands: [{ fromYears: 0, toYears: null, days: 12, carryForwardDays: 5 }],
       companyId: b.companyId,
       validFrom: '2025-01-01',
+      name: 'Company A carry table',
     });
     await seedEntitlement(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
       serviceBands: [{ fromYears: 0, toYears: null, days: 12, carryForwardDays: 0 }],
       companyId: coB,
       validFrom: '2025-01-01',
+      name: 'Company B carry table',
     });
     const mk = (companyId: string, departmentId: string) =>
       hireEmployee(adminCtx(b), {

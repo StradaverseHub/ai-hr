@@ -88,7 +88,11 @@ const hire = (opts: { hiredOn: string; gradeId?: string | null; employmentType?:
   });
 
 /** Grade H + an entitlement table of `days` targeted at it. Was: grade + grade group + a full_time
- *  benefit scheme + a scheme_leave_entitlement row — four objects to say one thing (see note ① above). */
+ *  benefit scheme + a scheme_leave_entitlement row — four objects to say one thing (see note ① above).
+ *
+ *  The NAME is passed explicitly wherever a test seeds more than one table for a leave type: one running
+ *  version per (tenant, leave type, name) is a partial-unique index, so two fixtures are two NAMED tables.
+ *  That is the layer working as intended — a rule points at "the Grade H table" by name. */
 async function gradeHEntitlement(days: number) {
   const ctx = adminCtx(b);
   const grade = await createJobGrade(ctx, { code: 'GH', name: 'Grade H' });
@@ -97,6 +101,7 @@ async function gradeHEntitlement(days: number) {
     annualDays: days,
     gradeId: grade.id,
     validFrom: '2020-01-01',
+    name: 'Grade H table',
   });
   return { grade, template };
 }
@@ -303,6 +308,7 @@ describe('ae5b84d5 — profile-change recalc re-resolves the entitlement', () =>
       leaveTypeId: b.annualLeaveTypeId,
       serviceBands: [{ fromYears: 0, toYears: null, days: 10, maxBalanceDays: 12 }],
       validFrom: '2020-01-01',
+      name: 'Capped default table',
     });
     const grade = await createJobGrade(ctx, { code: 'GH', name: 'Grade H' });
     await seedEntitlement(ctx, {
@@ -310,6 +316,7 @@ describe('ae5b84d5 — profile-change recalc re-resolves the entitlement', () =>
       serviceBands: [{ fromYears: 0, toYears: null, days: 20, maxBalanceDays: 12 }],
       gradeId: grade.id,
       validFrom: '2020-01-01',
+      name: 'Capped Grade H table',
     });
     const emp = await hire({ hiredOn: '2026-01-01' }); // ungraded: 10, under the cap
     expect(await annualBalance(emp.employmentId)).toBe(10);

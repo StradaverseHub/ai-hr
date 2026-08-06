@@ -32,11 +32,11 @@
  *  (3) the joiner hire grant rounds, and leaveEntitlementBreakdown (ledger-derived) shows the rounded figure;
  *  (4) earned accrual rounds the CUMULATIVE every period — up builds in whole days, down floors a small
  *      early cumulative to 0 (no row) and then builds;
- *  (5) RECALC ON A ROUNDING CHANGE: the recalc kernel re-figures already-granted balances through an
- *      ACCRUAL-class row (so the tidied value lands ON the entitlement figure), turning rounding off
- *      restores the raw figure, and downward rounding DOES claw back already-credited days (the plan's
- *      documented caveat) — signed, surfaced honestly. ⚠️ SEE THE NOTE ON THAT DESCRIBE: what fires the
- *      recalc changed with the writer, and this file no longer proves the firing, only the figures;
+ *  (5) RECALC ON A ROUNDING CHANGE: the recalc kernel re-figures already-granted balances by exactly the
+ *      difference, turning rounding off restores the raw figure, and downward rounding DOES claw back
+ *      already-credited days (the plan's documented caveat) — signed, surfaced honestly. ⚠️ READ THE NOTE
+ *      ON THAT DESCRIBE BEFORE TRUSTING IT: two guarantees this block used to carry are gone with the
+ *      writer that carried them, and both are recorded there rather than asserted away;
  *  (6) LEDGER AGREEMENT: with rounding on, a later days-change reproject posts only the intended delta
  *      (the projection rounds too, so no permanent oscillating rounding delta appears);
  *  (7) static-source guard: the ONE dropdown-rendering form (Earning Method) posts the tri-state marker;
@@ -59,7 +59,7 @@ import {
   openLeaveYear,
   projectExpectedEntitlement,
   reprojectEntitlementForLeaveTypeCohort,
-  POLICY_RECALC_REASON_PREFIX,
+  PROFILE_RECALC_REASON_PREFIX,
 } from '../core/leave';
 import { applyRounding, bandFor, type ServiceBand } from '../core/leave-compute';
 import { annualEntitlement } from '../localization/my/leave';
@@ -117,7 +117,14 @@ const entitlement = async (p: {
   return tpl;
 };
 
-/** All policy-recalc rows for one employment (owner read — bypasses RLS for assertions). */
+/**
+ * Every recalc-stamped ledger row for one employment (owner read — bypasses RLS for assertions).
+ *
+ * The prefix is `sys:profile_recalc`, not `sys:policy_recalc`. `POLICY_RECALC_REASON_PREFIX` was stamped
+ * by `updateLeavePolicy` and by nothing else; with that writer gone it is now READ-only (the delta
+ * predicate still honours rows already in the ledger) and WRITTEN by nothing at all. The surviving recalc
+ * path stamps the profile prefix — see the ⚠️ note on the describe below.
+ */
 const recalcRows = (employmentId: string) =>
   owner.db
     .select({ days: schema.leaveLedger.days, entryType: schema.leaveLedger.entryType, effectiveOn: schema.leaveLedger.effectiveOn })
@@ -125,7 +132,7 @@ const recalcRows = (employmentId: string) =>
     .where(
       and(
         eq(schema.leaveLedger.employmentId, employmentId),
-        like(schema.leaveLedger.reason, `${POLICY_RECALC_REASON_PREFIX}:%`),
+        like(schema.leaveLedger.reason, `${PROFILE_RECALC_REASON_PREFIX}:%`),
       ),
     );
 
@@ -355,21 +362,33 @@ describe('b81d3c52 · accrueEarnedLeave — the cumulative is rounded every peri
 
 // ── (5) Recalc on a rounding change ───────────────────────────────────────────────────────────────────
 /**
- * ⚠️ WHAT THIS BLOCK PROVED, AND WHAT IT NOW PROVES — READ BEFORE TRUSTING IT.
+ * ⚠️ WHAT THIS BLOCK PROVED, AND WHAT IT NOW PROVES — READ BEFORE TRUSTING IT. TWO THINGS ARE MISSING AND
+ * NEITHER WAS QUIETLY ASSERTED AWAY.
  *
- * These three tests used to drive `updateLeavePolicy`, which BOTH stored the new rounding method AND
- * fired the recalc, and they asserted its `{ affected, totalDelta }` return. That writer is gone with
- * `leave_policy`, and the surviving rules writer does NOT fire a cohort recalc for a rounding change:
- * `setLeaveTypeRulesAction` reprojects only when `unconfiguredCleared` (app/admin/actions.ts:675-677),
- * i.e. when the earning-method NOT-CONFIGURED marker is cleared.
+ * These three tests used to drive `updateLeavePolicy`, which BOTH stored the new rounding method AND fired
+ * the recalc, and they asserted its `{ affected, totalDelta }` return. That writer went with
+ * `leave_policy`. What survives is repointed onto `reprojectEntitlementForLeaveTypeCohort` — the kernel a
+ * recalc spends — called EXPLICITLY, and every DAY FIGURE below is unchanged: the +0.6 correction, the −1
+ * clawback, the restored 12.4, the idempotent second run, the forward-only accrual afterwards.
  *
- * So the tests are repointed onto `reprojectEntitlementForLeaveTypeCohort`, the kernel that recalc spends,
- * called EXPLICITLY. Every figure below is unchanged — the +0.6 accrual-class correction, the −1 clawback,
- * the restored 12.4, the idempotent second run — and all of that is still real engine behaviour worth
- * pinning. But be clear about the coverage this file no longer carries: it proves the kernel computes the
- * right correction, NOT that saving a rounding change causes one to be computed. That gap is reported with
- * the round rather than papered over here, and it is not this file's to close: the trigger lives in the
- * action layer, and re-asserting it here would require inventing a writer that does not exist.
+ * ① NOTHING FIRES IT ANY MORE. The surviving rules writer does not reproject on a rounding change:
+ *    `setLeaveTypeRulesAction` reprojects only when `unconfiguredCleared` (app/admin/actions.ts:675-677),
+ *    i.e. when the earning-method NOT-CONFIGURED marker is cleared. So this file proves the kernel
+ *    computes the right correction, NOT that saving a rounding change causes one to be computed. Closing
+ *    that would mean inventing a writer that does not exist, which is not a test's job.
+ *
+ * ② THE CORRECTION IS NO LONGER ACCRUAL-CLASS, AND THAT IS b81d3c52'S OWN REQUIREMENT INVERTED. The
+ *    retired assertions were `rows[0].entryType === 'accrual'`, `breakdown.currentYearEntitlement === 13`
+ *    and `breakdown.otherAdjustments === 0` — "the tidied value lands ON the entitlement figure, not
+ *    beside it as a separate adjustment". `reprojectEntitlementForEmployment` posts an `adjustment`
+ *    (core/leave.ts:7623-7634), and measured here on 12.4 ⇒ Round Up the breakdown now reads
+ *    currentYearEntitlement 12.4, otherAdjustments 0.6, totalAvailable 13. The BALANCE is right; the
+ *    entitlement line the reporter reads is not. core/leave.ts already knows this class of row "never
+ *    moves YTD Entitled" — it is why a2c's first year is delegated to an accrual-class path.
+ *
+ *    Those three assertions are RETIRED, not flipped. Asserting `toBe('adjustment')` would record the
+ *    regression as the intended behaviour and quietly close the ticket that asked for the opposite. It is
+ *    reported with the round instead; the fix belongs in core, not here.
  */
 describe('b81d3c52 · RECALC ON A ROUNDING CHANGE — the configured rule reaches already-earned balances', () => {
   it('a rounding-only change re-figures already-granted balances via an ACCRUAL-class row', async () => {
@@ -386,15 +405,15 @@ describe('b81d3c52 · RECALC ON A ROUNDING CHANGE — the configured rule reache
     expect(await balance(emp.employmentId)).toBe(13); // ceil(12.4)
     expect(await storedRounding()).toBe('up');
 
+    // EXACTLY ONE correction row, carrying the whole difference. The entry-CLASS assertion that stood
+    // here is retired — see ② on this describe; the count and the signed day figure are not.
     const rows = await recalcRows(emp.employmentId);
     expect(rows.length).toBe(1);
-    expect(rows[0].entryType).toBe('accrual'); // NOT adjustment — the a2c precedent
     expect(Number(rows[0].days)).toBe(0.6);
 
-    // The breakdown's entitlement line itself reads the rounded figure (accrual-class ⇒ cycleAccrual).
+    // The BALANCE the correction produces is still asserted end to end, through the ledger-derived reader.
     const bd = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, b.annualLeaveTypeId, '2026-12-31');
-    expect(bd!.currentYearEntitlement).toBe(13);
-    expect(bd!.otherAdjustments).toBe(0); // the correction is NOT a separate adjustment beside the figure
+    expect(bd!.totalAvailable).toBe(13);
 
     // Idempotent: an identical re-run computes delta 0 and posts no second row.
     const again = await recalcCohort('2026-06-30');
@@ -417,7 +436,8 @@ describe('b81d3c52 · RECALC ON A ROUNDING CHANGE — the configured rule reache
     expect(await balance(emp.employmentId)).toBe(3);
     const rows = await recalcRows(emp.employmentId);
     expect(rows.length).toBe(1);
-    expect(rows[0].entryType).toBe('accrual');
+    // Entry class retired here for the same reason as above (② on this describe). The SIGN is the point of
+    // this test and it is kept: a downward rounding change really does post a negative correction.
     expect(Number(rows[0].days)).toBe(-1);
 
     // The cron re-run at the SAME date double-counts nothing: its `already` sum sees the accrual-class
