@@ -60,7 +60,7 @@
  * ── WHAT THIS ENGINE HONESTLY CANNOT DO, AND SAYS SO ──────────────────────────────────────────────────
  *
  * A needs-review line carries a stable reason code, asserts NO figure, and is EXCLUDED from the posted
- * total. The four reasons, each with the fact that forces it:
+ * total. Each reason names the STORED FACT that forces it:
  *  - `manualOvertime`   — `payroll_input.overtime_amount` is RM, "not hours" (db/schema.ts). Only a money
  *                         amount was ever kept, so there is nothing to re-price at the new wage basis.
  *  - `overtimeDeferred` — attendance-sourced OT IS re-priceable, but the approved plan sequences overtime
@@ -74,6 +74,11 @@
  *                         not what moved their pay. Out of scope for pass 1 rather than silently wrong.
  *  - `nonPayableItem`   — a BIK/record-only item. The kernel records it and never pays it, so a difference
  *                         on it is not money.
+ *  - `unpaidLeaveInPeriod` — THE MONTH IS REFUSED WHOLE. The kernel's unpaid-leave deduction is
+ *                         `basicRaw / unpaidDivisor × unpaidDays`, a SEPARATE figure that is not netted
+ *                         into `payslip.basic_salary`, so a backdated rise raises it too. Reworking only
+ *                         the basic would OVERPAY such a month. Pass 2 owns unpaid-leave arrears; pass 1
+ *                         will not guess, and under-paying with an explanation beats overpaying quietly.
  *
  * ── SIGN ──────────────────────────────────────────────────────────────────────────────────────────────
  *
@@ -108,6 +113,7 @@ import {
   resolvePayComponentSet,
   type ResolvablePayComponent,
 } from './pay-rule';
+import { unpaidDaysByEmployment } from './payroll';
 import { insertIndividualTxnsTx } from './payroll-individual-txn';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -131,6 +137,7 @@ export const BACK_PAY_REVIEW_REASONS = [
   'nonMonthlyPayMode',
   'nonPayableItem',
   'noBaselineSalary',
+  'unpaidLeaveInPeriod',
 ] as const;
 export type BackPayReviewReason = (typeof BACK_PAY_REVIEW_REASONS)[number];
 
@@ -437,6 +444,19 @@ async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Pr
       }
       if (baseline.payMode !== 'monthly' && baseline.payMode !== 'custom_period') {
         out.push(line({ payCode: BASIC_PAY_CODE, payItemName: 'Basic Salary', needsReview: true, reviewReason: 'nonMonthlyPayMode' }));
+        continue;
+      }
+      // ── UNPAID LEAVE IN THE MONTH ⇒ REFUSE THE MONTH ──────────────────────────────────────────────
+      // The kernel deducts unpaid leave as `basicRaw / unpaidDivisor × unpaidDays`, a SEPARATE figure
+      // that is NOT netted into `payslip.basic_salary`. So a backdated rise raises that deduction too,
+      // and arrears that reworked only the basic would OVERPAY this month by
+      // `(newBasic − oldBasic) / divisor × unpaidDays`. Recomputing the divisor here would mean
+      // re-deriving proration settings, cut-off windows and working-day bases — exactly the drift the
+      // payslip-as-anchor design exists to avoid — and the approved plan sequences unpaid-leave arrears
+      // into pass 2 regardless. So the month is REFUSED with its reason rather than silently overpaid.
+      const unpaid = await unpaidDaysByEmployment(tx, periodStart, periodEnd, [cand.employmentId]);
+      if ((unpaid.get(cand.employmentId) ?? 0) > 0) {
+        out.push(line({ payCode: 'UNPAID', payItemName: 'Unpaid leave', needsReview: true, reviewReason: 'unpaidLeaveInPeriod' }));
         continue;
       }
       if (overlapping.length > 1) {

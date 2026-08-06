@@ -322,6 +322,49 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
     expect(Number(txns[0].amount)).toBeCloseTo(1000, 2);
   });
 
+  it('a month with unpaid leave is REFUSED whole, not overpaid', async () => {
+    // WHY THIS IS A REFUSAL AND NOT AN ADJUSTMENT: the kernel deducts unpaid leave as
+    // `basicRaw / unpaidDivisor x unpaidDays`, a SEPARATE figure that is not netted into
+    // payslip.basic_salary. A backdated rise therefore raises that deduction too, so arrears that
+    // reworked only the basic would pay MORE than is owed. Under-paying with a stated reason is the
+    // right failure; silently overpaying is not.
+    const a = adminCtx(base);
+    const { employmentId } = await hire(5000, 'Unpaid Uma');
+
+    // An UNPAID leave type + an approved request starting in the affected month, inserted directly:
+    // the fixture only needs the two columns unpaidDaysByEmployment reads (leave_type.paid = false,
+    // leave_request.status = 'approved'), and core/leave*.ts is out of this build's lane.
+    const [lt] = await owner.db
+      .insert(schema.leaveType)
+      // leave_type_code_shape (migration 0031) is ^[A-Z][A-Z0-9_]{1,31}$. A uuid slice can contain a
+      // hyphen, which would make this test flaky roughly one run in five — a fixed code cannot.
+      .values({ tenantId: base.tenantId, code: 'UNPAID_ARREARS', name: 'Unpaid Leave', paid: false })
+      .returning({ id: schema.leaveType.id });
+    await owner.db.insert(schema.leaveRequest).values({
+      tenantId: base.tenantId,
+      employmentId,
+      leaveTypeId: lt.id,
+      startDate: '2026-03-10',
+      endDate: '2026-03-10',
+      days: '1',
+      status: 'approved',
+    });
+
+    await runAndClose('2026-03');
+    await setCompensation(a, { employmentId, basicSalary: 6000, effectiveFrom: '2026-03-01' });
+
+    const { runId } = await calculateBackPay(a, { companyId: base.companyId, targetPayPeriod: '2026-04' });
+    const detail = await backPayRunDetail(a, runId);
+    const rows = detail!.rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payCode).toBe('UNPAID');
+    expect(rows[0].needsReview).toBe(true);
+    expect(rows[0].reviewReason).toBe('unpaidLeaveInPeriod');
+    // Nothing payable was computed for that month, so nothing posts for it.
+    expect(detail!.total).toBe(0);
+    expect(detail!.perEmployee).toHaveLength(0);
+  });
+
   // ───────────────────────── the duplicate guard ─────────────────────────
 
   it('refuses to calculate the same salary revision twice until the earlier run is cancelled', async () => {
@@ -440,6 +483,7 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
       'nonMonthlyPayMode',
       'nonPayableItem',
       'noBaselineSalary',
+      'unpaidLeaveInPeriod',
     ];
     for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
       const msgs = JSON.parse(fs.readFileSync(path.join(root, 'messages', `${loc}.json`), 'utf8'));

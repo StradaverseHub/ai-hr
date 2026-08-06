@@ -657,7 +657,13 @@ function eligibleWorkingDays(
  * month boundary across both months would need per-day expansion keyed to each leave type's counting
  * mode (the model stores per-request totals, not per-day) — deliberately deferred as a rare edge case.
  */
-async function unpaidDaysByEmployment(
+/** 2ef69d1e — EXPORTED (was module-private) so core/back-pay.ts can ask, inside its own transaction,
+ *  "did this already-paid month carry unpaid leave?". Read-only and behaviour-unchanged: the kernel's
+ *  own call sites are untouched. Back pay needs it because `unpaidDeduction` is computed as
+ *  `basicRaw / unpaidDivisor × unpaidDays` and is a SEPARATE deduction — it is not netted into
+ *  `payslip.basic_salary` — so a backdated salary rise also raises the unpaid deduction. Arrears that
+ *  reworked only the basic would therefore OVERPAY such a month, and pass 1 refuses the month instead. */
+export async function unpaidDaysByEmployment(
   tx: Tx,
   periodStart: string,
   periodEnd: string,

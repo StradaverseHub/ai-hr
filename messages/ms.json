@@ -4064,7 +4064,8 @@
         "blendedOriginal": "Dua rekod gaji terpakai pada bulan ini semasa ia dibayar, jadi angka asal tidak dapat dihasilkan semula dengan tepat.",
         "nonMonthlyPayMode": "Pekerja ini dibayar mengikut hari atau jam, jadi perubahan gaji bulanan bukan punca perubahan gaji mereka.",
         "nonPayableItem": "Item ini direkodkan tetapi tidak pernah dibayar tunai, jadi perbezaannya bukan wang.",
-        "noBaselineSalary": "Tiada rekod gaji berkuat kuasa semasa bulan ini dibayar, jadi tiada apa-apa untuk dibandingkan."
+        "noBaselineSalary": "Tiada rekod gaji berkuat kuasa semasa bulan ini dibayar, jadi tiada apa-apa untuk dibandingkan.",
+        "unpaidLeaveInPeriod": "Bulan ini mempunyai cuti tanpa gaji. Perubahan gaji ke belakang turut mengubah potongan cuti tanpa gaji, yang merupakan sebahagian daripada penghantaran seterusnya — jadi bulan ini dipaparkan dan diserahkan kepada anda untuk dikira, bukannya dibayar pada angka yang kami tahu terlalu tinggi."
       },
       "export": {
         "csv": "Muat turun CSV",
