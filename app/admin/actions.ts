@@ -87,8 +87,6 @@ import {
   createGradeGroup,
   updateGradeGroup,
   deleteGradeGroup,
-  deleteSchemeEntitlement,
-  copySchemeEntitlements,
 } from '@/core/benefit-scheme';
 // r88 1ef1cf95 — shared leave groups are tenant-level now, so their CRUD has its own module rather than
 // riding on the benefit-scheme one.
@@ -1977,21 +1975,6 @@ export async function deleteGradeGroupAction(fd: FormData) {
 
 
 
-
-// Copy / Duplicate Leave Entitlements (R44 ba494b21) — bring a source scheme's entitlements into the target,
-// skipping any leave type already configured on the target (no overwrite).
-export async function copySchemeEntitlementsAction(fd: FormData) {
-  const s = await requireAdmin();
-  try {
-    await copySchemeEntitlements(s, {
-      sourceSchemeId: String(fd.get('sourceSchemeId') ?? ''),
-      targetSchemeId: String(fd.get('targetSchemeId') ?? ''),
-    });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  ok(ENTITLEMENTS);
-}
 
 // SHARED LEAVE GROUPS (r88, feedback 1ef1cf95) — CRUD for the tenant-level groups that pool several leave
 // types under one shared allowance. These replace the scheme-level combined-limit actions (create / update /

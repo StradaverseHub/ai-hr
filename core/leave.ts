@@ -6027,7 +6027,6 @@ export async function openLeaveYear(
         country: company.country,
         gradeId: employment.gradeId,
         companyId: employment.companyId,
-        benefitSchemeId: employment.benefitSchemeId,
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -6677,7 +6676,6 @@ export async function accrueEarnedLeave(
         gradeId: employment.gradeId,
         companyId: employment.companyId,
         companyName: company.legalName,
-        benefitSchemeId: employment.benefitSchemeId,
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -7300,7 +7298,6 @@ export async function reprojectA2cEntitlement(
       leaveCycle: company.leaveCycle,
       gradeId: employment.gradeId,
       companyId: employment.companyId,
-      benefitSchemeId: employment.benefitSchemeId,
     })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))

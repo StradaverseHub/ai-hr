@@ -52,7 +52,6 @@ import {
   employeeStatutoryMy,
   employment,
   leaveLedger,
-  leavePolicy,
   leaveType,
   person,
   position,
@@ -881,16 +880,6 @@ export async function carryForwardReport(
 
     // Every ANNUAL policy version (dated), so we can resolve the version active at EACH employee's cycle
     // open — not just the currently-active one (past-year reports must use the historical cap/expiry).
-    const policies = await tx
-      .select({
-        gradeId: leavePolicy.gradeId,
-        companyId: leavePolicy.companyId,
-        accrual: leavePolicy.accrual,
-        validFrom: leavePolicy.validFrom,
-        validTo: leavePolicy.validTo,
-      })
-      .from(leavePolicy)
-      .where(eq(leavePolicy.leaveTypeId, leaveTypeId));
 
     // Per-employee cycle start (calendar 1 Jan / anniversary hire-month), evaluated as-of the year-end so
     // a mid-year joiner in year Y still resolves to their own cycle. Only rows whose cycle START falls in

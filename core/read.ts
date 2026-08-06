@@ -54,7 +54,6 @@ import {
   jobGrade,
   leaveCancellationRequest,
   leaveLedger,
-  leavePolicy,
   leaveRequest,
   leaveRequestDate,
   leaveRequestStatusEnum,
@@ -2381,17 +2380,6 @@ export function leaveEntitlementBreakdown(
     const cycleStart = earnedCycleStart(emp.hiredOn, asOf, resolveLeaveYearCycle(type.yearCycleOverride, emp.leaveCycle));
 
     // Active ANNUAL/standing policy versions for this type as at asOf, resolved to the employee's grade.
-    const policies = await tx
-      .select({ gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
-      .from(leavePolicy)
-      .where(
-        and(
-          eq(leavePolicy.leaveTypeId, leaveTypeId),
-          lte(leavePolicy.validFrom, asOf),
-          // validTo is exclusive (an active version spans [validFrom, validTo)).
-          sql`(${leavePolicy.validTo} is null or ${leavePolicy.validTo} > ${asOf})`,
-        ),
-      );
     // 6e9a126e RELEASE TWO — the entitlement TEMPLATE version in force ON `asOf`, with the employee's
     // department / position / employment type resolved as at that same date. This is the third of the
     // three PAST-DATE readers: /me and the admin balance breakdown both accept an `asOf`, and a breakdown

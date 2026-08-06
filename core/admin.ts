@@ -99,7 +99,6 @@ import {
   holidayGroupHoliday,
   leaveLedger,
   jobGrade,
-  leavePolicy,
   leaveRequest,
   leaveType,
   location,
@@ -1410,30 +1409,6 @@ export function listBusinessUnitsForLabels(
   );
 }
 
-export function listLeavePolicies(ctx: SessionContext) {
-  return withTenant(ctx, (tx) =>
-    tx
-      .select({
-        id: leavePolicy.id,
-        leaveTypeId: leavePolicy.leaveTypeId,
-        leaveType: leaveType.name,
-        typeCode: leaveType.code,
-        accrual: leavePolicy.accrual,
-        gradeId: leavePolicy.gradeId,
-        gradeName: jobGrade.name,
-        // ADR-0066: the owning company (null = group default) + its name for the policy-row scope badge.
-        companyId: leavePolicy.companyId,
-        companyName: company.legalName,
-        validFrom: leavePolicy.validFrom,
-        validTo: leavePolicy.validTo,
-      })
-      .from(leavePolicy)
-      .innerJoin(leaveType, eq(leaveType.id, leavePolicy.leaveTypeId))
-      .leftJoin(jobGrade, eq(jobGrade.id, leavePolicy.gradeId))
-      .leftJoin(company, eq(company.id, leavePolicy.companyId))
-      .orderBy(leaveType.name),
-  );
-}
 
 
 // ───────────────────────── Public holiday calendar ─────────────────────────
