@@ -30,7 +30,6 @@ import { HalfDayCompanyPicker } from '@/components/leave/half-day-company-picker
 import { LeaveTypePanel, type EntitlementPolicy, type LeaveEligibilityRule } from '@/components/leave-type-panel';
 import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
 import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
-import { LeaveRulePreviewDialog } from '@/components/leave/leave-rule-preview-dialog';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   archiveLeaveTypeAction,
@@ -162,9 +161,6 @@ export default async function LeaveEntitlementsPage({
   // d778d2d3: the checker became the "Preview Scenario" dialog button (LeaveRulePreviewDialog); since
   // 7b945408/962077a8 it opens from the Service Based Entitlements sub-step — this page-level data prep
   // is unchanged and simply feeds the dialog.
-  const previewPolicies = policies
-    .filter((p) => !p.validTo)
-    .map((p) => ({ leaveTypeId: p.leaveTypeId, gradeId: p.gradeId, companyId: p.companyId, accrual: p.accrual }));
   const previewCompanies = companies.map((c) => ({ id: c.id, name: c.name, country: c.country }));
   const todayIso = todayInKualaLumpur();
   // feedback 2c7c6385, re-pointed by 4b0e76ae: the Run-Earned-Accrual Leave-Year selector used to read the
@@ -188,130 +184,12 @@ export default async function LeaveEntitlementsPage({
   const packEntitlement = countryPacks()[0]?.leave.entitlement;
 
   // Group each type's effective-dated policies, newest first, for inline editing.
-  const polByType = new Map<string, EntitlementPolicy[]>();
-  for (const p of policies) {
-    const acc = p.accrual as {
-      annualDays?: number;
-      carryForwardMax?: number;
-      method?: string;
-      carryForwardExpiryMonth?: number;
-      carryForwardExpiryDay?: number;
-      carryForwardExpiryMode?: 'date' | 'months';
-      carryForwardExpiryMonths?: number;
-      carryForwardEnabled?: boolean;
-      carryForwardIncludeEarned?: boolean;
-      serviceBands?: ServiceBand[];
-      /** b81d3c52 — Rounding Method; absent on every policy that uses No Rounding. */
-      roundingMethod?: 'none' | 'up' | 'down';
-    } | null;
-    const ep: EntitlementPolicy = {
-      id: p.id,
-      annualDays: Number(acc?.annualDays ?? 0),
-      serviceBands: Array.isArray(acc?.serviceBands) && acc.serviceBands.length > 0 ? acc.serviceBands : null,
-      carryForwardMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
-      carryForwardExpiryMonth: acc?.carryForwardExpiryMonth ?? null,
-      carryForwardExpiryDay: acc?.carryForwardExpiryDay ?? null,
-      carryForwardExpiryMode: acc?.carryForwardExpiryMode === 'months' ? 'months' : 'date',
-      carryForwardExpiryMonths: acc?.carryForwardExpiryMonths ?? null,
-      carryForwardEnabled: typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : null,
-      carryForwardIncludeEarned: acc?.carryForwardIncludeEarned ?? false,
-      method: acc?.method,
-      // b81d3c52 — only the two real methods reach the panel; absent / anything else ⇒ null (No Rounding).
-      roundingMethod: acc?.roundingMethod === 'up' || acc?.roundingMethod === 'down' ? acc.roundingMethod : null,
-      gradeId: p.gradeId,
-      gradeName: p.gradeName,
-      companyId: p.companyId,
-      companyName: p.companyName,
-      validFrom: p.validFrom,
-      validTo: p.validTo,
-    };
-    const arr = polByType.get(p.leaveTypeId);
-    if (arr) arr.push(ep);
-    else polByType.set(p.leaveTypeId, [ep]);
-  }
-  for (const arr of polByType.values()) arr.sort((a, b) => b.validFrom.localeCompare(a.validFrom));
 
   // Restructure (123c1e76): per-type Entitlement card data — each leave type's benefit-scheme entitlement
   // rows, joined with the owning scheme's name and (read-only) any combined-limit pool the type belongs to
   // in that scheme. The SAME already-loaded rows the scoped Benefit Schemes area (6c775d68, below in the
   // same step) renders — filtered by leave type, never duplicated — and the panel's Edit dialog posts the
   // SAME upsert action, so the two surfaces cannot drift.
-  const schemeNameById = new Map(benefitSchemes.map((sc) => [sc.id, sc.name]));
-  // Feedback 0d1a0cfc — the owning COMPANY name per scheme, so the Service Based Entitlements table's
-  // "Benefit scheme" column can name the company beside the scheme (matching the company-grouped Scheme
-  // picker). Resolved from the benefitSchemes + companies rows this page already loads — no new query,
-  // nothing stored.
-  const schemeCompanyNameById = new Map(
-    benefitSchemes.map((sc) => [sc.id, companyNameById.get(sc.companyId) ?? null] as const),
-  );
-  // a03eff24 — the matrix's ROW identity: the scheme's grade group and employment type. Same already-loaded
-  // benefitSchemes rows (listBenefitSchemes left-joins grade_group for the name) — no extra query.
-  const schemeAxesById = new Map(
-    benefitSchemes.map((sc) => [sc.id, { gradeGroupName: sc.gradeGroupName, employmentType: sc.employmentType }] as const),
-  );
-  // r88 1ef1cf95: the per-(scheme × type) pool lookup that used to be built here is gone. A shared group no
-  // longer belongs to a scheme, so there is nothing scheme-scoped to annotate an entitlement row WITH —
-  // group membership is a property of the leave type alone and is shown in the Shared Leave Groups manager.
-  const schemeEntsByType = new Map<string, LeaveTypeSchemeEntitlement[]>();
-  for (const e of schemeEntitlements) {
-    const row: LeaveTypeSchemeEntitlement = {
-      id: e.id,
-      benefitSchemeId: e.benefitSchemeId,
-      schemeName: schemeNameById.get(e.benefitSchemeId) ?? '—',
-      companyName: schemeCompanyNameById.get(e.benefitSchemeId) ?? null,
-      gradeGroupName: schemeAxesById.get(e.benefitSchemeId)?.gradeGroupName ?? null,
-      employmentType: schemeAxesById.get(e.benefitSchemeId)?.employmentType ?? 'full_time',
-      leaveTypeId: e.leaveTypeId,
-      leaveTypeName: e.leaveTypeName,
-      serviceBands: e.serviceBands,
-    };
-    const arr = schemeEntsByType.get(e.leaveTypeId);
-    if (arr) arr.push(row);
-    else schemeEntsByType.set(e.leaveTypeId, [row]);
-  }
-  for (const arr of schemeEntsByType.values()) arr.sort((a, b) => a.schemeName.localeCompare(b.schemeName));
-
-  // Move Benefit Schemes into the Entitlement step (feedback 6c775d68): the standalone page-bottom section
-  // is gone — BenefitSchemeConfig now renders inside EACH leave type's Entitlement step, scoped to that type
-  // (scopeLeaveTypeId). The props are prepared ONCE here from the rows this page already loads and shared by
-  // every panel (only the scope id varies) — no per-type reload, no N+1. All scheme data, combined limits
-  // and calculations are untouched: this changes where schemes are managed, not how they work.
-  const schemeConfigProps = {
-    companies: companyOptions,
-    grades: grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name, code: g.code })),
-    leaveTypes: activeTypeOptions.map((lt) => ({ id: lt.id, name: lt.name, code: typeCodeById.get(lt.id) ?? '' })),
-    gradeGroups: gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived })),
-    schemes: benefitSchemes.map((sc) => ({
-      id: sc.id,
-      companyId: sc.companyId,
-      employmentType: sc.employmentType,
-      gradeGroupId: sc.gradeGroupId,
-      gradeGroupName: sc.gradeGroupName,
-      name: sc.name,
-      status: sc.status,
-      // Feedback 0890a555: the grouping label. MUST be projected or the column renders "Ungrouped" for
-      // every scheme and the edit dialog opens empty on a scheme that has one.
-      schemeCategory: sc.schemeCategory,
-    })),
-    entitlements: schemeEntitlements.map((e) => ({
-      id: e.id,
-      benefitSchemeId: e.benefitSchemeId,
-      leaveTypeId: e.leaveTypeId,
-      leaveTypeName: e.leaveTypeName,
-      serviceBands: e.serviceBands,
-    })),
-    actions: {
-      createGradeGroup: createGradeGroupAction,
-      updateGradeGroup: updateGradeGroupAction,
-      deleteGradeGroup: deleteGradeGroupAction,
-      createScheme: createBenefitSchemeAction,
-      updateScheme: updateBenefitSchemeAction,
-      deleteScheme: deleteBenefitSchemeAction,
-      upsertEntitlement: upsertSchemeEntitlementAction,
-      deleteEntitlement: deleteSchemeEntitlementAction,
-      copyEntitlements: copySchemeEntitlementsAction,
-    },
-  };
 
   // e4238594 removed the Approval Workflow sub-step data block that stood here (e1a51aea). It prepared
   // the WorkflowMatrix rows, the wildcard list, the per-company default chain and the label bag for a
@@ -399,19 +277,10 @@ export default async function LeaveEntitlementsPage({
   // mount the SAME self-contained dialogs the PageHeader cluster used to host (d778d2d3) — one shared node
   // each, fed by the page-level data prep above (no N+1 per type). 962077a8 removed the header buttons, so
   // these sub-step slots are the tools' only mounts now.
-  const previewScenarioSection =
-    activeTypeOptions.length > 0 && companyOptions.length > 0 ? (
-      <div className="space-y-1.5 border-t border-border pt-3">
-        <span className="text-xs font-medium text-muted-foreground">{t('previewTitle')}</span>
-        <p className="text-xs text-muted-foreground">{t('entitlementStep.previewHint')}</p>
-        <LeaveRulePreviewDialog
-          leaveTypes={activeTypeOptions.map((o) => ({ id: o.id, name: o.name, code: typeCodeById.get(o.id) ?? '' }))}
-          companies={previewCompanies}
-          grades={gradeOptions}
-          policies={previewPolicies}
-        />
-      </div>
-    ) : null;
+  // 6e9a126e release three — the Preview Scenario section is GONE, not emptied. It previewed the old
+  // grade/company policy layer; with that layer removed the dialog had nothing to resolve against, and a
+  // heading over an absent control reads as a broken screen rather than a retired one. The Entitlement
+  // Templates screen shows what each table resolves to, which is the replacement.
   const accrualSection = (
     <div className="space-y-1.5 border-t border-border pt-3">
       <span className="text-xs font-medium text-muted-foreground">{t('runEarnedAccrual')}</span>
@@ -612,41 +481,15 @@ export default async function LeaveEntitlementsPage({
               balanceSourceOptions={types
                 .filter((x) => x.id !== lt.id && !x.archivedAt && x.balanceSourceTypeId == null)
                 .map((x) => ({ id: x.id, name: x.name }))}
-              policies={polByType.get(lt.id) ?? []}
               grades={gradeOptions}
               companies={companyOptions}
-              schemeEntitlements={schemeEntsByType.get(lt.id) ?? []}
-              benefitSchemeSection={
-                /* 6c775d68: the Benefit Schemes management area, scoped to this leave type, rendered inside
-                   the Entitlement step below the per-type table. Shared props (one page-level data prep) +
-                   the per-type scope id. b1b81a08: the workbench is now TWO panels — Grade Groups and
-                   Assignment. The Grade Master panel moved to Settings → System Labels. */
-                <div className="space-y-3 border-t border-border pt-3">
-                  <div>
-                    <span className="text-xs font-medium text-muted-foreground">{t('benefitSchemeTitle')}</span>
-                    <p className="text-xs text-muted-foreground">{t('benefitSchemeHelp')}</p>
-                  </div>
-                  <BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} />
-                </div>
-              }
               halfDaySection={halfDaySection}
-              previewScenarioSection={previewScenarioSection}
               accrualSection={accrualSection}
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}
-              createPolicyAction={createLeavePoliciesMultiAction}
-              updatePolicyAction={updateLeavePolicyAction}
               setTypeRulesAction={setLeaveTypeRulesAction}
-              deletePolicyAction={deleteLeavePolicyAction}
               countInScopeAction={countEmployeesInScopeAction}
-              upsertSchemeEntitlementAction={upsertSchemeEntitlementAction}
-              /* 9816a5ad — Service Based Entitlements now lists BENEFIT SCHEMES per company instead of job
-                 grades. Both props are the arrays schemeConfigProps already prepared once at page level, so
-                 the sub-step costs no extra query and cannot show a different scheme list than the Benefit
-                 Schemes surface beside it. */
-              benefitSchemes={schemeConfigProps.schemes}
-              gradeGroups={schemeConfigProps.gradeGroups}
               />,
             ]),
           )}
