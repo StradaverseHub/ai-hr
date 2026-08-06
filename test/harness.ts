@@ -1,3 +1,6 @@
+import { createEntitlementTemplate, createEligibilityRule } from '../core/entitlement-template';
+import type { ServiceBand } from '../core/leave-compute';
+import type { OrgCriteria } from '../core/org-criteria';
 /** Test harness: owner-role DB access for setup/seed/reset + migration of the test DB. */
 import { and, eq, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
@@ -622,4 +625,59 @@ export function adminCtx(b: Base): SessionContext {
 export async function entitledCtx(b: Base, roles: string[] = ['hr_admin']): Promise<SessionContext> {
   const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, b.tenantId));
   return { tenantId: b.tenantId, userId: b.adminUserId, roles, entitlements };
+}
+
+/**
+ * 6e9a126e RELEASE THREE — the fixture that replaces `createLeavePolicy` in tests.
+ *
+ * WHY A HELPER AND NOT 26 HAND-REWRITES. The dropped `leave_policy` row said three things at once: the
+ * DAYS (a flat figure or a service-band table), WHO gets them (its grade / company columns), and FROM
+ * WHEN. The template layer splits that across two writers — an entitlement template holds the bands, an
+ * eligibility rule holds the targeting. Every test that just needed "this leave type grants N days" was
+ * expressing the first and defaulting the rest, so one helper restores exactly that intent and keeps the
+ * tests about what they were actually testing.
+ *
+ * TARGETING MAPS ONTO SPECIFICITY, WHICH IS THE ONE BEHAVIOURAL DIFFERENCE WORTH KNOWING. A grade-scoped
+ * leave_policy row beat a grade-less one by having a grade. Here, two rules both match and the resolver
+ * picks the MOST SPECIFIC (core/entitlement-template.ts, orgCriteriaSpecificity) — so passing `gradeId`
+ * produces a rule narrowed by one axis, which still beats an empty-criteria rule. Same outcome, decided
+ * in a different place.
+ *
+ * Returns the template row so a caller can assert on the bands it stored.
+ */
+export async function seedEntitlement(
+  ctx: SessionContext,
+  p: {
+    leaveTypeId: string;
+    /** A flat entitlement — shorthand for a single 0..∞ band. Ignored when `serviceBands` is given. */
+    annualDays?: number;
+    serviceBands?: ServiceBand[];
+    /** Narrows the eligibility rule to one grade, the way leave_policy.grade_id used to. */
+    gradeId?: string | null;
+    /** Narrows to one company, the way leave_policy.company_id used to. */
+    companyId?: string | null;
+    validFrom?: string;
+    name?: string;
+  },
+) {
+  const bands: ServiceBand[] =
+    p.serviceBands ?? [{ fromYears: 0, toYears: null, days: p.annualDays ?? 0 }];
+  const validFrom = p.validFrom ?? '2026-01-01';
+  const name = p.name ?? `fixture ${p.leaveTypeId.slice(0, 8)} ${validFrom}`;
+  const tpl = await createEntitlementTemplate(ctx, {
+    leaveTypeId: p.leaveTypeId,
+    name,
+    serviceBands: bands,
+    validFrom,
+  });
+  const criteria: OrgCriteria = {};
+  if (p.gradeId) criteria.gradeIds = [p.gradeId];
+  if (p.companyId) criteria.companyIds = [p.companyId];
+  await createEligibilityRule(ctx, {
+    name: `${name} — eligibility`,
+    templateLineageId: tpl.lineageId,
+    criteria,
+    validFrom,
+  });
+  return tpl;
 }
