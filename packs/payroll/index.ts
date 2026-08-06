@@ -23,7 +23,9 @@
  *   `core/payroll-config.ts` (per-company payroll config), `core/payroll-policy.ts` +
  *   `core/payroll-policy-config.ts` (payroll policy CRUD + the pay-frequency/pay-mode vocabulary,
  *   `calendarWindowFor`, `payslipReleaseAt`), `core/payroll-individual-txn.ts` (one-off individual
- *   transactions), `core/payroll-run-group.ts` (multi-company run groups),
+ *   transactions), `core/back-pay.ts` (2ef69d1e — arrears detection plus the READ-ONLY difference
+ *   engine; it never recomputes a closed payslip and posts through the one-off ledger),
+ *   `core/payroll-run-group.ts` (multi-company run groups),
  *   `core/payroll-view.ts` (processed-payslip read models + cross-company listings),
  *   `core/payroll-readiness.ts` (pre-run readiness checks), `core/payroll-history-import.ts`
  *   (historical payslip import), `core/payroll-permissions-admin.ts` (payroll permission grants +
