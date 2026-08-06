@@ -206,7 +206,13 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/organization',
     labelKey: 'nav.organization',
     guard: 'scopedAdmin',
-    routes: ['/admin/organization'],
+    // defd4644 — ONE screen with three routes: the company listing, the create screen, and one
+    // company's maintenance page. All three call scopedAdmin(), so all three are guarded pages on
+    // disk and test/function-access.test.ts requires them here (reverse completeness). They are NOT
+    // separate function-access rights: browsing, creating and maintaining a company are the same
+    // administrative capability, which is why they share one column — the /admin/notice-board and
+    // /admin/personnel entries below collapse their own new/detail routes for the same reason.
+    routes: ['/admin/organization', '/admin/organization/new', '/admin/organization/[companyId]'],
   },
   {
     screenKey: 'personnelAdmin',

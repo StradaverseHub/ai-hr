@@ -29,6 +29,13 @@
  * cannot drift from the card's. A subsidiary whose parent is out of reach is re-rooted rather than
  * dropped — CompanyTree only descends from `parentId === null`, so leaving the dangling parent id in
  * place would render the row nowhere while still counting it.
+ *
+ * UPDATED for item defd4644 (list-and-detail redesign), NOT weakened. The browse surface is now a
+ * server-rendered table (`CompanyRows`) instead of a client list of mounted panels; the create form and
+ * the per-company panel moved to their own routes. Every assertion below is the same contract stated
+ * against the new shape, plus one the old shape could not state: the PARENT COMPANY is on the row, so
+ * a redesign that rendered only `listCompanies` — which does not select parentCompanyId — fails here
+ * rather than silently shipping a flat table.
  */
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
@@ -38,11 +45,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 // stubbed inert because the page imports server actions that pull them at module load.
 const { scope } = vi.hoisted(() => ({ scope: { s: null as unknown, scopeIds: [] as string[] } }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(() => undefined), revalidateTag: vi.fn(() => undefined) }));
-vi.mock('next/navigation', () => ({ redirect: vi.fn(() => undefined), notFound: vi.fn(() => undefined) }));
+// `useRouter` is part of the stub because the shared <Pager> pulls in the page-size selector, which is
+// a client component — the page imports it even though this test never renders the pager itself.
+vi.mock('next/navigation', () => ({
+  redirect: vi.fn(() => undefined),
+  notFound: vi.fn(() => undefined),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => '/admin/organization',
+  useSearchParams: () => new URLSearchParams(),
+}));
 vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => scope) }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn(async () => (k: string) => k) }));
-// The client half: CompanyPanel / CompaniesCardHeader / OrganizationList all call useTranslations, and
-// the list below is rendered for real (see the render test) rather than inspected as props.
+// next-intl's client hook, for anything under a 'use client' boundary that this file renders.
 vi.mock('next-intl', () => ({
   useTranslations: () => (k: string) => k,
   useLocale: () => 'en',
@@ -54,8 +68,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { OrganizationList } from '../components/organization-list';
-import { CompaniesCardHeader } from '../components/add-company';
+import { SectionHeader } from '../components/ui';
+import { CompanyRows, type CompanyRow } from '../app/admin/organization/company-rows';
 import OrganizationPage from '../app/admin/organization/page';
 
 /** Depth-first walk of a rendered React element tree collecting every node whose `type` matches. */
@@ -123,21 +137,34 @@ async function scopedAdminCtx(companyId: string | null): Promise<SessionContext>
   };
 }
 
-/** Render the page and pull out the four things the screen shows: the list, the header total, the tree,
- *  and the list's ACTUAL markup — props are what the page hands the list, markup is what the reporter
- *  sees, and the previous round's test only ever checked the first. */
-async function renderScreen() {
-  const tree = await OrganizationPage({ searchParams: Promise.resolve({}) });
-  const lists = findByType(tree, OrganizationList);
-  const headers = findByType(tree, CompaniesCardHeader);
+/** Render the page and pull out the four things the screen shows: the rows, the header total, the tree,
+ *  and the table's ACTUAL markup — props are what the page hands the table, markup is what the reporter
+ *  sees, and the round before last only ever checked the first.
+ *
+ *  `searchParams` is threaded through so a test can prove the address-bar filters narrow the SAME
+ *  resolved set rather than re-querying with a different scope. */
+async function renderScreen(sp: Record<string, string> = {}) {
+  const tree = await OrganizationPage({ searchParams: Promise.resolve(sp) });
+  const lists = findByType(tree, CompanyRows);
+  expect(lists, 'the listing renders exactly one CompanyRows body').toHaveLength(1);
+  // Found by title key (getTranslations is identity-mocked) so the statutory-gap card's own
+  // SectionHeader can never be read as the Companies count.
+  const headers = findByType(tree, SectionHeader).filter((h) => h.props.title === 'companies');
   expect(headers).toHaveLength(1);
-  const items = (lists[0]?.props.items ?? []) as { id: string }[];
+  const rows = (lists[0].props.rows ?? []) as CompanyRow[];
   return {
-    listIds: items.map((i) => i.id),
+    rows,
+    listIds: rows.map((r) => r.id),
     total: headers[0].props.count as number,
     treeNodes: findTreeNodes(tree) ?? [],
-    // No search query is typed, so OrganizationList must emit one row per item with nothing hidden.
-    html: lists.length ? renderToStaticMarkup(createElement(OrganizationList, lists[0].props)) : '',
+    // Rendered inside a real table so the <tr>s are legal children; next/link resolves to plain <a>.
+    html: renderToStaticMarkup(
+      createElement(
+        'table',
+        null,
+        createElement('tbody', null, createElement(CompanyRows, lists[0].props)),
+      ),
+    ),
   };
 }
 
@@ -170,7 +197,7 @@ describe('Organization → Companies: reachable companies, and totals derived fr
     // The switcher is deliberately narrowed to ONE company: this screen must ignore it (0f1802bf).
     scope.scopeIds = [base.companyId];
 
-    const { listIds, total, treeNodes, html } = await renderScreen();
+    const { rows, listIds, total, treeNodes, html } = await renderScreen();
 
     expect(listIds.sort()).toEqual(Object.values(ids).sort());
     expect(total).toBe(listIds.length);
@@ -180,6 +207,39 @@ describe('Organization → Companies: reachable companies, and totals derived fr
     // …and all six are actually IN THE MARKUP. The names are fixture data, not catalog strings, so a
     // match here cannot come from an i18n bundle the way a label match can.
     for (const name of Object.keys(ids)) expect(html, name).toContain(name);
+
+    // THE HIERARCHY IS ON THE ROW (defd4644). `listCompanies` does not select parentCompanyId, so a
+    // listing rebuilt from it alone would show every parent as blank and look perfectly fine. Beta
+    // East's parent must be NAMED, and the archived company must still be listed with a status.
+    const east = rows.find((r) => r.id === ids['Beta East Sdn Bhd'])!;
+    expect(east.parentId).toBe(ids['Beta Sdn Bhd']);
+    expect(east.parentName).toBe('Beta Sdn Bhd');
+    expect(rows.find((r) => r.id === ids['Zeta Sdn Bhd'])!.archived).toBe(true);
+    expect(rows.find((r) => r.id === ids['Acme Sdn Bhd'])!.archived).toBe(false);
+  });
+
+  // The address bar is where selection lives now, so the filters have to narrow the SAME resolved set
+  // — never re-query it. A search that widened scope would show up here as an extra id.
+  it('the ?q= search matches on partial NAME and stays inside the administrable set', async () => {
+    scope.s = await scopedAdminCtx(null);
+    scope.scopeIds = [];
+
+    const { listIds, total } = await renderScreen({ q: 'beta' });
+
+    expect(listIds.sort()).toEqual([ids['Beta Sdn Bhd'], ids['Beta East Sdn Bhd']].sort());
+    expect(total).toBe(2);
+  });
+
+  it('the ?status= filter separates active from archived, and neither can exceed the scoped set', async () => {
+    scope.s = await scopedAdminCtx(null);
+    scope.scopeIds = [];
+
+    const archived = await renderScreen({ status: 'archived' });
+    expect(archived.listIds).toEqual([ids['Zeta Sdn Bhd']]);
+
+    const active = await renderScreen({ status: 'active' });
+    expect(active.listIds).not.toContain(ids['Zeta Sdn Bhd']);
+    expect(active.listIds).toHaveLength(5);
   });
 
   it('COMPANY-SCOPED admin sees only their company + subtree, and the total equals THAT list', async () => {
@@ -203,8 +263,8 @@ describe('Organization → Companies: reachable companies, and totals derived fr
     const east = treeNodes.find((n) => n.id === ids['Beta East Sdn Bhd'])!;
     expect(east.parentId).toBe(ids['Beta Sdn Bhd']);
 
-    // In the markup too — including the parent picker inside each panel, which must not offer a
-    // company this admin cannot re-parent into.
+    // In the markup too. The parent PICKER moved to /admin/organization/[companyId] with the panel —
+    // that it offers only administrable companies is asserted in test/organization-list-detail.test.ts.
     expect(html).toContain('Beta Sdn Bhd');
     expect(html).toContain('Beta East Sdn Bhd');
     expect(html).not.toContain('Gamma Sdn Bhd');
@@ -216,7 +276,7 @@ describe('Organization → Companies: reachable companies, and totals derived fr
     scope.s = await scopedAdminCtx(ids['Beta East Sdn Bhd']);
     scope.scopeIds = [];
 
-    const { listIds, total, treeNodes } = await renderScreen();
+    const { rows, listIds, total, treeNodes, html } = await renderScreen();
 
     expect(listIds).toEqual([ids['Beta East Sdn Bhd']]);
     expect(total).toBe(1);
@@ -224,5 +284,13 @@ describe('Organization → Companies: reachable companies, and totals derived fr
     // Left as Beta's id, CompanyTree (which descends from parentId === null) would render NOTHING
     // while the card still said 1 — the exact list/total drift this item is about.
     expect(treeNodes[0].parentId).toBeNull();
+
+    // The Parent column obeys the same rule for the same reason: a parent this admin cannot
+    // administer is not named, so the column can never disclose a company the listing itself refuses
+    // to show. Blank parent + one row, not "Beta Sdn Bhd" leaking through a join.
+    expect(rows[0].parentId).toBeNull();
+    expect(rows[0].parentName).toBeNull();
+    expect(html).not.toContain('Beta Sdn Bhd');
+    expect(html).toContain('Beta East Sdn Bhd');
   });
 });

@@ -537,9 +537,11 @@ export function CompanyPanel({
     ? [statutory?.epfEmployerNo, statutory?.socsoEmployerCode, statutory?.lhdnEmployerNo].filter((v) => !v).length
     : 0;
 
-  // NOT the <li>: OrganizationList owns the row element, because it is the only side of the RSC boundary
-  // that can still address this row. Everything below arrives on the client as an opaque node — possibly a
-  // deferred Flight lazy — so search-hiding is applied to the wrapping <li> there, never to this element.
+  // defd4644: this panel is no longer one row of a client-side list. It is the whole body of
+  // /admin/organization/[companyId], mounted once per page, which is what retired the Flight-lazy
+  // hazard the old comment here described — the listing used to serialise EVERY company's panel (the
+  // full company array, the state catalog and twelve action references each) into one client payload,
+  // overflowing the row budget so rows 2..N arrived as lazies. One panel per page cannot do that.
   return (
     <div className={c.archivedAt ? 'opacity-60' : undefined}>
       <div className="flex items-center justify-between gap-3 px-4 py-3">
