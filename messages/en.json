@@ -4389,7 +4389,7 @@
       "paidLabel": "Paid",
       "addType": "+ Add leave type",
       "addTypeDialogTitle": "Add Leave Type",
-      "typesHelp": "Statutory minimums come from the country pack (EA 1955; bands are <2 / 2–5 / 5+ years of service) and are not configurable. Grants apply the entitlement you <strong>configure</strong> — the statutory minimum is shown as guidance and a figure below it is flagged, not overridden. Entitlements are effective-dated: <strong>add</strong> one to change going forward, <strong>edit</strong> one to correct it. Annual leave pro-rates in the hire year; sick and hospitalization grant in full.",
+      "typesHelp": "Statutory minimums come from the country pack (EA 1955; bands are <2 / 2–5 / 5+ years of service) and are not configurable. Grants apply the entitlement you <strong>configure</strong> — the statutory minimum is shown as guidance and a figure below it is flagged, not overridden. Days are typed on <strong>Entitlement tables</strong>, where each table is effective-dated and an eligibility rule decides who receives it. Annual leave pro-rates in the hire year; sick and hospitalization grant in full.",
       "yearLabel": "Year",
       "accrualMethodLabel": "Accrual",
       "methodLumpSum": "Lump sum",

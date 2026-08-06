@@ -24,8 +24,7 @@ import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
 // The Grade Groups editor, lifted out of the deleted BenefitSchemeConfig workbench so it outlives it.
 import { GradeGroupConfig } from '@/components/leave/grade-group-config';
 import type { LeaveRoundingMethod, RoundingBand } from '@/core/leave-compute';
-import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 // 10e96227 — the half-day-deduction card's company picker, behind a CLIENT wrapper. This page is a SERVER
 // component, and r123 passed ChipMultiSelect's removeLabelFor/countLabelFor closures straight across the
 // boundary, which threw at render and took the whole tab down. The wrapper resolves the translator on the
@@ -34,7 +33,6 @@ import { HalfDayCompanyPicker } from '@/components/leave/half-day-company-picker
 import { LeaveTypePanel, type LeaveEligibilityRule } from '@/components/leave-type-panel';
 import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
 import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
-import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   archiveLeaveTypeAction,
   setLeaveHalfDayFullDeductionCompaniesAction,

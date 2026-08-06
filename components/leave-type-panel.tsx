@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 // core/leave-compute.ts is the RSC-SAFE half of the leave engine (it imports no db/postgres, see its
 // header), which is why a client component may pull VALUES from it. Feedback 9f5164d8's worked example runs
@@ -12,7 +12,6 @@ import {
   type LeaveRoundingMethod,
   type RoundingBand,
   type RoundingBandProblem,
-  type ServiceBand,
 } from '@/core/leave-compute';
 import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/leave-org-criteria';
 import { ESS_VIEW_CHECKLIST_GROUPS } from '@/components/leave/entitlement-panel-config';
@@ -132,12 +131,10 @@ const STEP_TITLE_KEY: Record<StepKey, string> = {
   custom: 'categoryCustom',
 };
 
-/** The client-side mirror of core/leave.ts `isEarnedMethod` (a client component cannot import the server
- *  module). bc36c768 added 'earned_daily' and KEPT 'earned_quarterly': the dropdown no longer offers
- *  quarterly, but the entitlement timeline can still meet a legacy stored value and must label it
- *  honestly rather than show no badge at all. Keep in step with EARNED_METHODS. */
-const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly' || m === 'earned_daily';
-/* bc36c768 removed `methodValue` — "normalise a stored method to a select value", dead since fa3f4ccb
+/* 6e9a126e release three removed `isEarned` — the client mirror of core/leave.ts `isEarnedMethod`. Its
+ * only caller was the entitlement timeline's earned badge, which read `leave_policy.accrual.method`; the
+ * earning method is a leave-TYPE rule (9816a5ad) and EarningMethodForm reads it through `earningChoiceOf`.
+ * bc36c768 removed `methodValue` before it — "normalise a stored method to a select value", dead since fa3f4ccb
  * retired the per-policy method select and referenced by nothing when this item found it. Its job is now
  * `earningChoiceOf` / `earningMethodOf`, which speak the three-choice vocabulary and, unlike this helper,
  * do NOT collapse an unrecognised value onto the lump option — that collapse is precisely the silent
@@ -412,12 +409,11 @@ const badge = {
     'rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground',
 };
 
-const fmt = (d: number) => (Number.isInteger(d) ? String(d) : d.toFixed(1));
-
-/** Carry-forward enhancement: resolve the enable checkbox's default — the explicit flag when set, else
- *  the back-compat default (carry is on iff the cap is positive). Mirrors `carryEnabled` in core/leave. */
-const carryRuleEnabled = (p: { carryForwardEnabled?: boolean | null; carryForwardMax: number }) =>
-  typeof p.carryForwardEnabled === 'boolean' ? p.carryForwardEnabled : p.carryForwardMax > 0;
+/* 6e9a126e release three removed two helpers that only served the policy surfaces:
+ *   `fmt` — trim a day count to one decimal, for the header's days-per-year summary and the timeline rows.
+ *   `carryRuleEnabled` — the client mirror of core's `carryEnabled`, which resolved a POLICY row's carry
+ *     enable default for FrontDoorPreservedCarry. CarryPolicyForm reads the leave TYPE and applies the same
+ *     back-compat rule inline against `typeRules` (see its comment), so the rule itself is not lost. */
 
 /** R4 Build #1: leap-tolerant last-day-of-month, evaluated against a LEAP year (2024) so 29 Feb is allowed
  *  at config time (the server year-clamps it at resolve time). Mirrors core `lastRealDayOfMonth`, but kept
@@ -2209,8 +2205,13 @@ export function LeaveTypePanel({
               who came here to set a number. Run Earned Accrual stays because it PROCESSES entitlement
               rather than defining it, and this is still its only mount (962077a8 cleared the page header
               and test/entitlement-header-actions-removal.test.ts guards that it stays cleared). */}
-          {entitlementTablesLink}
-          {accrualSection}
+          {/* Each server-composed slot is the SOLE child of a wrapper this component creates — the
+              `halfDaySection` pattern in the Condition step, and not decoration. Two slot elements sitting
+              side by side as CardContent's children put two page-created, key-less elements in one child
+              array, which React's dev build reports as "Each child in a list should have a unique key"
+              (seen in the dev console before this wrapper was added). */}
+          <div className="mb-3">{entitlementTablesLink}</div>
+          <div>{accrualSection}</div>
             </CardContent>
           </Card>
           )}
