@@ -1,0 +1,92 @@
+<meta charset="utf-8">
+<title>One employee panel across the Payroll Transaction screens</title>
+<!--
+  Shared mockup for 6a1f2bd6 (Zakat) and 6d72816e (Loans); the same design da4af51f already carries for
+  Individual Payslip. Deliberately ONE picture for all three, because the point of the plan is that they
+  become one component rather than three lookalikes.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 4px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .split{display:grid;grid-template-columns:232px 1fr;gap:16px}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:5px}
+  input,select{width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:8px;font:inherit;background:#fff;font-size:12px}
+  .filters{display:grid;gap:6px;margin:8px 0}
+  ul{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  li{padding:7px 10px;border-bottom:1px solid var(--border);font-size:12.5px}
+  li:last-child{border-bottom:0}
+  li.on{background:color-mix(in srgb,var(--primary) 9%,white);box-shadow:inset 3px 0 0 var(--primary)}
+  .who{font-weight:600}
+  .code{color:var(--mf);font-size:11px}
+  .hide{float:right;color:var(--primary);font-weight:600;font-size:11px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border)}
+  .r{text-align:right}
+  .act{color:var(--primary);font-weight:600}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .ok{background:#d1fae5;color:#065f46}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .have{background:var(--muted);color:var(--mf)}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .grid3{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}
+  .box{border:1px solid var(--border);border-radius:10px;padding:10px}
+  .box .k{font-weight:600;font-size:12.5px}
+  .box .v{font-size:11.5px;color:var(--mf);margin-top:3px}
+</style>
+
+<div class="card">
+  <h2>The panel, on Zakat <span class="chip new">proposed</span></h2>
+  <p class="sub">Loans is the same screen with a different table. So is Individual Payslip.</p>
+  <div class="split">
+    <div>
+      <div class="lbl">Find employee <span class="hide">‹ Hide</span></div>
+      <input value="tan" aria-label="Search by ID or name">
+      <div class="filters">
+        <select><option>All companies</option></select>
+        <select><option>Finance</option></select>
+        <select><option>Active</option></select>
+      </div>
+      <ul>
+        <li class="on"><div class="who">John Tan</div><div class="code">T100001 · Finance</div></li>
+        <li><div class="who">Tanya Wong</div><div class="code">T100014 · Operations</div></li>
+        <li><div class="who">Sri Tanaraj</div><div class="code">T100022 · Production</div></li>
+      </ul>
+    </div>
+    <div>
+      <table>
+        <thead><tr><th>Effective date</th><th>Zakat type</th><th class="r">Amount</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>01 Jan 2026</td><td>Monthly Zakat</td><td class="r">100.00</td><td><span class="chip ok">Active</span></td><td class="act">View / Edit</td></tr>
+          <tr><td>01 Jul 2026</td><td>Monthly Zakat</td><td class="r">120.00</td><td><span class="chip ok">Active</span></td><td class="act">View / Edit</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Selecting someone loads their records straight away. Hide the panel and the table takes the full width.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Why this is one job and not three</h2>
+  <p class="sub">What we found when we opened the four screens.</p>
+  <div class="grid3">
+    <div class="box"><div class="k">Individual Transaction <span class="chip ok">has it</span></div>
+      <div class="v">Uses the shared collapsible panel. This is the real model.</div></div>
+    <div class="box"><div class="k">Fixed Transaction <span class="chip have">near-copy</span></div>
+      <div class="v">Its own 192-line picker with the same filters and no collapse. Retiring it into the shared one removes a lookalike.</div></div>
+    <div class="box"><div class="k">Zakat <span class="chip new">this request</span></div>
+      <div class="v">Plain dropdown today.</div></div>
+    <div class="box"><div class="k">Loans <span class="chip new">this request</span></div>
+      <div class="v">Plain dropdown today — and it lives under Admin, not Payroll › Transaction.</div></div>
+  </div>
+  <p class="note">You asked for Zakat and Loans to “match Fixed Transaction and Individual Transaction”. Those two do not
+    currently match each other — they are two different components. Rather than copy either one twice more, we point all
+    four at the one panel that already exists, so the next screen is a one-line change instead of a fifth copy.</p>
+</div>

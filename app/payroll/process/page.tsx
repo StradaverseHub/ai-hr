@@ -97,7 +97,11 @@ export default async function PayrollProcessPage({ searchParams }: { searchParam
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('title')} description={t('subtitle')} />
+      {/* e440991b point 1 — this was the one screen in the product with no way back. Every other
+          multi-step screen passes `back`; the wizard's own in-step Back button only walks between
+          steps, so from step 1 the only exit was the browser control. Points at /payroll, the run
+          listing this wizard is entered from. */}
+      <PageHeader title={t('title')} description={t('subtitle')} back={{ href: '/payroll', label: t('back') }} />
       <ErrorBanner message={error} />
       {resumeError ? (
         <ErrorBanner message={resumeError} />

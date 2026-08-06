@@ -327,7 +327,9 @@ export type CompanyCycleReadiness = {
  * Deliberately cheap — two grouped queries for the whole set, not the eight-check payrollReadiness per
  * company — because it renders on the Payroll Settings landing page, which must stay fast. It answers only
  * the blocking question (can this company open a run at all?) plus the stale-default fact that made the
- * problem invisible; the full per-company report stays on /payroll/guide.
+ * problem invisible. The full per-company report is `payrollReadiness` below, rendered on the SAME page
+ * behind ?readiness=full (efe1d230 moved it there from the retired /payroll/guide) — that is why it is
+ * gated on a query param rather than always on: this cheap version exists to keep the default render fast.
  *
  * It does NOT create cycles. Which cycles a company should have is a business decision, and inventing them
  * would make a company that has never run payroll silently start being able to.

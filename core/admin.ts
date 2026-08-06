@@ -857,10 +857,13 @@ export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
     if (!g) throw new Error('Grade not found.');
     const [used] = await tx
       .select({
+        // e7eb5d83 (0408): claim_mileage_rate.grade_id is the SIXTH referencing table — a per-grade mileage
+        // rate table, another plain FK with no onDelete. Kept byte-identical to listJobGrades' predicate.
         inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = ${p.id})
           or exists (select 1 from leave_policy lp where lp.grade_id = ${p.id})
           or exists (select 1 from leave_approval_policy lap where lap.grade_id = ${p.id})
           or exists (select 1 from claim_policy cp where cp.grade_id = ${p.id})
+          or exists (select 1 from claim_mileage_rate cmr where cmr.grade_id = ${p.id})
           or exists (select 1 from grade_group_member ggm where ggm.grade_id = ${p.id})`,
       })
       .from(jobGrade)
@@ -868,7 +871,7 @@ export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
       .limit(1);
     if (used?.inUse) {
       throw new Error(
-        'This grade is in use by employees, leave policies, approval rules, claim limits or a grade group and cannot be deleted. Archive it instead.',
+        'This grade is in use by employees, leave policies, approval rules, claim limits, mileage rates or a grade group and cannot be deleted. Archive it instead.',
       );
     }
     await tx.delete(jobGrade).where(eq(jobGrade.id, p.id));

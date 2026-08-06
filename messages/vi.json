@@ -364,6 +364,13 @@
       "draftReady": "Sẵn sàng tạo",
       "draftContinue": "Tiếp tục"
     },
+    "switcher": {
+      "ariaLabel": "Tìm nhân viên",
+      "placeholder": "Tìm mã nhân viên hoặc tên…",
+      "resultsLabel": "Kết quả tìm nhân viên",
+      "noMatches": "Không có nhân viên nào khớp.",
+      "currentTag": "Hiện tại"
+    },
     "detail": {
       "backToPeople": "Nhân sự",
       "backToOrg": "Sơ đồ tổ chức",
@@ -2975,6 +2982,8 @@
       "subtitle": "Đợt bảng lương",
       "paymentSummary": "Tóm tắt thanh toán",
       "paymentSummaryTitle": "Tải xuống tệp CSV gồm nhân viên, ngân hàng, tài khoản và lương thực lãnh để tải lên ngân hàng thủ công.",
+      "transactionDetail": "Chi tiết giao dịch",
+      "transactionDetailTitle": "Tải xuống thu nhập, các khoản khấu trừ, đóng góp của người sử dụng lao động và tổng cộng của từng nhân viên trong kỳ này dưới dạng tệp Excel.",
       "generatePayslips": "Tạo phiếu lương",
       "closeBatch": "Đóng đợt",
       "disclaimer": "<strong>Số liệu nháp.</strong> Các khoản theo luật được tính từ các quy tắc Malaysia đã xác minh có hiệu lực tại thời điểm cuối kỳ. Hãy kiểm tra mọi phiếu lương trước khi đóng — sau khi đóng, đợt sẽ không thể thay đổi. Các tệp ngân hàng (<mono>CP39 / KWSP / PERKESO</mono>) được tạo riêng.",
@@ -3707,7 +3716,8 @@
       "readinessStaleDefault": "Chu kỳ trả lương mặc định ghi “{name}”, không phải một chu kỳ đang hoạt động của công ty này.",
       "readinessNoDefault": "Chưa chọn chu kỳ trả lương mặc định cho công ty này.",
       "readinessNoAutoCreate": "Hệ thống không tự tạo chu kỳ — công ty nên có những chu kỳ nào là quyết định của bạn.",
-      "readinessFullReport": "Xem báo cáo mức độ sẵn sàng đầy đủ"
+      "readinessFullReport": "Xem báo cáo mức độ sẵn sàng đầy đủ",
+      "readinessHideReport": "Ẩn báo cáo đầy đủ"
     },
     "historyImport": {
       "title": "Nhập lịch sử bảng lương",
@@ -4135,7 +4145,7 @@
       "logoInvalidType": "Chỉ cho phép ảnh PNG hoặc JPG",
       "logoTooLarge": "Logo vượt quá 2 MB",
       "searchCompanies": "Tìm công ty theo tên hoặc số đăng ký",
-      "noMatches": "Không có công ty nào khớp với tìm kiếm của bạn",
+      "noMatches": "Không có công ty nào khớp với các bộ lọc này",
       "addNewCompany": "Thêm công ty mới",
       "tabGeneral": "Chung",
       "tabPayroll": "Bảng lương",
@@ -4211,7 +4221,18 @@
       "authority_zakat": "Zakat",
       "authority_ptptn": "PTPTN",
       "authority_tabung_haji": "Tabung Haji",
-      "authority_koperasi": "Hợp tác xã (Koperasi)"
+      "authority_koperasi": "Hợp tác xã (Koperasi)",
+      "colCode": "Mã",
+      "colStatus": "Trạng thái",
+      "statusActive": "Đang hoạt động",
+      "statusArchived": "Đã lưu trữ",
+      "allStatuses": "Tất cả trạng thái",
+      "searchLabel": "Tìm kiếm",
+      "searchPlaceholder": "Mã, tên hoặc số đăng ký",
+      "applyFilter": "Áp dụng",
+      "open": "Mở",
+      "backToCompanies": "Quay lại danh sách công ty",
+      "createDescription": "Đăng ký một công ty trong tập đoàn. Danh tính pháp lý, tài khoản ngân hàng và công ty mẹ được thiết lập sau trên trang riêng của công ty."
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",
@@ -5237,7 +5258,62 @@
       "noLimitRows": "Chưa cấu hình hạn mức yêu cầu nào.",
       "unlimitedBadge": "Không giới hạn",
       "newLimitTitle": "Đặt hạn mức yêu cầu",
-      "newLimitHint": "Chọn bậc và loại yêu cầu, rồi đặt hạn mức. Việc lưu sẽ ghi lại một phiên bản có hiệu lực mới."
+      "newLimitHint": "Chọn bậc và loại yêu cầu, rồi đặt hạn mức. Việc lưu sẽ ghi lại một phiên bản có hiệu lực mới.",
+      "gradesTitle": "Ngạch chức danh",
+      "companyWide": "Tất cả ngạch (toàn công ty)",
+      "fallbackBadge": "Áp dụng hạn mức toàn công ty",
+      "subTypesInheritHint": "Loại phụ dùng chung hạn mức của loại yêu cầu cha.",
+      "mileageTitle": "Định mức số km",
+      "mileageSubtitle": "Khoảng cách, loại phương tiện và định mức mỗi km — theo ngạch chức danh, kèm ngày hiệu lực.",
+      "vehicleClassLabel": "Loại phương tiện",
+      "vehicleClass_any": "Mọi phương tiện",
+      "vehicleClass_car": "Ô tô",
+      "vehicleClass_motorcycle": "Xe máy",
+      "vehicleClass_van": "Xe van",
+      "vehicleClass_lorry": "Xe tải",
+      "noMileageTable": "Chưa thiết lập bảng định mức tại đây. Thêm khoảng cách bên dưới.",
+      "mileageFallbackBadge": "Kế thừa từ bảng toàn công ty. Lưu bên dưới sẽ tạo bảng riêng cho ngạch này.",
+      "bandLabel": "Khoảng cách",
+      "bandRange": "{from}–{to} km",
+      "bandAndAbove": "Từ {from} km trở lên",
+      "mileageEditorTitle": "Thiết lập bảng định mức",
+      "mileageEditorHint": "Các khoảng phải liên tục từ 0 km và khoảng cuối phải để trống (“trở lên”).",
+      "fromKmLabel": "Từ (km)",
+      "toKmLabel": "Đến (km)",
+      "toKmOpenHint": "trở lên",
+      "saveMileage": "Lưu bảng định mức",
+      "mileageBandsHint": "Định mức tính lũy tiến: 700 km với 0–500 ở 0,60 và 500+ ở 0,45 sẽ là 500×0,60 + 200×0,45.",
+      "mileageStampHint": "Thay đổi định mức không ảnh hưởng yêu cầu đã nộp — mỗi yêu cầu giữ định mức tại thời điểm nộp.",
+      "formsTitle": "Biểu mẫu yêu cầu",
+      "formsSubtitle": "Chọn thông tin mỗi loại yêu cầu cần hỏi. Trường bạn thêm sẽ hiện trên biểu mẫu của nhân viên.",
+      "builtInsTitle": "Luôn có trên mọi biểu mẫu",
+      "builtInsHint": "Bốn mục này tham gia tính tiền, kiểm hạn mức và chi trả nên không thể xóa hay đổi thứ tự.",
+      "builtInBadge": "Mặc định",
+      "builtInAmount": "Số tiền",
+      "builtInDate": "Ngày phát sinh",
+      "builtInDescription": "Mô tả",
+      "builtInReceipt": "Biên lai",
+      "customFieldsTitle": "Trường bổ sung",
+      "noCustomFields": "Không có trường bổ sung. Loại này chỉ hỏi bốn mục trên.",
+      "fieldLabelLabel": "Nhãn trường",
+      "fieldLabelHint": "ví dụ: Mã dự án",
+      "fieldKindLabel": "Kiểu trường",
+      "fieldRequiredLabel": "Bắt buộc",
+      "fieldOptionsLabel": "Lựa chọn danh sách (mỗi dòng một mục)",
+      "fieldOptionsHint": "Chỉ dùng cho trường danh sách",
+      "addFieldTitle": "Thêm trường",
+      "addField": "Thêm trường",
+      "removeField": "Xóa",
+      "moveUp": "Lên",
+      "moveDown": "Xuống",
+      "formsFooterHint": "Xóa một trường sẽ bỏ nó khỏi yêu cầu mới; câu trả lời đã lưu trên yêu cầu đã nộp vẫn được giữ.",
+      "fieldKind_text": "Văn bản",
+      "fieldKind_number": "Số",
+      "fieldKind_money": "Tiền tệ",
+      "fieldKind_date": "Ngày",
+      "fieldKind_select": "Danh sách chọn",
+      "fieldKind_boolean": "Có / Không",
+      "fieldKind_file": "Tệp"
     },
     "reimbursements": {
       "back": "Cấu hình khoản chi",
@@ -5506,7 +5582,9 @@
     "claimsTabs": {
       "types": "Loại yêu cầu",
       "limits": "Hạn mức yêu cầu",
-      "reimbursements": "Hoàn trả"
+      "reimbursements": "Hoàn trả",
+      "mileage": "Định mức số km",
+      "forms": "Biểu mẫu yêu cầu"
     },
     "profileOptions": {
       "title": "Tùy chọn hồ sơ",
@@ -7308,7 +7386,7 @@
       "CYCLE": "Các mục lương này phụ thuộc lẫn nhau thành vòng lặp. Hãy sửa một mục để chuỗi có điểm kết thúc.",
       "UNKNOWN_COMPONENT": "Hãy chọn một mục lương đang tồn tại và còn hoạt động.",
       "STATUTORY_FORBIDDEN": "EPF, SOCSO, EIS và PCB do luật định và không thể tính bằng công thức.",
-      "UNSAFE_DIVISION": "Bạn chỉ có thể chia cho một số cố định khác không."
+      "UNSAFE_DIVISION": "Bạn không thể chia cho không. Hãy chọn một giá trị khác để chia."
     },
     "assistButton": "Hỗ trợ bằng AI",
     "assistTitle": "Mô tả cách tính khoản này",
@@ -7353,7 +7431,10 @@
     "previewInputs": "Các mục lương đã dùng",
     "previewNone": "Không có nhân viên nào để kiểm tra.",
     "previewNote": "Hiển thị cho một kỳ ĐẦY ĐỦ, trước khi chia theo tỷ lệ và làm tròn — bảng lương áp dụng những bước đó khi chạy.",
-    "previewFailed": "Không thể tính kết quả cho nhân viên đó."
+    "previewFailed": "Không thể tính kết quả cho nhân viên đó.",
+    "operand_fixed_allowances": "Tất cả phụ cấp cố định",
+    "formulaDivisionNote": "Bạn có thể chia cho một giá trị thực tế như số ngày hoặc số giờ làm việc. Nếu giá trị đó bằng 0 với một nhân viên, mục lương này không trả gì cho nhân viên đó và kỳ lương vẫn hoàn tất — hãy xem bản xem trước tại đây trước khi dựa vào nó.",
+    "previewZeroDivisor": "Mục này trả RM 0.00 cho nhân viên này vì \"{divisor}\" bằng 0 ở bước {step}. Kỳ lương vẫn sẽ hoàn tất."
   },
   "review": {
     "title": "Đánh giá",
@@ -8391,5 +8472,26 @@
     "cardNewCount": "{count} mới",
     "popupRead": "Đọc thông báo",
     "popupDismiss": "Đóng"
+  },
+  "employeePanel": {
+    "heading": "Nhân viên",
+    "hideEmployees": "Ẩn danh sách nhân viên",
+    "showEmployees": "Hiện danh sách nhân viên",
+    "filterCompany": "Công ty",
+    "allCompanies": "Tất cả công ty",
+    "filterBusinessUnit": "Đơn vị kinh doanh",
+    "allBusinessUnits": "Tất cả đơn vị kinh doanh",
+    "filterDepartment": "Phòng ban",
+    "allDepartments": "Tất cả phòng ban",
+    "filterStatus": "Trạng thái",
+    "allStatuses": "Tất cả trạng thái",
+    "statusActive": "Đang hoạt động",
+    "statusEnded": "Đã kết thúc",
+    "searchLabel": "Tìm nhân viên",
+    "searchPlaceholder": "Mã nhân viên hoặc tên",
+    "reset": "Đặt lại",
+    "noEmployees": "Không có nhân viên nào khớp với bộ lọc.",
+    "selectedTag": "Đã chọn",
+    "showingCapped": "Hiển thị {cap} trong số {total} kết quả — hãy thu hẹp tìm kiếm."
   }
 }

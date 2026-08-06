@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { employeeDetail, listCompanies, listEmployees } from '@/core/read';
@@ -6,7 +7,11 @@ import { listZakatElections, listZakatTxnsAcross } from '@/core/payroll-view';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { employeeLabel } from '@/lib/employee-code';
+import {
+  CollapsibleEmployeePanel,
+  EmployeeScopePanel,
+  type ScopeEmployee,
+} from '@/components/collapsible-employee-panel';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { saveZakatElectionAction } from './election-actions';
@@ -33,6 +38,13 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
  *
  * i18n note: the statutory EA Part-D line "Zakat via salary deduction" (payroll.ea.zakatViaSalary) is LHDN
  * form wording and is deliberately NOT renamed to plain "Zakat" — it is not a UI label.
+ *
+ * r168a (feedback 6a1f2bd6) REPLACED THE EMPLOYEE CONTROL AND NOTHING ELSE. The plain dropdown + "Employee"
+ * submit button became the shared searchable side panel (search by employee ID or name, filtered by
+ * Company / Business Unit / Department / Employee Status), collapsible so the history tables can use the
+ * full width. Not the rates, not the effective dates, not how a deduction reaches payroll, and not one
+ * figure in either history list. The SCOPE GUARD below is untouched: selection still arrives as
+ * `?employmentId=` and is still resolved against the server's own employee set before anything is read.
  */
 
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
@@ -42,6 +54,9 @@ const STATUSES = ['processed', 'closed'] as const;
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
+export const ZAKAT_PANEL_COOKIE = 'txn_zakat_panel';
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */
 function intParam(v: string | undefined, min: number, max: number): number | undefined {
@@ -85,6 +100,24 @@ export default async function ZakatTransactionPage({
     employmentId && employees.some((e) => e.employmentId === employmentId) ? employmentId : null;
   const emp = selectedEmploymentId ? await employeeDetail(s, selectedEmploymentId) : null;
   const statutory = emp ? await getStatutoryProfileMY(s, emp.personId) : null;
+
+  // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
+  const panelDefaultOpen = (await cookies()).get(ZAKAT_PANEL_COOKIE)?.value !== '0';
+  // The panel is fed EXACTLY the set the guard above accepts (`employees`, i.e. non-terminated), so it can
+  // never offer a row the server would then refuse. Feeding it `allEmployees` would render terminated
+  // people as clickable and silently drop the selection — a dead click is worse than an absent one.
+  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
+    employmentId: e.employmentId,
+    name: e.name,
+    employeeCode: e.employeeCode,
+    company: e.company,
+    companyId: e.companyId,
+    department: e.department,
+    departmentId: e.departmentId,
+    businessUnit: e.businessUnit,
+    businessUnitId: e.businessUnitId,
+    status: e.terminatedOn == null ? 'active' : 'ended',
+  }));
 
   // ── Section B data — transaction history (read-only) ───────────────────────
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
@@ -131,20 +164,21 @@ export default async function ZakatTransactionPage({
       : m === 'fixed'
         ? t('zakat.election.methodFixed')
         : '—';
-  // Carry the "Applied in payroll" filter selection across the election picker's GET submit (and vice versa).
-  const historyHidden = (
-    <>
-      {hCompanyId && <input type="hidden" name="hCompanyId" value={hCompanyId} />}
-      {hEmploymentId && <input type="hidden" name="hEmploymentId" value={hEmploymentId} />}
-      {hYear != null && <input type="hidden" name="hYear" value={String(hYear)} />}
-      {hMonth != null && <input type="hidden" name="hMonth" value={String(hMonth).padStart(2, '0')} />}
-      {hCycle && <input type="hidden" name="hCycle" value={hCycle} />}
-      {hStatus && <input type="hidden" name="hStatus" value={hStatus} />}
-    </>
-  );
+  // Carry the "Applied in payroll" filter selection across a change of employee in the panel. These are the
+  // ALREADY SCOPE-GUARDED values, not the raw params, so a tampered filter cannot survive the round trip by
+  // hitching a ride on the next click. Paging params are deliberately absent: page 4 of the previous
+  // employee's list is not page 4 of the next one's.
+  const panelPreserve: Record<string, string> = {
+    ...(hCompanyId ? { hCompanyId } : {}),
+    ...(hEmploymentId ? { hEmploymentId } : {}),
+    ...(hYear != null ? { hYear: String(hYear) } : {}),
+    ...(hMonth != null ? { hMonth: String(hMonth).padStart(2, '0') } : {}),
+    ...(hCycle ? { hCycle } : {}),
+    ...(hStatus ? { hStatus } : {}),
+  };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader
         back={{ href: '/payroll/transactions', label: t('title') }}
         title={t('zakat.title')}
@@ -160,32 +194,36 @@ export default async function ZakatTransactionPage({
 
       <ErrorBanner message={error} />
 
-      {/* ── Section A — durable per-employee election (relocated from Personnel) ── */}
-      <Card className="p-4">
-        <h2 className="text-sm font-semibold">{t('zakat.election.title')}</h2>
-        <p className="mt-1 text-xs text-muted-foreground">{t('zakat.election.subtitle')}</p>
-        <form method="GET" className="mt-3 flex flex-wrap items-end gap-3">
-          {/* Keep the history-filter selection when switching employees. */}
-          {historyHidden}
-          <Field label={t('zakat.election.pickEmployee')}>
-            <select name="employmentId" defaultValue={selectedEmploymentId ?? ''} className={inputCls}>
-              <option value="">—</option>
-              {employees.map((e) => (
-                <option key={e.employmentId} value={e.employmentId}>
-                  {/* Employee ID left-of-name (feedback 38668d9b) */}
-                  {employeeLabel(e.employeeCode, e.name)} · {e.company}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Button type="submit" variant="secondary">
-            {t('zakat.election.pickEmployee')}
-          </Button>
-        </form>
-        {employees.length === 0 && (
-          <p className="mt-3 text-sm text-muted-foreground">{t('zakat.election.noEmployees')}</p>
-        )}
-      </Card>
+      <CollapsibleEmployeePanel
+        defaultOpen={panelDefaultOpen}
+        cookieKey={ZAKAT_PANEL_COOKIE}
+        panel={
+          /* ── Section A control — the searchable employee panel (6a1f2bd6) ── */
+          <Card className="p-4">
+            <h2 className="text-sm font-semibold">{t('zakat.election.pickEmployee')}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{t('zakat.election.subtitle')}</p>
+            {employees.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">{t('zakat.election.noEmployees')}</p>
+            ) : (
+              <div className="mt-3">
+                <EmployeeScopePanel
+                  employees={panelEmployees}
+                  selectedId={selectedEmploymentId}
+                  basePath="/payroll/transactions/zakat"
+                  preserve={panelPreserve}
+                />
+              </div>
+            )}
+          </Card>
+        }
+      >
+        <div className="space-y-6">
+      {!emp && (
+        <Card className="px-6 py-16 text-center">
+          <p className="text-sm font-medium text-foreground">{t('zakat.election.title')}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('zakat.election.subtitle')}</p>
+        </Card>
+      )}
 
       {emp && (
         <Card className="overflow-hidden">
@@ -516,6 +554,8 @@ export default async function ZakatTransactionPage({
           state={appliedPage.state}
         />
       </Card>
+        </div>
+      </CollapsibleEmployeePanel>
     </div>
   );
 }

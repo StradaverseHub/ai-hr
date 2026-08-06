@@ -9,6 +9,45 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r168 — nine approved items, six workstreams, adversarially verified  ·  2026-08-06
+
+Shipped `main@f33f33b3`, migration 0408. Gate 596/596 · tsc 0 · next build 0 · shadow 329→330 ·
+render-checked (16 routes 200, `/payroll/guide` correctly 404, zero MISSING_MESSAGE).
+
+Items: da4af51f · 6a1f2bd6 · 6d72816e · efe1d230 · e440991b · 2da9937a · e7eb5d83 · defd4644 · c002b3c3.
+
+**Decisions**
+
+- **GROUP BY FILE OVERLAP, NOT THEME — six branches, ZERO merge conflicts.** Three collisions decided
+  the shape and each went to exactly one owner: `packs/payroll/index.ts` (one item removes a nav row,
+  another adds one), `app/payroll/[batchId]/page.tsx` (two items rewrite it), and
+  `collapsible-employee-panel.tsx` (four items want it).
+- **AN INDEPENDENT VERIFIER PER WORKSTREAM PAID FOR ITSELF FOUR TIMES.** Every builder reported green;
+  the verifiers found a RED BUILD (routes missing from the access-matrix registry), a **guard that had
+  silently stopped guarding** (`includes('requireAdmin')` passing off three COMMENTS after the page moved
+  to `scopedAdmin` — deleting the gate outright would still have gone green), a **money defect** (the
+  `fixed_allowances` aggregate totalling one-off batch rows and non-payable BIK: RM500 → RM2,500 on a
+  RM2,000 one-off, and preview/run disagreeing because previewPayRule never sees batch rows), and a
+  payslip that printed with the panel's toggle above the letterhead.
+- **A BUILDER SHIPPED SIX CATALOGS STATING BEHAVIOUR IT HAD NOT BUILT** — "they are listed on the payroll
+  run for you to check". Reworded to what exists. **Strings are a promise; never ship the sentence ahead
+  of the feature.**
+- **ONLY THE FULL GATE SAW THE PACK RATCHET TRIP.** Splitting the organization page into three routes
+  moved an allowlisted import into two new files. The tempting fix is to allowlist them; the test says
+  "the allowlist only ever shrinks". Route through the facade instead — 22 entries → 21.
+- **EMAIL PAYSLIP IS NOT A UI TASK AND SHOULD NOT BE PLANNED AS ONE.** This product has **no outbound
+  mail transport at all** — the only email path is WorkOS `sendInvitation`, which cannot attach. It needs
+  a transport, a credential, a bounce/delivery-audit story and a PDPA decision about mailing net pay.
+- **Several plans asserted Fixed Transaction "has no collapse" — false**, it has had one since `f3ae3245`.
+  The duplication was the list BODY, not the shell. A plan's reproduction can be wrong; builders should
+  say so, and this one did.
+- **`ssh` inside a `while read` loop eats stdin** and silently processes only the first item. Use `ssh -n`.
+
+**Known shortfalls, shipped deliberately:** sorting on the Zakat and Loans tables; zero-divisor employees
+are not surfaced ON the run (needs notices out of the resolver — computing it in the pre-process advisory
+would be a second implementation of the arithmetic); `c002b3c3`'s search matcher is still route-private
+rather than shared, so it is lookalike three rather than the one implementation its plan asked for.
+
 ## r165 — a board plan can carry a MOCKUP  ·  2026-08-06
 
 Shipped `main@70c814db`, migration 0406. Untracked operator tooling (owner's call — no board item).

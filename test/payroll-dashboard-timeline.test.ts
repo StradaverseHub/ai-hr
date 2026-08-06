@@ -41,9 +41,11 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, listBatches } from '../core/payroll';
 import { listBatchProcessedDates } from '../core/payroll-view';
 import {
+  ALL_MONTHS,
   MONTHS,
   applyFilters,
   asArray,
+  currentTenantMonth,
   dashboardHref,
   monthCells,
   monthOfPeriod,
@@ -55,6 +57,7 @@ import {
   toggleMonth,
   yearOptions,
 } from '../app/payroll/dashboard-logic';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -78,12 +81,43 @@ describe('7f6ca478 — dashboard filter arithmetic (pure)', () => {
   });
 
   it('parseMonths sorts, de-duplicates, accepts repeated AND comma params, and drops impossible months', () => {
-    expect(parseMonths(['8', '5', '5', '6'])).toEqual([5, 6, 8]);
-    expect(parseMonths('5,6,7')).toEqual([5, 6, 7]);
-    expect(parseMonths(undefined)).toEqual([]);
+    expect(parseMonths(['8', '5', '5', '6'], 3)).toEqual([5, 6, 8]);
+    expect(parseMonths('5,6,7', 3)).toEqual([5, 6, 7]);
     // 0, 13 and junk are DROPPED, not clamped — a hand-typed ?m=13 must mean "no such month" rather
     // than silently becoming December and showing the reader data they did not ask for.
-    expect(parseMonths(['0', '13', 'december', '-1', '7'])).toEqual([7]);
+    expect(parseMonths(['0', '13', 'december', '-1', '7'], 3)).toEqual([7]);
+  });
+
+  it('e440991b point 7 — an ABSENT ?m opens on the current month, and ?m=all still means the year', () => {
+    // The default moved: it used to be "all twelve", which is what the reporter was seeing and did not
+    // want. UPDATED, not deleted — the old `parseMonths(undefined) === []` assertion above became this
+    // pair, because the whole-year state still has to be reachable or unticking becomes a one-way door.
+    expect(parseMonths(undefined, 3)).toEqual([3]);
+    expect(parseMonths(ALL_MONTHS, 3)).toEqual([]);
+    expect(parseMonths([ALL_MONTHS], 3)).toEqual([]);
+    // 'all' wins over anything else in the same param, so a stale ?m=5&m=all is unambiguous.
+    expect(parseMonths(['5', ALL_MONTHS], 3)).toEqual([]);
+    // …and an empty set round-trips through the address bar as the explicit token, not as silence.
+    const href = dashboardHref({ year: 2026, months: [], companyIds: [], cycles: [], statuses: [] });
+    const sp = new URLSearchParams(href.slice(href.indexOf('?') + 1));
+    expect(sp.getAll('m')).toEqual([ALL_MONTHS]);
+    expect(parseMonths(sp.getAll('m'), 3)).toEqual([]);
+  });
+
+  it('e440991b point 7 — the month default comes off the TENANT clock, asserted at 00:30 MYT on 1 January', () => {
+    // THE BUG THIS PINS. 2026-01-01T00:30+08:00 is 2025-12-31T16:30Z. `new Date().getMonth()` on a UTC
+    // host says December; the tenant is in January. The dashboard's YEAR default already takes this
+    // care (app/payroll/page.tsx says so in as many words), and a month default that did not would
+    // open New Year's morning on December of the year the reader is no longer in — for eight hours,
+    // every year, on the morning payroll is most likely to be opened.
+    const newYearMorningMYT = new Date('2025-12-31T16:30:00.000Z');
+    expect(newYearMorningMYT.getUTCMonth() + 1, 'the trap: UTC still says December').toBe(12);
+    expect(currentTenantMonth(newYearMorningMYT)).toBe(1);
+    expect(parseMonths(undefined, currentTenantMonth(newYearMorningMYT))).toEqual([1]);
+    // The default argument is the same clock, so a caller that passes nothing is not on a worse one.
+    expect(currentTenantMonth()).toBe(Number(todayInKualaLumpur().slice(5, 7)));
+    // Mid-year sanity: no timezone shift, no off-by-one.
+    expect(currentTenantMonth(new Date('2026-06-15T12:00:00.000Z'))).toBe(6);
   });
 
   it('parseYear falls back to the CALLER\'S year, which the page derives in MYT', () => {
@@ -174,7 +208,7 @@ describe('7f6ca478 — dashboard filter arithmetic (pure)', () => {
     });
     const sp = new URLSearchParams(href.slice(href.indexOf('?') + 1));
     expect(parseYear(sp.get('year') ?? undefined, 1999)).toBe(2026);
-    expect(parseMonths(sp.getAll('m'))).toEqual([5, 6, 7, 8]);
+    expect(parseMonths(sp.getAll('m'), 3)).toEqual([5, 6, 7, 8]);
     expect(asArray(sp.getAll('company'))).toEqual(['c1', 'c2']);
     expect(asArray(sp.getAll('cycle'))).toEqual(['regular']);
     expect(asArray(sp.getAll('status'))).toEqual(['processed']);

@@ -1,0 +1,54 @@
+<meta charset="utf-8"><title>2da9937a — Formula Setting</title>
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+ h2{font-size:14px;margin:0 0 4px}.sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700}
+ .ok{background:#d1fae5;color:#065f46}.new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+ .row{display:flex;align-items:center;gap:9px;margin-bottom:7px;flex-wrap:wrap}
+ .op{width:30px;height:30px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;background:var(--muted)}
+ .tok{border:1px solid var(--primary);border-radius:9px;padding:6px 12px;font-weight:600;background:color-mix(in srgb,var(--primary) 7%,white);font-size:12.5px}
+ .tok.lit{border-color:var(--border);background:#fff;font-weight:400;color:var(--mf)}
+ .tok.gap{border-color:#f59e0b;background:#fffbeb}
+ .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin:12px 0 6px}
+ .pal{display:flex;gap:6px;flex-wrap:wrap}
+ .pal span{border:1px dashed var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--mf)}
+ .res{background:var(--muted);border-radius:10px;padding:11px;margin-top:12px;display:flex;justify-content:space-between;font-size:13px}
+ .res b{font-size:16px}
+ .warn{background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:13px;font-size:12.5px}
+ table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+ th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;padding:6px 9px;background:var(--muted)}
+ td{padding:7px 9px;border-top:1px solid var(--border)}
+</style>
+<div class="card">
+ <h2>Payroll Item › Overtime › Formula Setting <span class="chip ok">this screen already exists</span></h2>
+ <p class="sub">Built and shipped. Nothing on your system uses it yet — 17 of your 18 payroll items have no calculation rule at all.</p>
+ <div class="lbl">Calculation method</div>
+ <div class="row"><span class="tok">Formula</span><span style="color:var(--mf);font-size:12px">· also available: Fixed · Quantity × Rate · Percent of another item · Per day · Per hour · Flat capped</span></div>
+ <div class="lbl">Formula</div>
+ <div class="row"><span class="tok">Basic salary</span><span class="op">+</span><span class="tok">Fixed allowances</span><span class="chip new">new — a total, not one item</span></div>
+ <div class="row"><span class="op">÷</span><span class="tok gap">Working days</span><span class="chip new">new — dividing by a live value</span></div>
+ <div class="row"><span class="op">÷</span><span class="tok gap">Working hours</span><span class="chip new">new</span></div>
+ <div class="row"><span class="op">×</span><span class="tok lit">1.5</span><span style="color:var(--mf);font-size:12px">rate</span></div>
+ <div class="row"><span class="op">×</span><span class="tok">Input hours</span></div>
+ <div class="lbl">Available inputs</div>
+ <div class="pal"><span>Number</span><span>Basic salary</span><span>Days worked</span><span>Hours worked</span><span>Another payroll item</span><span style="border-color:var(--primary);color:var(--primary)">Fixed allowances (new)</span></div>
+ <div class="res"><span>Preview for John Tan — 8 input hours</span><b>RM 276.92</b></div>
+</div>
+<div class="card warn">
+ <b>The two amber pieces are the real work, and they are there for a reason.</b> Today a formula may only divide by a
+ fixed number, never by a live value. That is deliberate: an employee with zero working hours would divide by zero,
+ produce an impossible figure and stop the whole payroll run. Your example divides by Working Days and Working Hours,
+ so we need to allow it — safely. What we will build: if a divisor comes out as zero for someone, that employee's item
+ pays <b>nothing</b> and they are <b>named on the run</b> for you to look at. The batch never breaks, and no one is
+ silently paid a wrong number.
+ <table>
+  <thead><tr><th>Employee</th><th>Working hours</th><th>Overtime pays</th><th>Why</th></tr></thead>
+  <tbody>
+   <tr><td>John Tan</td><td>8</td><td>RM 276.92</td><td>—</td></tr>
+   <tr><td>Alice Lim</td><td>0</td><td>RM 0.00</td><td>No working hours this period — divisor is zero</td></tr>
+  </tbody>
+ </table>
+</div>

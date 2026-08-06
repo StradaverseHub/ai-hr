@@ -3564,11 +3564,20 @@ export type ShiftType = 'normal' | 'semi_flexi' | 'full_flexi';
 // worked, hours worked, or another pay item by CODE. Anything outside that set cannot be represented, so an
 // out-of-contract input is a compile error here and a save-time rejection in core/pay-rule.ts — never a
 // run-time surprise on a payslip.
+// ── 2da9937a — the reporter's own worked example needed two things the set above could not express:
+// `(Basic + All Fixed Allowance) / Working Days / Working Hours × Rate × Input Hours`. The divisor half is
+// a VALIDATOR change (core/pay-rule.ts); the aggregate half is this new ref. It names no pay code — it is
+// the SUM of the employee's fixed allowances, so it stays correct as the catalog grows instead of needing
+// the formula re-edited every time an allowance is added.
 export type FormulaOperand =
   | { ref: 'number'; value: number } //   a literal / fixed rate
   | { ref: 'basic' } //                   the employee's Personnel Basic Salary (same figure percent_of reads)
   | { ref: 'days' } //                    days worked in the period (factor × days-in-month)
   | { ref: 'hours' } //                   attendance worked hours in the period
+  | { ref: 'fixed_allowances' } //        2da9937a — the TOTAL of this employee's fixed allowances (see
+  //                                      isFixedAllowanceComponent: kind 'allowance', non-statutory, paid as
+  //                                      a stored amount). Ranks strictly below the item reading it, so it
+  //                                      can never include a rule-driven item and cannot reintroduce a cycle.
   | { ref: 'component'; code: string }; // another pay item's resolved amount for this employee
 
 export type FormulaOp = '+' | '-' | '*' | '/';
@@ -6029,6 +6038,108 @@ export type ClaimRateConfig =
   | { kind: 'mileage_flat'; ratePerKm: number }
   | { kind: 'fixed_allowance'; amount: number };
 
+// ─────────── e7eb5d83 — Mileage RATE TABLE: banded, vehicle-classed, grade-scoped, effective-dated (0408) ───────────
+//
+// What existed before this table: `claim_policy.rate_config = { kind:'mileage_flat', ratePerKm }` — ONE flat
+// number per (claim type, grade), and `amount = quantityKm × ratePerKm`. That cannot express "0.60 for the
+// first 500km, 0.45 after that", cannot distinguish a car from a motorcycle, and — because rate_config is a
+// scalar the admin edits — could not be changed without changing what an already-filed claim recomputes to.
+//
+// GRADE SCOPING IS claim_policy's RULE, NOT A SECOND ONE. grade_id NULL = the company-wide table; a row set
+// carrying the employee's grade_id wins over it, and within the winning tier the latest valid_from ≤ asOf is
+// active. That is byte-for-byte what getActiveClaimPolicy does for limits, and resolveMileageRateBands in
+// core/claims.ts reuses that ordering deliberately: two independent "grade then fallback" rules WILL diverge,
+// and the one that diverges silently is the one that pays money.
+//
+// A "rate table" is the SET of rows sharing (claim_type_id, grade_id, vehicle_class, valid_from) — one row
+// per distance band. Versioning is append-only close+insert on the whole set, exactly like claim_policy: a
+// rate change closes the open set (valid_to = the new effective date) and inserts a new one, so last year's
+// table is still readable at last year's date.
+export const claimMileageRate = pgTable(
+  'claim_mileage_rate',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    claimTypeId: uuid('claim_type_id')
+      .notNull()
+      .references(() => claimType.id),
+    /** NULL ⇒ the company-wide table (the fallback). A grade's own table wins. Mirrors claim_policy.grade_id. */
+    gradeId: uuid('grade_id').references(() => jobGrade.id),
+    /** Catalog-as-text, constrained app-side (MILEAGE_VEHICLE_CLASSES in core/claims.ts) like employee_loan.loan_type.
+     *  'any' is a real value and the default: one table that applies whatever the employee drove. */
+    vehicleClass: text('vehicle_class').notNull().default('any'),
+    /** Inclusive lower bound of the band, in km. The first band is 0. */
+    fromKm: numeric('from_km', { precision: 10, scale: 2 }).notNull().default('0'),
+    /** Exclusive upper bound. NULL = "and above" — every table must end in exactly one open band. */
+    toKm: numeric('to_km', { precision: 10, scale: 2 }),
+    /** 4dp: fuel-rate policies are routinely quoted to a tenth of a sen (e.g. 0.4500, 0.6250). */
+    ratePerKm: numeric('rate_per_km', { precision: 10, scale: 4 }).notNull(),
+    validFrom: date('valid_from').notNull(),
+    validTo: date('valid_to'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('claim_mileage_rate_lookup_idx').on(t.claimTypeId, t.gradeId, t.vehicleClass, t.validFrom),
+    index('claim_mileage_rate_tenant_idx').on(t.tenantId),
+  ],
+);
+export type ClaimMileageRateRow = typeof claimMileageRate.$inferSelect;
+
+// ─────────── e7eb5d83 — Claim FORM DESIGNER: per-claim-type custom fields (0408) ───────────
+//
+// The one genuinely absent feature of the three the reporter raised: every claim type asks the same four
+// things and there was no table to say otherwise.
+//
+// ⚠️ THE FOUR BUILT-INS ARE NOT ROWS IN THIS TABLE, AND MUST NEVER BECOME ROWS. amount, incurred_on,
+// description and the receipt attachment are real columns on claim_request with real behaviour hanging off
+// them — limit arithmetic (per-claim cap / monthly / annual / lifetime), the receipt-age window, taxable
+// routing into payroll. Modelling them as configurable fields would put the limit engine behind a jsonb blob
+// and let an admin delete the column the money is computed from. The designer renders them as fixed,
+// undeletable rows ABOVE the custom list; createClaimFormField REFUSES their keys (BUILT_IN_FIELD_KEYS) so a
+// forged POST cannot smuggle one in either.
+export const claimFormField = pgTable(
+  'claim_form_field',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    claimTypeId: uuid('claim_type_id')
+      .notNull()
+      .references(() => claimType.id),
+    /** Slug used as the key inside claim_request.field_values. Immutable once created (renaming it would
+     *  orphan every stored answer); the LABEL is what an admin edits. */
+    fieldKey: text('field_key').notNull(),
+    label: text('label').notNull(),
+    /** CLAIM_FIELD_KINDS in core/claims.ts: 'text' | 'number' | 'money' | 'date' | 'select' | 'boolean'. */
+    kind: text('kind').notNull(),
+    required: boolean('required').notNull().default(false),
+    /** Choices for kind='select', as a JSON array of strings. Empty for every other kind. */
+    options: jsonb('options').notNull().default(sql`'[]'::jsonb`),
+    sortOrder: integer('sort_order').notNull().default(0),
+    /** Archived rather than deleted: a field removed from the form must not erase the answers already
+     *  stored against it on historical claims. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('claim_form_field_type_idx').on(t.claimTypeId, t.sortOrder),
+    // One live key per claim type — mirrors claim_item's partial-unique (archived rows may re-use a key).
+    uniqueIndex('claim_form_field_type_key_uq').on(t.tenantId, t.claimTypeId, t.fieldKey).where(sql`archived_at IS NULL`),
+  ],
+);
+export type ClaimFormFieldRow = typeof claimFormField.$inferSelect;
+
+/** The stamped mileage pricing on a claim_request — see claimRequest.mileageRateApplied. */
+export type ClaimMileageStamp = {
+  vehicleClass: string;
+  /** Which tier the table came from at submit time: the employee's grade, or the company-wide fallback. */
+  source: 'grade' | 'company';
+  gradeId: string | null;
+  /** valid_from of the rate table version that was applied. */
+  tableValidFrom: string;
+  /** The bands actually consumed, in order, with the km charged to each and the money it produced. */
+  bands: { fromKm: number; toKm: number | null; ratePerKm: number; km: number; amount: number }[];
+};
+
 export const claimRequest = pgTable(
   'claim_request',
   {
@@ -6045,6 +6156,24 @@ export const claimRequest = pgTable(
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
     /** Distance in km — for mileage_flat claims only (amount = quantityKm × ratePerKm). NULL otherwise. */
     quantityKm: numeric('quantity_km', { precision: 12, scale: 2 }),
+    /**
+     * e7eb5d83 (0408) — THE RATE THIS CLAIM WAS PRICED UNDER, stamped at submit. NULL for non-mileage claims
+     * and for mileage claims priced by the legacy flat rate_config.
+     *
+     * `amount` was already stored, so nothing recomputes; this column exists so the stored figure can be
+     * EXPLAINED a year later. Without it, "why is this claim RM 312.50?" is only answerable by guessing which
+     * version of the rate table was live in March — which is the same defect class as the entitlement dated
+     * readers in 6e9a126e, a stored figure whose derivation silently moves when config changes. Editing the
+     * rate table never touches this column, which is what makes "changing a rate never changes a claim
+     * already submitted" a property of the data rather than a promise in a plan.
+     */
+    mileageRateApplied: jsonb('mileage_rate_applied').$type<ClaimMileageStamp>(),
+    /**
+     * e7eb5d83 (0408) — answers to the claim type's CUSTOM fields (claim_form_field), keyed by field_key.
+     * `{}` / NULL = the four built-ins only, which is every claim filed before a form was designed. The four
+     * built-ins are NEVER in here: they are the real columns beside this one.
+     */
+    fieldValues: jsonb('field_values').$type<Record<string, string | number | boolean | null>>(),
     incurredOn: date('incurred_on').notNull(), // the expense date
     description: text('description'),
     /** HR-decided (default from the type). taxable ⇒ payroll allowance; non-taxable ⇒ reimbursement. */

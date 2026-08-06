@@ -364,6 +364,13 @@
       "draftReady": "Ready to create",
       "draftContinue": "Continue"
     },
+    "switcher": {
+      "ariaLabel": "Search employee",
+      "placeholder": "Search employee ID or name…",
+      "resultsLabel": "Employee search results",
+      "noMatches": "No employee matches that.",
+      "currentTag": "Current"
+    },
     "detail": {
       "backToPeople": "People",
       "backToOrg": "Org chart",
@@ -2701,6 +2708,8 @@
       "subtitle": "Payroll batch",
       "paymentSummary": "Payment summary",
       "paymentSummaryTitle": "Download a CSV of employee, bank, account and net pay for manual bank upload.",
+      "transactionDetail": "Transaction Detail",
+      "transactionDetailTitle": "Download every employee’s earnings, deductions, employer contributions and totals for this run as an Excel file.",
       "generatePayslips": "Generate payslips",
       "closeBatch": "Close batch",
       "disclaimer": "<strong>Draft figures.</strong> Statutory amounts are computed from the verified Malaysian rules in effect at period end. Review every payslip before closing — once closed, the batch is immutable. Bank files (<mono>CP39 / KWSP / PERKESO</mono>) are generated separately.",
@@ -3707,7 +3716,8 @@
       "readinessStaleDefault": "The default payroll cycle names “{name}”, which is not an active cycle for this company.",
       "readinessNoDefault": "No default payroll cycle is chosen for this company.",
       "readinessNoAutoCreate": "Cycles are not created for you — which cycles a company should have is your decision.",
-      "readinessFullReport": "See the full readiness report"
+      "readinessFullReport": "See the full readiness report",
+      "readinessHideReport": "Hide the full report"
     },
     "historyImport": {
       "title": "Import payroll history",
@@ -4135,7 +4145,7 @@
       "logoInvalidType": "Only PNG or JPG images are allowed",
       "logoTooLarge": "Logo exceeds 2 MB",
       "searchCompanies": "Search companies by name or registration number",
-      "noMatches": "No companies match your search",
+      "noMatches": "No companies match these filters",
       "addNewCompany": "Add new company",
       "tabGeneral": "General",
       "tabPayroll": "Payroll",
@@ -4211,7 +4221,18 @@
       "authority_zakat": "Zakat",
       "authority_ptptn": "PTPTN",
       "authority_tabung_haji": "Tabung Haji",
-      "authority_koperasi": "Co-operative (Koperasi)"
+      "authority_koperasi": "Co-operative (Koperasi)",
+      "colCode": "Code",
+      "colStatus": "Status",
+      "statusActive": "Active",
+      "statusArchived": "Archived",
+      "allStatuses": "All statuses",
+      "searchLabel": "Search",
+      "searchPlaceholder": "Code, name or registration no.",
+      "applyFilter": "Apply",
+      "open": "Open",
+      "backToCompanies": "Back to companies",
+      "createDescription": "Register a company in the group. Its statutory identity, bank accounts and group parent are set up afterwards on the company's own page."
     },
     "systemLabels": {
       "pageTitle": "System Labels",
@@ -5237,7 +5258,62 @@
       "noLimitRows": "No claim limits configured yet.",
       "unlimitedBadge": "Unlimited",
       "newLimitTitle": "Set a claim limit",
-      "newLimitHint": "Choose a grade and claim type, then set the limits. Saving records a new effective-dated version."
+      "newLimitHint": "Choose a grade and claim type, then set the limits. Saving records a new effective-dated version.",
+      "gradesTitle": "Job grades",
+      "companyWide": "All grades (company-wide)",
+      "fallbackBadge": "Falls back to the company-wide limit",
+      "subTypesInheritHint": "Sub-types share their claim type’s limit.",
+      "mileageTitle": "Mileage Rates",
+      "mileageSubtitle": "Distance bands, vehicle type and rate per kilometre — per job grade, with an effective date.",
+      "vehicleClassLabel": "Vehicle type",
+      "vehicleClass_any": "Any vehicle",
+      "vehicleClass_car": "Car",
+      "vehicleClass_motorcycle": "Motorcycle",
+      "vehicleClass_van": "Van",
+      "vehicleClass_lorry": "Lorry",
+      "noMileageTable": "No mileage rate table set here yet. Add distance bands below.",
+      "mileageFallbackBadge": "Inherited from the company-wide table. Saving below creates a table for this grade only.",
+      "bandLabel": "Distance band",
+      "bandRange": "{from}–{to} km",
+      "bandAndAbove": "{from} km and above",
+      "mileageEditorTitle": "Set the rate table",
+      "mileageEditorHint": "Bands must run continuously from 0 km, and the last band must be left open (“and above”).",
+      "fromKmLabel": "From (km)",
+      "toKmLabel": "To (km)",
+      "toKmOpenHint": "and above",
+      "saveMileage": "Save rate table",
+      "mileageBandsHint": "Rates are marginal: 700 km against 0–500 at 0.60 and 500+ at 0.45 pays 500×0.60 + 200×0.45.",
+      "mileageStampHint": "Changing a rate never changes a claim already submitted — each claim keeps the rate it was filed under.",
+      "formsTitle": "Claim Forms",
+      "formsSubtitle": "Choose what each claim type asks for. Fields you add appear on the employee’s claim form.",
+      "builtInsTitle": "Always on every form",
+      "builtInsHint": "These four are part of how a claim is priced, checked against limits and paid, so they cannot be removed or reordered.",
+      "builtInBadge": "Built in",
+      "builtInAmount": "Amount",
+      "builtInDate": "Date incurred",
+      "builtInDescription": "Description",
+      "builtInReceipt": "Receipt",
+      "customFieldsTitle": "Extra fields",
+      "noCustomFields": "No extra fields. This claim type asks only for the four above.",
+      "fieldLabelLabel": "Field label",
+      "fieldLabelHint": "e.g. Project code",
+      "fieldKindLabel": "Field type",
+      "fieldRequiredLabel": "Required",
+      "fieldOptionsLabel": "Dropdown choices (one per line)",
+      "fieldOptionsHint": "Only used by dropdown fields",
+      "addFieldTitle": "Add a field",
+      "addField": "Add field",
+      "removeField": "Remove",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "formsFooterHint": "Removing a field takes it off new claims; answers already saved on filed claims are kept.",
+      "fieldKind_text": "Text",
+      "fieldKind_number": "Number",
+      "fieldKind_money": "Money",
+      "fieldKind_date": "Date",
+      "fieldKind_select": "Dropdown",
+      "fieldKind_boolean": "Yes / No",
+      "fieldKind_file": "File"
     },
     "reimbursements": {
       "back": "Claims configuration",
@@ -5506,7 +5582,9 @@
     "claimsTabs": {
       "types": "Claim Types",
       "limits": "Claim Limits",
-      "reimbursements": "Reimbursements"
+      "reimbursements": "Reimbursements",
+      "mileage": "Mileage Rates",
+      "forms": "Claim Forms"
     },
     "profileOptions": {
       "title": "Profile Options",
@@ -7308,7 +7386,7 @@
       "CYCLE": "These pay items depend on each other in a loop. Change one of them so the chain has an end.",
       "UNKNOWN_COMPONENT": "Choose a pay item that exists and is still active.",
       "STATUTORY_FORBIDDEN": "EPF, SOCSO, EIS and PCB are set by law and cannot be calculated by a formula.",
-      "UNSAFE_DIVISION": "You can only divide by a fixed number that is not zero."
+      "UNSAFE_DIVISION": "You cannot divide by zero. Choose a different value to divide by."
     },
     "assistButton": "Assist with AI",
     "assistTitle": "Describe how this should be calculated",
@@ -7353,7 +7431,10 @@
     "previewInputs": "Pay items used",
     "previewNone": "No employees available to check against.",
     "previewNote": "Shown for a FULL period, before proration and rounding — payroll applies those when the run happens.",
-    "previewFailed": "Could not work out a result for that employee."
+    "previewFailed": "Could not work out a result for that employee.",
+    "operand_fixed_allowances": "All fixed allowances",
+    "formulaDivisionNote": "You may divide by a live value such as days or hours worked. If it is zero for an employee, this pay item pays nothing for that employee and the run still completes — check the preview here before you rely on it.",
+    "previewZeroDivisor": "This pays RM 0.00 for this employee because \"{divisor}\" is zero at step {step}. The payroll run will still complete."
   },
   "review": {
     "title": "Reviews",
@@ -8391,5 +8472,26 @@
     "cardNewCount": "{count} new",
     "popupRead": "Read notice",
     "popupDismiss": "Close"
+  },
+  "employeePanel": {
+    "heading": "Employees",
+    "hideEmployees": "Hide employee list",
+    "showEmployees": "Show employee list",
+    "filterCompany": "Company",
+    "allCompanies": "All companies",
+    "filterBusinessUnit": "Business unit",
+    "allBusinessUnits": "All business units",
+    "filterDepartment": "Department",
+    "allDepartments": "All departments",
+    "filterStatus": "Status",
+    "allStatuses": "All statuses",
+    "statusActive": "Active",
+    "statusEnded": "Ended",
+    "searchLabel": "Search employee",
+    "searchPlaceholder": "Employee ID or name",
+    "reset": "Reset",
+    "noEmployees": "No employees match your filters.",
+    "selectedTag": "Selected",
+    "showingCapped": "Showing first {cap} of {total} matches — refine your search."
   }
 }

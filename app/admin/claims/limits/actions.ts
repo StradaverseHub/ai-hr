@@ -45,5 +45,9 @@ export async function setClaimPolicyAction(formData: FormData) {
     fail(e);
   }
   revalidatePath(BASE);
-  redirect(`${BASE}?toast=${encodeURIComponent('Claim limit saved')}`);
+  // e7eb5d83 — the limits screen is now grade-first and its selection lives in ?gradeId=. Redirecting back
+  // without it would bounce the admin to the company-wide view after every save, which reads as the save
+  // having gone to the wrong grade.
+  const back = gradeId ? `${BASE}?gradeId=${encodeURIComponent(gradeId)}` : BASE;
+  redirect(`${back}${gradeId ? '&' : '?'}toast=${encodeURIComponent('Claim limit saved')}`);
 }

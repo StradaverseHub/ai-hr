@@ -364,6 +364,13 @@
       "draftReady": "可以创建",
       "draftContinue": "继续"
     },
+    "switcher": {
+      "ariaLabel": "搜索员工",
+      "placeholder": "搜索员工编号或姓名…",
+      "resultsLabel": "员工搜索结果",
+      "noMatches": "没有匹配的员工。",
+      "currentTag": "当前"
+    },
     "detail": {
       "backToPeople": "员工",
       "backToOrg": "组织架构图",
@@ -2975,6 +2982,8 @@
       "subtitle": "薪资批次",
       "paymentSummary": "付款汇总",
       "paymentSummaryTitle": "下载包含员工、银行、账号和实发工资的 CSV，用于手动银行上传。",
+      "transactionDetail": "交易明细",
+      "transactionDetailTitle": "将本次薪资运行中每位员工的收入、扣除、雇主缴纳与合计下载为 Excel 文件。",
       "generatePayslips": "生成工资单",
       "closeBatch": "关闭批次",
       "disclaimer": "<strong>草稿数据。</strong>法定金额依据期末生效的已核实马来西亚规则计算。关闭前请核对每一份工资单 — 一旦关闭，批次即不可更改。银行文件（<mono>CP39 / KWSP / PERKESO</mono>）将单独生成。",
@@ -3707,7 +3716,8 @@
       "readinessStaleDefault": "默认薪资周期指向“{name}”，它不是该公司的有效周期。",
       "readinessNoDefault": "该公司尚未选择默认薪资周期。",
       "readinessNoAutoCreate": "系统不会替你创建周期——公司应该有哪些周期由你决定。",
-      "readinessFullReport": "查看完整的就绪报告"
+      "readinessFullReport": "查看完整的就绪报告",
+      "readinessHideReport": "隐藏完整报告"
     },
     "historyImport": {
       "title": "导入薪资历史",
@@ -4135,7 +4145,7 @@
       "logoInvalidType": "仅允许 PNG 或 JPG 图片",
       "logoTooLarge": "徽标超过 2 MB",
       "searchCompanies": "按名称或注册号搜索公司",
-      "noMatches": "没有符合搜索条件的公司",
+      "noMatches": "没有公司符合这些筛选条件",
       "addNewCompany": "添加新公司",
       "tabGeneral": "一般",
       "tabPayroll": "薪资",
@@ -4211,7 +4221,18 @@
       "authority_zakat": "天课（Zakat）",
       "authority_ptptn": "PTPTN 高教基金",
       "authority_tabung_haji": "朝圣基金局 Tabung Haji",
-      "authority_koperasi": "合作社（Koperasi）"
+      "authority_koperasi": "合作社（Koperasi）",
+      "colCode": "代码",
+      "colStatus": "状态",
+      "statusActive": "启用",
+      "statusArchived": "已归档",
+      "allStatuses": "所有状态",
+      "searchLabel": "搜索",
+      "searchPlaceholder": "代码、名称或注册号",
+      "applyFilter": "应用",
+      "open": "打开",
+      "backToCompanies": "返回公司列表",
+      "createDescription": "在集团中登记一家公司。法定身份、银行账户和母公司稍后在该公司自己的页面上设置。"
     },
     "systemLabels": {
       "pageTitle": "系统标签",
@@ -5237,7 +5258,62 @@
       "noLimitRows": "尚未配置任何报销限额。",
       "unlimitedBadge": "无限额",
       "newLimitTitle": "设置报销限额",
-      "newLimitHint": "选择职级和报销类型，然后设置限额。保存会记录一个新的生效版本。"
+      "newLimitHint": "选择职级和报销类型，然后设置限额。保存会记录一个新的生效版本。",
+      "gradesTitle": "职级",
+      "companyWide": "所有职级（全公司）",
+      "fallbackBadge": "沿用全公司限额",
+      "subTypesInheritHint": "子类型共用其报销类别的限额。",
+      "mileageTitle": "里程费率",
+      "mileageSubtitle": "按职级设定的距离区间、车辆类型与每公里费率，并附生效日期。",
+      "vehicleClassLabel": "车辆类型",
+      "vehicleClass_any": "任何车辆",
+      "vehicleClass_car": "轿车",
+      "vehicleClass_motorcycle": "摩托车",
+      "vehicleClass_van": "厢型车",
+      "vehicleClass_lorry": "货车",
+      "noMileageTable": "此处尚未设定里程费率表。请在下方新增距离区间。",
+      "mileageFallbackBadge": "沿用全公司费率表。在下方保存将只为此职级建立专属费率表。",
+      "bandLabel": "距离区间",
+      "bandRange": "{from}–{to} 公里",
+      "bandAndAbove": "{from} 公里以上",
+      "mileageEditorTitle": "设定费率表",
+      "mileageEditorHint": "区间必须从 0 公里起连续衔接，最后一段须留空（“以上”）。",
+      "fromKmLabel": "起（公里）",
+      "toKmLabel": "止（公里）",
+      "toKmOpenHint": "以上",
+      "saveMileage": "保存费率表",
+      "mileageBandsHint": "费率按段累计：700 公里在 0–500 段 0.60、500 以上 0.45，则为 500×0.60 + 200×0.45。",
+      "mileageStampHint": "修改费率不会影响已提交的报销单——每张单据保留提交当时的费率。",
+      "formsTitle": "报销表单",
+      "formsSubtitle": "设定各报销类别需要填写的内容。新增的字段会显示在员工的报销表单上。",
+      "builtInsTitle": "每张表单固定包含",
+      "builtInsHint": "这四项参与金额计算、限额校验与付款流程，因此不可删除或调整顺序。",
+      "builtInBadge": "内置",
+      "builtInAmount": "金额",
+      "builtInDate": "发生日期",
+      "builtInDescription": "说明",
+      "builtInReceipt": "收据",
+      "customFieldsTitle": "自定义字段",
+      "noCustomFields": "尚无自定义字段。此报销类别仅要求上述四项。",
+      "fieldLabelLabel": "字段名称",
+      "fieldLabelHint": "例如：项目编号",
+      "fieldKindLabel": "字段类型",
+      "fieldRequiredLabel": "必填",
+      "fieldOptionsLabel": "下拉选项（每行一个）",
+      "fieldOptionsHint": "仅下拉字段使用",
+      "addFieldTitle": "新增字段",
+      "addField": "新增字段",
+      "removeField": "移除",
+      "moveUp": "上移",
+      "moveDown": "下移",
+      "formsFooterHint": "移除字段仅影响新报销单；已提交单据上已保存的答案会保留。",
+      "fieldKind_text": "文本",
+      "fieldKind_number": "数字",
+      "fieldKind_money": "金额",
+      "fieldKind_date": "日期",
+      "fieldKind_select": "下拉选择",
+      "fieldKind_boolean": "是 / 否",
+      "fieldKind_file": "文件"
     },
     "reimbursements": {
       "back": "报销配置",
@@ -5506,7 +5582,9 @@
     "claimsTabs": {
       "types": "报销类型",
       "limits": "报销限额",
-      "reimbursements": "报销支付"
+      "reimbursements": "报销支付",
+      "mileage": "里程费率",
+      "forms": "报销表单"
     },
     "profileOptions": {
       "title": "档案选项",
@@ -7308,7 +7386,7 @@
       "CYCLE": "这些薪资项目相互循环依赖。请修改其中一项，使依赖链有终点。",
       "UNKNOWN_COMPONENT": "请选择一个存在且仍在启用的薪资项目。",
       "STATUTORY_FORBIDDEN": "EPF、SOCSO、EIS 和 PCB 由法律规定，不能通过公式计算。",
-      "UNSAFE_DIVISION": "只能除以一个非零的固定数值。"
+      "UNSAFE_DIVISION": "不能除以零。请选择其他数值作为除数。"
     },
     "assistButton": "AI 协助",
     "assistTitle": "描述应如何计算",
@@ -7353,7 +7431,10 @@
     "previewInputs": "使用的薪资项目",
     "previewNone": "没有可供核对的员工。",
     "previewNote": "按完整周期显示，此为按比例分摊和舍入之前的数值——薪资运行时才会应用这些处理。",
-    "previewFailed": "无法为该员工计算结果。"
+    "previewFailed": "无法为该员工计算结果。",
+    "operand_fixed_allowances": "所有固定津贴",
+    "formulaDivisionNote": "您可以除以实时数值，例如工作天数或工作时数。若某位员工的该数值为零，此薪资项目对该员工不发放任何金额，薪资运算仍会完成——请先在此处查看预览再依赖它。",
+    "previewZeroDivisor": "由于「{divisor}」在第 {step} 步为零，此项目为该员工发放 RM 0.00。薪资运算仍会完成。"
   },
   "review": {
     "title": "评估",
@@ -8391,5 +8472,26 @@
     "cardNewCount": "{count} 条新公告",
     "popupRead": "阅读公告",
     "popupDismiss": "关闭"
+  },
+  "employeePanel": {
+    "heading": "员工",
+    "hideEmployees": "隐藏员工列表",
+    "showEmployees": "显示员工列表",
+    "filterCompany": "公司",
+    "allCompanies": "所有公司",
+    "filterBusinessUnit": "业务单位",
+    "allBusinessUnits": "所有业务单位",
+    "filterDepartment": "部门",
+    "allDepartments": "所有部门",
+    "filterStatus": "状态",
+    "allStatuses": "所有状态",
+    "statusActive": "生效中",
+    "statusEnded": "已结束",
+    "searchLabel": "搜索员工",
+    "searchPlaceholder": "员工编号或姓名",
+    "reset": "重置",
+    "noEmployees": "没有符合筛选条件的员工。",
+    "selectedTag": "已选择",
+    "showingCapped": "显示 {total} 个匹配中的前 {cap} 个 — 请细化搜索。"
   }
 }

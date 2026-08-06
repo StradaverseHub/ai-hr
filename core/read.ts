@@ -1809,17 +1809,23 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
         description: jobGrade.description,
         rank: jobGrade.rank,
         archivedAt: jobGrade.archivedAt,
-        // Grade relocation to System Labels (b1b81a08): the in-use predicate spans ALL FIVE referencing
+        // Grade relocation to System Labels (b1b81a08): the in-use predicate spans ALL SIX referencing
         // tables, not just employment + leave_policy. leave_approval_policy.grade_id and
         // claim_policy.grade_id are plain FKs with no onDelete, so a grade used only by an approval rule or
         // a claim limit used to report inUse=false, render an ENABLED Delete, and raise a raw 23503 at the
         // admin; grade_group_member CASCADES, so the same delete silently dropped benefit-scheme group
         // membership. Must stay byte-identical to deleteJobGrade's in-transaction re-check (core/admin.ts)
         // so the button state and the guard agree.
+        //
+        // e7eb5d83 (0408) added the SIXTH: claim_mileage_rate.grade_id, a per-grade mileage rate table, and
+        // it is another plain FK with no onDelete. Every new grade_id FK anywhere in the schema has to be
+        // added HERE and in deleteJobGrade in the same commit that introduces it, or it re-opens exactly the
+        // 23503 this comment exists to describe.
         inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = job_grade.id)
           or exists (select 1 from leave_policy lp where lp.grade_id = job_grade.id)
           or exists (select 1 from leave_approval_policy lap where lap.grade_id = job_grade.id)
           or exists (select 1 from claim_policy cp where cp.grade_id = job_grade.id)
+          or exists (select 1 from claim_mileage_rate cmr where cmr.grade_id = job_grade.id)
           or exists (select 1 from grade_group_member ggm where ggm.grade_id = job_grade.id)`,
       })
       .from(jobGrade)

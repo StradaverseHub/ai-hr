@@ -18,15 +18,25 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-06 (r165 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-06 (r168 SHIPPED)
 
-**`main@70c814db` is what runs. Production on 329 migrations. Next free migration number is `0407`**
-(0389, 0401 and 0402 were never claimed and are dead) — **`0405` is still CLAIMED by the unmerged
-release-three branch (`when: 1781862505000`) and `0406` shipped with r165, so the next allocation is
-`0407` / `1781862507000`.** No half-applied migration, no pending deploy, nothing in flight. Verified
-after deploy: 329 migrations applied, `feedback_attachment_stage_ck` reads
-`submitted|contested|refuted|plan` on production, service `active`, BUILD_ID `w7rHG4QSdGTUk4-Ij2don`,
-`GET /` 401, and `rsync -azi --delete --dry-run` reporting **zero changes**.
+**`main@f33f33b3` is what runs. Production on 330 migrations. Next free migration number is `0409`**
+— **`0405` is still CLAIMED by the unmerged release-three branch and `0407` by the unmerged
+attendance-trace branch (`build/r166-attend-breakdown`); `0409` was allocated to the formula builder and
+proved unnecessary, so it is free.** No half-applied migration, no pending deploy. Verified after deploy:
+330 migrations applied, `claim_mileage_rate` and `claim_form_field` both live, service `active`, BUILD_ID
+`7OKhBRAILcC1ftxpo_rX-`, `GET /` 401, and `rsync -azi --delete --dry-run` reporting **zero changes**.
+
+**r168 shipped NINE items in six file-disjoint workstreams** (gate 596/596, shadow rehearsal 329→330,
+render-checked). Grouping by FILE OVERLAP rather than theme produced **zero merge conflicts** across six
+branches. Full decisions in history → r168; the three that generalise:
+- **Independent verification caught what green builder runs could not** — a red build, a guard that had
+  silently stopped guarding (a test passing off COMMENTS), and a money defect where an allowance
+  aggregate totalled one-off and non-payable rows (RM500 base → RM2,500 on a RM2,000 one-off).
+- **A builder shipped six catalogs promising behaviour it had not built.** Strings are a promise; reword
+  them or build the thing, never ship the sentence.
+- **Only the FULL gate saw the ADR-0080 pack ratchet trip** when a page split into three routes. The fix
+  is never to add to the allowlist — it only shrinks (22 → 21 here).
 
 ### The board — counted on production 2026-08-06 after r165 (owner role; `DATABASE_URL` is RLS-blocked)
 

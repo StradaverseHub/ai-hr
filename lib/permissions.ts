@@ -206,7 +206,13 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/organization',
     labelKey: 'nav.organization',
     guard: 'scopedAdmin',
-    routes: ['/admin/organization'],
+    // defd4644 — ONE screen with three routes: the company listing, the create screen, and one
+    // company's maintenance page. All three call scopedAdmin(), so all three are guarded pages on
+    // disk and test/function-access.test.ts requires them here (reverse completeness). They are NOT
+    // separate function-access rights: browsing, creating and maintaining a company are the same
+    // administrative capability, which is why they share one column — the /admin/notice-board and
+    // /admin/personnel entries below collapse their own new/detail routes for the same reason.
+    routes: ['/admin/organization', '/admin/organization/new', '/admin/organization/[companyId]'],
   },
   {
     screenKey: 'personnelAdmin',
@@ -395,7 +401,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     guard: 'requireAdmin',
     // ccbd0508: Claim config split into route-based tabs — Types (/admin/claims), Limits (per Job-Grade),
     // Reimbursements. All requireAdmin (the same guard the single page used before).
-    routes: ['/admin/claims', '/admin/claims/limits', '/admin/claims/reimbursements'],
+    routes: ['/admin/claims', '/admin/claims/limits', '/admin/claims/reimbursements', '/admin/claims/mileage', '/admin/claims/forms'],
   },
   { screenKey: 'loans', href: '/admin/loans', labelKey: 'admin.users.screen.loans', guard: 'requireAdmin', routes: ['/admin/loans'] },
   // ── Payroll (scopedAdmin/requireAdmin → hr_admin + super_admin; partners are redirected today) ──
@@ -418,8 +424,10 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/configuration/eis',
       '/payroll/configuration/pcb',
       '/payroll/configuration/hrdf',
-      // R24 5db3ae48: guided end-to-end payroll process view (scopedAdmin, same guard as the hub).
-      '/payroll/guide',
+      // efe1d230: the payroll guide route (R24 5db3ae48's guided end-to-end view) is RETIRED — the route is
+      // deleted and its eight-check readiness report moved to /payroll/setup?readiness=full, which is
+      // already covered by the '/payroll/setup' entry below under this same scopedAdmin key. The entry
+      // must go with the page: test/function-access.test.ts fails a registered route with no file.
       '/payroll/history-import',
       // 169e3c24: the pre-release Individual Payslip viewer. Registered on the SAME scopedAdmin key as
       // the rest of the hub, because it is the admin's review of a payslip before it is released — it

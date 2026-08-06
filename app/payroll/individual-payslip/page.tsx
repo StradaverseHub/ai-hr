@@ -22,8 +22,40 @@
  *
  * READ-ONLY END TO END. No row is inserted, updated, deleted or recomputed, and no employee-visible
  * figure changes.
+ *
+ * ───────────────────────────────────────────────────────────────────────────────────────────────────
+ * r168a (feedback da4af51f) CHANGED THE EMPLOYEE CONTROL AND THE LETTERHEAD. Nothing else.
+ *
+ * FOUR OF THE SIX POINTS THAT REQUEST RAISED WERE ALREADY BUILT, and rebuilding them would have risked
+ * working screens for nothing, so they were reproduced first and left alone:
+ *   - the Year / Month / Cycle hierarchy is the GET form below, and `listProcessedPayslipsAcross` already
+ *     takes all three. The "otherRuns" card renders only when matches.length > 1 — it is deliberate
+ *     disambiguation between a regular and a bonus run in one month, not a history list, and it does not
+ *     grow with the years.
+ *   - Earnings / Deductions / employer contributions / YTD are already separate sections.
+ *   - the PCB drill-down already reads the payslip's OWN persisted `pcbMeta`, so an old slip explains
+ *     itself with the numbers that were true when it ran.
+ *   - Print and Download PDF are already wired.
+ *
+ * WHAT WAS GENUINELY MISSING AND IS NOW HERE: the searchable employee panel (the dropdown listed every
+ * employee in scope with no search), its collapse, and the company logo.
+ *
+ * THE LOGO — AND A CORRECTION. The comment that used to sit on the letterhead below stated "There is NO
+ * company logo anywhere in this product — no column, no upload, no storage". THAT WAS WRONG, and it was
+ * wrong when 169e3c24 shipped this screen without a logo on the strength of it. `company_logo`
+ * (db/schema.ts) is a 1:1 bytea side table with an upload on the Organization screen, a serve route at
+ * /admin/organization/logo/[id], and `listCompanies` already returns `hasLogo` for exactly this kind of
+ * caller. So the letterhead now renders it when the company has one and degrades to the legal name when it
+ * does not — which is why `hasLogo` is checked rather than the <img> being left to 404.
+ *
+ * EMAIL PAYSLIP IS NOT BUILT, and the reason is recorded here rather than left as a silent gap: this
+ * product has NO outbound mail transport. The single email path in the codebase is the auth provider's own
+ * invitation call (core/auth.ts `sendInvitation`), which cannot carry an attachment. Adding one is a
+ * transport, a credential, a bounce/delivery-audit story and a PDPA decision about mailing net pay — its
+ * own piece of work, not a button on this screen.
  */
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees, listCompanies } from '@/core/read';
@@ -33,11 +65,18 @@ import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-empl
 import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll-publication';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { formatMoney } from '@/lib/money';
-import { employeeLabel } from '@/lib/employee-code';
 import { packFor } from '@/localization/registry';
 import { Button, Card, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import {
+  CollapsibleEmployeePanel,
+  EmployeeScopePanel,
+  type ScopeEmployee,
+} from '@/components/collapsible-employee-panel';
 import { PrintButton } from '@/components/print-button';
 import { deriveHistoryBreakdown } from '../transaction-view/history-breakdown';
+
+/** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
+export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
 
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
@@ -106,6 +145,31 @@ export default async function IndividualPayslipPage({
   const nowYear = new Date().getFullYear();
   const years = Array.from({ length: 11 }, (_, i) => nowYear + 1 - i);
 
+  // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
+  const panelDefaultOpen = (await cookies()).get(PAYSLIP_PANEL_COOKIE)?.value !== '0';
+  // Fed the SAME set the scope guard above accepts, so the panel cannot offer a row the server refuses.
+  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
+    employmentId: e.employmentId,
+    name: e.name,
+    employeeCode: e.employeeCode,
+    company: e.company,
+    companyId: e.companyId,
+    department: e.department,
+    departmentId: e.departmentId,
+    businessUnit: e.businessUnit,
+    businessUnitId: e.businessUnitId,
+    status: e.terminatedOn == null ? 'active' : 'ended',
+  }));
+  // The period filters ride along when the employee changes — these are the GUARDED values, not the raw
+  // params. `payslipId` deliberately does NOT: it names a run belonging to the person being navigated away
+  // from, and carrying it would ask the next employee's list for someone else's payslip.
+  const panelPreserve: Record<string, string> = {
+    ...(companyId ? { companyId } : {}),
+    ...(year != null ? { year: String(year) } : {}),
+    ...(month != null ? { month: String(month).padStart(2, '0') } : {}),
+    ...(cycle ? { cycle } : {}),
+  };
+
   // A payslip only loads once an EMPLOYEE is chosen — the ticket's flow (period → employee → payslip),
   // and also what keeps this screen from becoming a second, slower copy of History.
   const matches = employmentId
@@ -165,16 +229,43 @@ export default async function IndividualPayslipPage({
     : false;
 
   const pubState = row ? payrollPublicationState({ status: row.batchStatus, releasedAt: row.releasedAt }) : null;
+  // `listCompanies` already returns hasLogo (an EXISTS against company_logo — the bytea itself lives in a
+  // side table and is never pulled by this read), and it is already loaded above. No new query.
+  const companyHasLogo = row ? companies.some((c) => c.id === row.companyId && c.hasLogo) : false;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-[100rem] space-y-6 print:max-w-4xl">
       <div className="print:hidden">
         <PageHeader title={t('title')} description={t('subtitle')} />
       </div>
 
-      {/* ── Selection (GET form — pure navigation, no mutation) ── */}
+      <CollapsibleEmployeePanel
+        defaultOpen={panelDefaultOpen}
+        cookieKey={PAYSLIP_PANEL_COOKIE}
+        panel={
+          /* The employee control (da4af51f). It was a single dropdown listing every employee in scope,
+             which on a large company meant scrolling a long list with no way to search. */
+          <Card className="p-4 print:hidden">
+            <h2 className="text-sm font-semibold">{t('filterEmployee')}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{t('chooseEmployeeHint')}</p>
+            <div className="mt-3">
+              <EmployeeScopePanel
+                employees={panelEmployees}
+                selectedId={employmentId ?? null}
+                basePath="/payroll/individual-payslip"
+                preserve={panelPreserve}
+              />
+            </div>
+          </Card>
+        }
+      >
+        <div className="space-y-6">
+      {/* ── Period selection (GET form — pure navigation, no mutation) ──
+          The EMPLOYEE has left this form for the panel; it carries the current one as a hidden input so
+          changing the year does not silently deselect the person you were looking at. */}
       <Card className="p-4 print:hidden">
         <form method="GET" className="flex flex-wrap items-end gap-3">
+          {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
           <Field label={t('filterCompany')}>
             <select name="companyId" defaultValue={companyId ?? ''} className={inputCls}>
               <option value="">{tTxn('view.filters.all')}</option>
@@ -204,16 +295,6 @@ export default async function IndividualPayslipPage({
               <option value="">{tTxn('view.filters.all')}</option>
               {CYCLES.map((c) => (
                 <option key={c} value={c}>{tTxn(`individual.cycle.${c}`)}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('filterEmployee')}>
-            <select name="employmentId" defaultValue={employmentId ?? ''} className={inputCls}>
-              <option value="">{t('chooseEmployee')}</option>
-              {employees.map((e) => (
-                <option key={e.employmentId} value={e.employmentId}>
-                  {employeeLabel(e.employeeCode, e.name)} · {e.company}
-                </option>
               ))}
             </select>
           </Field>
@@ -257,11 +338,23 @@ export default async function IndividualPayslipPage({
 
       {row && b && eb && pcb && (
         <Card className="space-y-5 p-6">
-          {/* Letterhead. There is NO company logo anywhere in this product — no column, no upload, no
-              storage — so none is rendered. Inventing a placeholder would be a promise the data cannot
-              keep; adding real logo storage is its own piece of work, disclosed in the plan. */}
+          {/* Letterhead (da4af51f). The logo is the company's OWN uploaded file, served by the existing
+              /admin/organization/logo/[id] route — the same bytes the Organization screen shows, so the
+              payslip cannot display a different mark from the rest of the product. It is rendered only when
+              `hasLogo` says one exists (from `listCompanies`, an EXISTS against the side table — never the
+              blob), because an <img> pointed at a 404 shows a broken-image icon on a payslip, which is
+              worse than a clean text letterhead. No placeholder is invented when there is none. */}
           <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
             <div>
+              {companyHasLogo && (
+                /* eslint-disable-next-line @next/next/no-img-element -- a bytea served by our own route,
+                   not a build-time asset; next/image would need a loader for an authenticated endpoint. */
+                <img
+                  src={`/admin/organization/logo/${row.companyId}`}
+                  alt={row.company}
+                  className="mb-2 max-h-14 w-auto max-w-[14rem] object-contain"
+                />
+              )}
               <h1 className="text-lg font-semibold tracking-tight">{row.company}</h1>
               {row.companyReg && <p className="text-xs text-muted-foreground">{row.companyReg}</p>}
               <p className="mt-1 text-sm text-muted-foreground">
@@ -538,6 +631,8 @@ export default async function IndividualPayslipPage({
           )}
         </Card>
       )}
+        </div>
+      </CollapsibleEmployeePanel>
     </div>
   );
 }

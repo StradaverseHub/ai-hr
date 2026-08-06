@@ -1,0 +1,49 @@
+<meta charset="utf-8"><title>b8aa3466 — what the policy section still does</title>
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+ h2{font-size:14px;margin:0 0 4px}.sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .big{display:grid;grid-template-columns:1fr 1fr;gap:16px;text-align:center}
+ .stat{border:1px solid var(--border);border-radius:12px;padding:16px}
+ .stat.bad{border-color:#fca5a5;background:#fef2f2}
+ .stat .n{font-size:38px;font-weight:800;line-height:1.05}
+ .stat .k{font-size:12px;color:var(--mf);margin-top:5px}
+ .flow{display:grid;grid-template-columns:1fr 24px 1fr 24px 1fr;align-items:center;gap:8px;margin-top:12px}
+ .b{border:1px solid var(--border);border-radius:10px;padding:11px;font-size:12.5px}
+ .b b{display:block;margin-bottom:3px}
+ .b.use{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 7%,white)}
+ .b.dead{border-color:#fca5a5;background:#fef2f2}
+ .ar{text-align:center;color:var(--mf);font-weight:700}
+ .warn{background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:14px;font-size:12.5px}
+ ol{margin:8px 0 0;padding-left:20px;font-size:12.5px}li{margin-bottom:5px}
+</style>
+<div class="card">
+ <h2>Before removing “Company work schedule & overtime rates”</h2>
+ <p class="sub">Counted on your live system today.</p>
+ <div class="big">
+  <div class="stat bad"><div class="n">30</div><div class="k">of 31 employees have NO shift assigned</div></div>
+  <div class="stat"><div class="n">1</div><div class="k">employee has a default shift</div></div>
+ </div>
+</div>
+<div class="card">
+ <h2>How a day gets its schedule today</h2>
+ <p class="sub">The calculation rule supplies grace, overtime and rounding. It does not supply working hours.</p>
+ <div class="flow">
+  <div class="b"><b>Rostered that day?</b>Use the roster's shift. 315 roster rows exist.</div><div class="ar">→</div>
+  <div class="b"><b>Else: default shift?</b>Use it. <b style="color:#b91c1c">1 employee.</b></div><div class="ar">→</div>
+  <div class="b use"><b>Else: company work schedule</b>Start, end, break, working days.<br><b style="color:var(--primary)">This is the section — and for 30 people on any unrostered day, it is the only schedule there is.</b></div>
+ </div>
+</div>
+<div class="card warn">
+ <b>What removing it now would do.</b> Those 30 employees would have no start time to be late against, no end time to
+ leave early against, and no working-days list to say whether a date is a working day at all. Lateness and Early Out
+ would go blank, and every unrostered day would stop classifying. The Lateness, Early Out &amp; Overtime Settings cannot
+ fill the gap — they shape overtime and deductions, they do not say when the day starts.
+ <ol>
+  <li><b>Assign a shift to every employee</b> — a default shift, or roster them. This is the real prerequisite.</li>
+  <li><b>Then</b> we remove the section, and it is a safe deletion rather than a silent one.</li>
+ </ol>
+ We can build a short report showing exactly who still has no shift, so you can see the list shrink to zero.
+</div>
