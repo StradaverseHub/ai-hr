@@ -32,7 +32,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { createLeavePolicy } from '../core/admin';
+import { setLeaveTypeRules } from '../core/admin';
 import {
   AGED_FORFEIT_REASON,
   CARRY_FORFEIT_REASON_CAP,
@@ -51,7 +51,17 @@ import {
 } from '../core/read';
 import { reconciledBalance } from '../components/leave/entitlement-panel-config';
 import { applyLeaveAdjustmentBatch } from '../core/leave-adjustment';
-import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  ledgerBalance,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  seedEntitlement,
+  type Base,
+} from './harness';
 
 let b: Base;
 
@@ -78,22 +88,40 @@ const hire = (hiredOn: string, name = 'Recon') =>
     grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
   });
 
-const annualPolicy = (p: {
+/**
+ * 6e9a126e RELEASE THREE — was one `createLeavePolicy` carrying BOTH the days and the carry rules.
+ *
+ * Those two halves now live in two places, and this fixture writes both so every figure below is unchanged:
+ *   - the DAYS (flat or banded) go to an entitlement template + eligibility rule (`seedEntitlement`);
+ *   - the CARRY CAP and its expiry go on the LEAVE TYPE (`setLeaveTypeRules`), where 7cd914b1 put them and
+ *     where `applyLeaveTypeRules` reads them. That move predates release three; the policy columns were
+ *     already dead weight.
+ *
+ * ⚠️ `maxBalanceDays` MOVED WITH THE CARRY RULES, not with the bands. `applyLeaveTypeRules` overlays the
+ * TYPE's maximum-balance wholesale over whatever the band resolved, so a band-level `maxBalanceDays` is
+ * read and then discarded the moment a type carries any rule at all. The one test that used it therefore
+ * sets it on the type — same clamp, same forfeit, same reconciliation, decided one layer up.
+ */
+const annualPolicy = async (p: {
   annualDays?: number;
   carryForwardMax?: number;
   expiry?: { month: number; day: number } | null;
-  serviceBands?: Parameters<typeof createLeavePolicy>[1]['serviceBands'];
+  maxBalanceDays?: number | null;
   from?: string;
-}) =>
-  createLeavePolicy(adminCtx(b), {
-    leaveTypeId: b.annualLeaveTypeId,
-    annualDays: p.annualDays ?? 12,
+}) => {
+  await setLeaveTypeRules(adminCtx(b), {
+    id: b.annualLeaveTypeId,
     carryForwardMax: p.carryForwardMax ?? 5,
     carryForwardExpiryMonth: p.expiry?.month ?? null,
     carryForwardExpiryDay: p.expiry?.day ?? null,
-    serviceBands: p.serviceBands ?? null,
+    maxBalanceDays: p.maxBalanceDays ?? null,
+  });
+  return seedEntitlement(adminCtx(b), {
+    leaveTypeId: b.annualLeaveTypeId,
+    annualDays: p.annualDays ?? 12,
     validFrom: p.from ?? '2025-01-01',
   });
+};
 
 /** Add a non-ANNUAL leave type. c459bff9 dropped the optional age-from-earning expiry argument along with
  *  the leave_type.expiry_value / expiry_unit columns and the sweep that read them. */
@@ -231,10 +259,12 @@ describe('the reconciliation identity closes where the DERIVED carry arithmetic 
   it('maxBalanceDays clamp tighter than the carry cap still reconciles', async () => {
     // The clamp makes openLeaveYear forfeit BEFORE-carry with the carry already clamped, while the derived
     // reconstruction caps only at carryForwardMax — another divergence the ledger partition is immune to.
+    // 6e9a126e release three: the clamp is stated on the leave TYPE rather than inside the band, because
+    // applyLeaveTypeRules overlays the type's maximum-balance over the band's (see annualPolicy's note).
     await annualPolicy({
       annualDays: 12,
       carryForwardMax: 10,
-      serviceBands: [{ fromYears: 0, toYears: null, days: 12, maxBalanceDays: 8 }],
+      maxBalanceDays: 8,
     });
     const emp = await hire('2025-01-01');
     await openLeaveYear(adminCtx(b), { year: 2026 });

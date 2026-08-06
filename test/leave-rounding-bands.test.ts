@@ -15,9 +15,11 @@
  *    the legacy grade policy VERBATIM when it says false, so clearing rounding on a type whose ONLY rule
  *    was rounding would restore its entire legacy JSONB rule set — a balance change disguised as a
  *    rounding change. Pinned on BOTH the writer and migration 0358.
- * §4 MIGRATION 0358'S RESET, executed from the ACTUAL file: every type back to No Rounding, both storage
- *    surfaces cleared, no type left unruled, and NOT ONE LEDGER ROW TOUCHED — closed prior years are
- *    governed by the version active at their year-open and are never rewritten by a configuration change.
+ * §4 MIGRATION 0358'S RESET, executed from the ACTUAL file: every type back to No Rounding, no type left
+ *    unruled, and NOT ONE LEDGER ROW TOUCHED — closed prior years are governed by the version active at
+ *    their year-open and are never rewritten by a configuration change. 6e9a126e release three narrowed
+ *    this to the `leave_type` surface only; the second surface, `leave_policy.accrual`, was dropped by
+ *    migration 0405 — see `runReset` for why the file-level guard on BOTH statements is still asserted.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -340,9 +342,21 @@ describe('§3 the unruled fall-through — the trap this item had to walk past',
 // ── §4 ────────────────────────────────────────────────────────────────────────────────────────────────
 describe('§4 migration 0358 — the reset, executed from the ACTUAL file', () => {
   /**
-   * Re-executes only the migration's UPDATE statements, from the real file, inside ONE transaction. Reading
+   * Re-executes the migration's `leave_type` UPDATE, from the real file, inside ONE transaction. Reading
    * the file rather than restating the SQL is the point: a reset that stops matching what ships is a reset
    * that only the test believes in. The guard assertions below refuse a file that no longer resets.
+   *
+   * ── 6e9a126e RELEASE THREE: THE FILE STILL CARRIES TWO RESETS; ONLY ONE IS STILL EXECUTABLE ─────────
+   * 0358 resets rounding on BOTH storage surfaces — `leave_type` and `leave_policy.accrual`. Migration
+   * 0405 later DROPS `leave_policy`, so by the time `migrateTestDb()` has run the whole chain the second
+   * statement targets a table that no longer exists and would abort the transaction.
+   *
+   * The FILE-LEVEL guard is deliberately NOT weakened: 0358 is a shipped historical migration that still
+   * replays in order on a fresh database (where leave_policy is very much alive at 0358), so it must still
+   * contain both statements and `toHaveLength(2)` still asserts exactly that. What narrows is only which
+   * statement this test EXECUTES against a fully-migrated schema. Filtering by target table rather than by
+   * position keeps the guard honest: if the leave_type reset were the one that disappeared, the filter
+   * would find nothing and the explicit length check below would fail rather than pass vacuously.
    */
   async function runReset(): Promise<void> {
     const text = readFileSync(MIGRATION, 'utf8');
@@ -356,8 +370,10 @@ describe('§4 migration 0358 — the reset, executed from the ACTUAL file', () =
       .map((s) => s.replace(/^(?:\s*--[^\n]*\n)+/, '').trim().replace(/;$/, ''))
       .filter((s) => /^UPDATE\b/.test(s));
     expect(stmts, 'the migration must carry BOTH resets — leave_type and leave_policy').toHaveLength(2);
+    const typeStmts = stmts.filter((s) => /^UPDATE\s+"leave_type"/.test(s));
+    expect(typeStmts, 'the leave_type reset is the one this test replays').toHaveLength(1);
     await owner.db.transaction(async (tx) => {
-      for (const s of stmts) await tx.execute(sql.raw(s));
+      for (const s of typeStmts) await tx.execute(sql.raw(s));
     });
   }
 
@@ -406,42 +422,16 @@ describe('§4 migration 0358 — the reset, executed from the ACTUAL file', () =
     expect(applyLeaveTypeRules({ days: 14, carryMax: 0 }, row)!.roundingMethod).toBeUndefined();
   });
 
-  it('clears the LEGACY JSONB copy on every policy, and touches nothing else in it', async () => {
-    const id = await annualId();
-    const policyId = crypto.randomUUID();
-    await owner.db.insert(schema.leavePolicy).values({
-      id: policyId,
-      tenantId: b.tenantId,
-      leaveTypeId: id,
-      accrual: { annualDays: 14, method: 'earned_monthly', carryForwardMax: 5, roundingMethod: 'up', roundingThreshold: 0.75 },
-      validFrom: '2020-01-01',
-    });
-    await runReset();
-    const [row] = await owner.db
-      .select({ accrual: schema.leavePolicy.accrual })
-      .from(schema.leavePolicy)
-      .where(eq(schema.leavePolicy.id, policyId));
-    const acc = row!.accrual as Record<string, unknown>;
-    expect('roundingMethod' in acc).toBe(false);
-    expect('roundingThreshold' in acc).toBe(false);
-    // Everything else survives: this is a rounding reset, not a policy rewrite.
-    expect(acc).toMatchObject({ annualDays: 14, method: 'earned_monthly', carryForwardMax: 5 });
-  });
-
-  it('leaves a policy that never had a rounding key byte-identical', async () => {
-    const id = await annualId();
-    const policyId = crypto.randomUUID();
-    const before = { annualDays: 12, method: 'grant_on_hire_prorated', carryForwardMax: 3 };
-    await owner.db
-      .insert(schema.leavePolicy)
-      .values({ id: policyId, tenantId: b.tenantId, leaveTypeId: id, accrual: before, validFrom: '2020-01-01' });
-    await runReset();
-    const [row] = await owner.db
-      .select({ accrual: schema.leavePolicy.accrual })
-      .from(schema.leavePolicy)
-      .where(eq(schema.leavePolicy.id, policyId));
-    expect(row!.accrual).toEqual(before);
-  });
+  // ── 6e9a126e RELEASE THREE RETIRED THE TWO `leave_policy.accrual` TESTS THAT SAT HERE ──────────────
+  // They were "clears the LEGACY JSONB copy on every policy, and touches nothing else in it" and "leaves a
+  // policy that never had a rounding key byte-identical" — both inserted a `leave_policy` row, replayed
+  // 0358's second UPDATE and asserted on the resulting JSONB. Migration 0405 dropped `leave_policy`, so
+  // there is no second storage surface left for the reset to clear and no row for it to leave alone. The
+  // statement they exercised is still IN the migration file and is still asserted to be there by
+  // `runReset` above; it simply has no table to run against once the chain reaches 0405.
+  //
+  // Nothing was loosened to achieve this: the surviving §4 tests below still pin the leave_type reset, the
+  // unruled fall-through guard, ledger immutability and idempotence, on their original figures.
 
   it('DOES NOT TOUCH A SINGLE LEDGER ROW — closed prior years are not rewritten by a config change', async () => {
     // The reset moves CONFIGURATION. Balances follow through the ordinary engines, every one of which is

@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
-import { listLeavePolicies } from '@/core/admin';
 // 4b0e76ae — the Leave Year Configuration section is GONE from Custom Settings, so the two reads that fed
 // it (listLeaveYearConfigs / leaveYearsWithRecords) went with it and their services no longer exist. What
 // this page still needs from the leave module is the ONE shared entitlement-year range, which the Run
@@ -14,46 +13,41 @@ import { listAllProfileOptions } from '@/core/profile-options';
 // e4238594 — the e1a51aea Approval Workflow imports (WorkflowMatrix, the matrix label builder, the
 // approval-policy/template reads and the 4e9a4d59 stay-on-this-type action wrappers) all went with the
 // sub-step. This page no longer touches approval configuration at all; /admin/leave/approval owns it.
-import { listGradeGroups, listBenefitSchemes, listSchemeEntitlements } from '@/core/benefit-scheme';
+// 6e9a126e release three — `listBenefitSchemes` / `listSchemeEntitlements` are gone from this page with
+// the layer they read. `listGradeGroups` STAYS: grade groups scope approval routing (205 live rules name
+// one), so the migration keeps `grade_group` / `grade_group_member` and this screen keeps their editor.
+import { listGradeGroups } from '@/core/benefit-scheme';
 // r88 1ef1cf95 — shared leave groups are tenant-level and read from their own module; they are no longer a
 // property of a benefit scheme, so they are no longer read through the benefit-scheme one.
 import { listLeaveSharedGroups } from '@/core/leave-shared-group';
 import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
-import { BenefitSchemeConfig, type LeaveTypeSchemeEntitlement } from '@/components/benefit-scheme-config';
-import type { LeaveRoundingMethod, RoundingBand, ServiceBand } from '@/core/leave-compute';
-import { countryPacks } from '@/localization/registry';
-import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+// The Grade Groups editor, lifted out of the deleted BenefitSchemeConfig workbench so it outlives it.
+import { GradeGroupConfig } from '@/components/leave/grade-group-config';
+import type { LeaveRoundingMethod, RoundingBand } from '@/core/leave-compute';
+import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 // 10e96227 — the half-day-deduction card's company picker, behind a CLIENT wrapper. This page is a SERVER
 // component, and r123 passed ChipMultiSelect's removeLabelFor/countLabelFor closures straight across the
 // boundary, which threw at render and took the whole tab down. The wrapper resolves the translator on the
 // client side; only serialisable data crosses. See that file's header before changing this.
 import { HalfDayCompanyPicker } from '@/components/leave/half-day-company-picker';
-import { LeaveTypePanel, type EntitlementPolicy, type LeaveEligibilityRule } from '@/components/leave-type-panel';
+import { LeaveTypePanel, type LeaveEligibilityRule } from '@/components/leave-type-panel';
 import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
 import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
-import { LeaveRulePreviewDialog } from '@/components/leave/leave-rule-preview-dialog';
-import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   archiveLeaveTypeAction,
-  countEmployeesInScopeAction,
   setLeaveHalfDayFullDeductionCompaniesAction,
-  createLeavePoliciesMultiAction,
   createLeaveTypeAction,
-  deleteLeavePolicyAction,
   deleteLeaveTypeAction,
-  updateLeavePolicyAction,
   setLeaveTypeRulesAction,
   updateLeaveTypeAction,
+  // 6e9a126e release three — the grade-group writes SURVIVE the drop (approval routing scopes by them);
+  // the policy writes (create / update / delete) and the scheme writes (scheme CRUD, entitlement upsert /
+  // delete / copy) went with the tables they wrote, as did countEmployeesInScopeAction's only caller here
+  // — the Employee Selection chips on the add-policy form. Who receives an entitlement is now an
+  // eligibility rule, counted by countEligibilityTargetsAction on the Entitlement Tables screen.
   createGradeGroupAction,
   updateGradeGroupAction,
   deleteGradeGroupAction,
-  createBenefitSchemeAction,
-  updateBenefitSchemeAction,
-  deleteBenefitSchemeAction,
-  upsertSchemeEntitlementAction,
-  deleteSchemeEntitlementAction,
-  copySchemeEntitlementsAction,
   // r88 1ef1cf95 — the tenant-level shared-group writes. The scheme-level combined-limit actions (update /
   // delete / move / group-from-drag) are gone with the surface and the tables they wrote.
   createLeaveSharedGroupAction,
@@ -64,33 +58,36 @@ import {
 /**
  * Leave Settings — Entitlements tab.
  *
- * Feedback 9d8cf621 (Entitlements Setting reorganization): the per-leave-type CONFIGURATION panel now lives
+ * Feedback 9d8cf621 (Entitlements Setting reorganization): the per-leave-type CONFIGURATION panel lives
  * here — "one leave type, one full set of settings", exactly where HR expects it. Each `LeaveTypePanel`
  * carries leave-type identity, eligibility, allowed durations, supporting-document config, backdating limit,
- * advance-notice, expiry, the apply-time custom message AND that type's effective-dated entitlement policies
- * (the editable ranges table + the multi-company/grade "Employee Selection" chips). The three other
- * standalone sections are gone (d778d2d3): Run Earned Accrual and
- * Preview a Scenario became compact action buttons opening the SAME tools in dialogs
- * (EarnedAccrualDialog / LeaveRulePreviewDialog — components wrapped unchanged), and the per-company Leave
- * Cycle card moved to the Application Rules tab beside the other company-level calendar rules (its
- * server action is untouched — only the rendering moved). Bulk import is a "+ Import" action
- * button in the page header (e8f2398f) — the standalone page-bottom Card that only linked to
- * /admin/leave/import is gone. The festive / one-off grant tool no longer
- * sits at the page bottom — fd7c8e20 moved it into each type's Entitlement step, preset to the selected
- * type. The whole `LeaveTypePanel` + add-type form moved wholesale from the
- * Types tab, so every sub-form keeps its tri-state marker + hidden `name` intact — no column is wiped on save.
+ * advance-notice, expiry and the apply-time custom message. Bulk import is a "+ Import" action button in the
+ * page header (e8f2398f). The whole `LeaveTypePanel` + add-type form moved wholesale from the Types tab, so
+ * every sub-form keeps its tri-state marker + hidden `name` intact — no column is wiped on save.
  *
- * 7b945408 (Restructure Entitlements Secondary Workflow): the Entitlement step is now a three-sub-step walk
- * — 1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments (the SubStepBar reuse contract).
- * Preview Scenario joins Service Based Entitlements as its checking tool, and Run Accrual joins Adjustments
- * (it processes earned entitlement).
+ * ⚠️ 6e9a126e RELEASE THREE — THIS PAGE NO LONGER CONFIGURES ENTITLEMENT, AND THAT IS THE POINT.
+ * It used to carry three ways to say how many days a leave type grants: the effective-dated per-company /
+ * per-grade `leave_policy` timeline (with its multi-company/grade "Employee Selection" chips), the Benefit
+ * Schemes workbench, and each scheme's service-tier day table. All three are removed with the tables behind
+ * them, together with the Preview Scenario checker that resolved the first of them. The Entitlement step
+ * now holds Run Earned Accrual and a link to Entitlement Tables
+ * (/admin/leave/entitlements/templates), where a named day table is typed once and an eligibility rule says
+ * who receives it. The PageHeader carries the same link plus the read-only Configuration record
+ * (/admin/leave/entitlements/archive) — the listing HR retypes the cleared figures from.
+ *
+ * WHAT THE PAGE STILL OWNS, and what a reader should expect to find: leave TYPE CRUD (the workspace and the
+ * Add Leave Type dialog), each type's Condition / Custom Settings steps, the consolidated Earning Method and
+ * Carry Forward rules (written to the leave TYPE since 9816a5ad, not to a policy row), Shared Leave Groups,
+ * the company-wide Half-Day Deduction card, Run Earned Accrual — and Grade Groups, in their own card at the
+ * bottom. Grade groups scope APPROVAL routing (205 live rules name one) and no longer select an entitlement;
+ * they are here because their editor was inside the deleted scheme workbench and had to land somewhere real.
  *
  * b1b81a08 (Grade relocation): the Grades catalogue is no longer maintained anywhere on this page. Grades
  * are organisation-level master data, so add/edit/archive/delete now lives on Settings → System Labels →
  * Organisation Labels beside Departments and Positions. The grade LIST is still read here — it feeds the
- * leave-policy scope dropdown, the preview dialog and the benefit-scheme grade groups — and no grade record
- * was copied, renamed or re-created, so every employment, leave policy, approval rule, claim limit and
- * grade group still points at the same row.
+ * Run Earned Accrual selector and the Grade Groups membership tick-boxes — and no grade record was copied,
+ * renamed or re-created, so every employment, approval rule, claim limit and grade group still points at the
+ * same row.
  *
  * 4b0e76ae (Remove Leave Year Configuration): the Leave Year Configuration block is GONE from Custom
  * Settings on every leave type — the year list, the Draft/Open/Closed badge, the Open Leave Year Date, the
@@ -102,9 +99,8 @@ import {
  * records: it offers the shared computed range, which reaches three years BACK so running earned accrual
  * for a past year stays possible.
  *
- * 962077a8 (Remove Unnecessary Action Buttons): with the 7b945408 step homes in place, the PageHeader is
- * down to the single page-level action — + Import. Run Accrual and Preview Scenario open ONLY from their
- * sub-steps now (same dialogs, same page-level data prep — nothing duplicated, nothing unreachable).
+ * 962077a8 (Remove Unnecessary Action Buttons): the PageHeader carries no tool buttons. Run Accrual opens
+ * ONLY from the Entitlement step, and must not be given a header home again.
  */
 export default async function LeaveEntitlementsPage({
   searchParams,
@@ -113,21 +109,23 @@ export default async function LeaveEntitlementsPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
+  // The Grade Groups card reuses the workbench's OWN heading rather than minting a seventh copy of it in
+  // six locales — the same discipline the templates screen follows for the criteria label namespaces.
+  const tGroups = await getTranslations('admin.benefitScheme');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, gradeGroups, benefitSchemes, schemeEntitlements, sharedGroups, profileOptionsActive] =
+  const [types, companies, grades, gradeGroups, sharedGroups, profileOptionsActive] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
-      listLeavePolicies(s),
       listCompanies(s),
       // b1b81a08 — grade MANAGEMENT moved to Settings → System Labels → Organisation Labels, but the grade
-      // list is still READ here: it feeds gradeOptions (the leave-policy scope dropdown), the preview
-      // dialog and BenefitSchemeConfig's grades prop. Archived rows still load so an existing grade-scoped
-      // policy can render its grade name; the ACTIVE-only filters below are unchanged.
+      // list is still READ here: it feeds the Run Earned Accrual selector and the Grade Groups membership
+      // tick-boxes. 6e9a126e release three: the leave-policy scope dropdown and the preview dialog that
+      // also read it are gone, but archived rows still load — `gradeOptions` filters them out itself, and
+      // narrowing the query would change what other readers of this list see for no gain.
       listJobGrades(s, { includeArchived: true }),
-      // Benefit Scheme & Leave Entitlement (b83c6a3b): the new configuration layer's data.
+      // Grade groups (b83c6a3b, kept by release three): the approval-routing scope. The two scheme reads
+      // that used to sit beside this one are gone with `benefit_scheme` / `scheme_leave_entitlement`.
       listGradeGroups(s),
-      listBenefitSchemes(s),
-      listSchemeEntitlements(s),
       // Shared Leave Groups (r88 1ef1cf95): tenant-level groups of leave types sharing one allowance. Read
       // once here and rendered beside Add Leave Type — there is no scheme dimension to scope them by.
       listLeaveSharedGroups(s),
@@ -153,9 +151,8 @@ export default async function LeaveEntitlementsPage({
   const formulaTemplate = leaveFormulaTemplateFrom(
     types.map((lt) => lt.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
   );
+  // Active grades — the Grade Groups membership tick-boxes and the Run Earned Accrual grade filter.
   const gradeOptions = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
-  // ADR-0066: companies for the per-policy scope select. companyOptions stays the FULL list — policy writes
-  // are separately RLS-gated and must not be narrowed here.
   const companyOptions = companies.map((c) => ({ id: c.id, name: c.name }));
   const effectiveGrants = withEffectiveGrants(s);
   const canGroupWide = isGroupAdmin(effectiveGrants);
@@ -163,20 +160,13 @@ export default async function LeaveEntitlementsPage({
     ? companyOptions
     : companyOptions.filter((c) => hasGrantFor(effectiveGrants, 'hr_admin', c.id));
   const activeTypeOptions = types.filter((t) => !t.archivedAt).map((t) => ({ id: t.id, name: t.name }));
-  const companyNameById = new Map(companies.map((c) => [c.id, c.name]));
-  const typeNameById = new Map(types.map((t) => [t.id, t.name]));
-  const typeCodeById = new Map(types.map((t) => [t.id, t.code]));
-  // Feedback 26e76a9f — "preview a scenario" relocated here from the Types tab (its read-only "Entitlement
-  // rules" card was removed as a duplicate configuration point). Same inputs as before: the ACTIVE policy
-  // rows from the already-loaded listLeavePolicies result — display-only, no data or logic change.
-  // d778d2d3: the checker became the "Preview Scenario" dialog button (LeaveRulePreviewDialog); since
-  // 7b945408/962077a8 it opens from the Service Based Entitlements sub-step — this page-level data prep
-  // is unchanged and simply feeds the dialog.
-  const previewPolicies = policies
-    .filter((p) => !p.validTo)
-    .map((p) => ({ leaveTypeId: p.leaveTypeId, gradeId: p.gradeId, companyId: p.companyId, accrual: p.accrual }));
-  const previewCompanies = companies.map((c) => ({ id: c.id, name: c.name, country: c.country }));
-  const todayIso = todayInKualaLumpur();
+  // 6e9a126e release three — the Preview Scenario data prep that stood here is GONE with the checker it
+  // fed. LeaveRulePreview took the ACTIVE `leave_policy` rows and ran `previewEntitlement` over them, so
+  // every figure it could show (the resolved days, the winning policy days) came from a layer this release
+  // removes; against the template layer it would have had nothing to resolve and would have answered "—"
+  // to every question while still looking like a live checker. It is deleted, not re-pointed — see that
+  // component's removal note. The Entitlement Tables screen shows a template's own bands, which is the
+  // honest version of the same question.
   // feedback 2c7c6385, re-pointed by 4b0e76ae: the Run-Earned-Accrual Leave-Year selector used to read the
   // managed leave_year_config records (9aa894a4) and fall back to a current-year..+6 range only when none
   // existed. Those records are gone and nothing can write them any more, so the fallback became the ONLY
@@ -190,136 +180,33 @@ export default async function LeaveEntitlementsPage({
   const earnedLeaveYears = entitlementYearOptions(currentYear).map((y) => ({ year: y, status: 'draft' }));
   const earnedDefaultYear = currentYear;
 
-  // Country-pack entitlement lookup — feeds each type's `floor0` (the day-zero statutory entitlement that
-  // drives the entitlement summary and the below-minimum badge). Rung 5c — the entitlement floor comes from
-  // the country pack via the registry (union-read interim: the first/only registered pack, matching the
-  // rung-5a `countryPacks()` precedent for tenant-level vocabulary with no acting company; per-company
-  // narrowing is the second-country rung, ADR-0080 §6). MY-only today ⇒ byte-identical to the old import.
-  const packEntitlement = countryPacks()[0]?.leave.entitlement;
+  /* 6e9a126e RELEASE THREE — EVERY LINE OF ENTITLEMENT DATA PREP THAT STOOD HERE IS GONE.
+   *   - `packEntitlement` (the country pack's day-zero statutory floor) fed each panel's `floor0`, which
+   *     existed only to judge the configured figure in the panel header. That figure came from the policy
+   *     row; both went, so the floor had nothing left to judge. The statutory minimum belongs beside the
+   *     days it warns about, on Entitlement Tables.
+   *   - `polByType` unpacked every `leave_policy` row's accrual JSONB (days, service bands, the carry
+   *     block, the rounding method) into the panel's editable timeline.
+   *   - `schemeNameById` / `schemeCompanyNameById` / `schemeAxesById` / `schemeEntsByType` joined
+   *     `scheme_leave_entitlement` rows to their owning scheme's name, company and (grade group ×
+   *     employment type) axes for the per-type table and the matrix.
+   *   - `schemeConfigProps` was the whole BenefitSchemeConfig workbench's props, prepared once and shared
+   *     by every panel.
+   * The three tables they read are dropped in this release. Their replacement is not another page-level
+   * prep here: it is the Entitlement Tables screen, which loads its own templates and eligibility rules.
+   * The grade-group half of `schemeConfigProps` survives as `gradeGroupProps` below — a grade group is an
+   * approval-routing scope, not an entitlement axis, and 205 live approval rules depend on it. */
 
-  // Group each type's effective-dated policies, newest first, for inline editing.
-  const polByType = new Map<string, EntitlementPolicy[]>();
-  for (const p of policies) {
-    const acc = p.accrual as {
-      annualDays?: number;
-      carryForwardMax?: number;
-      method?: string;
-      carryForwardExpiryMonth?: number;
-      carryForwardExpiryDay?: number;
-      carryForwardExpiryMode?: 'date' | 'months';
-      carryForwardExpiryMonths?: number;
-      carryForwardEnabled?: boolean;
-      carryForwardIncludeEarned?: boolean;
-      serviceBands?: ServiceBand[];
-      /** b81d3c52 — Rounding Method; absent on every policy that uses No Rounding. */
-      roundingMethod?: 'none' | 'up' | 'down';
-    } | null;
-    const ep: EntitlementPolicy = {
-      id: p.id,
-      annualDays: Number(acc?.annualDays ?? 0),
-      serviceBands: Array.isArray(acc?.serviceBands) && acc.serviceBands.length > 0 ? acc.serviceBands : null,
-      carryForwardMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
-      carryForwardExpiryMonth: acc?.carryForwardExpiryMonth ?? null,
-      carryForwardExpiryDay: acc?.carryForwardExpiryDay ?? null,
-      carryForwardExpiryMode: acc?.carryForwardExpiryMode === 'months' ? 'months' : 'date',
-      carryForwardExpiryMonths: acc?.carryForwardExpiryMonths ?? null,
-      carryForwardEnabled: typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : null,
-      carryForwardIncludeEarned: acc?.carryForwardIncludeEarned ?? false,
-      method: acc?.method,
-      // b81d3c52 — only the two real methods reach the panel; absent / anything else ⇒ null (No Rounding).
-      roundingMethod: acc?.roundingMethod === 'up' || acc?.roundingMethod === 'down' ? acc.roundingMethod : null,
-      gradeId: p.gradeId,
-      gradeName: p.gradeName,
-      companyId: p.companyId,
-      companyName: p.companyName,
-      validFrom: p.validFrom,
-      validTo: p.validTo,
-    };
-    const arr = polByType.get(p.leaveTypeId);
-    if (arr) arr.push(ep);
-    else polByType.set(p.leaveTypeId, [ep]);
-  }
-  for (const arr of polByType.values()) arr.sort((a, b) => b.validFrom.localeCompare(a.validFrom));
-
-  // Restructure (123c1e76): per-type Entitlement card data — each leave type's benefit-scheme entitlement
-  // rows, joined with the owning scheme's name and (read-only) any combined-limit pool the type belongs to
-  // in that scheme. The SAME already-loaded rows the scoped Benefit Schemes area (6c775d68, below in the
-  // same step) renders — filtered by leave type, never duplicated — and the panel's Edit dialog posts the
-  // SAME upsert action, so the two surfaces cannot drift.
-  const schemeNameById = new Map(benefitSchemes.map((sc) => [sc.id, sc.name]));
-  // Feedback 0d1a0cfc — the owning COMPANY name per scheme, so the Service Based Entitlements table's
-  // "Benefit scheme" column can name the company beside the scheme (matching the company-grouped Scheme
-  // picker). Resolved from the benefitSchemes + companies rows this page already loads — no new query,
-  // nothing stored.
-  const schemeCompanyNameById = new Map(
-    benefitSchemes.map((sc) => [sc.id, companyNameById.get(sc.companyId) ?? null] as const),
-  );
-  // a03eff24 — the matrix's ROW identity: the scheme's grade group and employment type. Same already-loaded
-  // benefitSchemes rows (listBenefitSchemes left-joins grade_group for the name) — no extra query.
-  const schemeAxesById = new Map(
-    benefitSchemes.map((sc) => [sc.id, { gradeGroupName: sc.gradeGroupName, employmentType: sc.employmentType }] as const),
-  );
-  // r88 1ef1cf95: the per-(scheme × type) pool lookup that used to be built here is gone. A shared group no
-  // longer belongs to a scheme, so there is nothing scheme-scoped to annotate an entitlement row WITH —
-  // group membership is a property of the leave type alone and is shown in the Shared Leave Groups manager.
-  const schemeEntsByType = new Map<string, LeaveTypeSchemeEntitlement[]>();
-  for (const e of schemeEntitlements) {
-    const row: LeaveTypeSchemeEntitlement = {
-      id: e.id,
-      benefitSchemeId: e.benefitSchemeId,
-      schemeName: schemeNameById.get(e.benefitSchemeId) ?? '—',
-      companyName: schemeCompanyNameById.get(e.benefitSchemeId) ?? null,
-      gradeGroupName: schemeAxesById.get(e.benefitSchemeId)?.gradeGroupName ?? null,
-      employmentType: schemeAxesById.get(e.benefitSchemeId)?.employmentType ?? 'full_time',
-      leaveTypeId: e.leaveTypeId,
-      leaveTypeName: e.leaveTypeName,
-      serviceBands: e.serviceBands,
-    };
-    const arr = schemeEntsByType.get(e.leaveTypeId);
-    if (arr) arr.push(row);
-    else schemeEntsByType.set(e.leaveTypeId, [row]);
-  }
-  for (const arr of schemeEntsByType.values()) arr.sort((a, b) => a.schemeName.localeCompare(b.schemeName));
-
-  // Move Benefit Schemes into the Entitlement step (feedback 6c775d68): the standalone page-bottom section
-  // is gone — BenefitSchemeConfig now renders inside EACH leave type's Entitlement step, scoped to that type
-  // (scopeLeaveTypeId). The props are prepared ONCE here from the rows this page already loads and shared by
-  // every panel (only the scope id varies) — no per-type reload, no N+1. All scheme data, combined limits
-  // and calculations are untouched: this changes where schemes are managed, not how they work.
-  const schemeConfigProps = {
-    companies: companyOptions,
-    grades: grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name, code: g.code })),
-    leaveTypes: activeTypeOptions.map((lt) => ({ id: lt.id, name: lt.name, code: typeCodeById.get(lt.id) ?? '' })),
+  // Grade Groups (kept): the rows plus the three writes, for the standalone card near the page bottom.
+  // Grades are the ACTIVE list — the same one the workbench passed — because the membership form posts
+  // only the boxes it renders, so offering an archived grade nowhere would silently drop it on save.
+  const gradeGroupProps = {
     gradeGroups: gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived })),
-    schemes: benefitSchemes.map((sc) => ({
-      id: sc.id,
-      companyId: sc.companyId,
-      employmentType: sc.employmentType,
-      gradeGroupId: sc.gradeGroupId,
-      gradeGroupName: sc.gradeGroupName,
-      name: sc.name,
-      status: sc.status,
-      // Feedback 0890a555: the grouping label. MUST be projected or the column renders "Ungrouped" for
-      // every scheme and the edit dialog opens empty on a scheme that has one.
-      schemeCategory: sc.schemeCategory,
-    })),
-    entitlements: schemeEntitlements.map((e) => ({
-      id: e.id,
-      benefitSchemeId: e.benefitSchemeId,
-      leaveTypeId: e.leaveTypeId,
-      leaveTypeName: e.leaveTypeName,
-      serviceBands: e.serviceBands,
-    })),
+    grades: gradeOptions,
     actions: {
       createGradeGroup: createGradeGroupAction,
       updateGradeGroup: updateGradeGroupAction,
       deleteGradeGroup: deleteGradeGroupAction,
-      createScheme: createBenefitSchemeAction,
-      updateScheme: updateBenefitSchemeAction,
-      deleteScheme: deleteBenefitSchemeAction,
-      upsertEntitlement: upsertSchemeEntitlementAction,
-      deleteEntitlement: deleteSchemeEntitlementAction,
-      copyEntitlements: copySchemeEntitlementsAction,
     },
   };
 
@@ -403,25 +290,24 @@ export default async function LeaveEntitlementsPage({
   // surviving assignment path and is unaffected. Grade GROUPS and Benefit Schemes stay exactly where they
   // are — only the grade list itself moved.
 
-  // ── Entitlement-step tool slots (7b945408) ───────────────────────────────────────────────────────
-  // Preview Scenario joins the Service Based Entitlements sub-step as its checking tool, and Run Accrual
-  // joins Adjustments (it processes earned entitlement — it belongs with entitlement adjustments). Both
-  // mount the SAME self-contained dialogs the PageHeader cluster used to host (d778d2d3) — one shared node
-  // each, fed by the page-level data prep above (no N+1 per type). 962077a8 removed the header buttons, so
-  // these sub-step slots are the tools' only mounts now.
-  const previewScenarioSection =
-    activeTypeOptions.length > 0 && companyOptions.length > 0 ? (
-      <div className="space-y-1.5 border-t border-border pt-3">
-        <span className="text-xs font-medium text-muted-foreground">{t('previewTitle')}</span>
-        <p className="text-xs text-muted-foreground">{t('entitlementStep.previewHint')}</p>
-        <LeaveRulePreviewDialog
-          leaveTypes={activeTypeOptions.map((o) => ({ id: o.id, name: o.name, code: typeCodeById.get(o.id) ?? '' }))}
-          companies={previewCompanies}
-          grades={gradeOptions}
-          policies={previewPolicies}
-        />
-      </div>
-    ) : null;
+  // ── Entitlement-step slots ───────────────────────────────────────────────────────────────────────
+  // 6e9a126e release three: `previewScenarioSection` is gone with LeaveRulePreviewDialog (see the data-prep
+  // note above). What the step mounts now is the pointer to Entitlement Tables plus Run Accrual — one
+  // shared node each, composed here on the server and handed to every panel as a slot (no N+1 per type).
+  //
+  // THE POINTER IS NOT DECORATION. Every configuration control the Entitlement step used to carry has moved
+  // to that screen, so a step with only Run Accrual in it would read as "entitlement is not configured
+  // here any more" without saying where it IS. The same two links sit in the PageHeader; repeating one
+  // inside the step is deliberate — the step is where someone looking for the setting will arrive.
+  const entitlementTablesLink = (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{t('entitlementTablesAction')}</span>
+      <p className="text-xs text-muted-foreground">{t('entitlementStep.tablesHint')}</p>
+      <Link href="/admin/leave/entitlements/templates" className="inline-block text-sm underline">
+        {t('entitlementStep.tablesOpen')}
+      </Link>
+    </div>
+  );
   const accrualSection = (
     <div className="space-y-1.5 border-t border-border pt-3">
       <span className="text-xs font-medium text-muted-foreground">{t('runEarnedAccrual')}</span>
@@ -571,7 +457,6 @@ export default async function LeaveEntitlementsPage({
                 roundingBands: (lt.roundingBands as RoundingBand[] | null) ?? null,
                 maxBalanceDays: lt.maxBalanceDays == null ? null : Number(lt.maxBalanceDays),
               }}
-              floor0={packEntitlement?.(lt.code, 0) ?? 0}
               eligibility={(lt.eligibility as LeaveEligibilityRule | null) ?? null}
               orgAssignmentOptions={orgAssignmentOptions}
               durations={(lt.durations as string[] | null) ?? null}
@@ -622,41 +507,19 @@ export default async function LeaveEntitlementsPage({
               balanceSourceOptions={types
                 .filter((x) => x.id !== lt.id && !x.archivedAt && x.balanceSourceTypeId == null)
                 .map((x) => ({ id: x.id, name: x.name }))}
-              policies={polByType.get(lt.id) ?? []}
-              grades={gradeOptions}
-              companies={companyOptions}
-              schemeEntitlements={schemeEntsByType.get(lt.id) ?? []}
-              benefitSchemeSection={
-                /* 6c775d68: the Benefit Schemes management area, scoped to this leave type, rendered inside
-                   the Entitlement step below the per-type table. Shared props (one page-level data prep) +
-                   the per-type scope id. b1b81a08: the workbench is now TWO panels — Grade Groups and
-                   Assignment. The Grade Master panel moved to Settings → System Labels. */
-                <div className="space-y-3 border-t border-border pt-3">
-                  <div>
-                    <span className="text-xs font-medium text-muted-foreground">{t('benefitSchemeTitle')}</span>
-                    <p className="text-xs text-muted-foreground">{t('benefitSchemeHelp')}</p>
-                  </div>
-                  <BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} />
-                </div>
-              }
+              /* 6e9a126e release three — the entitlement props this panel used to receive are gone with the
+                 surfaces they fed: `policies` (the leave_policy timeline), `schemeEntitlements` /
+                 `benefitSchemes` / `gradeGroups` (the scheme tables), `benefitSchemeSection` (the workbench
+                 slot), `previewScenarioSection`, `floor0`, the three policy write actions,
+                 `upsertSchemeEntitlementAction`, and `countInScopeAction` / `grades` / `companies`, which
+                 existed only for the add-policy form's Employee Selection chips. */
               halfDaySection={halfDaySection}
-              previewScenarioSection={previewScenarioSection}
               accrualSection={accrualSection}
+              entitlementTablesLink={entitlementTablesLink}
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}
-              createPolicyAction={createLeavePoliciesMultiAction}
-              updatePolicyAction={updateLeavePolicyAction}
               setTypeRulesAction={setLeaveTypeRulesAction}
-              deletePolicyAction={deleteLeavePolicyAction}
-              countInScopeAction={countEmployeesInScopeAction}
-              upsertSchemeEntitlementAction={upsertSchemeEntitlementAction}
-              /* 9816a5ad — Service Based Entitlements now lists BENEFIT SCHEMES per company instead of job
-                 grades. Both props are the arrays schemeConfigProps already prepared once at page level, so
-                 the sub-step costs no extra query and cannot show a different scheme list than the Benefit
-                 Schemes surface beside it. */
-              benefitSchemes={schemeConfigProps.schemes}
-              gradeGroups={schemeConfigProps.gradeGroups}
               />,
             ]),
           )}
@@ -758,9 +621,19 @@ export default async function LeaveEntitlementsPage({
         </p>
       </Card>
 
-      {/* ADR-0041 2E + Grade Management (728a7db6): the grade master no longer sits here at all. b1b81a08
-          relocated it out of Leave Config entirely, to Settings → System Labels → Organisation Labels;
-          grade GROUPS and benefit schemes stay in the Entitlement step's Benefit Schemes sub-step. */}
+      {/* ── Grade Groups (6e9a126e release three) ────────────────────────────────────────────────────
+          ADR-0041 2E + Grade Management (728a7db6): the grade MASTER does not sit here at all — b1b81a08
+          relocated it to Settings → System Labels → Organisation Labels. Grade GROUPS did stay, but inside
+          the Benefit Schemes workbench, and that workbench is deleted with the scheme layer. They are
+          lifted out to their own card rather than deleted WITH it, because they were never a scheme
+          concept: 205 live approval rules scope by grade group, and the release-three migration keeps
+          `grade_group` / `grade_group_member` for exactly that reason. Page-bottom and standalone is the
+          honest placement — a grade group no longer selects an entitlement, so it does not belong inside
+          any leave type's Entitlement step. */}
+      <Card>
+        <SectionHeader title={tGroups('groupsTitle')} count={gradeGroupProps.gradeGroups.length} />
+        <GradeGroupConfig {...gradeGroupProps} />
+      </Card>
     </div>
   );
 }

@@ -40,8 +40,17 @@
   .note{font-size:11.5px;color:var(--mf);margin-top:9px}
 </style>
 
+<div class="card" style="padding-bottom:6px;margin-bottom:14px">
+  <div style="display:flex;gap:6px">
+    <div style="padding:7px 15px;border-radius:9px 9px 0 0;background:var(--muted);color:var(--mf);font-weight:600;font-size:12.5px">Claim types</div>
+    <div style="padding:7px 15px;border-radius:9px 9px 0 0;background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary);font-weight:700;font-size:12.5px;box-shadow:inset 0 -3px 0 var(--primary)">Claim limits</div>
+    <div style="padding:7px 15px;border-radius:9px 9px 0 0;background:var(--muted);color:var(--mf);font-weight:600;font-size:12.5px">Mileage rates</div>
+    <div style="padding:7px 15px;border-radius:9px 9px 0 0;background:var(--muted);color:var(--mf);font-weight:600;font-size:12.5px">Claim cycles</div>
+  </div>
+</div>
+
 <div class="card">
-  <h2><span class="num">1</span>Claim limits — by job grade, then drill in <span class="chip have">data already exists</span></h2>
+  <h2><span class="num">1</span>Claim limits — its own tab, by job grade <span class="chip new">now a separate tab</span></h2>
   <p class="q">“The claim limit I want to list down by each job grade, then when I click into the particular job grade, all the claim list by row and follow by claim limit.”</p>
   <div class="split">
     <div>
@@ -87,8 +96,13 @@
 </div>
 
 <div class="card">
-  <h2><span class="num">3</span>Mileage rate table <span class="chip have">one flat rate today</span></h2>
-  <p class="q">“Where is the mileage claim rate table?”</p>
+  <h2><span class="num">3</span>Mileage rates — one table per job grade <span class="chip new">answers your second question</span></h2>
+  <p class="q">“Mileage table is good, but how if different job grade have different mileage claim rate table?”</p>
+  <div style="display:flex;gap:7px;align-items:center;margin-bottom:9px;font-size:12.5px">
+    <span style="color:var(--mf)">Rate table for</span>
+    <span style="border:1px solid var(--primary);border-radius:8px;padding:4px 11px;font-weight:600;box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 10%,transparent)">M2 — Senior Manager ▾</span>
+    <span style="color:var(--mf);font-size:11.5px">· grades with no table of their own use the company-wide one</span>
+  </div>
   <table>
     <thead><tr><th>From</th><th>To</th><th>Vehicle</th><th class="r">Rate / km</th><th>Effective from</th></tr></thead>
     <tbody>
@@ -98,5 +112,7 @@
       <tr><td>0 km</td><td>no limit</td><td>Motorcycle</td><td class="r">0.30</td><td>01 Jan 2026</td></tr>
     </tbody>
   </table>
-  <p class="note">Today there is ONE flat rate per claim type, with no bands and no vehicle. This replaces it with a table, dated so a rate change does not rewrite last year’s claims.</p>
+  <p class="note">Today there is ONE flat rate per claim type — no bands, no vehicle, no grade. This replaces it with a
+    table per job grade, dated so a rate change does not rewrite last year’s claims. Same shape as the claim limits above,
+    and the same rule: set one where you need it, and everyone else falls back to the company-wide table.</p>
 </div>

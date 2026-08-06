@@ -1,0 +1,55 @@
+<meta charset="utf-8"><title>defd4644 — Company list and detail</title>
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+ h2{font-size:14px;margin:0 0 4px}.sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .bar{display:flex;gap:9px;align-items:center;margin-bottom:11px}
+ input,select{padding:6px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;font-size:12px;background:#fff}
+ .btn{background:var(--primary);color:#fff;border-radius:8px;padding:7px 13px;font-size:12px;font-weight:600;margin-left:auto}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;padding:6px 9px;background:var(--muted)}
+ td{padding:7px 9px;border-top:1px solid var(--border)}
+ .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+ .a{background:#d1fae5;color:#065f46}.i{background:var(--muted);color:var(--mf)}
+ .act{color:var(--primary);font-weight:600}
+ .warn{background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:13px;font-size:12.5px}
+ .tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+ .tabs span{padding:6px 12px;border-radius:8px;background:var(--muted);color:var(--mf);font-size:12px;font-weight:600}
+ .tabs span.on{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+ .crumb{font-size:12px;color:var(--mf);margin-bottom:8px}
+</style>
+<div class="card">
+ <h2>Organization → Companies <span style="font-size:11px;color:var(--mf);font-weight:400">— the landing page</span></h2>
+ <p class="sub">A list you can search, filter and page. The form is no longer sitting on this screen.</p>
+ <div class="bar">
+  <input value="" placeholder="Search code or name" style="width:230px">
+  <select><option>All statuses</option></select>
+  <span class="btn">+ Add New Company</span>
+ </div>
+ <table>
+  <thead><tr><th>Code</th><th>Company name</th><th>Registration no.</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+   <tr><td>COMP001</td><td>ABC Manufacturing Sdn. Bhd.</td><td>123456-X</td><td><span class="pill a">Active</span></td><td class="act">View / Edit</td></tr>
+   <tr><td>COMP002</td><td>XYZ Trading Sdn. Bhd.</td><td>654321-A</td><td><span class="pill a">Active</span></td><td class="act">View / Edit</td></tr>
+   <tr><td>COMP003</td><td>Fiamma Holdings</td><td>789456-B</td><td><span class="pill i">Inactive</span></td><td class="act">View / Edit</td></tr>
+  </tbody>
+ </table>
+</div>
+<div class="card">
+ <h2>The maintenance screen, on its own page</h2>
+ <p class="crumb">Companies › <b>ABC Manufacturing Sdn. Bhd.</b></p>
+ <div class="tabs"><span class="on">Details</span><span>Statutory</span><span>Payroll</span><span>Structure</span></div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  <div><div style="font-size:11px;color:var(--mf);margin-bottom:4px">Company code</div><input value="COMP001" style="width:100%"></div>
+  <div><div style="font-size:11px;color:var(--mf);margin-bottom:4px">Registration no.</div><input value="123456-X" style="width:100%"></div>
+  <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--mf);margin-bottom:4px">Company name</div><input value="ABC Manufacturing Sdn. Bhd." style="width:100%"></div>
+ </div>
+</div>
+<div class="card warn">
+ <b>One thing this screen does that a plain list would lose.</b> Your companies are not a flat list — they form a
+ group structure, with parent companies above subsidiaries, and that tree is what several other screens read to decide
+ who can see whom. The listing will show the code, name, registration number and status you asked for, and keep a way
+ to see and edit the parent relationship. Flattening it into rows alone would quietly break the group hierarchy.
+</div>

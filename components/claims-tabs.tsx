@@ -12,11 +12,16 @@ import Link from 'next/link';
  * holiday, statutory and system-labels strips (and company-panel's tab trigger) all point here instead.
  * If this one is ever retired the same way, move the pointer again rather than leaving them dangling.
  */
-export async function ClaimsTabs({ active }: { active: 'types' | 'limits' | 'reimbursements' }) {
+export async function ClaimsTabs({ active }: { active: 'types' | 'limits' | 'mileage' | 'forms' | 'reimbursements' }) {
   const t = await getTranslations('admin.claimsTabs');
+  // e7eb5d83 — "I want claim type, claim limit in different tab". Mileage rates and the form designer join
+  // as their own sub-routes rather than as panels stacked on the limits page, because everything-on-one-page
+  // was the original complaint. Reimbursements stays where it is: it is a live route with bookmarks.
   const tabs = [
     { key: 'types', href: '/admin/claims', label: t('types') },
     { key: 'limits', href: '/admin/claims/limits', label: t('limits') },
+    { key: 'mileage', href: '/admin/claims/mileage', label: t('mileage') },
+    { key: 'forms', href: '/admin/claims/forms', label: t('forms') },
     { key: 'reimbursements', href: '/admin/claims/reimbursements', label: t('reimbursements') },
   ] as const;
   return (

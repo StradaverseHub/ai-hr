@@ -6,6 +6,16 @@
  *
  * b1b81a08 widened the in-use guard from two referencing tables (employment, leave_policy) to five, adding
  * leave_approval_policy, claim_policy and grade_group_member — asserted here alongside the original two.
+ *
+ * 6e9a126e RELEASE THREE — REPOINTED, not reduced. `leave_policy` is dropped (0405), so the referrer that
+ * used to hold a grade is now `entitlement_eligibility_rule.criteria->gradeIds`. Everything else in this
+ * file is grade-master CRUD and GRADE GROUPS, both of which survive the entitlement cut untouched.
+ *
+ * ⚠️ The repointed case is the one that matters most in this file now, and for a NEW reason. The other five
+ * referrers are real foreign keys: forget one and Postgres still refuses the delete with a raw 23503. An
+ * eligibility rule names the grade inside JSONB with NO foreign key, so nothing under this guard stops the
+ * delete — it succeeds, and the rule goes on selecting a grade id that resolves to nobody. This test IS the
+ * constraint.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -15,14 +25,22 @@ import {
   updateJobGrade,
   deleteJobGrade,
   archiveJobGrade,
-  createLeavePolicy,
   DuplicateError,
 } from '../core/admin';
 import { createGradeGroup } from '../core/benefit-scheme';
 import { createLeaveApprovalRule } from '../core/leave-approval-policy';
 import { createClaimType, setClaimPolicy } from '../core/claims';
 import { listJobGrades } from '../core/read';
-import { adminCtx, closeAll, eventTypesFor, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  eventTypesFor,
+  migrateTestDb,
+  resetDb,
+  seedBase,
+  seedEntitlement,
+  type Base,
+} from './harness';
 
 let b: Base;
 const ctx = () => adminCtx(b);
@@ -80,18 +98,41 @@ describe('Grade Management (728a7db6) — grade-master CRUD', () => {
     expect(await eventTypesFor(b.tenantId, g.id)).toContain('job-grade.updated');
   });
 
-  it('blocks deletion of a grade referenced by a leave policy', async () => {
+  // 6e9a126e RELEASE THREE — was "blocks deletion of a grade referenced by a leave policy". The grade-scoped
+  // leave_policy row is gone; the same targeting is now an eligibility rule whose criteria name the grade.
+  // Every assertion is carried over and one is ADDED (inUse), because this referrer has no foreign key
+  // behind it: if the predicate stops naming entitlement_eligibility_rule, nothing else refuses the delete.
+  it('blocks deletion of a grade referenced ONLY by an entitlement eligibility rule, and reports inUse', async () => {
     const g = await createJobGrade(ctx(), { code: 'PH', name: 'Permanent - Grade H' });
-    await createLeavePolicy(ctx(), {
+    await seedEntitlement(ctx(), {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 18,
       gradeId: g.id,
       validFrom: '2026-01-01',
     });
+    const row = (await listJobGrades(ctx(), { includeArchived: true })).find((r) => r.id === g.id)!;
+    expect(row.inUse).toBe(true);
     await expect(deleteJobGrade(ctx(), { id: g.id })).rejects.toThrow();
     // Still present after the blocked delete.
     const rows = await listJobGrades(ctx(), { includeArchived: true });
     expect(rows.some((r) => r.id === g.id)).toBe(true);
+  });
+
+  // The other half of the same guard: a rule that names a DIFFERENT grade must not pin this one, or the
+  // predicate would degenerate into "any eligibility rule exists" and Delete would never enable again.
+  it('an eligibility rule naming a DIFFERENT grade does not pin this one', async () => {
+    const used = await createJobGrade(ctx(), { code: 'PH', name: 'Permanent - Grade H' });
+    const free = await createJobGrade(ctx(), { code: 'TMP', name: 'Temporary Band' });
+    await seedEntitlement(ctx(), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 18,
+      gradeId: used.id,
+      validFrom: '2026-01-01',
+    });
+    const row = (await listJobGrades(ctx(), { includeArchived: true })).find((r) => r.id === free.id)!;
+    expect(row.inUse).toBe(false);
+    await deleteJobGrade(ctx(), { id: free.id });
+    expect((await listJobGrades(ctx(), { includeArchived: true })).some((r) => r.id === free.id)).toBe(false);
   });
 
   it('blocks deletion of a grade assigned to an employee', async () => {

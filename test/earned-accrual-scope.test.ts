@@ -8,6 +8,14 @@
  *   • the scope filters (company / grade / leave-type) narrow the target population correctly.
  *   • a scoped re-run is idempotent (grants 0 the second time) and the commit event carries the scope.
  * Plus the pure Leave-Year → asOf mapping (asOfForLeaveYear).
+ *
+ * 6e9a126e RELEASE THREE — REPOINTED. The scope filters, the grouped breakdown and the dry-run/commit
+ * equality are all engine behaviour that survived intact; only the fixture that configures "12 days,
+ * earned monthly" moved. Days now come from an entitlement template band and the earning method from the
+ * leave TYPE, so `earnedPolicy()` writes both halves. NOTE the grade-scope test still hires one graded and
+ * one ungraded employee against ONE grade-less template: the scope filter being exercised is
+ * accrueEarnedLeave's `gradeIds` argument, which narrows the POPULATION and has nothing to do with how
+ * entitlement resolves — that separation is exactly why this test did not need re-thinking.
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -15,7 +23,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { accrueEarnedLeave, asOfForLeaveYear } from '../core/leave';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 let b: Base;
 
@@ -71,10 +79,13 @@ const mkType = async (code: string, name: string) => {
     .returning({ id: schema.leaveType.id });
   return lt.id;
 };
-const earnedPolicy = (leaveTypeId: string, days = 12) =>
-  owner.db
-    .insert(schema.leavePolicy)
-    .values({ tenantId: b.tenantId, leaveTypeId, accrual: { annualDays: days, method: 'earned_monthly' }, validFrom: '2026-01-01' });
+const earnedPolicy = async (leaveTypeId: string, days = 12) => {
+  await seedEntitlement(adminCtx(b), { leaveTypeId, annualDays: days, validFrom: '2026-01-01' });
+  await owner.db
+    .update(schema.leaveType)
+    .set({ accrualMethod: 'earned_monthly' })
+    .where(eq(schema.leaveType.id, leaveTypeId));
+};
 
 const hire = (companyId: string, departmentId: string, gradeId: string | null) =>
   hireEmployee(adminCtx(b), {

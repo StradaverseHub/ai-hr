@@ -28,16 +28,20 @@
  *      re-running is idempotent.
  *  (5) YEAR TWO — from the next 1 Jan a2c is an ordinary calendar type: openLeaveYear grants the full 20
  *      and the a2c correction does nothing.
- *  (6) EA-FLOOR / SCHEME — the day slice is taken off the FULLY resolved entitlement (statutory floor ∨
- *      benefit-scheme band ∨ policy days), never the raw policy number.
+ *  (6) THE SLICE IS TAKEN OFF THE FULLY RESOLVED ENTITLEMENT, never a raw configured number.
  *  (7) PERSISTENCE — a2c survives the REAL database CHECK (migration 0310), not only the app-layer store.
+ *
+ * ⚠️ 6e9a126e RELEASE THREE — the configuration this file writes moved, the a2c arithmetic did not. Every
+ * `createLeavePolicy(N days)` is now an entitlement template plus an eligibility rule, and the projection
+ * kernel takes the employee's winning template BAND (a function of service years) where it used to take an
+ * array of `leave_policy` rows and a benefit-scheme hook. 19.73 is still 19.73.
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { createLeavePolicy, updateLeaveType } from '../core/admin';
+import { updateLeaveType } from '../core/admin';
 import {
   a2cFirstYearEntitledToDate,
   isA2cFirstYear,
@@ -46,10 +50,20 @@ import {
   reprojectEntitlementForEmployment,
   A2C_RECALC_REASON_PREFIX,
   POLICY_RECALC_REASON_PREFIX,
-  type GradePolicyRow,
 } from '../core/leave';
+import type { ServiceBand } from '../core/leave-compute';
 import { leaveBalances, leaveEntitlementBreakdown } from '../core/read';
-import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  ledgerBalance,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  seedEntitlement,
+  type Base,
+} from './harness';
 
 let b: Base;
 const uniqEmail = () => `a2c_${randomUUID().slice(0, 8)}@t.local`;
@@ -73,7 +87,7 @@ const setOverride = (v: string | null, asOf?: string) =>
   updateLeaveType(adminCtx(b), { id: b.annualLeaveTypeId, name: 'Annual Leave', yearCycleOverride: v, asOf });
 
 const annualPolicy = (annualDays: number) =>
-  createLeavePolicy(adminCtx(b), {
+  seedEntitlement(adminCtx(b), {
     leaveTypeId: b.annualLeaveTypeId,
     annualDays,
     validFrom: '2026-01-01',
@@ -227,11 +241,12 @@ describe('f3a64d90 — a2cFirstYearEntitledToDate', () => {
   it('clamps the up-front figure to the winning band’s Maximum Balance from hire (cap 10 < 19.73)', () => {
     // adcdf215: projectExpectedEntitlement applies the max-balance cap on the up-front figure, so the cap
     // bites IMMEDIATELY at hire rather than partway through the year as the old build-up did.
-    const capped: GradePolicyRow[] = [
-      { gradeId: null, companyId: null, accrual: { annualDays: 20, serviceBands: [{ fromYears: 0, toYears: null, days: 20, maxBalanceDays: 10 }] } },
-    ];
+    // 6e9a126e release three: the winning band arrives as `templateBandForYears` rather than inside a
+    // GradePolicyRow's accrual JSONB. It is still the BAND's own maxBalanceDays that is read — with no
+    // leave-type rules configured `applyLeaveTypeRules` leaves the band's carrier untouched.
+    const capped = (): ServiceBand => ({ fromYears: 0, toYears: null, days: 20, maxBalanceDays: 10 });
     const emp = { hiredOn: HIRED, leaveCycle: 'calendar' as string | null, gradeId: null, companyId: 'c1' };
-    const res = projectExpectedEntitlement(emp, 'ANNUAL', capped, () => 0, ASOF, undefined, 'a2c');
+    const res = projectExpectedEntitlement(emp, 'ANNUAL', () => 0, ASOF, 'a2c', undefined, capped);
     expect(res!.expected).toBe(10); // min(19.73, cap 10)
   });
 
@@ -254,12 +269,11 @@ describe('f3a64d90 — non-ANNUAL types are never day-sliced', () => {
       .insert(schema.leaveType)
       .values({ tenantId: b.tenantId, code: 'SICK', name: 'Sick Leave', paid: true, yearCycleOverride: 'a2c' })
       .returning({ id: schema.leaveType.id });
-    await owner.db.insert(schema.leavePolicy).values({
-      tenantId: b.tenantId,
+    // 6e9a126e release three: was a raw `leave_policy` INSERT with no grade/company (i.e. everyone). An
+    // eligibility rule with EMPTY criteria is the same statement in the template layer.
+    await seedEntitlement(adminCtx(b), {
       leaveTypeId: sick.id,
-      gradeId: null,
-      companyId: null,
-      accrual: { annualDays: 14 },
+      annualDays: 14,
       validFrom: '2020-01-01',
     });
     const { employmentId } = await hire({
@@ -341,32 +355,38 @@ describe('f3a64d90 — year two onward is a plain calendar year', () => {
   });
 });
 
-// ── (6) EA-FLOOR / SCHEME feed the slice ───────────────────────────────────────────────────────────
+// ── (6) THE RESOLVED ENTITLEMENT FEEDS THE SLICE ───────────────────────────────────────────────────
 describe('f3a64d90 — the slice is taken off the fully resolved entitlement', () => {
   const emp = { hiredOn: HIRED, leaveCycle: 'calendar' as string | null, gradeId: null, companyId: 'c1' };
-  const policyRows = (days: number): GradePolicyRow[] => [
-    { gradeId: null, companyId: null, accrual: { annualDays: days } },
-  ];
+  /** The winning entitlement-template band for this employee, as the kernel now receives it. */
+  const bandOf = (days: number) => (): ServiceBand => ({ fromYears: 0, toYears: null, days });
 
   // fa3f4ccb: was "a below-floor policy still slices the STATUTORY floor". The floor no longer clamps, so
   // the slice is taken off the CONFIGURED days. The invariant this test protects is unchanged — the slice
   // is taken off the FULLY RESOLVED entitlement, whatever resolution now returns.
-  it('fa3f4ccb: a below-minimum policy slices its own days, not the statutory floor', () => {
-    const res = projectExpectedEntitlement(emp, 'ANNUAL', policyRows(5), () => 8, ASOF, undefined, 'a2c');
+  it('fa3f4ccb: a below-minimum entitlement slices its own days, not the statutory floor', () => {
+    const res = projectExpectedEntitlement(emp, 'ANNUAL', () => 8, ASOF, 'a2c', undefined, bandOf(5));
     expect(res!.expected).toBe(a2cFirstYearEntitledToDate(HIRED, ASOF, 5));
     expect(res!.expected).toBe(4.93); // 5/365 × 360
     expect(res!.windowStart).toBe('2026-01-01');
   });
 
-  it('an auto-linked benefit-scheme band supersedes the policy days in the slice', () => {
-    // Scheme band 24 beats the policy's 20 and the floor's 8 ⇒ up-front 24/365 × 360 = 23.67.
-    const res = projectExpectedEntitlement(emp, 'ANNUAL', policyRows(20), () => 8, ASOF, () => 24, 'a2c');
+  // 6e9a126e RELEASE THREE — RETIRED: 'an auto-linked benefit-scheme band supersedes the policy days in the
+  // slice'. It asserted a PRECEDENCE between two layers that no longer exist (scheme 24 beating policy 20
+  // beating floor 8, giving 23.67). There is one entitlement layer now, so there is no precedence left to
+  // assert here — and the invariant the block exists for, that the slice is taken off whatever resolution
+  // returns rather than off a raw number, is still proved by the case above and the one below. Where a
+  // template band DOES have to beat another, the winner is decided by orgCriteriaSpecificity and is tested
+  // against the resolver, not against this kernel.
+  it('a resolved band above the minimum slices ITS days — the slice follows resolution, not the floor', () => {
+    // The other direction of the same invariant: 24 resolved ⇒ 24/365 × 360 = 23.67, the floor of 8 inert.
+    const res = projectExpectedEntitlement(emp, 'ANNUAL', () => 8, ASOF, 'a2c', undefined, bandOf(24));
     expect(res!.expected).toBe(a2cFirstYearEntitledToDate(HIRED, ASOF, 24));
     expect(res!.expected).toBe(23.67);
   });
 
   it('without the a2c override the same inputs keep the existing hire-month proration', () => {
-    const res = projectExpectedEntitlement(emp, 'ANNUAL', policyRows(20), () => 8, ASOF, undefined, null);
+    const res = projectExpectedEntitlement(emp, 'ANNUAL', () => 8, ASOF, null, undefined, bandOf(20));
     expect(res!.expected).toBe(20); // January joiner ⇒ 20 × 12/12 (unchanged behaviour)
   });
 });

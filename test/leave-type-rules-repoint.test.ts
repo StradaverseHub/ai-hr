@@ -14,18 +14,25 @@
  * move is also what you get when nothing is wired up at all. Every expectation below is a number of days
  * in a ledger, never "the call succeeded".
  *
- * The three groups:
+ * The groups:
  *   1. THE OVERLAY, pure — `applyLeaveTypeRules` field by field, including the two things it deliberately
  *      does NOT do (fabricate a policy out of nothing; read per-band carry-forward).
  *   2. THE ENGINES — one rule changed on the type, one produced day value asserted, against a baseline
- *      run of the identical policy with the type's columns left NULL.
- *   3. MIGRATION 0334 — the guard that refuses the release when repointing WOULD move a balance. Its
- *      failures are matched through the `.cause` chain on the real Postgres message, never `toThrow()`.
+ *      run of the identical ENTITLEMENT TABLE with the type's columns left NULL.
+ *
+ * ── 6e9a126e RELEASE THREE ───────────────────────────────────────────────────────────────────────────
+ * Group 1 is untouched: it is pure, and `applyLeaveTypeRules` is the surviving overlay.
+ *
+ * Group 2 is REPOINTED, not rewritten. The DAYS half moved from a `leave_policy` row to an entitlement
+ * template + eligibility rule (`seedEntitlement`), and EVERY DAY VALUE BELOW IS THE SAME NUMBER IT WAS:
+ * 12/17/17 baseline, 0/0/7 earned, 14 on a type cap of 2, 12 with carry disabled, 13 rounded up, 10
+ * clamped, 21 → 17 when the type takes the band's carry cap away. The baseline world is now "the type
+ * states nothing, so the BAND's own figures resolve through policyFromTemplateBand" — which produces the
+ * identical carrier the old flat policy row did, which is why the numbers did not have to move.
+ *
+ * Group 3 is RETIRED — see the note where it stood.
  */
-import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -37,6 +44,7 @@ import {
   openLeaveYear,
   type LeaveTypeRules,
   type ResolvedPolicy,
+  type ServiceBand,
 } from '../core/leave';
 import {
   adminCtx,
@@ -46,70 +54,27 @@ import {
   owner,
   resetDb,
   seedBase,
+  seedEntitlement,
   type Base,
 } from './harness';
-
-const here = dirname(fileURLToPath(import.meta.url));
-const root = resolve(here, '..');
-const MIGRATION_0325 = resolve(root, 'db/migrations/0325_leave_type_rule_columns.sql');
-const MIGRATION_0334 = resolve(root, 'db/migrations/0334_leave_type_rules_repoint_guard.sql');
 
 let b: Base;
 
 // ── harness ────────────────────────────────────────────────────────────────────────────────────────
 
-/** Re-execute a migration from the ACTUAL file, inside ONE transaction — the way drizzle-kit applies it,
- *  so a raised assertion rolls the whole thing back exactly as it would on deploy. */
-async function runMigration(path: string, ...mustContain: string[]): Promise<void> {
-  const text = readFileSync(path, 'utf8');
-  // Guard against the file being renamed or gutted into something that no longer asserts — either would
-  // make every expectation below vacuously green.
-  for (const needle of mustContain) expect(text).toContain(needle);
-  const stmts = text
-    .split('--> statement-breakpoint')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  await owner.db.transaction(async (tx) => {
-    for (const s of stmts) await tx.execute(sql.raw(s));
-  });
-}
-
-const runMigration0325 = () =>
-  runMigration(MIGRATION_0325, '_r0325_leave_type_rule_source', 'UPDATE "leave_type" lt');
-const runMigration0334 = () =>
-  runMigration(MIGRATION_0334, '[0334_leave_type_rules_repoint_guard] refusing to repoint');
-
-/** Every message in a thrown error's `.cause` chain. Drizzle wraps the real Postgres error as
- *  "Failed query: …", so a bare `rejects.toThrow()` would pass just as happily on a typo or a missing
- *  table as on the assertion this file is actually testing. */
-function causeMessages(err: unknown): string {
-  const out: string[] = [];
-  let e: unknown = err;
-  for (let i = 0; i < 10 && e != null; i++) {
-    const o = e as { message?: unknown; cause?: unknown };
-    if (typeof o.message === 'string') out.push(o.message);
-    e = o.cause;
-  }
-  return out.join(' | ');
-}
-
-/** Run 0334 and return the cause-chain message of the failure it is expected to raise. */
-async function guardFailure(): Promise<string> {
-  try {
-    await runMigration0334();
-  } catch (err) {
-    return causeMessages(err);
-  }
-  throw new Error('migration 0334 was expected to refuse, but it succeeded');
-}
-
-/** Insert a leave_policy row with an EXACT accrual JSONB, bypassing core/admin's write-time validation —
- *  the rows these engines meet in the wild include seeds and hand-written ones. */
-async function policy(accrual: Record<string, unknown>, validFrom = '2020-01-01') {
-  await owner.db.insert(schema.leavePolicy).values({
-    tenantId: b.tenantId,
+/**
+ * The DAYS half: an entitlement table assigned to everybody, in the shape `seedEntitlement` writes.
+ *
+ * Takes a BAND rather than the old flat `{ annualDays, method, carryForwardMax }` JSONB, because that is
+ * what a template stores — and because the two per-band keys these tests care about (`days` and
+ * `carryForwardDays`) are exactly the two the old JSONB carried at policy level. The `method` key is gone
+ * from the fixture entirely: an earning method is a leave-TYPE rule and is set with `setTypeRules`, which
+ * is the whole subject of this file.
+ */
+async function entitlementTable(band: ServiceBand, validFrom = '2020-01-01') {
+  await seedEntitlement(adminCtx(b), {
     leaveTypeId: b.annualLeaveTypeId,
-    accrual,
+    serviceBands: [band],
     validFrom,
   });
 }
@@ -148,15 +113,24 @@ async function figures(): Promise<{ afterHire: number; afterYearOpen: number; af
   return { afterHire, afterYearOpen, afterAccrual };
 }
 
-/** The same policy run twice: once with the type's rule columns NULL (the pre-consolidation baseline) and
- *  once with `rules` set on the type. Returns both, so every test can state the BEFORE and the AFTER. */
-async function baselineAndRepointed(accrual: Record<string, unknown>, rules: Record<string, unknown>) {
-  await policy(accrual);
+/**
+ * The same entitlement table run twice: once with the type's rule columns NULL (the baseline) and once
+ * with `rules` set on the type. Returns both, so every test can state the BEFORE and the AFTER.
+ *
+ * WHAT THE BASELINE IS NOW. It used to be "the policy row's own JSONB rules drive everything". There is no
+ * policy row, so it is "the type states nothing, so the BAND's figures resolve through
+ * `policyFromTemplateBand` and every other rule takes its documented default". That produces the identical
+ * carrier the old flat policy row produced — days from the band, carry cap from the band's
+ * `carryForwardDays` (⇒ 0 when absent, exactly as an absent `carryForwardMax` did), no method ⇒ the lump
+ * engines — which is why not one expected figure in this block had to move.
+ */
+async function baselineAndRepointed(band: ServiceBand, rules: Record<string, unknown>) {
+  await entitlementTable(band);
   const baseline = await figures();
 
   await resetDb();
   b = await seedBase();
-  await policy(accrual);
+  await entitlementTable(band);
   await setTypeRules(rules);
   const repointed = await figures();
   return { baseline, repointed };
@@ -309,14 +283,17 @@ describe('applyLeaveTypeRules — the pure overlay', () => {
 // ── 2. the engines, one rule at a time ─────────────────────────────────────────────────────────────
 
 describe('the engines resolve each rule from the type — asserted on produced day values', () => {
-  const LUMP = { annualDays: 12, method: 'grant_on_hire_prorated', carryForwardMax: 5 };
+  // The old flat policy `{ annualDays: 12, method: 'grant_on_hire_prorated', carryForwardMax: 5 }`, said as
+  // a band: 12 days, carry 5. The method is not here because it is a TYPE rule now, and an absent one is
+  // the lump engines — the same behaviour `grant_on_hire_prorated` named explicitly.
+  const LUMP: ServiceBand = { fromYears: 0, toYears: null, days: 12, carryForwardDays: 5 };
 
-  it('baseline: with the type silent, the policy still drives every figure', async () => {
-    await policy(LUMP);
-    // hire       — floor 8 at 0 years, policy 12 ⇒ 12, January joiner so no pro-ration loss.
-    // year-open  — 2 completed years ⇒ floor 12, policy 12 ⇒ 12 granted; the 12 already held is carried
-    //              at the policy cap of 5 and the remaining 7 forfeited ⇒ 5 + 12 = 17.
-    // accrual    — the policy is a lump method, so accrueEarnedLeave does not own this type.
+  it('baseline: with the type silent, the entitlement table still drives every figure', async () => {
+    await entitlementTable(LUMP);
+    // hire       — floor 8 at 0 years, band 12 ⇒ 12, January joiner so no pro-ration loss.
+    // year-open  — 2 completed years ⇒ floor 12, band 12 ⇒ 12 granted; the 12 already held is carried
+    //              at the band's cap of 5 and the remaining 7 forfeited ⇒ 5 + 12 = 17.
+    // accrual    — no earning method anywhere, so accrueEarnedLeave does not own this type.
     expect(await figures()).toEqual({ afterHire: 12, afterYearOpen: 17, afterAccrual: 17 });
   });
 
@@ -333,7 +310,7 @@ describe('the engines resolve each rule from the type — asserted on produced d
       accrualMethod: 'grant_on_hire_prorated',
       carryForwardMax: '2',
     });
-    expect(baseline.afterYearOpen).toBe(17); // policy cap 5: carried 5 + granted 12
+    expect(baseline.afterYearOpen).toBe(17); // band cap 5: carried 5 + granted 12
     expect(repointed.afterYearOpen).toBe(14); // type cap 2: carried 2 + granted 12
     expect(repointed.afterHire).toBe(12); // the cap is a year-open rule; the hire grant is untouched
   });
@@ -351,172 +328,58 @@ describe('the engines resolve each rule from the type — asserted on produced d
 
   it('ROUNDING from the type tidies the calculated entitlement', async () => {
     const { baseline, repointed } = await baselineAndRepointed(
-      { annualDays: 12.4, method: 'grant_on_hire_prorated', carryForwardMax: 5 },
+      { fromYears: 0, toYears: null, days: 12.4, carryForwardDays: 5 },
       { accrualMethod: 'grant_on_hire_prorated', roundingMethod: 'up' },
     );
-    expect(baseline.afterHire).toBe(12.4); // policy states no rounding ⇒ the raw figure
+    expect(baseline.afterHire).toBe(12.4); // nothing states a rounding rule ⇒ the raw figure
     expect(repointed.afterHire).toBe(13); // 12.4 lifted to the next whole day
   });
 
-  it('MAXIMUM BALANCE from the type caps a policy that has no service bands at all', async () => {
-    // The sharpest case for the relocation. `maxBalanceDays` exists TODAY only inside a service band, so a
-    // flat policy has no cap and nothing clamps it. Moved to the type it applies to everyone — which is
-    // precisely why migration 0334 refuses to ship this shape without a human deciding. Here the columns
-    // are set DIRECTLY (not via the backfill), because this asserts what the ENGINE does with a cap, not
-    // what the guard permits.
+  it('MAXIMUM BALANCE from the type caps a band that states none of its own', async () => {
+    // The sharpest case for the relocation. `maxBalanceDays` is a PER-BAND figure, so a band that states
+    // none has no cap and nothing clamps it. Moved to the type it applies to everyone — including every
+    // band that never asked for one. (This is the shape migration 0334 refused to ship without a human
+    // deciding; the guard itself is retired below with the table it read.)
     const { baseline, repointed } = await baselineAndRepointed(LUMP, {
       accrualMethod: 'grant_on_hire_prorated',
       maxBalanceDays: '10',
     });
-    expect(baseline.afterHire).toBe(12); // no bands ⇒ no cap
+    expect(baseline.afterHire).toBe(12); // the band states no cap ⇒ nothing clamps
     expect(repointed.afterHire).toBe(10); // the type's cap clamps the opening grant
   });
 
   it('PER-BAND carryForwardDays stops being read once the type carries rules (the step-2 decision)', async () => {
-    const banded = {
-      annualDays: 12,
-      method: 'grant_on_hire_prorated',
-      carryForwardMax: 5,
-      // The per-range override from feedback 9d8cf621: 9 days, beating the policy-level cap of 5.
-      serviceBands: [{ fromYears: 0, toYears: null, days: 12, carryForwardDays: 9 }],
-    };
+    // THE PRECEDENCE TEST, and the one that matters most after the drop: it is now the ONLY thing standing
+    // between a band's per-range carry figure and the type's, and both figures are unchanged.
+    const banded: ServiceBand = { fromYears: 0, toYears: null, days: 12, carryForwardDays: 9 };
     const { baseline, repointed } = await baselineAndRepointed(banded, {
       accrualMethod: 'grant_on_hire_prorated',
       carryForwardMax: '5',
     });
-    // Before: the BAND's 9 overrides the policy's 5 ⇒ carried 9 + granted 12.
+    // Before: with the type silent, the BAND's own 9 is the cap ⇒ carried 9 + granted 12.
     expect(baseline.afterYearOpen).toBe(21);
-    // After: the band's carry override is not consulted; the type's cap of 5 governs ⇒ 5 + 12.
+    // After: the band's carry figure is not consulted at all; the type's cap of 5 governs ⇒ 5 + 12.
     expect(repointed.afterYearOpen).toBe(17);
   });
 });
 
-// ── 3. migration 0334, the guard ───────────────────────────────────────────────────────────────────
-
-describe('0334 — refuses to repoint when it would move a balance', () => {
-  it('passes when every policy row already states what the type says', async () => {
-    // The production shape the release is claiming: many identical copies of one rule, one per
-    // (company, grade). 0325 collapses them, 0334 confirms the collapse changed nothing.
-    const full = { annualDays: 16, method: 'earned_monthly', carryForwardMax: 5, roundingMethod: 'up' };
-    await policy(full, '2020-01-01');
-    await policy({ ...full, annualDays: 12 }, '2021-01-01');
-    await runMigration0325();
-    await runMigration0334(); // must not raise
-    const [t] = await owner.db
-      .select()
-      .from(schema.leaveType)
-      .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
-    expect(t.accrualMethod).toBe('earned_monthly'); // and the backfill really did land
-  });
-
-  it('is a no-op on a type step 1 never consolidated', async () => {
-    // Ten NULL columns ⇒ the engines still read the policy ⇒ there is nothing to disagree about.
-    await policy({ annualDays: 16, method: 'earned_monthly' }, '2020-01-01');
-    await policy({ annualDays: 12 }, '2021-01-01'); // silent on method — would be a conflict if consolidated
-    await runMigration0334(); // must not raise: 0325 was never run, so no column is set
-  });
-
-  // THE CASE 0325's ASSERTION CANNOT SEE. count(DISTINCT …) ignores NULLs, so a rule stated by one row and
-  // absent from another passes 0325 with one distinct value — but the runtime resolver reads the WINNING
-  // ROW ALONE and falls back to the field default, so the silent row's employees would be repriced.
-  const silenceCases: ReadonlyArray<readonly [string, Record<string, unknown>, string]> = [
-    ['method', { method: 'earned_monthly' }, 'method'],
-    ['carryForwardMax', { carryForwardMax: 5 }, 'carryForwardMax'],
-    ['roundingMethod', { roundingMethod: 'up' }, 'roundingMethod'],
-    ['carryForwardEnabled', { carryForwardEnabled: true }, 'carryForwardEnabled'],
-    [
-      'the carry-expiry pair',
-      { carryForwardExpiryMonth: 3, carryForwardExpiryDay: 31 },
-      'carryForwardExpiryMonth',
-    ],
-  ];
-
-  for (const [label, stated, rule] of silenceCases) {
-    it(`refuses when one row states ${label} and another is silent on it`, async () => {
-      await policy({ annualDays: 16, ...stated }, '2020-01-01');
-      await policy({ annualDays: 16 }, '2021-01-01'); // silent
-      await runMigration0325(); // collapses cleanly — this is exactly 0325's blind spot
-
-      const msg = await guardFailure();
-      expect(msg).toContain('[0334_leave_type_rules_repoint_guard] refusing to repoint');
-      expect(msg).toContain(rule);
-      expect(msg).toContain('ANNUAL'); // names the offending type so a human can act on it
-    });
-  }
-
-  it('does NOT fire when silence and the type agree — an absent carryForwardMax really is 0', async () => {
-    // carryForwardMax is the one rule with a non-null default. Every row silent, and the type reading 0,
-    // is not a disagreement, and a guard that fired here would be a false alarm on a safety check.
-    await policy({ annualDays: 16, carryForwardMax: 0 }, '2020-01-01');
-    await policy({ annualDays: 12 }, '2021-01-01');
-    await runMigration0325();
-    await runMigration0334(); // must not raise
-  });
-
-  it('refuses when the type gains a maximum balance that a band-less policy never had', async () => {
-    await policy(
-      { annualDays: 16, serviceBands: [{ fromYears: 0, toYears: null, days: 16, maxBalanceDays: 25 }] },
-      '2020-01-01',
-    );
-    await policy({ annualDays: 12 }, '2021-01-01'); // flat — bandMaxBalance(null) = no cap today
-    await runMigration0325();
-
-    const msg = await guardFailure();
-    expect(msg).toContain('refusing to repoint');
-    expect(msg).toContain('no service bands');
-  });
-
-  it('refuses when a band actually uses the per-band carry-forward that step 2 stops reading', async () => {
-    // The decision is free only while nobody uses these. If a customer does, the guard makes that visible
-    // instead of silently discarding their configuration.
-    await policy(
-      {
-        annualDays: 16,
-        method: 'earned_monthly',
-        carryForwardMax: 5,
-        serviceBands: [{ fromYears: 0, toYears: null, days: 16, carryForwardDays: 9 }],
-      },
-      '2020-01-01',
-    );
-    await runMigration0325();
-
-    const msg = await guardFailure();
-    expect(msg).toContain('refusing to repoint');
-    expect(msg).toContain('carryForwardDays');
-  });
-
-  it('refuses when a band carries a per-band carry EXPIRY', async () => {
-    await policy(
-      {
-        annualDays: 16,
-        method: 'earned_monthly',
-        carryForwardMax: 5,
-        serviceBands: [
-          { fromYears: 0, toYears: null, days: 16, carryForwardExpiryMonth: 6, carryForwardExpiryDay: 30 },
-        ],
-      },
-      '2020-01-01',
-    );
-    await runMigration0325();
-
-    const msg = await guardFailure();
-    expect(msg).toContain('refusing to repoint');
-    expect(msg).toContain('carryForwardExpiry');
-  });
-
-  it('leaves the database untouched when it refuses', async () => {
-    await policy({ annualDays: 16, method: 'earned_monthly' }, '2020-01-01');
-    await policy({ annualDays: 16 }, '2021-01-01');
-    await runMigration0325();
-    const before = await owner.db
-      .select({ n: sql<string>`count(*)`, total: sql<string>`coalesce(sum(${schema.leaveLedger.days}), 0)` })
-      .from(schema.leaveLedger);
-
-    await guardFailure();
-
-    const after = await owner.db
-      .select({ n: sql<string>`count(*)`, total: sql<string>`coalesce(sum(${schema.leaveLedger.days}), 0)` })
-      .from(schema.leaveLedger);
-    expect(after).toEqual(before);
-  });
-});
+// ── RETIRED · `3. migration 0334, the guard` (10 tests) and its replay scaffolding ──────────────────
+//
+// The block re-executed migrations 0325 and 0334 FROM THE ACTUAL FILES against a fully-migrated schema,
+// inserting `leave_policy` rows and asserting the guard refused to repoint whenever the collapse WOULD
+// have moved somebody's balance: a rule stated by one row and absent from another, a maximum balance a
+// band-less policy never had, a band actually using the per-band carry-forward or carry expiry that step 2
+// stops reading, and that a refusal leaves the ledger untouched.
+//
+// Migration 0405 DROPPED `leave_policy`. 0325 backfills FROM that table and 0334 compares AGAINST it (six
+// references), so by the time `migrateTestDb()` has run the whole chain neither statement has a table to
+// run against — the replay aborts before it can assert anything. Both migrations remain valid IN THE
+// CHAIN, where they run in order on a fresh database while `leave_policy` is still alive; what is gone is
+// the ability to re-run them afterwards, which is the only thing this block ever did.
+//
+// This is a real reduction in coverage and it is worth naming precisely: what is no longer tested is the
+// SAFETY GUARD ON A ONE-OFF MIGRATION THAT HAS ALREADY RUN EVERYWHERE. It protected the moment of
+// consolidation. That moment has passed on every database, and the table it protected has since been
+// dropped, so there is no future execution for the guard to fail on. The BEHAVIOUR the guard was
+// protecting — that the type's rules and not a policy's drive every engine — is what group 2 above
+// asserts directly, in produced day values, and that is the part that still has a future.

@@ -61,7 +61,6 @@ const gridSrc = read('../components/system-labels-grid.tsx');
 const gradeGridSrc = read('../components/grade-labels-grid.tsx');
 const labelsPageSrc = read('../app/admin/settings/system-labels/page.tsx');
 const entitlementsPageSrc = read('../app/admin/leave/entitlements/page.tsx');
-const schemeConfigSrc = read('../components/benefit-scheme-config.tsx');
 const adminActionsSrc = read('../app/admin/actions.ts');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
@@ -184,19 +183,12 @@ describe('b1b81a08 · the origin — Grade is gone from Leave Config', () => {
     }
   });
 
-  it('benefit-scheme-config no longer declares gradesPanel but KEEPS the entitlement DndContext', () => {
-    expect(schemeConfigSrc.includes('gradesPanel')).toBe(false);
-    // r88/1ef1cf95 — this over-deletion guard protected the SECOND DndContext, the per-scheme entitlement
-    // pool/row drag. That drag is now gone too, deliberately: shared groups left the benefit scheme, so
-    // the thing it dragged no longer exists here. Both DndContexts have now been removed by two separate,
-    // intentional changes (grades by b1b81a08, pools by 1ef1cf95), so the guard is inverted rather than
-    // deleted — nothing on this screen drags any more, and no @dnd-kit import should suggest otherwise.
-    expect(schemeConfigSrc).not.toContain('<DndContext');
-    expect(schemeConfigSrc).not.toContain('useDroppable({ id: `pool:${pool.id}` })');
-    // Panel B's tick-box membership editor and its shared empty-state string survive.
-    expect(schemeConfigSrc).toContain('<form action={actions.updateGradeGroup} className="space-y-3">');
-    expect(schemeConfigSrc.match(/t\('noGrades'\)/g)?.length).toBe(2);
-  });
+  // 6e9a126e RELEASE THREE — the `benefit-scheme-config no longer declares gradesPanel` case was removed
+  // with the file it read. It asserted the ABSENCE of something in a source file that no longer exists,
+  // which is a claim with nothing left to be true about. The other 23 cases here guard the System Labels
+  // relocation itself and are untouched; the grade-group editor's own coverage moved to
+  // test/grade-group-button-row.test.ts, repointed at components/leave/grade-group-config.tsx.
+
 });
 
 describe('b1b81a08 · the save fan-out — good rows commit, only the bad row is flagged', () => {

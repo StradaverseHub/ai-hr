@@ -60,6 +60,10 @@ export function formulaOperandInWords(operand: FormulaOperand, o: PayRuleWordsOp
     case 'basic':
     case 'days':
     case 'hours':
+    // 2da9937a — the aggregate carries no data of its own, so its label IS the whole phrase ("All fixed
+    // allowances"). It reads exactly like the other scope operands, which is the point: on a list row the
+    // administrator sees "divide by Days worked", not a token they have to look up.
+    case 'fixed_allowances':
       return base;
     default: {
       // Exhaustiveness guard — a new FormulaOperand ref without a branch is a compile error, which is the

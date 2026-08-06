@@ -86,6 +86,7 @@ import {
   owner,
   resetDb,
   seedBase,
+  seedEntitlement,
   type Base,
 } from './harness';
 
@@ -98,18 +99,22 @@ let b: Base;
  *  these grants depend on has to be CONFIGURED — an unconfigured type resolves to 0 and openLeaveYear
  *  skips it, which would make every "a grant was posted" assertion in this file vacuous. 8 days is exactly
  *  what the EA floor used to supply, so no assertion here changes. Idempotent per tenant: the helper is
- *  called several times in one test, and a duplicate active policy would fan out extra rows. */
+ *  called several times in one test, and a duplicate active configuration would fan out extra rows.
+ *
+ *  6e9a126e RELEASE THREE — was a raw insert into leave_policy, which migration 0405 drops. The same 8
+ *  days from the same 2015 start date are now an entitlement template plus its eligibility rule, and the
+ *  idempotency check counts templates instead of policies. openLeaveYear resolves through
+ *  `leaveTypeIdsWithTemplatesAt` now, so a type configured only this way is exactly what it looks for. */
 async function hireEmployeeCtx(): Promise<{ ctx: SessionContext; employmentId: string }> {
   const existing = await owner.db
-    .select({ id: schema.leavePolicy.id })
-    .from(schema.leavePolicy)
-    .where(eq(schema.leavePolicy.leaveTypeId, b.annualLeaveTypeId));
+    .select({ id: schema.entitlementTemplate.id })
+    .from(schema.entitlementTemplate)
+    .where(eq(schema.entitlementTemplate.leaveTypeId, b.annualLeaveTypeId));
   if (existing.length === 0) {
-    await owner.db.insert(schema.leavePolicy).values({
-      tenantId: b.tenantId,
+    await seedEntitlement(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 8,
       validFrom: '2015-01-01',
-      accrual: { annualDays: 8 },
     });
   }
   const { employmentId, personId } = await hireEmployee(adminCtx(b), {

@@ -43,14 +43,13 @@ describe('ADR-0080 rung 6: leave pack registration', () => {
     const tables = (leavePack.satelliteTables ?? []).map((t) => t.table);
     expect(tables).toEqual([
       'leave_type',
-      'leave_policy',
+      // 6e9a126e RELEASE THREE — `leave_policy`, `benefit_scheme` and `scheme_leave_entitlement` are GONE
+      // (migration 0405 drops them), so the pack no longer claims to own them. `grade_group` and
+      // `grade_group_member` STAY, permanently: leave APPROVAL routing scopes on them (205 live
+      // leave_approval_policy rows), which is why they were never part of the entitlement cut. This list is
+      // UPDATED, never loosened, exactly as the nav exact-set guards are.
       'grade_group',
       'grade_group_member',
-      'benefit_scheme',
-      'scheme_leave_entitlement',
-      // 6e9a126e RELEASE ONE — the replacement layer, ADDED rather than swapped in. The three rows above
-      // stay until release three drops the tables; this list is UPDATED, never loosened, exactly as the
-      // nav exact-set guards are.
       'entitlement_template',
       'entitlement_eligibility_rule',
       'entitlement_reset_archive',
@@ -176,7 +175,11 @@ describe('ADR-0080 rung 6: service facade re-exports the implementation unchange
     expect(facade.setLeaveApprovalPolicy).toBe(coreApprovalPolicy.setLeaveApprovalPolicy);
     expect(facade.listApprovalTemplates).toBe(coreApprovalTemplate.listApprovalTemplates);
     expect(facade.createApprovalTemplate).toBe(coreApprovalTemplate.createApprovalTemplate);
-    expect(facade.previewEntitlement).toBe(coreCompute.previewEntitlement);
+    // 6e9a126e RELEASE THREE — was `previewEntitlement`, which went with the leave_policy layer it
+    // previewed. Repointed at `composeEntitlement`, the single composition hook that replaced it, rather
+    // than dropped: core/leave-compute needs a representative here or the facade could stop re-exporting
+    // the module entirely and this identity test would still pass on `carryEnabled` alone.
+    expect(facade.composeEntitlement).toBe(coreCompute.composeEntitlement);
     expect(facade.carryEnabled).toBe(coreCompute.carryEnabled);
     expect(facade.encashableDaysForEmployment).toBe(coreEncashment.encashableDaysForEmployment);
     expect(facade.LeaveEncashmentError).toBe(coreEncashment.LeaveEncashmentError);

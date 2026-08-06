@@ -2,9 +2,11 @@ import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies, listJobGrades, listLeaveTypes } from '@/core/read';
 import { getLeaveEscalationPolicy } from '@/core/leave-approval-policy';
-import { listApprovalTemplates, listTemplateAssignments } from '@/core/leave-approval-template';
-import { listBenefitSchemes } from '@/core/benefit-scheme';
-import { bySchemeDisplayOrder, normalizeSchemeText } from '@/lib/benefit-scheme-label';
+import {
+  listApprovalTemplates,
+  listEligibilityRuleScopes,
+  listTemplateAssignments,
+} from '@/core/leave-approval-template';
 // `SectionHeader` was imported here and unused BEFORE 706d34e8 (the two sections use plain <h2>s); dropped
 // while this import line was being edited anyway, so the file lints clean.
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
@@ -92,11 +94,15 @@ export default async function LeaveApprovalTabPage({
   // with the WorkflowMatrix; they fed nothing else on this page. Removing the reads, not just the render,
   // is the point (the e4238594 precedent: an embed's data prep left behind is a fan of queries per render
   // for a screen nobody sees). `gradesAll` and `leaveTypesAll` STAY — the Assign Template form uses both.
-  const [leaveTypesAll, gradesAll, schemesAll] = await Promise.all([
+  const [leaveTypesAll, gradesAll, eligibilityRulesAll] = await Promise.all([
     listLeaveTypes(s),
     listJobGrades(s),
-    // 22de47c4 — the Assign Template employee scope is the benefit scheme, so the schemes come along.
-    listBenefitSchemes(s),
+    // 22de47c4 — the Assign Template employee scope is a named population, so the populations come along.
+    // 6e9a126e release three — those are entitlement eligibility rules now, and they arrive ALREADY
+    // translated into the two dimensions an assignment writes (core/leave-approval-template.ts). The page
+    // does not re-derive that translation: one implementation is what stops the picker offering a rule the
+    // service would refuse.
+    listEligibilityRuleScopes(s),
   ]);
 
   const rows = await Promise.all(
@@ -168,17 +174,18 @@ export default async function LeaveApprovalTabPage({
     selectCompanies: t('selectCompanies'),
     selectLeaveTypes: t('selectLeaveTypes'),
     // bb3938b9 — the criteria panels and their shared panel controls; 22de47c4 made the employee-scope
-    // panel Benefit Schemes (and added the two badges that keep a pre-existing grade-scoped assignment,
-    // or an assignment whose scope names no scheme, visible instead of silently mislabelled).
-    selectBenefitSchemes: t('selectBenefitSchemes'),
+    // panel a list of named populations (and added the two badges that keep a pre-existing grade-scoped
+    // assignment, or an assignment whose scope names no population, visible instead of silently
+    // mislabelled). 6e9a126e release three renamed the keys with the layer they now read.
+    selectEligibilityRules: t('selectEligibilityRules'),
     selectAll: t('selectAll'),
     deselectAll: t('deselectAll'),
     panelNoneMeansAll: t('panelNoneMeansAll'),
     panelPickAtLeastOne: t('panelPickAtLeastOne'),
-    noBenefitSchemes: t('noBenefitSchemes'),
-    schemeNoGradeGroup: t('schemeNoGradeGroup'),
+    noEligibilityRules: t('noEligibilityRules'),
+    ruleNotAssignable: t('ruleNotAssignable'),
     legacyGradeScope: t('legacyGradeScope'),
-    schemeScopeUnknown: t('schemeScopeUnknown'),
+    ruleScopeUnknown: t('ruleScopeUnknown'),
     conditions: t('conditions'),
     addCondition: t('addCondition'),
     conditionOperator: t('conditionOperator'),
@@ -269,27 +276,27 @@ export default async function LeaveApprovalTabPage({
               companies={companies.map((c) => ({ id: c.id, label: c.name }))}
               leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
               grades={gradesAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` }))}
-              /* 22de47c4 — ACTIVE schemes of the companies in view: an archived scheme matches nobody
-                 (resolveEffectiveSchemeId ignores it), so assigning a template to one would look like a
-                 routing change that never fires.
-                 r76 22de47c4 — the picker now shows `name` ONLY: one line per scheme, the tenant's own
-                 words (lib/benefit-scheme-label — whitespace tidied, never re-cased, never rewritten in
-                 the database). `label`, which also states the grade group + employment type an assignment
-                 writes, is UNCHANGED — it is what the saved-assignments table below names a scheme with,
-                 and that surface was not in the item. Ordered by the shared display order so a list of
-                 bare names stays scannable: removing the supporting text is what makes a stable order
-                 necessary. */
-              schemes={schemesAll
-                .filter((sc) => sc.status === 'active' && companyIds.includes(sc.companyId))
-                .map((sc) => ({
-                  id: sc.id,
-                  companyId: sc.companyId,
-                  gradeGroupId: sc.gradeGroupId,
-                  employmentType: sc.employmentType,
-                  name: normalizeSchemeText(sc.name),
-                  label: `${sc.name} — ${sc.gradeGroupName ?? t('anyScope')} · ${t(`employmentType_${sc.employmentType}` as 'employmentType_full_time')}`,
-                }))
-                .sort(bySchemeDisplayOrder((sc) => sc.name))}
+              /* 22de47c4 — the populations in view. `listEligibilityRuleScopes` returns only the RUNNING
+                 version of each rule (a retired one matches nobody, so assigning a template to it would
+                 look like a routing change that never fires) and filtering to the companies in view is
+                 the panel's job, because a rule that names no company legitimately covers all of them.
+                 r76 22de47c4 — the picker shows the rule's NAME only: one line each, the tenant's own
+                 words for that population, which is exactly what `entitlement_eligibility_rule.name` is
+                 for. `scopes` is not shown; it is what the saved-assignments badge matches an assignment
+                 back on, and what the tick is greyed by. Ordered by name in core, so the list arrives
+                 scannable. */
+              eligibilityRules={eligibilityRulesAll
+                /* A rule naming only companies this admin cannot see is not theirs to assign. `companyIds`
+                   itself is passed through UNTRIMMED — trimming it to the visible set would turn such a
+                   rule into an empty list, and an empty list means "every company". */
+                .filter((r) => r.companyIds.length === 0 || r.companyIds.some((c) => companyIds.includes(c)))
+                .map((r) => ({
+                  id: r.lineageId,
+                  name: r.name,
+                  companyIds: r.companyIds,
+                  scopes: r.scopes,
+                  assignable: r.refusal === null,
+                }))}
               actions={{
                 assign: assignApprovalTemplateAction,
                 unassign: unassignApprovalTemplateAction,

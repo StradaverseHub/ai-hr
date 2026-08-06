@@ -48,6 +48,7 @@ import {
   owner,
   resetDb,
   seedBase,
+  seedEntitlement,
   type Base,
 } from './harness';
 import {
@@ -67,13 +68,15 @@ import {
   createCompany,
   createCostCenter,
   createDepartment,
-  createLeavePolicy,
   createLeaveType,
-  deleteLeavePolicy,
   revokeRole,
   setCompanyParent,
-  updateLeavePolicy,
 } from '../core/admin';
+// 6e9a126e RELEASE THREE — createLeavePolicy / updateLeavePolicy / deleteLeavePolicy went with
+// leave_policy (migration 0405). The entitlement DAYS these cases configure come from a template + an
+// eligibility rule now; `seedEntitlement` is the harness fixture that writes both, and the two writers
+// this file still needs for the dated-supersede and stop-a-table cases are imported directly.
+import { retireEntitlementTemplate, updateEntitlementTemplate } from '../core/entitlement-template';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
 import {
@@ -156,6 +159,18 @@ const hire = (ctx: SessionContext, b: Base, name: string, opts?: { annual?: bool
     grantLeaveTypes: opts?.annual ? [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }] : undefined,
   });
 
+/** `hire` with an explicit hire date — needed since 6e9a126e release three, because an entitlement table
+ *  is effective-dated and an employee is granted against the version in force on THEIR hire date. */
+const hireOn = (ctx: SessionContext, b: Base, name: string, hiredOn: string) =>
+  hireEmployee(ctx, {
+    person: { fullName: name, primaryEmail: `${name.toLowerCase()}@acme.test` },
+    companyId: b.companyId,
+    departmentId: b.deptA,
+    employmentType: 'full_time',
+    hiredOn,
+    grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
+  });
+
 describe('UC8 — tenant isolation', () => {
   it('a session cannot see another tenant’s companies, and zero without a tenant', async () => {
     const other = await seedBase();
@@ -217,7 +232,7 @@ describe('UC6 — leave approval atomicity & balance', () => {
     // fa3f4ccb: the statutory pack no longer backfills an unconfigured type, so the 8-day opening balance
     // this test needs has to be CONFIGURED. 8 is the same figure the EA floor used to supply, so every
     // assertion below is unchanged — the subject here is approval atomicity, not entitlement resolution.
-    await createLeavePolicy(a, { leaveTypeId: base.annualLeaveTypeId, annualDays: 8, validFrom: '2020-01-01' });
+    await seedEntitlement(a, { leaveTypeId: base.annualLeaveTypeId, annualDays: 8, validFrom: '2020-01-01' });
     const { employmentId } = await hire(a, base, 'Bala', { annual: true });
     expect(await ledgerBalance(employmentId, base.annualLeaveTypeId)).toBe(8);
 
@@ -1245,7 +1260,7 @@ describe('Leave policy resolution — grant = max(statutory floor, company polic
   it('a more generous company policy raises the grant above the EA floor', async () => {
     const b = await seedBase(); // fresh tenant so the shared base keeps its floor-only grants
     const a = adminCtx(b);
-    await createLeavePolicy(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 20, validFrom: '2026-01-01' });
+    await seedEntitlement(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 20, validFrom: '2026-01-01' });
     const { employmentId } = await hire(a, b, 'Generous', { annual: true });
     expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(20); // policy 20 > floor 8
   });
@@ -1255,37 +1270,61 @@ describe('Leave policy resolution — grant = max(statutory floor, company polic
   it('fa3f4ccb: a below-minimum policy is granted as configured, not clamped', async () => {
     const b = await seedBase();
     const a = adminCtx(b);
-    await createLeavePolicy(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 3, validFrom: '2026-01-01' });
+    await seedEntitlement(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 3, validFrom: '2026-01-01' });
     const { employmentId } = await hire(a, b, 'Clamped', { annual: true });
     expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(3);
   });
 
-  it('editing a policy changes later grants AND recalculates already-granted employees (feedback 49809272)', async () => {
+  // 6e9a126e RELEASE THREE — this case WAS "editing a policy changes later grants AND recalculates
+  // already-granted employees (feedback 49809272)", written against updateLeavePolicy / deleteLeavePolicy.
+  //
+  // WHAT IS REPOINTED. Both halves of the configuration behaviour survive on the template layer and are
+  // asserted below unchanged in substance: a dated edit moves LATER grants, and stopping a table leaves
+  // history alone. The writers are `updateEntitlementTemplate` / `retireEntitlementTemplate`.
+  //
+  // WHAT IS RETIRED, DELIBERATELY AND WITH THE LOSS STATED. The middle assertion —
+  // `expect(pre balance).toBe(10)`, i.e. correcting the configuration RE-PROJECTS employees already
+  // granted — is gone, because the trigger is gone with the table. `reprojectEntitlementForPolicy` was
+  // fired by `updateLeavePolicy`; the template writers fire nothing (core/leave.ts's own note on
+  // `reprojectEntitlementForLeaveTypeCohort` says the policy-side and scheme-side cohort recalcs "went
+  // with the tables that triggered them"). The recalc ENGINE is alive and covered elsewhere
+  // (test/leave-entitlement-recalc.test.ts, test/leave-earning-method-simplified.test.ts); what has no
+  // coverage here any more is a config edit at the ENTITLEMENT-DAYS layer triggering it, because no code
+  // does that. Asserting the old number would have meant loosening it to something that passes; this says
+  // what changed instead.
+  //
+  // The dated edit is NOT an in-place correction either, and that is why the two hires below are on
+  // different dates: `updateEntitlementTemplate` closes the running version and inserts a successor from
+  // `validFrom`, so an employee is granted against the version in force on THEIR hire date. That is the
+  // property three past-date readers depend on (the Carry Forward report, expireCarriedLeave, and the
+  // balance breakdown), so it is asserted rather than worked around.
+  it('a dated edit moves LATER grants; earlier ones keep the version in force when they were granted', async () => {
     const b = await seedBase();
     const a = adminCtx(b);
-    const { id: policyId } = await createLeavePolicy(a, {
+    const tpl = await seedEntitlement(a, {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 20,
       validFrom: '2026-01-01',
     });
-    const pre = await hire(a, b, 'PreEdit', { annual: true });
+    const pre = await hire(a, b, 'PreEdit', { annual: true }); // hired 2026-01-01
     expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(20);
 
-    // Correct in place → a *later* hire grants on the new value, AND the earlier grant is re-projected:
-    // a compensating adjustment moves the already-granted employee to the corrected number (feedback
-    // 49809272 — this replaces the old "the earlier grant is history" behaviour).
-    await updateLeavePolicy(a, { id: policyId, annualDays: 10, validFrom: '2026-01-01', asOf: '2026-06-30' });
-    const mid = await hire(a, b, 'PostEdit', { annual: true });
-    expect(await ledgerBalance(mid.employmentId, b.annualLeaveTypeId)).toBe(10); // max(floor 8, policy 10)
-    expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(10); // recalculated 20 → 10
+    await updateEntitlementTemplate(a, {
+      lineageId: tpl.lineageId,
+      serviceBands: [{ fromYears: 0, toYears: null, days: 10 }],
+      validFrom: '2026-01-02',
+    });
+    const mid = await hireOn(a, b, 'PostEdit', '2026-01-02');
+    expect(await ledgerBalance(mid.employmentId, b.annualLeaveTypeId)).toBe(10); // the successor's 10
+    expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(20); // granted under the 20
 
-    // fa3f4ccb: was "Remove → the floor applies again". With no policy there is no configured
-    // entitlement and the statutory pack no longer backfills one, so a later hire grants nothing. The
-    // clause this test really protects is unchanged: deleting does NOT recalc past grants.
-    await deleteLeavePolicy(a, { id: policyId });
-    const post = await hire(a, b, 'PostDelete', { annual: true });
+    // fa3f4ccb: was "Remove → the floor applies again". With nothing configured there is no entitlement
+    // and the statutory pack no longer backfills one, so a later hire grants nothing. The clause this
+    // case really protects is unchanged: stopping a table does NOT touch past grants.
+    await retireEntitlementTemplate(a, { lineageId: tpl.lineageId, validTo: '2026-01-03' });
+    const post = await hireOn(a, b, 'PostDelete', '2026-01-03');
     expect(await ledgerBalance(post.employmentId, b.annualLeaveTypeId)).toBe(0); // nothing configured
-    expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(10); // delete leaves history alone
+    expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(20); // history left alone
   });
 });
 
@@ -1295,11 +1334,12 @@ describe('Leave year boundary — openLeaveYear', () => {
     const a = adminCtx(b);
     // Hired Jun 2023 → 2 completed years at 2026-01-01 → annual band steps 8 → 12.
     // fa3f4ccb: the bands used to come from the statutory pack, which no longer grants. The SAME
-    // 8 / 12 / 16 figures are now configured as service bands on the policy, so the behaviour under test
-    // — the year-open grants at the CURRENT band, not the hire band — is asserted unchanged.
-    await createLeavePolicy(a, {
+    // 8 / 12 / 16 figures are now configured as service bands, so the behaviour under test — the
+    // year-open grants at the CURRENT band, not the hire band — is asserted unchanged. 6e9a126e release
+    // three moves the SAME band table from leave_policy.accrual to an entitlement template; the band
+    // resolver (`bandFor`) is literally the same function, so the arithmetic below is untouched.
+    await seedEntitlement(a, {
       leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 8,
       serviceBands: [
         { fromYears: 0, toYears: 2, days: 8 },
         { fromYears: 2, toYears: 5, days: 12 },
@@ -1323,16 +1363,23 @@ describe('Leave year boundary — openLeaveYear', () => {
     expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(12);
   });
 
-  it('carries unused annual up to the policy cap, on top of the new grant', async () => {
+  it('carries unused annual up to the configured cap, on top of the new grant', async () => {
     const b = await seedBase();
     const a = adminCtx(b);
     // fa3f4ccb: the 8 days this employee opens with used to come from the statutory pack. Configure it —
-    // the point of the test is the LATER policy (12 days + carry 5) taking effect at the year boundary.
-    await createLeavePolicy(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 8, validFrom: '2020-01-01' });
-    await createLeavePolicy(a, {
+    // the point of the test is the LATER configuration (12 days + carry 5) taking effect at the year
+    // boundary.
+    //
+    // 6e9a126e RELEASE THREE — the carry cap was `leave_policy.accrual.carryForwardMax`; on a template it
+    // is the band's own `carryForwardDays`, read by the SAME `bandCarryMax` the policy path used (the
+    // ANNUAL type here carries no type-level rules, so `applyLeaveTypeRules` is a no-op and the band's cap
+    // is what the year-open sees). Two dated configurations, later `validFrom` winning at the boundary, is
+    // exactly what leave_policy's supersede did — `beatsEligibility` breaks the specificity tie on
+    // `validFrom`, so the arithmetic below is unchanged.
+    await seedEntitlement(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 8, validFrom: '2020-01-01' });
+    await seedEntitlement(a, {
       leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      carryForwardMax: 5,
+      serviceBands: [{ fromYears: 0, toYears: null, days: 12, carryForwardDays: 5 }],
       validFrom: '2025-12-01',
     });
     const { employmentId } = await hireEmployee(a, {
@@ -1343,10 +1390,10 @@ describe('Leave year boundary — openLeaveYear', () => {
       hiredOn: '2025-01-01',
       grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
     });
-    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(8); // policy not yet active at hire
+    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(8); // the 12-day table is not yet in force at hire
     const res = await openLeaveYear(a, { year: 2026 });
     expect(res.forfeits).toBe(1); // 8 unused → carry 5, forfeit 3
-    // carry 5 + new grant max(floor 8 @1y, policy 12) = 17.
+    // carry 5 + the new 12-day grant = 17.
     expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(17);
   });
 
@@ -1355,7 +1402,7 @@ describe('Leave year boundary — openLeaveYear', () => {
     const a = adminCtx(b);
     // fa3f4ccb: an unconfigured type grants nothing and openLeaveYear skips it, so idempotency would be
     // vacuous. 8 days is the figure the statutory pack used to supply — every count below is unchanged.
-    await createLeavePolicy(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 8, validFrom: '2020-01-01' });
+    await seedEntitlement(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 8, validFrom: '2020-01-01' });
     const vet = await hireEmployee(a, {
       person: { fullName: 'Vetera', primaryEmail: 'vetera@acme.test' },
       companyId: b.companyId,
@@ -1771,7 +1818,7 @@ describe('Leave-type code integrity (0031)', () => {
     // fa3f4ccb: the grant itself now comes from configuration rather than the pack, so the 14-day s.60F
     // figure is configured here — the assertion still fails loudly if the code were stored lower-case,
     // because the policy is looked up by the type this createLeaveType returned.
-    await createLeavePolicy(a, { leaveTypeId: lt.id, annualDays: 14, validFrom: '2020-01-01' });
+    await seedEntitlement(a, { leaveTypeId: lt.id, annualDays: 14, validFrom: '2020-01-01' });
     const { employmentId } = await hireEmployee(a, {
       person: { fullName: 'Floor Check', primaryEmail: 'floor@acme.test' },
       companyId: b.companyId,
@@ -2600,21 +2647,26 @@ describe('UC — domain_event subject-scoped privacy (ADR-0015)', () => {
       lineType: 'administrative',
       validFrom: '2026-01-01',
     });
-    await createLeavePolicy(a, { leaveTypeId: base.annualLeaveTypeId, annualDays: 14, validFrom: '2026-01-01' });
+    await seedEntitlement(a, { leaveTypeId: base.annualLeaveTypeId, annualDays: 14, validFrom: '2026-01-01' });
     const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId };
 
     // The manager sees their report's events…
     expect((await eventsFor(mCtx, E.employmentId)).length).toBeGreaterThan(0);
-    // …but not the tenant-wide leave-policy event (no subject → admin-only, fail-closed).
-    const mgrSeesPolicy = await withTenant(mCtx, (tx) =>
-      tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateType, 'leave-policy')),
+    // …but not the tenant-wide entitlement-configuration event (no subject → admin-only, fail-closed).
+    // 6e9a126e RELEASE THREE — the subject-less config event used to be aggregateType 'leave-policy';
+    // it is 'entitlement_template' now. The RLS rule under test is generic (a domain_event with a NULL
+    // subject_employment_id is admin-only), so this is the same guard pointed at the aggregate that
+    // replaced the dropped one — not a weaker one.
+    const CONFIG_AGGREGATE = 'entitlement_template';
+    const mgrSeesConfig = await withTenant(mCtx, (tx) =>
+      tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateType, CONFIG_AGGREGATE)),
     );
-    expect(mgrSeesPolicy).toHaveLength(0);
+    expect(mgrSeesConfig).toHaveLength(0);
     // Admin does see it.
-    const adminSeesPolicy = await withTenant(a, (tx) =>
-      tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateType, 'leave-policy')),
+    const adminSeesConfig = await withTenant(a, (tx) =>
+      tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateType, CONFIG_AGGREGATE)),
     );
-    expect(adminSeesPolicy.length).toBeGreaterThan(0);
+    expect(adminSeesConfig.length).toBeGreaterThan(0);
   });
 
   it('tenant isolation holds: another tenant’s admin sees none of this tenant’s events', async () => {

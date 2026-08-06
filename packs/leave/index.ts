@@ -222,21 +222,22 @@ export const leavePack: ModulePack = {
   // by the encashment/unpaid seams are KERNEL, not satellites of this pack.
   satelliteTables: [
     { table: 'leave_type', note: 'tenant leave-type catalog (paid flag, unit, counting, expiry, visibility)' },
-    { table: 'leave_policy', note: 'grade-scoped effective-dated entitlement/accrual/carry policy engine' },
-    { table: 'grade_group', note: 'benefit-scheme grade grouping (over job_grade; the spine is job_grade)' },
+    // 6e9a126e RELEASE THREE — `leave_policy`, `benefit_scheme` and `scheme_leave_entitlement` are DROPPED
+    // (migration 0405) and their rows are gone, so the pack stops claiming to own them: a satellite
+    // declaration for a table that no longer exists makes the schema explorer name a record type nobody can
+    // open. Release one added the three rows below beside them and said those three would go while these
+    // stayed; this is that step.
+    //
+    // grade_group / grade_group_member are KEPT PERMANENTLY and were never part of the entitlement cut —
+    // leave APPROVAL routing scopes on them (leave_approval_policy.grade_group_id), which is a different
+    // feature that happens to have been named after benefit schemes.
+    { table: 'grade_group', note: 'grade grouping over job_grade, scoping leave approval policies (the spine is job_grade)' },
     { table: 'grade_group_member', note: 'job-grade ↔ grade-group membership' },
-    { table: 'benefit_scheme', note: 'friendlier entitlement scheme over leave_policy (per employment-type)' },
-    { table: 'scheme_leave_entitlement', note: 'per-scheme per-leave-type service-band entitlement table' },
-    // 6e9a126e RELEASE ONE — the replacement layer, ADDED beside the two rows above rather than instead of
-    // them. Release one removes nothing: benefit_scheme, scheme_leave_entitlement and leave_policy still
-    // resolve every live figure and stay in this list until release three drops them, at which point those
-    // three rows go and these three stay. grade_group / grade_group_member are KEPT PERMANENTLY — leave
-    // approval routing scopes on them.
     { table: 'entitlement_template', note: 'named, effective-dated service-band day table for one leave type' },
     { table: 'entitlement_eligibility_rule', note: 'who gets which entitlement template (core/org-criteria criteria, effective-dated)' },
     { table: 'entitlement_reset_archive', note: 'read-only text record of the scheme + policy configuration the reset clears' },
-    // r88 1ef1cf95 — a shared group is tenant-level now, not per benefit scheme, so it sits beside the
-    // scheme tables rather than under them. Same audited surface, honest names (migration 0339).
+    // r88 1ef1cf95 — a shared group is tenant-level, not per benefit scheme (migration 0339), which is why
+    // it outlived the scheme tables that used to own it rather than being dropped with them.
     { table: 'leave_shared_group', note: 'a shared allowance pooled across several leave types' },
     { table: 'leave_shared_group_member', note: 'leave types belonging to a shared group' },
     { table: 'leave_ledger', note: 'the balance ledger: accrual / debit / adjustment / in-lieu rows' },

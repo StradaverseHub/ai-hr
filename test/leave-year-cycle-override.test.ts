@@ -23,9 +23,19 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { createLeavePolicy, setCompanyLeaveCycle, updateLeaveType } from '../core/admin';
+import { setCompanyLeaveCycle, setLeaveTypeRules, updateLeaveType } from '../core/admin';
 import { accrueEarnedLeave, resolveLeaveYearCycle } from '../core/leave';
-import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  ledgerBalance,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  seedEntitlement,
+  type Base,
+} from './harness';
 
 let b: Base;
 const uniqEmail = () => `ycycle_${randomUUID().slice(0, 8)}@t.local`;
@@ -57,12 +67,16 @@ const setOverride = (v: string | null) =>
  *  anniversary window (2025-07-01) ⇒ 9 periods ⇒ 9 days. */
 const ASOF = '2026-03-31';
 const seedEarned = async () => {
-  await createLeavePolicy(adminCtx(b), {
+  // 6e9a126e RELEASE THREE — was ONE createLeavePolicy carrying both halves. leave_policy said the DAYS and
+  // the earning METHOD in a single row; the days now live on an entitlement template (seedEntitlement) and
+  // the method on the leave TYPE (setLeaveTypeRules — 9816a5ad's "rules are the same for everyone, only the
+  // days differ"). Same 12 days, same earned_monthly, so every elapsed-period count below is unchanged.
+  await seedEntitlement(adminCtx(b), {
     leaveTypeId: b.annualLeaveTypeId,
     annualDays: 12,
-    method: 'earned_monthly',
     validFrom: '2025-01-01',
   });
+  await setLeaveTypeRules(adminCtx(b), { id: b.annualLeaveTypeId, accrualMethod: 'earned_monthly' });
   const emp = await hireEmployee(adminCtx(b), {
     person: { fullName: 'Cycle Emp', primaryEmail: uniqEmail() },
     companyId: b.companyId,

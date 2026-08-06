@@ -21,13 +21,11 @@ import {
   resolveCarryBreakdown,
   applyLeaveTypeRules,
   leaveTypeRuleColumns,
-  resolveGradePolicy,
   serviceYearsAt,
   // 6e9a126e RELEASE TWO — the entitlement TEMPLATE overlay, for the balance breakdown's past-date read.
-  templateOverPolicy,
+  policyForDatedReader,
   workingDatesForSpan,
   workingDatesForSpans,
-  type GradePolicyRow,
   type LeaveEligibility,
 } from './leave';
 import { buildTemplateEntitlementResolver } from './entitlement-template';
@@ -56,7 +54,6 @@ import {
   jobGrade,
   leaveCancellationRequest,
   leaveLedger,
-  leavePolicy,
   leaveRequest,
   leaveRequestDate,
   leaveRequestStatusEnum,
@@ -1812,17 +1809,32 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
         description: jobGrade.description,
         rank: jobGrade.rank,
         archivedAt: jobGrade.archivedAt,
-        // Grade relocation to System Labels (b1b81a08): the in-use predicate spans ALL FIVE referencing
+        // Grade relocation to System Labels (b1b81a08): the in-use predicate spans ALL SIX referencing
         // tables, not just employment + leave_policy. leave_approval_policy.grade_id and
         // claim_policy.grade_id are plain FKs with no onDelete, so a grade used only by an approval rule or
         // a claim limit used to report inUse=false, render an ENABLED Delete, and raise a raw 23503 at the
         // admin; grade_group_member CASCADES, so the same delete silently dropped benefit-scheme group
         // membership. Must stay byte-identical to deleteJobGrade's in-transaction re-check (core/admin.ts)
         // so the button state and the guard agree.
+        //
+        // e7eb5d83 (0408) added the SIXTH: claim_mileage_rate.grade_id, a per-grade mileage rate table, and
+        // it is another plain FK with no onDelete. Every new grade_id FK anywhere in the schema has to be
+        // added HERE and in deleteJobGrade in the same commit that introduces it, or it re-opens exactly the
+        // 23503 this comment exists to describe.
+        //
+        // 6e9a126e RELEASE THREE — the `leave_policy` clause is REPOINTED at entitlement_eligibility_rule,
+        // not dropped. 0405 drops leave_policy, and a clause naming a dropped table does not degrade
+        // quietly: this projection is on the ONLY read of the grade catalog, so it raised
+        // `relation "leave_policy" does not exist` on every System Labels page load. The new clause reads
+        // the rule's `criteria` JSONB, which carries no foreign key — so this is the one referrer that
+        // could never have raised 23503 on its own, and the guard is the only thing standing between a
+        // delete and a rule that silently targets a grade id nothing resolves.
         inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = job_grade.id)
-          or exists (select 1 from leave_policy lp where lp.grade_id = job_grade.id)
+          or exists (select 1 from entitlement_eligibility_rule eer
+                     where eer.criteria -> 'gradeIds' @> to_jsonb(job_grade.id::text))
           or exists (select 1 from leave_approval_policy lap where lap.grade_id = job_grade.id)
           or exists (select 1 from claim_policy cp where cp.grade_id = job_grade.id)
+          or exists (select 1 from claim_mileage_rate cmr where cmr.grade_id = job_grade.id)
           or exists (select 1 from grade_group_member ggm where ggm.grade_id = job_grade.id)`,
       })
       .from(jobGrade)
@@ -2383,17 +2395,6 @@ export function leaveEntitlementBreakdown(
     const cycleStart = earnedCycleStart(emp.hiredOn, asOf, resolveLeaveYearCycle(type.yearCycleOverride, emp.leaveCycle));
 
     // Active ANNUAL/standing policy versions for this type as at asOf, resolved to the employee's grade.
-    const policies = await tx
-      .select({ gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
-      .from(leavePolicy)
-      .where(
-        and(
-          eq(leavePolicy.leaveTypeId, leaveTypeId),
-          lte(leavePolicy.validFrom, asOf),
-          // validTo is exclusive (an active version spans [validFrom, validTo)).
-          sql`(${leavePolicy.validTo} is null or ${leavePolicy.validTo} > ${asOf})`,
-        ),
-      );
     // 6e9a126e RELEASE TWO — the entitlement TEMPLATE version in force ON `asOf`, with the employee's
     // department / position / employment type resolved as at that same date. This is the third of the
     // three PAST-DATE readers: /me and the admin balance breakdown both accept an `asOf`, and a breakdown
@@ -2413,10 +2414,15 @@ export function leaveEntitlementBreakdown(
     // the tie-break consistent with the banded winner. This does NOT change currentYearEntitlement below
     // (ledger-derived) — the banded number reaches /me only via the ledger, after a hire grant/year-open.
     // 9816a5ad step 2: days from the winning policy row, every RULE from the leave type.
+    // 6e9a126e RELEASE THREE — the policy layer is gone, so the winning TEMPLATE BAND is the only source
+    // of days. `policyForDatedReader` is what stops a past date reporting "everything forfeited" while
+    // nothing is configured: with no band it still materialises the leave TYPE's own carry rules, at zero
+    // days, so `applyLeaveTypeRules` has something to overlay onto. See its header for why days are the
+    // one thing that must not be invented.
     const policy = applyLeaveTypeRules(
-      templateOverPolicy(
-        resolveGradePolicy(policies as GradePolicyRow[], emp.gradeId, emp.companyId, serviceYearsAt(emp.hiredOn, cycleStart)),
+      policyForDatedReader(
         templates.bandFor(employmentId, leaveTypeId, serviceYearsAt(emp.hiredOn, cycleStart)),
+        type,
       ),
       type,
     );

@@ -21,7 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { createLeavePolicy } from '../core/admin';
+import { setLeaveTypeRules } from '../core/admin';
 import { openLeaveYear, reconstructCarry } from '../core/leave';
 import { leaveEntitlementBreakdown } from '../core/read';
 import {
@@ -32,6 +32,7 @@ import {
   owner,
   resetDb,
   seedBase,
+  seedEntitlement,
   type Base,
 } from './harness';
 
@@ -64,20 +65,36 @@ const hire = (hiredOn: string, gradeId: string | null = null) =>
     grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
   });
 
-const annualPolicy = (p: {
+/**
+ * 6e9a126e RELEASE THREE — was one `createLeavePolicy` carrying both halves. The DAYS are an entitlement
+ * template + eligibility rule; the CARRY CAP and its expiry sit on the LEAVE TYPE, where 7cd914b1 put them
+ * and where `applyLeaveTypeRules` reads them. Every figure this file asserts is unchanged: this reader
+ * reconstructs from the LEDGER, and the only thing the configuration decides is what the engines posted.
+ */
+const annualPolicy = async (p: {
   annualDays?: number;
   carryForwardMax?: number;
   expiry?: { month: number; day: number } | null;
+  expiryMonths?: number | null;
   from?: string;
-}) =>
-  createLeavePolicy(adminCtx(b), {
-    leaveTypeId: b.annualLeaveTypeId,
-    annualDays: p.annualDays ?? 12,
+}) => {
+  await setLeaveTypeRules(adminCtx(b), {
+    id: b.annualLeaveTypeId,
     carryForwardMax: p.carryForwardMax ?? 5,
+    // The two expiry MODES are mutually exclusive and `applyLeaveTypeRules` routes them through the very
+    // same `parseCarryExpiry` the policy JSONB went through, so 'months' still beats a date pair exactly as
+    // it did — see (6b)/(6c) below, which exist to pin the months arithmetic.
+    carryForwardExpiryMode: p.expiryMonths != null ? 'months' : 'date',
+    carryForwardExpiryMonths: p.expiryMonths ?? null,
     carryForwardExpiryMonth: p.expiry?.month ?? null,
     carryForwardExpiryDay: p.expiry?.day ?? null,
+  });
+  return seedEntitlement(adminCtx(b), {
+    leaveTypeId: b.annualLeaveTypeId,
+    annualDays: p.annualDays ?? 12,
     validFrom: p.from ?? '2025-01-01',
   });
+};
 
 const bd = (employmentId: string, asOf: string) =>
   leaveEntitlementBreakdown(adminCtx(b), employmentId, b.annualLeaveTypeId, asOf);
@@ -230,15 +247,7 @@ describe('leaveEntitlementBreakdown — single reconstruction path', () => {
 });
 
 describe('leaveEntitlementBreakdown — R4 Build #1 months-mode + clamp', () => {
-  const monthsPolicy = (months: number) =>
-    createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      carryForwardMax: 5,
-      carryForwardExpiryMode: 'months',
-      carryForwardExpiryMonths: months,
-      validFrom: '2025-01-01',
-    });
+  const monthsPolicy = (months: number) => annualPolicy({ expiryMonths: months });
 
   it('(6b) months:3 → carryForwardExpiryDate ends -03-31 for the cycle year', async () => {
     await monthsPolicy(3);

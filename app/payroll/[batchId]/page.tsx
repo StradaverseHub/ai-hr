@@ -7,7 +7,6 @@ import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readines
 import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { loanSummaryForBatch } from '@/core/loans';
 import { listAllowancePolicies, auditEvents } from '@/core/read';
-import { humanizeEvent } from '@/lib/audit-format';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
@@ -24,6 +23,18 @@ import { payslipProvenance, type StatutoryLineKey } from '@/core/payslip-recompu
 // 3c473773 — payslip boxes + the employer-borne disclosure, both read from each payslip's own snapshot.
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
 import { payslipEmployerBorne } from '@/core/payslip-employer-borne';
+
+/**
+ * `/payroll/<segment>` is the catch-all under the payroll workbench, so ANY unmatched path lands here
+ * with `batchId` set to whatever the segment was. Handing a non-UUID straight to `batchDetail` makes
+ * Postgres reject the parameter (`invalid input syntax for type uuid`) and the page returns a **500**,
+ * not a 404 — verified on a dev server, not reasoned about.
+ *
+ * It became reachable by a formerly valid URL when efe1d230 deleted /payroll/guide: every bookmark and
+ * every stale link to the guide now falls through to this route and would 500. A missing page must
+ * answer 404, so the id is shape-checked before anything is read.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -65,6 +76,7 @@ export default async function BatchPage({
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
   const { batchId } = await params;
+  if (!UUID_RE.test(batchId)) notFound(); // see UUID_RE — a non-uuid segment must 404, not 500
   const sp = await searchParams;
   const { error, from, hw } = sp;
   const data = await batchDetail(s, batchId);
@@ -127,8 +139,8 @@ export default async function BatchPage({
     (preChecks.hrdfSubjectUnregistered?.length ?? 0);
   // Config-level readiness (feedback 5db3ae48, Phase A) — the layer ABOVE the employee-master pre-checks:
   // is the COMPANY configured to run payroll (statutory tables, active cycle, pay-day, pay items, policy)?
-  // Read-only; surfaced here as a compact panel with a link to the full Workflow Guide. Uses the
-  // payroll.guide namespace so the check copy is written once.
+  // Read-only; surfaced here as a compact panel linking to the full report (now on Payroll Settings —
+  // efe1d230). Uses the payroll.guide namespace so the check copy is written once.
   const tg = await getTranslations('payroll.guide');
   // r134 — the four payroll-cycle names (regular / off_cycle / bonus / adjustment) are catalogued under
   // payroll.list, NOT payroll.batch. See the Cycle field below.
@@ -172,6 +184,28 @@ export default async function BatchPage({
       : [];
   const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
   const periodDays = new Date(pYear, pMonth, 0).getDate(); // calendar days in the pay period
+  /**
+   * e440991b point 5 — the payslip list's code and name become links to that employee's full payroll
+   * result. The destination is NOT new: /payroll/transaction-view's History tab already renders the
+   * itemised breakdown (earnings, allowances, overtime, deductions, employer contributions, statutory
+   * working, year-to-date). It simply was not reachable from the run you are reading.
+   *
+   * THE SELECTION TRAVELS IN THE URL, deliberately. Transaction View is a server component driving GET
+   * forms, and it SCOPE-GUARDS every param it receives: an `employmentId` outside the viewer's employee
+   * scope is coerced to `undefined` — "no selection" — rather than queried (its own comment at the
+   * coercion says so, and test/payroll-batch-payslip-link.test.ts pins it now that this link exists).
+   * Handing the selection over as a link therefore inherits that fence for free; passing a callback or
+   * pre-resolved rows across the boundary instead would both break RSC and route around the guard.
+   */
+  const payslipDetailHref = (employmentId: string) =>
+    `/payroll/transaction-view?${new URLSearchParams({
+      tab: 'history',
+      companyId: batch.companyId,
+      employmentId,
+      year: String(pYear),
+      month: String(pMonth),
+      cycle: batch.runType,
+    }).toString()}`;
   // Bulk component import (1D) is only meaningful when the kernel reads typed components.
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
   // Payroll Reset (feedback a03b2d9b) — ships dark behind a flag; the page is already requireAdmin-
@@ -184,8 +218,10 @@ export default async function BatchPage({
   // requireAdmin-gated and unlockClosedBatch re-asserts the granular payroll.unlock permission
   // (hr_admin + super_admin by default, per-company configurable — feedback 62e85140).
   const unlockOn = settingEnabledOrDefault(s, 'payroll.unlock_enabled');
-  // Per-run History (reporter ask #4 "fully traceable") — this batch's lifecycle events (created /
-  // processed / reset / run-added / selective-reprocess / closed / payment-summary.exported). Read-only.
+  // This batch's lifecycle events. e440991b point 4 took the History CARD off this screen (the Audit
+  // Trail renders the same `domain_event` rows), but the read stays: the "published by X on Y" line
+  // below finds the most recent `payroll-batch.closed` event in it, and without it every closed run
+  // would report "no publication record". Kept at the same limit so that lookup is unchanged.
   const history = await auditEvents(s, { aggregateId: batchId, limit: 50 });
   // Feedback efece4ce — this run's company HRDF registration. The levy tile was shown only when the total
   // was > 0, so "this company pays no HRDF because it is not registered" and "the levy failed to compute"
@@ -259,6 +295,19 @@ export default async function BatchPage({
                 title={t('paymentSummaryTitle')}
               >
                 ⬇ {t('paymentSummary')}
+              </a>
+            )}
+            {/* e440991b point 6 — the whole run into Excel, one row per employee with every earning,
+                deduction, employer contribution and total, off the stored payslips. A plain <a>, not a
+                form: the route is a GET download and this keeps the header a server component.
+                Processed/closed only — a draft has no payslips to reconcile. */}
+            {batch.status !== 'draft' && (
+              <a
+                href={`/payroll/${batch.id}/export?format=xlsx`}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                title={t('transactionDetailTitle')}
+              >
+                ⬇ {t('transactionDetail')}
               </a>
             )}
             {batch.status === 'draft' && (
@@ -522,8 +571,8 @@ export default async function BatchPage({
 
       {/* Config-level readiness (feedback 5db3ae48, Phase A): whether the COMPANY is configured to run
           payroll at all — one layer above the per-employee pre-checks below. Only non-ok checks are listed
-          here to keep the draft page focused; the full checklist + guided Phase 1→6 flow lives on the
-          Workflow Guide tab. */}
+          here to keep the draft page focused; the full eight-check per-company checklist lives on Payroll
+          Settings (efe1d230 — it moved there when the Workflow Guide page was retired). */}
       {configReadiness && configAlerts.length > 0 && (
         <Card
           className={`overflow-hidden ${
@@ -538,7 +587,13 @@ export default async function BatchPage({
                   ? tg('readinessBlocked', { n: configReadiness.blockers })
                   : tg('readinessWarnings', { n: configReadiness.warnings })}
               </p>
-              <Link href="/payroll/guide" className="shrink-0 text-xs font-medium text-primary hover:underline">
+              {/* efe1d230 — the Workflow Guide page is retired; the full eight-check per-company report
+                  it carried now opens on Payroll Settings behind ?readiness=full. Same report, same
+                  copy, one fewer menu row. */}
+              <Link
+                href="/payroll/setup?readiness=full"
+                className="shrink-0 text-xs font-medium text-primary hover:underline"
+              >
                 {tg('title')} →
               </Link>
             </div>
@@ -1044,10 +1099,15 @@ export default async function BatchPage({
                 return (
                   <tr key={sl.id}>
                     <td className="px-4 py-2.5">
-                      <EmployeeCode code={sl.employeeCode} />
+                      {/* e440991b point 5 — code and name both open the employee's full payroll result. */}
+                      <Link href={payslipDetailHref(sl.employmentId)} className="hover:underline">
+                        <EmployeeCode code={sl.employeeCode} />
+                      </Link>
                     </td>
                     <td className="px-4 py-2.5 font-medium">
-                      {sl.name}
+                      <Link href={payslipDetailHref(sl.employmentId)} className="text-primary hover:underline">
+                        {sl.name}
+                      </Link>
                       {sl.daysWorked != null && Number(sl.daysWorked) < periodDays && (
                         <span className="ml-2 text-xs font-normal text-amber-600 dark:text-amber-400">
                           {t('proratedDays', { worked: Number(sl.daysWorked), total: periodDays })}
@@ -1203,63 +1263,24 @@ export default async function BatchPage({
         </Card>
       )}
 
-      {/* Per-run History (reporter ask #4 "fully traceable — who, when, why, before/after"): this run's
-          append-only lifecycle events. The reset event carries its reason + reversal counts; the
-          selective-reprocess event carries who was picked. Read-only, admin-only (page is requireAdmin). */}
-      <Card className="overflow-hidden">
-        <SectionHeader title={t('historyTitle')} count={history.length} />
-        {history.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('historyEmpty')}</p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {history.map((ev) => {
-              const pl = (ev.payload ?? {}) as Record<string, unknown>;
-              const reason = typeof pl.reason === 'string' && pl.reason.trim() ? pl.reason.trim() : null;
-              return (
-                <li key={ev.id} className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-baseline sm:justify-between">
-                  <div>
-                    <div className="text-sm font-medium">{humanizeEvent(ev.eventType)}</div>
-                    {reason && <div className="mt-0.5 text-xs text-muted-foreground">{t('historyReason', { reason })}</div>}
-                    {ev.eventType === 'payroll-batch.reset' && (
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {t('historyResetCounts', {
-                          payslips: Number(pl.payslipsCleared ?? 0),
-                          loans: Number(pl.loanInstalmentsReversed ?? 0),
-                          claims: Number(pl.claimsReverted ?? 0),
-                        })}
-                      </div>
-                    )}
-                    {(ev.eventType === 'payroll-batch.selective-reprocessed' ||
-                      ev.eventType === 'payroll-batch.selective-reprocess-initiated') && (
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {t('historyReprocessCount', { n: Number(pl.reprocessedCount ?? pl.employeeCount ?? 0) })}
-                      </div>
-                    )}
-                    {ev.eventType === 'payroll-batch.unlocked' &&
-                      (() => {
-                        const w = (pl.warnings ?? {}) as { paymentDisbursed?: boolean; statutoryFiled?: boolean };
-                        return (
-                          <>
-                            {w.paymentDisbursed && (
-                              <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">{t('unlockWarnPayment')}</div>
-                            )}
-                            {w.statutoryFiled && (
-                              <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">{t('unlockWarnStatutory')}</div>
-                            )}
-                          </>
-                        );
-                      })()}
-                  </div>
-                  <div className="text-xs text-muted-foreground sm:text-right">
-                    <div>{ev.actorName ?? t('historySystemActor')}</div>
-                    <div className="tabular-nums">{new Date(ev.occurredAt).toLocaleString()}</div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
+      {/* e440991b point 4 — THE PER-RUN HISTORY CARD IS GONE FROM THIS SCREEN. It listed this batch's
+          append-only lifecycle events (created / processed / reset / selective-reprocess / unlocked /
+          closed), added for 9bc442bc ask #4 "fully traceable". The reporter has since asked for the run
+          screen to show the run and for the history to live in the Audit Trail, and that is a safe move
+          for THESE records specifically: they are `domain_event` rows, `auditEvents` is the same read
+          the Audit Trail issues, and nothing is deleted — only this second rendering of them.
+
+          `history` is still read above and MUST stay: the "published by X on Y" line (ef31d251) finds
+          the most recent `payroll-batch.closed` event in it. Removing the read with the card would have
+          quietly downgraded every closed run to "no publication record".
+
+          NOT REMOVED, and this is deliberate — see the report for r168b: the RECALCULATION HISTORY card
+          further up (97a9b0ab) is NOT a domain-event rendering. It reads
+          `payroll_employee_result_history` through `listRecomputeDisclosure`, this page is its ONLY
+          reader in the codebase, and the Audit Trail does not carry it. Taking it off here would delete
+          the only account of why a statutory figure moved on a re-run — the exact fault 97a9b0ab was
+          built to answer — while the plan told the reporter nothing would be lost. It also renders only
+          when the run has actually been recalculated, so it is not the clutter the ticket is about. */}
     </div>
   );
 }

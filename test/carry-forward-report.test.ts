@@ -15,17 +15,29 @@
  *  - Anniversary-cycle EARNED employees get a BLANK expiry (not a projected date) — expireCarriedLeave's
  *    Jan-1 "open marker" check never covers them, a real engine gap the plan flags out of scope.
  *  - Population includes same-year leavers (terminatedOn >= Jan 1 of the reported year).
+ *
+ * 6e9a126e RELEASE THREE — REPOINTED, and this is the reader the approved plan named as the one release
+ * three would break, so every figure below is load-bearing rather than incidental. Days now come from an
+ * entitlement template's band and the CARRY CAP + EXPIRY from the leave TYPE's own rule columns, which is
+ * where `applyLeaveTypeRules` reads them and — decisively — the only place `expireCarriedLeave` will look
+ * before deciding whether to sweep at all. Every expected figure is unchanged.
+ *
+ * TWO TESTS CONFIGURE DIFFERENTLY AND EACH SAYS WHY IN PLACE. (c) needs an EARNING METHOD, which only the
+ * type can carry. (d) needs a DATED cap, which only the template can carry — the type's columns are not
+ * effective-dated — so it configures the cap on the band and leaves the type unruled. Both shapes are live
+ * resolution paths, not fixture tricks.
  */
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee, terminateEmployment } from '../core/org';
-import { createLeavePolicy, setCompanyLeaveCycle } from '../core/admin';
+import { setCompanyLeaveCycle } from '../core/admin';
+import { updateEntitlementTemplate } from '../core/entitlement-template';
 import { openLeaveYear, expireCarriedLeave, accrueEarnedLeave } from '../core/leave';
 import { carryForwardReport } from '../core/analytics';
 import { leaveEntitlementBreakdown } from '../core/read';
-import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 let b: Base;
 
@@ -41,20 +53,37 @@ const hire = (hiredOn: string, name = 'CFR') =>
     grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
   });
 
-const annualPolicy = (p: {
+/**
+ * The same ANNUAL configuration these tests always used, split the way release three splits it: DAYS on an
+ * entitlement template's band, CARRY CAP + EXPIRY on the leave TYPE.
+ *
+ * The type is where they have to go. `expireCarriedLeave` gates its whole sweep on whether the TYPE
+ * carries an expiry (`typeCarriesExpiry`) — a per-band expiry never reaches the loop that would honour it
+ * — so an expiry configured anywhere else is silently inert and tests (a), (b) and (i) would report a
+ * clean zero forfeit while asserting a real one. Configuring it here is the shape the product actually
+ * resolves through, not the shape that happens to make a number appear.
+ */
+const annualPolicy = async (p: {
   annualDays?: number;
   carryForwardMax?: number;
   expiry?: { month: number; day: number } | null;
   from?: string;
-}) =>
-  createLeavePolicy(adminCtx(b), {
+}) => {
+  const tpl = await seedEntitlement(adminCtx(b), {
     leaveTypeId: b.annualLeaveTypeId,
     annualDays: p.annualDays ?? 12,
-    carryForwardMax: p.carryForwardMax ?? 5,
-    carryForwardExpiryMonth: p.expiry?.month ?? null,
-    carryForwardExpiryDay: p.expiry?.day ?? null,
     validFrom: p.from ?? '2025-01-01',
   });
+  await owner.db
+    .update(schema.leaveType)
+    .set({
+      carryForwardMax: String(p.carryForwardMax ?? 5),
+      carryForwardExpiryMonth: p.expiry?.month ?? null,
+      carryForwardExpiryDay: p.expiry?.day ?? null,
+    })
+    .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+  return tpl;
+};
 
 const post = (employmentId: string, entryType: 'accrual' | 'debit' | 'adjustment', days: number, effectiveOn: string, reason?: string | null) =>
   owner.db.insert(schema.leaveLedger).values({
@@ -129,15 +158,23 @@ describe('carryForwardReport — reconciles with the real engine', () => {
 
   it('(c) anniversary-cycle earned employee: 2D-3 forfeit tagged, lands in the right year row, expiry blank', async () => {
     await setCompanyLeaveCycle(adminCtx(b), { companyId: b.companyId, cycle: 'anniversary' });
-    await createLeavePolicy(adminCtx(b), {
+    // The one test here that needs an EARNING METHOD. A method can only be configured on the leave type,
+    // and `applyLeaveTypeRules` overlays a ruled type's whole rule set over the band — so the cap and
+    // expiry must ride the type alongside it, or they would be overwritten with the type's NULLs.
+    await seedEntitlement(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 12,
-      carryForwardMax: 5,
-      carryForwardExpiryMonth: 3,
-      carryForwardExpiryDay: 31,
-      method: 'earned_monthly',
       validFrom: '2026-01-01',
     });
+    await owner.db
+      .update(schema.leaveType)
+      .set({
+        accrualMethod: 'earned_monthly',
+        carryForwardMax: '5',
+        carryForwardExpiryMonth: 3,
+        carryForwardExpiryDay: 31,
+      })
+      .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
     const emp = await hireEmployee(adminCtx(b), {
       person: { fullName: 'AnnivCFR', primaryEmail: `anniv_cfr_${randomUUID().slice(0, 8)}@t.local` },
       companyId: b.companyId,
@@ -160,15 +197,31 @@ describe('carryForwardReport — reconciles with the real engine', () => {
     expect(row!.forfeitedAtExpiry).toBe(0);
   });
 
-  it('(d) policy cap/expiry changed between years → past-year report uses the version active at that year open', async () => {
-    // 2025-vintage policy: cap 5. Superseded from 2027 by a cap-10 version.
-    const p1 = await annualPolicy({ annualDays: 12, carryForwardMax: 5, from: '2025-01-01' });
+  it('(d) entitlement cap changed between years → past-year report uses the version active at that year open', async () => {
+    // ⚠️ THE ONE TEST HERE THAT CONFIGURES CARRY ON THE BAND RATHER THAN THE TYPE, and the reason is the
+    // thing it is asserting. The claim is that a report for a CLOSED year resolves the configuration that
+    // was in force when that year opened, not today's — so the cap has to be attached to something DATED.
+    // The leave type's rule columns are not dated; an entitlement template is, by the same close-then-
+    // insert supersession `leave_policy` used. So the cap rides the template's own band here, which is
+    // live behaviour for a type that carries no rule columns (`policyForDatedReader` →
+    // `policyFromTemplateBand`), and the leave type is deliberately left unruled so nothing overlays it.
+    // No expiry is involved, so this test never reaches `expireCarriedLeave`'s type-only expiry gate.
+    const p1 = await seedEntitlement(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      serviceBands: [{ fromYears: 0, toYears: null, days: 12, carryForwardDays: 5 }],
+      validFrom: '2025-01-01',
+    });
     const emp = await hire('2025-01-01');
     await openLeaveYear(adminCtx(b), { year: 2026 }); // uses cap 5: before 12, carry 5, forfeit 7 → 17
 
-    // Close out the old version and open a more generous one from 2027.
-    await owner.db.update(schema.leavePolicy).set({ validTo: '2027-01-01' }).where(eq(schema.leavePolicy.id, p1.id));
-    await annualPolicy({ annualDays: 12, carryForwardMax: 10, from: '2027-01-01' });
+    // Supersede the running version from 2027 with a more generous one. `updateEntitlementTemplate` is
+    // close-then-insert on one lineage — exactly what the hand-written `leave_policy.validTo` update this
+    // replaces used to do, and one eligibility rule keeps pointing at the lineage throughout.
+    await updateEntitlementTemplate(adminCtx(b), {
+      lineageId: p1.lineageId,
+      serviceBands: [{ fromYears: 0, toYears: null, days: 12, carryForwardDays: 10 }],
+      validFrom: '2027-01-01',
+    });
     await openLeaveYear(adminCtx(b), { year: 2027 }); // uses cap 10 now: before 17-? see balance; carry up to 10
 
     const r2026 = await report(2026);

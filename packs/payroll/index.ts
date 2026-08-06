@@ -35,7 +35,7 @@
  *   (staff loans + repayment schedule, deducted through payroll), and `core/statutory-authority.ts`
  *   (per-company statutory-body registration/payment references).
  * - Routes: `app/payroll/**` (the batch workbench, process wizard, transactions, transaction-view,
- *   reports, EA/CP39/zakat/TP1 surfaces, history-import, guide, the country-admin configuration
+ *   reports, EA/CP39/zakat/TP1 surfaces, history-import, the country-admin configuration
  *   screens whose MOUNTING is registry-driven since 5c), `app/admin/pay-components/**`,
  *   `app/admin/payroll-config/**`, `app/admin/payroll-cycle/**`, `app/admin/payroll-policy/**`,
  *   `app/admin/payroll-permissions/**`, `app/admin/loans/**`, `app/api/payroll/**` (the reprocess
@@ -151,7 +151,7 @@
  * via `modulePackById('payroll')` and fails closed (D3) — and the country calculators already fail
  * closed on an unresolvable pack (D3, `countryPackInactive`). No entitlement machinery is built here.
  */
-import { ArrowLeftRight, Banknote, FileText, Landmark, ReceiptText, Settings2, Table2, Wallet, Workflow } from 'lucide-react';
+import { ArrowLeftRight, Banknote, FileText, HandCoins, Landmark, ReceiptText, Settings2, Table2, Wallet } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
 import { payrollNavRank } from './phases';
 
@@ -167,16 +167,14 @@ import { payrollNavRank } from './phases';
  * wholesale adminOnly gate), it just opens a panel instead of navigating.
  *
  * The children are the retired tab strip's six destinations, hrefs VERBATIM so existing bookmarks
- * keep working, reordered to the reporter's requested sequence (Workflow Guide before Payroll
- * Process — read the guide, then run the payroll).
+ * keep working. 1459e116 originally opened the panel with the Workflow Guide ("read the guide, then
+ * run the payroll"); efe1d230 retires that row and its page, and the panel now opens on Payroll
+ * Process — which is what the reporter asked for both times, once the guide stopped being read.
  *
- * a1d82340 STEP 3 — the ORDER of those six is no longer written out here. It is derived from
+ * a1d82340 STEP 3 — the ORDER of those rows is no longer written out here. It is derived from
  * `payrollNavRank` (packs/payroll/phases.ts), the single declaration of the payroll sequence that
- * the Workflow Guide and the Process wizard also read, so the menu cannot drift away from the order
- * the guide teaches. The SET of rows, their hrefs, their labelKeys and their icons are unchanged;
- * only the sequence moves — Settings is no longer stranded at the end of a menu whose first real row
- * is the finished-runs workbench. 1459e116's constraint (Workflow Guide first) is preserved: the
- * guide is ranked 0.
+ * the Process wizard also reads, so the menu cannot drift away from the order the module teaches.
+ * Settings is not stranded at the end; it sits second, immediately after the workbench you open on.
  *
  * WHY NO SECOND LEVEL. The reporter's tree nests Fixed/Individual under Transactions and the five
  * config screens under Settings. The sidebar fly-out is deliberately ONE level deep
@@ -194,12 +192,16 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
   icon: Wallet,
   group: 'admin',
   children: [
-    // Guided end-to-end payroll workflow view (feedback 5db3ae48): signposts Phase 1→6 and surfaces
-    // config-level readiness; links OUT to the screens below rather than duplicating them.
-    { href: '/payroll/guide', labelKey: 'payrollGuide', icon: Workflow },
     // The batch workbench — the pack's landing route, and what "/payroll" meant as a flat row.
+    // efe1d230: ranked 0 in phases.ts, so this is the row the fly-out opens on and focuses. The
+    // Workflow Guide row that used to sit above it is retired with its page (see phases.ts).
     { href: '/payroll', labelKey: 'payrollProcess', icon: Banknote },
     { href: '/payroll/transactions', labelKey: 'payrollTransactions', icon: ArrowLeftRight },
+    // 6d72816e — staff loans. The SCREEN already existed at /admin/loans (registered in
+    // lib/permissions.ts, reachable only from a card on the Transactions hub); what was missing was a
+    // menu row, which is why the reporter concluded loans were not in Payroll. Href VERBATIM so the
+    // existing bookmarks and the Transactions-hub card keep pointing at the same screen.
+    { href: '/admin/loans', labelKey: 'loans', icon: HandCoins },
     { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView', icon: Table2 },
     // 169e3c24 — the admin payslip review screen. The itemised breakdown it renders already existed on
     // Transaction View → History; what was missing was a menu row that says "payslip", which is why the

@@ -42,14 +42,20 @@ const NODE = payrollPack.navNodes!.find((n) => n.group === 'admin')!;
  * "contains", because a set guard that only checks a subset stops noticing a deletion.
  *
  * a1d82340 STEP 3 — the ORDER is no longer asserted from a literal here. It is DERIVED from
- * packs/payroll/phases.ts, the one declaration of the payroll sequence, and separately proved to
- * agree with the Workflow Guide's phase order. A literal list could be edited to match a drifted
- * menu without anyone noticing; a derived one cannot, because the guide would have to drift too.
+ * packs/payroll/phases.ts, the one declaration of the payroll sequence (test/payroll-phase-order.test.ts).
+ * A literal list could be edited to match a drifted menu without anyone noticing.
  */
 const EXPECTED_SET = [
-  { href: '/payroll/guide', labelKey: 'payrollGuide' },
+  // efe1d230 — `/payroll/guide` is REMOVED from this set, the only removal it has ever taken. It is a
+  // deletion of a DESTINATION, which is exactly what this guard exists to catch, so it is recorded
+  // here rather than quietly dropped: the Workflow Guide page is retired and its eight-check
+  // per-company readiness report moved to /payroll/setup?readiness=full. Nothing else changed; the
+  // remaining hrefs are still the retired tab strip's, character for character.
   { href: '/payroll', labelKey: 'payrollProcess' },
   { href: '/payroll/transactions', labelKey: 'payrollTransactions' },
+  // 6d72816e — an ADDITION, like statutory-forms and individual-payslip below. The /admin/loans SCREEN
+  // already existed and was reachable only from a card on the Transactions hub; this is its menu row.
+  { href: '/admin/loans', labelKey: 'loans' },
   { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView' },
   // 169e3c24 — an ADDITION to the set, like statutory-forms above. Every original entry is untouched, so
   // the guard's promise ("no destination lost, no href renamed") is not weakened by listing it.
@@ -70,10 +76,34 @@ describe('1459e116 — the payroll fly-out carries the retired tab strip, unbrok
     );
   });
 
-  it('still opens with the Workflow Guide (1459e116’s ordering request, not undone)', () => {
-    // The reporter's own words were "read the guide, then run the payroll". Re-sequencing the rest
-    // of the menu must not cost that.
-    expect(NODE.children[0]!.href).toBe('/payroll/guide');
+  it('opens with Payroll Process (efe1d230’s landing-page promise)', () => {
+    // 1459e116 asked for "read the guide, then run the payroll" and this assertion pinned the guide
+    // first. efe1d230 WITHDRAWS that: the guide is "a menu row nobody starts from" and the approved
+    // plan says "Payroll Process becomes the landing page when you open the Payroll module". The
+    // fly-out focuses its first child on open (components/nav-flyout.tsx `firstLinkRef`), so the
+    // first row IS the landing page — this is the assertion that promise reduces to. Updated, not
+    // deleted: without it the menu's opening row is unguarded again.
+    expect(NODE.children[0]!.href).toBe('/payroll');
+  });
+
+  it('no longer carries the retired Workflow Guide, and no route in the tree links to it', () => {
+    // Both halves matter. A menu row pointing at a deleted page 404s; a LINK pointing at it 404s just
+    // as hard and no nav guard would see it. The two links that existed (Payroll Settings and the
+    // payroll run screen) were repointed at the report's new home, not removed.
+    expect(NODE.children.some((c) => c.href === '/payroll/guide')).toBe(false);
+    expect(exists('app/payroll/guide/page.tsx'), 'the guide route is still on disk').toBe(false);
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+        const rel = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          if (e.name === 'node_modules' || e.name === '.next' || e.name === 'graphify-out') continue;
+          walk(rel);
+        } else if (/\.tsx?$/.test(e.name) && read(rel).includes("'/payroll/guide'")) offenders.push(rel);
+      }
+    };
+    for (const d of ['app', 'components', 'lib', 'packs']) walk(d);
+    expect(offenders, 'links to the retired /payroll/guide').toEqual([]);
   });
 
   it('gates nothing per-row (the Administration group is adminOnly wholesale, as before)', () => {
