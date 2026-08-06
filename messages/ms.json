@@ -163,7 +163,8 @@
     "movementSettings": "Tetapan Pergerakan",
     "hiringDefaults": "Tetapan Lalai Pengambilan",
     "noticeBoard": "Papan Notis",
-    "payrollIndividualPayslip": "Slip Gaji Individu"
+    "payrollIndividualPayslip": "Slip Gaji Individu",
+    "payrollBackPay": "Bayaran Tunggakan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -4014,6 +4015,74 @@
       "ytdItem": "Perkara",
       "ytdNote": "Angka setakat tahun ini ialah jumlah penuh seperti yang dikira dan dilaporkan kepada pihak berkuasa. Jika majikan menanggung sebahagian caruman, baris potongan di atas menunjukkan apa yang benar-benar diambil daripada pekerja, jadi kedua-duanya boleh berbeza dengan sah.",
       "ytdToDate": "Setakat tahun ini"
+    },
+    "backPay": {
+      "title": "Bayaran Tunggakan",
+      "subtitle": "Kira jumlah yang terhutang akibat perubahan gaji ke belakang, bulan demi bulan, dan bayar pada payroll semasa.",
+      "noHistoryChange": "Tiada payroll yang telah ditutup dibuka semula dan tiada slip gaji lama diubah. Tunggakan yang diluluskan dipos sebagai bayaran sekali sahaja pada bulan semasa, jadi ia dikenakan KWSP, PERKESO dan PCB pada bulan ia dibayar.",
+      "company": "Syarikat",
+      "apply": "Guna",
+      "detected": "Perubahan gaji ke belakang yang belum dibayar",
+      "noneDetected": "Tiada perubahan gaji ke belakang menunggu pembayaran untuk syarikat ini.",
+      "employee": "Pekerja",
+      "effectiveFrom": "Berkuat kuasa dari",
+      "revisedSalary": "Gaji disemak",
+      "keyedOn": "Dimasukkan pada",
+      "affectedMonths": "Bulan yang telah dibayar",
+      "targetPeriod": "Bayar dalam bulan",
+      "targetPeriodHint": "Tunggakan ditambah pada payroll bulan ini. Bulan di atas tidak pernah dikira semula.",
+      "calculate": "Kira bayaran tunggakan",
+      "verification": "Pengesahan",
+      "statusLabel": "Status",
+      "calculatedBy": "Dikira oleh",
+      "approvedBy": "Diluluskan oleh",
+      "payItem": "Item gaji",
+      "total": "Jumlah",
+      "grandTotal": "Jumlah keseluruhan",
+      "needsYourFigure": "Perlu angka anda",
+      "needsReviewNote": "{count} baris memerlukan angka daripada anda. Ia dipaparkan tetapi tidak dimasukkan dalam jumlah dan tiada apa-apa dipos untuknya — masukkan jumlah itu sebagai transaksi sekali sahaja yang biasa.",
+      "markVerified": "Tanda sebagai disahkan",
+      "approveAndPost": "Luluskan dan pos",
+      "cancel": "Batalkan bayaran tunggakan ini",
+      "backToList": "Kembali ke senarai",
+      "postingNote": "Luluskan dan pos mencipta satu bayaran sekali sahaja bagi setiap pekerja bagi setiap bulan yang dilindungi pada bulan gaji di atas. Angka negatif dipos sebagai potongan.",
+      "history": "Larian bayaran tunggakan",
+      "noRuns": "Belum ada bayaran tunggakan dikira.",
+      "employees": "Pekerja",
+      "months": "Bulan",
+      "open": "Buka",
+      "status": {
+        "draft": "Draf",
+        "verified": "Disahkan",
+        "posted": "Dipos",
+        "cancelled": "Dibatalkan"
+      },
+      "review": {
+        "manualOvertime": "Kerja lebih masa dimasukkan secara manual — hanya jumlah wang disimpan, bukan jam, jadi ia tidak boleh dihargakan semula.",
+        "overtimeDeferred": "Tunggakan kerja lebih masa adalah sebahagian daripada penghantaran seterusnya, selepas perubahan pengiraan kehadiran.",
+        "hoursNotStored": "Item ini dikira daripada jam, dan jam tidak disimpan pada slip gaji.",
+        "blendedOriginal": "Dua rekod gaji terpakai pada bulan ini semasa ia dibayar, jadi angka asal tidak dapat dihasilkan semula dengan tepat.",
+        "nonMonthlyPayMode": "Pekerja ini dibayar mengikut hari atau jam, jadi perubahan gaji bulanan bukan punca perubahan gaji mereka.",
+        "nonPayableItem": "Item ini direkodkan tetapi tidak pernah dibayar tunai, jadi perbezaannya bukan wang.",
+        "noBaselineSalary": "Tiada rekod gaji berkuat kuasa semasa bulan ini dibayar, jadi tiada apa-apa untuk dibandingkan."
+      },
+      "export": {
+        "csv": "Muat turun CSV",
+        "xlsx": "Muat turun Excel",
+        "pdf": "Muat turun PDF"
+      },
+      "errors": {
+        "nothingToCalculate": "Tiada apa-apa untuk dikira — tiada perubahan gaji ke belakang menghasilkan perbezaan.",
+        "targetRunNotDraft": "Larian payroll untuk bulan itu telah diproses. Bayaran tunggakan hanya boleh ditambah semasa ia masih draf.",
+        "wrongStatus": "Bayaran tunggakan ini tidak berada dalam keadaan yang membenarkan tindakan itu.",
+        "notFound": "Bayaran tunggakan itu tidak dijumpai.",
+        "unknown": "Sesuatu telah berlaku. Sila cuba lagi."
+      },
+      "ok": {
+        "verified": "Ditanda sebagai disahkan.",
+        "posted": "Diluluskan dan dipos ke payroll semasa.",
+        "cancelled": "Dibatalkan. Sebarang pos yang diciptanya telah dibuang."
+      }
     }
   },
   "admin": {

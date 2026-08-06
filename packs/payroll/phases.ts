@@ -85,6 +85,11 @@ export const PAYROLL_NAV_PHASE: Readonly<Record<string, number>> = {
   // run (ADR-0060, core/loans.ts). Same phase as the other transaction keying screens, so it lands
   // immediately after Transactions (`sort` is stable and the row sits there literally).
   '/admin/loans': 2,
+  // 2ef69d1e — Back Pay is a payroll INPUT like the other transaction keying screens: it works out what
+  // a backdated salary revision owes and posts it as one-off transactions on the current run. Same phase
+  // as Transactions, so it lands between Transactions and Transaction View, which is where the approved
+  // plan puts it.
+  '/payroll/back-pay': 2,
   '/payroll/transaction-view': 5,
   // 169e3c24 — Individual Payslip is the same REVIEW step as Transaction View: check one person's pay
   // before it goes out. Same rank, and `sort` is stable, so it lands immediately after it (its literal

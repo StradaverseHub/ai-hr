@@ -163,7 +163,8 @@
     "movementSettings": "异动设置",
     "hiringDefaults": "入职默认设置",
     "noticeBoard": "公告栏",
-    "payrollIndividualPayslip": "个人工资单"
+    "payrollIndividualPayslip": "个人工资单",
+    "payrollBackPay": "补发工资"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -4014,6 +4015,74 @@
       "ytdItem": "项目",
       "ytdNote": "年初至今的数字是按计算并向主管机关申报的全额。若雇主承担了部分供款，上方扣除行显示的是实际从员工薪资中扣除的金额，两者出现差异属正常。",
       "ytdToDate": "年初至今"
+    },
+    "backPay": {
+      "title": "补发工资（欠薪）",
+      "subtitle": "逐月计算追溯调薪应补发的金额，并在当期工资中支付。",
+      "noHistoryChange": "不会重开已关闭的工资期，也不会更改历史工资单。已批准的补发以一次性付款形式记入当月，因此在实际支付的月份缴纳公积金、社险和所得税。",
+      "company": "公司",
+      "apply": "应用",
+      "detected": "尚未支付的追溯调薪",
+      "noneDetected": "该公司没有等待支付的追溯调薪。",
+      "employee": "员工",
+      "effectiveFrom": "生效日期",
+      "revisedSalary": "调整后薪资",
+      "keyedOn": "录入日期",
+      "affectedMonths": "已支付的月份",
+      "targetPeriod": "支付月份",
+      "targetPeriodHint": "补发金额加入本月工资。上述月份绝不会重新计算。",
+      "calculate": "计算补发工资",
+      "verification": "核对",
+      "statusLabel": "状态",
+      "calculatedBy": "计算人",
+      "approvedBy": "批准人",
+      "payItem": "薪资项目",
+      "total": "合计",
+      "grandTotal": "总计",
+      "needsYourFigure": "需要您填写金额",
+      "needsReviewNote": "有 {count} 行需要您提供金额。它们会显示但不计入合计，也不会为其入账——请将这些金额作为普通的一次性交易录入。",
+      "markVerified": "标记为已核对",
+      "approveAndPost": "批准并入账",
+      "cancel": "取消此补发工资",
+      "backToList": "返回列表",
+      "postingNote": "批准并入账会为每位员工的每个受影响月份，在上述支付月份创建一笔一次性付款。负数将作为扣款入账。",
+      "history": "补发工资批次",
+      "noRuns": "尚未计算过补发工资。",
+      "employees": "员工数",
+      "months": "月份数",
+      "open": "打开",
+      "status": {
+        "draft": "草稿",
+        "verified": "已核对",
+        "posted": "已入账",
+        "cancelled": "已取消"
+      },
+      "review": {
+        "manualOvertime": "加班费是手工录入的——系统只保存了金额，没有保存工时，因此无法重新计价。",
+        "overtimeDeferred": "加班补发属于下一阶段交付，需在考勤计算调整之后进行。",
+        "hoursNotStored": "该项目按工时计算，而工资单不保存工时。",
+        "blendedOriginal": "该月支付时有两条薪资记录同时适用，因此无法精确还原原始金额。",
+        "nonMonthlyPayMode": "该员工按日或按小时计酬，因此月薪调整并非其薪资变动的原因。",
+        "nonPayableItem": "该项目只作记录，从不以现金支付，因此其差额并非实际金额。",
+        "noBaselineSalary": "该月支付时没有生效的薪资记录，因此没有可比较的基准。"
+      },
+      "export": {
+        "csv": "下载 CSV",
+        "xlsx": "下载 Excel",
+        "pdf": "下载 PDF"
+      },
+      "errors": {
+        "nothingToCalculate": "无可计算内容——没有任何追溯调薪产生差额。",
+        "targetRunNotDraft": "该月的工资批次已处理。补发工资只能在批次仍为草稿时加入。",
+        "wrongStatus": "此补发工资当前状态不允许该操作。",
+        "notFound": "找不到该补发工资。",
+        "unknown": "出现问题，请重试。"
+      },
+      "ok": {
+        "verified": "已标记为已核对。",
+        "posted": "已批准并入账至当期工资。",
+        "cancelled": "已取消。其创建的入账已全部删除。"
+      }
     }
   },
   "admin": {

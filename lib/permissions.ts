@@ -428,6 +428,12 @@ export const SCREENS: readonly ScreenEntry[] = [
       // deleted and its eight-check readiness report moved to /payroll/setup?readiness=full, which is
       // already covered by the '/payroll/setup' entry below under this same scopedAdmin key. The entry
       // must go with the page: test/function-access.test.ts fails a registered route with no file.
+      // 2ef69d1e: Back Pay (Arrears). ONE route — the detection list, the verification grid and the run
+      // history are three states of the same page (`?run=`), the same single-pager convention
+      // /payroll/transaction-view uses for `?tab=`. Its `export` sibling is a route handler, not a
+      // guarded page, so it is not listed here (the reverse-completeness check walks page.tsx files).
+      // Same scopedAdmin key as the rest of the hub: the screen shows per-employee salary differences.
+      '/payroll/back-pay',
       '/payroll/history-import',
       // 169e3c24: the pre-release Individual Payslip viewer. Registered on the SAME scopedAdmin key as
       // the rest of the hub, because it is the admin's review of a payslip before it is released — it
