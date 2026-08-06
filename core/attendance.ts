@@ -15,6 +15,7 @@ import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { enforceDeviceGateTx } from './attendance-device';
 import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
+import { ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1 } from './attendance-trace';
 // 7c834696 stage 1 — the pure per-day arithmetic lives in its own module so the release gate ("no bands,
 // deductions off ⇒ every figure byte-identical") can be asserted on the functions directly, without
 // fixtures. The two measurement helpers are aliased because `earlyOutMinutes` is also a local variable name
@@ -570,6 +571,10 @@ type DerivedDay = {
   lateDeductMinutes: number | null;
   earlyOutDeductMinutes: number | null;
   otSplit: OtSplit | null;
+  /** 7c834696 POINT 3 — the working behind the figures above, for the Records hover. ADDITIVE: it is
+   *  built from values already computed here and changes none of them. See core/attendance-trace.ts for
+   *  why it is stored rather than recomputed at read time. */
+  trace: AttendanceTraceV1;
 };
 
 /** Derive status + worked/OT minutes against a resolved schedule — the shared rule that check-in/out apply
@@ -613,6 +618,54 @@ function deriveAttendance(
         ? deductionMinutes(lateMinutes, s.rule!.lateAfterMinutes, s.rule!.lateDeductMinutes)
         : 0;
 
+  // ── 7c834696 POINT 3 · the trace. Built from the values ALREADY computed above; it reads them and
+  // writes nothing back, so no figure this function returns can depend on it. ────────────────────────
+  const inAbsRaw = toMinutes(checkInAt);
+  const traceLateness: AttendanceTraceV1['lateness'] =
+    lateMinutes == null || schedStartAbs == null || inAbsSched == null
+      ? null
+      : {
+          startAbs: schedStartAbs,
+          graceMinutes: Math.max(0, s.lateGraceMinutes),
+          thresholdAbs: schedStartAbs + Math.max(0, s.lateGraceMinutes),
+          checkInAbs: inAbsSched,
+          includeGrace: s.rule?.includeGraceInLateness ?? false,
+          minutes: lateMinutes,
+        };
+  // `applies` distinguishes "your rule does not deduct" from "it does, and this day earned nothing" —
+  // every rule ships with deductions OFF, so without this the panel would answer the wrong question.
+  const traceLateDeduction: AttendanceTraceV1['latenessDeduction'] =
+    lateDeduct == null
+      ? null
+      : {
+          applies: deductible,
+          everyMinutes: deductible ? s.rule!.lateAfterMinutes : null,
+          deductPerBlock: deductible ? s.rule!.lateDeductMinutes : null,
+          blocks: deductible && s.rule!.lateAfterMinutes > 0 ? Math.floor((lateMinutes ?? 0) / s.rule!.lateAfterMinutes) : 0,
+          minutes: lateDeduct,
+        };
+  const baseTrace = (): AttendanceTraceV1 => ({
+    v: ATTENDANCE_TRACE_VERSION,
+    schedule: {
+      source: s.source,
+      dayType: s.dayType,
+      startAbs: schedStartAbs,
+      endAbs: s.scheduledEnd != null ? toMinutes(s.scheduledEnd) + (s.crossesMidnight ? MINS_PER_DAY : 0) : null,
+      scheduledMinutes: s.scheduledMinutes,
+      normalMinutesOverride: s.normalMinutesOverride,
+      crossesMidnight: s.crossesMidnight,
+      breakMinutes: s.breakMinutes,
+      breakSpanned: null,
+      ruleId: s.rule?.id ?? null,
+    },
+    punch: { inAbs: inAbsRaw, outAbs: null, spanMinutes: null, workedMinutes: null },
+    lateness: traceLateness,
+    latenessDeduction: traceLateDeduction,
+    earlyOut: null,
+    earlyOutDeduction: null,
+    overtime: null,
+  });
+
   if (!checkOutAt) {
     // An open day: worked/OT have always been null here and stay null, and so does everything that needs a
     // clock-out. Lateness is already knowable, and the read layer already shows a 'late' status at this point.
@@ -626,6 +679,9 @@ function deriveAttendance(
       lateDeductMinutes: lateDeduct,
       earlyOutDeductMinutes: null,
       otSplit: null,
+      // An open day gets a trace too — the lateness half is already knowable and is exactly what HR asks
+      // about mid-morning. The overtime half stays null rather than reading as a confident zero.
+      trace: baseTrace(),
     };
   }
   // Half-day is a day-shift concept; skip it for cross-midnight shifts (checkout time-of-day is next-day).
@@ -667,14 +723,21 @@ function deriveAttendance(
   // that normal hours are N minutes regardless of the clock, so it keeps the duration comparison.
   let earlyOtMinutes = 0;
   let otMinutes: number;
+  // 7c834696 point 3 — which arithmetic ran. Captured here rather than re-derived by the panel, because
+  // the three branches are indistinguishable from the stored figures alone.
+  let otBasis: 'window' | 'duration' | 'nonWorkday';
   if (s.dayType !== 'workday') {
     otMinutes = workedMinutes;
+    otBasis = 'nonWorkday';
   } else if (w && s.normalMinutesOverride == null) {
     otMinutes = Math.max(0, w.outAbs - Math.max(w.inAbs, w.endAbs));
     earlyOtMinutes = Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs);
+    otBasis = 'window';
   } else {
     otMinutes = Math.max(0, workedMinutes - (s.normalMinutesOverride ?? s.scheduledMinutes));
+    otBasis = 'duration';
   }
+  const otRawMinutes = otMinutes;
   // 88e94371's documented GAP — "the engine does not yet attribute pre-shift punch minutes" — is what the
   // window above now supplies. The rule's opt-in folds them in HERE, before the per-shift OT shape below, so
   // an ineligible or capped shift can never let early minutes leak past its own limits.
@@ -690,11 +753,13 @@ function deriveAttendance(
       if (s.otRule.dailyCapMinutes != null) otMinutes = Math.min(otMinutes, s.otRule.dailyCapMinutes);
     }
   }
+  const otAfterShiftRule = otMinutes;
   // 88e94371 — apply the resolved rule's Overtime table: round the workday OT minutes to the matching band's
   // Round-To value. Early OT was already folded in above (b7b886e2), so 0 is passed here deliberately — the
   // fold has to happen before the per-shift cap, and this call is only the rounding step. A rule with no OT
   // rows / rounding leaves otMinutes unchanged (byte-identical). Statutory 1.5×/2×/3× multipliers stay the
   // pay-side compliance cap and are untouched. Only workday OT is shaped (rest/holiday premium is statutory).
+  const otBeforeRounding = otMinutes;
   if (s.dayType === 'workday' && otMinutes != null && s.rule) {
     otMinutes = applyOtRuleRows(otMinutes, 0, s.rule);
   }
@@ -732,6 +797,65 @@ function deriveAttendance(
         ? deductionMinutes(earlyOut, s.rule!.earlyAfterMinutes, s.rule!.earlyDeductMinutes)
         : 0;
 
+  const otSplit = splitOtMinutes(otMinutes, s.dayType, s.rule);
+
+  // ── 7c834696 POINT 3 · finish the trace. Reads the finished figures; writes none of them. ───────────
+  const trace = baseTrace();
+  trace.schedule.breakSpanned = spannedBreak;
+  trace.punch = { inAbs: inAbsRaw, outAbs: inAbsRaw + span, spanMinutes: span, workedMinutes };
+  trace.earlyOut =
+    earlyOut == null || schedEndAbs == null || outAbsSched == null
+      ? null
+      : {
+          endAbs: schedEndAbs,
+          graceMinutes: Math.max(0, s.earlyGraceMinutes),
+          thresholdAbs: schedEndAbs - Math.max(0, s.earlyGraceMinutes),
+          checkOutAbs: outAbsSched,
+          includeGrace: s.rule?.includeGraceInEarlyOut ?? false,
+          minutes: earlyOut,
+        };
+  trace.earlyOutDeduction =
+    earlyOutDeduct == null
+      ? null
+      : {
+          applies: deductible,
+          everyMinutes: deductible ? s.rule!.earlyAfterMinutes : null,
+          deductPerBlock: deductible ? s.rule!.earlyDeductMinutes : null,
+          blocks: deductible && s.rule!.earlyAfterMinutes > 0 ? Math.floor(earlyOut! / s.rule!.earlyAfterMinutes) : 0,
+          minutes: earlyOutDeduct,
+        };
+  trace.overtime = {
+    basis: otBasis,
+    // 'nonWorkday' has no normal hours to measure against — null rather than 0, which would read as
+    // "your normal day is zero minutes" on the panel.
+    normalMinutes: otBasis === 'nonWorkday' ? null : (s.normalMinutesOverride ?? s.scheduledMinutes),
+    normalIsOverride: otBasis !== 'nonWorkday' && s.normalMinutesOverride != null,
+    rawMinutes: otRawMinutes,
+    earlyMinutes: earlyOtMinutes,
+    earlyIncluded: s.dayType === 'workday' && (s.rule?.applyToEarlyOt ?? false),
+    shiftRule:
+      s.dayType === 'workday' && s.otRule
+        ? {
+            eligible: s.otRule.eligible,
+            // `?? null` is load-bearing, not defensive tidying: ShiftOtRule carries these as
+            // `number | undefined`, and JSON.stringify DROPS an undefined value entirely — the key would
+            // vanish from the stored jsonb and the panel could not tell "no cap configured" from "a trace
+            // written before caps existed". null survives the round trip and keeps the shape stable.
+            minMinutes: s.otRule.minMinutes ?? null,
+            dailyCapMinutes: s.otRule.dailyCapMinutes ?? null,
+            minutesAfter: otAfterShiftRule,
+          }
+        : null,
+    // `applied` is whether rounding MOVED the figure, not whether a rule existed: a rule with no
+    // rounding configured is byte-identical to no rule, and the panel should not claim a step ran.
+    rounding:
+      s.dayType === 'workday' && s.rule
+        ? { applied: otMinutes !== otBeforeRounding, beforeMinutes: otBeforeRounding, afterMinutes: otMinutes }
+        : null,
+    minutes: otMinutes,
+    split: otSplit,
+  };
+
   return {
     status,
     workedMinutes,
@@ -741,7 +865,8 @@ function deriveAttendance(
     underMinutes: under,
     lateDeductMinutes: lateDeduct,
     earlyOutDeductMinutes: earlyOutDeduct,
-    otSplit: splitOtMinutes(otMinutes, s.dayType, s.rule),
+    otSplit,
+    trace,
   };
 }
 
@@ -759,6 +884,9 @@ const otSplitColumns = (split: OtSplit | null) => ({
 /** Every stage-1 figure of a derived day, as the columns migration 0394 added. One helper so the four
  *  write paths (check-in, check-out, correction approval, punch import) cannot drift apart. */
 const stage1Columns = (d: DerivedDay) => ({
+  // 7c834696 point 3 — the working, written by the SAME helper as the figures it explains. Putting it
+  // anywhere else would let one of the four write paths persist a figure with no trace beside it.
+  calcTrace: d.trace,
   lateMinutes: d.lateMinutes,
   earlyOutMinutes: d.earlyOutMinutes,
   underMinutes: d.underMinutes,

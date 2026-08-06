@@ -13,6 +13,9 @@
  *    cross-tenant *reads*; composite FKs would also block cross-tenant *references*.
  */
 import { sql } from 'drizzle-orm';
+// TYPE-ONLY, and the only core/ import in this file. core/attendance-trace.ts is a deliberate LEAF with
+// no imports of its own, so this cannot close a cycle; `import type` is erased at runtime regardless.
+import type { AttendanceTraceV1 } from '../core/attendance-trace';
 import {
   pgTable,
   pgEnum,
@@ -3309,6 +3312,15 @@ export const attendance = pgTable(
     ot15Minutes: integer('ot15_minutes'),
     ot20Minutes: integer('ot20_minutes'),
     ot30Minutes: integer('ot30_minutes'),
+    // 7c834696 POINT 3 — the WORKING behind the three figures above, stamped by the engine as it computes
+    // them (core/attendance-trace.ts). NULL on every row written before this release and on any row no
+    // engine has touched since; the panel reports "no working recorded" rather than reconstructing one.
+    //
+    // STORED RATHER THAN RECOMPUTED ON PURPOSE. Shifts, rosters and rules are effective-dated AND
+    // editable in place, so re-deriving a June day against August's rule ladder would print working that
+    // does not add up to the number beside it — on the one screen whose purpose is auditability. Same
+    // reasoning, and the same shape, as payslip `pcbMeta` / core/pcb-explain.ts.
+    calcTrace: jsonb('calc_trace').$type<AttendanceTraceV1>(),
     remarks: text('remarks'),
     // ── Clocking Location & Geofencing (ADR-0070) — per-punch capture, ALL nullable. Split per punch
     // (check-in vs check-out) rather than one set of columns per row so an import-in/web-out row, or a
