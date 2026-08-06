@@ -26,6 +26,8 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
+// The db-free leaf the client pack serves as `identity.isLocalNationality` — the gate group 8 shares.
+import { isMalaysianNationality } from '../localization/my/ic-dob';
 import * as profile from '../core/profile';
 import { ELIGIBILITY_MARITAL_OPTIONS } from '../core/admin';
 import {
@@ -50,6 +52,8 @@ const BANK_CARD = 'components/bank-info-card.tsx';
 const TAX_FIELD = 'components/tax-category-field.tsx';
 const TAX_CARD = 'components/identity-tax-card.tsx';
 const SOCSO_FIELDS = 'components/socso-eis-fields.tsx';
+const IDENTITY_FIELDS = 'components/identity-fields.tsx';
+const IDENTITY_CARD = 'components/personnel-identity.tsx';
 const PERSONNEL_PAGE = 'app/admin/personnel/[employmentId]/page.tsx';
 const PAY_STRUCTURE = 'components/pay-structure-fields.tsx';
 const SALARY_HISTORY = 'components/salary-history-table.tsx';
@@ -656,6 +660,126 @@ describe('§3g group 7 — SOCSO / EIS is one group, and the wizard catches up a
   });
 });
 
+describe('§3h group 8 — Identity is one group, and the wizard finally asks for a nationality', () => {
+  it('both screens render the shared group', () => {
+    for (const f of [WIZARD, IDENTITY_CARD]) {
+      const src = read(f);
+      expect(src, `${f} must import the shared group`).toContain("from '@/components/identity-fields'");
+      expect(src, `${f} must render the identity number field`).toContain('<IdentityNumberField');
+      expect(src, `${f} must render the nationality picker`).toContain('<NationalityPicker');
+    }
+    // The wizard's own bare box and its two labels are gone.
+    const wizard = read(WIZARD);
+    expect(wizard).not.toContain("t('fields.icNumber')");
+    expect(wizard).not.toContain("t('hints.icNumber')");
+  });
+
+  it('the wizard ASKS for the nationality, and stores it on the draft', () => {
+    // The defect, stated plainly: item 357faecf gates the Personnel screen's Identity No (NRIC) card on
+    // person.nationality, and the wizard never collected one — so every hire it created arrived with
+    // nationality NULL, isLocalNationality(null) is false, and the identity number the wizard had just
+    // captured was HIDDEN on the Personnel screen until somebody set a nationality by hand.
+    expect(read(WIZARD)).toContain("set('profile', { nationality })");
+    expect(read('lib/employee-draft-schema.ts')).toContain('nationality?: string;');
+    // …and the creation path seeds it on the person, at creation, through hireEmployee's own person insert.
+    const org = read('core/org.ts');
+    expect(org).toContain('nationality: p.person.nationality ?? null');
+    expect(read('core/employee-draft.ts')).toContain('nationality,');
+  });
+
+  it('the NRIC gate has ONE definition, from the client-safe pack registry', () => {
+    // Never a hardcoded jurisdiction (ADR-0080 D4). The predicate lives in the shared group; the Personnel
+    // wrapper imports it under its local name rather than restating the rule.
+    const src = read(IDENTITY_FIELDS);
+    expect(src).toContain("from '@/localization/registry.client'");
+    expect(src).toContain(
+      'clientCountryPacks().some((p) => p.identity.isLocalNationality(nationality))',
+    );
+    expect(src, 'the gate is applied inside the shared field, so neither screen can drift from it')
+      .toContain('if (!isLocalNationality(props.nationality)) return null;');
+    expect(read(IDENTITY_CARD)).toContain('isLocalNationality as isMalaysianNationality');
+    // No screen re-derives it from a country string of its own.
+    expect(read(WIZARD)).not.toContain('isMalaysianNationality');
+  });
+
+  it("group 7's SOCSO workaround is gone — the IC-derived default fires in the wizard now", () => {
+    const wizard = read(WIZARD);
+    expect(wizard, 'the nationality={undefined} workaround must be gone').not.toContain('nationality={undefined}');
+    expect(wizard).toContain('nationality={data.profile?.nationality}');
+    // Displaying the default is not storing it: the wizard's SOCSO box is CONTROLLED, so a default nobody
+    // types over never enters the draft. The writer applies the same default the Personnel action applies,
+    // which is what makes the number shown and the number stored the same number.
+    expect(read('core/employee-draft.ts')).toContain('socsoNumber: pack.statutory.defaultSocsoEisNumber({');
+  });
+
+  it('the shared group is client-safe, single-namespace, and each screen uses the right mode', () => {
+    const src = read(IDENTITY_FIELDS);
+    expect(/^\s*['"]use client['"]\s*;/m.test(src.slice(0, 400))).toBe(true);
+    expect(src).not.toMatch(/from '(@\/|\.\.\/)?(db|core)\//);
+    const namespaces = [...src.matchAll(/useTranslations\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]);
+    expect([...new Set(namespaces)]).toEqual(['people.detail']);
+
+    // The Personnel card POSTs through FormData, so its copy stays uncontrolled and keeps the names.
+    const cardIc = read(IDENTITY_CARD).match(/<IdentityNumberField[\s\S]*?\/>/);
+    expect(cardIc).not.toBeNull();
+    expect(cardIc![0]).toContain('mode="form"');
+    expect(src).toContain('name="icNumber"');
+    const cardNat = read(IDENTITY_CARD).match(/<NationalityPicker[\s\S]*?\/>/);
+    expect(cardNat).not.toBeNull();
+    expect(cardNat![0]).toContain('mode="form"');
+    expect(cardNat![0]).toContain('name={name}');
+
+    // The wizard holds a draft in state and submits JSON — controlled, and carrying NO name, so a guard
+    // grepping for name="nationality" can never conclude that this copy posts (the r159 lesson).
+    for (const tag of ['IdentityNumberField', 'NationalityPicker']) {
+      const call = read(WIZARD).match(new RegExp(`<${tag}[\\s\\S]*?/>`));
+      expect(call, `the wizard must render ${tag}`).not.toBeNull();
+      expect(call![0], `${tag} must be controlled in the wizard`).toContain('mode="controlled"');
+      expect(call![0], `${tag} must carry no name in the wizard`).not.toContain('name=');
+    }
+    // Combobox only emits its hidden input when a name is given — that is what makes "no name" mean
+    // "posts nothing" rather than "posts under an empty name".
+    expect(read('components/ui/combobox.tsx')).toContain(
+      '{name !== undefined && <input type="hidden" name={name} value={selected} />}',
+    );
+  });
+
+  it('the wizard is NOT made stricter than the other two ways of creating an employee', () => {
+    // The IC is required on the Personnel card (a Malaysian must have an NRIC) and deliberately optional in
+    // the wizard: item e3ce0d4d made the column nullable for passport holders, and lib/employee-draft-schema
+    // states that a wizard stricter than hireEmployee and the bulk importer is how the three drift apart.
+    const schema = read('lib/employee-draft-schema.ts');
+    const fn = schema.slice(schema.indexOf('export function missingByStep'));
+    const body = fn.slice(0, fn.indexOf('export function missingForCreation'));
+    expect(body).not.toContain("'icNumber'");
+    expect(body).not.toContain("'nationality'");
+  });
+
+  it('the retired wizard labels are gone from every catalog, and the Personnel keys exist', () => {
+    for (const loc of LOCALES) {
+      const msgs = JSON.parse(read(`messages/${loc}.json`));
+      const w = msgs.people.wizard;
+      // Safe to retire: missingByStep never returns 'icNumber', so the Review step's computed
+      // t(`fields.${f}`) cannot ask for it (asserted from the function body in the test above).
+      expect(w.fields.icNumber, `${loc} people.wizard.fields.icNumber`).toBeUndefined();
+      expect(w.hints.icNumber, `${loc} people.wizard.hints.icNumber`).toBeUndefined();
+      // The surviving definition — the one both screens now read.
+      for (const k of [
+        'nationality',
+        'nationalitySearchPlaceholder',
+        'nationalityNoResults',
+        'optionNotSet',
+        'optionLegacySuffix',
+        'icNumber',
+        'icNumberHint',
+        'icDobInvalidDate',
+      ]) {
+        expect(String(msgs.people.detail[k] ?? '').trim(), `${loc} people.detail.${k}`).not.toBe('');
+      }
+    }
+  });
+});
+
 // ── §4 behaviour ──────────────────────────────────────────────────────────────────────────────────
 describe('§4 a hire can now carry the values the wizard could not offer', () => {
   it('creates an employee with a marital status the old wizard had no option for', async () => {
@@ -672,6 +796,73 @@ describe('§4 a hire can now carry the values the wizard could not offer', () =>
     const p = await readPerson(emp.personId);
     expect(p.maritalStatus).toBe('divorced');
     expect(p.gender).toBe('undisclosed');
+  });
+
+  it('group 8 — a nationality picked in the wizard lands on the person, so the Personnel NRIC card shows', async () => {
+    // The whole point of group 8. Before it, this column was ALWAYS null for a wizard-created employee,
+    // and item 357faecf hides the Identity No (NRIC) card whenever it is not a local nationality — so the
+    // identity number captured two fields earlier could not be seen or corrected on the Personnel screen.
+    const a = adminCtx(b);
+    const { id } = await saveEmployeeDraft(a, {
+      data: draft({
+        profile: { ...draft().profile, nationality: 'Malaysian', icNumber: '900101015555' },
+      }),
+      currentStep: 5,
+    });
+    const { employmentId } = await completeEmployeeDraft(a, id);
+    const [emp] = await owner.db
+      .select({ personId: schema.employment.personId })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, employmentId));
+    const p = await readPerson(emp.personId);
+    expect(p.nationality).toBe('Malaysian');
+    // The gate the Personnel screen applies, run against what was actually stored.
+    expect(isMalaysianNationality(p.nationality)).toBe(true);
+  });
+
+  it('group 8 — the IC-derived SOCSO number default now fires for a wizard hire, as it does on Personnel', async () => {
+    // This is what the nationality UNBLOCKED. defaultSocsoEisNumber keys on nationality, so group 7 had to
+    // pass undefined and the wizard stored no number at all; PERKESO registers locals under their MyKad.
+    const a = adminCtx(b);
+    const { id } = await saveEmployeeDraft(a, {
+      data: draft({
+        profile: { ...draft().profile, nationality: 'Malaysian', icNumber: '900101-01-5555' },
+        statutory: { epfNumber: 'E-100200' },
+      }),
+      currentStep: 5,
+    });
+    const { employmentId } = await completeEmployeeDraft(a, id);
+    const [emp] = await owner.db
+      .select({ personId: schema.employment.personId })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, employmentId));
+    const [st] = await owner.db
+      .select({ socsoNumber: schema.employeeStatutoryMy.socsoNumber })
+      .from(schema.employeeStatutoryMy)
+      .where(eq(schema.employeeStatutoryMy.personId, emp.personId));
+    // NORMALISED — the dashes HR typed are not part of a MyKad registration number.
+    expect(st.socsoNumber).toBe('900101015555');
+  });
+
+  it('group 8 — a number HR actually typed is never overwritten by the default', async () => {
+    const a = adminCtx(b);
+    const { id } = await saveEmployeeDraft(a, {
+      data: draft({
+        profile: { ...draft().profile, nationality: 'Malaysian', icNumber: '900101015555' },
+        statutory: { socsoNumber: 'S-ENTERED-BY-HAND' },
+      }),
+      currentStep: 5,
+    });
+    const { employmentId } = await completeEmployeeDraft(a, id);
+    const [emp] = await owner.db
+      .select({ personId: schema.employment.personId })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, employmentId));
+    const [st] = await owner.db
+      .select({ socsoNumber: schema.employeeStatutoryMy.socsoNumber })
+      .from(schema.employeeStatutoryMy)
+      .where(eq(schema.employeeStatutoryMy.personId, emp.personId));
+    expect(st.socsoNumber).toBe('S-ENTERED-BY-HAND');
   });
 });
 
@@ -794,6 +985,40 @@ describe('§5 a draft saved BEFORE this change still opens and still creates', (
     expect(st.epfNumber).toBe('E-778899');
     // The column default — the value the removed "— Not set —" option produced all along.
     expect(st.epfCitizenship).toBe('citizen');
+  });
+
+  it('group 8 — a pre-change draft has NO nationality, and still creates exactly what it always did', async () => {
+    const a = adminCtx(b);
+    // Written exactly as the pre-change wizard wrote it: an Identity No and no nationality key at all,
+    // because the field did not exist. The one place this refactor could lose somebody's work is by
+    // demanding a value an old draft cannot have — nationality is optional in `missingByStep` for that
+    // reason, so this must reopen and create with no complaint.
+    const legacy = draft({ profile: { ...draft().profile, icNumber: '900101015555' } });
+    expect(legacy.profile).not.toHaveProperty('nationality');
+    const { id } = await saveEmployeeDraft(a, { data: legacy, currentStep: 1 });
+
+    const reopened = await getEmployeeDraft(a, id);
+    expect(reopened).not.toBeNull();
+    expect(reopened!.data.profile?.nationality).toBeUndefined();
+    expect(reopened!.data.profile?.icNumber).toBe('900101015555');
+
+    const { employmentId } = await completeEmployeeDraft(a, id);
+    const [emp] = await owner.db
+      .select({ personId: schema.employment.personId })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, employmentId));
+    const p = await readPerson(emp.personId);
+    // NULL, exactly as before — the wizard never wrote this column, and this change must not invent a
+    // value for it. Anything else would be guessing a nationality from an identity number, which is how a
+    // foreign worker gets filed under a Malaysian SOCSO registration.
+    expect(p.nationality).toBeNull();
+    const [st] = await owner.db
+      .select({ icNumber: schema.employeeStatutoryMy.icNumber, socsoNumber: schema.employeeStatutoryMy.socsoNumber })
+      .from(schema.employeeStatutoryMy)
+      .where(eq(schema.employeeStatutoryMy.personId, emp.personId));
+    expect(st.icNumber).toBe('900101015555');
+    // No nationality ⇒ no IC-derived default ⇒ the same blank the old wizard produced.
+    expect(st.socsoNumber).toBeNull();
   });
 
   it('a draft with NO personal details at all still creates (the fields stay optional)', async () => {

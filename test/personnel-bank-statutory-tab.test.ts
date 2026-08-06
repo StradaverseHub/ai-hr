@@ -103,7 +103,13 @@ describe('Personnel — Bank & Statutory tab (40ef71a0)', () => {
     // Identification & Tax card component (setTaxAction still bound on the page).
     expect(PAGE.includes('setIcAction={setIcAction}')).toBe(true);
     const IDENTITY = fs.readFileSync(path.resolve(__dirname, '../components/personnel-identity.tsx'), 'utf8');
-    expect(IDENTITY.includes('name="icNumber"')).toBe(true);
+    // 35b7af0a group 8 — the input itself moved into the shared identity group (rendered by the Create
+    // Employee wizard too), so the guard follows it: the named input exists in that component, this form
+    // renders the component, and it renders it in the mode that actually posts a named field.
+    const SHARED_IDENTITY = fs.readFileSync(path.resolve(__dirname, '../components/identity-fields.tsx'), 'utf8');
+    expect(SHARED_IDENTITY.includes('name="icNumber"')).toBe(true);
+    expect(IDENTITY.includes('<IdentityNumberField')).toBe(true);
+    expect(IDENTITY.match(/<IdentityNumberField[\s\S]*?\/>/)![0].includes('mode="form"')).toBe(true);
     expect(IDENTITY.includes('action={setIcAction}')).toBe(true);
     expect(PAGE.includes('action={setTaxAction}')).toBe(true);
   });
