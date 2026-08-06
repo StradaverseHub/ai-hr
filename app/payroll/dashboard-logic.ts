@@ -8,9 +8,33 @@
  * scope for this piece of work (they are a new per-user write path, not layout), so a copied URL is
  * the only "saved view" and it works for everybody.
  */
+import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /** Month numbers as the URL and the timeline speak them: 1 = January … 12 = December. */
 export const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+
+/**
+ * The explicit "every month" value carried in the URL as `?m=all`.
+ *
+ * e440991b point 7 gives an ABSENT `?m` a meaning it did not have — "open on the current month" — and
+ * that costs the address bar the ability to say "all twelve" by saying nothing. Unticking the last
+ * month in the timeline would otherwise snap straight back to the current one, which is a worse trap
+ * than the default it was added to fix. `dashboardHref` emits this token for an empty month set, so
+ * the two states are distinguishable and every URL the UI builds round-trips exactly.
+ */
+export const ALL_MONTHS = 'all';
+
+/**
+ * The month (1-12) the TENANT is currently in.
+ *
+ * Through the tenant clock, never `new Date().getMonth()`. app/payroll/page.tsx already takes this
+ * care with the year and says why: between 00:00 and 08:00 MYT the UTC date is still the previous
+ * day, so on 1 January at 00:30 MYT `new Date()` says December of last year. On a screen organised by
+ * year AND month that is two wrong defaults at once, for eight hours, on the one morning of the year
+ * when someone is most likely to be opening a payroll run.
+ */
+export const currentTenantMonth = (now?: Date): number =>
+  Number(todayInKualaLumpur(now).slice(5, 7));
 
 /**
  * How far either side of "this year" the year <select> reaches. The arrows are NOT clamped to this
@@ -49,17 +73,36 @@ export function parseYear(raw: string | string[] | undefined, thisYear: number):
 /**
  * Resolve the repeated ?m params into a sorted, de-duplicated set of month numbers.
  *
- * An EMPTY result means "the whole year", not "nothing" — that is what makes the timeline usable: you
- * arrive seeing every month and tick months to narrow. Out-of-range and non-numeric values are dropped
- * rather than clamped, so a hand-typed ?m=13 quietly means "no such month" instead of silently becoming
- * December.
+ * An EMPTY result still means "the whole year", not "nothing" — that is what keeps the timeline
+ * usable. Out-of-range and non-numeric values are dropped rather than clamped, so a hand-typed ?m=13
+ * quietly means "no such month" instead of silently becoming December.
+ *
+ * e440991b POINT 7 — WHAT AN ABSENT `?m` MEANS CHANGED. It used to mean "the whole year", so opening
+ * /payroll showed all twelve months at once; the reporter's complaint is that the screen does not open
+ * on the month they are working in. It now means `[defaultMonth]`, and the default is the TENANT's
+ * current month (see `currentTenantMonth` — a UTC-derived default opens January on December for the
+ * first eight hours of the year).
+ *
+ * Three states, not two, and they are deliberately distinguishable:
+ *   - param ABSENT      ⇒ [defaultMonth]  — "I just opened the screen"
+ *   - `?m=all`          ⇒ []              — "I unticked everything; show me the year"
+ *   - `?m=5&m=6`        ⇒ [5, 6]
+ * Without the middle case, unticking the last month would silently re-select the current one and the
+ * whole-year view would be unreachable from the UI. `dashboardHref` emits `?m=all` for an empty set,
+ * so every link the screen builds round-trips through here unchanged.
  */
-export function parseMonths(raw: string | string[] | undefined): number[] {
-  const list = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
+export function parseMonths(
+  raw: string | string[] | undefined,
+  defaultMonth: number = currentTenantMonth(),
+): number[] {
+  if (raw == null) return [defaultMonth];
+  const list = Array.isArray(raw) ? raw : [raw];
   const out = new Set<number>();
   for (const item of list) {
     for (const part of item.split(',')) {
-      const n = Number(part.trim());
+      const trimmed = part.trim();
+      if (trimmed === ALL_MONTHS) return []; // explicit whole-year, wins over anything else in the param
+      const n = Number(trimmed);
       if (Number.isInteger(n) && n >= 1 && n <= 12) out.add(n);
     }
   }
@@ -180,7 +223,11 @@ export type DashboardFilters = {
 export function dashboardHref(f: DashboardFilters, basePath = '/payroll'): string {
   const sp = new URLSearchParams();
   sp.set('year', String(f.year));
-  for (const m of f.months) sp.append('m', String(m));
+  // e440991b point 7 — an empty month set is written EXPLICITLY as ?m=all. Omitting it would produce a
+  // URL that `parseMonths` reads as "just opened, default to this month", so unticking the last month
+  // would bounce the reader back to the current one and the whole-year view would be unreachable.
+  if (f.months.length === 0) sp.append('m', ALL_MONTHS);
+  else for (const m of f.months) sp.append('m', String(m));
   for (const c of f.companyIds) sp.append('company', c);
   for (const c of f.cycles) sp.append('cycle', c);
   for (const s of f.statuses) sp.append('status', s);
