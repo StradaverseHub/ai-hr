@@ -117,7 +117,13 @@ describe('56a0deb9 §2: the secondary-type "Other leave" breakdown section is re
     expect(groupsCmp).toMatch(/<details key=\{group\}[^>]*open>/);
     expect(groupsCmp).toMatch(/<summary/);
     expect(groupsCmp).toContain('leaveVisual({ color: b.color, icon: b.icon, code: b.code })');
-    expect(groupsCmp).toContain("b.remaining == null ? '—' : b.remaining.toFixed(2)");
+    // REPOINTED by 4a1abc4a, not weakened. The claim is unchanged — a row shows the remaining figure at
+    // 2dp and an ESS-HIDDEN one shows a DASH rather than a number — but the inline expression it was
+    // written against became a call to the shared lib/day-format helper, whose null case IS that dash.
+    // Checked here as the import plus the call, so the guard still fails if the dash behaviour is lost.
+    expect(groupsCmp).toContain("from '@/lib/day-format'");
+    expect(groupsCmp).toContain('{formatDays(b.remaining)}');
+    expect(groupsCmp, 'no private toFixed beside the shared formatter').not.toContain('toFixed(');
     // Server-safe: no 'use client' (the RSC passes the side-sheet link in as a node).
     expect(groupsCmp.trimStart().startsWith("'use client'")).toBe(false);
   });

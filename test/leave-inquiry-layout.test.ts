@@ -129,7 +129,13 @@ describe('026e16b9 · presentation only — no rule, figure or config is touched
     expect(rows.includes('deriveBalanceRow')).toBe(true);
     expect(rows.includes('leaveEntitlementBreakdown')).toBe(true);
     // Every column still renders through the same `num()` formatter — no per-column rounding crept in.
-    expect(read(BALANCES).includes("const num = (v: number | null) => (v == null ? '—' : v.toFixed(2))")).toBe(true);
+    // REPOINTED by 4a1abc4a: `num` now delegates to the SHARED lib/day-format helper instead of carrying
+    // its own toFixed, so this screen and the employee's own balance grid cannot print a figure two ways.
+    // The claim being guarded is the same one — one formatter for the whole table, and null is an em dash
+    // rather than a "0.00" HR would read as a real zero balance — so it is checked against the new target.
+    expect(read(BALANCES).includes('const num = (v: number | null) => formatDays(v)')).toBe(true);
+    expect(read(BALANCES).includes("from '@/lib/day-format'")).toBe(true);
+    expect(read(BALANCES), 'no per-column rounding beside the shared formatter').not.toContain('toFixed(');
   });
 
   it('pagination is untouched — the width change does not assume a row count', () => {

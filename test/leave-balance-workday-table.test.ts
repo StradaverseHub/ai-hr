@@ -256,8 +256,15 @@ describe('Leave Balance table source: responsive DB-free client island', () => {
     expect(cmp).toMatch(/aria-sort=/);
   });
 
-  it('formats numeric cells as "X.XX Days" via daysValue + toFixed(2), and empty ⇒ noBalances', () => {
-    expect(cmp).toMatch(/toFixed\(2\)/);
+  // REPOINTED by 4a1abc4a, not weakened. The subject is unchanged — numeric cells must read "X.XX Days"
+  // and an empty table must say noBalances — but the target moved: the local `n.toFixed(2)` is now the
+  // shared `formatDays` from lib/day-format.ts, so that eleven leave surfaces cannot drift apart again.
+  // The assertion is STRONGER than the one it replaces: it also forbids a private toFixed sneaking back in
+  // beside the shared call, which is exactly how the drift started.
+  it('formats numeric cells as "X.XX Days" via daysValue + the SHARED day formatter, and empty ⇒ noBalances', () => {
+    expect(cmp).toMatch(/from '@\/lib\/day-format'/);
+    expect(cmp).toMatch(/formatDays\(/);
+    expect(cmp, 'day figures go through lib/day-format, never a local toFixed').not.toContain('toFixed(');
     expect(cmp).toMatch(/daysValue/);
     expect(cmp).toMatch(/noBalances/);
   });
