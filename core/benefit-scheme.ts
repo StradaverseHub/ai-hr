@@ -21,6 +21,7 @@ import {
   gradeGroupMember,
   jobGrade,
   leaveType,
+  leaveApprovalPolicy,
 } from '../db/schema';
 import { isWellFormedBands, MAX_SERVICE_BANDS, type ServiceBand } from './leave-compute';
 // ae5b84d5 — the profile-side recalc engine trues an employee's current-cycle balance up after a manual
@@ -162,14 +163,26 @@ export async function updateGradeGroup(
 
 export async function deleteGradeGroup(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
-    // Block deletion when an active scheme still references this group (FK is SET NULL, but silently
-    // orphaning a scheme's grade group would break its auto-match — surface it instead).
+    // 6e9a126e RELEASE THREE — THIS GUARD WAS REPOINTED, NOT DELETED, AND THAT IS THE WHOLE POINT.
+    //
+    // It used to block deletion when a benefit_scheme still referenced the group. That table is gone.
+    // The naive reading is that the guard goes with it — but grade groups did NOT become unreferenced,
+    // they changed WHO references them: `leave_approval_policy.grade_group_id`, measured at 205 live rows
+    // on production, 79% of the tenant's leave approval routing.
+    //
+    // And the failure mode is worse than the one this originally caught. core/leave-approval-policy.ts
+    // treats a NULL grade_group_id as a WILDCARD, not a non-match, so a deleted group (FK is SET NULL)
+    // turns a targeted rule into one that matches EVERY employee. No error, no warning — leave simply
+    // starts routing to the wrong approvers. Deleting this guard alongside the table it named would have
+    // removed the only thing standing in front of that.
     const [used] = await tx
       .select({ n: sql<number>`count(*)::int` })
-      .from(benefitScheme)
-      .where(eq(benefitScheme.gradeGroupId, p.id));
+      .from(leaveApprovalPolicy)
+      .where(eq(leaveApprovalPolicy.gradeGroupId, p.id));
     if ((used?.n ?? 0) > 0) {
-      throw new Error('This grade group is used by one or more benefit schemes. Reassign or remove those schemes first.');
+      throw new Error(
+        'This grade group is used by one or more leave approval rules. Re-scope or remove those rules first.',
+      );
     }
     await tx.delete(gradeGroup).where(eq(gradeGroup.id, p.id)); // members cascade
     await appendEvent(tx, {

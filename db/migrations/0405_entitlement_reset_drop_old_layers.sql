@@ -54,8 +54,18 @@ BEGIN
   SELECT count(*) INTO v_archive FROM entitlement_reset_archive WHERE capture_tag = '0405-release-three';
   RAISE NOTICE '0405 entitlement reset: % scheme entitlement tables + % policy rows cleared; % rows archived under 0405-release-three',
     v_scheme, v_policy, v_archive;
-  IF v_archive = 0 THEN
-    RAISE EXCEPTION '0405 refusing to clear: the archive capture wrote no rows';
+  -- THE GUARD IS CONDITIONAL ON THERE BEING SOMETHING TO CAPTURE, and getting this wrong aborted the
+  -- whole migration chain on a FRESH database — caught by running migrate+seed on a rebuilt cluster,
+  -- not by any gate that only ever migrates a populated one.
+  --
+  -- On production there are 41 schemes / 292 entitlement tables / 67 policy rows, so an archive of 0
+  -- means the capture silently failed and refusing is exactly right — that archive is the only promise
+  -- the clearing makes. On an EMPTY database (a new tenant, the clean-room, the upgrade rehearsal's
+  -- fresh leg) 0 captured is the TRUTHFUL answer, and the unconditional check turned it into
+  -- "0405 refusing to clear", which no new tenant could ever get past.
+  IF (v_scheme + v_policy) > 0 AND v_archive = 0 THEN
+    RAISE EXCEPTION '0405 refusing to clear: % scheme + % policy rows exist but the archive capture wrote none',
+      v_scheme, v_policy;
   END IF;
 END $$;--> statement-breakpoint
 

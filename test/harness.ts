@@ -13,7 +13,7 @@ export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
   'tenant', 'company', 'company_logo', 'person', 'position', 'department', 'cost_center', 'employment',
-  'assignment', 'reporting_line', 'leave_type', 'leave_policy', 'leave_ledger',
+  'assignment', 'reporting_line', 'leave_type', 'leave_ledger',
   // 491c499f — the adjustment batch header. leave_ledger.adjustment_batch_id points AT it, so it must
   // be truncated too: leaving it out lets a batch row survive between files and the next test's
   // "recent adjustments" list reads a batch whose ledger rows are gone. This is the ADR-0071 leak
