@@ -3658,11 +3658,20 @@ export type ShiftType = 'normal' | 'semi_flexi' | 'full_flexi';
 // worked, hours worked, or another pay item by CODE. Anything outside that set cannot be represented, so an
 // out-of-contract input is a compile error here and a save-time rejection in core/pay-rule.ts — never a
 // run-time surprise on a payslip.
+// ── 2da9937a — the reporter's own worked example needed two things the set above could not express:
+// `(Basic + All Fixed Allowance) / Working Days / Working Hours × Rate × Input Hours`. The divisor half is
+// a VALIDATOR change (core/pay-rule.ts); the aggregate half is this new ref. It names no pay code — it is
+// the SUM of the employee's fixed allowances, so it stays correct as the catalog grows instead of needing
+// the formula re-edited every time an allowance is added.
 export type FormulaOperand =
   | { ref: 'number'; value: number } //   a literal / fixed rate
   | { ref: 'basic' } //                   the employee's Personnel Basic Salary (same figure percent_of reads)
   | { ref: 'days' } //                    days worked in the period (factor × days-in-month)
   | { ref: 'hours' } //                   attendance worked hours in the period
+  | { ref: 'fixed_allowances' } //        2da9937a — the TOTAL of this employee's fixed allowances (see
+  //                                      isFixedAllowanceComponent: kind 'allowance', non-statutory, paid as
+  //                                      a stored amount). Ranks strictly below the item reading it, so it
+  //                                      can never include a rule-driven item and cannot reintroduce a cycle.
   | { ref: 'component'; code: string }; // another pay item's resolved amount for this employee
 
 export type FormulaOp = '+' | '-' | '*' | '/';
