@@ -59,10 +59,26 @@ describe('People → Personnel: routes exist where expected', () => {
   });
 
   it('the admin management surface lives under /admin/personnel and requires admin', () => {
-    const listPage = read('app/admin/personnel/page.tsx');
-    const detailPage = read('app/admin/personnel/[employmentId]/page.tsx');
-    expect(listPage.includes('requireAdmin')).toBe(true);
-    expect(detailPage.includes('requireAdmin')).toBe(true);
+    // c002b3c3 — THIS ASSERTION HAD STOPPED GUARDING AND STILL PASSED, which is the worst way for a
+    // guard to fail. The detail page moved from requireAdmin() to scopedAdmin() (which CALLS requireAdmin,
+    // so the posture is unchanged), and the old `includes('requireAdmin')` kept going green off three
+    // COMMENTS that merely mention the name. Deleting the guard call outright would still have passed.
+    //
+    // Two changes, both load-bearing: comments are stripped before matching, so prose can never satisfy
+    // it again; and either gate is accepted, matching test/function-access.test.ts's own GUARD_RE.
+    const stripComments = (src: string) =>
+      src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\/\/.*$/gm, '');
+    const guarded = (path: string) => /\b(requireAdmin|scopedAdmin)\s*\(/.test(stripComments(read(path)));
+    expect(guarded('app/admin/personnel/page.tsx'), 'listing page is admin-gated').toBe(true);
+    expect(guarded('app/admin/personnel/[employmentId]/page.tsx'), 'detail page is admin-gated').toBe(true);
+  });
+
+  it('the guard assertion above cannot be satisfied by a comment', () => {
+    // Pins the fix itself: a file whose ONLY mention of the gate is prose must fail the check.
+    const stripComments = (src: string) =>
+      src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\/\/.*$/gm, '');
+    const commentOnly = `// this page is admin-only (requireAdmin), so no widening here.\nexport default function P() { return null; }`;
+    expect(/\b(requireAdmin|scopedAdmin)\s*\(/.test(stripComments(commentOnly))).toBe(false);
   });
 
   it('old /people URLs still resolve via redirect stubs', () => {

@@ -2795,7 +2795,7 @@ export default async function EmployeePage({
 
   // Detail view (?movement=<id>): event information + a side-by-side Before/After comparison built by
   // as-of reconstruction at the effective date (ids resolved to labels at read time). Salary is shown —
-  // this page is admin-only (requireAdmin), so no widening of pay visibility.
+  // this page is admin-only (scopedAdmin, which calls requireAdmin), so no widening of pay visibility.
   const movementComparisonRows = movementDetailData
     ? [
         { key: 'company', label: t('movement.field.company'), before: movementDetailData.before?.company, after: movementDetailData.after.company },
@@ -3773,7 +3773,7 @@ export default async function EmployeePage({
   // panel is a fragment of the existing <Card> blocks — nothing about the forms or server actions changed,
   // only where they render. Falsy entries (admin-gated / state-gated nulls) collapse to nothing.
   const panels = {
-    // Single-card tabs pass the node directly so a null (defensive; requireAdmin guarantees non-null
+    // Single-card tabs pass the node directly so a null (defensive; scopedAdmin guarantees non-null
     // here) falls through to the shell's empty-state rather than rendering a blank fragment.
     profile: profilePanel,
     family: familyPanel,
