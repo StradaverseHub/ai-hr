@@ -1,0 +1,51 @@
+<meta charset="utf-8"><title>efe1d230 — removing Workflow Guide</title>
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+ h2{font-size:14px;margin:0 0 4px}.sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+ .nav{border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:12.5px}
+ .nav div{padding:7px 11px;border-bottom:1px solid var(--border)}.nav div:last-child{border-bottom:0}
+ .gone{text-decoration:line-through;color:#b91c1c;background:#fef2f2}
+ .land{background:color-mix(in srgb,var(--primary) 9%,white);font-weight:600;box-shadow:inset 3px 0 0 var(--primary)}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;padding:6px 9px;background:var(--muted)}
+ td{padding:7px 9px;border-top:1px solid var(--border)}
+ .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:700}
+ .ok{background:#d1fae5;color:#065f46}.warn{background:#fef3c7;color:#92400e}.blk{background:#fee2e2;color:#991b1b}
+ .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+ .keep{border:1px solid #fcd34d;background:#fffbeb;border-radius:12px;padding:13px}
+</style>
+<div class="card">
+ <h2>The menu, before and after</h2>
+ <div class="two">
+  <div><p class="sub">Today</p><div class="nav">
+   <div class="gone">Workflow Guide</div><div>Payroll Process</div><div>Transaction</div>
+   <div>Transaction View</div><div>Individual Payslip</div><div>Report</div><div>Settings</div></div></div>
+  <div><p class="sub">Proposed</p><div class="nav">
+   <div class="land">Payroll Process — the landing page</div><div>Transaction</div>
+   <div>Transaction View</div><div>Individual Payslip</div><div>Report</div><div>Settings</div></div></div>
+ </div>
+</div>
+<div class="card">
+ <h2>What that page also does — and this is the part to look at</h2>
+ <p class="sub">It is not only a guide. It carries the full readiness check for every company.</p>
+ <table>
+  <thead><tr><th>Company</th><th>Check</th><th>Status</th><th>What it means</th></tr></thead>
+  <tbody>
+   <tr><td>ABC Manufacturing</td><td>Payroll cycle</td><td><span class="pill ok">Ok</span></td><td>Ready to open a run</td></tr>
+   <tr><td>XYZ Trading</td><td>Pay modes</td><td><span class="pill blk">Blocker</span></td><td>2 employees on a custom period — payroll cannot run</td></tr>
+   <tr><td>Fiamma</td><td>Statutory pack</td><td><span class="pill warn">Warning</span></td><td>Rates are from an older pack version</td></tr>
+   <tr><td>Chin Hin Property</td><td>Default cycle</td><td><span class="pill blk">Blocker</span></td><td>Stored default names a cycle that is no longer active</td></tr>
+  </tbody>
+ </table>
+ <p class="note">Payroll Settings shows a cheap subset of this deliberately, to stay fast, and defers to this page for the
+  full per-company report. Delete the page and the full report goes with it.</p>
+</div>
+<div class="card keep">
+ <b>So we are proposing: remove the menu row and the guidance prose, and move the readiness report onto Payroll Settings,
+ where the short version already lives.</b> You lose the page you do not use and keep the check that tells you which
+ company cannot run payroll and why.
+</div>
