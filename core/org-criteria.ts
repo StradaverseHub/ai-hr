@@ -239,6 +239,27 @@ export function orgCriteriaSpecificity(criteria: OrgCriteria | null | undefined)
   return n;
 }
 
+/**
+ * WHICH axes does this criteria object narrow by — the field names, not a count.
+ *
+ * A caller that can only CARRY some of the vocabulary has to name the ones it cannot. The approval-template
+ * picker is the case: a `leave_approval_policy` assignment row has exactly two dimensions to write into
+ * (grade group and employment type), so an eligibility rule that also narrows by department or by length of
+ * service cannot become one — assigning it would cover everybody the rule left out. Refusing it needs the
+ * offending field NAMES, and deriving them here rather than in the caller is what keeps "which axes are set"
+ * from drifting away from `isUnrestrictedOrgCriteria`'s idea of set.
+ *
+ * DELIBERATELY NOT `orgCriteriaSpecificity`'s list. That function counts each range PAIR once, because
+ * "hired between 2020 and 2024" is one narrowing decision; this one lists both bounds, because an error
+ * message has to name the box the operator actually filled in. Two different questions, two answers.
+ */
+export function narrowedOrgCriteriaAxes(criteria: OrgCriteria | null | undefined): string[] {
+  const c = (criteria ?? {}) as Record<string, unknown>;
+  const out = ORG_CRITERIA_FIELDS.filter((f) => nonEmpty(c[f] as string[] | undefined).length > 0);
+  for (const f of ORG_CRITERIA_RANGE_FIELDS) if (c[f] != null && c[f] !== '') out.push(f);
+  return out;
+}
+
 /** True when no axis is restricted — i.e. this criteria object means EVERYONE. Callers must warn on it. */
 export function isUnrestrictedOrgCriteria(criteria: OrgCriteria | null | undefined): boolean {
   const c = (criteria ?? {}) as Record<string, unknown>;

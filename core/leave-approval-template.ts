@@ -14,11 +14,19 @@
  * Substrate discipline: every write appends a DomainEvent (aggregate 'leave-approval-template' for template
  * mutations; 'leave-approval-policy' for the per-assignment rows, reusing the rule events).
  */
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { benefitScheme, employmentTypeEnum, leaveApprovalPolicy, leaveApprovalTemplate } from '../db/schema';
+import {
+  employmentTypeEnum,
+  entitlementEligibilityRule,
+  gradeGroup,
+  gradeGroupMember,
+  leaveApprovalPolicy,
+  leaveApprovalTemplate,
+} from '../db/schema';
 import { sanitizeLevels, type LeaveLevelKind } from './leave-approval-policy';
+import { narrowedOrgCriteriaAxes, type OrgCriteria } from './org-criteria';
 
 type EmploymentType = (typeof employmentTypeEnum.enumValues)[number];
 
@@ -60,17 +68,19 @@ function cleanTemplate(p: ApprovalTemplateInput) {
 }
 
 /** SQL predicate isolating a template ASSIGNMENT row: the org-chart dims stay wildcard, while the dims the
- *  Assignment Template screen exposes — leave type, the benefit-scheme scope and the leave-duration
- *  condition — are matched EXACTLY (`is not distinct from`, so null matches null). With all of them left
+ *  Assignment Template screen exposes — leave type, the employee scope and the leave-duration condition —
+ *  are matched EXACTLY (`is not distinct from`, so null matches null). With all of them left
  *  unset this is byte-for-byte the old fully-wildcard bucket, which is why pre-existing assignments still
  *  upsert onto their own row instead of forking a duplicate (leave_approval_policy_wildcard_uq guarantees
- *  at most one such row per company × leave type). A scheme- or condition-scoped assignment gets its own
+ *  at most one such row per company × leave type). A scope- or condition-scoped assignment gets its own
  *  row and is resolved by the normal ADR-0071 specificity ladder — no resolution change.
  *
- *  22de47c4 — a benefit scheme IS (company, employment type, grade group), so assigning to a scheme writes
- *  those two dims and the bucket has to key on them. `grade_id is null` keeps LEGACY grade-scoped
- *  assignments (written before this item) out of every bucket: they are never silently upserted onto, so
- *  they stay visible in the assignments list until an administrator re-assigns them deliberately. */
+ *  22de47c4 — the employee scope is (employment type, grade group), so the bucket has to key on those two
+ *  dims. `grade_id is null` keeps LEGACY grade-scoped assignments (written before that item) out of every
+ *  bucket: they are never silently upserted onto, so they stay visible in the assignments list until an
+ *  administrator re-assigns them deliberately. The PICKER that supplies the pair changed in 6e9a126e
+ *  release three (benefit scheme → entitlement eligibility rule); these two columns did not, which is why
+ *  every assignment already saved kept routing untouched across that release. */
 function assignmentBucketFilter(
   gradeGroupId: string | null,
   employmentType: EmploymentType | null,
@@ -117,9 +127,9 @@ export async function listApprovalTemplates(ctx: SessionContext): Promise<Approv
 /** One assignment row for the assignments screen: which template covers which (company, leave-type).
  *  bb3938b9 adds the criteria the Assignment Template panels carry — the employee scope and the
  *  leave-duration condition — so the list can show what an assignment is actually scoped to instead of
- *  implying "all". 22de47c4 made that employee scope the BENEFIT SCHEME, which on the rule is its grade
- *  group + employment type; `gradeId` stays on the type so a legacy grade-scoped assignment can still be
- *  listed (and re-assigned) rather than becoming invisible config that keeps routing. */
+ *  implying "all". That employee scope is the row's grade group + employment type (22de47c4), whatever
+ *  named population supplied them; `gradeId` stays on the type so a legacy grade-scoped assignment can
+ *  still be listed (and re-assigned) rather than becoming invisible config that keeps routing. */
 export type TemplateAssignment = {
   ruleId: string;
   templateId: string;
@@ -350,41 +360,188 @@ export async function setTenantDefaultTemplate(ctx: SessionContext, id: string |
   });
 }
 
-/** Bulk-assign a template to every (company × leave-type × benefit-scheme) combination. For each one,
- *  upserts the matching assignment row to point at the template and clears its own levels to []. Admin-only;
- *  the leave_approval_policy RLS WITH CHECK (is_admin_for(company_id)) rejects any company outside the
- *  caller's scope.
+// ── THE ASSIGN TEMPLATE PICKER — entitlement eligibility rules, read in the rule matrix's vocabulary ──
+//
+// 6e9a126e release three — THE PICKER MOVED; THE ROWS DID NOT. This screen used to pick a `benefit_scheme`
+// and write the (grade group, employment type) pair that scheme stood for. There has never been a
+// `benefit_scheme_id` column on `leave_approval_policy`, so when that layer was removed every assignment
+// already saved kept routing exactly as it did — only the SOURCE of the pair changed. It is now the
+// ENTITLEMENT ELIGIBILITY RULE (`entitlement_eligibility_rule`), which is where "who is this population" is
+// configured after the reset. That is 22de47c4's own reason, pointed at the layer that replaced the one it
+// named: pick the thing entitlement is already driven by, so a grade added to a population is picked up by
+// approval routing without anyone opening this screen.
+//
+// AN ELIGIBILITY RULE IS RICHER THAN THE RULE MATRIX, AND THAT IS THE WHOLE DIFFICULTY. A scheme WAS
+// (company, employment type, grade group) — the translation was total, three columns to three columns. A
+// rule carries the full `OrgCriteria` vocabulary: department, position, division, gender, minimum service,
+// probation and the rest. An assignment bucket has exactly two dimensions to put any of that in. Widening
+// a rule to the two axes it *does* express would hand the template to every employee the rule deliberately
+// left out — the same silent mis-route 22de47c4's ungrouped-scheme refusal existed to prevent. So a rule
+// the matrix cannot carry is REFUSED AND NAMED, never approximated.
+
+/** The criteria axes an assignment row can carry. `companyIds` is matched against the companies chosen on
+ *  the form (an assignment row already names one company); `employmentTypes` and `gradeIds` become the two
+ *  dimensions the bucket writes. Every other axis has nowhere to go — see the block above. */
+const ASSIGNABLE_ELIGIBILITY_AXES: ReadonlySet<string> = new Set(['companyIds', 'employmentTypes', 'gradeIds']);
+
+/** `departmentIds` → "department", `minYearsOfService` → "min years of service". Derived from the field
+ *  name so an axis added to OrgCriteria reads sensibly in a refusal with no second list to maintain. */
+function axisLabel(field: string): string {
+  return field
+    .replace(/Ids$/, '')
+    .replace(/([A-Z])/g, ' $1')
+    .toLowerCase()
+    .trim();
+}
+
+/** One eligibility rule as the Assign Template picker offers it, ALREADY translated into the rule matrix's
+ *  vocabulary — so the screen and the service can never disagree about what picking it would write. */
+export type EligibilityRuleScope = {
+  /** The rule LINEAGE, not a version id. Eligibility rules are effective-dated and an edit closes the
+   *  running version and inserts a successor (core/entitlement-template.ts), so the form has to post the
+   *  identity that survives an edit — the same reason a rule points at a template lineage rather than a
+   *  template row. */
+  lineageId: string;
+  name: string;
+  /** The companies the rule narrows to. EMPTY means the rule names no company axis, i.e. every company. */
+  companyIds: string[];
+  /** The (grade group × employment type) pairs this rule becomes on `leave_approval_policy`. A rule naming
+   *  two employment types is two scopes, exactly as two schemes used to be two scopes. */
+  scopes: { gradeGroupId: string | null; employmentType: EmploymentType | null }[];
+  /** Why this rule cannot be assigned, or null when it can. One sentence with one source: the screen greys
+   *  the tick on it, the service throws it. */
+  refusal: string | null;
+};
+
+/** Translate the RUNNING version of each eligibility rule into assignment scopes. `lineageIds` omitted =
+ *  every rule, which is what the picker lists. */
+async function resolveEligibilityRuleScopes(tx: Tx, lineageIds?: string[]): Promise<EligibilityRuleScope[]> {
+  const conds = [isNull(entitlementEligibilityRule.validTo)];
+  if (lineageIds) conds.push(inArray(entitlementEligibilityRule.lineageId, lineageIds));
+  const rules = await tx
+    .select({
+      lineageId: entitlementEligibilityRule.lineageId,
+      name: entitlementEligibilityRule.name,
+      criteria: entitlementEligibilityRule.criteria,
+    })
+    .from(entitlementEligibilityRule)
+    .where(and(...conds))
+    .orderBy(asc(entitlementEligibilityRule.name));
+  if (rules.length === 0) return [];
+
+  // Grade → its group AND group → its full membership, read once. The containment test needs BOTH
+  // directions: a rule may only be assigned to a grade group whose every member it names.
+  const members = await tx
+    .select({ gradeId: gradeGroupMember.gradeId, gradeGroupId: gradeGroupMember.gradeGroupId })
+    .from(gradeGroupMember);
+  const groupOfGrade = new Map(members.map((m) => [m.gradeId, m.gradeGroupId]));
+  const gradesOfGroup = new Map<string, string[]>();
+  for (const m of members) gradesOfGroup.set(m.gradeGroupId, [...(gradesOfGroup.get(m.gradeGroupId) ?? []), m.gradeId]);
+  const groupNames = new Map(
+    (await tx.select({ id: gradeGroup.id, name: gradeGroup.name }).from(gradeGroup)).map((g) => [g.id, g.name]),
+  );
+  const knownTypes = employmentTypeEnum.enumValues as readonly string[];
+
+  return rules.map((r) => {
+    const criteria = (r.criteria ?? {}) as OrgCriteria;
+    const out: EligibilityRuleScope = {
+      lineageId: r.lineageId,
+      name: r.name,
+      companyIds: criteria.companyIds ?? [],
+      scopes: [],
+      refusal: null,
+    };
+    // A refused rule keeps an EMPTY scope list on purpose: there is no half-assignment to fall back to.
+    const refuse = (why: string) => {
+      out.refusal = `“${r.name}” ${why}`;
+      return out;
+    };
+
+    const unexpressible = narrowedOrgCriteriaAxes(criteria).filter((a) => !ASSIGNABLE_ELIGIBILITY_AXES.has(a));
+    if (unexpressible.length) {
+      return refuse(
+        `narrows by ${unexpressible.map(axisLabel).join(', ')}, which an approval rule has no column to scope on. ` +
+          `Assigning it would give the template to employees the rule leaves out.`,
+      );
+    }
+
+    const employmentTypes = criteria.employmentTypes ?? [];
+    const unknown = employmentTypes.filter((t) => !knownTypes.includes(t));
+    if (unknown.length) return refuse(`names an employment type this system does not have (${unknown.join(', ')}).`);
+
+    const gradeIds = criteria.gradeIds ?? [];
+    let gradeGroupIds: (string | null)[] = [null];
+    if (gradeIds.length) {
+      // NOTE the asymmetry with the scheme refusal this replaces. A scheme with no grade group meant "the
+      // UNGROUPED population", which a null on the rule (a wildcard) would have widened — so it was refused.
+      // A rule that names no grade at all genuinely means "any grade", and a wildcard says exactly that. It
+      // is the rule that names SOME grades that has to be checked, below.
+      const ungrouped = gradeIds.filter((g) => !groupOfGrade.has(g));
+      if (ungrouped.length) {
+        return refuse(
+          `lists job grades that are in no grade group. Approval routing scopes by grade GROUP, so put every ` +
+            `grade the rule names into a group first.`,
+        );
+      }
+      const picked = [...new Set(gradeIds.map((g) => groupOfGrade.get(g)!))];
+      const named = new Set(gradeIds);
+      const partial = picked.filter((gg) => (gradesOfGroup.get(gg) ?? []).some((g) => !named.has(g)));
+      if (partial.length) {
+        return refuse(
+          `covers only part of grade group ${partial.map((gg) => `“${groupNames.get(gg) ?? gg}”`).join(', ')}. ` +
+            `An approval rule can only scope to a WHOLE grade group, so assigning it would reach grades the ` +
+            `rule does not cover.`,
+        );
+      }
+      gradeGroupIds = picked;
+    }
+
+    out.scopes = gradeGroupIds.flatMap((gradeGroupId) =>
+      (employmentTypes.length ? employmentTypes : [null]).map((employmentType) => ({
+        gradeGroupId,
+        employmentType: employmentType as EmploymentType | null,
+      })),
+    );
+    return out;
+  });
+}
+
+/** The picker's feed. The SAME translation the assignment itself runs, so the screen can never offer a rule
+ *  the service would refuse — nor hide one it would accept. */
+export async function listEligibilityRuleScopes(ctx: SessionContext): Promise<EligibilityRuleScope[]> {
+  return withTenant(ctx, (tx) => resolveEligibilityRuleScopes(tx));
+}
+
+/** Bulk-assign a template to every (company × leave-type × eligibility-rule scope) combination. For each
+ *  one, upserts the matching assignment row to point at the template and clears its own levels to [].
+ *  Admin-only; the leave_approval_policy RLS WITH CHECK (is_admin_for(company_id)) rejects any company
+ *  outside the caller's scope.
  *
  *  bb3938b9 — the employee scope and the leave-duration condition (`minDays`/`maxDays`) are OPTIONAL
  *  criteria alongside companies and leave types. Selecting none of a criterion means "applies to all",
  *  which writes null on that dimension — i.e. exactly the row this function has always written, so existing
  *  assignments keep resolving to the same employees.
  *
- *  22de47c4 — that scope is now the BENEFIT SCHEME rather than the individual job grade. No new dimension
- *  and no resolver change was needed: a benefit_scheme IS (company, employment_type, grade_group), and the
- *  rule matrix already scopes on grade group (R41 72800eda) and employment type, both resolved at submit
- *  time from the requester's own assignment — the SAME two axes resolveEffectiveSchemeId matches a scheme
- *  on. So "assign to this scheme" translates exactly into "grade_group_id + employment_type of that
- *  scheme", and an employee inherits the template of the scheme they are in, by construction.
- *
- *  A scheme with NO grade group is refused rather than widened: on the rule a null grade group is a
- *  WILDCARD ("any grade group"), while on a scheme it means "the ungrouped population" — assigning one
- *  would quietly hand the template to everybody in the company on that employment type. Expressing
- *  "ungrouped only" needs a resolver change, so it is reported instead of guessed at. */
+ *  22de47c4 — that scope is the employee POPULATION rather than the individual job grade, and it needed no
+ *  new dimension and no resolver change: the rule matrix already scopes on grade group (R41 72800eda) and
+ *  employment type, both resolved at submit time from the requester's own assignment. So "assign to this
+ *  population" translates into "grade_group_id + employment_type of that population", and an employee
+ *  inherits the template of the population they are in, by construction. See the block above for what now
+ *  names that population, and for the rules that cannot be translated and are refused instead. */
 export async function assignApprovalTemplate(
   ctx: SessionContext,
   p: {
     templateId: string;
     companyIds: string[];
     leaveTypeIds: string[];
-    benefitSchemeIds?: string[];
+    eligibilityRuleIds?: string[];
     minDays?: number | null;
     maxDays?: number | null;
   },
 ) {
   const companyIds = [...new Set(p.companyIds.filter(Boolean))];
   const leaveTypeIds = [...new Set(p.leaveTypeIds.filter(Boolean))];
-  const benefitSchemeIds = [...new Set((p.benefitSchemeIds ?? []).filter(Boolean))];
+  const eligibilityRuleIds = [...new Set((p.eligibilityRuleIds ?? []).filter(Boolean))];
   const minDays = p.minDays ?? null;
   const maxDays = p.maxDays ?? null;
   if (!p.templateId) throw new Error('Choose a template to assign');
@@ -402,40 +559,36 @@ export async function assignApprovalTemplate(
     if (!tpl) throw new Error('Template not found');
     if (!tpl.active) throw new Error('Activate the template before assigning it');
 
-    // The chosen schemes, resolved to the two rule dimensions they stand for. Read once, before any write.
-    const schemes = benefitSchemeIds.length
-      ? await tx
-          .select({
-            id: benefitScheme.id,
-            name: benefitScheme.name,
-            companyId: benefitScheme.companyId,
-            gradeGroupId: benefitScheme.gradeGroupId,
-            employmentType: benefitScheme.employmentType,
-          })
-          .from(benefitScheme)
-          .where(inArray(benefitScheme.id, benefitSchemeIds))
-      : [];
-    if (schemes.length !== benefitSchemeIds.length) throw new Error('Benefit scheme not found');
-    const ungrouped = schemes.filter((s) => s.gradeGroupId == null);
-    if (ungrouped.length) {
-      throw new Error(
-        `Give ${ungrouped.map((s) => `“${s.name}”`).join(', ')} a grade group before assigning an approval template to it`,
-      );
-    }
-    // Empty scheme selection ⇒ the single wildcard scope (null, null), the pre-22de47c4 shape.
-    type Scope = { schemeId: string | null; gradeGroupId: string | null; employmentType: EmploymentType | null };
+    // The chosen rules, translated to the two rule dimensions they stand for. Read once, BEFORE any write,
+    // so a refusal leaves nothing half-assigned behind it.
+    const picked = eligibilityRuleIds.length ? await resolveEligibilityRuleScopes(tx, eligibilityRuleIds) : [];
+    if (picked.length !== eligibilityRuleIds.length) throw new Error('Eligibility rule not found');
+    const refused = picked.filter((r) => r.refusal);
+    if (refused.length) throw new Error(refused.map((r) => r.refusal).join(' '));
+
+    // Empty rule selection ⇒ the single wildcard scope (null, null), the pre-bb3938b9 shape.
+    type Scope = { ruleLineageId: string | null; gradeGroupId: string | null; employmentType: EmploymentType | null };
     const scopesFor = (companyId: string): Scope[] => {
-      if (schemes.length === 0) return [{ schemeId: null, gradeGroupId: null, employmentType: null }];
-      // A scheme belongs to ONE company; pairing it with another company's rows would write a scope that
-      // company has no employees in. Silently skipping is right here — the form offers the schemes of the
-      // chosen companies, so a mismatch only happens on a stale submit.
-      return schemes
-        .filter((s) => s.companyId === companyId)
-        .map((s) => ({
-          schemeId: s.id,
-          gradeGroupId: s.gradeGroupId,
-          employmentType: s.employmentType as EmploymentType,
-        }));
+      if (picked.length === 0) return [{ ruleLineageId: null, gradeGroupId: null, employmentType: null }];
+      const out: Scope[] = [];
+      const seen = new Set<string>();
+      for (const r of picked) {
+        // A rule that NAMES companies applies to those; one that names none applies to every company and so
+        // pairs with whichever companies the form chose. Pairing a company-scoped rule with a company it
+        // does not name would write a scope that company has no employees in; silently skipping is right
+        // here — the form offers the rules of the chosen companies, so it only happens on a stale submit.
+        if (r.companyIds.length && !r.companyIds.includes(companyId)) continue;
+        for (const s of r.scopes) {
+          // Two rules can land on the SAME (grade group, employment type) pair — they are different names
+          // for one population as far as approval routing is concerned. One bucket is one row, so writing
+          // it twice would double the audit trail and hand the same ruleId back twice.
+          const key = `${s.gradeGroupId ?? ''}|${s.employmentType ?? ''}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push({ ruleLineageId: r.lineageId, gradeGroupId: s.gradeGroupId, employmentType: s.employmentType });
+        }
+      }
+      return out;
     };
 
     const ruleIds: string[] = [];
@@ -483,8 +636,8 @@ export async function assignApprovalTemplate(
           }
           ruleIds.push(ruleId);
           // Per-row substrate event on the policy aggregate (reuse the rule events with before/after). The
-          // scheme id rides along so the audit trail says WHICH scheme was assigned, not just the two
-          // dimensions it resolved to.
+          // eligibility-rule lineage rides along so the audit trail says WHICH population was assigned, not
+          // just the two dimensions it resolved to.
           await appendEvent(tx, {
             tenantId: ctx.tenantId,
             aggregateType: 'leave-approval-policy',
@@ -494,7 +647,7 @@ export async function assignApprovalTemplate(
             payload: {
               companyId,
               leaveTypeId,
-              benefitSchemeId: scope.schemeId,
+              eligibilityRuleId: scope.ruleLineageId,
               gradeGroupId: scope.gradeGroupId,
               employmentType: scope.employmentType,
               minDays,
@@ -513,7 +666,7 @@ export async function assignApprovalTemplate(
       aggregateId: p.templateId,
       eventType: 'leave-approval-template.assigned',
       actor: actorOf(ctx),
-      payload: { templateId: p.templateId, companyIds, leaveTypeIds, benefitSchemeIds, minDays, maxDays, ruleIds },
+      payload: { templateId: p.templateId, companyIds, leaveTypeIds, eligibilityRuleIds, minDays, maxDays, ruleIds },
     });
     return { ruleIds };
   });
