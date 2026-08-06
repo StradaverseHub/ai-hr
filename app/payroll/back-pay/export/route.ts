@@ -13,6 +13,14 @@
  *
  * THE SIGN IS CARRIED THROUGH. A backdated reduction exports as a negative number, not an absolute
  * value with a note somewhere: the sheet a manager signs has to say which way the money goes.
+ *
+ * ONE VERIFIED WRINKLE, LEFT ALONE DELIBERATELY: in CSV a negative comes out as `'-20.00`. That
+ * apostrophe is `csvSafeCell` (lib/csv.ts), the repo-wide formula-injection guard every CSV export
+ * rides — a cell starting with `-` is a spreadsheet formula vector. Two ways to make it prettier were
+ * both rejected: weakening the guard is never acceptable, and switching to accounting parentheses
+ * `(20.00)` would stop `isNumeric` recognising the cell, so XLSX would lose the `x:num` typing and the
+ * figure would arrive in Excel as TEXT rather than a real negative number. The true signed value is
+ * kept, XLSX and PDF show it plainly, and CSV shows it safely.
  */
 import { isAdmin } from '@/lib/authz';
 import { getSession } from '@/lib/session';

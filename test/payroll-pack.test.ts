@@ -73,6 +73,12 @@ describe('ADR-0080 rung 7: payroll pack registration', () => {
       'employment_pay_component',
       'payroll_batch_component',
       'payroll_individual_txn',
+      // 2ef69d1e — Back Pay (Arrears), migration 0413. Both tables RECORD a deliberation; neither is
+      // read by the payroll engine, and the money still leaves through payroll_individual_txn above.
+      // Claimed by this pack rather than left undeclared because a satellite table with no owner is
+      // exactly what D5 exists to prevent.
+      'back_pay_run',
+      'back_pay_line',
       'company_statutory_authority',
       'statutory_report',
       'employee_loan',
