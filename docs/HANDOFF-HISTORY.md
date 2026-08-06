@@ -9,6 +9,43 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r165 — a board plan can carry a MOCKUP  ·  2026-08-06
+
+Shipped `main@70c814db`, migration 0406. Untracked operator tooling (owner's call — no board item).
+Gate 590/590 files. Shadow rehearsal PASS, 328 → 329 against the live schema.
+
+**Decisions**
+
+- **The problem was measured, not assumed: 143 of 151 attachments on production are IMAGES.** Every stage
+  `feedback_attachment` allowed — submitted / contested / refuted — is the REPORTER answering us. There
+  was no stage for the answer, so a plan could only ever be prose the board renders raw. `e7eb5d83` came
+  back from `deployed` as "the whole thing is crap" and that is what prompted this.
+- **ONLY THE STAGE LIST CHANGED, and the second obvious edit would have been a regression.** 0321 wrote
+  the pairing constraint as an EQUIVALENCE — `(stage='submitted') = (plan_revision IS NULL)` — rather
+  than an enumeration, so it already means "everything that is not submitted must name a revision" and
+  generalised to a stage written two hundred migrations later. Re-stating it as an IN-list would have
+  narrowed it and needed editing again next time. **Write pairing constraints as equivalences.**
+- **The mockup is pinned SERVER-SIDE, and the ordering is the contract.** `plan_revision` is read from
+  the item inside the INSERT, so attaching BEFORE pushing the plan silently files every image against the
+  outgoing revision, the page's filter hides them, and the reporter sees a plan with no design and no
+  error. `pushPlanWithMockups()` exists so no caller has to remember that.
+- **It renders beside the PLAN, not in the reporter's screenshot block.** That block is "what they sent
+  us"; mixing our answer into it loses who is speaking. Inline as an `<img>`, because a `↗ filename` link
+  is exactly the friction the prose already had.
+- **A mockup is a PROMISE and a picture cannot hedge** — the standing caution, printed under every mockup
+  in six languages and written into `scripts/mockup/README.md`. The `da4af51f` plan's "we will show every
+  line we have and totals where we do not" has no honest visual; it stays in words.
+- **THE GATE WAS RED FOR THE THIRD TIME TODAY WITH ZERO ASSERTION FAILURES, AND FOR THE THIRD TIME IT WAS
+  A BACKGROUND PROCESS I STARTED AND FORGOT.** The group-8 render check's dev server was still on port
+  3199 holding a pool against the same cluster; chunk 1 ran 1080s against 241s/424s and 9 files timed out
+  in `resetDb()`. Killed it, re-ran the 9: 9/9, 200 tests, 46.8s. **Kill the dev server in the same
+  command that finishes the render check** — the earlier two were a live Workflow and a stale dev server,
+  same shape each time.
+- **`fullPage` screenshots pad to the viewport, and `scrollHeight` cannot fix it** because `<html>`
+  stretches to fill the viewport — the first fix produced a 900px image of 800px of content and looked
+  like it worked. Measure the lowest child edge of `body` instead. 1800px → 1054px on the first real
+  mockup.
+
 ## r164 — 35b7af0a group 8 (Identity), the last genuine wizard/Personnel drift  ·  2026-08-06
 
 Shipped `main@f0a85dfb`. One item, no migration. Gate 589/589 files, 7,222 tests.

@@ -18,14 +18,15 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-06 (r164 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-06 (r165 SHIPPED)
 
-**`main@f0a85dfb` is what runs. Production on 328 migrations. Next free migration number is `0405`**
-(0389, 0401 and 0402 were never claimed and are dead) — **but `0405` is CLAIMED by the unmerged release
-three branch (`when: 1781862505000`), so anything else must take `0406` / `1781862506000`.** r164 carried
-NO migration. No half-applied migration, no pending deploy, nothing in flight. Verified after deploy:
-BUILD_ID moved `G64CFabi3HFgRIraIZ1px` → `qpfIFW7MoOVKlb6bRZ4Ks`, service `active`, `GET /` 401, and
-`rsync -azi --delete --dry-run` reporting **zero changes**.
+**`main@70c814db` is what runs. Production on 329 migrations. Next free migration number is `0407`**
+(0389, 0401 and 0402 were never claimed and are dead) — **`0405` is still CLAIMED by the unmerged
+release-three branch (`when: 1781862505000`) and `0406` shipped with r165, so the next allocation is
+`0407` / `1781862507000`.** No half-applied migration, no pending deploy, nothing in flight. Verified
+after deploy: 329 migrations applied, `feedback_attachment_stage_ck` reads
+`submitted|contested|refuted|plan` on production, service `active`, BUILD_ID `w7rHG4QSdGTUk4-Ij2don`,
+`GET /` 401, and `rsync -azi --delete --dry-run` reporting **zero changes**.
 
 ### The board — counted on production 2026-08-06 after r164 (owner role; `DATABASE_URL` is RLS-blocked)
 
@@ -55,25 +56,32 @@ plan's mandatory pre-build count is DONE, measured 2026-08-06: **26 compensation
 moving in BOTH directions (one is 6000 → 5500). The naive query — valid_from before the last payslip —
 returns 41/36 and is WRONG; that is just "everyone has a salary".
 
-### Plans must carry a MOCKUP, not just prose — decided 2026-08-06
+### Plans must carry a MOCKUP — BUILT AND DEPLOYED in r165 (2026-08-06)
 
-**The board's communication is one-directional and it is measurable: of 151 attachments, 143 are
-IMAGES.** The reporter speaks in screenshots; we answer with ~6,000 characters of plain text that the
-board renders RAW (no Markdown). They approve a paragraph and receive a screen — and `e7eb5d83` came
-back as "the whole thing is crap" after shipping. **Owner's decision: design the UI/UX at PLAN time and
-attach it, before building. Build it as untracked operator tooling (no board item), ahead of `7c834696`
-point 3.**
+**The board's communication was one-directional and it is measurable: of 151 attachments, 143 are
+IMAGES.** The reporter speaks in screenshots; we answered with ~6,000 characters of plain text that the
+board renders RAW (no Markdown). They approved a paragraph and received a screen — and `e7eb5d83` came
+back as "the whole thing is crap" after shipping.
 
-Most of the machinery already exists and must not be rebuilt: `feedback_attachment` carries
-`content` / `mime_type` / `stage` / `plan_revision` with RLS; `/feedback/attachment/[id]?inline=1`
-already serves the stored mime with `Content-Disposition: inline`, so a PNG opens in the browser today;
-and `app/feedback/[id]/page.tsx:109` already groups attachments by stage and shows the plan version.
-**What is missing is one stage.** `feedback_attachment_stage_ck` allows only
-`submitted | contested | refuted` — all REPORTER-side. Add `plan`, and extend
-`feedback_attachment_stage_revision_ck` so `plan` REQUIRES a non-null `plan_revision`: a re-planned item
-whose old mockup floated free would show a picture of a plan that no longer exists. Render it beside the
-PLAN (page bottom), not in the reporter's screenshot block at the top, and render images INLINE rather
-than as the current `↗ filename` link — if they have to click, most will not.
+**HOW TO USE IT.** Render the design, then push it with the plan in one call:
+
+    pnpm mockup docs/mockups/<item>.html /tmp/<item>.png --width 1240
+    echo '{"id":…,"plan":…,"model":…,"mockupPaths":["/tmp/<item>.png"]}' | pnpm improve:push-plan
+
+Read `scripts/mockup/README.md` first. `pushPlanWithMockups()` enforces the ordering that makes the
+pinning true — `plan_revision` is stamped SERVER-SIDE from the item, so attaching BEFORE pushing would
+silently file every image against the outgoing plan.
+
+**THE ONE DESIGN FINDING WORTH KEEPING.** Only the stage LIST needed changing. 0321 wrote the pairing
+constraint as an EQUIVALENCE — `(stage='submitted') = (plan_revision IS NULL)` — rather than an
+enumeration, so it already says "everything that is not submitted must name a revision" and generalised
+to a stage that did not exist when it was written. Re-stating it as an IN-list would have NARROWED it and
+needed editing again for the next stage. `test/feedback-plan-mockup.test.ts` asserts the refusal by
+CONSTRAINT NAME, the lesson the 0321 test file next door records against itself.
+
+Mockups render INLINE beside the plan (not in the reporter's screenshot block — that block is "what they
+sent us", and mixing our answer into it loses who is speaking), filtered to the CURRENT revision and to
+`image/*`. Anything else falls back to the link list, so nothing is ever invisible.
 
 **The standing caution: a mockup is a PROMISE, and a picture cannot hedge.** The `da4af51f` plan says
 "we will show every line we have and totals where we do not" — that sentence has no honest visual. Label
