@@ -1014,6 +1014,18 @@ const slugKey = (s: string): string =>
   s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 /**
+ * BUILT_IN_FIELD_KEYS, put through slugKey — the set the guard actually compares against.
+ *
+ * ⚠️ THIS INDIRECTION IS NOT DECORATION; a straight `.includes()` on the raw list is a HOLE, and the test
+ * for the forged POST is what found it. Every key an admin (or an attacker) supplies is slugified before
+ * it is stored, so `incurredOn` becomes `incurredon` — which is not a member of the raw list, so it sailed
+ * past the check and created a custom field shadowing a built-in. Normalising BOTH sides is what makes the
+ * guard hold for every spelling of the same key, and it means a future built-in added to the list in
+ * camelCase is protected without anyone having to remember this.
+ */
+const BUILT_IN_SLUGS: ReadonlySet<string> = new Set(BUILT_IN_FIELD_KEYS.map((k) => slugKey(k)));
+
+/**
  * Validate a claim's custom-field answers against the type's LIVE form, returning the coerced values to
  * store (or null when the type has no custom fields — which is every claim type on production today, and
  * why nothing an employee sees changes until an admin designs a form).
@@ -1086,7 +1098,7 @@ export async function createClaimFormField(
   const fieldKey = slugKey(p.fieldKey ?? label);
   if (!fieldKey) throw new ClaimError('A field needs a label with at least one letter or digit');
   // THE BUILT-IN GUARD, in the service — not in the screen. A forged POST reaches here too.
-  if ((BUILT_IN_FIELD_KEYS as readonly string[]).includes(fieldKey)) {
+  if (BUILT_IN_SLUGS.has(fieldKey)) {
     throw new ClaimError(
       `"${label}" collides with a built-in claim field. Amount, date, description and receipt are always on ` +
         `every claim form and are not configurable — choose a different label.`,
