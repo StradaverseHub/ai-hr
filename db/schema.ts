@@ -811,15 +811,6 @@ export const employment = pgTable(
     // Wave 2 (ADR-0041 2E): the employee's seniority grade — drives grade-scoped leave entitlements.
     // Null = ungraded (falls to the company-default leave policy).
     gradeId: uuid('grade_id').references(() => jobGrade.id),
-    // Benefit Scheme & Leave Entitlement (b83c6a3b): the employee's MANUAL benefit-scheme override. Null =
-    // auto-match by (company, current-assignment employment_type, grade-group) at resolution time (the
-    // default). When set to an ACTIVE scheme it wins over the auto-match. The scheme's leave entitlements
-    // supersede the grade-scoped leave_policy days; when neither a scheme nor a policy resolves, the
-    // statutory EA-1955 floor still applies. ON DELETE SET NULL so deleting a scheme falls the employee
-    // back to auto-match / grade policy, never an FK error.
-    benefitSchemeId: uuid('benefit_scheme_id').references((): AnyPgColumn => benefitScheme.id, {
-      onDelete: 'set null',
-    }),
     // Hiring enhancement: provisional/lifecycle end date — interpreted by assignment.employment_type
     // (probation end for full_time, contract end for contract, internship end for intern). Single-date
     // by design; a separate probation date for contract hires is deferred (PM). Null = no provisional
@@ -1591,39 +1582,15 @@ export const jobGrade = pgTable(
   ],
 );
 
-export const leavePolicy = pgTable(
-  'leave_policy',
-  {
-    id: id(),
-    tenantId: tenantId(),
-    leaveTypeId: uuid('leave_type_id')
-      .notNull()
-      .references(() => leaveType.id),
-    // Wave 2 (ADR-0041 2E): grade this policy applies to. null = all grades (the company default).
-    gradeId: uuid('grade_id').references(() => jobGrade.id),
-    // ADR-0066: company this policy applies to. null = group default (all companies). A company-scoped
-    // policy ALWAYS wins for employees of that company (resolveGradePolicy short-circuit) — even when lower.
-    companyId: uuid('company_id').references(() => company.id),
-    // e.g. { annualDays: 16, method: 'grant_on_hire_prorated' }
-    accrual: jsonb('accrual').notNull(),
-    validFrom: date('valid_from').notNull(),
-    validTo: date('valid_to'),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    index('leave_policy_type_idx').on(t.leaveTypeId),
-    index('leave_policy_company_idx').on(t.companyId, t.leaveTypeId),
-  ],
-);
-
-// ── Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b) ─────────────────────────────
-// A friendlier CONFIGURATION LAYER over the existing grade-scoped leave_policy engine. Grade groups let HR
-// treat several grades as one band (e.g. "Grade 12–15"); a benefit_scheme names a (company × employment_type
-// × grade_group) target; scheme_leave_entitlement holds that scheme's per-leave-type service-band days
-// (REUSING the ServiceBand day shape + bandDaysFor math). Employees resolve to a scheme (auto-match by
-// company + current-assignment employment_type + grade group, or a manual override on employment); the
-// scheme's entitlement supersedes the grade leave_policy days, and the EA-1955 floor still applies on top.
-// All additive + backward compatible: a tenant with no schemes resolves exactly as before (grade policy).
+// ── Grade groups (feedback b83c6a3b; KEPT by 6e9a126e release three) ─────────────────────────────────
+// Grade groups let HR treat several job grades as one band ("Grade 12-15"). They arrived as part of the
+// benefit-scheme entitlement layer, and release three dropped that layer — benefit_scheme,
+// scheme_leave_entitlement, leave_policy and employment.benefit_scheme_id are all gone.
+//
+// THESE TWO TABLES SURVIVED, AND THE REASON IS NOT SENTIMENT: 205 live leave_approval_policy rows scope
+// by grade group. Dropping them would silently unscope every one of those approval rules and force HR to
+// rebuild each by hand. They are now plain organisation grade banding for APPROVAL ROUTING — they no
+// longer select an entitlement. Entitlement targeting is entitlement_eligibility_rule's job.
 export const gradeGroup = pgTable(
   'grade_group',
   {
@@ -1657,67 +1624,6 @@ export const gradeGroupMember = pgTable(
   (t) => [
     uniqueIndex('grade_group_member_grade_uq').on(t.tenantId, t.gradeId),
     index('grade_group_member_group_idx').on(t.gradeGroupId),
-  ],
-);
-
-// benefit_scheme = a named entitlement target: Company × Employment Type × Grade Group. `status` is
-// 'active' | 'inactive' (only active schemes are auto-matched / override-usable). A partial-unique index
-// keeps at most one ACTIVE scheme per (company, employment_type, grade_group) so auto-match is deterministic.
-export const benefitScheme = pgTable(
-  'benefit_scheme',
-  {
-    id: id(),
-    tenantId: tenantId(),
-    companyId: uuid('company_id')
-      .notNull()
-      .references(() => company.id),
-    employmentType: employmentTypeEnum('employment_type').notNull(),
-    // Scheme Category (feedback 0890a555, migration 0335): a grouping LABEL, and nothing more. It decides
-    // how schemes are bunched in the pickers that list them; it is deliberately read by no entitlement,
-    // eligibility or resolution path — resolveSchemeForEmployment, scheme_leave_entitlement and
-    // resolveGradePolicy never see it, so a scheme resolves for an employee identically whether its category
-    // is set, changed or cleared. Free text, because the reporter's own examples ("Contract (Special)",
-    // "Contract (Retiree)") are their wording for their own population. NULL ⇒ ungrouped.
-    schemeCategory: text('scheme_category'),
-    // Nullable: a scheme can be defined before its grade group, or apply to an ungrouped population.
-    gradeGroupId: uuid('grade_group_id').references(() => gradeGroup.id, { onDelete: 'set null' }),
-    name: text('name').notNull(),
-    status: text('status').$type<'active' | 'inactive'>().notNull().default('active'),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    uniqueIndex('benefit_scheme_name_uq').on(t.tenantId, sql`lower(${t.name})`),
-    // Auto-match determinism: one active scheme per (company, employment_type, grade_group). gradeGroupId
-    // NULL rows are treated as distinct by the unique index (Postgres NULL semantics) — acceptable, the
-    // resolver's auto-match still short-circuits on the first (lowest-id) match.
-    uniqueIndex('benefit_scheme_match_uq')
-      .on(t.tenantId, t.companyId, t.employmentType, t.gradeGroupId)
-      .where(sql`status = 'active'`),
-    index('benefit_scheme_company_idx').on(t.companyId),
-  ],
-);
-
-// scheme_leave_entitlement = one leave type's service-band day table within a scheme. `serviceBands` reuses
-// the ServiceBand JSONB shape (fromYears/toYears/days[/carryForwardDays…]) resolved by bandDaysFor. One row
-// per (scheme, leave type). ON DELETE CASCADE from the scheme.
-export const schemeLeaveEntitlement = pgTable(
-  'scheme_leave_entitlement',
-  {
-    id: id(),
-    tenantId: tenantId(),
-    benefitSchemeId: uuid('benefit_scheme_id')
-      .notNull()
-      .references(() => benefitScheme.id, { onDelete: 'cascade' }),
-    leaveTypeId: uuid('leave_type_id')
-      .notNull()
-      .references(() => leaveType.id),
-    // ServiceBand[] — the leave-type × service-band day matrix (e.g. <2y:12, 2–5y:14, ≥5y:16).
-    serviceBands: jsonb('service_bands').notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    uniqueIndex('scheme_leave_entitlement_uq').on(t.tenantId, t.benefitSchemeId, t.leaveTypeId),
-    index('scheme_leave_entitlement_scheme_idx').on(t.benefitSchemeId),
   ],
 );
 
