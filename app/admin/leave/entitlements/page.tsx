@@ -60,33 +60,36 @@ import {
 /**
  * Leave Settings — Entitlements tab.
  *
- * Feedback 9d8cf621 (Entitlements Setting reorganization): the per-leave-type CONFIGURATION panel now lives
+ * Feedback 9d8cf621 (Entitlements Setting reorganization): the per-leave-type CONFIGURATION panel lives
  * here — "one leave type, one full set of settings", exactly where HR expects it. Each `LeaveTypePanel`
  * carries leave-type identity, eligibility, allowed durations, supporting-document config, backdating limit,
- * advance-notice, expiry, the apply-time custom message AND that type's effective-dated entitlement policies
- * (the editable ranges table + the multi-company/grade "Employee Selection" chips). The three other
- * standalone sections are gone (d778d2d3): Run Earned Accrual and
- * Preview a Scenario became compact action buttons opening the SAME tools in dialogs
- * (EarnedAccrualDialog / LeaveRulePreviewDialog — components wrapped unchanged), and the per-company Leave
- * Cycle card moved to the Application Rules tab beside the other company-level calendar rules (its
- * server action is untouched — only the rendering moved). Bulk import is a "+ Import" action
- * button in the page header (e8f2398f) — the standalone page-bottom Card that only linked to
- * /admin/leave/import is gone. The festive / one-off grant tool no longer
- * sits at the page bottom — fd7c8e20 moved it into each type's Entitlement step, preset to the selected
- * type. The whole `LeaveTypePanel` + add-type form moved wholesale from the
- * Types tab, so every sub-form keeps its tri-state marker + hidden `name` intact — no column is wiped on save.
+ * advance-notice, expiry and the apply-time custom message. Bulk import is a "+ Import" action button in the
+ * page header (e8f2398f). The whole `LeaveTypePanel` + add-type form moved wholesale from the Types tab, so
+ * every sub-form keeps its tri-state marker + hidden `name` intact — no column is wiped on save.
  *
- * 7b945408 (Restructure Entitlements Secondary Workflow): the Entitlement step is now a three-sub-step walk
- * — 1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments (the SubStepBar reuse contract).
- * Preview Scenario joins Service Based Entitlements as its checking tool, and Run Accrual joins Adjustments
- * (it processes earned entitlement).
+ * ⚠️ 6e9a126e RELEASE THREE — THIS PAGE NO LONGER CONFIGURES ENTITLEMENT, AND THAT IS THE POINT.
+ * It used to carry three ways to say how many days a leave type grants: the effective-dated per-company /
+ * per-grade `leave_policy` timeline (with its multi-company/grade "Employee Selection" chips), the Benefit
+ * Schemes workbench, and each scheme's service-tier day table. All three are removed with the tables behind
+ * them, together with the Preview Scenario checker that resolved the first of them. The Entitlement step
+ * now holds Run Earned Accrual and a link to Entitlement Tables
+ * (/admin/leave/entitlements/templates), where a named day table is typed once and an eligibility rule says
+ * who receives it. The PageHeader carries the same link plus the read-only Configuration record
+ * (/admin/leave/entitlements/archive) — the listing HR retypes the cleared figures from.
+ *
+ * WHAT THE PAGE STILL OWNS, and what a reader should expect to find: leave TYPE CRUD (the workspace and the
+ * Add Leave Type dialog), each type's Condition / Custom Settings steps, the consolidated Earning Method and
+ * Carry Forward rules (written to the leave TYPE since 9816a5ad, not to a policy row), Shared Leave Groups,
+ * the company-wide Half-Day Deduction card, Run Earned Accrual — and Grade Groups, in their own card at the
+ * bottom. Grade groups scope APPROVAL routing (205 live rules name one) and no longer select an entitlement;
+ * they are here because their editor was inside the deleted scheme workbench and had to land somewhere real.
  *
  * b1b81a08 (Grade relocation): the Grades catalogue is no longer maintained anywhere on this page. Grades
  * are organisation-level master data, so add/edit/archive/delete now lives on Settings → System Labels →
  * Organisation Labels beside Departments and Positions. The grade LIST is still read here — it feeds the
- * leave-policy scope dropdown, the preview dialog and the benefit-scheme grade groups — and no grade record
- * was copied, renamed or re-created, so every employment, leave policy, approval rule, claim limit and
- * grade group still points at the same row.
+ * Run Earned Accrual selector and the Grade Groups membership tick-boxes — and no grade record was copied,
+ * renamed or re-created, so every employment, approval rule, claim limit and grade group still points at the
+ * same row.
  *
  * 4b0e76ae (Remove Leave Year Configuration): the Leave Year Configuration block is GONE from Custom
  * Settings on every leave type — the year list, the Draft/Open/Closed badge, the Open Leave Year Date, the
@@ -98,9 +101,8 @@ import {
  * records: it offers the shared computed range, which reaches three years BACK so running earned accrual
  * for a past year stays possible.
  *
- * 962077a8 (Remove Unnecessary Action Buttons): with the 7b945408 step homes in place, the PageHeader is
- * down to the single page-level action — + Import. Run Accrual and Preview Scenario open ONLY from their
- * sub-steps now (same dialogs, same page-level data prep — nothing duplicated, nothing unreachable).
+ * 962077a8 (Remove Unnecessary Action Buttons): the PageHeader carries no tool buttons. Run Accrual opens
+ * ONLY from the Entitlement step, and must not be given a header home again.
  */
 export default async function LeaveEntitlementsPage({
   searchParams,

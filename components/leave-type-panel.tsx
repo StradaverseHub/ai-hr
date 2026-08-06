@@ -110,10 +110,10 @@ const DOC_MIME_OPTIONS = [
 /** Step flow (c979aa8b, shortened by b8fcae73): the FOUR configuration steps, in walk order —
  *  1 General Setting, 2 Condition, 3 Entitlement, 4 Custom Settings. The Eligibility step was removed:
  *  it had held no eligibility rules since 08bc6841 relocated those to Condition · Criteria, and its
- *  remaining content (the per-company entitlement policies timeline) moved to the Entitlement step's
- *  Service Based Entitlements sub-step. The keys are the SAME storage keys the pre-step accordion used ('ess' is
- *  Condition's historical key — kept deliberately so persisted state survives, see the leaveTypeCards
- *  migration in LeaveTypePanel).
+ *  remaining content (the per-company entitlement policies timeline) moved to the Entitlement step —
+ *  where 6e9a126e release three then removed it outright with the `leave_policy` table. The keys are the
+ *  SAME storage keys the pre-step accordion used ('ess' is Condition's historical key — kept deliberately
+ *  so persisted state survives, see the leaveTypeCards migration in LeaveTypePanel).
  *
  *  1e4eb8af widened step 4 with a Leave Year Configuration block; 4b0e76ae removed it again, in full, at
  *  the reporter's request (entitlement GENERATION moved to /admin/leave/generate in the same release). The
@@ -121,8 +121,8 @@ const DOC_MIME_OPTIONS = [
 const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const;
 type StepKey = (typeof STEP_KEYS)[number];
 /** The storage key of the step b8fcae73 retired. Kept ONLY so a persisted leaveTypeCards:<id> payload that
- *  still points at it can be remapped to where its content went (Entitlement · Service Based Entitlements)
- *  instead of silently snapping back to step 1. It is never a StepKey and never renders. */
+ *  still points at it can be remapped to the Entitlement step instead of silently snapping back to step 1.
+ *  It is never a StepKey and never renders. */
 const RETIRED_ELIGIBILITY_STEP = 'eligibility';
 /** Step → its admin.leave title key (the same category* keys the accordion cards used, all 6 locales). */
 const STEP_TITLE_KEY: Record<StepKey, string> = {
@@ -1391,14 +1391,10 @@ function LeaveVisualForm({
 }
 
 /**
- * One leave type as an expandable row. The body manages that type's own effective-dated
- * entitlement policies (add / correct / remove) so there's no separate, disconnected policy
- * form — the two tables stay split underneath, but the editing surface is unified.
- */
-/**
  * The five consolidated settings, read from the leave TYPE (9816a5ad step 2, migration 0325 columns).
- * Shaped to overlap `EntitlementPolicy` field-for-field so the Earning Method and Carry Forward forms —
- * which already render exactly these controls — can be pointed at it without being rewritten.
+ * They were shaped to overlap the old `EntitlementPolicy` field-for-field so the Earning Method and Carry
+ * Forward forms could be re-pointed at the type without being rewritten; 6e9a126e release three deleted
+ * that type, and this one is now simply what the leave type stores.
  */
 export type LeaveTypeRules = {
   accrualMethod?: string | null;
