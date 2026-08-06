@@ -10,13 +10,30 @@
  * The anti-over-forfeit core (case b): forfeit = min(unconsumedCarry, currentBalance) — it caps at what
  * is actually still in the balance, so taking leave reduces what is forfeited and fresh entitlement is
  * never taxed.
+ *
+ * ── 6e9a126e RELEASE THREE — REPOINTED, AND THE CARRY RULES GO ON THE LEAVE TYPE ────────────────────
+ *
+ * Every forfeit figure, every idempotency count and every clamped date below is unchanged. What moved is
+ * where the configuration lives: the DAYS to an entitlement template's band, and every CARRY rule (cap,
+ * enable switch, expiry offset, expiry mode, include-earned) to the leave TYPE's own columns.
+ *
+ * THE TYPE IS NOT A PREFERENCE, IT IS THE ONLY PLACE THAT WORKS. `expireCarriedLeave` gates its entire
+ * sweep on `typeCarriesExpiry` — `applyLeaveTypeRules({days:0,carryMax:0}, type)?.carryExpiry != null` —
+ * which asks the leave type and nothing else. A per-band expiry never reaches the loop below that would
+ * honour it, so a fixture that put the expiry on the band would report a clean zero forfeit while every
+ * assertion here claimed a real one.
+ *
+ * WHAT WAS RETIRED, AND WHY, IS STATED AT EACH SITE: the two pure `resolveGradePolicy` unit tests (the
+ * resolver is deleted), the per-grade EXPIRY half of (j2) (carry expiry is now one rule per leave type),
+ * the second-writer duplicate (x), and the JSONB-hygiene half of (cc) (there is no blob left to keep
+ * clean). The BEHAVIOUR each of those protected is asserted below wherever it still exists.
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { createJobGrade, createLeavePolicy, updateLeavePolicy } from '../core/admin';
+import { createJobGrade, setLeaveTypeRules } from '../core/admin';
 import {
   accrueEarnedLeave,
   carryEnabled,
@@ -26,9 +43,8 @@ import {
   isValidMonthDay,
   lastRealDayOfMonth,
   openLeaveYear,
-  resolveGradePolicy,
 } from '../core/leave';
-import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 let b: Base;
 
@@ -104,8 +120,22 @@ const hire = (hiredOn: string, gradeId: string | null = null) =>
     grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
   });
 
-/** Annual policy active from `from` with carry cap + optional expiry offset. */
-const annualPolicy = (
+/** The leave TYPE's rule columns, written straight (owner role) — the fixture equivalent of the JSONB the
+ *  dropped `createLeavePolicy` used to build. Every engine reads carry from here. */
+const setCarryRules = (patch: Partial<typeof schema.leaveType.$inferInsert>, id = b.annualLeaveTypeId) =>
+  owner.db.update(schema.leaveType).set(patch).where(eq(schema.leaveType.id, id));
+
+/** Read back the leave TYPE's rule columns — the replacement for reading `leave_policy.accrual`. */
+const typeRow = async (id = b.annualLeaveTypeId) => {
+  const [row] = await owner.db.select().from(schema.leaveType).where(eq(schema.leaveType.id, id));
+  return row;
+};
+
+/** Annual entitlement active from `from`, with carry cap + optional expiry offset. Days to the template
+ *  band; every carry rule to the leave type (see the header for why the type is the only place that
+ *  works). `undefined` for a rule leaves its column NULL, which is what "not configured" means now and
+ *  what the old writer expressed by OMITTING the JSONB key. */
+const annualPolicy = async (
   p: {
     annualDays?: number;
     carryForwardMax?: number;
@@ -115,25 +145,20 @@ const annualPolicy = (
     carryForwardEnabled?: boolean;
     carryForwardIncludeEarned?: boolean;
   },
-) =>
-  createLeavePolicy(adminCtx(b), {
+) => {
+  const tpl = await seedEntitlement(adminCtx(b), {
     leaveTypeId: b.annualLeaveTypeId,
     annualDays: p.annualDays ?? 12,
-    carryForwardMax: p.carryForwardMax ?? 5,
-    carryForwardExpiryMonth: p.expiry?.month ?? null,
-    carryForwardExpiryDay: p.expiry?.day ?? null,
-    carryForwardEnabled: p.carryForwardEnabled,
-    carryForwardIncludeEarned: p.carryForwardIncludeEarned,
     validFrom: p.from ?? '2025-01-01',
   });
-
-/** Read back a leave_policy's raw accrual JSONB (owner role bypasses RLS) — for round-trip assertions. */
-const readAccrual = async (leaveTypeId: string): Promise<Record<string, unknown>> => {
-  const [row] = await owner.db
-    .select({ accrual: schema.leavePolicy.accrual })
-    .from(schema.leavePolicy)
-    .where(eq(schema.leavePolicy.leaveTypeId, leaveTypeId));
-  return (row?.accrual as Record<string, unknown>) ?? {};
+  await setCarryRules({
+    carryForwardMax: String(p.carryForwardMax ?? 5),
+    carryForwardExpiryMonth: p.expiry?.month ?? null,
+    carryForwardExpiryDay: p.expiry?.day ?? null,
+    carryForwardEnabled: p.carryForwardEnabled ?? null,
+    carryForwardIncludeEarned: p.carryForwardIncludeEarned ?? null,
+  });
+  return tpl;
 };
 
 beforeAll(async () => {
@@ -309,49 +334,51 @@ describe('ADR-0038 carry-forward expiry — expireCarriedLeave', () => {
   });
 });
 
-describe('ADR-0038 carry-forward expiry — resolveGradePolicy carryExpiry', () => {
-  it('(j) resolves carryExpiry from the SAME winning policy as days/carryMax (no cross-leak)', async () => {
-    // Two competing all-grades policies. The winner is the higher `days`. Its expiry must win too — a
-    // rejected lower-days policy must NOT leak its expiry onto the selected one.
-    const rows = [
-      { gradeId: null, accrual: { annualDays: 10, carryForwardMax: 3, carryForwardExpiryMonth: 6, carryForwardExpiryDay: 30 } },
-      { gradeId: null, accrual: { annualDays: 14, carryForwardMax: 5, carryForwardExpiryMonth: 3, carryForwardExpiryDay: 31 } },
-    ];
-    const resolved = resolveGradePolicy(rows, null, undefined, 0);
-    expect(resolved).not.toBeNull();
-    expect(resolved!.days).toBe(14);
-    expect(resolved!.carryMax).toBe(5);
-    expect(resolved!.carryExpiry).toEqual({ month: 3, day: 31 }); // from the winner, not the 6/30 loser
-  });
-
-  it('(j2) a grade winner carries its own expiry and applies through the live sweep', async () => {
+describe('ADR-0038 carry-forward expiry — the grade-scoped winner, end to end', () => {
+  /**
+   * ⚠️ (j) IS RETIRED. It was a pure unit test of `resolveGradePolicy` — "carryExpiry comes from the SAME
+   * winning policy as days and carryMax, a rejected lower-days policy must not leak its expiry onto the
+   * selected one". `resolveGradePolicy` was deleted with `leave_policy`, and the cross-leak it guarded is
+   * now impossible by construction rather than by a rule: `policyFromTemplateBand` takes days, carry cap
+   * and expiry off ONE band object, so there is no second candidate to leak from.
+   */
+  it('(j2) a grade-scoped entitlement wins end-to-end, and its days survive the live sweep', async () => {
+    // ⚠️ THE PER-GRADE EXPIRY HALF OF THIS TEST IS RETIRED. It configured a 30-Jun default and a 31-Mar
+    // EXEC policy and proved the EXEC's OWN expiry fired. Carry expiry is now ONE rule per leave type
+    // (`expireCarriedLeave` only asks the type), so two expiries for two grades is not a configuration the
+    // product has. Asserting it would need a per-band expiry, which the sweep's gate never reaches — a
+    // green zero dressed up as a real forfeit.
+    //
+    // WHAT SURVIVES IS THE PRECEDENCE ITSELF, which is the part worth pinning: the grade-scoped rule beats
+    // the grade-less one and the employee gets 18 days, not 12. Under `leave_policy` a grade row beat a
+    // grade-less row by HAVING a grade; now both eligibility rules match and the resolver picks the more
+    // SPECIFIC one (orgCriteriaSpecificity). Same outcome, decided elsewhere — and the 18 below is what
+    // proves it, because 12 is what a mis-resolution would produce.
     const exec = await createJobGrade(adminCtx(b), { code: 'EXEC', name: 'Executive' });
-    // All-grades default expires 30 Jun; the EXEC policy (more generous) expires 31 Mar.
-    await createLeavePolicy(adminCtx(b), {
+    await seedEntitlement(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 12,
-      carryForwardMax: 5,
-      carryForwardExpiryMonth: 6,
-      carryForwardExpiryDay: 30,
       validFrom: '2025-01-01',
+      name: 'All grades',
     });
-    await createLeavePolicy(adminCtx(b), {
+    await seedEntitlement(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 18,
-      carryForwardMax: 5,
-      carryForwardExpiryMonth: 3,
-      carryForwardExpiryDay: 31,
       gradeId: exec.id,
       validFrom: '2025-01-01',
+      name: 'Executive',
     });
-    const emp = await hire('2025-01-01', exec.id); // 18 granted under the EXEC policy
-    await openLeaveYear(adminCtx(b), { year: 2026 }); // carry min(18,5)=5 → balance 5 + 18 = 23
+    await setCarryRules({ carryForwardMax: '5', carryForwardExpiryMonth: 3, carryForwardExpiryDay: 31 });
 
-    // On 2026-03-31 the EXEC's own 31-Mar expiry must fire (the 30-Jun default must NOT win for them).
+    const emp = await hire('2025-01-01', exec.id); // 18, from the grade-scoped table — not the 12 default
+    expect(await balance(emp.employmentId)).toBe(18);
+    await openLeaveYear(adminCtx(b), { year: 2026 }); // carry min(18,5)=5 → balance 5 + 18 = 23
+    expect(await balance(emp.employmentId)).toBe(23);
+
     const r = await expireCarriedLeave(adminCtx(b), { today: '2026-03-31' });
     expect(r.swept).toBe(1);
     expect(r.forfeited).toBe(5);
-    expect(await balance(emp.employmentId)).toBe(18);
+    expect(await balance(emp.employmentId)).toBe(18); // the grade winner's fresh 18, untaxed
   });
 });
 
@@ -376,10 +403,12 @@ describe('Carry-forward enhancement — carryForwardEnabled toggle at year-open 
   });
 
   it('(m) absent flag + positive cap ⇒ carries (back-compat default holds)', async () => {
-    // No carryForwardEnabled in the JSONB at all — the back-compat `cap > 0` default must still carry.
+    // No carryForwardEnabled configured AT ALL — the back-compat `cap > 0` default must still carry. The
+    // assertion used to be that the JSONB key was OMITTED rather than written as false; on the type the
+    // same fact is a NULL column, and it matters for the same reason: `applyLeaveTypeRules` only produces
+    // a real boolean from a real boolean, so a stored `false` would disable carry outright.
     await annualPolicy({ annualDays: 12, carryForwardMax: 5 });
-    const acc = await readAccrual(b.annualLeaveTypeId);
-    expect('carryForwardEnabled' in acc).toBe(false); // key omitted, not written as undefined/false
+    expect((await typeRow()).carryForwardEnabled).toBeNull();
     const emp = await hire('2025-01-01');
     await openLeaveYear(adminCtx(b), { year: 2026 }); // carry min(12,5)=5 + 12 fresh = 17
     expect(await balance(emp.employmentId)).toBe(17);
@@ -404,20 +433,14 @@ describe('Carry-forward enhancement — disabled policy is inert in the expiry s
   });
 });
 
-describe('Carry-forward enhancement — resolveGradePolicy carryForwardEnabled + carryEnabled default', () => {
-  it('(o) carryForwardEnabled is resolved from the WINNING (higher-days) policy, not a losing one', async () => {
-    // The loser disables carry; the winner (higher days) enables it. The winner's flag must win — mirror of (j).
-    const rows = [
-      { gradeId: null, accrual: { annualDays: 10, carryForwardMax: 3, carryForwardEnabled: false } },
-      { gradeId: null, accrual: { annualDays: 14, carryForwardMax: 5, carryForwardEnabled: true } },
-    ];
-    const resolved = resolveGradePolicy(rows, null, undefined, 0);
-    expect(resolved).not.toBeNull();
-    expect(resolved!.days).toBe(14);
-    expect(resolved!.carryForwardEnabled).toBe(true); // from the 14-day winner, not the disabled 10-day loser
-    expect(carryEnabled(resolved)).toBe(true);
-  });
-
+describe('Carry-forward enhancement — the carryEnabled default', () => {
+  /**
+   * ⚠️ (o) IS RETIRED, for the same reason as (j) and by the same argument. It unit-tested
+   * `resolveGradePolicy` — "carryForwardEnabled is resolved from the WINNING (higher-days) policy, not a
+   * losing one". That resolver is deleted, and the enable switch is no longer a per-entitlement value at
+   * all: it is one column on the leave type, so there is no losing candidate for it to be taken from.
+   * `carryEnabled` itself, which was the point of the assertion, is unit-tested in full by (p) below.
+   */
   it('(p) carryEnabled back-compat default: absent flag ⇒ enabled iff carryMax > 0', () => {
     expect(carryEnabled({ days: 12, carryMax: 5 })).toBe(true); // cap > 0, no flag ⇒ on
     expect(carryEnabled({ days: 12, carryMax: 0 })).toBe(false); // cap 0, no flag ⇒ off
@@ -428,10 +451,9 @@ describe('Carry-forward enhancement — resolveGradePolicy carryForwardEnabled +
 });
 
 describe('Carry-forward enhancement — carryForwardIncludeEarned round-trips (config-only, no ledger effect)', () => {
-  it('(q) the include-earned flag persists through createLeavePolicy and changes no ledger outcome', async () => {
+  it('(q) the include-earned flag persists on the leave type and changes no ledger outcome', async () => {
     await annualPolicy({ annualDays: 12, carryForwardMax: 5, carryForwardIncludeEarned: true });
-    const acc = await readAccrual(b.annualLeaveTypeId);
-    expect(acc.carryForwardIncludeEarned).toBe(true); // persisted
+    expect((await typeRow()).carryForwardIncludeEarned).toBe(true); // persisted
 
     // It must not influence the year-end engine this round: a normal open carries exactly as without it.
     const emp = await hire('2025-01-01');
@@ -482,22 +504,22 @@ describe('R4 Build #1 — isValidMonthDay + lastRealDayOfMonth (pure)', () => {
   });
 });
 
-describe('R4 Build #1 — write-path validation (createLeavePolicy / updateLeavePolicy)', () => {
-  const create = (p: {
+describe('R4 Build #1 — write-path validation (setLeaveTypeRules)', () => {
+  /** The SURVIVING writer for these rules. Same validation, same rejections; `createLeavePolicy` and
+   *  `updateLeavePolicy` went with the table they wrote to. */
+  const save = (p: {
     month?: number | null;
     day?: number | null;
-    mode?: 'date' | 'months';
+    mode?: 'date' | 'months' | null;
     months?: number | null;
   }) =>
-    createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
+    setLeaveTypeRules(adminCtx(b), {
+      id: b.annualLeaveTypeId,
       carryForwardMax: 5,
       carryForwardExpiryMonth: p.month ?? null,
       carryForwardExpiryDay: p.day ?? null,
       carryForwardExpiryMode: p.mode,
       carryForwardExpiryMonths: p.months ?? null,
-      validFrom: '2025-01-01',
     });
 
   it('(u) impossible dates are rejected with a clear message', async () => {
@@ -506,43 +528,36 @@ describe('R4 Build #1 — write-path validation (createLeavePolicy / updateLeave
       [4, 31],
       [6, 31],
     ] as const) {
-      await expect(create({ month: m, day: d })).rejects.toThrow(/real calendar date/i);
+      await expect(save({ month: m, day: d })).rejects.toThrow(/not a real date/i);
     }
   });
 
-  it('(v) valid dates save and round-trip through the accrual reader', async () => {
+  it('(v) valid dates save and round-trip through the rule columns', async () => {
     for (const [m, d] of [
       [2, 29],
       [4, 30],
       [3, 31],
     ] as const) {
-      await owner.db.delete(schema.leavePolicy).where(eq(schema.leavePolicy.leaveTypeId, b.annualLeaveTypeId));
-      await create({ month: m, day: d });
-      const acc = await readAccrual(b.annualLeaveTypeId);
-      expect(acc.carryForwardExpiryMonth).toBe(m);
-      expect(acc.carryForwardExpiryDay).toBe(d);
-      expect('carryForwardExpiryMode' in acc).toBe(false); // date mode omits the mode key
+      await save({ month: m, day: d });
+      const row = await typeRow();
+      expect(row.carryForwardExpiryMonth).toBe(m);
+      expect(row.carryForwardExpiryDay).toBe(d);
+      // Date mode leaves the mode column NULL — `parseCarryExpiry` reads an absent mode as 'date', which
+      // is the same back-compat branch the omitted JSONB key used to select.
+      expect(row.carryForwardExpiryMode).toBeNull();
     }
   });
 
   it('(w) months out of 1..12 is rejected', async () => {
-    await expect(create({ mode: 'months', months: 0 })).rejects.toThrow(/between 1 and 12/i);
-    await expect(create({ mode: 'months', months: 13 })).rejects.toThrow(/between 1 and 12/i);
+    await expect(save({ mode: 'months', months: 0 })).rejects.toThrow(/between 1 and 12/i);
+    await expect(save({ mode: 'months', months: 13 })).rejects.toThrow(/between 1 and 12/i);
   });
 
-  it('(x) updateLeavePolicy also rejects an impossible date', async () => {
-    const { id } = await create({ month: 3, day: 31 });
-    await expect(
-      updateLeavePolicy(adminCtx(b), {
-        id,
-        annualDays: 12,
-        carryForwardMax: 5,
-        carryForwardExpiryMonth: 4,
-        carryForwardExpiryDay: 31,
-        validFrom: '2025-01-01',
-      }),
-    ).rejects.toThrow(/real calendar date/i);
-  });
+  // ⚠️ (x) IS RETIRED. It asserted that `updateLeavePolicy` ALSO rejected an impossible date — the point
+  // being that two separate writers both had to validate, and one of them silently not doing so was a real
+  // and repeated defect. There is now exactly ONE writer for these rules: `setLeaveTypeRules` is both the
+  // create and the update path, and (u) already exercises it. The asymmetry the test guarded no longer
+  // exists to be guarded, so keeping it would only assert (u) twice.
 });
 
 describe('R4 Build #1 — crash prevention: 29 Feb in a common year never crashes the sweep', () => {
@@ -566,22 +581,21 @@ describe('R4 Build #1 — crash prevention: 29 Feb in a common year never crashe
 });
 
 describe('R4 Build #1 — "X months after year-end" mode resolution', () => {
-  const monthsPolicy = (months: number, from = '2025-01-01') =>
-    createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 18,
-      carryForwardMax: 5,
+  const monthsPolicy = async (months: number | null, from = '2025-01-01') => {
+    await seedEntitlement(adminCtx(b), { leaveTypeId: b.annualLeaveTypeId, annualDays: 18, validFrom: from });
+    await setCarryRules({
+      carryForwardMax: '5',
       carryForwardExpiryMode: 'months',
       carryForwardExpiryMonths: months,
-      validFrom: from,
     });
+  };
 
   it('(z) months:3 resolves to 31 Mar of the carry year — reporter headline scenario end-to-end', async () => {
     await monthsPolicy(3);
-    const acc = await readAccrual(b.annualLeaveTypeId);
-    expect(acc.carryForwardExpiryMode).toBe('months');
-    expect(acc.carryForwardExpiryMonths).toBe(3);
-    expect('carryForwardExpiryMonth' in acc).toBe(false); // months mode omits date keys
+    const row = await typeRow();
+    expect(row.carryForwardExpiryMode).toBe('months');
+    expect(row.carryForwardExpiryMonths).toBe(3);
+    expect(row.carryForwardExpiryMonth).toBeNull(); // months mode leaves the date columns unset
 
     // hire 2025-01-01 (18 granted), reduce to 8 at 2026 year-end, cap 5 ⇒ open 2027 carries 5, forfeit 3.
     const emp = await hire('2025-01-01');
@@ -620,50 +634,54 @@ describe('R4 Build #1 — "X months after year-end" mode resolution', () => {
   });
 
   it('(cc) empty months ⇒ never expires (no forfeit row, no throw)', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 18,
-      carryForwardMax: 5,
-      carryForwardExpiryMode: 'months',
-      carryForwardExpiryMonths: null,
-      validFrom: '2025-01-01',
-    });
-    const acc = await readAccrual(b.annualLeaveTypeId);
-    expect('carryForwardExpiryMode' in acc).toBe(false); // omitted ⇒ mode-only never persisted
-    expect('carryForwardExpiryMonths' in acc).toBe(false);
+    // ⚠️ THE JSONB-HYGIENE HALF OF THIS TEST IS RETIRED. It also asserted `'carryForwardExpiryMode' in acc
+    // === false` — that `createLeavePolicy` refused to persist a mode with no months beside it, because
+    // both lived in ONE blob and a mode-only key there was a half-written rule. On the leave type they are
+    // two independent columns and `setLeaveTypeRules` stores exactly what it is given, so that claim is
+    // about a writer that no longer exists. What it was PROTECTING — that an incomplete months rule never
+    // expires anything — is the behavioural assertion below, and that is unchanged.
+    await monthsPolicy(null);
+    const row = await typeRow();
+    expect(row.carryForwardExpiryMonths).toBeNull();
     const emp = await hire('2025-01-01');
     await openLeaveYear(adminCtx(b), { year: 2027 });
     const r = await expireCarriedLeave(adminCtx(b), { today: '2030-12-31' });
     expect(r.swept).toBe(0);
+    expect(await balance(emp.employmentId)).toBe(23); // carry 5 + fresh 18, nothing forfeited
   });
 });
 
-describe('R4 Build #1 — mode switch clears stale cross-mode keys', () => {
-  it('(dd) date {4,30} → update to months:3 ⇒ accrual has months keys and NO date keys', async () => {
-    const { id } = await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      carryForwardMax: 5,
-      carryForwardExpiryMonth: 4,
-      carryForwardExpiryDay: 30,
-      validFrom: '2025-01-01',
-    });
-    let acc = await readAccrual(b.annualLeaveTypeId);
-    expect(acc.carryForwardExpiryMonth).toBe(4);
+describe('R4 Build #1 — a mode switch leaves no stale cross-mode rule behind', () => {
+  it('(dd) date {4,30} → switch to months:3 ⇒ the sweep fires on 31 Mar and NEVER on 30 Apr', async () => {
+    // REPOINTED FROM KEY-ABSENCE TO BEHAVIOUR, because the hazard moved rather than disappearing. It used
+    // to be that both modes' settings lived in ONE JSONB blob, so `updateLeavePolicy` had to DELETE the
+    // date keys or `parseCarryExpiry` could read a stale 30 Apr. On the leave type they are separate
+    // columns and a switch cannot clear the ones it does not write — the date pair genuinely LINGERS. What
+    // has to be true is that the mode column wins and the stale pair is ignored, and the honest way to
+    // assert that is the forfeit date itself rather than the presence of a column.
+    await annualPolicy({ annualDays: 12, carryForwardMax: 5, expiry: { month: 4, day: 30 } });
+    expect((await typeRow()).carryForwardExpiryMonth).toBe(4);
 
-    await updateLeavePolicy(adminCtx(b), {
-      id,
-      annualDays: 12,
-      carryForwardMax: 5,
+    await setLeaveTypeRules(adminCtx(b), {
+      id: b.annualLeaveTypeId,
       carryForwardExpiryMode: 'months',
       carryForwardExpiryMonths: 3,
-      validFrom: '2025-01-01',
     });
-    acc = await readAccrual(b.annualLeaveTypeId);
-    expect(acc.carryForwardExpiryMode).toBe('months');
-    expect(acc.carryForwardExpiryMonths).toBe(3);
-    expect('carryForwardExpiryMonth' in acc).toBe(false);
-    expect('carryForwardExpiryDay' in acc).toBe(false);
+    const row = await typeRow();
+    expect(row.carryForwardExpiryMode).toBe('months');
+    expect(row.carryForwardExpiryMonths).toBe(3);
+    expect(row.carryForwardExpiryMonth).toBe(4); // the stale date pair is still stored…
+
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2026 }); // carry min(12,5)=5, +12 → 17
+    // …and it is ignored. months:3 resolves to 31 Mar, so the sweep is due then and not in April.
+    const early = await expireCarriedLeave(adminCtx(b), { today: '2026-03-30' });
+    expect(early.swept).toBe(0);
+    const due = await expireCarriedLeave(adminCtx(b), { today: '2026-03-31' });
+    expect(due.swept).toBe(1);
+    expect(due.forfeited).toBe(5);
+    expect(await adjustmentsAt(emp.employmentId, b.annualLeaveTypeId, '2026-03-31')).toBe(1);
+    expect(await adjustmentsAt(emp.employmentId, b.annualLeaveTypeId, '2026-04-30')).toBe(0);
   });
 });
 
@@ -688,13 +706,12 @@ describe('Carry-forward-report — reason tagging on automatic forfeits (no beha
   });
 
   it('(gg) accrueEarnedLeave 2D-3 cycle-boundary forfeit is stamped CARRY_FORFEIT_REASON_CAP', async () => {
-    await createLeavePolicy(adminCtx(b), {
+    await seedEntitlement(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 12,
-      carryForwardMax: 5,
-      method: 'earned_monthly',
       validFrom: '2026-01-01',
     });
+    await setCarryRules({ carryForwardMax: '5', accrualMethod: 'earned_monthly' });
     const emp = await hireEmployee(adminCtx(b), {
       person: { fullName: 'CF2', primaryEmail: `cf2_${randomUUID().slice(0, 8)}@t.local` },
       companyId: b.companyId,
