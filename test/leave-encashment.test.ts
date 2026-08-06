@@ -33,6 +33,7 @@ import {
   owner,
   resetDb,
   seedBase,
+  seedEntitlement,
   type Base,
 } from './harness';
 
@@ -261,14 +262,20 @@ describe('ADR-0069 — pending AL + freeze enforcement', () => {
 
 describe('ADR-0069 — sweeps skip a frozen employment', () => {
   it('accrueEarnedLeave skips a frozen employment, still runs for others', async () => {
-    // Configure ANNUAL as an earned-method policy so accrueEarnedLeave has something to do.
-    await owner.db.insert(schema.leavePolicy).values({
-      tenantId: b.tenantId, leaveTypeId: b.annualLeaveTypeId, validFrom: '2020-01-01',
-      // fa3f4ccb: `days` is not a key resolveGradePolicy reads — this policy resolved to 0 days and the
-      // EA floor used to supply the 8 the assertion below depends on. Now that the floor only warns, the
-      // entitlement has to be stated: annualDays is the key the engine actually reads.
-      accrual: { method: 'earned_monthly', annualDays: 12 },
+    // Configure ANNUAL as an earned-method type so accrueEarnedLeave has something to do.
+    // 6e9a126e RELEASE THREE — the two halves of the old `leave_policy.accrual` go to their two new homes:
+    // the 12 days to an entitlement template's band (fa3f4ccb made the statutory floor advisory, so the
+    // entitlement still has to be STATED — a missing figure now resolves to "no opinion", not to 8), and
+    // the earning method to the leave TYPE, which is the only place `applyLeaveTypeRules` reads it from.
+    await seedEntitlement(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 12,
+      validFrom: '2020-01-01',
     });
+    await owner.db
+      .update(schema.leaveType)
+      .set({ accrualMethod: 'earned_monthly' })
+      .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
     const frozenEmp = await hire('Frozen');
     const otherEmp = await hire('Other');
     await grantAnnual(frozenEmp, '10');
