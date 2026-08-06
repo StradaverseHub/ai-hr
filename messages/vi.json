@@ -4135,7 +4135,7 @@
       "logoInvalidType": "Chỉ cho phép ảnh PNG hoặc JPG",
       "logoTooLarge": "Logo vượt quá 2 MB",
       "searchCompanies": "Tìm công ty theo tên hoặc số đăng ký",
-      "noMatches": "Không có công ty nào khớp với tìm kiếm của bạn",
+      "noMatches": "Không có công ty nào khớp với các bộ lọc này",
       "addNewCompany": "Thêm công ty mới",
       "tabGeneral": "Chung",
       "tabPayroll": "Bảng lương",
@@ -4211,7 +4211,18 @@
       "authority_zakat": "Zakat",
       "authority_ptptn": "PTPTN",
       "authority_tabung_haji": "Tabung Haji",
-      "authority_koperasi": "Hợp tác xã (Koperasi)"
+      "authority_koperasi": "Hợp tác xã (Koperasi)",
+      "colCode": "Mã",
+      "colStatus": "Trạng thái",
+      "statusActive": "Đang hoạt động",
+      "statusArchived": "Đã lưu trữ",
+      "allStatuses": "Tất cả trạng thái",
+      "searchLabel": "Tìm kiếm",
+      "searchPlaceholder": "Mã, tên hoặc số đăng ký",
+      "applyFilter": "Áp dụng",
+      "open": "Mở",
+      "backToCompanies": "Quay lại danh sách công ty",
+      "createDescription": "Đăng ký một công ty trong tập đoàn. Danh tính pháp lý, tài khoản ngân hàng và công ty mẹ được thiết lập sau trên trang riêng của công ty."
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",

@@ -4135,7 +4135,7 @@
       "logoInvalidType": "PNG அல்லது JPG படங்கள் மட்டுமே அனுமதிக்கப்படும்",
       "logoTooLarge": "சின்னம் 2 MB-ஐ மீறுகிறது",
       "searchCompanies": "பெயர் அல்லது பதிவு எண் மூலம் நிறுவனங்களைத் தேடு",
-      "noMatches": "உங்கள் தேடலுக்கு பொருந்தும் நிறுவனங்கள் இல்லை",
+      "noMatches": "இந்த வடிகட்டிகளுக்குப் பொருந்தும் நிறுவனங்கள் இல்லை",
       "addNewCompany": "புதிய நிறுவனத்தைச் சேர்",
       "tabGeneral": "பொது",
       "tabPayroll": "ஊதியம்",
@@ -4211,7 +4211,18 @@
       "authority_zakat": "ஜகாத்",
       "authority_ptptn": "PTPTN",
       "authority_tabung_haji": "Tabung Haji",
-      "authority_koperasi": "கூட்டுறவு (Koperasi)"
+      "authority_koperasi": "கூட்டுறவு (Koperasi)",
+      "colCode": "குறியீடு",
+      "colStatus": "நிலை",
+      "statusActive": "செயலில்",
+      "statusArchived": "காப்பகப்படுத்தப்பட்டது",
+      "allStatuses": "அனைத்து நிலைகளும்",
+      "searchLabel": "தேடு",
+      "searchPlaceholder": "குறியீடு, பெயர் அல்லது பதிவு எண்",
+      "applyFilter": "பயன்படுத்து",
+      "open": "திற",
+      "backToCompanies": "நிறுவனப் பட்டியலுக்குத் திரும்பு",
+      "createDescription": "குழுமத்தில் ஒரு நிறுவனத்தைப் பதிவு செய்யுங்கள். சட்டப்பூர்வ அடையாளம், வங்கிக் கணக்குகள் மற்றும் தாய் நிறுவனம் ஆகியவை பின்னர் அந்த நிறுவனத்தின் சொந்தப் பக்கத்தில் அமைக்கப்படும்."
     },
     "systemLabels": {
       "pageTitle": "அமைப்பு லேபிள்கள்",

@@ -4135,7 +4135,7 @@
       "logoInvalidType": "Hanya imej PNG atau JPG dibenarkan",
       "logoTooLarge": "Logo melebihi 2 MB",
       "searchCompanies": "Cari syarikat mengikut nama atau nombor pendaftaran",
-      "noMatches": "Tiada syarikat sepadan dengan carian anda",
+      "noMatches": "Tiada syarikat sepadan dengan penapis ini",
       "addNewCompany": "Tambah syarikat baharu",
       "tabGeneral": "Umum",
       "tabPayroll": "Gaji",
@@ -4211,7 +4211,18 @@
       "authority_zakat": "Zakat",
       "authority_ptptn": "PTPTN",
       "authority_tabung_haji": "Tabung Haji",
-      "authority_koperasi": "Koperasi"
+      "authority_koperasi": "Koperasi",
+      "colCode": "Kod",
+      "colStatus": "Status",
+      "statusActive": "Aktif",
+      "statusArchived": "Diarkibkan",
+      "allStatuses": "Semua status",
+      "searchLabel": "Cari",
+      "searchPlaceholder": "Kod, nama atau no. pendaftaran",
+      "applyFilter": "Guna",
+      "open": "Buka",
+      "backToCompanies": "Kembali ke senarai syarikat",
+      "createDescription": "Daftarkan syarikat dalam kumpulan. Identiti statutori, akaun bank dan syarikat induk ditetapkan kemudian pada halaman syarikat itu sendiri."
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",

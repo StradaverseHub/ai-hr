@@ -4135,7 +4135,7 @@
       "logoInvalidType": "仅允许 PNG 或 JPG 图片",
       "logoTooLarge": "徽标超过 2 MB",
       "searchCompanies": "按名称或注册号搜索公司",
-      "noMatches": "没有符合搜索条件的公司",
+      "noMatches": "没有公司符合这些筛选条件",
       "addNewCompany": "添加新公司",
       "tabGeneral": "一般",
       "tabPayroll": "薪资",
@@ -4211,7 +4211,18 @@
       "authority_zakat": "天课（Zakat）",
       "authority_ptptn": "PTPTN 高教基金",
       "authority_tabung_haji": "朝圣基金局 Tabung Haji",
-      "authority_koperasi": "合作社（Koperasi）"
+      "authority_koperasi": "合作社（Koperasi）",
+      "colCode": "代码",
+      "colStatus": "状态",
+      "statusActive": "启用",
+      "statusArchived": "已归档",
+      "allStatuses": "所有状态",
+      "searchLabel": "搜索",
+      "searchPlaceholder": "代码、名称或注册号",
+      "applyFilter": "应用",
+      "open": "打开",
+      "backToCompanies": "返回公司列表",
+      "createDescription": "在集团中登记一家公司。法定身份、银行账户和母公司稍后在该公司自己的页面上设置。"
     },
     "systemLabels": {
       "pageTitle": "系统标签",
