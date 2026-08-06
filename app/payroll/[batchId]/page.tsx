@@ -24,6 +24,18 @@ import { payslipProvenance, type StatutoryLineKey } from '@/core/payslip-recompu
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
 import { payslipEmployerBorne } from '@/core/payslip-employer-borne';
 
+/**
+ * `/payroll/<segment>` is the catch-all under the payroll workbench, so ANY unmatched path lands here
+ * with `batchId` set to whatever the segment was. Handing a non-UUID straight to `batchDetail` makes
+ * Postgres reject the parameter (`invalid input syntax for type uuid`) and the page returns a **500**,
+ * not a 404 — verified on a dev server, not reasoned about.
+ *
+ * It became reachable by a formerly valid URL when efe1d230 deleted /payroll/guide: every bookmark and
+ * every stale link to the guide now falls through to this route and would 500. A missing page must
+ * answer 404, so the id is shape-checked before anything is read.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -64,6 +76,7 @@ export default async function BatchPage({
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
   const { batchId } = await params;
+  if (!UUID_RE.test(batchId)) notFound(); // see UUID_RE — a non-uuid segment must 404, not 500
   const sp = await searchParams;
   const { error, from, hw } = sp;
   const data = await batchDetail(s, batchId);

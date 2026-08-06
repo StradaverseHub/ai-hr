@@ -77,6 +77,25 @@ describe('e440991b point 5 — the payslip rows open the employee’s full resul
   });
 });
 
+describe('efe1d230 fallout — /payroll/<not-a-uuid> must 404, not 500', () => {
+  /**
+   * FOUND ON A DEV SERVER, NOT REASONED ABOUT. `/payroll/<segment>` is a catch-all, so every unmatched
+   * path under the workbench lands on the batch page with `batchId` set to the segment. Deleting
+   * /payroll/guide made a formerly valid URL — every bookmark anyone saved — fall through to it, and
+   * `batchDetail('guide')` had Postgres reject the parameter (`invalid input syntax for type uuid`),
+   * which is a 500. tsc, the suite and next build were all green; only the dev log showed it.
+   */
+  it('the batch page shape-checks the id before it reaches a query', () => {
+    expect(BATCH_PAGE).toMatch(/UUID_RE\.test\(batchId\)/);
+    expect(BATCH_PAGE).toMatch(/if \(!UUID_RE\.test\(batchId\)\) notFound\(\);/);
+  });
+
+  it('and so does the export route, which would otherwise throw the same query error', () => {
+    const route = code('app/payroll/[batchId]/export/route.ts');
+    expect(route).toMatch(/if \(!UUID_RE\.test\(batchId\)\) return new Response\('Not found', \{ status: 404 \}\);/);
+  });
+});
+
 describe('e440991b point 4 — History came off the run screen, the live controls did not', () => {
   it('the per-run History card is gone', () => {
     expect(BATCH_PAGE, 'the History card is still rendered').not.toContain("t('historyTitle')");

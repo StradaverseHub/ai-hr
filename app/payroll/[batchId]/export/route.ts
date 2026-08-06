@@ -25,6 +25,8 @@ import { rowsForRun, transactionDetailReport } from '../transaction-detail-repor
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
 
 const FORMATS: ReportFormat[] = ['csv', 'xlsx', 'pdf'];
+/** Same reason as the page's: a non-uuid segment must 404, not blow up inside the query. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** RFC 5987 Content-Disposition: an ASCII-safe fallback plus a UTF-8 `filename*`, so a company name
  *  with non-ASCII characters can never break the header (mirrors the OT-report export). */
@@ -38,6 +40,7 @@ function contentDisposition(base: string, ext: string): string {
 export async function GET(req: Request, { params }: { params: Promise<{ batchId: string }> }) {
   const { s, scopeIds } = await scopedAdmin();
   const { batchId } = await params;
+  if (!UUID_RE.test(batchId)) return new Response('Not found', { status: 404 });
 
   const data = await batchDetail(s, batchId);
   // Not found, another tenant (RLS), or a company this admin is not scoped to — all one answer, so the
