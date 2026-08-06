@@ -20,6 +20,13 @@
  *  one of the kinds below. */
 export const MOVEMENT_KINDS = [
   'transfer',
+  // b7b22514 — ENTITY TRANSFER: the movement that moves an employee between LEGAL ENTITIES. It exists as a
+  // built-in and not as a catalogue row for the reason the module header states: a tenant's own event type
+  // maps onto a built-in behaviour, and the only behaviour it could have been mapped onto is `transfer`,
+  // which cannot change company. Changing `employment.company_id` invalidates the department, position,
+  // business unit, cost centre, location and reporting manager all at once — that re-resolution is
+  // behaviour, so it has to live here with the fixed half of the design.
+  'entityTransfer',
   'promotion',
   'demotion',
   'increment',
@@ -58,6 +65,11 @@ export type MovementKind = (typeof MOVEMENT_KINDS)[number];
  */
 export const COMPARISON_KINDS = [
   'transfer',
+  // b7b22514 — Entity Transfer is a comparison kind: it is a Transfer that also moves the company, so it
+  // renders the SAME side-by-side grid with the SAME fields, and its Company row is the one place in the
+  // product where that field is editable. It runs through the same diff-driven writer, so a field left at
+  // its current value still writes nothing.
+  'entityTransfer',
   'promotion',
   'demotion',
   'increment',
@@ -81,7 +93,16 @@ export const isComparisonKind = (k: string): k is ComparisonKind =>
  * Confirmation would move an employee off probation as a side effect of a re-label, and a custom type
  * named after it would let a tenant invent a confirmation — which is exactly what 476f23ed keeps built-in.
  * Membership of COMPARISON_KINDS is about the FORM AND THE WRITER; membership here is about CONSEQUENCE.
+ *
+ * b7b22514 — ENTITY TRANSFER IS THE SECOND EXCLUSION, on exactly the same rule and for a consequence that
+ * is larger, not smaller. It moves the employee's LEGAL ENTITY: statutory employer numbers (EPF/SOCSO/EIS),
+ * the payroll policy, cost allocation, leave approval routing and every company-scoped org label follow it.
+ * Both directions of the crossing are faults. A custom type mapped onto it would let a tenant invent a
+ * company move under any name they liked — the thing the module header says they may never do. And a
+ * correction that re-classified a plain Transfer INTO an Entity Transfer would have no destination company
+ * to move to, while one that re-classified an Entity Transfer OUT of it would silently drop the company
+ * move the event exists to record. Its family is itself, exactly as Confirmation's is.
  */
 export const INTERCHANGEABLE_COMPARISON_KINDS: readonly ComparisonKind[] = COMPARISON_KINDS.filter(
-  (k) => k !== 'confirmation',
+  (k) => k !== 'confirmation' && k !== 'entityTransfer',
 );

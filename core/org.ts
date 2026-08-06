@@ -2041,6 +2041,186 @@ export async function changeEmploymentCompany(
 }
 
 /**
+ * b7b22514 — ENTITY TRANSFER: move an ESTABLISHED employee between legal entities, as one dated movement.
+ *
+ * THIS IS THE OTHER HALF OF THE SENTENCE changeEmploymentCompany ABOVE ENDS ON. That writer is the
+ * pre-transaction CORRECTION of a mis-picked company: it is gated to employments with no operational
+ * activity, it is not effective-dated (it rewrites the hire-time assignment in place), it deletes the open
+ * reporting line, and its event is deliberately NOT a movement. None of that is right for an employee with
+ * eight years of payroll behind them. This one is the movement: dated, projected onto Employment History,
+ * reversible, and it supersedes the assignment rather than overwriting it.
+ *
+ * IT IS A LEG, NOT AN ENTRY POINT. It takes the caller's transaction and is called only by
+ * applyComparisonMovementTx, which runs it FIRST so the company flip is visible to every later leg — after
+ * it, setEmploymentAssignment's own company-scoped guards read the DESTINATION company for free. There is
+ * no `withTenant` fallback on purpose: a company move that is not inside the movement's transaction could
+ * commit while the placement legs roll back, leaving an employee in the new company still holding the old
+ * company's department. That is the exact incoherence this function exists to prevent.
+ *
+ * WHY THE COHERENCE CHECK IS NOT setEmploymentAssignment'S. That writer validates only the values it sees
+ * CHANGE — re-supplying a stored value is a no-op and skips the guard, which is right for every other
+ * caller and wrong for this one. On a company move an UNCHANGED department is precisely the dangerous
+ * case: it is the old company's, nobody edited it, and it would dangle across the entities silently.
+ * changeEmploymentCompany hit this and validated its required department separately; this checks the whole
+ * RESULTING placement — department, position, business unit, cost centre, location and the reporting
+ * manager — against the destination whether or not the id moved. RLS cannot do it: it checks assignment,
+ * location and reporting_line independently of the employment, so nothing at the row level knows these six
+ * facts have to agree with a seventh.
+ *
+ * WHAT IS DELIBERATELY NOT CHECKED, and why each is not an omission:
+ *   • JOB GRADE. `job_grade` is tenant-scoped — no company_id (see CrossCompanyError's note and the schema).
+ *     A grade cannot dangle across companies because it never belonged to one. Re-resolving it would be
+ *     re-resolving a reference that has no company in it to be wrong about.
+ *   • THE GROUP JOIN DATE (`hired_on`). Untouched here and untouchable from here. It is the anchor for leave
+ *     service bands, payroll proration and EA forms, and the whole point of the two-date model is that group
+ *     service survives a move between group companies. Only `groupJoinDateCorrection` writes it.
+ *   • PAYROLL. Nothing recomputes or reopens a closed run. A backdated transfer moves the employment from
+ *     its effective date forward; a payroll run already closed over that window is evidence and stays.
+ *
+ * THE JOIN DATE IS NOT WRITTEN HERE. `employment.join_date` moves to the transfer's effective date, but it
+ * moves through setEmploymentInfo like every other movement-owned date (core/movement.ts's info leg), so
+ * that column keeps exactly one writer. This function must not acquire a second one.
+ */
+export async function transferEmploymentCompanyTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    newCompanyId: string;
+    effectiveDate: string;
+    /**
+     * The placement the employee lands on, ALREADY RESOLVED by the caller to "what it will be after this
+     * movement" — the submitted value where HR moved the field, the stored value where they did not. This
+     * function does not diff; it checks that the result is coherent with the destination company.
+     */
+    placement: {
+      departmentId: string | null;
+      positionId: string | null;
+      businessUnitId: string | null;
+      costCenterId: string | null;
+      locationId: string | null;
+      managerEmploymentId: string | null;
+    };
+    movement: MovementTag;
+  },
+) {
+  const [emp] = await tx
+    .select({ companyId: employment.companyId })
+    .from(employment)
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
+  if (!emp) throw new Error('Employment not found');
+  if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
+
+  // Destination must be a live (non-archived) company in this tenant.
+  const [dest] = await tx
+    .select({ id: company.id })
+    .from(company)
+    .where(and(eq(company.id, p.newCompanyId), isNull(company.archivedAt)))
+    .limit(1);
+  if (!dest) throw new CrossCompanyError('employment');
+
+  // Authz, up front and explicit — exactly as changeEmploymentCompany does it. Flipping company_id trips
+  // employment_rls WITH CHECK is_admin_for(NEW); asking first turns an opaque row-level failure into a
+  // sentence that says what to do about it.
+  const adminRes = await tx.execute(sql`select app.is_admin_for(${p.newCompanyId}::uuid) as ok`);
+  if (!(adminRes as unknown as { ok: boolean }[])[0]?.ok) throw new DestinationCompanyNotAdministered();
+
+  // ── Cross-company coherence, checked BEFORE the flip so a refusal leaves nothing half-done ──
+  const { placement: pl } = p;
+  const guardLabel = async (
+    kind: 'department' | 'position' | 'cost_center' | 'business_unit',
+    labelId: string | null,
+    entity: 'department' | 'position' | 'cost-center' | 'business-unit',
+  ) => {
+    if (!labelId) return;
+    if (!(await labelUsableByCompany(tx, ctx.tenantId, kind, labelId, p.newCompanyId))) {
+      throw new CrossCompanyError(entity);
+    }
+  };
+  // Department is NOT NULL on the assignment, so an entity transfer always has one to check.
+  await guardLabel('department', pl.departmentId, 'department');
+  await guardLabel('position', pl.positionId, 'position');
+  await guardLabel('business_unit', pl.businessUnitId, 'business-unit');
+  await guardLabel('cost_center', pl.costCenterId, 'cost-center');
+  // Location is company-owned master data, not a shared System Label, so it gets the direct same-company
+  // check the assignment writers use rather than the resolver.
+  if (pl.locationId) {
+    const [loc] = await tx
+      .select({ companyId: location.companyId })
+      .from(location)
+      .where(eq(location.id, pl.locationId))
+      .limit(1);
+    if (!loc || loc.companyId !== p.newCompanyId) throw new CrossCompanyError('location');
+  }
+  /**
+   * THE REPORTING MANAGER IS PART OF THE PLACEMENT, and it is the one the reporter's request does not
+   * mention and the one that breaks approvals. `leave_approval_policy` scopes by company and grade group,
+   * so an employee left reporting into the old company after the move has approvers the destination's
+   * policy cannot route to — a leave application with nowhere to go, discovered by the employee.
+   *
+   * REFUSED, not silently cleared. changeEmploymentCompany deletes the open line, which is right for a
+   * hire-time correction nobody has seen yet and wrong here: dropping a superior as an invisible side
+   * effect of a transfer is the same class of fault as r73's vanishing business unit. The Direct Superior
+   * row is on the same form, so the fix is one field away. Clearing a superior outright stays the
+   * Employment tab's job — deliberately, because movementDeltas treats a null manager as "unchanged" for
+   * every kind and carving an exception here would make one kind's form mean something different.
+   */
+  if (pl.managerEmploymentId) {
+    const [mgr] = await tx
+      .select({ companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, pl.managerEmploymentId))
+      .limit(1);
+    if (!mgr || mgr.companyId !== p.newCompanyId) {
+      throw new CrossCompanyError('employment');
+    }
+  }
+
+  /**
+   * The flip, plus the company-scoped defaults that would otherwise dangle on the OLD company — the same
+   * two changeEmploymentCompany refreshes, for the same reasons:
+   *   • payrollPolicyId → null: a company-scoped pay template; the destination resolves its own at render.
+   *   • costAllocation  → null: inter-company cost-split JSON pointing at the company they just left.
+   * Statutory employer numbers (EPF / SOCSO / EIS) need nothing: they are registered to the COMPANY and
+   * resolve per-company at payroll time, so they follow the move by construction.
+   */
+  await tx
+    .update(employment)
+    .set({ companyId: p.newCompanyId, payrollPolicyId: null, costAllocation: null })
+    .where(eq(employment.id, p.employmentId));
+
+  /**
+   * Its own event type, NOT the `employment.company.changed` the pre-transaction correction appends.
+   * Reusing that one would have been the cheap move and would have broken a guard: it is deliberately
+   * absent from MOVEMENT_EVENT_TYPES so a hire-time correction never shows up as a career movement, and
+   * adding it there to make Entity Transfer project would have dragged every past correction onto the
+   * history with it. Two acts, two event types, and the projection can tell them apart.
+   *
+   * The payload carries BOTH company ids because the history is read years later: the row must be able to
+   * say which entity the employee left and which they joined without depending on what `employment` holds
+   * today (by then they may have moved twice more).
+   */
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employment',
+    aggregateId: p.employmentId,
+    eventType: 'employment.company.transferred',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.employmentId,
+    payload: {
+      employmentId: p.employmentId,
+      effectiveDate: p.effectiveDate,
+      before: { companyId: emp.companyId },
+      after: { companyId: p.newCompanyId },
+      movement: p.movement,
+    },
+  });
+
+  return { from: emp.companyId, to: p.newCompanyId };
+}
+
+/**
  * Employment Information enhancement (2323f671) — HR/Admin maintains the employment master-data captured on
  * the Personnel Employment tab's new "Employment Information" card. This is the single audited writer for
  * the fields added in migration 0181 plus the editable Hire Date (employment.hiredOn). Effective-dated
@@ -2220,7 +2400,19 @@ export async function setEmploymentInfo(
   // 89ea527b — the current-company Join Date is MOVEMENT-ONLY too (`joinDateChange`): it is what changes when
   // an employee moves between companies inside the group, and that is a movement, not an edit. Unlike hiredOn
   // it drives NO entitlement — only the Employment tab's current-company length-of-service figure.
-  if (p.joinDate !== undefined && p.movement?.type === 'joinDateChange') {
+  //
+  // b7b22514 — `entityTransfer` IS THE SECOND AUTHORISED TAG, and it is the case 89ea527b's comment above
+  // describes without being able to perform: "an employee moves between companies inside the group". Until
+  // now that move had to be recorded as two events — a Join Date Change typed by hand, and nothing at all for
+  // the company, because no writer could change it. An Entity Transfer is the single dated event, and its
+  // effective date IS the new Join Date, so the two can no longer be keyed in disagreement. The gate is
+  // WIDENED, not weakened: the rule was never "only this one tag", it was "only under a movement, so every
+  // move of this date carries an effective date, a reason and a history row" — which this satisfies exactly.
+  // An untagged save posting joinDate is still silently ignored.
+  if (
+    p.joinDate !== undefined &&
+    (p.movement?.type === 'joinDateChange' || p.movement?.type === 'entityTransfer')
+  ) {
     const v = p.joinDate == null ? null : String(p.joinDate).trim();
     if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set.joinDate = v || null;
