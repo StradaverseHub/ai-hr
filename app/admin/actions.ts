@@ -87,7 +87,6 @@ import {
   createGradeGroup,
   updateGradeGroup,
   deleteGradeGroup,
-  upsertSchemeEntitlement,
   deleteSchemeEntitlement,
   copySchemeEntitlements,
 } from '@/core/benefit-scheme';
@@ -571,54 +570,6 @@ const serviceBandsField = (fd: FormData): ServiceBand[] | null | undefined => {
  * construction). The band editor's per-range Carry-Forward Days / Carry-Forward Expiry / Maximum Balance Days
  * ride the serviceBands JSON untouched.
  */
-export async function createLeavePoliciesMultiAction(formData: FormData) {
-  const s = await getSession();
-  const leaveTypeId = String(formData.get('leaveTypeId') ?? '');
-  const companyIds = formData.getAll('companyIds').map(String).filter(Boolean);
-  const gradeIds = formData.getAll('gradeIds').map(String).filter(Boolean);
-  const companies: (string | null)[] = companyIds.length ? companyIds : [null];
-  const grades: (string | null)[] = gradeIds.length ? gradeIds : [null];
-  const bands = serviceBandsField(formData);
-  // 8fec719e — the add form no longer renders a rounding control, so it posts no marker and
-  // `roundingMethodField` returns undefined: a new policy row simply carries no rounding key. Rounding is
-  // a leave-TYPE rule (9816a5ad consolidated it there, and this item cleared the legacy JSONB copy
-  // outright); a per-policy dropdown writing a key the type-level overlay ignores was the second surface
-  // this item exists to close. Read once and passed through so the parameter keeps its tri-state shape.
-  const rounding = roundingMethodField(formData);
-  try {
-    for (const companyId of companies) {
-      for (const gradeId of grades) {
-        await createLeavePolicy(s, {
-          leaveTypeId,
-          annualDays: Number(formData.get('annualDays')),
-          carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
-          carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
-          carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
-          carryForwardExpiryMode: carryExpiryMode(formData),
-          carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
-          carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
-          carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
-          // bc36c768 — the `method` read is gone here too; see createLeavePolicyAction above for why a
-          // dead read is still stripped. The add form has never rendered a method control.
-          gradeId,
-          companyId,
-          serviceBands: bands,
-          roundingMethod: rounding,
-          validFrom: String(formData.get('validFrom')),
-        });
-      }
-    }
-  } catch (e) {
-    // 9b0503ac — the add-entitlement form lives inside a leave type's Entitlements config panel; a failed
-    // save must surface its error banner THERE, not bounce HR to /admin/leave (no #type anchor: fail()
-    // appends ?error=, and a fragment before the query string would swallow it — the b9dac2d1 precedent).
-    fail(ENTITLEMENTS, e);
-  }
-  // 9b0503ac — stay on the same leave type's panel with the success toast (no re-navigation between
-  // adjustments); the form's hidden leaveTypeId is the workspace's selection anchor.
-  const t = await getTranslations('admin.leave');
-  okEntitlements(t('entitlementUpdatedToast'), leaveTypeId);
-}
 
 /**
  * Feedback 9d8cf621 — live "entitled employees" count next to the Employee-Selection chips. READ-ONLY
@@ -1970,16 +1921,6 @@ export async function deleteClockingLocationAction(fd: FormData) {
  * has already committed and the recalc self-heals on the next trigger, so a hiccup here must never fail
  * the save the admin just made. Runs AFTER the service's own transaction — never inside it.
  */
-async function recalcSchemeCohort(
-  s: Awaited<ReturnType<typeof requireAdmin>>,
-  p: { schemeId?: string; gradeIds?: string[]; trigger: string },
-): Promise<void> {
-  try {
-    await reprojectEntitlementForSchemeCohort(s, p);
-  } catch {
-    // non-fatal — idempotent, re-runs on the next config or profile trigger.
-  }
-}
 
 function parseBands(fd: FormData): import('@/core/leave-compute').ServiceBand[] {
   const raw = String(fd.get('serviceBands') ?? '[]');
@@ -2012,9 +1953,10 @@ export async function updateGradeGroupAction(fd: FormData) {
       name: String(fd.get('name') ?? ''),
       gradeIds: fd.getAll('gradeIds').map((v) => String(v)).filter(Boolean),
     });
-    // ae5b84d5: membership moved ⇒ true up BOTH cohorts (the union of before/after grade ids) — a grade
-    // moved into another group re-matches its employees to that group's scheme immediately.
-    await recalcSchemeCohort(s, { gradeIds, trigger: 'grade_group_changed' });
+    // 6e9a126e release three — the scheme-cohort true-up is GONE with benefit schemes. Grade groups
+    // survive (205 approval rules point at them) but they no longer select an entitlement, so moving a
+    // grade between groups changes approval routing only and has no balance to reproject. `gradeIds` is
+    // still returned by the writer and still used by its own event payload.
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }
@@ -2034,29 +1976,6 @@ export async function deleteGradeGroupAction(fd: FormData) {
 
 
 
-export async function upsertSchemeEntitlementAction(fd: FormData) {
-  const s = await requireAdmin();
-  const leaveTypeId = String(fd.get('leaveTypeId') ?? '');
-  try {
-    const benefitSchemeId = String(fd.get('benefitSchemeId') ?? '');
-    await upsertSchemeEntitlement(s, {
-      benefitSchemeId,
-      leaveTypeId,
-      serviceBands: parseBands(fd),
-    });
-    // ae5b84d5: band edits flow through to covered employees immediately — up AND down (a downward earned
-    // correction can only land here; the monthly run never posts negatives). Idempotent: re-saving the
-    // same values computes delta 0 for everyone and posts nothing.
-    await recalcSchemeCohort(s, { schemeId: benefitSchemeId, trigger: 'scheme_entitlement_changed' });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  // 9b0503ac — the reporter's exact flow: saving the service-band day values (under 2 / 2–5 / over 5 yrs)
-  // must keep the admin on the same leave type's panel and confirm with a success toast. The form always
-  // posts leaveTypeId (hidden when editing, the select when adding) — it anchors the redirect.
-  const t = await getTranslations('admin.leave');
-  okEntitlements(t('entitlementUpdatedToast'), leaveTypeId);
-}
 
 
 // Copy / Duplicate Leave Entitlements (R44 ba494b21) — bring a source scheme's entitlements into the target,

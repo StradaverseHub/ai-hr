@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
-import { listLeavePolicies } from '@/core/admin';
 // 4b0e76ae — the Leave Year Configuration section is GONE from Custom Settings, so the two reads that fed
 // it (listLeaveYearConfigs / leaveYearsWithRecords) went with it and their services no longer exist. What
 // this page still needs from the leave module is the ONE shared entitlement-year range, which the Run
@@ -19,7 +18,6 @@ import { listGradeGroups, listBenefitSchemes, listSchemeEntitlements } from '@/c
 // property of a benefit scheme, so they are no longer read through the benefit-scheme one.
 import { listLeaveSharedGroups } from '@/core/leave-shared-group';
 import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
-import { BenefitSchemeConfig, type LeaveTypeSchemeEntitlement } from '@/components/benefit-scheme-config';
 import type { LeaveRoundingMethod, RoundingBand, ServiceBand } from '@/core/leave-compute';
 import { countryPacks } from '@/localization/registry';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -38,22 +36,13 @@ import {
   archiveLeaveTypeAction,
   countEmployeesInScopeAction,
   setLeaveHalfDayFullDeductionCompaniesAction,
-  createLeavePoliciesMultiAction,
   createLeaveTypeAction,
-  deleteLeavePolicyAction,
   deleteLeaveTypeAction,
-  updateLeavePolicyAction,
   setLeaveTypeRulesAction,
   updateLeaveTypeAction,
   createGradeGroupAction,
   updateGradeGroupAction,
   deleteGradeGroupAction,
-  createBenefitSchemeAction,
-  updateBenefitSchemeAction,
-  deleteBenefitSchemeAction,
-  upsertSchemeEntitlementAction,
-  deleteSchemeEntitlementAction,
-  copySchemeEntitlementsAction,
   // r88 1ef1cf95 — the tenant-level shared-group writes. The scheme-level combined-limit actions (update /
   // delete / move / group-from-drag) are gone with the surface and the tables they wrote.
   createLeaveSharedGroupAction,
@@ -114,20 +103,21 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, gradeGroups, benefitSchemes, schemeEntitlements, sharedGroups, profileOptionsActive] =
+  // 6e9a126e release three — `policies`, `benefitSchemes` and `schemeEntitlements` are gone with the two
+  // old layers. Removing a name from THIS destructure without removing its Promise.all element silently
+  // shifts every later variable by one, which is why both sides change together.
+  const [types, companies, grades, gradeGroups, sharedGroups, profileOptionsActive] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
-      listLeavePolicies(s),
       listCompanies(s),
       // b1b81a08 — grade MANAGEMENT moved to Settings → System Labels → Organisation Labels, but the grade
       // list is still READ here: it feeds gradeOptions (the leave-policy scope dropdown), the preview
       // dialog and BenefitSchemeConfig's grades prop. Archived rows still load so an existing grade-scoped
       // policy can render its grade name; the ACTIVE-only filters below are unchanged.
       listJobGrades(s, { includeArchived: true }),
-      // Benefit Scheme & Leave Entitlement (b83c6a3b): the new configuration layer's data.
+      // Grade groups SURVIVE release three: 205 approval rules scope by them. They no longer select an
+      // entitlement — that is what entitlement_eligibility_rule does now.
       listGradeGroups(s),
-      listBenefitSchemes(s),
-      listSchemeEntitlements(s),
       // Shared Leave Groups (r88 1ef1cf95): tenant-level groups of leave types sharing one allowance. Read
       // once here and rendered beside Add Leave Type — there is no scheme dimension to scope them by.
       listLeaveSharedGroups(s),
