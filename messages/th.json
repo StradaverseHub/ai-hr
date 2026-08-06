@@ -364,6 +364,13 @@
       "draftReady": "พร้อมสร้าง",
       "draftContinue": "ทำต่อ"
     },
+    "switcher": {
+      "ariaLabel": "ค้นหาพนักงาน",
+      "placeholder": "ค้นหารหัสพนักงานหรือชื่อ…",
+      "resultsLabel": "ผลการค้นหาพนักงาน",
+      "noMatches": "ไม่พบพนักงานที่ตรงกัน",
+      "currentTag": "ปัจจุบัน"
+    },
     "detail": {
       "backToPeople": "พนักงาน",
       "backToOrg": "ผังองค์กร",
@@ -2975,6 +2982,8 @@
       "subtitle": "ชุดจ่ายเงินเดือน",
       "paymentSummary": "สรุปการจ่าย",
       "paymentSummaryTitle": "ดาวน์โหลด CSV ของพนักงาน ธนาคาร บัญชี และรายได้สุทธิ เพื่ออัปโหลดเข้าธนาคารด้วยตนเอง",
+      "transactionDetail": "รายละเอียดธุรกรรม",
+      "transactionDetailTitle": "ดาวน์โหลดรายได้ รายการหัก เงินสมทบนายจ้าง และยอดรวมของพนักงานทุกคนในรอบนี้เป็นไฟล์ Excel",
       "generatePayslips": "สร้างสลิปเงินเดือน",
       "closeBatch": "ปิดชุดจ่าย",
       "disclaimer": "<strong>ตัวเลขฉบับร่าง</strong> จำนวนตามกฎหมายคำนวณจากกฎของ Malaysia ที่ผ่านการตรวจสอบและมีผลบังคับ ณ สิ้นงวด ตรวจสอบสลิปเงินเดือนทุกใบก่อนปิด — เมื่อปิดแล้ว ชุดจ่ายจะแก้ไขไม่ได้ ไฟล์ธนาคาร (<mono>CP39 / KWSP / PERKESO</mono>) สร้างแยกต่างหาก",
@@ -3707,7 +3716,8 @@
       "readinessStaleDefault": "รอบเงินเดือนเริ่มต้นระบุว่า “{name}” ซึ่งไม่ใช่รอบที่ใช้งานอยู่ของบริษัทนี้",
       "readinessNoDefault": "ยังไม่ได้เลือกรอบเงินเดือนเริ่มต้นสำหรับบริษัทนี้",
       "readinessNoAutoCreate": "ระบบไม่สร้างรอบให้อัตโนมัติ — บริษัทควรมีรอบใดบ้างเป็นการตัดสินใจของคุณ",
-      "readinessFullReport": "ดูรายงานความพร้อมฉบับเต็ม"
+      "readinessFullReport": "ดูรายงานความพร้อมฉบับเต็ม",
+      "readinessHideReport": "ซ่อนรายงานฉบับเต็ม"
     },
     "historyImport": {
       "title": "นำเข้าประวัติเงินเดือน",
@@ -4135,7 +4145,7 @@
       "logoInvalidType": "อนุญาตเฉพาะรูปภาพ PNG หรือ JPG เท่านั้น",
       "logoTooLarge": "โลโก้มีขนาดเกิน 2 MB",
       "searchCompanies": "ค้นหาบริษัทตามชื่อหรือเลขทะเบียน",
-      "noMatches": "ไม่มีบริษัทที่ตรงกับการค้นหาของคุณ",
+      "noMatches": "ไม่มีบริษัทที่ตรงกับตัวกรองเหล่านี้",
       "addNewCompany": "เพิ่มบริษัทใหม่",
       "tabGeneral": "ทั่วไป",
       "tabPayroll": "เงินเดือน",
@@ -4211,7 +4221,18 @@
       "authority_zakat": "ซะกาต",
       "authority_ptptn": "PTPTN",
       "authority_tabung_haji": "Tabung Haji",
-      "authority_koperasi": "สหกรณ์ (Koperasi)"
+      "authority_koperasi": "สหกรณ์ (Koperasi)",
+      "colCode": "รหัส",
+      "colStatus": "สถานะ",
+      "statusActive": "ใช้งาน",
+      "statusArchived": "เก็บถาวรแล้ว",
+      "allStatuses": "ทุกสถานะ",
+      "searchLabel": "ค้นหา",
+      "searchPlaceholder": "รหัส ชื่อ หรือเลขทะเบียน",
+      "applyFilter": "ใช้",
+      "open": "เปิด",
+      "backToCompanies": "กลับไปที่รายชื่อบริษัท",
+      "createDescription": "ลงทะเบียนบริษัทในกลุ่ม ข้อมูลตามกฎหมาย บัญชีธนาคาร และบริษัทแม่ จะตั้งค่าภายหลังในหน้าของบริษัทนั้นเอง"
     },
     "systemLabels": {
       "pageTitle": "ป้ายระบบ",
@@ -5284,7 +5305,62 @@
       "noLimitRows": "ยังไม่ได้กำหนดวงเงินการเบิก",
       "unlimitedBadge": "ไม่จำกัด",
       "newLimitTitle": "ตั้งค่าวงเงินการเบิก",
-      "newLimitHint": "เลือกระดับและประเภทการเบิก จากนั้นตั้งวงเงิน การบันทึกจะสร้างเวอร์ชันที่มีผลใหม่"
+      "newLimitHint": "เลือกระดับและประเภทการเบิก จากนั้นตั้งวงเงิน การบันทึกจะสร้างเวอร์ชันที่มีผลใหม่",
+      "gradesTitle": "ระดับตำแหน่ง",
+      "companyWide": "ทุกระดับ (ทั้งบริษัท)",
+      "fallbackBadge": "ใช้วงเงินระดับบริษัทแทน",
+      "subTypesInheritHint": "ประเภทย่อยใช้วงเงินร่วมกับประเภทหลัก",
+      "mileageTitle": "อัตราค่าระยะทาง",
+      "mileageSubtitle": "ช่วงระยะทาง ประเภทยานพาหนะ และอัตราต่อกิโลเมตร แยกตามระดับตำแหน่ง พร้อมวันที่มีผล",
+      "vehicleClassLabel": "ประเภทยานพาหนะ",
+      "vehicleClass_any": "ยานพาหนะใดก็ได้",
+      "vehicleClass_car": "รถยนต์",
+      "vehicleClass_motorcycle": "รถจักรยานยนต์",
+      "vehicleClass_van": "รถตู้",
+      "vehicleClass_lorry": "รถบรรทุก",
+      "noMileageTable": "ยังไม่ได้ตั้งตารางอัตราค่าระยะทางที่นี่ เพิ่มช่วงระยะทางด้านล่าง",
+      "mileageFallbackBadge": "สืบทอดจากตารางระดับบริษัท การบันทึกด้านล่างจะสร้างตารางเฉพาะระดับนี้",
+      "bandLabel": "ช่วงระยะทาง",
+      "bandRange": "{from}–{to} กม.",
+      "bandAndAbove": "{from} กม. ขึ้นไป",
+      "mileageEditorTitle": "ตั้งตารางอัตรา",
+      "mileageEditorHint": "ช่วงต้องต่อเนื่องจาก 0 กม. และช่วงสุดท้ายต้องเว้นว่างไว้ (“ขึ้นไป”)",
+      "fromKmLabel": "จาก (กม.)",
+      "toKmLabel": "ถึง (กม.)",
+      "toKmOpenHint": "ขึ้นไป",
+      "saveMileage": "บันทึกตารางอัตรา",
+      "mileageBandsHint": "อัตราคิดแบบขั้นบันได: 700 กม. โดย 0–500 ที่ 0.60 และ 500+ ที่ 0.45 จะได้ 500×0.60 + 200×0.45",
+      "mileageStampHint": "การเปลี่ยนอัตราไม่กระทบรายการที่ยื่นไปแล้ว แต่ละรายการคงอัตรา ณ วันที่ยื่น",
+      "formsTitle": "แบบฟอร์มเบิกจ่าย",
+      "formsSubtitle": "เลือกสิ่งที่แต่ละประเภทเบิกจ่ายต้องกรอก ฟิลด์ที่เพิ่มจะปรากฏบนแบบฟอร์มของพนักงาน",
+      "builtInsTitle": "มีอยู่ในทุกแบบฟอร์ม",
+      "builtInsHint": "สี่รายการนี้เป็นส่วนหนึ่งของการคำนวณเงิน ตรวจวงเงิน และการจ่าย จึงลบหรือจัดลำดับใหม่ไม่ได้",
+      "builtInBadge": "ในตัว",
+      "builtInAmount": "จำนวนเงิน",
+      "builtInDate": "วันที่เกิดค่าใช้จ่าย",
+      "builtInDescription": "รายละเอียด",
+      "builtInReceipt": "ใบเสร็จ",
+      "customFieldsTitle": "ฟิลด์เพิ่มเติม",
+      "noCustomFields": "ไม่มีฟิลด์เพิ่มเติม ประเภทนี้ถามเพียงสี่รายการด้านบน",
+      "fieldLabelLabel": "ชื่อฟิลด์",
+      "fieldLabelHint": "เช่น รหัสโครงการ",
+      "fieldKindLabel": "ประเภทฟิลด์",
+      "fieldRequiredLabel": "จำเป็น",
+      "fieldOptionsLabel": "ตัวเลือกดรอปดาวน์ (บรรทัดละหนึ่ง)",
+      "fieldOptionsHint": "ใช้เฉพาะฟิลด์ดรอปดาวน์",
+      "addFieldTitle": "เพิ่มฟิลด์",
+      "addField": "เพิ่มฟิลด์",
+      "removeField": "เอาออก",
+      "moveUp": "เลื่อนขึ้น",
+      "moveDown": "เลื่อนลง",
+      "formsFooterHint": "การลบฟิลด์จะไม่แสดงในรายการใหม่ คำตอบที่บันทึกไว้ในรายการที่ยื่นแล้วยังคงอยู่",
+      "fieldKind_text": "ข้อความ",
+      "fieldKind_number": "ตัวเลข",
+      "fieldKind_money": "จำนวนเงิน",
+      "fieldKind_date": "วันที่",
+      "fieldKind_select": "ดรอปดาวน์",
+      "fieldKind_boolean": "ใช่ / ไม่ใช่",
+      "fieldKind_file": "ไฟล์"
     },
     "reimbursements": {
       "back": "ตั้งค่า Claims",
@@ -5553,7 +5629,9 @@
     "claimsTabs": {
       "types": "ประเภทการเบิก",
       "limits": "วงเงินการเบิก",
-      "reimbursements": "การจ่ายคืน"
+      "reimbursements": "การจ่ายคืน",
+      "mileage": "อัตราค่าระยะทาง",
+      "forms": "แบบฟอร์มเบิกจ่าย"
     },
     "profileOptions": {
       "title": "ตัวเลือกโปรไฟล์",
@@ -7406,7 +7484,7 @@
       "CYCLE": "รายการจ่ายเหล่านี้อ้างอิงกันเป็นวงวน โปรดแก้ไขรายการใดรายการหนึ่งเพื่อให้ลำดับสิ้นสุดลง",
       "UNKNOWN_COMPONENT": "โปรดเลือกรายการจ่ายที่มีอยู่จริงและยังใช้งานอยู่",
       "STATUTORY_FORBIDDEN": "EPF, SOCSO, EIS และ PCB กำหนดโดยกฎหมาย จึงไม่สามารถคำนวณด้วยสูตรได้",
-      "UNSAFE_DIVISION": "สามารถหารด้วยตัวเลขคงที่ที่ไม่ใช่ศูนย์เท่านั้น"
+      "UNSAFE_DIVISION": "ไม่สามารถหารด้วยศูนย์ได้ กรุณาเลือกค่าอื่นเป็นตัวหาร"
     },
     "assistButton": "ช่วยด้วย AI",
     "assistTitle": "อธิบายว่าควรคำนวณอย่างไร",
@@ -7451,7 +7529,10 @@
     "previewInputs": "รายการจ่ายที่ใช้",
     "previewNone": "ไม่มีพนักงานให้ตรวจสอบ",
     "previewNote": "แสดงสำหรับงวดเต็ม ก่อนการคำนวณตามสัดส่วนและการปัดเศษ — ระบบเงินเดือนจะดำเนินการเมื่อประมวลผลจริง",
-    "previewFailed": "ไม่สามารถคำนวณผลลัพธ์สำหรับพนักงานรายนี้ได้"
+    "previewFailed": "ไม่สามารถคำนวณผลลัพธ์สำหรับพนักงานรายนี้ได้",
+    "operand_fixed_allowances": "เบี้ยเลี้ยงคงที่ทั้งหมด",
+    "formulaDivisionNote": "คุณสามารถหารด้วยค่าจริง เช่น จำนวนวันหรือชั่วโมงทำงาน หากค่านั้นเป็นศูนย์สำหรับพนักงานคนใด รายการจ่ายนี้จะไม่จ่ายให้พนักงานคนนั้น และการประมวลผลเงินเดือนจะเสร็จสมบูรณ์ตามปกติ — โปรดดูตัวอย่างที่นี่ก่อนใช้งานจริง",
+    "previewZeroDivisor": "รายการนี้จ่าย RM 0.00 ให้พนักงานคนนี้ เพราะ \"{divisor}\" เป็นศูนย์ในขั้นที่ {step} การประมวลผลเงินเดือนจะยังเสร็จสมบูรณ์"
   },
   "review": {
     "title": "การประเมิน",
@@ -8489,5 +8570,26 @@
     "cardNewCount": "ใหม่ {count} รายการ",
     "popupRead": "อ่านประกาศ",
     "popupDismiss": "ปิด"
+  },
+  "employeePanel": {
+    "heading": "พนักงาน",
+    "hideEmployees": "ซ่อนรายชื่อพนักงาน",
+    "showEmployees": "แสดงรายชื่อพนักงาน",
+    "filterCompany": "บริษัท",
+    "allCompanies": "ทุกบริษัท",
+    "filterBusinessUnit": "หน่วยธุรกิจ",
+    "allBusinessUnits": "ทุกหน่วยธุรกิจ",
+    "filterDepartment": "แผนก",
+    "allDepartments": "ทุกแผนก",
+    "filterStatus": "สถานะ",
+    "allStatuses": "ทุกสถานะ",
+    "statusActive": "ใช้งานอยู่",
+    "statusEnded": "สิ้นสุดแล้ว",
+    "searchLabel": "ค้นหาพนักงาน",
+    "searchPlaceholder": "รหัสพนักงานหรือชื่อ",
+    "reset": "รีเซ็ต",
+    "noEmployees": "ไม่มีพนักงานที่ตรงกับตัวกรองของคุณ",
+    "selectedTag": "เลือกแล้ว",
+    "showingCapped": "แสดง {cap} รายการแรกจาก {total} รายการที่ตรงกัน — โปรดปรับการค้นหา"
   }
 }

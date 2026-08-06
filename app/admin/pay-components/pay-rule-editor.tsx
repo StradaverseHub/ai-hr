@@ -173,7 +173,13 @@ export function PayRuleEditor({
   // Preview state.
   const [previewEmp, setPreviewEmp] = useState(previewEmployees[0]?.employmentId ?? '');
   const [preview, setPreview] = useState<
-    | { ok: true; amount: number; scope: { basic: number; days: number; hours: number }; inputs: { code: string; amount: number }[] }
+    | {
+        ok: true;
+        amount: number;
+        scope: { basic: number; days: number; hours: number };
+        inputs: { code: string; amount: number }[];
+        zeroDivisor: string | null;
+      }
     | { ok: false; message: string }
     | null
   >(null);
@@ -356,6 +362,13 @@ export function PayRuleEditor({
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">{t('formulaHint')}</p>
+          {/* 2da9937a — dividing by a live value is now allowed, and it carries a consequence the admin
+              must know about BEFORE they save: an employee for whom that value is zero is paid nothing for
+              this item. Shown only when the formula actually does it, so it is a consequence of a choice
+              just made rather than standing boilerplate everyone learns to skip. */}
+          {terms.some((s) => s.op === '/' && s.operand.ref !== 'number') && (
+            <p className="rounded-md bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">{t('formulaDivisionNote')}</p>
+          )}
 
           <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[8rem_1fr_1fr_2rem]">
             <span className="text-sm text-muted-foreground">{t('formulaStart')}</span>
@@ -461,6 +474,14 @@ export function PayRuleEditor({
                     </div>
                   ))}
                 </dl>
+              )}
+              {/* 2da9937a — a 0 with no explanation is the failure mode this whole feature was designed
+                  around. When a live divisor was zero for this employee, say so IN PLACE of leaving the
+                  admin to work it out, and say what the payroll run will do about it. */}
+              {preview.zeroDivisor && (
+                <p className="rounded-md bg-amber-500/10 p-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+                  {preview.zeroDivisor}
+                </p>
               )}
               <p className="text-xs text-muted-foreground">{t('previewNote')}</p>
             </div>

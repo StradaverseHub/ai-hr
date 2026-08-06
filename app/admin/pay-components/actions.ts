@@ -200,7 +200,16 @@ export async function previewPayRuleAction(p: {
   rule: PayRule | null;
   employmentId: string;
 }): Promise<
-  | { ok: true; amount: number; scope: { basic: number; days: number; hours: number }; inputs: { code: string; amount: number }[] }
+  | {
+      ok: true;
+      amount: number;
+      scope: { basic: number; days: number; hours: number };
+      inputs: { code: string; amount: number }[];
+      /** 2da9937a — already LOCALISED here rather than in the client: the divisor is a FormulaOperandRef
+       *  (`hours`, `fixed_allowances`, …), and the admin must read it as the same words the operand picker
+       *  showed them, not as an internal token. Null when nothing divided by zero. */
+      zeroDivisor: string | null;
+    }
   | { ok: false; message: string }
 > {
   const s = await getSession();
@@ -217,7 +226,15 @@ export async function previewPayRuleAction(p: {
       employmentId: p.employmentId,
     });
     if (!res.ok) return { ok: false, message: tr(`errors.${res.code}`) };
-    return { ok: true, amount: res.amount, scope: res.scope, inputs: res.inputs };
+    return {
+      ok: true,
+      amount: res.amount,
+      scope: res.scope,
+      inputs: res.inputs,
+      zeroDivisor: res.zeroDivisor
+        ? tr('previewZeroDivisor', { divisor: tr(`operand_${res.zeroDivisor.divisor}`), step: res.zeroDivisor.step })
+        : null,
+    };
   } catch {
     return { ok: false, message: tr('previewFailed') };
   }

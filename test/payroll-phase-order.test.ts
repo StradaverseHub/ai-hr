@@ -12,8 +12,12 @@
  * but the AGREEMENT: that no surface can move without the others moving with it. So each assertion
  * below derives its expectation from a DIFFERENT surface than the one it checks.
  *
- * The pack node is imported for real; the guide and wizard halves are source-text checks, the house
- * idiom for server/'use client' module-private structure (cf. test/payroll-flyout-nav.test.ts).
+ * The pack node is imported for real; the wizard half is a source-text check, the house idiom for
+ * 'use client' module-private structure (cf. test/payroll-flyout-nav.test.ts).
+ *
+ * efe1d230 — the Workflow Guide page is retired, so the third surface named above no longer exists and
+ * the assertions that derived from its source now derive from the wizard. The declaration itself is
+ * unchanged and still single: packs/payroll/phases.ts.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -65,35 +69,53 @@ describe('a1d82340 step 3 — the menu is ordered by the sequence, not by hand',
     }
   });
 
-  it('preparation now precedes the run, which is the disagreement this item existed to end', () => {
+  it('preparation is not stranded behind the run, which is the disagreement this item existed to end', () => {
     const at = (href: string) => NODE.children.findIndex((c) => c.href === href);
-    expect(at('/payroll/setup')).toBeLessThan(at('/payroll'));
-    expect(at('/payroll/transactions')).toBeLessThan(at('/payroll'));
+
+    // WHAT CHANGED, AND WHY THIS IS AN UPDATE RATHER THAN A WEAKENING. a1d82340 asserted literally
+    // `at('/payroll/setup') < at('/payroll')`. efe1d230's approved plan says "Payroll Process becomes
+    // the landing page when you open the Payroll module", and the fly-out focuses its first child on
+    // open, so `/payroll` had to take rank 0 and that literal could no longer hold.
+    //
+    // a1d82340's actual complaint was NOT "setup before the workbench" for its own sake — it was that
+    // the menu "closed with the settings you have to complete before you can run anything at all".
+    // That is what is asserted here now, and it is a strictly sharper statement than the one it
+    // replaces: Settings must come before the REVIEW and OUTPUT screens, and must not be last.
+    expect(at('/payroll/setup')).toBeLessThan(at('/payroll/transaction-view'));
+    expect(at('/payroll/setup')).toBeLessThan(at('/payroll/reports'));
+    expect(at('/payroll/setup')).toBeLessThan(at('/payroll/statutory-forms'));
+    expect(at('/payroll/setup'), 'Settings is stranded at the end of the menu again').toBeLessThan(
+      NODE.children.length - 1,
+    );
+    // Preparation still precedes review; the run still precedes what you do with its results.
+    expect(at('/payroll/transactions')).toBeLessThan(at('/payroll/transaction-view'));
     expect(at('/payroll')).toBeLessThan(at('/payroll/transaction-view'));
+    // efe1d230's own promise, pinned from the rank side as well as the row side
+    // (test/payroll-flyout-nav.test.ts asserts the rendered first row).
+    expect(at('/payroll')).toBe(0);
   });
 
-  it('the menu ranks agree with where the guide actually links', () => {
-    // Derived, not restated: for each phase, the screen the guide links to must not be ranked EARLIER
-    // than that phase. A guide phase pointing at a menu row the menu puts before it is the drift.
-    const guide = code('app/payroll/guide/page.tsx');
-    const linkedHrefs = [...guide.matchAll(/href: '(\/payroll[^']*)'/g)].map((m) => m[1]!);
-    expect(linkedHrefs.length, 'guide links nothing — the regex stopped matching').toBeGreaterThan(0);
-    for (const href of linkedHrefs) {
-      if (!(href in PAYROLL_NAV_PHASE)) continue; // /payroll/process and /payroll/configuration are sub-routes
-      expect(PAYROLL_NAV_PHASE[href], `${href} is linked by the guide but ranked off the menu`).toBeDefined();
+  it('the menu ranks agree with where the WIZARD says each phase happens', () => {
+    // Derived, not restated. Until efe1d230 this cross-check ran against the Workflow Guide's
+    // phase→screen link map; that page is retired, so the surviving second surface is the Process
+    // wizard, which declares a phase per step. Every phase a wizard step claims must be a real phase
+    // AND the run row the wizard leads to must be ranked on the menu — a wizard step in a phase the
+    // menu cannot reach is the drift this pair of files exists to catch.
+    const wizard = code('app/payroll/process/wizard.tsx');
+    const declared = [...wizard.matchAll(/phase:\s*'([a-zA-Z]+)'/g)].map((m) => m[1]!);
+    expect(declared.length, 'wizard declares no phase — the regex stopped matching').toBeGreaterThan(0);
+    for (const key of declared) {
+      expect(PAYROLL_PHASES.some((p) => p.key === key), `wizard step phase '${key}' is not a payroll phase`).toBe(true);
     }
+    expect(PAYROLL_NAV_PHASE['/payroll'], 'the wizard’s destination is ranked off the menu').toBeTypeOf('number');
   });
 });
 
-describe('a1d82340 step 3 — the guide and the wizard read the same declaration', () => {
-  it('the guide builds its phases from PAYROLL_PHASES rather than its own literal list', () => {
-    const src = code('app/payroll/guide/page.tsx');
-    expect(src).toContain('PAYROLL_PHASES');
-    // The old hand-written literals are gone. Scoped to the SHAPE that carried the duplicate ordering
-    // (`n: 4, titleKey:`), not to the bare token `titleKey` — the page still legitimately reads
-    // `phase.titleKey`, and forbidding that would break a surviving feature.
-    expect(src).not.toMatch(/n:\s*\d+,\s*titleKey:/);
-  });
+describe('a1d82340 step 3 — the wizard reads the one declaration', () => {
+  // efe1d230 — the guide half of this describe is gone with the page. The phase VOCABULARY it owned is
+  // not: PAYROLL_PHASES still carries the `payroll.guide.phase{n}Title/Desc` keys (asserted above, in
+  // all six catalogs) because the wizard rail renders them, so retiring the page must not take the
+  // namespace with it. That is the trap this comment exists to name.
 
   it('the wizard rail is the six phases, not a five-stage rail of its own', () => {
     const src = code('app/payroll/process/wizard.tsx');

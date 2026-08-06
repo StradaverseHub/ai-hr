@@ -364,6 +364,13 @@
       "draftReady": "Sedia untuk dicipta",
       "draftContinue": "Sambung"
     },
+    "switcher": {
+      "ariaLabel": "Cari pekerja",
+      "placeholder": "Cari ID pekerja atau nama…",
+      "resultsLabel": "Hasil carian pekerja",
+      "noMatches": "Tiada pekerja yang sepadan.",
+      "currentTag": "Semasa"
+    },
     "detail": {
       "backToPeople": "Kakitangan",
       "backToOrg": "Carta organisasi",
@@ -2975,6 +2982,8 @@
       "subtitle": "Kelompok gaji",
       "paymentSummary": "Ringkasan pembayaran",
       "paymentSummaryTitle": "Muat turun CSV pekerja, bank, akaun dan gaji bersih untuk muat naik bank secara manual.",
+      "transactionDetail": "Butiran Transaksi",
+      "transactionDetailTitle": "Muat turun pendapatan, potongan, caruman majikan dan jumlah setiap pekerja bagi larian ini sebagai fail Excel.",
       "generatePayslips": "Jana slip gaji",
       "closeBatch": "Tutup kelompok",
       "disclaimer": "<strong>Angka draf.</strong> Amaun berkanun dikira daripada peraturan Malaysia yang disahkan dan berkuat kuasa pada akhir tempoh. Semak setiap slip gaji sebelum menutup — setelah ditutup, kelompok ini tidak boleh diubah. Fail bank (<mono>CP39 / KWSP / PERKESO</mono>) dijana secara berasingan.",
@@ -3707,7 +3716,8 @@
       "readinessStaleDefault": "Kitaran gaji lalai menamakan “{name}”, yang bukan kitaran aktif bagi syarikat ini.",
       "readinessNoDefault": "Tiada kitaran gaji lalai dipilih untuk syarikat ini.",
       "readinessNoAutoCreate": "Kitaran tidak dicipta secara automatik — kitaran yang sepatutnya dimiliki syarikat ialah keputusan anda.",
-      "readinessFullReport": "Lihat laporan kesediaan penuh"
+      "readinessFullReport": "Lihat laporan kesediaan penuh",
+      "readinessHideReport": "Sembunyikan laporan penuh"
     },
     "historyImport": {
       "title": "Import sejarah gaji",
@@ -4135,7 +4145,7 @@
       "logoInvalidType": "Hanya imej PNG atau JPG dibenarkan",
       "logoTooLarge": "Logo melebihi 2 MB",
       "searchCompanies": "Cari syarikat mengikut nama atau nombor pendaftaran",
-      "noMatches": "Tiada syarikat sepadan dengan carian anda",
+      "noMatches": "Tiada syarikat sepadan dengan penapis ini",
       "addNewCompany": "Tambah syarikat baharu",
       "tabGeneral": "Umum",
       "tabPayroll": "Gaji",
@@ -4211,7 +4221,18 @@
       "authority_zakat": "Zakat",
       "authority_ptptn": "PTPTN",
       "authority_tabung_haji": "Tabung Haji",
-      "authority_koperasi": "Koperasi"
+      "authority_koperasi": "Koperasi",
+      "colCode": "Kod",
+      "colStatus": "Status",
+      "statusActive": "Aktif",
+      "statusArchived": "Diarkibkan",
+      "allStatuses": "Semua status",
+      "searchLabel": "Cari",
+      "searchPlaceholder": "Kod, nama atau no. pendaftaran",
+      "applyFilter": "Guna",
+      "open": "Buka",
+      "backToCompanies": "Kembali ke senarai syarikat",
+      "createDescription": "Daftarkan syarikat dalam kumpulan. Identiti statutori, akaun bank dan syarikat induk ditetapkan kemudian pada halaman syarikat itu sendiri."
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",
@@ -5284,7 +5305,62 @@
       "noLimitRows": "Tiada had tuntutan dikonfigurasi lagi.",
       "unlimitedBadge": "Tanpa had",
       "newLimitTitle": "Tetapkan had tuntutan",
-      "newLimitHint": "Pilih gred dan jenis tuntutan, kemudian tetapkan had. Menyimpan merekod versi baharu berkuat kuasa."
+      "newLimitHint": "Pilih gred dan jenis tuntutan, kemudian tetapkan had. Menyimpan merekod versi baharu berkuat kuasa.",
+      "gradesTitle": "Gred jawatan",
+      "companyWide": "Semua gred (seluruh syarikat)",
+      "fallbackBadge": "Kembali kepada had seluruh syarikat",
+      "subTypesInheritHint": "Sub-jenis berkongsi had jenis tuntutan induk.",
+      "mileageTitle": "Kadar Perbatuan",
+      "mileageSubtitle": "Julat jarak, jenis kenderaan dan kadar sekilometer — mengikut gred jawatan, dengan tarikh berkuat kuasa.",
+      "vehicleClassLabel": "Jenis kenderaan",
+      "vehicleClass_any": "Mana-mana kenderaan",
+      "vehicleClass_car": "Kereta",
+      "vehicleClass_motorcycle": "Motosikal",
+      "vehicleClass_van": "Van",
+      "vehicleClass_lorry": "Lori",
+      "noMileageTable": "Tiada jadual kadar perbatuan ditetapkan di sini lagi. Tambah julat jarak di bawah.",
+      "mileageFallbackBadge": "Diwarisi daripada jadual seluruh syarikat. Menyimpan di bawah mencipta jadual untuk gred ini sahaja.",
+      "bandLabel": "Julat jarak",
+      "bandRange": "{from}–{to} km",
+      "bandAndAbove": "{from} km dan ke atas",
+      "mileageEditorTitle": "Tetapkan jadual kadar",
+      "mileageEditorHint": "Julat mesti berterusan dari 0 km, dan julat terakhir mesti dibiarkan terbuka (“dan ke atas”).",
+      "fromKmLabel": "Dari (km)",
+      "toKmLabel": "Hingga (km)",
+      "toKmOpenHint": "dan ke atas",
+      "saveMileage": "Simpan jadual kadar",
+      "mileageBandsHint": "Kadar adalah marginal: 700 km dengan 0–500 pada 0.60 dan 500+ pada 0.45 membayar 500×0.60 + 200×0.45.",
+      "mileageStampHint": "Menukar kadar tidak pernah mengubah tuntutan yang telah dihantar — setiap tuntutan mengekalkan kadar semasa ia difailkan.",
+      "formsTitle": "Borang Tuntutan",
+      "formsSubtitle": "Pilih apa yang setiap jenis tuntutan minta. Medan yang anda tambah akan muncul pada borang tuntutan pekerja.",
+      "builtInsTitle": "Sentiasa pada setiap borang",
+      "builtInsHint": "Empat ini sebahagian daripada cara tuntutan dinilai, disemak terhadap had dan dibayar, jadi ia tidak boleh dibuang atau disusun semula.",
+      "builtInBadge": "Terbina dalam",
+      "builtInAmount": "Jumlah",
+      "builtInDate": "Tarikh ditanggung",
+      "builtInDescription": "Keterangan",
+      "builtInReceipt": "Resit",
+      "customFieldsTitle": "Medan tambahan",
+      "noCustomFields": "Tiada medan tambahan. Jenis tuntutan ini hanya meminta empat di atas.",
+      "fieldLabelLabel": "Label medan",
+      "fieldLabelHint": "cth. Kod projek",
+      "fieldKindLabel": "Jenis medan",
+      "fieldRequiredLabel": "Wajib",
+      "fieldOptionsLabel": "Pilihan senarai (satu setiap baris)",
+      "fieldOptionsHint": "Digunakan oleh medan senarai sahaja",
+      "addFieldTitle": "Tambah medan",
+      "addField": "Tambah medan",
+      "removeField": "Buang",
+      "moveUp": "Naik",
+      "moveDown": "Turun",
+      "formsFooterHint": "Membuang medan mengeluarkannya daripada tuntutan baharu; jawapan yang telah disimpan pada tuntutan difailkan dikekalkan.",
+      "fieldKind_text": "Teks",
+      "fieldKind_number": "Nombor",
+      "fieldKind_money": "Wang",
+      "fieldKind_date": "Tarikh",
+      "fieldKind_select": "Senarai pilihan",
+      "fieldKind_boolean": "Ya / Tidak",
+      "fieldKind_file": "Fail"
     },
     "reimbursements": {
       "back": "Konfigurasi tuntutan",
@@ -5553,7 +5629,9 @@
     "claimsTabs": {
       "types": "Jenis Tuntutan",
       "limits": "Had Tuntutan",
-      "reimbursements": "Bayaran Balik"
+      "reimbursements": "Bayaran Balik",
+      "mileage": "Kadar Perbatuan",
+      "forms": "Borang Tuntutan"
     },
     "profileOptions": {
       "title": "Pilihan Profil",
@@ -7406,7 +7484,7 @@
       "CYCLE": "Item gaji ini bergantung antara satu sama lain dalam gelung. Ubah salah satunya supaya rantaian itu mempunyai penghujung.",
       "UNKNOWN_COMPONENT": "Pilih item gaji yang wujud dan masih aktif.",
       "STATUTORY_FORBIDDEN": "KWSP, PERKESO, SIP dan PCB ditetapkan oleh undang-undang dan tidak boleh dikira dengan formula.",
-      "UNSAFE_DIVISION": "Anda hanya boleh membahagi dengan nombor tetap yang bukan sifar."
+      "UNSAFE_DIVISION": "Anda tidak boleh membahagi dengan sifar. Pilih nilai lain untuk membahagi."
     },
     "assistButton": "Bantuan AI",
     "assistTitle": "Terangkan cara ia patut dikira",
@@ -7451,7 +7529,10 @@
     "previewInputs": "Item gaji yang digunakan",
     "previewNone": "Tiada pekerja tersedia untuk disemak.",
     "previewNote": "Ditunjukkan untuk tempoh PENUH, sebelum pembahagian pro rata dan pembundaran — payroll menggunakannya semasa proses dijalankan.",
-    "previewFailed": "Tidak dapat mengira hasil untuk pekerja itu."
+    "previewFailed": "Tidak dapat mengira hasil untuk pekerja itu.",
+    "operand_fixed_allowances": "Semua elaun tetap",
+    "formulaDivisionNote": "Anda boleh bahagi dengan nilai langsung seperti hari atau jam bekerja. Jika ia sifar bagi seseorang pekerja, item gaji ini tidak membayar apa-apa untuk pekerja itu dan proses gaji tetap selesai — semak pratonton di sini sebelum anda bergantung padanya.",
+    "previewZeroDivisor": "Ini membayar RM 0.00 untuk pekerja ini kerana \"{divisor}\" adalah sifar pada langkah {step}. Proses gaji tetap akan selesai."
   },
   "review": {
     "title": "Penilaian",
@@ -8489,5 +8570,26 @@
     "cardNewCount": "{count} baharu",
     "popupRead": "Baca notis",
     "popupDismiss": "Tutup"
+  },
+  "employeePanel": {
+    "heading": "Pekerja",
+    "hideEmployees": "Sembunyikan senarai pekerja",
+    "showEmployees": "Tunjukkan senarai pekerja",
+    "filterCompany": "Syarikat",
+    "allCompanies": "Semua syarikat",
+    "filterBusinessUnit": "Unit perniagaan",
+    "allBusinessUnits": "Semua unit perniagaan",
+    "filterDepartment": "Jabatan",
+    "allDepartments": "Semua jabatan",
+    "filterStatus": "Status",
+    "allStatuses": "Semua status",
+    "statusActive": "Aktif",
+    "statusEnded": "Tamat",
+    "searchLabel": "Cari pekerja",
+    "searchPlaceholder": "ID pekerja atau nama",
+    "reset": "Set semula",
+    "noEmployees": "Tiada pekerja sepadan dengan penapis anda.",
+    "selectedTag": "Dipilih",
+    "showingCapped": "Memaparkan {cap} pertama daripada {total} padanan — perhalusi carian anda."
   }
 }

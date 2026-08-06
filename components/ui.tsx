@@ -20,6 +20,19 @@ export const btnGhost =
 // standard styling instead of hand-copying the class strings — which is exactly how System Labels drifted
 // out of sync in the first place. Use: wrapper div → tableWrapCls, <thead> → theadCls, each <th> → thCls,
 // <tbody> → tbodyCls.
+/**
+ * THE full-browser-width page container (item defd4644).
+ *
+ * Most screens open with `mx-auto max-w-5xl space-y-6` — a narrow centred column. Modules whose
+ * primary surface is a wide list-and-detail table (Organization; Personnel next) are asked to use the
+ * whole window instead, and this const exists so they do it by the SAME means. Two modules going
+ * full-width with two different hand-written class strings is exactly the drift this keeps producing.
+ *
+ * No horizontal padding on purpose: <body> already carries `p-3 lg:p-4` (app/layout.tsx), so the page
+ * gutters are the floating-shell gutters and stay identical to every centred screen's.
+ */
+export const pageWideCls = 'w-full space-y-6';
+
 export const tableWrapCls = 'overflow-x-auto rounded-md border border-border';
 export const theadCls = 'bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground';
 export const thCls = 'px-3 py-2 font-medium';
