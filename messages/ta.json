@@ -8489,5 +8489,26 @@
     "cardNewCount": "{count} புதியது",
     "popupRead": "அறிவிப்பைப் படி",
     "popupDismiss": "மூடு"
+  },
+  "employeePanel": {
+    "heading": "ஊழியர்கள்",
+    "hideEmployees": "ஊழியர் பட்டியலை மறை",
+    "showEmployees": "ஊழியர் பட்டியலைக் காட்டு",
+    "filterCompany": "நிறுவனம்",
+    "allCompanies": "அனைத்து நிறுவனங்கள்",
+    "filterBusinessUnit": "வணிகப் பிரிவு",
+    "allBusinessUnits": "அனைத்து வணிகப் பிரிவுகள்",
+    "filterDepartment": "துறை",
+    "allDepartments": "அனைத்து துறைகள்",
+    "filterStatus": "நிலை",
+    "allStatuses": "அனைத்து நிலைகள்",
+    "statusActive": "செயலில்",
+    "statusEnded": "முடிந்தது",
+    "searchLabel": "பணியாளரைத் தேடு",
+    "searchPlaceholder": "பணியாளர் ஐடி அல்லது பெயர்",
+    "reset": "மீட்டமை",
+    "noEmployees": "உங்கள் வடிப்பான்களுக்கு பொருந்தும் பணியாளர்கள் இல்லை.",
+    "selectedTag": "தேர்ந்தெடுக்கப்பட்டது",
+    "showingCapped": "{total} பொருத்தங்களில் முதல் {cap} காட்டப்படுகிறது — உங்கள் தேடலை செம்மைப்படுத்தவும்."
   }
 }

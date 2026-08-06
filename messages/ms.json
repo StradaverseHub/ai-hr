@@ -8489,5 +8489,26 @@
     "cardNewCount": "{count} baharu",
     "popupRead": "Baca notis",
     "popupDismiss": "Tutup"
+  },
+  "employeePanel": {
+    "heading": "Pekerja",
+    "hideEmployees": "Sembunyikan senarai pekerja",
+    "showEmployees": "Tunjukkan senarai pekerja",
+    "filterCompany": "Syarikat",
+    "allCompanies": "Semua syarikat",
+    "filterBusinessUnit": "Unit perniagaan",
+    "allBusinessUnits": "Semua unit perniagaan",
+    "filterDepartment": "Jabatan",
+    "allDepartments": "Semua jabatan",
+    "filterStatus": "Status",
+    "allStatuses": "Semua status",
+    "statusActive": "Aktif",
+    "statusEnded": "Tamat",
+    "searchLabel": "Cari pekerja",
+    "searchPlaceholder": "ID pekerja atau nama",
+    "reset": "Set semula",
+    "noEmployees": "Tiada pekerja sepadan dengan penapis anda.",
+    "selectedTag": "Dipilih",
+    "showingCapped": "Memaparkan {cap} pertama daripada {total} padanan — perhalusi carian anda."
   }
 }
