@@ -18,12 +18,10 @@ import {
   createDepartment,
   createHoliday,
   createHolidayGroup,
-  createLeavePolicy,
   createLeaveType,
   createPosition,
   deleteHoliday,
   deleteHolidayGroup,
-  deleteLeavePolicy,
   updateHoliday,
   updateHolidayGroup,
   deleteCompany,
@@ -41,8 +39,6 @@ import {
   updateCompany,
   updateCostCenter,
   updateDepartment,
-  updateLeavePolicy,
-  saveServiceEntitlement,
   updateLeaveType,
   updatePosition,
   setLeaveTypeRules,
@@ -51,7 +47,6 @@ import {
 import {
   accrueEarnedLeave,
   asOfForLeaveYear,
-  reprojectEntitlementForSchemeCohort,
   // bc36c768 — the leave-type counterpart of the scheme cohort, fired after an earning-method save clears
   // the NOT-CONFIGURED marker.
   reprojectEntitlementForLeaveTypeCohort,
@@ -92,9 +87,6 @@ import {
   createGradeGroup,
   updateGradeGroup,
   deleteGradeGroup,
-  createBenefitScheme,
-  updateBenefitScheme,
-  deleteBenefitScheme,
   upsertSchemeEntitlement,
   deleteSchemeEntitlement,
   copySchemeEntitlements,
@@ -568,37 +560,6 @@ const serviceBandsField = (fd: FormData): ServiceBand[] | null | undefined => {
   }
 };
 
-export async function createLeavePolicyAction(formData: FormData) {
-  const s = await getSession();
-  try {
-    await createLeavePolicy(s, {
-      leaveTypeId: String(formData.get('leaveTypeId')),
-      annualDays: Number(formData.get('annualDays')),
-      carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
-      carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
-      carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
-      carryForwardExpiryMode: carryExpiryMode(formData),
-      carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
-      carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
-      carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
-      // bc36c768 — THE `method` READ IS GONE. It was already dead (`grep -rn 'name="method"' app/
-      // components/` returns exactly one hit, the type-level earning form), but stripping it is what makes
-      // "setLeaveTypeRulesAction is the only path that can write an earning method" TRUE rather than
-      // incidental — and that claim is the entire justification for removing the by_quarter round-trip
-      // option from the editor. A dead read is one hand-crafted POST away from being a live one.
-      // createLeavePolicy still INHERITS the superseded row's method (eee43966), so a dated version does
-      // not silently downgrade an earned setup to lump.
-      gradeId: String(formData.get('gradeId') || '') || null,
-      companyId: String(formData.get('companyId') || '') || null,
-      serviceBands: serviceBandsField(formData),
-      roundingMethod: roundingMethodField(formData),
-      validFrom: String(formData.get('validFrom')),
-    });
-  } catch (e) {
-    fail(LEAVE, e);
-  }
-  ok(LEAVE);
-}
 
 /**
  * Feedback 9d8cf621 — "Employee Selection" fan-out. The add-entitlement form now offers MULTI-select
@@ -772,55 +733,6 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
   okEntitlements(t('entitlementUpdatedToast'), id);
 }
 
-export async function updateLeavePolicyAction(formData: FormData) {
-  const s = await getSession();
-  // Feedback 49809272: an in-place correction re-projects affected employees' CURRENT cycle and posts
-  // compensating ledger adjustments. The action anchors "today" in tenant-local MYT (the requestLeave
-  // convention) and surfaces the blast radius as a toast (ToastFromQuery renders the raw string, so the
-  // text is localised HERE, not a code).
-  const t = await getTranslations('admin.leave');
-  let recalc = { affected: 0, totalDelta: 0 };
-  try {
-    recalc = await updateLeavePolicy(s, {
-      id: String(formData.get('id')),
-      annualDays: Number(formData.get('annualDays')),
-      carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
-      carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
-      carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
-      carryForwardExpiryMode: carryExpiryMode(formData),
-      carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
-      carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
-      carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
-      // bc36c768 — THE `method` READ IS GONE, AND THIS IS THE ONE THAT MATTERED. Unlike the two create
-      // actions above, updateLeavePolicyAction is MOUNTED (app/admin/leave/entitlements/page.tsx, as
-      // updatePolicyAction) and passed `method` straight into updateLeavePolicy. While it stood, the
-      // claim that setLeaveTypeRulesAction is the only path that can write an earning method was simply
-      // FALSE. updateLeavePolicy PRESERVES the row's stored method when the caller sends none (eee43966),
-      // so removing the read changes nothing for any existing edit — it only closes the door.
-      gradeId: String(formData.get('gradeId') || '') || null,
-      companyId: String(formData.get('companyId') || '') || null,
-      serviceBands: serviceBandsField(formData),
-      roundingMethod: roundingMethodField(formData),
-      validFrom: String(formData.get('validFrom')),
-      asOf: todayInKualaLumpur(),
-      // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.
-      reason: String(formData.get('reason') || '') || null,
-    });
-  } catch (e) {
-    // 9b0503ac — every policy edit form (Eligibility inline edit + the Earning/Carry front doors) lives
-    // inside a type's Entitlements config panel; fail back THERE so the error banner is visible in place
-    // (no #type anchor: a fragment before ?error= would swallow it — the b9dac2d1 precedent).
-    fail(ENTITLEMENTS, e);
-  }
-  // 9b0503ac — stay exactly where the admin was: the Entitlements panel, same leave type (the form's
-  // hidden leaveTypeId → #type-<id> anchor). The 49809272 blast-radius toast stays when employees were
-  // recalculated; the no-recalc case shows the reporter's requested plain success confirmation.
-  const delta = `${recalc.totalDelta > 0 ? '+' : ''}${recalc.totalDelta}`;
-  okEntitlements(
-    recalc.affected > 0 ? t('recalcToast', { count: recalc.affected, delta }) : t('entitlementUpdatedToast'),
-    String(formData.get('leaveTypeId') ?? ''),
-  );
-}
 
 /**
  * Restructure Service-Based Leave Entitlements — save one grade's three service-band figures for a company
@@ -835,31 +747,6 @@ export async function updateLeavePolicyAction(formData: FormData) {
  * policies still resolve for anyone no scheme covers. Delete it together with core/saveServiceEntitlement if
  * a later round retires grade-level entitlement outright.
  */
-export async function saveServiceEntitlementAction(formData: FormData) {
-  const s = await getSession();
-  const leaveTypeId = String(formData.get('leaveTypeId') ?? '');
-  const t = await getTranslations('admin.leave');
-  let recalc = { affected: 0, totalDelta: 0 };
-  try {
-    recalc = await saveServiceEntitlement(s, {
-      leaveTypeId,
-      companyId: String(formData.get('companyId') ?? ''),
-      gradeId: String(formData.get('gradeId') ?? ''),
-      under2: Number(formData.get('under2')),
-      mid: Number(formData.get('mid')),
-      over: Number(formData.get('over')),
-      asOf: todayInKualaLumpur(),
-    });
-  } catch (e) {
-    // 9b0503ac — surface the error on the Entitlements panel, not a bounce to /admin/leave.
-    fail(ENTITLEMENTS, e);
-  }
-  const delta = `${recalc.totalDelta > 0 ? '+' : ''}${recalc.totalDelta}`;
-  okEntitlements(
-    recalc.affected > 0 ? t('recalcToast', { count: recalc.affected, delta }) : t('entitlementUpdatedToast'),
-    leaveTypeId,
-  );
-}
 
 
 /** feedback 2c7c6385 (Run Earned Accrual button): the scope the HR admin picked in the review card. An
@@ -969,19 +856,6 @@ export async function setLeaveHalfDayFullDeductionCompaniesAction(formData: Form
 // value-returning (per-row errors) rather than redirecting, and which gate on requireAdmin. The core
 // mutations in core/admin.ts are unchanged and are what both surfaces have always called.
 
-export async function deleteLeavePolicyAction(formData: FormData) {
-  const s = await getSession();
-  try {
-    await deleteLeavePolicy(s, { id: String(formData.get('id')) });
-  } catch (e) {
-    // 9b0503ac — the remove button sits in the same Entitlements config panel; stay there on failure too.
-    fail(ENTITLEMENTS, e);
-  }
-  // 9b0503ac — removing a dated entitlement row keeps the admin on the same type's panel (consistent with
-  // the neighbouring policy add/edit saves), with its own removal wording.
-  const t = await getTranslations('admin.leave');
-  okEntitlements(t('entitlementRemovedToast'), String(formData.get('leaveTypeId') ?? ''));
-}
 
 // ── Public holidays ──
 /** Preserve the active country/year/group filter across the redirect so the admin stays in context.
@@ -2157,57 +2031,8 @@ export async function deleteGradeGroupAction(fd: FormData) {
   ok(ENTITLEMENTS);
 }
 
-export async function createBenefitSchemeAction(fd: FormData) {
-  const s = await requireAdmin();
-  try {
-    await createBenefitScheme(s, {
-      companyId: String(fd.get('companyId') ?? ''),
-      employmentType: String(fd.get('employmentType') ?? ''),
-      gradeGroupId: (String(fd.get('gradeGroupId') ?? '') || null),
-      name: String(fd.get('name') ?? ''),
-      status: String(fd.get('status') ?? 'active'),
-      // Feedback 0890a555: grouping label only — the service blanks whitespace to null (ungrouped).
-      schemeCategory: String(fd.get('schemeCategory') ?? ''),
-    });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  ok(ENTITLEMENTS);
-}
 
-export async function updateBenefitSchemeAction(fd: FormData) {
-  const s = await requireAdmin();
-  try {
-    const schemeId = String(fd.get('id') ?? '');
-    const { changed } = await updateBenefitScheme(s, {
-      id: schemeId,
-      companyId: String(fd.get('companyId') ?? ''),
-      employmentType: String(fd.get('employmentType') ?? ''),
-      gradeGroupId: (String(fd.get('gradeGroupId') ?? '') || null),
-      name: String(fd.get('name') ?? ''),
-      status: String(fd.get('status') ?? 'active'),
-      // Feedback 0890a555: grouping label only — the service blanks whitespace to null (ungrouped).
-      schemeCategory: String(fd.get('schemeCategory') ?? ''),
-    });
-    // ae5b84d5: only a match-identity/usability change (status / employment type / grade group / company)
-    // re-shuffles coverage — activate/deactivate included, so a mass-revert lands NOW with an honest
-    // scheme_updated audit trigger instead of dripping out of later unrelated runs. Renames skip.
-    if (changed) await recalcSchemeCohort(s, { schemeId, trigger: 'scheme_updated' });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  ok(ENTITLEMENTS);
-}
 
-export async function deleteBenefitSchemeAction(fd: FormData) {
-  const s = await requireAdmin();
-  try {
-    await deleteBenefitScheme(s, { id: String(fd.get('id') ?? '') });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  ok(ENTITLEMENTS);
-}
 
 export async function upsertSchemeEntitlementAction(fd: FormData) {
   const s = await requireAdmin();
@@ -2233,19 +2058,6 @@ export async function upsertSchemeEntitlementAction(fd: FormData) {
   okEntitlements(t('entitlementUpdatedToast'), leaveTypeId);
 }
 
-export async function deleteSchemeEntitlementAction(fd: FormData) {
-  const s = await requireAdmin();
-  try {
-    const { benefitSchemeId } = await deleteSchemeEntitlement(s, { id: String(fd.get('id') ?? '') });
-    // ae5b84d5: covered employees revert to grade-policy/floor days — true them up now.
-    if (benefitSchemeId) {
-      await recalcSchemeCohort(s, { schemeId: benefitSchemeId, trigger: 'scheme_entitlement_changed' });
-    }
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  ok(ENTITLEMENTS);
-}
 
 // Copy / Duplicate Leave Entitlements (R44 ba494b21) — bring a source scheme's entitlements into the target,
 // skipping any leave type already configured on the target (no overwrite).
