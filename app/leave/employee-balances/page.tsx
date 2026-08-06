@@ -7,6 +7,8 @@ import { Button, Card, PageHeader, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
+// 4a1abc4a: HR's copy of the employee's own balance grid must print the figures identically to it.
+import { formatDays } from '@/lib/day-format';
 import { employeeBalanceRows } from './rows';
 
 /**
@@ -60,7 +62,9 @@ export default async function EmployeeBalancesPage({
     listLeaveTypes(session, { locale }),
   ]);
 
-  const num = (v: number | null) => (v == null ? '—' : v.toFixed(2));
+  // Every column still renders through this ONE formatter — no per-column rounding, and a null figure
+  // stays an em dash rather than becoming a "0.00" HR would read as a real zero balance.
+  const num = (v: number | null) => formatDays(v);
 
   const params = () => {
     const p = new URLSearchParams();

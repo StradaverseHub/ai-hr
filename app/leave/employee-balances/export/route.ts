@@ -12,6 +12,7 @@ import { listEmployees } from '@/core/read';
 import { todayInKualaLumpur } from '@/core/leave';
 import { toCsvReport, toXlsxReport, type ReportData } from '@/lib/report-export';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
+import { formatDays } from '@/lib/day-format';
 import { employeeBalanceRows } from '../rows';
 
 export async function GET(req: Request) {
@@ -41,7 +42,11 @@ export async function GET(req: Request) {
       })
     : [];
 
-  const cell = (v: number | null) => (v == null ? '' : v.toFixed(2));
+  // 4a1abc4a: the export prints the same digits as the screen it exports, through the same formatter. The
+  // placeholder is the ONE difference and it is deliberate — a spreadsheet cell for a figure nobody
+  // computed must be EMPTY, not an em dash (which is text a reader could not sum) and not "0.00" (which is
+  // a claim). `pending` is non-nullable, so it takes the same call and simply never hits the placeholder.
+  const cell = (v: number | null) => formatDays(v, { placeholder: '' });
   const data: ReportData = {
     filename: `leave-balances-${selected?.employeeCode ?? 'employee'}-${asOf}`,
     title: tInq('balancesTitle'),
@@ -68,7 +73,7 @@ export async function GET(req: Request) {
       cell(r.ytdEntitled),
       cell(r.broughtForward),
       cell(r.taken),
-      r.pending.toFixed(2),
+      cell(r.pending),
       cell(r.adjustment),
       cell(r.overutilized),
       cell(r.forfeitedBf),

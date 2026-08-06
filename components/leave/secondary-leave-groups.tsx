@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
 import { leaveVisual } from '@/lib/leave-visual';
+// 4a1abc4a: the secondary rows show the SAME remaining figure as the primary cards, so they print it the
+// same way — one formatter, not a second local toFixed.
+import { formatDays } from '@/lib/day-format';
 
 /**
  * Secondary-type "Other leave" breakdown section (restored · feedback 56a0deb9).
@@ -67,7 +70,7 @@ export function SecondaryLeaveGroups({
                   </span>
                   <span className="flex shrink-0 flex-col items-end">
                     <span className="tabular-nums text-sm text-foreground">
-                      {b.remaining == null ? '—' : b.remaining.toFixed(2)}
+                      {formatDays(b.remaining)}
                     </span>
                     {b.breakdown}
                   </span>

@@ -22,6 +22,9 @@ import { type ReactNode, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
+// 4a1abc4a: the paid/unpaid split lines are day figures off the same ledger, so they print like every
+// other day figure rather than however JavaScript happened to stringify the number.
+import { formatDays } from '@/lib/day-format';
 
 /** Status badge colours — mirrors the page's REQ_STATUS map (incl. the derived 'partial' display key). */
 const STATUS_BADGE: Record<string, string> = {
@@ -140,7 +143,7 @@ export function LeaveHistoryCards({ entries, locale }: { entries: LeaveHistoryEn
                   <span key={row.label + i}>
                     {i > 0 && ' · '}
                     <span className={row.unpaid ? 'text-amber-700 dark:text-amber-400' : undefined}>
-                      {row.label} {row.days}
+                      {row.label} {formatDays(row.days)}
                     </span>
                   </span>
                 ))}
@@ -203,7 +206,7 @@ export function LeaveHistoryCards({ entries, locale }: { entries: LeaveHistoryEn
                             <span key={row.label + i}>
                               {i > 0 && ' · '}
                               <span className={row.unpaid ? 'text-amber-700 dark:text-amber-400' : undefined}>
-                                {row.label} {row.days}
+                                {row.label} {formatDays(row.days)}
                               </span>
                             </span>
                           ))}
