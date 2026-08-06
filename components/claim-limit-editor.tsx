@@ -17,10 +17,14 @@ export function ClaimLimitEditor({
   types,
   grades,
   today,
+  defaultGradeId = null,
 }: {
   types: { id: string; code: string; name: string }[];
   grades: { id: string; name: string }[];
   today: string;
+  /** e7eb5d83 — the grade the page is currently showing (?gradeId=), so "set a limit" defaults to the grade
+   *  the admin is looking at instead of silently defaulting to the company-wide row they did not select. */
+  defaultGradeId?: string | null;
 }) {
   const t = useTranslations('admin.claims');
   const [unlimited, setUnlimited] = useState(false);
@@ -30,7 +34,7 @@ export function ClaimLimitEditor({
   return (
     <form action={setClaimPolicyAction} className="grid gap-3 sm:grid-cols-2">
       <Field label={t('gradeLabel')}>
-        <select name="gradeId" className={`${inputCls} w-full`} defaultValue="">
+        <select name="gradeId" className={`${inputCls} w-full`} defaultValue={defaultGradeId ?? ''}>
           <option value="">{t('allGrades')}</option>
           {grades.map((g) => (
             <option key={g.id} value={g.id}>{g.name}</option>

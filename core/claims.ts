@@ -8,7 +8,9 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
   claimAttachment,
+  claimFormField,
   claimItem,
+  claimMileageRate,
   claimPolicy,
   claimRequest,
   claimType,
@@ -19,10 +21,11 @@ import {
   payrollBatch,
   payrollInput,
   person,
+  type ClaimMileageStamp,
   type ClaimRateConfig,
 } from '../db/schema';
 
-export type { ClaimRateConfig };
+export type { ClaimMileageStamp, ClaimRateConfig };
 import { toCsv } from '../lib/csv';
 import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
@@ -239,6 +242,102 @@ export async function listClaimLimits(ctx: SessionContext, p?: { asOf?: string }
       });
     }
     return out;
+  });
+}
+
+// ───────────── Grade-first Claim Limits (e7eb5d83 — the SCREEN inversion, no schema change) ─────────────
+//
+// listClaimLimits above is claim-type-first: one flat row per (type, grade), which with 55 grades × 4 claim
+// types is 220 rows in one nine-column table and is exactly why not one per-grade limit was ever configured
+// on production (measured 2026-08-06: claim_policy rows with a non-null grade_id = ZERO). This reader turns
+// the same rows the other way round — pick ONE grade, get every claim type as a row — and is presentation
+// only: no column, table or resolution rule changes.
+//
+// THE FALLBACK IS THE POINT. A grade with no row of its own does NOT have "no limit"; the tenant-wide
+// (grade_id NULL) row is what actually applies to its employees, and rendering that cell blank is how an
+// admin sets the same limit twice. `source` names which row won, so the screen can say so and a test can
+// assert it.
+
+/** The limit numbers themselves, independent of which tier they came from. */
+export type ClaimLimitValues = {
+  perClaimCap: number | null;
+  monthlyLimit: number | null;
+  annualBudget: number | null;
+  lifetimeLimit: number | null;
+  maxClaimsPerYear: number | null;
+  rateConfig: ClaimRateConfig | null;
+  validFrom: string;
+};
+
+export type ClaimGradeLimitRow = {
+  claimTypeId: string;
+  typeCode: string;
+  typeName: string;
+  /** Sub-types (claim_item) of this type — the screen indents them under their parent row. */
+  items: ClaimItemRow[];
+  /** The row set ON the selected grade, or null when this grade has none. */
+  own: ClaimLimitValues | null;
+  /** The tenant-wide (grade_id NULL) row, or null when the tenant has none either. */
+  fallback: ClaimLimitValues | null;
+  /** What actually applies to this grade's employees: own ?? fallback. */
+  effective: ClaimLimitValues | null;
+  /** 'grade' = its own row · 'company' = inherited from the tenant-wide row · 'none' = unlimited. */
+  source: 'grade' | 'company' | 'none';
+};
+
+const toLimitValues = (r: ClaimLimitRow): ClaimLimitValues => ({
+  perClaimCap: r.perClaimCap,
+  monthlyLimit: r.monthlyLimit,
+  annualBudget: r.annualBudget,
+  lifetimeLimit: r.lifetimeLimit,
+  maxClaimsPerYear: r.maxClaimsPerYear,
+  rateConfig: r.rateConfig,
+  validFrom: r.validFrom,
+});
+
+/**
+ * Every non-archived claim type as seen BY ONE JOB GRADE: its own limit row, the tenant-wide fallback, and
+ * which of the two applies. `gradeId: null` selects the tenant-wide view (own === fallback by construction,
+ * source 'company' when a row exists).
+ *
+ * Deliberately built on listClaimLimits + listClaimTypes rather than a third SQL query: the resolution rule
+ * ("the grade's own row wins, NULL is the fallback") already exists in getActiveClaimPolicy and a second
+ * hand-written copy of it is how the screen and the engine start disagreeing about what an employee is
+ * entitled to. Types with NO policy row at all still appear — listClaimLimits inner-joins from claim_policy
+ * and would drop them, and a claim type missing from the limits screen is unconfigurable.
+ */
+export async function listClaimLimitsForGrade(
+  ctx: SessionContext,
+  p: { gradeId: string | null; asOf?: string },
+): Promise<ClaimGradeLimitRow[]> {
+  const asOf = p.asOf ?? today();
+  const [limits, types] = await Promise.all([listClaimLimits(ctx, { asOf }), listClaimTypes(ctx, { asOf })]);
+  const byType = new Map<string, ClaimLimitRow[]>();
+  for (const l of limits) {
+    const arr = byType.get(l.claimTypeId);
+    if (arr) arr.push(l);
+    else byType.set(l.claimTypeId, [l]);
+  }
+  return types.map((t) => {
+    const rows = byType.get(t.id) ?? [];
+    const fallbackRow = rows.find((r) => r.gradeId == null) ?? null;
+    const ownRow = p.gradeId == null ? fallbackRow : (rows.find((r) => r.gradeId === p.gradeId) ?? null);
+    const own = ownRow ? toLimitValues(ownRow) : null;
+    const fallback = fallbackRow ? toLimitValues(fallbackRow) : null;
+    // Mirrors getActiveClaimPolicy's tiering exactly: grade-match wins, else the null-grade default.
+    const effective = own ?? fallback;
+    const source: ClaimGradeLimitRow['source'] =
+      p.gradeId != null && own != null ? 'grade' : effective != null ? 'company' : 'none';
+    return {
+      claimTypeId: t.id,
+      typeCode: t.code,
+      typeName: t.name,
+      items: t.items,
+      own,
+      fallback,
+      effective,
+      source,
+    };
   });
 }
 
@@ -571,6 +670,521 @@ export function computeClaimAmount(
   return p.enteredAmount ?? 0;
 }
 
+// ═══════════════ Mileage RATE TABLE (e7eb5d83) — banded · vehicle-classed · grade-scoped · dated ═══════════════
+//
+// The reporter's mileage question was half right, and the missing half was the important one. There WAS a
+// mileage rate: one flat number per kilometre (`rateConfig = {kind:'mileage_flat', ratePerKm}`) buried in a
+// claim-limit row. There was no rate TABLE — no distance bands, no vehicle types, no effective dates. You
+// could not pay 0.60 for the first 500km and 0.45 after that, and you could not change a rate without
+// changing what last year's claims would recompute to.
+//
+// Rev 3 added the second question: different job grades, different rate tables. That is the SAME shape as
+// the limits, and it is resolved by the SAME rule — see resolveMileageRateBands.
+//
+// BACK-COMPAT IS UNCONDITIONAL. A claim type with a mileage rateConfig and no rows in claim_mileage_rate
+// prices exactly as it did before, through computeClaimAmount. Nothing about the existing four claim types
+// changes until someone builds a table.
+
+/** Vehicle classes a rate table can be scoped to. 'any' is a real value and the default — one table that
+ *  applies whatever the employee drove, which is what every tenant has today. */
+export const MILEAGE_VEHICLE_CLASSES = ['any', 'car', 'motorcycle', 'van', 'lorry'] as const;
+export type MileageVehicleClass = (typeof MILEAGE_VEHICLE_CLASSES)[number];
+
+/** One distance band. `toKm` null = "and above" — the open top band every table must end with. */
+export type MileageBand = { fromKm: number; toKm: number | null; ratePerKm: number };
+
+/** A resolved rate table: the bands plus which tier they came from, so the stamp can record it. */
+export type ResolvedMileageTable = {
+  bands: MileageBand[];
+  source: 'grade' | 'company';
+  gradeId: string | null;
+  vehicleClass: string;
+  validFrom: string;
+};
+
+const bandOf = (r: typeof claimMileageRate.$inferSelect): MileageBand => ({
+  fromKm: Number(r.fromKm),
+  toKm: r.toKm == null ? null : Number(r.toKm),
+  ratePerKm: Number(r.ratePerKm),
+});
+
+/**
+ * Validate one rate table as a SET, not row by row. A band table that is not contiguous is not a slower
+ * table — it is a table that prices some distances at zero and nobody notices until a payout is short.
+ *
+ * The rules: starts at 0 · strictly ascending · each band's fromKm is the previous band's toKm (no gap, no
+ * overlap) · exactly one open band, and it is the last · every rate ≥ 0.
+ */
+export function assertValidMileageBands(bands: MileageBand[]): void {
+  if (bands.length === 0) throw new ClaimError('A mileage rate table needs at least one distance band');
+  const sorted = [...bands].sort((a, b) => a.fromKm - b.fromKm);
+  if (sorted[0].fromKm !== 0) throw new ClaimError('The first mileage band must start at 0 km');
+  for (let i = 0; i < sorted.length; i++) {
+    const b = sorted[i];
+    if (!Number.isFinite(b.ratePerKm) || b.ratePerKm < 0) throw new ClaimError('Rate per km must be a number ≥ 0');
+    if (!Number.isFinite(b.fromKm) || b.fromKm < 0) throw new ClaimError('Band start must be a number ≥ 0');
+    const last = i === sorted.length - 1;
+    if (last) {
+      if (b.toKm != null) throw new ClaimError('The last mileage band must be open-ended ("and above") — leave its upper limit blank');
+    } else {
+      if (b.toKm == null) throw new ClaimError('Only the LAST mileage band may be open-ended ("and above")');
+      if (!(b.toKm > b.fromKm)) throw new ClaimError('Each mileage band must end above where it starts');
+      if (sorted[i + 1].fromKm !== b.toKm) {
+        throw new ClaimError(
+          `Mileage bands must be continuous: the band after ${b.toKm} km must start at ${b.toKm} km ` +
+            `(it starts at ${sorted[i + 1].fromKm} km), or distances in the gap would be priced at nothing.`,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Price a distance against a band table — pure, so it is unit-testable without a database.
+ *
+ * MARGINAL, not flat-on-total: 700 km against [0–500 @ 0.60, 500+ @ 0.45] is 500×0.60 + 200×0.45, not
+ * 700×0.45. That is what "0.60 for the first 500km and 0.45 after that" means in the plan, and the
+ * breakdown is returned so the stamp can show the arithmetic rather than assert a total.
+ */
+export function priceMileage(bands: MileageBand[], km: number): { amount: number; breakdown: ClaimMileageStamp['bands'] } {
+  if (!(km > 0)) throw new ClaimError('Distance (km) must be greater than zero');
+  const sorted = [...bands].sort((a, b) => a.fromKm - b.fromKm);
+  const breakdown: ClaimMileageStamp['bands'] = [];
+  let amount = 0;
+  for (const b of sorted) {
+    const top = b.toKm ?? Infinity;
+    if (km <= b.fromKm) break;
+    const charged = Math.min(km, top) - b.fromKm;
+    if (charged <= 0) continue;
+    const line = charged * b.ratePerKm;
+    amount += line;
+    breakdown.push({ fromKm: b.fromKm, toKm: b.toKm, ratePerKm: b.ratePerKm, km: charged, amount: Number(line.toFixed(2)) });
+  }
+  return { amount: Number(amount.toFixed(2)), breakdown };
+}
+
+/**
+ * The active mileage rate table for (claim type, grade, vehicle class) at `asOf`, or null when none exists.
+ *
+ * ⚠️ THIS DELIBERATELY MIRRORS getActiveClaimPolicy INSTEAD OF INVENTING A SECOND RULE. Same ordering
+ * (latest valid_from first among rows whose half-open validity contains asOf), same tiering (a row set
+ * carrying the employee's grade wins; grade_id NULL is the company-wide fallback). Two independent
+ * "grade then fallback" resolutions will diverge, and the one that diverges silently is the one that pays
+ * money — the build notes call this out by name.
+ *
+ * Vehicle class falls back the same way: an exact-class table wins over the 'any' table.
+ */
+export async function resolveMileageRateBands(
+  tx: Tx,
+  claimTypeId: string,
+  asOf: string,
+  gradeId: string | null = null,
+  vehicleClass = 'any',
+): Promise<ResolvedMileageTable | null> {
+  const rows = await tx
+    .select()
+    .from(claimMileageRate)
+    .where(
+      and(
+        eq(claimMileageRate.claimTypeId, claimTypeId),
+        lte(claimMileageRate.validFrom, asOf),
+        or(isNull(claimMileageRate.validTo), sql`${claimMileageRate.validTo} > ${asOf}`),
+      ),
+    )
+    .orderBy(desc(claimMileageRate.validFrom));
+  if (rows.length === 0) return null;
+  // Candidate tiers in priority order: (grade, exact class) → (grade, any) → (null, exact class) → (null, any).
+  const tiers: { gradeId: string | null; vehicleClass: string; source: 'grade' | 'company' }[] = [];
+  if (gradeId) {
+    if (vehicleClass !== 'any') tiers.push({ gradeId, vehicleClass, source: 'grade' });
+    tiers.push({ gradeId, vehicleClass: 'any', source: 'grade' });
+  }
+  if (vehicleClass !== 'any') tiers.push({ gradeId: null, vehicleClass, source: 'company' });
+  tiers.push({ gradeId: null, vehicleClass: 'any', source: 'company' });
+
+  for (const tier of tiers) {
+    const inTier = rows.filter(
+      (r) => (r.gradeId ?? null) === tier.gradeId && r.vehicleClass === tier.vehicleClass,
+    );
+    if (inTier.length === 0) continue;
+    // rows are latest-validFrom-first, so inTier[0].validFrom identifies the ACTIVE version of this table;
+    // the table itself is every row of that tier sharing that validFrom (one row per band).
+    const validFrom = inTier[0].validFrom;
+    const bands = inTier.filter((r) => r.validFrom === validFrom).map(bandOf).sort((a, b) => a.fromKm - b.fromKm);
+    return { bands, source: tier.source, gradeId: tier.gradeId, vehicleClass: tier.vehicleClass, validFrom };
+  }
+  return null;
+}
+
+export type MileageRateTableRow = {
+  claimTypeId: string;
+  gradeId: string | null;
+  vehicleClass: string;
+  validFrom: string;
+  validTo: string | null;
+  bands: MileageBand[];
+};
+
+/**
+ * Every ACTIVE rate table for a claim type as seen by ONE grade — the admin Mileage Rates screen. Returns
+ * the grade's own tables when it has them and the company-wide ones when it does not, with `inherited`
+ * saying which, for the same reason the limits screen does: a blank is how an admin sets a rate twice.
+ */
+export async function listMileageRateTables(
+  ctx: SessionContext,
+  p: { claimTypeId: string; gradeId: string | null; asOf?: string },
+): Promise<{ tables: (MileageRateTableRow & { inherited: boolean })[] }> {
+  const asOf = p.asOf ?? today();
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select()
+      .from(claimMileageRate)
+      .where(
+        and(
+          eq(claimMileageRate.claimTypeId, p.claimTypeId),
+          lte(claimMileageRate.validFrom, asOf),
+          or(isNull(claimMileageRate.validTo), sql`${claimMileageRate.validTo} > ${asOf}`),
+        ),
+      )
+      .orderBy(desc(claimMileageRate.validFrom));
+    // Group into tables: (gradeId, vehicleClass, validFrom). Keep only the latest validFrom per tier.
+    const byTier = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const key = `${r.gradeId ?? ''}|${r.vehicleClass}`;
+      const arr = byTier.get(key);
+      if (arr) arr.push(r);
+      else byTier.set(key, [r]);
+    }
+    const out: (MileageRateTableRow & { inherited: boolean })[] = [];
+    for (const [, tierRows] of byTier) {
+      const validFrom = tierRows[0].validFrom;
+      const g = tierRows[0].gradeId ?? null;
+      // Only the selected grade's own tables and the company-wide ones are relevant to this view.
+      if (g !== p.gradeId && g !== null) continue;
+      out.push({
+        claimTypeId: p.claimTypeId,
+        gradeId: g,
+        vehicleClass: tierRows[0].vehicleClass,
+        validFrom,
+        validTo: tierRows[0].validTo ?? null,
+        bands: tierRows.filter((r) => r.validFrom === validFrom).map(bandOf).sort((a, b) => a.fromKm - b.fromKm),
+        inherited: p.gradeId != null && g == null,
+      });
+    }
+    // A grade's own table for a class HIDES the company-wide one for that class — showing both would leave
+    // the admin reading a row that does not apply to anybody.
+    const ownClasses = new Set(out.filter((t) => !t.inherited && t.gradeId != null).map((t) => t.vehicleClass));
+    const visible = p.gradeId == null ? out : out.filter((t) => !(t.inherited && ownClasses.has(t.vehicleClass)));
+    visible.sort((a, b) => a.vehicleClass.localeCompare(b.vehicleClass));
+    return { tables: visible };
+  });
+}
+
+/**
+ * Set (or replace) ONE rate table, effective-dated. Append-only CLOSE+INSERT on the whole SET — the same
+ * versioning setClaimPolicy uses, for the same reason: an in-place UPDATE would silently re-price the
+ * history, and a rate table with no history cannot answer "what did we pay in March".
+ *
+ * Passing an empty `bands` array CLOSES the table without opening a new one (the tier reverts to whatever
+ * it falls back to) — that is how a grade-specific override is removed.
+ */
+export async function setMileageRateTable(
+  ctx: SessionContext,
+  p: {
+    claimTypeId: string;
+    gradeId?: string | null;
+    vehicleClass?: string;
+    effectiveFrom: string;
+    bands: MileageBand[];
+  },
+): Promise<{ bands: number }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveFrom)) throw new ClaimError('effectiveFrom must be YYYY-MM-DD');
+  const vehicleClass = p.vehicleClass ?? 'any';
+  if (!(MILEAGE_VEHICLE_CLASSES as readonly string[]).includes(vehicleClass)) {
+    throw new ClaimError(`Unknown vehicle class: ${vehicleClass}`);
+  }
+  if (p.bands.length > 0) assertValidMileageBands(p.bands);
+  const gradeId = p.gradeId ?? null;
+  return withTenant(ctx, async (tx) => {
+    // Close the open version of THIS tier only — a null-safe grade compare so setting the Executive table
+    // never closes the Manager one (setClaimPolicy's exact idiom).
+    await tx
+      .update(claimMileageRate)
+      .set({ validTo: p.effectiveFrom })
+      .where(
+        and(
+          eq(claimMileageRate.claimTypeId, p.claimTypeId),
+          eq(claimMileageRate.vehicleClass, vehicleClass),
+          isNull(claimMileageRate.validTo),
+          gradeId == null ? isNull(claimMileageRate.gradeId) : eq(claimMileageRate.gradeId, gradeId),
+        ),
+      );
+    const sorted = [...p.bands].sort((a, b) => a.fromKm - b.fromKm);
+    if (sorted.length > 0) {
+      await tx.insert(claimMileageRate).values(
+        sorted.map((b) => ({
+          tenantId: ctx.tenantId,
+          claimTypeId: p.claimTypeId,
+          gradeId,
+          vehicleClass,
+          fromKm: b.fromKm.toFixed(2),
+          toKm: b.toKm == null ? null : b.toKm.toFixed(2),
+          ratePerKm: b.ratePerKm.toFixed(4),
+          validFrom: p.effectiveFrom,
+        })),
+      );
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-mileage-rate',
+      aggregateId: p.claimTypeId,
+      eventType: 'claim-mileage-rate.set',
+      actor: actorOf(ctx),
+      // Rates are CONFIG, not a claim amount — safe to log in full (ADR-0030, same call setClaimPolicy makes).
+      payload: { claimTypeId: p.claimTypeId, gradeId, vehicleClass, effectiveFrom: p.effectiveFrom, bands: sorted },
+    });
+    return { bands: sorted.length };
+  });
+}
+
+// ═══════════════════ Claim FORM DESIGNER (e7eb5d83) — per-claim-type custom fields ═══════════════════
+//
+// The one genuinely absent feature of the three the reporter raised: every claim type asked the same four
+// things — amount, date, receipt, description — and there was nothing anywhere that could say otherwise.
+// A grep for a dynamic-field table before building this returned nothing; it did not exist.
+
+/** Field kinds the designer offers. Pinned to the DB by nothing (the column is free text, deliberately —
+ *  see the migration header); pinned to reality by test/claims-form-designer.test.ts. */
+export const CLAIM_FIELD_KINDS = ['text', 'number', 'money', 'date', 'select', 'boolean'] as const;
+export type ClaimFieldKind = (typeof CLAIM_FIELD_KINDS)[number];
+
+/**
+ * ⚠️ THE FOUR BUILT-INS. These are NOT rows in claim_form_field and must never become rows.
+ *
+ * amount, incurred_on, description and the receipt attachment are real columns on claim_request with real
+ * behaviour hanging off them: per-claim cap / monthly / annual / lifetime arithmetic, the receipt-age
+ * window, taxable routing into payroll. Modelling them as configurable fields would put the limit engine
+ * behind a jsonb blob and let an admin delete the column the money is computed from.
+ *
+ * The designer renders them as fixed, undeletable rows ABOVE the custom list. This constant is what makes
+ * that true in the SERVICE and not merely in the UI: createClaimFormField refuses these keys outright, so a
+ * forged POST that skips the screen cannot smuggle one in either — which is precisely what the plan's test
+ * list asks to be proven ("the four built-ins cannot be deleted through any path including a forged POST").
+ */
+export const BUILT_IN_FIELD_KEYS = ['amount', 'incurredOn', 'incurred_on', 'description', 'receipt', 'attachment'] as const;
+
+export type ClaimFormFieldRowOut = {
+  id: string;
+  claimTypeId: string;
+  fieldKey: string;
+  label: string;
+  kind: ClaimFieldKind;
+  required: boolean;
+  options: string[];
+  sortOrder: number;
+};
+
+const toFieldRow = (r: typeof claimFormField.$inferSelect): ClaimFormFieldRowOut => ({
+  id: r.id,
+  claimTypeId: r.claimTypeId,
+  fieldKey: r.fieldKey,
+  label: r.label,
+  kind: r.kind as ClaimFieldKind,
+  required: r.required,
+  options: Array.isArray(r.options) ? (r.options as string[]) : [],
+  sortOrder: r.sortOrder,
+});
+
+/** Live custom fields for a claim type, in designer order, in the caller tx. */
+async function activeFormFieldsFor(tx: Tx, claimTypeId: string): Promise<ClaimFormFieldRowOut[]> {
+  const rows = await tx
+    .select()
+    .from(claimFormField)
+    .where(and(eq(claimFormField.claimTypeId, claimTypeId), isNull(claimFormField.archivedAt)))
+    .orderBy(claimFormField.sortOrder, claimFormField.createdAt);
+  return rows.map(toFieldRow);
+}
+
+/** The admin designer read: the live custom fields for one claim type. */
+export async function listClaimFormFields(ctx: SessionContext, p: { claimTypeId: string }): Promise<ClaimFormFieldRowOut[]> {
+  return withTenant(ctx, (tx) => activeFormFieldsFor(tx, p.claimTypeId));
+}
+
+const slugKey = (s: string): string =>
+  s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+/**
+ * Validate a claim's custom-field answers against the type's LIVE form, returning the coerced values to
+ * store (or null when the type has no custom fields — which is every claim type on production today, and
+ * why nothing an employee sees changes until an admin designs a form).
+ *
+ * Pure so it is unit-testable without a database, and used by BOTH submit paths (fresh and draft) so
+ * "required" cannot come to mean two different things.
+ *
+ * UNKNOWN KEYS ARE DROPPED, NOT REJECTED. A field archived between a draft being saved and submitted would
+ * otherwise make the draft permanently unsubmittable, and the answer is genuinely no longer part of the
+ * form. The archived row keeps whatever was already stored on historical claims.
+ */
+export function validateClaimFieldValues(
+  fields: ClaimFormFieldRowOut[],
+  values: Record<string, string | number | boolean | null> | null | undefined,
+): Record<string, string | number | boolean | null> | null {
+  if (fields.length === 0) return null;
+  const given = values ?? {};
+  const out: Record<string, string | number | boolean | null> = {};
+  for (const f of fields) {
+    const raw = Object.prototype.hasOwnProperty.call(given, f.fieldKey) ? given[f.fieldKey] : null;
+    const blank = raw == null || (typeof raw === 'string' && raw.trim() === '');
+    if (blank) {
+      // A boolean's "false" is an ANSWER, not a blank — an unticked checkbox posts nothing, so a required
+      // yes/no field is satisfied by its own absence and must not be treated as unanswered.
+      if (f.required && f.kind !== 'boolean') throw new ClaimError(`"${f.label}" is required`);
+      out[f.fieldKey] = f.kind === 'boolean' ? false : null;
+      continue;
+    }
+    switch (f.kind) {
+      case 'number':
+      case 'money': {
+        const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+        if (!Number.isFinite(n)) throw new ClaimError(`"${f.label}" must be a number`);
+        if (f.kind === 'money' && n < 0) throw new ClaimError(`"${f.label}" must be 0 or more`);
+        out[f.fieldKey] = n;
+        break;
+      }
+      case 'date': {
+        const s = String(raw).trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new ClaimError(`"${f.label}" must be a date (YYYY-MM-DD)`);
+        out[f.fieldKey] = s;
+        break;
+      }
+      case 'boolean':
+        out[f.fieldKey] = raw === true || raw === 'true' || raw === 'on' || raw === 1 || raw === '1';
+        break;
+      case 'select': {
+        const s = String(raw).trim();
+        // The option list is the whole point of a dropdown; accepting a value outside it would let a forged
+        // POST write anything into the field and make the configured choices decorative.
+        if (!f.options.includes(s)) throw new ClaimError(`"${s}" is not one of the choices for "${f.label}"`);
+        out[f.fieldKey] = s;
+        break;
+      }
+      default:
+        out[f.fieldKey] = String(raw);
+    }
+  }
+  return out;
+}
+
+/** Add a custom field to a claim type's form. */
+export async function createClaimFormField(
+  ctx: SessionContext,
+  p: { claimTypeId: string; label: string; kind: string; required?: boolean; options?: string[]; fieldKey?: string },
+): Promise<{ id: string }> {
+  const label = p.label.trim();
+  if (!label) throw new ClaimError('A field needs a label');
+  if (!(CLAIM_FIELD_KINDS as readonly string[]).includes(p.kind)) throw new ClaimError(`Unknown field type: ${p.kind}`);
+  const fieldKey = slugKey(p.fieldKey ?? label);
+  if (!fieldKey) throw new ClaimError('A field needs a label with at least one letter or digit');
+  // THE BUILT-IN GUARD, in the service — not in the screen. A forged POST reaches here too.
+  if ((BUILT_IN_FIELD_KEYS as readonly string[]).includes(fieldKey)) {
+    throw new ClaimError(
+      `"${label}" collides with a built-in claim field. Amount, date, description and receipt are always on ` +
+        `every claim form and are not configurable — choose a different label.`,
+    );
+  }
+  const options = (p.options ?? []).map((o) => o.trim()).filter((o) => o.length > 0);
+  if (p.kind === 'select' && options.length === 0) throw new ClaimError('A dropdown field needs at least one choice');
+  return withTenant(ctx, async (tx) => {
+    const [ct] = await tx.select({ id: claimType.id }).from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
+    if (!ct) throw new ClaimError('Unknown or archived claim type');
+    const existing = await activeFormFieldsFor(tx, p.claimTypeId);
+    if (existing.some((f) => f.fieldKey === fieldKey)) throw new ClaimError(`This claim form already has a field called "${label}"`);
+    const [row] = await tx
+      .insert(claimFormField)
+      .values({
+        tenantId: ctx.tenantId,
+        claimTypeId: p.claimTypeId,
+        fieldKey,
+        label,
+        kind: p.kind,
+        required: p.required ?? false,
+        options,
+        sortOrder: existing.length === 0 ? 0 : Math.max(...existing.map((f) => f.sortOrder)) + 1,
+      })
+      .returning({ id: claimFormField.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-form-field',
+      aggregateId: row.id,
+      eventType: 'claim-form-field.created',
+      actor: actorOf(ctx),
+      payload: { claimTypeId: p.claimTypeId, fieldKey, label, kind: p.kind, required: p.required ?? false, options },
+    });
+    return { id: row.id };
+  });
+}
+
+/** Rename / retype / re-require a custom field. `fieldKey` is deliberately NOT editable — renaming it would
+ *  orphan every answer already stored under it on historical claims. */
+export async function updateClaimFormField(
+  ctx: SessionContext,
+  p: { id: string; label: string; kind: string; required: boolean; options?: string[] },
+): Promise<void> {
+  const label = p.label.trim();
+  if (!label) throw new ClaimError('A field needs a label');
+  if (!(CLAIM_FIELD_KINDS as readonly string[]).includes(p.kind)) throw new ClaimError(`Unknown field type: ${p.kind}`);
+  const options = (p.options ?? []).map((o) => o.trim()).filter((o) => o.length > 0);
+  if (p.kind === 'select' && options.length === 0) throw new ClaimError('A dropdown field needs at least one choice');
+  await withTenant(ctx, async (tx) => {
+    const [row] = await tx.select().from(claimFormField).where(eq(claimFormField.id, p.id)).limit(1);
+    if (!row || row.archivedAt) throw new ClaimError('That claim form field no longer exists');
+    await tx.update(claimFormField).set({ label, kind: p.kind, required: p.required, options }).where(eq(claimFormField.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-form-field',
+      aggregateId: p.id,
+      eventType: 'claim-form-field.updated',
+      actor: actorOf(ctx),
+      payload: { claimTypeId: row.claimTypeId, fieldKey: row.fieldKey, label, kind: p.kind, required: p.required, options },
+    });
+  });
+}
+
+/** Remove a field from the form. ARCHIVE, never DELETE: the answers already stored against it on filed
+ *  claims must survive, and a claim whose stored values reference a vanished field is unreadable. */
+export async function archiveClaimFormField(ctx: SessionContext, id: string): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const [row] = await tx.select().from(claimFormField).where(eq(claimFormField.id, id)).limit(1);
+    if (!row || row.archivedAt) throw new ClaimError('That claim form field no longer exists');
+    await tx.update(claimFormField).set({ archivedAt: new Date() }).where(eq(claimFormField.id, id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-form-field',
+      aggregateId: id,
+      eventType: 'claim-form-field.archived',
+      actor: actorOf(ctx),
+      payload: { claimTypeId: row.claimTypeId, fieldKey: row.fieldKey },
+    });
+  });
+}
+
+/** Move a field one place up or down the form. Renumbers the whole live list so a sort_order collision
+ *  (two fields at 3) cannot make the order depend on insertion time. */
+export async function moveClaimFormField(ctx: SessionContext, p: { id: string; direction: 'up' | 'down' }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const [row] = await tx.select().from(claimFormField).where(eq(claimFormField.id, p.id)).limit(1);
+    if (!row || row.archivedAt) throw new ClaimError('That claim form field no longer exists');
+    const fields = await activeFormFieldsFor(tx, row.claimTypeId);
+    const i = fields.findIndex((f) => f.id === p.id);
+    const j = p.direction === 'up' ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= fields.length) return; // already at the end — a no-op, not an error
+    [fields[i], fields[j]] = [fields[j], fields[i]];
+    for (let k = 0; k < fields.length; k++) {
+      await tx.update(claimFormField).set({ sortOrder: k }).where(eq(claimFormField.id, fields[k].id));
+    }
+  });
+}
+
 export type EmployeeClaimType = {
   id: string;
   code: string;
@@ -580,6 +1194,9 @@ export type EmployeeClaimType = {
   /** Per-type receipt-backdate window in days (the per-type override, or the global default). */
   maxReceiptAgeDays: number;
   items: ClaimItemRow[];
+  /** e7eb5d83 — the custom fields designed for this claim type, in form order. EMPTY for every claim type
+   *  until an admin designs one, which is what makes the feature invisible to employees until configured. */
+  formFields: ClaimFormFieldRowOut[];
   balance: ClaimBalanceRow;
 };
 
@@ -634,6 +1251,7 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
           rateConfig: policy?.rateConfig ?? null,
           maxReceiptAgeDays: t.maxReceiptAgeDays ?? RECEIPT_BACKDATE_DAYS,
           items,
+          formFields: await activeFormFieldsFor(tx, t.id),
           balance,
         };
       }),
@@ -784,13 +1402,26 @@ type SubmitClaimInput = {
   claimItemId?: string | null;
   amount: number;
   quantityKm?: number | null;
+  /** e7eb5d83 — which vehicle the distance was driven in, when the rate table is class-scoped. */
+  vehicleClass?: string | null;
   incurredOn: string;
   description?: string | null;
   hasReceipt?: boolean;
+  /** e7eb5d83 — answers to the claim type's CUSTOM fields, keyed by field_key. Never the four built-ins. */
+  fieldValues?: Record<string, string | number | boolean | null> | null;
 };
 
 /** What validation+pricing decides for a claim about to enter the reserved set. */
-type PricedClaim = { amount: number; quantityKm: number | null; claimItemId: string | null; taxable: boolean };
+type PricedClaim = {
+  amount: number;
+  quantityKm: number | null;
+  claimItemId: string | null;
+  taxable: boolean;
+  /** The rate table this claim was priced under, to be STAMPED on the row. null = not banded-mileage. */
+  mileageStamp: ClaimMileageStamp | null;
+  /** Custom-field answers, validated + coerced against the claim type's live form. */
+  fieldValues: Record<string, string | number | boolean | null> | null;
+};
 
 /**
  * Validate, price and RESERVE-CHECK one claim, inside the caller's transaction.
@@ -846,8 +1477,39 @@ async function priceAndCheckClaimTx(
   }
 
   // 5. Derive the authoritative amount from the rate config BEFORE the value guards.
-  const quantityKm = policy?.rateConfig?.kind === 'mileage_flat' ? (p.quantityKm ?? null) : null;
-  const amount = computeClaimAmount(policy?.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.amount });
+  //
+  // e7eb5d83 — MILEAGE NOW PREFERS THE BANDED RATE TABLE, and falls back to the legacy flat ratePerKm when
+  // the tenant has not built one. Resolution is grade-scoped through resolveMileageRateBands, which reuses
+  // getActiveClaimPolicy's tiering rather than inventing a second one.
+  //
+  // ⚠️ RESOLVED AT SUBMIT AND STAMPED ON THE ROW (step 7 below writes it). The amount was always stored, so
+  // nothing recomputes; the stamp is what makes the stored figure EXPLAINABLE after the table is edited. A
+  // later rate-table change closes the old version and opens a new one — it never touches this claim.
+  const isMileage = policy?.rateConfig?.kind === 'mileage_flat';
+  const quantityKm = isMileage ? (p.quantityKm ?? null) : null;
+  const vehicleClass = p.vehicleClass ?? 'any';
+  let mileageStamp: ClaimMileageStamp | null = null;
+  let amount: number;
+  if (isMileage) {
+    const table = await resolveMileageRateBands(tx, p.claimTypeId, p.incurredOn, gradeId, vehicleClass);
+    if (table) {
+      const km = p.quantityKm;
+      if (km == null || !(km > 0)) throw new ClaimError('Distance (km) must be greater than zero');
+      const priced = priceMileage(table.bands, km);
+      amount = priced.amount;
+      mileageStamp = {
+        vehicleClass: table.vehicleClass,
+        source: table.source,
+        gradeId: table.gradeId,
+        tableValidFrom: table.validFrom,
+        bands: priced.breakdown,
+      };
+    } else {
+      amount = computeClaimAmount(policy?.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.amount });
+    }
+  } else {
+    amount = computeClaimAmount(policy?.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.amount });
+  }
   if (!(amount > 0)) throw new ClaimError('Amount must be greater than zero');
   if (policy?.perClaimCap != null && amount > policy.perClaimCap) {
     throw new ClaimError(
@@ -899,14 +1561,21 @@ async function priceAndCheckClaimTx(
   // 6. Receipt-required check (type-level, unchanged).
   if (ct.requiresReceipt && !p.hasReceipt) throw new ClaimError('A receipt is required for this claim type');
 
-  return { amount, quantityKm, claimItemId, taxable: ct.defaultTaxable };
+  // 7. e7eb5d83 — the claim type's CUSTOM fields. Runs here, inside the same gauntlet a draft being
+  //    submitted goes through, so "required" means the same thing on both paths. A type with no designed
+  //    fields returns null and nothing about the claim changes — which is the plan's promise that nothing
+  //    an employee sees changes until the form is configured.
+  const fields = await activeFormFieldsFor(tx, p.claimTypeId);
+  const fieldValues = validateClaimFieldValues(fields, p.fieldValues ?? null);
+
+  return { amount, quantityKm, claimItemId, taxable: ct.defaultTaxable, mileageStamp, fieldValues };
 }
 
 /** The submit body, running INSIDE a caller-provided tx so it can be composed atomically with a receipt
  *  write (see submitClaimWithAttachment). The date-format guard runs before the tx opens in the public
  *  wrappers; everything that touches the DB lives here so a downstream failure rolls the claim back too. */
 async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): Promise<{ id: string }> {
-  const { amount, quantityKm, claimItemId, taxable } = await priceAndCheckClaimTx(tx, ctx, p);
+  const { amount, quantityKm, claimItemId, taxable, mileageStamp, fieldValues } = await priceAndCheckClaimTx(tx, ctx, p);
 
   // Insert with the dependent item, mileage km, and computed amount — still inside the limit lock taken by
   // priceAndCheckClaimTx, so the row joins the reserved set before any other transaction can read the sum.
@@ -919,6 +1588,10 @@ async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): 
       claimItemId,
       amount: amount.toFixed(2),
       quantityKm: quantityKm == null ? null : quantityKm.toFixed(2),
+      // e7eb5d83 — the rate table this claim was priced under, written in the SAME insert as the amount it
+      // produced. Written together or not at all: a stamp that can lag the amount is worse than no stamp.
+      mileageRateApplied: mileageStamp,
+      fieldValues,
       incurredOn: p.incurredOn,
       description: p.description ?? null,
       taxable,
@@ -1150,6 +1823,10 @@ export type DraftClaimInput = {
   quantityKm?: number | null;
   incurredOn: string;
   description?: string | null;
+  /** e7eb5d83 — custom-field answers, stored as given. NOT validated at save: a half-answered form is the
+   *  normal state of a draft, and refusing to save one because a required field is blank defeats drafts
+   *  entirely. validateClaimFieldValues runs at SUBMIT, which is the same posture as the limit checks. */
+  fieldValues?: Record<string, string | number | boolean | null> | null;
 };
 
 /** Amount a draft SHOWS in the list. Provisional only — the authoritative amount is derived at submit from
@@ -1215,6 +1892,7 @@ export async function saveClaimDraft(
       incurredOn: p.incurredOn,
       description: p.description ?? null,
       taxable: ct.defaultTaxable,
+      fieldValues: p.fieldValues ?? null,
     };
 
     if (p.id) {
@@ -1326,6 +2004,10 @@ export async function submitDraftClaims(ctx: SessionContext, p: { ids: string[] 
         claimItemId: claimRequest.claimItemId,
         amount: claimRequest.amount,
         quantityKm: claimRequest.quantityKm,
+        // e7eb5d83 — MUST be projected. A draft's custom-field answers are stored when it is saved; if the
+        // submit path did not read them back, every required field would refuse every draft ("not answered")
+        // even though the employee had answered it, which is the projection trap leave-type documents.
+        fieldValues: claimRequest.fieldValues,
         incurredOn: claimRequest.incurredOn,
         description: claimRequest.description,
         typeName: claimType.name,
@@ -1361,6 +2043,7 @@ export async function submitDraftClaims(ctx: SessionContext, p: { ids: string[] 
           incurredOn: d.incurredOn,
           description: d.description,
           hasReceipt,
+          fieldValues: d.fieldValues ?? null,
           excludeId: d.id,
         });
       } catch (e) {
@@ -1377,6 +2060,10 @@ export async function submitDraftClaims(ctx: SessionContext, p: { ids: string[] 
           amount: priced.amount.toFixed(2),
           quantityKm: priced.quantityKm == null ? null : priced.quantityKm.toFixed(2),
           taxable: priced.taxable,
+          // e7eb5d83 — a draft is priced at SUBMIT, so the rate it is stamped with is the one live on the
+          // day it was filed, not the day it was drafted. Same column, same transition, same reservation.
+          mileageRateApplied: priced.mileageStamp,
+          fieldValues: priced.fieldValues,
         })
         .where(eq(claimRequest.id, d.id));
       await appendEvent(tx, {
