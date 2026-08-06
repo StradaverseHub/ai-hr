@@ -31,11 +31,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { createLeavePolicy } from '../core/admin';
 import { openLeaveYear } from '../core/leave';
 import { previewLeaveGeneration, runLeaveGeneration, listLeaveGenerationRuns, leaveGenerationRunCsv } from '../core/leave-generation';
 import { ORG_CRITERIA_FIELDS, ORG_CRITERIA_RANGE_FIELDS } from '../core/org-criteria';
-import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, '..');
@@ -71,8 +70,11 @@ const addType = async (code: string, name: string) => {
   return t.id;
 };
 
+/** 6e9a126e RELEASE THREE — the same "this type grants N days" fixture, on the entitlement template layer.
+ *  Nothing else about it changes: no carry cap (an unruled type with no per-band carry resolves to 0, the
+ *  old `carryForwardMax: 0`), and a validFrom well before every hire date so it is in force throughout. */
 const policyFor = (leaveTypeId: string, annualDays: number) =>
-  createLeavePolicy(adminCtx(b), { leaveTypeId, annualDays, carryForwardMax: 0, validFrom: '2020-01-01' });
+  seedEntitlement(adminCtx(b), { leaveTypeId, annualDays, validFrom: '2020-01-01' });
 
 /** Every accrual row this tenant's ledger holds at a year start — the thing a dry run must not create. */
 const accrualRowsAt = async (effectiveOn: string): Promise<number> => {

@@ -6,22 +6,29 @@
  * employee's profile triggers an automatic recheck, and that recheck would post a NEGATIVE correction —
  * days SUBTRACTED from what people currently have left."
  *
- * The mechanism, precisely: `entitledDays` composes `schemeDays ?? policyDays` and its callers pass
- * `pol?.days ?? 0`, so an employee with NO scheme entitlement and NO matching policy row composes to a
- * confident 0. `projectExpectedEntitlement` then returns expected 0, and every caller computes
- * `delta = 0 − alreadyPosted` and posts an `adjustment` for the difference. And the EA-1955 floor no
- * longer props the number up: fa3f4ccb made it ADVISORY at the reporter's written request.
+ * The mechanism, precisely: the composition resolves an entitlement and its callers pass `days ?? 0`, so an
+ * employee for whom NOTHING resolves composes to a confident 0. `projectExpectedEntitlement` then returns
+ * expected 0, and every caller computes `delta = 0 − alreadyPosted` and posts an `adjustment` for the
+ * difference. And the EA-1955 floor no longer props the number up: fa3f4ccb made it ADVISORY at the
+ * reporter's written request.
  *
  * The guard ships in RELEASE ONE, which clears nothing, rather than in release three, which clears
  * everything — a safety property landing in the same change as its hazard has never been observed working
  * without it.
+ *
+ * ⚠️ 6e9a126e RELEASE THREE REPOINTED THIS FILE, AND IT IS THE ONE FILE THAT MATTERS MOST. `leave_policy`,
+ * `benefit_scheme` and `scheme_leave_entitlement` are dropped by migration 0405, and this release ships
+ * with the replacement layer EMPTY — so from the moment it deploys EVERY employee/type pair takes the
+ * guarded branch, on an ordinary profile save. What was "clear every leave_policy row" below is now "clear
+ * every entitlement template and eligibility rule"; the hazard, the arithmetic and the negative control are
+ * unchanged. NOT ONE ASSERTION WAS LOOSENED — the predicate simply reads the one remaining layer.
  *
  * WHAT IS PINNED HERE:
  *  1. the pure predicate's absence-vs-explicit-zero distinction;
  *  2. the live path: an employee holding a granted balance, with the configuration then removed, is left
  *     ALONE — delta exactly 0, balance untouched. WATCHED FAIL: with the guard removed this posts −14 and
  *     drives the balance to 0, which is the reported hazard reproduced;
- *  3. THE NEGATIVE CONTROL, and it matters as much: a policy that says 0 days is an OPINION somebody
+ *  3. THE NEGATIVE CONTROL, and it matters as much: a template band that says 0 days is an OPINION somebody
  *     typed, and it must still claw back. A guard that swallowed that too would silently break every
  *     legitimate downward correction.
  *  4. `openLeaveYear` writes NO ledger row for an unconfigured standing type — the property the plan's
@@ -35,14 +42,24 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { createLeavePolicy } from '../core/admin';
+import { updateEntitlementTemplate } from '../core/entitlement-template';
 import {
   accrueEarnedLeave,
   noEntitlementOpinion,
   openLeaveYear,
   reprojectEntitlementForEmployment,
 } from '../core/leave';
-import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  ledgerBalance,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  seedEntitlement,
+  type Base,
+} from './harness';
 
 let b: Base;
 const ASOF = '2026-06-30';
@@ -70,8 +87,18 @@ const hire = (hiredOn: string) =>
     grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
   });
 
-/** Every leave_policy row for the tenant — the reset, simulated at the owner level. */
-const wipeAllPolicies = () => owner.db.delete(schema.leavePolicy);
+/**
+ * THE RESET, simulated at the owner level: every entitlement TEMPLATE and every ELIGIBILITY RULE the tenant
+ * holds. Release three's migration 0405 does exactly this to the live tenant (after archiving it), which is
+ * why the guard below is what stands between the customer and every balance moving on deploy day.
+ *
+ * Both tables, not just one: a template with no rule resolves for nobody, so deleting only the rules would
+ * ALSO produce "no opinion" — and the test would then pass without ever proving the templates were read.
+ */
+const wipeAllEntitlement = async () => {
+  await owner.db.delete(schema.entitlementEligibilityRule);
+  await owner.db.delete(schema.entitlementTemplate);
+};
 
 const annualLedgerRows = (employmentId: string) =>
   owner.db
@@ -85,37 +112,30 @@ const annualLedgerRows = (employmentId: string) =>
     );
 
 describe('noEntitlementOpinion — absence and an explicit zero are different facts', () => {
-  it('no template, no scheme and no policy is NO OPINION', () => {
-    expect(noEntitlementOpinion({ templateDays: null, schemeDays: null, policy: null })).toBe(true);
+  // RELEASE THREE: the predicate's two dropped slots (`schemeDays`, `policy`) went with their tables, so the
+  // four cases below collapse to two — over the ONE layer that is left. The DISTINCTION they were all
+  // restating is untouched and is still asserted in both directions.
+  it('no entitlement template resolves for this employee and type is NO OPINION', () => {
+    expect(noEntitlementOpinion({ templateDays: null })).toBe(true);
   });
 
-  it('a policy resolving ZERO days is an opinion somebody typed, not an absence', () => {
-    // This is the distinction the whole guard turns on. `pol?.days ?? 0` flattens these two into the same
-    // number, which is exactly why the predicate reads the RESOLUTIONS and not the composed figure.
-    expect(noEntitlementOpinion({ templateDays: null, schemeDays: null, policy: { days: 0, carryMax: 0 } })).toBe(
-      false,
-    );
-  });
-
-  it('a scheme band of ZERO days is an opinion too', () => {
-    expect(noEntitlementOpinion({ templateDays: null, schemeDays: 0, policy: null })).toBe(false);
-  });
-
-  it('a resolved template supersedes the question — release two passes it, release one always passes null', () => {
-    expect(noEntitlementOpinion({ templateDays: 0, schemeDays: null, policy: null })).toBe(false);
-    expect(noEntitlementOpinion({ templateDays: 18, schemeDays: null, policy: null })).toBe(false);
+  it('a template band of ZERO days is an opinion somebody typed, not an absence', () => {
+    // This is the distinction the whole guard turns on. `days ?? 0` flattens these two into the same number,
+    // which is exactly why the predicate reads the RESOLUTION and not the composed figure.
+    expect(noEntitlementOpinion({ templateDays: 0 })).toBe(false);
+    expect(noEntitlementOpinion({ templateDays: 18 })).toBe(false);
   });
 });
 
 describe('the reset cannot claw back days: an unconfigured type is left alone', () => {
-  it('clearing every policy leaves the balance EXACTLY where it was — delta 0, no adjustment row', async () => {
+  it('clearing every entitlement table leaves the balance EXACTLY where it was — delta 0, no adjustment row', async () => {
     const ctx = adminCtx(b);
-    await createLeavePolicy(ctx, { leaveTypeId: b.annualLeaveTypeId, annualDays: 14, validFrom: '2020-01-01' });
+    await seedEntitlement(ctx, { leaveTypeId: b.annualLeaveTypeId, annualDays: 14, validFrom: '2020-01-01' });
     const emp = await hire('2026-01-01');
     expect(await ledgerBalance(emp.employmentId, b.annualLeaveTypeId)).toBe(14);
 
     // THE RESET, in miniature: the configuration goes, the ledger stays.
-    await wipeAllPolicies();
+    await wipeAllEntitlement();
 
     const res = await reprojectEntitlementForEmployment(ctx, {
       employmentId: emp.employmentId,
@@ -132,9 +152,9 @@ describe('the reset cannot claw back days: an unconfigured type is left alone', 
 
   it('and it stays inert on repeat — a second save posts nothing either', async () => {
     const ctx = adminCtx(b);
-    await createLeavePolicy(ctx, { leaveTypeId: b.annualLeaveTypeId, annualDays: 14, validFrom: '2020-01-01' });
+    await seedEntitlement(ctx, { leaveTypeId: b.annualLeaveTypeId, annualDays: 14, validFrom: '2020-01-01' });
     const emp = await hire('2026-01-01');
-    await wipeAllPolicies();
+    await wipeAllEntitlement();
     for (let attempt = 0; attempt < 3; attempt++) {
       const res = await reprojectEntitlementForEmployment(ctx, {
         employmentId: emp.employmentId,
@@ -146,15 +166,26 @@ describe('the reset cannot claw back days: an unconfigured type is left alone', 
     expect(await ledgerBalance(emp.employmentId, b.annualLeaveTypeId)).toBe(14);
   });
 
-  it('NEGATIVE CONTROL — a policy that SAYS zero still claws back, because that is a real answer', async () => {
+  it('NEGATIVE CONTROL — a template that SAYS zero still claws back, because that is a real answer', async () => {
     const ctx = adminCtx(b);
-    await createLeavePolicy(ctx, { leaveTypeId: b.annualLeaveTypeId, annualDays: 14, validFrom: '2020-01-01' });
+    const tpl = await seedEntitlement(ctx, {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 14,
+      validFrom: '2020-01-01',
+    });
     const emp = await hire('2026-01-01');
     expect(await ledgerBalance(emp.employmentId, b.annualLeaveTypeId)).toBe(14);
 
     // Not a reset: somebody deliberately superseded the running version with a zero-day one. The guard
-    // must NOT swallow this, or every legitimate downward correction disappears with it.
-    await createLeavePolicy(ctx, { leaveTypeId: b.annualLeaveTypeId, annualDays: 0, validFrom: '2026-01-02' });
+    // must NOT swallow this, or every legitimate downward correction disappears with it. `updateEntitlement-
+    // Template` is the template layer's own supersede-in-place writer — the direct successor to the second
+    // `createLeavePolicy` this line used to be, and the eligibility rule points at the LINEAGE so it follows
+    // the new version without being rewritten.
+    await updateEntitlementTemplate(ctx, {
+      lineageId: tpl.lineageId,
+      serviceBands: [{ fromYears: 0, toYears: null, days: 0 }],
+      validFrom: '2026-01-02',
+    });
     const res = await reprojectEntitlementForEmployment(ctx, {
       employmentId: emp.employmentId,
       asOf: ASOF,

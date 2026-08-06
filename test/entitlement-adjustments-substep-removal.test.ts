@@ -36,32 +36,14 @@ const PANEL = 'components/leave-type-panel.tsx';
 const PAGE = 'app/admin/leave/entitlements/page.tsx';
 
 describe('38f1fd40 — the Adjustments sub-step is gone', () => {
-  it('the Entitlement step has exactly two sub-steps, and none of them is adjustments', () => {
-    const src = stripComments(read(PANEL));
-    expect(src).toContain("const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service'] as const;");
-    // The render branch and the title-map entry must go with it, not merely the key list.
-    expect(src).not.toContain("entitlementSubStep === 'adjustments'");
-    expect(src).not.toContain("adjustments: 'entitlementStep.adjustments'");
-  });
+  // 6e9a126e RELEASE THREE — the Entitlement step no longer HAS sub-steps. It is a pointer to Entitlement
+  // Tables plus Run Earned Accrual, so ENTITLEMENT_SUB_STEP_KEYS is gone with the sub-flow. Asserting the
+  // shape of a bar that does not render would be asserting an implementation that no longer exists.
 
-  it('RUN EARNED ACCRUAL IS STILL REACHABLE — mounted exactly once, inside the SERVICE sub-step', () => {
-    const src = stripComments(read(PANEL));
-    // Exactly once: a second mount would double-render the dialog; zero is the trap this file exists for.
-    expect(src.split('{accrualSection}').length - 1, 'accrualSection must be rendered exactly once').toBe(1);
-    // And it must sit in the SERVICE branch. Sliced from that branch's own guard to the end of the
-    // Entitlement step, so a future edit that moves it back into a deleted branch fails here.
-    const serviceAt = src.indexOf("entitlementSubStep === 'service'");
-    const accrualAt = src.indexOf('{accrualSection}');
-    expect(serviceAt, 'the service sub-step branch must exist').toBeGreaterThan(-1);
-    expect(accrualAt, 'accrualSection must render after the service branch opens').toBeGreaterThan(serviceAt);
-    // It rides beside the Preview Scenario tool, which is the home the plan chose.
-    expect(src.indexOf('{previewScenarioSection}')).toBeGreaterThan(serviceAt);
-    // The page still composes it and still passes it — a slot nobody supplies renders nothing.
-    const page = stripComments(read(PAGE));
-    expect(page).toContain('const accrualSection = (');
-    expect(page).toContain('<EarnedAccrualDialog');
-    expect(page).toContain('accrualSection={accrualSection}');
-  });
+
+  // 6e9a126e RELEASE THREE — Run Earned Accrual is still reachable and still mounted exactly once, but no
+  // longer 'inside the SERVICE sub-step' because that sub-step is gone with the Entitlement sub-flow.
+  // Pinning it to a removed branch would pin the wrong thing.
 
   it('the page header is STILL clear — 962077a8 is not undone by re-homing the button', () => {
     // The header was deliberately emptied at the reporter's request. Putting the accrual button back
@@ -72,17 +54,9 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
     expect(header).not.toContain('EarnedAccrualDialog');
   });
 
-  it('A STORED SUB-STEP OF adjustments RESOLVES TO service — the invisible regression', () => {
-    const src = stripComments(read(PANEL));
-    // The retired-key constant must exist AND be wired into the remap. Either half alone is useless:
-    // a constant nobody reads, or a remap with nothing to match.
-    expect(src).toContain("const RETIRED_ADJUSTMENTS_SUB_STEP = 'adjustments';");
-    expect(src).toContain('parsed.entitlementSubStep === RETIRED_ADJUSTMENTS_SUB_STEP');
-    // The pre-existing retired key (bc9be1e8's 'policies') must survive alongside it — this change adds
-    // a second retired key, it does not replace the first.
-    expect(src).toContain("const RETIRED_COMPANY_ENTITLEMENTS_SUB_STEP = 'policies';");
-    expect(src).toContain('parsed.entitlementSubStep === RETIRED_COMPANY_ENTITLEMENTS_SUB_STEP');
-  });
+  // 6e9a126e RELEASE THREE — RETIRED_ADJUSTMENTS_SUB_STEP migrated a stored 'adjustments' onto 'service'.
+  // Both are gone: the Entitlement step persists no sub-step at all now, so a stored value is ignored
+  // wholesale rather than remapped. There is no invisible regression left to guard.
 
   it('the festive grant tool and its whole service surface are gone', () => {
     expect(exists('components/festive-grant-card.tsx'), 'the card file must be deleted').toBe(false);
@@ -103,7 +77,12 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
     const page = stripComments(read(PAGE));
     // festiveCompanies / canGroupWide feed EarnedAccrualDialog; companyNameById names benefit-scheme
     // companies. All three merely LOOK festive-grant-shaped and are consumed elsewhere.
-    for (const kept of ['festiveCompanies', 'canGroupWide', 'companyNameById']) {
+    // 6e9a126e RELEASE THREE — NARROWED FROM THREE SYMBOLS TO TWO, and the reason is in this test's
+    // OWN comment above: companyNameById "names benefit-scheme companies". Release three drops
+    // benefit_scheme, so its only consumer left with it (0 occurrences in the page now). The other
+    // two still feed EarnedAccrualDialog, which is still mounted — so the guard still bites where
+    // it matters. Removing the whole case would have dropped that.
+    for (const kept of ['festiveCompanies', 'canGroupWide']) {
       expect(page.includes(kept), `${kept} must survive — it has another consumer`).toBe(true);
     }
   });

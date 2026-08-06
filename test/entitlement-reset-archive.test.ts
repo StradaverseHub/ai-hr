@@ -1,37 +1,44 @@
 /**
- * 6e9a126e RELEASE ONE — the written record of everything the reset will clear, and its READER.
+ * 6e9a126e — the written record of everything the reset cleared, and its READER.
  *
  * The approved plan tells the reporter: "Before anything is cleared we take a written record of BOTH
  * layers… That record becomes a read-only listing inside your admin screens that you can open and
  * download, so you read the old figures off it while you retype them rather than working from memory."
  *
- * ⚠️ THE CITED PRECEDENT IS A WARNING, NOT A MODEL. `leave_shared_group_reset_archive` (0342) has the
- * right SHAPE — denormalised to text so it survives the DROP of everything it describes — and the wrong
- * POSTURE: test/shared-leave-group-single-mechanism.test.ts asserts that no core file reads it. So the
- * things pinned here are the ones that precedent got wrong:
+ * ⚠️ RELEASE THREE CUT THIS FILE IN HALF, AND THE HALF THAT WENT IS THE CAPTURE.
  *
- *  1. BOTH layers are captured. Revision 3 of the plan specified only the scheme side; the 67 leave_policy
- *     rows are the OTHER HALF of what release three clears, and on production they are doing most of the
- *     work (17 of 26 live employments fall through to them).
- *  2. A scheme with NO entitlement table still appears. Two such schemes exist on production. A record
- *     that silently omits them under-reports what was configured.
- *  3. The band table is rendered READABLE, in the reporter's own column order, because retyping from it is
- *     its entire purpose.
- *  4. It is RE-RUNNABLE and tagged, because release three re-captures immediately before clearing.
- *  5. There is a reader and a CSV.
+ * The capture is `app.capture_entitlement_reset_archive()` (migration 0398), and every string it renders
+ * is read out of `benefit_scheme`, `scheme_leave_entitlement` and `leave_policy`. Migration 0405 calls it
+ * once — in the same transaction, immediately before dropping all three. After that transaction commits
+ * there is nothing left for it to read, so the tests that seeded those tables and asserted the rendered
+ * text CANNOT BE REPOINTED AT ANYTHING: re-creating the three tables to feed them would be testing the
+ * layer this release exists to delete. They are retired, and the specific assertions and what each one
+ * protected are listed in the commit that removed them.
+ *
+ * WHAT SURVIVES IS THE HALF RELEASE THREE ACTUALLY DEPENDS ON. The archive is DENORMALISED TO TEXT
+ * precisely so it outlives the tables it describes — that design claim is what makes the drop
+ * survivable, and it is now literally true here: not one test below can reach a benefit scheme or a leave
+ * policy, because neither table exists, and the listing, the snapshot selection and the CSV all still
+ * work. Those are the reporter's "open it and download it", and they are what the retyping is done from.
+ *
+ * ⚠️ THE ROWS ARE SEEDED DIRECTLY, AND NO TEST ASSERTS THE TEXT IT SEEDED. A reader test that writes
+ * "0-2 yrs: 14 days" into a column and then expects to read it back proves only that Postgres stores
+ * strings. Every expectation below is on something the READER decides: which snapshot is shown, what
+ * order rows come back in, and the two places the CSV must SPELL OUT a null rather than leave a blank
+ * cell. The rendering itself was the capture's job and the capture is gone.
  */
-import { randomUUID } from 'node:crypto';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createJobGrade, createLeavePolicy } from '../core/admin';
-import { createBenefitScheme, createGradeGroup, upsertSchemeEntitlement } from '../core/benefit-scheme';
+import * as schema from '../db/schema';
 import {
   captureEntitlementResetArchive,
   entitlementResetArchiveCsv,
   listEntitlementArchiveCaptures,
   listEntitlementResetArchive,
 } from '../core/entitlement-archive';
-import type { ServiceBand } from '../core/leave-compute';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
 const TAG = 'test-capture';
@@ -47,200 +54,59 @@ afterAll(async () => {
   await closeAll();
 });
 
-const REPORTER_TABLE: ServiceBand[] = [
-  { fromYears: 0, toYears: 2, days: 14, carryForwardDays: 5, maxBalanceDays: 19 },
-  { fromYears: 2, toYears: null, days: 16, carryForwardDays: 5, maxBalanceDays: 21 },
-];
-
-/** A scheme WITH a band table, a scheme WITHOUT one, and two dated leave_policy versions. */
-async function seedBothLayers() {
-  const ctx = adminCtx(b);
-  const grade = await createJobGrade(ctx, { code: `G${randomUUID().slice(0, 4)}`, name: 'Grade 12' });
-  const group = await createGradeGroup(ctx, { name: 'Grade 12-15', gradeIds: [grade.id] });
-
-  const configured = await createBenefitScheme(ctx, {
-    companyId: b.companyId,
-    employmentType: 'full_time',
-    gradeGroupId: group.id,
-    name: 'Grade 12-15 Permanent',
-    schemeCategory: 'Permanent',
-    status: 'active',
-  });
-  await upsertSchemeEntitlement(ctx, {
-    benefitSchemeId: configured.id,
-    leaveTypeId: b.annualLeaveTypeId,
-    serviceBands: REPORTER_TABLE,
+/**
+ * One archived row, written the way the capture wrote it: flat text, no foreign key to anything. The
+ * owner connection is used because the capture ran as SQL rather than through any TS writer — there is no
+ * app-level insert path for this table and inventing one for a test would be a second mechanism.
+ */
+type ArchiveSeed = Partial<typeof schema.entitlementResetArchive.$inferInsert> & { layer: 'scheme' | 'policy' };
+const archived = async (p: ArchiveSeed & { captureTag?: string; capturedAt?: Date }) =>
+  owner.db.insert(schema.entitlementResetArchive).values({
+    tenantId: b.tenantId,
+    captureTag: p.captureTag ?? TAG,
+    ...p,
   });
 
-  // The production case that makes the LEFT JOIN load-bearing: a scheme somebody created and never filled
-  // in. Two of these exist live.
-  const empty = await createBenefitScheme(ctx, {
-    companyId: b.companyId,
-    employmentType: 'contract',
-    gradeGroupId: group.id,
-    name: 'Contract (unfilled)',
-    status: 'active',
-  });
-
-  // The policy layer — TWO versions, so the dated windows are exercised rather than just the running one.
-  await createLeavePolicy(ctx, {
-    leaveTypeId: b.annualLeaveTypeId,
-    annualDays: 12,
-    carryForwardMax: 5,
-    method: 'earned_monthly',
-    validFrom: '2024-01-01',
-  });
-  await createLeavePolicy(ctx, {
-    leaveTypeId: b.annualLeaveTypeId,
-    annualDays: 14,
-    validFrom: '2026-01-01',
-  });
-  return { grade, group, configured, empty };
-}
-
-describe('the entitlement reset archive captures BOTH layers, in text', () => {
-  it('records the scheme layer with its band table rendered the way the reporter reads it', async () => {
-    await seedBothLayers();
-    const res = await captureEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    expect(res.schemeRows).toBe(2); // one configured + one with no entitlement table
-    expect(res.policyRows).toBe(2); // both dated versions
+describe('the archive listing is readable with the layers it describes already dropped', () => {
+  it('returns a capture\'s rows scheme-layer first, then by scheme, leave type, company and start date', async () => {
+    // Inserted in deliberately wrong order, so passing means the READER sorted rather than the database
+    // happening to hand rows back in insertion order.
+    await archived({ layer: 'policy', leaveTypeName: 'Annual Leave', validFromText: '2026-01-01' });
+    await archived({ layer: 'policy', leaveTypeName: 'Annual Leave', validFromText: '2024-01-01' });
+    await archived({ layer: 'scheme', schemeName: 'Grade 12-15 Permanent', leaveTypeName: 'Annual Leave' });
+    await archived({ layer: 'scheme', schemeName: 'Contract (unfilled)', leaveTypeName: 'Annual Leave' });
 
     const rows = await listEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    const scheme = rows.find((r) => r.schemeName === 'Grade 12-15 Permanent')!;
-    expect(scheme.layer).toBe('scheme');
-    expect(scheme.schemeCategory).toBe('Permanent');
-    expect(scheme.leaveTypeName).toBe('Annual Leave');
-    expect(scheme.leaveTypeCode).toBe('ANNUAL');
-    expect(scheme.companyName).toBe('Acme Sdn Bhd');
-    expect(scheme.employmentType).toBe('full_time');
-    expect(scheme.schemeGradeGroupName).toBe('Grade 12-15');
-    // The grade group SURVIVES the reset, but the record still says who the table reached — a group name
-    // with no members is not something anybody can retype against.
-    expect(scheme.schemeGradeGroupMembers).toContain('Grade 12');
-    // The reporter's four columns, in their order, as readable text. This string is the deliverable.
-    expect(scheme.entitlementText).toBe(
-      '0-2 yrs: 14 days, max brought forward 5, max entitled + brought forward 19 | ' +
-        '2-no limit yrs: 16 days, max brought forward 5, max entitled + brought forward 21',
-    );
-    // The scheme layer genuinely has no dates. Saying so beats inventing a window.
-    expect(scheme.validFromText).toMatch(/not dated/i);
+    expect(rows).toHaveLength(4);
+    // Scheme side first — it is the layer the reporter retypes as entitlement templates, and 'policy'
+    // sorts BEFORE 'scheme' alphabetically, so this ordering can only come from the reader's own CASE.
+    expect(rows.map((r) => r.layer)).toEqual(['scheme', 'scheme', 'policy', 'policy']);
+    expect(rows.slice(0, 2).map((r) => r.schemeName)).toEqual(['Contract (unfilled)', 'Grade 12-15 Permanent']);
+    // Within a layer, the dated windows come back oldest first so a reader can follow the history.
+    expect(rows.slice(2).map((r) => r.validFromText)).toEqual(['2024-01-01', '2026-01-01']);
   });
 
-  it('records a scheme that carries NO entitlement table at all — the production case', async () => {
-    await seedBothLayers();
-    await captureEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    const rows = await listEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    const empty = rows.find((r) => r.schemeName === 'Contract (unfilled)')!;
-    expect(empty).toBeTruthy();
-    expect(empty.entitlementText).toBeNull();
-    expect(empty.note).toMatch(/NO entitlement table/i);
-    // WATCHED FAIL: with an INNER JOIN this row does not exist, and the record silently under-reports
-    // what was configured — which is the one promise the eventual clearing makes.
-  });
-
-  it('records the POLICY layer, per dated version, with its figures rendered', async () => {
-    await seedBothLayers();
-    await captureEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    const rows = await listEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    const policies = rows.filter((r) => r.layer === 'policy');
-    expect(policies).toHaveLength(2);
-
-    const closed = policies.find((r) => r.validFromText === '2024-01-01')!;
-    expect(closed.entitlementText).toContain('Days: 12');
-    expect(closed.entitlementText).toContain('earning method: earned_monthly');
-    expect(closed.entitlementText).toContain('max carry forward: 5');
-    // Superseded by the 2026 version — the window is part of the record, because leave_policy is the only
-    // DATED layer and its history is what the past-date readers resolve against.
-    expect(closed.validToText).toBe('2026-01-01');
-
-    const running = policies.find((r) => r.validFromText === '2026-01-01')!;
-    expect(running.entitlementText).toContain('Days: 14');
-    expect(running.validToText).toMatch(/still in force/i);
-    // A null company is the GROUP DEFAULT — a value somebody chose, not missing data.
-    expect(running.companyName).toBeNull();
-    expect(running.note).toMatch(/group default/i);
-  });
-});
-
-describe('the rendered figures are readable, with no half-written labels', () => {
-  it('an UNBANDED policy prints no dangling "service bands:" label', async () => {
-    // FOUND ON A REAL RENDER, NOT BY A TEST, which is why it is pinned here. `jsonb_typeof(missing_key)`
-    // is NULL rather than a string, so `jsonb_typeof(...) <> 'array'` evaluates to NULL — which is not
-    // TRUE, so the ELSE branch ran and every unbanded policy (all three on the dev database, and the
-    // majority on production) printed "| service bands: " with nothing after it. A record the reporter
-    // retypes from cannot end its most important column in a colon.
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      validFrom: '2026-01-01',
-    });
-    await captureEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    const [row] = await listEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    expect(row.entitlementText).toContain('Days: 12');
-    expect(row.entitlementText).not.toContain('service bands');
-    expect(row.entitlementText!.trim().endsWith(':')).toBe(false);
-  });
-
-  it('a BANDED policy prints its bands', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      serviceBands: REPORTER_TABLE,
-      validFrom: '2026-01-01',
-    });
-    await captureEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    const [row] = await listEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    expect(row.entitlementText).toContain('service bands: 0-2 yrs: 14 days');
-    expect(row.entitlementText).toContain('2-no limit yrs: 16 days');
-  });
-});
-
-describe('the record is re-runnable, tagged, and readable', () => {
-  it('re-running the SAME tag adds nothing — a double-click cannot double the record', async () => {
-    await seedBothLayers();
-    const first = await captureEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    const second = await captureEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    expect(second).toEqual({ schemeRows: 0, policyRows: 0 });
-    const rows = await listEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    expect(rows).toHaveLength(first.schemeRows + first.policyRows);
-  });
-
-  it('a LATER tag is a new snapshot, and the listing shows the latest by default', async () => {
-    await seedBothLayers();
-    await captureEntitlementResetArchive(adminCtx(b), { captureTag: 'release-one' });
-    // Release three re-captures immediately before clearing, because configuration moves in between.
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 20,
-      validFrom: '2026-07-01',
-    });
-    const again = await captureEntitlementResetArchive(adminCtx(b), { captureTag: 'pre-reset' });
-    expect(again.policyRows).toBe(3);
+  it('groups the snapshots by tag with their row counts, newest capture first', async () => {
+    await archived({ layer: 'policy', captureTag: 'release-one' });
+    await archived({ layer: 'policy', captureTag: 'release-one' });
+    await archived({ layer: 'scheme', captureTag: 'pre-reset' });
 
     const captures = await listEntitlementArchiveCaptures(adminCtx(b));
-    expect(captures.map((c) => c.captureTag)).toContain('release-one');
-    expect(captures.map((c) => c.captureTag)).toContain('pre-reset');
-
-    // No tag ⇒ the most recent snapshot. Interleaving two captures months apart would have the reporter
-    // retyping a mixture of both.
-    const latest = await listEntitlementResetArchive(adminCtx(b));
-    expect(latest.every((r) => r.captureTag === 'pre-reset')).toBe(true);
+    expect(captures.map((c) => c.captureTag).sort()).toEqual(['pre-reset', 'release-one']);
+    expect(captures.find((c) => c.captureTag === 'release-one')!.rows).toBe(2);
+    expect(captures.find((c) => c.captureTag === 'pre-reset')!.rows).toBe(1);
   });
 
-  it('downloads as a CSV carrying every column the reporter retypes from', async () => {
-    await seedBothLayers();
-    await captureEntitlementResetArchive(adminCtx(b), { captureTag: TAG });
-    const file = await entitlementResetArchiveCsv(adminCtx(b), { captureTag: TAG });
-    expect(file.filename).toContain('entitlement-configuration-record');
-    expect(file.filename.endsWith('.csv')).toBe(true);
-    const lines = file.content.trim().split('\n');
-    expect(lines[0]).toContain('Entitlement');
-    expect(lines[0]).toContain('In force from');
-    expect(lines).toHaveLength(file.rows + 1);
-    expect(file.content).toContain('Grade 12-15 Permanent');
-    expect(file.content).toContain('0-2 yrs: 14 days');
-    // The group default is SPELT OUT in the export: a blank cell in a spreadsheet reads as "unknown".
-    expect(file.content).toContain('All companies (group default)');
+  it('with no tag asked for, shows ONE snapshot — the latest — never a mixture of two', async () => {
+    // The reset re-captures immediately before clearing, so two snapshots months apart is the normal
+    // state of this table. Interleaving them would have the reporter retyping a blend of both.
+    const old = new Date('2026-08-01T00:00:00Z');
+    await archived({ layer: 'policy', captureTag: 'release-one', capturedAt: old, leaveTypeName: 'Annual Leave' });
+    await archived({ layer: 'scheme', captureTag: 'pre-reset', schemeName: 'Grade 12-15 Permanent' });
+
+    const latest = await listEntitlementResetArchive(adminCtx(b));
+    expect(latest).toHaveLength(1);
+    expect(latest.every((r) => r.captureTag === 'pre-reset')).toBe(true);
   });
 
   it('an empty archive reads as empty rather than throwing', async () => {
@@ -250,10 +116,102 @@ describe('the record is re-runnable, tagged, and readable', () => {
     expect(file.rows).toBe(0);
     expect(file.content.trim().split('\n')).toHaveLength(1); // header only
   });
+});
 
+describe('the CSV is what the reporter retypes from', () => {
+  it('carries every column, one line per row, and names itself after the snapshot', async () => {
+    await archived({
+      layer: 'scheme',
+      schemeName: 'Grade 12-15 Permanent',
+      schemeCategory: 'Permanent',
+      leaveTypeName: 'Annual Leave',
+      leaveTypeCode: 'ANNUAL',
+      companyName: 'Acme Sdn Bhd',
+      schemeGradeGroupName: 'Grade 12-15',
+      schemeGradeGroupMembers: 'Grade 12',
+      employmentType: 'full_time',
+      entitlementText: '0-2 yrs: 14 days, max brought forward 5, max entitled + brought forward 19',
+      validFromText: '—  (not dated)',
+    });
+    await archived({ layer: 'policy', leaveTypeName: 'Annual Leave', validFromText: '2024-01-01' });
+
+    const file = await entitlementResetArchiveCsv(adminCtx(b), { captureTag: TAG });
+    expect(file.filename).toContain('entitlement-configuration-record');
+    expect(file.filename).toContain(TAG);
+    expect(file.filename.endsWith('.csv')).toBe(true);
+    const lines = file.content.trim().split('\n');
+    expect(lines[0]).toContain('Entitlement');
+    expect(lines[0]).toContain('In force from');
+    expect(lines).toHaveLength(file.rows + 1);
+    expect(file.rows).toBe(2);
+    // Both layers are exported under readable labels, not their storage spellings.
+    expect(file.content).toContain('Benefit scheme');
+    expect(file.content).toContain('Company / grade rule');
+    expect(file.content).toContain('Grade 12-15 Permanent');
+  });
+
+  it('SPELLS OUT the two nulls that mean something on the policy side', async () => {
+    // A blank cell in a spreadsheet reads as "unknown". On the policy layer a null company meant ALL
+    // companies and a null grade meant ALL grades — values somebody chose. This is the one piece of
+    // interpretation the export does, and it is the piece a retyper acts on.
+    await archived({ layer: 'policy', leaveTypeName: 'Annual Leave', companyName: null, gradeName: null });
+    const file = await entitlementResetArchiveCsv(adminCtx(b), { captureTag: TAG });
+    expect(file.content).toContain('All companies (group default)');
+    expect(file.content).toContain('All grades');
+  });
+
+  it('leaves the same nulls BLANK on the scheme side, where they carry no such meaning', async () => {
+    // The scheme layer had no company-default or grade-default concept, so inventing one in its cells
+    // would be the export asserting something the configuration never said.
+    await archived({ layer: 'scheme', schemeName: 'Contract (unfilled)', companyName: null, gradeName: null });
+    const file = await entitlementResetArchiveCsv(adminCtx(b), { captureTag: TAG });
+    expect(file.content).not.toContain('All companies (group default)');
+    expect(file.content).not.toContain('All grades');
+  });
+
+  it('sanitises the snapshot tag into the filename rather than trusting it', async () => {
+    await archived({ layer: 'policy', captureTag: 'pre reset/2026' });
+    const file = await entitlementResetArchiveCsv(adminCtx(b), { captureTag: 'pre reset/2026' });
+    expect(file.filename).toBe('entitlement-configuration-record_pre-reset-2026.csv');
+  });
+});
+
+/**
+ * ⚠️ THE RE-CAPTURE ENTRY POINT IS DEAD, AND THIS IS WHERE THAT IS WRITTEN DOWN.
+ *
+ * `captureEntitlementResetArchive` calls `app.capture_entitlement_reset_archive()`, whose body selects
+ * from `benefit_scheme`, `scheme_leave_entitlement` and `leave_policy`. Migration 0405 calls it once and
+ * then drops all three in the same transaction, and does NOT drop the function — so from the moment 0405
+ * commits, calling it raises `relation "benefit_scheme" does not exist`. Measured, not assumed: a probe
+ * against a migrated test database returned exactly that.
+ *
+ * Nothing reaches it today — /admin/leave/entitlements/archive and its export route are both READERS —
+ * which is why this is a latent landmine rather than a live fault, and why the guard below is a guard and
+ * not a pin. It does not assert that the failure is correct; it asserts that nobody has wired a screen to
+ * it. If you need re-capture back, fix or drop the SQL function FIRST, then delete this test.
+ */
+describe('the re-capture entry point', () => {
   it('refuses a blank capture tag rather than writing an unfindable snapshot', async () => {
+    // Refused in TypeScript, before the query is built — so this is the one part of the capture path that
+    // still behaves exactly as it always did.
     await expect(captureEntitlementResetArchive(adminCtx(b), { captureTag: '  ' })).rejects.toThrow(
       /capture tag is required/i,
     );
+  });
+
+  it('is not wired to any screen — calling it would raise on the tables 0405 dropped', () => {
+    const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'app');
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = resolve(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(entry.name) && readFileSync(full, 'utf8').includes('captureEntitlementResetArchive')) {
+          offenders.push(full);
+        }
+      }
+    };
+    walk(appDir);
+    expect(offenders).toEqual([]);
   });
 });

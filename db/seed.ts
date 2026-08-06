@@ -10,7 +10,10 @@ import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection } from '../packs/attendance/service';
 import { requestLeave, decideLeave, addLeaveAttachment, accrueEarnedLeave } from '../core/leave';
-import { createLeavePolicy, createJobGrade, setLeaveTypeRules } from '../core/admin';
+import { createJobGrade, setLeaveTypeRules } from '../core/admin';
+// 6e9a126e RELEASE THREE — the demo's entitlement is configured through the TEMPLATE layer now.
+// createLeavePolicy is gone with leave_policy; these are its replacements.
+import { createEntitlementTemplate, createEligibilityRule } from '../core/entitlement-template';
 import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../packs/performance/service';
 // Rung 5c (ADR-0080 D1) — the demo statutory profile is written through the pack registry, not a
 // direct localization/my import (myPack was already unused here). requirePackFor fails closed for an
@@ -31,7 +34,7 @@ const owner = createDb(process.env.MIGRATION_DATABASE_URL!);
 
 const TABLES = [
   'tenant', 'company', 'person', 'position', 'department', 'cost_center', 'employment',
-  'assignment', 'reporting_line', 'job_grade', 'leave_type', 'leave_policy', 'leave_ledger',
+  'assignment', 'reporting_line', 'job_grade', 'leave_type', 'leave_ledger',
   'leave_request', 'resignation_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   'attendance', 'attendance_policy', 'payroll_batch', 'payslip', 'company_statutory_my',
@@ -268,9 +271,19 @@ async function main() {
   // the thing people read to learn what a configured leave type looks like, and "configured to credit on
   // the 1st" and "never told us when to credit" should not look identical there.
   await setLeaveTypeRules(admin, { id: annual.id, accrualMethod: 'earned_monthly', accrualDay: 1 });
-  await createLeavePolicy(admin, {
+  // 6e9a126e RELEASE THREE — was createLeavePolicy(annual, 12 days). The TEMPLATE holds the days and an
+  // eligibility rule says who gets them; empty criteria means everyone, which is what a grade-less
+  // leave_policy row meant.
+  const annualStd = await createEntitlementTemplate(admin, {
     leaveTypeId: annual.id,
-    annualDays: 12,
+    name: 'Annual leave — standard',
+    serviceBands: [{ fromYears: 0, toYears: null, days: 12 }],
+    validFrom: '2026-01-01',
+  });
+  await createEligibilityRule(admin, {
+    name: 'All employees — annual leave',
+    templateLineageId: annualStd.lineageId,
+    criteria: {},
     validFrom: '2026-01-01',
   });
   // r88 (fa3f4ccb) — SICK MUST BE CONFIGURED EXPLICITLY NOW, and this is the seed's half of a real
@@ -288,9 +301,20 @@ async function main() {
   // type with no policy and no scheme row grants NOTHING. Production's ANNUAL bands are 20-24 days and
   // SICK 14-22, all at or above the statutory minimum, so no live employee lost a day. A tenant that had
   // been relying on the floor to supply an unconfigured type would have.
-  await createLeavePolicy(admin, {
+  // THIS IS THE ONE THAT BREAKS THE UPGRADE REHEARSAL IF IT IS DROPPED RATHER THAN REPOINTED. The comment
+  // above records why: after fa3f4ccb the statutory floor stopped OVERRIDING configuration, so an
+  // UNCONFIGURED leave type grants ZERO — the demo's sick-leave request then fails with
+  // InsufficientLeaveBalanceOnSubmitError and the rehearsal fails with it.
+  const sickStd = await createEntitlementTemplate(admin, {
     leaveTypeId: leaveTypeIds.SICK,
-    annualDays: 14,
+    name: 'Sick leave — statutory',
+    serviceBands: [{ fromYears: 0, toYears: null, days: 14 }],
+    validFrom: '2026-01-01',
+  });
+  await createEligibilityRule(admin, {
+    name: 'All employees — sick leave',
+    templateLineageId: sickStd.lineageId,
+    criteria: {},
     validFrom: '2026-01-01',
   });
   // ADR-0041 (2E): grade catalog + a grade-scoped ANNUAL policy. Executives earn 18 annual days (vs the
@@ -299,10 +323,20 @@ async function main() {
   await createJobGrade(admin, { code: 'NONEXEC', name: 'Non-Executive', rank: 2 });
   // bc36c768: no `method` here either — the type-level rule set above governs every policy row under
   // ANNUAL, this one included. Executives earn 18 days instead of 12; they earn them the same way.
-  await createLeavePolicy(admin, {
+  // The grade override. TWO rules now match an Executive, and the resolver picks the MOST SPECIFIC
+  // (core/entitlement-template.ts, orgCriteriaSpecificity) — so one narrowed axis beats the empty-criteria
+  // rule above and an Executive earns 18 rather than 12. That ordering is the template layer's job now;
+  // it used to be leave_policy's grade column.
+  const annualExec = await createEntitlementTemplate(admin, {
     leaveTypeId: annual.id,
-    annualDays: 18,
-    gradeId: execGrade.id,
+    name: 'Annual leave — Executive',
+    serviceBands: [{ fromYears: 0, toYears: null, days: 18 }],
+    validFrom: '2026-01-01',
+  });
+  await createEligibilityRule(admin, {
+    name: 'Executives — annual leave',
+    templateLineageId: annualExec.lineageId,
+    criteria: { gradeIds: [execGrade.id] },
     validFrom: '2026-01-01',
   });
   const people: {

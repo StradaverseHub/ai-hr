@@ -31,8 +31,11 @@ describe('no leave sweep skips an employment silently', () => {
   });
 
   it('every unresolvable-pack branch records the employment and the reason', () => {
+    // 6e9a126e RELEASE THREE — WAS FOUR, IS NOW THREE. reprojectEntitlementForPolicy reprojected
+    // entitlement when a leave_policy row changed; 0410 drops that table, so the sweep went with it.
+    // The surviving three are openLeaveYear, accrueEarnedLeave and reprojectA2cEntitlement.
     const branches = SRC.match(/if \(!pack\) \{/g) ?? [];
-    expect(branches.length, 'the four accrual/reproject sweeps').toBe(4);
+    expect(branches.length, 'the three accrual/reproject sweeps').toBe(3);
     const pushes = SRC.match(/reason: 'country_pack_inactive'/g) ?? [];
     // One push per branch, plus the type declaration's own literal.
     expect(pushes.length).toBeGreaterThanOrEqual(branches.length);
@@ -47,7 +50,15 @@ describe('no leave sweep skips an employment silently', () => {
     // packBlocked; what else rides along is that sweep's business.
     expect(SRC).toMatch(/return \{ granted, skipped, forfeits, packBlocked[^}]*\};/);
     expect(SRC).toMatch(/return \{ granted, forfeits, breakdown, packBlocked[^}]*\};/);
-    expect((SRC.match(/return \{ affected, totalDelta, packBlocked[^}]*\};/g) ?? []).length).toBe(2);
+    // 6e9a126e RELEASE THREE — WAS 2, IS NOW 1. Both sweeps of this shape were reproject-style;
+    // reprojectEntitlementForPolicy is gone with leave_policy, leaving reprojectA2cEntitlement.
+    //
+    // I first tried to DERIVE this from the count of reproject* functions so it could not go stale —
+    // and got it wrong: reprojectEntitlementForEmployment and reprojectEntitlementForLeaveTypeCohort
+    // exist but sweep no packs, so the derived number was 3 against a real 1. The literal is the honest
+    // statement here; the invariant this file cares about ("packBlocked reaches the caller") is already
+    // pinned per-sweep by the two toMatch assertions above, which do not depend on any count.
+    expect((SRC.match(/return \{ affected, totalDelta, packBlocked[^}]*\};/g) ?? []).length).toBe(1);
   });
 
   // An early "nothing to do" return must still carry the field, or callers have to defend against

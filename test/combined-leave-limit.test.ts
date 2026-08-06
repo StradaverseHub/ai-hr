@@ -6,22 +6,26 @@
  *     under-cap passes, over-cap throws CombinedLeaveLimitExceededError (with poolName), pending AND
  *     approved usage both count, excludeRequestId avoids double-counting on the approval path, and
  *     employees/types outside any pool are unaffected.
- *   - Pool CRUD (core/benefit-scheme.ts): create/update/delete round-trips via listLeaveSharedGroups,
+ *   - Pool CRUD (core/leave-shared-group.ts): create/update/delete round-trips via listLeaveSharedGroups,
  *     the min-2-member validator, the totalLimitDays bounds, and the one-pool-per-type unique guard.
  *
  * Harness notes: requests + approvals run as adminCtx (admins pass the RLS visibility + leave-year gates;
  * the combined cap is a data rule with NO admin bypass, so it still fires — mirroring
- * leave-negative-balance.test.ts). The employee is pinned to the scheme via the manual override
- * (setEmploymentBenefitScheme) so resolution never depends on grade-group wiring. Leave types are
- * calendar_days + allowNegativeBalance so day math is trivial and the submit-time balance gate stays out
- * of the way; the approval-time balance gate is satisfied with a generous ledger accrual.
+ * leave-negative-balance.test.ts). Leave types are calendar_days + allowNegativeBalance so day math is
+ * trivial and the submit-time balance gate stays out of the way; the approval-time balance gate is
+ * satisfied with a generous ledger accrual.
+ *
+ * 6e9a126e RELEASE THREE — the fixture used to create a benefit_scheme and pin the employee to it, because
+ * a shared group was once owned by a scheme. r88/1ef1cf95 already made groups TENANT-level and nothing in
+ * this file has read the scheme since; migration 0405 drops the table, so the two lines went. No assertion
+ * changed with them: the cap resolves from leave_shared_group_member alone, which is exactly what these
+ * cases were always measuring.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { requestLeave, decideLeave, CombinedLeaveLimitExceededError } from '../core/leave';
-import { createBenefitScheme, setEmploymentBenefitScheme } from '../core/benefit-scheme';
 // r88/1ef1cf95 — a shared leave group is tenant-level now, not owned by a benefit scheme, so its CRUD
 // lives in its own module. moveCombinedLimitMember / groupSchemeLeaveTypes are GONE with the drag-to-group
 // entrypoint they served; membership is now set by passing the full leaveTypeIds list to update.
@@ -77,16 +81,9 @@ async function grant(employmentId: string, leaveTypeId: string, days: number): P
   });
 }
 
-/** An employee hard-pinned (override) to a fresh active scheme, plus two pooled leave types. */
+/** An employee with a generous balance, plus two poolable leave types. */
 async function fixture() {
   const ctx = adminCtx(b);
-  const scheme = await createBenefitScheme(ctx, {
-    companyId: b.companyId,
-    employmentType: 'full_time',
-    gradeGroupId: null,
-    name: `Pool scheme ${randomUUID().slice(0, 8)}`,
-    status: 'active',
-  });
   const [ltA, ltB] = [await leaveType(), await leaveType()];
   const emp = await hireEmployee(ctx, {
     person: { fullName: 'Pooled', primaryEmail: `pool_${randomUUID().slice(0, 8)}@t.local` },
@@ -95,10 +92,9 @@ async function fixture() {
     employmentType: 'full_time',
     hiredOn: '2020-01-01',
   });
-  await setEmploymentBenefitScheme(ctx, { employmentId: emp.employmentId, benefitSchemeId: scheme.id });
   await grant(emp.employmentId, ltA, 20);
   await grant(emp.employmentId, ltB, 20);
-  return { ctx, scheme, ltA, ltB, employmentId: emp.employmentId };
+  return { ctx, ltA, ltB, employmentId: emp.employmentId };
 }
 
 // Distinct 2026 spans (calendar_days ⇒ span length == days). All in the same calendar year — the pool's
@@ -121,7 +117,7 @@ beforeEach(async () => {
 
 describe('enforceCombinedLeaveLimit — submit path (requestLeave)', () => {
   it('a request UNDER the shared cap passes', async () => {
-    const { ctx, scheme, ltA, ltB, employmentId } = await fixture();
+    const { ctx, ltA, ltB, employmentId } = await fixture();
     await createLeaveSharedGroup(ctx, {
       name: 'Pool AB',
       totalLimitDays: 5,
@@ -133,7 +129,7 @@ describe('enforceCombinedLeaveLimit — submit path (requestLeave)', () => {
   });
 
   it('a request pushing pooled usage OVER the cap throws CombinedLeaveLimitExceededError with the pool name', async () => {
-    const { ctx, scheme, ltA, ltB, employmentId } = await fixture();
+    const { ctx, ltA, ltB, employmentId } = await fixture();
     await createLeaveSharedGroup(ctx, {
       name: 'Pool AB',
       totalLimitDays: 5,
@@ -150,7 +146,7 @@ describe('enforceCombinedLeaveLimit — submit path (requestLeave)', () => {
   });
 
   it('APPROVED usage counts against the cap too (not just pending)', async () => {
-    const { ctx, scheme, ltA, ltB, employmentId } = await fixture();
+    const { ctx, ltA, ltB, employmentId } = await fixture();
     await createLeaveSharedGroup(ctx, {
       name: 'Pool AB',
       totalLimitDays: 5,
@@ -164,7 +160,7 @@ describe('enforceCombinedLeaveLimit — submit path (requestLeave)', () => {
   });
 
   it('an exactly-at-cap request passes (boundary)', async () => {
-    const { ctx, scheme, ltA, ltB, employmentId } = await fixture();
+    const { ctx, ltA, ltB, employmentId } = await fixture();
     await createLeaveSharedGroup(ctx, {
       name: 'Pool AB',
       totalLimitDays: 5,
@@ -176,8 +172,8 @@ describe('enforceCombinedLeaveLimit — submit path (requestLeave)', () => {
     ).resolves.toBeTruthy();
   });
 
-  it('a leave type in NO pool — and a schemeless tenant — are unaffected', async () => {
-    const { ctx, scheme, ltA, ltB, employmentId } = await fixture();
+  it('a leave type in NO pool — and a tenant whose pool was deleted — are unaffected', async () => {
+    const { ctx, ltA, ltB, employmentId } = await fixture();
     await createLeaveSharedGroup(ctx, {
       name: 'Pool AB',
       totalLimitDays: 5,
@@ -201,7 +197,7 @@ describe('enforceCombinedLeaveLimit — submit path (requestLeave)', () => {
 
 describe('enforceCombinedLeaveLimit — approval path (excludeRequestId)', () => {
   it('finalizeLeaveApproval excludes the request being approved from the usage sum (no double count)', async () => {
-    const { ctx, scheme, ltA, ltB, employmentId } = await fixture();
+    const { ctx, ltA, ltB, employmentId } = await fixture();
     await createLeaveSharedGroup(ctx, {
       name: 'Pool AB',
       totalLimitDays: 5,
@@ -217,7 +213,7 @@ describe('enforceCombinedLeaveLimit — approval path (excludeRequestId)', () =>
   });
 
   it('approval still REJECTS when usage accrued before the pool existed breaches it', async () => {
-    const { ctx, scheme, ltA, ltB, employmentId } = await fixture();
+    const { ctx, ltA, ltB, employmentId } = await fixture();
     // 3 approved + 2 pending days accrue BEFORE the pool exists; then a cap of 4 arrives (config change).
     const r1 = await requestLeave(ctx, { employmentId, leaveTypeId: ltA, ...span3a, today: TODAY });
     await decideLeave(ctx, { leaveRequestId: r1.leaveRequestId, decision: 'approved' });
@@ -233,9 +229,9 @@ describe('enforceCombinedLeaveLimit — approval path (excludeRequestId)', () =>
   });
 });
 
-describe('pool CRUD (core/benefit-scheme.ts)', () => {
+describe('pool CRUD (core/leave-shared-group.ts)', () => {
   it('create → list round-trips name, total and members; appends the created event', async () => {
-    const { ctx, scheme, ltA, ltB } = await fixture();
+    const { ctx, ltA, ltB } = await fixture();
     const pool = await createLeaveSharedGroup(ctx, {
       name: 'Medical pool',
       totalLimitDays: 7.5,
@@ -250,7 +246,7 @@ describe('pool CRUD (core/benefit-scheme.ts)', () => {
   });
 
   it('rejects fewer than TWO member leave types', async () => {
-    const { ctx, scheme, ltA } = await fixture();
+    const { ctx, ltA } = await fixture();
     await expect(
       createLeaveSharedGroup(ctx, { name: 'Solo', totalLimitDays: 5, leaveTypeIds: [ltA] }),
     ).rejects.toThrow(/at least two/i);
@@ -260,7 +256,7 @@ describe('pool CRUD (core/benefit-scheme.ts)', () => {
   });
 
   it('rejects a non-positive or absurd totalLimitDays', async () => {
-    const { ctx, scheme, ltA, ltB } = await fixture();
+    const { ctx, ltA, ltB } = await fixture();
     await expect(
       createLeaveSharedGroup(ctx, { name: 'Zero', totalLimitDays: 0, leaveTypeIds: [ltA, ltB] }),
     ).rejects.toThrow(/greater than zero/i);
@@ -270,7 +266,7 @@ describe('pool CRUD (core/benefit-scheme.ts)', () => {
   });
 
   it('a leave type joins at most ONE group, tenant-wide (friendly error)', async () => {
-    const { ctx, scheme, ltA, ltB } = await fixture();
+    const { ctx, ltA, ltB } = await fixture();
     const ltC = await leaveType();
     await createLeaveSharedGroup(ctx, { name: 'Pool 1', totalLimitDays: 5, leaveTypeIds: [ltA, ltB] });
     await expect(
@@ -279,7 +275,7 @@ describe('pool CRUD (core/benefit-scheme.ts)', () => {
   });
 
   it('update replaces name, total and the member set; delete removes the pool', async () => {
-    const { ctx, scheme, ltA, ltB } = await fixture();
+    const { ctx, ltA, ltB } = await fixture();
     const ltC = await leaveType();
     const pool = await createLeaveSharedGroup(ctx, { name: 'Old', totalLimitDays: 5, leaveTypeIds: [ltA, ltB] });
     await updateLeaveSharedGroup(ctx, { id: pool.id, name: 'New', totalLimitDays: 9, leaveTypeIds: [ltB, ltC] });

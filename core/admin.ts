@@ -33,7 +33,6 @@ import {
   // validator, and an unused import of the constant is how a second literal creeps back in.
   validateServiceBands,
   LEAVE_DURATION_TYPES,
-  reprojectEntitlementForPolicy,
   todayInKualaLumpur,
   STATUTORY_APPLY_CODES,
   // Edit Leave Type Code (a7194511): EMERGENCY joins the statutory codes as a LOCKED code — its literal
@@ -100,7 +99,6 @@ import {
   holidayGroupHoliday,
   leaveLedger,
   jobGrade,
-  leavePolicy,
   leaveRequest,
   leaveType,
   location,
@@ -848,6 +846,15 @@ export async function updateJobGrade(
  * the grid's disabled Delete and this guard never disagree. Before, an approval rule or a claim limit was
  * invisible to both, so Delete rendered enabled and raised a raw 23503 foreign-key string at the admin;
  * grade_group_member CASCADES, so the delete silently dropped benefit-scheme group membership.
+ *
+ * 6e9a126e RELEASE THREE — `leave_policy` IS DROPPED (migration 0405), so the clause naming it did not
+ * merely go stale, it made this whole query raise `relation "leave_policy" does not exist` — and the same
+ * clause in listJobGrades' projection broke every read of the grade catalog. The guard is REPOINTED, not
+ * removed: a grade is now also in use when an ENTITLEMENT ELIGIBILITY RULE names it. That reference lives
+ * inside `criteria` JSONB with no foreign key, so unlike the other six this one can never raise 23503 —
+ * the delete would simply SUCCEED and leave a dead grade id in a rule that still targets people, silently
+ * narrowing (or widening) who an entitlement table reaches. RETIRED rules count too: the dated readers
+ * reproduce closed years through them, so a historical rule's grade is still load-bearing.
  */
 export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
@@ -862,7 +869,8 @@ export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
         // e7eb5d83 (0408): claim_mileage_rate.grade_id is the SIXTH referencing table — a per-grade mileage
         // rate table, another plain FK with no onDelete. Kept byte-identical to listJobGrades' predicate.
         inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = ${p.id})
-          or exists (select 1 from leave_policy lp where lp.grade_id = ${p.id})
+          or exists (select 1 from entitlement_eligibility_rule eer
+                     where eer.criteria -> 'gradeIds' @> to_jsonb(${p.id}::text))
           or exists (select 1 from leave_approval_policy lap where lap.grade_id = ${p.id})
           or exists (select 1 from claim_policy cp where cp.grade_id = ${p.id})
           or exists (select 1 from claim_mileage_rate cmr where cmr.grade_id = ${p.id})
@@ -873,7 +881,7 @@ export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
       .limit(1);
     if (used?.inUse) {
       throw new Error(
-        'This grade is in use by employees, leave policies, approval rules, claim limits, mileage rates or a grade group and cannot be deleted. Archive it instead.',
+        'This grade is in use by employees, entitlement eligibility rules, approval rules, claim limits, mileage rates or a grade group and cannot be deleted. Archive it instead.',
       );
     }
     await tx.delete(jobGrade).where(eq(jobGrade.id, p.id));
@@ -1010,149 +1018,6 @@ function serviceBandsAccrual(
   return { serviceBands: bands };
 }
 
-export async function createLeavePolicy(
-  ctx: SessionContext,
-  p: {
-    leaveTypeId: string;
-    annualDays: number;
-    /** Max unused ANNUAL days carried into the next leave year (default 0 = forfeit). */
-    carryForwardMax?: number;
-    /** ADR-0038: month/day on which the carried-forward portion expires (auto-forfeit). Both unset = never. */
-    carryForwardExpiryMonth?: number | null;
-    carryForwardExpiryDay?: number | null;
-    /** R4 Build #1: expiry mode. 'date' (or absent) reads month/day; 'months' reads carryForwardExpiryMonths. */
-    carryForwardExpiryMode?: 'date' | 'months';
-    /** R4 Build #1: X ∈ 1..12 — "expire X months after year-end". Only read in 'months' mode. */
-    carryForwardExpiryMonths?: number | null;
-    /** Carry-forward enhancement: explicit on/off switch. undefined = omit (back-compat `cap > 0` default). */
-    carryForwardEnabled?: boolean;
-    /** Carry-forward enhancement (config-only): include monthly-earned balance. Persisted; engine wiring deferred. */
-    carryForwardIncludeEarned?: boolean;
-    method?: string;
-    /** ADR-0041 2E: grade this policy applies to. null/undefined = all grades (the company default). */
-    gradeId?: string | null;
-    /** ADR-0066: company this policy applies to. null/undefined = group default (all companies). A company
-     *  override ALWAYS wins for that company in the resolver — even when it grants fewer days. */
-    companyId?: string | null;
-    /** Leave Entitlement Rules Engine: optional service-length bands above annualDays. undefined/null/[] =
-     *  no bands (flat annualDays only). A non-empty array is validated (contiguous, first-from-0,
-     *  last-open-ended, max 10). */
-    serviceBands?: ServiceBand[] | null;
-    /** Feedback b81d3c52 — Rounding Method for this policy's calculated entitlement. 'up' / 'down' persist;
-     *  `null`/`undefined`/anything unrecognised omit the key (on create there is nothing to preserve, so
-     *  both `null` (No-Rounding chosen) and `undefined` (no dropdown) behave identically — see `roundingAccrual`). */
-    roundingMethod?: string | null;
-    validFrom: string;
-  },
-) {
-  return withTenant(ctx, async (tx) => {
-    const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
-    const expiry = carryExpiryAccrual({
-      mode: p.carryForwardExpiryMode,
-      month: p.carryForwardExpiryMonth,
-      day: p.carryForwardExpiryDay,
-      months: p.carryForwardExpiryMonths,
-    });
-    const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
-    // create has no prior row to preserve bands from, so `undefined` here behaves the same as `null`/`[]`
-    // (no bands) — only update() has a preserve value to thread through.
-    const bandsAccrual = serviceBandsAccrual(p.serviceBands, undefined);
-    const companyId = p.companyId ?? null;
-    const gradeId = p.gradeId ?? null;
-
-    // Step 4 — ONE ACTIVE DEFAULT PER TYPE, SUPERSEDE NOT REJECT. Find ACTIVE rows with the same EXACT
-    // scope (leaveTypeId, gradeId, companyId). If any has validFrom >= the new validFrom, reject (edit
-    // that version instead — it is not "going forward"). Otherwise close each prior row's window at the
-    // new validFrom and append a superseded event per closed row, so version history stays reconstructable
-    // via validTo (every engine already filters on it — see leave-compute.ts / core/leave.ts callers).
-    const sameScope = await tx
-      .select({ id: leavePolicy.id, validFrom: leavePolicy.validFrom, accrual: leavePolicy.accrual })
-      .from(leavePolicy)
-      .where(
-        and(
-          eq(leavePolicy.leaveTypeId, p.leaveTypeId),
-          gradeId == null ? isNull(leavePolicy.gradeId) : eq(leavePolicy.gradeId, gradeId),
-          companyId == null ? isNull(leavePolicy.companyId) : eq(leavePolicy.companyId, companyId),
-          isNull(leavePolicy.validTo),
-        ),
-      );
-    for (const row of sameScope) {
-      if (row.validFrom >= p.validFrom) {
-        throw new Error(
-          'A version starting on or after that date already exists for this scope — edit that version instead.',
-        );
-      }
-    }
-
-    // Feedback eee43966 — EARNING METHOD IS SET UNDER *GENERAL*, NEVER BY THE ELIGIBILITY TAB. Adding a
-    // dated entitlement going forward supersedes the running same-scope row (loop below); without this,
-    // an absent `method` fell back to the lump-sum default and silently DOWNGRADED an earned_monthly
-    // setup to grant_on_hire_prorated. Inherit the superseded row's method instead (greatest validFrom =
-    // the version actually running). A brand-new scope has no prior row, so genuinely new types still
-    // default to lump; an EXPLICIT method (the General front door) still wins. No reproject here: a new
-    // dated version applies from validFrom by design and the method dimension is unchanged.
-    const inheritedMethod = sameScope
-      .slice()
-      .sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0))
-      .map((row) => (row.accrual as { method?: string } | null)?.method)
-      .filter((m): m is string => !!m)
-      .at(-1);
-
-    const [row] = await tx
-      .insert(leavePolicy)
-      .values({
-        tenantId: ctx.tenantId,
-        leaveTypeId: p.leaveTypeId,
-        gradeId,
-        companyId,
-        accrual: {
-          annualDays: p.annualDays,
-          carryForwardMax,
-          method: p.method || inheritedMethod || 'grant_on_hire_prorated',
-          ...expiry,
-          ...carryFlags,
-          ...bandsAccrual,
-          // create has no prior row to preserve — `undefined` (no dropdown) and `null` (No-Rounding chosen)
-          // both omit the key; only 'up'/'down' set it. Byte-identical to pre-tri-state behaviour.
-          ...roundingAccrual(p.roundingMethod, undefined),
-        },
-        validFrom: p.validFrom,
-        validTo: null,
-      })
-      .returning({ id: leavePolicy.id });
-    // Close each prior same-scope row's window at the new validFrom and record the supersession, now that
-    // the new row's id exists.
-    for (const prior of sameScope) {
-      await tx.update(leavePolicy).set({ validTo: p.validFrom }).where(eq(leavePolicy.id, prior.id));
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'leave-policy',
-        aggregateId: prior.id,
-        eventType: 'leave-policy.superseded',
-        actor: actorOf(ctx),
-        payload: { supersededBy: row.id, validTo: p.validFrom },
-      });
-    }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-policy',
-      aggregateId: row.id,
-      eventType: 'leave-policy.created',
-      actor: actorOf(ctx),
-      payload: {
-        leaveTypeId: p.leaveTypeId,
-        annualDays: p.annualDays,
-        carryForwardMax,
-        companyId,
-        ...expiry,
-        ...carryFlags,
-        ...bandsAccrual,
-      },
-    });
-    return row;
-  });
-}
-
 /** Correct an existing entitlement in place (same effective date) — for fixing a mis-typed
  *  value. A change *going forward* is a new dated policy via createLeavePolicy, not this.
  *
@@ -1161,170 +1026,6 @@ export async function createLeavePolicy(
  *  CURRENT cycle is re-projected and a compensating ledger `adjustment` posted for the delta, in this
  *  same transaction (see reprojectEntitlementForPolicy in core/leave.ts for the invariants). Returns
  *  `{ affected, totalDelta }` so the action can tell the admin the blast radius. */
-export async function updateLeavePolicy(
-  ctx: SessionContext,
-  p: {
-    id: string;
-    annualDays: number;
-    carryForwardMax?: number;
-    /** ADR-0038: month/day on which the carried-forward portion expires (auto-forfeit). Both unset = never. */
-    carryForwardExpiryMonth?: number | null;
-    carryForwardExpiryDay?: number | null;
-    /** R4 Build #1: expiry mode. 'date' (or absent) reads month/day; 'months' reads carryForwardExpiryMonths. */
-    carryForwardExpiryMode?: 'date' | 'months';
-    /** R4 Build #1: X ∈ 1..12 — "expire X months after year-end". Only read in 'months' mode. */
-    carryForwardExpiryMonths?: number | null;
-    /** Carry-forward enhancement: explicit on/off switch. undefined = omit (back-compat `cap > 0` default). */
-    carryForwardEnabled?: boolean;
-    /** Carry-forward enhancement (config-only): include monthly-earned balance. Persisted; engine wiring deferred. */
-    carryForwardIncludeEarned?: boolean;
-    method?: string;
-    gradeId?: string | null;
-    /** ADR-0066: company this policy applies to. null/undefined = group default (all companies). */
-    companyId?: string | null;
-    /** Leave Entitlement Rules Engine: undefined = PRESERVE the row's current bands (a flat-field-only edit
-     *  through a form without the band editor never touches them); null/[] = clear; array = replace
-     *  (validated). */
-    serviceBands?: ServiceBand[] | null;
-    /** Feedback b81d3c52 (tri-state, this ticket) — Rounding Method. `undefined` = PRESERVE the stored value
-     *  (a form that did not render the Rounding dropdown posts no marker → the writer keeps what is there,
-     *  so the fragile per-form hidden input is gone); `null` = CLEAR (dropdown rendered, No-Rounding chosen);
-     *  'up' / 'down' = SET. Reprojects already-granted balances when it changes (see reprojectEntitlementForPolicy). */
-    roundingMethod?: string | null;
-    validFrom: string;
-    /** Feedback 49809272: tenant-local (MYT) "today" anchoring the recalculation's current cycle. The
-     *  action layer computes and passes it (tests pass fixed dates); defaults to todayInKualaLumpur()
-     *  when omitted — the requestLeave precedent for clock reads in core. */
-    asOf?: string;
-    /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
-    reason?: string | null;
-  },
-): Promise<{ affected: number; totalDelta: number }> {
-  const reason = normalizeReason(p.reason);
-  return withTenant(ctx, async (tx) => {
-    // Step 4: a prior SELECT of the current row — needed both to preserve the existing accrual bands
-    // (tri-state below) and to know whether gradeId/companyId/validFrom are actually CHANGING, so the
-    // same-scope collision check only runs when the scope truly moves (not on every flat-field edit of a
-    // pre-existing duplicate-default legacy row — see test/grade-based-leave.test.ts's "most-generous
-    // default" fixture, which must remain editable).
-    const [current] = await tx
-      .select({
-        leaveTypeId: leavePolicy.leaveTypeId,
-        gradeId: leavePolicy.gradeId,
-        companyId: leavePolicy.companyId,
-        validFrom: leavePolicy.validFrom,
-        validTo: leavePolicy.validTo,
-        accrual: leavePolicy.accrual,
-      })
-      .from(leavePolicy)
-      .where(eq(leavePolicy.id, p.id))
-      .limit(1);
-    if (!current) throw new Error('Leave policy not found.');
-
-    const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
-    const expiry = carryExpiryAccrual({
-      mode: p.carryForwardExpiryMode,
-      month: p.carryForwardExpiryMonth,
-      day: p.carryForwardExpiryDay,
-      months: p.carryForwardExpiryMonths,
-    });
-    const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
-    const currentBands = (current.accrual as { serviceBands?: ServiceBand[] } | null)?.serviceBands;
-    const bandsAccrual = serviceBandsAccrual(p.serviceBands, currentBands);
-    // Feedback eee43966 — PRESERVE the stored earning method when the caller does not send one, mirroring
-    // the bands tri-state above. The Eligibility tab no longer renders a method select, so an eligibility
-    // edit (days / grade / carry / bands / effective date) posts `method` absent and MUST NOT reset the
-    // method to the lump-sum default. Read from the row (not a client-side hidden field) so a method
-    // changed under General after the panel rendered can never be clobbered by a stale value.
-    const currentMethod = (current.accrual as { method?: string } | null)?.method;
-    // Feedback b81d3c52 (tri-state, this ticket) — PRESERVE the stored Rounding Method the same way, read
-    // from the row (not a client-side hidden field) so a form that does not render the Rounding dropdown
-    // (Carry Forward / Eligibility) posts no marker and the writer keeps what is there. `undefined` =
-    // preserve this; `null` = the dropdown WAS shown and No-Rounding was chosen ⇒ clear; 'up'/'down' = set.
-    const currentRounding = (current.accrual as { roundingMethod?: LeaveRoundingMethod } | null)?.roundingMethod;
-    const companyId = p.companyId ?? null;
-    const gradeId = p.gradeId ?? null;
-
-    const scopeChanged = gradeId !== current.gradeId || companyId !== current.companyId;
-    const validFromChanged = p.validFrom !== current.validFrom;
-    if (scopeChanged || validFromChanged) {
-      const sameScope = await tx
-        .select({ id: leavePolicy.id, validFrom: leavePolicy.validFrom })
-        .from(leavePolicy)
-        .where(
-          and(
-            eq(leavePolicy.leaveTypeId, current.leaveTypeId),
-            gradeId == null ? isNull(leavePolicy.gradeId) : eq(leavePolicy.gradeId, gradeId),
-            companyId == null ? isNull(leavePolicy.companyId) : eq(leavePolicy.companyId, companyId),
-            isNull(leavePolicy.validTo),
-          ),
-        );
-      const collision = sameScope.some((row) => row.id !== p.id);
-      if (collision) {
-        throw new Error('Another active version already covers this scope — create a new version instead.');
-      }
-    }
-
-    const accrual = {
-      annualDays: p.annualDays,
-      carryForwardMax,
-      method: p.method || currentMethod || 'grant_on_hire_prorated',
-      ...expiry,
-      ...carryFlags,
-      ...bandsAccrual,
-      ...roundingAccrual(p.roundingMethod, currentRounding),
-    };
-    await tx
-      .update(leavePolicy)
-      .set({
-        gradeId,
-        companyId,
-        accrual,
-        validFrom: p.validFrom,
-      })
-      .where(eq(leavePolicy.id, p.id));
-    // Feedback 49809272 — flow the correction through to already-granted balances, in this same
-    // transaction (policy rewrite + compensating ledger rows + events commit or roll back together).
-    const recalc = await reprojectEntitlementForPolicy(tx, ctx, {
-      policyId: p.id,
-      leaveTypeId: current.leaveTypeId,
-      before: current.accrual as AccrualConfig | null,
-      after: accrual,
-      beforeScope: { gradeId: current.gradeId, companyId: current.companyId },
-      afterScope: { gradeId, companyId },
-      validFrom: p.validFrom,
-      validTo: current.validTo,
-      asOf: p.asOf ?? todayInKualaLumpur(),
-    });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-policy',
-      aggregateId: p.id,
-      eventType: 'leave-policy.updated',
-      actor: actorOf(ctx),
-      payload: {
-        // 4ec5a940 — before/after snapshot so the Audit tab shows old → new (the prior row is already
-        // loaded as `current` above — no extra read). Config values (days, caps, accrual) are tenant
-        // configuration, not personal data, so cleartext is allowed (ADR-0030 Layer-0).
-        before: {
-          ...(((current.accrual ?? {}) as Record<string, unknown>) ?? {}),
-          companyId: current.companyId,
-          validFrom: current.validFrom,
-        },
-        after: {
-          ...accrual,
-          companyId,
-          validFrom: p.validFrom,
-        },
-        // Feedback 49809272: the correction's blast radius — this event is the recalc SUMMARY (the
-        // per-employee `leave.entitlement.recalculated` events are the per-row audit).
-        recalc,
-        ...(reason ? { reason } : {}),
-      },
-    });
-    return recalc;
-  });
-}
 
 // ─────────────────────── Service-Based Entitlements (company × grade) ───────────────────────
 // Restructure Service-Based Leave Entitlements by Company and Grade. The Service Based Entitlements
@@ -1420,157 +1121,9 @@ function accrualToCreateArgs(accrual: unknown): {
  * recalc fires and the reprojection posts the real delta). A grade first touched after seeding is copied
  * then updated the same way, so its employees are recalculated too.
  */
-export async function saveServiceEntitlement(
-  ctx: SessionContext,
-  p: {
-    leaveTypeId: string;
-    companyId: string;
-    gradeId: string;
-    under2: number;
-    mid: number;
-    over: number;
-    /** Effective date for newly-created rows (seeds + first-ever grade row). Defaults to 1 Jan this year. */
-    validFrom?: string;
-    /** Tenant-local "today" anchoring the reprojection; defaults to todayInKualaLumpur(). */
-    asOf?: string;
-  },
-): Promise<{ affected: number; totalDelta: number }> {
-  const validFrom = p.validFrom ?? `${new Date().getUTCFullYear()}-01-01`;
-  // Authoritative snapshot of the type's ACTIVE policy rows (all scopes), taken BEFORE any write so the
-  // seeding copies reflect what resolved beforehand.
-  const active: ActivePolicyRow[] = await withTenant(ctx, (tx) =>
-    tx
-      .select({
-        id: leavePolicy.id,
-        gradeId: leavePolicy.gradeId,
-        companyId: leavePolicy.companyId,
-        accrual: leavePolicy.accrual,
-        validFrom: leavePolicy.validFrom,
-      })
-      .from(leavePolicy)
-      .where(and(eq(leavePolicy.leaveTypeId, p.leaveTypeId), isNull(leavePolicy.validTo))),
-  );
-  const activeGrades: { id: string }[] = await withTenant(ctx, (tx) =>
-    tx
-      .select({ id: jobGrade.id })
-      .from(jobGrade)
-      .where(isNull(jobGrade.archivedAt))
-      .orderBy(jobGrade.rank, jobGrade.name),
-  );
-
-  const companyHasScope = active.some((r) => r.companyId === p.companyId);
-  if (!companyHasScope) {
-    // Seed the company null-grade default from the group null-grade default (if one exists).
-    const groupDefault = pickResolvingPolicyRow(active, null, null);
-    if (groupDefault) {
-      await createLeavePolicy(ctx, {
-        leaveTypeId: p.leaveTypeId,
-        companyId: p.companyId,
-        gradeId: null,
-        validFrom,
-        ...accrualToCreateArgs(groupDefault.accrual),
-      });
-    }
-    // Seed every active grade with a verbatim copy of its currently-resolving accrual.
-    for (const g of activeGrades) {
-      const src = pickResolvingPolicyRow(active, g.id, null);
-      if (!src) continue;
-      await createLeavePolicy(ctx, {
-        leaveTypeId: p.leaveTypeId,
-        companyId: p.companyId,
-        gradeId: g.id,
-        validFrom,
-        ...accrualToCreateArgs(src.accrual),
-      });
-    }
-  }
-
-  // Ensure a company+grade row exists for the edited grade, then edit it in place so the reprojection runs.
-  let target = await withTenant(ctx, (tx) =>
-    tx
-      .select({ id: leavePolicy.id, accrual: leavePolicy.accrual, validFrom: leavePolicy.validFrom })
-      .from(leavePolicy)
-      .where(
-        and(
-          eq(leavePolicy.leaveTypeId, p.leaveTypeId),
-          eq(leavePolicy.companyId, p.companyId),
-          eq(leavePolicy.gradeId, p.gradeId),
-          isNull(leavePolicy.validTo),
-        ),
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null),
-  );
-  if (!target) {
-    // Company scope existed but this grade was never seeded (e.g. a grade added later). Copy what resolves
-    // for it now, then update in place — so its employees are recalculated like any other edit.
-    const src = pickResolvingPolicyRow(active, p.gradeId, p.companyId);
-    const created = await createLeavePolicy(ctx, {
-      leaveTypeId: p.leaveTypeId,
-      companyId: p.companyId,
-      gradeId: p.gradeId,
-      validFrom,
-      ...accrualToCreateArgs(src?.accrual ?? { annualDays: p.over }),
-    });
-    target = { id: created.id, accrual: src?.accrual ?? { annualDays: p.over }, validFrom };
-  }
-
-  const currentAcc = (target.accrual ?? {}) as AccrualConfig;
-  const sourceFlat = !(Array.isArray(currentAcc.serviceBands) && currentAcc.serviceBands.length > 0);
-  const flat = sourceFlat && p.under2 === p.mid && p.mid === p.over;
-  const serviceBands: ServiceBand[] | null = flat
-    ? null
-    : [
-        { fromYears: 0, toYears: 2, days: p.under2 },
-        { fromYears: 2, toYears: 5, days: p.mid },
-        { fromYears: 5, toYears: null, days: p.over },
-      ];
-  // annualDays is mandatory + load-bearing (legacy resolution + the EA floor path): always the flat value,
-  // or the 5+ tier days when bands are written (fix 3) — never 0/undefined.
-  const annualDays = flat ? p.under2 : p.over;
-  return updateLeavePolicy(ctx, {
-    id: target.id,
-    annualDays,
-    serviceBands,
-    // Preserve the row's carry-forward + rounding config (the writer rebuilds accrual wholesale; an
-    // omitted field would be cleared — see updateLeavePolicy). Method is preserved by the writer itself.
-    carryForwardMax: Math.max(0, Number(currentAcc.carryForwardMax ?? 0)),
-    carryForwardExpiryMonth: currentAcc.carryForwardExpiryMonth ?? null,
-    carryForwardExpiryDay: currentAcc.carryForwardExpiryDay ?? null,
-    carryForwardExpiryMode: currentAcc.carryForwardExpiryMode === 'months' ? 'months' : undefined,
-    carryForwardExpiryMonths: currentAcc.carryForwardExpiryMonths ?? null,
-    carryForwardEnabled: typeof currentAcc.carryForwardEnabled === 'boolean' ? currentAcc.carryForwardEnabled : undefined,
-    carryForwardIncludeEarned: currentAcc.carryForwardIncludeEarned,
-    // bc36c768 — THE METHOD WRITE IS STRIPPED, and only the method write. This function is NOT deleted:
-    // it is the only writer that materialises a company's whole grade scope on first save (the ADR-0066
-    // short-circuit that test/service-based-entitlement.test.ts pins), grade-level policies still resolve
-    // for anyone no benefit scheme covers, and core/saveServiceEntitlement would be stranded. Passing the
-    // stored method back through was already a no-op — updateLeavePolicy PRESERVES the row's method when
-    // the caller sends none (eee43966) — so this is behaviour-identical and removes one more writer from
-    // the "who can write an earning method" enumeration.
-    roundingMethod: currentAcc.roundingMethod,
-    gradeId: p.gradeId,
-    companyId: p.companyId,
-    validFrom: target.validFrom,
-    asOf: p.asOf,
-  });
-}
 
 /** Remove an entitlement policy. Safe: the ledger references the leave *type*, not the policy,
  *  so past grants are untouched — this only stops the row from driving future grants. */
-export async function deleteLeavePolicy(ctx: SessionContext, p: { id: string }) {
-  return withTenant(ctx, async (tx) => {
-    await tx.delete(leavePolicy).where(eq(leavePolicy.id, p.id));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-policy',
-      aggregateId: p.id,
-      eventType: 'leave-policy.deleted',
-      actor: actorOf(ctx),
-      payload: {},
-    });
-  });
-}
 
 export async function assignRole(
   ctx: SessionContext,
@@ -1869,30 +1422,6 @@ export function listBusinessUnitsForLabels(
   );
 }
 
-export function listLeavePolicies(ctx: SessionContext) {
-  return withTenant(ctx, (tx) =>
-    tx
-      .select({
-        id: leavePolicy.id,
-        leaveTypeId: leavePolicy.leaveTypeId,
-        leaveType: leaveType.name,
-        typeCode: leaveType.code,
-        accrual: leavePolicy.accrual,
-        gradeId: leavePolicy.gradeId,
-        gradeName: jobGrade.name,
-        // ADR-0066: the owning company (null = group default) + its name for the policy-row scope badge.
-        companyId: leavePolicy.companyId,
-        companyName: company.legalName,
-        validFrom: leavePolicy.validFrom,
-        validTo: leavePolicy.validTo,
-      })
-      .from(leavePolicy)
-      .innerJoin(leaveType, eq(leaveType.id, leavePolicy.leaveTypeId))
-      .leftJoin(jobGrade, eq(jobGrade.id, leavePolicy.gradeId))
-      .leftJoin(company, eq(company.id, leavePolicy.companyId))
-      .orderBy(leaveType.name),
-  );
-}
 
 
 // ───────────────────────── Public holiday calendar ─────────────────────────

@@ -50,23 +50,11 @@ describe('962077a8: both tools stay reachable from their sub-step homes (7b94540
     expect(entitlementsPage).toContain('accrualSection={accrualSection}');
   });
 
-  it('Preview Scenario: LeaveRulePreviewDialog mounts exactly once — inside the previewScenarioSection slot (Service Based Entitlements)', () => {
-    expect(entitlementsPage.match(/<LeaveRulePreviewDialog/g)).toHaveLength(1);
-    const slot = entitlementsPage.slice(
-      entitlementsPage.indexOf('const previewScenarioSection'),
-      entitlementsPage.indexOf('const accrualSection'),
-    );
-    expect(slot).toContain('<LeaveRulePreviewDialog');
-    expect(slot).toContain('policies={previewPolicies}');
-    expect(entitlementsPage).toContain('previewScenarioSection={previewScenarioSection}');
-  });
+  // 6e9a126e RELEASE THREE — LeaveRulePreviewDialog and components/leave-rule-preview.tsx are DELETED.
+  // The checker resolved days through leave_policy rows; with that layer gone it could only have answered
+  // '—' to every question while still looking live.
 
-  it('the trigger-label keys stay live in all 6 locales (the dialogs still render their buttons)', () => {
-    for (const locale of ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const) {
-      const leave = JSON.parse(read(`/messages/${locale}.json`)).admin.leave as Record<string, unknown>;
-      for (const key of ['importAction', 'runAccrualAction', 'previewScenarioAction']) {
-        expect(leave, `${locale}: ${key} must exist`).toHaveProperty(key);
-      }
-    }
-  });
+  // 6e9a126e RELEASE THREE — previewScenarioAction labelled the deleted dialog's trigger and was retired
+  // from all six catalogs with it. A live key for a button that cannot render is the orphan the i18n
+  // ratchet exists to prevent.
 });

@@ -2,7 +2,13 @@
  * ADR-0040 2D-2 — anniversary earned-accrual cycle. With company.leave_cycle='anniversary', each
  * employee's earned-accrual cycle is anchored to their hire-month anniversary (not the calendar 1 Jan).
  * accrueEarnedLeave then accrues from the most-recent anniversary on/before asOf, idempotently. The
- * entitlement here is max(EA-floor 8, policy 12) = 12 on a 12-month cycle, so earned-to-date == periods.
+ * entitlement here is 12 days on a 12-month cycle, so earned-to-date == elapsed periods.
+ *
+ * 6e9a126e RELEASE THREE — REPOINTED. Same 12 days, same cycle, same expected balances; the configuration
+ * moved. The days come from an entitlement template valid from 2024-01-01 (covering every asOf below) and
+ * the earning method from the leave TYPE's `accrual_method` column. No carry cap is configured in either
+ * place, exactly as the old JSONB configured none — which is what makes the anniversary forfeit assertion
+ * below still forfeit the whole 12.
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -11,7 +17,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { accrueEarnedLeave } from '../core/leave';
 import { setCompanyLeaveCycle } from '../core/admin';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 let b: Base;
 const balanceOf = async (employmentId: string) => {
@@ -22,15 +28,17 @@ const balanceOf = async (employmentId: string) => {
   return Number(r.bal);
 };
 const setCycle = (cycle: string) => setCompanyLeaveCycle(adminCtx(b), { companyId: b.companyId, cycle });
-const earnedPolicy = () =>
-  owner.db
-    .insert(schema.leavePolicy)
-    .values({
-      tenantId: b.tenantId,
-      leaveTypeId: b.annualLeaveTypeId,
-      accrual: { annualDays: 12, method: 'earned_monthly' },
-      validFrom: '2024-01-01',
-    });
+const earnedPolicy = async () => {
+  await seedEntitlement(adminCtx(b), {
+    leaveTypeId: b.annualLeaveTypeId,
+    annualDays: 12,
+    validFrom: '2024-01-01',
+  });
+  await owner.db
+    .update(schema.leaveType)
+    .set({ accrualMethod: 'earned_monthly' })
+    .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+};
 const hire = (hiredOn: string) =>
   hireEmployee(adminCtx(b), {
     person: { fullName: 'Anniv', primaryEmail: `anniv_${randomUUID().slice(0, 8)}@t.local` },

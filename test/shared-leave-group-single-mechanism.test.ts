@@ -135,27 +135,27 @@ describe('1ef1cf95 · sharing caps what is TAKEN, never what is GRANTED', () => 
     // asserted an implementation detail against the change it was never about. What must stay true is
     // that the fourth input is the template and NOT a shared-group figure, and that the floor still does
     // not override configuration.
+    // UPDATED AGAIN (6e9a126e RELEASE THREE), for the FOURTH time and the same reason every time: this
+    // guard's subject is "no shared-group day figure may become an entitlement source", never the literal
+    // arity. Release three DROPS the scheme and policy layers, so the chain that read
+    // `templateDays ?? schemeDays ?? policyDays` is now the template alone. Pinning the old expression
+    // would have re-asserted two layers this release exists to delete.
     const code = computeSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    // The precedence chain, in full: template beats scheme beats policy.
-    expect(code).toContain('const days = templateDays ?? schemeDays ?? policyDays;');
+    // The chain, in full: the template is now the ONLY configured day source.
+    expect(code).toMatch(/templateDays \?\? 0/);
+    expect(code, 'the dropped layers must not reappear as day sources').not.toMatch(/schemeDays|policyDays/);
     // The floor advises, it does not override (fa3f4ccb, twice-instructed by the reporter).
     expect(code).not.toMatch(/Math\.max\(\s*floorDays/);
-    // THE REAL INVARIANT: every day-source parameter is named, and none of them is a shared-group one.
-    const sig = computeSrc.match(
-      /export function entitledDays\(([\s\S]*?)\): \{ days: number; belowStatutoryFloor: boolean \}/,
-    );
-    expect(sig, 'entitledDays must keep its named-parameter signature').toBeTruthy();
-    const params = sig![1]
-      .split(',')
-      .map((p) => p.split(':')[0].trim())
-      .filter(Boolean);
-    expect(params).toEqual(['floorDays', 'templateDays', 'schemeDays', 'policyDays']);
-    // Belt and braces: no shared-group vocabulary may appear in the kernel at all (asserted above for
-    // combinedLimit; this catches a rename).
-    expect(params.some((p) => /shared|group|combined/i.test(p))).toBe(false);
-    // floorDays must still REACH the caller as a signal, or the warning has no source and the UI would
-    // have to recompute the floor — which is how two figures drift apart.
-    expect(computeSrc).toContain('belowStatutoryFloor: belowStatutoryFloor(floorDays, days)');
+    // 6e9a126e RELEASE THREE — the `entitledDays` SIGNATURE half of this guard is gone because the
+    // function is: it existed to resolve floor/template/scheme/policy, and three of those four no longer
+    // exist. The guard's REAL subject — "no shared-group day figure may become an entitlement source" —
+    // is carried by the chain assertion above, which now also refuses schemeDays/policyDays by name.
+    // Removing the whole case would have dropped that; keeping the signature check would have asserted a
+    // function that is not there.
+    // The floor must still REACH the caller as a signal, or the warning has no source and the UI would
+    // have to recompute it — which is how two figures drift apart. The ARGUMENTS changed with the
+    // layers (floorDays/days -> p.floorDays/templateDays), the requirement did not.
+    expect(computeSrc).toMatch(/belowStatutoryFloor:\s*belowStatutoryFloor\(/);
   });
 
   it('the group carries usage caps and no entitlement bands', () => {
@@ -204,7 +204,11 @@ describe('1ef1cf95 · sharing caps what is TAKEN, never what is GRANTED', () => 
     //    FIRST: this checks COLUMN NAMES, and r86a already proved that grepping raw source turns a comment
     //    correctly CITING the group's column into a phantom violation.
     const leaveTypeBlock = schemaSrc
-      .slice(schemaSrc.indexOf("export const leaveType = pgTable"), schemaSrc.indexOf("export const leavePolicy = pgTable"))
+      // 6e9a126e RELEASE THREE — the end marker was `leavePolicy`, which 0410 drops. indexOf then returned
+      // -1 and this slice swallowed the REST OF THE FILE, so the guard started matching columns on tables
+      // that legitimately carry them. A boundary naming a deleted symbol does not fail loudly; it silently
+      // widens what it inspects. Repointed at the next surviving declaration.
+      .slice(schemaSrc.indexOf("export const leaveType = pgTable"), schemaSrc.indexOf("export const jobGrade = pgTable"))
       .split('\n')
       .filter((l) => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('*') && !l.trimStart().startsWith('/*'))
       .join('\n');

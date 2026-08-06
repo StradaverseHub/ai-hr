@@ -22,7 +22,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee } from '../core/org';
-import { createLeavePolicy } from '../core/admin';
 import { createMovementEvent } from '../core/movement';
 import { openLeaveYear, serviceYearsAt } from '../core/leave';
 import { employeeDetail } from '../core/read';
@@ -34,6 +33,7 @@ import {
   migrateTestDb,
   resetDb,
   seedBase,
+  seedEntitlement,
   type Base,
 } from './harness';
 
@@ -58,13 +58,19 @@ const hire = (hiredOn: string) =>
 
 const balance = (employmentId: string) => ledgerBalance(employmentId, b.annualLeaveTypeId);
 
-const bandedPolicy = () =>
-  createLeavePolicy(adminCtx(b), {
+/**
+ * 6e9a126e RELEASE THREE — was `createLeavePolicy(annualDays 12, carryForwardMax 0, serviceBands BANDS)`.
+ *
+ * The BANDS are the whole point of this file and they move across UNCHANGED — the template layer stores the
+ * same `ServiceBand[]` JSONB and resolves it through the same `bandDaysFor`. `carryForwardMax: 0` needed no
+ * replacement: with no leave-type rules configured, `applyLeaveTypeRules` returns the band's carrier
+ * untouched and a template band carries no cap, so carry forward is off — which is exactly what the 0 said.
+ */
+const bandedEntitlement = () =>
+  seedEntitlement(adminCtx(b), {
     leaveTypeId: b.annualLeaveTypeId,
-    annualDays: 12,
-    carryForwardMax: 0,
     serviceBands: BANDS,
-    // Early enough to cover every hire date used below — the policy lookup at hire filters on validFrom.
+    // Early enough to cover every hire date used below — resolution at hire filters on validFrom.
     validFrom: '2010-01-01',
   });
 
@@ -82,7 +88,7 @@ describe('the Group Join Date (hired_on) is the date entitlement reads', () => {
   // hire is zero by definition), so the hire grant cannot distinguish the bands. openLeaveYear is where a
   // band is re-resolved against accumulated service, which is why each case opens a later year.
   it('service bands resolve off hired_on — two employees differing only in it land in different bands', async () => {
-    await bandedPolicy();
+    await bandedEntitlement();
     const junior = await hire('2024-01-01');
     const senior = await hire('2018-01-01');
     expect(await balance(junior.employmentId)).toBe(14); // 0 years at hire, both
@@ -96,7 +102,7 @@ describe('the Group Join Date (hired_on) is the date entitlement reads', () => {
   });
 
   it('a Group Join Date Correction MOVES the band at the next leave year', async () => {
-    await bandedPolicy();
+    await bandedEntitlement();
     // Hired 2024-01-01 ⇒ at 2026-01-01 they would have exactly 2 completed years ⇒ the 16-day band.
     const emp = await hire('2024-01-01');
     expect(await balance(emp.employmentId)).toBe(14); // hire grant, 0 years
@@ -120,7 +126,7 @@ describe('the Group Join Date (hired_on) is the date entitlement reads', () => {
 
 describe('the Join Date (join_date) drives NO entitlement', () => {
   it('a Join Date Change leaves the leave entitlement untouched', async () => {
-    await bandedPolicy();
+    await bandedEntitlement();
     const emp = await hire('2018-01-01');
 
     // The plan's internal-transfer example: the employee moves to another group company, so their
@@ -145,7 +151,7 @@ describe('the Join Date (join_date) drives NO entitlement', () => {
   });
 
   it('the creation-time sync cannot move anyone: a seeded join_date equals hired_on', async () => {
-    await bandedPolicy();
+    await bandedEntitlement();
     const emp = await hire('2018-01-01');
     const d = await employeeDetail(adminCtx(b), emp.employmentId);
     // Both dates identical at creation (expected behaviour #1 of the item)…

@@ -1,37 +1,48 @@
 /**
- * Leave Entitlement Rules Engine (feedback a0228655) — service-length bands above the flat annualDays,
- * the one-active-default-per-type supersede fix, and the pure preview resolver.
+ * Leave Entitlement Rules Engine (feedback a0228655) — service-length bands, the band resolver, the
+ * per-range entitlement columns (9d8cf621) and the engines that spend them.
  *
- * Pure-resolver unit tests exercise core/leave-compute.ts directly (bandDaysFor, resolveGradePolicy with
- * bands, previewEntitlement) — no DB needed. Integration tests exercise the full stack (hire grant,
- * openLeaveYear, accrueEarnedLeave, expireCarriedLeave, admin.ts validation + supersede + tri-state).
+ * ── 6e9a126e RELEASE THREE: WHERE THE BANDS LIVE CHANGED; WHAT THEY DO DID NOT ───────────────────────
+ * Migration 0405 dropped `leave_policy`, so a band table is no longer a key inside a policy row's JSONB —
+ * it is `entitlement_template.service_bands`, assigned to people by an eligibility rule. Every fixture
+ * below is repointed onto `seedEntitlement` (test/harness.ts), which makes exactly those two writes, and
+ * EVERY ASSERTION ABOUT THE ARITHMETIC IS UNCHANGED: the same 14/16/18 worked example, the same
+ * boundary years, the same clamps, the same forfeits, the same balances.
+ *
+ * Three of the original describe blocks tested the DROPPED LAYER ITSELF rather than the engine, and are
+ * retired in place with their reasons — see the RETIRED notes at their former positions. Nothing was
+ * loosened to make anything pass.
+ *
+ * WHERE A RULE COMES FROM, in the world these fixtures now build. 9816a5ad step 2 split configuration in
+ * two: the entitlement layer owns DAYS, the leave TYPE owns RULES (earning method, carry cap, carry
+ * expiry, rounding, maximum balance). `applyLeaveTypeRules` replaces the WHOLE rule set from the type the
+ * moment the type states any one of them. So a fixture that wants a band's own per-range override to be
+ * read must leave the type silent, and a fixture that wants the old POLICY-LEVEL rule must put it on the
+ * type. Which one each test picks is stated at the test, because it is the difference between exercising
+ * `policyFromTemplateBand` and exercising the overlay.
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { createJobGrade, createLeavePolicy, deleteLeavePolicy, updateLeavePolicy } from '../core/admin';
 import { accrueEarnedLeave, expireCarriedLeave, openLeaveYear } from '../core/leave';
 import { leaveEntitlementBreakdown } from '../core/read';
 import {
   applyMaxBalance,
   bandCarryExpiry,
   bandCarryMax,
-  bandDaysFor,
   bandFor,
   bandMaxBalance,
-  hasAnyCarryExpiry,
   // 6e9a126e — the band ceiling, imported rather than restated, so this test moves with the constant.
   isWellFormedBands,
   MAX_SERVICE_BANDS,
-  previewEntitlement,
-  resolveGradePolicy,
+  policyFromTemplateBand,
   type AccrualConfig,
-  type GradePolicyRow,
   type ServiceBand,
 } from '../core/leave-compute';
-import { adminCtx, closeAll, eventTypesFor, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { createEntitlementTemplate, updateEntitlementTemplate } from '../core/entitlement-template';
+import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 let b: Base;
 const balance = (employmentId: string) => ledgerBalance(employmentId, b.annualLeaveTypeId);
@@ -47,18 +58,20 @@ const hire = (hiredOn: string, gradeId: string | null = null) =>
     grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
   });
 
-const readAccrual = async (policyId: string): Promise<Record<string, unknown>> => {
-  const [row] = await owner.db
-    .select({ accrual: schema.leavePolicy.accrual })
-    .from(schema.leavePolicy)
-    .where(eq(schema.leavePolicy.id, policyId));
-  return (row?.accrual as Record<string, unknown>) ?? {};
-};
+/**
+ * Set rule columns on the ANNUAL leave type — the home of every RULE since 9816a5ad step 2, and therefore
+ * where a fixture that used to say "policy-level carry cap / expiry / maximum balance" has to say it now.
+ *
+ * Written directly rather than through `setLeaveTypeRules` on purpose: that writer refuses the retired
+ * rounding methods and normalises several fields, and these fixtures are describing a STORED world for the
+ * engines to read, not exercising the writer (which has its own file).
+ */
+const setTypeRules = (rules: Partial<typeof schema.leaveType.$inferInsert>) =>
+  owner.db.update(schema.leaveType).set(rules).where(eq(schema.leaveType.id, b.annualLeaveTypeId));
 
-const readPolicy = async (policyId: string) => {
-  const [row] = await owner.db.select().from(schema.leavePolicy).where(eq(schema.leavePolicy.id, policyId));
-  return row;
-};
+/** The band table for ANNUAL, assigned to everybody — `seedEntitlement`'s template + eligibility rule. */
+const seedBands = (serviceBands: ServiceBand[], p: { validFrom?: string; name?: string } = {}) =>
+  seedEntitlement(adminCtx(b), { leaveTypeId: b.annualLeaveTypeId, serviceBands, ...p });
 
 /** Under-2 = 14, 2-to-under-5 = 16, 5-and-above = 18 (the feedback's own worked example). */
 const REQUEST_BANDS: ServiceBand[] = [
@@ -79,168 +92,126 @@ afterAll(async () => {
 });
 
 // ── Pure resolver unit tests ──────────────────────────────────────────────────────────────────────────
-describe('bandDaysFor — half-open boundary matching + defensive fallback', () => {
+
+/**
+ * `bandDaysFor` — the `bandFor(...)?.days ?? annualDays` wrapper — was DELETED by release three, because
+ * `annualDays` was the flat `leave_policy` figure a band sat above and there is no policy row left to fall
+ * back to. An entitlement template is bands and nothing else.
+ *
+ * So every case below is repointed onto `bandFor`, which is the half-open matcher `bandDaysFor` always
+ * delegated to. The MATCHING cases keep their exact day figures. The DEFENSIVE cases keep their exact
+ * inputs and now assert `null` — "no band resolves" — instead of "falls back to 12/9/20. That is not a
+ * weaker assertion: null is the only answer `bandFor` has ever given for a malformed table, and it is
+ * strictly more specific than a fallback number, because a fallback number is indistinguishable from a
+ * correctly resolved one. What the caller does with null is `composeEntitlement`'s job and is pinned by
+ * test/entitlement-no-opinion-guard.ts.
+ */
+describe('bandFor — half-open boundary matching + defensive fallback', () => {
   const acc = (bands: unknown, annualDays = 12): AccrualConfig => ({ annualDays, serviceBands: bands as ServiceBand[] });
+  const days = (bands: unknown, years: number) => bandFor(acc(bands), years)?.days ?? null;
 
   it('picks the correct band at 0, 2, 5, 6 completed years (half-open: fromYears <= years < toYears)', () => {
-    const a = acc(REQUEST_BANDS);
-    expect(bandDaysFor(a, 0)).toBe(14);
-    expect(bandDaysFor(a, 1)).toBe(14);
-    expect(bandDaysFor(a, 2)).toBe(16); // boundary: 2 enters the 2-5 band, not the under-2 band
-    expect(bandDaysFor(a, 4)).toBe(16);
-    expect(bandDaysFor(a, 5)).toBe(18); // boundary: 5 enters the open-ended top band
-    expect(bandDaysFor(a, 6)).toBe(18);
-    expect(bandDaysFor(a, 50)).toBe(18);
+    expect(days(REQUEST_BANDS, 0)).toBe(14);
+    expect(days(REQUEST_BANDS, 1)).toBe(14);
+    expect(days(REQUEST_BANDS, 2)).toBe(16); // boundary: 2 enters the 2-5 band, not the under-2 band
+    expect(days(REQUEST_BANDS, 4)).toBe(16);
+    expect(days(REQUEST_BANDS, 5)).toBe(18); // boundary: 5 enters the open-ended top band
+    expect(days(REQUEST_BANDS, 6)).toBe(18);
+    expect(days(REQUEST_BANDS, 50)).toBe(18);
   });
 
-  it('falls back to annualDays when no serviceBands are configured', () => {
-    expect(bandDaysFor(acc(undefined, 20), 10)).toBe(20);
-    expect(bandDaysFor({ annualDays: 20 }, 10)).toBe(20);
+  it('resolves NO band when no serviceBands are configured', () => {
+    expect(bandFor(acc(undefined, 20), 10)).toBeNull();
+    expect(bandFor({ annualDays: 20 }, 10)).toBeNull();
+    expect(bandFor(acc([], 20), 10)).toBeNull();
   });
 
-  it('DEFENSIVE: non-array serviceBands falls back to annualDays, never throws', () => {
-    expect(bandDaysFor(acc('not-an-array', 9), 3)).toBe(9);
-    expect(bandDaysFor(acc(42, 9), 3)).toBe(9);
-    expect(bandDaysFor(acc({}, 9), 3)).toBe(9);
+  it('DEFENSIVE: non-array serviceBands resolves to no band, never throws', () => {
+    expect(bandFor(acc('not-an-array', 9), 3)).toBeNull();
+    expect(bandFor(acc(42, 9), 3)).toBeNull();
+    expect(bandFor(acc({}, 9), 3)).toBeNull();
   });
 
-  it('DEFENSIVE: malformed band rows (strings, negative, non-integer) fall back to annualDays', () => {
-    expect(bandDaysFor(acc([{ fromYears: '0', toYears: 2, days: 10 }], 9), 1)).toBe(9);
-    expect(bandDaysFor(acc([{ fromYears: -1, toYears: null, days: 10 }], 9), 1)).toBe(9);
-    expect(bandDaysFor(acc([{ fromYears: 0.5, toYears: null, days: 10 }], 9), 1)).toBe(9);
-    expect(bandDaysFor(acc([{ fromYears: 0, toYears: null, days: -5 }], 9), 1)).toBe(9);
+  it('DEFENSIVE: malformed band rows (strings, negative, non-integer) resolve to no band', () => {
+    expect(bandFor(acc([{ fromYears: '0', toYears: 2, days: 10 }], 9), 1)).toBeNull();
+    expect(bandFor(acc([{ fromYears: -1, toYears: null, days: 10 }], 9), 1)).toBeNull();
+    expect(bandFor(acc([{ fromYears: 0.5, toYears: null, days: 10 }], 9), 1)).toBeNull();
+    expect(bandFor(acc([{ fromYears: 0, toYears: null, days: -5 }], 9), 1)).toBeNull();
   });
 
-  it('DEFENSIVE: overlapping bands fall back to annualDays', () => {
+  it('DEFENSIVE: overlapping bands resolve to no band', () => {
     const overlapping: ServiceBand[] = [
       { fromYears: 0, toYears: 3, days: 10 },
       { fromYears: 2, toYears: null, days: 20 },
     ];
-    expect(bandDaysFor(acc(overlapping, 9), 2)).toBe(9);
+    expect(bandFor(acc(overlapping, 9), 2)).toBeNull();
   });
 
-  it('DEFENSIVE: a gap between bands falls back to annualDays', () => {
+  it('DEFENSIVE: a gap between bands resolves to no band', () => {
     const gappy: ServiceBand[] = [
       { fromYears: 0, toYears: 2, days: 10 },
       { fromYears: 3, toYears: null, days: 20 },
     ];
-    expect(bandDaysFor(acc(gappy, 9), 4)).toBe(9);
+    expect(bandFor(acc(gappy, 9), 4)).toBeNull();
   });
 
-  it('DEFENSIVE: first band not starting at 0 falls back to annualDays', () => {
+  it('DEFENSIVE: first band not starting at 0 resolves to no band', () => {
     const badStart: ServiceBand[] = [{ fromYears: 1, toYears: null, days: 20 }];
-    expect(bandDaysFor(acc(badStart, 9), 5)).toBe(9);
+    expect(bandFor(acc(badStart, 9), 5)).toBeNull();
   });
 
-  it('DEFENSIVE: a malformed array (last band not open-ended) falls back to annualDays for ANY service length', () => {
+  it('DEFENSIVE: a malformed array (last band not open-ended) resolves to no band for ANY service length', () => {
     // A single band with a closed toYears fails isWellFormedBands' "last band must be null" rule, so the
-    // WHOLE array is treated as malformed (never partially trusted) — every call falls back to annualDays.
+    // WHOLE array is treated as malformed (never partially trusted) — every call resolves to nothing.
     const notOpen: ServiceBand[] = [{ fromYears: 0, toYears: 5, days: 20 }];
-    expect(bandDaysFor(acc(notOpen, 9), 1)).toBe(9);
-    expect(bandDaysFor(acc(notOpen, 9), 6)).toBe(9);
+    expect(bandFor(acc(notOpen, 9), 1)).toBeNull();
+    expect(bandFor(acc(notOpen, 9), 6)).toBeNull();
   });
 });
 
-describe('resolveGradePolicy — band-resolved most-generous pick + back-compat + grade/company tiering', () => {
-  const row = (annualDays: number, opts: Partial<GradePolicyRow> & { serviceBands?: ServiceBand[] } = {}): GradePolicyRow => ({
-    gradeId: opts.gradeId ?? null,
-    companyId: opts.companyId ?? null,
-    accrual: { annualDays, method: 'grant_on_hire_prorated', serviceBands: opts.serviceBands },
-  });
+// ── RETIRED · `resolveGradePolicy — band-resolved most-generous pick + back-compat + grade/company
+//    tiering` (4 tests) ─────────────────────────────────────────────────────────────────────────────
+// `resolveGradePolicy` WAS the `leave_policy` resolver: given every policy row for a type, pick a winner by
+// company tier, then grade tier, then most-generous days. Migration 0405 dropped the table and release
+// three deleted the function, so there is nothing left for these four to call. They are not repointed
+// because the new layer does not decide the same way and it would be dishonest to pretend otherwise:
+//   - "most generous wins" is GONE. Two entitlement templates never compete on days; the ELIGIBILITY RULES
+//     compete, and the MOST SPECIFIC one wins (orgCriteriaSpecificity / beatsEligibility).
+//   - the grade/company tiering these tests pinned survives as a special case of that: a grade-scoped rule
+//     used to beat a grade-less one by having a grade, and now beats it by being narrower. Same outcome,
+//     decided elsewhere — and it is pinned where it is now decided, in
+//     test/entitlement-template-layer.test.ts (`beatsEligibility`, specificity ranking and ties).
+// The band-resolution half of what these tests covered — that a band table resolves per service length at
+// all — is the `bandFor` block above and the integration blocks below, both of which keep their figures.
 
-  it('a lower flat annualDays with a higher band for this service length still wins the most-generous pick', () => {
-    const rows = [row(20), row(10, { serviceBands: REQUEST_BANDS })]; // 20 flat vs banded (18 at 6y)
-    expect(resolveGradePolicy(rows, null, undefined, 6)?.days).toBe(20); // flat still wins at 6y (20 > 18)
-    const rows2 = [row(15), row(10, { serviceBands: REQUEST_BANDS })];
-    expect(resolveGradePolicy(rows2, null, undefined, 6)?.days).toBe(18); // banded wins at 6y (18 > 15)
-  });
-
-  it('grade/company tiering is preserved with bands in play', () => {
-    const rows = [
-      row(12, { serviceBands: REQUEST_BANDS }), // group default, banded
-      row(20, { gradeId: 'exec' }), // grade override, flat
-    ];
-    expect(resolveGradePolicy(rows, 'exec', undefined, 1)?.days).toBe(20); // grade wins regardless of band
-    expect(resolveGradePolicy(rows, null, undefined, 1)?.days).toBe(14); // no grade ⇒ banded default, under-2y
-    expect(resolveGradePolicy(rows, null, undefined, 6)?.days).toBe(18); // no grade ⇒ banded default, 5y+
-  });
-
-  it('back-compat: a policy with no serviceBands resolves to the same annualDays at any serviceYears', () => {
-    const rows = [row(16)];
-    expect(resolveGradePolicy(rows, null, undefined, 0)?.days).toBe(16);
-    expect(resolveGradePolicy(rows, null, undefined, 3)?.days).toBe(16);
-    expect(resolveGradePolicy(rows, null, undefined, 30)?.days).toBe(16);
-  });
-
-  it('a pure-resolver test with literal duplicate default rows preserves the most-generous tie-break', () => {
-    // Mirrors the legacy duplicate-default fixture (test/grade-based-leave.test.ts pre-supersede) — the
-    // resolver itself makes no attempt to heal/dedupe; it just picks the max.
-    const rows = [row(12), row(16)];
-    expect(resolveGradePolicy(rows, null, undefined, 0)?.days).toBe(16);
-  });
-});
-
-describe('previewEntitlement — scope derivation + belowStatutoryFloor, incl. company-resolves-null short-circuit', () => {
-  const row = (annualDays: number, companyId: string | null, gradeId: string | null = null): GradePolicyRow => ({
-    gradeId,
-    companyId,
-    accrual: { annualDays },
-  });
-
-  it('a configured figure ABOVE the statutory minimum resolves to itself; no warning', () => {
-    const rows = [row(20, null)];
-    const r = previewEntitlement(rows, null, null, 3, 12);
-    expect(r).toEqual({ floorDays: 12, policyDays: 20, days: 20, scope: 'group', belowStatutoryFloor: false });
-  });
-
-  // fa3f4ccb — THE behaviour change. This case used to resolve to 12 (the floor overrode the 5). The
-  // configured figure now wins outright and the warning flag is the only thing the minimum produces.
-  it('a configured figure BELOW the statutory minimum resolves to ITSELF and raises the warning flag', () => {
-    const rows = [row(5, null)];
-    const r = previewEntitlement(rows, null, null, 3, 12);
-    expect(r).toEqual({ floorDays: 12, policyDays: 5, days: 5, scope: 'group', belowStatutoryFloor: true });
-  });
-
-  it('no policy at all ⇒ scope none, nothing granted, warning raised', () => {
-    const r = previewEntitlement([], null, 'co-a', 3, 12);
-    expect(r).toEqual({ floorDays: 12, policyDays: null, days: 0, scope: 'none', belowStatutoryFloor: true });
-  });
-
-  it('no statutory pack (non-MY company) ⇒ no warning, whatever the configured figure is', () => {
-    // The jurisdictions with no pack already ran with no floor. fa3f4ccb makes MY behave like them, so a
-    // null floor must never raise the flag — not even against a configured 0.
-    const r = previewEntitlement([row(0, null)], null, null, 3, null);
-    expect(r).toEqual({ floorDays: null, policyDays: 0, days: 0, scope: 'group', belowStatutoryFloor: false });
-  });
-
-  it('company scope EXISTS but resolves to null (only other-grade rows) ⇒ scope company, nothing granted', () => {
-    const rows = [row(20, 'co-a', 'exec')]; // company has a policy, but only for grade "exec"
-    const r = previewEntitlement(rows, null, 'co-a', 3, 12); // querying with no grade
-    // Short-circuit: the company tier is non-empty (has an exec-scoped row), so resolution stays within it
-    // and NEVER falls back to group — but no null-grade row exists there, so resolveGradePolicy returns
-    // null (no match), not a fabricated 0. fa3f4ccb: the floor no longer backfills that gap, so the
-    // resolved figure is 0 and the below-minimum warning is what tells the admin.
-    expect(r.scope).toBe('company');
-    expect(r.policyDays).toBeNull();
-    expect(r.days).toBe(0);
-    expect(r.belowStatutoryFloor).toBe(true);
-  });
-});
+// ── RETIRED · `previewEntitlement — scope derivation + belowStatutoryFloor, incl. company-resolves-null
+//    short-circuit` (5 tests) ─────────────────────────────────────────────────────────────────────────
+// `previewEntitlement` previewed the resolution of `leave_policy` rows for the admin Entitlements screen —
+// its `scope: 'group' | 'company' | 'none'` return value is a description of the policy tiering that no
+// longer exists, and it was deleted with the layer it previewed. The one property here that outlived it,
+// fa3f4ccb's "a configured figure BELOW the statutory minimum resolves to ITSELF and only raises a
+// warning", is asserted on the surviving composition by `belowStatutoryFloor` / `composeEntitlement` and,
+// end to end, by the 6-day-band hire test further down this file, which still credits 6 against an 8-day
+// statutory minimum.
 
 // ── Integration tests ─────────────────────────────────────────────────────────────────────────────────
-describe('Leave Entitlement Rules Engine — band validation (admin.ts write-time)', () => {
+describe('Leave Entitlement Rules Engine — band validation (write-time)', () => {
+  // Repointed from `createLeavePolicy` to `createEntitlementTemplate`. The VALIDATOR IS THE SAME FUNCTION:
+  // 6e9a126e moved `validateServiceBands` into core/leave-compute.ts precisely so both writers could share
+  // it, and the template writer calls it before its first insert. Every message matched below is therefore
+  // matched against the same throw site as before.
+  let n = 0;
   const create = (serviceBands: ServiceBand[]) =>
-    createLeavePolicy(adminCtx(b), {
+    createEntitlementTemplate(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
+      name: `Bands ${++n}`,
       serviceBands,
       validFrom: '2026-01-01',
     });
 
   it('accepts the feedback worked example (0-2/2-5/5+)', async () => {
     const row = await create(REQUEST_BANDS);
-    const acc = await readAccrual(row.id);
-    expect(acc.serviceBands).toEqual(REQUEST_BANDS);
+    expect(row.serviceBands).toEqual(REQUEST_BANDS);
   });
 
   it('rejects overlapping bands', async () => {
@@ -273,8 +244,8 @@ describe('Leave Entitlement Rules Engine — band validation (admin.ts write-tim
     await expect(create([{ fromYears: 0, toYears: 0, days: 20 } as ServiceBand])).rejects.toThrow();
   });
 
-  // Feedback 9d8cf621 — the new per-range columns are validated at write time (negative caps, half-set
-  // expiry, impossible dates) and a valid set round-trips with its extra keys intact.
+  // Feedback 9d8cf621 — the per-range columns are validated at write time (negative caps, half-set expiry,
+  // impossible dates) and a valid set round-trips with its extra keys intact.
   it('rejects a negative per-range carry-forward days', async () => {
     await expect(create([{ fromYears: 0, toYears: null, days: 14, carryForwardDays: -1 }])).rejects.toThrow(/carry-forward days/i);
   });
@@ -298,16 +269,15 @@ describe('Leave Entitlement Rules Engine — band validation (admin.ts write-tim
       { fromYears: 0, toYears: null, days: 14, carryForwardDays: 5, carryForwardExpiryMonth: 3, carryForwardExpiryDay: 31, maxBalanceDays: 20 },
     ];
     const row = await create(bands);
-    const acc = await readAccrual(row.id);
-    expect(acc.serviceBands).toEqual(bands);
+    expect(row.serviceBands).toEqual(bands);
   });
 
   // 6e9a126e RAISED THE CEILING 10 → 20, in BOTH places at once (core/leave-compute's isWellFormedBands
-  // and core/admin's write-time validator, which now share the one MAX_SERVICE_BANDS constant). The
-  // reporter asked for HR-defined service ranges instead of three hardcoded ones; 20 is our number and it
-  // only ever widens, so no existing table loses a band. The count is UPDATED here rather than the
-  // assertion loosened — a band-count test that stopped naming a number would stop catching the two halves
-  // drifting apart, which is the failure that resolves to NO band and therefore a silently wrong day count.
+  // and the write-time validator, which now share the one MAX_SERVICE_BANDS constant). The reporter asked
+  // for HR-defined service ranges instead of three hardcoded ones; 20 is our number and it only ever
+  // widens, so no existing table loses a band. The count is UPDATED here rather than the assertion
+  // loosened — a band-count test that stopped naming a number would stop catching the two halves drifting
+  // apart, which is the failure that resolves to NO band and therefore a silently wrong day count.
   it(`rejects more than ${MAX_SERVICE_BANDS} bands`, async () => {
     const over = MAX_SERVICE_BANDS + 1;
     const many: ServiceBand[] = [];
@@ -326,181 +296,87 @@ describe('Leave Entitlement Rules Engine — band validation (admin.ts write-tim
     }
     expect(isWellFormedBands(bands)).toBe(true);
     const row = await create(bands);
-    const acc = await readAccrual(row.id);
-    expect(acc.serviceBands).toHaveLength(MAX_SERVICE_BANDS);
+    expect(row.serviceBands).toHaveLength(MAX_SERVICE_BANDS);
   });
 });
 
-describe('Leave Entitlement Rules Engine — tri-state persistence (preserve / clear / replace)', () => {
-  it('editing flat fields through a form without the band editor (serviceBands undefined) leaves bands intact', async () => {
-    const created = await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      serviceBands: REQUEST_BANDS,
-      validFrom: '2026-01-01',
-    });
-    await updateLeavePolicy(adminCtx(b), {
-      id: created.id,
-      annualDays: 13, // change a flat field only
-      validFrom: '2026-01-01',
+describe('Leave Entitlement Rules Engine — editing a band table (preserve / replace / refuse)', () => {
+  // The old JSONB tri-state (undefined = preserve, [] = clear, non-empty = replace) applied to
+  // `updateLeavePolicy` rebuilding `leave_policy.accrual` wholesale. `updateEntitlementTemplate` keeps the
+  // PRESERVE and REPLACE arms verbatim — `p.serviceBands ?? open.serviceBands`, validated when present —
+  // and the CLEAR arm is genuinely gone, because `service_bands` is a NOT NULL column on the template and a
+  // table with no bands is a table that grants nothing. That is asserted below rather than dropped: an
+  // emptied editor is REFUSED by name, which is a stronger guarantee than the old silent clear.
+  //
+  // Editing is close-then-insert versioning, so the successor's validFrom must be AFTER the running one's.
+
+  it('editing a name-only field (serviceBands undefined) leaves the bands intact', async () => {
+    const tpl = await seedBands(REQUEST_BANDS, { validFrom: '2026-01-01' });
+    const next = await updateEntitlementTemplate(adminCtx(b), {
+      lineageId: tpl.lineageId,
+      name: 'Renamed', // change a flat field only
+      validFrom: '2027-01-01',
       // serviceBands omitted entirely ⇒ undefined ⇒ preserve
     });
-    const acc = await readAccrual(created.id);
-    expect(acc.annualDays).toBe(13);
-    expect(acc.serviceBands).toEqual(REQUEST_BANDS);
+    expect(next.name).toBe('Renamed');
+    expect(next.serviceBands).toEqual(REQUEST_BANDS);
   });
 
-  it('an empty editor (serviceBands: []) clears existing bands', async () => {
-    const created = await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      serviceBands: REQUEST_BANDS,
-      validFrom: '2026-01-01',
-    });
-    await updateLeavePolicy(adminCtx(b), {
-      id: created.id,
-      annualDays: 12,
-      serviceBands: [],
-      validFrom: '2026-01-01',
-    });
-    const acc = await readAccrual(created.id);
-    expect(acc.serviceBands).toBeUndefined();
+  it('an emptied editor (serviceBands: []) is REFUSED, not silently cleared', async () => {
+    const tpl = await seedBands(REQUEST_BANDS, { validFrom: '2026-01-01' });
+    await expect(
+      updateEntitlementTemplate(adminCtx(b), {
+        lineageId: tpl.lineageId,
+        serviceBands: [],
+        validFrom: '2027-01-01',
+      }),
+    ).rejects.toThrow(/at least one band/i);
+    // …and the running version is untouched by the refusal.
+    const [still] = await owner.db
+      .select({ serviceBands: schema.entitlementTemplate.serviceBands })
+      .from(schema.entitlementTemplate)
+      .where(eq(schema.entitlementTemplate.id, tpl.id));
+    expect(still.serviceBands).toEqual(REQUEST_BANDS);
   });
 
   it('a non-empty array replaces the bands after validation', async () => {
-    const created = await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      serviceBands: REQUEST_BANDS,
-      validFrom: '2026-01-01',
-    });
+    const tpl = await seedBands(REQUEST_BANDS, { validFrom: '2026-01-01' });
     const replacement: ServiceBand[] = [{ fromYears: 0, toYears: null, days: 30 }];
-    await updateLeavePolicy(adminCtx(b), {
-      id: created.id,
-      annualDays: 12,
+    const next = await updateEntitlementTemplate(adminCtx(b), {
+      lineageId: tpl.lineageId,
       serviceBands: replacement,
-      validFrom: '2026-01-01',
+      validFrom: '2027-01-01',
     });
-    const acc = await readAccrual(created.id);
-    expect(acc.serviceBands).toEqual(replacement);
+    expect(next.serviceBands).toEqual(replacement);
+    // The replacement is validated on the way in, exactly as a create is.
+    await expect(
+      updateEntitlementTemplate(adminCtx(b), {
+        lineageId: tpl.lineageId,
+        serviceBands: [{ fromYears: 0, toYears: 5, days: 20 }], // not open-ended
+        validFrom: '2028-01-01',
+      }),
+    ).rejects.toThrow(/open-ended/i);
   });
 });
 
-describe('Leave Entitlement Rules Engine — SUPERSEDE (one active default per type)', () => {
-  it('creating a second same-scope default closes the first (validTo set, superseded event, hire resolves only the new one)', async () => {
-    const first = await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      validFrom: '2025-01-01',
-    });
-    const second = await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 20,
-      validFrom: '2026-01-01',
-    });
-    const firstRow = await readPolicy(first.id);
-    expect(firstRow?.validTo).toBe('2026-01-01');
-    const events = await eventTypesFor(b.tenantId, first.id);
-    expect(events).toContain('leave-policy.superseded');
-
-    const emp = await hire('2026-06-01');
-    expect(await balance(emp.employmentId)).toBeGreaterThan(0);
-    // Only the second (20-day) policy is active at hire time — verify via the breakdown reader that the
-    // resolved policy is the new one by checking the grant reflects 20-day pro-ration, not 12.
-    const secondRow = await readPolicy(second.id);
-    expect(secondRow?.validTo).toBeNull();
-  });
-
-  it('rejects when the new validFrom is not after the existing version\'s validFrom', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      validFrom: '2026-01-01',
-    });
-    await expect(
-      createLeavePolicy(adminCtx(b), {
-        leaveTypeId: b.annualLeaveTypeId,
-        annualDays: 20,
-        validFrom: '2026-01-01', // same date, not after
-      }),
-    ).rejects.toThrow(/already exists/i);
-    await expect(
-      createLeavePolicy(adminCtx(b), {
-        leaveTypeId: b.annualLeaveTypeId,
-        annualDays: 20,
-        validFrom: '2025-06-01', // before
-      }),
-    ).rejects.toThrow(/already exists/i);
-  });
-
-  it('update collision only fires on scope change; a flat-field edit of a legacy duplicate succeeds', async () => {
-    // Seed two duplicate active defaults DIRECTLY (bypassing the service, as legacy data would exist).
-    const [dupA] = await owner.db
-      .insert(schema.leavePolicy)
-      .values({
-        tenantId: b.tenantId,
-        leaveTypeId: b.annualLeaveTypeId,
-        gradeId: null,
-        companyId: null,
-        accrual: { annualDays: 12, method: 'grant_on_hire_prorated' },
-        validFrom: '2026-01-01',
-        validTo: null,
-      })
-      .returning({ id: schema.leavePolicy.id });
-    const [dupB] = await owner.db
-      .insert(schema.leavePolicy)
-      .values({
-        tenantId: b.tenantId,
-        leaveTypeId: b.annualLeaveTypeId,
-        gradeId: null,
-        companyId: null,
-        accrual: { annualDays: 16, method: 'grant_on_hire_prorated' },
-        validFrom: '2026-01-01',
-        validTo: null,
-      })
-      .returning({ id: schema.leavePolicy.id });
-
-    // Flat-field edit (no scope/validFrom change) succeeds despite the pre-existing duplicate.
-    await expect(
-      updateLeavePolicy(adminCtx(b), { id: dupA.id, annualDays: 13, validFrom: '2026-01-01' }),
-    ).resolves.not.toThrow();
-
-    // Re-scoping dupA into an EXEC grade that already has an active default should collide.
-    const exec = await createJobGrade(adminCtx(b), { code: 'EXEC', name: 'Executive' });
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 18,
-      gradeId: exec.id,
-      validFrom: '2026-01-01',
-    });
-    await expect(
-      updateLeavePolicy(adminCtx(b), { id: dupA.id, annualDays: 13, gradeId: exec.id, validFrom: '2026-01-01' }),
-    ).rejects.toThrow(/create a new version/i);
-    void dupB;
-  });
-
-  it('deleteLeavePolicy leaves prior ledger rows untouched', async () => {
-    const created = await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      validFrom: '2026-01-01',
-    });
-    const emp = await hire('2026-01-01');
-    const before = await balance(emp.employmentId);
-    expect(before).toBeGreaterThan(0);
-    await deleteLeavePolicy(adminCtx(b), { id: created.id });
-    expect(await balance(emp.employmentId)).toBe(before); // ledger untouched
-  });
-});
+// ── RETIRED · `Leave Entitlement Rules Engine — SUPERSEDE (one active default per type)` (4 tests) ────
+// All four drove `createLeavePolicy` / `updateLeavePolicy` / `deleteLeavePolicy` and asserted on
+// `leave_policy` rows: the supersede loop that closed a prior version's validTo and emitted
+// `leave-policy.superseded`, the "validFrom must be after the existing version" refusal, the
+// scope-collision rule for legacy duplicate defaults, and that a delete leaves prior ledger rows alone.
+// The table, the three writers and the event type are all gone.
+//
+// The property they were really about — a dated configuration is VERSIONED, never overwritten, so a closed
+// year still reports on the figures that were in force then — is the entitlement template's close-then-
+// insert, which has its own supersede refusal ("a version starting on or after that date already exists"),
+// its own `entitlement-template.superseded` event and its own dated readers. It is pinned in
+// test/entitlement-template-layer.test.ts and, for the readers, in
+// test/entitlement-template-repoint.test.ts. The "editing a band table" block above covers the arm of it
+// that this file was carrying.
 
 describe('Leave Entitlement Rules Engine — integration: hire, openLeaveYear, accrueEarnedLeave, sweep', () => {
-  it('hire with a banded policy: the 0-year band drives the grant', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      serviceBands: REQUEST_BANDS,
-      validFrom: '2026-01-01',
-    });
+  it('hire with a banded table: the 0-year band drives the grant', async () => {
+    await seedBands(REQUEST_BANDS);
     const emp = await hire('2026-01-01'); // hired 1 Jan ⇒ no pro-ration; 0 years ⇒ 14-day band
     expect(await balance(emp.employmentId)).toBe(14);
   });
@@ -509,24 +385,16 @@ describe('Leave Entitlement Rules Engine — integration: hire, openLeaveYear, a
   // overrides a configured figure, so the 6-day band is granted as 6. ANNUAL at 0 years is a real MY
   // statutory band (8 days), so this genuinely crosses the minimum rather than passing on a floor of 0.
   it('fa3f4ccb: a 6-day band is granted as 6 at hire, BELOW the 8-day statutory minimum', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      serviceBands: [{ fromYears: 0, toYears: null, days: 6 }],
-      validFrom: '2026-01-01',
-    });
+    await seedBands([{ fromYears: 0, toYears: null, days: 6 }]);
     const emp = await hire('2026-01-01');
     expect(await balance(emp.employmentId)).toBe(6); // configured wins; the 8-day minimum only warns
   });
 
   it('openLeaveYear band upgrade crossing the 2-year boundary (14 -> 16, the request example)', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      carryForwardMax: 0,
-      serviceBands: REQUEST_BANDS,
-      validFrom: '2024-01-01',
-    });
+    // The old fixture set a policy-level `carryForwardMax: 0`. With the leave type silent, a band that
+    // states no `carryForwardDays` resolves through `policyFromTemplateBand` to `carryMax: 0` — the same
+    // cap, from the surviving expression, so the forfeit arithmetic below is unchanged.
+    await seedBands(REQUEST_BANDS, { validFrom: '2024-01-01' });
     const emp = await hire('2024-01-01'); // 0 years at hire ⇒ 14
     expect(await balance(emp.employmentId)).toBe(14);
     // Open 2026 (employee has exactly 2 completed years of service at 2026-01-01) — an unopened year.
@@ -535,14 +403,11 @@ describe('Leave Entitlement Rules Engine — integration: hire, openLeaveYear, a
     expect(await balance(emp.employmentId)).toBe(16);
   });
 
-  it('accrueEarnedLeave with a banded earned policy accrues at the banded rate', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      method: 'earned_monthly',
-      serviceBands: REQUEST_BANDS,
-      validFrom: '2026-01-01',
-    });
+  it('accrueEarnedLeave with a banded earned type accrues at the banded rate', async () => {
+    // The EARNING METHOD is a leave-TYPE rule since 9816a5ad step 2, so it is set on the type; the DAYS
+    // still come from the band, which is the thing under test and is unchanged at (14/12) × 6.
+    await seedBands(REQUEST_BANDS);
+    await setTypeRules({ accrualMethod: 'earned_monthly' });
     const emp = await hire('2026-01-01'); // earned ⇒ no lump hire grant
     expect(await balance(emp.employmentId)).toBe(0);
     await accrueEarnedLeave(adminCtx(b), { asOf: '2026-06-15' }); // 6 months elapsed, 0y service ⇒ 14-day band
@@ -551,38 +416,38 @@ describe('Leave Entitlement Rules Engine — integration: hire, openLeaveYear, a
 
   it('band validation rejections integration-verified via a full reject-then-succeed cycle', async () => {
     await expect(
-      createLeavePolicy(adminCtx(b), {
+      createEntitlementTemplate(adminCtx(b), {
         leaveTypeId: b.annualLeaveTypeId,
-        annualDays: 12,
+        name: 'Bad table',
         serviceBands: [{ fromYears: 0, toYears: 2, days: 10 }], // not open-ended
         validFrom: '2026-01-01',
       }),
     ).rejects.toThrow();
-    // A well-formed version succeeds afterwards.
+    // A well-formed table succeeds afterwards.
     await expect(
-      createLeavePolicy(adminCtx(b), {
+      createEntitlementTemplate(adminCtx(b), {
         leaveTypeId: b.annualLeaveTypeId,
-        annualDays: 12,
+        name: 'Good table',
         serviceBands: REQUEST_BANDS,
         validFrom: '2026-01-01',
       }),
     ).resolves.toBeDefined();
   });
 
-  it('ONE targeted carry-flip test: sweep two consecutive years across a band boundary follows each year\'s own days-winner', async () => {
-    // A banded ANNUAL policy (with carry + expiry) active from day one — the flip is driven purely by the
-    // band boundary itself (14 -> 16 at 2 years), proving the sweep resolves per-swept-year service length
-    // (serviceYearsAt computed INSIDE the per-year loop) rather than "today's" service length.
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      carryForwardMax: 20, // generous cap — isolates the band effect from cap-driven forfeits
+  it("ONE targeted carry-flip test: sweep two consecutive years across a band boundary follows each year's own days-winner", async () => {
+    // A banded ANNUAL table active from day one, with the carry cap + expiry on the LEAVE TYPE (where the
+    // old policy-level ones moved). The flip is driven purely by the band boundary itself (14 -> 16 at 2
+    // years), proving the sweep resolves per-swept-year service length (serviceYearsAt computed INSIDE the
+    // per-year loop) rather than "today's" service length.
+    await seedBands(REQUEST_BANDS, { validFrom: '2024-01-01' });
+    await setTypeRules({
+      carryForwardMax: '20', // generous cap — isolates the band effect from cap-driven forfeits
+      carryForwardEnabled: true,
+      carryForwardExpiryMode: 'date',
       carryForwardExpiryMonth: 3,
       carryForwardExpiryDay: 31,
-      serviceBands: REQUEST_BANDS,
-      validFrom: '2024-01-01',
     });
-    const emp = await hire('2024-01-01'); // hired under the banded policy: 0y at hire ⇒ 14-day grant
+    const emp = await hire('2024-01-01'); // hired under the banded table: 0y at hire ⇒ 14-day grant
     expect(await balance(emp.employmentId)).toBe(14);
     // Open 2025: 1 completed year ⇒ still the under-2 band (14). Balance carries in full (14 <= cap 20).
     await openLeaveYear(adminCtx(b), { year: 2025 });
@@ -605,13 +470,8 @@ describe('Leave Entitlement Rules Engine — integration: hire, openLeaveYear, a
 
 describe('Leave Entitlement Rules Engine — read-layer wiring (leaveEntitlementBreakdown)', () => {
   it('carryMax/expiry/earned-flag follow the banded winner without changing currentYearEntitlement (ledger-derived)', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      carryForwardMax: 3,
-      serviceBands: REQUEST_BANDS,
-      validFrom: '2026-01-01',
-    });
+    await seedBands(REQUEST_BANDS);
+    await setTypeRules({ carryForwardMax: '3', carryForwardEnabled: true });
     const emp = await hire('2026-01-01');
     const breakdown = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, b.annualLeaveTypeId, '2026-06-01');
     expect(breakdown).not.toBeNull();
@@ -655,79 +515,67 @@ describe('9d8cf621 pure — per-range resolution + Maximum Balance clamp', () =>
     expect(applyMaxBalance(0, 20, 15)).toEqual({ carry: 0, grant: 15 }); // fresh grant capped
   });
 
-  it('hasAnyCarryExpiry sees policy-level OR per-band expiry', () => {
-    expect(hasAnyCarryExpiry({ annualDays: 12, carryForwardExpiryMonth: 3, carryForwardExpiryDay: 31 })).toBe(true);
-    expect(
-      hasAnyCarryExpiry({
-        annualDays: 12,
-        serviceBands: [{ fromYears: 0, toYears: null, days: 14, carryForwardExpiryMonth: 6, carryForwardExpiryDay: 30 }],
-      }),
-    ).toBe(true);
-    expect(hasAnyCarryExpiry({ annualDays: 12, serviceBands: [{ fromYears: 0, toYears: null, days: 14 }] })).toBe(false);
-    expect(hasAnyCarryExpiry({ annualDays: 12 })).toBe(false);
-  });
+  // ── RETIRED · `hasAnyCarryExpiry sees policy-level OR per-band expiry` ─────────────────────────────
+  // `hasAnyCarryExpiry` answered "does this leave_policy row carry a carry-expiry anywhere", and its one
+  // caller was `expireCarriedLeave`'s unfiltered `leave_policy` scan. Both are gone: the sweep's
+  // back-compat boundary is now `earliestTemplateYear` plus the leave TYPE's own carry-expiry columns.
+  // See the Gap 2 sweep test below, which is repointed onto that boundary and keeps its arithmetic.
 
-  it('resolveGradePolicy surfaces maxBalanceDays + the per-range carry OVERRIDE from the winning band', () => {
-    const rows: GradePolicyRow[] = [
-      {
-        gradeId: null,
-        companyId: null,
-        accrual: {
-          annualDays: 12,
-          carryForwardMax: 2, // policy-level carry — should be OVERRIDDEN by the band's carryForwardDays
-          serviceBands: [
-            { fromYears: 0, toYears: null, days: 14, carryForwardDays: 9, maxBalanceDays: 15, carryForwardExpiryMonth: 6, carryForwardExpiryDay: 30 },
-          ],
-        },
-      },
-    ];
-    const pol = resolveGradePolicy(rows, null, null, 1);
+  it('policyFromTemplateBand surfaces the per-range carry cap, expiry and maximum balance from the band', () => {
+    // Repointed from `resolveGradePolicy`, which read the same three per-range keys off the winning band
+    // and is deleted with the policy rows it ranked. `policyFromTemplateBand` is the surviving expression:
+    // the winning band IS the resolved policy's days + carry + expiry + cap.
+    const band: ServiceBand = {
+      fromYears: 0,
+      toYears: null,
+      days: 14,
+      carryForwardDays: 9,
+      maxBalanceDays: 15,
+      carryForwardExpiryMonth: 6,
+      carryForwardExpiryDay: 30,
+    };
+    const pol = policyFromTemplateBand(bandFor({ serviceBands: [band] }, 1));
     expect(pol).not.toBeNull();
     expect(pol!.days).toBe(14);
-    expect(pol!.carryMax).toBe(9); // per-range override wins over policy-level 2
+    expect(pol!.carryMax).toBe(9);
     expect(pol!.maxBalanceDays).toBe(15);
     expect(pol!.carryExpiry).toEqual({ month: 6, day: 30 });
   });
 
-  it('resolveGradePolicy falls back to policy-level carry/expiry when the band has no override', () => {
-    const rows: GradePolicyRow[] = [
-      {
-        gradeId: null,
-        companyId: null,
-        accrual: {
-          annualDays: 12,
-          carryForwardMax: 4,
-          carryForwardExpiryMonth: 3,
-          carryForwardExpiryDay: 31,
-          serviceBands: [{ fromYears: 0, toYears: null, days: 14 }],
-        },
-      },
-    ];
-    const pol = resolveGradePolicy(rows, null, null, 1);
-    expect(pol!.carryMax).toBe(4);
-    expect(pol!.carryExpiry).toEqual({ month: 3, day: 31 });
+  it('policyFromTemplateBand falls back to the documented defaults when the band states no override', () => {
+    // The old fixture's fallback was the POLICY-LEVEL carry cap and expiry sitting beside the bands. There
+    // is no policy row to fall back to, so the fallback is now each field's own default — cap 0, no expiry,
+    // no maximum balance — which is what `bandCarryMax(...) ?? 0` and its two siblings have always
+    // produced for a band that says nothing. Where those defaults are OVERLAID by the leave type's rules is
+    // test/leave-type-rules-repoint.test.ts.
+    const pol = policyFromTemplateBand(bandFor({ serviceBands: [{ fromYears: 0, toYears: null, days: 14 }] }, 1));
+    expect(pol!.days).toBe(14);
+    expect(pol!.carryMax).toBe(0);
+    expect(pol!.carryExpiry).toBeNull();
     expect(pol!.maxBalanceDays).toBeNull();
+  });
+
+  it('policyFromTemplateBand resolves NOTHING when no band matched — absence is not a zero policy', () => {
+    // The distinction `noEntitlementOpinion` depends on: no band is "nobody configured anything", which a
+    // caller must never spend as a confident 0.
+    expect(policyFromTemplateBand(null)).toBeNull();
   });
 });
 
 describe('9d8cf621 integration — Maximum Balance Days enforcement (Gap 1)', () => {
   it('clamps the hire grant so the opening balance never exceeds the cap', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      serviceBands: [{ fromYears: 0, toYears: null, days: 20, maxBalanceDays: 15 }],
-      validFrom: '2026-01-01',
-    });
+    // Type silent ⇒ the BAND's own maxBalanceDays is the cap that binds.
+    await seedBands([{ fromYears: 0, toYears: null, days: 20, maxBalanceDays: 15 }]);
     const emp = await hire('2026-01-01'); // 0y ⇒ band days 20, but cap clamps to 15
     expect(await balance(emp.employmentId)).toBe(15);
   });
 
   it('clamps carry-in + grant at openLeaveYear so the balance holds at the cap across years', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      carryForwardMax: 20, // generous carry — the Maximum Balance cap is what binds, not the carry cap
-      serviceBands: [{ fromYears: 0, toYears: null, days: 14, maxBalanceDays: 15 }],
+    // The old fixture put the generous carry cap at policy level and the maximum balance in the band. Both
+    // go in the BAND here, deliberately: putting the carry cap on the leave type would engage the overlay,
+    // which replaces the WHOLE rule set from the type and would take the band's maximum balance with it —
+    // and the maximum balance is the thing under test. The arithmetic is unchanged.
+    await seedBands([{ fromYears: 0, toYears: null, days: 14, carryForwardDays: 20, maxBalanceDays: 15 }], {
       validFrom: '2024-01-01',
     });
     const emp = await hire('2024-01-01'); // 14 (cap 15 not yet reached)
@@ -739,13 +587,13 @@ describe('9d8cf621 integration — Maximum Balance Days enforcement (Gap 1)', ()
   });
 
   it('clamps earned accrual so retained-carry + earned never exceeds the cap', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      method: 'earned_monthly',
-      serviceBands: [{ fromYears: 0, toYears: null, days: 14, maxBalanceDays: 5 }],
-      validFrom: '2026-01-01',
-    });
+    // THE ONE CASE THAT MUST CONFIGURE THE CAP ON THE TYPE. An earned method is a leave-TYPE rule, and the
+    // moment the type states any rule `applyLeaveTypeRules` replaces the whole set — so a band-level
+    // maximum balance is unreachable for an earned type by design (9816a5ad step 2, pinned in
+    // test/leave-type-rules-repoint.test.ts). The Gap 1 property under test is that the maximum balance
+    // clamps the EARNED engine, and the figures are unchanged: 6 months of 14/12 = 7, clamped to 5.
+    await seedBands([{ fromYears: 0, toYears: null, days: 14 }]);
+    await setTypeRules({ accrualMethod: 'earned_monthly', maxBalanceDays: '5' });
     const emp = await hire('2026-01-01'); // earned ⇒ no lump grant
     expect(await balance(emp.employmentId)).toBe(0);
     await accrueEarnedLeave(adminCtx(b), { asOf: '2026-06-15' }); // 6mo ⇒ 7 earned, clamped to cap 5
@@ -754,36 +602,47 @@ describe('9d8cf621 integration — Maximum Balance Days enforcement (Gap 1)', ()
 });
 
 describe('9d8cf621 integration — per-range carry-forward days + expiry (Gap 2)', () => {
-  it('per-range Carry-Forward Days OVERRIDES the policy-level carry cap at openLeaveYear', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      carryForwardMax: 0, // policy-level would forfeit EVERYTHING — the band's carryForwardDays must win
-      serviceBands: [{ fromYears: 0, toYears: null, days: 14, carryForwardDays: 10 }],
-      validFrom: '2024-01-01',
-    });
+  it('per-range Carry-Forward Days is the carry cap at openLeaveYear', async () => {
+    // The old fixture proved the band's `carryForwardDays: 10` beat a policy-level `carryForwardMax: 0`.
+    // There is no policy level left to beat, so what this now pins is that the band's own figure IS the cap
+    // the year-open spends — the same limb of `policyFromTemplateBand`, and the identical arithmetic. (The
+    // precedence question moved up a layer and inverted: the leave TYPE now beats the band, which is
+    // asserted in test/leave-type-rules-repoint.test.ts.)
+    await seedBands([{ fromYears: 0, toYears: null, days: 14, carryForwardDays: 10 }], { validFrom: '2024-01-01' });
     const emp = await hire('2024-01-01'); // 14
     expect(await balance(emp.employmentId)).toBe(14);
     const r = await openLeaveYear(adminCtx(b), { year: 2025 });
-    // carry = min(14, per-range 10) = 10; forfeit 4; + 2025 grant 14 ⇒ 24. Policy-level 0 would give 14.
+    // carry = min(14, per-range 10) = 10; forfeit 4; + 2025 grant 14 ⇒ 24.
     expect(r.forfeits).toBe(1);
     expect(await balance(emp.employmentId)).toBe(24);
   });
 
-  it('per-range Carry-Forward Expiry drives expireCarriedLeave (no policy-level expiry set)', async () => {
-    await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 12,
-      carryForwardMax: 20, // generous carry so the balance carries; expiry is purely per-range
-      serviceBands: [{ fromYears: 0, toYears: null, days: 14, carryForwardExpiryMonth: 3, carryForwardExpiryDay: 31 }],
-      validFrom: '2024-01-01',
+  it('a banded table carried under a type-level expiry is swept when that expiry date passes', async () => {
+    // REPOINTED, AND THE REPOINT IS ITSELF THE FINDING. The original asserted that a PER-RANGE carry expiry
+    // alone (no policy-level one) still drove `expireCarriedLeave`. It cannot any more, and not because of
+    // anything release three did to the band: the sweep's back-compat gate is
+    // `annualTypes.some(typeCarriesExpiry)`, i.e. the LEAVE TYPE's own expiry columns — and once the type
+    // states an expiry, `applyLeaveTypeRules` replaces the band's with it. So the per-range expiry limb of
+    // `policyFromTemplateBand` is unreachable from the sweep in either direction. That is 9816a5ad step 2's
+    // decision ("the type owns the rules") finally becoming total now that leave_policy is gone, not a new
+    // defect — the limb is still live for the dated READERS, which is why `bandCarryExpiry` keeps its own
+    // unit test above.
+    //
+    // What survives here, with its arithmetic intact, is the sweep itself over a template-banded carry.
+    await seedBands([{ fromYears: 0, toYears: null, days: 14 }], { validFrom: '2024-01-01' });
+    await setTypeRules({
+      carryForwardMax: '20', // generous carry so the balance carries; the expiry is what is under test
+      carryForwardEnabled: true,
+      carryForwardExpiryMode: 'date',
+      carryForwardExpiryMonth: 3,
+      carryForwardExpiryDay: 31,
     });
     const emp = await hire('2024-01-01'); // 14
     await openLeaveYear(adminCtx(b), { year: 2025 }); // carries 14 (into 2025, expiry 2025-03-31) + grant 14 = 28
     expect(await balance(emp.employmentId)).toBe(28);
     const before = await balance(emp.employmentId);
-    // Sweep past 2025-03-31: with only a PER-RANGE expiry, the back-compat boundary (hasAnyCarryExpiry) must
-    // still include this policy — otherwise swept would be 0 (the bug this fix closes).
+    // Sweep past 2025-03-31. The boundary the sweep may reach back to is `earliestTemplateYear` — the
+    // template's own validFrom — so a tenant whose only configuration is a template is still swept.
     const res = await expireCarriedLeave(adminCtx(b), { today: '2026-04-01' });
     expect(res.swept).toBeGreaterThanOrEqual(1);
     expect(await balance(emp.employmentId)).toBeLessThan(before);
