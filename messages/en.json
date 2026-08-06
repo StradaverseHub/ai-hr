@@ -7453,8 +7453,8 @@
     "previewNote": "Shown for a FULL period, before proration and rounding — payroll applies those when the run happens.",
     "previewFailed": "Could not work out a result for that employee.",
     "operand_fixed_allowances": "All fixed allowances",
-    "formulaDivisionNote": "You may divide by a live value such as days or hours worked. If it is zero for an employee, this pay item pays nothing for that employee and they are listed on the payroll run for you to check — the run always completes.",
-    "previewZeroDivisor": "This pays RM 0.00 for this employee because \"{divisor}\" is zero at step {step}. The payroll run will still complete and this employee will be listed for you to check."
+    "formulaDivisionNote": "You may divide by a live value such as days or hours worked. If it is zero for an employee, this pay item pays nothing for that employee and the run still completes — check the preview here before you rely on it.",
+    "previewZeroDivisor": "This pays RM 0.00 for this employee because \"{divisor}\" is zero at step {step}. The payroll run will still complete."
   },
   "review": {
     "title": "Reviews",

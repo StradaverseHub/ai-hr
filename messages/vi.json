@@ -7453,8 +7453,8 @@
     "previewNote": "Hiển thị cho một kỳ ĐẦY ĐỦ, trước khi chia theo tỷ lệ và làm tròn — bảng lương áp dụng những bước đó khi chạy.",
     "previewFailed": "Không thể tính kết quả cho nhân viên đó.",
     "operand_fixed_allowances": "Tất cả phụ cấp cố định",
-    "formulaDivisionNote": "Bạn có thể chia cho một giá trị thực tế như số ngày hoặc số giờ làm việc. Nếu giá trị đó bằng không đối với một nhân viên, mục lương này sẽ không trả gì cho nhân viên đó và họ sẽ được liệt kê trong đợt chạy lương để bạn kiểm tra — đợt chạy luôn hoàn tất.",
-    "previewZeroDivisor": "Mục này trả RM 0,00 cho nhân viên này vì \"{divisor}\" bằng không ở bước {step}. Đợt chạy lương vẫn sẽ hoàn tất và nhân viên này sẽ được liệt kê để bạn kiểm tra."
+    "formulaDivisionNote": "Bạn có thể chia cho một giá trị thực tế như số ngày hoặc số giờ làm việc. Nếu giá trị đó bằng 0 với một nhân viên, mục lương này không trả gì cho nhân viên đó và kỳ lương vẫn hoàn tất — hãy xem bản xem trước tại đây trước khi dựa vào nó.",
+    "previewZeroDivisor": "Mục này trả RM 0.00 cho nhân viên này vì \"{divisor}\" bằng 0 ở bước {step}. Kỳ lương vẫn sẽ hoàn tất."
   },
   "review": {
     "title": "Đánh giá",

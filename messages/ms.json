@@ -7453,8 +7453,8 @@
     "previewNote": "Ditunjukkan untuk tempoh PENUH, sebelum pembahagian pro rata dan pembundaran — payroll menggunakannya semasa proses dijalankan.",
     "previewFailed": "Tidak dapat mengira hasil untuk pekerja itu.",
     "operand_fixed_allowances": "Semua elaun tetap",
-    "formulaDivisionNote": "Anda boleh membahagi dengan nilai semasa seperti hari atau jam bekerja. Jika ia sifar bagi seseorang pekerja, item gaji ini tidak membayar apa-apa untuk pekerja tersebut dan mereka akan disenaraikan dalam larian gaji untuk semakan anda — larian sentiasa selesai.",
-    "previewZeroDivisor": "Ini membayar RM 0.00 untuk pekerja ini kerana \"{divisor}\" adalah sifar pada langkah {step}. Larian gaji tetap akan selesai dan pekerja ini akan disenaraikan untuk semakan anda."
+    "formulaDivisionNote": "Anda boleh bahagi dengan nilai langsung seperti hari atau jam bekerja. Jika ia sifar bagi seseorang pekerja, item gaji ini tidak membayar apa-apa untuk pekerja itu dan proses gaji tetap selesai — semak pratonton di sini sebelum anda bergantung padanya.",
+    "previewZeroDivisor": "Ini membayar RM 0.00 untuk pekerja ini kerana \"{divisor}\" adalah sifar pada langkah {step}. Proses gaji tetap akan selesai."
   },
   "review": {
     "title": "Penilaian",

@@ -576,6 +576,17 @@ export type ResolvablePayComponent = {
    *  `fixed_allowances` aggregate (isFixedAllowanceComponent). OPTIONAL so every pre-existing caller
    *  compiles unchanged; absent ⇒ the item is not an allowance ⇒ it contributes nothing to the sum. */
   kind?: string | null;
+  /** 2da9937a, r168 verification — BOTH of these exclude a row from the `fixed_allowances` aggregate, and
+   *  the aggregate was WRONG without them (measured: a RM2,000 one-off multiplied a RM500 base to RM2,500).
+   *   • nonPayable — a BIK allowance. The kernel records it and `continue`s WITHOUT PAYING it, so totalling
+   *     it into a figure the payroll then pays is money that does not exist.
+   *   • oneOff — a BATCH row (an individual transaction, or a synthetic TXN_EARNING). These arrive with
+   *     `rule: null` by construction, which is precisely the clause the aggregate's acyclicity leans on, so
+   *     they satisfied every other test. They are also invisible to previewPayRule, which builds its set
+   *     from employment_pay_component alone — so counting them made the preview and the run disagree.
+   *  Both OPTIONAL: absent ⇒ false ⇒ every pre-existing caller behaves exactly as before. */
+  nonPayable?: boolean;
+  oneOff?: boolean;
 };
 
 /**
@@ -622,7 +633,10 @@ export function resolvePayComponentSet(
     // AUTHORITATIVE PRE-SEEDS). Its row's amount is not money this engine pays, so it is not money the
     // aggregate may total. Belt and braces with isFixedAllowanceComponent's own BASIC clause: this one
     // holds for any future pinned code, that one holds when there is no caller to pin anything.
-    const fa = !pinned.has(code) && isFixedAllowanceComponent(code, c.kind, c.rule);
+    // r168 verification — nonPayable/oneOff rows are NOT money this run pays out of the catalog, so
+    // they are not money the aggregate may total. See ResolvablePayComponent for the measurement.
+    const fa =
+      !pinned.has(code) && !c.nonPayable && !c.oneOff && isFixedAllowanceComponent(code, c.kind, c.rule);
     const ra = payRuleReadsFixedAllowanceTotal(c.rule);
     if (g) {
       g.idx.push(i);
