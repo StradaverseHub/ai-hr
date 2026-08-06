@@ -113,7 +113,8 @@ describe('08bc6841 · the Condition step REUSES the SubStepBar (two sub-steps in
     expect(panelSrc).toContain("const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const");
     // The ONE writer persists the keys together (7b945408 extended the shape with entitlementSubStep)…
     expect(panelSrc).toContain(
-      'JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess, entitlementSubStep: ent })',
+      // 6e9a126e RELEASE THREE — the persisted shape lost `entitlementSubStep` because the Entitlement step's sub-flow is gone: it is now a pointer to Entitlement Tables plus Run Earned Accrual, with no sub-steps to remember. The guard's subject is the COMPATIBLE MIGRATION of the stored shape, not the field list, so it is updated rather than deleted — a card stored under the old shape must still open.
+      'JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess })',
     );
     // …and hydration tolerates an older payload (essSubStep absent ⇒ default Criteria).
     expect(panelSrc).toContain("typeof parsed.essSubStep === 'string'");
@@ -146,9 +147,14 @@ describe('08bc6841 · Criteria — the eligibility rules moved from the Eligibil
     // The rules and the expiry form live in Condition, NOT with the relocated policies.
     expect(ent.includes('name="eligibility"')).toBe(false);
     expect(ent.includes('name="expiry"')).toBe(false);
-    // …and the entitlement policy timeline + add form came across intact.
-    expect(ent).toContain("t('companyEntitlements')");
-    expect(ent).toContain("t('addEntitlement')");
+    // 6e9a126e RELEASE THREE — the "policy timeline + add form came across intact" assertion is gone with
+    // the timeline. It rendered leave_policy rows per company; 0410 drops that table, so there is nothing
+    // left to have come across. The rest of this case — that eligibility and expiry stayed in Condition
+    // rather than following the policies — is the part that was ever about THIS item, and it is untouched.
+    // 6e9a126e RELEASE THREE — the 'add entitlement' form was the leave_policy timeline's own writer.
+    // 0410 drops the table; the form went with it, and entitlement is written on the Entitlement
+    // Tables screen now. The half of this case that still holds — the Eligibility card being gone,
+    // and eligibility/expiry staying in Condition rather than following the policies — is above.
   });
 });
 

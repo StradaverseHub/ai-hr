@@ -1,4 +1,15 @@
--- 6e9a126e RELEASE THREE — archive, then clear the two old entitlement layers.
+-- 6e9a126e RELEASE THREE (migration 0410, renumbered from 0405) — archive, then clear the two old entitlement layers.
+--
+-- ⚠️ RENUMBERED 0405 -> 0410, AND THE REASON IS THE WHOLE TRAP. This was written as 0405 when the next
+-- free number was 0405. r165/r166/r168 then shipped 0406, 0407 and 0408 while release three was still
+-- being built, so by the time it was ready production's applied watermark was `when` 1781862508000 and
+-- this file's 1781862505000 sat BELOW it. Drizzle compares against the watermark: it would not have
+-- errored, it would have SILENTLY SKIPPED the entire release — the code would deploy, the drop would
+-- never run, and the two layers would still be resolving. Caught by test/migration-journal-ordering.ts,
+-- which is exactly what that test is for.
+--
+-- The capture tag moved with it (0405-release-three -> 0410-release-three); nothing had been deployed
+-- under the old tag, so there is no archive row naming it.
 --
 -- ⚠️ THIS IS THE IRREVERSIBLE ONE. It deletes every piece of entitlement configuration the customer has,
 -- and the only thing standing between them and having to remember it is the archive captured six lines
@@ -39,7 +50,7 @@
 -- No GRANT is needed: nothing is created.
 
 -- 1. RE-CAPTURE. Fails loud, before anything is destroyed.
-SELECT app.capture_entitlement_reset_archive('0405-release-three');--> statement-breakpoint
+SELECT app.capture_entitlement_reset_archive('0410-release-three');--> statement-breakpoint
 
 -- 2. Say what was captured, so the numbers land in the deploy log and can be read back against the
 --    figures the reporter was given.
@@ -51,8 +62,8 @@ DECLARE
 BEGIN
   SELECT count(*) INTO v_scheme  FROM scheme_leave_entitlement;
   SELECT count(*) INTO v_policy  FROM leave_policy;
-  SELECT count(*) INTO v_archive FROM entitlement_reset_archive WHERE capture_tag = '0405-release-three';
-  RAISE NOTICE '0405 entitlement reset: % scheme entitlement tables + % policy rows cleared; % rows archived under 0405-release-three',
+  SELECT count(*) INTO v_archive FROM entitlement_reset_archive WHERE capture_tag = '0410-release-three';
+  RAISE NOTICE '0410 entitlement reset: % scheme entitlement tables + % policy rows cleared; % rows archived under 0410-release-three',
     v_scheme, v_policy, v_archive;
   -- THE GUARD IS CONDITIONAL ON THERE BEING SOMETHING TO CAPTURE, and getting this wrong aborted the
   -- whole migration chain on a FRESH database — caught by running migrate+seed on a rebuilt cluster,
@@ -62,9 +73,9 @@ BEGIN
   -- means the capture silently failed and refusing is exactly right — that archive is the only promise
   -- the clearing makes. On an EMPTY database (a new tenant, the clean-room, the upgrade rehearsal's
   -- fresh leg) 0 captured is the TRUTHFUL answer, and the unconditional check turned it into
-  -- "0405 refusing to clear", which no new tenant could ever get past.
+  -- "0410 refusing to clear", which no new tenant could ever get past.
   IF (v_scheme + v_policy) > 0 AND v_archive = 0 THEN
-    RAISE EXCEPTION '0405 refusing to clear: % scheme + % policy rows exist but the archive capture wrote none',
+    RAISE EXCEPTION '0410 refusing to clear: % scheme + % policy rows exist but the archive capture wrote none',
       v_scheme, v_policy;
   END IF;
 END $$;--> statement-breakpoint

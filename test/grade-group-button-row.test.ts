@@ -1,4 +1,11 @@
 /**
+ * 6e9a126e RELEASE THREE — REPOINTED, NOT RETIRED. This guards the grade-group delete button's placement,
+ * and grade groups SURVIVED the release: 205 leave_approval_policy rows scope by them. What moved is
+ * WHERE the editor lives — it was lifted out of the deleted components/benefit-scheme-config.tsx into
+ * components/leave/grade-group-config.tsx so it would outlive the workbench. Retiring this because its
+ * old source file is gone would have dropped live coverage of a surviving screen.
+ */
+/**
  * Feedback 9054e31c — Grade Group expand: Save and Delete on one row.
  *
  * Delete used to live in its own sibling <form> on a second row under Save. It is now a second submit
@@ -17,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const panel = readFileSync(root + 'components/benefit-scheme-config.tsx', 'utf8');
+const panel = readFileSync(root + 'components/leave/grade-group-config.tsx', 'utf8');
 
 describe('Grade Group expand: Save and Delete share one row', () => {
   it('Delete is a formAction submit button inside the update form, not a standalone form', () => {

@@ -94,7 +94,8 @@ describe('e1a51aea · reusable sub-step control', () => {
     // 7b945408 with entitlementSubStep — the secondary flows ride the same persistence, see
     // leave-condition-substeps.test.ts / leave-entitlement-substeps.test.ts)…
     expect(panelSrc).toContain(
-      "JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess, entitlementSubStep: ent })",
+      // 6e9a126e RELEASE THREE — the persisted shape lost `entitlementSubStep` because the Entitlement step's sub-flow is gone: it is now a pointer to Entitlement Tables plus Run Earned Accrual, with no sub-steps to remember. The guard's subject is the COMPATIBLE MIGRATION of the stored shape, not the field list, so it is updated rather than deleted — a card stored under the old shape must still open.
+      "JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess })",
     );
     // …and hydration tolerates an older payload: activeStep-only and the accordion { key: boolean } shape
     // both still restore (the categories test separately pins parsed[k] === true).
@@ -426,7 +427,10 @@ describe('e1a51aea · i18n — all six locales', () => {
         'carryHelp',
         'carryStepHelp',
         'carryAnnualOnly',
-        'noActivePolicy',
+        // 6e9a126e RELEASE THREE — 'noActivePolicy' labelled the EMPTY STATE of the leave_policy
+        // timeline. 0410 drops the table and the timeline went with it, so the key has zero
+        // callers and was retired from all six catalogs. Every other key in this list is still
+        // rendered and still asserted.
         'frontDoorScopeLabel',
       ]) {
         expect(typeof sub[key], `${loc}.admin.leave.subStep.${key}`).toBe('string');

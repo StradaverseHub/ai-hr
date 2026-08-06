@@ -1550,13 +1550,6 @@
       "breakpoints": true
     },
     {
-      "idx": 240,
-      "version": "7",
-      "when": 1781862219000,
-      "tag": "0240_employment_blacklist",
-      "breakpoints": true
-    },
-    {
       "idx": 225,
       "version": "7",
       "when": 1781862224000,
@@ -1568,6 +1561,13 @@
       "version": "7",
       "when": 1781862229000,
       "tag": "0230_delegation_scope_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1781862219000,
+      "tag": "0240_employment_blacklist",
       "breakpoints": true
     },
     {
@@ -2299,13 +2299,6 @@
       "breakpoints": true
     },
     {
-      "idx": 405,
-      "version": "7",
-      "when": 1781862505000,
-      "tag": "0405_entitlement_reset_drop_old_layers",
-      "breakpoints": true
-    },
-    {
       "idx": 406,
       "version": "7",
       "when": 1781862506000,
@@ -2324,6 +2317,13 @@
       "version": "7",
       "when": 1781862509000,
       "tag": "0409_eligibility_rule_company_scoped_write",
+      "breakpoints": true
+    },
+    {
+      "idx": 410,
+      "version": "7",
+      "when": 1781862510000,
+      "tag": "0410_entitlement_reset_drop_old_layers",
       "breakpoints": true
     }
   ]
