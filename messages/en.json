@@ -364,6 +364,13 @@
       "draftReady": "Ready to create",
       "draftContinue": "Continue"
     },
+    "switcher": {
+      "ariaLabel": "Search employee",
+      "placeholder": "Search employee ID or name…",
+      "resultsLabel": "Employee search results",
+      "noMatches": "No employee matches that.",
+      "currentTag": "Current"
+    },
     "detail": {
       "backToPeople": "People",
       "backToOrg": "Org chart",

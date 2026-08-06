@@ -364,6 +364,13 @@
       "draftReady": "Sedia untuk dicipta",
       "draftContinue": "Sambung"
     },
+    "switcher": {
+      "ariaLabel": "Cari pekerja",
+      "placeholder": "Cari ID pekerja atau nama…",
+      "resultsLabel": "Hasil carian pekerja",
+      "noMatches": "Tiada pekerja yang sepadan.",
+      "currentTag": "Semasa"
+    },
     "detail": {
       "backToPeople": "Kakitangan",
       "backToOrg": "Carta organisasi",
