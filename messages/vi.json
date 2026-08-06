@@ -4135,7 +4135,7 @@
       "logoInvalidType": "Chỉ cho phép ảnh PNG hoặc JPG",
       "logoTooLarge": "Logo vượt quá 2 MB",
       "searchCompanies": "Tìm công ty theo tên hoặc số đăng ký",
-      "noMatches": "Không có công ty nào khớp với tìm kiếm của bạn",
+      "noMatches": "Không có công ty nào khớp với các bộ lọc này",
       "addNewCompany": "Thêm công ty mới",
       "tabGeneral": "Chung",
       "tabPayroll": "Bảng lương",

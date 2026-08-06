@@ -4135,7 +4135,7 @@
       "logoInvalidType": "仅允许 PNG 或 JPG 图片",
       "logoTooLarge": "徽标超过 2 MB",
       "searchCompanies": "按名称或注册号搜索公司",
-      "noMatches": "没有符合搜索条件的公司",
+      "noMatches": "没有公司符合这些筛选条件",
       "addNewCompany": "添加新公司",
       "tabGeneral": "一般",
       "tabPayroll": "薪资",

@@ -4135,7 +4135,7 @@
       "logoInvalidType": "Only PNG or JPG images are allowed",
       "logoTooLarge": "Logo exceeds 2 MB",
       "searchCompanies": "Search companies by name or registration number",
-      "noMatches": "No companies match your search",
+      "noMatches": "No companies match these filters",
       "addNewCompany": "Add new company",
       "tabGeneral": "General",
       "tabPayroll": "Payroll",
