@@ -695,6 +695,95 @@ export function createIndividualTxnsBulk(
 }
 
 /**
+ * 2ef69d1e (Back Pay) — insert a set of one-off rows, each with its OWN employee and amount, inside the
+ * CALLER'S transaction.
+ *
+ * ── WHY THIS EXISTS ALONGSIDE createIndividualTxnsBulk, WHICH IS NOT CHANGED ──────────────────────────
+ * `createIndividualTxnsBulk` writes the SAME grid of rows to EVERY selected payee (a cartesian product),
+ * which is exactly right for "pay twenty people the same allowance" and cannot express "pay each of
+ * twenty-two people a different arrears figure". Looping it per employee would open N transactions with
+ * no cross-employee rollback — for a money posting that is the difference between a run that pays
+ * everybody and a run that pays the first nine people and then fails, leaving a `posted` back pay run
+ * whose lines disagree with the ledger. So back pay does the whole posting in ONE transaction and this is
+ * the seam it inserts through.
+ *
+ * It is ADDITIVE on purpose: `createIndividualTxnsBulk` above is untouched, so no existing payroll path
+ * changes behaviour by a byte. The insert shape and the per-row `payroll.individual-txn.created` event
+ * are identical to it, which is what keeps per-record History/replay and the substrate-coverage grep
+ * working for these rows too.
+ *
+ * The caller owns the guards it needs. Back pay supplies them: the employments come from the run's own
+ * lines (so they are company-matched by construction), the component ids are the ones it just seeded,
+ * every amount is a positive magnitude with the sign carried by `kind`, and the target run is asserted
+ * DRAFT before this is called. `assertDateInPeriod` is still enforced here — a date outside the pay month
+ * is the one error no caller can be trusted to have ruled out.
+ */
+export async function insertIndividualTxnsTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    /** The target run, or null when no run exists for the month yet (the row is stamped on at generate). */
+    batchId: string | null;
+    companyId: string;
+    payPeriod: string;
+    rows: Array<{
+      employmentId: string;
+      kind: TxnKind;
+      componentId: string | null;
+      txnDate: string;
+      amount: number;
+      notes?: string | null;
+    }>;
+  },
+): Promise<string[]> {
+  if (!isPayPeriod(p.payPeriod)) throw new InvalidPayPeriodError(p.payPeriod);
+  const ids: string[] = [];
+  for (const r of p.rows) {
+    if (!isTxnKind(r.kind)) throw new InvalidTxnKindError(r.kind);
+    assertDateInPeriod(r.txnDate, p.payPeriod);
+    // Magnitude semantics, the same contract every other write path enforces: the KIND carries the sign.
+    if (!(r.amount > 0)) throw new AmountNotPositiveError(r.amount);
+  }
+  await assertTxnComponents(tx, p.rows, individualTxnPayEnabled(ctx));
+  for (const r of p.rows) {
+    const [row] = await tx
+      .insert(payrollIndividualTxn)
+      .values({
+        tenantId: ctx.tenantId,
+        batchId: p.batchId,
+        companyId: p.companyId,
+        payPeriod: p.payPeriod,
+        employmentId: r.employmentId,
+        kind: r.kind,
+        componentId: r.componentId ?? null,
+        txnDate: r.txnDate,
+        amount: money(r.amount),
+        notes: r.notes ?? null,
+      })
+      .returning({ id: payrollIndividualTxn.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-individual-txn',
+      aggregateId: row.id,
+      eventType: 'payroll.individual-txn.created',
+      actor: actorOf(ctx),
+      // ADR-0030 Layer 0: references + kind, no cleartext amount.
+      payload: {
+        batchId: p.batchId,
+        companyId: p.companyId,
+        payPeriod: p.payPeriod,
+        employmentId: r.employmentId,
+        kind: r.kind,
+        componentId: r.componentId ?? null,
+        txnDate: r.txnDate,
+      },
+    });
+    ids.push(row.id);
+  }
+  return ids;
+}
+
+/**
  * Patch a dated one-off transaction. Editable while UNATTACHED (no run exists yet — f1564110 Phase 2) or
  * attached to a DRAFT batch; re-validates date-in-period against the row's (unchanged) pay month. A patch
  * may change any of kind / txnDate / amount / quantity / unit / notes.
