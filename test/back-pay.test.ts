@@ -469,6 +469,38 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
     ).toHaveLength(0);
   });
 
+  it('the seeded Back Pay items are ordinary WAGE items — EPF, SOCSO/EIS and PCB, no PCB stream declared', async () => {
+    // THE POINT OF THIS TEST: declaring pcbRemunerationType 'additional' routes the amount into the
+    // kernel's BONUS bucket, which is EXCLUDED from SOCSO/EIS. Arrears of wages are not. The approved
+    // plan promises the arrears "attract EPF, SOCSO and PCB in the month they are actually paid", and
+    // that promise is only kept while these flags say wage. If a later change declares a stream here,
+    // this test is the thing that has to be argued with.
+    const { a, employmentId } = await hire(5000, 'Seeded Sam');
+    await runAndClose('2026-03');
+    await setCompensation(a, { employmentId, basicSalary: 6000, effectiveFrom: '2026-03-01' });
+    const { runId } = await calculateBackPay(a, { companyId: base.companyId, targetPayPeriod: '2026-04' });
+    await approveAndPostBackPay(a, { runId });
+
+    for (const [code, kind] of [
+      [BACK_PAY_EARNING_CODE, 'allowance'],
+      [BACK_PAY_DEDUCTION_CODE, 'deduction'],
+    ] as const) {
+      const [c] = await owner.db
+        .select()
+        .from(schema.payComponent)
+        .where(and(eq(schema.payComponent.tenantId, base.tenantId), eq(schema.payComponent.code, code)));
+      expect(c, `${code} must be seeded on first use`).toBeTruthy();
+      expect(c.kind).toBe(kind);
+      expect(c.includedInEpf).toBe(true);
+      expect(c.includedInSocsoEis).toBe(true);
+      expect(c.includedInPcb).toBe(true);
+      expect(c.pcbRemunerationType, 'a declared stream would drop SOCSO/EIS').toBeNull();
+      // Arrears are a settled figure for months already worked; prorating would re-scale a sized debt.
+      expect(c.prorates).toBe(false);
+      expect(c.isNonPayable).toBe(false);
+    }
+  });
+
   // ───────────────────────── i18n ─────────────────────────
 
   it('every review reason and status resolves in all six locales', async () => {

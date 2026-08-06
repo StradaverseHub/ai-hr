@@ -1176,9 +1176,19 @@ async function ensureBackPayComponentTx(tx: Tx, ctx: SessionContext, kind: 'earn
       // Arrears are a settled figure for months already worked — proration would scale a debt that has
       // already been sized. Never prorate.
       prorates: false,
-      // An arrears payment is ADDITIONAL remuneration under the LHDN computerised calculation: it is a
-      // lump sum for a prior period, not this month's normal wage.
-      pcbRemunerationType: kind === 'earning' ? 'additional' : null,
+      // ── WHY THE PCB CLASSIFICATION IS LEFT UNDECLARED, WHICH IS A DELIBERATE CHOICE ────────────────
+      // The first draft declared `pcbRemunerationType: 'additional'` on the reasoning that an arrears
+      // lump sum is additional remuneration under the LHDN computerised calculation. Tracing it through
+      // the kernel showed that routes the amount into the BONUS bucket — and the kernel's own comment
+      // there reads "Bonus is additional remuneration: EPF + PCB (difference method), EXCLUDED from
+      // SOCSO/EIS". Arrears of WAGES are not excluded from SOCSO/EIS, and the approved plan promises in
+      // as many words that the arrears "attract EPF, SOCSO and PCB in the month they are actually paid".
+      // Leaving it null makes the kernel infer the stream from the flags exactly as it does for every
+      // item the default catalog seeds (none of which declares one either): epf + socso ⇒ ordinary wage,
+      // which is EPF, SOCSO, EIS and PCB. That is the promise, and it is the conservative reading. HR can
+      // reclassify afterwards — the plan says so — but the default must not quietly drop two contributions.
+      pcbRemunerationType: null,
+      pcbExemptionCode: null,
       displayCategory: kind === 'earning' ? 'allowance' : 'deduction',
     })
     .returning({ id: payComponent.id });
