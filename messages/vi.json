@@ -211,7 +211,7 @@
     "joinedWeeksAgo": "gia nhập {w, plural, one {# tuần} other {# tuần}} trước",
     "joinedMonthsAgo": "gia nhập {m, plural, one {# tháng} other {# tháng}} trước",
     "leaveBalance": "Số ngày phép còn lại",
-    "daysRemaining": "còn {d, plural, other {# ngày}}",
+    "daysRemaining": "còn {d} ngày",
     "selectLeaveType": "Chọn loại nghỉ phép",
     "noLeaveTypes": "Không có loại nghỉ phép",
     "nextHoliday": "Ngày lễ tiếp theo",

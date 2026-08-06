@@ -15,6 +15,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Card } from '@/components/ui';
+import { formatDays } from '@/lib/day-format';
 
 export type LeaveBalanceOption = { leaveTypeId: string; leaveType: string; available: number };
 
@@ -44,7 +45,13 @@ export function LeaveBalanceCard({
       ) : (
         <>
           <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">
-            {t('daysRemaining', { d: selected ? selected.available : 0 })}
+            {/* 4a1abc4a: the dashboard's headline balance is the SAME `available` figure the /leave cards
+                and the balance grid show, so it prints the same way. `daysRemaining` used to be an ICU
+                plural whose `#` formatted the raw number ("12.5 days remaining") — the drift the reporter
+                is describing. All six catalogs now take a pre-formatted `{d}`; dropping the plural is not a
+                translation loss, because a figure that always carries two decimals has visible fraction
+                digits and therefore always selects CLDR's "other" form anyway. */}
+            {t('daysRemaining', { d: formatDays(selected ? selected.available : 0) })}
           </div>
           <select
             aria-label={t('selectLeaveType')}

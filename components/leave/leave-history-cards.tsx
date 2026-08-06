@@ -94,8 +94,11 @@ export function LeaveHistoryCards({ entries, locale }: { entries: LeaveHistoryEn
   const range = (e: LeaveHistoryEntry) =>
     e.startDate === e.endDate ? fmtDate(e.startDate) : `${fmtDate(e.startDate)} – ${fmtDate(e.endDate)}`;
   const badgeCls = (key: string) => STATUS_BADGE[key] ?? 'bg-muted text-muted-foreground';
+  // 4a1abc4a: the duration is the request's day count — the same figure the Days column and the ledger row
+  // carry — so it prints at 2dp like them. `durationLine` was an ICU plural in en/ta only (ms/zh/th/vi were
+  // already plain), so the six catalogs disagreed about this line before this change as well as after it.
   const durationLine = (e: LeaveHistoryEntry) =>
-    `${t('durationLine', { count: e.days })}${e.sessionSuffix ? ` · ${e.sessionSuffix}` : ''}`;
+    `${t('durationLine', { count: formatDays(e.days) })}${e.sessionSuffix ? ` · ${e.sessionSuffix}` : ''}`;
 
   const openDetails = (id: string) => {
     setSelectedId(id);
