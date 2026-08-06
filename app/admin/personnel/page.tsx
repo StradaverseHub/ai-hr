@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listDepartments, listEmployeesPage } from '@/core/read';
+import { listCompanies, listDepartments, listEmployees, listEmployeesPage } from '@/core/read';
 import { listProfileChangeRequests } from '@/core/profile';
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
@@ -11,6 +11,8 @@ import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-
 import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
 import { decideProfileChangeAction } from './actions';
+// c002b3c3 — "Search Employee": jump straight to a profile without a round trip through this list.
+import { EmployeeSwitcher } from './employee-switcher';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -66,7 +68,7 @@ export default async function PeoplePage({
   // still needs is the LIST, its filter options, the pending profile-change queue, and the count of
   // unfinished Create New Employee drafts (a draft is not an employee and never appears in the table
   // below; it is surfaced here only because this is where somebody would come looking for it).
-  const [{ rows: employees, total }, companies, departments, profileChanges, drafts] = await Promise.all([
+  const [{ rows: employees, total }, companies, departments, profileChanges, drafts, allEmployees] = await Promise.all([
     listEmployeesPage(session, {
       companyIds: scopeIds,
       q,
@@ -83,6 +85,12 @@ export default async function PeoplePage({
       ? listProfileChangeRequests(session, { companyIds: scopeIds, status: 'pending' })
       : Promise.resolve([]),
     isAdmin ? listEmployeeDrafts(session) : Promise.resolve([]),
+    // c002b3c3 — the switcher needs the WHOLE reachable set, not the page being displayed: searching for
+    // someone on page 7 of the list is the entire point. `listEmployees` is the same scoped read the
+    // profile route already uses for its own pickers, narrowed here by the active company context
+    // (`scopeIds`) so the box searches exactly what this screen is showing. It can only ever be NARROWER
+    // than RLS — the profile route re-resolves whatever is picked and 404s on anything out of scope.
+    listEmployees(session, scopeIds),
   ]);
   const pgState = pageState(pq, total, employees.length);
   const EMPLOYMENT_TYPES = [
@@ -160,7 +168,12 @@ export default async function PeoplePage({
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    // c002b3c3 — the Personnel module goes FULL WIDTH. `max-w-[100rem]` is not a new number: it is the
+    // container this codebase already settled on for wide screens (payroll, the transaction screens, the
+    // leave inquiries), chosen there after measuring — capped rather than full-bleed, because an
+    // uncapped table on an ultrawide display is unreadable in the other direction. Reusing that exact
+    // value is the point: the listing and the profile must not become a third and fourth width.
+    <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader
         title={t('title')}
         actions={
@@ -181,6 +194,19 @@ export default async function PeoplePage({
                 not a daily HR action, and nobody looks for one in the top-right corner of the employee
                 list; it now lives at System Settings → Hiring Defaults. The old address still redirects
                 there, so a bookmark of the removed button's destination still lands somewhere real. */}
+            {/* c002b3c3 — Search Employee, beside the Filter button. It is NOT a second copy of the
+                filter's `q` box and does not narrow this table: it JUMPS to a profile. Both controls
+                are here because they answer different questions — "show me these people" and "take me
+                to this person" — and the second one previously had no answer at all. */}
+            <EmployeeSwitcher
+              employees={allEmployees.map((e) => ({
+                employmentId: e.employmentId,
+                name: e.name,
+                employeeCode: e.employeeCode,
+                company: e.company,
+                department: e.department,
+              }))}
+            />
             <FilterPanel
               action="/admin/personnel"
               fields={filterFields}

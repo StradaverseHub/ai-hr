@@ -1,7 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { isAdmin, requireAdmin } from '@/lib/authz';
+import { isAdmin } from '@/lib/authz';
+// c002b3c3 — `scopedAdmin` is `requireAdmin` PLUS the active company context. Same admin gate as before
+// (it redirects non-admins identically); the scope ids are what the Search Employee box is narrowed to.
+import { scopedAdmin } from '@/lib/scope';
 import {
   adminCompanies,
   assignmentHistory,
@@ -121,6 +124,8 @@ import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actio
 import { ReviewSection } from './review-section';
 import { DocumentsSection } from './documents-section';
 import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
+// c002b3c3 — the Personnel module's Search Employee switcher (shared with the listing).
+import { EmployeeSwitcher } from '../employee-switcher';
 // Rung 5c (ADR-0080 D1) — statutory profile reads, the SOCSO/EIS default and the state pick-list all
 // resolve through the pack registry; this generic personnel screen no longer imports localization/my.
 // (Feedback 0df0c635 — the Others Statutory card also reads the company HRDF band via the pack.)
@@ -181,7 +186,7 @@ export default async function EmployeePage({
     companyChange?: string;
   }>;
 }) {
-  const s = await requireAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
+  const { s, scopeIds } = await scopedAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
   const t = await getTranslations('people.detail');
   const tp = await getTranslations('payrollPolicy');
   const tc = await getTranslations('people.detail.clocking');
@@ -356,6 +361,23 @@ export default async function EmployeePage({
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
+  // c002b3c3 — Search Employee. NO NEW READ: this is the `listEmployees(s)` set already loaded above for
+  // the Direct Superior picker, narrowed to the active company context. Two consequences worth stating.
+  // (1) The search cannot be broader than what this page may already see, because it is literally the
+  // same rows — there is no second, looser query to drift. (2) Picking a result only changes the URL;
+  // the next request re-runs `employeeDetail(s, employmentId)` at the top of this file, which returns
+  // null for anything out of scope and 404s. So the list is a convenience and the route is the guard,
+  // and an id typed straight into the address bar is refused exactly as it was before this box existed.
+  // Terminated employments stay IN: HR looks up leavers on this screen constantly (final pay, letters).
+  const switcherEmployees = employees
+    .filter((e) => scopeIds.includes(e.companyId))
+    .map((e) => ({
+      employmentId: e.employmentId,
+      name: e.name,
+      employeeCode: e.employeeCode,
+      company: e.company,
+      department: e.department,
+    }));
   // Direct Superior (dce55aff): the CURRENT superior is the active administrative reporting line (the
   // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
   // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
@@ -3850,7 +3872,12 @@ export default async function EmployeePage({
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    // c002b3c3 — the profile was the NARROWEST page in the module (max-w-4xl) while carrying the most on
+    // it, which is backwards; it now uses the SAME container as the listing and as the wide screens this
+    // codebase already settled on. One value, applied identically in both places on purpose — the whole
+    // module widening to two slightly different caps is the report this is meant to prevent. Nothing
+    // inside is re-laid-out: every card and tab already flows to its container.
+    <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader
         back={back}
         title={emp.name}
@@ -3860,7 +3887,19 @@ export default async function EmployeePage({
           company: emp.company,
           hiredOn: emp.hiredOn,
         })}
-        actions={<StatusBadge status={derivedStatus} label={derivedStatusLabel} />}
+        actions={
+          <>
+            {/* c002b3c3 — Search Employee, in the SAME top-right position it holds on the listing, so the
+                control does not move as you navigate. `tab` rides along so jumping to the next person
+                keeps the tab you were reading instead of resetting to Profile. */}
+            <EmployeeSwitcher
+              employees={switcherEmployees}
+              currentEmploymentId={emp.employmentId}
+              tab={tab ?? null}
+            />
+            <StatusBadge status={derivedStatus} label={derivedStatusLabel} />
+          </>
+        }
       />
 
       {/* b4682879 — modern profile header: photo (or initials fallback) + key employment info. Admin-only
