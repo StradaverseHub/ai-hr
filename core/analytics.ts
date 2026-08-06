@@ -37,12 +37,10 @@ import {
   isEarnedMethod,
   leaveTypeRuleColumns,
   resolveCarryBreakdown,
-  resolveGradePolicy,
   serviceYearsAt,
   // 6e9a126e RELEASE TWO — the entitlement TEMPLATE overlay. This report is one of the three readers that
   // must answer for a PAST date, so it composes through the same helper the engines do.
-  templateOverPolicy,
-  type GradePolicyRow,
+  policyForDatedReader,
 } from './leave';
 import { buildTemplateEntitlementResolver } from './entitlement-template';
 import {
@@ -1010,16 +1008,18 @@ export async function carryForwardReport(
       // Policy version active AT this cycle's open (yearStart) — resolveGradePolicy picks the
       // most-generous match for the employee's grade among versions valid at that date, exactly as
       // expireCarriedLeave does for a past year.
-      const activeAtOpen: GradePolicyRow[] = policies
-        .filter((pol) => pol.validFrom <= yearStart && (pol.validTo == null || pol.validTo > yearStart))
-        .map((pol) => ({ gradeId: pol.gradeId, companyId: pol.companyId, accrual: pol.accrual }));
-      // 9816a5ad step 2: days from the winning policy row, every RULE from the leave type.
+      // 6e9a126e RELEASE THREE — the policy layer is gone; the winning TEMPLATE BAND is the only source.
+      // `policyForDatedReader` is precisely what keeps this report honest while nothing is configured:
+      // with no band it still materialises the leave TYPE's carry cap, percentage and expiry at zero days,
+      // so `applyLeaveTypeRules` has a carrier to overlay. Without it this line returns null, carryMax
+      // reads 0, and every CLOSED year prints as "everything forfeited" — the exact defect the approved
+      // plan named as the one release three would otherwise cause.
       const policy = applyLeaveTypeRules(
-        templateOverPolicy(
-          resolveGradePolicy(activeAtOpen, e.gradeId, e.companyId, serviceYearsAt(e.hiredOn, yearStart)),
+        policyForDatedReader(
           templatesAtCycle
             .get(cycleStart)!
             .bandFor(e.employmentId, leaveTypeId, serviceYearsAt(e.hiredOn, cycleStart)),
+          annualType,
         ),
         annualType,
       );

@@ -21,13 +21,11 @@ import {
   resolveCarryBreakdown,
   applyLeaveTypeRules,
   leaveTypeRuleColumns,
-  resolveGradePolicy,
   serviceYearsAt,
   // 6e9a126e RELEASE TWO — the entitlement TEMPLATE overlay, for the balance breakdown's past-date read.
-  templateOverPolicy,
+  policyForDatedReader,
   workingDatesForSpan,
   workingDatesForSpans,
-  type GradePolicyRow,
   type LeaveEligibility,
 } from './leave';
 import { buildTemplateEntitlementResolver } from './entitlement-template';
@@ -2413,10 +2411,15 @@ export function leaveEntitlementBreakdown(
     // the tie-break consistent with the banded winner. This does NOT change currentYearEntitlement below
     // (ledger-derived) — the banded number reaches /me only via the ledger, after a hire grant/year-open.
     // 9816a5ad step 2: days from the winning policy row, every RULE from the leave type.
+    // 6e9a126e RELEASE THREE — the policy layer is gone, so the winning TEMPLATE BAND is the only source
+    // of days. `policyForDatedReader` is what stops a past date reporting "everything forfeited" while
+    // nothing is configured: with no band it still materialises the leave TYPE's own carry rules, at zero
+    // days, so `applyLeaveTypeRules` has something to overlay onto. See its header for why days are the
+    // one thing that must not be invented.
     const policy = applyLeaveTypeRules(
-      templateOverPolicy(
-        resolveGradePolicy(policies as GradePolicyRow[], emp.gradeId, emp.companyId, serviceYearsAt(emp.hiredOn, cycleStart)),
+      policyForDatedReader(
         templates.bandFor(employmentId, leaveTypeId, serviceYearsAt(emp.hiredOn, cycleStart)),
+        type,
       ),
       type,
     );

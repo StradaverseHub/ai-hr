@@ -971,6 +971,37 @@ export function belowStatutoryFloor(floorDays: number | null | undefined, days: 
  * over whatever this returns — so for a consolidated type the band's carry columns are read and then
  * discarded, exactly as a leave_policy band's were. There is still exactly one carry rule per leave type.
  */
+/**
+ * The carrier the DATED READERS need — and the reason release three does not print "everything forfeited".
+ *
+ * ⚠️ THIS IS THE DEFECT THE APPROVED PLAN PREDICTED, fixed at the line it predicted it would land on.
+ *
+ * `applyLeaveTypeRules(null, rules)` returns NULL at its first line, by design: a null policy means "no
+ * entitlement resolved", and inventing one would fabricate days. While `leave_policy` existed, the two
+ * dated readers always had SOMETHING to hand it — a grade policy row, or a template band. With the old
+ * layer dropped and the new one not yet configured, both would hand it `null`, `carryMax` would read 0,
+ * and a CLOSED YEAR would report every carried day as forfeited. That is not a display nicety: the carry
+ * forward report is what an employee is shown about a year they can no longer affect.
+ *
+ * So when there is no band but the leave TYPE carries rules of its own, we materialise a carrier with
+ * ZERO DAYS. Days are the one thing that must not be invented — no template means no entitlement, and
+ * both readers derive their day figures from the ledger anyway. What the carrier exists to carry is the
+ * type's carry cap, percentage and expiry, which live on `leave_type` and are just as true after the drop
+ * as before it. `applyLeaveTypeRules` then overlays them exactly as it always did.
+ *
+ * A type with NO rules still resolves to null — genuinely no opinion, which is what `noEntitlementOpinion`
+ * depends on and what keeps the recalc posting a delta of exactly 0 during the blank window.
+ */
+export function policyForDatedReader(
+  band: ServiceBand | null,
+  rules: LeaveTypeRules | null | undefined,
+): ResolvedPolicy | null {
+  const fromBand = policyFromTemplateBand(band);
+  if (fromBand) return fromBand;
+  if (!hasAnyLeaveTypeRule(rules)) return null;
+  return { days: 0, carryMax: 0, carryExpiry: null, maxBalanceDays: null };
+}
+
 export function policyFromTemplateBand(band: ServiceBand | null): ResolvedPolicy | null {
   if (!band) return null;
   return {

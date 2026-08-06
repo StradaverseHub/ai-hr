@@ -52,6 +52,7 @@ import {
   // Release three left it with ONE layer (the entitlement template's band) — see composeEntitlement.
   composeEntitlement,
   policyFromTemplateBand,
+  policyForDatedReader,
   // 6e9a126e — "nothing configured is not zero days". Read inside composeEntitlement.
   noEntitlementOpinion,
   hasAnyLeaveTypeRule,
@@ -124,6 +125,7 @@ export {
   // the pure module so tests and server callers can pin them from '@/core/leave'.
   composeEntitlement,
   policyFromTemplateBand,
+  policyForDatedReader,
   // 6e9a126e — re-exported like the rest of the pure module so tests and server callers can pin the
   // guard's predicate directly from '@/core/leave'.
   noEntitlementOpinion,
