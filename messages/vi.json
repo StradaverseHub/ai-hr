@@ -4372,6 +4372,8 @@
         "schemes": "Chương trình phúc lợi",
         "service": "Định mức theo thâm niên",
         "gradesCompanyWideBadge": "Áp dụng toàn công ty",
+        "tablesHint": "Số ngày, các mốc thâm niên và ai được hưởng đều được đặt trên màn hình Bảng định mức phép — một lần cho toàn tổ chức, không phải mỗi loại phép một lần.",
+        "tablesOpen": "Mở Bảng định mức phép",
         "previewHint": "Kiểm tra định mức mà một nhân viên mẫu sẽ nhận được theo quy tắc hiện tại.",
         "accrualHint": "Xử lý định mức đã tích lũy cho một năm nghỉ phép — xem trước bản chạy thử trước, rồi xác nhận."
       },

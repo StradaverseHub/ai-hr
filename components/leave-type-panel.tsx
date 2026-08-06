@@ -35,48 +35,19 @@ import { Button, Field, inputCls } from './ui';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { ChipMultiSelect } from './ui/chip-multi-select';
-import {
-  LeaveTypeEntitlementTable,
-  ServiceEntitlementTable,
-  type LeaveTypeSchemeEntitlement,
-  type ServicePolicyRow,
-  type ServiceSchemeRow,
-} from './benefit-scheme-config';
 import { SubStepBar } from './leave-sub-step-bar';
 
-export type EntitlementPolicy = {
-  id: string;
-  annualDays: number;
-  /** Leave Entitlement Rules Engine: optional service-length bands above annualDays. null/undefined = none
-   *  (flat annualDays only). */
-  serviceBands?: ServiceBand[] | null;
-  carryForwardMax: number;
-  /** ADR-0038 carry-forward expiry: month/day the carried-forward portion auto-forfeits; null = never. */
-  carryForwardExpiryMonth?: number | null;
-  carryForwardExpiryDay?: number | null;
-  /** R4 Build #1: carry-expiry mode. 'date' (or null) = month/day; 'months' = "X months after year-end". */
-  carryForwardExpiryMode?: 'date' | 'months' | null;
-  /** R4 Build #1: X ∈ 1..12 for 'months' mode. null = unset. */
-  carryForwardExpiryMonths?: number | null;
-  /** Carry-forward enhancement: explicit on/off switch. null = unset ⇒ back-compat default (cap > 0). */
-  carryForwardEnabled?: boolean | null;
-  /** Carry-forward enhancement (config-only): include monthly-earned balance — persisted, engine deferred. */
-  carryForwardIncludeEarned?: boolean | null;
-  /** Accrual cadence (ADR-0040): 'earned_monthly' | 'earned_quarterly' earn through the year; anything
-   *  else is a lump grant at hire / year-open. */
-  method?: string;
-  /** Feedback b81d3c52 — Rounding Method applied to the CALCULATED entitlement before it is credited.
-   *  null/undefined = No Rounding (nothing is stored for a No-Rounding policy). */
-  roundingMethod?: LeaveRoundingMethod | null;
-  /** Grade this policy applies to (ADR-0041 2E); null = all grades (company default). */
-  gradeId?: string | null;
-  gradeName?: string | null;
-  /** Company this policy applies to (ADR-0066); null = group default (all companies). */
-  companyId?: string | null;
-  companyName?: string | null;
-  validFrom: string;
-  validTo: string | null;
-};
+/* 6e9a126e RELEASE THREE — `EntitlementPolicy` (one `leave_policy` row) and the whole per-company /
+ * per-grade entitlement surface it fed are GONE from this panel, together with the benefit-scheme props
+ * (`schemeEntitlements`, `benefitSchemes`, `gradeGroups`) and the two tables they drove
+ * (`LeaveTypeEntitlementTable` / `ServiceEntitlementTable`, whose file went with them). Days and the
+ * service-length steps that grant them are typed on Settings → Leave → Entitlements → Entitlement Tables
+ * (/admin/leave/entitlements/templates), and WHO receives a table is decided by the eligibility rules on
+ * that same screen — `entitlement_eligibility_rule`, not a scheme and not a policy row. The Entitlement
+ * step below points there rather than offering a second, unread place to type a number.
+ *
+ * GRADE GROUPS ARE NOT PART OF THAT REMOVAL: they still scope approval routing, and their editor lives on
+ * the Approval Workflow tab. Nothing here read them except the scheme matrix. */
 
 export type GradeOption = { id: string; name: string };
 export type CompanyOption = { id: string; name: string };
@@ -421,34 +392,14 @@ const ESS_SUB_STEP_TITLE_KEY: Record<EssSubStepKey, string> = {
   rules: 'conditionStep.rules',
 };
 
-/** Entitlement step sub-flow (7b945408, extended by b8fcae73, shortened again by bc9be1e8 + 0d9cf710):
- *  the THREE sub-steps of step 3, in walk order — 1 Benefit Schemes
- *  (who receives which scheme: the Grades catalogue relocated from the page bottom + the type-scoped scheme
- *  management, so the grade → grade-group → scheme relationship reads in one place), 2 Service Based
- *  Entitlements (how entitlement is calculated: the company-driven grade table, the per-company entitlement
- *  policies timeline and the Preview Scenario checker), 3 Adjustments (what manual adjustments apply: the
- *  One-Off/Festive grant tool + the Run Accrual action relocated from the page header — it processes earned
- *  entitlement, so it belongs with entitlement adjustments). Keys are storage keys (persisted as
- *  `entitlementSubStep` in the leaveTypeCards:<id> localStorage shape, next to activeStep / generalSubStep /
- *  essSubStep — the e1a51aea shape extended backward-compatibly). Rendered by the SAME reusable SubStepBar
- *  the General flow introduced (components/leave-sub-step-bar.tsx — the reuse contract). */
-const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service'] as const;
-type EntitlementSubStepKey = (typeof ENTITLEMENT_SUB_STEP_KEYS)[number];
-/** The storage key of the sub-step bc9be1e8 retired (Company Entitlements). Kept ONLY so a persisted
- *  leaveTypeCards:<id> payload that still points at it lands where its content went — Service Based
- *  Entitlements — instead of silently snapping back to sub-step 1. Never an EntitlementSubStepKey. */
-const RETIRED_COMPANY_ENTITLEMENTS_SUB_STEP = 'policies';
-/** 38f1fd40 — the Adjustments sub-step is removed. Kept ONLY so a persisted leaveTypeCards:<id> payload
- *  still pointing at it lands on Service Based Entitlements, where Run Earned Accrual moved, rather than
- *  silently snapping back to sub-step 1. Same discipline as the constant above. Never an
- *  EntitlementSubStepKey. THIS IS THE ONE REAL REGRESSION RISK IN THIS CHANGE: it is per-browser state,
- *  so no test and no render can see a user stranded by its absence. */
-const RETIRED_ADJUSTMENTS_SUB_STEP = 'adjustments';
-/** Sub-step → its admin.leave title key (all 6 locales). */
-const ENTITLEMENT_SUB_STEP_TITLE_KEY: Record<EntitlementSubStepKey, string> = {
-  schemes: 'entitlementStep.schemes',
-  service: 'entitlementStep.service',
-};
+/* 6e9a126e RELEASE THREE — THE ENTITLEMENT STEP NO LONGER HAS A SUB-FLOW. Its two sub-steps were Benefit
+ * Schemes (the scheme workbench + the per-type scheme entitlement table) and Service Based Entitlements
+ * (the scheme matrix, the per-company policy timeline and the Preview Scenario checker). Both layers are
+ * removed; what is left in the step is Run Earned Accrual plus the pointer to Entitlement Tables, and a
+ * SubStepBar with one entry is furniture. The three constants that walked it — ENTITLEMENT_SUB_STEP_KEYS,
+ * its title map, and the two RETIRED_* storage keys that remapped a stale browser onto Service Based
+ * Entitlements — go with it: there is nowhere left to remap TO. A persisted leaveTypeCards:<id> payload
+ * still carrying `entitlementSubStep` is simply ignored on hydration; the step opens whole. */
 
 type Action = (fd: FormData) => void | Promise<void>;
 
@@ -577,70 +528,14 @@ function CarryExpiryFields({
   );
 }
 
-// ── General-step front doors (feedback e1a51aea) ──────────────────────────────────────────────────────
-// The Earning Method + Carry Forward Policy sub-steps are FRONT DOORS to the per-policy fields that
-// already exist under Eligibility: they read the CURRENT active policy row and, on save, post the SAME
-// updateLeavePolicyAction the policy edit form posts — no new storage, the effective-dated policy row
-// stays the single source of truth (the plan's "existing per-policy controls remain the underlying
-// truth"). Because that action rebuilds the policy's accrual JSONB wholesale from the posted fields, each
-// front door must re-post every field it is NOT editing as hidden inputs (id / annualDays / validFrom /
-// gradeId / companyId + the full carry block), or an earning-only save would silently wipe the carry
-// config (and vice versa). Service bands are deliberately NOT posted — omitting the serviceBandsRendered
-// marker preserves them (the tri-state in app/admin/actions.ts serviceBandsField).
-
-/** The active (open-ended) policy rows — the ones a front door may edit. */
-const activePoliciesOf = (policies: EntitlementPolicy[]) => policies.filter((p) => !p.validTo);
-
-/** Human label for one active policy row in the front-door scope picker (company · grade · from date). */
-function frontDoorScopeLabel(t: ReturnType<typeof useTranslations>, p: EntitlementPolicy): string {
-  const company = p.companyId && p.companyName ? p.companyName : t('policyCompanyGroupDefault');
-  const grade = p.gradeId && p.gradeName ? p.gradeName : t('gradeAll');
-  return `${company} · ${grade} · ${t('validFrom', { from: p.validFrom })}`;
-}
-
-/** The hidden inputs BOTH front doors post to preserve the policy's identity + non-edited flat fields.
- *  9b0503ac: `leaveTypeId` (the hosting panel's type) rides along so the action's success redirect can
- *  anchor back to this exact type's panel (#type-<id>) instead of bouncing off the page. */
-function FrontDoorIdentityFields({ p, leaveTypeId }: { p: EntitlementPolicy; leaveTypeId: string }) {
-  return (
-    <>
-      <input type="hidden" name="id" value={p.id} />
-      <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
-      <input type="hidden" name="annualDays" value={p.annualDays} />
-      <input type="hidden" name="validFrom" value={p.validFrom} />
-      <input type="hidden" name="gradeId" value={p.gradeId ?? ''} />
-      <input type="hidden" name="companyId" value={p.companyId ?? ''} />
-    </>
-  );
-}
-
-/** The hidden inputs the EARNING front door posts to preserve the policy's stored carry block untouched
- *  (annual types; a non-annual policy mirrors the edit form's `carryForwardMax=0`). carryFlagField reads
- *  `=== 'on'`, so an enabled flag is re-posted as a hidden value="on" input and a disabled one is simply
- *  not rendered (marker present ⇒ absent reads as false, i.e. the stored value). */
-function FrontDoorPreservedCarry({ p }: { p: EntitlementPolicy }) {
-  // 7cd914b1: this used to post `carryForwardMax=0` for a non-annual type on EVERY earning save, so such a
-  // type could not hold a carry rule even once the engine allowed one — the save actively rewrote it to
-  // zero. It now preserves whatever is stored, for every type, exactly as it always did for ANNUAL.
-  const mode = p.carryForwardExpiryMode === 'months' ? 'months' : 'date';
-  return (
-    <>
-      <input type="hidden" name="carryBlockRendered" value="1" />
-      {carryRuleEnabled(p) && <input type="hidden" name="carryForwardEnabled" value="on" />}
-      {!!p.carryForwardIncludeEarned && <input type="hidden" name="carryForwardIncludeEarned" value="on" />}
-      <input type="hidden" name="carryForwardMax" value={p.carryForwardMax} />
-      <input type="hidden" name="carryForwardExpiryMode" value={mode} />
-      {mode === 'months' ? (
-        <input type="hidden" name="carryForwardExpiryMonths" value={p.carryForwardExpiryMonths ?? ''} />
-      ) : (
-        <>
-          <input type="hidden" name="carryForwardExpiryMonth" value={p.carryForwardExpiryMonth ?? ''} />
-          <input type="hidden" name="carryForwardExpiryDay" value={p.carryForwardExpiryDay ?? ''} />
-        </>
-      )}
-    </>
-  );
-}
+// ── The e1a51aea policy front doors are GONE (6e9a126e release three) ─────────────────────────────────
+// Earning Method and Carry Forward Policy used to be front doors onto the active `leave_policy` row, and
+// each carried helpers whose only job was to keep that row whole across a partial save: `activePoliciesOf`
+// (which rows a front door may edit), `frontDoorScopeLabel` (company · grade · from-date, the scope picker
+// when more than one was active), `FrontDoorIdentityFields` and `FrontDoorPreservedCarry` (re-post what the
+// form is not editing, because updateLeavePolicyAction rebuilt the accrual JSONB wholesale). 9816a5ad had
+// already moved both settings onto the leave TYPE — they post setTypeRulesAction and read `typeRules` — so
+// with the policy row removed there is nothing left for any of them to preserve.
 
 /** The reporter's earning vocabulary → the engine's per-policy method (ADR-0040). Documented mapping:
  *   - none        → grant_on_hire_prorated  (full entitlement up front — today's lump default)
@@ -1282,57 +1177,18 @@ function MaxConsecutiveForm({
   );
 }
 
-/** Shared shell for the two policy front doors: resolves the active policy rows, offers a scope picker
- *  when more than one is active, and renders the given form for the selected row (keyed by policy id so
- *  its local state re-seeds when HR switches scope). */
-function PolicyFrontDoor({
-  t,
-  policies,
-  renderForm,
-}: {
-  t: ReturnType<typeof useTranslations>;
-  policies: EntitlementPolicy[];
-  renderForm: (p: EntitlementPolicy) => ReactNode;
-}) {
-  const active = activePoliciesOf(policies);
-  const [polId, setPolId] = useState<string>(active[0]?.id ?? '');
-  const selected = active.find((x) => x.id === polId) ?? active[0];
-  if (!selected) {
-    return <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">{t('subStep.noActivePolicy')}</p>;
-  }
-  return (
-    <div className="space-y-2">
-      {active.length > 1 && (
-        <Field label={t('subStep.frontDoorScopeLabel')}>
-          <select
-            value={selected.id}
-            onChange={(e) => setPolId(e.target.value)}
-            aria-label={t('subStep.frontDoorScopeLabel')}
-            className={`${inputCls} w-full max-w-md`}
-          >
-            {active.map((p) => (
-              <option key={p.id} value={p.id}>
-                {frontDoorScopeLabel(t, p)}
-              </option>
-            ))}
-          </select>
-        </Field>
-      )}
-      <div key={selected.id}>{renderForm(selected)}</div>
-    </div>
-  );
-}
+/* 6e9a126e release three — `PolicyFrontDoor` is removed. It was the shell BOTH General sub-steps used to
+ * put on before writing a policy row: pick which active row to edit, then render the form for it. 9816a5ad
+ * had already re-pointed Earning Method and Carry Forward Policy at the leave TYPE, leaving this shell
+ * mounted by nothing; the policy layer it picked over no longer exists either. The two sub-steps render
+ * their form directly — one leave type, one set of rules, no scope to choose. */
 
-/**
+/*
  * fa3f4ccb — ServiceBandEditor (the service-length band sub-editor, with its BandRow per-range columns)
- * has been REMOVED along with the Company Entitlements band surface it was the only mount for. Service-
- * length steps are configured per benefit scheme in Service Based Entitlements, whose band days already
- * supersede this row's days; a second band table here answered the same question twice.
- *
- * The DATA is untouched: `accrual.serviceBands` still exists on every leave_policy row that has it, the
- * resolver still band-resolves those days (bandDaysFor / resolveGradePolicy), and the forms deliberately
- * post no `serviceBandsRendered` marker so serviceBandsField preserves them. app/admin/actions.ts keeps
- * serviceBandsField for exactly that reason — it is the PRESERVE half of the tri-state, not dead code.
+ * has been REMOVED along with the Company Entitlements band surface it was the only mount for.
+ * 6e9a126e release three: service-length steps are typed on the Entitlement Tables screen
+ * (/admin/leave/entitlements/templates) as a template's bands. The benefit-scheme band matrix that
+ * superseded this editor is gone with `scheme_leave_entitlement`; the template is the only band table now.
  */
 
 /**
@@ -1582,7 +1438,6 @@ export function LeaveTypePanel({
   cascadeApprovalRules,
   cascadeBalanceSourceOf,
   isAnnual,
-  floor0,
   eligibility,
   orgAssignmentOptions,
   durations,
@@ -1620,26 +1475,14 @@ export function LeaveTypePanel({
   balanceSourceTypeId,
   allowUnpaidLeave,
   balanceSourceOptions,
-  policies,
   typeRules,
-  grades,
-  companies,
-  schemeEntitlements,
-  benefitSchemeSection,
   halfDaySection,
-  previewScenarioSection,
   accrualSection,
+  entitlementTablesLink,
   updateTypeAction,
   archiveTypeAction,
   deleteTypeAction,
-  createPolicyAction,
-  updatePolicyAction,
   setTypeRulesAction,
-  deletePolicyAction,
-  countInScopeAction,
-  upsertSchemeEntitlementAction,
-  benefitSchemes,
-  gradeGroups,
 }: {
   id: string;
   name: string;
@@ -1658,7 +1501,6 @@ export function LeaveTypePanel({
   /** Leave types whose balance source is THIS type; deleting clears their source (they are not deleted). */
   cascadeBalanceSourceOf: string[];
   isAnnual: boolean;
-  floor0: number;
   eligibility: LeaveEligibilityRule | null;
   /** Organisation Assignment criteria (Enhance Leave Criteria Configuration): the ACTIVE picker values for each
    *  of the eight org fields, keyed by profile_option category (division / branch / … / category). Sourced from
@@ -1767,58 +1609,30 @@ export function LeaveTypePanel({
    *  this one, minus any that already borrow from somewhere (the service refuses chains, so offering them
    *  would only produce a rejected save). Prepared once at page level, not per panel. */
   balanceSourceOptions: { id: string; name: string }[];
-  policies: EntitlementPolicy[];
   /** 9816a5ad step 2: the consolidated rules, read from and written back to the leave TYPE. */
   typeRules: LeaveTypeRules;
-  grades: GradeOption[];
-  /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
-  companies: CompanyOption[];
-  /** Restructure (123c1e76): THIS leave type's benefit-scheme entitlement rows (scheme name + service-tier
-   *  days + read-only combined-pool cap), rendered in the per-type Entitlement card. The SAME live rows the
-   *  shared Benefit Schemes table shows — filtered by leave type, never duplicated. */
-  schemeEntitlements: LeaveTypeSchemeEntitlement[];
-  /** 6c775d68: the Benefit Schemes management area, scoped to THIS leave type — a server-composed
-   *  <BenefitSchemeConfig scopeLeaveTypeId={id}> slot rendered inside the Entitlement step, below the
-   *  per-type table. Slot-shaped so the scheme data is prepared ONCE at page level (no N+1 per type).
-   *  387792a4: the config hosts the grade workbench. b1b81a08 narrowed it to TWO panels (Grade Groups ·
-   *  Assignment) — grade MASTER data now lives on Settings → System Labels → Organisation Labels, so there
-   *  is no gradesPanel slot any more. This ONE section is still the whole Benefit Schemes sub-step. */
-  benefitSchemeSection?: ReactNode;
   /** 08bc6841: the company-wide Half-Day Deduction card — a server-composed slot (since 10e96227 ONE
    *  ChipMultiSelect over companyIds plus one Save posting setLeaveHalfDayFullDeductionCompaniesAction,
    *  embedded as one card of the Condition step's Leave Application Rules grid with an
-   *  applies-company-wide badge). Slot-shaped like benefitSchemeSection: the rule is per-COMPANY (not
-   *  per-type), so ONE node is prepared at page level and shared by every panel. */
+   *  applies-company-wide badge). Slot-shaped: the rule is per-COMPANY (not per-type), so ONE node is
+   *  prepared at page level and shared by every panel. */
   halfDaySection?: ReactNode;
-  /** 7b945408: the Preview Scenario checker (d778d2d3's LeaveRulePreviewDialog), joining the Service Based
-   *  Entitlements sub-step as its checking tool — a server-composed slot (page-level data prep, one shared
-   *  node). The PageHeader button is removed separately by item 962077a8; this slot is its new home. */
-  previewScenarioSection?: ReactNode;
-  /** 7b945408 / 38f1fd40: the Run Accrual action (d778d2d3's EarnedAccrualDialog). It lived in the
-   *  Adjustments sub-step until 38f1fd40 retired that sub-step, and now sits in Service Based
-   *  Entitlements beside previewScenarioSection. It is the ONLY mount of EarnedAccrualDialog — the page
-   *  header was cleared by 962077a8 and must not be used as a home again. Server-composed slot
-   *  (page-level data prep, one shared node). */
+  /** 7b945408 / 38f1fd40: the Run Accrual action (d778d2d3's EarnedAccrualDialog). It is the ONLY mount of
+   *  EarnedAccrualDialog — the page header was cleared by 962077a8 and must not be used as a home again.
+   *  Server-composed slot (page-level data prep, one shared node). 6e9a126e release three: it is also the
+   *  only WORKING control left in the Entitlement step, which is why the step still exists. */
   accrualSection?: ReactNode;
+  /** 6e9a126e release three: the pointer to Entitlement Tables (/admin/leave/entitlements/templates),
+   *  where a type's days and service bands are now typed and where eligibility rules decide who receives
+   *  them. Composed on the server for the same reason halfDaySection is — one node, shared by every panel
+   *  — and passed as a slot so this client component needs no router import. Without it the Entitlement
+   *  step is a dead end: every configuration surface that used to live here has moved to that screen. */
+  entitlementTablesLink?: ReactNode;
   updateTypeAction: Action;
   archiveTypeAction: Action;
   deleteTypeAction: Action;
-  createPolicyAction: Action;
-  updatePolicyAction: Action;
   /** 9816a5ad step 2: writes the five consolidated settings to the leave type. */
   setTypeRulesAction: Action;
-  deletePolicyAction: Action;
-  /** Feedback 9d8cf621: server action returning the count of active employees the selected
-   *  companies/grades cover — drives the live "entitled employees" figure next to the chips. */
-  countInScopeAction: (p: { companyIds: string[]; gradeIds: string[] }) => Promise<number>;
-  /** Restructure (123c1e76): the SAME upsertSchemeEntitlement action the Benefit Schemes table posts —
-   *  the per-type Entitlement card's Edit dialog writes through it, so nothing forks. */
-  upsertSchemeEntitlementAction: Action;
-  /** 9816a5ad — the benefit schemes the Service Based Entitlements table lists once a company is picked, and
-   *  the grade-group membership it needs to tell the admin where the old grade-level figures disagree.
-   *  Prepared ONCE at page level from rows the page already loads (the benefitSchemeSection precedent). */
-  benefitSchemes: ServiceSchemeRow[];
-  gradeGroups: { id: string; gradeIds: string[] }[];
 }) {
   const t = useTranslations('admin.leave');
   // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the eight criterion labels REUSE
@@ -1842,39 +1656,14 @@ export function LeaveTypePanel({
   const [editingName, setEditingName] = useState(false);
   // Day Type Inclusion (ef6d7146): its own edit-mode toggle (a sub-form inside Eligibility Rules).
   const [editingDayTypes, setEditingDayTypes] = useState(false);
-  const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
   // Feedback 9d8cf621 — custom apply-time message: the enable checkbox drives whether the textarea is shown.
   // Default from stored state (a non-empty applyNotice ⇒ enabled), so it round-trips on reload.
   const [applyNoticeEnabled, setApplyNoticeEnabled] = useState<boolean>(!!customMessages?.applyNotice);
-  // Feedback 9d8cf621 — "Employee Selection" chips (add-entitlement form): selected companies + grades and the
-  // live entitled-employee count. Reset when the add form opens; recomputed via the server action on change.
-  const [pickCompanies, setPickCompanies] = useState<string[]>([]);
-  const [pickGrades, setPickGrades] = useState<string[]>([]);
-  const [entitledCount, setEntitledCount] = useState<number | null>(null);
-  const [, startCountTransition] = useTransition();
-
-  const refreshCount = (companyIds: string[], gradeIds: string[]) => {
-    startCountTransition(async () => {
-      try {
-        setEntitledCount(await countInScopeAction({ companyIds, gradeIds }));
-      } catch {
-        setEntitledCount(null);
-      }
-    });
-  };
-  const toggleFrom = (list: string[], value: string) =>
-    list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-  // Restructure Service-Based Entitlements (2bba9e35): recompute the inline edit form's live covered count
-  // from the form's OWN scope selects. The company/grade selects are uncontrolled (defaultValue), so read
-  // the current value of BOTH off the shared form element rather than tracking a second piece of state.
-  // Empty value ⇒ empty array = countEmployeesInScope's empty-means-all semantics.
-  const recountEditScope = (form: HTMLFormElement | null) => {
-    if (!form) return;
-    const cid = (form.elements.namedItem('companyId') as HTMLSelectElement | null)?.value ?? '';
-    const gid = (form.elements.namedItem('gradeId') as HTMLSelectElement | null)?.value ?? '';
-    refreshCount(cid ? [cid] : [], gid ? [gid] : []);
-  };
+  /* 6e9a126e release three — the "Employee Selection" scope state (pickCompanies / pickGrades /
+   * entitledCount and the refreshCount + recountEditScope helpers that drove the live entitled-employee
+   * figure) belonged to the add / edit policy forms and went with them. Who an entitlement covers is stated
+   * as an eligibility rule on the Entitlement Tables screen, which counts its own targets through
+   * countEligibilityTargetsAction — the same idea, against the layer that now decides. */
 
   // Step flow (c979aa8b — was the 123c1e76 five-card accordion): ONE section visible at a time, chosen by
   // the numbered horizontal step bar (1 General … 4 Custom since b8fcae73). The active step is per-type client state,
@@ -1895,20 +1684,17 @@ export function LeaveTypePanel({
   // the pre-step accordion { key: boolean }) still hydrate — essSubStep simply defaults to sub-step 1
   // (Criteria) when the key is absent/unknown.
   const [essSubStep, setEssSubStep] = useState<EssSubStepKey>('criteria');
-  // Entitlement sub-step (7b945408): the active sub-step of step 3, persisted in the SAME shape — now
-  // { activeStep, generalSubStep, essSubStep, entitlementSubStep }. Older payloads (any earlier subset,
-  // the pre-step accordion { key: boolean }) still hydrate — entitlementSubStep simply defaults to
-  // sub-step 1 (Benefit Schemes) when the key is absent/unknown.
-  const [entitlementSubStep, setEntitlementSubStep] = useState<EntitlementSubStepKey>('schemes');
+  // 6e9a126e release three: `entitlementSubStep` is gone from this shape. The Entitlement step has no
+  // sub-flow left to remember (see the ENTITLEMENT_SUB_STEP note above), so the key is neither read nor
+  // written; a payload written by an older build still carries it and is simply ignored.
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(`leaveTypeCards:${id}`);
       if (!raw) return;
       const parsed = JSON.parse(raw) as Record<string, unknown> | null;
       // b8fcae73: the Eligibility step is gone, so a payload still pointing at it (either shape) no longer
-      // matches STEP_KEYS and would silently fall back to step 1. Remap it to the content's new home —
-      // Entitlement · Service Based Entitlements (bc9be1e8 retired the Company Entitlements sub-step that
-      // hosted it in between) — and let that remap WIN over any stored entitlementSubStep.
+      // matches STEP_KEYS and would silently fall back to step 1. Remap it to the content's new home — the
+      // Entitlement step, which since release three is one undivided section.
       const wantedEligibility =
         !!parsed &&
         typeof parsed === 'object' &&
@@ -1918,7 +1704,6 @@ export function LeaveTypePanel({
             parsed[RETIRED_ELIGIBILITY_STEP] === true));
       if (wantedEligibility) {
         setActiveStep('entitlement');
-        setEntitlementSubStep('service');
       } else if (parsed && typeof parsed.activeStep === 'string' && (STEP_KEYS as readonly string[]).includes(parsed.activeStep)) {
         setActiveStep(parsed.activeStep as StepKey);
       } else if (parsed && typeof parsed === 'object') {
@@ -1940,34 +1725,15 @@ export function LeaveTypePanel({
       ) {
         setEssSubStep(parsed.essSubStep as EssSubStepKey);
       }
-      if (
-        !wantedEligibility &&
-        parsed &&
-        typeof parsed.entitlementSubStep === 'string' &&
-        (ENTITLEMENT_SUB_STEP_KEYS as readonly string[]).includes(parsed.entitlementSubStep)
-      ) {
-        setEntitlementSubStep(parsed.entitlementSubStep as EntitlementSubStepKey);
-      } else if (
-        !wantedEligibility &&
-        parsed &&
-        (parsed.entitlementSubStep === RETIRED_COMPANY_ENTITLEMENTS_SUB_STEP ||
-          parsed.entitlementSubStep === RETIRED_ADJUSTMENTS_SUB_STEP)
-      ) {
-        // bc9be1e8: a browser left on the removed Company Entitlements tab lands on Service Based
-        // Entitlements, where that content now lives — not back on sub-step 1 with no explanation.
-        // 38f1fd40 adds the Adjustments tab to the same remap, for the same reason: Run Earned Accrual
-        // moved to Service Based Entitlements, so that is where a browser left on Adjustments belongs.
-        setEntitlementSubStep('service');
-      }
     } catch {
       /* storage unavailable / malformed ⇒ default step 1 */
     }
   }, [id]);
-  const persistSteps = (step: StepKey, sub: GeneralSubStepKey, ess: EssSubStepKey, ent: EntitlementSubStepKey) => {
+  const persistSteps = (step: StepKey, sub: GeneralSubStepKey, ess: EssSubStepKey) => {
     try {
       window.localStorage.setItem(
         `leaveTypeCards:${id}`,
-        JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess, entitlementSubStep: ent }),
+        JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess }),
       );
     } catch {
       /* storage write blocked ⇒ runtime switch still works, just not persisted */
@@ -1975,19 +1741,15 @@ export function LeaveTypePanel({
   };
   const selectStep = (key: StepKey) => {
     setActiveStep(key);
-    persistSteps(key, generalSubStep, essSubStep, entitlementSubStep);
+    persistSteps(key, generalSubStep, essSubStep);
   };
   const selectGeneralSubStep = (key: GeneralSubStepKey) => {
     setGeneralSubStep(key);
-    persistSteps(activeStep, key, essSubStep, entitlementSubStep);
+    persistSteps(activeStep, key, essSubStep);
   };
   const selectEssSubStep = (key: EssSubStepKey) => {
     setEssSubStep(key);
-    persistSteps(activeStep, generalSubStep, key, entitlementSubStep);
-  };
-  const selectEntitlementSubStep = (key: EntitlementSubStepKey) => {
-    setEntitlementSubStep(key);
-    persistSteps(activeStep, generalSubStep, essSubStep, key);
+    persistSteps(activeStep, generalSubStep, key);
   };
   // Active-step indicator (27136ea6's accent treatment, carried onto the step bar): the CURRENT step's pill
   // gets the accent wash + semibold label — the same bg-accent language the sidebar's active nav item uses
@@ -2042,57 +1804,26 @@ export function LeaveTypePanel({
     return t('dayTypeInclusion.summaryCounts', { list: on.map(dayTypeLabel).join(', ') });
   };
 
-  const active = policies.filter((p) => !p.validTo);
-  // Leave Entitlement Rules Engine (step 8a — correctness fix): the flat annualDays-only headline would be
-  // misleading for a banded policy (it could show a single number that no employee actually gets — e.g. the
-  // "under 2 years" figure even though most staff are past that band). Find the winning active policy by
-  // annualDays (unchanged tie-break — this is a DISPLAY summary, not the resolver) and, if it carries bands,
-  // render the band range instead of the flat number.
-  const winning = active.reduce<EntitlementPolicy | null>(
-    (best, p) => (!best || p.annualDays > best.annualDays ? p : best),
-    null,
-  );
-  const bestActive = winning?.annualDays ?? 0;
-  const winningBands = winning?.serviceBands && winning.serviceBands.length > 0 ? winning.serviceBands : null;
-  const bandDaysRange = winningBands
-    ? [...new Set(winningBands.map((b) => b.days))].sort((a, b) => a - b)
-    : null;
-  // fa3f4ccb — the headline is the CONFIGURED figure, not max(floor, configured). It used to show the
-  // clamped number, which was the whole complaint: an 8 configured against a statutory 12 displayed as 12
-  // and granted as 12, with nothing saying the 8 had been ignored. The amber `belowMinimumBadge` beside it
-  // (unchanged, and already built) is now the entire statutory behaviour on this screen: it warns, it does
-  // not correct.
-  const effective = bestActive;
-  const belowFloor = active.length > 0 && !winningBands && bestActive < floor0;
-  const above = active.length > 0 && bestActive > floor0;
-  const thisYear = new Date().getUTCFullYear();
+  /* 6e9a126e release three — THE DAYS-PER-YEAR HEADLINE IS GONE FROM THIS HEADER, together with the
+   * `belowMinimumBadge` / `bandedNote` / `policyBadge` beside it and the `floor0` prop that judged them.
+   * Every one of those numbers was read off the winning active `leave_policy` row; that layer no longer
+   * exists, and this panel cannot see the entitlement TEMPLATES that replaced it — a template is scoped by
+   * an eligibility rule, not by a leave type, so there is no single figure this screen could honestly put
+   * against a type's name. Rendering "—" for every type in perpetuity would say "nothing is configured"
+   * about a tenant that has configured plenty, somewhere this header cannot reach. The days, their service
+   * bands and the below-statutory warning belong on the Entitlement Tables screen, which is where they are
+   * typed and which the Entitlement step now links to. The header keeps what it genuinely owns: the type's
+   * name, its code, and whether it is archived. */
 
   return (
     <div id={`type-${id}`} className={cn('space-y-3', archived && 'opacity-60')}>
-      {/* Workspace header: the selected type's identity + entitlement summary (formerly the collapsible row
-          header — the expand toggle is gone; the workspace's internal left panel now does the selecting). */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-medium text-foreground">{name}</span>
-          <span className="text-xs text-muted-foreground">{code}</span>
-          {archived && <span className={badge.muted}>{t('archivedBadge')}</span>}
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {bandDaysRange && bandDaysRange.length > 0
-              ? t('daysPerYearBandedRange', { min: fmt(bandDaysRange[0]), max: fmt(bandDaysRange[bandDaysRange.length - 1]) })
-              : effective > 0
-                ? t.rich('daysPerYear', {
-                    days: fmt(effective),
-                    b: (chunks) => <span className="font-semibold text-foreground">{chunks}</span>,
-                  })
-                : '—'}
-          </span>
-          {belowFloor && <span className={badge.amber}>{t('belowMinimumBadge')}</span>}
-          {winningBands && <span className={badge.muted}>{t('bandedNote')}</span>}
-          {above && <span className={badge.emerald}>{t('policyBadge')}</span>}
-        </div>
+      {/* Workspace header: the selected type's identity (formerly the collapsible row header — the expand
+          toggle is gone; the workspace's internal left panel now does the selecting). The days-per-year
+          summary that sat on the right went with the policy layer — see the note above the return. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="truncate text-sm font-medium text-foreground">{name}</span>
+        <span className="text-xs text-muted-foreground">{code}</span>
+        {archived && <span className={badge.muted}>{t('archivedBadge')}</span>}
       </div>
 
       {/* Step bar (c979aa8b): numbered 1–5, current step highlighted; clicking a step shows that section's
@@ -2469,487 +2200,21 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryEntitlement')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-entitlement-${id}`} className="space-y-3">
-          {/* Entitlement sub-flow (7b945408, extended by b8fcae73, shortened by bc9be1e8 + 0d9cf710): the
-              SAME reusable SubStepBar the General flow introduced (components/leave-sub-step-bar.tsx — the
-              reuse contract) walks the three sub-steps 1 Benefit Schemes · 2 Service Based Entitlements ·
-              3 Adjustments. One sub-step visible at a time; the choice persists per type alongside
-              activeStep/generalSubStep/essSubStep (leaveTypeCards:<id>). The entitlement journey reads: who
-              receives which scheme → how entitlement is calculated and how many days each company or grade
-              gets → what manual adjustments apply. */}
-          <SubStepBar
-            steps={ENTITLEMENT_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(ENTITLEMENT_SUB_STEP_TITLE_KEY[k]) }))}
-            active={entitlementSubStep}
-            onSelect={(k) => selectEntitlementSubStep(k as EntitlementSubStepKey)}
-            ariaLabel={t('entitlementStepsLabel')}
-          />
-          {/* Sub-step 1 — Benefit Schemes (7b945408): who receives which scheme. 387792a4 restructured the
-              old vertical scroll into the workbench BenefitSchemeConfig hosts; b1b81a08 narrowed it to two
-              panels — Grade Groups · Assignment — with the per-scheme entitlements area below, so the
-              grade-group → scheme relationship still reads side by side. The Grade Master panel moved out
-              of Leave Config to Settings → System Labels → Organisation Labels. One server-composed slot;
-              see the benefitSchemeSection prop doc. */}
-          {entitlementSubStep === 'schemes' && (
-          <>
-          {benefitSchemeSection}
-          {/* Restructure Service-Based Leave Entitlements: the per-scheme entitlement table — THIS leave
-              type's benefit-scheme entitlement rows (the days each scheme grants per service tier). It
-              stays reachable HERE, under Benefit Schemes, where naming schemes is correct; the relocated
-              Service Based Entitlements picker (sub-step 2) is company-only. Read-and-edit over the SAME
-              live rows via the SAME upsert action (no duplication, nothing can drift). */}
-          <div className="space-y-1.5 border-t border-border pt-3">
-            <span className="text-xs font-medium text-muted-foreground">{t('schemeEntitlementsTitle')}</span>
-            <LeaveTypeEntitlementTable ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction} />
-          </div>
-          </>
-          )}
-          {/* Sub-step 2 — Service Based Entitlements: the company-driven entitlement table, then the
-              per-company policy timeline, then the Preview Scenario checker. 9816a5ad turned the middle
-              column from JOB GRADE into BENEFIT SCHEME: picking a company lists that company's schemes with
-              their service-tenure days, and a row writes the scheme's own entitlement through the same
-              upsert action the Benefit Schemes surface posts. That removes the duplicate maintenance — the
-              figures typed here ARE the ones leave calculation reads, not a second set feeding it.
-              Grade-level policies are untouched and stay editable on the timeline below, which is what
-              anyone no scheme covers still resolves through. */}
-          {entitlementSubStep === 'service' && (
-          <>
-          <ServiceEntitlementTable
-            leaveTypeId={id}
-            leaveTypeName={name}
-            companies={companies}
-            schemes={benefitSchemes}
-            gradeGroups={gradeGroups}
-            entitlements={schemeEntitlements}
-            policies={policies.map(
-              (p): ServicePolicyRow => ({
-                gradeId: p.gradeId ?? null,
-                companyId: p.companyId ?? null,
-                annualDays: p.annualDays,
-                serviceBands: p.serviceBands ?? null,
-                validTo: p.validTo,
-              }),
-            )}
-            upsertEntitlement={upsertSchemeEntitlementAction}
-          />
-          {/* 0d9cf710: the earning-method front door 2bba9e35 mounted here is GONE. Earning Method,
-              Rounding Method and the Earn Upon Resignation note are configured in General → Earning Method
-              (the generalSubStep === 'earning' mount above) — the same component over the same policy row,
-              so this was a second rendering of one setting, not a second setting. Removing the copy leaves
-              both controls fully configurable, which item 4c6f69bd's rounding depends on. */}
-          {/* bc9be1e8: the per-company entitlement policies timeline — days per company or grade,
-              carry-forward, accrual method, effective dates, add / edit / remove. It used to also render
-              behind its own Company Entitlements sub-step (b8fcae73), which 2bba9e35 merged into a shared
-              gate; that tab is now removed, so this block is Service Based Entitlements' own content and
-              the ONLY place a policy can be added or deleted. Do NOT lift it into its own component or
-              hoist it above the return — that would move companyEntitlements / addEntitlement /
-              isEarned(p.method) OUT of the Entitlement card slice and vacuously pass the eee43966
-              regression guards. */}
-          {/* 08bc6841: the eligibility rules block (gender / marital / min service / probation) moved
-              to the Condition step's Criteria sub-step — this step now focuses purely on entitlement
-              policies (who gets how many days). */}
-          {/* entitlement timeline */}
-          <div className="space-y-1.5">
-            <div className="text-xs font-medium text-muted-foreground">{t('companyEntitlements')}</div>
-            {policies.length === 0 && (
-              <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
-                {t('noCompanyPolicy')}
-              </p>
-            )}
-            {policies.map((p) =>
-              editingPolicyId === p.id ? (
-                <form
-                  key={p.id}
-                  action={updatePolicyAction}
-                  className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3"
-                >
-                  <input type="hidden" name="id" value={p.id} />
-                  {/* 9b0503ac: the hosting type's id anchors the action's success redirect back to this
-                      panel (#type-<id>) — save-and-stay instead of bouncing to /admin/leave. */}
-                  <input type="hidden" name="leaveTypeId" value={id} />
-                  {/* Feedback 49809272: editing IN PLACE recalculates affected employees' current-cycle
-                      balances automatically — tell the admin before they save. */}
-                  <p className="w-full text-[11px] text-muted-foreground">{t('recalcInPlaceHint')}</p>
-                  {/* b81d3c52 (tri-state, this ticket): the Rounding Method's home is the Earning Method
-                      front door. THIS form does not render the Rounding dropdown, so it posts NO
-                      `roundingMethodRendered` marker and the writer preserves the stored value — the former
-                      hidden pass-through input is gone (removing the coupling flagged as a footgun). */}
-                  <Field label={t('daysPerYearLabel')}>
-                    <input
-                      name="annualDays"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      required
-                      defaultValue={p.annualDays}
-                      className={`${inputCls} w-24`}
-                    />
-                  </Field>
-                  {/* fa3f4ccb — THE CARRY-FORWARD SURFACE IS GONE FROM COMPANY ENTITLEMENTS. Carry forward
-                      (enable flag, cap, expiry, include-earned) is configured on the LEAVE TYPE since
-                      9816a5ad step 2 / migrations 0333-0334, and the engines read it from there; leaving a
-                      second set of controls here meant editing a figure that mostly did nothing. What
-                      remains here is what this row genuinely owns: DAYS, scope and effective date.
-                      The stored carry values are RE-POSTED as hidden inputs (FrontDoorPreservedCarry, the
-                      existing precedent) because updateLeavePolicyAction rebuilds the accrual JSONB
-                      wholesale from what it receives — `carryForwardMax` is NOT tri-state, so a form that
-                      simply stopped posting it would zero the cap on every save. That would silently drop
-                      carry for the leave types that still fall back to the policy row (only 10 of 67 carry
-                      type-level rules today), which is a data change nobody asked for. */}
-                  <FrontDoorPreservedCarry p={p} />
-                  <Field label={t('effectiveFromLabel')}>
-                    <input name="validFrom" type="date" required defaultValue={p.validFrom} className={inputCls} />
-                  </Field>
-                  {/* Feedback eee43966 — the earning method is set in ONE place only: General → Earning
-                      Method. No select here; updateLeavePolicy preserves the row's stored method when the
-                      edit posts none, so an eligibility edit can never change how leave is earned. The
-                      read-only earned badge on the collapsed row still shows HR the method. */}
-                  {grades.length > 0 && (
-                    <Field label={t('gradeLabel')}>
-                      <select
-                        name="gradeId"
-                        defaultValue={p.gradeId ?? ''}
-                        onChange={(e) => recountEditScope(e.currentTarget.form)}
-                        className={`${inputCls} w-40`}
-                      >
-                        <option value="">{t('gradeAll')}</option>
-                        {grades.map((g) => (
-                          <option key={g.id} value={g.id}>
-                            {g.name}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                  )}
-                  {/* ADR-0066: per-company scope. Group default = applies to every company; a specific
-                      company OVERRIDES the group default for that company (even when lower). */}
-                  <Field label={t('policyCompanyLabel')}>
-                    <select
-                      name="companyId"
-                      defaultValue={p.companyId ?? ''}
-                      onChange={(e) => recountEditScope(e.currentTarget.form)}
-                      className={`${inputCls} w-44`}
-                    >
-                      <option value="">{t('policyCompanyGroupDefault')}</option>
-                      {companies.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  {/* Restructure Service-Based Entitlements (2bba9e35): the SAME live covered-employee count
-                      the add form shows, now on the inline edit form — the "before you save it" number for an
-                      existing policy. Reuses entitledCount (only one form open at a time). */}
-                  {entitledCount != null && (
-                    <p className="w-full text-xs font-medium text-foreground">
-                      {t('entitledEmployeesCount', { count: entitledCount })}
-                    </p>
-                  )}
-                  {/* fa3f4ccb — THE SERVICE-LENGTH BAND EDITOR IS GONE FROM COMPANY ENTITLEMENTS. Service
-                      bands are configured per benefit scheme in Service Based Entitlements above (the
-                      scheme's band days supersede this row's days anyway), so a second band table here was
-                      a second place to answer one question. NOT posting the `serviceBandsRendered` marker
-                      makes serviceBandsField return undefined = PRESERVE, so any bands already stored on
-                      this policy row keep working — the engine still reads them (bandDaysFor), they are
-                      simply no longer edited here. The row is not rewritten and leave_policy is not
-                      emptied: this removes a SURFACE, not data. */}
-                  {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event so HR can
-                      answer the reporter's "Why the change was made" column. */}
-                  <Field label={t('reasonLabel')}>
-                    <input
-                      name="reason"
-                      type="text"
-                      maxLength={500}
-                      placeholder={t('reasonPlaceholder')}
-                      className={`${inputCls} w-64`}
-                    />
-                  </Field>
-                  <Button type="submit" size="sm">
-                    {t('save')}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setEditingPolicyId(null);
-                      // 2bba9e35: reset the shared count when the edit form closes.
-                      setEntitledCount(null);
-                    }}
-                  >
-                    {t('cancel')}
-                  </Button>
-                </form>
-              ) : (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between gap-3 rounded-lg bg-background px-3 py-2 text-xs"
-                >
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <span className="font-semibold tabular-nums text-foreground">
-                      {t('daysPerYearText', { days: fmt(p.annualDays) })}
-                    </span>
-                    {/* fa3f4ccb — the carry cap / carry-off / carry-expiry summaries are gone with the
-                        controls that set them. A read-only carry figure on a row that can no longer edit
-                        carry, describing a value the engines read from the leave TYPE, is worse than
-                        nothing: it looks like the configuration in force. Carry forward is stated once, in
-                        General → Carry Forward Policy. */}
-                    <span className="text-muted-foreground">
-                      {p.validTo
-                        ? t('validFromTo', { from: p.validFrom, to: p.validTo })
-                        : t('validFrom', { from: p.validFrom })}
-                    </span>
-                    {!p.validTo && <span className={badge.emerald}>{t('activeBadge')}</span>}
-                    {/* bc36c768: three-way, for the reason earned-accrual-card.tsx is — an else-is-monthly
-                        fallback would badge a daily-accrual row "Earned monthly". methodEarnedQuarterly is
-                        deliberately KEPT: this badge is exactly where a legacy stored value still surfaces. */}
-                    {isEarned(p.method) && (
-                      <span className={badge.amber}>
-                        {t(
-                          p.method === 'earned_quarterly'
-                            ? 'methodEarnedQuarterly'
-                            : p.method === 'earned_daily'
-                              ? 'methodEarnedDaily'
-                              : 'methodEarnedMonthly',
-                        )}
-                      </span>
-                    )}
-                    {p.gradeId && p.gradeName && <span className={badge.muted}>{p.gradeName}</span>}
-                    {/* ADR-0066: scope badge — the owning company, or the group-default label. */}
-                    <span className={badge.muted}>
-                      {p.companyId && p.companyName ? p.companyName : t('policyCompanyGroupDefault')}
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setEditingPolicyId(p.id);
-                        // Restructure Service-Based Entitlements (2bba9e35): seed the SAME entitledCount the
-                        // add form drives (only one of add/edit is open at a time ⇒ one shared state, no
-                        // second store) so the "before you save it" number appears the moment Edit opens.
-                        // Absent axis ⇒ empty array = countEmployeesInScope's empty-means-all semantics.
-                        refreshCount(p.companyId ? [p.companyId] : [], p.gradeId ? [p.gradeId] : []);
-                      }}
-                    >
-                      {t('edit')}
-                    </Button>
-                    <form action={deletePolicyAction}>
-                      <input type="hidden" name="id" value={p.id} />
-                      {/* 9b0503ac: keep the admin on this type's panel after the remove (redirect anchor). */}
-                      <input type="hidden" name="leaveTypeId" value={id} />
-                      <ConfirmSubmit
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        title={t('removePolicyConfirmTitle')}
-                        description={t('removePolicyConfirmDescription')}
-                        confirmLabel={t('removeConfirmLabel')}
-                      >
-                        {t('remove')}
-                      </ConfirmSubmit>
-                    </form>
-                  </div>
-                </div>
-              ),
-            )}
-          </div>
-          {/* add a dated entitlement */}
-          {adding ? (
-            <form
-              action={createPolicyAction}
-              className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3"
-            >
-              <input type="hidden" name="leaveTypeId" value={id} />
-              <Field label={t('daysPerYearLabel')}>
-                <input
-                  name="annualDays"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  required
-                  defaultValue={floor0 || 14}
-                  className={`${inputCls} w-24`}
-                />
-              </Field>
-              {/* fa3f4ccb — no carry-forward controls on the add form either (see the edit form above for
-                  why). A NEW policy row simply carries no carry configuration: the leave TYPE owns that
-                  setting now, so posting a fixed 0 here is the honest value rather than a lost one. */}
-              <input type="hidden" name="carryForwardMax" value="0" />
-              <Field label={t('effectiveFromLabel')}>
-                <input name="validFrom" type="date" required defaultValue={`${thisYear}-01-01`} className={inputCls} />
-              </Field>
-              {/* 8fec719e — NO ROUNDING CONTROL ON THE ADD FORM, on the fa3f4ccb precedent that already
-                  removed the carry-forward controls here. Rounding is a leave-TYPE rule (9816a5ad), and
-                  the per-policy JSONB copy this dropdown wrote is the "second surface" this item cleared
-                  outright. Leaving it would have been worse than redundant: it still offered Round Up and
-                  Round Down, the two choices the item exists to remove, and it wrote them to a key the
-                  type-level overlay ignores — a setting that saves, shows, and does nothing. With no
-                  `roundingMethodRendered` marker posted, the writer preserves rather than clears. */}
-              {/* Feedback eee43966 — no earning-method select on the add-a-dated-entitlement form either.
-                  This one WAS the reporter's bug: it defaulted to lump sum, and saving superseded the
-                  running earned_monthly row with a lump one. createLeavePolicy now inherits the method
-                  from the row it supersedes, so a version bump carries the earning method forward. */}
-              {/* Feedback 9d8cf621 — "Employee Selection": HR picks one or MORE companies + job grades. The
-                  chosen ids post as repeated `companyIds` / `gradeIds` fields (hidden inputs below), and the
-                  action fans out to one entitlement per (company × grade). Empty = group default / all grades
-                  (today's single row). Selected values render as removable chips + a live entitled-employee
-                  count. */}
-              <div className="w-full space-y-2 rounded-lg bg-background p-3 lg:col-span-2">
-                <span className="text-xs font-medium text-muted-foreground">{t('employeeSelectionLabel')}</span>
-                {/* hidden inputs carry the current selection into the POST */}
-                {pickCompanies.map((cid) => (
-                  <input key={cid} type="hidden" name="companyIds" value={cid} />
-                ))}
-                {pickGrades.map((gid) => (
-                  <input key={gid} type="hidden" name="gradeIds" value={gid} />
-                ))}
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <span className="text-xs text-muted-foreground">{t('policyCompaniesLabel')}</span>
-                    <select
-                      aria-label={t('policyCompaniesLabel')}
-                      value=""
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (!v) return;
-                        const next = toggleFrom(pickCompanies, v);
-                        setPickCompanies(next);
-                        refreshCount(next, pickGrades);
-                      }}
-                      className={`${inputCls} w-full`}
-                    >
-                      <option value="">{t('policyCompanyGroupDefault')}</option>
-                      {companies.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="flex flex-wrap gap-1">
-                      {pickCompanies.map((cid) => {
-                        const c = companies.find((x) => x.id === cid);
-                        return (
-                          <button
-                            key={cid}
-                            type="button"
-                            onClick={() => {
-                              const next = pickCompanies.filter((v) => v !== cid);
-                              setPickCompanies(next);
-                              refreshCount(next, pickGrades);
-                            }}
-                            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
-                            aria-label={t('chipRemoveAria', { name: c?.name ?? cid })}
-                          >
-                            {c?.name ?? cid}
-                            <span aria-hidden>×</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  {grades.length > 0 && (
-                    <div className="space-y-1">
-                      <span className="text-xs text-muted-foreground">{t('policyGradesLabel')}</span>
-                      <select
-                        aria-label={t('policyGradesLabel')}
-                        value=""
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (!v) return;
-                          const next = toggleFrom(pickGrades, v);
-                          setPickGrades(next);
-                          refreshCount(pickCompanies, next);
-                        }}
-                        className={`${inputCls} w-full`}
-                      >
-                        <option value="">{t('gradeAll')}</option>
-                        {grades.map((g) => (
-                          <option key={g.id} value={g.id}>
-                            {g.name}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="flex flex-wrap gap-1">
-                        {pickGrades.map((gid) => {
-                          const g = grades.find((x) => x.id === gid);
-                          return (
-                            <button
-                              key={gid}
-                              type="button"
-                              onClick={() => {
-                                const next = pickGrades.filter((v) => v !== gid);
-                                setPickGrades(next);
-                                refreshCount(pickCompanies, next);
-                              }}
-                              className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
-                              aria-label={t('chipRemoveAria', { name: g?.name ?? gid })}
-                            >
-                              {g?.name ?? gid}
-                              <span aria-hidden>×</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {entitledCount != null && (
-                  <p className="text-xs font-medium text-foreground">
-                    {t('entitledEmployeesCount', { count: entitledCount })}
-                  </p>
-                )}
-              </div>
-              {/* fa3f4ccb — no band editor on the add form either; see the edit form. Omitting the
-                  `serviceBandsRendered` marker is a no-op on create (serviceBandsField ⇒ undefined), so a
-                  new policy row is created flat and its service-length steps are configured where they
-                  belong: the scheme's Service Based Entitlements table. */}
-              {/* Feedback 9d8cf621: save button with a confirmation prompt before writing. */}
-              <ConfirmSubmit
-                size="sm"
-                variant="default"
-                title={t('savePolicyConfirmTitle')}
-                description={t('savePolicyConfirmDescription')}
-                confirmLabel={t('saveConfirmLabel')}
-              >
-                {t('add')}
-              </ConfirmSubmit>
-              <Button type="button" size="sm" variant="outline" onClick={() => setAdding(false)}>
-                {t('cancel')}
-              </Button>
-            </form>
-          ) : (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setAdding(true);
-                setPickCompanies([]);
-                setPickGrades([]);
-                setEntitledCount(null);
-              }}
-            >
-              {t('addEntitlement')}
-            </Button>
-          )}
-          {/* 08bc6841: the Leave Type Expiry configuration (fec49317) moved to the Condition step's
-              Expiry sub-step — same form, same expiry=1 tri-state marker, same non-Annual gate. */}
-          {/* The Preview Scenario checker stays LAST in the sub-step, after the policy block — the
-              pre-existing rule that the preview tool follows the service content it checks. */}
-          {previewScenarioSection}
-          {/* 38f1fd40 — Run Earned Accrual RE-HOMED here from the retired Adjustments sub-step. It was
-              parked there because it was treated as an entitlement adjustment, and after 962077a8 cleared
-              the page header this became its ONLY reachable mount: deleting that sub-step as the ticket
-              literally asked would have taken the only way to generate earned leave days with it.
-              Service Based Entitlements is the right home — it already hosts Preview Scenario, and the
-              header is deliberately NOT an option (962077a8 removed it at the reporter's request and
-              test/entitlement-header-actions-removal.test.ts guards that). Same button, same dialog, same
-              behaviour; only its home changed. */}
+          {/* 6e9a126e RELEASE THREE — THE ENTITLEMENT STEP NO LONGER CONFIGURES ENTITLEMENT, and has no
+              sub-flow left to walk. It ran two sub-steps: Benefit Schemes (the scheme workbench plus this
+              type's per-scheme day table) and Service Based Entitlements (the company x scheme matrix, the
+              effective-dated per-company/grade policy timeline with its add / edit / remove forms, and the
+              Preview Scenario checker). Every one of them wrote `benefit_scheme`,
+              `scheme_leave_entitlement` or `leave_policy`, the three tables this release removes.
+              NOTHING WAS MOVED IN HERE TO REPLACE THEM, deliberately: a type's days, its service bands and
+              the rule deciding who receives them are typed ONCE on Entitlement Tables for the whole
+              tenant, instead of a private copy per leave type — which is the duplication the reporter
+              asked to end. The link below is that pointer; without it this step is a dead end for anyone
+              who came here to set a number. Run Earned Accrual stays because it PROCESSES entitlement
+              rather than defining it, and this is still its only mount (962077a8 cleared the page header
+              and test/entitlement-header-actions-removal.test.ts guards that it stays cleared). */}
+          {entitlementTablesLink}
           {accrualSection}
-          </>
-          )}
             </CardContent>
           </Card>
           )}

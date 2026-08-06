@@ -4372,6 +4372,8 @@
         "schemes": "Skim Faedah",
         "service": "Hak Cuti Berasaskan Tempoh Perkhidmatan",
         "gradesCompanyWideBadge": "Terpakai seluruh syarikat",
+        "tablesHint": "Bilangan hari, julat tempoh perkhidmatan dan siapa yang menerimanya ditetapkan pada skrin Jadual Kelayakan — sekali untuk seluruh organisasi, bukan sekali bagi setiap jenis cuti.",
+        "tablesOpen": "Buka Jadual kelayakan",
         "previewHint": "Semak hak cuti yang akan diterima oleh pekerja contoh di bawah peraturan semasa.",
         "accrualHint": "Memproses hak cuti terkumpul bagi satu tahun cuti — pratonton larian percubaan dahulu, kemudian sahkan."
       },

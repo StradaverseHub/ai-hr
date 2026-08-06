@@ -4372,6 +4372,8 @@
         "schemes": "Benefit Schemes",
         "service": "Service Based Entitlements",
         "gradesCompanyWideBadge": "Applies company-wide",
+        "tablesHint": "Days, service bands and who receives them are set on the Entitlement Tables screen — once for the whole organisation, not once per leave type.",
+        "tablesOpen": "Open Entitlement tables",
         "previewHint": "Check the entitlement a sample employee would receive under the current rules.",
         "accrualHint": "Processes earned entitlement for a leave year — preview the dry run first, then confirm."
       },
