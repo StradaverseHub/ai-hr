@@ -109,7 +109,10 @@ export function EmployeeSwitcher({
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
         placeholder={t('placeholder')}
-        className={`${inputCls} h-9 w-56 sm:w-72`}
+        // Steps DOWN on small screens rather than staying 18rem wide: both mounts sit in a header
+        // actions group the shared PageHeader marks `shrink-0`, so a fixed width here is a page-level
+        // horizontal scroll on a phone.
+        className={`${inputCls} h-9 w-52 sm:w-64 md:w-72`}
       />
 
       {showList && (

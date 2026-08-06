@@ -177,7 +177,10 @@ export default async function PeoplePage({
       <PageHeader
         title={t('title')}
         actions={
-          <div className="flex items-center gap-3">
+          // `flex-wrap` (c002b3c3): this row gained a search box, and PageHeader holds its actions
+          // group `shrink-0` — without wrapping, a narrow window would scroll the PAGE sideways rather
+          // than stacking the controls, which is the one thing a full-width change must not introduce.
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <span className="text-sm text-muted-foreground">
               {t('employeeCount', { count: total })}
             </span>
