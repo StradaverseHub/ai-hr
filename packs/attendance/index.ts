@@ -57,6 +57,7 @@ import {
   CalendarDays,
   CalendarRange,
   Clock,
+  FilePen,
   FileUp,
   HandCoins,
   Hourglass,
@@ -115,6 +116,15 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // inside it would vanish from every plain employee's rail. It is self-service (no gate), so its home
     // is the self-service node.
     { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
+    // 0bb0e303 rev2 — the third self-service row the reporter listed. The attendance/overtime/travel
+    // request forms existed already, but only as fold-outs on the employee's own My Profile page: you
+    // had to know they were there. This row is the whole point of the item — the menu now reads Clock
+    // in/out, Records, Attendance Request, and /me links across rather than holding the forms itself.
+    // UNGATED, like its two siblings: every one of these is the caller's own request, and a gate here
+    // would take the forms away from exactly the staff they exist for.
+    // FilePen rather than a third Clock: the collapsed rail renders glyphs only, and a row that shares
+    // its neighbours' icon is unreachable there.
+    { href: '/attendance/requests', labelKey: 'attendanceRequest', icon: FilePen },
   ],
 };
 

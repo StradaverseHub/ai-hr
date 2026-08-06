@@ -2,12 +2,13 @@
  * Attendance Records Table Enhancement (feedback bbada39c).
  *
  * Two halves:
- *  A. PURE derivations (core/attendance-derive.ts) — no fixtures. otByRate sums back to worked minutes and
- *     routes by dayType; flagOf computes Late / Under / Odd / blank; statusOf collapses to the v1 set.
+ *  A. PURE derivations (core/attendance-derive.ts) — no fixtures. otByRate sums back to the day's OVERTIME
+ *     (7c834696 rev 2 point 1; it used to sum to worked minutes) and routes by dayType; flagOf computes
+ *     Late / Under / Odd / blank; statusOf collapses to the v1 set.
  *  B. LOADER extensions (core/attendance.ts) — the Daily + Individual reads now surface, per row, the
  *     assigned Shift Code, scheduled minutes and shift start/end, and the Individual range row carries the
- *     employee code + name. Shift code resolves for a fixed-shift AND a rostered employee; the four OT
- *     columns sum back to the day's otMinutes + normal hours.
+ *     employee code + name. Shift code resolves for a fixed-shift AND a rostered employee; the OT columns
+ *     sum back to the day's otMinutes.
  *
  * Read-only feature: the loaders append no DomainEvent (documented skip).
  */
@@ -47,15 +48,41 @@ afterAll(closeAll);
 
 // ─────────────────────────── A. Pure derivations ───────────────────────────
 
-describe('otByRate — the rate buckets', () => {
-  it('workday OT → 1.5×; the four sum back to workedMinutes', () => {
-    // Worked 9h (540m), scheduled 8h → 60m OT on a workday.
-    const r = otByRate({ workedMinutes: 540, otMinutes: 60, dayType: 'workday' });
-    // 7c834696 added `flat` and `ot00`; a row with no stored split still routes exactly as before.
-    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 480, ot15: 60, ot20: 0, ot30: 0 });
-    expect(r.flat + r.ot00 + r.ot10 + r.ot15 + r.ot20 + r.ot30).toBe(540); // = normal + otMinutes
+/**
+ * 7c834696 rev 2 point 1 changed the invariant these pin, deliberately and on the reporter's own reading:
+ *
+ *   BEFORE  Sum(flat, ot00, ot10, ot15, ot20, ot30) === workedMinutes  — ot10 carried worked − ot
+ *   NOW     Sum(flat, ot00, ot10, ot15, ot20, ot30) === otMinutes      — normal hours are Actual Working Hours
+ *
+ * Nothing STORED moved (migration 0395 wrote ot10_minutes = 0 for history and the buckets have always been
+ * overtime-only); only what the OT columns print. test/attendance-stage1-calc.test.ts holds the matrix that
+ * proves the movement is exactly the normal-hours component and nothing else.
+ */
+describe('otByRate — the rate buckets are OVERTIME ONLY', () => {
+  it("THE REPORTER'S EXAMPLE: 9am–7pm on an 8-hour shift reads 1.00 under OT 1.0, not 9.00", () => {
+    // 10h span − 1h break = 9h worked, 8h scheduled → 1h OT, and a rule whose band pays it at 1.0×.
+    // The Actual Working Hours column carries the 9h; the OT column carries the hour that IS overtime.
+    const r = otByRate({
+      workedMinutes: 540,
+      otMinutes: 60,
+      dayType: 'workday',
+      otFlatMinutes: 0,
+      ot00Minutes: 0,
+      ot10Minutes: 60,
+      ot15Minutes: 0,
+      ot20Minutes: 0,
+      ot30Minutes: 0,
+    });
+    expect(r.ot10 / 60).toBe(1); // 1.00 on screen. Before this change it was 540/60 = 9.00.
+    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 60, ot15: 0, ot20: 0, ot30: 0 });
   });
-  it('rest-day work is all OT → 2.0×, no normal', () => {
+
+  it('the same day with the shipped 1.5 bands leaves OT 1.0 empty rather than showing 8 normal hours', () => {
+    const r = otByRate({ workedMinutes: 540, otMinutes: 60, dayType: 'workday' });
+    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 60, ot20: 0, ot30: 0 });
+    expect(r.flat + r.ot00 + r.ot10 + r.ot15 + r.ot20 + r.ot30).toBe(60); // = otMinutes, NOT workedMinutes
+  });
+  it('rest-day work is all OT → 2.0×', () => {
     const r = otByRate({ workedMinutes: 300, otMinutes: 300, dayType: 'rest_day' });
     expect(r).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 300, ot30: 0 });
   });
@@ -63,9 +90,10 @@ describe('otByRate — the rate buckets', () => {
     const r = otByRate({ workedMinutes: 240, otMinutes: 240, dayType: 'holiday' });
     expect(r).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 240 });
   });
-  it('no OT → everything is normal 1.0×', () => {
+  it('a full day with NO overtime shows zero in every OT column', () => {
+    // The change is at its most visible here: this row used to print 8.00 under a heading that says OT.
     const r = otByRate({ workedMinutes: 480, otMinutes: 0, dayType: 'workday' });
-    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 480, ot15: 0, ot20: 0, ot30: 0 });
+    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 0 });
   });
   it('a no-work day splits to zero', () => {
     expect(otByRate({ workedMinutes: null, otMinutes: null, dayType: null })).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 0 });
@@ -84,9 +112,9 @@ describe('otByRate — the rate buckets', () => {
       ot20Minutes: 60,
       ot30Minutes: 0,
     });
-    // 480 normal + the stored 1.0 bucket, then the stored bands verbatim — NOT 180 dumped into 1.5.
-    expect(r).toEqual({ flat: 0, ot00: 30, ot10: 480, ot15: 90, ot20: 60, ot30: 0 });
-    expect(r.flat + r.ot00 + r.ot10 + r.ot15 + r.ot20 + r.ot30).toBe(660);
+    // The stored bands verbatim — NOT 180 dumped into 1.5, and no 480 normal minutes bolted onto 1.0.
+    expect(r).toEqual({ flat: 0, ot00: 30, ot10: 0, ot15: 90, ot20: 60, ot30: 0 });
+    expect(r.flat + r.ot00 + r.ot10 + r.ot15 + r.ot20 + r.ot30).toBe(180); // = otMinutes
   });
 
   it('a flat-rate day reports Flat OT and nothing in the premium columns', () => {
@@ -101,7 +129,7 @@ describe('otByRate — the rate buckets', () => {
       ot20Minutes: 0,
       ot30Minutes: 0,
     });
-    expect(r).toEqual({ flat: 120, ot00: 0, ot10: 480, ot15: 0, ot20: 0, ot30: 0 });
+    expect(r).toEqual({ flat: 120, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 0 });
   });
 
   it('a stored split that does NOT sum to the day overtime is ignored — ot_minutes is the authority', () => {
@@ -118,7 +146,7 @@ describe('otByRate — the rate buckets', () => {
       ot20Minutes: 0,
       ot30Minutes: 0,
     });
-    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 480, ot15: 0, ot20: 60, ot30: 0 });
+    expect(r).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 60, ot30: 0 });
   });
 });
 
@@ -168,9 +196,11 @@ describe('attendanceForDate — shift code + scheduled minutes + OT split', () =
     expect(row.workedMinutes).toBe(540); // 9h
     expect(row.otMinutes).toBe(60); // 1h workday OT
     const ot = otByRate(row);
-    expect(ot).toEqual({ flat: 0, ot00: 0, ot10: 480, ot15: 60, ot20: 0, ot30: 0 });
-    // Invariant: the buckets sum back to the day's normal hours + otMinutes.
-    expect(ot.flat + ot.ot00 + ot.ot10 + ot.ot15 + ot.ot20 + ot.ot30).toBe(row.workedMinutes ?? 0);
+    // 7c834696 rev 2 — the reporter's own day, end to end: 9h actual, 1h OT, and the 8 normal hours are
+    // NOT in the OT columns. Only the 1.5 bucket carries anything, because that is the only overtime.
+    expect(ot).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 60, ot20: 0, ot30: 0 });
+    // Invariant: the buckets sum back to the day's otMinutes. Worked hours are the Actual Hours column.
+    expect(ot.flat + ot.ot00 + ot.ot10 + ot.ot15 + ot.ot20 + ot.ot30).toBe(row.otMinutes ?? 0);
     // 7c834696 — and the loader now surfaces the STORED split the engine wrote for the same day.
     expect(row.ot15Minutes).toBe(60);
     expect(row.otFlatMinutes).toBe(0);

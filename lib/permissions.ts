@@ -112,6 +112,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/leave'],
     hasScopeNote: true,
   },
+  {
+    // a00c4f64 — the Leave Calendar's own screen, off the Dashboard. scopedSession, NOT manager-gated:
+    // every employee saw this calendar on their dashboard, and the sidebar row is ungated for the same
+    // reason. The data is the viewer's own person + direct reports, which is what the scope note says.
+    screenKey: 'leaveTracker',
+    href: '/leave/tracker',
+    labelKey: 'nav.teamLeaveTracker',
+    guard: 'scopedSession',
+    routes: ['/leave/tracker'],
+    hasScopeNote: true,
+  },
   // 20c699f8 / 953be4b0 — the two HR-admin leave inquiry screens. They are scopedAdmin-guarded pages, so
   // without a matrix column an administrator could reach them but Security & Permissions could neither
   // grant nor revoke them: the reverse-completeness guard in test/function-access.test.ts is what caught

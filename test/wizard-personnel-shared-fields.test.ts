@@ -953,21 +953,17 @@ describe('§5 a draft saved BEFORE this change still opens and still creates', (
     // that option (the column is NOT NULL DEFAULT 'citizen', so it never meant anything), and a draft that
     // already holds the blank must still open and still create the same row it would have created before.
     //
-    // ⚠️ THE IC IS SUPPLIED HERE ON PURPOSE, and its absence is a LIVE DEFECT this test found but does NOT
-    // fix (it is a write-path bug, not a field-definition one, and picking the right cure — skip the
-    // statutory write, or store a null IC — is a statutory decision, not a refactor):
-    // `completeEmployeeDraft` calls `pack.statutory.set` whenever ANY statutory field is non-blank
-    // (`hasAnyStatutory`) and passes `icNumber ?? ''`, and `setStatutoryProfileMY` opens with
-    // `if (!isValidIC(p.icNumber)) throw new InvalidICError()`. So a draft that fills in a bank account or
-    // an EPF number but leaves Identity No blank — which the wizard explicitly allows, because item
-    // e3ce0d4d made the IC optional for passport holders — fails at "Create Employee" with "Invalid
-    // Malaysian IC number (expected 12 digits)" for a field no step marked required. Reproduced by
-    // dropping `icNumber` from the draft below.
+    // ITEM 35524d1f — the IC is NO LONGER supplied here. An earlier revision of this test passed one on
+    // purpose to work around a live defect it had found: `completeEmployeeDraft` calls `pack.statutory.set`
+    // whenever ANY statutory field is non-blank (`hasAnyStatutory`), and the setter opened with
+    // `if (!isValidIC(p.icNumber)) throw new InvalidICError()`, which rejects a blank too. So a draft that
+    // filled in an EPF number but left Identity No blank — which the wizard explicitly allows, because item
+    // e3ce0d4d made the IC optional for passport holders — failed at "Create Employee" with "Invalid
+    // Malaysian IC number (expected 12 digits)" for a field no step marks required. The cure it deferred
+    // (store a null IC rather than skip the statutory write) is now in the setter, so the workaround comes
+    // out and the blank IC IS the case: the employee is created and the EPF number is kept.
     const { id } = await saveEmployeeDraft(a, {
-      data: draft({
-        profile: { ...draft().profile, icNumber: '900101015555' },
-        statutory: { epfNumber: 'E-778899', epfCitizenship: '' },
-      }),
+      data: draft({ statutory: { epfNumber: 'E-778899', epfCitizenship: '' } }),
       currentStep: 3,
     });
     const reopened = await getEmployeeDraft(a, id);
@@ -979,10 +975,16 @@ describe('§5 a draft saved BEFORE this change still opens and still creates', (
       .from(schema.employment)
       .where(eq(schema.employment.id, employmentId));
     const [st] = await owner.db
-      .select({ epfNumber: schema.employeeStatutoryMy.epfNumber, epfCitizenship: schema.employeeStatutoryMy.epfCitizenship })
+      .select({
+        icNumber: schema.employeeStatutoryMy.icNumber,
+        epfNumber: schema.employeeStatutoryMy.epfNumber,
+        epfCitizenship: schema.employeeStatutoryMy.epfCitizenship,
+      })
       .from(schema.employeeStatutoryMy)
       .where(eq(schema.employeeStatutoryMy.personId, emp.personId));
     expect(st.epfNumber).toBe('E-778899');
+    // Stored, not discarded — a passport holder's statutory details survive an absent MyKad.
+    expect(st.icNumber).toBeNull();
     // The column default — the value the removed "— Not set —" option produced all along.
     expect(st.epfCitizenship).toBe('citizen');
   });

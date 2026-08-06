@@ -276,8 +276,13 @@ describe('8i. instant Week/Month toggle + unified header — source drift guards
   });
 
   it('the page feeds the read from the month-covering fetch window', () => {
-    const page = read('app/page.tsx');
+    // a00c4f64 — the page that resolves the calendar's fetch window is the Team Leave Tracker now. The
+    // guard is REPAIRED here rather than dropped, and it still holds all three facts: the tracker resolves
+    // the window, it renders the calendar it resolved it for, and the dashboard no longer resolves one.
+    const page = read('app/leave/tracker/page.tsx');
     expect(page).toContain('resolveCalendarFetchWindow');
+    expect(page).toContain('<PlannedAbsences');
+    expect(read('app/page.tsx')).not.toContain('resolveCalendarFetchWindow');
   });
 
   it('both switches share the ONE segmented family, sized to the TimelineNav h-7 metric', () => {

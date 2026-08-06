@@ -29,7 +29,15 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBusinessUnit, createJobGrade, createPosition } from '../core/admin';
-import { createMovementEvent, movementDetail, movementHistory, reverseMovementEvent } from '../core/movement';
+import {
+  createMovementEvent,
+  editMovementEvent,
+  movementDetail,
+  movementHistory,
+  MovementReasonRequiredError,
+  reverseMovementEvent,
+} from '../core/movement';
+import { sweepDueMovements } from '../core/movement-apply';
 import * as schema from '../db/schema';
 
 let b: Base;
@@ -145,7 +153,7 @@ describe('10fcf6df — Rollback restores the employee, it does not erase the rec
     expect(moved.businessUnitId).toBe(bu2.id);
 
     const promotion = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'promotion')!;
-    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: promotion.id });
+    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: promotion.id, reason: 'Keyed in error' });
 
     const back = await openAssignment(hire.employmentId);
     expect(back.positionId, 'position').toBe(b.positionId);
@@ -191,7 +199,7 @@ describe('10fcf6df — Rollback restores the employee, it does not erase the rec
     expect(changed.paymentTerm).toBe('weekly');
 
     const adj = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'salaryAdjustment')!;
-    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: adj.id });
+    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: adj.id, reason: 'Keyed in error' });
 
     const restored = await openCompensation(hire.employmentId);
     expect(restored.basicSalary, 'basic salary').toBe('4000.00');
@@ -254,7 +262,7 @@ describe('10fcf6df — Rollback restores the employee, it does not erase the rec
     const beforeCount = await eventCount(hire.employmentId);
     const transfer = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'transfer')!;
 
-    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: transfer.id });
+    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: transfer.id, reason: 'Keyed in error' });
 
     // Strictly greater: the compensating writes and the reversal marker are all APPENDS. "Delete" could
     // only ever have meant removing or suppressing the source events, which is why the flat employment
@@ -276,9 +284,9 @@ describe('10fcf6df — Rollback restores the employee, it does not erase the rec
       departmentId: b.deptB,
     });
     const transfer = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'transfer')!;
-    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: transfer.id });
+    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: transfer.id, reason: 'Keyed in error' });
     await expect(
-      reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: transfer.id }),
+      reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: transfer.id, reason: 'Keyed in error' }),
     ).rejects.toThrow(/already been rolled back/i);
     expect(
       (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.id === transfer.id)!.canReverse,
@@ -300,6 +308,21 @@ describe('10fcf6df — Rollback restores the employee, it does not erase the rec
     // And the "who" the plan promises actually reaches the screen.
     expect(page.includes("t('movement.reversedBy')")).toBe(true);
 
+    // bd89ccd8 — a PENDING row wears the Cancel wording instead. Same form, same action, same service:
+    // the guard asserts the LABELS branch exists and that no second writer appeared beside it.
+    expect(page.includes("t('movement.cancel')"), 'a pending row offers Cancel').toBe(true);
+    expect(page.includes("t('movement.cancelConfirmTitle')")).toBe(true);
+    expect(page.includes("t('movement.cancelConfirmDescription')")).toBe(true);
+    expect(
+      page.match(/<form action=\{reverseMovementEventAction\}/g)?.length,
+      'exactly ONE reversal form — Cancel is a relabel of Rollback, never a second path',
+    ).toBe(1);
+    // …and no delete action grew beside it.
+    expect(page.includes('deleteMovementEventAction'), 'no second, erasing writer').toBe(false);
+    // bd89ccd8 — the reason is mandatory in the dialog too (the service refuses a blank one regardless).
+    expect(page.includes("reasonField={{ name: 'reason'")).toBe(true);
+    expect(page.includes('required: true'), 'the rollback reason field is mandatory').toBe(true);
+
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const msg = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
       const mv = msg?.people?.detail?.movement ?? {};
@@ -309,10 +332,151 @@ describe('10fcf6df — Rollback restores the employee, it does not erase the rec
         'rollbackConfirmTitle',
         'rollbackConfirmDescription',
         'rollbackConfirmPayroll',
+        // bd89ccd8 — the Cancel vocabulary, in every locale (a MISSING_MESSAGE here throws at render).
+        'cancel',
+        'cancelConfirmTitle',
+        'cancelConfirmDescription',
+        'cancelledBadge',
       ]) {
         expect(typeof mv[k], `messages/${loc}.json missing movement.${k}`).toBe('string');
       }
       expect(mv.delete, `messages/${loc}.json still carries the old movement.delete label`).toBeUndefined();
     }
+  });
+});
+
+/**
+ * bd89ccd8 — "Configure Remove/Delete Function for Movement Event".
+ *
+ * The request asks for a hard delete. It is NOT built, and deliberately: 9064cffb settled that the row
+ * stays in Employment History marked reversed, and 10fcf6df removed the Delete label because it had never
+ * deleted anything. What was genuinely missing is asserted here — the reason was optional at both ends,
+ * and of the eleven rollbacks on production TEN carried no reason at all.
+ */
+describe('bd89ccd8 — the rollback reason is an audit control, enforced by the SERVICE', () => {
+  it('refuses a rollback with a blank reason, and leaves the movement applied', async () => {
+    const hire = await hireOne();
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'transfer',
+      effectiveDate: '2026-06-01',
+      departmentId: b.deptB,
+    });
+    const move = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'transfer')!;
+
+    // Absent, empty and whitespace-only are all the same absence of a reason.
+    for (const reason of [undefined, '', '   ']) {
+      await expect(
+        reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: move.id, reason }),
+        `a reason of ${JSON.stringify(reason)} must be refused`,
+      ).rejects.toBeInstanceOf(MovementReasonRequiredError);
+    }
+    // Refused by the SERVICE means nothing moved — not merely that a dialog stayed open.
+    expect((await openAssignment(hire.employmentId)).departmentId).toBe(b.deptB);
+    expect((await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.id === move.id)!.reversed).toBeNull();
+  });
+
+  it('carries the reason into the employment.movement.reversed payload', async () => {
+    const hire = await hireOne();
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'transfer',
+      effectiveDate: '2026-06-01',
+      departmentId: b.deptB,
+    });
+    const move = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'transfer')!;
+    await reverseMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      movementId: move.id,
+      reason: '  Wrong employee — keyed on the wrong row  ',
+    });
+
+    const [ev] = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(
+        and(
+          eq(schema.domainEvent.subjectEmploymentId, hire.employmentId),
+          eq(schema.domainEvent.eventType, 'employment.movement.reversed'),
+        ),
+      );
+    expect((ev.payload as { reason: string }).reason, 'stored trimmed, exactly as typed').toBe(
+      'Wrong employee — keyed on the wrong row',
+    );
+    const row = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.id === move.id)!;
+    expect(row.reversed!.reason).toBe('Wrong employee — keyed on the wrong row');
+  });
+
+  it('holds a CORRECTION to the same rule — an edit is a rollback wearing another name', async () => {
+    const hire = await hireOne();
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'transfer',
+      effectiveDate: '2026-06-01',
+      departmentId: b.deptB,
+    });
+    const move = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'transfer')!;
+    await expect(
+      editMovementEvent(adminCtx(b), {
+        employmentId: hire.employmentId,
+        movementId: move.id,
+        kind: 'promotion',
+        effectiveDate: '2026-06-01',
+        departmentId: b.deptB,
+      }),
+    ).rejects.toBeInstanceOf(MovementReasonRequiredError);
+    // And the half it would have done first — the rollback — did not commit either.
+    expect((await openAssignment(hire.employmentId)).departmentId).toBe(b.deptB);
+  });
+
+  it('CANCELS a pending movement: nothing was written, nothing is written, the sweep skips it', async () => {
+    const hire = await hireOne();
+    // Dated in the future, so it is recorded as an intent and applies nothing today (941c9dac).
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'transfer',
+      effectiveDate: '2099-01-01',
+      departmentId: b.deptB,
+    });
+    const pending = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'transfer')!;
+    expect(pending.status).toBe('pending');
+    expect((await openAssignment(hire.employmentId)).departmentId, 'nothing applied yet').toBe(b.deptA);
+
+    await reverseMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      movementId: pending.id,
+      reason: 'Keyed against the wrong employee',
+    });
+
+    // No employment column moved — a cancel of something that never applied changes no data at all.
+    expect((await openAssignment(hire.employmentId)).departmentId).toBe(b.deptA);
+    const row = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.id === pending.id)!;
+    expect(row, 'the entry REMAINS on the history — it is not deleted').toBeTruthy();
+    expect(row.status).toBe('reversed');
+    // bd89ccd8 — and it is flagged as a CANCEL, not a rollback, so the badge can say so.
+    expect(row.reversed!.cancelled).toBe(true);
+    expect(row.reversed!.corrected).toBe(false);
+
+    // The sweep must never resurrect it on the effective date.
+    expect((await sweepDueMovements(adminCtx(b), { today: '2099-01-02' })).applied).toBe(0);
+    expect((await openAssignment(hire.employmentId)).departmentId).toBe(b.deptA);
+  });
+
+  it('an APPLIED movement rolled back is NOT flagged as cancelled — the two badges mean different things', async () => {
+    const hire = await hireOne();
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'transfer',
+      effectiveDate: '2026-06-01',
+      departmentId: b.deptB,
+    });
+    const move = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'transfer')!;
+    await reverseMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      movementId: move.id,
+      reason: 'Wrong department',
+    });
+    expect((await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.id === move.id)!.reversed!.cancelled)
+      .toBe(false);
   });
 });

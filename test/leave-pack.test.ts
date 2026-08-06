@@ -4,10 +4,10 @@
  * Verifies the mechanical halves of the retrofit with behaviour unchanged:
  *   1. Registry: `packs/leave` registers a module pack the registry resolves by id.
  *   2. Nav parity: the pack's navLinks are ROW-FOR-ROW the sidebar's pre-rung-6 leave rows — same
- *      labelKeys, hrefs, icon refs (CalendarDays for My Absence, SlidersHorizontal for the config
- *      row), same (absence of) visibility flags, same group placement — and components/sidebar.tsx
- *      mounts them via the registry instead of hardcoding them (the EXPECTED table below is the
- *      pre-change literal, captured verbatim; any drift is a rendering change by definition).
+ *      labelKeys, hrefs, icon refs (CalendarDays for My Absence, CalendarRange for the Team Leave
+ *      Tracker, SlidersHorizontal for the config row), same (absence of) visibility flags, same group
+ *      placement — and components/sidebar.tsx mounts them via the registry instead of hardcoding them
+ *      (the EXPECTED table below is the literal; any drift is a rendering change by definition).
  *   3. Facade: `packs/leave/service` re-exports the implementation — outside callers get the exact
  *      same function references, so switching import paths cannot change behaviour.
  *   4. Boundary honesty: holidays is spine (not a satellite, not re-exported); the leave↔payroll
@@ -16,7 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CalendarDays, SlidersHorizontal } from 'lucide-react';
+import { CalendarDays, CalendarRange, SlidersHorizontal } from 'lucide-react';
 import { leavePack } from '../packs/leave';
 import { listPacks, modulePackById, packById } from '../packs/registry';
 import * as facade from '../packs/leave/service';
@@ -102,13 +102,21 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
   //
   //   top group:   { href: '/leave', labelKey: 'myAbsence', icon: CalendarDays }  (no gate) — UNCHANGED
   //   admin group: now LEAVE_ADMIN_NAV, a node (see below)
+  //
+  // a00c4f64 ADDS a Manage-group row — Team Leave Tracker, the Leave Calendar's own screen after it left
+  // the Dashboard. It is listed here with NO gate on purpose: the Manage group gates per row, so an
+  // ungated row is what keeps this calendar visible to every employee, which is what it was on the
+  // dashboard. The `toBeUndefined()` assertions below are therefore load-bearing for this row, not
+  // boilerplate — a `managerUp` creeping in here silently removes a screen from plain staff.
   const EXPECTED = [
     { group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays },
+    { group: 'manage', href: '/leave/tracker', labelKey: 'teamLeaveTracker', icon: CalendarRange },
   ] as const;
 
   /** Every href the pack contributes, flat rows and node children alike — what the sidebar must not hardcode. */
   const ALL_HREFS = [
     '/leave',
+    '/leave/tracker',
     ...leavePack.navNodes!.flatMap((n) => n.children.map((c) => c.href)),
   ];
 

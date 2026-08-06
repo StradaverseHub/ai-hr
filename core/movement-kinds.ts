@@ -45,9 +45,16 @@ export type MovementKind = (typeof MOVEMENT_KINDS)[number];
 
 /**
  * 08913328 — the kinds that record a CHANGE to the employee's employment/pay data, and therefore render as
- * the side-by-side comparison screen. The rest (Confirmation, Probation Extension, Resignation,
- * Termination, Blacklist, Secondment, Acting Position) are lifecycle events with their own dedicated
- * inputs — a Current/After grid would be meaningless for them.
+ * the side-by-side comparison screen. The rest (Probation Extension, Resignation, Termination, Blacklist,
+ * Secondment, Acting Position) are lifecycle events with their own dedicated inputs — a Current/After grid
+ * would be meaningless for them.
+ *
+ * 3ced1040 — CONFIRMATION JOINED THIS LIST. Confirming a probationer is routinely the same decision as
+ * giving them a rise and a title, and as a lifecycle kind it could record only the date: HR had to key the
+ * confirmation here and the salary somewhere else, leaving two marks on the record for one decision. It
+ * behaves exactly like Promotion now — the same grid, the same diff-driven writer, the same one history
+ * row, and the same future-dating fork. The date it sets is still its EFFECTIVE DATE, so the row's
+ * Effective Date column and employment.confirmation_date can never disagree.
  */
 export const COMPARISON_KINDS = [
   'transfer',
@@ -58,7 +65,23 @@ export const COMPARISON_KINDS = [
   'orgAssignmentChange',
   'employmentTypeChange',
   'reportingLineChange',
+  'confirmation',
 ] as const;
 export type ComparisonKind = (typeof COMPARISON_KINDS)[number];
 export const isComparisonKind = (k: string): k is ComparisonKind =>
   (COMPARISON_KINDS as readonly string[]).includes(k);
+
+/**
+ * 3ced1040 — the comparison kinds that are INTERCHANGEABLE with one another: the set a correction may
+ * re-classify a movement inside, and the set a tenant's own event type may be mapped onto.
+ *
+ * Confirmation is a comparison kind but deliberately NOT in here, and the two lists are separate for that
+ * one exclusion. Everything else on the comparison grid moves employment DATA; Confirmation also completes
+ * probation (deriveEmploymentStatus reads the date it writes). So correcting a Transfer into a
+ * Confirmation would move an employee off probation as a side effect of a re-label, and a custom type
+ * named after it would let a tenant invent a confirmation — which is exactly what 476f23ed keeps built-in.
+ * Membership of COMPARISON_KINDS is about the FORM AND THE WRITER; membership here is about CONSEQUENCE.
+ */
+export const INTERCHANGEABLE_COMPARISON_KINDS: readonly ComparisonKind[] = COMPARISON_KINDS.filter(
+  (k) => k !== 'confirmation',
+);

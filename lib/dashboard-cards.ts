@@ -44,7 +44,7 @@ export const ROLE_CARDS: Record<DashboardRole, DashboardCardId[]> = {
  * Static metadata for every card: the `dashboard` i18n label key and the click-through href. Kept
  * beside `ROLE_CARDS` so a test can assert every id in every role's set resolves here (guards a card
  * added to one map but not the other / not the renderer). `#`-prefixed hrefs scroll to an in-page
- * anchor on the same dashboard (planned-absences strip / upcoming-events card).
+ * anchor on the same dashboard (the upcoming-events card).
  */
 export const CARD_META: Record<DashboardCardId, { labelKey: string; href: string }> = {
   leaveBalance: { labelKey: 'leaveBalance', href: '/leave' },
@@ -52,7 +52,9 @@ export const CARD_META: Record<DashboardCardId, { labelKey: string; href: string
   // Pending Tasks → /me, where the employee actions its tasks (e.g. give 360 feedback; upload/complete
   // items land here as those task types ship). NOT the inverse "requests awaiting a decision" surface.
   pendingTasks: { labelKey: 'pendingTasks', href: '/me' },
-  teamAwayToday: { labelKey: 'teamAwayToday', href: '#planned-absences' },
+  // a00c4f64 — the calendar left the dashboard, so this card is a NAVIGATION now, not an anchor jump.
+  // '#planned-absences' would scroll to nothing on a page that no longer has the strip.
+  teamAwayToday: { labelKey: 'teamAwayToday', href: '/leave/tracker' },
   approvalRequests: { labelKey: 'approvalRequests', href: '/approvals' },
   // Upcoming Reminders scrolls to the on-page holidays digest; review deadlines it also counts are
   // actioned from the Approval Requests card (same /approvals inbox).

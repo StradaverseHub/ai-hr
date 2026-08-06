@@ -27,6 +27,7 @@ import {
   listShiftsForTenant,
   rosterForRange,
   ShiftInUseError,
+  updateShift,
 } from '../core/roster';
 
 const WED = '2026-07-01'; // ISO weekday 3
@@ -98,6 +99,62 @@ describe('R17 per-shift grace windows drive scheduleFor lateness / early-leave',
     await assignDefaultShift(a, { employmentId: emp2, shiftId: strict.id });
     const r2 = await checkIn(a, { employmentId: emp2, date: WED, time: '09:15:00' });
     expect(r2.status).toBe('late'); // 09:15 > 09:00 + 0 grace
+  });
+
+  /**
+   * 7c834696 rev 2 point 4 removed the two grace INPUTS from the Shift Settings form while deliberately
+   * keeping the columns and the precedence chain in core/attendance.ts, so a future per-shift override
+   * still has somewhere to live. That is only true if saving the shift cannot erase one.
+   *
+   * The form is a full-row overwrite: before this release `updateShift` wrote `lateGraceMinutes` on every
+   * save, and normalizeShiftInput collapsed an absent value to null — so the moment the inputs stopped
+   * posting, any stored override would have been silently cleared by the next edit of an unrelated field.
+   * Measured 0 of 9 production shifts carry one today, which is precisely why this needs a test rather
+   * than a bug report: nothing would have noticed. `undefined` now preserves; explicit `null` still clears.
+   */
+  it('saving a shift WITHOUT the grace fields preserves a stored override; an explicit null still clears it', async () => {
+    const a = adminCtx(b);
+    const created = await createShift(a, {
+      name: 'GracePreserve',
+      code: `GP${randomUUID().slice(0, 6)}`,
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      lateGraceMinutes: 20,
+      earlyLeaveGraceMinutes: 25,
+    });
+    const stored = async () => {
+      const [row] = await owner.db
+        .select({ late: schema.shift.lateGraceMinutes, early: schema.shift.earlyLeaveGraceMinutes })
+        .from(schema.shift)
+        .where(eq(schema.shift.id, created.id));
+      return row;
+    };
+    expect(await stored()).toEqual({ late: 20, early: 25 });
+
+    // Exactly what app/admin/attendance/shift-actions.ts now posts: the two keys are simply absent.
+    await updateShift(a, {
+      shiftId: created.id,
+      name: 'GracePreserve renamed',
+      code: `GP${randomUUID().slice(0, 6)}`,
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+    });
+    expect(await stored()).toEqual({ late: 20, early: 25 });
+
+    // An explicit null is still a real instruction to clear — preserving that is what keeps the column usable.
+    await updateShift(a, {
+      shiftId: created.id,
+      name: 'GracePreserve cleared',
+      code: `GP${randomUUID().slice(0, 6)}`,
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      lateGraceMinutes: null,
+      earlyLeaveGraceMinutes: null,
+    });
+    expect(await stored()).toEqual({ late: null, early: null });
   });
 
   it('early-leave grace: a checkout after end−grace is present, before it is a half-day', async () => {
