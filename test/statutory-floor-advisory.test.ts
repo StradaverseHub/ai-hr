@@ -16,20 +16,37 @@
  *      stops a lawful-entitlement code being misconfigured, are DIFFERENT protections. Neither was asked
  *      about, and both are pinned here so a later reader cannot mistake this change for a wider one.
  *
- * The preview/engine agreement (`previewEntitlement` vs `entitledDays`) is the other invariant worth
- * ratcheting: the file they live in states that the admin preview may never disagree with a real grant,
- * which is the whole reason the preview restates the composition.
+ * ⚠️ 6e9a126e RELEASE THREE — WHAT THIS FILE LOST, AND WHY THAT IS NOT A WEAKENING.
+ * The composition it ratchets used to be `entitledDays(floor, template, scheme, policy)`. Two of those
+ * four layers are dropped tables, so the engine-side assertions move to `composeEntitlement`, which is the
+ * single composition hook every engine now calls — same question, one layer instead of three, and the
+ * below-minimum flag asserted in exactly the same directions.
+ * The PREVIEW half is retired outright rather than repointed: `previewEntitlement` and
+ * `components/leave-rule-preview.tsx` are both deleted by this release (the checker read ACTIVE
+ * leave_policy rows, so against the template layer it would have answered "—" to every question while
+ * still looking live), and `admin.leave.previewBelowFloorWarning` is gone from all six locales with it.
+ * A test asserting a deleted component reads a deleted key cannot fail honestly. The surviving prose
+ * guard — that no screen still CLAIMS the minimum overrides the configured figure — is kept, because that
+ * claim is what the reporter actually asked to be removed and `admin.leave.typesHelp` still renders.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee } from '../core/org';
-import { createLeavePolicy } from '../core/admin';
 import { openLeaveYear } from '../core/leave';
-import { belowStatutoryFloor, entitledDays, previewEntitlement, type GradePolicyRow } from '../core/leave-compute';
+import { belowStatutoryFloor, composeEntitlement, type ServiceBand } from '../core/leave-compute';
 import { entitlement as myEntitlement } from '../localization/my/leave';
-import { adminCtx, closeAll, ledgerBalance, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  ledgerBalance,
+  migrateTestDb,
+  resetDb,
+  seedBase,
+  seedEntitlement,
+  type Base,
+} from './harness';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
