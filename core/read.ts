@@ -1821,8 +1821,17 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
         // it is another plain FK with no onDelete. Every new grade_id FK anywhere in the schema has to be
         // added HERE and in deleteJobGrade in the same commit that introduces it, or it re-opens exactly the
         // 23503 this comment exists to describe.
+        //
+        // 6e9a126e RELEASE THREE — the `leave_policy` clause is REPOINTED at entitlement_eligibility_rule,
+        // not dropped. 0405 drops leave_policy, and a clause naming a dropped table does not degrade
+        // quietly: this projection is on the ONLY read of the grade catalog, so it raised
+        // `relation "leave_policy" does not exist` on every System Labels page load. The new clause reads
+        // the rule's `criteria` JSONB, which carries no foreign key — so this is the one referrer that
+        // could never have raised 23503 on its own, and the guard is the only thing standing between a
+        // delete and a rule that silently targets a grade id nothing resolves.
         inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = job_grade.id)
-          or exists (select 1 from leave_policy lp where lp.grade_id = job_grade.id)
+          or exists (select 1 from entitlement_eligibility_rule eer
+                     where eer.criteria -> 'gradeIds' @> to_jsonb(job_grade.id::text))
           or exists (select 1 from leave_approval_policy lap where lap.grade_id = job_grade.id)
           or exists (select 1 from claim_policy cp where cp.grade_id = job_grade.id)
           or exists (select 1 from claim_mileage_rate cmr where cmr.grade_id = job_grade.id)

@@ -846,6 +846,15 @@ export async function updateJobGrade(
  * the grid's disabled Delete and this guard never disagree. Before, an approval rule or a claim limit was
  * invisible to both, so Delete rendered enabled and raised a raw 23503 foreign-key string at the admin;
  * grade_group_member CASCADES, so the delete silently dropped benefit-scheme group membership.
+ *
+ * 6e9a126e RELEASE THREE — `leave_policy` IS DROPPED (migration 0405), so the clause naming it did not
+ * merely go stale, it made this whole query raise `relation "leave_policy" does not exist` — and the same
+ * clause in listJobGrades' projection broke every read of the grade catalog. The guard is REPOINTED, not
+ * removed: a grade is now also in use when an ENTITLEMENT ELIGIBILITY RULE names it. That reference lives
+ * inside `criteria` JSONB with no foreign key, so unlike the other six this one can never raise 23503 —
+ * the delete would simply SUCCEED and leave a dead grade id in a rule that still targets people, silently
+ * narrowing (or widening) who an entitlement table reaches. RETIRED rules count too: the dated readers
+ * reproduce closed years through them, so a historical rule's grade is still load-bearing.
  */
 export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
@@ -860,7 +869,8 @@ export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
         // e7eb5d83 (0408): claim_mileage_rate.grade_id is the SIXTH referencing table — a per-grade mileage
         // rate table, another plain FK with no onDelete. Kept byte-identical to listJobGrades' predicate.
         inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = ${p.id})
-          or exists (select 1 from leave_policy lp where lp.grade_id = ${p.id})
+          or exists (select 1 from entitlement_eligibility_rule eer
+                     where eer.criteria -> 'gradeIds' @> to_jsonb(${p.id}::text))
           or exists (select 1 from leave_approval_policy lap where lap.grade_id = ${p.id})
           or exists (select 1 from claim_policy cp where cp.grade_id = ${p.id})
           or exists (select 1 from claim_mileage_rate cmr where cmr.grade_id = ${p.id})
@@ -871,7 +881,7 @@ export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
       .limit(1);
     if (used?.inUse) {
       throw new Error(
-        'This grade is in use by employees, leave policies, approval rules, claim limits, mileage rates or a grade group and cannot be deleted. Archive it instead.',
+        'This grade is in use by employees, entitlement eligibility rules, approval rules, claim limits, mileage rates or a grade group and cannot be deleted. Archive it instead.',
       );
     }
     await tx.delete(jobGrade).where(eq(jobGrade.id, p.id));
