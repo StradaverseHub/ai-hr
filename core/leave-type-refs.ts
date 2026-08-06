@@ -116,6 +116,12 @@ export const LEAVE_TYPE_REFERRERS: readonly LeaveTypeRef[] = [
     viaTemplateLineage: true,
     note: 'Reached through the template lineage, NOT by a foreign key to leave_type. Must be deleted BEFORE entitlement_template or it is stranded.',
   },
+  // 6e9a126e RELEASE THREE — `leave_policy` and `scheme_leave_entitlement` were REMOVED from this
+  // list because migration 0405 drops the tables. This is not bookkeeping: core/admin.ts turns every
+  // entry here into `delete from <table>` through sql.identifier, so a declaration naming a dropped
+  // table makes deleteLeaveType throw `relation "leave_policy" does not exist` for EVERY leave type.
+  // test/leave-type-referrers.test.ts compares this list against the LIVE foreign keys in BOTH
+  // directions, which is what makes that impossible to forget rather than a silent lost guard.
   {
     table: 'entitlement_template',
     column: 'leave_type_id',
@@ -123,22 +129,10 @@ export const LEAVE_TYPE_REFERRERS: readonly LeaveTypeRef[] = [
     note: 'The new entitlement layer (6e9a126e). Belongs to exactly one leave type.',
   },
   {
-    table: 'leave_policy',
-    column: 'leave_type_id',
-    disposition: 'config',
-    note: 'The old entitlement layer. Still supplies DAYS for types carrying no type-level rules.',
-  },
-  {
     table: 'leave_approval_policy',
     column: 'leave_type_id',
     disposition: 'config',
     note: 'Approval routing. This is what Special Leave had two of, and what made Delete fail at the last moment.',
-  },
-  {
-    table: 'scheme_leave_entitlement',
-    column: 'leave_type_id',
-    disposition: 'config',
-    note: 'Per-benefit-scheme day figures for this type.',
   },
   {
     table: 'leave_shared_group_member',
