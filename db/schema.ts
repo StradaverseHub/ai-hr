@@ -6413,7 +6413,11 @@ export const feedbackAttachment = pgTable(
     uploadedByUserId: uuid('uploaded_by_user_id').references(() => appUser.id),
     /** The plan revision this image accompanies (0321). NULL only when stage='submitted'. */
     planRevision: integer('plan_revision'),
-    /** 'submitted' | 'contested' | 'refuted' — what the reporter was doing when they attached it. */
+    /**
+     * 'submitted' | 'contested' | 'refuted' | 'plan'. The first three are the REPORTER answering us;
+     * `plan` (0406) is US answering THEM — a mockup of the screen a plan proposes, pinned to the
+     * revision it illustrates so a re-plan cannot leave a drawing of a plan that no longer exists.
+     */
     stage: text('stage').notNull().default('submitted'),
     createdAt: createdAt(),
   },

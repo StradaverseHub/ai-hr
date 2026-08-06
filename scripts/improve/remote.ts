@@ -236,6 +236,68 @@ export function raiseFeedback(p: {
   return { id };
 }
 
+/** An image to show the reporter alongside the plan (0406). `content` is the raw file. */
+export type PlanMockup = { fileName: string; mimeType: string; content: Buffer };
+
+/**
+ * Attach mockups to the plan that is CURRENTLY on the item (0406).
+ *
+ * ORDERING IS THE WHOLE CONTRACT AND IT IS NOT DEFENSIVE TO SAY SO. `plan_revision` is read from the
+ * item inside the INSERT rather than passed in, exactly as core/feedback.ts does it, so a mockup can
+ * never be filed against a revision the caller merely believed was current. The consequence is that this
+ * MUST run AFTER pushPlan: run it before, and every image silently names the plan that was just replaced,
+ * the page's revision filter hides them, and the reporter sees a plan with no design and no error.
+ * pushPlanWithMockups() exists so no caller has to remember that.
+ *
+ * Bytes travel base64 in a dollar-quoted literal and are decoded server-side. psql's own \\copy would need
+ * the file to exist ON the server, and a bytea hex literal doubles the payload for no benefit.
+ */
+export function attachPlanMockups(p: {
+  id: string;
+  tenantId: string;
+  mockups: PlanMockup[];
+}): void {
+  assertUuid(p.id, 'feedback id');
+  assertUuid(p.tenantId, 'tenant id');
+  if (p.mockups.length === 0) return;
+  for (const m of p.mockups) {
+    if (m.content.byteLength === 0) throw new Error(`mockup ${m.fileName} is empty`);
+    // Mirrors the 10 MB ceiling addFeedbackAttachment enforces. Checked here too because this path does
+    // not go through it — the in-app limit would otherwise be advisory for the one caller that bypasses it.
+    if (m.content.byteLength > 10 * 1024 * 1024) throw new Error(`mockup ${m.fileName} exceeds 10 MB`);
+  }
+  const rows = p.mockups
+    .map(
+      (m) =>
+        `INSERT INTO feedback_attachment
+           (tenant_id, feedback_request_id, employment_id, content, file_name, mime_type, size_bytes, stage, plan_revision)
+         SELECT '${p.tenantId}', id, reporter_employment_id, decode(${dq(m.content.toString('base64'))}, 'base64'),
+                ${dq(m.fileName)}, ${dq(m.mimeType)}, ${m.content.byteLength}, 'plan', plan_revision
+         FROM feedback_request WHERE id = '${p.id}';`,
+    )
+    .join('\n');
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, `BEGIN;\n${rows}\nCOMMIT;`);
+}
+
+/**
+ * Push a plan and its mockups together (0406) — the call every planning session should use.
+ *
+ * Two statements rather than one transaction, deliberately: pushPlan already commits, and the alternative
+ * is inlining its SQL here so the two can never drift apart differently. If the attach fails the plan is
+ * still on the board (text-only, exactly as before this existed), which is the safe half to keep.
+ */
+export function pushPlanWithMockups(p: {
+  id: string;
+  tenantId: string;
+  reporterEmploymentId: string;
+  plan: string;
+  model: string;
+  mockups?: PlanMockup[];
+}): void {
+  pushPlan(p);
+  if (p.mockups?.length) attachPlanMockups({ id: p.id, tenantId: p.tenantId, mockups: p.mockups });
+}
+
 /** Push a refined plan back (UPDATE + a feedback.plan.drafted domain_event — the substrate stays whole). */
 export function pushPlan(p: {
   id: string;

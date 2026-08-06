@@ -79,6 +79,13 @@ export default async function FeedbackDetailPage({
   // In-app planning is disabled by default — plans come from the operator-side improvement loop (ADR-0044).
   const inAppPlanning = settingEnabledOrDefault(s, 'feedback.ai_planning_enabled');
   const canGeneratePlan = inAppPlanning && isAdmin && (fb.status === 'open' || fb.status === 'contested');
+  // 0406 — mockups of the CURRENT plan, rendered inline beside it. Two filters, both load-bearing:
+  // the revision (an older generation would illustrate a proposal that no longer exists) and the mime
+  // (`plan` stage accepts whatever was attached, and a PDF in an <img> is a broken image, so anything
+  // non-image falls through to the link list at the top of the page rather than rendering blank).
+  const planMockups = fb.attachments.filter(
+    (a) => a.stage === 'plan' && a.planRevision === fb.planRevision && (a.mimeType ?? '').startsWith('image/'),
+  );
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -106,8 +113,14 @@ export default async function FeedbackDetailPage({
             {/* 0321 — grouped by the round each image arrived in. Ungrouped, a screenshot showing "still
                 wrong after you shipped it" sits beside the original bug screenshot with nothing to tell
                 them apart, which on a three-round item is a pile of pictures and no story. */}
-            {(['submitted', 'contested', 'refuted'] as const).map((stage) => {
-              const forStage = fb.attachments.filter((a) => (a.stage ?? 'submitted') === stage);
+            {/* 0406 — `plan` joins the list so nothing is ever invisible: a mockup that is NOT rendered
+                inline below (an older revision, or a PDF rather than an image) still has to be reachable,
+                and a stage missing from this array would drop its attachments off the page entirely with
+                no error. The ones already shown inline are excluded so they are not listed twice. */}
+            {(['submitted', 'contested', 'refuted', 'plan'] as const).map((stage) => {
+              const forStage = fb.attachments.filter(
+                (a) => (a.stage ?? 'submitted') === stage && !planMockups.some((m) => m.id === a.id),
+              );
               if (forStage.length === 0) return null;
               return (
                 <div key={stage} className="mt-2">
@@ -246,6 +259,43 @@ export default async function FeedbackDetailPage({
           <>
             <p className="px-1 pt-2 text-xs text-muted-foreground">{t('planRevision', { n: fb.planRevision })}</p>
             <div className="mt-2 whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-4 text-sm">{fb.plan}</div>
+            {/* 0406 — the mockups for THIS revision, shown with the plan rather than with the reporter's
+                own screenshots at the top of the page. Two reasons they cannot live up there: the block
+                above is "what the reporter sent us", and mixing our answer into it loses who is speaking;
+                and a mockup only means anything next to the words it illustrates.
+
+                FILTERED BY REVISION, not just by stage. An item re-planned three times carries three
+                generations of mockup, and showing an older one beside the current plan would be showing a
+                picture of a proposal that no longer exists — the exact failure 0318 fixed for plan TEXT
+                and 0321 fixed for the reporter's images. Older ones stay reachable in the timeline below.
+
+                Rendered INLINE, not as a link. The whole point is that the reporter SEES it without
+                deciding to click; a `↗ filename` link is what the prose already was. */}
+            {planMockups.length > 0 && (
+              <div className="mt-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {t('planMockupsHeading')}
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t('planMockupsCaveat')}</p>
+                <ul className="mt-2 space-y-3">
+                  {planMockups.map((a) => (
+                    <li key={a.id}>
+                      <a href={`/feedback/attachment/${a.id}?inline=1`} target="_blank" rel="noreferrer" className="block">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- the bytes come from our
+                            own attachment route, which streams a stored blob with no known dimensions;
+                            next/image needs a width/height or a loader and neither exists for a blob. */}
+                        <img
+                          src={`/feedback/attachment/${a.id}?inline=1`}
+                          alt={a.fileName}
+                          className="w-full rounded-lg border border-border bg-background"
+                        />
+                      </a>
+                      <div className="mt-1 text-xs text-muted-foreground">{a.fileName}</div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </>
         ) : (
           <p className="px-1 pt-2 text-sm text-muted-foreground">{t('planPending')}</p>
