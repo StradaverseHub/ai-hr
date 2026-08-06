@@ -42,6 +42,10 @@ import { EpfRegistrationFields } from '@/components/epf-registration-fields';
 import { BankAccountFields } from '@/components/bank-account-fields';
 import { TaxCategoryField } from '@/components/tax-category-field';
 import { SocsoEisFields } from '@/components/socso-eis-fields';
+// 35b7af0a group 8 — the Nationality picker and the nationality-gated Identity No, shared with the
+// Personnel profile card's identity block.
+import { IdentityNumberField, NationalityPicker } from '@/components/identity-fields';
+import type { ComboboxOption } from '@/components/ui/combobox';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DRAFT_STEPS,
@@ -84,6 +88,7 @@ export function EmployeeWizard({
   costCenters,
   grades,
   managers,
+  nationalityOptions,
   probationDefaults,
   employeeIdRules,
 }: {
@@ -99,6 +104,9 @@ export function EmployeeWizard({
   costCenters: Option[];
   grades: Option[];
   managers: Option[];
+  /** 35b7af0a group 8 — the tenant's nationality catalog (System Labels > Profile Options), the SAME list
+   *  the Personnel profile card offers. PLAIN DATA, like every other prop crossing this boundary. */
+  nationalityOptions: ComboboxOption[];
   probationDefaults: Record<string, string>;
   /** Item bd271009 — the Employee ID rule per company, PLAIN DATA (see the page's boundary note). */
   employeeIdRules: Record<string, EmployeeIdRule>;
@@ -471,14 +479,26 @@ export function EmployeeWizard({
                 onChange={(e) => set('profile', { primaryEmail: e.target.value })}
               />
             </Field>
-            <Field label={t('fields.icNumber')}>
-              <input
-                className={inputCls}
-                value={data.profile?.icNumber ?? ''}
-                onChange={(e) => set('profile', { icNumber: e.target.value })}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">{t('hints.icNumber')}</p>
-            </Field>
+            {/* 35b7af0a group 8 — Nationality and the Identity No (NRIC) are the SAME field group the
+                Personnel profile card renders (components/identity-fields.tsx). The wizard had a BARE
+                Identity No box and did not ask for a nationality AT ALL, so every hire it created arrived
+                with person.nationality NULL — and item 357faecf gates the Personnel screen's NRIC card on
+                exactly that column, so the number the wizard had just collected was HIDDEN the moment HR
+                opened the new employee, until somebody set a nationality by hand. Asked here, immediately
+                above the field it governs, because the Identity No disappears for a passport holder (who
+                has no NRIC) and a control that vanishes for no visible reason reads as a bug. */}
+            <NationalityPicker
+              mode="controlled"
+              value={data.profile?.nationality}
+              options={nationalityOptions}
+              onChange={(nationality) => set('profile', { nationality })}
+            />
+            <IdentityNumberField
+              mode="controlled"
+              nationality={data.profile?.nationality}
+              icNumber={data.profile?.icNumber}
+              onChange={(icNumber) => set('profile', { icNumber })}
+            />
             <Field label={t('fields.phone')}>
               <input
                 className={inputCls}
@@ -733,12 +753,13 @@ export function EmployeeWizard({
                 eisCategory: data.statutory?.eisCategory,
               }}
               icNumber={data.profile?.icNumber}
-              // The wizard does not collect NATIONALITY — it is not one of its fields — so the
-              // IC-derived number default cannot fire here and the box stays blank until someone types
-              // one. That is deliberate rather than a guess: defaultSocsoEisNumber keys on nationality,
-              // and inferring "Malaysian" from a 12-digit IC would put a foreign worker's SOCSO number
-              // in silently. The Personnel screen, which does know the nationality, still defaults it.
-              nationality={undefined}
+              // 35b7af0a group 8 — the wizard now ASKS for the nationality (Profile step), so the
+              // IC-derived number default fires here exactly as it does on the Personnel card. It had to
+              // be `undefined` before: defaultSocsoEisNumber keys on nationality, and inferring
+              // "Malaysian" from a 12-digit IC would have filed a foreign worker's SOCSO number silently.
+              // `completeEmployeeDraft` applies the same default server-side, so a number merely shown
+              // here is also the number stored.
+              nationality={data.profile?.nationality}
               country="MY"
               onChange={(patch) => set('statutory', patch)}
             />

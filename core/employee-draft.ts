@@ -277,9 +277,21 @@ export async function completeEmployeeDraft(
   // because an invalid IC stored now is a payroll fault later.
   if (icNumber && !pack.statutory.validateIC(icNumber)) throw new Error(`Invalid identity number "${icNumber}".`);
 
+  const nationality = str(p.nationality);
+
   const types = await listLeaveTypes(ctx);
   const { employmentId, personId } = await hireEmployee(ctx, {
-    person: { fullName: str(p.fullName)!, primaryEmail: str(p.primaryEmail)!, phone: str(p.phone) },
+    // 35b7af0a group 8 — the nationality is seeded on the person HERE, at creation, because everything
+    // downstream keys on it: the Personnel screen decides NRIC-vs-passport from `person.nationality`, and
+    // before this the wizard left it NULL, so a hire it created showed NO Identity No card at all and the
+    // number it had just collected was invisible until somebody set a nationality by hand. Undefined on a
+    // draft saved before this change ⇒ null ⇒ byte-identical to what the wizard always did.
+    person: {
+      fullName: str(p.fullName)!,
+      primaryEmail: str(p.primaryEmail)!,
+      phone: str(p.phone),
+      nationality,
+    },
     // Blank ⇒ hireEmployee generates the next code. That IS the reporter's rule that a draft consumes
     // no Employee ID: the counter only ever advances inside this call. bd271009 decides WHICH of the two
     // happens above, in the open, instead of leaving it to whether a box happened to be filled in.
@@ -307,7 +319,16 @@ export async function completeEmployeeDraft(
       // optional for passport holders; the statutory row is now stored with a null IC instead.
       icNumber: icNumber ?? null,
       epfNumber: str(s.epfNumber),
-      socsoNumber: str(s.socsoNumber),
+      // 35b7af0a group 8 — the SAME IC-derived default `setStatutoryAction` applies on the Personnel card
+      // (PERKESO registers locals under their MyKad). It lives in the WRITER, not only in the shared field
+      // group, because the group's controlled mode DISPLAYS a default without committing it: an HR user who
+      // never touches the box would otherwise create a hire showing a SOCSO number and storing none. Group 7
+      // could not do this at all — the default keys on nationality and the wizard did not collect one.
+      socsoNumber: pack.statutory.defaultSocsoEisNumber({
+        socsoNumber: str(s.socsoNumber),
+        icNumber,
+        nationality,
+      }),
       taxNumber: str(s.taxNumber),
       taxCategory: numOrUndef(s.taxCategory),
       numChildren: numOrUndef(s.numChildren),

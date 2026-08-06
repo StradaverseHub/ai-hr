@@ -104,7 +104,12 @@ type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
 type LineType = 'administrative' | 'functional' | 'project' | 'dotted' | 'delegate';
 
 export type HireParams = {
-  person: { id?: string; fullName?: string; primaryEmail?: string; phone?: string };
+  /** 35b7af0a group 8 — `nationality` joins the trio this writer already seeds on a NEW person. It belongs
+   *  at creation rather than in a follow-up `updatePerson`: `setPassportProfileMY` and the SOCSO/EIS number
+   *  default both read `person.nationality`, so a second write afterwards could only ever be too late, and
+   *  a write that can fail AFTER the employment exists is a half-created employee. Ignored when `id` is
+   *  given — an existing person's profile is edited through updatePerson, which audits the change. */
+  person: { id?: string; fullName?: string; primaryEmail?: string; phone?: string; nationality?: string | null };
   companyId: string;
   departmentId: string;
   positionId?: string;
@@ -185,6 +190,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           fullName: p.person.fullName!,
           primaryEmail: p.person.primaryEmail!,
           phone: p.person.phone ?? null,
+          nationality: p.person.nationality ?? null,
         })
         .returning({ id: person.id });
       personId = row.id;

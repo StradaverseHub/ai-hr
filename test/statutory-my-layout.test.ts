@@ -171,7 +171,13 @@ describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, ta
     expect(page.includes('setIcAction={setIcAction}')).toBe(true);
     const identity = read('components/personnel-identity.tsx');
     expect(identity.includes('action={setIcAction}')).toBe(true);
-    expect(identity.includes('name="icNumber"')).toBe(true);
+    // 35b7af0a group 8 — the INPUT moved into the shared identity group (the wizard renders the same one),
+    // so the three facts that keep this form posting are checked where each of them now lives: the named
+    // input exists in the shared component, this form renders that component, and it renders it in the
+    // mode that posts. Dropping any one of them silently turns a Save into a no-op.
+    expect(read('components/identity-fields.tsx').includes('name="icNumber"')).toBe(true);
+    expect(identity.includes('<IdentityNumberField')).toBe(true);
+    expect(identity.match(/<IdentityNumberField[\s\S]*?\/>/)![0].includes('mode="form"')).toBe(true);
   });
 
   it('the Identification & Tax card carries the tax inputs (setTaxAction)', () => {

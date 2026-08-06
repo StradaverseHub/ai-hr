@@ -29,6 +29,7 @@ import { PayStructureFields } from '../components/pay-structure-fields';
 import { BirthDateFields } from '../components/birth-date-fields';
 import { EpfRegistrationFields } from '../components/epf-registration-fields';
 import { BankAccountFields } from '../components/bank-account-fields';
+import { IdentityNumberField, NationalityPicker } from '../components/identity-fields';
 
 const wrap = (ui: ReactNode) =>
   render(
@@ -432,5 +433,130 @@ describe('group 5 — the two screens offer the SAME bank catalog', () => {
     await userEvent.selectOptions(screen.getByLabelText('Bank'), 'Public Bank');
     await userEvent.type(screen.getByLabelText('Bank account'), '7');
     expect(patches).toEqual([{ bankName: 'Public Bank' }, { bankAccountNo: '7' }]);
+  });
+});
+
+// ── group 8 — Identity (Nationality + Identity No) ────────────────────────────────────────────────
+describe('group 8 — the two screens ask the SAME identity questions, gated the same way', () => {
+  const NATIONALITIES = [
+    { value: 'Malaysian', label: 'Malaysian' },
+    { value: 'Singaporean', label: 'Singaporean' },
+  ];
+  /** The visible captions + the visible current selection — what an HR administrator actually reads. A
+   *  plain surfaceOf() comparison cannot serve here: form mode ALSO renders the hidden input that posts,
+   *  and controlled mode deliberately renders none, which is the one difference that must exist. */
+  const visibleOf = (container: HTMLElement) =>
+    [...container.querySelectorAll('label')].map((l) => {
+      const caption = l.querySelector('span')?.textContent ?? '';
+      const button = l.querySelector('button');
+      if (button) return `${caption}: [${button.textContent}]`;
+      const input = l.querySelector('input');
+      return `${caption}: <input ${input?.getAttribute('type') ?? 'text'} placeholder=${input?.getAttribute('placeholder')}>`;
+    });
+
+  it('renders an identical visible surface in form mode (Personnel) and controlled mode (wizard)', () => {
+    const personnel = wrap(
+      <>
+        <NationalityPicker mode="form" name="nationality" value="Malaysian" options={NATIONALITIES} />
+        <IdentityNumberField
+          mode="form"
+          nationality="Malaysian"
+          icNumber="900101015555"
+          dobInputId="profile-dob-input"
+        />
+      </>,
+    );
+    const asPersonnel = visibleOf(personnel.container);
+    expect(asPersonnel).toEqual(['Nationality: [Malaysian]', 'Identity No (NRIC): <input text placeholder=900101011234>']);
+    personnel.unmount();
+
+    const wizard = wrap(
+      <>
+        <NationalityPicker mode="controlled" value="Malaysian" options={NATIONALITIES} onChange={() => {}} />
+        <IdentityNumberField
+          mode="controlled"
+          nationality="Malaysian"
+          icNumber="900101015555"
+          onChange={() => {}}
+        />
+      </>,
+    );
+    expect(visibleOf(wizard.container)).toEqual(asPersonnel);
+    // And the hint under the field is the same sentence on both screens — it says where the number is
+    // used (SOCSO/EIS and EPF default), which is exactly what group 8 made true of the wizard as well.
+    expect(wizard.container.querySelector('p')!.textContent).toContain('MyKad');
+  });
+
+  it('the NRIC field DISAPPEARS for a non-local nationality — identically on both screens', () => {
+    // Item 357faecf's rule. Rendering nothing (rather than disabling) is what keeps a stored ic_number
+    // untouched on Personnel, and on the wizard it keeps a passport number out of an IC-validated field.
+    for (const props of [
+      { mode: 'form', icNumber: '900101015555', dobInputId: 'x' } as const,
+      { mode: 'controlled', icNumber: '900101015555', onChange: () => {} } as const,
+    ]) {
+      const { container, unmount } = wrap(<IdentityNumberField {...props} nationality="Singaporean" />);
+      expect(container.querySelectorAll('input')).toHaveLength(0);
+      expect(container.textContent).toBe('');
+      unmount();
+    }
+    // …and it comes back the moment the nationality is corrected, with the stored value intact.
+    const { container } = wrap(
+      <IdentityNumberField mode="form" nationality="Malaysian" icNumber="900101015555" dobInputId="x" />,
+    );
+    expect(container.querySelector('input')).toHaveValue('900101015555');
+  });
+
+  it('an unset nationality hides the NRIC too — which is what every wizard hire used to be', () => {
+    // isLocalNationality(null) is false. Before group 8 the wizard never wrote person.nationality, so a
+    // hire it created landed in exactly this state and the Personnel screen hid the Identity No card.
+    for (const n of [undefined, null, '']) {
+      const { container, unmount } = wrap(
+        <IdentityNumberField mode="form" nationality={n} icNumber="900101015555" dobInputId="x" />,
+      );
+      expect(container.textContent, String(n)).toBe('');
+      unmount();
+    }
+  });
+
+  it('form mode posts the named fields the two server actions read; controlled mode posts nothing', async () => {
+    const personnel = wrap(
+      <>
+        <NationalityPicker mode="form" name="nationality" value="Malaysian" options={NATIONALITIES} />
+        <IdentityNumberField mode="form" nationality="Malaysian" icNumber="900101015555" dobInputId="x" />
+      </>,
+    );
+    const named = [...personnel.container.querySelectorAll('input[name]')].map((i) => i.getAttribute('name'));
+    expect(named).toEqual(['nationality', 'icNumber']);
+    personnel.unmount();
+
+    const picked: string[] = [];
+    const typed: string[] = [];
+    const wizard = wrap(
+      <>
+        <NationalityPicker
+          mode="controlled"
+          value="Malaysian"
+          options={NATIONALITIES}
+          onChange={(v) => picked.push(v)}
+        />
+        <IdentityNumberField
+          mode="controlled"
+          nationality="Malaysian"
+          icNumber=""
+          onChange={(v) => typed.push(v)}
+        />
+      </>,
+    );
+    // NO named input at all — the wizard submits its draft as JSON, and a guard that greps for
+    // name="nationality" must never be able to conclude that this copy posts (the r159 lesson).
+    expect(wizard.container.querySelectorAll('input[name]')).toHaveLength(0);
+
+    // The Combobox's trigger takes its accessible name from the shared group's own Field caption — which
+    // is itself worth pinning: the wizard used to label this control nothing at all, because it had none.
+    await userEvent.click(screen.getByRole('button', { name: 'Nationality' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Singaporean' }));
+    expect(picked).toEqual(['Singaporean']);
+    await userEvent.type(screen.getByLabelText('Identity No (NRIC)'), '9');
+    expect(typed).toEqual(['9']);
   });
 });

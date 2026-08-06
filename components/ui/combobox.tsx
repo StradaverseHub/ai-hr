@@ -31,7 +31,10 @@ export function Combobox({
   className,
   onValueChange,
 }: {
-  name: string;
+  /** OPTIONAL (35b7af0a group 8). Omit it and no hidden input is rendered at all — the controlled mode of
+   *  a shared field group must post nothing, so a source guard grepping for name="…" can never conclude
+   *  that the wizard's copy submits. Every pre-existing caller passes one and is unaffected. */
+  name?: string;
   value: string | null | undefined;
   options: ComboboxOption[];
   placeholder: string;
@@ -140,8 +143,9 @@ export function Combobox({
 
   return (
     <div ref={rootRef} className="relative">
-      {/* The value the surrounding <form> submits — same field name a native <select> would post. */}
-      <input type="hidden" name={name} value={selected} />
+      {/* The value the surrounding <form> submits — same field name a native <select> would post. Absent
+          when no `name` was given: a controlled caller holds the value in state and submits it as JSON. */}
+      {name !== undefined && <input type="hidden" name={name} value={selected} />}
       <button
         type="button"
         className={`${className ?? inputCls} flex items-center justify-between gap-2 text-left`}
