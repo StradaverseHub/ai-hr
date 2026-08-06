@@ -1,0 +1,80 @@
+<meta charset="utf-8">
+<title>4861bcbb — what is cleared, what stays</title>
+<!--
+  Mockup for 4861bcbb (entitlement reset), plan revision 2 — the re-plan after the reporter said go.
+  NOT a screen mockup: this one is a scope diagram, because the risk in this item is not layout, it is
+  someone reading "any backend relationships related to the old entitlement framework" and clearing the
+  grade groups that 205 approval rules point at.
+  Figures measured on production 2026-08-06. Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
+  .card.gone{border-color:#fca5a5}
+  .card.stay{border-color:#6ee7b7}
+  h2{font-size:14px;margin:0 0 3px;display:flex;align-items:center;gap:8px}
+  .tag{font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:999px}
+  .tg{background:#fee2e2;color:#991b1b}
+  .ts{background:#d1fae5;color:#065f46}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .row{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-top:1px solid var(--border)}
+  .row:first-of-type{border-top:0}
+  .what{font-weight:600}
+  .cnt{font-size:17px;font-weight:700}
+  .cnt.z{color:var(--mf);font-weight:400;font-size:13px}
+  .why{font-size:11.5px;color:var(--mf);margin-top:2px}
+  .total{background:var(--muted);border-radius:11px;padding:13px;margin-top:12px;text-align:center}
+  .total .big{font-size:30px;font-weight:800;line-height:1.1}
+  .total .lbl{font-size:11.5px;color:var(--mf)}
+  .warn{background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:14px}
+  .warn b{color:#92400e}
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+  .step{border:1px solid var(--border);border-radius:11px;padding:12px;background:#fff}
+  .step .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700}
+  .step .v{font-weight:600;margin-top:4px}
+  .step .n{font-size:11.5px;color:var(--mf);margin-top:4px}
+</style>
+
+<div class="two">
+  <div class="card gone">
+    <h2>Cleared <span class="tag tg">gone for good</span></h2>
+    <p class="sub">Everything configured in these is wiped. Counted on your system today.</p>
+    <div class="row"><div><div class="what">Benefit Schemes</div><div class="why">The scheme step and everything in it</div></div><div class="cnt">41</div></div>
+    <div class="row"><div><div class="what">Service entitlement tables</div><div class="why">The years-worked tables inside those schemes</div></div><div class="cnt">292</div></div>
+    <div class="row"><div><div class="what">Company / grade entitlement rules</div><div class="why">The older dated rules underneath</div></div><div class="cnt">67</div></div>
+    <div class="total"><div class="big">359</div><div class="lbl">pieces of configuration to retype</div></div>
+  </div>
+
+  <div class="card stay">
+    <h2>Untouched <span class="tag ts">stays exactly as it is</span></h2>
+    <p class="sub">“Everything else remains untouched” — this is what that means in practice.</p>
+    <div class="row"><div><div class="what">Grade groups</div><div class="why"><b>205 of your approval rules point at these.</b> They look like part of the old entitlement setup and are not — clearing them would silently unscope every one of those rules.</div></div><div class="cnt">kept</div></div>
+    <div class="row"><div><div class="what">Leave records</div><div class="why">Days granted, days taken, every approved application</div></div><div class="cnt">kept</div></div>
+    <div class="row"><div><div class="what">Entitlement Templates</div><div class="why">You listed these too — they are the NEW screens and are already empty, so there is nothing in them to clear</div></div><div class="cnt z">already 0</div></div>
+    <div class="row"><div><div class="what">Employee eligibility rules</div><div class="why">Also new, also already empty</div></div><div class="cnt z">already 0</div></div>
+  </div>
+</div>
+
+<div class="card warn">
+  <b>The one thing to plan around.</b> From the moment this goes live, every entitlement figure is blank
+  until the 359 items have been retyped from the written record. Nobody's balance moves and no leave
+  record is touched — the safety rule sees to that — but no employee has a correct entitlement figure
+  until the retyping is finished. That is why we are asking for a morning your HR team can give to it.
+  It cannot be undone: the written record is a list to retype from, not an undo button.
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h2>What happens on the day</h2>
+  <div class="steps">
+    <div class="step"><div class="k">Before we touch anything</div><div class="v">Count it again, and tell you</div>
+      <div class="n">We re-count all three figures and send them to you, so the written record can never be older than what it describes.</div></div>
+    <div class="step"><div class="k">The clearing</div><div class="v">Record, then wipe</div>
+      <div class="n">The record is taken in the same action that clears, and the whole thing refuses to run if the record comes back empty.</div></div>
+    <div class="step"><div class="k">After</div><div class="v">You reconfigure from zero</div>
+      <div class="n">Entitlement Templates and Employee Eligibility, with the record open beside you to type from.</div></div>
+  </div>
+</div>

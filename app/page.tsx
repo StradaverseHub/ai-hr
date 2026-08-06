@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
@@ -11,7 +10,6 @@ import {
   leaveBalances,
   listCompanies,
   myEmployment,
-  plannedAbsences,
   recentActivity,
   recentHires,
   reportingLinesFor,
@@ -21,13 +19,8 @@ import { pendingManagerReviewsFor } from '@/core/employment-review';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { myFeedbackRequests } from '@/packs/performance/service';
 import { pendingApprovalsCount } from '@/core/approvals-inbox';
-import { todayInKualaLumpur } from '@/core/leave';
 import { Card, PageHeader, StatusBadge } from '@/components/ui';
-import { PlannedAbsences } from '@/components/planned-absences';
 import { LeaveBalanceCard } from '@/components/leave-balance-card';
-import { requestLeaveCancellationAction, adminCancelLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions';
-import { resolveCalendarFetchWindow, resolveViewPreference } from '@/lib/leave-calendar-range';
-import { CALENDAR_FOCUS_PARAM, parseCalendarFocus } from '@/lib/calendar-focus';
 import {
   type DashboardCardId,
   pendingTasksCount,
@@ -119,11 +112,9 @@ function orderTree(rows: BreakdownRow[]) {
   return out;
 }
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ abs?: string; view?: string; cal?: string; focus?: string }>;
-}) {
+// a00c4f64 — no `searchParams` any more. The four params this page read (?abs / ?view / ?cal / ?focus)
+// belonged to the Leave Calendar, which moved to /leave/tracker and still reads all four there.
+export default async function DashboardPage() {
   const t = await getTranslations('dashboard');
   // Employee Status sync (5afcda91): the Onboarding card badge shows the system-derived Employee Status
   // (deriveEmploymentStatus over lifecycle dates) with the shared localized labels — never the legacy
@@ -131,34 +122,10 @@ export default async function DashboardPage({
   const tEmployeeStatus = await getTranslations('people.employeeStatus');
   const locale = await getLocale(); // R37: render leave-type names in the viewer's language
   const { s, scopeIds, allowedCount } = await scopedSession();
-  const sp = await searchParams;
-  // Leave Calendar window (item 8c739dda → ee55f5fe → ed76f6b0): ?abs=YYYY-MM-DD (from the timeline nav
-  // / date picker) anchors the window; ?cal=month — falling back to the session cookie the range switch
-  // writes — picks the initial view. The READ now always fetches the month-covering superset window
-  // (resolveCalendarFetchWindow) so the client's Week/Month toggle is a purely client-side re-slice —
-  // zero network, no dashboard re-render. The panel resolves the DISPLAY window from the same anchor.
   const now = new Date();
   const nowMs = now.getTime();
   const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const todayIso = new Date(todayMs).toISOString().slice(0, 10);
-  const absParam = sp.abs && /^\d{4}-\d{2}-\d{2}$/.test(sp.abs) ? sp.abs : null;
-  const calView = resolveViewPreference({
-    param: sp.cal,
-    cookie: (await cookies()).get('leave_calendar_view')?.value,
-  });
-  const { from: absFrom, to: absTo } = resolveCalendarFetchWindow({
-    view: calView,
-    anchorIso: absParam,
-    todayIso,
-  });
-  // My/Team view switch (item 8c739dda): default "my" (own leave only); "team" widens to the viewer's
-  // reporting team. The switch only renders when the viewer actually has direct reports (resolved below).
-  // eae550e9 step 3: this only SEEDS the client-side toggle — switching does zero network now.
-  const absView = sp.view === 'team' ? 'team' : 'my';
-  // item 726ac8c2: ?focus=<personId> — the employee a manager deep-linked to from the Leave Summary on
-  // their Personnel profile. Validated (uuid shape) before it reaches the client; the calendar highlights
-  // the matching row for 3s and silently ignores an id it has no row for.
-  const absFocusPersonId = parseCalendarFocus(sp[CALENDAR_FOCUS_PARAM]);
   const since60 = new Date(todayMs - 60 * 86_400_000).toISOString().slice(0, 10);
 
   // R17 e6f0384c — role-based summary cards. Resolve the viewer's dashboard role FIRST (cheap: own
@@ -168,40 +135,21 @@ export default async function DashboardPage({
   const me = await myEmployment(s);
   const admin = isAdmin(s);
   const managerRole = (s.roles ?? []).includes('manager');
-  // Resolve the viewer's reporting edges ONCE: powers both the dashboard-role decision below and the
-  // Leave Calendar My/Team switch (item 8c739dda). Team = the viewer's own person + direct reports.
+  // The viewer's reporting edges decide the dashboard ROLE (a Direct Manager by reporting_line edge may
+  // hold no `manager` platform role). a00c4f64: this used to also feed the Leave Calendar's person scope
+  // and My/Team switch; both moved with the calendar to app/leave/tracker/page.tsx.
   const reportingLines = me ? await reportingLinesFor(s, me.employmentId) : null;
-  // eae550e9 step 1: the calendar read is scoped to these PEOPLE instead of every active employee in the
-  // company — the superset both My and Team render for every role path (manager: own + reports; hr_admin /
-  // plain employee with no reports: forced 'my', so own person is a strict-improvement narrowing that
-  // changes nothing rendered). Keyed by PERSON id so a concurrent second employment merges as before.
-  // An EMPTY array (viewer with no person) deliberately matches NOTHING in the read — never the company.
-  // Recorded decision: a routed delegate (app.can_decide_via_delegation) is NOT in a reporting_line edge
-  // set (reportingLinesFor already excludes lineType='delegate'), so delegates keep seeing the calendar
-  // as 'my' — exactly today's behaviour.
-  const teamPersonIds = [
-    ...new Set<string>([
-      ...(s.personId ? [s.personId] : []),
-      ...(reportingLines?.reports ?? []).map((r) => r.personId),
-    ]),
-  ];
   const hasDirectReports = (reportingLines?.reports.length ?? 0) > 0;
   // A Direct Manager via a reporting_line edge may not hold the `manager` platform role (0110); OR it in.
   const role = resolveDashboardRole({ admin, managerRole, hasDirectReports });
   const wantStats = role === 'hr_admin' || role === 'manager'; // manager needs attendance breakdown
   const wantBreakdown = role === 'hr_admin';
 
-  const [stats, activity, companies, breakdown, absences, hires, events] = await Promise.all([
+  const [stats, activity, companies, breakdown, hires, events] = await Promise.all([
     wantStats ? dashboardStats(s, scopeIds) : Promise.resolve(null),
     recentActivity(s, 8),
     listCompanies(s),
     wantBreakdown ? groupBreakdown(s) : Promise.resolve([]),
-    // Partial Leave Cancellation from the calendar (ADR-0065): pass MYT "today" so each approved row's
-    // cancellable candidate dates match the Leave page / service cut-off exactly (strictly-after-MYT).
-    // eae550e9 step 1: person-scoped — only the people the calendar can ever render are loaded.
-    plannedAbsences(s, scopeIds, { from: absFrom, to: absTo }, todayInKualaLumpur(), {
-      personIds: teamPersonIds,
-    }),
     recentHires(s, scopeIds, { since: since60, limit: 5 }),
     upcomingHolidays(s, { from: todayIso, limit: 5 }),
   ]);
@@ -252,12 +200,11 @@ export default async function DashboardPage({
   let mgrApprovals = 0;
   let mgrReminders = 0;
   if (role === 'manager') {
-    // "Team Away Today" must be computed over a window that always covers today AND over the SAME
-    // population it counted before eae550e9 (company scope under RLS — the strip rows are now team-scoped,
-    // so they can no longer feed it). One narrow indexed count (core/read.ts awayTodayCount) replaces the
-    // previous second full plannedAbsences projection; it runs on every path so the figure can never
-    // drift between "the strip window covers today" and "it doesn't". Semantics preserved bit-for-bit:
-    // distinct persons ≠ viewer with an approved leave covering today (per-date-approval aware).
+    // "Team Away Today" is counted over the SAME population it counted before eae550e9 (company scope
+    // under RLS) by one narrow indexed count — core/read.ts awayTodayCount — rather than by projecting the
+    // calendar. That independence is why a00c4f64 could move the calendar off this page without touching
+    // the figure. Semantics preserved bit-for-bit: distinct persons ≠ viewer with an approved leave
+    // covering today (per-date-approval aware).
     const [awayCount, approvals, reviewDeadlines] = await Promise.all([
       awayTodayCount(s, scopeIds, todayIso, s.personId ?? null),
       pendingApprovalsCount(s, scopeIds),
@@ -321,50 +268,15 @@ export default async function DashboardPage({
       case 'pendingTasks':
         return <StatCard key={id} label={t('pendingTasks')} value={empTaskCount} hint={t('requireYourAttention')} href="/me" />;
       case 'teamAwayToday':
-        return <StatCard key={id} label={t('teamAwayToday')} value={mgrAwayCount} hint={t('onApprovedLeaveToday')} href="#planned-absences" />;
+        // a00c4f64 — a NAVIGATION to the Team Leave Tracker, not an anchor jump: the calendar this card
+        // was a shortcut into is no longer on this page. Mirrors lib/dashboard-cards CARD_META.teamAwayToday.
+        return <StatCard key={id} label={t('teamAwayToday')} value={mgrAwayCount} hint={t('onApprovedLeaveToday')} href="/leave/tracker" />;
       case 'approvalRequests':
         return <StatCard key={id} label={t('approvalRequests')} value={mgrApprovals} hint={t('awaitingYourAction')} href="/approvals" />;
       case 'upcomingReminders':
         return <StatCard key={id} label={t('upcomingReminders')} value={mgrReminders} hint={t('reviewsAndHolidays')} href="#upcoming-events" />;
     }
   };
-
-  // My/Team view (item 8c739dda → eae550e9 step 3): the read above is already team-scoped, so "team" is
-  // simply every fetched row and "my" is the viewer's own person row — a pure in-memory filter the CLIENT
-  // panel now owns (toggling does zero network). The switch only appears when the viewer has direct
-  // reports — a plain employee always sees just their own window.
-  const showAbsViewSwitch = hasDirectReports;
-  const effectiveAbsView = showAbsViewSwitch ? absView : 'my';
-
-  const plannedAbsencesBlock = (
-    <div id="planned-absences" className="h-full scroll-mt-4">
-      <PlannedAbsences
-        rows={absences}
-        todayIso={todayIso}
-        anchorIso={absParam}
-        initialCalView={calView}
-        showViewSwitch={showAbsViewSwitch}
-        initialView={effectiveAbsView}
-        // Partial Leave Cancellation from the calendar (ADR-0065): the viewer gates "own leave only"; the action
-        // is the SAME one the Leave page posts (redirects to /leave?toast=cancellationRequested + revalidates /).
-        viewerPersonId={s.personId}
-        cancelAction={requestLeaveCancellationAction}
-        // HR Admin Leave Cancellation on behalf (feedback 22e68ff0): admins get an immediate cancel
-        // affordance on other employees' pills; same action the Leave page posts.
-        viewerIsAdmin={isAdmin(s)}
-        adminCancelAction={adminCancelLeaveAction}
-        // Edit/cancel-by-status (item c9a19e34): the viewer self-withdraws their own PENDING leave directly
-        // from the calendar; the SAME action the Leave page posts (re-asserts subject-only + pending).
-        selfCancelAction={cancelOwnLeaveAction}
-        // 8cb7b089: pills awaiting this viewer's decision deep-link to /approvals. Scope note (recorded, not
-        // accidental): the calendar's Team view is the viewer's own person + direct reports (teamPersonIds
-        // above) while /approvals scopes by the viewer's decision reach — for a manager these line up
-        // (their reports' requests), and an admin sees everything on both sides.
-        viewerCanApprove={admin || managerRole}
-        focusPersonId={absFocusPersonId}
-      />
-    </div>
-  );
 
   const recentlyJoinedCard = (
     <Card className="h-full p-5">
@@ -590,7 +502,6 @@ export default async function DashboardPage({
   // whose data was loaded for this role are mapped — the audience column keeps the catalog and the node
   // map in step, and a shortcut/action card with no node renders generically from its configured href.
   const cardNodes: Record<string, ReactNode> = {
-    plannedAbsences: plannedAbsencesBlock,
     recentlyJoined: recentlyJoinedCard,
     upcomingEvents: upcomingEventsCard,
     recentActivity: recentActivityCard,

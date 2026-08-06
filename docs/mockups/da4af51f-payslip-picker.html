@@ -1,0 +1,103 @@
+<meta charset="utf-8">
+<title>da4af51f — Individual Payslip, employee picker</title>
+<!--
+  Mockup for board item da4af51f (Individual Payslip redesign), plan revision 1.
+
+  SCOPE: the ONE change the plan actually proposes for this area — replacing the single dropdown with the
+  searchable panel the Individual Transaction screen already uses. The plan's other three points (logo,
+  collapse, email) are separate; drawing them here would imply a single change bigger than the one being
+  approved.
+
+  DELIBERATELY NOT DRAWN: the itemised earnings rows. The plan is explicit that only 10 of 67 payslips
+  carry per-item detail and older ones can only show totals — a picture cannot hedge that, so it stays in
+  words. See scripts/mockup/README.md.
+
+  Tokens copied from app/globals.css so this is a picture of OUR app, not a generic form.
+  Everything inline: scripts/mockup/render.ts blocks external requests and fails loudly.
+-->
+<style>
+  :root {
+    --background: #f5f6fa; --foreground: #1a1a22; --card: #ffffff;
+    --primary: #4f46e5; --muted: #f0f1f7; --muted-foreground: #63636f;
+    --border: #e7e8f1; --radius: 1rem;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px; background: var(--background); color: var(--foreground);
+    font: 14px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .caption { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-foreground); margin: 0 0 8px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+  .tag { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 600; }
+  .tag.now { background: var(--muted); color: var(--muted-foreground); }
+  .tag.new { background: color-mix(in srgb, var(--primary) 12%, white); color: var(--primary); }
+  label.f { display: block; font-size: 12px; font-weight: 500; margin-bottom: 5px; }
+  select, input { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; background: #fff; font: inherit; color: inherit; }
+  .hint { font-size: 12px; color: var(--muted-foreground); margin-top: 8px; }
+  .split { display: grid; grid-template-columns: 210px 1fr; gap: 14px; }
+  .filters { display: grid; gap: 7px; margin-bottom: 10px; }
+  .filters select { padding: 6px 9px; font-size: 12px; border-radius: 8px; }
+  ul.people { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  ul.people li { padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  ul.people li:last-child { border-bottom: 0; }
+  ul.people li.on { background: color-mix(in srgb, var(--primary) 9%, white); box-shadow: inset 3px 0 0 var(--primary); }
+  .who { font-weight: 600; }
+  .code { color: var(--muted-foreground); font-size: 11px; }
+  .slip h3 { margin: 0 0 2px; font-size: 15px; }
+  .slip .sub { color: var(--muted-foreground); font-size: 12px; margin-bottom: 12px; }
+  .sec { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted-foreground); margin: 12px 0 5px; }
+  .row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
+  .net { display: flex; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-weight: 700; }
+  .collapse { float: right; font-size: 11px; color: var(--primary); font-weight: 600; }
+</style>
+
+<div class="pair">
+  <div>
+    <p class="caption"><span class="tag now">Today</span></p>
+    <div class="card">
+      <label class="f" for="a">Employee</label>
+      <select id="a">
+        <option>T100001 — John Tan</option>
+      </select>
+      <p class="hint">One dropdown listing every employee in scope. On a large company that is a long
+        scroll with no way to search, and it is the slow part of the screen.</p>
+    </div>
+  </div>
+
+  <div>
+    <p class="caption"><span class="tag new">Proposed</span></p>
+    <div class="card">
+      <div class="split">
+        <div>
+          <span class="collapse">‹ Hide</span>
+          <label class="f">Find employee</label>
+          <input value="tan" aria-label="Search by ID or name">
+          <div class="filters" style="margin-top:8px">
+            <select><option>All companies</option></select>
+            <select><option>All departments</option></select>
+            <select><option>Active</option></select>
+          </div>
+          <ul class="people">
+            <li class="on"><div class="who">John Tan</div><div class="code">T100001 · Finance</div></li>
+            <li><div class="who">Tanya Wong</div><div class="code">T100014 · Operations</div></li>
+            <li><div class="who">Sri Tanaraj</div><div class="code">T100022 · Production</div></li>
+          </ul>
+        </div>
+        <div class="slip">
+          <h3>John Tan</h3>
+          <div class="sub">T100001 · August 2026 · Monthly</div>
+          <div class="sec">Earnings</div>
+          <div class="row"><span>Gross pay</span><span>3,800.00</span></div>
+          <div class="sec">Deductions</div>
+          <div class="row"><span>EPF</span><span>418.00</span></div>
+          <div class="row"><span>SOCSO</span><span>19.75</span></div>
+          <div class="row"><span>Income tax (PCB)</span><span>162.25</span></div>
+          <div class="net"><span>Net pay</span><span>RM 3,200.00</span></div>
+        </div>
+      </div>
+      <p class="hint">Search by employee ID or name, with the same Company / Department / Status filters
+        as Individual Transaction. The panel collapses so the payslip can use the full width.</p>
+    </div>
+  </div>
+</div>

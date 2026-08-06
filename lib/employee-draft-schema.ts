@@ -39,6 +39,12 @@ export type EmployeeDraftProfile = {
   gender?: string;
   dateOfBirth?: string;
   maritalStatus?: string;
+  /** 35b7af0a group 8 — the nationality the whole identity fork turns on. Optional, like every other
+   *  profile field here: the Personnel screen does not require one either, and making the wizard stricter
+   *  than `hireEmployee` and the bulk importer is how the three creation paths drift apart (see the note
+   *  above about Identity No and Position). ABSENT ON EVERY DRAFT SAVED BEFORE THIS CHANGE, which is why
+   *  it is optional in the type as well as in the rules — an old draft must still open and still create. */
+  nationality?: string;
   icNumber?: string;
 };
 

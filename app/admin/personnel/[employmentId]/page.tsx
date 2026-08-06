@@ -70,7 +70,7 @@ import {
   movementHistory,
   movementDetail,
   movementCurrentState,
-  COMPARISON_KINDS,
+  INTERCHANGEABLE_COMPARISON_KINDS,
   isComparisonKind,
   MOVEMENT_FLAT_FIELDS,
 } from '@/core/movement';
@@ -728,21 +728,18 @@ export default async function EmployeePage({
               legacySuffix={t('optionLegacySuffix')}
             />
           </Field>
-          <Field label={t('nationality')}>
-            {/* 59047802 — searchable combobox over the full ISO 3166-1 nationality set; emits the same
-                single `nationality` value (via a hidden input) so setPersonAction is unchanged. e3ce0d4d —
-                wrapped as NationalityField so a change also pushes the live value into IdentityProvider,
-                driving the IC ⇄ Passport switch in the identity block below without a page reload. */}
-            <NationalityField
-              name="nationality"
-              value={emp.nationality}
-              options={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
-              placeholder={t('optionNotSet')}
-              searchPlaceholder={t('nationalitySearchPlaceholder')}
-              noResultsLabel={t('nationalityNoResults')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
-          </Field>
+          {/* 59047802 — searchable combobox over the full ISO 3166-1 nationality set; emits the same
+              single `nationality` value (via a hidden input) so setPersonAction is unchanged. e3ce0d4d —
+              wrapped as NationalityField so a change also pushes the live value into IdentityProvider,
+              driving the IC ⇄ Passport switch in the identity block below without a page reload.
+              35b7af0a group 8 — the label and the four picker captions now live inside the shared group
+              (components/identity-fields.tsx), which the Create New Employee wizard renders too, so this
+              page passes only what a server component can: the value and the tenant's catalog. */}
+          <NationalityField
+            name="nationality"
+            value={emp.nationality}
+            options={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
+          />
           {/* Item 52a30630 — Holiday Calendar RELOCATED to the Attendance tab (holidayCalendarCard →
               setEmploymentHolidayCalendarAction) and Grade RELOCATED to the Leave tab (gradeCard →
               setEmploymentGradeAction). HTML forms can't span tab panels, so both selects physically moved
@@ -2659,7 +2656,13 @@ export default async function EmployeePage({
                 </span>
                 {m.reversed && (
                   <span className="ml-2 rounded border border-border px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-muted-foreground">
-                    {m.reversed.corrected ? t('movement.correctedBadge') : t('movement.reversedBadge')}
+                    {m.reversed.corrected
+                      ? t('movement.correctedBadge')
+                      : // bd89ccd8 — a movement undone while still pending never applied, so the badge
+                        // says Cancelled and matches the word on the button that undid it.
+                        m.reversed.cancelled
+                        ? t('movement.cancelledBadge')
+                        : t('movement.reversedBadge')}
                   </span>
                 )}
                 {/* 941c9dac — a movement that has not taken effect says so on its own line. Pending is the
@@ -2710,22 +2713,38 @@ export default async function EmployeePage({
                           reverseMovementEvent), and the confirmation has said so all along; the word on
                           the row was the last thing still promising a deletion that never happened. It is
                           no longer drawn in the destructive colour either — undoing a movement restores
-                          the employee's previous values, it does not remove a record. */}
+                          the employee's previous values, it does not remove a record.
+
+                          bd89ccd8 — a PENDING row says CANCEL instead, and this is a relabel of the ONE
+                          reversal path, never a second writer. A future-dated movement has written
+                          nothing; reversing it is the reversal event alone and the sweep then skips it,
+                          so "cancel" is the honest word for what happens and "roll back" is not. Wearing
+                          the applied wording is what made HR read a wrongly keyed future event as
+                          impossible to get rid of, which is the whole of the reported fault. */}
                       <ConfirmSubmit
-                        title={t('movement.rollbackConfirmTitle')}
+                        title={
+                          m.status === 'pending'
+                            ? t('movement.cancelConfirmTitle')
+                            : t('movement.rollbackConfirmTitle')
+                        }
                         subtitle={`${movementKindLabel(m.kind)} · ${m.effectiveDate}`}
                         description={
-                          m.payrollWarning
-                            ? t('movement.rollbackConfirmPayroll')
-                            : t('movement.rollbackConfirmDescription')
+                          m.status === 'pending'
+                            ? t('movement.cancelConfirmDescription')
+                            : m.payrollWarning
+                              ? t('movement.rollbackConfirmPayroll')
+                              : t('movement.rollbackConfirmDescription')
                         }
-                        confirmLabel={t('movement.rollback')}
-                        reasonField={{ name: 'reason', label: t('movement.correctionReasonLabel') }}
+                        confirmLabel={m.status === 'pending' ? t('movement.cancel') : t('movement.rollback')}
+                        // The reason is MANDATORY (bd89ccd8): Confirm stays disabled until it is typed,
+                        // and reverseMovementEvent refuses a blank one regardless — the dialog is not the
+                        // only caller, so the control lives in the service and the form only mirrors it.
+                        reasonField={{ name: 'reason', label: t('movement.correctionReasonLabel'), required: true }}
                         variant="ghost"
                         size="sm"
                         className="h-auto p-0 text-sm font-normal text-primary hover:bg-transparent hover:underline"
                       >
-                        {t('movement.rollback')}
+                        {m.status === 'pending' ? t('movement.cancel') : t('movement.rollback')}
                       </ConfirmSubmit>
                     </form>
                   )}
@@ -2934,9 +2953,16 @@ export default async function EmployeePage({
           allowedKinds: (() => {
             const behaviour =
               movementTypeByCode.get(movementEditRow.kind)?.behaviourKind ?? movementEditRow.kind;
-            const family = isComparisonKind(behaviour)
-              ? [...COMPARISON_KINDS]
-              : [behaviour, 'secondment', 'actingPosition'];
+            // 3ced1040 — Confirmation renders the comparison grid but is its own family of one: it
+            // completes probation, so a correction must not be able to turn it into a Transfer or a
+            // Transfer into it. The service refuses the same crossing (crossesConfirmation), so the
+            // affordance and the rule cannot drift apart.
+            const family =
+              behaviour === 'confirmation'
+                ? ['confirmation']
+                : isComparisonKind(behaviour)
+                  ? [...INTERCHANGEABLE_COMPARISON_KINDS]
+                  : [behaviour, 'secondment', 'actingPosition'];
             const codes = movementTypes
               .filter((r) => r.active && family.includes(r.behaviourKind))
               .map((r) => r.code);

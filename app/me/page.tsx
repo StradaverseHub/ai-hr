@@ -11,8 +11,6 @@ import {
   myTaxRelief,
   myTaxReliefEmploymentIds,
 } from '@/core/read';
-import { myAttendanceCorrections } from '@/packs/attendance/service';
-import { myTravelRequests } from '@/core/travel-request';
 import { listLoansForEmployment } from '@/core/loans';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
 import { myResignation } from '@/core/offboarding';
@@ -25,14 +23,13 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 
 // a7cbd895: the Leave tab (and its dialogs/forms/reads) moved wholesale to /leave — "My Absence" in the
 // left nav. /me is purely profile now; ?tab=leave deep-links are forwarded (see the redirect below).
+// 0bb0e303 rev2: myRequestCorrection / myRequestOvertime / myRequestTravel left this list the same way —
+// they are bound on /attendance/requests now (the actions themselves did not move; the forms did).
 import {
   myCheckIn,
   myCheckOut,
   myCreateGoal,
   myDeclinePeerFeedback,
-  myRequestCorrection,
-  myRequestOvertime,
-  myRequestTravel,
   myRequestProfileChange,
   mySubmitPeerFeedback,
   mySubmitResignation,
@@ -132,13 +129,13 @@ export default async function MePage({
   // My Payroll TP1 is leaver-safe: resolve ids by person, including terminated employments, so a resigned
   // employee can still retrieve the relief history they need to file taxes (payslip RLS still gates rows).
   const taxReliefEmploymentIds = await myTaxReliefEmploymentIds(s);
-  const [payslips, taxRelief, attendance, corrections, travelRequests, profile, profileRequests, reviews, goals, checkins, feedbackRequests, resignation, myLoans] =
+  // 0bb0e303 rev2 — the correction and travel-request reads left with their forms; this page no longer
+  // lists either, so fetching them here would be work nothing renders.
+  const [payslips, taxRelief, attendance, profile, profileRequests, reviews, goals, checkins, feedbackRequests, resignation, myLoans] =
     await Promise.all([
       myPayslips(s, employments.map((e) => e.employmentId)),
       myTaxRelief(s, taxReliefEmploymentIds),
       myAttendance(s, me.employmentId, 14),
-      myAttendanceCorrections(s, me.employmentId),
-      myTravelRequests(s, me.employmentId),
       myProfile(s),
       myProfileChangeRequests(s, me.employmentId),
       myReviews(s),
@@ -155,7 +152,6 @@ export default async function MePage({
     (acc[r.company] ??= []).push(r);
     return acc;
   }, {});
-  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
   const today = todayInKualaLumpur();
   const todayRow = attendance.find((a) => a.date === today);
@@ -272,138 +268,27 @@ export default async function MePage({
             <LocationNotice />
           </div>
 
-          {/* 311ad7ba: the recent-days list moved out — Attendance has its own dedicated page. We keep the
-              clock in/out, missed-punch correction and travel-request forms here because /me is the only
-              place an employee can do a geofenced punch or file those self-service requests. */}
-          <div className="mt-5 border-t border-border pt-4">
+          {/* 311ad7ba: the recent-days list moved out — Attendance has its own dedicated page. The clock
+              in/out control above STAYS: /me and the clock portal are the only places a geofenced punch can
+              be made.
+              0bb0e303 rev2: the three request forms that used to sit below moved to My Attendance >
+              Attendance Request, because burying them in a fold-out on the profile page was the very
+              complaint the item was raised about. A link, not a copy — two sets of the same form on two
+              screens is how they drift apart. */}
+          <div className="mt-5 space-y-2 border-t border-border pt-4">
             <Link
               href="/attendance"
-              className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+              className="block text-sm font-medium text-primary underline-offset-2 hover:underline"
             >
               {t('viewAttendanceHistory')} →
             </Link>
+            <Link
+              href="/attendance/requests"
+              className="block text-sm font-medium text-primary underline-offset-2 hover:underline"
+            >
+              {t('fileAttendanceRequest')} →
+            </Link>
           </div>
-
-          {/* R45 3707cba9 — ESS request menu, ordered: Attendance Request · Overtime Request · Travel Request.
-              (Replacement-leave requests live in the Leave tab.) The old combined "Fix a missed punch" form is
-              split: attendance corrections and overtime are now distinct requests, both on the same proven
-              correction/approval engine (requestAttendanceCorrection → decideAttendanceCorrection). */}
-
-          {/* Attendance Request — a pure clock-in/out correction (manager/admin approves, ADR-0011 Phase B). */}
-          <details className="mt-4 border-t border-border pt-4">
-            <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('attendanceRequest')}
-            </summary>
-            <form action={myRequestCorrection} className="mt-3 space-y-2.5">
-              <Field label={t('dateLabel')}>
-                <input type="date" name="date" required defaultValue={yesterday} className={inputCls} />
-              </Field>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label={t('checkInLabel')}>
-                  <input type="time" name="checkIn" defaultValue="09:00" className={inputCls} />
-                </Field>
-                <Field label={t('checkOutLabel')}>
-                  <input type="time" name="checkOut" defaultValue="18:00" className={inputCls} />
-                </Field>
-              </div>
-              <Field label={t('reasonRequired')}>
-                <input name="reason" required placeholder={t('reasonPlaceholder')} className={inputCls} />
-              </Field>
-              <Button type="submit" size="sm">
-                {t('requestCorrection')}
-              </Button>
-            </form>
-            {corrections.filter((c) => c.requestedOtMinutes == null).length > 0 && (
-              <ul className="mt-3 space-y-1.5 text-xs">
-                {corrections
-                  .filter((c) => c.requestedOtMinutes == null)
-                  .map((c) => (
-                    <li key={c.id} className="flex items-center justify-between gap-2">
-                      <span className="tabular-nums text-muted-foreground">
-                        {c.attendanceDate}
-                        {c.proposedCheckIn
-                          ? ` · ${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? `–${c.proposedCheckOut.slice(0, 5)}` : ''}`
-                          : ''}
-                      </span>
-                      <Pill status={c.status} map={LEAVE_STATUS} label={t(`leaveStatus.${c.status}`)} />
-                    </li>
-                  ))}
-              </ul>
-            )}
-          </details>
-
-          {/* Overtime Request — OT only (planned before the shift, or actual after). Reuses the correction
-              engine with an OT-only intent (requestedOtMinutes, no punch edits) — no new record type. */}
-          <details className="mt-4 border-t border-border pt-4">
-            <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('overtimeRequest')}
-            </summary>
-            <form action={myRequestOvertime} className="mt-3 space-y-2.5">
-              <Field label={t('dateLabel')}>
-                <input type="date" name="date" required defaultValue={yesterday} className={inputCls} />
-              </Field>
-              <Field label={t('otHoursLabel')}>
-                <input type="number" name="otHours" min="0" step="0.25" required placeholder={t('otHoursPlaceholder')} className={inputCls} />
-              </Field>
-              <Field label={t('reasonRequired')}>
-                <input name="reason" required placeholder={t('otReasonPlaceholder')} className={inputCls} />
-              </Field>
-              <p className="text-[11px] text-muted-foreground">{t('overtimeRequestHelp')}</p>
-              <Button type="submit" size="sm">
-                {t('requestOvertime')}
-              </Button>
-            </form>
-            {corrections.filter((c) => c.requestedOtMinutes != null).length > 0 && (
-              <ul className="mt-3 space-y-1.5 text-xs">
-                {corrections
-                  .filter((c) => c.requestedOtMinutes != null)
-                  .map((c) => (
-                    <li key={c.id} className="flex items-center justify-between gap-2">
-                      <span className="tabular-nums text-muted-foreground">
-                        {c.attendanceDate}
-                        {c.requestedOtMinutes != null ? ` · ${t('otHoursLabel')} ${(c.requestedOtMinutes / 60).toFixed(1)}h` : ''}
-                      </span>
-                      <Pill status={c.status} map={LEAVE_STATUS} label={t(`leaveStatus.${c.status}`)} />
-                    </li>
-                  ))}
-              </ul>
-            )}
-          </details>
-
-          {/* Travel Request (off-site work window; renamed from "Request Travel"). Same approvals inbox / decide flow. */}
-          <details className="mt-4 border-t border-border pt-4">
-            <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('travelRequest')}
-            </summary>
-            <form action={myRequestTravel} className="mt-3 space-y-2.5">
-              <div className="grid grid-cols-2 gap-2">
-                <Field label={t('travelFromLabel')}>
-                  <input type="date" name="travelFrom" required defaultValue={yesterday} className={inputCls} />
-                </Field>
-                <Field label={t('travelToLabel')}>
-                  <input type="date" name="travelTo" required defaultValue={yesterday} className={inputCls} />
-                </Field>
-              </div>
-              <Field label={t('reasonRequired')}>
-                <input name="remarks" required placeholder={t('travelRemarksPlaceholder')} className={inputCls} />
-              </Field>
-              <Button type="submit" size="sm">
-                {t('requestTravelButton')}
-              </Button>
-            </form>
-            {travelRequests.length > 0 && (
-              <ul className="mt-3 space-y-1.5 text-xs">
-                {travelRequests.map((tr) => (
-                  <li key={tr.id} className="flex items-center justify-between gap-2">
-                    <span className="tabular-nums text-muted-foreground">
-                      {tr.travelFrom} → {tr.travelTo}
-                    </span>
-                    <Pill status={tr.status} map={LEAVE_STATUS} label={t(`leaveStatus.${tr.status}`)} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </details>
         </Card>
 
         {/* My positions (concurrent multi-company, ADR-0009) */}

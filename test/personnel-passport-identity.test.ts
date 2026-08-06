@@ -89,7 +89,16 @@ describe('Passport identity — leaf helper + static wiring (e3ce0d4d)', () => {
     // Rung 5b (ADR-0080 D4): the predicate arrives via the CLIENT-SAFE pack registry, not a direct
     // localization/my import — still db-free (the MY implementation stays the leaf ic-dob module,
     // referenced by localization/my/client.ts; identity pinned in the (pack) test below).
-    expect(IDENTITY.includes("from '@/localization/registry.client'")).toBe(true);
+    //
+    // 35b7af0a group 8 — the predicate now has ONE definition, in the shared identity group both this
+    // screen and the Create Employee wizard render, so the three facts are checked where each now lives:
+    // the shared module reads the client registry (never localization/my directly), this wrapper imports
+    // the predicate from there rather than restating it, and it still drives the fork by that name.
+    const SHARED_IDENTITY = read('components/identity-fields.tsx');
+    expect(SHARED_IDENTITY.includes("from '@/localization/registry.client'")).toBe(true);
+    expect(SHARED_IDENTITY.includes("from '@/localization/my/ic-dob'")).toBe(false);
+    expect(IDENTITY.includes("from '@/components/identity-fields'")).toBe(true);
+    expect(IDENTITY.includes('isLocalNationality as isMalaysianNationality')).toBe(true);
     expect(IDENTITY.includes("from '@/localization/my/ic-dob'")).toBe(false);
     expect(IDENTITY.includes('isMalaysianNationality(nationality)')).toBe(true);
   });

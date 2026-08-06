@@ -1,0 +1,98 @@
+<meta charset="utf-8">
+<title>e440991b — Payroll Process: your seven points</title>
+<!--
+  Mockup for e440991b (Payroll Process workflow), plan revision 1.
+  Point-by-point status, then the two screens that actually change.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 10px;background:var(--muted)}
+  td{padding:8px 10px;border-top:1px solid var(--border);vertical-align:top}
+  .n{width:26px;color:var(--mf);font-weight:700}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap}
+  .built{background:#d1fae5;color:#065f46}
+  .build{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .move{background:#fef3c7;color:#92400e}
+  .why{color:var(--mf);font-size:11.5px}
+  .shot{border:1px solid var(--border);border-radius:11px;padding:13px;background:#fff}
+  .bar{display:flex;align-items:center;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:11px}
+  .back{color:var(--primary);font-weight:600;font-size:12.5px}
+  .ttl{font-weight:700;font-size:14px}
+  .filters{display:flex;gap:8px;margin-bottom:11px}
+  .sel{border:1px solid var(--primary);border-radius:8px;padding:5px 10px;font-weight:600;background:#fff;font-size:12px;
+       box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 10%,transparent)}
+  .sel.plain{border-color:var(--border);box-shadow:none;font-weight:400}
+  .lnk{color:var(--primary);font-weight:600}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+</style>
+
+<div class="card">
+  <h2>Your seven points, checked one at a time on your live system</h2>
+  <table>
+    <thead><tr><th></th><th style="width:300px">What you asked for</th><th style="width:150px">Status</th><th>What we found</th></tr></thead>
+    <tbody>
+      <tr><td class="n">1</td><td>Back button on Create Payroll Run Cycle</td>
+          <td><span class="chip build">We'll build it</span></td>
+          <td class="why">Correct — that screen has a heading with no way back. Every other screen in the product has one.</td></tr>
+      <tr><td class="n">2</td><td>Processed companies shown as read-only</td>
+          <td><span class="chip built">Already works</span></td>
+          <td class="why">The company list already tags each one “already processed” before you run, and a cycle that has been run is disabled. Please look again and tell us if it is not behaving that way for you.</td></tr>
+      <tr><td class="n">3</td><td>Reprocess function</td>
+          <td><span class="chip built">Already works</span></td>
+          <td class="why">Reprocess is on the payroll run screen and has been used <b>30 times</b> on your system. It only offers itself on a processed, not-yet-closed run — exactly your rule.</td></tr>
+      <tr><td class="n">4</td><td>Move Recalculation History and History to the Audit Trail</td>
+          <td><span class="chip move">Your call — we'll move it</span></td>
+          <td class="why">Worth flagging: these sections exist <i>because you asked for them</i>, in an earlier request for the run to be “fully traceable”. Happy to move them — just confirming we understood, since it reverses that.</td></tr>
+      <tr><td class="n">5</td><td>Click an employee in the payslip list to see their detail</td>
+          <td><span class="chip build">We'll build it</span></td>
+          <td class="why">Correct — the rows are not clickable. The detail screen you describe already exists, so this is a link, not a new screen.</td></tr>
+      <tr><td class="n">6</td><td>Download Transaction Detail Report (Excel)</td>
+          <td><span class="chip build">We'll build it</span></td>
+          <td class="why">The Excel machinery already exists elsewhere in the product; the report itself is new.</td></tr>
+      <tr><td class="n">7</td><td>Default the filter to the current year and month</td>
+          <td><span class="chip build">Half done</span></td>
+          <td class="why">Year already defaults to the current year. Month does not — no month selected means all twelve, which is what you are seeing.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="two">
+  <div class="card" style="margin:0">
+    <h2>1 + 7 — Back button, and the month defaults</h2>
+    <div class="shot">
+      <div class="bar"><span class="back">← Back to Payroll Process</span></div>
+      <div class="ttl" style="margin-bottom:9px">Create Payroll Run Cycle</div>
+      <div class="filters">
+        <span class="sel">2026</span><span class="sel">August</span><span class="sel plain">All cycles</span>
+      </div>
+      <div class="why">Opens on this month instead of all twelve. Change it and it stays changed.</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin:0">
+    <h2>5 + 6 — Drill down, and the Excel report</h2>
+    <div class="shot">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px">
+        <span class="ttl">Payslips</span><span class="btn">⬇ Transaction Detail (Excel)</span>
+      </div>
+      <table>
+        <thead><tr><th>Employee ID</th><th>Name</th><th style="text-align:right">Net pay</th></tr></thead>
+        <tbody>
+          <tr><td><span class="lnk">T100001</span></td><td><span class="lnk">John Tan</span></td><td style="text-align:right">3,200.00</td></tr>
+          <tr><td><span class="lnk">T100002</span></td><td><span class="lnk">Alice Lim</span></td><td style="text-align:right">2,950.00</td></tr>
+        </tbody>
+      </table>
+      <div class="why" style="margin-top:9px">Either link opens that employee's full payroll result — earnings, deductions, employer contributions, statutory working and year-to-date.</div>
+    </div>
+  </div>
+</div>

@@ -109,6 +109,7 @@
 import {
   CalendarDays,
   CalendarPlus,
+  CalendarRange,
   ClipboardList,
   GitBranch,
   Repeat2,
@@ -130,8 +131,20 @@ import { registerPack, type ModulePack, type NavLinkDescriptor, type NavNodeGrou
 //     flag — unchanged.
 // hrefs, labelKeys, the CalendarDays / SlidersHorizontal icon refs and (absence of) visibility flags
 // are the sidebar's verbatim; only the mounting moved (the sidebar places these rows via the registry).
+//
+// a00c4f64 adds the third row: "Team Leave Tracker" in the Manage group — the Leave Calendar's own
+// screen, off the Dashboard where it used to be a pinned full-width card.
+//
+// DELIBERATELY UNGATED (no `managerUp`, no `adminOnly`), and this is the load-bearing decision, not a
+// forgotten flag. The Manage group gates PER ROW (components/sidebar.tsx canSeeChild), so a row with no
+// flag renders for every employee — which is what preserves today's access: every employee saw this
+// calendar on their dashboard. A `managerUp` row here would be a silent permissions REMOVAL for plain
+// staff, the same class of regression a324a4b3 hit when the attendance rows moved into a gated group.
+// The page itself is scopedSession + RLS: staff see their own leave, managers additionally get the Team
+// toggle — exactly the split the dashboard card had.
 const LEAVE_NAV_LINKS: NavLinkDescriptor[] = [
   { group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays },
+  { group: 'manage', href: '/leave/tracker', labelKey: 'teamLeaveTracker', icon: CalendarRange },
 ];
 
 /**

@@ -11,6 +11,8 @@ import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin'
 import { computeProvisionalEndOn, resolveProbationMonths } from '@/core/org';
 import { getHiringDefaults } from '@/core/hiring-defaults';
 import { getEmployeeDraft, listEmployeeDrafts } from '@/core/employee-draft';
+// 35b7af0a group 8 — the nationality catalog the shared identity group offers on BOTH screens.
+import { listProfileOptions } from '@/core/profile-options';
 import { listConfigs, resolveEmployeeIdRule } from '@/core/employee-id-config';
 import { labelIdsForCompany } from '@/core/system-labels';
 import type { EmployeeIdRule } from '@/lib/employee-id-mode';
@@ -41,8 +43,18 @@ export default async function CreateEmployeePage({
   const sp = await searchParams;
   const today = todayInKualaLumpur();
 
-  const [companies, departments, positions, costCenters, businessUnits, grades, managerCandidates, drafts, idConfigs] =
-    await Promise.all([
+  const [
+    companies,
+    departments,
+    positions,
+    costCenters,
+    businessUnits,
+    grades,
+    managerCandidates,
+    drafts,
+    idConfigs,
+    nationalities,
+  ] = await Promise.all([
       listCompanies(session),
       listDepartments(session),
       listPositions(session, { companyIds: scopeIds }),
@@ -52,6 +64,9 @@ export default async function CreateEmployeePage({
       listManagerCandidates(session, { companyIds: scopeIds }),
       listEmployeeDrafts(session),
       listConfigs(session, scopeIds),
+      // 35b7af0a group 8 — active options only, exactly as the Personnel profile card reads them, so a
+      // nationality HR can pick here is one core/org.ts's catalog validation will accept on a later edit.
+      listProfileOptions(session, 'nationality', { activeOnly: true }),
     ]);
 
   const draft = sp.draft ? await getEmployeeDraft(session, sp.draft) : null;
@@ -145,6 +160,7 @@ export default async function CreateEmployeePage({
           id: m.employmentId,
           label: m.employeeCode ? `${m.name} (${m.employeeCode})` : m.name,
         }))}
+        nationalityOptions={nationalities.map((o) => ({ value: o.value, label: o.label }))}
         probationDefaults={probationDefaults}
         employeeIdRules={employeeIdRules}
       />

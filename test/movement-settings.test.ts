@@ -351,6 +351,7 @@ describe('476f23ed — a custom type is a real movement', () => {
         effectiveDate: '2026-06-01',
         endDate: '2026-09-01',
         remarks: 'Six months in Penang',
+        reason: 'Re-saved unchanged',
       }),
     ).rejects.toBeInstanceOf(MovementNoChangeError);
 

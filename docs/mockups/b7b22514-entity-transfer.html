@@ -1,0 +1,96 @@
+<meta charset="utf-8">
+<title>b7b22514 — Entity Transfer movement</title>
+<!--
+  Mockup for b7b22514 (New Movement Event – Entity Transfer), plan revision 1.
+  Shows the Promotion comparison grid with Company made editable, and the two-date panel that already
+  exists in the data (employment.hired_on = "Group Join Date", employment.join_date = current company).
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 10px}
+  .sub{font-size:11.5px;color:var(--mf);margin:-6px 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 10px;background:var(--muted)}
+  td{padding:7px 10px;border-top:1px solid var(--border)}
+  .lbl{color:var(--mf);width:210px}
+  .same{color:var(--mf)}
+  .box{display:inline-block;border:1px solid var(--border);border-radius:8px;padding:4px 9px;background:#fff;min-width:210px}
+  .chg{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 10%,transparent);font-weight:600}
+  .arrow{color:var(--primary);font-weight:700;padding:0 4px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;margin-left:6px}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .have{background:var(--muted);color:var(--mf)}
+  .warn{background:#fef3c7;color:#92400e}
+  .dates{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .dbox{border:1px solid var(--border);border-radius:10px;padding:11px}
+  .dbox .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600}
+  .dbox .v{font-size:17px;font-weight:700;margin:3px 0}
+  .dbox .n{font-size:11.5px;color:var(--mf)}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  select{border:1px solid var(--primary);border-radius:8px;padding:4px 9px;font:inherit;background:#fff;font-weight:600;min-width:210px}
+</style>
+
+<div class="card">
+  <h2>Personnel › Movement › New Event › <span style="color:var(--primary)">Entity Transfer</span><span class="chip new">new event type</span></h2>
+  <p class="sub">Same screen, same validations and same approval as Promotion — with one field unlocked.</p>
+  <table>
+    <thead><tr><th></th><th>Current</th><th></th><th>After transfer</th></tr></thead>
+    <tbody>
+      <tr><td class="lbl">Company</td>
+          <td><span class="box">Chin Hin Property Sdn Bhd</span></td>
+          <td class="arrow">→</td>
+          <td><select><option>Fiamma Holdings Berhad</option></select><span class="chip new">editable here only</span></td></tr>
+      <tr><td class="lbl">Business group</td><td><span class="box">Property</span></td><td class="arrow">→</td><td><span class="box chg">Consumer</span></td></tr>
+      <tr><td class="lbl">Division</td><td><span class="box">Southern</span></td><td class="arrow">→</td><td><span class="box chg">Central</span></td></tr>
+      <tr><td class="lbl">Department</td><td><span class="box">Sales</span></td><td class="arrow">→</td><td><span class="box chg">Retail Sales</span></td></tr>
+      <tr><td class="lbl">Position</td><td><span class="box">Sales Executive</span></td><td class="arrow">→</td><td><span class="box">Sales Executive</span></td></tr>
+      <tr><td class="lbl">Job grade</td><td><span class="box">E1</span></td><td class="arrow">→</td><td><span class="box">E1</span></td></tr>
+      <tr><td class="lbl">Reporting manager</td><td><span class="box">Lim Chee Keong</span></td><td class="arrow">→</td><td><span class="box chg">Tan Mei Ling</span></td></tr>
+      <tr><td class="lbl">Work location</td><td><span class="box">Johor Bahru</span></td><td class="arrow">→</td><td><span class="box chg">Kuala Lumpur</span></td></tr>
+      <tr><td class="lbl">Basic salary</td><td><span class="box">RM 4,200.00</span></td><td class="arrow">→</td><td><span class="box">RM 4,200.00</span></td></tr>
+      <tr><td class="lbl">Effective date</td><td class="same">—</td><td class="arrow">→</td><td><span class="box chg">01 Jul 2026</span></td></tr>
+      <tr><td class="lbl">Reason for transfer</td><td class="same">—</td><td class="arrow">→</td><td><span class="box">Group restructuring</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>What happens to the two dates<span class="chip have">already how the system works</span></h2>
+  <div class="dates">
+    <div class="dbox">
+      <div class="k">Group Join Date</div>
+      <div class="v">01 Jan 2018</div>
+      <div class="n">Never changes. Your first day anywhere in the group.<br>
+        <b>Leave entitlement, long service and every service band already count from this date</b>, so
+        8 years of service carries across the transfer untouched.</div>
+    </div>
+    <div class="dbox">
+      <div class="k">Join Date — current company</div>
+      <div class="v" style="color:var(--primary)">01 Jul 2026</div>
+      <div class="n">Moves to the transfer date. This is the one that says how long they have been with
+        Fiamma. Today it has to be typed by hand; after this it updates itself.</div>
+    </div>
+  </div>
+  <p class="note">Employee ID is unchanged. The whole movement history stays on the one record — the transfer is
+    added to it, showing the old company, the new company, the effective date and the reason.</p>
+</div>
+
+<div class="card">
+  <h2>Payroll on the effective date<span class="chip warn">please read</span></h2>
+  <table>
+    <tbody>
+      <tr><td class="lbl">Payroll up to 30 Jun 2026</td><td>Chin Hin Property — unchanged, closed runs stay exactly as they are</td></tr>
+      <tr><td class="lbl">Payroll from 01 Jul 2026</td><td>Fiamma Holdings — the employee appears in Fiamma's runs from this date</td></tr>
+      <tr><td class="lbl">EPF / SOCSO / EIS employer number</td><td>Follows the new company's registration</td></tr>
+      <tr><td class="lbl">Tax (PCB) year-to-date</td><td>Continues on one EA form only if both companies share a tax file — otherwise TWO EA forms for the year</td></tr>
+    </tbody>
+  </table>
+  <p class="note">The last row is a rule we cannot decide for you. Tell us whether these are separate tax files and
+    we will make the EA forms match.</p>
+</div>

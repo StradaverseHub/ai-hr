@@ -233,8 +233,8 @@ export async function requestLeaveAction(formData: FormData) {
 // Partial Leave Cancellation (ADR-0065): an employee gives back a SUBSET of an approved leave's dates. The
 // checkboxes post one `cancelDate` value per ticked future working day. requestLeaveCancellation re-runs every
 // gate server-side (subject-only, approved+full_day+non-EL+non-REPLACEMENT, per-date future, closed-period,
-// pending-overlap) so a stale form can't slip a bad date through. Revalidate /leave, /approvals, and / so the
-// manager's inbox and the dashboard Planned Absences both pick up the new pending request.
+// pending-overlap) so a stale form can't slip a bad date through. Revalidate /leave, /approvals, /leave/tracker
+// and / so the manager's inbox, the Leave Calendar and the dashboard's away count all pick up the new request.
 export async function requestLeaveCancellationAction(formData: FormData) {
   const session = await getSession();
   const leaveRequestId = String(formData.get('leaveRequestId'));
@@ -249,14 +249,15 @@ export async function requestLeaveCancellationAction(formData: FormData) {
   }
   revalidatePath('/leave');
   revalidatePath('/approvals');
-  revalidatePath('/');
+  revalidatePath('/'); // the dashboard's Team Away Today count
+  revalidatePath('/leave/tracker'); // a00c4f64 — the calendar itself lives here now
   redirect('/leave?toast=cancellationRequested');
 }
 
 // HR Admin Leave Cancellation on behalf of an employee (feedback 22e68ff0). Immediate, no approval workflow:
 // adminCancelLeave re-runs every gate server-side (HR-only, self-ban, pending|approved status, approved-
 // REPLACEMENT block, closed-payroll block) so a stale form can't slip through. The `back` field lands the
-// caller back where they started — '/' from the dashboard calendar, '/leave' from Leave Management — with the
+// caller back where they started — '/leave/tracker' from the calendar, '/leave' from Leave Management — with the
 // record list refreshed. We pass the real HR actor via cancelledByEmploymentId (deciderEmploymentId pattern).
 export async function adminCancelLeaveAction(formData: FormData) {
   const session = await getSession();
@@ -268,7 +269,9 @@ export async function adminCancelLeaveAction(formData: FormData) {
   const backRaw = String(formData.get('back') ?? '');
   const backEmp = String(formData.get('backEmp') ?? '');
   let back: string;
-  if (backRaw === '/') back = '/';
+  // a00c4f64: the calendar's return surface is '/leave/tracker', not '/' — the dashboard no longer
+  // renders it. An old form still posting '/' falls through to '/leave', which is a real page.
+  if (backRaw === '/leave/tracker') back = '/leave/tracker';
   else if (backRaw === '/leave/employee-records') {
     back = /^[0-9a-f-]{36}$/i.test(backEmp)
       ? `/leave/employee-records?emp=${encodeURIComponent(backEmp)}`
@@ -284,7 +287,8 @@ export async function adminCancelLeaveAction(formData: FormData) {
   revalidatePath('/leave');
   revalidatePath('/leave/employee-records');
   revalidatePath('/approvals');
-  revalidatePath('/');
+  revalidatePath('/'); // the dashboard's Team Away Today count
+  revalidatePath('/leave/tracker'); // a00c4f64 — the calendar itself lives here now
   redirect(withParam('toast=adminCancelled'));
 }
 
@@ -330,6 +334,7 @@ export async function cancelOwnLeaveAction(formData: FormData) {
   }
   revalidatePath('/leave');
   revalidatePath('/approvals');
+  revalidatePath('/leave/tracker'); // a00c4f64 — this action is also posted from the calendar's pills
   redirect('/leave?toast=leaveCancelled');
 }
 

@@ -18,83 +18,94 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-06 (r161 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-06 (r165 SHIPPED)
 
-**`main@6d9cb102` is what runs. Production on 327 migrations. Next free migration number is `0404`**
-(0389, 0401 and 0402 were never claimed and are dead; r160 added NO migration). No half-applied
-migration, no pending deploy, nothing in flight. Verified after deploy: service `active`, `GET /` 401,
-and `rsync -azi --delete --dry-run` reporting **zero changes**.
+**`main@70c814db` is what runs. Production on 329 migrations. Next free migration number is `0407`**
+(0389, 0401 and 0402 were never claimed and are dead) — **`0405` is still CLAIMED by the unmerged
+release-three branch (`when: 1781862505000`) and `0406` shipped with r165, so the next allocation is
+`0407` / `1781862507000`.** No half-applied migration, no pending deploy, nothing in flight. Verified
+after deploy: 329 migrations applied, `feedback_attachment_stage_ck` reads
+`submitted|contested|refuted|plan` on production, service `active`, BUILD_ID `w7rHG4QSdGTUk4-Ij2don`,
+`GET /` 401, and `rsync -azi --delete --dry-run` reporting **zero changes**.
 
-### The board — counted on production 2026-08-06 after r160 shipped (owner role; `DATABASE_URL` is RLS-blocked)
+### The board — counted on production 2026-08-06 after r165 (owner role; `DATABASE_URL` is RLS-blocked)
 
-**`deployed = 589` · `approved = 7` · `building = 2` · `cancelled = 12`. `open`, `contested` and
-`planned` are all ZERO.** The board moves under this file between rounds; re-count rather than trusting
-this line.
+**`deployed = 594` · `cancelled = 12` · `planned = 4` · `approved = 2` · `building = 2`. `open` and
+`contested` are BOTH ZERO.** Re-count rather than trusting this line.
 
-**THE REPORTER APPROVED ALL SIX PLANS pushed on 2026-08-05**, which is why `approved` went 5 → 7 while
-four items shipped. Every premise in them was reproduced in source AND measured on production before the
-plan was written — **the measurements are IN the plans; quote them rather than re-running.**
+**ALL FOUR PLANNED ITEMS CARRY A MOCKUP** (the first use of r165), each pinned to its current revision:
+`e7eb5d83` rev 2 · `4861bcbb` rev 2 · `b7b22514` rev 1 · `e440991b` rev 1. Sources are in
+`docs/mockups/*.html`; re-render with `pnpm mockup`.
 
-**THE 7 APPROVED AND UNBUILT:**
-- `0bb0e303` rev 2 — My Attendance needs a third row, Attendance Request. Rows 1 and 2 already ship; the
-  request forms live inside `app/me/page.tsx:287-406` and move to a new `/attendance/requests`.
-- `7c834696` rev 2 — four amendments to shipped attendance stage 1. Points 1/2/4 are cheap; point 3 (the
-  calculation breakdown) is the only engine work. **Point 4 is a trap: "Difference / Value (RM/%)" is NOT
-  a calculation setting** — it is `shift.differential`, the premium `core/payroll.ts:1968` prefills, live
-  on 2 of 9 shifts. Late/early grace ARE free to remove (0 shifts carry either). All 9 rules still have
-  deductions OFF, which is most of why the reporter says the settings do nothing.
-- `35524d1f` — Create Employee refuses a blank Identity No when any statutory field is filled. Fix at
-  `setStatutoryProfileMY` (`localization/my/statutory.ts:236`), mirroring `setIcProfileMY`. **No
-  migration: `ic_number` is already nullable and its unique index is already partial.**
-- `a00c4f64` — Team Leave Tracker. The calendar is the dashboard's FIXED full-width row and is
-  `mandatory` in `dashboard_card_config` for both tenants.
-- `3ced1040` — Confirmation becomes a COMPARISON kind (like Promotion). `movement_event_type` has ZERO
-  rows, so no tenant override to consider. Watch `MovementNoChangeError`.
-- `bd89ccd8` — asks for Delete on movement events. **ALREADY BUILT as Roll Back + Edit, and a hard
-  delete was settled AGAINST (`9064cffb`). Do not re-add it.** The real gaps are the mandatory reason
-  (**10 of 11 rollbacks recorded none**) and pending-row wording.
-- `2ef69d1e` (Back Pay — the largest thing left, must go LAST). **Its plan's mandatory pre-build count is
-  DONE, measured 2026-08-06: 26 compensation rows / 22 employees / 3 periods were keyed AFTER the payroll
-  they should have affected, 9 of them with a real salary difference, and it moves in BOTH directions
-  (one is 6000 → 5500). The naive query — valid_from before the last payslip — returns 41/36 and is
-  WRONG; that is just "everyone has a salary".**
+**REPRODUCING FIRST CHANGED THE SCOPE ON THREE OF THE FOUR — the findings are in each item's own plan
+BUILD NOTES; read them there.** Headlines: `e7eb5d83` has **zero claims ever filed** and 55 job grades
+with **not one grade-scoped limit**, over a `claim_policy` table that has always carried `grade_id` — two
+of their three asks are a SCREEN over data that exists. `b7b22514`'s proposed data model **already exists
+verbatim** (`employment.hired_on` IS the Group Join Date); the real gap is that no movement writer takes a
+`companyId` at all. `e440991b` points 2 and 3 are **already built**, and `payroll_reprocess_job` holds 30
+rows on production.
+
+**r160/r161/r162/r163 shipped TEN board items between them on 2026-08-05/06.**
+
+**THE 1 APPROVED AND UNBUILT:** `2ef69d1e` (Back Pay — the largest thing left, must go LAST). Its
+plan's mandatory pre-build count is DONE, measured 2026-08-06: **26 compensation rows / 22 employees /
+3 periods** were keyed AFTER the payroll they should have affected, 9 with a real salary difference,
+moving in BOTH directions (one is 6000 → 5500). The naive query — valid_from before the last payslip —
+returns 41/36 and is WRONG; that is just "everyone has a salary".
+
+### Plans must carry a MOCKUP — shipped r165 (why, and the design findings: history → r165)
+
+**Render the design, then push it with the plan in one call:**
+
+    pnpm mockup docs/mockups/<item>.html /tmp/<item>.png --width 1240
+    echo '{"id":…,"plan":…,"model":…,"mockupPaths":["/tmp/<item>.png"]}' | pnpm improve:push-plan
+
+Read `scripts/mockup/README.md` first. **ATTACH AFTER PUSHING, never before** — `plan_revision` is
+stamped SERVER-SIDE from the item, so a mockup attached first silently names the outgoing plan, the
+page's revision filter hides it, and the reporter sees a plan with no design and no error.
+`pushPlanWithMockups()` enforces the order so no caller has to remember it. Sources live in
+`docs/mockups/*.html`; a re-plan re-renders rather than redraws.
+
+**THE STANDING CAUTION: a mockup is a PROMISE, and a picture cannot hedge.** The `da4af51f` plan says
+"we will show every line we have and totals where we do not" — that sentence has no honest visual. Draw
+the certain parts, keep the uncertain ones in words, and let the six-language caveat under every mockup
+do its job, or this manufactures a NEW class of "not up to standard" instead of curing it.
 
 **STILL `building`, both deliberately partial. `improve:pull` HIDES `building`, so nothing but this
-file will ever surface them.** Both board `build_ref` values were CORRECTED on production 2026-08-06
-(owner-authorised) and now match the bullets below — `35b7af0a` had still been claiming 25 labels,
-groups 6+ unbuilt and an `8590615a` overlap that is deployed. Keep them in step: the reporter reads the
-board, not this file.
+file will ever surface them.** Keep their `build_ref` in step with the bullets below: the reporter reads
+the board, not this file.
 
-- **`6e9a126e` — releases ONE (r141) and TWO (r159) are live. RELEASE THREE IS DATA-BLOCKED, not
-  merely awaiting a decision.** Measured on production 2026-08-05: `leave_policy` **67** rows,
-  `benefit_scheme` **41**, `scheme_leave_entitlement` **292** — against **0** in both
-  `entitlement_template` and `entitlement_eligibility_rule`. Release two made the engines resolve
-  `template ?? scheme ?? policy`, so with the new layer empty everything still falls through to the
-  old one; dropping it without migrating those 400 rows first would resolve every entitlement to the
-  statutory floor. **A data migration must come first, and it does not exist yet.**
-  **The OTHER blocker is CLEARED as of r160**: `1ae7f3ab`+`4fdb69b2` shipped, and `deleteLeaveType` no
-  longer hand-counts limbs. `core/leave-type-refs.ts` is the single declaration and
-  `test/leave-type-referrers.test.ts` compares it against the live foreign keys **in both directions**,
-  so dropping `leave_policy` now FAILS THE SUITE until its disposition is updated, instead of silently
-  removing a guard. `employment.benefit_scheme_id` is already at **0** rows, so that column alone is safe.
-  **Nothing has been dropped or cleared — release three is the OWNER'S decision, not a build task.** The
-  proof that releases one and two are inert, and the carry-forward defect to re-read before planning
-  three, are in `docs/HANDOFF-HISTORY.md` → r159 Decisions; read them there rather than re-deriving.
+- **`6e9a126e` — releases ONE (r141) and TWO (r159) are live. RELEASE THREE IS BUILT, UNMERGED, AND
+  CLEARED TO GO.** The reporter answered on 2026-08-06 (contest on `4861bcbb`): clear it, start from
+  zero, everything else untouched. No date given. **`4861bcbb` rev 2 is the plan to read** — it carries
+  the counts, what is cleared, what is kept and why, and its mockup.
+  **THE OWNER AUTHORISED EXACTLY FOUR OBJECTS** by naming them: `leave_policy`, `benefit_scheme`,
+  `scheme_leave_entitlement`, `employment.benefit_scheme_id`. The reporter's "any backend relationships"
+  is WIDER. **`grade_group` / `grade_group_member` are KEPT — 205 live `leave_approval_policy` rows
+  scope by them** and dropping them silently unscopes every one. Do not widen on the phrasing.
+  Measured on production: `benefit_scheme` **41** · `scheme_leave_entitlement` **292** · `leave_policy`
+  **67** = the plan's **359 pieces to retype**, against **0** in both new tables.
+  **BRANCHES: `build/r163-g-release3`** (migration `0405` written, `when` 1781862505000) **plus
+  `build/r163g-ui` and `build/r163g-picker`.** `RELEASE3-REMAINING.md` on the first branch is the
+  authoritative to-do list — read it rather than re-deriving. Still to do: `db/schema.ts`,
+  `packs/leave` satelliteTables, the `leave_policy` disposition in `core/leave-type-refs.ts` (its drift
+  test fails until then, deliberately), `db/seed.ts:13` (imports the removed `createLeavePolicy` — on
+  nobody's original list), `admin.entitlementTemplates.coexistNote` in six locales (it tells HR nothing
+  old was removed, which becomes false on deploy), and ~102 test errors. Then gate + shadow rehearsal.
+  **The grade-group CRUD UI lived INSIDE `components/benefit-scheme-config.tsx`** — the file the brief
+  said to delete while also saying grade groups must stay. It was extracted; following the brief
+  literally would have left the 205 rules pointing at groups nobody could create or re-staff.
   `build/r154` is squashed and ancestrally unrelated to what shipped — ignore it in any branch scan.
-- **`35b7af0a` — groups 1-2 (r138), 3-5 (r159), 6 (r160) and 7 (r161) are live. 22 labels remain**,
-  measured not estimated. Group 6 shared Tax Category; group 7 shared SOCSO/EIS, where the wizard was a
-  whole consolidation behind — it offered the legacy "EIS eligible" yes/no with NO SOCSO category, so a
-  hire created there could not be put in First or Second category.
-  **THE REMAINING 22 ARE MOSTLY NOT WORTH SHARING, and that is a finding, not fatigue.** `fullName`,
-  `primaryEmail`, `phone`, `taxNumber` and friends already render the SAME control on both screens —
-  extracting them prevents no defect while touching the org-cascade selects (company-scoped, interlinked)
-  and `employeeCode` (whose Auto/Manual rule is deliberately wizard-only). **ONE genuine drift is left:
-  IDENTITY.** Personnel gates NRIC vs passport on nationality (`357faecf`) through a live client island;
-  the wizard shows a bare IC box and does not collect nationality at all — which is also why group 7's
-  IC-derived SOCSO default cannot fire there. That is the last group worth building.
-  **3 of the defined keys only LOOK retirable — see the computed-key trap below; they are pinned
-  by test and deleting them breaks real screens.** The `8590615a` overlap is GONE (it is deployed).
-
+- **`7c834696` — points 1, 2 and 4 shipped in r162; POINT 3 IS NOT BUILT.** Point 1 (OT 1.0 no longer
+  carries normal hours) was display-only — the stored split was already correct. Point 2 added the
+  Lateness / Early Out columns from figures migration 0394 already stores. Point 4 removed the obsolete
+  grace inputs but KEPT the shift-differential PAY fields, relabelled — they are `shift.differential`,
+  the premium `core/payroll.ts` prefills, live on 2 of 9 shifts. **Remaining: point 3, the per-figure
+  calculation breakdown and hover** — engine work, and the only part needing a new stored trace. Its
+  board `build_ref` is NULL; this bullet is the record.
+- **`35b7af0a` is DONE and DEPLOYED (r164)** — kept here only so a scan of this list does not go looking
+  for it. Groups 1-8 shipped; the remaining 21 wizard labels are deliberately NOT shared (they already
+  render the same control on both screens). Reasoning: history → r164, and the item's own `build_ref`.
 ### THE DELETE GUARD IS FIXED (r160) — and the durable lesson is the count, not the fix
 
 `deleteLeaveType` counted FIVE tables, `listLeaveTypes`' `inUse` predicate counted THREE, and the
@@ -170,39 +181,23 @@ to prove otherwise. The choice is pinned by an explicit test, so reversing it re
 and saying why. **The guard becomes fully effective as new payslips accrue** — it is protection going
 forward, not a repair of history. Say that plainly rather than implying the paid items are protected.
 
-### FOLLOW-UPS MEASURED BUT NOT BUILT
+### Durable product facts and unbuilt follow-ups (measured 2026-08-04/05; the items themselves SHIPPED)
 
-- **"Processed By" on the payroll dashboard is viable** — measured on production: 43 processed events,
-  **43 with a resolvable actor name**. The agent shipped the date alone because it could not verify
-  from its sandbox. It is now a two-join + one-`<td>` change.
-- **A company logo EXISTS** (`company_logo`, read by the report letterhead). `169e3c24`'s plan said
-  none existed and promised the reporter a payslip without one, so it shipped without — but a
-  letterhead is now cheap.
-
-### Durable product facts from the 2026-08-04 measurements (the items themselves have all SHIPPED)
-
-**Re-counted 2026-08-05: `7cd914b1`, `8590615a`, `65f466e2`, `c459bff9`, `2e3ec77d` and `9861b8a4`
-are all `deployed`, and `2e3ec77d`'s relief-stripping bug is verifiably fixed (the form now spreads
-`...base.pcb`).** The per-item measurement block and the two "awaiting the OWNER" findings that stood
-here were planning inputs for work that has since shipped — they are in `docs/HANDOFF-HISTORY.md`
-under their rounds. What survives is the handful of facts that outlive their tickets:
+Per-item measurements are in `docs/HANDOFF-HISTORY.md` under their rounds. What outlives them:
 
 - **`employment_type` lives on `assignment`, NOT `employment`** — a query against
   `employment.employment_type` errors.
 - **`expireAgedLeave` has forfeited 0 rows / 0 days, ever** (only RL has expiry configured), and
   deleting `scripts/expire-aged-leave.ts` without first removing its `30 3 * * *` crontab line leaves
   cron firing at a missing file.
-- **`EMERGENCY_LEAVE_CODE = 'EMERGENCY'` is still hardcoded** (`core/leave.ts:1877`) while production's
-  type is `EL` — the constant is now documented as "the code the PACK SEEDS" and the resolver changed,
-  so **re-verify against the tree before reusing the old diagnosis**, which named line numbers that
-  have moved.
-- **Five of the eleven items planned 2026-08-04 reported something DIFFERENT from what was actually
-  wrong** (`65f466e2`, `b1f984fe`, `44129979`, `7f6ca478`/`1b87e8a0`/`18103ba4` asked for payroll
-  statuses/columns that do not exist as data — `payrollStatusEnum` is `['draft','processed','closed']`
-  and generation is synchronous, so a failed run leaves NOTHING to display). **Reproduce on production
-  BEFORE agreeing a plan's premise.** The 2026-08-05 planning pass hit the same rate: of six items,
-  two were already built (`0bb0e303` rows 1-2, `bd89ccd8` entirely) and one asked to remove a payroll
-  premium it had mistaken for a calculation setting.
+- **`EMERGENCY_LEAVE_CODE = 'EMERGENCY'` is still hardcoded** while production's type is `EL` — the
+  constant is documented as "the code the PACK SEEDS" and the resolver has changed, so **re-verify
+  against the tree before reusing the old diagnosis**; its old line numbers have moved.
+- **A company logo EXISTS** (`company_logo`, read by the report letterhead). `169e3c24` shipped a
+  payslip without one on the false premise that none existed; `da4af51f`'s plan corrects it.
+- **"Processed By" on the payroll dashboard is viable** — 43 processed events, 43 with a resolvable
+  actor name. A two-join + one-`<td>` change; shipped without it only because an agent could not
+  verify from its sandbox.
 
 ### Waiting on the owner, not on code
 
@@ -262,23 +257,21 @@ under their rounds. What survives is the handful of facts that outlive their tic
 
 ## How this project is actually run
 
-**Deploy is automatic after a green gate.** The repo documents a human release gate (ADR-0045); the
-owner has overridden it. Once tsc + the full suite + next build + the upgrade rehearsal are green,
-merge to main, rsync, run deploy.sh, verify, mark the items deployed. Do not stop to ask.
+**Deploy is automatic after a green gate** (owner's override of ADR-0045; AGENTS.md carries the rule).
 
-**A round is not finished until HANDOFF.md records it.** Standing instruction from the owner.
+**THE GATE, IN FULL — and the middle line is the one that keeps being got wrong:**
+`pnpm exec tsc --noEmit` · **`bash scripts/gate-chunked.sh`** · `pnpm exec next build` ·
+`pnpm gate:shadow` whenever a migration is involved.
+**NOT `pnpm vitest run`.** A bare full run exhausts the RAM disk and kills the cluster mid-suite — it
+produced two false red gates on 2026-08-06 alone (293 and 9 failed files, zero assertion failures both
+times). The shadow rehearsal is the one that catches a journal `when` collision, which is a SILENT SKIP.
 
-**The gate, in full.** `pnpm exec tsc --noEmit` · `pnpm vitest run` (the WHOLE suite, not a subset) ·
-`pnpm exec next build` · `./scripts/upgrade-rehearsal.sh main <scratch-db>` whenever a migration is
-involved. The rehearsal catches "applies to an empty database but not a populated one".
-
-**Deploy mechanics.** SSH port **8288**, `ubuntu@203.142.6.241`, app at `/opt/ai-hr`. Deploy is rsync
-(excluding node_modules/.next/.git/.env*/.turbo/coverage/.claude) then `./deploy/deploy.sh` on the
-box, which migrates, seeds catalogs, runs backfills and restarts. **The server has NO git checkout** —
-`git log` there tells you nothing.
-
-**Health check.** `GET /` returning **401** is CORRECT — the password gate, not a failure. Check
-`systemctl is-active aihr` and curl `http://127.0.0.1:3000/` from the box.
+**Deploy mechanics.** SSH port **8288**, `ubuntu@203.142.6.241`, app at `/opt/ai-hr`. rsync (excluding
+node_modules/.next/.git/.env*/.turbo/coverage/.claude/graphify-out) then `./deploy/deploy.sh` on the box,
+which migrates, seeds catalogs, runs backfills and restarts. **The server has NO git checkout** —
+`git log` there tells you nothing. **Run deploy.sh under `nohup … &` and poll its LOG**: it outlives a
+10-minute ssh, and `pgrep -f deploy/deploy.sh` matches the waiter's own command string (cost 10 minutes
+on 2026-08-06). `GET /` returning **401** is CORRECT — the password gate, not a failure.
 
 **Before planning ANYTHING, run BOTH of these checks. Neither one finds what the other does.**
 
@@ -378,15 +371,12 @@ Established pattern (r73–r137). The rules, each learned the hard way:
 
 ## The code graph — query it before spelunking
 
-**`graphify-out/` in THIS worktree holds a knowledge graph of the whole codebase** (~13k nodes /
-~38k edges at r137-era — counts drift per round; the graph is the authority, not this line), built by
-[graphify](https://github.com/Graphify-Labs/graphify) from local tree-sitter AST (no API key, no
-LLM). ~99% of edges are EXTRACTED (explicit in the code), the rest INFERRED. It is **untracked by
-git and excluded from the deploy rsync** — it lives on disk here only, regenerable in ~a minute.
+**`graphify-out/` in THIS worktree holds a knowledge graph of the whole codebase**, built from local
+tree-sitter AST (no API key, no LLM). Untracked and rsync-excluded; regenerable in ~a minute.
 
-**Use it FIRST when you need to understand code** — who calls what, with file:line, read from the
-tree rather than from this file's prose (line numbers in prose go stale; the graph does not — it
-already corrected one of this file's own citations). All commands run from this worktree:
+**Use it FIRST when you need to understand code** — who calls what, with file:line, read from the tree
+rather than from this file's prose (line numbers in prose go stale; the graph does not — it already
+corrected one of this file's own citations). All commands run from this worktree:
 
     graphify explain "applyLeaveTypeRules"     # a node + every caller/import, with file:line
     graphify query "how does X reach Y?"       # BFS over the graph, --budget N tokens (default 2000)
@@ -395,9 +385,8 @@ already corrected one of this file's own citations). All commands run from this 
     graphify god-nodes --top 20                # the architectural hubs
     graphify-out/GRAPH_REPORT.md               # community map of the codebase (labels = hub node names)
 
-**Keep it current — every build updates it.** After shipping a round (or any merge to main):
-`graphify update .` — incremental re-extraction of changed files, seconds, no LLM. After a refactor
-that DELETES a lot of code, add `--force`. Rebuild from nothing: `graphify extract . --code-only`.
+**Every build updates it:** `graphify update .` after any merge to main (seconds, no LLM); add
+`--force` after a refactor that deletes a lot of code.
 
 **Known limitations:** the 313 `.sql` migration files are not parsed (`tree_sitter_sql` not
 installed — the live schema is the drizzle TS, which IS in the graph); community labels are
@@ -421,60 +410,29 @@ grep — an empty result is a parser gap, not proof of no callers.
   `git worktree remove` deletes the DIRECTORY, not the branch; the only thing removal can lose is
   uncommitted work — check `git -C <path> status --porcelain`, not `git log main..<branch>`.
 
-### Local Postgres — THE CAUSE WAS A LOCK BUG IN THE HARNESS, NOT THE CLUSTER (corrected r160)
+### Local Postgres — the wedge is FIXED; do not re-diagnose it (full diagnosis: history → r160)
 
-- Data dir **`/opt/homebrew/var/aihr-pg16`** (now a SYMLINK to a RAM disk, below), binaries
+- Data dir **`/opt/homebrew/var/aihr-pg16`** (a SYMLINK to a RAM disk), binaries
   **`/opt/homebrew/opt/postgresql@16/bin`** (keg-only — PG14 shadows `psql` on PATH, use the explicit
   path or `pnpm db:start`). Port **5433**.
-
-**⚠️ EVERY EARLIER VERSION OF THIS SECTION BLAMED THE CLUSTER, AND r160 LOST HOURS TO THAT.** The
-`fsync=off` fix is real and is applied; it is simply not what was producing "false failures across files
-unrelated to the change". Read this before re-tuning anything.
-
-**THE ACTUAL BUG: `resetDb()`'s TRUNCATE had no `lock_timeout`, and TWO connection pools sit on every
-worker database** — `owner` (test/harness.ts, which issues the TRUNCATE) and the application's own pool
-(db/client.ts) used by every `withTenant` call in the code under test. `TRUNCATE … CASCADE` takes an
-AccessExclusiveLock on ~100 tables, so any app-pool connection still holding a lock from the test that
-just finished blocks it — and with locks held on both sides they deadlock outright (the server log shows
-"Process A waits for AccessExclusiveLock … blocked by B; B waits for RowShareLock … blocked by A").
-With no timeout that wait is **unbounded**: a millisecond reset became a 15-minute hang, surfacing as
-`Hook timed out in 30000ms` in `beforeEach` of whichever file drew the short straw.
-
-**THE EVIDENCE IT WAS NEVER THE CODE, and the shape to look for next time:** one chunk of 194 files
-produced 17 failures across 9 unrelated files — 7 hook timeouts, 3 TRUNCATE errors, and **ZERO assertion
-failures**. Another 194 files of the same commit passed 194/194 in 136s. After the fix the first chunk
-went **1170s → 149s and green**. *If a red gate contains no assertion failures, suspect the harness.*
-
-Fixed in `test/harness.ts`: `lock_timeout = 5s` plus a bounded retry, inside ONE transaction (`SET LOCAL`
-is meaningless outside one, and with a pool a bare `SET` can land on a different connection than the
-TRUNCATE; a `;`-joined multi-statement does not work either, because drizzle's `execute` uses the
-extended protocol). The last attempt terminates other backends on the database. **Deliberately NOT a
-raised hook timeout** — that hides the wait and keeps such runs 15 minutes long.
-
-**WAL: the second, genuinely separate problem — and `min_wal_size` is the setting that mattered.** Every
-checkpoint in this repo's history reported `N removed, 0 recycled`. `removed` = unlinked; `recycled` =
-renamed and reused. PostgreSQL only keeps segments for reuse up to `min_wal_size`, which was **128MB**,
-so this workload unlinked essentially every segment it produced. Checkpoint `total` tracked segments
-removed (~8s each on disk) while `write` stayed flat at ~3s and `sync` was ~0 — so slow checkpoints let
-WAL grow, which meant more to unlink. **The old advice here to make `max_wal_size`/`min_wal_size`
-SMALLER was backwards**: a smaller `min_wal_size` unlinks more.
-
-`./scripts/dev-db-rebuild.sh` now: puts the data directory on an **8GB RAM disk** (mounted at
-`<DATA>-ram` with `<DATA>` a symlink, because `initdb` refuses a mount point as PGDATA), sets
-`min_wal_size = 3GB` so segments RECYCLE, and keeps `fsync=off` and friends. Opt out with
-`AIHR_RAMDISK_GB=0`. **A RAM disk does not survive a reboot — re-run the script.**
-
-**THE SUITE STILL GENERATES MORE WAL THAN THIS MACHINE RETIRES IN REAL TIME** (~10GB per full run), so
-`./scripts/gate-chunked.sh` runs it in 3 chunks, rebuilding the cluster between each, and no chunk gets
-past ~73% of the volume. It covers **586 files — both vitest projects** (`test/**/*.test.ts` +
-`test/**/*.dom.test.tsx`) and asserts that vitest COUNTED as many files as it was asked to run, because
-a file whose worker fails to spawn is not counted at all and reads as green. The real cure is in the
-harness — a ~100-table TRUNCATE per test file where `CREATE DATABASE … TEMPLATE` would write a fraction
-of the WAL — and that is worth doing deliberately, not at the end of a release.
-
-**Apex One** real-time scanning of the data directory was excluded by the owner on 2026-08-04 and that
-exclusion should stay; the ~8s-per-unlink cost measured on disk is consistent with it not covering
-everything. The RAM disk sidesteps the question entirely.
+- **Misbehaving? Run `./scripts/dev-db-rebuild.sh`** (<1 min). It puts the data dir on an 8GB RAM disk
+  (mounted at `<DATA>-ram` with `<DATA>` a symlink, because `initdb` refuses a mount point as PGDATA),
+  sets `min_wal_size = 3GB` so segments RECYCLE rather than unlink, keeps `fsync=off`, and creates the
+  `NOBYPASSRLS` role. Opt out with `AIHR_RAMDISK_GB=0`. **A RAM disk does not survive a reboot.**
+- **NEVER blame the cluster first.** Every earlier version of this section did, and r160 lost hours to
+  it. The real bug was `resetDb()`'s TRUNCATE having no `lock_timeout` while TWO pools sat on every
+  worker DB; it is fixed in `test/harness.ts` (5s timeout + bounded retry inside ONE transaction).
+- **THE DIAGNOSTIC RULE, which has now paid out four times: A RED GATE WITH NO ASSERTION FAILURES IS A
+  HARNESS OR ENVIRONMENT PROBLEM.** `grep -c AssertionError` the log BEFORE reading a single failure.
+  Three of the four were a background process — a live Workflow, a stale dev server — still holding the
+  cluster while the gate ran. **Kill the dev server in the same command that finishes a render check.**
+- **The suite generates ~10GB of WAL per full run, more than this machine retires in real time**, so
+  **always use `./scripts/gate-chunked.sh`**, never a bare `npx vitest run`: it runs 3 chunks with a
+  cluster rebuild between each, covers BOTH vitest projects, and asserts vitest COUNTED as many files as
+  it was asked to run (a file whose worker fails to spawn is not counted and reads as green). The real
+  cure is in the harness — `CREATE DATABASE … TEMPLATE` instead of a ~100-table TRUNCATE per file — and
+  is worth doing deliberately, not at the end of a release.
+- **Apex One** real-time scanning of the data directory was excluded by the owner 2026-08-04; keep it.
 
 ### Running and reading test gates
 
