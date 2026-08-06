@@ -8563,5 +8563,26 @@
     "cardNewCount": "ใหม่ {count} รายการ",
     "popupRead": "อ่านประกาศ",
     "popupDismiss": "ปิด"
+  },
+  "employeePanel": {
+    "heading": "พนักงาน",
+    "hideEmployees": "ซ่อนรายชื่อพนักงาน",
+    "showEmployees": "แสดงรายชื่อพนักงาน",
+    "filterCompany": "บริษัท",
+    "allCompanies": "ทุกบริษัท",
+    "filterBusinessUnit": "หน่วยธุรกิจ",
+    "allBusinessUnits": "ทุกหน่วยธุรกิจ",
+    "filterDepartment": "แผนก",
+    "allDepartments": "ทุกแผนก",
+    "filterStatus": "สถานะ",
+    "allStatuses": "ทุกสถานะ",
+    "statusActive": "ใช้งานอยู่",
+    "statusEnded": "สิ้นสุดแล้ว",
+    "searchLabel": "ค้นหาพนักงาน",
+    "searchPlaceholder": "รหัสพนักงานหรือชื่อ",
+    "reset": "รีเซ็ต",
+    "noEmployees": "ไม่มีพนักงานที่ตรงกับตัวกรองของคุณ",
+    "selectedTag": "เลือกแล้ว",
+    "showingCapped": "แสดง {cap} รายการแรกจาก {total} รายการที่ตรงกัน — โปรดปรับการค้นหา"
   }
 }

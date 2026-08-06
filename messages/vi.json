@@ -8563,5 +8563,26 @@
     "cardNewCount": "{count} mới",
     "popupRead": "Đọc thông báo",
     "popupDismiss": "Đóng"
+  },
+  "employeePanel": {
+    "heading": "Nhân viên",
+    "hideEmployees": "Ẩn danh sách nhân viên",
+    "showEmployees": "Hiện danh sách nhân viên",
+    "filterCompany": "Công ty",
+    "allCompanies": "Tất cả công ty",
+    "filterBusinessUnit": "Đơn vị kinh doanh",
+    "allBusinessUnits": "Tất cả đơn vị kinh doanh",
+    "filterDepartment": "Phòng ban",
+    "allDepartments": "Tất cả phòng ban",
+    "filterStatus": "Trạng thái",
+    "allStatuses": "Tất cả trạng thái",
+    "statusActive": "Đang hoạt động",
+    "statusEnded": "Đã kết thúc",
+    "searchLabel": "Tìm nhân viên",
+    "searchPlaceholder": "Mã nhân viên hoặc tên",
+    "reset": "Đặt lại",
+    "noEmployees": "Không có nhân viên nào khớp với bộ lọc.",
+    "selectedTag": "Đã chọn",
+    "showingCapped": "Hiển thị {cap} trong số {total} kết quả — hãy thu hẹp tìm kiếm."
   }
 }

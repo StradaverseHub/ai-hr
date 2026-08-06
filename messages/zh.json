@@ -8563,5 +8563,26 @@
     "cardNewCount": "{count} 条新公告",
     "popupRead": "阅读公告",
     "popupDismiss": "关闭"
+  },
+  "employeePanel": {
+    "heading": "员工",
+    "hideEmployees": "隐藏员工列表",
+    "showEmployees": "显示员工列表",
+    "filterCompany": "公司",
+    "allCompanies": "所有公司",
+    "filterBusinessUnit": "业务单位",
+    "allBusinessUnits": "所有业务单位",
+    "filterDepartment": "部门",
+    "allDepartments": "所有部门",
+    "filterStatus": "状态",
+    "allStatuses": "所有状态",
+    "statusActive": "生效中",
+    "statusEnded": "已结束",
+    "searchLabel": "搜索员工",
+    "searchPlaceholder": "员工编号或姓名",
+    "reset": "重置",
+    "noEmployees": "没有符合筛选条件的员工。",
+    "selectedTag": "已选择",
+    "showingCapped": "显示 {total} 个匹配中的前 {cap} 个 — 请细化搜索。"
   }
 }

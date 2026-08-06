@@ -8563,5 +8563,26 @@
     "cardNewCount": "{count} new",
     "popupRead": "Read notice",
     "popupDismiss": "Close"
+  },
+  "employeePanel": {
+    "heading": "Employees",
+    "hideEmployees": "Hide employee list",
+    "showEmployees": "Show employee list",
+    "filterCompany": "Company",
+    "allCompanies": "All companies",
+    "filterBusinessUnit": "Business unit",
+    "allBusinessUnits": "All business units",
+    "filterDepartment": "Department",
+    "allDepartments": "All departments",
+    "filterStatus": "Status",
+    "allStatuses": "All statuses",
+    "statusActive": "Active",
+    "statusEnded": "Ended",
+    "searchLabel": "Search employee",
+    "searchPlaceholder": "Employee ID or name",
+    "reset": "Reset",
+    "noEmployees": "No employees match your filters.",
+    "selectedTag": "Selected",
+    "showingCapped": "Showing first {cap} of {total} matches — refine your search."
   }
 }
