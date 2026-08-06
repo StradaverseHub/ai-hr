@@ -6,8 +6,9 @@
  *   - the sidebar fly-out (packs/payroll/index.ts) ran  Guide → Payroll Process → Transactions →
  *     Transaction View → Reports → Settings, i.e. it opened with the FINISHED-runs workbench and
  *     closed with the settings you have to complete before you can run anything at all;
- *   - the Workflow Guide (app/payroll/guide/page.tsx) ran  master data → transactions → validation →
- *     process → review → finalize, which is the order the work actually happens in;
+ *   - the Workflow Guide (app/payroll/guide/page.tsx, RETIRED by efe1d230 — see PAYROLL_NAV_PHASE) ran
+ *     master data → transactions → validation → process → review → finalize, which is the order the
+ *     work actually happens in;
  *   - the Process wizard (app/payroll/process/wizard.tsx) showed a five-stage rail of its own —
  *     Preparation → Validation → Process → Review → Finalize — whose stage names and stage COUNT
  *     matched neither of the other two, so "stage 2 of 5" in the wizard and "phase 3 of 6" in the
@@ -51,22 +52,39 @@ export const PAYROLL_PHASES: readonly PayrollPhase[] = [
  * Two entries are deliberately not phases, and both are given an explicit rank rather than being
  * left to sort by accident:
  *
- *   - `/payroll/guide` is the MAP of the sequence, not a step in it, so it stays first (rank 0).
- *     1459e116's approved ordering ("Workflow Guide before Payroll Process — read the guide, then
- *     run the payroll") is therefore preserved, not undone.
+ *   - `/payroll` (Payroll Process, the run workbench) is the module's HOME — rank 0, the row the
+ *     fly-out opens on and focuses. See "efe1d230 — rank 0 moved" below for why it is no longer
+ *     ranked by its phase.
  *   - `/payroll/reports` is statutory OUTPUT — the EPF/SOCSO/EIS/PCB submissions you file once the
  *     run is closed. It comes after the last phase (rank 7), which is where it already was
  *     relative to everything except Settings.
  *
- * `/payroll` is ranked by the phase where an operator ENTERS it (4, "run the calculation"). It is
- * also where phase 6 finishes — the run listing and the Close action live there too — but a menu row
- * can only sit in one place and the earlier of the two phases is the one that gets you there.
+ * efe1d230 — RANK 0 MOVED FROM THE GUIDE TO PAYROLL PROCESS, and this is a deliberate, approved
+ * partial reversal of a1d82340's ordering, not drift. `/payroll/guide` held rank 0 because 1459e116
+ * asked for "read the guide, then run the payroll". The reporter has since withdrawn that: the guide
+ * is "a menu row nobody starts from", and the approved plan says in as many words that "Payroll
+ * Process becomes the landing page when you open the Payroll module". The fly-out FOCUSES its first
+ * child on open (components/nav-flyout.tsx `firstLinkRef`), so the first row IS the landing page —
+ * the promise cannot be kept by any other means.
+ *
+ * What a1d82340 actually fixed is NOT undone by this. Its complaint was that Settings — the thing you
+ * must complete before you can run anything — sat stranded at the END of the menu, after the
+ * finished-runs workbench. Settings is now SECOND. The ordering guard in test/payroll-phase-order.ts
+ * was updated to assert that invariant (preparation ahead of the review/output screens, Settings not
+ * last) rather than the literal "setup before /payroll", which efe1d230 supersedes.
+ *
+ * `/payroll` is therefore no longer ranked by the phase where an operator enters it (4, "run the
+ * calculation"); it is ranked as the module home. The phase 4/6 reading is preserved in this note so
+ * a future re-rank knows what it is giving up.
  */
 export const PAYROLL_NAV_PHASE: Readonly<Record<string, number>> = {
-  '/payroll/guide': 0,
+  '/payroll': 0,
   '/payroll/setup': 1,
   '/payroll/transactions': 2,
-  '/payroll': 4,
+  // 6d72816e — staff loans are a payroll INPUT: a recurring deduction reserved onto a regular draft
+  // run (ADR-0060, core/loans.ts). Same phase as the other transaction keying screens, so it lands
+  // immediately after Transactions (`sort` is stable and the row sits there literally).
+  '/admin/loans': 2,
   '/payroll/transaction-view': 5,
   // 169e3c24 — Individual Payslip is the same REVIEW step as Transaction View: check one person's pay
   // before it goes out. Same rank, and `sort` is stable, so it lands immediately after it (its literal

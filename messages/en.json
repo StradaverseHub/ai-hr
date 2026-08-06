@@ -2701,6 +2701,8 @@
       "subtitle": "Payroll batch",
       "paymentSummary": "Payment summary",
       "paymentSummaryTitle": "Download a CSV of employee, bank, account and net pay for manual bank upload.",
+      "transactionDetail": "Transaction Detail",
+      "transactionDetailTitle": "Download every employee’s earnings, deductions, employer contributions and totals for this run as an Excel file.",
       "generatePayslips": "Generate payslips",
       "closeBatch": "Close batch",
       "disclaimer": "<strong>Draft figures.</strong> Statutory amounts are computed from the verified Malaysian rules in effect at period end. Review every payslip before closing — once closed, the batch is immutable. Bank files (<mono>CP39 / KWSP / PERKESO</mono>) are generated separately.",
@@ -3707,7 +3709,8 @@
       "readinessStaleDefault": "The default payroll cycle names “{name}”, which is not an active cycle for this company.",
       "readinessNoDefault": "No default payroll cycle is chosen for this company.",
       "readinessNoAutoCreate": "Cycles are not created for you — which cycles a company should have is your decision.",
-      "readinessFullReport": "See the full readiness report"
+      "readinessFullReport": "See the full readiness report",
+      "readinessHideReport": "Hide the full report"
     },
     "historyImport": {
       "title": "Import payroll history",

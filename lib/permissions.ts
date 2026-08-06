@@ -424,8 +424,10 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/configuration/eis',
       '/payroll/configuration/pcb',
       '/payroll/configuration/hrdf',
-      // R24 5db3ae48: guided end-to-end payroll process view (scopedAdmin, same guard as the hub).
-      '/payroll/guide',
+      // efe1d230: the payroll guide route (R24 5db3ae48's guided end-to-end view) is RETIRED — the route is
+      // deleted and its eight-check readiness report moved to /payroll/setup?readiness=full, which is
+      // already covered by the '/payroll/setup' entry below under this same scopedAdmin key. The entry
+      // must go with the page: test/function-access.test.ts fails a registered route with no file.
       '/payroll/history-import',
       // 169e3c24: the pre-release Individual Payslip viewer. Registered on the SAME scopedAdmin key as
       // the rest of the hub, because it is the admin's review of a payslip before it is released — it

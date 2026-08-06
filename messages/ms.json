@@ -2975,6 +2975,8 @@
       "subtitle": "Kelompok gaji",
       "paymentSummary": "Ringkasan pembayaran",
       "paymentSummaryTitle": "Muat turun CSV pekerja, bank, akaun dan gaji bersih untuk muat naik bank secara manual.",
+      "transactionDetail": "Butiran Transaksi",
+      "transactionDetailTitle": "Muat turun pendapatan, potongan, caruman majikan dan jumlah setiap pekerja bagi larian ini sebagai fail Excel.",
       "generatePayslips": "Jana slip gaji",
       "closeBatch": "Tutup kelompok",
       "disclaimer": "<strong>Angka draf.</strong> Amaun berkanun dikira daripada peraturan Malaysia yang disahkan dan berkuat kuasa pada akhir tempoh. Semak setiap slip gaji sebelum menutup — setelah ditutup, kelompok ini tidak boleh diubah. Fail bank (<mono>CP39 / KWSP / PERKESO</mono>) dijana secara berasingan.",
@@ -3707,7 +3709,8 @@
       "readinessStaleDefault": "Kitaran gaji lalai menamakan “{name}”, yang bukan kitaran aktif bagi syarikat ini.",
       "readinessNoDefault": "Tiada kitaran gaji lalai dipilih untuk syarikat ini.",
       "readinessNoAutoCreate": "Kitaran tidak dicipta secara automatik — kitaran yang sepatutnya dimiliki syarikat ialah keputusan anda.",
-      "readinessFullReport": "Lihat laporan kesediaan penuh"
+      "readinessFullReport": "Lihat laporan kesediaan penuh",
+      "readinessHideReport": "Sembunyikan laporan penuh"
     },
     "historyImport": {
       "title": "Import sejarah gaji",

@@ -2975,6 +2975,8 @@
       "subtitle": "Đợt bảng lương",
       "paymentSummary": "Tóm tắt thanh toán",
       "paymentSummaryTitle": "Tải xuống tệp CSV gồm nhân viên, ngân hàng, tài khoản và lương thực lãnh để tải lên ngân hàng thủ công.",
+      "transactionDetail": "Chi tiết giao dịch",
+      "transactionDetailTitle": "Tải xuống thu nhập, các khoản khấu trừ, đóng góp của người sử dụng lao động và tổng cộng của từng nhân viên trong kỳ này dưới dạng tệp Excel.",
       "generatePayslips": "Tạo phiếu lương",
       "closeBatch": "Đóng đợt",
       "disclaimer": "<strong>Số liệu nháp.</strong> Các khoản theo luật được tính từ các quy tắc Malaysia đã xác minh có hiệu lực tại thời điểm cuối kỳ. Hãy kiểm tra mọi phiếu lương trước khi đóng — sau khi đóng, đợt sẽ không thể thay đổi. Các tệp ngân hàng (<mono>CP39 / KWSP / PERKESO</mono>) được tạo riêng.",
@@ -3707,7 +3709,8 @@
       "readinessStaleDefault": "Chu kỳ trả lương mặc định ghi “{name}”, không phải một chu kỳ đang hoạt động của công ty này.",
       "readinessNoDefault": "Chưa chọn chu kỳ trả lương mặc định cho công ty này.",
       "readinessNoAutoCreate": "Hệ thống không tự tạo chu kỳ — công ty nên có những chu kỳ nào là quyết định của bạn.",
-      "readinessFullReport": "Xem báo cáo mức độ sẵn sàng đầy đủ"
+      "readinessFullReport": "Xem báo cáo mức độ sẵn sàng đầy đủ",
+      "readinessHideReport": "Ẩn báo cáo đầy đủ"
     },
     "historyImport": {
       "title": "Nhập lịch sử bảng lương",
