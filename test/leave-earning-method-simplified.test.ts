@@ -38,7 +38,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant } from '../db/client';
 import { hireEmployee } from '../core/org';
-import { createLeavePolicy, updateLeavePolicy, setLeaveTypeRules } from '../core/admin';
+import { setLeaveTypeRules } from '../core/admin';
 import {
   accrueEarnedLeave,
   earnedToDateFor,
@@ -52,11 +52,10 @@ import {
   reprojectA2cEntitlement,
   reprojectEntitlementForEmployment,
   reprojectEntitlementForLeaveTypeCohort,
-  type GradePolicyRow,
 } from '../core/leave';
-import { hasAnyLeaveTypeRule } from '../core/leave-compute';
+import { bandFor, hasAnyLeaveTypeRule, type ServiceBand } from '../core/leave-compute';
 import { leaveEntitlementBreakdown } from '../core/read';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
@@ -90,16 +89,16 @@ const hire = (hiredOn: string) =>
     grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
   });
 
-/** A days-only policy row. bc36c768: the METHOD no longer lives here — it is a leave-TYPE rule, and the
- *  clear-out strips the `method` key from every policy row in production. */
+/** A days-only entitlement. bc36c768 already had the METHOD living on the leave TYPE rather than beside
+ *  the days; 6e9a126e release three moved the days themselves out of `leave_policy` and into an
+ *  entitlement template's band, so this fixture changes storage and nothing else — every figure below is
+ *  the figure it was. */
 const policy = (annualDays: number, validFrom = '2026-01-01') =>
-  createLeavePolicy(adminCtx(b), {
-    leaveTypeId: b.annualLeaveTypeId,
-    annualDays,
-    gradeId: null,
-    companyId: null,
-    validFrom,
-  });
+  seedEntitlement(adminCtx(b), { leaveTypeId: b.annualLeaveTypeId, annualDays, validFrom });
+
+/** A banded entitlement, for the one test that needs per-band carry rather than a flat figure. */
+const bandedPolicy = (serviceBands: ServiceBand[], validFrom = '2026-01-01') =>
+  seedEntitlement(adminCtx(b), { leaveTypeId: b.annualLeaveTypeId, serviceBands, validFrom });
 
 const balanceOf = async (employmentId: string) => {
   const [r] = await owner.db
@@ -146,26 +145,57 @@ const markUnconfigured = (id = b.annualLeaveTypeId) =>
 const setTypeColumns = (patch: Partial<typeof schema.leaveType.$inferInsert>, id = b.annualLeaveTypeId) =>
   owner.db.update(schema.leaveType).set(patch).where(eq(schema.leaveType.id, id));
 
-/** The projection kernel, wired exactly as its three production callers wire it. */
+/**
+ * Just `setLeaveTypeRulesAction`'s own body, sliced between two export markers.
+ *
+ * ⚠️ THE END MARKER IS ASSERTED, and it is asserted because the silent failure already happened. Both
+ * source assertions below used to slice to `export async function updateLeavePolicyAction`, which release
+ * three deleted — `indexOf` then returns -1, `slice(start, -1)` runs to the END OF THE FILE, and both
+ * tests quietly start asserting things about every action in the module instead of about this one. A
+ * source-scan delimiter that can vanish must be checked, not trusted.
+ */
+const setLeaveTypeRulesActionSrc = (): string => {
+  const start = actionsSrc.indexOf('export async function setLeaveTypeRulesAction');
+  const end = actionsSrc.indexOf('export async function previewEarnedAccrualAction');
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return actionsSrc.slice(start, end);
+};
+
+/**
+ * The projection kernel, wired exactly as its production callers wire it.
+ *
+ * 6e9a126e RELEASE THREE — the kernel takes a `templateBandForYears` CLOSURE where it used to take a list
+ * of `leave_policy` rows, because it re-resolves internally at a second service length and a band handed
+ * in already-resolved would pin the first resolution. This reads the band table out of the entitlement
+ * template the test actually seeded, which is the same posture the old wiring had: it never invented a
+ * configuration, it read whatever the fixture had written. Nothing seeded ⇒ no band ⇒ `noOpinion`, which
+ * is a SKIP and is exactly what several tests below are asserting.
+ */
+const templateBandForYears = async (): Promise<(years: number) => ServiceBand | null> => {
+  const rows = await owner.db
+    .select({ serviceBands: schema.entitlementTemplate.serviceBands })
+    .from(schema.entitlementTemplate)
+    .where(
+      and(
+        eq(schema.entitlementTemplate.leaveTypeId, b.annualLeaveTypeId),
+        sql`${schema.entitlementTemplate.validTo} is null`,
+      ),
+    );
+  const bands = (rows[0]?.serviceBands ?? null) as ServiceBand[] | null;
+  return (years: number) => (bands ? bandFor({ serviceBands: bands }, years) : null);
+};
+
 const project = async (p: { hiredOn: string; asOf: string; leaveCycle?: string | null }) => {
   const t = await typeRow();
-  const rows = await owner.db
-    .select({
-      gradeId: schema.leavePolicy.gradeId,
-      companyId: schema.leavePolicy.companyId,
-      accrual: schema.leavePolicy.accrual,
-    })
-    .from(schema.leavePolicy)
-    .where(eq(schema.leavePolicy.leaveTypeId, b.annualLeaveTypeId));
   return projectExpectedEntitlement(
     { hiredOn: p.hiredOn, leaveCycle: p.leaveCycle ?? null, gradeId: null, companyId: b.companyId },
     'ANNUAL',
-    rows as GradePolicyRow[],
     () => 0, // statutory floor neutralised: this suite is about the CONFIGURED figure
     p.asOf,
-    undefined,
     t.yearCycleOverride,
     t,
+    await templateBandForYears(),
   );
 };
 
@@ -404,7 +434,7 @@ describe('bc36c768 (g) · the accrual engine and the recalc kernel compute the S
 // ── (h) the NOT-CONFIGURED gate ─────────────────────────────────────────────────────────────────────
 
 describe('bc36c768 (h) · a NOT-CONFIGURED type grants nothing and moves nothing', () => {
-  it('the hire grant, the accrual run, the policy recalc, the profile recalc AND the a2c correction all write ZERO rows', async () => {
+  it('the hire grant, the accrual run, the cohort recalc, the profile recalc AND the a2c correction all write ZERO rows', async () => {
     await policy(12);
     // Configure it, hire someone, let them accrue a real balance — so the reset has something it could
     // wrongly claw back. A test against an empty ledger would pass vacuously.
@@ -430,22 +460,20 @@ describe('bc36c768 (h) · a NOT-CONFIGURED type grants nothing and moves nothing
     expect(run.granted).toBe(0);
     expect(run.forfeits).toBe(0);
 
-    // 3. THE POLICY RECALC (reprojectEntitlementForPolicy). A days change is exactly the trigger that
-    //    would otherwise reproject the whole cohort onto the lump path.
-    const pol = await owner.db
-      .select({ id: schema.leavePolicy.id, validFrom: schema.leavePolicy.validFrom })
-      .from(schema.leavePolicy)
-      .where(eq(schema.leavePolicy.leaveTypeId, b.annualLeaveTypeId));
-    const polRecalc = await updateLeavePolicy(adminCtx(b), {
-      id: pol[0].id,
-      annualDays: 18,
-      gradeId: null,
-      companyId: null,
-      validFrom: pol[0].validFrom,
+    // 3. THE COHORT RECALC (reprojectEntitlementForLeaveTypeCohort).
+    //    6e9a126e RELEASE THREE — this bullet used to be THE POLICY RECALC: `updateLeavePolicy` with a
+    //    days change, running `reprojectEntitlementForPolicy`. Both went with `leave_policy`, so that
+    //    kernel caller no longer exists to be pinned. The cohort recalc is the caller that took over as
+    //    the configuration-change trigger (setLeaveTypeRulesAction fires it), so the claim this test
+    //    makes — every caller of projectExpectedEntitlement writes nothing while the type is unconfigured
+    //    — is still made against every caller there is.
+    const cohortRecalc = await reprojectEntitlementForLeaveTypeCohort(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      trigger: 'test_cohort',
       asOf: '2026-07-31',
     });
-    expect(polRecalc.affected).toBe(0);
-    expect(polRecalc.totalDelta).toBe(0);
+    expect(cohortRecalc.affected).toBe(0);
+    expect(cohortRecalc.totalDelta).toBe(0);
 
     // 4. THE PROFILE RECALC (reprojectEntitlementForEmployment) — the one routine HR work fires.
     const profRecalc = await reprojectEntitlementForEmployment(adminCtx(b), {
@@ -558,12 +586,13 @@ describe('bc36c768 (i) · at a year open, an unconfigured type gets a ZEROED GRA
 // ── (j) the marker is not a rule ────────────────────────────────────────────────────────────────────
 
 describe('bc36c768 (j) · the NOT-CONFIGURED marker does not flip hasAnyLeaveTypeRule', () => {
-  it('a previously unruled type keeps its POLICY-level carry, rounding and max-balance', async () => {
+  it('a previously unruled type keeps the carry configured BESIDE its days, not the type\'s NULLs', async () => {
     // THIS EXCLUSION IS LOAD-BEARING. The clear-out stamps every non-archived type at once, including the
-    // ones migration 0325 never consolidated — whose real carry / rounding / max-balance configuration is
-    // still in leave_policy.accrual. If the marker counted as a type-level rule, applyLeaveTypeRules would
-    // engage and bury all of it under NULLs, and an EARNING-METHOD reset would silently wipe carry-forward
-    // and rounding. Same reasoning as carryForwardIncludeEarned's exclusion, which came first.
+    // ones migration 0325 never consolidated — whose real carry / rounding / max-balance configuration
+    // lives beside their DAYS rather than on the type. If the marker counted as a type-level rule,
+    // applyLeaveTypeRules would engage and bury all of it under NULLs, and an EARNING-METHOD reset would
+    // silently wipe carry-forward and rounding. Same reasoning as carryForwardIncludeEarned's exclusion,
+    // which came first.
     expect(hasAnyLeaveTypeRule({ accrualUnconfigured: new Date() })).toBe(false);
     expect(hasAnyLeaveTypeRule({ accrualUnconfigured: '2026-01-01T00:00:00Z', accrualMethod: null })).toBe(false);
     // …while a real rule, including the new accrual DAY, still engages it.
@@ -571,21 +600,17 @@ describe('bc36c768 (j) · the NOT-CONFIGURED marker does not flip hasAnyLeaveTyp
     expect(hasAnyLeaveTypeRule({ accrualMethod: 'earned_daily' })).toBe(true);
     expect(hasAnyLeaveTypeRule({ carryForwardMax: '5' })).toBe(true);
 
-    // End to end: an unruled type whose carry lives on the policy row keeps forfeiting by the POLICY's
-    // cap after the marker lands, rather than by the type's NULLs.
-    await owner.db.insert(schema.leavePolicy).values({
-      tenantId: b.tenantId,
-      leaveTypeId: b.annualLeaveTypeId,
-      accrual: { annualDays: 12, carryForwardMax: 5, carryForwardEnabled: true },
-      validFrom: '2026-01-01',
-    });
+    // End to end, REPOINTED AT WHERE PER-ENTITLEMENT CARRY LIVES NOW. It used to be
+    // `leave_policy.accrual.carryForwardMax`; release three dropped that table, and the surviving
+    // equivalent is the service band's own `carryForwardDays`, which `policyFromTemplateBand` reads and
+    // which an unruled type therefore keeps. Same claim, same figures, same failure mode: had the marker
+    // engaged the overlay, the type's NULL carry cap would resolve to 0 and the whole 12 would forfeit.
+    await bandedPolicy([{ fromYears: 0, toYears: null, days: 12, carryForwardDays: 5 }]);
     const emp = await hire('2026-01-01');
     expect(await balanceOf(emp.employmentId)).toBe(12);
     await markUnconfigured();
     expect(hasAnyLeaveTypeRule(await typeRow())).toBe(false); // still unruled — the marker changed nothing
     await openLeaveYear(adminCtx(b), { year: 2027 });
-    // 5 retained by the POLICY's cap. Had the marker engaged the overlay, the type's NULL carry cap would
-    // have resolved to 0 and the whole 12 would have been forfeited.
     expect(await balanceOf(emp.employmentId)).toBe(5);
   });
 });
@@ -593,94 +618,26 @@ describe('bc36c768 (j) · the NOT-CONFIGURED marker does not flip hasAnyLeaveTyp
 // ── (k) the clear-out migration ─────────────────────────────────────────────────────────────────────
 
 describe('bc36c768 (k) · the 0376 clear-out', () => {
-  it('clears BOTH surfaces, stamps the marker, leaves every ledger row untouched, and posts exactly one event per type', async () => {
-    // The migration is REPLAYED here against a live fixture rather than described. That way this test
-    // proves the SQL parses, runs, and does what the plan says — not merely that a file exists.
-    await policy(12);
-    await setLeaveTypeRules(adminCtx(b), { id: b.annualLeaveTypeId, accrualMethod: 'earned_monthly', accrualDay: 15 });
-    // A second type, ARCHIVED, to pin the asymmetry the migration documents.
-    const [archived] = await owner.db
-      .insert(schema.leaveType)
-      .values({ tenantId: b.tenantId, code: 'OLDX', name: 'Retired Type', accrualMethod: 'earned_monthly', archivedAt: new Date() })
-      .returning({ id: schema.leaveType.id });
-    // A legacy policy row carrying the method in its JSONB — the second surface, 57 rows of it in prod.
-    await owner.db.insert(schema.leavePolicy).values({
-      tenantId: b.tenantId,
-      leaveTypeId: b.annualLeaveTypeId,
-      accrual: { annualDays: 16, method: 'earned_monthly', carryForwardMax: 5, roundingMethod: 'up' },
-      gradeId: null,
-      companyId: null,
-      validFrom: '2020-01-01',
-    });
-    const emp = await hire('2026-01-01');
-    await accrueEarnedLeave(adminCtx(b), { asOf: '2026-06-30' });
-    const ledgerBefore = await ledgerRows(emp.employmentId);
-    expect(ledgerBefore.length).toBeGreaterThan(0);
-
-    const sqlText = readFileSync(resolve(here, '../db/migrations/0376_leave_type_earning_method_clearout.sql'), 'utf8');
-    for (const stmt of sqlText.split('--> statement-breakpoint')) {
-      const body = stmt
-        .split('\n')
-        .filter((l) => !l.trimStart().startsWith('--'))
-        .join('\n')
-        .trim();
-      if (body) await owner.db.execute(sql.raw(body));
-    }
-
-    // Surface 1, non-archived: method and day cleared, marker stamped.
-    const t = await typeRow();
-    expect(t.accrualMethod).toBeNull();
-    expect(t.accrualDay).toBeNull();
-    expect(t.accrualUnconfigured).not.toBeNull();
-    // Surface 1, ARCHIVED: left exactly as it was. Nothing grants it, so marking it would change no
-    // behaviour — and un-archiving one later should restore it, not hand someone a reconfiguration job.
-    const arch = await typeRow(archived.id);
-    expect(arch.accrualMethod).toBe('earned_monthly');
-    expect(arch.accrualUnconfigured).toBeNull();
-
-    // Surface 2: the JSONB `method` key is gone and NOTHING ELSE in the JSONB moved. Rounding, carry and
-    // days are out of this item's scope at both levels and must survive untouched.
-    const pols = await owner.db
-      .select({ accrual: schema.leavePolicy.accrual })
-      .from(schema.leavePolicy)
-      .where(eq(schema.leavePolicy.leaveTypeId, b.annualLeaveTypeId));
-    for (const p of pols) {
-      const acc = p.accrual as Record<string, unknown>;
-      expect(acc.method).toBeUndefined();
-    }
-    const legacy = (pols.find((p) => (p.accrual as { annualDays?: number }).annualDays === 16)!.accrual) as Record<string, unknown>;
-    expect(legacy.carryForwardMax).toBe(5);
-    expect(legacy.roundingMethod).toBe('up');
-
-    // THE LEDGER IS UNTOUCHED. Leave already credited is not this item's business.
-    expect(await ledgerRows(emp.employmentId)).toEqual(ledgerBefore);
-
-    // Exactly ONE recovery event per NON-ARCHIVED type, carrying both surfaces — the only rollback that
-    // will exist, and the reason it records the policy methods rather than only the column.
-    const events = await owner.db
-      .select({ aggregateId: schema.domainEvent.aggregateId, payload: schema.domainEvent.payload })
-      .from(schema.domainEvent)
-      .where(eq(schema.domainEvent.eventType, 'leave-type.rules.updated'));
-    const clearOut = events.filter(
-      (e) => (e.payload as { reason?: string })?.reason?.includes('0376'),
-    );
-    const nonArchived = await owner.db
-      .select({ id: schema.leaveType.id })
-      .from(schema.leaveType)
-      .where(sql`${schema.leaveType.archivedAt} is null`);
-    expect(clearOut.length).toBe(nonArchived.length);
-    expect(clearOut.filter((e) => e.aggregateId === archived.id).length).toBe(0);
-    const mine = clearOut.find((e) => e.aggregateId === b.annualLeaveTypeId)!;
-    const before = (mine.payload as { before: { accrualMethod: string; accrualDay: number; policyMethods: unknown[] } }).before;
-    expect(before.accrualMethod).toBe('earned_monthly');
-    expect(before.accrualDay).toBe(15);
-    // BOTH policy rows are captured, not just the interesting one. `createLeavePolicy` writes a method key
-    // on every row it creates (inheriting a sibling's, else defaulting to the lump value), so the second
-    // surface is wider than the 57 earned rows the production count found — and an event that recorded
-    // only the earned ones would leave the rest unrecoverable.
-    const methods = (before.policyMethods as { method: string }[]).map((m) => m.method).sort();
-    expect(methods).toEqual(['earned_monthly', 'grant_on_hire_prorated']);
-  });
+  /**
+   * ⚠️ THE REPLAY IS RETIRED — 6e9a126e RELEASE THREE, and it cannot be repointed at anything.
+   *
+   * 'clears BOTH surfaces, stamps the marker, leaves every ledger row untouched, and posts exactly one
+   * event per type' re-executed 0376's own SQL against a live fixture. That SQL's SECOND SURFACE is
+   * `leave_policy.accrual` — it reads and UPDATEs the table at lines 83 and 133 — and migration 0405
+   * drops it. 0376 still runs correctly in the migration CHAIN (it is applied long before 0405), but a
+   * replay against today's schema raises `relation "leave_policy" does not exist`, and rebuilding
+   * leave_policy in the test to feed it would be testing the layer this release exists to delete.
+   *
+   * Retired with it: the archived-type asymmetry (an archived type keeps its method and its NULL marker),
+   * the JSONB assertions that only the `method` key was stripped while carry and rounding survived, the
+   * untouched-ledger check, and the one-recovery-event-per-non-archived-type audit including its
+   * `before.policyMethods` capture. Every one of those describes a table that no longer exists.
+   *
+   * The two things it proved that are STILL TRUE are still proved elsewhere in this file: that the marker
+   * makes a type grant nothing and move nothing is (h), and that the marker does not flip
+   * `hasAnyLeaveTypeRule` is (j). What is lost is the proof that 0376's SQL itself parses and runs — a
+   * one-off migration that has already run in production.
+   */
 
   it('is registered in the journal with the mandated watermark — a file drizzle never runs is not a migration', () => {
     const journal = JSON.parse(readFileSync(resolve(here, '../db/migrations/meta/_journal.json'), 'utf8')) as {
@@ -788,10 +745,7 @@ describe('bc36c768 (l) · saving an earning method clears the marker and credits
     // the COMMITTED rules, so a call inside setLeaveTypeRules would have every employee reproject against
     // the configuration the save just replaced. Asserted structurally because no runtime observation can
     // distinguish "inside a transaction that then committed" from "after it".
-    const fn = actionsSrc.slice(
-      actionsSrc.indexOf('export async function setLeaveTypeRulesAction'),
-      actionsSrc.indexOf('export async function updateLeavePolicyAction'),
-    );
+    const fn = setLeaveTypeRulesActionSrc();
     expect(fn).toContain('reprojectEntitlementForLeaveTypeCohort');
     expect(fn.indexOf('await setLeaveTypeRules(')).toBeLessThan(fn.indexOf('reprojectEntitlementForLeaveTypeCohort('));
     // …and it is gated on the marker having actually been cleared, so an ordinary re-save of a configured
@@ -813,10 +767,7 @@ describe('bc36c768 · setLeaveTypeRules is the ONLY path that can write an earni
     // round-trip option from the editor. A dead read is one hand-crafted POST away from being a live one.
     const reads = [...actionsSrc.matchAll(/formData\.get\('method'\)/g)];
     expect(reads.length).toBe(1);
-    const only = actionsSrc.slice(
-      actionsSrc.indexOf('export async function setLeaveTypeRulesAction'),
-      actionsSrc.indexOf('export async function updateLeavePolicyAction'),
-    );
+    const only = setLeaveTypeRulesActionSrc();
     expect(only).toContain("formData.get('method')");
     // …and it is gated on the earningRendered marker, so a carry-only save cannot clear the method.
     expect(only).toContain('...(earningRendered');
