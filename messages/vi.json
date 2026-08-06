@@ -364,6 +364,13 @@
       "draftReady": "Sẵn sàng tạo",
       "draftContinue": "Tiếp tục"
     },
+    "switcher": {
+      "ariaLabel": "Tìm nhân viên",
+      "placeholder": "Tìm mã nhân viên hoặc tên…",
+      "resultsLabel": "Kết quả tìm nhân viên",
+      "noMatches": "Không có nhân viên nào khớp.",
+      "currentTag": "Hiện tại"
+    },
     "detail": {
       "backToPeople": "Nhân sự",
       "backToOrg": "Sơ đồ tổ chức",

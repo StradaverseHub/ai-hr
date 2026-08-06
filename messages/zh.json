@@ -364,6 +364,13 @@
       "draftReady": "可以创建",
       "draftContinue": "继续"
     },
+    "switcher": {
+      "ariaLabel": "搜索员工",
+      "placeholder": "搜索员工编号或姓名…",
+      "resultsLabel": "员工搜索结果",
+      "noMatches": "没有匹配的员工。",
+      "currentTag": "当前"
+    },
     "detail": {
       "backToPeople": "员工",
       "backToOrg": "组织架构图",

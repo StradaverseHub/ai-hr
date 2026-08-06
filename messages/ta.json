@@ -364,6 +364,13 @@
       "draftReady": "உருவாக்கத் தயார்",
       "draftContinue": "தொடரவும்"
     },
+    "switcher": {
+      "ariaLabel": "பணியாளரைத் தேடு",
+      "placeholder": "பணியாளர் ஐடி அல்லது பெயரைத் தேடு…",
+      "resultsLabel": "பணியாளர் தேடல் முடிவுகள்",
+      "noMatches": "பொருந்தும் பணியாளர் யாரும் இல்லை.",
+      "currentTag": "தற்போதைய"
+    },
     "detail": {
       "backToPeople": "பணியாளர்கள்",
       "backToOrg": "நிறுவன அமைப்பு",

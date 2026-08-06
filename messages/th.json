@@ -364,6 +364,13 @@
       "draftReady": "พร้อมสร้าง",
       "draftContinue": "ทำต่อ"
     },
+    "switcher": {
+      "ariaLabel": "ค้นหาพนักงาน",
+      "placeholder": "ค้นหารหัสพนักงานหรือชื่อ…",
+      "resultsLabel": "ผลการค้นหาพนักงาน",
+      "noMatches": "ไม่พบพนักงานที่ตรงกัน",
+      "currentTag": "ปัจจุบัน"
+    },
     "detail": {
       "backToPeople": "พนักงาน",
       "backToOrg": "ผังองค์กร",
