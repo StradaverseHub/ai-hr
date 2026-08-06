@@ -1,20 +1,35 @@
 /**
  * Retain current page after saving a leave entitlement adjustment (#9b0503ac).
  *
- * The reported bug: saving an entitlement adjustment (the under-2 / 2–5 / over-5 service-band day
- * values, a policy add/edit, or a policy removal) bounced HR off the Entitlements config panel to
- * /admin/leave, losing the selected leave type mid-configuration. The fix: every entitlement-area
- * save's SUCCESS redirect targets /admin/leave/entitlements carrying BOTH the success toast
- * (?toast=…, rendered by the globally mounted ToastFromQuery) and the workspace's selection anchor
- * (#type-<leaveTypeId>, the hash contract LeaveTypeWorkspace applies on mount/hashchange) — so the
- * admin lands back on the exact leave type + step they were on. Failures also stay on the
- * Entitlements page (?error=, no fragment — it would swallow the query, the b9dac2d1 precedent).
+ * The reported bug: saving an entitlement change bounced HR off the config panel to /admin/leave, losing
+ * the selected leave type mid-configuration. The fix is a URL contract, and it is fragile in a specific
+ * way — the success redirect must carry the toast in the QUERY and the workspace's selection anchor as a
+ * FRAGMENT AFTER it (a fragment before `?toast=` swallows the query and ToastFromQuery renders nothing),
+ * and failures must stay on the same screen with `?error=` and NO fragment at all (the b9dac2d1
+ * precedent). None of that is visible from a passing save; only a test that reads the redirect TARGET
+ * sees it.
  *
- * Redirect-target assertions per action (the plan's test note):
- *  - upsertSchemeEntitlementAction  (the reporter's exact flow: scheme service-band day values)
- *  - updateLeavePolicyAction        (policy edit incl. the ServiceBandEditor's enclosing form)
- *  - createLeavePoliciesMultiAction (policy add)
- *  - deleteLeavePolicyAction        (policy remove)
+ * ── 6e9a126e RELEASE THREE — REPOINTED, AND ONE HALF OF IT SPLIT IN TWO ──────────────────────────────
+ *
+ * The four actions this file named are gone with the layer they wrote: upsertSchemeEntitlementAction,
+ * updateLeavePolicyAction, createLeavePoliciesMultiAction and deleteLeavePolicyAction. The BEHAVIOUR they
+ * were here to pin did not go anywhere — an entitlement save still has to return the operator to the
+ * screen they saved on — so the file is repointed at the writes that replaced them. What it must not do
+ * is quietly assume the target is the same, because it is NOT, and the difference is deliberate:
+ *
+ *   • The entitlement WRITES (tables + eligibility) moved to their own screen and return to
+ *     ENTITLEMENT_TEMPLATES via `okToast`. Steps 1 and 2 are one screen and an operator writing a table
+ *     then assigning it must not be bounced into the Leave Type workspace between them — see
+ *     app/admin/_redirects.ts, which says so at the constant. These carry a toast and NO fragment.
+ *
+ *   • The #type-<id> ANCHOR CONTRACT IS STILL LIVE and still needs a guard, so it is repointed rather
+ *     than dropped: `okEntitlements` now has exactly ONE caller left, setLeaveTypeRulesAction, which is
+ *     an entitlement-area save INSIDE the leave-type workspace — the reporter's own flow. Deleting the
+ *     anchor assertions along with the four dead actions would have left the fragile half of the URL
+ *     contract (fragment AFTER query, empty id degrades to the bare route) with no test at all.
+ *
+ * The templates actions had NO redirect coverage before this — nothing in test/ referenced them — so
+ * this is a repoint that also closes a gap the new screen shipped with.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,17 +54,18 @@ vi.mock('next/cache', () => ({ revalidatePath: (p: string) => revalidateSpy(p), 
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
 
 import { randomUUID } from 'node:crypto';
-import { createLeavePolicy } from '../core/admin';
-import { createBenefitScheme } from '../core/benefit-scheme';
+import { listEntitlementTemplates } from '../core/entitlement-template';
+import { setLeaveTypeRulesAction } from '../app/admin/actions';
 import {
-  createLeavePoliciesMultiAction,
-  deleteLeavePolicyAction,
-  updateLeavePolicyAction,
-  upsertSchemeEntitlementAction,
-} from '../app/admin/actions';
+  createEligibilityRuleAction,
+  createEntitlementTemplateAction,
+  retireEntitlementTemplateAction,
+  updateEntitlementTemplateAction,
+} from '../app/admin/leave/entitlements/templates/actions';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const ENTITLEMENTS = '/admin/leave/entitlements';
+const TEMPLATES = '/admin/leave/entitlements/templates';
 
 /** Run a server action that ends in redirect() (throws RedirectError here) and return the target path. */
 async function captureRedirect(run: () => Promise<void>): Promise<string> {
@@ -68,7 +84,7 @@ const fd = (fields: Record<string, string>): FormData => {
   return f;
 };
 
-/** The per-type table's three service bands (under 2 / 2–5 / over 5 years). */
+/** The three service bands the entitlement editors post as one JSON field (under 2 / 2–5 / over 5 years). */
 const tier = (d0: number, d1: number, d2: number) => [
   { fromYears: 0, toYears: 2, days: d0 },
   { fromYears: 2, toYears: 5, days: d1 },
@@ -91,96 +107,119 @@ beforeEach(async () => {
   revalidateSpy.mockClear();
 });
 
-describe('9b0503ac — entitlement saves stay on the Entitlements panel (toast + #type anchor)', () => {
-  it('upsertSchemeEntitlementAction (service-band day values) redirects back to the same type with the success toast', async () => {
-    const scheme = await createBenefitScheme(adminCtx(b), {
-      companyId: b.companyId,
-      employmentType: 'full_time',
-      name: `Stay Scheme ${randomUUID().slice(0, 8)}`,
-      status: 'active',
-    });
+/** Create a table through the real action and hand back its lineage id (the edit/retire handle). */
+async function seedTemplate(name: string): Promise<{ lineageId: string; name: string }> {
+  await captureRedirect(() =>
+    createEntitlementTemplateAction(
+      fd({
+        leaveTypeId: b.annualLeaveTypeId,
+        name,
+        serviceBands: JSON.stringify(tier(12, 16, 20)),
+        validFrom: '2026-01-01',
+      }),
+    ),
+  );
+  const rows = await listEntitlementTemplates(adminCtx(b), {});
+  const row = rows.find((r) => r.name === name)!;
+  return { lineageId: row.lineageId, name };
+}
+
+describe('9b0503ac — entitlement saves stay on the screen they were made on', () => {
+  it('createEntitlementTemplateAction (the day table) redirects back to the Entitlement Tables screen with its toast', async () => {
+    const name = `Stay Table ${randomUUID().slice(0, 8)}`;
     const target = await captureRedirect(() =>
-      upsertSchemeEntitlementAction(
+      createEntitlementTemplateAction(
         fd({
-          benefitSchemeId: scheme.id,
           leaveTypeId: b.annualLeaveTypeId,
+          name,
           serviceBands: JSON.stringify(tier(12, 16, 20)),
+          validFrom: '2026-01-01',
         }),
       ),
     );
-    expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target).toContain('entitlementUpdatedToast');
-    expect(target.endsWith(`#type-${b.annualLeaveTypeId}`)).toBe(true);
-    expect(revalidateSpy).toHaveBeenCalledWith(ENTITLEMENTS);
+    // The old bug in its current form would be a redirect to /admin/leave or to ENTITLEMENTS — either one
+    // takes the operator away from the table they were typing.
+    expect(target.startsWith(`${TEMPLATES}?toast=`)).toBe(true);
+    expect(decodeURIComponent(target)).toContain(name);
+    expect(revalidateSpy).toHaveBeenCalledWith(TEMPLATES);
   });
 
-  it('updateLeavePolicyAction (policy edit / ServiceBandEditor form) stays on the panel — not /admin/leave', async () => {
-    const created = await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 14,
-      validFrom: '2026-01-01',
-    });
+  it('updateEntitlementTemplateAction (an edit, which supersedes) stays on the same screen', async () => {
+    const { lineageId, name } = await seedTemplate(`Edit Table ${randomUUID().slice(0, 8)}`);
+    redirectSpy.mockClear();
+    revalidateSpy.mockClear();
     const target = await captureRedirect(() =>
-      updateLeavePolicyAction(
+      updateEntitlementTemplateAction(
         fd({
-          id: created.id,
-          leaveTypeId: b.annualLeaveTypeId, // the panel's hidden anchor field
-          annualDays: '16',
-          validFrom: '2026-01-01',
-          serviceBandsRendered: '1',
-          serviceBands: JSON.stringify(tier(16, 18, 21)),
+          lineageId,
+          name,
+          serviceBands: JSON.stringify(tier(14, 18, 22)),
+          validFrom: '2027-01-01', // strictly after the running version — an edit is a supersede
         }),
       ),
+    );
+    expect(target.startsWith(`${TEMPLATES}?toast=`)).toBe(true);
+    expect(decodeURIComponent(target)).toContain(name);
+    expect(revalidateSpy).toHaveBeenCalledWith(TEMPLATES);
+  });
+
+  it('createEligibilityRuleAction (step 2 — who gets it) does NOT bounce back to the Leave Type workspace', async () => {
+    // This is the case the ENTITLEMENT_TEMPLATES constant exists for: an operator who has just written a
+    // table and is now assigning it must land back beside it, not in the leave-type panel.
+    const { lineageId } = await seedTemplate(`Rule Table ${randomUUID().slice(0, 8)}`);
+    redirectSpy.mockClear();
+    const ruleName = `Executives ${randomUUID().slice(0, 8)}`;
+    const target = await captureRedirect(() =>
+      createEligibilityRuleAction(
+        fd({ name: ruleName, templateLineageId: lineageId, validFrom: '2026-01-01' }),
+      ),
+    );
+    expect(target.startsWith(`${TEMPLATES}?toast=`)).toBe(true);
+    expect(target.startsWith(`${ENTITLEMENTS}?`)).toBe(false);
+    expect(decodeURIComponent(target)).toContain(ruleName);
+  });
+
+  it('retireEntitlementTemplateAction (stop from a date) also stays, with the stopped toast', async () => {
+    const { lineageId, name } = await seedTemplate(`Stop Table ${randomUUID().slice(0, 8)}`);
+    redirectSpy.mockClear();
+    const target = await captureRedirect(() =>
+      retireEntitlementTemplateAction(fd({ lineageId, name, validTo: '2027-01-01' })),
+    );
+    expect(target.startsWith(`${TEMPLATES}?toast=`)).toBe(true);
+    expect(decodeURIComponent(target)).toContain('Stopped');
+    expect(decodeURIComponent(target)).toContain(name);
+  });
+
+  it('a templates-screen failure stays on the templates screen (?error=, and no fragment to swallow it)', async () => {
+    const target = await captureRedirect(() =>
+      updateEntitlementTemplateAction(
+        fd({
+          lineageId: randomUUID(), // no such table — the service throws
+          name: 'Nope',
+          serviceBands: JSON.stringify(tier(12, 16, 20)),
+          validFrom: '2027-01-01',
+        }),
+      ),
+    );
+    expect(target.startsWith(`${TEMPLATES}?error=`)).toBe(true);
+    expect(target).not.toContain('#'); // a fragment before ?error= would swallow the query
+  });
+});
+
+describe('9b0503ac — the #type anchor contract, on its one surviving caller', () => {
+  // okEntitlements is down to a single call site (app/admin/actions.ts, setLeaveTypeRulesAction). It is
+  // still an entitlement-area save inside the leave-type workspace — the reporter's exact flow — so the
+  // anchor half of the contract keeps a guard here rather than disappearing with the four dead actions.
+  it('setLeaveTypeRulesAction returns to the panel with the toast AND the #type selection anchor', async () => {
+    const target = await captureRedirect(() =>
+      setLeaveTypeRulesAction(fd({ leaveTypeId: b.annualLeaveTypeId })),
     );
     // The old bug: redirect(`/admin/leave?toast=…`) — a different route, bouncing HR off the panel.
     expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target.endsWith(`#type-${b.annualLeaveTypeId}`)).toBe(true);
-    // No employees seeded ⇒ no recalc blast radius ⇒ the reporter's plain success confirmation.
     expect(target).toContain('entitlementUpdatedToast');
+    // THE FRAGILE PART: the fragment rides AFTER the query, or ToastFromQuery never sees ?toast=.
+    expect(target.endsWith(`#type-${b.annualLeaveTypeId}`)).toBe(true);
+    expect(target.indexOf('#')).toBeGreaterThan(target.indexOf('?'));
     expect(revalidateSpy).toHaveBeenCalledWith(ENTITLEMENTS);
-  });
-
-  it('createLeavePoliciesMultiAction (policy add) anchors back to the hosting leave type', async () => {
-    const target = await captureRedirect(() =>
-      createLeavePoliciesMultiAction(
-        fd({
-          leaveTypeId: b.annualLeaveTypeId,
-          annualDays: '14',
-          validFrom: '2026-01-01',
-        }),
-      ),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target).toContain('entitlementUpdatedToast');
-    expect(target.endsWith(`#type-${b.annualLeaveTypeId}`)).toBe(true);
-  });
-
-  it('deleteLeavePolicyAction (policy remove) also stays, with the removal toast', async () => {
-    const created = await createLeavePolicy(adminCtx(b), {
-      leaveTypeId: b.annualLeaveTypeId,
-      annualDays: 14,
-      validFrom: '2026-01-01',
-    });
-    const target = await captureRedirect(() =>
-      deleteLeavePolicyAction(fd({ id: created.id, leaveTypeId: b.annualLeaveTypeId })),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target).toContain('entitlementRemovedToast');
-    expect(target.endsWith(`#type-${b.annualLeaveTypeId}`)).toBe(true);
-  });
-
-  it('failures stay on the Entitlements page too (?error=, no fragment) instead of bouncing to /admin/leave', async () => {
-    const target = await captureRedirect(() =>
-      updateLeavePolicyAction(
-        fd({
-          id: randomUUID(), // no such policy — the service throws
-          leaveTypeId: b.annualLeaveTypeId,
-          annualDays: '16',
-          validFrom: '2026-01-01',
-        }),
-      ),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?error=`)).toBe(true);
-    expect(target).not.toContain('#type-'); // a fragment before ?error= would swallow the query
   });
 });
