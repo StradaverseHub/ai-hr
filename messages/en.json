@@ -1131,6 +1131,7 @@
         "eventType": {
           "hired": "Hired",
           "transfer": "Transfer",
+          "entityTransfer": "Entity Transfer",
           "promotion": "Promotion",
           "demotion": "Demotion",
           "increment": "Increment",
@@ -1189,7 +1190,10 @@
           "terminationTypeDerived": "Reported as: {type}",
           "resignationDate": "Resignation Date",
           "terminationNoticeDays": "Notice served (days)",
-          "terminationPayrollFlag": "Termination saved. A payroll run has already been processed for {periods}, past the termination date — review that run. It was not changed."
+          "terminationPayrollFlag": "Termination saved. A payroll run has already been processed for {periods}, past the termination date — review that run. It was not changed.",
+          "entityTransferDateHint": "This date is when the transfer takes effect, and it also becomes the employee’s Join Date with the company they are moving to. Their Group Join Date does not change, so their service, leave and long-service entitlement carry across.",
+          "entityTransferHint": "Choose the company the employee is moving to. The Business Unit, Department, Position and Work Location lists below now show the destination company’s options — pick a Department there. Their employee ID, Group Join Date and history stay exactly as they are.",
+          "selectPlaceholder": "Select…"
         },
         "edit": "Edit",
         "rollback": "Roll Back",

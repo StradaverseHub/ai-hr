@@ -1131,6 +1131,7 @@
         "eventType": {
           "hired": "入职",
           "transfer": "调动",
+          "entityTransfer": "法人实体调动",
           "promotion": "晋升",
           "demotion": "降职",
           "increment": "加薪",
@@ -1189,7 +1190,10 @@
           "terminationTypeDerived": "归类为：{type}",
           "resignationDate": "辞职日期",
           "terminationNoticeDays": "已服务通知期（天）",
-          "terminationPayrollFlag": "离职已保存。{periods} 的薪资已处理且超过离职日期 — 请检查该薪资批次。系统未作更改。"
+          "terminationPayrollFlag": "离职已保存。{periods} 的薪资已处理且超过离职日期 — 请检查该薪资批次。系统未作更改。",
+          "entityTransferDateHint": "此日期为调动生效日，同时也成为该员工在新公司的入职日期。集团入职日期不会变更，因此其年资、假期和长期服务权益均可延续。",
+          "entityTransferHint": "请选择该员工将调往的公司。下方的业务单位、部门、职位和工作地点列表现已切换为目标公司的选项 — 请在其中选择部门。该员工的工号、集团入职日期和历史记录均保持不变。",
+          "selectPlaceholder": "请选择…"
         },
         "edit": "编辑",
         "rollback": "撤销",
