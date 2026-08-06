@@ -127,8 +127,8 @@ export default async function BatchPage({
     (preChecks.hrdfSubjectUnregistered?.length ?? 0);
   // Config-level readiness (feedback 5db3ae48, Phase A) — the layer ABOVE the employee-master pre-checks:
   // is the COMPANY configured to run payroll (statutory tables, active cycle, pay-day, pay items, policy)?
-  // Read-only; surfaced here as a compact panel with a link to the full Workflow Guide. Uses the
-  // payroll.guide namespace so the check copy is written once.
+  // Read-only; surfaced here as a compact panel linking to the full report (now on Payroll Settings —
+  // efe1d230). Uses the payroll.guide namespace so the check copy is written once.
   const tg = await getTranslations('payroll.guide');
   // r134 — the four payroll-cycle names (regular / off_cycle / bonus / adjustment) are catalogued under
   // payroll.list, NOT payroll.batch. See the Cycle field below.
@@ -522,8 +522,8 @@ export default async function BatchPage({
 
       {/* Config-level readiness (feedback 5db3ae48, Phase A): whether the COMPANY is configured to run
           payroll at all — one layer above the per-employee pre-checks below. Only non-ok checks are listed
-          here to keep the draft page focused; the full checklist + guided Phase 1→6 flow lives on the
-          Workflow Guide tab. */}
+          here to keep the draft page focused; the full eight-check per-company checklist lives on Payroll
+          Settings (efe1d230 — it moved there when the Workflow Guide page was retired). */}
       {configReadiness && configAlerts.length > 0 && (
         <Card
           className={`overflow-hidden ${
@@ -538,7 +538,13 @@ export default async function BatchPage({
                   ? tg('readinessBlocked', { n: configReadiness.blockers })
                   : tg('readinessWarnings', { n: configReadiness.warnings })}
               </p>
-              <Link href="/payroll/guide" className="shrink-0 text-xs font-medium text-primary hover:underline">
+              {/* efe1d230 — the Workflow Guide page is retired; the full eight-check per-company report
+                  it carried now opens on Payroll Settings behind ?readiness=full. Same report, same
+                  copy, one fewer menu row. */}
+              <Link
+                href="/payroll/setup?readiness=full"
+                className="shrink-0 text-xs font-medium text-primary hover:underline"
+              >
                 {tg('title')} →
               </Link>
             </div>

@@ -3707,7 +3707,8 @@
       "readinessStaleDefault": "The default payroll cycle names “{name}”, which is not an active cycle for this company.",
       "readinessNoDefault": "No default payroll cycle is chosen for this company.",
       "readinessNoAutoCreate": "Cycles are not created for you — which cycles a company should have is your decision.",
-      "readinessFullReport": "See the full readiness report"
+      "readinessFullReport": "See the full readiness report",
+      "readinessHideReport": "Hide the full report"
     },
     "historyImport": {
       "title": "Import payroll history",

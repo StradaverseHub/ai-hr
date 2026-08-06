@@ -3707,7 +3707,8 @@
       "readinessStaleDefault": "Chu kỳ trả lương mặc định ghi “{name}”, không phải một chu kỳ đang hoạt động của công ty này.",
       "readinessNoDefault": "Chưa chọn chu kỳ trả lương mặc định cho công ty này.",
       "readinessNoAutoCreate": "Hệ thống không tự tạo chu kỳ — công ty nên có những chu kỳ nào là quyết định của bạn.",
-      "readinessFullReport": "Xem báo cáo mức độ sẵn sàng đầy đủ"
+      "readinessFullReport": "Xem báo cáo mức độ sẵn sàng đầy đủ",
+      "readinessHideReport": "Ẩn báo cáo đầy đủ"
     },
     "historyImport": {
       "title": "Nhập lịch sử bảng lương",

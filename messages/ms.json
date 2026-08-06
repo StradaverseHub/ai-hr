@@ -3707,7 +3707,8 @@
       "readinessStaleDefault": "Kitaran gaji lalai menamakan “{name}”, yang bukan kitaran aktif bagi syarikat ini.",
       "readinessNoDefault": "Tiada kitaran gaji lalai dipilih untuk syarikat ini.",
       "readinessNoAutoCreate": "Kitaran tidak dicipta secara automatik — kitaran yang sepatutnya dimiliki syarikat ialah keputusan anda.",
-      "readinessFullReport": "Lihat laporan kesediaan penuh"
+      "readinessFullReport": "Lihat laporan kesediaan penuh",
+      "readinessHideReport": "Sembunyikan laporan penuh"
     },
     "historyImport": {
       "title": "Import sejarah gaji",

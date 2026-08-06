@@ -3707,7 +3707,8 @@
       "readinessStaleDefault": "默认薪资周期指向“{name}”，它不是该公司的有效周期。",
       "readinessNoDefault": "该公司尚未选择默认薪资周期。",
       "readinessNoAutoCreate": "系统不会替你创建周期——公司应该有哪些周期由你决定。",
-      "readinessFullReport": "查看完整的就绪报告"
+      "readinessFullReport": "查看完整的就绪报告",
+      "readinessHideReport": "隐藏完整报告"
     },
     "historyImport": {
       "title": "导入薪资历史",
