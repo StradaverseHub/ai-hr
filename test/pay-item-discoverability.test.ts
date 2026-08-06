@@ -207,7 +207,13 @@ describe('61bf109d rev2 — THE SCOPE GUARD: still no parser, no eval, no expres
     const ruleSrc = read('core', 'pay-rule.ts');
     // Behavioural, not textual: the closed operand set and the statutory exclusion are what this item was
     // told not to widen, and both are observable from the module's own exports.
-    expect([...FORMULA_OPERAND_REFS]).toEqual(['number', 'basic', 'days', 'hours', 'component']);
+    //
+    // 2da9937a UPDATED THIS LIST — it is an exact-set drift guard, so it is restated to the new truth
+    // rather than loosened to a length or a `toContain`. `fixed_allowances` was added DELIBERATELY, by an
+    // approved item, and this line is what makes the next unplanned addition fail. The set is still CLOSED;
+    // it is one member longer, and every consumer driven by this constant (the operand picker, the words
+    // module's exhaustiveness switch, the six locale catalogs) had to be updated to match.
+    expect([...FORMULA_OPERAND_REFS]).toEqual(['number', 'basic', 'days', 'hours', 'fixed_allowances', 'component']);
     expect([...FORMULA_OPS]).toEqual(['+', '-', '*', '/']);
     expect(ruleSrc, 'the evaluator is still here and still string-free').toContain('export function resolvePayRule');
     expect(ruleSrc).not.toMatch(/\beval\s*\(|new Function\s*\(/);

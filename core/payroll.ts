@@ -2777,6 +2777,10 @@ export async function generatePayslips(
       // 61bf109d — the rank recorded at save time (migration 0330). Components resolve in ascending order so
       // a rule that reads another pay item sees that item's final figure. 0 on every legacy row.
       resolutionOrder: number;
+      // r168 verification — TRUE for a BATCH row (individual transaction or synthetic TXN_EARNING /
+      // TXN_DEDUCTION). Optional so every recurring-row literal stays valid; absent ⇒ recurring.
+      // Read by core/pay-rule.ts's fixed_allowances aggregate, which must NOT total one-offs.
+      oneOff?: boolean;
       // LHDN PCB 2026 classification (feedback 09b554e9). epfBonus2012 routes the amount down the
       // additional-remuneration EPF path regardless of the SOCSO flag; pcbRemunerationType (when declared)
       // overrides the epf/socso stream inference; pcbExemptionCode selects the annual exemption cap.
@@ -2956,6 +2960,10 @@ export async function generatePayslips(
                 prorates: t.compProrates ?? false,
                 prorateOverride: null,
                 rule: null, // keyed amount is authoritative — never re-derive via a catalog rule
+                // r168 verification — a BATCH row. Forcing rule:null here is what let it satisfy the
+                // fixed_allowances aggregate; this says plainly that it is a one-off, not a recurring
+                // catalog allowance, so the aggregate skips it.
+                oneOff: true,
                 // 61bf109d — a null rule short-circuits to `amount`, so the rank is inert here; 0 keeps the
                 // one-off row in the first resolution group, exactly where an unranked row belonged before.
                 resolutionOrder: 0,
@@ -2967,8 +2975,8 @@ export async function generatePayslips(
                 displayCategory: t.compDisplayCategory ?? null,
               }
             : t.kind === 'earning'
-              ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null }
-              : { code: 'TXN_DEDUCTION', name: t.notes ?? 'One-off deduction', kind: 'deduction', amount: amt, rounding: 'none', epf: false, socso: false, pcb: false, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null };
+              ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', oneOff: true, amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null }
+              : { code: 'TXN_DEDUCTION', name: t.notes ?? 'One-off deduction', kind: 'deduction', oneOff: true, amount: amt, rounding: 'none', epf: false, socso: false, pcb: false, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null };
         const list = batchCompByEmp.get(t.employmentId) ?? [];
         list.push(row);
         batchCompByEmp.set(t.employmentId, list);
@@ -3160,8 +3168,13 @@ export async function generatePayslips(
       // (factor × dim); `hours` is the employee's attendance hours. NOTE: `per_day`/`per_hour` rules require
       // the component to have prorates=false (validatePayRule rejects the combo), so the kernel's `factor`
       // multiplier below does NOT also apply to them — no double-proration. `percent_of basic` reads the
-      // Personnel compensation basic (seeded once below, order-independent). There is NO division in
-      // the resolver, so a zero-days / zero-hours employee can never abort the batch.
+      // Personnel compensation basic (seeded once below, order-independent).
+      // r168 VERIFICATION — THIS COMMENT SAID "There is NO division in the resolver". As of 2da9937a
+      // there IS: a formula may divide by days, hours or another item. The GUARANTEE it was defending
+      // still holds — a zero divisor resolves that component to 0 for that employee rather than
+      // producing Infinity — but the reason moved from "there is no division" to "division is guarded
+      // at readOperand, the single place a named input becomes a number". Left uncorrected, this is
+      // the sentence the next kernel change would have reasoned from.
       // 61bf109d — `components` carries each pay item's resolved amount for rules that read another item.
       // It starts with BASIC PINNED to the authoritative Personnel figure (seeded just below): the BASIC
       // component row is inert in this engine, so a rule reading `component:'BASIC'` must get the same

@@ -7417,7 +7417,7 @@
       "CYCLE": "Item gaji ini bergantung antara satu sama lain dalam gelung. Ubah salah satunya supaya rantaian itu mempunyai penghujung.",
       "UNKNOWN_COMPONENT": "Pilih item gaji yang wujud dan masih aktif.",
       "STATUTORY_FORBIDDEN": "KWSP, PERKESO, SIP dan PCB ditetapkan oleh undang-undang dan tidak boleh dikira dengan formula.",
-      "UNSAFE_DIVISION": "Anda hanya boleh membahagi dengan nombor tetap yang bukan sifar."
+      "UNSAFE_DIVISION": "Anda tidak boleh membahagi dengan sifar. Pilih nilai lain untuk membahagi."
     },
     "assistButton": "Bantuan AI",
     "assistTitle": "Terangkan cara ia patut dikira",
@@ -7462,7 +7462,10 @@
     "previewInputs": "Item gaji yang digunakan",
     "previewNone": "Tiada pekerja tersedia untuk disemak.",
     "previewNote": "Ditunjukkan untuk tempoh PENUH, sebelum pembahagian pro rata dan pembundaran — payroll menggunakannya semasa proses dijalankan.",
-    "previewFailed": "Tidak dapat mengira hasil untuk pekerja itu."
+    "previewFailed": "Tidak dapat mengira hasil untuk pekerja itu.",
+    "operand_fixed_allowances": "Semua elaun tetap",
+    "formulaDivisionNote": "Anda boleh bahagi dengan nilai langsung seperti hari atau jam bekerja. Jika ia sifar bagi seseorang pekerja, item gaji ini tidak membayar apa-apa untuk pekerja itu dan proses gaji tetap selesai — semak pratonton di sini sebelum anda bergantung padanya.",
+    "previewZeroDivisor": "Ini membayar RM 0.00 untuk pekerja ini kerana \"{divisor}\" adalah sifar pada langkah {step}. Proses gaji tetap akan selesai."
   },
   "review": {
     "title": "Penilaian",

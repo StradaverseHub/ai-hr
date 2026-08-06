@@ -30,6 +30,7 @@ import {
   validatePayRuleAgainstCatalog,
   type PayRule,
   type PayRuleCatalogNode,
+  type PayRuleComponentNotice,
   type PayRuleErrorCode,
 } from './pay-rule';
 
@@ -446,10 +447,22 @@ async function catalogNodesTx(tx: Tx, tenantId: string): Promise<PayRuleCatalogN
  */
 async function recordResolutionOrderTx(tx: Tx, tenantId: string): Promise<void> {
   const rows = await tx
-    .select({ id: payComponent.id, code: payComponent.code, rule: payComponent.rule, resolutionOrder: payComponent.resolutionOrder })
+    .select({
+      id: payComponent.id,
+      code: payComponent.code,
+      rule: payComponent.rule,
+      resolutionOrder: payComponent.resolutionOrder,
+      // 2da9937a — planResolutionOrder needs the kind to know which rows are fixed allowances, so that an
+      // item reading the `fixed_allowances` aggregate is RECORDED above them. resolvePayComponentSet
+      // re-derives that ordering anyway (a stored rank can be stale, and a one-off batch row has none), so
+      // omitting this would not pay a wrong figure — it would only persist a rank that misdescribes the
+      // graph, which is exactly the kind of quietly-wrong number this column exists to prevent.
+      kind: payComponent.kind,
+      archivedAt: payComponent.archivedAt,
+    })
     .from(payComponent)
     .where(eq(payComponent.tenantId, tenantId));
-  const plan = planResolutionOrder(rows.map((r) => ({ code: r.code, rule: r.rule })));
+  const plan = planResolutionOrder(rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null })));
   if (!plan.ok) return;
   for (const r of rows) {
     const next = plan.order.get(r.code.trim().toUpperCase()) ?? 0;
@@ -574,6 +587,10 @@ export type PayRulePreviewResult =
       scope: { basic: number; days: number; hours: number };
       /** Every OTHER pay item the rule referenced, with the amount it resolved to for this employee. */
       inputs: { code: string; amount: number }[];
+      /** 2da9937a — set when the figure above is 0 because a LIVE divisor resolved to zero for this
+       *  employee (a zero-hours month, no fixed allowances). `ok` is still true and the amount is still a
+       *  real figure: this is the explanation, not a failure. Null when nothing divided by zero. */
+      zeroDivisor?: { divisor: string; step: number } | null;
     }
   | { ok: false; code: PayRuleErrorCode };
 
@@ -687,6 +704,12 @@ export function previewPayRule(
         amount: employmentPayComponent.amount,
         rule: payComponent.rule,
         resolutionOrder: payComponent.resolutionOrder,
+        // 2da9937a — the catalog kind decides whether an item counts towards the `fixed_allowances`
+        // aggregate. The KERNEL's CompRow already carries it, so without it here the preview would compute
+        // the aggregate as 0 while the run computed the real sum: the preview would lie, quietly, and only
+        // about formulas using the new operand. Selecting it is what keeps "same evaluator" true in fact
+        // and not just in the call graph.
+        kind: payComponent.kind,
       })
       .from(employmentPayComponent)
       .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
@@ -712,17 +735,23 @@ export function previewPayRule(
     // the employee does not have it yet — a brand-new pay code still previews).
     const set = recurring
       .filter((r) => r.code.trim().toUpperCase() !== code)
-      .map((r) => ({ code: r.code, rule: r.rule, amount: Number(r.amount), resolutionOrder: rankOf(r.code) }));
+      .map((r) => ({ code: r.code, rule: r.rule, amount: Number(r.amount), resolutionOrder: rankOf(r.code), kind: r.kind as string | null }));
     const targetAmount = Number(recurring.find((r) => r.code.trim().toUpperCase() === code)?.amount ?? 0);
-    set.push({ code, rule: p.rule, amount: targetAmount, resolutionOrder: rankOf(code) });
+    // The item under edit takes the kind from the FORM, not from disk — the admin may be changing it in the
+    // same edit, and the preview must answer for the rule as it is about to be saved.
+    set.push({ code, rule: p.rule, amount: targetAmount, resolutionOrder: rankOf(code), kind: p.kind as string | null });
     const targetIdx = set.length - 1;
 
     // BASIC is PINNED to the authoritative Personnel figure, exactly as the kernel pins it — the preview
     // must agree with the run on what `component:'BASIC'` means, not just on the arithmetic.
     const scope = { basic, daysWorked: days, hours, components: { BASIC: basic } };
     let resolved: number[];
+    // 2da9937a — the same notices channel the run uses. On this screen it turns "RM 0.00" from a figure the
+    // admin has to explain to themselves into a sentence naming the input that was zero, BEFORE the rule is
+    // saved and a payroll run has to surface it instead.
+    const notices: PayRuleComponentNotice[] = [];
     try {
-      resolved = resolvePayComponentSet(set, scope);
+      resolved = resolvePayComponentSet(set, scope, notices);
     } catch {
       // PayRuleEvalError — a non-finite result from a corrupted value. Fail closed with the structural code
       // rather than showing a number that the run would refuse to write.
@@ -736,7 +765,16 @@ export function previewPayRule(
       .map((s, i) => ({ code: s.code.trim().toUpperCase(), amount: resolved[i] }))
       .filter((s) => referenced.has(s.code));
 
-    return { ok: true, amount: resolved[targetIdx], scope: { basic, days, hours }, inputs };
+    // Only the notice for the item under edit — a zero divisor on some OTHER pay item is that item's
+    // problem and belongs on that item's screen, not on this one's result panel.
+    const zeroDivisor = notices.find((n) => n.code === code) ?? null;
+    return {
+      ok: true,
+      amount: resolved[targetIdx],
+      scope: { basic, days, hours },
+      inputs,
+      zeroDivisor: zeroDivisor ? { divisor: zeroDivisor.divisor, step: zeroDivisor.step } : null,
+    };
   });
 }
 

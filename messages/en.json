@@ -7417,7 +7417,7 @@
       "CYCLE": "These pay items depend on each other in a loop. Change one of them so the chain has an end.",
       "UNKNOWN_COMPONENT": "Choose a pay item that exists and is still active.",
       "STATUTORY_FORBIDDEN": "EPF, SOCSO, EIS and PCB are set by law and cannot be calculated by a formula.",
-      "UNSAFE_DIVISION": "You can only divide by a fixed number that is not zero."
+      "UNSAFE_DIVISION": "You cannot divide by zero. Choose a different value to divide by."
     },
     "assistButton": "Assist with AI",
     "assistTitle": "Describe how this should be calculated",
@@ -7462,7 +7462,10 @@
     "previewInputs": "Pay items used",
     "previewNone": "No employees available to check against.",
     "previewNote": "Shown for a FULL period, before proration and rounding — payroll applies those when the run happens.",
-    "previewFailed": "Could not work out a result for that employee."
+    "previewFailed": "Could not work out a result for that employee.",
+    "operand_fixed_allowances": "All fixed allowances",
+    "formulaDivisionNote": "You may divide by a live value such as days or hours worked. If it is zero for an employee, this pay item pays nothing for that employee and the run still completes — check the preview here before you rely on it.",
+    "previewZeroDivisor": "This pays RM 0.00 for this employee because \"{divisor}\" is zero at step {step}. The payroll run will still complete."
   },
   "review": {
     "title": "Reviews",
