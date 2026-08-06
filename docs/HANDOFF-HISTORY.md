@@ -9,6 +9,34 @@ steps" in these entries were true when written and are routinely superseded — 
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
 with `git log -S <symbol> main`.
 
+## r167 — 6e9a126e RELEASE THREE: the old entitlement layer is cleared  ·  2026-08-06
+
+Shipped `main@ea4f3d54`, migrations 0409 + 0410. Gate 578/578, shadow 330 → 332.
+
+**Decisions**
+
+- **THE RENUMBER IS THE ONE TO REMEMBER.** As `0405` this migration's `when` had fallen below
+  production's watermark once 0406-0408 shipped during the build. Drizzle does not error on that — it
+  skips. The release would have deployed and done nothing. **A held branch's journal `when` must be
+  re-checked against production immediately before merge.**
+- **DROPPING A TABLE DROPS ITS RLS WITH IT.** 0134 gave `leave_policy` a company-scoped WITH CHECK on
+  purpose; the replacement shipped with `app.is_admin()` alone, so release three was a privilege
+  widening across nine companies. Nothing failed to compile and no test covered it. 0409 restores it
+  against `criteria` JSONB. **Diff a dropped table's policies against its replacement's.**
+- **GRADE GROUPS WERE KEPT AGAINST THE REPORTER ASKING TWICE, and the numbers are why.** 205 of 261
+  approval rules scope by them, and a NULL grade group is a WILDCARD — clearing them turns 205 targeted
+  rules into 205 matching every employee, silently. Measured, put back to them, approved at rev 3.
+- **THE PLAN'S ARITHMETIC WAS WRONG THE WHOLE TIME.** Every revision said "359 items"; 41+292+67 = 400.
+  The 359 was 292+67 with the schemes dropped out of the sum. Only the promised pre-clearing re-count
+  caught it. **A plan that quotes a total should compute it, not restate it.**
+- **REPOINT GUARDS, DO NOT DELETE THEM.** `deleteGradeGroup`'s guard moved from benefit_scheme to
+  leave_approval_policy; the `entitledDays` chain guard was updated for the fourth time; a schema slice
+  whose end-marker was deleted had silently widened to the whole file.
+- **A SOURCE-GREP GUARD IS INVISIBLE TO tsc.** 23 files read source as text; the whole tsc-driven
+  workflow missed them and only the full gate found them.
+- **My own miss:** I tried to make a count self-deriving so it could not go stale, and derived the wrong
+  number. Recorded in the test — the file already had two prior instances of the same class of error.
+
 ## r168 — nine approved items, six workstreams, adversarially verified  ·  2026-08-06
 
 Shipped `main@f33f33b3`, migration 0408. Gate 596/596 · tsc 0 · next build 0 · shadow 329→330 ·

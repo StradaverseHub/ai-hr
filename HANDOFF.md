@@ -18,25 +18,38 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-06 (r168 SHIPPED)
+## CURRENT STATE — snapshot 2026-08-06 (r167 RELEASE THREE SHIPPED)
 
-**`main@f33f33b3` is what runs. Production on 330 migrations. Next free migration number is `0409`**
-— **`0405` is still CLAIMED by the unmerged release-three branch and `0407` by the unmerged
-attendance-trace branch (`build/r166-attend-breakdown`); `0409` was allocated to the formula builder and
-proved unnecessary, so it is free.** No half-applied migration, no pending deploy. Verified after deploy:
-330 migrations applied, `claim_mileage_rate` and `claim_form_field` both live, service `active`, BUILD_ID
-`7OKhBRAILcC1ftxpo_rX-`, `GET /` 401, and `rsync -azi --delete --dry-run` reporting **zero changes**.
+**`main@ea4f3d54` is what runs. Production on 332 migrations. Next free migration number is `0411`**
+(`0405` was RENUMBERED to `0410` and shipped; `0409` shipped with it). No half-applied migration, no
+pending deploy. Verified after deploy: 332 migrations, service `active`, `GET /` 401, zero-change
+`rsync -azi --delete --dry-run`.
 
-**r168 shipped NINE items in six file-disjoint workstreams** (gate 596/596, shadow rehearsal 329→330,
-render-checked). Grouping by FILE OVERLAP rather than theme produced **zero merge conflicts** across six
-branches. Full decisions in history → r168; the three that generalise:
-- **Independent verification caught what green builder runs could not** — a red build, a guard that had
-  silently stopped guarding (a test passing off COMMENTS), and a money defect where an allowance
-  aggregate totalled one-off and non-payable rows (RM500 base → RM2,500 on a RM2,000 one-off).
-- **A builder shipped six catalogs promising behaviour it had not built.** Strings are a promise; reword
-  them or build the thing, never ship the sentence.
-- **Only the FULL gate saw the ADR-0080 pack ratchet trip** when a page split into three routes. The fix
-  is never to add to the allowlist — it only shrinks (22 → 21 here).
+### 6e9a126e RELEASE THREE IS DONE — the old entitlement layer is cleared
+
+`leave_policy`, `benefit_scheme`, `scheme_leave_entitlement` and `employment.benefit_scheme_id` are
+**GONE** from production. 292 entitlement tables + 67 policy rows cleared; **361 rows archived under
+`0410-release-three`**. KEPT and verified: **16 grade groups, 54 memberships, 205 of 261 approval rules
+still scoped by them**; 318 ledger rows and 40 leave requests untouched. Both `6e9a126e` and its
+decision gate `4861bcbb` are marked deployed.
+
+**THE CUSTOMER NOW HAS ZERO ENTITLEMENT CONFIGURED.** Every figure reads blank until 400 items are
+retyped from the archive into Entitlement Templates + Employee Eligibility. The no-opinion guard is what
+keeps balances still while that is true — if a recalc ever starts posting non-zero deltas against an
+unconfigured type, that guard has broken and it is the first thing to check.
+
+**FOUR DEFECTS THIS ROUND THAT NEITHER `tsc` NOR A TARGETED RUN COULD SEE — the durable lessons:**
+1. **`0405` would have been SILENTLY SKIPPED.** Numbered when 0405 was free; r165/r166/r168 then shipped
+   0406-0408, so its `when` fell below the deployed watermark. Drizzle would have shipped the code and
+   never run the drop. **Re-check a held branch's journal `when` against production immediately before
+   merging, not when the number is allocated.**
+2. **Dropping a table silently DROPS ITS RLS.** `leave_policy` carried a company-scoped WITH CHECK
+   (0134); its replacement had only `app.is_admin()`. Release three was itself a privilege widening
+   across nine companies. **When a table is dropped, diff its policies against the replacement's.**
+3. **A guard whose source file is deleted does not fail loudly — it silently widens.** A schema slice
+   `leaveType` → `leavePolicy` returned -1 and swallowed the rest of the file.
+4. **A source-grep guard compiles fine and only fails when RUN.** 23 such files were invisible to the
+   whole tsc-driven workflow and appeared only in the full gate.
 
 ### The board — counted on production 2026-08-06 after r165 (owner role; `DATABASE_URL` is RLS-blocked)
 
