@@ -63,25 +63,31 @@ describe('fa3f4ccb · the pack still reports a real statutory band (the yardstic
 });
 
 describe('fa3f4ccb · the composition: configured wins, the minimum only flags', () => {
-  it('entitledDays resolves to scheme ?? policy, whatever the floor says', () => {
-    // 6e9a126e release two: `templateDays` is the new first slot; `null` there is this file's own
-    // pre-existing two-layer composition, unchanged.
-    expect(entitledDays(8, null, null, 12).days).toBe(12);
-    expect(entitledDays(8, null, 15, 12).days).toBe(15);
+  /** A flat band, the shape `seedEntitlement`'s `annualDays` shorthand stores and the resolver returns. */
+  const band = (days: number): ServiceBand => ({ fromYears: 0, toYears: null, days });
+
+  it('composeEntitlement resolves to the configured band, whatever the floor says', () => {
+    // RELEASE THREE: was `entitledDays(floor, template, scheme, policy)`. The scheme and policy slots went
+    // with their tables; the question is unchanged and is now asked of the one composition every engine
+    // calls.
+    expect(composeEntitlement({ floorDays: 8, templateBand: band(12), rules: undefined }).days).toBe(12);
+    expect(composeEntitlement({ floorDays: 8, templateBand: band(15), rules: undefined }).days).toBe(15);
     // The case the whole item is about: a configured 5 under an 8-day minimum stays 5.
-    expect(entitledDays(8, null, null, 5).days).toBe(5);
-    expect(entitledDays(8, null, 5, 12).days).toBe(5);
-    // …and a template under the minimum is granted as configured too — the floor did not come back for
-    // the new layer.
-    expect(entitledDays(8, 5, 15, 12).days).toBe(5);
+    expect(composeEntitlement({ floorDays: 8, templateBand: band(5), rules: undefined }).days).toBe(5);
+    // …and the floor did not come back when the layer changed: a below-minimum TEMPLATE is granted as
+    // configured, which is the assertion the retired scheme/policy variants were each restating.
+    expect(composeEntitlement({ floorDays: 16, templateBand: band(5), rules: undefined }).days).toBe(5);
   });
 
-  it('entitledDays raises belowStatutoryFloor exactly when the RESOLVED figure is under the minimum', () => {
-    expect(entitledDays(8, null, null, 5).belowStatutoryFloor).toBe(true);
-    expect(entitledDays(8, null, null, 8).belowStatutoryFloor).toBe(false); // equal is not below
-    expect(entitledDays(8, null, 15, 5).belowStatutoryFloor).toBe(false); // the SCHEME wins ⇒ judge the winner
-    expect(entitledDays(8, null, 5, 15).belowStatutoryFloor).toBe(true); // …and likewise the other way round
-    expect(entitledDays(8, 5, 15, 20).belowStatutoryFloor).toBe(true); // the TEMPLATE wins ⇒ judge that
+  it('composeEntitlement raises belowStatutoryFloor exactly when the RESOLVED figure is under the minimum', () => {
+    expect(composeEntitlement({ floorDays: 8, templateBand: band(5), rules: undefined }).belowStatutoryFloor).toBe(true);
+    // Equal is not below.
+    expect(composeEntitlement({ floorDays: 8, templateBand: band(8), rules: undefined }).belowStatutoryFloor).toBe(false);
+    // Above the minimum ⇒ no warning, however far above.
+    expect(composeEntitlement({ floorDays: 8, templateBand: band(15), rules: undefined }).belowStatutoryFloor).toBe(false);
+    // The flag judges the WINNER, and there is now exactly one winner to judge — the resolved band, never
+    // the raw figure of some layer that lost.
+    expect(composeEntitlement({ floorDays: 16, templateBand: band(15), rules: undefined }).belowStatutoryFloor).toBe(true);
   });
 
   it('belowStatutoryFloor is inert where no statutory pack applies (every non-MY company today)', () => {
@@ -93,51 +99,35 @@ describe('fa3f4ccb · the composition: configured wins, the minimum only flags',
   });
 });
 
-describe('fa3f4ccb · the admin preview cannot disagree with a real grant', () => {
-  const rows = (annualDays: number): GradePolicyRow[] => [{ gradeId: null, companyId: null, accrual: { annualDays } }];
-
-  it('preview and engine return the SAME number for a below-minimum configuration', () => {
-    const preview = previewEntitlement(rows(5), null, null, 0, MY_ANNUAL_FLOOR_0Y);
-    const engine = entitledDays(MY_ANNUAL_FLOOR_0Y, null, null, 5);
-    expect(preview.days).toBe(engine.days);
-    expect(preview.belowStatutoryFloor).toBe(engine.belowStatutoryFloor);
-    expect(preview.days).toBe(5);
-    expect(preview.belowStatutoryFloor).toBe(true);
-  });
-
-  it('the preview still carries the minimum itself, so the warning can quote a figure', () => {
-    const preview = previewEntitlement(rows(5), null, null, 0, MY_ANNUAL_FLOOR_0Y);
-    expect(preview.floorDays).toBe(MY_ANNUAL_FLOOR_0Y);
-    expect(preview.policyDays).toBe(5);
-  });
-});
-
-describe('fa3f4ccb · the warning is rendered from the engine signal, never recomputed on screen', () => {
-  const preview = read('/components/leave-rule-preview.tsx');
-
-  it('the preview component reads result.belowStatutoryFloor and quotes result.floorDays', () => {
-    // Recomputing the floor in the presentation layer is how the flagged figure and the quoted minimum
-    // drift apart — the reason the flag lives in PreviewResult at all.
-    expect(preview).toMatch(/result\.belowStatutoryFloor/);
-    expect(preview).toMatch(/t\('previewBelowFloorWarning', \{ days: result\.floorDays/);
-    // SCOPED to the construct this is about: the floor must never be an OPERAND of a max/min, nor be
-    // compared against the days on screen. Two blunter versions of this guard were wrong — "no Math.max"
-    // matches `Math.max(0, serviceYears)` (a form-input clamp), and "no line mentioning floor" matches the
-    // line that merely PASSES floorDays into previewEntitlement, which is exactly what it should do.
-    expect(preview).not.toMatch(/Math\.(max|min)\([^)]*floorDays/i);
-    expect(preview).not.toMatch(/floorDays[^\n]*[<>]=?[^\n]*days/i);
-    // The headline figure is printed as resolved, not adjusted here.
-    expect(preview).toMatch(/t\('previewResultDays', \{ days: result\.days \}\)/);
-  });
-
-  it('every locale carries the warning string (tsc cannot see a missing translation key)', () => {
-    for (const loc of LOCALES) {
-      const m = JSON.parse(read(`/messages/${loc}.json`));
-      expect(m.admin.leave.previewBelowFloorWarning, `${loc} previewBelowFloorWarning`).toBeTruthy();
-      expect(String(m.admin.leave.previewBelowFloorWarning)).toContain('{days}');
-    }
-  });
-
+/*
+ * ── RETIRED BY 6e9a126e RELEASE THREE ────────────────────────────────────────────────────────────────
+ * TWO BLOCKS ARE GONE FROM HERE, AND THIS NOTE IS THE RECORD OF WHAT COVERAGE WENT WITH THEM.
+ *
+ *  1. 'the admin preview cannot disagree with a real grant' — two cases proving `previewEntitlement`
+ *     returned the same days and the same below-minimum flag as the engine, and that it carried the floor
+ *     figure so the warning could quote it. `previewEntitlement` no longer exists.
+ *  2. 'the preview component reads result.belowStatutoryFloor …' and 'every locale carries the warning
+ *     string' — source-level guards over `components/leave-rule-preview.tsx` and
+ *     `admin.leave.previewBelowFloorWarning`.
+ *
+ * WHY RETIRED AND NOT REPOINTED. The Preview Scenario checker is DELETED by this release, not moved: it
+ * resolved ACTIVE `leave_policy` rows, so against the template layer it would have had nothing to resolve
+ * and would have answered "—" to every question while still looking like a live checker
+ * (app/admin/leave/entitlements/page.tsx records the decision). The component file and the warning key are
+ * gone from all six locales with it. There is no surface left that renders a below-minimum warning, so
+ * there is nothing to point these at; asserting a deleted component reads a deleted key would be a test
+ * that cannot fail honestly.
+ *
+ * WHAT IS DELIBERATELY KEPT: the ENGINE half of the same invariant, which is the half that decides
+ * anyone's days, now asserted on `composeEntitlement` above. And the prose guard below — no screen may
+ * still CLAIM the minimum overrides the configured figure — because that claim is what the reporter asked
+ * to be removed and `admin.leave.typesHelp` still renders it to HR.
+ *
+ * WHAT IS GENUINELY LESS COVERED: nothing now stops a FUTURE below-minimum warning being recomputed in the
+ * presentation layer instead of read from the engine flag. That guard needs a surface to guard, and this
+ * release leaves none.
+ */
+describe('fa3f4ccb · no surface still claims the minimum overrides the configured figure', () => {
   it('no surface still claims the minimum overrides the configured figure', () => {
     // A labelKey is not the label: these two strings asserted the removed behaviour as fact, in prose, on
     // the screens this item changes. Pinned by MEANING (the claim), not by wording.
@@ -223,7 +213,8 @@ const hire = (hiredOn: string) =>
 
 describe('fa3f4ccb · end to end: a below-minimum entitlement reaches the ledger', () => {
   it('the hire grant credits the configured 5 days, not the 8-day statutory minimum', async () => {
-    await createLeavePolicy(adminCtx(b), {
+    // 6e9a126e release three: was createLeavePolicy(5 days). The figure is the point and it is unchanged.
+    await seedEntitlement(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 5,
       validFrom: '2020-01-01',
@@ -234,7 +225,8 @@ describe('fa3f4ccb · end to end: a below-minimum entitlement reaches the ledger
   });
 
   it('the year-open sweep grants the configured 5 days too (one composition, not two)', async () => {
-    await createLeavePolicy(adminCtx(b), {
+    // 6e9a126e release three: was createLeavePolicy(5 days). The figure is the point and it is unchanged.
+    await seedEntitlement(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 5,
       validFrom: '2020-01-01',
