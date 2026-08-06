@@ -284,6 +284,19 @@ export default async function BatchPage({
                 ⬇ {t('paymentSummary')}
               </a>
             )}
+            {/* e440991b point 6 — the whole run into Excel, one row per employee with every earning,
+                deduction, employer contribution and total, off the stored payslips. A plain <a>, not a
+                form: the route is a GET download and this keeps the header a server component.
+                Processed/closed only — a draft has no payslips to reconcile. */}
+            {batch.status !== 'draft' && (
+              <a
+                href={`/payroll/${batch.id}/export?format=xlsx`}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                title={t('transactionDetailTitle')}
+              >
+                ⬇ {t('transactionDetail')}
+              </a>
+            )}
             {batch.status === 'draft' && (
               <form action={generateAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
