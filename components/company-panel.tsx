@@ -488,6 +488,7 @@ export function CompanyPanel({
   signatories = [],
   stateOptions = [],
   activeCycleNames = [],
+  defaultExpanded = false,
   actions,
 }: {
   company: PanelCompany;
@@ -504,6 +505,13 @@ export function CompanyPanel({
   // Organization Module (361e3b15) — THIS company's ACTIVE payroll cycle names, for the Default Payroll
   // Cycle picker on the General tab.
   activeCycleNames?: string[];
+  /**
+   * Open on mount (item defd4644). The panel was born inside a listing where collapsing was the
+   * point; it is now also the whole body of /admin/organization/[companyId], where making the reader
+   * click a disclosure row that discloses the only thing on the page is pure friction. Additive and
+   * defaulted false, so the collapsed behaviour every existing caller relies on is untouched.
+   */
+  defaultExpanded?: boolean;
   actions: {
     updateCompany: Action;
     archiveCompany: Action;
@@ -520,7 +528,7 @@ export function CompanyPanel({
   };
 }) {
   const t = useTranslations('admin.organization');
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [tab, setTab] = useState<TabKey>('general');
   const c = company;
   const isMY = c.country === 'MY';

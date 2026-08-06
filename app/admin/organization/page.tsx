@@ -1,42 +1,63 @@
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { companyTree, listCompanies } from '@/core/read';
-import { listProfileOptions } from '@/core/profile-options';
 import { packFor } from '@/localization/registry';
-import { listAllCompanyBankProfiles } from '@/core/bank-profile';
-// R46 orgbank (84719377) — per-authority statutory payment configuration + the company-scoped signatory
-// candidates. Both are RLS-scoped listers, grouped by company here like the bank profiles.
-import { listAllCompanyStatutoryAuthorities, listSignatoryCandidates } from '@/core/statutory-authority';
-// Organization Module — Automatic Payroll Cycle Assignment (361e3b15): the Add-company Default Payroll Cycle
-// picker lists the standard catalog names, and each company's General tab pre-selects its saved default from
-// that company's ACTIVE cycles.
-import { DEFAULT_PAYROLL_CYCLES, listPayrollCycles } from '@/core/payroll-cycle';
-import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import {
-  CompanyPanel,
-  type PanelBankProfile,
-  type PanelSignatory,
-  type PanelStatutoryAuthority,
-} from '@/components/company-panel';
-import { OrganizationList } from '@/components/organization-list';
-import { CompaniesCardHeader } from '@/components/add-company';
-import {
-  archiveCompanyAction,
-  createCompanyAction,
-  deleteCompanyAction,
-  removeCompanyBankProfileAction,
-  removeCompanyLogoAction,
-  removeCompanyStatutoryAuthorityAction,
-  setCompanyBankProfileAction,
-  setCompanyStatutoryAuthorityAction,
-  setCompanyLogoAction,
-  setCompanyParentAction,
-  setCompanyStatutoryAction,
-  updateCompanyAction,
-  updateCompanyDefaultCycleAction,
-} from '../actions';
+  Card,
+  ErrorBanner,
+  PageHeader,
+  SectionHeader,
+  btnPrimary,
+  inputCls,
+  pageWideCls,
+  tableWrapCls,
+  tbodyCls,
+  theadCls,
+  thCls,
+} from '@/components/ui';
+import { cn } from '@/lib/utils';
+import { Pager } from '@/components/pager';
+import { pageState, parsePageQuery, paginateRows } from '@/lib/pagination';
+import { CompanyRows, COMPANY_STATUS_FILTERS, selectCompanyRows } from './company-rows';
+import { resolveGroupTree, type TreeNode } from './group-tree';
 
-type TreeNode = { id: string; name: string; country: string; parentId: string | null };
+/**
+ * Admin → Organization, THE LISTING (item defd4644).
+ *
+ * ── WHAT CHANGED, AND WHY ─────────────────────────────────────────────────────────────────────────
+ * This screen used to open straight into a company form with the create form on the same page and no
+ * way to browse — the only admin module that worked that way. It is now browse → pick → maintain like
+ * the rest: a table of companies here, `/admin/organization/new` for the create form, and
+ * `/admin/organization/[companyId]` for one company's maintenance screen.
+ *
+ * SERVER COMPONENT, NO CLIENT ISLAND. Search, status filter, sort and paging are a plain GET form and
+ * `?q=&status=&sort=&page=&size=`, so selection lives in the ADDRESS and every server-side scope guard
+ * still applies to it. The previous design shipped every company's full editable panel to the client
+ * inside one client wrapper; that payload is what overflowed the Flight row budget and turned rows
+ * 2..N into lazies (see the header of components/organization-list.tsx for that story). Nothing on
+ * this page crosses the RSC boundary any more.
+ *
+ * ── SCOPE IS THE QUERY, NOT THE UI ────────────────────────────────────────────────────────────────
+ * `listCompanies(s, { includeArchived: true, adminOnly: true })` applies the database's own
+ * `app.is_admin_for` — the same predicate the company table's WITH CHECK uses — so every company
+ * listed here is one this person can actually write to. For a GROUP-WIDE hr_admin that resolves to
+ * every company in the tenant (the reporter's case, unchanged); for a company-scoped admin it is their
+ * company and its subtree. DO NOT widen this query to make the listing look fuller: the filter IS the
+ * permission boundary, and /admin/organization/[companyId] refuses anything outside it.
+ *
+ * The company switcher (getScopeIds) is still deliberately ignored: this is a master-data screen, not
+ * an operational one (0f1802bf).
+ *
+ * ── THE HIERARCHY SURVIVES ────────────────────────────────────────────────────────────────────────
+ * `companyTree` stays a separate read because it carries parentCompanyId, which listCompanies does not
+ * select. Parent company is a COLUMN in the table, the Group Structure card still draws the tree, and
+ * the parent is settable on each company's maintenance page. A pure flat table would look tidier and
+ * quietly break the group hierarchy other screens depend on.
+ *
+ * ⚠️ ONE i18n NAMESPACE (`admin.organization`) — test/i18n-coverage.test.ts check C skips any file that
+ * opens more than one, which is how a screen of MISSING_MESSAGEs once shipped behind a green suite.
+ */
 
 function CompanyTree({
   nodes,
@@ -65,145 +86,72 @@ function CompanyTree({
 export default async function OrganizationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    q?: string;
+    status?: string;
+    sort?: string;
+    page?: string;
+    size?: string;
+  }>;
 }) {
   const { s } = await scopedAdmin();
-  const { error } = await searchParams;
+  const sp = await searchParams;
+  const { error, q, status, sort } = sp;
   const t = await getTranslations('admin.organization');
-  // THE ONE RESOLVED COMPANY LIST THIS SCREEN RENDERS (feedback ae3bd088). `adminOnly` applies the
-  // database's own app.is_admin_for — for a GROUP-WIDE hr_admin that is every company in the tenant
-  // (the reporter's case: all 8, unchanged), for a company-scoped admin it is their company and its
-  // subtree. Everything the screen shows — the card, both bracketed totals, the Group Structure tree,
-  // the parent picker — is derived from THIS array below, never from a second read; two reads is how a
-  // total and a list drift apart. The company switcher is still deliberately ignored here (0f1802bf):
-  // this is a master-data screen, not an operational one, and `scopeIds` is not consulted.
-  //
-  // `companyTree` stays a separate read because it carries parentCompanyId, which listCompanies does
-  // not select; it is intersected with the resolved list immediately below rather than rendered raw.
-  // Org catalogs (departments/positions/cost-centers/business-units) moved to Settings → System
-  // Labels, so this page no longer fetches them.
-  const [companies, tree, statutory, bankProfiles, authorities, signatories, stateOpts] = await Promise.all([
+
+  // Three reads, all RLS-scoped. The per-company panel data (bank profiles, statutory authorities,
+  // signatories, profile options, payroll cycles) moved to the maintenance page with the panel it
+  // feeds — a browse screen has no business running an N+1 over payroll cycles.
+  const [companies, tree, statutory] = await Promise.all([
     listCompanies(s, { includeArchived: true, adminOnly: true }),
     companyTree(s),
     // Rung 5c — company statutory rows come through the pack registry (ADR-0080 D1), not a direct import.
     packFor('MY')?.companyStatutory.list(s) ?? [],
-    listAllCompanyBankProfiles(s),
-    listAllCompanyStatutoryAuthorities(s),
-    listSignatoryCandidates(s),
-    // Enhance Company General Tab (bc5d4891): reuse the tenant-wide profile-option catalog for the
-    // Contact-Information State pick-list (same source the Personnel profile dropdowns read). 94ae7e1f — the
-    // Country picker now uses the complete shared ISO list (lib/countries) instead of a curated catalog.
-    listProfileOptions(s, 'state', { activeOnly: true }),
   ]);
-  const stateOptions = stateOpts.map((o) => ({ value: o.value, label: o.label }));
   const statBy = new Map(statutory.map((r) => [r.companyId, r]));
-  const bankBy = new Map<string, PanelBankProfile[]>();
-  for (const bp of bankProfiles) {
-    const list = bankBy.get(bp.companyId) ?? [];
-    list.push({
-      id: bp.id,
-      bank: bp.bank,
-      corporateId: bp.corporateId,
-      debitAccountNo: bp.debitAccountNo,
-      orgName: bp.orgName,
-      txnType: bp.txnType,
-      accountLabel: bp.accountLabel,
-      accountName: bp.accountName,
-      accountType: bp.accountType,
-      branch: bp.branch,
-      swiftCode: bp.swiftCode,
-      currency: bp.currency,
-      isPrimary: bp.isPrimary,
-    });
-    bankBy.set(bp.companyId, list);
-  }
-  const authorityBy = new Map<string, PanelStatutoryAuthority[]>();
-  for (const a of authorities) {
-    const list = authorityBy.get(a.companyId) ?? [];
-    list.push({
-      id: a.id,
-      authority: a.authority,
-      accountNo: a.accountNo,
-      bankProfileId: a.bankProfileId,
-      addressLine1: a.addressLine1,
-      addressLine2: a.addressLine2,
-      addressLine3: a.addressLine3,
-      city: a.city,
-      state: a.state,
-      postcode: a.postcode,
-      country: a.country,
-      phone: a.phone,
-      email: a.email,
-      signatoryPersonId: a.signatoryPersonId,
-    });
-    authorityBy.set(a.companyId, list);
-  }
-  const signatoryBy = new Map<string, PanelSignatory[]>();
-  for (const sg of signatories) {
-    const list = signatoryBy.get(sg.companyId) ?? [];
-    list.push({ personId: sg.personId, name: sg.name });
-    signatoryBy.set(sg.companyId, list);
-  }
+
   // Feedback efece4ce — the active Malaysian companies with NO statutory record at all. Payroll resolves a
   // missing row to hrdf_status = 'not_registered' and charges nothing, so a company can sit for months
-  // producing zero HRDF with nothing anywhere saying it was never registered. Finding them previously meant
-  // opening every company panel one at a time. Archived companies run no payroll; non-MY companies have no
-  // MY statutory row by design — neither is a gap. Derived from the two lists already fetched, no new query.
+  // producing zero HRDF with nothing anywhere saying it was never registered. Archived companies run no
+  // payroll; non-MY companies have no MY statutory row by design — neither is a gap. Derived from the two
+  // lists already fetched, no new query.
   const missingStatutory = companies.filter(
     (c) => !c.archivedAt && c.country === 'MY' && !statBy.has(c.id),
   );
-  // The Group Structure tree, drawn from the SAME resolved set as the card so the two bracketed counts
-  // cannot disagree. Two things are deliberate here:
-  //   • the filter, so a company-scoped admin is not shown a group they cannot administer; and
-  //   • the RE-ROOTING, which is the part that would otherwise be a silent hole. CompanyTree descends
-  //     from `parentId === null` only, so a subsidiary whose parent is out of reach would keep a
-  //     parent id that is not in `nodes`, match no branch, and render NOWHERE — while still being
-  //     counted. Nulling the dangling link makes it a root of the visible group instead.
-  // For a group-wide admin visibleIds holds every company, so both steps are identities.
-  const visibleIds = new Set(companies.map((c) => c.id));
-  const visibleTree = tree
-    .filter((n) => visibleIds.has(n.id))
-    .map((n) => ({ ...n, parentId: n.parentId && visibleIds.has(n.parentId) ? n.parentId : null }));
-  const parentBy = new Map(visibleTree.map((n) => [n.id, n.parentId]));
-  // Organization Module (361e3b15): each company's ACTIVE payroll cycle names, so its General-tab picker lists
-  // that company's own cycles with the saved default pre-selected (and can flag a saved default that is no
-  // longer active). Read per company (tenant-scoped by RLS); the org admin's company list is small.
-  const cycleNameLists = await Promise.all(
-    companies.map((c) => listPayrollCycles(s, c.id, { activeOnly: true })),
-  );
-  const activeCycleNamesBy = new Map<string, string[]>();
-  companies.forEach((c, i) => activeCycleNamesBy.set(c.id, cycleNameLists[i].map((r) => r.name)));
-  // substrate: read-only, no event.
-  //
-  // THIS COMMENT USED TO SAY "tenant-wide master … renders every company", and half of it was wrong in
-  // a way that hid a real hole for two rounds. The half that was TRUE, and still is: the company
-  // switcher (getScopeIds) is intentionally ignored here, unlike operational screens. The half that
-  // was NOT: "every company" meant every company in the TENANT, so a company-scoped hr_admin was
-  // listed — and offered archive/delete/re-parent controls for — companies the database would refuse
-  // to let them write. The card now renders every company the signed-in person can ADMINISTER
-  // (listCompanies adminOnly → app.is_admin_for), which for a group-wide grant is still every one of
-  // them. Do not restate this as "tenant-wide": the two coincide only for the group admin.
 
-  const actions = {
-    updateCompany: updateCompanyAction,
-    archiveCompany: archiveCompanyAction,
-    deleteCompany: deleteCompanyAction,
-    setParent: setCompanyParentAction,
-    setStatutory: setCompanyStatutoryAction,
-    setBankProfile: setCompanyBankProfileAction,
-    removeBankProfile: removeCompanyBankProfileAction,
-    setStatutoryAuthority: setCompanyStatutoryAuthorityAction,
-    removeStatutoryAuthority: removeCompanyStatutoryAuthorityAction,
-    setCompanyLogo: setCompanyLogoAction,
-    removeCompanyLogo: removeCompanyLogoAction,
-    updateCompanyDefaultCycle: updateCompanyDefaultCycleAction,
+  // The group hierarchy, intersected with the administrable set and re-rooted — see ./group-tree.ts.
+  const { visibleTree, parentBy } = resolveGroupTree(companies, tree);
+
+  // Rows for the table: derived from the SAME resolved company array as the Group Structure card, so
+  // the two bracketed counts on this screen cannot drift apart.
+  const rows = selectCompanyRows(companies, parentBy, { q, status, sort });
+  const pq = parsePageQuery(sp);
+  const { rows: pageRows } = paginateRows(rows, pq);
+  const pgState = pageState(pq, rows.length, pageRows.length);
+
+  const sortHref = (key: string) => {
+    const p = new URLSearchParams();
+    if (q) p.set('q', q);
+    if (status) p.set('status', status);
+    if (sp.size) p.set('size', sp.size);
+    p.set('sort', key);
+    return `/admin/organization?${p.toString()}`;
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader
         title={t('pageTitle')}
         description={t('pageDescription')}
+        actions={
+          <Link href="/admin/organization/new" data-tour="people-org-add" className={btnPrimary}>
+            <span aria-hidden className="text-base leading-none">
+              +
+            </span>
+            {t('addNewCompany')}
+          </Link>
+        }
       />
       <ErrorBanner message={error} />
 
@@ -256,62 +204,75 @@ export default async function OrganizationPage({
       )}
 
       <Card data-tour="people-org-companies">
-        <CompaniesCardHeader
-          title={t('companies')}
-          count={companies.length}
-          createAction={createCompanyAction}
-          cycleOptions={DEFAULT_PAYROLL_CYCLES.map((c) => c.name)}
-        />
-        {companies.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesYet')}</p>
-        ) : (
-          <OrganizationList
-            items={companies.map((c) => ({
-              id: c.id,
-              name: c.name,
-              registrationNo: c.registrationNo,
-              node: (
-                <CompanyPanel
-                  key={c.id}
-                  company={{
-                    id: c.id,
-                    name: c.name,
-                    country: c.country,
-                    currency: c.currency,
-                    registrationNo: c.registrationNo,
-                    companyLabel: c.companyLabel,
-                    industry: c.industry,
-                    website: c.website,
-                    businessType: c.businessType,
-                    addressLine1: c.addressLine1,
-                    addressLine2: c.addressLine2,
-                    addressLine3: c.addressLine3,
-                    city: c.city,
-                    state: c.state,
-                    addressCountry: c.addressCountry,
-                    postcode: c.postcode,
-                    phone: c.phone,
-                    fax: c.fax,
-                    archivedAt: c.archivedAt,
-                    inUse: c.inUse,
-                    parentId: parentBy.get(c.id) ?? null,
-                    hasLogo: c.hasLogo,
-                    // Organization Module (361e3b15): the company's saved default payroll cycle name.
-                    defaultPayrollCycle: c.defaultPayrollCycle,
-                  }}
-                  companies={companies}
-                  statutory={statBy.get(c.id) ?? null}
-                  bankProfiles={bankBy.get(c.id) ?? []}
-                  statutoryAuthorities={authorityBy.get(c.id) ?? []}
-                  signatories={signatoryBy.get(c.id) ?? []}
-                  stateOptions={stateOptions}
-                  activeCycleNames={activeCycleNamesBy.get(c.id) ?? []}
-                  actions={actions}
-                />
-              ),
-            }))}
-          />
-        )}
+        <SectionHeader title={t('companies')} count={rows.length} />
+        <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-3">
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {t('searchLabel')}
+            <input
+              name="q"
+              type="search"
+              defaultValue={q ?? ''}
+              placeholder={t('searchPlaceholder')}
+              aria-label={t('searchPlaceholder')}
+              className={cn(inputCls, 'w-72')}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {t('colStatus')}
+            <select name="status" defaultValue={status ?? ''} className={cn(inputCls, 'w-44')}>
+              <option value="">{t('allStatuses')}</option>
+              {COMPANY_STATUS_FILTERS.map((v) => (
+                <option key={v} value={v}>
+                  {v === 'archived' ? t('statusArchived') : t('statusActive')}
+                </option>
+              ))}
+            </select>
+          </label>
+          {/* Sort and page size ride along so applying a filter does not silently reset them. `page`
+              deliberately does NOT: a new filter belongs on page one. */}
+          {sort && <input type="hidden" name="sort" value={sort} />}
+          {sp.size && <input type="hidden" name="size" value={sp.size} />}
+          <button type="submit" className={btnPrimary}>
+            {t('applyFilter')}
+          </button>
+        </form>
+
+        <div className={tableWrapCls}>
+          <table className="w-full text-sm">
+            <thead className={theadCls}>
+              <tr>
+                <th className={thCls}>
+                  <Link href={sortHref('code')}>{t('colCode')}</Link>
+                </th>
+                <th className={thCls}>
+                  <Link href={sortHref('name')}>{t('legalName')}</Link>
+                </th>
+                <th className={thCls}>
+                  <Link href={sortHref('regNo')}>{t('regNo')}</Link>
+                </th>
+                <th className={thCls}>
+                  <Link href={sortHref('parent')}>{t('parentCompany')}</Link>
+                </th>
+                <th className={thCls}>
+                  <Link href={sortHref('status')}>{t('colStatus')}</Link>
+                </th>
+                <th className={thCls}>{t('open')}</th>
+              </tr>
+            </thead>
+            <tbody className={tbodyCls}>
+              <CompanyRows
+                rows={pageRows}
+                labels={{
+                  active: t('statusActive'),
+                  archived: t('statusArchived'),
+                  empty: companies.length === 0 ? t('noCompaniesYet') : t('noMatches'),
+                  open: t('open'),
+                }}
+              />
+            </tbody>
+          </table>
+        </div>
+        <Pager basePath="/admin/organization" params={{ q, status, sort }} state={pgState} />
       </Card>
     </div>
   );

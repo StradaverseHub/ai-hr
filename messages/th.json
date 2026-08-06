@@ -4211,7 +4211,18 @@
       "authority_zakat": "ซะกาต",
       "authority_ptptn": "PTPTN",
       "authority_tabung_haji": "Tabung Haji",
-      "authority_koperasi": "สหกรณ์ (Koperasi)"
+      "authority_koperasi": "สหกรณ์ (Koperasi)",
+      "colCode": "รหัส",
+      "colStatus": "สถานะ",
+      "statusActive": "ใช้งาน",
+      "statusArchived": "เก็บถาวรแล้ว",
+      "allStatuses": "ทุกสถานะ",
+      "searchLabel": "ค้นหา",
+      "searchPlaceholder": "รหัส ชื่อ หรือเลขทะเบียน",
+      "applyFilter": "ใช้",
+      "open": "เปิด",
+      "backToCompanies": "กลับไปที่รายชื่อบริษัท",
+      "createDescription": "ลงทะเบียนบริษัทในกลุ่ม ข้อมูลตามกฎหมาย บัญชีธนาคาร และบริษัทแม่ จะตั้งค่าภายหลังในหน้าของบริษัทนั้นเอง"
     },
     "systemLabels": {
       "pageTitle": "ป้ายระบบ",

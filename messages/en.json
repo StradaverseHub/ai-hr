@@ -4211,7 +4211,18 @@
       "authority_zakat": "Zakat",
       "authority_ptptn": "PTPTN",
       "authority_tabung_haji": "Tabung Haji",
-      "authority_koperasi": "Co-operative (Koperasi)"
+      "authority_koperasi": "Co-operative (Koperasi)",
+      "colCode": "Code",
+      "colStatus": "Status",
+      "statusActive": "Active",
+      "statusArchived": "Archived",
+      "allStatuses": "All statuses",
+      "searchLabel": "Search",
+      "searchPlaceholder": "Code, name or registration no.",
+      "applyFilter": "Apply",
+      "open": "Open",
+      "backToCompanies": "Back to companies",
+      "createDescription": "Register a company in the group. Its statutory identity, bank accounts and group parent are set up afterwards on the company's own page."
     },
     "systemLabels": {
       "pageTitle": "System Labels",
