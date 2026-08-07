@@ -141,6 +141,9 @@ describe('assignDefaultShift — service + substrate', () => {
       startTime: '09:00:00',
       endTime: '18:00:00',
       breakMinutes: 60,
+      // b8aa3466 — a backup shift must declare working days, or every date falls to rest_day. This fixture
+      // is about CROSS-COMPANY assignability, so it needs a workable pattern to reach that check.
+      weeklyPattern: [1, 2, 3, 4, 5],
     });
     await assignDefaultShift(a, { employmentId: empId, shiftId: foreign.id });
     expect(await storedDefaultShift(empId)).toBe(foreign.id);

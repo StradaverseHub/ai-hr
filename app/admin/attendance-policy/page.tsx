@@ -103,7 +103,9 @@ export default async function AttendancePolicyPage({
   // The working-days list is ALSO read, for every employee shift or no shift, by absence derivation
   // (core/attendance.ts ~2014) and roster generation (core/roster.ts) — and the overtime rates below are
   // the tenant's only editor for the statutory wage ceiling and the rest-day/holiday multipliers.
-  const uncovered = await employmentsWithoutBackupShift(s);
+  // b8aa3466 — scoped to the SAME companies every other list on this page uses (`visible`, from
+  // getScopeIds). An unscoped count here reported employees the viewer cannot open.
+  const uncovered = await employmentsWithoutBackupShift(s, { companyIds: visible.map((c) => c.id) });
   const UNCOVERED_SHOWN = 10;
   const uncoveredNames = uncovered
     .slice(0, UNCOVERED_SHOWN)

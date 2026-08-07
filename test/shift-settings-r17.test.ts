@@ -24,6 +24,7 @@ import {
   createShift,
   deleteShift,
   BackupShiftRequiredError,
+  ShiftHasNoWorkingPatternError,
   listShifts,
   listShiftsForTenant,
   rosterForRange,
@@ -294,6 +295,9 @@ describe('R17 employee Shift Type invariant', () => {
       startTime: '09:00:00',
       endTime: '18:00:00',
       breakMinutes: 60,
+      // b8aa3466 — a mandatory backup shift must declare working days; this test is about the arrangement
+      // invariant, so the shift needs a workable pattern to get past that separate guard.
+      weeklyPattern: [1, 2, 3, 4, 5],
     });
     await expect(
       assignEmployeeShift(a, { employmentId: empId, shiftType: 'fixed', shiftId: null }),
@@ -310,5 +314,52 @@ describe('R17 employee Shift Type invariant', () => {
     // Roster KEEPS the backup shift now — it is what covers any day with no roster row.
     await assignEmployeeShift(a, { employmentId: empId, shiftType: 'roster', shiftId: s.id });
     expect(await storedEmployment(empId)).toEqual({ ds: s.id, st: 'roster' });
+  });
+});
+
+describe('b8aa3466 — a MANDATORY backup shift must be one an employee can actually work', () => {
+  /**
+   * FOUND IN VERIFICATION, and it is the trap this item's own change opens.
+   *
+   * Making the backup shift mandatory promotes it from "one option among several" to THE fallback for every
+   * employee on every date no roster covers. core/attendance.ts resolves that branch as
+   * `ds.pattern?.includes(isoWeekday(date))`, so a shift with no weekly pattern matches NOTHING, falls
+   * through to policyBranch('rest_day'), and the employee silently books every ordinary working day as a
+   * REST DAY — which pays rest-day overtime multipliers on normal work and shows nobody an error.
+   *
+   * Nothing refused it before, because before this item nobody was forced to pick that shift.
+   */
+  it('REFUSES a backup shift whose weekly pattern is empty', async () => {
+    const a = adminCtx(b);
+    const emp = await makeEmp();
+    const patternless = await createShift(a, {
+      companyId: b.companyId,
+      name: 'No working days',
+      code: `NOPAT-${randomUUID().slice(0, 6)}`,
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      weeklyPattern: [],
+    });
+    await expect(
+      assignEmployeeShift(a, { employmentId: emp, shiftType: 'fixed', shiftId: patternless.id }),
+    ).rejects.toBeInstanceOf(ShiftHasNoWorkingPatternError);
+  });
+
+  it('ALLOWS one that declares working days — the guard must not refuse everything', async () => {
+    // The other half. A refusal test alone passes just as well against a function that always throws.
+    const a = adminCtx(b);
+    const emp = await makeEmp();
+    const workable = await createShift(a, {
+      companyId: b.companyId,
+      name: 'Mon-Fri',
+      code: `PAT-${randomUUID().slice(0, 6)}`,
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      weeklyPattern: [1, 2, 3, 4, 5],
+    });
+    const res = await assignEmployeeShift(a, { employmentId: emp, shiftType: 'fixed', shiftId: workable.id });
+    expect(res.id).toBe(emp);
   });
 });

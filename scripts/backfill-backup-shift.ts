@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 // One-shot / maintenance CLI (item b8aa3466) — give every ACTIVE employment a BACKUP SHIFT: the shift the
 // attendance engine uses on any day the employee is not rostered.
 //
@@ -49,7 +50,31 @@ async function main() {
     process.exit(1);
   }
   const owner = createDb(ownerUrl);
-  const tenants = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant);
+
+  // b8aa3466 — A TENANT MUST BE NAMED. THIS SCRIPT WRITES.
+  //
+  // Found in verification. This enumerated every row of `tenant` and ran the backfill against all of them,
+  // stamping a backup shift onto every employment of every customer on the box. The item that asked for it
+  // is scoped to ONE customer's AM03 population, and a backfill is exactly the kind of one-way write where
+  // "it only ran on the tenant I was thinking of" has to be enforced rather than assumed. `--shift=` is
+  // resolved per tenant anyway, so a code that happens to exist in two tenants would have silently hit both.
+  const tenantArg = process.argv.find((a) => a.startsWith('--tenant='));
+  const tenantId = tenantArg ? tenantArg.slice('--tenant='.length).trim() : '';
+  if (!tenantId) {
+    console.error(
+      'backfill-backup-shift requires --tenant=<uuid>. It writes, and it will not guess which customer you meant.\n' +
+        'List them with:  select id, name from tenant;',
+    );
+    process.exit(1);
+  }
+  const tenants = await owner.db
+    .select({ id: tenant.id, name: tenant.name })
+    .from(tenant)
+    .where(eq(tenant.id, tenantId));
+  if (tenants.length === 0) {
+    console.error(`No tenant with id ${tenantId}.`);
+    process.exit(1);
+  }
   console.log(
     `backfill-backup-shift — ${tenants.length} tenant(s), shift="${shiftCode}", mode=${apply ? 'APPLY' : 'dry-run'}`,
   );

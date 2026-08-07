@@ -491,6 +491,17 @@ export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchive
 // template may be assigned to ANY employee in the tenant regardless of which company (if any) authored it.
 // The same-company guard is gone; ArchivedShiftError + BackupShiftRequiredError still apply.
 
+/**
+ * b8aa3466 — refuses a backup shift that declares no working weekday. See assignEmployeeShift for why an
+ * empty weekly pattern is not merely useless but actively wrong once the backup shift is mandatory.
+ */
+export class ShiftHasNoWorkingPatternError extends Error {
+  constructor() {
+    super('That shift has no working days set, so it cannot be used as a backup shift. Set its weekly pattern first.');
+    this.name = 'ShiftHasNoWorkingPatternError';
+  }
+}
+
 export class ArchivedShiftError extends Error {
   constructor(message = 'An archived shift cannot be assigned as a default shift') {
     super(message);
@@ -549,13 +560,23 @@ export async function assignEmployeeShift(
       .limit(1);
     if (!emp) throw new Error('Employment not found');
     const [sh] = await tx
-      .select({ id: shift.id, archivedAt: shift.archivedAt })
+      .select({ id: shift.id, archivedAt: shift.archivedAt, pattern: shift.weeklyPattern })
       .from(shift)
       .where(eq(shift.id, shiftId))
       .limit(1);
     if (!sh) throw new Error('Shift not found');
     // R33 f21d6eee — no same-company check: a shared-library shift is assignable to any tenant employee.
     if (sh.archivedAt) throw new ArchivedShiftError();
+    // b8aa3466 — A BACKUP SHIFT WITH NO WEEKLY WORKING PATTERN MAKES EVERY DAY A REST DAY.
+    //
+    // Found in verification, and it is the trap this item's own change opens. Making the backup shift
+    // MANDATORY means it is now the fallback for every employee on every date that no roster covers, and
+    // core/attendance.ts resolves that branch as `ds.pattern?.includes(isoWeekday(date))`. A shift whose
+    // weekly_pattern is NULL or empty therefore matches NOTHING, falls through to policyBranch('rest_day'),
+    // and the employee silently books every working day as a rest day — which pays rest-day overtime rates
+    // on ordinary work and shows nobody an error. Before this item that shift was merely one option among
+    // several; now it is the floor, so the floor has to be walkable.
+    if (!Array.isArray(sh.pattern) || sh.pattern.length === 0) throw new ShiftHasNoWorkingPatternError();
     await tx
       .update(employment)
       .set({ shiftType: p.shiftType, defaultShiftId: shiftId })
@@ -610,7 +631,17 @@ export type UncoveredEmployment = {
  * employment is not scheduled, so it cannot be uncovered). Ordered by employee code so two runs of the
  * script produce diffable output.
  */
-export function employmentsWithoutBackupShift(ctx: SessionContext): Promise<UncoveredEmployment[]> {
+export function employmentsWithoutBackupShift(
+  ctx: SessionContext,
+  p?: { companyIds?: string[] },
+): Promise<UncoveredEmployment[]> {
+  // b8aa3466 — `companyIds` exists because the screen that renders this is COMPANY-SCOPED and this read was
+  // not. Every other list on Attendance Policy is filtered through getScopeIds, so an admin who can see one
+  // of nine companies was being told "12 employees have no backup shift" and shown names from companies
+  // they cannot open, with a Fix button that would not reach them. Omitted ⇒ tenant-wide, which is what the
+  // backfill script wants (it names its own tenant) and what the coverage gate wants before a global claim.
+  const scope = p?.companyIds;
+  if (scope && scope.length === 0) return Promise.resolve([]);
   return withTenant(ctx, async (tx) =>
     tx
       .select({
@@ -621,7 +652,13 @@ export function employmentsWithoutBackupShift(ctx: SessionContext): Promise<Unco
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(and(isNull(employment.terminatedOn), isNull(employment.defaultShiftId)))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          isNull(employment.defaultShiftId),
+          ...(scope ? [inArray(employment.companyId, scope)] : []),
+        ),
+      )
       .orderBy(asc(employment.employeeCode), asc(person.fullName)),
   );
 }
