@@ -18,6 +18,9 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EntitlementBandsEditor, type EditableBand } from '@/components/leave/entitlement-bands-editor';
 import { EligibilityRuleForm } from '@/components/leave/eligibility-rule-form';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+// 4a1abc4a — the Entitlement Table is where day figures are TYPED, so it is the one screen where the
+// summary line and the editor cell beside it must agree digit for digit.
+import { DAY_DASH, formatDayInput, formatDays } from '@/lib/day-format';
 import {
   countEligibilityTargetsAction,
   createEligibilityRuleAction,
@@ -117,22 +120,27 @@ export default async function EntitlementTemplatesPage({
   const editingRule = runningRules.find((x) => x.lineageId === sp.editRule);
 
   /** The stored JSONB back into the editor's string cells. An absent optional column stays BLANK, never 0
-   *  — a blank box and a typed 0 are different facts everywhere else in this file. */
+   *  — a blank box and a typed 0 are different facts everywhere else in this file, and `formatDayInput`
+   *  is built around exactly that distinction (4a1abc4a). The three DAY columns open at 2dp so the box
+   *  already shows what the on-blur tidier would produce; the YEAR columns are untouched — they count
+   *  years of service, and "0.00 years" would say something about that column that is not true. */
   const toEditable = (bands: { fromYears: number; toYears: number | null; days: number; carryForwardDays?: number | null; maxBalanceDays?: number | null }[]): EditableBand[] =>
     bands.map((b) => ({
       fromYears: String(b.fromYears ?? 0),
       toYears: b.toYears == null ? '' : String(b.toYears),
-      days: String(b.days ?? 0),
-      carryForwardDays: b.carryForwardDays == null ? '' : String(b.carryForwardDays),
-      maxBalanceDays: b.maxBalanceDays == null ? '' : String(b.maxBalanceDays),
+      days: formatDayInput(b.days ?? 0),
+      carryForwardDays: formatDayInput(b.carryForwardDays),
+      maxBalanceDays: formatDayInput(b.maxBalanceDays),
     }));
 
-  const dash = '—';
-  /** One band rendered for the read-only list. `t.raw` is not needed here — no braces, plain values. */
+  const dash = DAY_DASH;
+  /** One band rendered for the read-only list. `t.raw` is not needed here — no braces, plain values.
+   *  4a1abc4a: the three day figures print through the shared formatter, so the summary a reader scans
+   *  ("0–2: 12.00 (+5.00)") matches the editor they open to change it. The year bounds stay bare. */
   const bandText = (b: { fromYears: number; toYears: number | null; days: number; carryForwardDays?: number | null; maxBalanceDays?: number | null }) =>
-    `${b.fromYears}–${b.toYears == null ? t('bandNoLimit') : b.toYears}: ${b.days}` +
-    (b.carryForwardDays != null ? ` (+${b.carryForwardDays})` : '') +
-    (b.maxBalanceDays != null ? ` ≤${b.maxBalanceDays}` : '');
+    `${b.fromYears}–${b.toYears == null ? t('bandNoLimit') : b.toYears}: ${formatDays(b.days)}` +
+    (b.carryForwardDays != null ? ` (+${formatDays(b.carryForwardDays)})` : '') +
+    (b.maxBalanceDays != null ? ` ≤${formatDays(b.maxBalanceDays)}` : '');
 
   return (
     <div className="space-y-6">

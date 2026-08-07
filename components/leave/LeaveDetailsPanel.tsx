@@ -28,6 +28,9 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Info, X } from 'lucide-react';
 import { leaveVisual } from '@/lib/leave-visual';
+// 4a1abc4a: every day figure in this column goes through the ONE shared formatter, so the panel and the
+// balance grid behind it cannot print the same number two ways.
+import { DAY_DASH, formatDays } from '@/lib/day-format';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
 import {
   ENTITLEMENT_PANEL_SECTIONS,
@@ -37,7 +40,9 @@ import {
   type PanelSummary,
 } from './entitlement-panel-config';
 
-const PLACEHOLDER = '—';
+// The em dash this panel has always used for "no figure" — now the shared constant, so a row whose
+// mapping is deferred and a null balance elsewhere are visibly the same kind of nothing.
+const PLACEHOLDER = DAY_DASH;
 
 export function LeaveDetailsPanel({
   data,
@@ -68,7 +73,7 @@ export function LeaveDetailsPanel({
   hideTrigger?: boolean;
 }) {
   const t = useTranslations('leave.breakdown');
-  const fmtDays = (n: number) => n.toFixed(2);
+  const fmtDays = (n: number) => formatDays(n);
 
   // Info-icon per row (b8b665ff, reworked by 2bc2f2a3): the HR-authored explanation now shows as a HOVER
   // tooltip (mouse hover / keyboard focus reveal it; a tap TOGGLES it for touch, keyed by

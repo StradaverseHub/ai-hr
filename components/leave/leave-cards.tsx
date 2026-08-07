@@ -25,6 +25,8 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { leaveVisual } from '@/lib/leave-visual';
+// 4a1abc4a: the card's figure is the same number the panel behind it shows, so it must print identically.
+import { formatDays } from '@/lib/day-format';
 import { LeaveDetailsPanel } from './LeaveDetailsPanel';
 import { ReplacementLeavePanel, type ReplacementPanelData } from './ReplacementLeavePanel';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
@@ -67,7 +69,8 @@ export function LeaveCards({ entries }: { entries: LeaveCardEntry[] }) {
 
   if (entries.length === 0) return null;
 
-  const fmt = (n: number | null) => (n == null ? '—' : n.toFixed(2));
+  // null ⇒ the Available figure is ESS-hidden ⇒ em dash, never a leaked (or invented) number.
+  const fmt = (n: number | null) => formatDays(n);
   const selected = entries.find((e) => e.leaveTypeId === selectedId) ?? null;
 
   const openCard = (e: LeaveCardEntry) => {

@@ -211,7 +211,7 @@
     "joinedWeeksAgo": "joined {w, plural, one {# week} other {# weeks}} ago",
     "joinedMonthsAgo": "joined {m, plural, one {# month} other {# months}} ago",
     "leaveBalance": "Leave balance",
-    "daysRemaining": "{d, plural, one {# day} other {# days}} remaining",
+    "daysRemaining": "{cat, select, one {{v} day} other {{v} days}} remaining",
     "selectLeaveType": "Select leave type",
     "noLeaveTypes": "No leave types",
     "nextHoliday": "Next holiday",
@@ -1498,7 +1498,7 @@
     "submitRequest": "Submit request",
     "historyCount": "My leave history ({count})",
     "viewDetails": "View details",
-    "durationLine": "Duration: {count, plural, one {# day} other {# days}}",
+    "durationLine": "Duration: {cat, select, one {{v} day} other {{v} days}}",
     "details": {
       "title": "Leave details",
       "leaveType": "Leave type",

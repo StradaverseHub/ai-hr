@@ -211,7 +211,7 @@
     "joinedWeeksAgo": "gia nhập {w, plural, one {# tuần} other {# tuần}} trước",
     "joinedMonthsAgo": "gia nhập {m, plural, one {# tháng} other {# tháng}} trước",
     "leaveBalance": "Số ngày phép còn lại",
-    "daysRemaining": "còn {d, plural, other {# ngày}}",
+    "daysRemaining": "còn {v} ngày",
     "selectLeaveType": "Chọn loại nghỉ phép",
     "noLeaveTypes": "Không có loại nghỉ phép",
     "nextHoliday": "Ngày lễ tiếp theo",
@@ -1498,7 +1498,7 @@
     "submitRequest": "Gửi yêu cầu",
     "historyCount": "Lịch sử nghỉ phép của tôi ({count})",
     "viewDetails": "Xem chi tiết",
-    "durationLine": "Thời gian: {count} ngày",
+    "durationLine": "Thời gian: {v} ngày",
     "details": {
       "title": "Chi tiết nghỉ phép",
       "leaveType": "Loại phép",

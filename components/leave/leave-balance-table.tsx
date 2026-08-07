@@ -21,6 +21,8 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Info } from 'lucide-react';
 import { leaveVisual } from '@/lib/leave-visual';
+// 4a1abc4a: day figures print through the ONE shared formatter, never a local toFixed — see lib/day-format.ts.
+import { DAY_DASH, formatDays } from '@/lib/day-format';
 // The pure row-derivation + sort + types live in a SERVER-SAFE module (no 'use client') so the RSC /me
 // page can call deriveBalanceRow() without the "called from the server but it's on the client" crash
 // (b7d84266). This client table only needs the sort + types.
@@ -55,7 +57,9 @@ export function LeaveBalanceTable({ rows }: { rows: LeaveBalanceRow[] }) {
 
   const sorted = sortBalanceRows(rows, sort.key, sort.dir);
 
-  const fmt = (n: number | null) => (n == null ? '—' : tt('daysValue', { value: n.toFixed(2) }));
+  // A null cell is "not mapped / ESS-hidden", NOT zero — it keeps the em dash rather than gaining a
+  // "0.00 Days" label that would read as a real balance (4a1abc4a).
+  const fmt = (n: number | null) => (n == null ? DAY_DASH : tt('daysValue', { value: formatDays(n) }));
   const ariaSort = (key: SortKey) => (sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none');
   const caret = (key: SortKey) => (sort.key === key ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : '');
 

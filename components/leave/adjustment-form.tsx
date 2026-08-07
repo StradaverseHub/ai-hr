@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { SubStepBar } from '@/components/leave-sub-step-bar';
 import { Button, Field, inputCls } from '@/components/ui';
+import { normalizeDayFieldOnBlur } from '@/lib/day-format';
 import { cn } from '@/lib/utils';
 
 type Opt = { value: string; label: string };
@@ -425,7 +426,17 @@ export function AdjustmentForm({
         <Field label={t('adjustmentsDays')}>
           {/* min=0: the DIRECTION is step 1's business now, so a negative amount here would be a second,
               contradictory way to say "deduct". The action takes the absolute value regardless. */}
-          <input name="days" type="number" step="0.5" min="0" className={cn(inputCls, 'w-full')} />
+          {/* 4a1abc4a: the amount tidies to 2dp on blur, so the figure HR types is the figure they will
+              later read back off the ledger row and the balance summary. Starts EMPTY and stays empty
+              until typed — an adjustment of "0.00 days" is not a default anybody should be nudged into. */}
+          <input
+            name="days"
+            type="number"
+            step="0.5"
+            min="0"
+            onBlur={normalizeDayFieldOnBlur}
+            className={cn(inputCls, 'w-full')}
+          />
         </Field>
         <p className="text-xs text-muted-foreground">{t('adjustmentsDaysHelp')}</p>
         <Field label={t('adjustmentsEffectiveOn')}>

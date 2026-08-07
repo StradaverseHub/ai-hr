@@ -13,6 +13,7 @@ import { listEmployees, listLeaveRequestsPage } from '@/core/read';
 import { toCsvReport, toXlsxReport, type ReportData } from '@/lib/report-export';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { durationLabel } from '@/lib/leave-duration';
+import { formatDays } from '@/lib/day-format';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'];
@@ -80,7 +81,9 @@ export async function GET(req: Request) {
       r.employee,
       r.startDate,
       r.endDate,
-      `${Number(r.days)}${durationLabel(t, r.durationType, r.hours) ? ` ${durationLabel(t, r.durationType, r.hours)}` : ''}`,
+      // 4a1abc4a: the file prints the same day figure as the screen it exports. `r.days` is non-nullable
+      // here, so the em-dash placeholder is unreachable and no blank-cell override is needed.
+      `${formatDays(r.days)}${durationLabel(t, r.durationType, r.hours) ? ` ${durationLabel(t, r.durationType, r.hours)}` : ''}`,
       r.typeCode ?? r.leaveType,
       t(`status.${r.status}`),
       r.reason ?? '',

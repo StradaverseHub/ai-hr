@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Field, inputCls } from './ui';
+// 4a1abc4a: the per-date preview quotes a fraction of a day ("Yes (0.5)"); the ledger row it becomes reads
+// "0.50", so the preview says it the same way.
+import { DAY_DASH, formatDays } from '@/lib/day-format';
 
 /** Employee apply-popup day-by-day panel: one row per date in the requested span. `status` mirrors
  *  core/leave.ts LeaveApplyDayStatus (rest and off day are ONE bucket, matching dayWeight's Phase-A collapse)
@@ -251,9 +254,14 @@ export function LeaveDurationFields({
     return () => clearTimeout(handle);
   }, [summaryAction, employeeOptions, employmentId, typeId]);
 
-  // "{value} Days" — the same format the balance table already uses; a gated (null) figure shows a dash.
+  // "{value} Days" — the same format the balance table uses; a gated (null) figure shows a dash.
+  //
+  // 4a1abc4a: THIS COMMENT USED TO BE FALSE. It borrowed the balance table's `daysValue` key but formatted
+  // the number with `toFixed(1)`, so one balance read "12.5 Days" in this popup and "12.50 Days" in the
+  // table it was quoting — the reported drift, between two views of the same figure, with a comment
+  // asserting they agreed. Both now call the shared formatter, so the claim is true by construction.
   const daysValue = (v: number | null | undefined) =>
-    v == null ? '—' : tMe('leaveBalanceTable.daysValue', { value: v.toFixed(1) });
+    v == null ? DAY_DASH : tMe('leaveBalanceTable.daysValue', { value: formatDays(v) });
   const fmtDate = (iso: string) => {
     try {
       return new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', year: 'numeric' }).format(
@@ -575,7 +583,7 @@ export function LeaveDurationFields({
                     <td className="px-2 py-1 text-right tabular-nums text-foreground">
                       {r.days > 0
                         ? r.days < 1
-                          ? `${t('applyDetails.yes')} (${r.days})`
+                          ? `${t('applyDetails.yes')} (${formatDays(r.days)})`
                           : t('applyDetails.yes')
                         : t('applyDetails.no')}
                     </td>

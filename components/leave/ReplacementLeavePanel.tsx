@@ -31,8 +31,11 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Info, X } from 'lucide-react';
 import { leaveVisual } from '@/lib/leave-visual';
+// 4a1abc4a: the balance above the table is the same `leaveBalances` figure the card and the summary panel
+// show, so it must print through the same formatter — the r75 rule applied to the digits, not just the value.
+import { DAY_DASH, formatDays } from '@/lib/day-format';
 
-const PLACEHOLDER = '—';
+const PLACEHOLDER = DAY_DASH;
 
 /** One banked credit, exactly as `replacementLeaveLedger` returns it (plain data, no Date objects). */
 export type ReplacementCreditRow = {
@@ -177,7 +180,7 @@ export function ReplacementLeavePanel({
             <div className="flex items-baseline justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
               <span className="text-sm font-semibold text-foreground">{t('field.availableBalance')}</span>
               <span className="text-lg font-semibold tabular-nums text-foreground">
-                {available == null ? PLACEHOLDER : available.toFixed(2)}
+                {formatDays(available)}
               </span>
             </div>
 
@@ -272,7 +275,7 @@ export function ReplacementLeavePanel({
                           >
                             <td className="whitespace-nowrap py-1.5 pr-3">{asDay(r.requestedOn) ?? PLACEHOLDER}</td>
                             <td className="whitespace-nowrap py-1.5 pr-3 text-right tabular-nums">
-                              {amountOf(r).toFixed(2)}
+                              {formatDays(amountOf(r))}
                             </td>
                             <td className="whitespace-nowrap py-1.5 pr-3">{unitLabel}</td>
                             <td className="whitespace-nowrap py-1.5 pr-3">{asDay(r.approvedOn) ?? PLACEHOLDER}</td>

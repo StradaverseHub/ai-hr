@@ -9,6 +9,9 @@ import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-di
 import { adminCancelLeaveAction } from '@/app/leave/actions';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { durationLabel } from '@/lib/leave-duration';
+// 4a1abc4a: this screen printed the raw day count ("3") beside Employee Balances' "3.00" — the reported
+// drift, between two tabs of the same Leave Inquiry nav. One formatter for both.
+import { formatDays } from '@/lib/day-format';
 // fef49b9a — the shared paid/unpaid derivation (see lib/leave-split.ts on why it is not four subtractions).
 import { leaveDisplaySplit } from '@/lib/leave-split';
 import { canAdminCancelLeave, LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
@@ -348,7 +351,7 @@ export default async function EmployeeLeaveRecordPage({
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{r.startDate}</td>
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{r.endDate}</td>
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums">
-                        {Number(r.days)}
+                        {formatDays(r.days)}
                         {durationLabel(t, r.durationType, r.hours) && (
                           <span className="ml-1 text-[10px] font-medium uppercase text-muted-foreground">
                             {durationLabel(t, r.durationType, r.hours)}
@@ -371,7 +374,7 @@ export default async function EmployeeLeaveRecordPage({
                                 <span key={row.label + i}>
                                   {i > 0 && ' · '}
                                   <span className={row.unpaid ? 'text-amber-700 dark:text-amber-400' : undefined}>
-                                    {row.label} {row.days}
+                                    {row.label} {formatDays(row.days)}
                                   </span>
                                 </span>
                               ))}

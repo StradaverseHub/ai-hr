@@ -22,6 +22,9 @@ import { type ReactNode, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
+// 4a1abc4a: the paid/unpaid split lines are day figures off the same ledger, so they print like every
+// other day figure rather than however JavaScript happened to stringify the number.
+import { dayPluralCategory, formatDays } from '@/lib/day-format';
 
 /** Status badge colours — mirrors the page's REQ_STATUS map (incl. the derived 'partial' display key). */
 const STATUS_BADGE: Record<string, string> = {
@@ -91,8 +94,14 @@ export function LeaveHistoryCards({ entries, locale }: { entries: LeaveHistoryEn
   const range = (e: LeaveHistoryEntry) =>
     e.startDate === e.endDate ? fmtDate(e.startDate) : `${fmtDate(e.startDate)} – ${fmtDate(e.endDate)}`;
   const badgeCls = (key: string) => STATUS_BADGE[key] ?? 'bg-muted text-muted-foreground';
+  // 4a1abc4a: the duration is the request's day count — the same figure the Days column and the ledger row
+  // carry — so it prints at 2dp like them. `durationLine` is an ICU plural in en/ta only (ms/zh/th/vi were
+  // already plain).
+  //
+  // `cat` SELECTS, `v` PRINTS — see leave-balance-card.tsx and dayPluralCategory for why neither a bare
+  // placeholder nor a plain ICU plural is correct here.
   const durationLine = (e: LeaveHistoryEntry) =>
-    `${t('durationLine', { count: e.days })}${e.sessionSuffix ? ` · ${e.sessionSuffix}` : ''}`;
+    `${t('durationLine', { v: formatDays(e.days), cat: dayPluralCategory(e.days, locale) })}${e.sessionSuffix ? ` · ${e.sessionSuffix}` : ''}`;
 
   const openDetails = (id: string) => {
     setSelectedId(id);
@@ -140,7 +149,7 @@ export function LeaveHistoryCards({ entries, locale }: { entries: LeaveHistoryEn
                   <span key={row.label + i}>
                     {i > 0 && ' · '}
                     <span className={row.unpaid ? 'text-amber-700 dark:text-amber-400' : undefined}>
-                      {row.label} {row.days}
+                      {row.label} {formatDays(row.days)}
                     </span>
                   </span>
                 ))}
@@ -203,7 +212,7 @@ export function LeaveHistoryCards({ entries, locale }: { entries: LeaveHistoryEn
                             <span key={row.label + i}>
                               {i > 0 && ' · '}
                               <span className={row.unpaid ? 'text-amber-700 dark:text-amber-400' : undefined}>
-                                {row.label} {row.days}
+                                {row.label} {formatDays(row.days)}
                               </span>
                             </span>
                           ))}

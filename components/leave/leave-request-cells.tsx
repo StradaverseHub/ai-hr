@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Paperclip } from 'lucide-react';
 import { Avatar } from '@/components/ui';
+import { formatDays } from '@/lib/day-format';
 import { styleFor } from '@/components/planned-absences';
 
 /**
@@ -115,7 +116,10 @@ export function LeaveDaysCell({
 }) {
   return (
     <>
-      {Number(days)}
+      {/* 4a1abc4a: the request's day count is the ledger row behind the employee's balance, so it prints
+          through the same shared formatter — "1" and "1.00" for the same request on two screens was
+          exactly the reported complaint. */}
+      {formatDays(days)}
       {durationSuffix && (
         <span className="ml-1 text-[10px] font-medium uppercase text-muted-foreground">{durationSuffix}</span>
       )}
@@ -132,7 +136,7 @@ export function LeaveDaysCell({
             <span key={row.label + i}>
               {i > 0 && ' · '}
               <span className={row.unpaid ? 'text-amber-700 dark:text-amber-400' : undefined}>
-                {row.label} {row.days}
+                {row.label} {formatDays(row.days)}
               </span>
             </span>
           ))}

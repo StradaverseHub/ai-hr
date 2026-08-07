@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { btnGhost, inputCls } from '@/components/ui';
+// 4a1abc4a — the shared day formatter. Only the three DAY columns use it; From/To Year(s) are years.
+import { normalizeDayText } from '@/lib/day-format';
 
 /**
  * 6e9a126e RELEASE TWO — THE ENTITLEMENT TABLE EDITOR (the reporter's Step 1, verbatim).
@@ -79,6 +81,23 @@ export function EntitlementBandsEditor({
   const set = (i: number, key: keyof EditableBand, v: string) =>
     setRows((prev) => prev.map((r, ix) => (ix === i ? { ...r, [key]: v } : r)));
 
+  /**
+   * 4a1abc4a — tidy a DAY cell to 2dp when the operator clicks away, so "12.5" and the "12.50" that gets
+   * saved are the same thing on screen.
+   *
+   * ONLY the three day columns get this. From / To Year(s) are years of service, not days, and "0.00 years"
+   * would be a new and wrong claim about what that column measures.
+   *
+   * A BLANK CELL MUST STAY BLANK, which `normalizeDayText` guarantees and which matters more here than
+   * anywhere else on the screen: `toStoredBands` OMITS a blank Max Brought Forward / Max Entitled cell, and
+   * `bandCarryMax` reads that omission as "not set on this band, use the policy cap". A blur handler that
+   * wrote "0.00" into an empty box would silently turn every untouched row into "carry nothing".
+   */
+  const tidyDays = (i: number, key: 'days' | 'carryForwardDays' | 'maxBalanceDays') => (e: { currentTarget: { value: string } }) => {
+    const next = normalizeDayText(e.currentTarget.value);
+    if (next !== e.currentTarget.value) set(i, key, next);
+  };
+
   return (
     <div className="space-y-2">
       <div className="overflow-x-auto rounded-md border border-border">
@@ -125,6 +144,7 @@ export function EntitlementBandsEditor({
                     step="0.5"
                     value={r.days}
                     onChange={(e) => set(i, 'days', e.target.value)}
+                    onBlur={tidyDays(i, 'days')}
                     aria-label={t('bandDays')}
                   />
                 </td>
@@ -136,6 +156,7 @@ export function EntitlementBandsEditor({
                     step="0.5"
                     value={r.carryForwardDays}
                     onChange={(e) => set(i, 'carryForwardDays', e.target.value)}
+                    onBlur={tidyDays(i, 'carryForwardDays')}
                     aria-label={t('bandCarry')}
                   />
                 </td>
@@ -147,6 +168,7 @@ export function EntitlementBandsEditor({
                     step="0.5"
                     value={r.maxBalanceDays}
                     onChange={(e) => set(i, 'maxBalanceDays', e.target.value)}
+                    onBlur={tidyDays(i, 'maxBalanceDays')}
                     aria-label={t('bandMaxBalance')}
                   />
                 </td>

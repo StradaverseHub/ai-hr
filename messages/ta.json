@@ -211,7 +211,7 @@
     "joinedWeeksAgo": "{w, plural, one {# வாரத்துக்கு} other {# வாரங்களுக்கு}} முன் சேர்ந்தார்",
     "joinedMonthsAgo": "{m, plural, one {# மாதத்துக்கு} other {# மாதங்களுக்கு}} முன் சேர்ந்தார்",
     "leaveBalance": "விடுப்பு இருப்பு",
-    "daysRemaining": "{d, plural, one {# நாள்} other {# நாட்கள்}} மீதம்",
+    "daysRemaining": "{cat, select, one {{v} நாள்} other {{v} நாட்கள்}} மீதம்",
     "selectLeaveType": "விடுப்பு வகையைத் தேர்ந்தெடுக்கவும்",
     "noLeaveTypes": "விடுப்பு வகைகள் இல்லை",
     "nextHoliday": "அடுத்த விடுமுறை",
@@ -1498,7 +1498,7 @@
     "submitRequest": "கோரிக்கையைச் சமர்ப்பி",
     "historyCount": "எனது விடுப்பு வரலாறு ({count})",
     "viewDetails": "விவரங்களைக் காண்க",
-    "durationLine": "காலம்: {count, plural, one {# நாள்} other {# நாட்கள்}}",
+    "durationLine": "காலம்: {cat, select, one {{v} நாள்} other {{v} நாட்கள்}}",
     "details": {
       "title": "விடுப்பு விவரங்கள்",
       "leaveType": "விடுப்பு வகை",

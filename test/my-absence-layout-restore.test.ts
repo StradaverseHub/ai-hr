@@ -117,7 +117,13 @@ describe('56a0deb9 §2: the secondary-type "Other leave" breakdown section is re
     expect(groupsCmp).toMatch(/<details key=\{group\}[^>]*open>/);
     expect(groupsCmp).toMatch(/<summary/);
     expect(groupsCmp).toContain('leaveVisual({ color: b.color, icon: b.icon, code: b.code })');
-    expect(groupsCmp).toContain("b.remaining == null ? '—' : b.remaining.toFixed(2)");
+    // REPOINTED by 4a1abc4a, not weakened. The claim is unchanged — a row shows the remaining figure at
+    // 2dp and an ESS-HIDDEN one shows a DASH rather than a number — but the inline expression it was
+    // written against became a call to the shared lib/day-format helper, whose null case IS that dash.
+    // Checked here as the import plus the call, so the guard still fails if the dash behaviour is lost.
+    expect(groupsCmp).toContain("from '@/lib/day-format'");
+    expect(groupsCmp).toContain('{formatDays(b.remaining)}');
+    expect(groupsCmp, 'no private toFixed beside the shared formatter').not.toContain('toFixed(');
     // Server-safe: no 'use client' (the RSC passes the side-sheet link in as a node).
     expect(groupsCmp.trimStart().startsWith("'use client'")).toBe(false);
   });
@@ -269,7 +275,10 @@ describe('657962ec §1: the self-service history renders as compact cards, newes
       const leave = (JSON.parse(read(`messages/${loc}.json`)) as { leave: Record<string, unknown> }).leave;
       expect(leave.historyCount, `${loc} leave.historyCount`).toContain('{count}');
       expect(leave.viewDetails, `${loc} leave.viewDetails`).toBeTruthy();
-      expect(leave.durationLine, `${loc} leave.durationLine`).toContain('{count');
+      // 4a1abc4a — the duration line no longer formats its own number. It takes `{v}` (the shared day
+      // formatter's output) and, where the language distinguishes them, a `{cat}` plural category computed
+      // at the SAME precision the figure is shown in. See lib/day-format.ts dayPluralCategory.
+      expect(leave.durationLine, `${loc} leave.durationLine`).toContain('{v}');
       const details = leave.details as Record<string, unknown>;
       for (const k of ['title', 'leaveType', 'duration', 'session', 'status', 'attachment']) {
         expect(details?.[k], `${loc} leave.details.${k}`).toBeTruthy();
