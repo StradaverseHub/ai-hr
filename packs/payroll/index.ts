@@ -23,7 +23,9 @@
  *   `core/payroll-config.ts` (per-company payroll config), `core/payroll-policy.ts` +
  *   `core/payroll-policy-config.ts` (payroll policy CRUD + the pay-frequency/pay-mode vocabulary,
  *   `calendarWindowFor`, `payslipReleaseAt`), `core/payroll-individual-txn.ts` (one-off individual
- *   transactions), `core/payroll-run-group.ts` (multi-company run groups),
+ *   transactions), `core/back-pay.ts` (2ef69d1e — arrears detection plus the READ-ONLY difference
+ *   engine; it never recomputes a closed payslip and posts through the one-off ledger),
+ *   `core/payroll-run-group.ts` (multi-company run groups),
  *   `core/payroll-view.ts` (processed-payslip read models + cross-company listings),
  *   `core/payroll-readiness.ts` (pre-run readiness checks), `core/payroll-history-import.ts`
  *   (historical payslip import), `core/payroll-permissions-admin.ts` (payroll permission grants +
@@ -151,7 +153,7 @@
  * via `modulePackById('payroll')` and fails closed (D3) — and the country calculators already fail
  * closed on an unresolvable pack (D3, `countryPackInactive`). No entitlement machinery is built here.
  */
-import { ArrowLeftRight, Banknote, FileText, HandCoins, Landmark, ReceiptText, Settings2, Table2, Wallet } from 'lucide-react';
+import { ArrowLeftRight, Banknote, FileText, HandCoins, History, Landmark, ReceiptText, Settings2, Table2, Wallet } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
 import { payrollNavRank } from './phases';
 
@@ -202,6 +204,11 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     // menu row, which is why the reporter concluded loans were not in Payroll. Href VERBATIM so the
     // existing bookmarks and the Transactions-hub card keep pointing at the same screen.
     { href: '/admin/loans', labelKey: 'loans', icon: HandCoins },
+    // 2ef69d1e — Back Pay (Arrears). Ranked into the same TRANSACTIONS phase as the keying screens
+    // (phases.ts rank 2) and written literally here after Loans, so it lands between Transactions and
+    // Transaction View — which is where the approved plan puts it. `sort` is stable, so its literal
+    // position is what decides it within the rank, not a guessed splice point.
+    { href: '/payroll/back-pay', labelKey: 'payrollBackPay', icon: History },
     { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView', icon: Table2 },
     // 169e3c24 — the admin payslip review screen. The itemised breakdown it renders already existed on
     // Transaction View → History; what was missing was a menu row that says "payslip", which is why the
@@ -245,6 +252,10 @@ export const payrollPack: ModulePack = {
     { table: 'employment_pay_component', note: 'per-employment recurring pay-component assignments (fixed txns)' },
     { table: 'payroll_batch_component', note: 'per-batch per-employee resolved component amounts' },
     { table: 'payroll_individual_txn', note: 'one-off individual payroll transactions applied to a batch' },
+    // 2ef69d1e — the arrears deliberation. Both tables RECORD; neither decides anything the payroll
+    // engine reads. The money leaves through payroll_individual_txn above, like any other one-off.
+    { table: 'back_pay_run', note: 'a back pay (arrears) deliberation: draft → verified → posted/cancelled, per company/target period' },
+    { table: 'back_pay_line', note: 'per-employee/per-month/per-pay-item arrears evidence, keyed by the compensation row that caused it' },
     { table: 'company_statutory_authority', note: 'per-company statutory-body registration/payment references (jurisdiction-neutral shape; statutory-authority.ts)' },
     { table: 'statutory_report', note: 'generated statutory report-run record (jurisdiction is a column; report generation is payroll output)' },
     { table: 'employee_loan', note: 'staff loans deducted through payroll (principal, schedule, status)' },

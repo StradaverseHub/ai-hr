@@ -5157,6 +5157,126 @@ export const statutoryReport = pgTable(
   ],
 );
 
+// ───────────────── Back Pay / Arrears (2ef69d1e, migration 0413) ─────────────────
+//
+// A backdated salary revision — a compensation row keyed AFTER the payroll it should have affected —
+// leaves the employee short (or over) for every closed month between the effective date and today. The
+// system accepted the revision silently and nothing ever worked the shortfall out.
+//
+// ⚠️ THE ONE INVARIANT THIS WHOLE FEATURE RESTS ON: **NO CLOSED PAYSLIP IS EVER RECOMPUTED.**
+// Back pay is a NEW payable difference that rides the CURRENT run, not an edit to history. Nothing here
+// writes `payslip`, nothing here reopens a batch, and `generatePayslips` is not given a preview mode (the
+// golden tests demand byte-identical payroll output). The only employee-visible write the whole feature
+// ever performs is `payroll_individual_txn` rows on the TARGET (current) period, which is the ordinary
+// one-off path — so the arrears attract EPF/SOCSO/PCB in the month they are actually PAID, which is also
+// what the law expects.
+//
+// ── WHY TWO TABLES AND WHY `source_compensation_id` IS ON THE LINE ────────────────────────────────────
+// The run is the operator's unit of work (calculate → verify → approve → post). The LINE is the unit of
+// evidence, and it is keyed by the COMPENSATION ROW that caused it. That column is what makes the
+// duplicate guard real: detection excludes any salary revision already carried by a live (non-cancelled)
+// run, so the same backdated rise cannot be paid twice — which is the single most expensive mistake this
+// screen could make. Cancel is what releases the revision back to detection.
+//
+// ── SIGN IS HONEST, IN BOTH DIRECTIONS ────────────────────────────────────────────────────────────────
+// `difference` is SIGNED: positive = owed to the employee, negative = owed back by them (measured on
+// production 2026-08-06: of 26 backdated rows, one is 6000 → 5500). A negative run posts as a DEDUCTION
+// (payroll_individual_txn amounts are magnitudes; the `kind` carries the sign), and rides the same
+// approval. A plan or a test that assumes arrears are always owed TO the employee is wrong about this data.
+export const backPayRun = pgTable(
+  'back_pay_run',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    /** 'YYYY-MM' — the CURRENT period the arrears are paid in (never an affected period). */
+    targetPayPeriod: text('target_pay_period').notNull(),
+    /** Which run of the target month the postings belong to. Reuses the payroll_run_type taxonomy rather
+     *  than inventing a second cycle vocabulary. */
+    targetRunType: payrollRunTypeEnum('target_run_type').notNull().default('regular'),
+    /** draft → verified → posted, or cancelled from any of the three. Text, not a pgEnum: a fourth state
+     *  (e.g. 'rejected') should not need a migration, and nothing outside core/back-pay.ts switches on it. */
+    status: text('status').notNull().default('draft'),
+    createdByUserId: uuid('created_by_user_id').references(() => appUser.id),
+    /** Who signed the figures off. NULL until Approve and Post — the whole point is that nothing moves
+     *  before a named human agrees to it. */
+    approvedByUserId: uuid('approved_by_user_id').references(() => appUser.id),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    postedAt: timestamp('posted_at', { withTimezone: true }),
+    cancelledByUserId: uuid('cancelled_by_user_id').references(() => appUser.id),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    remarks: text('remarks'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('back_pay_run_tenant_company_idx').on(t.tenantId, t.companyId, t.createdAt),
+    index('back_pay_run_target_idx').on(t.tenantId, t.companyId, t.targetPayPeriod),
+  ],
+);
+
+/**
+ * One line of evidence: what ONE pay item was worth in ONE affected month, before and after the
+ * backdated salary revision. The verification grid is exactly this table pivoted (item × month).
+ *
+ * `needs_review` is the honest half. Three things genuinely cannot be reworked from what was stored:
+ *  - MANUALLY KEYED OVERTIME — payroll_input stores overtime_amount as RM, "not hours" (see that table),
+ *    so there is no quantity to re-price at the new wage basis. It is surfaced, never silently zeroed.
+ *  - ANY PAY ITEM WHOSE RULE READS `hours` — hours are not stored on the payslip (only days_worked is).
+ *  - OVERTIME / UNPAID LEAVE / ABSENCE arrears generally — deferred to pass 2 by the approved plan,
+ *    which sequences them after the Attendance Calculation Engine item that re-categorises OT.
+ * A needs-review line carries its reason and is EXCLUDED from the posted total: the operator keys those
+ * figures by hand as ordinary one-off transactions, having been told which ones and why.
+ */
+export const backPayLine = pgTable(
+  'back_pay_line',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => backPayRun.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    /** THE DUPLICATE GUARD'S KEY — the backdated salary revision this line was computed from. */
+    sourceCompensationId: uuid('source_compensation_id')
+      .notNull()
+      .references(() => compensation.id),
+    /** 'YYYY-MM' of the already-paid month this line reworks. Never the target period. */
+    affectedPeriod: text('affected_period').notNull(),
+    /** The pay code: 'BASIC' for the salary line itself, else the pay_component code. Stored as TEXT, not
+     *  a FK — a line is a permanent record of what was computed, and an item archived afterwards must not
+     *  make an approved back pay run unreadable. */
+    payCode: text('pay_code').notNull(),
+    payItemName: text('pay_item_name').notNull(),
+    /** What the closed payslip actually paid for this item in this month. */
+    oldAmount: numeric('old_amount', { precision: 12, scale: 2 }).notNull().default('0'),
+    /** What it would have paid at the revised salary. NULL only on a needs-review line, where claiming a
+     *  figure would be a guess. */
+    newAmount: numeric('new_amount', { precision: 12, scale: 2 }),
+    /** SIGNED. new − old for an earning; old − new for a deduction (a bigger deduction is less pay). 0 on
+     *  a needs-review line, which is excluded from the total. */
+    difference: numeric('difference', { precision: 12, scale: 2 }).notNull().default('0'),
+    needsReview: boolean('needs_review').notNull().default(false),
+    /** A stable code the UI localises (manualOvertime / hoursNotStored / overtimeDeferred / …), never raw
+     *  English — the same discipline core/pay-rule.ts's PayRuleErrorCode follows. */
+    reviewReason: text('review_reason'),
+    /** The posted one-off transaction this line's money went out on. Set at Approve and Post, cleared by
+     *  Cancel. Several lines of the same (employment, affected period) share one txn — the posting is
+     *  NETTED per month so the payslip carries one legible arrears line per covered month. */
+    postedTxnId: uuid('posted_txn_id').references(() => payrollIndividualTxn.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('back_pay_line_run_idx').on(t.runId, t.employmentId),
+    // Detection's exclusion query: "which salary revisions are already carried by a live run?"
+    index('back_pay_line_source_idx').on(t.tenantId, t.sourceCompensationId),
+  ],
+);
+
 // ───────────────────── Performance & talent (ADR-0013) ─────────────────────
 // The first unregulated, entirely config-driven module: no statutory floor, no "correct" rating.
 // The review cycle is the backbone; the pay seam (rating → recommendation → enacted via the tested

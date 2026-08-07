@@ -163,7 +163,8 @@
     "movementSettings": "Cài đặt biến động",
     "hiringDefaults": "Mặc định tuyển dụng",
     "noticeBoard": "Bảng thông báo",
-    "payrollIndividualPayslip": "Phiếu lương cá nhân"
+    "payrollIndividualPayslip": "Phiếu lương cá nhân",
+    "payrollBackPay": "Truy lĩnh"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -4094,6 +4095,75 @@
       "ytdItem": "Khoản mục",
       "ytdNote": "Số lũy kế là toàn bộ số tiền như đã tính và báo cáo cho cơ quan chức năng. Khi người sử dụng lao động gánh một phần khoản đóng góp, các dòng khấu trừ ở trên thể hiện số thực sự trừ vào lương nhân viên, nên hai bên có thể khác nhau một cách hợp lệ.",
       "ytdToDate": "Lũy kế từ đầu năm"
+    },
+    "backPay": {
+      "title": "Truy lĩnh (Nợ lương)",
+      "subtitle": "Tính khoản còn nợ do thay đổi lương hồi tố, theo từng tháng, và chi trả trong kỳ lương hiện tại.",
+      "noHistoryChange": "Không mở lại kỳ lương đã khóa và không sửa phiếu lương cũ. Khoản truy lĩnh đã duyệt được ghi nhận là khoản chi một lần trong tháng hiện tại, nên chịu EPF, SOCSO và PCB trong tháng thực chi.",
+      "company": "Công ty",
+      "apply": "Áp dụng",
+      "detected": "Thay đổi lương hồi tố chưa được chi trả",
+      "noneDetected": "Không có thay đổi lương hồi tố nào đang chờ chi trả cho công ty này.",
+      "employee": "Nhân viên",
+      "effectiveFrom": "Hiệu lực từ",
+      "revisedSalary": "Lương sau điều chỉnh",
+      "keyedOn": "Nhập ngày",
+      "affectedMonths": "Các tháng đã trả",
+      "targetPeriod": "Chi trả trong tháng",
+      "targetPeriodHint": "Khoản truy lĩnh được cộng vào bảng lương tháng này. Các tháng ở trên không bao giờ được tính lại.",
+      "calculate": "Tính truy lĩnh",
+      "verification": "Đối chiếu",
+      "statusLabel": "Trạng thái",
+      "calculatedBy": "Người tính",
+      "approvedBy": "Người duyệt",
+      "payItem": "Khoản mục lương",
+      "total": "Tổng",
+      "grandTotal": "Tổng cộng",
+      "needsYourFigure": "Cần bạn nhập số",
+      "needsReviewNote": "Có {count} dòng cần bạn cung cấp số liệu. Chúng được hiển thị nhưng không tính vào tổng và không ghi nhận khoản nào — hãy nhập những khoản đó như giao dịch một lần thông thường.",
+      "markVerified": "Đánh dấu đã đối chiếu",
+      "approveAndPost": "Duyệt và ghi nhận",
+      "cancel": "Hủy khoản truy lĩnh này",
+      "backToList": "Quay lại danh sách",
+      "postingNote": "Duyệt và ghi nhận sẽ tạo một khoản chi một lần cho mỗi nhân viên, cho mỗi tháng liên quan, trong tháng chi trả ở trên. Số âm được ghi nhận là khoản khấu trừ.",
+      "history": "Các đợt truy lĩnh",
+      "noRuns": "Chưa tính truy lĩnh lần nào.",
+      "employees": "Nhân viên",
+      "months": "Tháng",
+      "open": "Mở",
+      "status": {
+        "draft": "Nháp",
+        "verified": "Đã đối chiếu",
+        "posted": "Đã ghi nhận",
+        "cancelled": "Đã hủy"
+      },
+      "review": {
+        "manualOvertime": "Tiền tăng ca được nhập thủ công — hệ thống chỉ lưu số tiền, không lưu số giờ, nên không thể tính lại đơn giá.",
+        "overtimeDeferred": "Truy lĩnh tăng ca thuộc đợt bàn giao tiếp theo, sau thay đổi về cách tính chấm công.",
+        "hoursNotStored": "Khoản mục này tính theo giờ, mà phiếu lương không lưu số giờ.",
+        "blendedOriginal": "Có hai bản ghi lương cùng áp dụng cho tháng này khi chi trả, nên không thể tái lập chính xác số gốc.",
+        "nonMonthlyPayMode": "Nhân viên này hưởng lương theo ngày hoặc theo giờ, nên thay đổi lương tháng không phải nguyên nhân làm lương thay đổi.",
+        "nonPayableItem": "Khoản mục này chỉ ghi nhận, không bao giờ chi bằng tiền mặt, nên chênh lệch của nó không phải là tiền.",
+        "noBaselineSalary": "Không có bản ghi lương nào hiệu lực khi tháng này được chi trả, nên không có gì để so sánh.",
+        "unpaidLeaveInPeriod": "Tháng này có nghỉ không lương. Thay đổi lương hồi tố cũng làm thay đổi khoản khấu trừ nghỉ không lương, vốn thuộc đợt bàn giao tiếp theo — nên tháng này được hiển thị để bạn tự tính, thay vì chi trả theo con số mà chúng tôi biết là quá cao."
+      },
+      "export": {
+        "csv": "Tải CSV",
+        "xlsx": "Tải Excel",
+        "pdf": "Tải PDF"
+      },
+      "errors": {
+        "nothingToCalculate": "Không có gì để tính — không có thay đổi lương hồi tố nào tạo ra chênh lệch.",
+        "targetRunNotDraft": "Bảng lương của tháng đó đã được xử lý. Chỉ có thể thêm truy lĩnh khi bảng lương còn ở trạng thái nháp.",
+        "wrongStatus": "Khoản truy lĩnh này không ở trạng thái cho phép thao tác đó.",
+        "notFound": "Không tìm thấy khoản truy lĩnh đó.",
+        "unknown": "Đã xảy ra lỗi. Vui lòng thử lại."
+      },
+      "ok": {
+        "verified": "Đã đánh dấu là đã đối chiếu.",
+        "posted": "Đã duyệt và ghi nhận vào bảng lương hiện tại.",
+        "cancelled": "Đã hủy. Mọi khoản đã ghi nhận đều được gỡ bỏ."
+      }
     }
   },
   "admin": {

@@ -56,6 +56,10 @@ const EXPECTED_SET = [
   // 6d72816e — an ADDITION, like statutory-forms and individual-payslip below. The /admin/loans SCREEN
   // already existed and was reachable only from a card on the Transactions hub; this is its menu row.
   { href: '/admin/loans', labelKey: 'loans' },
+  // 2ef69d1e — an ADDITION, like statutory-forms / individual-payslip / loans. Back Pay (Arrears) is a
+  // NEW screen, so the guard's promise ("no destination lost, no href renamed") is untouched: every
+  // original entry above and below is character for character what it was.
+  { href: '/payroll/back-pay', labelKey: 'payrollBackPay' },
   { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView' },
   // 169e3c24 — an ADDITION to the set, like statutory-forms above. Every original entry is untouched, so
   // the guard's promise ("no destination lost, no href renamed") is not weakened by listing it.

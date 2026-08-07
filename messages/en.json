@@ -163,7 +163,8 @@
     "movementSettings": "Movement Settings",
     "hiringDefaults": "Hiring Defaults",
     "noticeBoard": "Notice Board",
-    "payrollIndividualPayslip": "Individual Payslip"
+    "payrollIndividualPayslip": "Individual Payslip",
+    "payrollBackPay": "Back Pay"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -4094,6 +4095,75 @@
       "ytdItem": "Item",
       "ytdNote": "Year-to-date figures are the full amounts as computed and reported to the authorities. Where the employer bore part of a contribution, the deduction lines above show what was actually taken from the employee, so the two can legitimately differ.",
       "ytdToDate": "Year to date"
+    },
+    "backPay": {
+      "title": "Back Pay (Arrears)",
+      "subtitle": "Work out what a backdated salary change owes, month by month, and pay it on the current payroll.",
+      "noHistoryChange": "No closed payroll is reopened and no past payslip is changed. Approved arrears are posted as new one-off payments on the current month, so they attract EPF, SOCSO and PCB in the month they are actually paid.",
+      "company": "Company",
+      "apply": "Apply",
+      "detected": "Backdated salary changes not yet paid",
+      "noneDetected": "No backdated salary change is waiting to be paid for this company.",
+      "employee": "Employee",
+      "effectiveFrom": "Effective from",
+      "revisedSalary": "Revised salary",
+      "keyedOn": "Keyed on",
+      "affectedMonths": "Months already paid",
+      "targetPeriod": "Pay in month",
+      "targetPeriodHint": "The arrears are added to this month’s payroll. The months above are never recalculated.",
+      "calculate": "Calculate back pay",
+      "verification": "Verification",
+      "statusLabel": "Status",
+      "calculatedBy": "Calculated by",
+      "approvedBy": "Approved by",
+      "payItem": "Pay item",
+      "total": "Total",
+      "grandTotal": "Grand total",
+      "needsYourFigure": "Needs your figure",
+      "needsReviewNote": "{count} line(s) need a figure from you. They are shown but not included in the total, and nothing is posted for them — key those amounts as ordinary one-off transactions.",
+      "markVerified": "Mark as verified",
+      "approveAndPost": "Approve and post",
+      "cancel": "Cancel this back pay",
+      "backToList": "Back to the list",
+      "postingNote": "Approve and post creates one one-off payment per employee per covered month on the pay month above. A negative figure posts as a deduction.",
+      "history": "Back pay runs",
+      "noRuns": "No back pay has been calculated yet.",
+      "employees": "Employees",
+      "months": "Months",
+      "open": "Open",
+      "status": {
+        "draft": "Draft",
+        "verified": "Verified",
+        "posted": "Posted",
+        "cancelled": "Cancelled"
+      },
+      "review": {
+        "manualOvertime": "Overtime was typed in by hand — only an amount was kept, never the hours, so it cannot be re-priced.",
+        "overtimeDeferred": "Overtime arrears are part of the next delivery, after the attendance calculation change.",
+        "hoursNotStored": "This item is calculated from hours, and hours are not kept on a payslip.",
+        "blendedOriginal": "Two salary records applied to this month when it was paid, so the original cannot be reproduced exactly.",
+        "nonMonthlyPayMode": "This employee is paid by the day or the hour, so a monthly salary change is not what moved their pay.",
+        "nonPayableItem": "This item is recorded but never paid in cash, so a difference on it is not money.",
+        "noBaselineSalary": "No salary record was in force when this month was paid, so there is nothing to compare against.",
+        "unpaidLeaveInPeriod": "This month had unpaid leave. A backdated salary change also changes the unpaid-leave deduction, which is part of the next delivery — so the month is shown and left for you to work out rather than paid at a figure we know is too high."
+      },
+      "export": {
+        "csv": "Download CSV",
+        "xlsx": "Download Excel",
+        "pdf": "Download PDF"
+      },
+      "errors": {
+        "nothingToCalculate": "Nothing to calculate — no backdated salary change produced a difference.",
+        "targetRunNotDraft": "The payroll run for that month has already been processed. Back pay can only be added while it is still a draft.",
+        "wrongStatus": "This back pay is not in a state that allows that action.",
+        "notFound": "That back pay could not be found.",
+        "unknown": "Something went wrong. Please try again."
+      },
+      "ok": {
+        "verified": "Marked as verified.",
+        "posted": "Approved and posted to the current payroll.",
+        "cancelled": "Cancelled. Any postings it created have been removed."
+      }
     }
   },
   "admin": {
