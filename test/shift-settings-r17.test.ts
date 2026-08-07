@@ -6,8 +6,9 @@
  *   2. R33 f21d6eee — shared tenant-wide shift library: createShift authors a tenant-global template
  *      (company_id NULL, listed by listShiftsForTenant), and name/code are unique tenant-wide. (The R17
  *      multi-company createShiftMulti / duplicateShift-to-company features were retired.)
- *   3. The employee "Shift Type" invariant — assignEmployeeShift: Fixed requires a default shift, Roster
- *      forces default_shift_id to null and stamps shift_type.
+ *   3. The employee "Shift Type" invariant — assignEmployeeShift. b8aa3466 CHANGED it: BOTH arrangements
+ *      now require a backup shift (Roster used to force default_shift_id to null, which was the decline
+ *      path that left 30 of 31 employments with no shift); shift_type is still stamped either way.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -22,7 +23,7 @@ import {
   copyRoster,
   createShift,
   deleteShift,
-  FixedShiftRequiresShiftError,
+  BackupShiftRequiredError,
   listShifts,
   listShiftsForTenant,
   rosterForRange,
@@ -278,7 +279,13 @@ describe('R17 gap-fix — copy roster from a previous period', () => {
 });
 
 describe('R17 employee Shift Type invariant', () => {
-  it('Fixed requires a default shift; Roster clears it; both stamp shift_type', async () => {
+  // b8aa3466 REWROTE THIS TEST, and the old expectation is worth naming because it was the defect.
+  // It read "Fixed requires a default shift; Roster CLEARS it" — and that clearing is how 30 of the
+  // reporter's 31 employments ended up with no shift at all: picking Roster was a way to decline the
+  // field, after which every unrostered day fell through to the flat company work schedule. Both
+  // arrangements now REQUIRE a backup shift; shift_type says how the person is normally scheduled, not
+  // whether they get a shift.
+  it('BOTH arrangements require a backup shift — Roster no longer clears it', async () => {
     const a = adminCtx(b);
     const s = await createShift(a, {
       companyId: b.companyId,
@@ -290,13 +297,18 @@ describe('R17 employee Shift Type invariant', () => {
     });
     await expect(
       assignEmployeeShift(a, { employmentId: empId, shiftType: 'fixed', shiftId: null }),
-    ).rejects.toBeInstanceOf(FixedShiftRequiresShiftError);
+    ).rejects.toBeInstanceOf(BackupShiftRequiredError);
+    // The decline path R17 left open: Roster used to be accepted with no shift and null the column.
+    await expect(
+      assignEmployeeShift(a, { employmentId: empId, shiftType: 'roster', shiftId: null }),
+    ).rejects.toBeInstanceOf(BackupShiftRequiredError);
+    expect(await storedEmployment(empId)).toEqual({ ds: null, st: 'roster' }); // a refused write changes nothing
 
     await assignEmployeeShift(a, { employmentId: empId, shiftType: 'fixed', shiftId: s.id });
     expect(await storedEmployment(empId)).toEqual({ ds: s.id, st: 'fixed' });
 
-    // Roster forces default_shift_id null even if a shiftId is passed.
+    // Roster KEEPS the backup shift now — it is what covers any day with no roster row.
     await assignEmployeeShift(a, { employmentId: empId, shiftType: 'roster', shiftId: s.id });
-    expect(await storedEmployment(empId)).toEqual({ ds: null, st: 'roster' });
+    expect(await storedEmployment(empId)).toEqual({ ds: s.id, st: 'roster' });
   });
 });

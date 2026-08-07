@@ -3,7 +3,7 @@
  *
  * Service (core/roster.ts assignDefaultShift):
  *  - happy path persists employment.default_shift_id and emits employment.shift-arrangement.assigned with
- *    { before, after }; null clears the assignment (and emits with the reverse payload)
+ *    { before, after }; b8aa3466 — passing null is REFUSED (BackupShiftRequiredError), it no longer clears
  *  - R33 f21d6eee: a shift authored under another company is now assignable (shared library — the old
  *    ShiftCompanyMismatchError was dropped)
  *  - an archived shift is rejected (ArchivedShiftError)
@@ -30,6 +30,7 @@ import { withTenant } from '../db/client';
 import { checkIn, checkOut, payableHoursForCycle } from '../core/attendance';
 import {
   ArchivedShiftError,
+  BackupShiftRequiredError,
   archiveShift,
   assignDefaultShift,
   assignShift,
@@ -100,7 +101,7 @@ beforeEach(async () => {
 });
 
 describe('assignDefaultShift — service + substrate', () => {
-  it('assigns, emits employment.shift-arrangement.assigned with { before, after }, and null clears', async () => {
+  it('assigns, emits employment.shift-arrangement.assigned with { before, after }; null is now REFUSED', async () => {
     const a = adminCtx(b);
     const s = await longShift();
 
@@ -110,19 +111,19 @@ describe('assignDefaultShift — service + substrate', () => {
       expect.arrayContaining(['employment.shift-arrangement.assigned']),
     );
     // 3e8350db: the payload now records the full arrangement transition — { shiftType, defaultShiftId }
-    // objects on both sides (legacy assignDefaultShift maps set → fixed, clear → roster).
+    // objects on both sides. That payload IS the reversal instruction the b8aa3466 backfill relies on.
     expect(await latestEventPayload(b.tenantId, empId, 'employment.shift-arrangement.assigned')).toMatchObject({
       before: { defaultShiftId: null, shiftType: 'roster' },
       after: { defaultShiftId: s.id, shiftType: 'fixed' },
     });
 
-    // Clearing is the same write path — the event payload records the reverse transition.
-    await assignDefaultShift(a, { employmentId: empId, shiftId: null });
-    expect(await storedDefaultShift(empId)).toBeNull();
-    expect(await latestEventPayload(b.tenantId, empId, 'employment.shift-arrangement.assigned')).toMatchObject({
-      before: { defaultShiftId: s.id, shiftType: 'fixed' },
-      after: { defaultShiftId: null, shiftType: 'roster' },
-    });
+    // b8aa3466 — clearing USED TO BE the same write path, and that is the hole this item closes: an
+    // employee with no backup shift has every unrostered day calculated from the flat company schedule.
+    // The refusal must also leave the stored value alone, or "you cannot clear it" would be cosmetic.
+    await expect(assignDefaultShift(a, { employmentId: empId, shiftId: null })).rejects.toBeInstanceOf(
+      BackupShiftRequiredError,
+    );
+    expect(await storedDefaultShift(empId)).toBe(s.id);
   });
 
   it('R33 f21d6eee — a shift authored under a DIFFERENT company is now assignable (shared library)', async () => {
