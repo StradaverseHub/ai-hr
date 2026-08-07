@@ -13,8 +13,8 @@
  * day-one migration wants maximum rows in, not all-or-nothing. The dry run is the gate.
  */
 import { withTenant, type SessionContext } from '../db/client';
-import { company, person, employeeStatutoryMy, employment, employeeImportRun, appUser } from '../db/schema';
-import { and, desc, eq } from 'drizzle-orm';
+import { company, person, employeeStatutoryMy, employeeDraft, employment, employeeImportRun, appUser } from '../db/schema';
+import { and, desc, eq, isNotNull } from 'drizzle-orm';
 import { hireEmployee } from './org';
 import { setCompensation } from './comp';
 import { setPersonComplianceFields } from './profile';
@@ -186,7 +186,7 @@ async function analyze(
   // single-jurisdiction tenant. `normalizeIC` is digit-stripping in every pack today, so this stays
   // correct across a mixed file; if a pack ever normalises differently, this is where to revisit.
   let normPack = contexts.get(companyId)?.pack ?? [...contexts.values()][0]?.pack;
-  const { existingEmails, existingIcs, existingCodes } = await withTenant(ctx, async (tx) => {
+  const { existingEmails, existingIcs, existingCodes, reservedCodes } = await withTenant(ctx, async (tx) => {
     if (!normPack) {
       // No company resolved from `listCompanies` — which EXCLUDES archived companies, so this is
       // reachable when the screen's selected company has since been archived. Read its country
@@ -204,7 +204,16 @@ async function analyze(
     // Employee IDs already in use in this tenant (feedback 38668d9b) — an import must not collide with an
     // existing staff ID. Compared on the normalized (uppercased) value, matching the uniqueness rule.
     const codes = await tx.select({ code: employment.employeeCode }).from(employment);
+    // Item 06f0cb8f — an unfinished DRAFT holds an Employee ID too, so an import can collide with a
+    // record that has no employment row yet. `hireEmployee` refuses it either way (that is the
+    // authority, and it is what makes the rule true for every path at once); reading it here as well
+    // moves the refusal from row 400 of a commit into the preview, where a spreadsheet can still be fixed.
+    const reserved = await tx
+      .select({ code: employeeDraft.reservedEmployeeCode })
+      .from(employeeDraft)
+      .where(isNotNull(employeeDraft.reservedEmployeeCode));
     return {
+      reservedCodes: new Set(reserved.map((r) => normalizeEmployeeCode(r.code as string))),
       existingEmails: new Set(ppl.map((r) => r.email.toLowerCase())),
       // Item e3ce0d4d — icNumber is now nullable (non-Malaysian passport rows); skip null ICs so a blank never
       // enters the collision set (mirrors the employeeCode filter below).
@@ -252,6 +261,10 @@ async function analyze(
       errors.push(`Invalid employee_code "${codeRaw}" (letters/numbers/dash, max ${EMPLOYEE_CODE_MAX_LEN})`);
     else if (codeRaw && seenCodes.has(codeNorm)) errors.push('Duplicate employee_code in this file');
     else if (codeRaw && existingCodes.has(codeNorm)) errors.push(`Employee ID "${codeNorm}" is already in use`);
+    // Named differently from "already in use" (item 06f0cb8f): nobody is employed under this ID — an
+    // unfinished draft is holding it, and the way out is to finish or discard that draft.
+    else if (codeRaw && reservedCodes.has(codeNorm))
+      errors.push(`Employee ID "${codeNorm}" is reserved by a draft employee record`);
     if (codeRaw && isValidEmployeeCode(codeRaw)) seenCodes.add(codeNorm);
 
     if (!fullName) errors.push('Missing full_name');

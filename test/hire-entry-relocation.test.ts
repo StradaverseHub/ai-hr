@@ -73,18 +73,22 @@ describe('the list screen is no longer a data-entry surface', () => {
 });
 
 describe('the dedicated screen carries the whole job', () => {
-  it('is a step-by-step form with the five steps and a review', () => {
-    for (const step of ['profile', 'employment', 'statutory', 'payroll', 'review']) {
+  it('is a step-by-step form with the four continue steps — and NO review step', () => {
+    for (const step of ['profile', 'employment', 'statutory', 'payroll']) {
       expect(wizard.includes(`step === '${step}'`), step).toBe(true);
     }
+    // Review is GONE (item 06f0cb8f). It existed to gate one button at the end of a five-step form;
+    // Activate — reachable from every step and naming exactly what is outstanding — replaced it. A
+    // review step that came back would be a step whose only content is what the button already says.
+    expect(wizard.includes("step === 'review'")).toBe(false);
     // The step label is a COMPUTED key (`t(`steps.${k}`)`), which is why
     // test/employee-draft-wizard.test.ts resolves every one of its values in all six locales.
     expect(wizard).toContain('t(`steps.${k}`)');
   });
 
-  it('saves a draft WITHOUT validating, and only validates on create', () => {
+  it('saves a draft WITHOUT validating, and only validates on Activate', () => {
     // A draft that refused to save until it was complete would not be a draft.
-    expect(wizard).toContain('saveDraftAction(id ?? undefined, data');
+    expect(wizard).toContain('saveDraftAction(id, data');
     expect(wizard).toContain('disabled={pending || outstanding.length > 0}');
     expect(wizardActions).toContain('completeEmployeeDraft');
   });
@@ -106,18 +110,56 @@ describe('the dedicated screen carries the whole job', () => {
     expect(draftCore).toContain('IT ALSO DOES NOT EMIT A MOVEMENT EVENT');
   });
 
-  it('a draft consumes no Employee ID — the counter only advances inside hireEmployee', () => {
-    // Item bd271009 renamed the expression handed to `hireEmployee`: what used to be the raw typed value
-    // is now the value the RESOLVED MODE says to send. The invariant this guard exists for is unchanged
-    // and is asserted more precisely — in Auto mode nothing is sent, so the generator runs inside
-    // `hireEmployee` exactly as before, and in Manual mode the typed code bypasses it.
+  it('a draft HOLDS its Employee ID, and Activate spends the held one rather than issuing a second', () => {
+    // THIS GUARD WAS INVERTED BY ITEM 06f0cb8f, deliberately, and the inversion is the item. It used to
+    // assert that `core/employee-draft.ts` never touched the code generator — that was 6d671f44's rule
+    // that a draft consumes no Employee ID. The reporter asked for the opposite: the ID must be taken at
+    // Create and held, so no second draft, no hand-entry and no bulk import can be given it.
+    //
+    // What still has to be true, and is what this now pins: Activate must hand `hireEmployee` the HELD
+    // code, never a blank. A blank would run the generator a second time and the employee would end up
+    // with a different ID from the one HR was shown — and possibly printed on an offer letter — while
+    // the reserved number was released to nobody.
     expect(draftCore).toContain('employeeCode: employeeCodeToIssue');
-    expect(draftCore).toContain("const employeeCodeToIssue = decision.mode === 'manual' ? typedCode : undefined;");
+    expect(draftCore).toContain(
+      "const employeeCodeToIssue = reservedCode ?? (decision.mode === 'manual' ? typedCode : undefined);",
+    );
     // NB: assert a phrase that is not line-wrapped in the source — a comment split across two `//`
     // lines does not contain the sentence as a contiguous string.
-    expect(draftCore).toContain('the counter only ever advances inside this call');
-    // Nothing in the draft path calls the code generator directly.
-    expect(draftCore).not.toContain('nextEmployeeCode');
-    expect(draftCore).not.toContain('generateEmployeeCode');
+    expect(draftCore).toContain('The held code, NEVER blank');
+    // The issue happens ONCE, inside the reservation. `issueEmployeeCode` / `issueLegacyEmployeeCode`
+    // return the config id and the number as well as the string, which is what makes a discard able to
+    // give the number back — see §7 of test/employee-draft-wizard.test.ts.
+    expect(draftCore).toContain('issueEmployeeCode(tx, ctx.tenantId, companyId)');
+    expect(draftCore).toContain('issueLegacyEmployeeCode(tx, ctx.tenantId)');
+    // And the activation path excludes the draft's OWN hold, or every Activate would refuse itself.
+    expect(draftCore).toContain('fromEmployeeDraftId: reservedCode ? id : undefined');
+  });
+
+  it('the four-field Create screen is a screen of its own, and it is the reserving one', () => {
+    const createForm = read('app/admin/personnel/new/create-form.tsx');
+    // Exactly four questions. Asserted as an ABSENCE of the six that left, because the failure mode this
+    // item exists to prevent is a field creeping back onto the first screen and making it long again.
+    for (const gone of ['NationalityPicker', 'IdentityNumberField', 'BirthDateFields', 'PersonDetailsFields']) {
+      expect(createForm.includes(gone), gone).toBe(false);
+    }
+    expect(createForm).toContain('missingToCreate(');
+    expect(createForm).toContain('createDraftAction(');
+    // …and those six are on the continue form, not deleted.
+    for (const moved of ['NationalityPicker', 'IdentityNumberField', 'BirthDateFields', 'PersonDetailsFields']) {
+      expect(wizard.includes(moved), moved).toBe(true);
+    }
+    // The continue form has no company picker at all: the company is fixed once the ID is held.
+    expect(wizard.includes('chooseCompany')).toBe(false);
+  });
+
+  it('the employee list shows drafts as ROWS with a Draft status, not as a separate panel', () => {
+    // The reporter's complaint in one line: a half-finished record sat in an amber card above the table
+    // with no status against it. It is a row now, with the held Employee ID and a Draft badge.
+    expect(listPage.includes("t('draftsHeading')")).toBe(false);
+    expect(listPage).toContain('<StatusBadge status="draft"');
+    expect(listPage).toContain('d.reservedEmployeeCode');
+    // And Draft is an option on the status filter, so HR can pull up exactly who is outstanding.
+    expect(listPage).toContain("value: 'draft'");
   });
 });

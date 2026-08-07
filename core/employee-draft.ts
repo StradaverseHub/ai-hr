@@ -313,10 +313,15 @@ export async function createEmployeeDraftWithReservedCode(
       if (issued) {
         ({ code, configId, number } = issued);
       } else {
-        // No active setup resolves for this company. The legacy per-tenant EMP-#### counter still runs,
-        // exactly as `hireEmployee` falls back today — a draft must not be impossible to create just
-        // because nobody has configured a numbering rule yet. `reserved_config_id` stays null, and the
-        // release path reads that null to know it is `tenant_counter` that has to be rolled back.
+        // A RACE, NOT THE NO-SETUP CASE. Auto mode is only reachable when a rule resolved with
+        // `hasConfig` (see `resolveEmployeeIdMode`) — a company with no setup is forced to Manual and the
+        // ID is required, which is bd271009's rule and is deliberately not relaxed here: falling silently
+        // through to EMP-#### is where the unrecognised IDs used to come from. We land here only if the
+        // setup was deactivated between reading the rule and opening this transaction. Issuing the legacy
+        // number rather than throwing mirrors `hireEmployee`'s own fallback, so the outcome is an ID that
+        // is merely unfashionable instead of a create that fails for reasons HR cannot see.
+        // `reserved_config_id` stays null, and the release path reads that null to know it is
+        // `tenant_counter` that has to be rolled back.
         const legacy = await issueLegacyEmployeeCode(tx, ctx.tenantId);
         code = legacy.code;
         number = legacy.number;

@@ -164,12 +164,17 @@ describe('6d671f44 — the wizard uses the one rule, and keeps its two behaviour
     expect(PAGE).not.toContain('dangerouslySetInnerHTML');
   });
 
-  it('changing company CLEARS the dependent picks — never auto-picks the first visible option', () => {
-    // Feedback 570e3311 scenario 2, carried over verbatim in behaviour.
-    expect(WIZARD).toContain("e.departmentId = '';");
-    expect(WIZARD).toContain("e.positionId = '';");
-    expect(WIZARD).toContain("e.costCenterId = '';");
+  it('a stale cross-company pick is impossible — the company cannot change on this form at all', () => {
+    // Feedback 570e3311 scenario 2 was "changing the company must CLEAR the dependent picks, never
+    // auto-pick the first visible option". Item 06f0cb8f satisfies it by construction instead of by a
+    // handler: the company is chosen on the four-field Create screen, and from the moment the Employee
+    // ID is reserved it is FIXED — the held number came from that company's numbering rule. There is no
+    // company control on the continue form, so there is no change to clear up after.
+    expect(WIZARD).not.toContain('chooseCompany');
     expect(WIZARD).not.toContain('firstVisible');
+    // The server enforces it too, so a tampered payload cannot do what the screen will not.
+    const DRAFT_CORE = fs.readFileSync(path.resolve(__dirname, '../core/employee-draft.ts'), 'utf8');
+    expect(DRAFT_CORE).toContain('companyId: existing.companyId ?? undefined');
   });
 
   it('a company that may use NONE of a select\'s options still says so (d61f0ff2)', () => {

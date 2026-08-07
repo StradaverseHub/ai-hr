@@ -1,18 +1,21 @@
 /**
- * Create New Employee — step-by-step wizard with Save as Draft. Item 6d671f44.
+ * Create New Employee — drafts. Item 6d671f44, extended by bd271009, reshaped by 06f0cb8f.
  *
- * The reporter's requirements are mostly ABOUT WHAT A DRAFT IS NOT: it must not appear as an
- * employee, must not enter payroll, must not trigger statutory calculation, must not appear in
- * reports, and must not consume an Employee ID. Those are all true here by CONSTRUCTION rather than
- * by exclusion, because a draft is captured input in its own table and no employee exists until the
- * final step — so §3 proves the construction rather than testing each list read one by one.
+ * 6d671f44's requirements were mostly ABOUT WHAT A DRAFT IS NOT: it must not appear as an employee,
+ * must not enter payroll, must not trigger statutory calculation, must not appear in reports, and must
+ * not consume an Employee ID. All but the last are still true by CONSTRUCTION — a draft is captured
+ * input in its own table and no employment exists until Activate — and §3 proves the construction
+ * rather than testing each list read one by one.
  *
- * ITEM bd271009 EXTENDED IT. Company is now the first question (it decides which Employee ID Auto
- * Running Number Setup applies) and the Employee ID is conditionally required — §1b pins the decision,
- * §5 pins what that decision does to a real row, §6 guards the migration that makes the setup screen's
- * "Allow manual override" switch mean something for the first time.
+ * ITEM bd271009 EXTENDED IT: the Employee ID became conditionally required and the "Allow manual
+ * override" switch started meaning something (§1b, §5, §6).
  *
- * §1  the completeness rules (pure, shared by the browser and the server)
+ * ITEM 06f0cb8f INVERTED THE LAST CLAUSE. A draft now TAKES its Employee ID at Create and holds it, so
+ * no second draft, no hand-entry and no bulk import can be given it. §7 is that hold: what it blocks,
+ * what Activate does with it, and — the part with a real cost — when a discard gives the number back
+ * and when it leaves a gap.
+ *
+ * §1  the two completeness rules (pure, shared by the browser and the server)
  * §1b the Employee ID mode resolver (pure)
  * §2  the computed-key guard — `t(`steps.${k}`)` and `t(`fields.${f}`)` are INVISIBLE to
  *     test/i18n-coverage.test.ts check C, which only resolves literal keys
@@ -20,11 +23,13 @@
  * §4  source guards on migration 0337 and its journal entry
  * §5  which Employee ID a wizard-created employee gets, against a real database
  * §6  source guards on migration 0355 and its journal entry
+ * §7  the reserved Employee ID (item 06f0cb8f), against a real database
+ * §8  source guards on migration 0415 and its journal entry
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import {
@@ -32,6 +37,7 @@ import {
   draftLabel,
   missingByStep,
   missingForCreation,
+  missingToCreate,
   stepKey,
   stepNumber,
   type EmployeeDraftData,
@@ -39,6 +45,7 @@ import {
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
 import {
   completeEmployeeDraft,
+  createEmployeeDraftWithReservedCode,
   discardEmployeeDraft,
   employeeIdRuleFor,
   getEmployeeDraft,
@@ -48,6 +55,8 @@ import {
 } from '../core/employee-draft';
 import { createConfig, listConfigs } from '../core/employee-id-config';
 import { hireEmployee } from '../core/org';
+import { commitEmployeeImport, validateEmployeeImport } from '../core/import';
+import { parseCsvRecords } from '../lib/csv';
 import { movementHistory } from '../core/movement';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -95,29 +104,59 @@ afterAll(async () => {
 });
 
 // ── §1 the completeness rules ─────────────────────────────────────────────────────────────────────
-describe('§1 what a draft needs before it can become an employee', () => {
+describe('§1 the two rules — what Create asks for, and what Activate needs', () => {
+  it('ITEM 06f0cb8f — Create asks for exactly four things, and only those four', () => {
+    // The defect this pins: the old single rule made a new employee wait on Department, Employment Type,
+    // Join Date and a salary before anything at all existed, so an offer that had been accepted could not
+    // be recorded and its Employee ID could not be held. Splitting the rule is what makes Create short —
+    // and the count matters as much as the contents. A fifth entry sneaking in here is the regression.
+    expect(missingToCreate({}, { employeeIdRule: null })).toEqual([
+      'company',
+      'employeeCode',
+      'fullName',
+      'primaryEmail',
+    ]);
+    // …and nothing an employment needs is judged at Create.
+    for (const f of ['department', 'employmentType', 'hiredOn', 'basicSalary']) {
+      expect(missingToCreate({}, { employeeIdRule: null })).not.toContain(f);
+    }
+  });
+
+  it('the four Create fields are NOT re-asked by the Activate rule — that is the whole split', () => {
+    // Deliberately an empty draft: even with nothing at all filled in, the Activate rule says nothing
+    // about company, name or email, because by the time it runs those are settled and stored.
+    const m = missingForCreation({});
+    for (const f of ['company', 'fullName', 'primaryEmail', 'employeeCode']) expect(m).not.toContain(f);
+    expect(m).toEqual(['department', 'employmentType', 'hiredOn', 'basicSalary']);
+  });
+
   it('an empty draft is missing exactly the required fields, grouped by their own step', () => {
     const m = missingByStep({});
-    // COMPANY IS ON THE PROFILE STEP (item bd271009) — it is asked first, because it decides which
-    // Employee ID Auto Running Number Setup applies. It used to sit in the employment bucket.
-    expect(m.profile).toEqual(['company', 'fullName', 'primaryEmail']);
+    // PROFILE DETAILS NOW REQUIRES NOTHING (item 06f0cb8f). Company, Full Name and Email left for the
+    // Create screen; what is left on this step is optional in every writer downstream, so it opens with
+    // a tick. Its rules are FORMAT rules only — see the malformed-date case below.
+    expect(m.profile).toEqual([]);
     expect(m.employment).toEqual(['department', 'employmentType', 'hiredOn']);
     expect(m.statutory).toEqual([]); // nothing on Bank & Statutory is required by any writer
     expect(m.payroll).toEqual(['basicSalary']);
-    expect(m.review).toEqual([]);
+    // Review is GONE — Activate replaced it. `missingByStep` must not still be shaped around a step the
+    // form no longer has.
+    expect(Object.keys(m)).toEqual(['profile', 'employment', 'statutory', 'payroll']);
   });
 
   it('a complete draft has nothing outstanding', () => {
     expect(missingForCreation(completeDraftShape())).toEqual([]);
+    expect(missingToCreate(completeDraftShape())).toEqual([]);
   });
 
-  it('with NO rule supplied the Employee ID is not judged at all — what listEmployeeDrafts relies on', () => {
-    // The OPTION-OMITTED contract, unchanged by bd271009: a caller that spans many companies (the drafts
-    // list) has no single rule to apply, so it must not start reporting every draft as incomplete.
+  it('with NO rule supplied the Employee ID is not judged at all — two callers rely on it', () => {
+    // The OPTION-OMITTED contract, unchanged since bd271009: a caller that spans many companies (the
+    // drafts list) has no single rule to apply, and a caller checking a draft whose ID is ALREADY HELD
+    // (06f0cb8f) has nothing left to judge. Neither may start reporting every draft as incomplete.
     const d = completeDraftShape();
     delete d.profile!.employeeCode;
     expect(missingForCreation(d)).toEqual([]);
-    expect(missingByStep(d).profile).not.toContain('employeeCode');
+    expect(missingToCreate(d)).toEqual([]);
   });
 
   it('the identity number is NOT required — e3ce0d4d allows a passport holder', () => {
@@ -127,9 +166,9 @@ describe('§1 what a draft needs before it can become an employee', () => {
   });
 
   it('rejects a malformed email and a malformed date rather than passing them to a writer', () => {
-    expect(missingByStep({ profile: { fullName: 'X', primaryEmail: 'not-an-email' } }).profile).toContain(
-      'primaryEmail',
-    );
+    // The email is judged by the CREATE rule now — it is one of the four — and a malformed one must be
+    // refused there, before a record and an Employee ID exist for it.
+    expect(missingToCreate({ profile: { fullName: 'X', primaryEmail: 'not-an-email' } })).toContain('primaryEmail');
     expect(missingByStep({ profile: { fullName: 'X', primaryEmail: 'a@b.co', dateOfBirth: '01/01/1990' } }).profile)
       .toContain('dateOfBirth');
     expect(missingByStep({ employment: { hiredOn: '1 June 2026' } }).employment).toContain('hiredOn');
@@ -203,20 +242,21 @@ describe('§1b the Employee ID mode decides whether the ID is required', () => {
     const d = resolveEmployeeIdMode(rule(), {});
     expect(d).toEqual({ mode: 'auto', choosable: true, forcedBecause: null, codeRequired: false });
     const draft = completeDraftShape();
-    expect(missingForCreation(draft, { employeeIdRule: rule() })).toEqual([]);
+    expect(missingToCreate(draft, { employeeIdRule: rule() })).toEqual([]);
   });
 
-  it('Manual Key In makes the Employee ID required, ON THE PROFILE STEP', () => {
+  it('Manual Key In makes the Employee ID required, ON THE CREATE SCREEN', () => {
     const d = resolveEmployeeIdMode(rule(), { chosen: 'manual' });
     expect(d).toMatchObject({ mode: 'manual', choosable: true, codeRequired: true });
     const draft = completeDraftShape();
     draft.profile!.employeeIdMode = 'manual';
-    const m = missingByStep(draft, { employeeIdRule: rule() });
-    expect(m.profile).toContain('employeeCode');
-    expect(m.employment).not.toContain('employeeCode');
+    // 06f0cb8f — it is `missingToCreate` that judges it, so a typed ID is demanded on the four-field
+    // screen that asks for it. The continue form never re-asks: by then the ID is held.
+    expect(missingToCreate(draft, { employeeIdRule: rule() })).toContain('employeeCode');
+    expect(missingForCreation(draft)).not.toContain('employeeCode');
     // Typing one satisfies it.
     draft.profile!.employeeCode = 'X-777';
-    expect(missingForCreation(draft, { employeeIdRule: rule() })).toEqual([]);
+    expect(missingToCreate(draft, { employeeIdRule: rule() })).toEqual([]);
   });
 
   it('NO setup for the company forces Manual and REQUIRES the ID — the one behaviour that changes', () => {
@@ -228,7 +268,7 @@ describe('§1b the Employee ID mode decides whether the ID is required', () => {
       mode: 'manual',
       forcedBecause: 'noConfig',
     });
-    expect(missingForCreation(completeDraftShape(), { employeeIdRule: null })).toEqual(['employeeCode']);
+    expect(missingToCreate(completeDraftShape(), { employeeIdRule: null })).toEqual(['employeeCode']);
   });
 
   it('"Allow manual override" off beats a stale remembered choice, and takes the choice away', () => {
@@ -239,7 +279,7 @@ describe('§1b the Employee ID mode decides whether the ID is required', () => {
     // And a leftover code does not make the draft incomplete — it is simply not used.
     const draft = completeDraftShape();
     draft.profile!.employeeIdMode = 'manual';
-    expect(missingForCreation(draft, { employeeIdRule: off })).toEqual([]);
+    expect(missingToCreate(draft, { employeeIdRule: off })).toEqual([]);
   });
 
   it('a draft written before this screen existed reads as Manual when it already carries an ID', () => {
@@ -253,7 +293,7 @@ describe('§1b the Employee ID mode decides whether the ID is required', () => {
   it('omitting the option entirely leaves the Employee ID unjudged, whatever the draft says', () => {
     const draft = completeDraftShape();
     draft.profile!.employeeIdMode = 'manual';
-    expect(missingForCreation(draft)).toEqual([]);
+    expect(missingToCreate(draft)).toEqual([]);
   });
 });
 
@@ -268,19 +308,24 @@ describe('§2 every computed translation key resolves, in all six locales', () =
     }
   });
 
-  it('t(`fields.${f}`) — every field name missingByStep can ever return', () => {
-    // Enumerated from the rule itself rather than hand-listed: drive it with inputs that trip every
-    // branch, so a new required field added to `missingByStep` without a label fails HERE.
-    const trip: [EmployeeDraftData, Parameters<typeof missingForCreation>[1]?][] = [
-      [{}],
-      [{ profile: { fullName: 'X', primaryEmail: 'bad', dateOfBirth: 'nope' } }],
-      [{ employment: { provisionalEndOn: 'nope' } }],
-      [{ statutory: { bankName: 'Maybank' } }],
-      [{ payroll: { basicSalary: '1', payMode: 'hourly' } }],
-      // item bd271009 — the Manual Key In branch, which is reachable ONLY with a rule supplied.
-      [{}, { employeeIdRule: null }],
+  it('t(`fields.${f}`) — every field name either rule can ever return', () => {
+    // Enumerated from the rules themselves rather than hand-listed: drive them with inputs that trip
+    // every branch, so a new required field added without a label fails HERE. BOTH rules are swept
+    // (item 06f0cb8f) — the four Create fields are `missingToCreate`'s and are labelled from the same
+    // `fields.*` block, so leaving it out would stop covering half the form.
+    const trip: EmployeeDraftData[] = [
+      {},
+      { profile: { fullName: 'X', primaryEmail: 'bad', dateOfBirth: 'nope' } },
+      { employment: { provisionalEndOn: 'nope' } },
+      { statutory: { bankName: 'Maybank' } },
+      { payroll: { basicSalary: '1', payMode: 'hourly' } },
     ];
-    const names = new Set(trip.flatMap(([d, o]) => (o ? missingForCreation(d, o) : missingForCreation(d))));
+    const names = new Set([
+      ...trip.flatMap((d) => missingForCreation(d)),
+      ...trip.flatMap((d) => missingToCreate(d)),
+      // item bd271009 — the Manual Key In branch, reachable ONLY with a rule supplied.
+      ...missingToCreate({}, { employeeIdRule: null }),
+    ]);
     // Sanity: the sweep really did reach every step's rules.
     for (const expected of ['fullName', 'primaryEmail', 'dateOfBirth', 'company', 'department',
       'employmentType', 'hiredOn', 'provisionalEndOn', 'bankAccount', 'basicSalary', 'rateAmount',
@@ -295,42 +340,50 @@ describe('§2 every computed translation key resolves, in all six locales', () =
     }
   });
 
-  it('the interpolated wizard strings keep their placeholders in every language', () => {
-    const withVars: [string, string[]][] = [
-      ['continueDraft', ['{count}']],
-      ['stepOf', ['{current}', '{total}']],
-      ['missingCount', ['{count}']],
-      ['lastSaved', ['{when}']],
-      ['startedBy', ['{name}']],
-    ];
-    for (const loc of LOCALES) {
-      const w = JSON.parse(read(`messages/${loc}.json`)).people.wizard;
-      for (const [k, vars] of withVars) {
-        for (const v of vars) expect(String(w[k]), `${loc}.${k}`).toContain(v);
-      }
-    }
-  });
-
   it('every Employee ID string exists in all six locales, placeholders intact (item bd271009)', () => {
     // A missing {code} here is the difference between naming the clashing ID and telling HR that
     // something, somewhere, is already taken — the whole value of the message.
     const plain = ['heading', 'chooseCompanyFirst', 'noSetup', 'modeLabel', 'modeAuto', 'modeManual',
-      'forcedAuto', 'previewNote', 'checking', 'removeCode', 'draftCostsNothing'];
+      'forcedAuto', 'checking',
+      // item 06f0cb8f — the three strings the reservation introduced. `reserveNote` and `heldFromCreate`
+      // replaced wording that said the OPPOSITE ("the real ID is issued when the employee is created",
+      // "saving as a draft costs nothing"), so a locale left on the old text would state the old promise.
+      'reserveNote', 'heldFromCreate', 'issuedAtActivate'];
     const withVars: [string, string][] = [
       ['ruleCompany', '{sample}'],
       ['ruleGlobal', '{sample}'],
       ['duplicate', '{code}'],
       ['available', '{code}'],
-      ['staleCode', '{code}'],
     ];
     for (const loc of LOCALES) {
       const w = JSON.parse(read(`messages/${loc}.json`)).people.wizard;
       for (const k of plain) expect(String(w.employeeId?.[k] ?? '').trim(), `${loc} employeeId.${k}`).not.toBe('');
       for (const [k, v] of withVars) expect(String(w.employeeId?.[k] ?? ''), `${loc} employeeId.${k}`).toContain(v);
-      // The two strings the relocated Company field needs.
-      expect(String(w.companyOnProfileStep ?? '').trim(), `${loc} companyOnProfileStep`).not.toBe('');
-      expect(String(w.hints?.company ?? '').trim(), `${loc} hints.company`).not.toBe('');
-      expect(String(w.requiredField ?? '').trim(), `${loc} requiredField`).not.toBe('');
+      // The strings the two forms need outside the Employee ID block.
+      for (const k of ['createDraft', 'createDraftNote', 'createDescription', 'continueTitle',
+        'companyFixedAfterCreate', 'activate', 'activating', 'activateNeeds', 'discardReleasesTip',
+        'requiredField']) {
+        expect(String(w[k] ?? '').trim(), `${loc} ${k}`).not.toBe('');
+      }
+      expect(String(w.hints?.companyFixed ?? '').trim(), `${loc} hints.companyFixed`).not.toBe('');
+      // And the Draft status label the employee list renders on every draft row.
+      const list = JSON.parse(read(`messages/${loc}.json`)).people.list;
+      expect(String(list?.statusDraft ?? '').trim(), `${loc} list.statusDraft`).not.toBe('');
+    }
+  });
+
+  it('the wording that the reservation INVERTED is gone from every locale, not just English', () => {
+    // The failure this pins is specific and silent: `people.wizard.employeeId.draftCostsNothing` said
+    // "Saving as a draft costs nothing. The Employee ID is taken only when the employee is successfully
+    // created." That is now false. A locale still carrying the key would keep telling non-English users
+    // the opposite of what the system does, and no rendering test would catch it because nothing reads it.
+    for (const loc of LOCALES) {
+      const w = JSON.parse(read(`messages/${loc}.json`)).people.wizard;
+      for (const dead of ['draftCostsNothing', 'previewNote', 'staleCode', 'removeCode']) {
+        expect(w.employeeId?.[dead], `${loc} employeeId.${dead}`).toBeUndefined();
+      }
+      // The Review step is gone from the form; its label must not survive as an orphan either.
+      expect(w.steps?.review, `${loc} steps.review`).toBeUndefined();
     }
   });
 });
@@ -712,5 +765,329 @@ describe('§6 migration 0355 — allow_manual_override on existing active setups
     // The screen's checkbox now defaults to ticked; without it, 0355 would flip the old rows on and the
     // very next setup an administrator created would silently be off again.
     expect(read('app/admin/settings/employee-id/page.tsx')).toContain('editing?.allowManualOverride ?? true');
+  });
+});
+
+// ── §7 the reserved Employee ID (item 06f0cb8f) ───────────────────────────────────────────────────
+//
+// THE ONE PROMISE THIS ITEM MAKES: "The generated Employee ID shall be reserved and cannot be assigned
+// to another employee, even if the employee remains in Draft status." Everything here is that sentence,
+// tested from each of the three directions an ID can be handed out — a second draft, the hire path, and
+// the bulk importer — plus the two halves of the give-it-back rule.
+describe('§7 an Employee ID held by a draft', () => {
+  const config = (over: Record<string, unknown> = {}) =>
+    createConfig(adminCtx(b), {
+      companyId: b.companyId, prefix: 'ABC', startNumber: 1, numberLength: 4, increment: 1,
+      allowManualOverride: true, ...over,
+    });
+  const four = (over: Partial<Parameters<typeof createEmployeeDraftWithReservedCode>[1]> = {}) => ({
+    companyId: b.companyId,
+    fullName: 'Nadia Yusof',
+    primaryEmail: `nadia.${randomUUID().slice(0, 8)}@demo.test`,
+    ...over,
+  });
+  const codeOf = async (employmentId: string) => {
+    const [row] = await owner.db
+      .select({ code: schema.employment.employeeCode })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, employmentId));
+    return row.code;
+  };
+  const counterOf = async () => (await listConfigs(adminCtx(b)))[0].currentRunningNumber;
+  const legacyCounter = async () => {
+    const [row] = await owner.db
+      .select({ v: schema.tenantCounter.value })
+      .from(schema.tenantCounter)
+      .where(and(eq(schema.tenantCounter.tenantId, b.tenantId), eq(schema.tenantCounter.kind, 'employee_code')));
+    return row?.v ?? null;
+  };
+
+  it('Create issues the number, holds it on the draft, and STILL creates no person and no employment', async () => {
+    const ctx = adminCtx(b);
+    await config({ startNumber: 7, numberLength: 6 });
+    const before = await counts();
+    const { id, employeeCode } = await createEmployeeDraftWithReservedCode(ctx, four());
+    expect(employeeCode).toBe('ABC000007');
+    // The counter moved — that IS the reservation, and it is the one thing 6d671f44 promised would not
+    // happen. Everything else that item promised still holds, which is what `counts()` proves.
+    expect(await counterOf()).toBe(7);
+    expect(await counts()).toEqual(before);
+    const draft = await getEmployeeDraft(ctx, id);
+    expect(draft?.reservedEmployeeCode).toBe('ABC000007');
+    // Mirrored into the payload so the continue form renders it without a second prop.
+    expect(draft?.data.profile?.employeeCode).toBe('ABC000007');
+    expect(draft?.companyId).toBe(b.companyId);
+  });
+
+  it('blocks a SECOND draft, a hand-entered hire and a bulk import — all three, by name', async () => {
+    const ctx = adminCtx(b);
+    const { employeeCode } = await createEmployeeDraftWithReservedCode(
+      ctx,
+      four({ employeeIdMode: 'manual', employeeCode: 'HELD-1' }),
+    );
+    expect(employeeCode).toBe('HELD-1');
+
+    // 1. A second draft typing the same ID.
+    await expect(
+      createEmployeeDraftWithReservedCode(ctx, four({ employeeIdMode: 'manual', employeeCode: 'held-1' })),
+    ).rejects.toThrow(/reserved by a draft/);
+
+    // 2. The hire path — the single-hire form and every other caller of hireEmployee.
+    await expect(
+      hireEmployee(ctx, {
+        person: { fullName: 'Rival', primaryEmail: `r_${randomUUID().slice(0, 8)}@t.local` },
+        employeeCode: 'HELD-1',
+        companyId: b.companyId,
+        departmentId: b.deptA,
+        employmentType: 'full_time',
+        hiredOn: '2026-06-01',
+      }),
+    ).rejects.toThrow(/reserved by a draft/);
+
+    // 3. The BULK IMPORTER. This is the wider-than-reported bit: the ticket only mentions "another
+    // employee", but an import is the path most likely to be run by somebody who has never seen the
+    // draft. It inherits the check because commitEmployeeImport goes through hireEmployee — assert the
+    // OUTCOME rather than the composition, so a future refactor that stops inheriting it fails here.
+    const csv =
+      'full_name,email,department,hired_on,ic_number,basic_salary,employee_code\n' +
+      `Import Rival,imp_${randomUUID().slice(0, 8)}@t.local,Finance,2026-06-01,910505051234,4000,HELD-1\n`;
+    const preview = await validateEmployeeImport(ctx, {
+      companyId: b.companyId,
+      records: parseCsvRecords(csv).records,
+    });
+    // Named in the PREVIEW, where a spreadsheet can still be corrected…
+    expect(preview.validCount).toBe(0);
+    expect(preview.rows[0].errors.join(' ')).toMatch(/reserved by a draft/);
+    // …and refused by the commit even if the preview is bypassed, because commitEmployeeImport
+    // re-validates and then goes through hireEmployee. Assert the OUTCOME rather than the
+    // composition, so a future refactor that stops inheriting the check fails here.
+    const res = await commitEmployeeImport(ctx, {
+      companyId: b.companyId,
+      records: parseCsvRecords(csv).records,
+    });
+    expect(res.imported).toBe(0);
+
+    // And nothing anywhere got the ID.
+    const rows = await owner.db
+      .select({ id: schema.employment.id })
+      .from(schema.employment)
+      .where(eq(schema.employment.employeeCode, 'HELD-1'));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('the look-ahead reports a held ID as taken — and a draft never collides with itself', async () => {
+    const ctx = adminCtx(b);
+    const { id } = await createEmployeeDraftWithReservedCode(
+      ctx,
+      four({ employeeIdMode: 'manual', employeeCode: 'HELD-2' }),
+    );
+    expect(await isEmployeeCodeTaken(ctx, 'HELD-2')).toBe(true);
+    expect(await isEmployeeCodeTaken(ctx, ' held-2 ')).toBe(true); // same identifier, either case
+    expect(await isEmployeeCodeTaken(ctx, 'HELD-2', { excludeDraftId: id })).toBe(false);
+    expect(await isEmployeeCodeTaken(ctx, 'HELD-3')).toBe(false);
+  });
+
+  it('Activate uses the held ID and does NOT advance the counter a second time', async () => {
+    const ctx = adminCtx(b);
+    await config({ startNumber: 100, numberLength: 5 });
+    const { id, employeeCode } = await createEmployeeDraftWithReservedCode(ctx, four());
+    expect(employeeCode).toBe('ABC00100');
+    expect(await counterOf()).toBe(100);
+
+    // Fill in the rest, exactly as the continue form does.
+    const draft = await getEmployeeDraft(ctx, id);
+    await saveEmployeeDraft(ctx, {
+      id,
+      data: {
+        ...draft!.data,
+        employment: { ...draft!.data.employment, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2026-06-01' },
+        payroll: { basicSalary: '5200' },
+      },
+      currentStep: 4,
+    });
+    const { employmentId } = await completeEmployeeDraft(ctx, id);
+
+    // The employee carries the number that was held for them from day one…
+    expect(await codeOf(employmentId)).toBe('ABC00100');
+    // …and the sequence did not skip one. Without the reservation being passed through, hireEmployee
+    // would have generated ABC00101 and the ID HR was shown at Create would belong to nobody.
+    expect(await counterOf()).toBe(100);
+    // The hold is released with the draft — two live claims on one ID is the state it exists to prevent.
+    expect(await getEmployeeDraft(ctx, id)).toBeNull();
+  });
+
+  it('discarding AT THE TIP gives the number back; discarding BEHIND a later create does not', async () => {
+    const ctx = adminCtx(b);
+    await config({ startNumber: 1, numberLength: 4 });
+
+    // At the tip: nothing was issued after it.
+    const first = await createEmployeeDraftWithReservedCode(ctx, four());
+    expect(first.employeeCode).toBe('ABC0001');
+    expect(await counterOf()).toBe(1);
+    await discardEmployeeDraft(ctx, first.id);
+    expect(await counterOf()).toBe(0);
+    // Proof it was really returned rather than merely decremented: the next Create takes it again.
+    const again = await createEmployeeDraftWithReservedCode(ctx, four());
+    expect(again.employeeCode).toBe('ABC0001');
+
+    // BEHIND a later issue: this is the gap the plan tells the reporter about in their own words.
+    // Rolling back here would hand ABC0002 out twice, so the number stays spent and the sequence skips it.
+    const behind = await createEmployeeDraftWithReservedCode(ctx, four());
+    expect(behind.employeeCode).toBe('ABC0002');
+    const ahead = await createEmployeeDraftWithReservedCode(ctx, four());
+    expect(ahead.employeeCode).toBe('ABC0003');
+    await discardEmployeeDraft(ctx, behind.id);
+    expect(await counterOf()).toBe(3);
+    // ABC0002 is free to be re-used BY HAND — it is a gap, not a permanent hole — but nothing issues it
+    // automatically, and the next automatic number carries on from the tip.
+    expect(await isEmployeeCodeTaken(ctx, 'ABC0002')).toBe(false);
+    const next = await createEmployeeDraftWithReservedCode(ctx, four());
+    expect(next.employeeCode).toBe('ABC0004');
+  });
+
+  it('the discard event records WHETHER the number came back — the gap is on the audit trail', async () => {
+    const ctx = adminCtx(b);
+    await config();
+    const first = await createEmployeeDraftWithReservedCode(ctx, four());
+    const second = await createEmployeeDraftWithReservedCode(ctx, four());
+    await discardEmployeeDraft(ctx, first.id); // behind `second` ⇒ leaves a gap
+    await discardEmployeeDraft(ctx, second.id); // at the tip ⇒ returned
+    const rows = await owner.db
+      .select({ aggregateId: schema.domainEvent.aggregateId, payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(eq(schema.domainEvent.eventType, 'employee-draft.discarded'));
+    const byId = new Map(rows.map((r) => [r.aggregateId, r.payload as Record<string, unknown>]));
+    expect(byId.get(first.id)).toMatchObject({ reservedEmployeeCode: 'ABC0001', released: false });
+    expect(byId.get(second.id)).toMatchObject({ reservedEmployeeCode: 'ABC0002', released: true });
+  });
+
+  it('a company with NO setup holds a HAND-KEYED ID — the half of the plan that works everywhere', async () => {
+    const ctx = adminCtx(b);
+    // seedBase configures no Employee ID Auto Running Number Setup at all, which is the situation eight
+    // of the nine live companies are in — ISEDECOR BINA, with 22 people on a hand-keyed A0001..A0014 run,
+    // among them. bd271009's rule is unchanged and deliberately NOT relaxed here: with no setup the ID
+    // must be typed, because falling silently through to the legacy EMP-#### counter is exactly where
+    // the unrecognised IDs used to come from. What 06f0cb8f adds is that the typed ID is then HELD.
+    expect((await employeeIdRuleFor(ctx, b.companyId)).hasConfig).toBe(false);
+    await expect(createEmployeeDraftWithReservedCode(ctx, four())).rejects.toThrow(
+      /Cannot create the employee record yet.*employeeCode/,
+    );
+    const { id, employeeCode } = await createEmployeeDraftWithReservedCode(
+      ctx,
+      four({ employeeIdMode: 'manual', employeeCode: 'A0015' }),
+    );
+    expect(employeeCode).toBe('A0015');
+    expect((await getEmployeeDraft(ctx, id))?.reservedEmployeeCode).toBe('A0015');
+    // A hand-keyed hold consumes no counter, so there is nothing to give back — and nothing is taken.
+    expect(await legacyCounter()).toBeNull();
+    await discardEmployeeDraft(ctx, id);
+    expect(await isEmployeeCodeTaken(ctx, 'A0015')).toBe(false);
+  });
+
+  it('the company and the held ID are PINNED — the server refuses a payload that moves either', async () => {
+    const ctx = adminCtx(b);
+    await config();
+    const other = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: b.tenantId, legalName: 'Other Sdn Bhd', country: 'MY' })
+      .returning({ id: schema.company.id });
+    const { id, employeeCode } = await createEmployeeDraftWithReservedCode(ctx, four());
+    // A client that sends a different company and a different ID — the shape a stale tab, or a tampered
+    // request, would take. Neither may land: the held number came from THIS company's numbering rule.
+    await saveEmployeeDraft(ctx, {
+      id,
+      data: { profile: { employeeCode: 'SOMETHING-ELSE' }, employment: { companyId: other[0].id } },
+      currentStep: 2,
+    });
+    const after = await getEmployeeDraft(ctx, id);
+    expect(after?.companyId).toBe(b.companyId);
+    expect(after?.reservedEmployeeCode).toBe(employeeCode);
+    expect(after?.data.profile?.employeeCode).toBe(employeeCode);
+    expect(after?.data.employment?.companyId).toBe(b.companyId);
+  });
+
+  it('a PRE-06f0cb8f draft, with no reservation, still activates exactly as it always did', async () => {
+    // The one draft on production was written before this item and carries null in all four columns.
+    // It must go on behaving as bd271009 left it: the rule is resolved at Activate, and the ID is issued
+    // there. This is the regression that a "reservation is now mandatory" refactor would introduce.
+    const ctx = adminCtx(b);
+    await config({ startNumber: 500, numberLength: 6 });
+    const data = completeDraft();
+    delete data.profile!.employeeCode; // Auto — the ID is issued by hireEmployee, as it used to be
+    const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 4 });
+    expect((await getEmployeeDraft(ctx, id))?.reservedEmployeeCode).toBeNull();
+    const { employmentId } = await completeEmployeeDraft(ctx, id);
+    expect(await codeOf(employmentId)).toBe('ABC000500');
+    expect(await counterOf()).toBe(500);
+  });
+
+  it('Create refuses before it takes a number — a refused create burns nothing', async () => {
+    const ctx = adminCtx(b);
+    await config({ allowManualOverride: false });
+    const before = await counterOf();
+    // Manual entry on a setup that forbids it: refused, and the counter has not moved. The refusal is
+    // BEFORE the transaction that issues, which is what makes "burns nothing" true rather than lucky.
+    await expect(
+      createEmployeeDraftWithReservedCode(ctx, four({ employeeIdMode: 'manual', employeeCode: 'X-1' })),
+    ).rejects.toThrow(/does not allow manual entry/);
+    // A missing email: the four-field rule, re-run on the server because the client is not trusted.
+    await expect(
+      createEmployeeDraftWithReservedCode(ctx, { ...four(), primaryEmail: '' }),
+    ).rejects.toThrow(/Cannot create the employee record yet.*primaryEmail/);
+    expect(await counterOf()).toBe(before);
+    expect(await listEmployeeDrafts(ctx)).toHaveLength(0);
+  });
+
+  it('a non-admin cannot reserve an Employee ID', async () => {
+    const employee = { ...adminCtx(b), roles: ['employee'] };
+    await expect(createEmployeeDraftWithReservedCode(employee, four())).rejects.toThrow(/Only an admin/);
+  });
+});
+
+// ── §8 migration 0415 ─────────────────────────────────────────────────────────────────────────────
+describe('§8 migration 0415 — the reservation columns', () => {
+  const mig = read('db/migrations/0415_employee_draft_reserved_code.sql');
+
+  it('adds the four columns idempotently and indexes the code PARTIALLY', () => {
+    for (const col of ['reserved_employee_code', 'reserved_at', 'reserved_config_id', 'reserved_number']) {
+      expect(mig, col).toContain(`ADD COLUMN IF NOT EXISTS ${col}`);
+    }
+    expect(mig).toContain('CREATE UNIQUE INDEX IF NOT EXISTS employee_draft_reserved_code_uq');
+    // PARTIAL is the whole reason existing drafts are unaffected: nulls are not unique-compared, so
+    // every row written before this migration keeps behaving exactly as it did.
+    expect(mig).toContain('WHERE reserved_employee_code IS NOT NULL');
+  });
+
+  it('touches no existing data and drops nothing', () => {
+    const sqlOnly = mig.split('\n').filter((l) => !l.trimStart().startsWith('--')).join('\n');
+    // `DELETE FROM` / `DROP ` rather than the bare words: the reserved_config_id reference carries
+    // ON DELETE SET NULL, which is a referential action and destroys nothing.
+    expect(sqlOnly).not.toContain('DELETE FROM');
+    expect(sqlOnly).not.toContain('DROP ');
+    expect(sqlOnly).not.toContain('UPDATE ');
+    // No new GRANT is needed — 0337 granted the TABLE, and a new column inherits it. Asserted so a
+    // future reader does not "fix" a missing grant that was never missing.
+    expect(sqlOnly).not.toContain('GRANT');
+  });
+
+  it('its journal entry sits ABOVE everything that runs before it (the r84 stale-number trap)', () => {
+    const journal = JSON.parse(read('db/migrations/meta/_journal.json')) as {
+      entries: { idx: number; when: number; tag: string }[];
+    };
+    const mine = journal.entries.find((e) => e.tag === '0415_employee_draft_reserved_code');
+    expect(mine).toBeTruthy();
+    expect(mine!.idx).toBe(415);
+    const priorMax = Math.max(...journal.entries.filter((e) => e.idx < mine!.idx).map((e) => e.when));
+    expect(mine!.when).toBeGreaterThan(priorMax);
+  });
+
+  it('the drizzle schema declares the same four columns and the same partial index', () => {
+    // The .sql is what runs; db/schema.ts is what every query is typed against. A column added to one
+    // and not the other is a runtime error in a service that type-checks clean.
+    const schemaSrc = read('db/schema.ts');
+    for (const col of ['reserved_employee_code', 'reserved_at', 'reserved_config_id', 'reserved_number']) {
+      expect(schemaSrc, col).toContain(`'${col}'`);
+    }
+    expect(schemaSrc).toContain("uniqueIndex('employee_draft_reserved_code_uq')");
   });
 });
