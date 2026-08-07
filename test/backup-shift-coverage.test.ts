@@ -174,12 +174,39 @@ describe('b8aa3466 — the AM03 backfill', () => {
     const a = adminCtx(b);
     await makeEmp('Uma', 'EMP-001');
     // Production carries two shifts both coded AM1 (09:00–18:00 and 06:00–16:00), plus AM1-copy / Test /
-    // Test-2. Shift codes are NOT unique, so resolving a code to a shift is a genuine ambiguity — and
-    // silently taking the first row would point 30 people at whichever one the planner happened to return.
-    await createShift(a, { name: 'Morning A', code: 'AM1', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
-    await createShift(a, { name: 'Morning B', code: 'AM1', startTime: '06:00:00', endTime: '16:00:00', breakMinutes: 60 });
+    // Test-2 — so "resolve a shift by its code" is not a lookup, it is a guess. Picking the first row
+    // would point every uncovered employee at whichever one the planner happened to return.
+    //
+    // THE SECOND ROW IS INSERTED DIRECTLY, and that is the honest fixture rather than a shortcut. R33's
+    // partial index (shift_tenant_code_uq: UNIQUE (tenant_id, lower(code)) WHERE archived_at IS NULL)
+    // means createShift can no longer author a same-code pair — but the index compares `lower(code)`
+    // while backfillBackupShift compares `code.trim().toLowerCase()`, so a legacy row whose code carries
+    // whitespace is DISTINCT to the database and IDENTICAL to the backfill. That gap is exactly where a
+    // silent coin-flip would live, and it is reachable only from data the current service cannot write.
+    const keep = await createShift(a, {
+      name: 'Morning A',
+      code: 'AM1',
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+    });
+    await owner.db.insert(schema.shift).values({
+      tenantId: b.tenantId,
+      name: 'Morning B (legacy)',
+      code: 'AM1 ', // trailing space — lower('AM1 ') ≠ lower('AM1'), so the unique index permits it
+      startTime: '06:00:00',
+      endTime: '16:00:00',
+      breakMinutes: 60,
+    });
     await expect(backfillBackupShift(a, { shiftCode: 'AM1', apply: true })).rejects.toThrow(/matches 2 shifts/);
-    expect(await employmentsWithoutBackupShift(a)).toHaveLength(1);
+    expect(await employmentsWithoutBackupShift(a)).toHaveLength(1); // and nothing was written
+
+    // The guard refuses the AMBIGUITY, not the feature: an unambiguous code in the same tenant still runs.
+    const unique = await am03();
+    const ok = await backfillBackupShift(a, { shiftCode: 'AM03', apply: true });
+    expect(ok.assignedShiftId).toBe(unique.id);
+    expect(ok.after).toEqual([]);
+    expect(keep.id).not.toBe(unique.id);
   });
 
   it('REFUSES a code that matches no active shift', async () => {
