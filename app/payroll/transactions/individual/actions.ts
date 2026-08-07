@@ -1,10 +1,13 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { BatchNotDraftError, batchEditImpact } from '@/core/payroll';
 import { listIndividualTxnsAcross, listUnattachedTxnSummary } from '@/core/payroll-view';
 import { buildTxnPanel, type TxnPanel } from './existing-context';
+import { deriveIndividualTxnAmount, TxnQuantityRequiredError } from '@/core/pay-components';
+import { PayRuleEvalError } from '@/core/pay-rule';
 import {
   createIndividualTxnsBulk,
   getIndividualTxn,
@@ -47,9 +50,20 @@ import {
 const txnErrorKey = (e: unknown): string =>
   e instanceof TxnDateOutOfPeriodError
     ? 'dateOutOfPeriod'
-    : e instanceof AmountNotPositiveError
-      ? 'amountNotPositive'
-      : e instanceof CompanyMismatchError
+    : // 2da9937a — a pay item that works its amount out from a keyed quantity, saved without one. Two keys
+      // rather than one interpolated sentence: the screen resolves an error key with no values, and the
+      // operator needs to be told WHICH box, not that a box is missing.
+      e instanceof TxnQuantityRequiredError
+      ? e.unit === 'hours'
+        ? 'quantityRequiredHours'
+        : 'quantityRequiredDays'
+      : // A corrupted stored rule resolved to a non-finite figure. Fail closed and say so — writing the
+        // typed amount instead would pay a number the configured item did not produce.
+        e instanceof PayRuleEvalError
+        ? 'derivedAmountUnavailable'
+        : e instanceof AmountNotPositiveError
+          ? 'amountNotPositive'
+          : e instanceof CompanyMismatchError
         ? 'companyMismatch'
         : e instanceof EmploymentNotInBatchScopeError
           ? 'employeeNotInScope'
@@ -201,6 +215,115 @@ export async function fetchTxnDetailAction(input: { id: string }): Promise<Indiv
 }
 
 /**
+ * 2da9937a — THE AMOUNT THIS SAVE WILL ACTUALLY WRITE.
+ *
+ * The gap this closes is that the write path never consulted the picked pay item's rule. It asked for an
+ * Amount and asserted it was positive, so an item configured "RM x per hour" was arithmetic the operator
+ * had to do by hand and the configured rule never ran. Here the rule runs, through the same evaluator the
+ * payslip uses, and the figure it produces REPLACES whatever amount arrived from the browser — the client
+ * shows the derived amount, it does not get a vote on it.
+ *
+ * For a null or `fixed` rule (and for a generic kind with no pay item at all) this returns the typed amount
+ * unchanged, so those saves are byte-identical to before.
+ *
+ * The magnitude rule is deliberately NOT re-implemented here. `createIndividualTxnsBulk` /
+ * `updateIndividualTxn` still assert amount > 0 — they now assert it on the DERIVED figure, which is
+ * exactly the narrowing the plan asked for: the rule survives, it just stops firing on a box the operator
+ * is no longer allowed to fill.
+ */
+async function amountForWrite(
+  s: Awaited<ReturnType<typeof scopedAdmin>>['s'],
+  p: {
+    componentId: string | null;
+    employmentId: string;
+    companyId: string;
+    payPeriod: string;
+    quantity: number | null;
+    unit: string | null;
+    typed: number;
+  },
+): Promise<number> {
+  if (!p.componentId) return p.typed;
+  // The month bounds the attendance and recurring-item reads the rule resolves against, so it has to be a
+  // real month. It always is by the time we get here (a batch supplies its own; a period-keyed write is
+  // rejected above without one) — this refuses rather than quietly falling back to the typed amount, which
+  // would pay a hand-typed figure for an item whose amount the operator was not allowed to type.
+  if (!isPayPeriod(p.payPeriod)) throw new InvalidPayPeriodError(p.payPeriod);
+  const d = await deriveIndividualTxnAmount(s, {
+    componentId: p.componentId,
+    employmentId: p.employmentId,
+    companyId: p.companyId,
+    payPeriod: p.payPeriod,
+    quantity: p.quantity,
+    unit: p.unit,
+  });
+  return d.derived ? d.amount : p.typed;
+}
+
+/** What the entry form is told about the picked pay item: whether the Amount box is its to fill, and — when
+ *  it is not — the figure the item produces for the quantity keyed so far. */
+export type TxnAmountPreview =
+  | { ok: true; derived: false }
+  | {
+      ok: true;
+      derived: true;
+      /** Money, already at two decimals so the form shows the figure that will be stored. */
+      amount: string;
+      code: string;
+      inputUnit: 'hours' | 'days' | null;
+      /** The figure is 0 because a live divisor was zero for this employee — an explanation, not an error.
+       *  Already LOCALISED here, exactly as previewPayRuleAction does it: the divisor is an internal
+       *  operand token (`hours`, `fixed_allowances`, …) and the operator must read the same words the
+       *  pay-item screen shows, not the token. Null when nothing divided by zero. */
+      zeroDivisor: string | null;
+    }
+  | { ok: false; error: string };
+
+/**
+ * 2da9937a — show the operator the amount BEFORE they save it.
+ *
+ * Same call the save makes (`deriveIndividualTxnAmount`), so the number on screen and the number written
+ * cannot disagree — a preview computed a second way is a preview that will eventually lie. Read-only.
+ */
+export async function previewTxnAmountAction(input: {
+  componentId: string;
+  employmentId: string;
+  companyId: string;
+  payPeriod: string;
+  quantity: number | null;
+  unit: string | null;
+}): Promise<TxnAmountPreview> {
+  const { s, scopeIds } = await scopedAdmin();
+  if (!input.companyId || !scopeIds.includes(input.companyId)) return { ok: false, error: 'outOfScope' };
+  if (!input.componentId || !input.employmentId) return { ok: true, derived: false };
+  if (!isPayPeriod(input.payPeriod)) return { ok: false, error: 'periodInvalid' };
+  try {
+    const d = await deriveIndividualTxnAmount(s, {
+      componentId: input.componentId,
+      employmentId: input.employmentId,
+      companyId: input.companyId,
+      payPeriod: input.payPeriod,
+      quantity: input.quantity,
+      unit: input.unit,
+    });
+    if (!d.derived) return { ok: true, derived: false };
+    const tr = await getTranslations('payRule');
+    return {
+      ok: true,
+      derived: true,
+      amount: d.amount.toFixed(2),
+      code: d.code,
+      inputUnit: d.inputUnit,
+      zeroDivisor: d.zeroDivisor
+        ? tr('previewZeroDivisor', { divisor: tr(`operand_${d.zeroDivisor.divisor}` as never), step: d.zeroDivisor.step })
+        : null,
+    };
+  } catch (e) {
+    return { ok: false, error: txnErrorKey(e) };
+  }
+}
+
+/**
  * Create ONE one-off transaction — the Add form, and equally the save of a Duplicate (a copy is an
  * ordinary create of a row whose fields were prefilled from another; nothing about the write differs).
  *
@@ -222,6 +345,19 @@ export async function createIndividualTxnAction(input: TxnFormInput): Promise<Tx
   // landed on a processed run without re-reading (and possibly re-deciding) afterwards.
   const targetImpact = input.batchId ? await batchEditImpact(s, { batchId: input.batchId }) : null;
   try {
+    // 2da9937a — the pay item decides the amount when it has a rule that works one out. Resolved BEFORE
+    // the write so the service's amount > 0 assertion lands on the figure that will be stored.
+    const amount = await amountForWrite(s, {
+      componentId: input.componentId,
+      employmentId: input.employmentId,
+      companyId: input.companyId,
+      // A batch-attached write takes the month from the RUN (the service does the same), not from the form
+      // field, so the two can never resolve the rule against different months.
+      payPeriod: input.batchId ? (targetImpact?.payPeriod ?? input.payPeriod) : input.payPeriod,
+      quantity: input.quantity,
+      unit: input.unit,
+      typed: input.amount,
+    });
     const { ids } = await createIndividualTxnsBulk(s, {
       ...(input.batchId ? { batchId: input.batchId } : { companyId: input.companyId, payPeriod: input.payPeriod }),
       employmentIds: [input.employmentId],
@@ -229,7 +365,7 @@ export async function createIndividualTxnAction(input: TxnFormInput): Promise<Tx
         {
           kind: input.kind,
           txnDate: input.txnDate,
-          amount: input.amount,
+          amount,
           quantity: input.quantity,
           unit: input.unit,
           notes: input.notes,
@@ -260,11 +396,25 @@ export async function updateIndividualTxnAction(
   const existing = input.id ? await getIndividualTxn(s, { id: input.id }) : null;
   if (!existing || !scopeIds.includes(existing.companyId)) return { ok: false, error: 'txnNotFound' };
   try {
+    // 2da9937a — an edit re-derives too. The operator may have changed the hours, or moved the row onto a
+    // pay item that calculates; either way the stored amount must be what the item produces NOW, not what
+    // the browser sent.
+    const amount = await amountForWrite(s, {
+      componentId: input.componentId,
+      employmentId: existing.employmentId,
+      // The ROW's company, already checked against the caller's scope above — not the client's field.
+      companyId: existing.companyId,
+      // The row's own stamped month — an edit cannot move a transaction between months.
+      payPeriod: existing.payPeriod,
+      quantity: input.quantity,
+      unit: input.unit,
+      typed: input.amount,
+    });
     await updateIndividualTxn(s, {
       id: input.id,
       kind: input.kind,
       txnDate: input.txnDate,
-      amount: input.amount,
+      amount,
       quantity: input.quantity,
       unit: input.unit,
       notes: input.notes,

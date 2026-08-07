@@ -24,6 +24,8 @@ import type { PayComponentSeed, PcbExemptionTable, PcbRemunerationType } from '.
 import { parseCsvRecords } from '../lib/csv';
 import {
   payRuleDependencies as payRuleDependenciesOf,
+  payRuleDerivesAmount,
+  payRuleInputUnit,
   planResolutionOrder,
   resolvePayComponentSet,
   validatePayRule,
@@ -666,92 +668,20 @@ export function previewPayRule(
     const now = new Date();
     const periodStart = p.periodStart ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
     const periodEnd = p.periodEnd ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
-    const days = Math.round((Date.parse(periodEnd) - Date.parse(periodStart)) / 86_400_000) + 1;
 
-    // The employee's authoritative basic — the Personnel compensation record, exactly what the kernel's
-    // `rscope.basic` reads (feedback 64fb5e48: Personnel is the ONLY basic source).
-    const [comp] = await tx
-      .select({ basic: compensation.basicSalary })
-      .from(compensation)
-      .where(
-        and(
-          eq(compensation.employmentId, p.employmentId),
-          isNull(compensation.validTo),
-          isNull(compensation.supersededAt),
-        ),
-      )
-      .limit(1);
-    const basic = Number(comp?.basic ?? 0);
-
-    // The employee's actual worked hours for the period — same aggregate the kernel takes.
-    const [att] = await tx
-      .select({ minutes: sql<string>`coalesce(sum(${attendance.workedMinutes}), 0)` })
-      .from(attendance)
-      .where(
-        and(
-          eq(attendance.employmentId, p.employmentId),
-          gte(attendance.attendanceDate, periodStart),
-          lte(attendance.attendanceDate, periodEnd),
-        ),
-      );
-    const hours = Number(att?.minutes ?? 0) / 60;
-
-    // This employee's recurring pay items in the period window (the same period-aware predicate the kernel
-    // uses), so a rule that reads another pay item reads that employee's REAL value for it.
-    const recurring = await tx
-      .select({
-        code: payComponent.code,
-        amount: employmentPayComponent.amount,
-        rule: payComponent.rule,
-        resolutionOrder: payComponent.resolutionOrder,
-        // 2da9937a — the catalog kind decides whether an item counts towards the `fixed_allowances`
-        // aggregate. The KERNEL's CompRow already carries it, so without it here the preview would compute
-        // the aggregate as 0 while the run computed the real sum: the preview would lie, quietly, and only
-        // about formulas using the new operand. Selecting it is what keeps "same evaluator" true in fact
-        // and not just in the call graph.
-        kind: payComponent.kind,
-      })
-      .from(employmentPayComponent)
-      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
-      .where(
-        and(
-          eq(employmentPayComponent.employmentId, p.employmentId),
-          lte(employmentPayComponent.validFrom, periodEnd),
-          or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, periodStart)),
-          isNull(employmentPayComponent.supersededAt),
-        ),
-      );
-
-    // Rank the graph WITH the candidate rule substituted — an unsaved rule can re-rank the catalog, and the
-    // preview must resolve in the order the save would have recorded, not the order on disk.
-    const pending: PayRuleCatalogNode[] = catalog.map((n) =>
-      n.code.trim().toUpperCase() === code ? { ...n, rule: p.rule } : n,
-    );
-    if (!pending.some((n) => n.code.trim().toUpperCase() === code)) pending.push({ code, rule: p.rule, kind: p.kind });
-    const plan = planResolutionOrder(pending);
-    const rankOf = (c: string) => (plan.ok ? (plan.order.get(c.trim().toUpperCase()) ?? 0) : 0);
-
-    // The set to resolve: the employee's real items, with the item under edit substituted (or added at 0 if
-    // the employee does not have it yet — a brand-new pay code still previews).
-    const set = recurring
-      .filter((r) => r.code.trim().toUpperCase() !== code)
-      .map((r) => ({ code: r.code, rule: r.rule, amount: Number(r.amount), resolutionOrder: rankOf(r.code), kind: r.kind as string | null }));
-    const targetAmount = Number(recurring.find((r) => r.code.trim().toUpperCase() === code)?.amount ?? 0);
-    // The item under edit takes the kind from the FORM, not from disk — the admin may be changing it in the
-    // same edit, and the preview must answer for the rule as it is about to be saved.
-    set.push({ code, rule: p.rule, amount: targetAmount, resolutionOrder: rankOf(code), kind: p.kind as string | null });
-    const targetIdx = set.length - 1;
-
-    // BASIC is PINNED to the authoritative Personnel figure, exactly as the kernel pins it — the preview
-    // must agree with the run on what `component:'BASIC'` means, not just on the arithmetic.
-    const scope = { basic, daysWorked: days, hours, components: { BASIC: basic } };
-    let resolved: number[];
-    // 2da9937a — the same notices channel the run uses. On this screen it turns "RM 0.00" from a figure the
-    // admin has to explain to themselves into a sentence naming the input that was zero, BEFORE the rule is
-    // saved and a payroll run has to surface it instead.
-    const notices: PayRuleComponentNotice[] = [];
+    let r: EmploymentRuleResolution;
     try {
-      resolved = resolvePayComponentSet(set, scope, notices);
+      r = await resolveRuleForEmploymentTx(tx, ctx.tenantId, {
+        code,
+        rule: p.rule,
+        // The item under edit takes the kind from the FORM, not from disk — the admin may be changing it in
+        // the same edit, and the preview must answer for the rule as it is about to be saved.
+        kind: p.kind,
+        employmentId: p.employmentId,
+        periodStart,
+        periodEnd,
+        catalog,
+      });
     } catch {
       // PayRuleEvalError — a non-finite result from a corrupted value. Fail closed with the structural code
       // rather than showing a number that the run would refuse to write.
@@ -761,20 +691,402 @@ export function previewPayRule(
     // Report only the items the rule actually READ, so the panel explains the figure instead of listing the
     // employee's whole pay structure.
     const referenced = new Set(payRuleDependenciesOf(p.rule));
-    const inputs = set
-      .map((s, i) => ({ code: s.code.trim().toUpperCase(), amount: resolved[i] }))
-      .filter((s) => referenced.has(s.code));
+    const inputs = r.resolved.filter((s) => referenced.has(s.code));
 
-    // Only the notice for the item under edit — a zero divisor on some OTHER pay item is that item's
-    // problem and belongs on that item's screen, not on this one's result panel.
-    const zeroDivisor = notices.find((n) => n.code === code) ?? null;
     return {
       ok: true,
-      amount: resolved[targetIdx],
-      scope: { basic, days, hours },
+      amount: r.amount,
+      scope: { basic: r.basic, days: r.days, hours: r.hours },
       inputs,
-      zeroDivisor: zeroDivisor ? { divisor: zeroDivisor.divisor, step: zeroDivisor.step } : null,
+      zeroDivisor: r.zeroDivisor,
     };
+  });
+}
+
+/** What resolveRuleForEmploymentTx answers: the target item's figure, the scope inputs it was computed
+ *  from (so a caller can SHOW the arithmetic rather than assert it), and every item in the resolved set
+ *  with the value it took. */
+type EmploymentRuleResolution = {
+  amount: number;
+  basic: number;
+  /** The day and hour figures ACTUALLY used — an override, when one was supplied, rather than the period's. */
+  days: number;
+  hours: number;
+  resolved: { code: string; amount: number }[];
+  zeroDivisor: { divisor: string; step: number } | null;
+};
+
+/**
+ * 2da9937a — THE ONE PLACE a pay rule becomes a figure for ONE REAL EMPLOYEE outside a payroll run.
+ *
+ * It was previewPayRule's body. It is a named function now because the Individual Transaction screen has to
+ * ask the same question — "what does this item pay this employee for these inputs?" — and the ONLY honest
+ * way to answer it is with the code that already answers it for the admin preview. Two copies of this
+ * assembly (whose basic, whose hours, which recurring items, in what rank) would agree on the day they were
+ * written and drift silently afterwards, and the drift would be money.
+ *
+ * `override` is the one thing the transaction screen needs that the preview does not: a keyed quantity
+ * REPLACES the period aggregate for that input. Ten hours of overtime is a statement about ten hours, not
+ * about the employee's whole month of attendance. Absent ⇒ the period's own figures, which is exactly what
+ * the preview passes, so the preview's numbers are unchanged by this extraction.
+ *
+ * Reads only; writes nothing and appends no event.
+ */
+async function resolveRuleForEmploymentTx(
+  tx: Tx,
+  tenantId: string,
+  p: {
+    /** The target pay code, ALREADY upper-cased. */
+    code: string;
+    rule: PayRule | null;
+    kind: string | null | undefined;
+    employmentId: string;
+    periodStart: string;
+    periodEnd: string;
+    /** The catalog nodes, when the caller has already loaded them (previewPayRule validates against them). */
+    catalog?: PayRuleCatalogNode[];
+    override?: { hours?: number | null; days?: number | null };
+  },
+): Promise<EmploymentRuleResolution> {
+  const { code, periodStart, periodEnd } = p;
+  const catalog = p.catalog ?? (await catalogNodesTx(tx, tenantId));
+  const periodDays = Math.round((Date.parse(periodEnd) - Date.parse(periodStart)) / 86_400_000) + 1;
+
+  // The employee's authoritative basic — the Personnel compensation record, exactly what the kernel's
+  // `rscope.basic` reads (feedback 64fb5e48: Personnel is the ONLY basic source).
+  const [comp] = await tx
+    .select({ basic: compensation.basicSalary })
+    .from(compensation)
+    .where(
+      and(
+        eq(compensation.employmentId, p.employmentId),
+        isNull(compensation.validTo),
+        isNull(compensation.supersededAt),
+      ),
+    )
+    .limit(1);
+  const basic = Number(comp?.basic ?? 0);
+
+  // The employee's actual worked hours for the period — same aggregate the kernel takes.
+  const [att] = await tx
+    .select({ minutes: sql<string>`coalesce(sum(${attendance.workedMinutes}), 0)` })
+    .from(attendance)
+    .where(
+      and(
+        eq(attendance.employmentId, p.employmentId),
+        gte(attendance.attendanceDate, periodStart),
+        lte(attendance.attendanceDate, periodEnd),
+      ),
+    );
+  const periodHours = Number(att?.minutes ?? 0) / 60;
+
+  const days = p.override?.days ?? periodDays;
+  const hours = p.override?.hours ?? periodHours;
+
+  // This employee's recurring pay items in the period window (the same period-aware predicate the kernel
+  // uses), so a rule that reads another pay item reads that employee's REAL value for it.
+  const recurring = await tx
+    .select({
+      code: payComponent.code,
+      amount: employmentPayComponent.amount,
+      rule: payComponent.rule,
+      resolutionOrder: payComponent.resolutionOrder,
+      // 2da9937a — the catalog kind decides whether an item counts towards the `fixed_allowances`
+      // aggregate. The KERNEL's CompRow already carries it, so without it here the preview would compute
+      // the aggregate as 0 while the run computed the real sum: the preview would lie, quietly, and only
+      // about formulas using the new operand. Selecting it is what keeps "same evaluator" true in fact
+      // and not just in the call graph.
+      kind: payComponent.kind,
+    })
+    .from(employmentPayComponent)
+    .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+    .where(
+      and(
+        eq(employmentPayComponent.employmentId, p.employmentId),
+        lte(employmentPayComponent.validFrom, periodEnd),
+        or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, periodStart)),
+        isNull(employmentPayComponent.supersededAt),
+      ),
+    );
+
+  // Rank the graph WITH the target rule substituted — an unsaved rule can re-rank the catalog, and the
+  // answer must resolve in the order the save would have recorded, not the order on disk.
+  const pending: PayRuleCatalogNode[] = catalog.map((n) =>
+    n.code.trim().toUpperCase() === code ? { ...n, rule: p.rule } : n,
+  );
+  if (!pending.some((n) => n.code.trim().toUpperCase() === code)) pending.push({ code, rule: p.rule, kind: p.kind });
+  const plan = planResolutionOrder(pending);
+  const rankOf = (c: string) => (plan.ok ? (plan.order.get(c.trim().toUpperCase()) ?? 0) : 0);
+
+  // The set to resolve: the employee's real items, with the target substituted (or added at 0 if the
+  // employee does not have it yet — a brand-new pay code still resolves).
+  const set = recurring
+    .filter((r) => r.code.trim().toUpperCase() !== code)
+    .map((r) => ({ code: r.code, rule: r.rule, amount: Number(r.amount), resolutionOrder: rankOf(r.code), kind: r.kind as string | null }));
+  const targetAmount = Number(recurring.find((r) => r.code.trim().toUpperCase() === code)?.amount ?? 0);
+  set.push({ code, rule: p.rule, amount: targetAmount, resolutionOrder: rankOf(code), kind: p.kind as string | null });
+  const targetIdx = set.length - 1;
+
+  // BASIC is PINNED to the authoritative Personnel figure, exactly as the kernel pins it — the answer
+  // must agree with the run on what `component:'BASIC'` means, not just on the arithmetic.
+  const scope = { basic, daysWorked: days, hours, components: { BASIC: basic } };
+  // 2da9937a — the same notices channel the run uses. On a screen it turns "RM 0.00" from a figure the
+  // admin has to explain to themselves into a sentence naming the input that was zero, BEFORE a payroll
+  // run has to surface it instead.
+  const notices: PayRuleComponentNotice[] = [];
+  const resolvedAmounts = resolvePayComponentSet(set, scope, notices);
+
+  // Only the notice for the TARGET item — a zero divisor on some OTHER pay item is that item's problem and
+  // belongs on that item's screen, not on this answer.
+  const zeroDivisor = notices.find((n) => n.code === code) ?? null;
+  return {
+    amount: resolvedAmounts[targetIdx],
+    basic,
+    days,
+    hours,
+    resolved: set.map((s, i) => ({ code: s.code.trim().toUpperCase(), amount: resolvedAmounts[i] })),
+    zeroDivisor: zeroDivisor ? { divisor: zeroDivisor.divisor, step: zeroDivisor.step } : null,
+  };
+}
+
+// ── 2da9937a — a one-off transaction whose amount the PAY ITEM decides ───────────────────────────────
+
+/**
+ * Thrown when a one-off transaction names a pay item that works its amount out from a keyed quantity, and
+ * that quantity is missing (or not the input the rule reads).
+ *
+ * It is a REFUSAL rather than a default, and the difference matters: falling back to the employee's
+ * attendance total for the month would silently pay a full month of overtime for a row the operator meant
+ * to be ten hours. `unit` names the input the rule needs, so the screen can say which box to fill.
+ */
+export class TxnQuantityRequiredError extends Error {
+  constructor(public readonly unit: 'hours' | 'days') {
+    super(`This pay item calculates from ${unit}; a ${unit} quantity is required.`);
+    this.name = 'TxnQuantityRequiredError';
+  }
+}
+
+/** What a pay item does to a one-off transaction's amount. `derived: false` is the legacy case — a null or
+ *  `fixed` rule (and an unknown/archived item, which the ledger's own component guard refuses
+ *  authoritatively) leaves the operator's typed amount exactly as it was. */
+export type IndividualTxnAmountDerivation =
+  | { derived: false }
+  | {
+      derived: true;
+      /** The figure this item pays for these inputs, unrounded — the amount the row is written with. */
+      amount: number;
+      code: string;
+      ruleKind: string;
+      /** The input the quantity supplied (null when the rule needs nothing from the operator). */
+      inputUnit: 'hours' | 'days' | null;
+      /** Set when `amount` is 0 because a LIVE divisor resolved to zero for this employee — the
+       *  explanation, not a failure (see PayRuleZeroDivisorNotice). */
+      zeroDivisor: { divisor: string; step: number } | null;
+    };
+
+/**
+ * 2da9937a — WORK OUT what a one-off transaction on this pay item pays, from the item's own rule.
+ *
+ * THE DEFECT THIS CLOSES. The Individual Transaction write path never consulted the picked pay item's
+ * rule: it asked for an Amount and asserted it was positive, so an item configured as "RM x per hour" was
+ * a box the operator had to do the arithmetic for by hand, and the configured rule never ran at all. This
+ * is the resolution step that was missing — and it goes through resolveRuleForEmploymentTx, so it is the
+ * same evaluator, the same scope assembly and the same recorded resolution order the payslip uses. There
+ * is no second implementation to drift.
+ *
+ * WHAT IT DOES NOT DO. It does not touch an item with a null or `fixed` rule (byte-identical to before),
+ * it does not rewrite any transaction already on file, and it is not consulted by the payroll kernel —
+ * the kernel still pays a one-off row's STORED amount, which is what keeps every existing figure exactly
+ * where it is. All this changes is what gets stored when a new row is keyed.
+ *
+ * Read-only: no write, no domain event. The caller supplies the write.
+ */
+export function deriveIndividualTxnAmount(
+  ctx: SessionContext,
+  p: {
+    componentId: string;
+    employmentId: string;
+    /** The company the caller has already established it may act in. The employment must belong to it. */
+    companyId: string;
+    /** 'YYYY-MM' — the transaction's pay month, which bounds the attendance and recurring-item reads. */
+    payPeriod: string;
+    quantity: number | null;
+    unit: string | null;
+  },
+): Promise<IndividualTxnAmountDerivation> {
+  return withTenant(ctx, async (tx): Promise<IndividualTxnAmountDerivation> => {
+    // COMPANY SCOPE IS AN APPLICATION CONCERN — RLS only isolates tenants. Without this an admin scoped to
+    // one company could ask what a formula pays for an employee in another and read their basic salary
+    // back out of the figure. Answering "nothing derived" rather than throwing is deliberate: the write
+    // path's own C3 guard (CompanyMismatchError) is what refuses the save, and a second refusal here would
+    // give one mistake two names — and tell the caller the employment exists.
+    const [emp] = await tx
+      .select({ companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp || emp.companyId !== p.companyId) return { derived: false };
+
+    const [item] = await tx
+      .select({ code: payComponent.code, kind: payComponent.kind, rule: payComponent.rule, archivedAt: payComponent.archivedAt })
+      .from(payComponent)
+      .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.id, p.componentId)))
+      .limit(1);
+    // An unknown or archived item is not this function's refusal to make: the ledger's assertTxnComponents
+    // rejects both with InvalidTxnComponentError, and inventing a second error here would give the same
+    // mistake two names. Report "nothing derived" and let the write path refuse.
+    if (!item || item.archivedAt != null) return { derived: false };
+    const rule = item.rule as PayRule | null;
+    if (!payRuleDerivesAmount(rule)) return { derived: false };
+
+    const inputUnit = payRuleInputUnit(rule);
+    if (inputUnit != null && (p.unit !== inputUnit || p.quantity == null || !(p.quantity > 0))) {
+      throw new TxnQuantityRequiredError(inputUnit);
+    }
+
+    const [year, month1] = p.payPeriod.split('-').map(Number);
+    const periodStart = `${p.payPeriod}-01`;
+    // Date.UTC with day 0 of the NEXT month is the last day of this one — leap years included.
+    const periodEnd = new Date(Date.UTC(year, month1, 0)).toISOString().slice(0, 10);
+
+    const r = await resolveRuleForEmploymentTx(tx, ctx.tenantId, {
+      code: item.code.trim().toUpperCase(),
+      rule,
+      kind: item.kind,
+      employmentId: p.employmentId,
+      periodStart,
+      periodEnd,
+      override:
+        inputUnit === 'hours'
+          ? { hours: p.quantity }
+          : inputUnit === 'days'
+            ? { days: p.quantity }
+            : undefined,
+    });
+    return {
+      derived: true,
+      amount: r.amount,
+      code: item.code.trim().toUpperCase(),
+      ruleKind: rule!.kind,
+      inputUnit,
+      zeroDivisor: r.zeroDivisor,
+    };
+  });
+}
+
+// ── 2da9937a — the worked overtime examples the reporter asked for ───────────────────────────────────
+
+/** One overtime item to create, as a MULTIPLE of the reference item's hourly rate. */
+export type OvertimeMultiplierSeed = { code: string; name: string; multiplier: number };
+
+/** Overtime 2.0 and Overtime 3.0, alongside the Overtime 1.5 the tenant already configured. */
+export const OVERTIME_MULTIPLIER_SEEDS: readonly OvertimeMultiplierSeed[] = [
+  { code: 'OT2_0', name: 'Overtime 2.0', multiplier: 2 },
+  { code: 'OT3_0', name: 'Overtime 3.0', multiplier: 3 },
+];
+
+/** Thrown when the reference overtime item cannot be used as the model for the new ones. `not_found` = no
+ *  such code in this tenant's catalog; `not_per_hour` = it exists but does not carry a per-hour rate, so
+ *  there is no hourly figure to scale and GUESSING one would seed a wrong rate into payroll. */
+export class OvertimeReferenceUnusableError extends Error {
+  constructor(public readonly reason: 'not_found' | 'not_per_hour') {
+    super(`The reference overtime pay item is unusable (${reason}).`);
+    this.name = 'OvertimeReferenceUnusableError';
+  }
+}
+
+/**
+ * 2da9937a — create Overtime 2.0 and Overtime 3.0 from the tenant's existing Overtime 1.5.
+ *
+ * THE RATE IS DERIVED, NOT ASSUMED. The reference item already carries this tenant's own per-hour figure at
+ * 1.5×, so the plain hourly rate is that figure divided by 1.5, and 2.0× / 3.0× are multiples of it. A
+ * hard-coded rate would be a number nobody in this codebase is entitled to choose; a rate scaled from the
+ * one the tenant configured is the same money they already agreed to, at the multiplier they asked for.
+ *
+ * IT GOES THROUGH upsertPayComponent — the writer the admin screen uses — rather than an INSERT, so the
+ * new items pass the same rule validation (structural + catalog-aware), get their resolution order
+ * recorded, and append the same `pay-component.created` event an admin's own save would. A raw insert
+ * would produce rows that no audit trail explains and that the graph planner has never seen.
+ *
+ * EVERY STATUTORY FLAG IS COPIED FROM THE REFERENCE. Overtime's EPF / SOCSO / PCB / HRDF treatment is a
+ * legal matter this function has no view on; the tenant already settled it on Overtime 1.5, and 2.0× of
+ * the same payment is treated the same way. Copying is the only answer that cannot be wrong here.
+ *
+ * IDEMPOTENT BY SKIPPING, NOT BY OVERWRITING. `upsertPayComponent` is upsert-by-code, so a re-run would
+ * silently reset a rate an admin had since corrected. An existing code (archived or not) is reported as
+ * skipped and left exactly as it is.
+ */
+export function seedOvertimeMultipliers(
+  ctx: SessionContext,
+  p: {
+    /** The already-configured overtime item to model the new ones on. */
+    fromCode?: string;
+    /** The multiplier that reference item's rate already encodes. */
+    fromMultiplier?: number;
+    seeds?: readonly OvertimeMultiplierSeed[];
+  } = {},
+): Promise<{ created: string[]; skipped: string[]; hourlyRate: number }> {
+  const fromCode = (p.fromCode ?? 'OT1_5').trim().toUpperCase();
+  const fromMultiplier = p.fromMultiplier ?? 1.5;
+  const seeds = p.seeds ?? OVERTIME_MULTIPLIER_SEEDS;
+  return withTenant(ctx, async (tx) => {
+    const [ref] = await tx
+      .select()
+      .from(payComponent)
+      .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, fromCode)))
+      .limit(1);
+    if (!ref) throw new OvertimeReferenceUnusableError('not_found');
+    const refRule = ref.rule as PayRule | null;
+    if (refRule == null || refRule.kind !== 'per_hour') throw new OvertimeReferenceUnusableError('not_per_hour');
+    // Four decimals, not two: the plain hourly rate is an INTERMEDIATE (RM 16.50 at 1.5× is RM 11.00 here,
+    // but RM 16.35 is RM 10.90), and rounding it to cents before multiplying would shift the 2.0× and 3.0×
+    // rates by more than the rounding itself.
+    const hourlyRate = Math.round((refRule.rate / fromMultiplier) * 1e4) / 1e4;
+
+    const created: string[] = [];
+    const skipped: string[] = [];
+    for (const seed of seeds) {
+      const code = seed.code.trim().toUpperCase();
+      const [existing] = await tx
+        .select({ id: payComponent.id })
+        .from(payComponent)
+        .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, code)))
+        .limit(1);
+      if (existing) {
+        skipped.push(code);
+        continue;
+      }
+      await upsertPayComponent(ctx, {
+        code,
+        name: seed.name,
+        kind: ref.kind as PayComponentInput['kind'],
+        includedInEpf: ref.includedInEpf,
+        includedInSocsoEis: ref.includedInSocsoEis,
+        includedInPcb: ref.includedInPcb,
+        includedInHrdfBase: ref.includedInHrdfBase,
+        isNonPayable: ref.isNonPayable,
+        prorates: ref.prorates,
+        eaFormLine: ref.eaFormLine,
+        roundingMethod: ref.roundingMethod ?? undefined,
+        // THE LHDN CLASSIFICATION IS COPIED ONLY WHEN THE REFERENCE HAS ONE. Passing an explicit null
+        // reads as "supplied" (classificationOf), which turns on the mandatory-classification guard — and
+        // a PCB-taxable overtime item whose tenant has not filled that in yet would then be refused a seed
+        // because of a field the item it is copying leaves blank. Undefined is "not supplied", the legacy
+        // caller's semantics, which is exactly what this is.
+        ...(ref.pcbRemunerationType != null || ref.pcbExemptionCode != null || ref.epfBonus2012
+          ? {
+              epfBonus2012: ref.epfBonus2012,
+              pcbRemunerationType: ref.pcbRemunerationType as PcbRemunerationType | null,
+              pcbExemptionCode: ref.pcbExemptionCode,
+            }
+          : {}),
+        // The payslip box this prints in — Overtime, not Bonus. Copied for the same reason the flags are.
+        displayCategory: ref.displayCategory,
+        rule: { kind: 'per_hour', rate: Math.round(hourlyRate * seed.multiplier * 1e4) / 1e4 },
+      });
+      created.push(code);
+    }
+    return { created, skipped, hourlyRate };
   });
 }
 

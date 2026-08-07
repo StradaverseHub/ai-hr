@@ -3612,7 +3612,21 @@
         "recalcNeededTitle": "This payroll run now needs recalculation.",
         "recalcNeededBody": "Its payslips, statutory figures and totals no longer match the transactions behind them.",
         "recalcNeededLink": "Recalculate the affected employees",
-        "paidEditableHint": "This transaction has already been paid on a processed run. It can still be corrected, and doing so marks the run for recalculation."
+        "paidEditableHint": "This transaction has already been paid on a processed run. It can still be corrected, and doing so marks the run for recalculation.",
+        "quantityRequiredHours": "Enter the number of hours — this pay item works the amount out from them.",
+        "quantityRequiredDays": "Enter the number of days — this pay item works the amount out from them.",
+        "derivedAmountUnavailable": "This pay item’s amount could not be worked out. Check how it is set up under Payroll Items.",
+        "derivedAmountPending": "Working it out…",
+        "derivedAmountLabel": "Calculated amount",
+        "quantityLabel": {
+          "hours": "Hours",
+          "days": "Days"
+        },
+        "derivedAmountHint": {
+          "hours": "This pay item calculates its own amount. Enter the hours and the amount is worked out from the item’s formula — it is not typed in.",
+          "days": "This pay item calculates its own amount. Enter the days and the amount is worked out from the item’s formula — it is not typed in.",
+          "none": "This pay item calculates its own amount from its formula, so the amount is not typed in."
+        }
       },
       "tp1": {
         "title": "TP1 Relief",
