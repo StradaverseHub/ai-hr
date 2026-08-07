@@ -56,7 +56,9 @@ export async function DocumentsSection({ s, employmentId }: { s: SessionContext;
   const types = [...new Set(docs.map((d) => d.typeLabel))].sort();
 
   return (
-    <Card id="section-documents">
+    // 0386b95d — `overflow-hidden` matches section-qualification, so the table clips to the card's rounded
+    // corners the way every other list on the profile does.
+    <Card id="section-documents" className="overflow-hidden">
       <SectionHeader title={t('title')} count={docs.length} />
       <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{t('intro')}</p>
       <DocumentsManager

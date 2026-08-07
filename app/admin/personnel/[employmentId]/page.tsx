@@ -21,7 +21,7 @@ import {
   listJobGrades,
   reportingLinesFor,
 } from '@/core/read';
-import { Avatar, Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { hasPersonPhoto } from '@/core/person-photo';
 import { listEntitlementRecalcAudit } from '@/core/leave';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
@@ -1018,41 +1018,114 @@ export default async function EmployeePage({
   // ── PAYROLL ────────────────────────────────────────────────────────────────
   // Pay components, CP38, leave encashment, payroll policy assignment, leave balance, compensation,
   // and the Malaysia statutory profile (salary / bank / tax). All admin-only.
+  //
+  // Item 18719ded — the three sections a reader thinks of as "the Payroll tab" (Basic Salary, Pay Items,
+  // CP38) grew at different times and presented themselves three different ways: one Add form pinned
+  // under the table, one Add form under a table with an inline single-field editor, one permanently-open
+  // form. They now all wear the QUALIFICATION shape (`qualificationPanel` below, the reference the
+  // reporter asked us to match): Card + SectionHeader(title, count) → a header strip whose only control
+  // is the Add dialog → a plain full-width table → the hint. Presentation only: every server action,
+  // every guard and every figure is the one that was there before.
+  //
+  // ONE money formatter for the whole tab, declared here because the first card that needs it is this
+  // one. It used to sit beside the Basic Salary card 1000 lines down; a `const` arrow is in the temporal
+  // dead zone until then, and these JSX consts evaluate eagerly, so reading it from up here would throw
+  // at render. Pay Items and CP38 previously each rolled their own `Number(x).toFixed(2)` — which is why
+  // "RM 12000.00" read differently from the same figure in Basic Salary ("12,000.00").
+  const fmtMoney = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Add Pay Item — the SAME <form action={setEmploymentComponentAction}> and the same control names as
+  // before, moved from the bottom of the card into the dialog. The STATIC hidden `tab` input is
+  // load-bearing: Dialog.Portal reparents the form outside the PersonnelTabs shell, so the shell's
+  // capture-phase submit listener never sees it and cannot inject the tab (see the Family tab note).
+  const payComponentDialogForm = (
+    <form action={setEmploymentComponentAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
+      <Field label={t('payComponent')}>
+        <select name="componentId" required className={inputCls}>
+          {componentCatalog.map((c) => (
+            <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label={t('payComponentAmount')}>
+        <input name="amount" type="number" min="0" step="0.01" required className={inputCls} />
+      </Field>
+      <Field label={t('payComponentCurrency')}>
+        <select name="currency" defaultValue="MYR" className={inputCls}>
+          <option value="MYR">MYR</option>
+        </select>
+      </Field>
+      <Field label={t('payComponentProrate')}>
+        <select name="prorate" defaultValue="inherit" className={inputCls}>
+          <option value="inherit">{t('prorateInherit')}</option>
+          <option value="yes">{t('prorateYes')}</option>
+          <option value="no">{t('prorateNo')}</option>
+        </select>
+      </Field>
+      <Field label={t('payComponentEffectiveFrom')}>
+        <input name="effectiveFrom" type="date" required defaultValue={emp.hiredOn} className={inputCls} />
+      </Field>
+      <Field label={t('payComponentEffectiveTo')}>
+        <input name="effectiveTo" type="date" className={inputCls} />
+      </Field>
+      <div className="sm:col-span-2">
+        <Field label={t('payComponentRemarks')}>
+          <input name="remarks" type="text" placeholder={t('payComponentRemarksPlaceholder')} className={inputCls} />
+        </Field>
+      </div>
+      <div className="flex justify-end sm:col-span-2">
+        <button className={btnPrimary}>{t('payComponentSave')}</button>
+      </div>
+    </form>
+  );
+
   const payComponentsCard = admin && componentCatalog.length > 0 ? (
     <Card id="section-pay-components" className="overflow-hidden">
       <SectionHeader title={t('payComponentsTitle')} count={payComps.length} />
-          {payComps.length > 0 && (
-            <table className="w-full text-sm">
+      <section className="border-t border-border">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+          <FamilyFormDialog triggerLabel={t('payComponentAdd')} title={t('payComponentAddTitle')}>
+            {payComponentDialogForm}
+          </FamilyFormDialog>
+        </div>
+        {payComps.length === 0 ? (
+          <p className="px-4 pb-4 text-sm text-muted-foreground">{t('payComponentNone')}</p>
+        ) : (
+          <div className="overflow-x-auto px-4 pb-4">
+            <table className="w-full min-w-[52rem] text-left text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">{t('payComponent')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colCurrency')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('payComponentAmount')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colStart')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colEnd')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colProrate')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colRemarks')}</th>
-                  <th className="px-4 py-2 font-medium">{t('status')}</th>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">{t('payComponent')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('colCurrency')}</th>
+                  <th className="py-2 pr-3 text-right font-medium">{t('payComponentAmount')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('colStart')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('colEnd')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('colProrate')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('colRemarks')}</th>
+                  <th className="py-2 font-medium">{t('status')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody>
                 {payComps.map((pc) => {
                   // An item is ENDED once its inclusive end-date is in the past; otherwise it is ACTIVE.
                   const ended = pc.validTo != null && pc.validTo < today;
                   // Resolved prorate = per-employee override (if set) else the catalog flag.
                   const prorate = pc.prorateOverride ?? pc.prorates;
                   return (
-                    <tr key={pc.id}>
-                      <td className="px-4 py-2.5">
+                    <tr key={pc.id} className="border-b border-border/60 align-top">
+                      <td className="py-2 pr-3">
                         <span className="font-mono text-xs">{pc.code}</span> <span className="text-muted-foreground">{pc.name}</span>
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-xs">{pc.currency}</td>
-                      <td className="px-4 py-2.5 text-right font-medium tabular-nums">{Number(pc.amount).toFixed(2)}</td>
-                      <td className="px-4 py-2.5 tabular-nums">{pc.validFrom}</td>
-                      <td className="px-4 py-2.5 tabular-nums">{pc.validTo ?? '—'}</td>
-                      <td className="px-4 py-2.5">{prorate ? t('prorateYes') : t('prorateNo')}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{pc.remarks ?? '—'}</td>
-                      <td className="px-4 py-2.5">
+                      <td className="py-2 pr-3 font-mono text-xs">{pc.currency}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums">{fmtMoney(Number(pc.amount))}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{pc.validFrom}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{pc.validTo ?? '—'}</td>
+                      <td className="py-2 pr-3">{prorate ? t('prorateYes') : t('prorateNo')}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">{pc.remarks ?? '—'}</td>
+                      <td className="py-2">
                         <Badge variant={ended ? 'default' : 'success'}>{ended ? t('statusEnded') : t('statusActive')}</Badge>
                       </td>
                     </tr>
@@ -1060,68 +1133,128 @@ export default async function EmployeePage({
                 })}
               </tbody>
             </table>
-          )}
-          <form action={setEmploymentComponentAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={t('payComponent')}>
-              <select name="componentId" required className={inputCls}>
-                {componentCatalog.map((c) => (
-                  <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('payComponentAmount')}>
-              <input name="amount" type="number" min="0" step="0.01" required className={inputCls} />
-            </Field>
-            <Field label={t('payComponentCurrency')}>
-              <select name="currency" defaultValue="MYR" className={inputCls}>
-                <option value="MYR">MYR</option>
-              </select>
-            </Field>
-            <Field label={t('payComponentProrate')}>
-              <select name="prorate" defaultValue="inherit" className={inputCls}>
-                <option value="inherit">{t('prorateInherit')}</option>
-                <option value="yes">{t('prorateYes')}</option>
-                <option value="no">{t('prorateNo')}</option>
-              </select>
-            </Field>
-            <Field label={t('payComponentEffectiveFrom')}>
-              <input name="effectiveFrom" type="date" required defaultValue={emp.hiredOn} className={inputCls} />
-            </Field>
-            <Field label={t('payComponentEffectiveTo')}>
-              <input name="effectiveTo" type="date" className={inputCls} />
-            </Field>
-            <Field label={t('payComponentRemarks')}>
-              <input name="remarks" type="text" placeholder={t('payComponentRemarksPlaceholder')} className={inputCls} />
-            </Field>
-            <button className={btnPrimary}>{t('payComponentSave')}</button>
-          </form>
-          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('payComponentsHint')}</p>
+          </div>
+        )}
+      </section>
+      {/* NO per-row Edit here, deliberately — and the reason is a payroll figure, not effort. A pay item
+          is effective-dated: setEmploymentPayComponent closes the open row at the new effectiveFrom and
+          inserts a fresh one, while the kernel selects every row with
+          `validFrom <= periodEnd AND (validTo IS NULL OR validTo >= periodStart)`. Re-stating an item
+          inside the month it already runs in therefore leaves BOTH rows inside that period's window and
+          the item is counted twice. An "Edit" button whose natural default is the row's own start date
+          would make that the one-click path. Changing an item stays where the effective-dating is
+          explicit: Add (a dated revision) here, or Payroll → Transactions → Fixed for the full record. */}
+      <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('payComponentsHint')}</p>
     </Card>
   ) : null;
+
+  // One dialog form for Add (r null) and Edit — the Qualification tab's dialogForm pattern. Both post to
+  // the actions that were already here (addCp38Action / editCp38Action), so the processed-period refusal
+  // is untouched: updateCp38 guards BOTH the stored window and the proposed one with
+  // assertNoProcessedPeriod, and a Cp38PeriodProcessedError still comes back as `?cp38Error=processed`
+  // and paints the banner above the table. Edit now offers the whole record rather than the amount alone
+  // — that is not a widening: updateCp38 has always accepted every one of these fields, the old inline
+  // editor simply omitted them, so a wrong reference or end date meant deleting the row and re-keying it.
+  // Derived from the loader rather than imported, so this restyle adds no new core/* import to the page
+  // (ADR-0080 drift ratchet — the allowlist only ever shrinks).
+  type Cp38Record = (typeof cp38Records)[number];
+  const cp38DialogForm = (r: Cp38Record | null) => (
+    <form action={r ? editCp38Action : addCp38Action} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      {r && <input type="hidden" name="id" value={r.id} />}
+      <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
+      <Field label={t('cp38Ref')}>
+        <input name="cp38Ref" required defaultValue={r?.cp38Ref ?? ''} placeholder={t('cp38RefPlaceholder')} className={inputCls} />
+      </Field>
+      <Field label={t('cp38Amount')}>
+        <input
+          name="amount"
+          type="number"
+          min="0"
+          step="0.01"
+          required
+          defaultValue={r ? Number(r.amount).toFixed(2) : ''}
+          className={inputCls}
+        />
+      </Field>
+      <Field label={t('cp38From')}>
+        <input name="validFrom" type="date" required defaultValue={r?.validFrom ?? thisMonthStart} className={inputCls} />
+      </Field>
+      <Field label={t('cp38To')}>
+        <input name="validTo" type="date" defaultValue={r?.validTo ?? ''} className={inputCls} />
+      </Field>
+      <div className="sm:col-span-2">
+        <Field label={t('cp38Remarks')}>
+          <input name="remarks" type="text" defaultValue={r?.remarks ?? ''} placeholder={t('cp38RemarksPlaceholder')} className={inputCls} />
+        </Field>
+      </div>
+      <div className="flex justify-end sm:col-span-2">
+        <button className={btnPrimary}>{r ? t('cp38Save') : t('cp38Add')}</button>
+      </div>
+    </form>
+  );
+
+  // View: the SAME fields, disabled inside a fieldset with no <form> — the Qualification tab's
+  // viewDialogBody pattern (a read-only view that can never drift from Edit, and can never post). This is
+  // how a CLOSED row is readable at all: its Edit and Terminate are hidden, and before this the only way
+  // to see its reference, dates and remarks was to read them off the table.
+  const cp38ViewBody = (r: Cp38Record) => (
+    <fieldset disabled>
+      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+        <Field label={t('cp38Ref')}>
+          <input defaultValue={r.cp38Ref} className={inputCls} />
+        </Field>
+        <Field label={t('cp38Amount')}>
+          <input defaultValue={fmtMoney(Number(r.amount))} className={inputCls} />
+        </Field>
+        <Field label={t('cp38From')}>
+          <input defaultValue={r.validFrom} className={inputCls} />
+        </Field>
+        <Field label={t('cp38To')}>
+          <input defaultValue={r.validTo ?? t('cp38Open')} className={inputCls} />
+        </Field>
+        <div className="sm:col-span-2">
+          <Field label={t('cp38Remarks')}>
+            <input defaultValue={r.remarks ?? ''} className={inputCls} />
+          </Field>
+        </div>
+      </div>
+    </fieldset>
+  );
 
   const cp38Card = admin ? (
     <Card id="section-cp38" className="overflow-hidden">
       <SectionHeader title={t('cp38Title')} count={cp38Records.length} />
-          {cp38Error === 'processed' && (
-            <p className="mx-4 mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
-              {t('cp38ProcessedError')}
-            </p>
-          )}
-          {cp38Records.length > 0 ? (
-            <table className="w-full text-sm">
+      {/* The processed-period refusal. Kept ABOVE the table and outside the restyle on purpose:
+          cp38Error === 'processed' is a real refusal from the service, not a validation hint. */}
+      {cp38Error === 'processed' && (
+        <p className="mx-4 mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+          {t('cp38ProcessedError')}
+        </p>
+      )}
+      <section className="border-t border-border">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+          <FamilyFormDialog triggerLabel={t('cp38Add')} title={t('cp38AddTitle')}>
+            {cp38DialogForm(null)}
+          </FamilyFormDialog>
+        </div>
+        {cp38Records.length === 0 ? (
+          <p className="px-4 pb-4 text-sm text-muted-foreground">{t('cp38None')}</p>
+        ) : (
+          <div className="overflow-x-auto px-4 pb-4">
+            <table className="w-full min-w-[52rem] text-left text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">{t('cp38Ref')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('cp38Amount')}</th>
-                  <th className="px-4 py-2 font-medium">{t('cp38From')}</th>
-                  <th className="px-4 py-2 font-medium">{t('cp38To')}</th>
-                  <th className="px-4 py-2 font-medium">{t('cp38Remarks')}</th>
-                  <th className="px-4 py-2 font-medium">{t('cp38Status')}</th>
-                  <th className="px-4 py-2 font-medium">{t('cp38Actions')}</th>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">{t('cp38Ref')}</th>
+                  <th className="py-2 pr-3 text-right font-medium">{t('cp38Amount')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('cp38From')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('cp38To')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('cp38Remarks')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('cp38Status')}</th>
+                  <th className="py-2 text-right font-medium">{t('cp38Actions')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody>
                 {cp38Records.map((r) => {
                   // CLOSED once superseded, or once its inclusive end-date is before this month. Otherwise ACTIVE.
                   const closed =
@@ -1129,72 +1262,57 @@ export default async function EmployeePage({
                   // A closed/superseded row's period is historical → its edit/terminate is hidden (the
                   // service guard would also block any processed period).
                   return (
-                    <tr key={r.id}>
-                      <td className="px-4 py-2.5 font-mono text-xs">{r.cp38Ref}</td>
-                      <td className="px-4 py-2.5 text-right font-medium tabular-nums">{Number(r.amount).toFixed(2)}</td>
-                      <td className="px-4 py-2.5 tabular-nums">{r.validFrom}</td>
-                      <td className="px-4 py-2.5 tabular-nums">{r.validTo ?? t('cp38Open')}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{r.remarks ?? '—'}</td>
-                      <td className="px-4 py-2.5">
+                    <tr key={r.id} className="border-b border-border/60 align-top">
+                      <td className="py-2 pr-3 font-mono text-xs">{r.cp38Ref}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums">{fmtMoney(Number(r.amount))}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{r.validFrom}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{r.validTo ?? t('cp38Open')}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">{r.remarks ?? '—'}</td>
+                      <td className="py-2 pr-3">
                         <Badge variant={closed ? 'default' : 'success'}>
                           {closed ? t('cp38StatusClosed') : t('cp38StatusActive')}
                         </Badge>
                       </td>
-                      <td className="px-4 py-2.5">
-                        {!closed && (
-                          <div className="flex items-center gap-3">
-                            <form action={editCp38Action} className="flex flex-wrap items-end gap-1.5">
-                              <input type="hidden" name="employmentId" value={emp.employmentId} />
-                              <input type="hidden" name="id" value={r.id} />
-                              <input
-                                name="amount"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                defaultValue={Number(r.amount).toFixed(2)}
-                                className={`${inputCls} w-28`}
-                                aria-label={t('cp38Amount')}
-                              />
-                              <button className="text-xs font-medium text-primary hover:underline">{t('cp38Save')}</button>
-                            </form>
-                            <form action={terminateCp38Action}>
-                              <input type="hidden" name="employmentId" value={emp.employmentId} />
-                              <input type="hidden" name="id" value={r.id} />
-                              <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
-                                {t('cp38Terminate')}
-                              </button>
-                            </form>
-                          </div>
-                        )}
+                      <td className="py-2">
+                        <div className="flex items-center justify-end gap-2">
+                          <FamilyFormDialog
+                            triggerLabel={t('cp38View')}
+                            triggerVariant="outline"
+                            title={t('cp38ViewTitle')}
+                          >
+                            {cp38ViewBody(r)}
+                          </FamilyFormDialog>
+                          {!closed && (
+                            <>
+                              <FamilyFormDialog
+                                triggerLabel={t('cp38Edit')}
+                                triggerVariant="outline"
+                                title={t('cp38EditTitle')}
+                              >
+                                {cp38DialogForm(r)}
+                              </FamilyFormDialog>
+                              {/* Terminate stays a plain submit inside the tab shell (the shell's capture
+                                  listener injects the tab). It is NOT wrapped in a confirmation: adding
+                                  one would be a behaviour change, and this restyle changes nothing that
+                                  writes. */}
+                              <form action={terminateCp38Action}>
+                                <input type="hidden" name="employmentId" value={emp.employmentId} />
+                                <input type="hidden" name="id" value={r.id} />
+                                <Button variant="destructive" size="sm">{t('cp38Terminate')}</Button>
+                              </form>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          ) : (
-            <p className="px-4 py-3 text-sm text-muted-foreground">{t('cp38None')}</p>
-          )}
-          <form action={addCp38Action} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-3">
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={t('cp38Ref')}>
-              <input name="cp38Ref" required placeholder={t('cp38RefPlaceholder')} className={inputCls} />
-            </Field>
-            <Field label={t('cp38Amount')}>
-              <input name="amount" type="number" min="0" step="0.01" required className={inputCls} />
-            </Field>
-            <Field label={t('cp38Remarks')}>
-              <input name="remarks" type="text" placeholder={t('cp38RemarksPlaceholder')} className={inputCls} />
-            </Field>
-            <Field label={t('cp38From')}>
-              <input name="validFrom" type="date" required defaultValue={thisMonthStart} className={inputCls} />
-            </Field>
-            <Field label={t('cp38To')}>
-              <input name="validTo" type="date" className={inputCls} />
-            </Field>
-            <button className={btnPrimary}>{t('cp38Add')}</button>
-          </form>
-          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('cp38Hint')}</p>
+          </div>
+        )}
+      </section>
+      <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('cp38Hint')}</p>
     </Card>
   ) : null;
 
@@ -2106,8 +2224,8 @@ export default async function EmployeePage({
   // re-dating records is blocked against closed payroll periods. Kept in its old Payroll slot;
   // `section-compensation` anchor stays for fragment-URL safety. Stays a server-rendered
   // <Card>/<form> (f2904eeb) — interactivity lives in the SalaryRevisionConfirm / history-table islands.
-  const fmtMoney = (n: number) =>
-    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // (`fmtMoney` used to be declared here; 18719ded hoisted it to the top of the Payroll section so Pay
+  // Items and CP38 read their amounts through the same formatter this card always used.)
   // salaryHistory is newest-first. previous = the next-older row's basic; status is derived from the dates.
   const salaryRows = salaryHistory.map((row: CompensationHistoryRow, i: number) => {
     const basic = Number(row.basicSalary);
@@ -2156,9 +2274,74 @@ export default async function EmployeePage({
   // ADR-0078 — the OPEN row (validTo null) is what payroll reads; its pay structure prefills the
   // add-revision form so an untouched save carries the structure forward visibly.
   const openSalaryRow = salaryHistory.find((r: CompensationHistoryRow) => r.validTo == null) ?? null;
+  // Add salary revision — the SAME <form action={setCompensationAction}>, the same control names and the
+  // same SalaryRevisionConfirm guard as before, moved out from under the table into the section's Add
+  // dialog (18719ded). The initial record still defaults its effective date to the join date. Allowance is
+  // not maintained here (it moved to Pay Items); the action carries it forward.
+  // The STATIC hidden `tab` input is load-bearing — Dialog.Portal reparents the form outside the
+  // PersonnelTabs shell, so the shell's submit listener cannot inject the tab (see the Family tab note).
+  const salaryAddDialogForm = (
+    <form action={setCompensationAction} className="space-y-3">
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label={t('effectiveDate')}>
+          <input
+            name="effectiveFrom"
+            type="date"
+            required
+            defaultValue={salaryRows.length ? today : emp.hiredOn}
+            className={inputCls}
+          />
+          {salaryRows.length === 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">{t('salaryInitialEffectiveHint')}</p>
+          )}
+        </Field>
+        <Field label={t('basicSalaryMyr')}>
+          <input name="basicSalary" type="number" min="0" step="0.01" required className={inputCls} />
+        </Field>
+        {/* 297ae65a — the record's salary currency, grouped WITH the amount (searchable ISO 4217 list).
+            Preselects the open row's currency (carry-forward made visible) or the company default for
+            a brand-new first record; the service validates + carries forward server-side. */}
+        <Field label={t('salaryCurrency')}>
+          <CurrencySelect name="currency" value={openSalaryRow?.currency ?? defaultSalaryCurrency} />
+        </Field>
+        <Field label={t('salaryColRemarks')}>
+          <input
+            name="remarks"
+            type="text"
+            placeholder={t('salaryRemarksPlaceholder')}
+            className={inputCls}
+          />
+        </Field>
+        {/* ADR-0078 (642ecc55) — Pay Mode, Payment Term and the conditional Rate box are saved WITH the
+            revision (effective-dated, historical rows keep their own settings). Defaults come from the
+            open row so an untouched save carries the structure forward. The service enforces the
+            period-boundary rule for pay-mode changes and requires a rate for daily/hourly. */}
+        <PayStructureFields
+          defaultPayMode={(openSalaryRow?.payMode ?? 'monthly') as PayModeOption}
+          defaultPaymentTerm={openSalaryRow?.paymentTerm ?? 'monthly'}
+          defaultRateAmount={openSalaryRow?.rateAmount ?? null}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">{t('salaryAllowanceMovedHint')}</p>
+      <p className="text-xs text-muted-foreground">{t('payModeBoundaryHint')}</p>
+      {/* Confirm-before-save survives the move. It is a ConfirmSubmit (an AlertDialog) inside this
+          FamilyFormDialog — a modal over a modal — and it keeps working for a specific reason: the
+          trigger Button stays INSIDE this <form>, so its `closest('form').requestSubmit()` still finds
+          the form even though Dialog.Portal has reparented the whole thing to document.body. That
+          composition is pinned by test/personnel-payroll-tab-dialogs.dom.test.tsx precisely because it
+          is the kind of thing that passes tsc, the suite and `next build` and is broken on screen. */}
+      <SalaryRevisionConfirm
+        currentBasic={activeDerived ? activeDerived.basic : null}
+        currency={activeDerived ? activeDerived.row.currency : 'MYR'}
+      />
+    </form>
+  );
+
   const compensationCard = admin ? (
-    <Card id="section-compensation">
-      <SectionHeader title={t('compensation')} />
+    <Card id="section-compensation" className="overflow-hidden">
+      <SectionHeader title={t('compensation')} count={salaryRowViews.length} />
       {/* Summary strip — current active basic, effective-since, latest increment, future chip. */}
       <div className="border-b border-border p-4">
         {activeDerived ? (
@@ -2192,66 +2375,24 @@ export default async function EmployeePage({
         )}
       </div>
 
-      {/* History table — every revision, with search / status filter / column sort / CSV export, plus an
-          inline edit affordance on the latest (open) record. Interactive client island (f2904eeb-safe). */}
-      {salaryRowViews.length > 0 && <SalaryHistoryTable rows={salaryRowViews} />}
-
-      {/* Add salary revision — the initial record defaults its effective date to the join date. Allowance
-          is no longer maintained here (moved to Pay Components); the action carries it forward. */}
-      {!emp.terminatedOn && (
-        <form
-          action={setCompensationAction}
-          className="space-y-3 border-t border-border p-4"
-        >
-          <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label={t('effectiveDate')}>
-              <input
-                name="effectiveFrom"
-                type="date"
-                required
-                defaultValue={salaryRows.length ? today : emp.hiredOn}
-                className={inputCls}
-              />
-              {salaryRows.length === 0 && (
-                <p className="mt-1 text-xs text-muted-foreground">{t('salaryInitialEffectiveHint')}</p>
-              )}
-            </Field>
-            <Field label={t('basicSalaryMyr')}>
-              <input name="basicSalary" type="number" min="0" step="0.01" required className={inputCls} />
-            </Field>
-            {/* 297ae65a — the record's salary currency, grouped WITH the amount (searchable ISO 4217 list).
-                Preselects the open row's currency (carry-forward made visible) or the company default for
-                a brand-new first record; the service validates + carries forward server-side. */}
-            <Field label={t('salaryCurrency')}>
-              <CurrencySelect name="currency" value={openSalaryRow?.currency ?? defaultSalaryCurrency} />
-            </Field>
-            <Field label={t('salaryColRemarks')}>
-              <input
-                name="remarks"
-                type="text"
-                placeholder={t('salaryRemarksPlaceholder')}
-                className={inputCls}
-              />
-            </Field>
-            {/* ADR-0078 (642ecc55) — Pay Mode, Payment Term and the conditional Rate box are saved WITH the
-                revision (effective-dated, historical rows keep their own settings). Defaults come from the
-                open row so an untouched save carries the structure forward. The service enforces the
-                period-boundary rule for pay-mode changes and requires a rate for daily/hourly. */}
-            <PayStructureFields
-              defaultPayMode={(openSalaryRow?.payMode ?? 'monthly') as PayModeOption}
-              defaultPaymentTerm={openSalaryRow?.paymentTerm ?? 'monthly'}
-              defaultRateAmount={openSalaryRow?.rateAmount ?? null}
-            />
+      {/* Same shape as Pay Items and CP38 (and as the Qualification tab): the section's only Add control
+          sits in a header strip above the list, not in a form pinned under it. The strip is skipped
+          entirely for a terminated employment — there is no Add for it, and an empty strip would just be
+          unexplained whitespace. */}
+      <section>
+        {!emp.terminatedOn && (
+          <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+            <FamilyFormDialog triggerLabel={t('salaryAdd')} title={t('salaryAddTitle')}>
+              {salaryAddDialogForm}
+            </FamilyFormDialog>
           </div>
-          <p className="text-xs text-muted-foreground">{t('salaryAllowanceMovedHint')}</p>
-          <p className="text-xs text-muted-foreground">{t('payModeBoundaryHint')}</p>
-          <SalaryRevisionConfirm
-            currentBasic={activeDerived ? activeDerived.basic : null}
-            currency={activeDerived ? activeDerived.row.currency : 'MYR'}
-          />
-        </form>
-      )}
+        )}
+        {/* History table — every revision, with search / status filter / column sort / CSV export, plus an
+            edit affordance on the latest (open) record. Interactive client island (f2904eeb-safe). The
+            in-force revision is marked by its own Current badge and row tint, not by being first: the
+            table sorts and filters, so row order is the reader's choice, not the record's status. */}
+        {salaryRowViews.length > 0 && <SalaryHistoryTable rows={salaryRowViews} />}
+      </section>
 
       {/* ── R46 79eb7151, SUPERSEDED by ADR-0078 (642ecc55) — How this employee is paid ─────────────────────
           The R46 decision ("surface, do NOT duplicate": Pay Mode ≡ payroll_policy.policy_type and Payment

@@ -1,12 +1,13 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { paginateRows } from '@/lib/pagination';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 
 import { useTranslations } from 'next-intl';
 import { Badge } from './ui/badge';
 import { ConfirmSubmit } from './ui/confirm-submit';
+import { FamilyFormDialog } from './family-form-dialog';
 import { inputCls } from './ui';
 import { PayStructureFields, type PayModeOption } from './pay-structure-fields';
 import { CurrencySelect } from './currency-select';
@@ -49,11 +50,16 @@ const STATUS_VARIANT: Record<SalaryStatus, 'success' | 'warning' | 'default'> = 
 
 /**
  * Basic Salary history table (feedback 87c82b18, redesigned under 7c7c2f80). A client island that
- * renders the salary history with SEARCH, STATUS FILTER, column SORTING, CSV EXPORT, an inline EDIT
- * flow (amount, remarks AND effective date) for the open (latest/future) record, and a
- * confirmation-gated DELETE for records not yet used by a closed payroll run. All salary math is
+ * renders the salary history with SEARCH, STATUS FILTER, column SORTING, CSV EXPORT, a View and an EDIT
+ * dialog (amount, currency, structure, remarks AND effective date) for the open (latest/future) record,
+ * and a confirmation-gated DELETE for records not yet used by a closed payroll run. All salary math is
  * derived server-side and passed in `rows`; this component only presents + filters/sorts/exports, so
  * it lives inside the server-rendered Payroll panel (f2904eeb).
+ *
+ * 18719ded — Edit used to be a row that UNFOLDED underneath the record, the same disclosure idiom the
+ * Documents tab was reported for. It is now a FamilyFormDialog, matching Pay Items, CP38 and the
+ * Qualification tab the reporter asked all of these to look like. Same action, same fields, same
+ * confirm step; only the container changed.
  */
 export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
   const t = useTranslations('people.detail');
@@ -61,7 +67,6 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
   const [statusFilter, setStatusFilter] = useState<'all' | SalaryStatus>('all');
   const [sortKey, setSortKey] = useState<SortKey>('effectiveDate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [editingId, setEditingId] = useState<string | null>(null);
 
   const pq = useClientPageQuery();
 
@@ -169,6 +174,74 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
         ? 'text-emerald-700 dark:text-emerald-400'
         : 'text-red-700 dark:text-red-400';
 
+  // 18719ded — ONE field block, rendered by both the Edit dialog and the read-only View dialog, so the
+  // two can never describe the same revision differently. Control names are load-bearing for
+  // editCompensationAction; the service re-validates everything (period boundary, processed period,
+  // rate required for daily/hourly) on save.
+  const salaryFields = (r: SalaryRowView) => (
+    <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-muted-foreground">{t('effectiveDate')}</span>
+        <input name="effectiveFrom" type="date" required defaultValue={r.effectiveDate} className={inputCls} />
+      </label>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-muted-foreground">{t('basicSalaryMyr')}</span>
+        <input name="basicSalary" type="number" min="0" step="0.01" required defaultValue={r.basic} className={inputCls} />
+      </label>
+      {/* 297ae65a — edit the open row's salary currency in place (searchable ISO 4217 select; the service
+          validates and records only a real change). */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-muted-foreground">{t('salaryCurrency')}</span>
+        <CurrencySelect name="currency" value={r.currency} />
+      </div>
+      {/* ADR-0078 — the open row's salary structure, edited in place. The service enforces the
+          period-boundary rule and refuses a mode change on a processed period. */}
+      <PayStructureFields
+        defaultPayMode={r.payMode}
+        defaultPaymentTerm={r.paymentTerm}
+        defaultRateAmount={r.rateAmount}
+      />
+      <label className="flex flex-col gap-1.5 sm:col-span-2">
+        <span className="text-xs font-medium text-muted-foreground">{t('salaryColRemarks')}</span>
+        <input
+          name="remarks"
+          type="text"
+          defaultValue={r.remarks ?? ''}
+          placeholder={t('salaryRemarksPlaceholder')}
+          className={inputCls}
+        />
+      </label>
+    </div>
+  );
+
+  // The edit form, now the body of a FamilyFormDialog rather than a row that unfolded under the record.
+  // TWO things are load-bearing here and both are invisible:
+  //   · the STATIC hidden `tab` input — Dialog.Portal reparents this form to document.body, outside the
+  //     PersonnelTabs shell, so the shell's capture-phase submit listener cannot inject the tab and a save
+  //     would otherwise redirect back to the Profile tab. `data-tab-tracker` keeps the shell authoritative
+  //     if this form is ever rendered inside it again.
+  //   · ConfirmSubmit's trigger stays INSIDE this <form>, so its closest('form').requestSubmit() still
+  //     finds the form from within the portal. This is an AlertDialog nested in a Dialog; the composition
+  //     is pinned by test/personnel-payroll-tab-dialogs.dom.test.tsx.
+  const salaryEditForm = (r: SalaryRowView) => (
+    <form action={editCompensationAction} className="space-y-3">
+      <input type="hidden" name="employmentId" value={r.employmentId} />
+      <input type="hidden" name="compensationId" value={r.id} />
+      <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
+      {salaryFields(r)}
+      <div className="flex justify-end">
+        <ConfirmSubmit
+          variant="default"
+          title={t('salaryEditConfirmTitle')}
+          description={t('salaryEditConfirmDescription')}
+          confirmLabel={t('updatePay')}
+        >
+          {t('updatePay')}
+        </ConfirmSubmit>
+      </div>
+    </form>
+  );
+
   return (
     <div>
       {/* Search + filter + export toolbar */}
@@ -238,8 +311,7 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
               </tr>
             ) : (
               pageRows.map((r) => (
-                <Fragment key={r.id}>
-                  <tr className={`border-b border-border/60 ${r.status === 'active' ? 'bg-primary/5' : ''}`}>
+                  <tr key={r.id} className={`border-b border-border/60 ${r.status === 'active' ? 'bg-primary/5' : ''}`}>
                     <td className="whitespace-nowrap px-4 py-2 tabular-nums">{r.effectiveDate}</td>
                     <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">
                       {r.currency} {fmt(r.basic)}
@@ -269,15 +341,26 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
                     </td>
                     <td className="px-4 py-2 text-muted-foreground">{r.remarks || '—'}</td>
                     <td className="whitespace-nowrap px-4 py-2 text-right">
-                      <div className="flex items-center justify-end gap-3">
+                      <div className="flex items-center justify-end gap-2">
+                        {/* 18719ded — View exists so a HISTORICAL revision is readable at all: only the
+                            open row is editable, so before this the closed rows had no way to show their
+                            remarks or pay structure beyond what fits in the table. Same fields, disabled,
+                            no <form> — it can never drift from Edit and can never post. */}
+                        <FamilyFormDialog
+                          triggerLabel={t('salaryView')}
+                          triggerVariant="outline"
+                          title={t('salaryViewTitle')}
+                        >
+                          <fieldset disabled>{salaryFields(r)}</fieldset>
+                        </FamilyFormDialog>
                         {r.editable && (
-                          <button
-                            type="button"
-                            onClick={() => setEditingId((id) => (id === r.id ? null : r.id))}
-                            className="text-sm font-medium text-primary hover:underline"
+                          <FamilyFormDialog
+                            triggerLabel={t('salaryEdit')}
+                            triggerVariant="outline"
+                            title={t('salaryEditTitle')}
                           >
-                            {t('salaryEdit')}
-                          </button>
+                            {salaryEditForm(r)}
+                          </FamilyFormDialog>
                         )}
                         {r.deletable && (
                           /* Soft delete (7c7c2f80): confirmation-gated; the service refuses records a
@@ -300,70 +383,6 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
                       </div>
                     </td>
                   </tr>
-                  {r.editable && editingId === r.id && (
-                    <tr className="border-b border-border/60 bg-muted/40">
-                      <td colSpan={10} className="px-4 py-4">
-                        <form action={editCompensationAction} className="flex flex-wrap items-end gap-3">
-                          <input type="hidden" name="employmentId" value={r.employmentId} />
-                          <input type="hidden" name="compensationId" value={r.id} />
-                          <label className="flex flex-col gap-1.5">
-                            <span className="text-xs font-medium text-muted-foreground">{t('effectiveDate')}</span>
-                            <input
-                              name="effectiveFrom"
-                              type="date"
-                              required
-                              defaultValue={r.effectiveDate}
-                              className={`${inputCls} w-40`}
-                            />
-                          </label>
-                          <label className="flex flex-col gap-1.5">
-                            <span className="text-xs font-medium text-muted-foreground">{t('basicSalaryMyr')}</span>
-                            <input
-                              name="basicSalary"
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              required
-                              defaultValue={r.basic}
-                              className={`${inputCls} w-40`}
-                            />
-                          </label>
-                          {/* 297ae65a — edit the open row's salary currency in place (searchable ISO 4217
-                              select; the service validates and records only a real change). */}
-                          <div className="flex w-56 flex-col gap-1.5">
-                            <span className="text-xs font-medium text-muted-foreground">{t('salaryCurrency')}</span>
-                            <CurrencySelect name="currency" value={r.currency} />
-                          </div>
-                          {/* ADR-0078 — edit the open row's salary structure in place. The service enforces
-                              the period-boundary rule and refuses a mode change on a processed period. */}
-                          <PayStructureFields
-                            defaultPayMode={r.payMode}
-                            defaultPaymentTerm={r.paymentTerm}
-                            defaultRateAmount={r.rateAmount}
-                          />
-                          <label className="flex min-w-[16rem] flex-1 flex-col gap-1.5">
-                            <span className="text-xs font-medium text-muted-foreground">{t('salaryColRemarks')}</span>
-                            <input
-                              name="remarks"
-                              type="text"
-                              defaultValue={r.remarks ?? ''}
-                              placeholder={t('salaryRemarksPlaceholder')}
-                              className={inputCls}
-                            />
-                          </label>
-                          <ConfirmSubmit
-                            variant="default"
-                            title={t('salaryEditConfirmTitle')}
-                            description={t('salaryEditConfirmDescription')}
-                            confirmLabel={t('updatePay')}
-                          >
-                            {t('updatePay')}
-                          </ConfirmSubmit>
-                        </form>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
               ))
             )}
           </tbody>
