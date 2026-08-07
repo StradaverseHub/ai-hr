@@ -14,12 +14,11 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, prefillTp1Action, resetAction, transferAllowancesAction, unlockAction } from '../actions';
 import { ComponentImport } from './component-import';
 import { OtInputRow } from './ot-input-row';
-import { ReprocessPanel } from './reprocess-panel';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
 import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
-import { listRecomputeDisclosure, listUnattachedTxnSummary, pendingBatchMoney, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
-import { payslipProvenance, type StatutoryLineKey } from '@/core/payslip-recompute';
+import { listUnattachedTxnSummary, pendingBatchMoney, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
+import { payslipProvenance } from '@/core/payslip-recompute';
 // 3c473773 — payslip boxes + the employer-borne disclosure, both read from each payslip's own snapshot.
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
 import { payslipEmployerBorne } from '@/core/payslip-employer-borne';
@@ -38,24 +37,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-/** 97a9b0ab — statutory line key → its payroll.batch label key. Exhaustive by TYPE (Record over
- *  StatutoryLineKey), so adding a key to STATUTORY_LINE_KEYS without a label fails the build rather
- *  than rendering `lineundefined` at runtime. */
-const STATUTORY_LINE_LABEL: Record<StatutoryLineKey, string> = {
-  epfEmployee: 'lineEpfEmployee',
-  epfEmployer: 'lineEpfEmployer',
-  socsoEmployee: 'lineSocsoEmployee',
-  socsoEmployer: 'lineSocsoEmployer',
-  socsoSkbbk: 'lineSocsoSkbbk',
-  eisEmployee: 'lineEisEmployee',
-  eisEmployer: 'lineEisEmployer',
-  pcb: 'linePcb',
-  cp38: 'lineCp38',
-  zakat: 'lineZakat',
-  lp: 'lineLp',
-  hrdf: 'lineHrdf',
-};
 
 export default async function BatchPage({
   params,
@@ -107,11 +88,6 @@ export default async function BatchPage({
   // fc776376 — both per-employee tables on this run are genuine lists that grow with headcount. The
   // payslip BREAKDOWN (one payslip's own lines) is deliberately not paged: it is one record, not a list.
   const slipPage = paginateRows(slips, parsePageQuery(sp));
-  // 97a9b0ab — recomputations of this run's payslips, each diffed against the calculation it replaced
-  // with the cause(s) named. Only a PROCESSED/CLOSED run can have any (a draft has no payslips), and the
-  // read returns [] when the history table has no row for this batch, so a never-reprocessed run pays
-  // one indexed lookup and renders nothing extra.
-  const recomputes = batch.status === 'draft' ? [] : await listRecomputeDisclosure(s, { batchId });
   const inputPage = paginateRows(inputs, parsePageQuery({ page: sp.iPage, size: sp.iSize }));
   // Pre-processing checks (feedback f1564110, Phase 1): validate employee master data BEFORE the run
   // is calculated. Blockers (no salary record) disable Generate outright; warnings (no statutory
@@ -336,6 +312,20 @@ export default async function BatchPage({
                 )}
               </form>
             )}
+            {/* e440991b — REPROCESS, at the TOP of the run screen. It used to be a panel at the very
+                bottom of this page, below the Recalculation History card, on a screen this long; the
+                reporter's rejection was about exactly that. The panel is gone and this is the way in.
+                Same gates as the panel had (processed-only, multi-cycle on, payslips exist); the
+                destination re-asserts all three and the service is still the authority. A plain <Link>,
+                not a form: the destination is a page, and this keeps the header a server component. */}
+            {batch.status === 'processed' && multiCycleOn && slips.length > 0 && (
+              <Link
+                href={`/payroll/${batch.id}/reprocess`}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                {t('reprocessHeaderAction')}
+              </Link>
+            )}
             {batch.status === 'processed' &&
               // 49e7e0a2 — Close is refused by `closeBatch` while the run owes a recalculation, so the
               // button is not offered while that is true. The service throw is the authority (this is a
@@ -399,12 +389,22 @@ export default async function BatchPage({
       {/* 49e7e0a2 — THE RUN SAYS ITS OWN FIGURES ARE STALE. Set when a one-off transaction was added,
           changed or removed after this run was processed. Until the named employees are recalculated the
           payslips, the statutory figures and the totals on this page are the OLD numbers, and Close is
-          refused (closeBatch throws BatchNeedsRecalculationError). The recalculation panel further down
-          arrives with exactly these people already ticked. */}
+          refused (closeBatch throws BatchNeedsRecalculationError).
+
+          THIS BANNER AND THE DISABLED CLOSE STAY ON THIS SCREEN. e440991b moved the selection panel and
+          the Recalculation History card to /payroll/<id>/reprocess, but these two are LIVE CONTROLS, not
+          history: without them a run can be closed owing a recalculation, publishing figures the system
+          already knows are stale. What changed is that the banner now LINKS to the screen that fixes it,
+          which arrives with exactly these people already ticked (batch.recalcEmploymentIds). */}
       {needsRecalc && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
           <div className="font-medium">⚠ {t('recalcBannerTitle', { n: recalcEmploymentIds.length })}</div>
           <p className="mt-1">{t('recalcBannerBody')}</p>
+          {multiCycleOn && slips.length > 0 && (
+            <Link href={`/payroll/${batch.id}/reprocess`} className="mt-1 inline-block font-medium underline">
+              {t('recalcBannerAction')}
+            </Link>
+          )}
         </div>
       )}
 
@@ -1160,109 +1160,6 @@ export default async function BatchPage({
         )}
       </Card>
 
-      {/* 97a9b0ab — RE-RUN DISCLOSURE. The run already wrote a full before/after payslip pair into
-          payroll_employee_result_history on every selective reprocess, and NOTHING read it back: a
-          statutory figure could move while gross stood still and the screen said nothing at all.
-          This section diffs each pair and names the cause. Read-only; rendered only when this run has
-          actually been recalculated, so an untouched run is visually unchanged. */}
-      {recomputes.length > 0 && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('disclosureTitle')} count={recomputes.length} />
-          <ul className="divide-y divide-border">
-            {recomputes.map((r) => {
-              const d = r.diff;
-              return (
-                <li key={r.id} className="space-y-2 px-4 py-3 text-sm">
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span className="font-medium">{r.employeeName}</span>
-                    {r.employeeCode && <EmployeeCode code={r.employeeCode} />}
-                    <span className="text-xs text-muted-foreground">
-                      {t('disclosureRevision', { before: d.versionBefore ?? '?', after: d.versionAfter ?? '?' })}
-                    </span>
-                    <span className="text-xs text-muted-foreground">{r.at.toISOString().slice(0, 16).replace('T', ' ')}</span>
-                    {r.reason && (
-                      <span className="text-xs text-muted-foreground">{t('disclosureReason', { reason: r.reason })}</span>
-                    )}
-                  </div>
-
-                  {d.moved.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">{t('disclosureNoMove')}</p>
-                  ) : (
-                    <>
-                      <p className="text-xs text-muted-foreground">
-                        {d.grossChanged
-                          ? t('disclosureGrossChanged', { before: rm(d.grossBefore), after: rm(d.grossAfter) })
-                          : t('disclosureGrossUnchanged', { gross: rm(d.grossAfter) })}
-                      </p>
-                      <ul className="space-y-0.5">
-                        {d.moved.map((m) => (
-                          <li key={m.key} className="flex items-baseline justify-between gap-4 text-xs">
-                            <span>{t(STATUTORY_LINE_LABEL[m.key])}</span>
-                            <span className="tabular-nums">
-                              <span className="text-muted-foreground">{rm(m.before)}</span>
-                              {' → '}
-                              <span className="font-medium">{rm(m.after)}</span>
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="rounded-md bg-muted/50 px-3 py-2 text-xs">
-                        <p className="mb-1 font-medium">{t('disclosureCauseHeading')}</p>
-                        <ul className="space-y-1 text-muted-foreground">
-                          {/* Cause (a). Reported as a FACT TO CHECK, never as proof the tax moved: a
-                              ruleset bump is not automatically behavioural (2026.4 → 2026.5 changed no
-                              PCB band, rate or relief — it only added optional pay-code classification
-                              tables that are inert unless a pay item is explicitly classified). The
-                              note below carries that caveat, and must not be dropped. */}
-                          {d.rulesetChanged && (
-                            <li>
-                              {t('disclosureCauseRuleset', {
-                                before: d.before.rulesetVersion ?? '?',
-                                after: d.after.rulesetVersion ?? '?',
-                              })}{' '}
-                              {t('disclosureCauseRulesetNote')}
-                            </li>
-                          )}
-                          {d.rulesetUnknown && <li>{t('disclosureCauseRulesetUnknown')}</li>}
-                          {/* Cause (b) — the cumulative-PCB replay. This one IS a mechanism, not a hint. */}
-                          {r.priorMonths.length > 0 && (
-                            <li>{t('disclosureCausePriorMonths', { periods: r.priorMonths.join(', ') })}</li>
-                          )}
-                          {d.causes.length === 0 && !d.rulesetUnknown && <li>{t('disclosureCauseOwnInputs')}</li>}
-                        </ul>
-                      </div>
-                    </>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </Card>
-      )}
-
-      {/* Selective reprocessing (feedback 9bc442bc, reporter ask #3): pick specific employees on a
-          PROCESSED run and reprocess them as a same-month adjustment run — the regular run's payslips
-          for everyone else stay physically untouched. Admin-only (page is requireAdmin; the action +
-          service re-assert it) and gated on multi-cycle. Not on closed runs (permanently immutable). */}
-      {batch.status === 'processed' && multiCycleOn && slips.length > 0 && (
-        <Card>
-          <SectionHeader title={t('reprocessTitle')} />
-          <div className="px-4 pb-4">
-            {/* d0d2c9d1 — the counterpart to the reset copy. A selective reprocess passes
-                `reprocessSubset`, and the attach guard is `!subset && runType === 'regular'`, so it
-                does NOT collect outstanding transactions. Reset-and-regenerate is the path that does. */}
-            <p className="mb-3 text-xs text-muted-foreground">
-              {t('reprocessHint')} {t('reprocessDoesNotCollect')}
-            </p>
-            <ReprocessPanel
-              batchId={batch.id}
-              employees={slips.map((sl) => ({ employmentId: sl.employmentId, employeeCode: sl.employeeCode, name: sl.name }))}
-              preselectedIds={recalcEmploymentIds}
-            />
-          </div>
-        </Card>
-      )}
-
       {/* e440991b point 4 — THE PER-RUN HISTORY CARD IS GONE FROM THIS SCREEN. It listed this batch's
           append-only lifecycle events (created / processed / reset / selective-reprocess / unlocked /
           closed), added for 9bc442bc ask #4 "fully traceable". The reporter has since asked for the run
@@ -1274,13 +1171,16 @@ export default async function BatchPage({
           the most recent `payroll-batch.closed` event in it. Removing the read with the card would have
           quietly downgraded every closed run to "no publication record".
 
-          NOT REMOVED, and this is deliberate — see the report for r168b: the RECALCULATION HISTORY card
-          further up (97a9b0ab) is NOT a domain-event rendering. It reads
-          `payroll_employee_result_history` through `listRecomputeDisclosure`, this page is its ONLY
-          reader in the codebase, and the Audit Trail does not carry it. Taking it off here would delete
-          the only account of why a statutory figure moved on a re-run — the exact fault 97a9b0ab was
-          built to answer — while the plan told the reporter nothing would be lost. It also renders only
-          when the run has actually been recalculated, so it is not the clutter the ticket is about. */}
+          THE RECALCULATION HISTORY CARD (97a9b0ab) AND THE SELECTION PANEL ARE GONE FROM HERE TOO, and
+          the distinction matters: they were MOVED to /payroll/<id>/reprocess, not deleted. r168b held
+          the History card back from point 4 with a finding — it is NOT a domain-event rendering, it
+          reads `payroll_employee_result_history` through `listRecomputeDisclosure`, the Audit Trail
+          does not carry that table, and deleting it would have destroyed the only account of why a
+          statutory figure moved on a re-run. That finding stands; moving it satisfies the declutter
+          without losing anything, and the new page is now its only reader.
+
+          WHAT DID NOT MOVE, deliberately: the recalculation banner and the disabled Close above. Those
+          are live controls, not history — dropping them lets a run close owing a recalculation. */}
     </div>
   );
 }

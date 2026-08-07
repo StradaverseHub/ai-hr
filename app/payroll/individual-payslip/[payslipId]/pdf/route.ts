@@ -12,13 +12,19 @@
  * tampered id is indistinguishable from a missing payslip and cannot confirm that one exists elsewhere.
  *
  * The document itself is `renderPayslipPdf` — the same renderer the employee's own PDF uses, fed by the
- * same `buildPayslipPdfData`, so the review copy and the issued copy cannot differ. Labels come from the
- * existing `me.payslip` namespace; no new PDF strings were needed.
+ * same `buildPayslipPdfData` and the same `payslipPdfStrings`, so the review copy and the issued copy
+ * cannot differ.
+ *
+ * 5c198931 — the document grew a letterhead logo, an employee panel, named pay items, payment details and
+ * a year-to-date column. Everything it added is READ-SIDE: three extra reads (the company logo, the
+ * year's payslips, nothing else), no write, no recomputation, and not one figure that this route decides.
  */
-import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { payslipForReview } from '@/core/payroll-view';
+import { listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
+import { payslipProvenance } from '@/core/payslip-recompute';
+import { getCompanyLogo } from '@/core/admin';
 import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
+import { payslipPdfStrings } from '@/lib/payslip-pdf-strings';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
 
@@ -32,43 +38,51 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
   const p = await payslipForReview(s, { companyIds: scopeIds, payslipId });
   if (!p) return new Response('Not found', { status: 404 });
 
-  const t = await getTranslations('me.payslip');
+  const year = p.payPeriod.slice(0, 4);
+  // Year-to-date is summed from the SAME read the Individual Payslip screen lists this employee's months
+  // with, through the SAME helper, so the screen and the document cannot disagree about the year.
+  // The logo is the company's own uploaded file — the same bytes the Organization screen and the on-screen
+  // letterhead show. Absent ⇒ the legal name stands alone; no placeholder mark is invented.
+  const [ytdRows, logo] = await Promise.all([
+    listProcessedPayslipsAcross(s, { companyIds: scopeIds, year: Number(year), employmentId: p.employmentId }),
+    getCompanyLogo(s, p.companyId),
+  ]);
+
+  const strings = await payslipPdfStrings({
+    daysWorked: p.daysWorked != null ? num(p.daysWorked) : null,
+    payDate: p.payDate,
+    ytdYear: year,
+    rulesetVersion: payslipProvenance(p.statutory).rulesetVersion,
+    runType: p.runType,
+    employmentType: p.employmentType,
+    paymentMethod: p.paymentMethod,
+  });
+
   // `payslipForReview` names the employee `employeeName` (the list-read convention); the PDF builder takes
   // `employee` (the payslipDetail convention). Bridged here rather than renaming either, so neither the
   // ESS route nor the History screen has to change for this one.
-  const data = buildPayslipPdfData({ ...p, employee: p.employeeName }, {
-    epf: t('epf'), socso: t('socso'), skbbk: t('skbbk'), eis: t('eis'), tax: t('pcb'),
+  const data = buildPayslipPdfData({ ...p, employee: p.employeeName }, strings.borneLabels, {
+    currency: p.currency,
+    payDate: p.payDate,
+    cycleLabel: strings.cycleLabel,
+    identityNumber: p.identityNumber,
+    identityIsPassport: p.identityIsPassport,
+    department: p.department,
+    position: p.position,
+    jobGrade: p.jobGrade,
+    employmentType: strings.employmentType,
+    epfNumber: p.epfNumber,
+    socsoNumber: p.socsoNumber,
+    taxNumber: p.taxNumber,
+    paymentMethod: strings.paymentMethod,
+    bankName: p.bankName,
+    bankAccountMasked: p.bankAccountMasked,
+    ytd: sumPayslipYtd(ytdRows),
+    ytdYear: year,
+    logo: logo ? { bytes: new Uint8Array(logo.content), mimeType: logo.mimeType } : null,
   });
 
-  const bytes = await renderPayslipPdf(data, {
-    title: t('pdfTitle'),
-    payPeriod: t('payPeriodLabel'),
-    employeeCode: t('employeeCodeLabel'),
-    earnings: t('earnings'),
-    basicSalary: t('basicSalary'),
-    allowances: t('allowances'),
-    overtime: t('overtime'),
-    bonus: t('bonus'),
-    grossPay: t('grossPay'),
-    deductions: t('deductionsHeading'),
-    epf: t('epf'),
-    socso: t('socso'),
-    skbbk: t('skbbk'),
-    eis: t('eis'),
-    pcb: t('pcb'),
-    cp38: t('cp38'),
-    otherDeductions: t('otherDeductions'),
-    totalDeductions: t('totalDeductions'),
-    netPay: t('netPay'),
-    employerContributions: t('employerContributionsHeading'),
-    totalEmployerCost: t('totalEmployerCost'),
-    proratedNote: p.daysWorked != null ? t('proratedNote', { days: num(p.daysWorked) }) : '',
-    generatedNote: t('generatedNote'),
-    claim: t('claim'),
-    employerBorne: t('employerBorneHeading'),
-    employerBorneTotal: t('employerBorneTotal'),
-    employerBorneNote: t('employerBorneNote'),
-  });
+  const bytes = await renderPayslipPdf(data, strings.labels);
 
   // Same filename shape as the ESS route, so a reviewer's copy and the employee's copy of one run are
   // recognisably the same document rather than two files that look unrelated.

@@ -1,0 +1,392 @@
+import { notFound } from 'next/navigation';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { requireAdmin } from '@/lib/authz';
+import { batchDetail, getReprocessJob, listBatches, reprocessEligibility } from '@/core/payroll';
+import { listRecomputeDisclosure } from '@/core/payroll-view';
+import type { StatutoryLineKey } from '@/core/payslip-recompute';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { formatMoney } from '@/lib/money';
+import { ReprocessForm, type ReprocessCandidate } from './reprocess-form';
+
+/**
+ * e440991b — REPROCESS SELECTED EMPLOYEES, a screen of its own.
+ *
+ * WHAT THIS ROUTE IS FOR. Selective reprocessing is not new and is not broken: on production
+ * `payroll_reprocess_job` holds 35 completed jobs across 10 runs, the most recent this week, and 25 of
+ * them corrected exactly one person. What the reporter rejected was the ROUTE to it — the selection
+ * panel sat at the very bottom of the 1,286-line payroll run screen, BELOW the Recalculation History
+ * card, and the Payroll Process list offered no way in at all. This page is that route: the run's own
+ * identity at the top, the selection, a review of what is about to happen, and — afterwards, on this
+ * same screen — an account of what it did.
+ *
+ * THE ENGINE IS UNTOUCHED. `reprocessSelectedEmployees` remains the only authority: permission,
+ * processed-only, closed-period refusal, cross-company intersection, idempotent enqueue and the
+ * queued→running claim all live there and all still run on submit. The gates below are a SECOND
+ * surface (`reprocessEligibility` re-reads the same three facts), so the operator is told why the door
+ * is shut instead of finding out by pressing the button.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 97a9b0ab — statutory line key → its payroll.batch label key. Exhaustive by TYPE (Record over
+ *  StatutoryLineKey), so adding a key to STATUTORY_LINE_KEYS without a label fails the build rather
+ *  than rendering `lineundefined` at runtime. Moved here with the disclosure it labels. */
+const STATUTORY_LINE_LABEL: Record<StatutoryLineKey, string> = {
+  epfEmployee: 'lineEpfEmployee',
+  epfEmployer: 'lineEpfEmployer',
+  socsoEmployee: 'lineSocsoEmployee',
+  socsoEmployer: 'lineSocsoEmployer',
+  socsoSkbbk: 'lineSocsoSkbbk',
+  eisEmployee: 'lineEisEmployee',
+  eisEmployer: 'lineEisEmployer',
+  pcb: 'linePcb',
+  cp38: 'lineCp38',
+  zakat: 'lineZakat',
+  lp: 'lineLp',
+  hrdf: 'lineHrdf',
+};
+
+export default async function ReprocessPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ batchId: string }>;
+  searchParams: Promise<{ error?: string; job?: string }>;
+}) {
+  const s = await requireAdmin();
+  const t = await getTranslations('payroll.batch');
+  // The summary strip's column labels are the ones the Payroll Process list already uses for the same
+  // six facts, read from the namespace that actually holds them — r134 shipped a screen reading a
+  // namespace that never had its keys and every page rendered MISSING_MESSAGE.
+  const tl = await getTranslations('payroll.list');
+  const locale = await getLocale();
+  const { batchId } = await params;
+  // Same shape-check as the run screen: `/payroll/<segment>` hands any non-uuid straight to a uuid
+  // parameter and Postgres answers with an error, i.e. a 500 where a 404 belongs.
+  if (!UUID_RE.test(batchId)) notFound();
+  const sp = await searchParams;
+
+  const data = await batchDetail(s, batchId);
+  if (!data) notFound();
+  const { batch, slips } = data;
+
+  // The same module gate the run screen puts on the panel: selective reprocessing produces an in-place
+  // recompute of one run, which only makes sense where several runs a month are allowed at all. Off ⇒
+  // the route does not exist, matching the absence of the button that leads here.
+  if (!isModuleEnabledOrFalse(s, 'multi_cycle_payroll')) notFound();
+
+  const eligibility = await reprocessEligibility(s, { batchId });
+  if (!eligibility) notFound();
+
+  // The run's identity, read through the SAME projection the Payroll Process list renders, so the strip
+  // you check the run against cannot start disagreeing with the row you clicked. Narrowed to this run's
+  // company and period — a company runs at most a handful of times in one month.
+  const listed = (await listBatches(s, [batch.companyId], batch.payPeriod)).find((b) => b.id === batchId);
+  const currency = listed?.currency ?? null;
+  const totals = (batch.totals ?? {}) as Record<string, number>;
+
+  const dateFmt = new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  // A date-only column ('YYYY-MM-DD') is parsed as UTC and formatted as UTC — matched ends, so the day
+  // printed is the day stored. Parsing it in local time is the classic off-by-one.
+  const paymentDate = batch.batchDate ? dateFmt.format(new Date(`${batch.batchDate}T00:00:00Z`)) : '—';
+
+  const summary: { label: string; value: string }[] = [
+    { label: t('summaryPeriod'), value: batch.payPeriod },
+    {
+      label: t('summaryCycle'),
+      // Same derivation as the list and the run screen: the run-type label plus the free-text remarks,
+      // so wizard cycles stored under the generic 'off_cycle' bucket still read distinctly.
+      value: `${tl(`runType.${batch.runType}`)}${batch.remarks ? ` — ${batch.remarks}` : ''}`,
+    },
+    { label: tl('colCompany'), value: listed?.company ?? '—' },
+    { label: t('summaryPaymentDate'), value: paymentDate },
+    { label: tl('colEmployees'), value: String(slips.length) },
+    { label: t('totalNet'), value: formatMoney(totals.net, currency) },
+  ];
+
+  const header = (
+    <PageHeader
+      back={{ href: '/payroll', label: t('reprocessBack') }}
+      title={t('reprocessTitle')}
+      description={`${batch.payPeriod} · ${listed?.company ?? ''}`}
+    />
+  );
+
+  // ── The three refusals, each with its reason on screen ──────────────────────────────────────────
+  // Rendered rather than 404'd: the run exists and the operator can see it on the list, so "not found"
+  // would be a lie and a dead end. Each one is re-asserted inside reprocessSelectedEmployees' own
+  // transaction on submit, which is where a race with a concurrent close is actually decided.
+  const refusal = !eligibility.permitted
+    ? t('reprocessAdminOnly')
+    : !eligibility.processed
+      ? t('reprocessNotProcessed')
+      : eligibility.periodClosed
+        ? t('reprocessPeriodClosed')
+        : null;
+  if (refusal) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-4">
+        {header}
+        <ErrorBanner message={refusal} />
+      </div>
+    );
+  }
+
+  // 49e7e0a2 — the employments the run itself marked stale, ticked on arrival.
+  const preselectedIds = Array.isArray(batch.recalcEmploymentIds)
+    ? batch.recalcEmploymentIds.filter((x): x is string => typeof x === 'string')
+    : [];
+
+  const candidates: ReprocessCandidate[] = slips.map((sl) => ({
+    employmentId: sl.employmentId,
+    employeeCode: sl.employeeCode,
+    name: sl.name,
+    gross: sl.gross,
+    net: sl.net,
+    // version 1 = as first generated, so the number of prior recalculations is version - 1. Already on
+    // batchDetail's projection: no extra read, no join, and therefore no Department column here.
+    reprocessedTimes: Math.max(0, (sl.version ?? 1) - 1),
+  }));
+
+  // 97a9b0ab — every recomputation this run has had, each diffed against the calculation it replaced
+  // with the cause named. It reads `payroll_employee_result_history`, NOT domain events, so the Audit
+  // Trail does not carry it: this page is now its ONLY reader, which is why point 4 MOVED it here
+  // rather than deleting it (r168b). A never-reprocessed run pays one indexed lookup and shows nothing.
+  const disclosure = await listRecomputeDisclosure(s, { batchId });
+
+  // The job just submitted, when the action redirected here carrying its id. Fenced to THIS run: a job
+  // id belonging to another batch is ignored rather than rendered under this run's heading.
+  const job = sp.job && UUID_RE.test(sp.job) ? await getReprocessJob(s, sp.job) : null;
+  const thisJob = job && job.batchId === batchId ? job : null;
+  const jobResult = (thisJob?.result ?? null) as { reprocessed?: number; headcount?: number } | null;
+  // The history rows THIS job wrote: its own employments, written at or after it was enqueued. The
+  // recompute runs inline between enqueue and completion, so that window holds exactly this job's rows
+  // and the card below can show the EARLIER ones as what they are — the record of past reprocessing.
+  const jobRows = thisJob
+    ? disclosure.filter((r) => thisJob.employmentIds.includes(r.employmentId) && r.at >= thisJob.createdAt)
+    : [];
+  const jobRowIds = new Set(jobRows.map((r) => r.id));
+  const earlier = disclosure.filter((r) => !jobRowIds.has(r.id));
+
+  const money = (n: unknown) => formatMoney(n, currency);
+  /** What moved, in the words of the diff: gross first when it moved, then each statutory line. */
+  const movedLabels = (r: (typeof disclosure)[number]) => [
+    ...(r.diff.grossChanged ? [t('reprocessMovedGross')] : []),
+    ...r.diff.moved.map((m) => t(STATUTORY_LINE_LABEL[m.key])),
+  ];
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-4">
+      {header}
+
+      <ErrorBanner message={sp.error} />
+
+      <Card className="px-4 py-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {summary.map((f) => (
+            <div key={f.label}>
+              <div className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                {f.label}
+              </div>
+              <div className="mt-0.5 text-sm font-medium tabular-nums">{f.value}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* THE RESULT, when there is one. It is rendered ABOVE the selection because after a submit this
+          is what the operator came back for; the selection stays below so a second correction does not
+          need a second navigation. */}
+      {thisJob && thisJob.status === 'failed' && (
+        <ErrorBanner message={t('reprocessJobFailed', { error: thisJob.error ?? '' })} />
+      )}
+      {thisJob && thisJob.status === 'completed' && (
+        <Card className="overflow-hidden">
+          <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+            ✓{' '}
+            {t('reprocessResultTitle', {
+              n: jobResult?.reprocessed ?? thisJob.employmentIds.length,
+              total: jobResult?.headcount ?? slips.length,
+            })}{' '}
+            · {thisJob.updatedAt.toISOString().slice(0, 16).replace('T', ' ')}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[44rem] text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">{t('colEmployee')}</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right font-medium">{t('reprocessColNetBefore')}</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right font-medium">{t('reprocessColNetAfter')}</th>
+                  <th className="px-3 py-2 font-medium">{t('reprocessColMoved')}</th>
+                  <th className="px-3 py-2 font-medium">{t('reprocessColWhy')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {jobRows.map((r) => {
+                  const moved = movedLabels(r);
+                  return (
+                    <tr key={r.id}>
+                      <td className="px-3 py-2">
+                        <span className="inline-flex items-baseline gap-1.5">
+                          <EmployeeCode code={r.employeeCode} />
+                          <span>{r.employeeName}</span>
+                        </span>
+                      </td>
+                      {/* Net BEFORE and AFTER come off the stored snapshots this run wrote at the time
+                          (payroll_employee_result_history.before / .after), never off a fresh
+                          calculation — a results screen that re-derived the figures could disagree with
+                          the payslip it claims to describe. */}
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
+                        {money(r.diff.netBefore)}
+                      </td>
+                      <td
+                        className={`whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums ${
+                          r.diff.netChanged ? 'text-emerald-700 dark:text-emerald-400' : ''
+                        }`}
+                      >
+                        {money(r.diff.netAfter)}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {moved.length === 0
+                          ? t('reprocessNothingMoved')
+                          : r.diff.netChanged
+                            ? moved.join(', ')
+                            : `${moved.join(', ')} — ${t('reprocessPayUnchanged')}`}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {r.priorMonths.length > 0
+                          ? t('reprocessWhyPriorMonths', { periods: r.priorMonths.join(', ') })
+                          : r.diff.rulesetChanged
+                            ? t('reprocessWhyRuleset', {
+                                before: r.diff.before.rulesetVersion ?? '?',
+                                after: r.diff.after.rulesetVersion ?? '?',
+                              })
+                            : t('reprocessWhyOwnInputs')}
+                        {r.reason ? ` · ${r.reason}` : ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {jobRows.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
+                      {t('reprocessNothingMoved')}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      <Card>
+        <SectionHeader title={t('reprocessTitle')} />
+        <div className="px-4 pb-4">
+          <p className="mb-3 text-xs text-muted-foreground">
+            {/* d0d2c9d1 — a selective reprocess passes `reprocessSubset`, and the attach guard is
+                `!subset && runType === 'regular'`, so it does NOT collect outstanding transactions.
+                Reset-and-regenerate is the path that does, and saying so here is the only place the
+                operator can act on it. */}
+            {t('reprocessHint')} {t('reprocessDoesNotCollect')}
+          </p>
+          <ReprocessForm
+            batchId={batchId}
+            employees={candidates}
+            preselectedIds={preselectedIds}
+            currency={currency}
+          />
+        </div>
+      </Card>
+
+      {/* RECALCULATION HISTORY, moved off the run screen (point 4) rather than deleted. Here it reads as
+          the record of past reprocessing on this run instead of clutter under a payslip list — one
+          January run on production is carrying 37 of these entries. Nothing is deleted. */}
+      {earlier.length > 0 && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('disclosureTitle')} count={earlier.length} />
+          <p className="px-4 pb-2 text-xs text-muted-foreground">{t('reprocessHistoryNote')}</p>
+          <ul className="divide-y divide-border">
+            {earlier.map((r) => {
+              const d = r.diff;
+              return (
+                <li key={r.id} className="space-y-2 px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="font-medium">{r.employeeName}</span>
+                    {r.employeeCode && <EmployeeCode code={r.employeeCode} />}
+                    <span className="text-xs text-muted-foreground">
+                      {t('disclosureRevision', { before: d.versionBefore ?? '?', after: d.versionAfter ?? '?' })}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {r.at.toISOString().slice(0, 16).replace('T', ' ')}
+                    </span>
+                    {r.reason && (
+                      <span className="text-xs text-muted-foreground">{t('disclosureReason', { reason: r.reason })}</span>
+                    )}
+                  </div>
+                  {/* The NET pair the run screen never showed. netBefore/netAfter have been on
+                      RecomputeDiff since 97a9b0ab and were rendered nowhere — the old card reported
+                      gross only, so a correction that moved take-home pay by tax alone read as "no
+                      change". */}
+                  <p className="text-xs text-muted-foreground">
+                    {t('reprocessColNetBefore')} {money(d.netBefore)} → {t('reprocessColNetAfter')}{' '}
+                    <span className="font-medium text-foreground">{money(d.netAfter)}</span>
+                  </p>
+
+                  {d.moved.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">{t('disclosureNoMove')}</p>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        {d.grossChanged
+                          ? t('disclosureGrossChanged', { before: money(d.grossBefore), after: money(d.grossAfter) })
+                          : t('disclosureGrossUnchanged', { gross: money(d.grossAfter) })}
+                      </p>
+                      <ul className="space-y-0.5">
+                        {d.moved.map((m) => (
+                          <li key={m.key} className="flex items-baseline justify-between gap-4 text-xs">
+                            <span>{t(STATUTORY_LINE_LABEL[m.key])}</span>
+                            <span className="tabular-nums">
+                              <span className="text-muted-foreground">{money(m.before)}</span>
+                              {' → '}
+                              <span className="font-medium">{money(m.after)}</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="rounded-md bg-muted/50 px-3 py-2 text-xs">
+                        <p className="mb-1 font-medium">{t('disclosureCauseHeading')}</p>
+                        <ul className="space-y-1 text-muted-foreground">
+                          {/* Cause (a). Reported as a FACT TO CHECK, never as proof the tax moved: a
+                              ruleset bump is not automatically behavioural (2026.4 → 2026.5 changed no
+                              PCB band, rate or relief — it only added optional pay-code classification
+                              tables that are inert unless a pay item is explicitly classified). The
+                              note below carries that caveat, and must not be dropped. */}
+                          {d.rulesetChanged && (
+                            <li>
+                              {t('disclosureCauseRuleset', {
+                                before: d.before.rulesetVersion ?? '?',
+                                after: d.after.rulesetVersion ?? '?',
+                              })}{' '}
+                              {t('disclosureCauseRulesetNote')}
+                            </li>
+                          )}
+                          {d.rulesetUnknown && <li>{t('disclosureCauseRulesetUnknown')}</li>}
+                          {/* Cause (b) — the cumulative-PCB replay. This one IS a mechanism, not a hint. */}
+                          {r.priorMonths.length > 0 && (
+                            <li>{t('disclosureCausePriorMonths', { periods: r.priorMonths.join(', ') })}</li>
+                          )}
+                          {d.causes.length === 0 && !d.rulesetUnknown && <li>{t('disclosureCauseOwnInputs')}</li>}
+                        </ul>
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+    </div>
+  );
+}

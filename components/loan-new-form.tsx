@@ -1,18 +1,30 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { Button, Field, inputCls } from '@/components/ui';
 // RSC: import the pure calc engine + constants from core/loans-compute (NO db import), not core/loans
 // (which imports postgres at module scope and would be dragged into this client bundle → next build fails).
 import { computeLoan, LOAN_INTEREST_METHODS, LOAN_TYPES, type LoanInterestMethod } from '@/core/loans-compute';
 import { createLoanAction } from '@/app/admin/loans/actions';
 
-type EmpOption = { employmentId: string; name: string };
-
-/** New-loan form with a CLIENT-SIDE live preview of the computed monthly instalment (reuses the pure
- *  computeLoan engine, so the preview matches the server exactly). Admin-only (the page is admin-gated). */
-export function LoanNewForm({ employees }: { employees: EmpOption[] }) {
+/**
+ * New-loan form with a CLIENT-SIDE live preview of the computed monthly instalment (reuses the pure
+ * computeLoan engine, so the preview matches the server exactly). Admin-only (the page is admin-gated).
+ *
+ * 6d72816e — THE EMPLOYEE DROPDOWN IS GONE AND THAT IS THE POINT. This form used to sit permanently open
+ * at the bottom of the loans list carrying its own `<select name="employmentId">`, so the screen had TWO
+ * employee controls that could disagree: you picked somebody in the panel on the left and the form was
+ * still addressed to whoever happened to be first alphabetically. It now opens from an Add button, on its
+ * own page, and the employee is FIXED from the scope-guarded `?employmentId=` the page resolved — passed
+ * as a hidden input, because a loan without an employee is not a loan.
+ *
+ * Every prop is plain data (`cancelHref` is a string, not a callback): a function prop crossing from a
+ * server component to a client one returns a 500 on every request while tsc, the suite and `next build`
+ * all stay green.
+ */
+export function LoanNewForm({ employmentId, cancelHref }: { employmentId: string; cancelHref: string }) {
   const t = useTranslations('loans');
   const tType = useTranslations('loans.loanType');
   const [principal, setPrincipal] = useState('');
@@ -38,16 +50,11 @@ export function LoanNewForm({ employees }: { employees: EmpOption[] }) {
 
   return (
     <form action={createLoanAction} className="space-y-4">
+      <input type="hidden" name="employmentId" value={employmentId} />
+      {/* The list this form returns to, carried through so a created loan lands back on the employee the
+          operator was working on rather than on the everyone view. */}
+      <input type="hidden" name="returnEmploymentId" value={employmentId} />
       <div className="flex flex-wrap items-end gap-3">
-        <Field label={t('employee')}>
-          <select name="employmentId" required className={`${inputCls} w-56`}>
-            {employees.map((e) => (
-              <option key={e.employmentId} value={e.employmentId}>
-                {e.name}
-              </option>
-            ))}
-          </select>
-        </Field>
         <Field label={t('loanTypeLabel')}>
           <select name="loanType" required className={`${inputCls} w-40`}>
             {LOAN_TYPES.map((lt) => (
@@ -129,12 +136,15 @@ export function LoanNewForm({ employees }: { employees: EmpOption[] }) {
         </div>
       )}
 
-      <button
-        type="submit"
-        className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-      >
-        {t('createButton')}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit">{t('createButton')}</Button>
+        <Link
+          href={cancelHref}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          {t('backToList')}
+        </Link>
+      </div>
     </form>
   );
 }

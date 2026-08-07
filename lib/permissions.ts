@@ -403,7 +403,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     // Reimbursements. All requireAdmin (the same guard the single page used before).
     routes: ['/admin/claims', '/admin/claims/limits', '/admin/claims/reimbursements', '/admin/claims/mileage', '/admin/claims/forms'],
   },
-  { screenKey: 'loans', href: '/admin/loans', labelKey: 'admin.users.screen.loans', guard: 'requireAdmin', routes: ['/admin/loans'] },
+  {
+    screenKey: 'loans',
+    href: '/admin/loans',
+    labelKey: 'admin.users.screen.loans',
+    guard: 'requireAdmin',
+    // 6d72816e: the Add page and the loan's own View/Edit page, split out of the list so the new-loan
+    // form stops sitting permanently open and the five lifecycle actions stop living inside a table
+    // cell. Same requireAdmin guard as the list — same data, one loan at a time. The gate was NOT
+    // swapped to scopedAdmin during the redesign; that would be a privilege change dressed as a UI one.
+    routes: ['/admin/loans', '/admin/loans/new', '/admin/loans/[id]'],
+  },
   // ── Payroll (scopedAdmin/requireAdmin → hr_admin + super_admin; partners are redirected today) ──
   {
     screenKey: 'payroll',
@@ -413,6 +423,11 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: [
       '/payroll',
       '/payroll/[batchId]',
+      // e440991b — the dedicated Reprocess Selected Employees screen. Same requireAdmin guard as the run
+      // page it is reached from. Registered here because test/function-access.test.ts checks reverse
+      // completeness: a guarded page with no matrix column fails the suite rather than silently
+      // becoming a screen nobody can grant or revoke.
+      '/payroll/[batchId]/reprocess',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.
@@ -462,6 +477,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/transactions/individual',
       '/payroll/transactions/tp1',
       '/payroll/transactions/zakat',
+      // 6a1f2bd6: the dedicated Add/Edit page for ONE employee's zakat setup, replacing the editor that
+      // opened by itself the moment somebody was selected. Same scopedAdmin guard as its list.
+      '/payroll/transactions/zakat/election',
     ],
   },
   {

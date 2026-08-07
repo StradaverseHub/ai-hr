@@ -1,42 +1,55 @@
+import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies, listEmployees } from '@/core/read';
-import { getLoanWithSchedule, listActiveLoans, type LoanRow, type RepaymentRow } from '@/core/loans';
-import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { listActiveLoans, type LoanRow } from '@/core/loans';
+import { listAppliedLoanRepayments } from '@/core/payroll-view';
+import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
   type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
+import { AppliedInPayrollList, type AppliedInPayrollRow } from '@/components/applied-in-payroll-list';
 import { LoanList } from '@/components/loan-list';
-import { LoanNewForm } from '@/components/loan-new-form';
 
 /**
- * Loans (feedback 6d72816e) — the searchable employee panel, matching the transaction screens beside it.
+ * Loans (feedback 6d72816e) — built the way Fixed Transaction is: choose a person, read their loans, then
+ * press Add or View / Edit when you actually want to change something.
  *
- * TWO THINGS THE TICKET GOT WRONG, REPRODUCED BEFORE ANYTHING WAS CHANGED:
+ * WHAT r168a LEFT BEHIND, AND WHY THE REPORTER SENT IT BACK. The searchable employee panel landed, it
+ * collapses, and the loan list already narrowed to the selection. Two things did not:
+ *   - components/loan-new-form.tsx was rendered UNCONDITIONALLY at the bottom of the page with its OWN
+ *     employee dropdown, so the screen carried two employee controls that could disagree and "picking an
+ *     employee" looked like it opened an Add form;
+ *   - there was nowhere to see the instalments a payroll run had ACTUALLY deducted — the schedule was
+ *     folded inside a row you had to unfold, and it shows what is DUE, not what was taken.
+ * Both are fixed here. Add opens `/admin/loans/new`; a loan opens `/admin/loans/[id]`, where the five
+ * lifecycle actions finally have room for the copy that says what each one does.
  *
- *  1. IT IS NOT AT Payroll > Transaction > Loans. That menu row does not exist; Loans lives here, under
- *     Admin. The approved plan proposes moving it into the payroll transaction menu, and THAT MOVE IS NOT
- *     PART OF THIS CHANGE — the payroll nav is an exact-set registry with a matching drift guard that only
- *     one owner may touch per round, and this round that owner is someone else. The screen is ready for the
- *     move; the link is not moved here.
+ * TWO CLAIMS IN THE ORIGINAL TICKET WERE ALREADY STALE WHEN IT WAS RE-PLANNED, and both stay that way:
+ *   1. Loans HAS its own row in the Payroll menu (packs/payroll/index.ts registers `/admin/loans`
+ *      verbatim). The href is deliberately NOT moved — bookmarks and the Transactions-hub card resolve to
+ *      it, and test/payroll-flyout-nav.test.ts guards the exact set.
+ *   2. "Loans picks an employee from a plain dropdown" described the NEW-LOAN FORM, not the list. The list
+ *      has never had an employee control at all — it showed every loan in every company the admin can see.
  *
- *  2. "Loans picks an employee from a plain dropdown" describes the NEW-LOAN form, not the list. The list
- *     has never had an employee control at all — it showed every loan in every company the admin can see.
+ * SO THE PANEL NARROWS, IT DOES NOT GATE. With nobody selected both lists show everything they always did;
+ * on a selection they show that person's. Making selection mandatory would remove the everyone-at-once
+ * view that is this screen's whole reason for existing, which no one asked for.
  *
- * SO THE PANEL NARROWS, IT DOES NOT GATE. With nobody selected the list shows everything it always did; on
- * a selection it shows that person's loans. Making selection mandatory would have removed the
- * everyone-at-once view that is this screen's whole reason for existing, which no one asked for.
+ * THE PERMISSION DID NOT MOVE WITH THE REDESIGN. `requireAdmin()` is the gate this page has always sat
+ * behind and it is unchanged — deliberately NOT swapped for `scopedAdmin()`, which is a different fence. A
+ * page that quietly changed which check it runs while its UI was being redesigned is a privilege change
+ * dressed as a UI request, and this one is not that. `?employmentId=` is SCOPE-GUARDED the same way every
+ * other screen guards it: resolved against the server's own employee list before it selects anything, so
+ * URL tampering can only ever narrow.
  *
- * THE PERMISSION DID NOT MOVE WITH THE PANEL. `requireAdmin()` is the gate this page has always sat behind
- * and it is unchanged — deliberately NOT swapped for `scopedAdmin()`, which is a different fence. A page
- * that quietly changed which check it runs while its UI was being redesigned is a privilege change dressed
- * as a UI request, and this one is not that.
- *
- * `?employmentId=` is SCOPE-GUARDED the same way every other screen guards it: resolved against the
- * server's own employee list before it selects anything, so URL tampering can only ever narrow.
+ * ONE NAMESPACE ON PURPOSE. Every caption on this page resolves from `loans`, including the payroll cycle
+ * and batch-status labels the applied-in-payroll table needs. Reaching into `payroll.transactions` and
+ * `payroll.list` for those six strings would make this a multi-namespace file — the shape check C of
+ * test/i18n-coverage.test.ts skips ENTIRELY — and this screen gains a dozen new static keys here.
  */
 
 /** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
@@ -56,25 +69,31 @@ export default async function LoansPage({
   // SCOPE-GUARD the param: the ?employmentId= must be in the list this admin can already see. An unknown or
   // out-of-scope value is treated as NO selection (the whole list), never as an error and never as a read.
   const selected = employmentId && employees.some((e) => e.employmentId === employmentId) ? employmentId : null;
+  const selectedEmp = selected ? (employees.find((e) => e.employmentId === selected) ?? null) : null;
 
-  // Gather every loan across the companies the admin can see, with its repayment schedule.
-  const loanRows: LoanRow[] = (await Promise.all(companies.map((c) => listActiveLoans(s, c.id)))).flat();
-  // Narrow AFTER the read, not before: the read is per-company and already access-fenced, and filtering
-  // here keeps the "no selection ⇒ everything" case byte-identical to what this page did before.
-  const visibleLoans = selected ? loanRows.filter((l) => l.employmentId === selected) : loanRows;
-  const withSchedules = (
-    await Promise.all(
-      visibleLoans.map(async (l) => {
-        const full = await getLoanWithSchedule(s, l.id);
-        return full ? { ...l, schedule: full.schedule } : { ...l, schedule: [] as RepaymentRow[] };
-      }),
-    )
-  ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const companyIds = companies.map((c) => c.id);
+  // Gather every loan across the companies the admin can see. Narrow AFTER the read, not before: the read
+  // is per-company and already access-fenced, and filtering here keeps the "no selection ⇒ everything"
+  // case byte-identical to what this page did before.
+  const loanRows: LoanRow[] = (await Promise.all(companyIds.map((id) => listActiveLoans(s, id)))).flat();
+  const visibleLoans = (selected ? loanRows.filter((l) => l.employmentId === selected) : loanRows).sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
 
-  // Active-employee options for the new-loan form (exclude terminated).
-  const empOptions = employees
-    .filter((e) => e.terminatedOn == null)
-    .map((e) => ({ employmentId: e.employmentId, name: e.company ? `${e.name} · ${e.company}` : e.name }));
+  // The instalments a run actually took. Narrowed in the QUERY, over the same company fence the loan read
+  // uses — and it fails closed on an empty set, so an admin who can see no company sees no rows.
+  const applied = await listAppliedLoanRepayments(s, { companyIds, employmentId: selected ?? undefined });
+  const appliedList: AppliedInPayrollRow[] = applied.map((r) => ({
+    id: r.id,
+    payPeriod: r.payPeriod,
+    cycleLabel: `${t(`cycle.${r.runType}`)}${r.runSeq > 1 ? ` #${r.runSeq}` : ''}`,
+    employeeName: r.employeeName,
+    employeeCode: r.employeeCode,
+    company: r.company,
+    amount: r.amount,
+    statusLabel: t(`batchStatus.${r.batchStatus}`),
+    createdOn: r.createdOn,
+  }));
 
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const panelDefaultOpen = (await cookies()).get(LOANS_PANEL_COOKIE)?.value !== '0';
@@ -106,24 +125,53 @@ export default async function LoansPage({
           <Card className="p-4">
             <h2 className="text-sm font-semibold">{t('employee')}</h2>
             <div className="mt-3">
-              <EmployeeScopePanel
-                employees={panelEmployees}
-                selectedId={selected}
-                basePath="/admin/loans"
-              />
+              <EmployeeScopePanel employees={panelEmployees} selectedId={selected} basePath="/admin/loans" />
             </div>
           </Card>
         }
       >
         <div className="space-y-6">
+          {/* ── The header row: who is selected, and the ONE button that opens the Add page ──
+              Copied from the selectedEmp block of app/payroll/transactions/fixed/page.tsx on purpose, and
+              shared in spirit with the Zakat screen: same three facts, same place, same action on the
+              right of the same row. */}
+          {selectedEmp ? (
+            <Card className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <EmployeeName
+                  code={selectedEmp.employeeCode}
+                  name={selectedEmp.name}
+                  className="text-sm font-semibold text-foreground"
+                />
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {selectedEmp.company} · {selectedEmp.department ?? '—'} · {selectedEmp.position ?? '—'}
+                </p>
+              </div>
+              <Button asChild size="sm">
+                <Link href={`/admin/loans/new?employmentId=${encodeURIComponent(selectedEmp.employmentId)}`}>
+                  {t('addButton')}
+                </Link>
+              </Button>
+            </Card>
+          ) : (
+            /* No Add button with nobody selected, because a loan needs an employee — and no empty state
+               either, because this is the only screen carrying the everyone-at-once view. */
+            <p className="text-xs text-muted-foreground">{t('pickEmployeeHint')}</p>
+          )}
+
           <Card className="overflow-hidden">
-            <SectionHeader title={t('loansTitle')} count={withSchedules.length} />
-            <LoanList loans={withSchedules} />
+            <SectionHeader title={t('loansTitle')} count={visibleLoans.length} />
+            <LoanList loans={visibleLoans} />
           </Card>
 
-          <Card className="p-4">
-            <h2 className="mb-3 text-sm font-semibold">{t('newTitle')}</h2>
-            <LoanNewForm employees={empOptions} />
+          <Card className="overflow-hidden">
+            <SectionHeader title={t('appliedTitle')} count={applied.length} />
+            <p className="px-4 pt-2 text-xs text-muted-foreground">{t('appliedSubtitle')}</p>
+            <AppliedInPayrollList
+              rows={appliedList}
+              emptyLabel={t('appliedEmpty')}
+              paramNames={{ page: 'aPage', size: 'aSize' }}
+            />
           </Card>
         </div>
       </CollapsibleEmployeePanel>

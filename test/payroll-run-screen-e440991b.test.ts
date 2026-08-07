@@ -119,13 +119,19 @@ describe('e440991b point 4 — History came off the run screen, the live control
     expect(BATCH_PAGE).toMatch(/needsRecalc \?\s*\(?\s*<Button type="button" variant="secondary" disabled/);
   });
 
-  it('the RECALCULATION HISTORY card is deliberately still there', () => {
-    // Held back from point 4 with a finding: it renders payroll_employee_result_history through
-    // listRecomputeDisclosure, this page is its only reader in the tree, and the Audit Trail does not
-    // carry that table — so removing it would lose the only account of why a statutory figure moved,
-    // which is the opposite of what the plan told the reporter would happen.
-    expect(BATCH_PAGE).toContain('listRecomputeDisclosure');
-    expect(BATCH_PAGE).toContain("t('disclosureTitle')");
+  it('the RECALCULATION HISTORY card has MOVED off this screen — and it still exists', () => {
+    // r168b held this card back from point 4 with a finding, and that finding still stands: it renders
+    // `payroll_employee_result_history` through listRecomputeDisclosure, the Audit Trail does not carry
+    // that table, and DELETING it would lose the only account of why a statutory figure moved.
+    //
+    // e440991b's revised plan resolves that properly: it moves to /payroll/<id>/reprocess, which becomes
+    // its only reader. Both halves are asserted together on purpose — an assertion that it is gone from
+    // here, alone, is satisfied by having deleted it, which is the outcome the finding forbids.
+    expect(BATCH_PAGE, 'the disclosure card is still on the run screen').not.toContain("t('disclosureTitle')");
+    expect(BATCH_PAGE, 'the run screen still reads the disclosure').not.toContain('listRecomputeDisclosure');
+    const reprocessPage = code('app/payroll/[batchId]/reprocess/page.tsx');
+    expect(reprocessPage, 'the disclosure lost its last reader').toContain('listRecomputeDisclosure');
+    expect(reprocessPage).toContain("t('disclosureTitle')");
   });
 });
 

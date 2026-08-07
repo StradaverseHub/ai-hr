@@ -16,8 +16,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips, payslipDetail } from '../core/payroll';
-import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview } from '../core/payroll-view';
+import { closeBatch, createBatch, generatePayslips, payslipDetail } from '../core/payroll';
+import {
+  currentPcbReliefs,
+  listProcessedPayslipsAcross,
+  payslipForReview,
+  sumPayslipYtd,
+} from '../core/payroll-view';
 import { explainPcb, type PcbReliefBreakdown } from '../core/pcb-explain';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
@@ -96,6 +101,35 @@ describe('169e3c24 — explaining the PCB figure from what the payslip recorded'
     expect(r.reliefSource).toBe('current');
     expect(r.reliefs.total).toBe(0);
     expect(r.reliefs.lp).toBe(90); // still read off the blob, which HAS it
+  });
+});
+
+describe('5c198931 — the year-to-date column is summed in ONE place', () => {
+  // The screen ran this reduce inline and the downloaded payslip carried no YTD at all. Now three
+  // surfaces print it, so the arithmetic lives in core/payroll-view.ts and each caller supplies the rows
+  // its own fence allows. These assertions pin the arithmetic; the fences are tested further down.
+  const rows = [
+    { gross: '5000.00', net: '4200.00', statutory: { epfEmployee: 550, socsoEmployee: 24.75, eisEmployee: 9.9, pcb: 120 } },
+    { gross: '5000.00', net: '4200.00', statutory: { epfEmployee: 550, socsoEmployee: 24.75, eisEmployee: 9.9, pcb: 120 } },
+  ];
+
+  it('sums the six figures the payslip prints, over the rows it is given', () => {
+    expect(sumPayslipYtd(rows)).toEqual({ gross: 10000, epf: 1100, socso: 49.5, eis: 19.8, pcb: 240, net: 8400 });
+  });
+
+  it('treats a missing statutory key as zero rather than NaN', () => {
+    // A payslip from an older run carries a thinner blob. `Number(undefined)` is NaN, and one NaN would
+    // turn a whole column into "—" on a document the employee is meant to reconcile against.
+    const thin = sumPayslipYtd([
+      { gross: '1000.00', net: '900.00', statutory: {} },
+      { gross: '1000.00', net: '900.00', statutory: null },
+    ]);
+    expect(thin).toEqual({ gross: 2000, epf: 0, socso: 0, eis: 0, pcb: 0, net: 1800 });
+    expect(Object.values(thin).every(Number.isFinite)).toBe(true);
+  });
+
+  it('an empty year is zeros, not an empty object', () => {
+    expect(sumPayslipYtd([])).toEqual({ gross: 0, epf: 0, socso: 0, eis: 0, pcb: 0, net: 0 });
   });
 });
 
@@ -189,6 +223,52 @@ describe('169e3c24 — the ESS release gate is not weakened, and no logo is inve
       ).sort();
     const en = keysOf('en');
     for (const loc of ['ms', 'ta', 'th', 'vi', 'zh']) expect(keysOf(loc), loc).toEqual(en);
+  });
+});
+
+describe('5c198931 — one document, printed by both routes', () => {
+  const ESS = 'app/me/payslip/[payslipId]/pdf/route.ts';
+  const ADMIN = 'app/payroll/individual-payslip/[payslipId]/pdf/route.ts';
+
+  it('both PDF routes resolve their labels from the SAME module', () => {
+    // The two routes each hand-assembled a label object. The redesign takes that object past forty
+    // fields, and two hand-maintained copies is precisely how the employee's payslip stops being the
+    // document the reviewer approved — the failure this board item was raised about.
+    for (const f of [ESS, ADMIN]) {
+      const route = read(f);
+      expect(route, `${f} must resolve labels through the shared module`).toContain('payslipPdfStrings');
+      expect(route).toContain('buildPayslipPdfData');
+      expect(route).toContain('renderPayslipPdf');
+    }
+  });
+
+  it('both print the year-to-date column through the shared summation', () => {
+    expect(read(ESS)).toContain('sumPayslipYtd');
+    expect(read(ADMIN)).toContain('sumPayslipYtd');
+    // …and the EMPLOYEE's own copy sums only RELEASED months. An employee must not read a year total
+    // containing a run they cannot open; a reviewer legitimately may.
+    expect(read(ESS)).toMatch(/r\.released/);
+  });
+
+  it('payslipDetail’s new joins are LEFT joins, every one of them', () => {
+    // THE ONE REAL RISK IN WIDENING THIS READ. An employee with no current assignment, no grade or no
+    // Malaysian statutory row would lose their payslip entirely behind an inner join — a 404 on their own
+    // pay, caused by a presentation change.
+    const core = read('core/payroll.ts');
+    const from = core.indexOf('export function payslipDetail');
+    const body = core.slice(from, core.indexOf('export function', from + 10));
+    for (const j of ['assignment', 'department', 'position', 'jobGrade', 'employeeStatutoryMy']) {
+      expect(body, `${j} must be joined LEFT in payslipDetail`).toMatch(new RegExp(`leftJoin\\(\\s*${j}\\b`));
+    }
+    expect(body).not.toMatch(/innerJoin\(\s*(assignment|department|position|jobGrade|employeeStatutoryMy)\b/);
+  });
+
+  it('the renderer refuses a PNG it cannot trust BEFORE pdf-lib is handed it', () => {
+    // pdf-lib's embedPng SPINS rather than throwing on a signature-valid, body-corrupt PNG, and the logo
+    // upload validates on magic bytes alone — so such a file is storable and would hang every payslip
+    // download for that company. test/payslip-pdf.test.ts carries the behavioural proof.
+    const lib = read('lib/payslip-pdf.ts');
+    expect(lib).toMatch(/pngIsWellFormed\(logo\.bytes\)\s*\?\s*await doc\.embedPng/);
   });
 });
 
@@ -346,5 +426,91 @@ describe('169e3c24 — the admin review read', () => {
     expect(r!.total).toBeCloseTo(r!.individual + r!.spouse + r!.children + r!.disabledIndividual + r!.disabledSpouse, 2);
     // Fails closed on no scope, like every read in that file.
     expect(await currentPcbReliefs(a, { companyIds: [], employmentId, asOf: '2026-05-28' })).toBeNull();
+  });
+});
+
+
+describe('5c198931 — the employee’s own payslip is the SAME document as the reviewer’s', () => {
+  /** Hire with NO Malaysian statutory row at all — the LEFT-join case. */
+  async function hireBare(name: string, email: string) {
+    const a = adminCtx(base);
+    const e = await hireEmployee(a, {
+      person: { fullName: name, primaryEmail: email },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    await setCompensation(a, {
+      employmentId: e.employmentId,
+      basicSalary: 4000,
+      monthlyAllowance: 0,
+      effectiveFrom: '2026-01-01',
+    });
+    return e;
+  }
+
+  it('the admin read returns the three statutory registration numbers the document prints', async () => {
+    const a = adminCtx(base);
+    const e = await hire('Numbers', 'numbers@acme.test', '900101011501');
+    await setStatutoryProfileMY(a, {
+      personId: e.personId,
+      icNumber: '900101011501',
+      epfNumber: '12345678',
+      socsoNumber: '900101011501',
+      taxNumber: 'SG1234567890',
+    });
+    await pay('2026-06');
+    const row = await payslipForReview(a, {
+      companyIds: [base.companyId],
+      payslipId: await slipIdOf(e.employmentId),
+    });
+    expect(row!.epfNumber).toBe('12345678');
+    expect(row!.socsoNumber).toBe('900101011501');
+    expect(row!.taxNumber).toBe('SG1234567890');
+  });
+
+  it('payslipDetail carries the widened context once released, and STILL masks the bank account', async () => {
+    const a = adminCtx(base);
+    const e = await hire('Widened', 'widened@acme.test', '900101011502');
+    const batchId = await pay('2026-06');
+    const payslipId = await slipIdOf(e.employmentId);
+
+    // Before release the gate still refuses it — widening the SELECT did not widen who may read the row.
+    expect(await payslipDetail(a, payslipId), 'the ESS release gate must be intact').toBeNull();
+    await closeBatch(a, { batchId });
+
+    const p = await payslipDetail(a, payslipId);
+    expect(p, 'a released payslip is readable').not.toBeNull();
+    expect(p!.employmentId).toBe(e.employmentId);
+    expect(p!.currency, 'the document labels amounts with the company’s own currency').toBeTruthy();
+    expect(p!.payDate, 'the payment date the old download never printed').toBeTruthy();
+    expect(p!.identityNumber).toBe('900101011502');
+    expect(p!.identityIsPassport).toBe(false);
+    expect(p!.department).toBeTruthy();
+    // Masked in the READ, exactly as payslipForReview masks it: the full number must not leave the
+    // server even to the account holder's own browser.
+    expect(p!.bankAccountMasked).toBe('••••8901');
+    expect(JSON.stringify(p), 'the full account number must not leave the server').not.toContain('512345678901');
+  });
+
+  it('an employee with NO Malaysian statutory row still gets their payslip', async () => {
+    // The LEFT-join guarantee, behaviourally. An inner join onto employee_statutory_my would 404 this
+    // employee's own pay because of a presentation change — the single real risk in widening the read.
+    const a = adminCtx(base);
+    const e = await hireBare('No Statutory', 'no.statutory@acme.test');
+    const batchId = await pay('2026-06');
+    const payslipId = await slipIdOf(e.employmentId);
+
+    const review = await payslipForReview(a, { companyIds: [base.companyId], payslipId });
+    expect(review, 'the reviewer still sees the payslip').not.toBeNull();
+    expect(review!.identityNumber).toBeNull();
+    expect(review!.epfNumber).toBeNull();
+
+    await closeBatch(a, { batchId });
+    const p = await payslipDetail(a, payslipId);
+    expect(p, 'and so does the employee').not.toBeNull();
+    expect(p!.identityNumber).toBeNull();
+    expect(p!.bankAccountMasked).toBeNull();
   });
 });

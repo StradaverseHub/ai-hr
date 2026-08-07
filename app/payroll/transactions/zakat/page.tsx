@@ -2,58 +2,68 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { employeeDetail, listCompanies, listEmployees } from '@/core/read';
+import { listCompanies, listEmployees } from '@/core/read';
 import { listZakatElections, listZakatTxnsAcross } from '@/core/payroll-view';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
-import { MY_STATES } from '@/localization/my/holidays';
-import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
   type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
-import { Pager } from '@/components/pager';
-import { paginateRows, parsePageQuery } from '@/lib/pagination';
-import { saveZakatElectionAction } from './election-actions';
+import { AppliedInPayrollList, type AppliedInPayrollRow } from '@/components/applied-in-payroll-list';
+import { ZakatElectionsList, type ZakatElectionListRow } from './elections-list';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
 /**
- * Zakat screen (feedback 58755260; simplified by feedback d435673e) — the single home for zakat.
+ * Zakat screen (feedback 58755260; simplified by d435673e; redesigned by 6a1f2bd6) — the single home for
+ * zakat, now built the way Fixed Transaction is: choose a person, read their record, press Add or Edit when
+ * you actually want to change something.
  *
- *  A. ELECTION (durable, per-employee) — relocated from Personnel > Statutory (MY). Employee-first flow:
- *     pick an employee (?employmentId=), see their basic info, edit state/method/rate/effective dates.
- *     Saves via saveZakatElectionAction → the existing setStatutoryProfileMY (validation + event intact).
- *     The payroll kernel reads this election on every regular run (fixed auto-applied; percent derived
- *     live from the month's pre-offset MTD).
+ * 6a1f2bd6 CAME BACK REJECTED ONCE AND THIS IS WHAT WAS WRONG WITH IT. r168a put the shared searchable
+ * employee panel on this screen and stopped there, so picking somebody did two things the reporter had not
+ * asked for and none of the thing they had:
+ *   - the election editor rendered UNCONDITIONALLY as soon as an employee resolved, so selecting a person
+ *     to READ their record opened a form to CHANGE it;
+ *   - both lists underneath still showed EVERYBODY — `listZakatElections` was called with the whole company
+ *     scope, and the applied-in-payroll list was filtered by a SEPARATE dropdown that ignored the panel.
+ * So picking John Tan told the screen almost nothing. Both are fixed here, and the narrowing happens IN THE
+ * QUERY (core/payroll-view.ts) rather than in a filter over rows that were read and then thrown away.
  *
- *  B. TRANSACTION HISTORY (read-only, feedback d435673e) — two lists below the editor: "Saved elections"
- *     (every employee with a saved election) and "Applied in payroll" (the zakat actually deducted in each
- *     processed run, filterable by year/month/employee/company/cycle/status, with a CSV export). Both are pure
- *     reads (listZakatElections / listZakatTxnsAcross); the CSV route appends the egress event.
+ * THE THREE SURFACES, AND WHAT EACH ONE IS:
+ *  A. The employee panel (shared, components/collapsible-employee-panel.tsx) + a header row carrying the
+ *     selected person and ONE button — Add when they have no zakat setup, Edit when they do. The editor
+ *     itself lives at `zakat/election` (its own page, room for every field, Save and Cancel at the bottom).
+ *  B. Transaction history — the saved zakat setup(s). ONE ROW PER EMPLOYEE, NEVER A VERSION CHAIN:
+ *     `employee_statutory_my` holds a single row per person, saving overwrites it, and switching zakat off
+ *     nulls every zakat field (resolveZakatElection). With somebody selected this list is exactly one row.
+ *  C. Applied in payroll — the zakat actually deducted in each processed run. THIS is the month-by-month
+ *     record, and it renders through the shared components/applied-in-payroll-list.tsx so Zakat, Loans and
+ *     TP1 Relief produce the same table rather than three lookalikes.
+ *
+ * WITH NOBODY SELECTED THE EVERYONE-AT-ONCE VIEW IS UNCHANGED, deliberately — it is the only place that
+ * view exists, filters and CSV export included, and the no-selection reads are byte-identical to what this
+ * page did before. Selection NARROWS; it never gates.
  *
  * The old "one-off override (per payroll run)" section was REMOVED by d435673e — the Zakat screen no longer
  * writes payroll_input.zakat; that manual tier survives ONLY on the batch input grid / prefill / import (see
- * the kernel precedence note in core/payroll.ts). The history filter params are h*-prefixed so they never
- * collide with the election picker's ?employmentId; each form carries the other's selection as a hidden input.
+ * the kernel precedence note in core/payroll.ts). The history filter params stay h*-prefixed so they never
+ * collide with the panel's ?employmentId; the panel carries the scope-guarded filter values across a change
+ * of employee.
+ *
+ * RSC BOUNDARY: this is a server component driving GET forms, and the panel plus the two list tables are the
+ * only client islands. Selection stays in the URL — lifting it into a client wrapper would move the scope
+ * guard to where a user can edit it. Every prop crossing into an island is plain data: r123's 500 was a
+ * function prop crossing this exact boundary while tsc, the suite and `next build` all stayed green.
  *
  * i18n note: the statutory EA Part-D line "Zakat via salary deduction" (payroll.ea.zakatViaSalary) is LHDN
  * form wording and is deliberately NOT renamed to plain "Zakat" — it is not a UI label.
- *
- * r168a (feedback 6a1f2bd6) REPLACED THE EMPLOYEE CONTROL AND NOTHING ELSE. The plain dropdown + "Employee"
- * submit button became the shared searchable side panel (search by employee ID or name, filtered by
- * Company / Business Unit / Department / Employee Status), collapsible so the history tables can use the
- * full width. Not the rates, not the effective dates, not how a deduction reaches payroll, and not one
- * figure in either history list. The SCOPE GUARD below is untouched: selection still arrives as
- * `?employmentId=` and is still resolved against the server's own employee set before anything is read.
  */
 
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 // A payslip row only exists post-generation, so 'draft' is impossible in this history by construction.
 const STATUSES = ['processed', 'closed'] as const;
-
-const rm = (n: unknown) =>
-  `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
 export const ZAKAT_PANEL_COOKIE = 'txn_zakat_panel';
@@ -79,7 +89,7 @@ export default async function ZakatTransactionPage({
     hMonth?: string;
     hCycle?: string;
     hStatus?: string;
-    // Two independently paged lists sit below the editor, so each carries its own page/size pair.
+    // Two independently paged listings sit below the header, so each carries its own page/size pair.
     ePage?: string;
     eSize?: string;
     hPage?: string;
@@ -93,13 +103,18 @@ export default async function ZakatTransactionPage({
   const { employmentId, error } = sp;
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
 
-  // ── Section A data — employee election ─────────────────────────────────────
+  // ── Selection ──────────────────────────────────────────────────────────────
   const [allEmployees, companies] = await Promise.all([listEmployees(s, scopeIds), listCompanies(s)]);
   const employees = allEmployees.filter((e) => !e.terminatedOn);
   const selectedEmploymentId =
     employmentId && employees.some((e) => e.employmentId === employmentId) ? employmentId : null;
-  const emp = selectedEmploymentId ? await employeeDetail(s, selectedEmploymentId) : null;
-  const statutory = emp ? await getStatutoryProfileMY(s, emp.personId) : null;
+  const selectedEmp = selectedEmploymentId
+    ? (employees.find((e) => e.employmentId === selectedEmploymentId) ?? null)
+    : null;
+  // Add vs Edit, decided by the SAME predicate the history list uses for "has a setup on file", so the
+  // button and the row underneath it can never disagree about which one this person is.
+  const statutory = selectedEmp ? await getStatutoryProfileMY(s, selectedEmp.personId) : null;
+  const hasElection = statutory != null && (statutory.zakatMethod != null || statutory.zakatActive === true);
 
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const panelDefaultOpen = (await cookies()).get(ZAKAT_PANEL_COOKIE)?.value !== '0';
@@ -119,7 +134,7 @@ export default async function ZakatTransactionPage({
     status: e.terminatedOn == null ? 'active' : 'ended',
   }));
 
-  // ── Section B data — transaction history (read-only) ───────────────────────
+  // ── History filters (read-only lists) ──────────────────────────────────────
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
   // Scope-guard every history ?param (mirror transaction-view/page.tsx): an out-of-scope value ⇒ ignored.
   const hCompanyId = sp.hCompanyId && scopeIds.includes(sp.hCompanyId) ? sp.hCompanyId : undefined;
@@ -130,40 +145,55 @@ export default async function ZakatTransactionPage({
   const hMonth = intParam(sp.hMonth, 1, 12);
   const hCycle = CYCLES.includes(sp.hCycle as (typeof CYCLES)[number]) ? sp.hCycle : undefined;
   const hStatus = STATUSES.includes(sp.hStatus as (typeof STATUSES)[number]) ? sp.hStatus : undefined;
+  // THE SELECTION WINS. Picking somebody in the panel is the reader saying "show me this person"; the
+  // Employee filter below is the same statement made a second way. With a selection the filter dropdown is
+  // replaced by a hidden input carrying its value, so switching back to the everyone view restores it
+  // rather than silently discarding it — and the no-selection case falls back to hEmploymentId exactly as
+  // it did before, which is what keeps that view byte-identical to today.
+  const effectiveEmploymentId = selectedEmploymentId ?? hEmploymentId;
 
   const [elections, appliedRows] = await Promise.all([
-    listZakatElections(s, { companyIds: scopeIds }),
+    listZakatElections(s, { companyIds: scopeIds, employmentId: selectedEmploymentId ?? undefined }),
     listZakatTxnsAcross(s, {
       companyIds: historyCompanyIds,
       year: hYear,
       month: hMonth,
-      employmentId: hEmploymentId,
+      employmentId: effectiveEmploymentId,
       cycle: hCycle,
       status: hStatus,
     }),
   ]);
 
-  // fc776376 — both read-only history lists grow with headcount and with every processed run.
-  const electionPage = paginateRows(elections, parsePageQuery({ page: sp.ePage, size: sp.eSize }));
-  const appliedPage = paginateRows(appliedRows, parsePageQuery({ page: sp.hPage, size: sp.hSize }));
-  const historyParams = {
-    employmentId: sp.employmentId,
-    hCompanyId: sp.hCompanyId,
-    hEmploymentId: sp.hEmploymentId,
-    hYear: sp.hYear,
-    hMonth: sp.hMonth,
-    hCycle: sp.hCycle,
-    hStatus: sp.hStatus,
-  };
+  const electionRows: ZakatElectionListRow[] = elections.map((r) => ({
+    employmentId: r.employmentId,
+    employeeName: r.employeeName,
+    employeeCode: r.employeeCode,
+    company: r.company,
+    zakatActive: r.zakatActive,
+    zakatMethod: r.zakatMethod,
+    zakatPercent: r.zakatPercent,
+    zakatFixed: r.zakatFixed,
+    zakatState: r.zakatState,
+    zakatEffectiveFrom: r.zakatEffectiveFrom,
+    zakatEffectiveTo: r.zakatEffectiveTo,
+  }));
+  // Cycle and batch-status labels are resolved HERE because they live in namespaces the shared list does
+  // not own (`payroll.transactions.individual.cycle.*`, `payroll.list.status.*`); resolving them inside it
+  // would make it a two-namespace file, the shape i18n-coverage check C skips ENTIRELY.
+  const appliedList: AppliedInPayrollRow[] = appliedRows.map((r) => ({
+    id: r.id,
+    payPeriod: r.payPeriod,
+    cycleLabel: `${t(`individual.cycle.${r.runType}`)}${r.runSeq > 1 ? ` #${r.runSeq}` : ''}`,
+    employeeName: r.employeeName,
+    employeeCode: r.employeeCode,
+    company: r.company,
+    amount: r.zakat,
+    statusLabel: tList(`status.${r.batchStatus}`),
+    createdOn: r.createdOn,
+  }));
 
   const nowYear = new Date().getFullYear();
   const years = Array.from({ length: 11 }, (_, i) => nowYear + 1 - i);
-  const methodLabel = (m: string | null) =>
-    m === 'percent_of_pcb'
-      ? t('zakat.election.methodPercentOfPcb')
-      : m === 'fixed'
-        ? t('zakat.election.methodFixed')
-        : '—';
   // Carry the "Applied in payroll" filter selection across a change of employee in the panel. These are the
   // ALREADY SCOPE-GUARDED values, not the raw params, so a tampered filter cannot survive the round trip by
   // hitching a ride on the next click. Paging params are deliberately absent: page 4 of the previous
@@ -176,6 +206,15 @@ export default async function ZakatTransactionPage({
     ...(hCycle ? { hCycle } : {}),
     ...(hStatus ? { hStatus } : {}),
   };
+  // The export streams the list it sits above, so it takes the EFFECTIVE employee filter, not the raw one.
+  const exportQuery = new URLSearchParams({
+    ...(hCompanyId ? { hCompanyId } : {}),
+    ...(effectiveEmploymentId ? { hEmploymentId: effectiveEmploymentId } : {}),
+    ...(hYear != null ? { hYear: String(hYear) } : {}),
+    ...(hMonth != null ? { hMonth: String(hMonth) } : {}),
+    ...(hCycle ? { hCycle } : {}),
+    ...(hStatus ? { hStatus } : {}),
+  }).toString();
 
   return (
     <div className="mx-auto max-w-[100rem] space-y-6">
@@ -198,7 +237,7 @@ export default async function ZakatTransactionPage({
         defaultOpen={panelDefaultOpen}
         cookieKey={ZAKAT_PANEL_COOKIE}
         panel={
-          /* ── Section A control — the searchable employee panel (6a1f2bd6) ── */
+          /* ── The searchable employee panel (r168a, shared with Loans / Individual Payslip) ── */
           <Card className="p-4">
             <h2 className="text-sm font-semibold">{t('zakat.election.pickEmployee')}</h2>
             <p className="mt-1 text-xs text-muted-foreground">{t('zakat.election.subtitle')}</p>
@@ -218,342 +257,145 @@ export default async function ZakatTransactionPage({
         }
       >
         <div className="space-y-6">
-      {!emp && (
-        <Card className="px-6 py-16 text-center">
-          <p className="text-sm font-medium text-foreground">{t('zakat.election.title')}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{t('zakat.election.subtitle')}</p>
-        </Card>
-      )}
-
-      {emp && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('zakat.election.title')} />
-          {/* Step 1 basic info: name, employee number, company (ticket's employee card). */}
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-1 border-b border-border px-4 py-3 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-xs text-muted-foreground">{t('zakat.election.name')}</dt>
-              <dd className="font-medium">{emp.name}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">{t('zakat.election.employeeNo')}</dt>
-              <dd className="font-medium tabular-nums">{emp.employeeCode ?? '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">{t('zakat.election.company')}</dt>
-              <dd className="font-medium">{emp.company}</dd>
-            </div>
-          </dl>
-          {statutory ? (
-            /* Step 2 — the exact field set relocated from Personnel > Statutory (MY). Percent shows as
-               a %, stored as a decimal; both amount inputs render and the setter keeps only the one for
-               the chosen method. Effective dates are display-only metadata (no calc-path filtering). */
-            <form action={saveZakatElectionAction} className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
-              <input type="hidden" name="employmentId" value={emp.employmentId} />
-              <input type="hidden" name="personId" value={emp.personId} />
-              <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                <input
-                  type="checkbox"
-                  name="zakatActive"
-                  defaultChecked={statutory.zakatActive ?? false}
-                  className="size-4 rounded"
+          {/* ── The header row: who is selected, and the ONE button that opens the editor ──
+              Copied from the selectedEmp block of app/payroll/transactions/fixed/page.tsx on purpose —
+              same three facts, same place on the screen, same action on the right of the same row. */}
+          {selectedEmp ? (
+            <Card className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <EmployeeName
+                  code={selectedEmp.employeeCode}
+                  name={selectedEmp.name}
+                  className="text-sm font-semibold text-foreground"
                 />
-                {t('zakat.election.active')}
-              </label>
-              <Field label={t('zakat.election.state')}>
-                <select name="zakatState" defaultValue={statutory.zakatState ?? ''} className={inputCls}>
-                  <option value="">—</option>
-                  {MY_STATES.map((st) => (
-                    <option key={st} value={st}>
-                      {st}
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {selectedEmp.company} · {selectedEmp.department ?? '—'} · {selectedEmp.position ?? '—'}
+                </p>
+              </div>
+              <Button asChild size="sm">
+                <Link
+                  href={`/payroll/transactions/zakat/election?employmentId=${encodeURIComponent(selectedEmp.employmentId)}`}
+                >
+                  {hasElection ? t('zakat.election.editButton') : t('zakat.election.addButton')}
+                </Link>
+              </Button>
+            </Card>
+          ) : (
+            /* No selection is a legitimate state here, not an empty one: this is the only screen carrying
+               the everyone-at-once view. Say what picking somebody would do instead of gating the lists. */
+            <p className="text-xs text-muted-foreground">{t('zakat.election.pickEmployeeHint')}</p>
+          )}
+
+          {/* ── B. Transaction history — the saved zakat setup (ONE row per employee) ── */}
+          <Card className="overflow-hidden">
+            <SectionHeader title={t('zakat.history.title')} count={elections.length} />
+            <p className="px-4 pt-2 text-xs text-muted-foreground">{t('zakat.history.electionsSubtitle')}</p>
+            <ZakatElectionsList rows={electionRows} />
+          </Card>
+
+          {/* ── C. Applied in payroll — zakat deducted in each processed run, filterable + CSV export ── */}
+          <Card className="overflow-hidden">
+            <div className="flex items-center justify-between gap-3 pr-4">
+              <SectionHeader title={t('zakat.history.appliedTitle')} count={appliedRows.length} />
+              {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
+              <a
+                href={`/payroll/transactions/zakat/history-export?${exportQuery}`}
+                className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                {t('zakat.history.exportCsv')}
+              </a>
+            </div>
+            <p className="px-4 pt-2 text-xs text-muted-foreground">{t('zakat.history.appliedSubtitle')}</p>
+
+            {/* Filters (GET form — pure navigation, no mutation). Carries the panel's ?employmentId. */}
+            <form method="GET" className="flex flex-wrap items-end gap-3 px-4 pt-3">
+              {selectedEmploymentId && <input type="hidden" name="employmentId" value={selectedEmploymentId} />}
+              <Field label={t('zakat.history.company')}>
+                <select name="hCompanyId" defaultValue={hCompanyId ?? ''} className={inputCls}>
+                  <option value="">{t('zakat.history.all')}</option>
+                  {scopedCompanies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
                     </option>
                   ))}
                 </select>
               </Field>
-              <Field label={t('zakat.election.method')}>
-                <select name="zakatMethod" defaultValue={statutory.zakatMethod ?? ''} className={inputCls}>
-                  <option value="">—</option>
-                  <option value="percent_of_pcb">{t('zakat.election.methodPercentOfPcb')}</option>
-                  <option value="fixed">{t('zakat.election.methodFixed')}</option>
+              {selectedEmploymentId ? (
+                /* The panel already answered "which employee". A dropdown that still offered the choice
+                   would be a control that changes nothing — the same disagreement between the picker and
+                   the filter that made this screen ignore the selection in the first place. */
+                hEmploymentId && <input type="hidden" name="hEmploymentId" value={hEmploymentId} />
+              ) : (
+                <Field label={t('zakat.history.employee')}>
+                  <select name="hEmploymentId" defaultValue={hEmploymentId ?? ''} className={inputCls}>
+                    <option value="">{t('zakat.history.all')}</option>
+                    {allEmployees.map((e) => (
+                      <option key={e.employmentId} value={e.employmentId}>
+                        {e.name}
+                        {e.employeeCode ? ` (${e.employeeCode})` : ''} · {e.company}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              <Field label={t('zakat.history.year')}>
+                <select name="hYear" defaultValue={hYear != null ? String(hYear) : ''} className={inputCls}>
+                  <option value="">{t('zakat.history.all')}</option>
+                  {years.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
                 </select>
               </Field>
-              <Field label={t('zakat.election.percent')}>
-                <input
-                  name="zakatPercent"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  defaultValue={statutory.zakatPercent ? (Number(statutory.zakatPercent) * 100).toString() : ''}
-                  placeholder="2.5"
+              <Field label={t('zakat.history.month')}>
+                <select
+                  name="hMonth"
+                  defaultValue={hMonth != null ? String(hMonth).padStart(2, '0') : ''}
                   className={inputCls}
-                />
+                >
+                  <option value="">{t('zakat.history.all')}</option>
+                  {MONTHS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
               </Field>
-              <Field label={t('zakat.election.fixed')}>
-                <input
-                  name="zakatFixed"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  defaultValue={statutory.zakatFixed ?? ''}
-                  className={inputCls}
-                />
+              <Field label={t('zakat.history.colCycle')}>
+                <select name="hCycle" defaultValue={hCycle ?? ''} className={inputCls}>
+                  <option value="">{t('zakat.history.all')}</option>
+                  {CYCLES.map((c) => (
+                    <option key={c} value={c}>
+                      {t(`individual.cycle.${c}`)}
+                    </option>
+                  ))}
+                </select>
               </Field>
-              <Field label={t('zakat.election.effectiveFrom')}>
-                <input
-                  name="zakatEffectiveFrom"
-                  type="date"
-                  defaultValue={statutory.zakatEffectiveFrom ?? ''}
-                  className={inputCls}
-                />
+              <Field label={t('zakat.history.status')}>
+                {/* Reuses the payroll-list batch-status labels — the same wording the Status column renders. */}
+                <select name="hStatus" defaultValue={hStatus ?? ''} className={inputCls}>
+                  <option value="">{t('zakat.history.all')}</option>
+                  {STATUSES.map((st) => (
+                    <option key={st} value={st}>
+                      {tList(`status.${st}`)}
+                    </option>
+                  ))}
+                </select>
               </Field>
-              <Field label={t('zakat.election.effectiveTo')}>
-                <input
-                  name="zakatEffectiveTo"
-                  type="date"
-                  defaultValue={statutory.zakatEffectiveTo ?? ''}
-                  className={inputCls}
-                />
-              </Field>
-              <p className="sm:col-span-2 text-xs text-muted-foreground">{t('zakat.election.nonResidentHint')}</p>
-              <div className="flex items-end justify-end sm:col-span-2">
-                <Button type="submit">{t('zakat.election.save')}</Button>
-              </div>
+              <Button type="submit" variant="secondary">
+                {t('zakat.history.apply')}
+              </Button>
             </form>
-          ) : (
-            /* No MY statutory row yet (no IC): the election has nowhere to live. Point at Personnel. */
-            <p className="p-4 text-sm text-muted-foreground">
-              {t('zakat.election.noProfile')}{' '}
-              <Link
-                href={`/admin/personnel/${emp.employmentId}`}
-                className="font-medium text-primary underline-offset-2 hover:underline"
-              >
-                {t('zakat.election.openPersonnel')}
-              </Link>
-            </p>
-          )}
-        </Card>
-      )}
 
-      {/* ── Section B — transaction history (read-only, feedback d435673e) ── */}
-      <div className="space-y-2">
-        <h2 className="text-base font-semibold">{t('zakat.history.title')}</h2>
-        <p className="text-xs text-muted-foreground">{t('zakat.history.subtitle')}</p>
-      </div>
-
-      {/* B1 — Saved elections (every employee with a saved election) */}
-      <Card className="overflow-hidden">
-        <SectionHeader title={t('zakat.history.electionsTitle')} count={elections.length} />
-        <p className="px-4 pt-2 text-xs text-muted-foreground">{t('zakat.history.electionsSubtitle')}</p>
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.colEmployee')}</th>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.colCompany')}</th>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.colMethod')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('zakat.history.colAmount')}</th>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.colState')}</th>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.colEffective')}</th>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.status')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {electionPage.rows.map((r) => {
-                const amount =
-                  r.zakatMethod === 'fixed'
-                    ? rm(r.zakatFixed)
-                    : r.zakatMethod === 'percent_of_pcb'
-                      ? `${(Number(r.zakatPercent ?? 0) * 100).toFixed(2)}%`
-                      : '—';
-                const effective =
-                  r.zakatEffectiveFrom || r.zakatEffectiveTo
-                    ? `${r.zakatEffectiveFrom ?? '—'} – ${r.zakatEffectiveTo ?? '—'}`
-                    : '—';
-                return (
-                  <tr key={r.employmentId}>
-                    <td className="px-4 py-2.5 font-medium">
-                      {r.employeeName}
-                      {r.employeeCode && (
-                        <span className="ml-1 font-mono text-xs text-muted-foreground">({r.employeeCode})</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
-                    <td className="px-4 py-2.5">{methodLabel(r.zakatMethod)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{amount}</td>
-                    <td className="px-4 py-2.5">{r.zakatState ?? '—'}</td>
-                    <td className="px-4 py-2.5 tabular-nums">{effective}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge variant={r.zakatActive ? 'success' : 'default'}>
-                        {r.zakatActive ? t('zakat.history.active') : t('zakat.history.inactive')}
-                      </Badge>
-                    </td>
-                  </tr>
-                );
-              })}
-              {electionPage.rows.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    {t('zakat.history.electionsEmpty')}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <Pager
-          basePath="/payroll/transactions/zakat"
-          params={{ ...historyParams, hPage: sp.hPage, hSize: sp.hSize }}
-          paramNames={{ page: 'ePage', size: 'eSize' }}
-          state={electionPage.state}
-        />
-      </Card>
-
-      {/* B2 — Applied in payroll (zakat deducted in each processed run) — filterable + CSV export */}
-      <Card className="overflow-hidden">
-        <div className="flex items-center justify-between gap-3 pr-4">
-          <SectionHeader title={t('zakat.history.appliedTitle')} count={appliedRows.length} />
-          {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
-          <a
-            href={`/payroll/transactions/zakat/history-export?${new URLSearchParams({
-              ...(hCompanyId ? { hCompanyId } : {}),
-              ...(hEmploymentId ? { hEmploymentId } : {}),
-              ...(hYear != null ? { hYear: String(hYear) } : {}),
-              ...(hMonth != null ? { hMonth: String(hMonth) } : {}),
-              ...(hCycle ? { hCycle } : {}),
-              ...(hStatus ? { hStatus } : {}),
-            }).toString()}`}
-            className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-          >
-            {t('zakat.history.exportCsv')}
-          </a>
-        </div>
-        <p className="px-4 pt-2 text-xs text-muted-foreground">{t('zakat.history.appliedSubtitle')}</p>
-
-        {/* Filters (GET form — pure navigation, no mutation). Carries the election picker's ?employmentId. */}
-        <form method="GET" className="flex flex-wrap items-end gap-3 px-4 pt-3">
-          {selectedEmploymentId && <input type="hidden" name="employmentId" value={selectedEmploymentId} />}
-          <Field label={t('zakat.history.company')}>
-            <select name="hCompanyId" defaultValue={hCompanyId ?? ''} className={inputCls}>
-              <option value="">{t('zakat.history.all')}</option>
-              {scopedCompanies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('zakat.history.employee')}>
-            <select name="hEmploymentId" defaultValue={hEmploymentId ?? ''} className={inputCls}>
-              <option value="">{t('zakat.history.all')}</option>
-              {allEmployees.map((e) => (
-                <option key={e.employmentId} value={e.employmentId}>
-                  {e.name}
-                  {e.employeeCode ? ` (${e.employeeCode})` : ''} · {e.company}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('zakat.history.year')}>
-            <select name="hYear" defaultValue={hYear != null ? String(hYear) : ''} className={inputCls}>
-              <option value="">{t('zakat.history.all')}</option>
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('zakat.history.month')}>
-            <select
-              name="hMonth"
-              defaultValue={hMonth != null ? String(hMonth).padStart(2, '0') : ''}
-              className={inputCls}
-            >
-              <option value="">{t('zakat.history.all')}</option>
-              {MONTHS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('zakat.history.colCycle')}>
-            <select name="hCycle" defaultValue={hCycle ?? ''} className={inputCls}>
-              <option value="">{t('zakat.history.all')}</option>
-              {CYCLES.map((c) => (
-                <option key={c} value={c}>
-                  {t(`individual.cycle.${c}`)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('zakat.history.status')}>
-            {/* Reuses the payroll-list batch-status labels — the same wording the Status column renders. */}
-            <select name="hStatus" defaultValue={hStatus ?? ''} className={inputCls}>
-              <option value="">{t('zakat.history.all')}</option>
-              {STATUSES.map((st) => (
-                <option key={st} value={st}>
-                  {tList(`status.${st}`)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Button type="submit" variant="secondary">
-            {t('zakat.history.apply')}
-          </Button>
-        </form>
-
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.colPeriod')}</th>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.colCycle')}</th>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.colEmployee')}</th>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.colCompany')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('zakat.history.colAmount')}</th>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.status')}</th>
-                <th className="px-4 py-2 font-medium">{t('zakat.history.colCreated')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {appliedPage.rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-4 py-2.5 tabular-nums">{r.payPeriod}</td>
-                  <td className="px-4 py-2.5">
-                    {t(`individual.cycle.${r.runType}`)}
-                    {r.runSeq > 1 ? ` #${r.runSeq}` : ''}
-                  </td>
-                  <td className="px-4 py-2.5 font-medium">
-                    {r.employeeName}
-                    {r.employeeCode && (
-                      <span className="ml-1 font-mono text-xs text-muted-foreground">({r.employeeCode})</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
-                  <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(r.zakat)}</td>
-                  <td className="px-4 py-2.5">
-                    <Badge variant="success">{tList(`status.${r.batchStatus}`)}</Badge>
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.createdOn}</td>
-                </tr>
-              ))}
-              {appliedPage.rows.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    {t('zakat.history.appliedEmpty')}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <Pager
-          basePath="/payroll/transactions/zakat"
-          params={{ ...historyParams, ePage: sp.ePage, eSize: sp.eSize }}
-          paramNames={{ page: 'hPage', size: 'hSize' }}
-          state={appliedPage.state}
-        />
-      </Card>
+            <div className="mt-3">
+              <AppliedInPayrollList
+                rows={appliedList}
+                emptyLabel={t('zakat.history.appliedEmpty')}
+                paramNames={{ page: 'hPage', size: 'hSize' }}
+              />
+            </div>
+          </Card>
         </div>
       </CollapsibleEmployeePanel>
     </div>
