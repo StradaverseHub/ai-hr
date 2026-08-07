@@ -635,6 +635,22 @@ export function compensationHistoryDetailed(
 
 /** Next per-tenant employee code. Call INSIDE an existing transaction (e.g. during hire). */
 export async function nextEmployeeCode(tx: Tx, tenantId: string): Promise<string> {
+  return (await issueLegacyEmployeeCode(tx, tenantId)).code;
+}
+
+/**
+ * The same issue, with the counter value it took (item 06f0cb8f).
+ *
+ * `nextEmployeeCode` is now a one-line wrapper over this. A hire only needs the string; a DRAFT that
+ * HOLDS the code needs the number, because giving it back on discard is only safe while it is still the
+ * counter's tip. Deriving the number by parsing "EMP-0007" back apart would work today and break the
+ * first time the format moves — the value is right here, so it is returned rather than reconstructed.
+ * The format itself stays pinned by test/employee-code-format.test.ts.
+ */
+export async function issueLegacyEmployeeCode(
+  tx: Tx,
+  tenantId: string,
+): Promise<{ code: string; number: number }> {
   const [row] = await tx
     .insert(tenantCounter)
     .values({ tenantId, kind: 'employee_code', value: 1 })
@@ -643,5 +659,5 @@ export async function nextEmployeeCode(tx: Tx, tenantId: string): Promise<string
       set: { value: sql`${tenantCounter.value} + 1` },
     })
     .returning({ value: tenantCounter.value });
-  return `EMP-${String(row.value).padStart(4, '0')}`;
+  return { code: `EMP-${String(row.value).padStart(4, '0')}`, number: row.value };
 }

@@ -3,9 +3,18 @@
  *
  * Client-safe (no DB imports), because the SAME rules decide three things and they must not drift:
  *   - which steps show a tick and which show a warning, in the browser;
- *   - whether the Review step's "Create Employee" button is enabled;
+ *   - whether the Activate button is enabled;
  *   - whether `completeEmployeeDraft` will actually accept the draft, on the server.
- * The server re-runs `missingForCreation` authoritatively — this module is shared, not trusted.
+ * The server re-runs BOTH rules authoritatively — this module is shared, not trusted.
+ *
+ * ITEM 06f0cb8f SPLIT THE ONE RULE IN TWO, and the split is the whole shape of the new workflow:
+ *   - `missingToCreate` — the FOUR things Create asks for (Company, Employee ID, Full Name, Email).
+ *     Satisfying it produces a Draft with a HELD Employee ID and nothing else.
+ *   - `missingForCreation` — everything an employment actually needs (Department, Employment Type,
+ *     Join Date, initial salary…). It is now the ACTIVATE rule, checked when a Draft becomes a person.
+ * They are two rules and not one because the reporter's request is precisely that the second one stops
+ * blocking the first. Both still run on the server before anything is created, so nothing that used to
+ * be checked has stopped being checked; only WHEN it is checked moved.
  *
  * WHAT IS REQUIRED, AND WHERE IT DIFFERS FROM THE TICKET. The reporter listed Identity No and Position
  * among the mandatory fields. Neither is required here, deliberately:
@@ -18,17 +27,19 @@
  * Everything else on their list (Employee Name, Company, Department, Join Date, Employment Type) is
  * required, plus the two the existing hire form already requires: work email and initial basic salary.
  *
- * ITEM bd271009 CHANGED TWO THINGS HERE. Company moved from the Employment bucket to the Profile bucket
- * (it is now the FIRST question, because it decides the Employee ID rule), and the Employee ID became
- * conditionally required — see `MissingOptions`.
+ * ITEM bd271009 CHANGED TWO THINGS HERE. Company became the FIRST question (it decides the Employee ID
+ * rule) and the Employee ID became conditionally required — see `MissingOptions`. 06f0cb8f then moved
+ * both onto the Create screen, which is where `missingToCreate` now judges them.
  */
 import { resolveEmployeeIdMode, type EmployeeIdRule } from './employee-id-mode';
 
 export type EmployeeDraftProfile = {
   fullName?: string;
-  /** Optional BY DESIGN: blank means `hireEmployee` generates the next code at CREATION, which is the
-   *  reporter's rule that a draft must not consume an Employee ID. Item bd271009 makes it REQUIRED in
-   *  Manual Key In mode — see `missingByStep`'s `employeeIdRule` option. */
+  /** The Employee ID. On the Create screen it is the value HR types in Manual Key In mode (item
+   *  bd271009 makes it required there, blank meaning "issue the running number"). AFTER Create it is a
+   *  MIRROR of the reserved code held on the row (item 06f0cb8f) — the column
+   *  `employee_draft.reserved_employee_code` is the authority, and the continue form shows this copy
+   *  read-only, so a draft cannot carry an ID different from the one being held for it. */
   employeeCode?: string;
   /** The Auto / Manual radio PICK (item bd271009), remembered so a resumed draft reopens on it. It is
    *  advisory: `resolveEmployeeIdMode` re-decides against the LIVE setup every time, so a pick that the
@@ -96,8 +107,21 @@ export type EmployeeDraftData = {
   payroll?: EmployeeDraftPayroll;
 };
 
-/** The wizard's steps, in order. `key` doubles as the i18n key under `people.wizard.steps`. */
-export const DRAFT_STEPS = ['profile', 'employment', 'statutory', 'payroll', 'review'] as const;
+/**
+ * The CONTINUE-A-DRAFT steps, in order. `key` doubles as the i18n key under `people.wizard.steps`.
+ *
+ * ITEM 06f0cb8f REMOVED `review`. It existed to gate one button at the end of a five-step form; the form
+ * now ends at Activate, which is available from every step and is itself the review — it names exactly
+ * what is outstanding and refuses until nothing is. A step whose only content is a list of what the
+ * button beneath it already says is a step nobody reads.
+ *
+ * `profile` SURVIVES BUT MEANS SOMETHING NARROWER: Company, Full Name and Email left it for the Create
+ * screen, so what remains is Profile Details — nationality, identity number, phone, date of birth,
+ * gender, marital status. None of them is required by any writer, so this step now carries no required
+ * field at all and shows a tick from the moment it opens. That is correct and deliberate: they are
+ * details, and the reporter's complaint was exactly that details were blocking creation.
+ */
+export const DRAFT_STEPS = ['profile', 'employment', 'statutory', 'payroll'] as const;
 export type DraftStepKey = (typeof DRAFT_STEPS)[number];
 
 /** 1-based step number ↔ key. `current_step` on the row is this number. */
@@ -113,8 +137,8 @@ const blank = (v: string | undefined) => (v ?? '').trim() === '';
 /**
  * The Employee ID rule the draft is judged against (item bd271009), resolved from the LIVE setup by the
  * caller. Optional, and its ABSENCE is meaningful: omit the property and the Employee ID is not judged at
- * all, which is what `listEmployeeDrafts` needs — it counts what is outstanding across drafts for many
- * different companies and has no single rule to apply.
+ * all. Two callers need exactly that — a screen spanning many companies with no single rule to apply, and
+ * (item 06f0cb8f) any check made AFTER Create, where the ID is already held and settled.
  */
 export type MissingOptions = { employeeIdRule?: EmployeeIdRule | null };
 
@@ -123,39 +147,22 @@ export const DRAFT_DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Field names (not messages) that must be supplied before an employee can be created, grouped by the
- * step that owns them. An empty array for a step is what puts a tick on it.
+ * Field names (not messages) still outstanding before a Draft can be ACTIVATED, grouped by the step that
+ * owns them. An empty array for a step is what puts a tick on it.
  *
  * Returns FIELD names so the caller translates; returning English here would put UI strings in a
  * module the server also imports.
  */
-export function missingByStep(
-  data: EmployeeDraftData,
-  opts: MissingOptions = {},
-): Record<DraftStepKey, string[]> {
+export function missingByStep(data: EmployeeDraftData): Record<DraftStepKey, string[]> {
   const p = data.profile ?? {};
   const e = data.employment ?? {};
   const pay = data.payroll ?? {};
 
+  // PROFILE DETAILS HAS NO REQUIRED FIELD (item 06f0cb8f). Company, Full Name and Email moved to the
+  // Create screen and are `missingToCreate`'s business; what is left here is optional in every writer
+  // downstream. The one rule it keeps is a FORMAT rule: a date of birth that is not ISO cannot be stored,
+  // so a typo is named on the step that owns it rather than at Activate.
   const profile: string[] = [];
-  // COMPANY MOVED HERE (item bd271009). It is asked FIRST now, because the company is what decides which
-  // Employee ID Auto Running Number Setup applies — asking for the ID on step 1 and the company on step 2
-  // meant the screen could not tell HR which rule they were about to be judged by. The field is stored
-  // exactly where it always was (`employment.companyId`); only the step that asks for it changed.
-  if (blank(e.companyId)) profile.push('company');
-  // The Employee ID is required only in Manual Key In mode. Gated on the PRESENCE of the option rather
-  // than its value, so a caller that cannot resolve a rule (listEmployeeDrafts spans many companies and
-  // reads no setup) keeps today's counting behaviour instead of being told every draft is incomplete.
-  if ('employeeIdRule' in opts) {
-    const decision = resolveEmployeeIdMode(opts.employeeIdRule, {
-      chosen: p.employeeIdMode,
-      hasCode: !blank(p.employeeCode),
-    });
-    if (decision.codeRequired && blank(p.employeeCode)) profile.push('employeeCode');
-  }
-  if (blank(p.fullName)) profile.push('fullName');
-  if (blank(p.primaryEmail)) profile.push('primaryEmail');
-  else if (!EMAIL_RE.test((p.primaryEmail ?? '').trim())) profile.push('primaryEmail');
   if (!blank(p.dateOfBirth) && !DRAFT_DATE_RE.test((p.dateOfBirth ?? '').trim())) profile.push('dateOfBirth');
 
   const employment: string[] = [];
@@ -181,13 +188,48 @@ export function missingByStep(
   if ((pay.payMode === 'daily' || pay.payMode === 'hourly') && !(Number(pay.rateAmount) > 0))
     payroll.push('rateAmount');
 
-  return { profile, employment, statutory, payroll, review: [] };
+  return { profile, employment, statutory, payroll };
 }
 
-/** Flat list of everything outstanding. Empty ⇒ the draft can become an employee. */
-export function missingForCreation(data: EmployeeDraftData, opts: MissingOptions = {}): string[] {
-  const byStep = missingByStep(data, opts);
+/**
+ * Flat list of everything outstanding on the continue-a-draft form. Empty ⇒ the Draft can be ACTIVATED.
+ *
+ * The name is kept (item 06f0cb8f) because this is still, literally, what creation needs — it is the
+ * moment creation happens that moved. Renaming it would have made every call site read as if the rule
+ * had changed, when what changed is that a second, much shorter rule now runs first.
+ */
+export function missingForCreation(data: EmployeeDraftData): string[] {
+  const byStep = missingByStep(data);
   return DRAFT_STEPS.flatMap((k) => byStep[k]);
+}
+
+/**
+ * The FOUR things Create asks for (item 06f0cb8f). Satisfying this reserves an Employee ID and produces
+ * a Draft; it does not create a person, an employment or anything else.
+ *
+ * `opts.employeeIdRule` behaves exactly as it did on the old combined rule and for the same reason: its
+ * ABSENCE means "do not judge the Employee ID at all". That is what a caller with no single rule to
+ * apply needs — and, after Create, what a draft whose ID is ALREADY HELD needs, because a held code is
+ * settled and re-asking whether it should have been typed by hand can only produce a false refusal.
+ */
+export function missingToCreate(data: EmployeeDraftData, opts: MissingOptions = {}): string[] {
+  const p = data.profile ?? {};
+  const e = data.employment ?? {};
+  const out: string[] = [];
+  // Company is FIRST, because it decides which Employee ID Auto Running Number Setup applies (item
+  // bd271009) — and, from this item on, it is also fixed the moment Create succeeds: the held ID came
+  // from this company's numbering rule, so changing the company afterwards would orphan the number.
+  if (blank(e.companyId)) out.push('company');
+  if ('employeeIdRule' in opts) {
+    const decision = resolveEmployeeIdMode(opts.employeeIdRule, {
+      chosen: p.employeeIdMode,
+      hasCode: !blank(p.employeeCode),
+    });
+    if (decision.codeRequired && blank(p.employeeCode)) out.push('employeeCode');
+  }
+  if (blank(p.fullName)) out.push('fullName');
+  if (blank(p.primaryEmail) || !EMAIL_RE.test((p.primaryEmail ?? '').trim())) out.push('primaryEmail');
+  return out;
 }
 
 /** The drafts list needs a name even before one is typed; '' is rendered as "Untitled" by the screen. */

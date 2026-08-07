@@ -10,7 +10,8 @@ import {
 import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin';
 import { computeProvisionalEndOn, resolveProbationMonths } from '@/core/org';
 import { getHiringDefaults } from '@/core/hiring-defaults';
-import { getEmployeeDraft, listEmployeeDrafts } from '@/core/employee-draft';
+import { getEmployeeDraft } from '@/core/employee-draft';
+import type { EmployeeDraftData } from '@/lib/employee-draft-schema';
 // 35b7af0a group 8 — the nationality catalog the shared identity group offers on BOTH screens.
 import { listProfileOptions } from '@/core/profile-options';
 import { listConfigs, resolveEmployeeIdRule } from '@/core/employee-id-config';
@@ -18,16 +19,27 @@ import { labelIdsForCompany } from '@/core/system-labels';
 import type { EmployeeIdRule } from '@/lib/employee-id-mode';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { PageHeader } from '@/components/ui';
+import { CreateEmployeeForm } from './create-form';
 import { EmployeeWizard } from './wizard';
 
 /**
- * Create New Employee — a dedicated, step-by-step screen (item 6d671f44).
+ * Create New Employee — a dedicated screen (item 6d671f44, reshaped by 06f0cb8f).
  *
  * The reporter's requirement is literal: "The current employee list screen shall not be used for data
  * entry." So this is its own route, and the Personnel list keeps only the button that opens it.
  *
- * Everything the wizard needs is loaded ONCE here and handed down: a step-by-step form that fetched a
- * catalog per step would make going back a network round trip, and HR moves back and forth constantly.
+ * ONE ROUTE, TWO FORMS (item 06f0cb8f): without `?draft=` this is the SHORT create form — four fields,
+ * then the record exists and its Employee ID is held. With `?draft=<id>` it is the continue form, the
+ * rest of the details, ending at Activate. It is deliberately one route and not two: the Create form's
+ * only outcome is to land on the continue form, `lib/permissions.ts` already registers this address, and
+ * splitting it would put a second guarded page in the way of the same two clicks.
+ *
+ * THE CATALOGS ARE ONLY LOADED FOR THE CONTINUE FORM. The Create form needs companies and the Employee
+ * ID rules and nothing else; departments, positions, cost centres, grades, managers, nationalities and
+ * the per-company probation defaults are eight reads the four-field screen would never use. Everything
+ * the continue form needs is still loaded ONCE — a step-by-step form that fetched a catalog per step
+ * would make going back a network round trip, and HR moves back and forth constantly.
+ *
  * The `data-companies` CSV stamps are the SAME resolver output the old inline hire form used
  * (`labelIdsForCompany`, origin ∪ shared-in ∪ global, flag-gated) — the cascade rule moved screens, it
  * did not get reimplemented, and `hireOptionVisible` remains its one definition.
@@ -43,41 +55,52 @@ export default async function CreateEmployeePage({
   const sp = await searchParams;
   const today = todayInKualaLumpur();
 
-  const [
-    companies,
-    departments,
-    positions,
-    costCenters,
-    businessUnits,
-    grades,
-    managerCandidates,
-    drafts,
-    idConfigs,
-    nationalities,
-  ] = await Promise.all([
-      listCompanies(session),
+  // The draft first: it decides which of the two forms this route is, and therefore what has to be read.
+  const draft = sp.draft ? await getEmployeeDraft(session, sp.draft) : null;
+
+  const [companies, idConfigs] = await Promise.all([listCompanies(session), listConfigs(session, scopeIds)]);
+
+  // Item bd271009 — which Employee ID Auto Running Number Setup applies to each company, resolved ONCE
+  // here from a single read rather than a query per company as the select is used. What crosses the
+  // boundary is PLAIN DATA (booleans, strings, numbers, and a pre-formatted sample code): both forms are
+  // client components, and a formatter or a translator closure passed here would throw at render and take
+  // the whole page down — the r123 fault test/server-client-boundary.test.ts exists to catch.
+  const employeeIdRules: Record<string, EmployeeIdRule> = {};
+  for (const c of companies) employeeIdRules[c.id] = resolveEmployeeIdRule(idConfigs, c.id);
+
+  if (!draft) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <PageHeader
+          back={{ href: '/admin/personnel', label: t('backLabel') }}
+          title={t('title')}
+          description={t('createDescription')}
+        />
+        {sp.error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+            {sp.error}
+          </div>
+        )}
+        <CreateEmployeeForm
+          companies={companies.map((c) => ({ id: c.id, label: c.name }))}
+          employeeIdRules={employeeIdRules}
+        />
+      </div>
+    );
+  }
+
+  const [departments, positions, costCenters, businessUnits, grades, managerCandidates, nationalities] =
+    await Promise.all([
       listDepartments(session),
       listPositions(session, { companyIds: scopeIds }),
       listCostCenters(session, { companyIds: scopeIds }),
       listBusinessUnits(session, { companyIds: scopeIds }),
       listJobGrades(session),
       listManagerCandidates(session, { companyIds: scopeIds }),
-      listEmployeeDrafts(session),
-      listConfigs(session, scopeIds),
       // 35b7af0a group 8 — active options only, exactly as the Personnel profile card reads them, so a
       // nationality HR can pick here is one core/org.ts's catalog validation will accept on a later edit.
       listProfileOptions(session, 'nationality', { activeOnly: true }),
     ]);
-
-  const draft = sp.draft ? await getEmployeeDraft(session, sp.draft) : null;
-
-  // Item bd271009 — which Employee ID Auto Running Number Setup applies to each company, resolved ONCE
-  // here from a single read rather than a query per company as the select is used. What crosses the
-  // boundary is PLAIN DATA (booleans, strings, numbers, and a pre-formatted sample code): the wizard is a
-  // client component, and a formatter or a translator closure passed here would throw at render and take
-  // the whole page down — the r123 fault test/server-client-boundary.test.ts exists to catch.
-  const employeeIdRules: Record<string, EmployeeIdRule> = {};
-  for (const c of companies) employeeIdRules[c.id] = resolveEmployeeIdRule(idConfigs, c.id);
 
   // Same inversion the Personnel page performs: resolver answers per company → Map(labelId → CSV).
   const labelCompanyCsv = async (kind: string): Promise<Map<string, string>> => {
@@ -101,20 +124,22 @@ export default async function CreateEmployeePage({
     labelCompanyCsv('cost_center'),
   ]);
 
-  // The full-time probation default, per company, so the Employment step can fill the provisional end
-  // date the moment a company is chosen — the same figure `hireAction` computes server-side, which
+  // The full-time probation default for THIS draft's company, so the Employment step opens with the
+  // provisional end date already filled — the same figure `hireAction` computes server-side, which
   // remains the authority (r79a / 4fb8b75a step 3: it comes from HIRING defaults, not payroll config).
-  const probationDefaults: Record<string, string> = {};
-  for (const c of companies) {
-    const months = resolveProbationMonths((await getHiringDefaults(session, c.id))?.probationMonths);
-    probationDefaults[c.id] = computeProvisionalEndOn(today, 'full_time', months) ?? today;
-  }
+  // One company, not all nine (item 06f0cb8f): the company is fixed for the life of a draft, so the map
+  // the wizard used to carry could only ever be read at one key.
+  const draftCompanyId = draft.companyId;
+  const probationMonths = draftCompanyId
+    ? resolveProbationMonths((await getHiringDefaults(session, draftCompanyId))?.probationMonths)
+    : 3;
+  const probationDefault = computeProvisionalEndOn(today, 'full_time', probationMonths) ?? today;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         back={{ href: '/admin/personnel', label: t('backLabel') }}
-        title={t('title')}
+        title={t('continueTitle')}
         description={t('description')}
       />
       {sp.error && (
@@ -124,18 +149,10 @@ export default async function CreateEmployeePage({
       )}
       <EmployeeWizard
         today={today}
-        draftId={draft?.id ?? null}
-        initialData={draft?.data ?? {}}
-        initialStep={draft?.currentStep ?? 1}
-        drafts={drafts.map((d) => ({
-          id: d.id,
-          label: d.label,
-          companyName: d.companyName,
-          currentStep: d.currentStep,
-          createdByName: d.createdByName,
-          updatedAt: d.updatedAt.toISOString(),
-          missingCount: d.missing.length,
-        }))}
+        draftId={draft.id}
+        reservedEmployeeCode={draft.reservedEmployeeCode}
+        initialData={withProbationDefault(draft.data, probationDefault)}
+        initialStep={draft.currentStep}
         companies={companies.map((c) => ({ id: c.id, label: c.name }))}
         businessUnits={businessUnits.map((b) => ({
           id: b.id,
@@ -161,9 +178,22 @@ export default async function CreateEmployeePage({
           label: m.employeeCode ? `${m.name} (${m.employeeCode})` : m.name,
         }))}
         nationalityOptions={nationalities.map((o) => ({ value: o.value, label: o.label }))}
-        probationDefaults={probationDefaults}
-        employeeIdRules={employeeIdRules}
       />
     </div>
   );
+}
+
+/**
+ * Seed the provisional end date the FIRST time the Employment step is opened, and only then.
+ *
+ * It used to be filled by the company picker's change handler, which no longer exists on this form — the
+ * company is fixed at Create. Applied here rather than in the wizard so it happens once, on the server,
+ * against the draft as loaded: a client-side effect would re-apply the default every render and fight
+ * anyone who deliberately cleared the field.
+ */
+function withProbationDefault(data: EmployeeDraftData, provisionalEndOn: string): EmployeeDraftData {
+  const e = data.employment ?? {};
+  if (e.provisionalEndOn !== undefined) return data;
+  if ((e.employmentType ?? 'full_time') !== 'full_time') return data;
+  return { ...data, employment: { ...e, provisionalEndOn } };
 }

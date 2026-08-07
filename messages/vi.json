@@ -357,13 +357,11 @@
       "employeeIdLabel": "Mã nhân viên",
       "employeeIdPlaceholder": "vd. EMP-0001",
       "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 30 ký tự.",
-      "draftsHeading": "Nhân viên mới chưa hoàn tất",
-      "draftsCount": "{count} bản nháp",
       "draftUntitled": "Bản nháp chưa đặt tên",
       "draftNoCompany": "Chưa chọn công ty",
       "draftMissing": "Còn thiếu {count}",
-      "draftReady": "Sẵn sàng tạo",
-      "draftContinue": "Tiếp tục"
+      "draftReady": "Sẵn sàng kích hoạt",
+      "statusDraft": "Nháp"
     },
     "switcher": {
       "ariaLabel": "Tìm nhân viên",
@@ -1412,44 +1410,31 @@
         "businessUnit": "Chỉ để lọc danh sách phòng ban. Không lưu vào hồ sơ nhân viên.",
         "hiredOn": "Ngày làm việc đầu tiên. Sau khi tạo, ngày này chỉ thay đổi qua sự kiện điều động.",
         "bankAccount": "Nhập cả ngân hàng và số tài khoản, hoặc bỏ trống cả hai.",
-        "company": "Được hỏi trước vì nó quyết định Thiết lập Số chạy tự động Mã nhân viên nào được áp dụng."
+        "companyFixed": "Nó quyết định quy tắc mã nhân viên nào được áp dụng và không thể đổi sau khi bản ghi được tạo."
       },
       "backLabel": "Quay lại Nhân sự",
       "title": "Tạo nhân viên mới",
-      "description": "Nhập thông tin theo từng bước. Có thể lưu nháp bất cứ lúc nào và quay lại sau — không có gì được tạo cho đến bước cuối cùng.",
+      "description": "Bản ghi và mã nhân viên đã tồn tại. Điền phần còn lại rồi nhấn Kích hoạt — tiến độ được lưu bất cứ lúc nào.",
       "progressLabel": "Các bước tạo",
       "steps": {
-        "profile": "Hồ sơ",
+        "profile": "Chi tiết hồ sơ",
         "employment": "Việc làm",
         "statutory": "Ngân hàng & Luật định",
-        "payroll": "Lương",
-        "review": "Xem lại & tạo"
+        "payroll": "Lương"
       },
       "notSet": "— Chưa đặt —",
       "selectPrompt": "— Chọn —",
       "yes": "Có",
       "no": "Không",
-      "continueDraft": "Tiếp tục bản nháp ({count})",
       "untitledDraft": "Bản nháp chưa đặt tên",
-      "stepOf": "Bước {current}/{total}",
-      "missingCount": "Còn thiếu {count}",
-      "readyToCreate": "Sẵn sàng tạo",
-      "lastSaved": "Đã lưu {when}",
-      "startedBy": "Bắt đầu bởi {name}",
-      "continue": "Tiếp tục",
-      "complete": "Hoàn tất",
-      "reviewReady": "Đã có đủ thông tin cần thiết. Tạo nhân viên sẽ sinh Mã nhân viên và mở hồ sơ của họ.",
-      "reviewIncomplete": "Hãy điền những mục liệt kê ở trên, hoặc lưu nháp và quay lại sau.",
       "back": "Quay lại",
       "next": "Tiếp",
       "saveDraft": "Lưu nháp",
       "saving": "Đang lưu…",
       "draftSaved": "Đã lưu nháp",
       "discardDraft": "Bỏ bản nháp",
-      "createEmployee": "Tạo nhân viên",
       "creating": "Đang tạo…",
       "requiredField": "bắt buộc",
-      "companyOnProfileStep": "Được chọn ở bước Hồ sơ, vì đây là yếu tố quyết định quy tắc Mã nhân viên.",
       "employeeId": {
         "heading": "Mã nhân viên",
         "chooseCompanyFirst": "Hãy chọn công ty ở trên trước — đây là yếu tố quyết định quy tắc Mã nhân viên.",
@@ -1460,14 +1445,22 @@
         "modeAuto": "Số chạy tự động",
         "modeManual": "Nhập thủ công",
         "forcedAuto": "Thiết lập của công ty này không cho phép nhập thủ công, nên số chạy tự động sẽ được dùng.",
-        "previewNote": "là hình thức mã sẽ có. Mã nhân viên thật được cấp khi nhân viên được tạo.",
         "checking": "Đang kiểm tra…",
         "duplicate": "Mã nhân viên \"{code}\" đã tồn tại. Vui lòng nhập Mã nhân viên khác.",
         "available": "Mã nhân viên \"{code}\" còn trống.",
-        "staleCode": "Mã nhân viên \"{code}\" đã nhập trước đó sẽ không được dùng, vì công ty này không còn cho phép nhập thủ công.",
-        "removeCode": "Xóa mã",
-        "draftCostsNothing": "Lưu bản nháp không tốn gì cả. Mã nhân viên chỉ bị lấy khi nhân viên được tạo thành công."
-      }
+        "reserveNote": "là mã sẽ được cấp và giữ chỗ ngay khi bạn nhấn Tạo.",
+        "heldFromCreate": "Mã nhân viên được giữ chỗ ngay khi bản ghi được tạo và không thể cấp cho người khác.",
+        "issuedAtActivate": "Cấp khi Kích hoạt"
+      },
+      "createDescription": "Chỉ bốn thông tin là bản ghi được tạo và mã nhân viên được giữ chỗ. Phần còn lại điền sau.",
+      "continueTitle": "Hoàn tất hồ sơ nhân viên",
+      "createDraft": "Tạo",
+      "createDraftNote": "Tạo bản ghi ở trạng thái Nháp và giữ mã nhân viên ngay lập tức.",
+      "companyFixedAfterCreate": "Không thể đổi công ty — công ty quyết định quy tắc đánh số đã cấp mã nhân viên được giữ chỗ. Nếu chọn nhầm, hãy bỏ và tạo lại.",
+      "activate": "Kích hoạt",
+      "activating": "Đang kích hoạt…",
+      "activateNeeds": "Kích hoạt vẫn cần:",
+      "discardReleasesTip": "Bỏ bản nháp chỉ trả lại mã nhân viên khi đó là mã được cấp gần nhất. Nếu không, số đó vẫn coi như đã dùng và dãy số sẽ bỏ qua nó."
     }
   },
   "leave": {

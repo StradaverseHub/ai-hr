@@ -357,13 +357,11 @@
       "employeeIdLabel": "Employee ID",
       "employeeIdPlaceholder": "e.g. EMP-0001",
       "employeeIdHint": "Letters, numbers and dashes; up to 30 characters.",
-      "draftsHeading": "Unfinished new employees",
-      "draftsCount": "{count} draft",
       "draftUntitled": "Unnamed draft",
       "draftNoCompany": "No company chosen yet",
       "draftMissing": "{count} still needed",
-      "draftReady": "Ready to create",
-      "draftContinue": "Continue"
+      "draftReady": "Ready to activate",
+      "statusDraft": "Draft"
     },
     "switcher": {
       "ariaLabel": "Search employee",
@@ -1412,44 +1410,31 @@
         "businessUnit": "Narrows the department list only. It is not stored on the employee.",
         "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
         "bankAccount": "Give both the bank and the account number, or neither.",
-        "company": "Asked first because it decides which Employee ID Auto Running Number Setup applies."
+        "companyFixed": "It decides which Employee ID rule applies, and it cannot be changed once the record is created."
       },
       "backLabel": "Back to Personnel",
       "title": "Create new employee",
-      "description": "Enter the details step by step. Save as a draft at any point and come back to it — nothing is created until the final step.",
+      "description": "The record and its Employee ID already exist. Fill in the rest and press Activate — progress is saved at any point.",
       "progressLabel": "Creation steps",
       "steps": {
-        "profile": "Profile",
+        "profile": "Profile details",
         "employment": "Employment",
         "statutory": "Bank & Statutory",
-        "payroll": "Payroll",
-        "review": "Review & create"
+        "payroll": "Payroll"
       },
       "notSet": "— Not set —",
       "selectPrompt": "— Select —",
       "yes": "Yes",
       "no": "No",
-      "continueDraft": "Continue a draft ({count})",
       "untitledDraft": "Unnamed draft",
-      "stepOf": "Step {current} of {total}",
-      "missingCount": "{count} still needed",
-      "readyToCreate": "Ready to create",
-      "lastSaved": "Saved {when}",
-      "startedBy": "Started by {name}",
-      "continue": "Continue",
-      "complete": "Complete",
-      "reviewReady": "Everything needed is here. Creating the employee generates the Employee ID and opens their record.",
-      "reviewIncomplete": "Fill in what is listed above, or save this as a draft and come back to it.",
       "back": "Back",
       "next": "Next",
       "saveDraft": "Save draft",
       "saving": "Saving…",
       "draftSaved": "Draft saved",
       "discardDraft": "Discard draft",
-      "createEmployee": "Create employee",
       "creating": "Creating…",
       "requiredField": "required",
-      "companyOnProfileStep": "Chosen on the Profile step, because it decides the Employee ID rule.",
       "employeeId": {
         "heading": "Employee ID",
         "chooseCompanyFirst": "Choose the company above first — it decides which Employee ID rule applies.",
@@ -1460,14 +1445,22 @@
         "modeAuto": "Auto Running Number",
         "modeManual": "Manual Key In",
         "forcedAuto": "This company's setup does not allow Manual Key In, so the running number is used.",
-        "previewNote": "is what it will look like. The real Employee ID is issued when the employee is created.",
         "checking": "Checking…",
         "duplicate": "Employee ID \"{code}\" already exists. Please enter another Employee ID.",
         "available": "Employee ID \"{code}\" is available.",
-        "staleCode": "The Employee ID \"{code}\" entered earlier will not be used, because this company no longer allows Manual Key In.",
-        "removeCode": "Remove it",
-        "draftCostsNothing": "Saving as a draft costs nothing. The Employee ID is taken only when the employee is successfully created."
-      }
+        "reserveNote": "is the ID that will be issued and reserved the moment you press Create.",
+        "heldFromCreate": "The Employee ID is reserved as soon as the record is created, and cannot be given to anyone else.",
+        "issuedAtActivate": "Issued on Activate"
+      },
+      "createDescription": "Four details and the record exists, with its Employee ID reserved. The rest can be filled in later.",
+      "continueTitle": "Complete employee record",
+      "createDraft": "Create",
+      "createDraftNote": "Creates the record as a Draft and reserves the Employee ID immediately.",
+      "companyFixedAfterCreate": "The company cannot be changed — it decided which numbering rule the reserved Employee ID came from. Discard and start again if it is wrong.",
+      "activate": "Activate",
+      "activating": "Activating…",
+      "activateNeeds": "Activate still needs:",
+      "discardReleasesTip": "Discarding returns the Employee ID only when it was the most recent one issued. Otherwise the number stays used and the sequence skips it."
     }
   },
   "leave": {

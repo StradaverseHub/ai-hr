@@ -362,6 +362,24 @@ export async function generateEmployeeCode(
   tenantId: string,
   companyId: string,
 ): Promise<string | null> {
+  return (await issueEmployeeCode(tx, tenantId, companyId))?.code ?? null;
+}
+
+/**
+ * The same issue, with the RECEIPT (item 06f0cb8f): which config answered and which number it took.
+ *
+ * `generateEmployeeCode` above is now a one-line wrapper over this, deliberately — a hire only needs the
+ * string, but a DRAFT that HOLDS a number needs to be able to give it back, and rolling a counter back
+ * safely means proving the number you are returning is still the one at the tip. Reconstructing the
+ * config from the code afterwards (parse the prefix, match a row) would be a second, weaker definition of
+ * "which setup applies"; returning it from the place that already resolved it is the only way there is
+ * one definition. See core/employee-draft.ts `releaseReservedCode`.
+ */
+export async function issueEmployeeCode(
+  tx: Tx,
+  tenantId: string,
+  companyId: string,
+): Promise<{ code: string; configId: string; number: number } | null> {
   // Company-specific wins over global. One SELECT ordered so the company row (company_id = companyId) sorts
   // before the global row (company_id NULL); FOR UPDATE row-locks the chosen config so concurrent hires
   // serialize on it (belt-and-braces with the tenant-wide employee_code unique index).
@@ -402,7 +420,11 @@ export async function generateEmployeeCode(
     })
     .where(eq(employeeIdConfig.id, cfg.id))
     .returning({ n: employeeIdConfig.currentRunningNumber });
-  return formatEmployeeCode(cfg.prefix, advanced.n, cfg.numberLength, cfg.suffix);
+  return {
+    code: formatEmployeeCode(cfg.prefix, advanced.n, cfg.numberLength, cfg.suffix),
+    configId: cfg.id,
+    number: advanced.n,
+  };
 }
 
 // ─────────────────────────── Reads ───────────────────────────

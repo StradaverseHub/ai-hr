@@ -357,13 +357,11 @@
       "employeeIdLabel": "ID Pekerja",
       "employeeIdPlaceholder": "cth. EMP-0001",
       "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 30 aksara.",
-      "draftsHeading": "Pekerja baharu yang belum selesai",
-      "draftsCount": "{count} draf",
       "draftUntitled": "Draf tanpa nama",
       "draftNoCompany": "Syarikat belum dipilih",
       "draftMissing": "{count} masih diperlukan",
-      "draftReady": "Sedia untuk dicipta",
-      "draftContinue": "Sambung"
+      "draftReady": "Sedia untuk diaktifkan",
+      "statusDraft": "Draf"
     },
     "switcher": {
       "ariaLabel": "Cari pekerja",
@@ -1412,44 +1410,31 @@
         "businessUnit": "Hanya menapis senarai jabatan. Ia tidak disimpan pada pekerja.",
         "hiredOn": "Hari pertama bekerja. Selepas penciptaan, tarikh ini hanya berubah melalui peristiwa pergerakan.",
         "bankAccount": "Isikan kedua-dua bank dan nombor akaun, atau tiada langsung.",
-        "company": "Ditanya dahulu kerana ia menentukan Tetapan Nombor Berjalan Automatik ID Pekerja yang digunakan."
+        "companyFixed": "Ia menentukan peraturan ID Pekerja yang terpakai, dan tidak boleh diubah setelah rekod dicipta."
       },
       "backLabel": "Kembali ke Personel",
       "title": "Cipta pekerja baharu",
-      "description": "Masukkan maklumat langkah demi langkah. Simpan sebagai draf pada bila-bila masa dan kembali kemudian — tiada apa-apa dicipta sehingga langkah terakhir.",
+      "description": "Rekod dan ID Pekerjanya sudah wujud. Isi selebihnya dan tekan Aktifkan — kemajuan disimpan pada bila-bila masa.",
       "progressLabel": "Langkah penciptaan",
       "steps": {
-        "profile": "Profil",
+        "profile": "Butiran profil",
         "employment": "Pekerjaan",
         "statutory": "Bank & Statutori",
-        "payroll": "Gaji",
-        "review": "Semak & cipta"
+        "payroll": "Gaji"
       },
       "notSet": "— Tidak ditetapkan —",
       "selectPrompt": "— Pilih —",
       "yes": "Ya",
       "no": "Tidak",
-      "continueDraft": "Sambung draf ({count})",
       "untitledDraft": "Draf tanpa nama",
-      "stepOf": "Langkah {current} daripada {total}",
-      "missingCount": "{count} masih diperlukan",
-      "readyToCreate": "Sedia untuk dicipta",
-      "lastSaved": "Disimpan {when}",
-      "startedBy": "Dimulakan oleh {name}",
-      "continue": "Sambung",
-      "complete": "Lengkap",
-      "reviewReady": "Semua yang diperlukan sudah ada. Mencipta pekerja akan menjana ID Pekerja dan membuka rekod mereka.",
-      "reviewIncomplete": "Isikan perkara yang disenaraikan di atas, atau simpan sebagai draf dan kembali kemudian.",
       "back": "Kembali",
       "next": "Seterusnya",
       "saveDraft": "Simpan draf",
       "saving": "Menyimpan…",
       "draftSaved": "Draf disimpan",
       "discardDraft": "Buang draf",
-      "createEmployee": "Cipta pekerja",
       "creating": "Mencipta…",
       "requiredField": "wajib",
-      "companyOnProfileStep": "Dipilih pada langkah Profil, kerana ia menentukan peraturan ID Pekerja.",
       "employeeId": {
         "heading": "ID Pekerja",
         "chooseCompanyFirst": "Pilih syarikat di atas dahulu — ia menentukan peraturan ID Pekerja yang digunakan.",
@@ -1460,14 +1445,22 @@
         "modeAuto": "Nombor Berjalan Automatik",
         "modeManual": "Kunci Masuk Manual",
         "forcedAuto": "Tetapan syarikat ini tidak membenarkan Kunci Masuk Manual, jadi nombor berjalan digunakan.",
-        "previewNote": "ialah rupanya nanti. ID Pekerja sebenar dikeluarkan semasa pekerja dicipta.",
         "checking": "Menyemak…",
         "duplicate": "ID Pekerja \"{code}\" sudah wujud. Sila masukkan ID Pekerja yang lain.",
         "available": "ID Pekerja \"{code}\" boleh digunakan.",
-        "staleCode": "ID Pekerja \"{code}\" yang dimasukkan sebelum ini tidak akan digunakan, kerana syarikat ini tidak lagi membenarkan Kunci Masuk Manual.",
-        "removeCode": "Buang",
-        "draftCostsNothing": "Menyimpan sebagai draf tidak menggunakan apa-apa. ID Pekerja hanya diambil apabila pekerja berjaya dicipta."
-      }
+        "reserveNote": "ialah ID yang akan dikeluarkan dan ditempah sebaik sahaja anda menekan Cipta.",
+        "heldFromCreate": "ID Pekerja ditempah sebaik sahaja rekod dicipta dan tidak boleh diberikan kepada orang lain.",
+        "issuedAtActivate": "Dikeluarkan semasa Aktifkan"
+      },
+      "createDescription": "Empat maklumat sahaja dan rekod itu wujud, dengan ID Pekerjanya ditempah. Selebihnya boleh diisi kemudian.",
+      "continueTitle": "Lengkapkan rekod pekerja",
+      "createDraft": "Cipta",
+      "createDraftNote": "Mencipta rekod sebagai Draf dan menempah ID Pekerja serta-merta.",
+      "companyFixedAfterCreate": "Syarikat tidak boleh diubah — ia menentukan peraturan penomboran yang mengeluarkan ID Pekerja yang ditempah. Buang dan mula semula jika tersalah pilih.",
+      "activate": "Aktifkan",
+      "activating": "Mengaktifkan…",
+      "activateNeeds": "Pengaktifan masih memerlukan:",
+      "discardReleasesTip": "Membuang draf mengembalikan ID Pekerja hanya jika ia yang terakhir dikeluarkan. Jika tidak, nombor itu kekal terpakai dan urutan akan melangkaunya."
     }
   },
   "leave": {

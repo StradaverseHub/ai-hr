@@ -6965,12 +6965,37 @@ export const employeeDraft = pgTable(
     data: jsonb('data').notNull().default({}),
     /** Where the wizard reopens. 1-based, matching the on-screen step numbers. */
     currentStep: integer('current_step').notNull().default(1),
+    // ── The Employee ID hold (item 06f0cb8f, migration 0415) ───────────────────────────────────────
+    // The ONE clause of the paragraph above the reporter asked to invert: the Employee ID is now taken
+    // at Create and HELD, so no second draft, no hand-entry and no bulk import can be given it while
+    // the record is still being filled in. Everything else stays true — a draft still creates no person
+    // and no employment, and is still absent from headcount, payroll, leave and every report.
+    /** The held Employee ID. Null on every draft written before 0415, and on any draft that never
+     *  reached Create — the partial unique index only compares non-null values, so those rows are
+     *  untouched and behave exactly as they always did. */
+    reservedEmployeeCode: text('reserved_employee_code'),
+    reservedAt: timestamp('reserved_at', { withTimezone: true }),
+    /** Which setup issued the number, so a discard can give it back. NULL means the legacy per-tenant
+     *  EMP-#### counter issued it (no active setup resolved for the company) — the release path reads
+     *  the null and rolls `tenant_counter` back instead. */
+    reservedConfigId: uuid('reserved_config_id').references(() => employeeIdConfig.id, {
+      onDelete: 'set null',
+    }),
+    /** The number that was issued. Rolling back is only safe when this is still the counter's tip. */
+    reservedNumber: integer('reserved_number'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
     index('employee_draft_tenant_updated_idx').on(t.tenantId, t.updatedAt),
     index('employee_draft_author_idx').on(t.tenantId, t.createdByPersonId),
+    // THE ACTUAL RESERVATION. Two administrators pressing Create in the same second serialize here; the
+    // service pre-check only exists to turn a 23505 into a sentence. Partial, so nulls never collide.
+    uniqueIndex('employee_draft_reserved_code_uq')
+      .on(t.tenantId, t.reservedEmployeeCode)
+      // Raw column name in the predicate, matching every other partial index in this file: the builder
+      // qualifies a `${t.col}` reference, which is not what a CREATE INDEX ... WHERE clause accepts.
+      .where(sql`reserved_employee_code is not null`),
   ],
 );
 

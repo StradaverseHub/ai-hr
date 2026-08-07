@@ -64,11 +64,16 @@ export default async function PeoplePage({
   const pq = parsePageQuery(sp);
   const statusFilter = status === 'active' || status === 'terminated' ? status : undefined;
   const hasFilters = !!(q || company || dept || status || type);
+  // 06f0cb8f — DRAFT is a status you can filter to, and it selects the draft rows INSTEAD of employees.
+  // The two are different tables (see below), so "status = draft" cannot narrow the employment query; it
+  // suppresses it. `draftOnly` is that suppression, kept as a named flag rather than buried in a ternary
+  // because the pager total below depends on it and a wrong total is a silently broken page.
+  const draftOnly = status === 'draft';
   // 6d671f44 — the hire form is no longer on this page, so neither are its pickers. What this screen
-  // still needs is the LIST, its filter options, the pending profile-change queue, and the count of
-  // unfinished Create New Employee drafts (a draft is not an employee and never appears in the table
-  // below; it is surfaced here only because this is where somebody would come looking for it).
-  const [{ rows: employees, total }, companies, departments, profileChanges, drafts, allEmployees] = await Promise.all([
+  // still needs is the LIST, its filter options, the pending profile-change queue, and the unfinished
+  // Create New Employee drafts — which since 06f0cb8f are ROWS IN THE TABLE BELOW rather than a card
+  // above it, because the reporter's request is that a Draft appears in the employee list.
+  const [{ rows: employeeRows, total: employeeTotal }, companies, departments, profileChanges, allDrafts, allEmployees] = await Promise.all([
     listEmployeesPage(session, {
       companyIds: scopeIds,
       q,
@@ -92,6 +97,36 @@ export default async function PeoplePage({
     // than RLS — the profile route re-resolves whatever is picked and 404s on anything out of scope.
     listEmployees(session, scopeIds),
   ]);
+
+  // ── Draft rows (item 06f0cb8f) ────────────────────────────────────────────────────────────────────
+  // Drafts are PINNED ABOVE the employees on every page, not merged into the sort and not paged. There
+  // are a handful of them at most (they exist for days, not years), and the reporter's reason for wanting
+  // them in this list is to see who is still outstanding — an outstanding record on page 4 answers
+  // nothing. THE PAGER TOTAL STILL COUNTS EMPLOYMENTS ONLY: "40 employees" must keep meaning forty people
+  // on the books, and a Draft is a reserved place, not a person.
+  //
+  // NARROWED IN MEMORY, deliberately. A draft is not an employment — it has no assignment, so no
+  // department and no employment type — so the two filters that read those columns (`dept`, `type`) can
+  // only ever exclude every draft, and the lifecycle filters (`active` / `terminated`) describe dates a
+  // draft does not have. Each of those hides the drafts rather than pretending to match them, and
+  // `draft` shows them alone. Company and the search box DO apply, because a draft has both.
+  const drafts = allDrafts.filter((d) => {
+    // FIRST PAGE ONLY. Pinned rows that repeat above every page of a long list stop reading as "these
+    // are outstanding" and start reading as a rendering fault. With the Draft filter on there is only
+    // one page, so this costs nothing there.
+    if (pq.offset > 0) return false;
+    if (dept || type || statusFilter) return false;
+    if (company && d.companyId !== company) return false;
+    if (q) {
+      const needle = q.trim().toLowerCase();
+      const hay = `${d.label} ${d.reservedEmployeeCode ?? ''} ${d.companyName ?? ''}`.toLowerCase();
+      if (!hay.includes(needle)) return false;
+    }
+    return true;
+  });
+
+  const employees = draftOnly ? [] : employeeRows;
+  const total = draftOnly ? 0 : employeeTotal;
   const pgState = pageState(pq, total, employees.length);
   const EMPLOYMENT_TYPES = [
     { value: 'full_time', labelKey: 'employmentFullTime' },
@@ -145,6 +180,10 @@ export default async function PeoplePage({
         // one state. Retiring Terminated as a word means retiring it here too.
         { value: 'active', label: t('statusActive') },
         { value: 'terminated', label: t('statusTerminated') },
+        // 06f0cb8f — the reporter asked to be able to pull up exactly who is still outstanding. It is
+        // the one option here that is a STORED state rather than a lifecycle query, because it selects
+        // from a different table; picking it shows the Draft rows and no employees at all.
+        { value: 'draft', label: t('statusDraft') },
       ],
       removeAriaLabel: t('removeFilter', { label: t('colStatus') }),
     },
@@ -248,41 +287,11 @@ export default async function PeoplePage({
         </div>
       )}
 
-      {/* Unfinished drafts (6d671f44). A draft is captured input, not an employee: it is absent from
-          the table below, from headcount, from payroll selection and from every report, and it holds no
-          Employee ID. It is listed here because this is where somebody would come back to finish one. */}
-      {isAdmin && drafts.length > 0 && (
-        <Card className="overflow-hidden border-amber-200 dark:border-amber-500/30">
-          <div className="flex items-center gap-2 border-b border-border bg-amber-50/60 px-4 py-3 dark:bg-amber-500/10">
-            <h2 className="text-sm font-semibold">{t('draftsHeading')}</h2>
-            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
-              {t('draftsCount', { count: drafts.length })}
-            </span>
-          </div>
-          <ul className="divide-y divide-border">
-            {drafts.map((d) => (
-              <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium">{d.label || t('draftUntitled')}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {d.companyName ?? t('draftNoCompany')}
-                    {' · '}
-                    {d.missing.length > 0
-                      ? t('draftMissing', { count: d.missing.length })
-                      : t('draftReady')}
-                  </div>
-                </div>
-                <Link
-                  href={`/admin/personnel/new?draft=${d.id}`}
-                  className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-                >
-                  {t('draftContinue')}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+      {/* 06f0cb8f — the amber "Unfinished new employees" card that used to sit HERE is gone. It was a
+          separate panel above the table with no status against it, which is exactly what the reporter
+          objected to; drafts are rows in the table below now, carrying their held Employee ID and a
+          Draft badge. Everything else 6d671f44 promised is still true: a draft is captured input, absent
+          from headcount, from payroll selection and from every report. */}
 
       {isAdmin && profileChanges.length > 0 && (
         <Card className="overflow-hidden border-amber-200 dark:border-amber-500/30">
@@ -337,6 +346,45 @@ export default async function PeoplePage({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
+            {/* DRAFTS FIRST (item 06f0cb8f). Same columns as everyone else — the reporter's own example
+                table is Employee ID / Employee Name / Company / Status — so a Draft reads as what it is:
+                a place in the list with a number held for it. The two columns it genuinely has no answer
+                for (Department, Hired) show an em dash rather than being left blank, because a blank cell
+                in a table of filled ones reads as a loading fault. The row links to the continue form,
+                not to a profile: there is no profile yet. */}
+            {drafts.map((d) => (
+              <tr key={d.id} className="bg-muted/20 hover:bg-muted/40">
+                <td className="px-4 py-3">
+                  {d.reservedEmployeeCode ? (
+                    <EmployeeCode code={d.reservedEmployeeCode} />
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={d.label || '?'} />
+                    <div className="min-w-0">
+                      <Link
+                        href={`/admin/personnel/new?draft=${d.id}`}
+                        className="font-medium text-foreground hover:text-primary"
+                      >
+                        {d.label || t('draftUntitled')}
+                      </Link>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {d.missing.length > 0 ? t('draftMissing', { count: d.missing.length }) : t('draftReady')}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">—</td>
+                <td className="px-4 py-3 text-muted-foreground">{d.companyName ?? t('draftNoCompany')}</td>
+                <td className="px-4 py-3">
+                  <StatusBadge status="draft" label={t('statusDraft')} />
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">—</td>
+              </tr>
+            ))}
             {employees.map((e) => (
               <tr key={e.employmentId} className="hover:bg-muted/40">
                 <td className="px-4 py-3">
@@ -367,7 +415,9 @@ export default async function PeoplePage({
                 <td className="px-4 py-3 text-muted-foreground">{e.hiredOn}</td>
               </tr>
             ))}
-            {employees.length === 0 && (
+            {/* The empty state counts the DRAFT rows too — "no employees yet" under a table that is
+                visibly showing two of them would be the screen contradicting itself. */}
+            {employees.length === 0 && drafts.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                   {q ? t('emptySearch', { q }) : hasFilters ? t('emptyFiltered') : t('emptyNoEmployeesAdmin')}
