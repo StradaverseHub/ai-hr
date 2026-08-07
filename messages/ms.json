@@ -3655,7 +3655,13 @@
           "fixed": "Jumlah tetap (RM)",
           "effectiveFrom": "Berkuat kuasa dari",
           "effectiveTo": "Berkuat kuasa hingga",
-          "nonResidentHint": "Peratus PCB menghasilkan RM0 bagi bukan pemastautin dan pendapatan di bawah ambang — guna Jumlah Tetap jika potongan diperlukan."
+          "nonResidentHint": "Peratus PCB menghasilkan RM0 bagi bukan pemastautin dan pendapatan di bawah ambang — guna Jumlah Tetap jika potongan diperlukan.",
+          "addButton": "Tambah tetapan zakat",
+          "editButton": "Sunting tetapan zakat",
+          "addTitle": "Tambah tetapan zakat",
+          "editTitle": "Sunting tetapan zakat",
+          "cancel": "Batal",
+          "pickEmployeeHint": "Memaparkan semua pekerja. Pilih seseorang di sebelah kiri untuk melihat rekod mereka sahaja dan menambah atau menyunting tetapan zakat mereka."
         },
         "history": {
           "title": "Sejarah transaksi",
@@ -3684,7 +3690,12 @@
           "colCreated": "Dicipta",
           "status": "Status",
           "active": "Aktif",
-          "inactive": "Tidak aktif"
+          "inactive": "Tidak aktif",
+          "searchPlaceholder": "Cari pekerja, syarikat, negeri atau tarikh",
+          "nShown": "{count} dipaparkan",
+          "noMatches": "Tiada rekod zakat sepadan dengan carian anda.",
+          "viewEdit": "Lihat / Sunting",
+          "colActions": "Tindakan"
         }
       },
       "view": {
@@ -7749,6 +7760,38 @@
       "reserved": "Ditempah",
       "applied": "Dikenakan",
       "skipped": "Dilangkau"
+    },
+    "addButton": "Tambah pinjaman",
+    "pickEmployeeHint": "Memaparkan semua pinjaman. Pilih seseorang di sebelah kiri untuk melihat pinjaman mereka sahaja dan menambah yang baharu.",
+    "newSubtitle": "Prinsipal, faedah dan tempoh. Ansuran bulanan dikira semasa anda menaip.",
+    "detailSubtitle": "Pinjaman, jadual bayaran baliknya, dan tindakan yang mengubahnya.",
+    "viewEdit": "Lihat / Sunting",
+    "colActions": "Tindakan",
+    "searchPlaceholder": "Cari pekerja, jenis, status atau amaun",
+    "nShown": "{count} dipaparkan",
+    "noMatches": "Tiada pinjaman sepadan dengan carian anda.",
+    "backToList": "Kembali ke senarai",
+    "appliedTitle": "Dipakai dalam gaji",
+    "appliedSubtitle": "Ansuran yang benar-benar dipotong dalam setiap larian gaji yang diproses.",
+    "appliedEmpty": "Belum ada ansuran dipotong.",
+    "lifecycleTitle": "Tindakan pinjaman",
+    "amendHint": "Pindaan membina semula {remaining} ansuran yang masih akan datang supaya jumlahnya sama dengan baki tertunggak {outstanding}. Ansuran yang telah dipotong tidak pernah ditulis semula.",
+    "suspendHint": "Menjeda potongan. Tiada ansuran diambil pada larian gaji berikutnya; baki tertunggak tidak berubah.",
+    "resumeHint": "Memulakan semula potongan dari larian gaji berikutnya. Baki tertunggak tidak berubah.",
+    "settleHint": "Menutup pinjaman sebagai telah dibayar penuh dan menghentikan semua potongan akan datang. Gunakan apabila baki telah dijelaskan dengan cara lain.",
+    "settleConfirm": "Ini menutup pinjaman dan menghentikan semua potongan akan datang. Baki tertunggak {outstanding} tidak lagi akan dikutip melalui gaji.",
+    "cancelHint": "Membatalkan pinjaman seolah-olah ia tidak pernah dikeluarkan. Hanya boleh dilakukan selagi tiada ansuran dipotong.",
+    "cancelConfirm": "Ini membatalkan pinjaman dan keseluruhan jadual bayaran baliknya. Ia tidak boleh dibatalkan semula.",
+    "scheduleEmpty": "Pinjaman ini tiada jadual bayaran balik.",
+    "cycle": {
+      "regular": "Biasa",
+      "off_cycle": "Luar kitaran",
+      "bonus": "Bonus",
+      "adjustment": "Pelarasan"
+    },
+    "batchStatus": {
+      "processed": "Diproses",
+      "closed": "Ditutup"
     }
   },
   "payrollCycleConfig": {
@@ -8643,5 +8686,17 @@
     "noEmployees": "Tiada pekerja sepadan dengan penapis anda.",
     "selectedTag": "Dipilih",
     "showingCapped": "Memaparkan {cap} pertama daripada {total} padanan — perhalusi carian anda."
+  },
+  "appliedInPayroll": {
+    "searchPlaceholder": "Cari bulan, pekerja, syarikat atau amaun",
+    "nShown": "{count} dipaparkan",
+    "noMatches": "Tiada potongan sepadan dengan carian anda.",
+    "colPeriod": "Bulan gaji",
+    "colCycle": "Kitaran",
+    "colEmployee": "Pekerja",
+    "colCompany": "Syarikat",
+    "colAmount": "Jumlah",
+    "colStatus": "Status",
+    "colCreated": "Direkodkan"
   }
 }

@@ -1,20 +1,31 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import type { LoanRow, RepaymentRow } from '@/core/loans';
-import { EmployeeCode } from '@/components/ui';
+import type { LoanRow } from '@/core/loans';
+import { EmployeeCode, inputCls } from '@/components/ui';
 import { paginateRows } from '@/lib/pagination';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
-import {
-  amendLoanAction,
-  cancelLoanAction,
-  resumeLoanAction,
-  settleLoanAction,
-  suspendLoanAction,
-} from '@/app/admin/loans/actions';
 
-type LoanWithSchedule = LoanRow & { schedule: RepaymentRow[] };
+/**
+ * The loans "Transaction history" table (feedback 6d72816e).
+ *
+ * WHAT MOVED OFF IT, AND WHY. Every row used to unfold in place: five lifecycle actions (amend, suspend,
+ * resume, settle, cancel) plus the whole repayment schedule, all wedged into a `<td colSpan={8}>`. So the
+ * two things an operator most needs room for — the confirmation copy that says what "Settle" actually does,
+ * and the instalment schedule — had the least. Both now live on the loan's own page, `/admin/loans/[id]`,
+ * and this table has ONE destination per row, exactly as fixed-list.tsx does.
+ *
+ * That also removed an N+1: the page used to fetch every visible loan's full schedule just to render a fold
+ * nobody had opened.
+ *
+ * SORT BEFORE PAGE, NEVER WITHIN THE PAGE (the rule recorded on components/client-pager.tsx): the whole
+ * matching set is ordered and then sliced, so a column header cannot reorder twenty-five rows and leave the
+ * rest where they were. Search and sort are CLIENT-side over the rows already on the page, matching the
+ * transaction screens beside it — honest at this size, where the list is one employee's loans or one
+ * tenant's.
+ */
 
 const STATUS_CLS: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
@@ -23,156 +34,161 @@ const STATUS_CLS: Record<string, string> = {
   cancelled: 'bg-muted text-muted-foreground',
 };
 
+/** Sort order for the Status column — the lifecycle's own order, not the alphabet. */
+const STATUS_RANK: Record<string, number> = { active: 0, suspended: 1, settled: 2, cancelled: 3 };
+
 function money(n: number): string {
   return `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export function LoanList({ loans }: { loans: LoanWithSchedule[] }) {
+type SortKey = 'employee' | 'type' | 'principal' | 'instalment' | 'outstanding' | 'progress' | 'status';
+
+export function LoanList({ loans }: { loans: LoanRow[] }) {
   const t = useTranslations('loans');
   const tType = useTranslations('loans.loanType');
   const tStatus = useTranslations('loans.status');
-  const [open, setOpen] = useState<string | null>(null);
   const q = useClientPageQuery();
-  const { rows: pageLoans, state } = paginateRows(loans, q);
+  const [query, setQuery] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('employee');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-  if (loans.length === 0) {
-    return <p className="px-4 py-6 text-sm text-muted-foreground">{t('empty')}</p>;
-  }
+  const sorted = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const matched = needle
+      ? loans.filter(
+          (l) =>
+            (l.employeeName ?? '').toLowerCase().includes(needle) ||
+            (l.employeeCode ?? '').toLowerCase().includes(needle) ||
+            l.loanType.toLowerCase().includes(needle) ||
+            l.status.toLowerCase().includes(needle) ||
+            (l.notes ?? '').toLowerCase().includes(needle) ||
+            String(l.principal).includes(needle),
+        )
+      : loans;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const val = (l: LoanRow): string | number => {
+      switch (sortKey) {
+        case 'type':
+          return l.loanType;
+        case 'principal':
+          return l.principal;
+        case 'instalment':
+          return l.monthlyInstalment;
+        case 'outstanding':
+          return l.outstandingBalance;
+        case 'progress':
+          // Proportion paid, not the raw count — 3/6 is further along than 4/24.
+          return l.durationMonths > 0 ? l.instalmentsPaid / l.durationMonths : 0;
+        case 'status':
+          return STATUS_RANK[l.status] ?? 99;
+        case 'employee':
+        default:
+          return (l.employeeName ?? '').toLowerCase();
+      }
+    };
+    return [...matched].sort((a, b) => {
+      const av = val(a);
+      const bv = val(b);
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      // Newest first within a tie — the order this list has always opened in.
+      if (a.createdAt !== b.createdAt) return a.createdAt > b.createdAt ? -1 : 1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+  }, [loans, query, sortKey, sortDir]);
+
+  const { rows: pageLoans, state } = paginateRows(sorted, q);
+
+  const toggleSort = (key: SortKey) => {
+    if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortKey(key);
+      setSortDir(key === 'principal' || key === 'instalment' || key === 'outstanding' ? 'desc' : 'asc');
+    }
+  };
+  const arrow = (key: SortKey) => (key === sortKey ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
+  const sortTh = (key: SortKey, label: string, extra = '') => (
+    <th className={`px-4 py-2 font-medium ${extra}`}>
+      <button type="button" onClick={() => toggleSort(key)} className="uppercase tracking-wide hover:text-foreground">
+        {label}
+        {arrow(key)}
+      </button>
+    </th>
+  );
 
   return (
     <div>
-    <table className="w-full text-sm">
-      <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-        <tr>
-          <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
-          <th className="px-4 py-2 font-medium">{t('colType')}</th>
-          <th className="px-4 py-2 font-medium">{t('colPrincipal')}</th>
-          <th className="px-4 py-2 font-medium">{t('colInstalment')}</th>
-          <th className="px-4 py-2 font-medium">{t('colOutstanding')}</th>
-          <th className="px-4 py-2 font-medium">{t('colProgress')}</th>
-          <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
-          <th className="px-4 py-2 font-medium" />
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-border">
-        {pageLoans.map((l) => (
-          <Fragment key={l.id}>
-            <tr className="hover:bg-muted/40">
-              <td className="px-4 py-2.5 font-medium">
-                {/* Employee ID left-of-name (feedback 38668d9b) */}
-                {l.employeeCode && <EmployeeCode code={l.employeeCode} className="mr-1.5" />}
-                {l.employeeName}
-              </td>
-              <td className="px-4 py-2.5">{tType(l.loanType)}</td>
-              <td className="px-4 py-2.5 tabular-nums">{money(l.principal)}</td>
-              <td className="px-4 py-2.5 tabular-nums">{money(l.monthlyInstalment)}</td>
-              <td className="px-4 py-2.5 tabular-nums">{money(l.outstandingBalance)}</td>
-              <td className="px-4 py-2.5 tabular-nums">
-                {l.instalmentsPaid}/{l.durationMonths}
-              </td>
-              <td className="px-4 py-2.5">
-                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLS[l.status] ?? ''}`}>
-                  {tStatus(l.status)}
-                </span>
-              </td>
-              <td className="px-4 py-2.5 text-right">
-                <button
-                  type="button"
-                  onClick={() => setOpen(open === l.id ? null : l.id)}
-                  className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-                >
-                  {open === l.id ? t('hide') : t('manage')}
-                </button>
-              </td>
-            </tr>
-            {open === l.id && (
-              <tr className="bg-muted/20">
-                <td colSpan={8} className="px-4 py-4">
-                  <div className="space-y-4">
-                    {/* Lifecycle actions, gated by status. */}
-                    <div className="flex flex-wrap gap-2">
-                      {(l.status === 'active' || l.status === 'suspended') && (
-                        <form action={amendLoanAction} className="flex items-end gap-2">
-                          <input type="hidden" name="loanId" value={l.id} />
-                          <label className="text-xs text-muted-foreground">
-                            {t('durationMonths')}
-                            <input
-                              name="durationMonths"
-                              type="number"
-                              min="1"
-                              defaultValue={l.durationMonths}
-                              className="ml-2 w-20 rounded-md border border-border bg-background px-2 py-1 text-sm tabular-nums"
-                            />
-                          </label>
-                          <button className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">{t('amend')}</button>
-                        </form>
-                      )}
-                      {l.status === 'active' && (
-                        <ActionButton action={suspendLoanAction} loanId={l.id} label={t('suspend')} />
-                      )}
-                      {l.status === 'suspended' && (
-                        <ActionButton action={resumeLoanAction} loanId={l.id} label={t('resume')} />
-                      )}
-                      {(l.status === 'active' || l.status === 'suspended') && (
-                        <ActionButton action={settleLoanAction} loanId={l.id} label={t('settle')} />
-                      )}
-                      {(l.status === 'active' || l.status === 'suspended') && l.instalmentsPaid === 0 && (
-                        <ActionButton action={cancelLoanAction} loanId={l.id} label={t('cancel')} />
-                      )}
-                    </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t('searchPlaceholder')}
+          className={`${inputCls} max-w-xs`}
+          aria-label={t('searchPlaceholder')}
+        />
+        <span className="text-xs text-muted-foreground">{t('nShown', { count: sorted.length })}</span>
+      </div>
 
-                    {/* Repayment schedule. */}
-                    <div>
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t('scheduleTitle')}
-                      </p>
-                      <table className="w-full text-xs">
-                        <thead className="text-left text-muted-foreground">
-                          <tr>
-                            <th className="px-2 py-1 font-medium">{t('seq')}</th>
-                            <th className="px-2 py-1 font-medium">{t('due')}</th>
-                            <th className="px-2 py-1 font-medium">{t('applied')}</th>
-                            <th className="px-2 py-1 font-medium">{t('colStatus')}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {l.schedule.map((r) => (
-                            <tr key={r.id}>
-                              <td className="px-2 py-1 tabular-nums">{r.sequenceNo}</td>
-                              <td className="px-2 py-1 tabular-nums">{money(r.dueAmount)}</td>
-                              <td className="px-2 py-1 tabular-nums">{r.appliedAmount > 0 ? money(r.appliedAmount) : '—'}</td>
-                              <td className="px-2 py-1">{t(`repaymentStatus.${r.status}`)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+      <div className="overflow-x-auto border-t border-border">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              {sortTh('employee', t('colEmployee'))}
+              {sortTh('type', t('colType'))}
+              {sortTh('principal', t('colPrincipal'))}
+              {sortTh('instalment', t('colInstalment'))}
+              {sortTh('outstanding', t('colOutstanding'))}
+              {sortTh('progress', t('colProgress'))}
+              {sortTh('status', t('colStatus'))}
+              <th className="px-4 py-2 text-right font-medium">{t('colActions')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {pageLoans.map((l) => (
+              <tr key={l.id} className="hover:bg-muted/40">
+                <td className="px-4 py-2.5 font-medium">
+                  {/* Employee ID left-of-name (feedback 38668d9b) */}
+                  {l.employeeCode && <EmployeeCode code={l.employeeCode} className="mr-1.5" />}
+                  {l.employeeName}
+                </td>
+                <td className="px-4 py-2.5">{tType(l.loanType)}</td>
+                <td className="px-4 py-2.5 tabular-nums">{money(l.principal)}</td>
+                <td className="px-4 py-2.5 tabular-nums">{money(l.monthlyInstalment)}</td>
+                <td className="px-4 py-2.5 tabular-nums">{money(l.outstandingBalance)}</td>
+                <td className="px-4 py-2.5 tabular-nums">
+                  {l.instalmentsPaid}/{l.durationMonths}
+                </td>
+                <td className="px-4 py-2.5">
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLS[l.status] ?? ''}`}
+                  >
+                    {tStatus(l.status)}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 text-right">
+                  {/* One destination, not five action forms and a schedule folded into the cell. */}
+                  <Link
+                    href={`/admin/loans/${l.id}?employmentId=${encodeURIComponent(l.employmentId)}`}
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    {t('viewEdit')}
+                  </Link>
+                </td>
+              </tr>
+            ))}
+            {pageLoans.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                  {loans.length === 0 ? t('empty') : t('noMatches')}
                 </td>
               </tr>
             )}
-          </Fragment>
-        ))}
-      </tbody>
-    </table>
-    <ClientPager state={state} />
-    </div>
-  );
-}
+          </tbody>
+        </table>
+      </div>
 
-function ActionButton({
-  action,
-  loanId,
-  label,
-}: {
-  action: (fd: FormData) => void | Promise<void>;
-  loanId: string;
-  label: string;
-}) {
-  return (
-    <form action={action}>
-      <input type="hidden" name="loanId" value={loanId} />
-      <button className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">{label}</button>
-    </form>
+      <ClientPager state={state} />
+    </div>
   );
 }

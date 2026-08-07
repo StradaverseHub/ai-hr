@@ -3655,7 +3655,13 @@
           "fixed": "Fixed amount (RM)",
           "effectiveFrom": "Effective from",
           "effectiveTo": "Effective to",
-          "nonResidentHint": "Percentage of PCB produces RM0 for non-residents and below-threshold earners — use Fixed if a deduction is required."
+          "nonResidentHint": "Percentage of PCB produces RM0 for non-residents and below-threshold earners — use Fixed if a deduction is required.",
+          "addButton": "Add zakat setup",
+          "editButton": "Edit zakat setup",
+          "addTitle": "Add zakat setup",
+          "editTitle": "Edit zakat setup",
+          "cancel": "Cancel",
+          "pickEmployeeHint": "Showing every employee. Pick someone on the left to see only their records and add or edit their zakat setup."
         },
         "history": {
           "title": "Transaction history",
@@ -3684,7 +3690,12 @@
           "colCreated": "Created",
           "status": "Status",
           "active": "Active",
-          "inactive": "Inactive"
+          "inactive": "Inactive",
+          "searchPlaceholder": "Search employee, company, state or dates",
+          "nShown": "{count} shown",
+          "noMatches": "No zakat records match your search.",
+          "viewEdit": "View / Edit",
+          "colActions": "Actions"
         }
       },
       "view": {
@@ -7749,6 +7760,38 @@
       "reserved": "Reserved",
       "applied": "Applied",
       "skipped": "Skipped"
+    },
+    "addButton": "Add loan",
+    "pickEmployeeHint": "Showing every loan. Pick someone on the left to see only their loans and add a new one.",
+    "newSubtitle": "Principal, interest and duration. The monthly instalment is calculated as you type.",
+    "detailSubtitle": "The loan, its repayment schedule, and the actions that change it.",
+    "viewEdit": "View / Edit",
+    "colActions": "Actions",
+    "searchPlaceholder": "Search employee, type, status or amount",
+    "nShown": "{count} shown",
+    "noMatches": "No loans match your search.",
+    "backToList": "Back to list",
+    "appliedTitle": "Applied in payroll",
+    "appliedSubtitle": "The instalments actually deducted in each processed payroll run.",
+    "appliedEmpty": "No instalments have been deducted yet.",
+    "lifecycleTitle": "Loan actions",
+    "amendHint": "Amending rebuilds the {remaining} instalments still to come so they sum to the outstanding balance of {outstanding}. Instalments already deducted are never rewritten.",
+    "suspendHint": "Pauses the deduction. No instalment is taken on the next payroll run; the outstanding balance is unchanged.",
+    "resumeHint": "Restarts the deduction from the next payroll run. The outstanding balance is unchanged.",
+    "settleHint": "Closes the loan as fully repaid and stops all future deductions. Use it when the balance has been paid off some other way.",
+    "settleConfirm": "This closes the loan and stops all future deductions. The outstanding balance of {outstanding} will no longer be collected through payroll.",
+    "cancelHint": "Voids the loan as if it had never been issued. Only possible while no instalment has been deducted.",
+    "cancelConfirm": "This voids the loan and its whole repayment schedule. It cannot be undone.",
+    "scheduleEmpty": "This loan has no repayment schedule.",
+    "cycle": {
+      "regular": "Regular",
+      "off_cycle": "Off-cycle",
+      "bonus": "Bonus",
+      "adjustment": "Adjustment"
+    },
+    "batchStatus": {
+      "processed": "Processed",
+      "closed": "Closed"
     }
   },
   "payrollCycleConfig": {
@@ -8643,5 +8686,17 @@
     "noEmployees": "No employees match your filters.",
     "selectedTag": "Selected",
     "showingCapped": "Showing first {cap} of {total} matches — refine your search."
+  },
+  "appliedInPayroll": {
+    "searchPlaceholder": "Search month, employee, company or amount",
+    "nShown": "{count} shown",
+    "noMatches": "No deductions match your search.",
+    "colPeriod": "Payroll month",
+    "colCycle": "Cycle",
+    "colEmployee": "Employee",
+    "colCompany": "Company",
+    "colAmount": "Amount",
+    "colStatus": "Status",
+    "colCreated": "Recorded"
   }
 }

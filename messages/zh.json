@@ -3655,7 +3655,13 @@
           "fixed": "固定金额 (RM)",
           "effectiveFrom": "生效日期",
           "effectiveTo": "失效日期",
-          "nonResidentHint": "对非居民及低于门槛的收入者，PCB 百分比计算结果为 RM0 — 如需扣除请使用固定金额。"
+          "nonResidentHint": "对非居民及低于门槛的收入者，PCB 百分比计算结果为 RM0 — 如需扣除请使用固定金额。",
+          "addButton": "添加天课设置",
+          "editButton": "编辑天课设置",
+          "addTitle": "添加天课设置",
+          "editTitle": "编辑天课设置",
+          "cancel": "取消",
+          "pickEmployeeHint": "正在显示全部员工。请在左侧选择一位员工，仅查看其记录并添加或编辑其天课设置。"
         },
         "history": {
           "title": "交易历史",
@@ -3684,7 +3690,12 @@
           "colCreated": "创建时间",
           "status": "状态",
           "active": "启用",
-          "inactive": "停用"
+          "inactive": "停用",
+          "searchPlaceholder": "搜索员工、公司、州属或日期",
+          "nShown": "显示 {count} 项",
+          "noMatches": "没有符合搜索条件的天课记录。",
+          "viewEdit": "查看 / 编辑",
+          "colActions": "操作"
         }
       },
       "view": {
@@ -7749,6 +7760,38 @@
       "reserved": "已预留",
       "applied": "已扣除",
       "skipped": "已跳过"
+    },
+    "addButton": "添加贷款",
+    "pickEmployeeHint": "正在显示全部贷款。请在左侧选择一位员工，仅查看其贷款并为其新增。",
+    "newSubtitle": "本金、利息与期限。输入时会即时计算每月分期额。",
+    "detailSubtitle": "贷款详情、还款计划，以及可以更改它的操作。",
+    "viewEdit": "查看 / 编辑",
+    "colActions": "操作",
+    "searchPlaceholder": "搜索员工、类型、状态或金额",
+    "nShown": "显示 {count} 项",
+    "noMatches": "没有符合搜索条件的贷款。",
+    "backToList": "返回列表",
+    "appliedTitle": "已在薪资中扣除",
+    "appliedSubtitle": "每次已处理薪资运行中实际扣除的分期款。",
+    "appliedEmpty": "尚未扣除任何分期款。",
+    "lifecycleTitle": "贷款操作",
+    "amendHint": "修改会重建尚未扣除的 {remaining} 期分期款，使其总额等于未偿余额 {outstanding}。已扣除的分期款不会被改写。",
+    "suspendHint": "暂停扣款。下一次薪资运行不会扣除分期款；未偿余额保持不变。",
+    "resumeHint": "从下一次薪资运行起恢复扣款。未偿余额保持不变。",
+    "settleHint": "将贷款标记为已全额偿还并停止今后所有扣款。适用于余额已通过其他方式结清的情况。",
+    "settleConfirm": "此操作将结清贷款并停止今后所有扣款。未偿余额 {outstanding} 将不再通过薪资扣收。",
+    "cancelHint": "作废该贷款，视同从未发放。仅在尚未扣除任何分期款时可用。",
+    "cancelConfirm": "此操作将作废该贷款及其全部还款计划，且无法撤销。",
+    "scheduleEmpty": "该贷款没有还款计划。",
+    "cycle": {
+      "regular": "常规",
+      "off_cycle": "非常规",
+      "bonus": "奖金",
+      "adjustment": "调整"
+    },
+    "batchStatus": {
+      "processed": "已处理",
+      "closed": "已关闭"
     }
   },
   "payrollCycleConfig": {
@@ -8643,5 +8686,17 @@
     "noEmployees": "没有符合筛选条件的员工。",
     "selectedTag": "已选择",
     "showingCapped": "显示 {total} 个匹配中的前 {cap} 个 — 请细化搜索。"
+  },
+  "appliedInPayroll": {
+    "searchPlaceholder": "搜索月份、员工、公司或金额",
+    "nShown": "显示 {count} 项",
+    "noMatches": "没有符合搜索条件的扣款。",
+    "colPeriod": "薪资月份",
+    "colCycle": "周期",
+    "colEmployee": "员工",
+    "colCompany": "公司",
+    "colAmount": "金额",
+    "colStatus": "状态",
+    "colCreated": "记录时间"
   }
 }

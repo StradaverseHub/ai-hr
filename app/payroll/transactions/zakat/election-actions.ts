@@ -27,10 +27,18 @@ export async function saveZakatElectionAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   const personId = String(formData.get('personId'));
-  // Redirect back to the same employee's election (the one-off override section was removed by d435673e, so
+  // Redirect back to the same employee's records (the one-off override section was removed by d435673e, so
   // there is no sibling selection to preserve any more).
+  //
+  // 6a1f2bd6 — SUCCESS AND FAILURE NOW LAND IN DIFFERENT PLACES, and that is the point. The editor moved
+  // off the list onto its own page, so a save that WORKED should return the reader to the list they came
+  // from, while one the setter REFUSED (InvalidZakatSetupError: percent method with no percentage, and so
+  // on) has to land back on the form the message is about. Bouncing a refusal to the list would print a red
+  // banner on a screen that no longer contains a single one of the fields it names.
   const back = (extra: string) =>
     `/payroll/transactions/zakat?employmentId=${encodeURIComponent(employmentId)}&${extra}`;
+  const backToForm = (extra: string) =>
+    `/payroll/transactions/zakat/election?employmentId=${encodeURIComponent(employmentId)}&${extra}`;
   try {
     const current = await getStatutoryProfileMY(s, personId);
     // The election lives on the MY statutory row; without one (no IC yet) there is nothing to attach it
@@ -93,7 +101,7 @@ export async function saveZakatElectionAction(formData: FormData) {
       zakatEffectiveTo: (formData.get('zakatEffectiveTo') as string) || null,
     });
   } catch (e) {
-    redirect(back(`error=${encodeURIComponent((e as Error).message)}`));
+    redirect(backToForm(`error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath('/payroll/transactions/zakat');
   redirect(back('toast=saved'));

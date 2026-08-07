@@ -3655,7 +3655,13 @@
           "fixed": "Số tiền cố định (RM)",
           "effectiveFrom": "Hiệu lực từ",
           "effectiveTo": "Hiệu lực đến",
-          "nonResidentHint": "Phần trăm PCB cho ra RM0 đối với người không cư trú và người có thu nhập dưới ngưỡng — dùng Số tiền cố định nếu cần khấu trừ."
+          "nonResidentHint": "Phần trăm PCB cho ra RM0 đối với người không cư trú và người có thu nhập dưới ngưỡng — dùng Số tiền cố định nếu cần khấu trừ.",
+          "addButton": "Thêm thiết lập zakat",
+          "editButton": "Sửa thiết lập zakat",
+          "addTitle": "Thêm thiết lập zakat",
+          "editTitle": "Sửa thiết lập zakat",
+          "cancel": "Hủy",
+          "pickEmployeeHint": "Đang hiển thị tất cả nhân viên. Chọn một người ở bên trái để chỉ xem hồ sơ của họ và thêm hoặc sửa thiết lập zakat."
         },
         "history": {
           "title": "Lịch sử giao dịch",
@@ -3684,7 +3690,12 @@
           "colCreated": "Ngày tạo",
           "status": "Trạng thái",
           "active": "Đang bật",
-          "inactive": "Đã tắt"
+          "inactive": "Đã tắt",
+          "searchPlaceholder": "Tìm nhân viên, công ty, bang hoặc ngày",
+          "nShown": "Hiển thị {count}",
+          "noMatches": "Không có hồ sơ zakat nào khớp với tìm kiếm của bạn.",
+          "viewEdit": "Xem / Sửa",
+          "colActions": "Hành động"
         }
       },
       "view": {
@@ -7749,6 +7760,38 @@
       "reserved": "Đã giữ chỗ",
       "applied": "Đã khấu trừ",
       "skipped": "Đã bỏ qua"
+    },
+    "addButton": "Thêm khoản vay",
+    "pickEmployeeHint": "Đang hiển thị tất cả khoản vay. Chọn một người ở bên trái để chỉ xem khoản vay của họ và thêm khoản mới.",
+    "newSubtitle": "Gốc, lãi và thời hạn. Số tiền trả hằng tháng được tính ngay khi bạn nhập.",
+    "detailSubtitle": "Khoản vay, lịch trả nợ và các thao tác thay đổi nó.",
+    "viewEdit": "Xem / Sửa",
+    "colActions": "Hành động",
+    "searchPlaceholder": "Tìm nhân viên, loại, trạng thái hoặc số tiền",
+    "nShown": "Hiển thị {count}",
+    "noMatches": "Không có khoản vay nào khớp với tìm kiếm của bạn.",
+    "backToList": "Quay lại danh sách",
+    "appliedTitle": "Đã khấu trừ trong bảng lương",
+    "appliedSubtitle": "Các kỳ trả thực tế đã được khấu trừ trong mỗi lần chạy lương đã xử lý.",
+    "appliedEmpty": "Chưa có kỳ trả nào được khấu trừ.",
+    "lifecycleTitle": "Thao tác khoản vay",
+    "amendHint": "Việc sửa đổi sẽ dựng lại {remaining} kỳ trả còn lại sao cho tổng bằng dư nợ {outstanding}. Các kỳ đã khấu trừ không bao giờ bị viết lại.",
+    "suspendHint": "Tạm dừng khấu trừ. Lần chạy lương kế tiếp sẽ không trừ kỳ nào; dư nợ giữ nguyên.",
+    "resumeHint": "Tiếp tục khấu trừ từ lần chạy lương kế tiếp. Dư nợ giữ nguyên.",
+    "settleHint": "Đóng khoản vay như đã trả đủ và dừng mọi khấu trừ sau này. Dùng khi dư nợ đã được thanh toán bằng cách khác.",
+    "settleConfirm": "Thao tác này đóng khoản vay và dừng mọi khấu trừ sau này. Dư nợ {outstanding} sẽ không còn được thu qua bảng lương.",
+    "cancelHint": "Hủy khoản vay như chưa từng phát hành. Chỉ thực hiện được khi chưa khấu trừ kỳ nào.",
+    "cancelConfirm": "Thao tác này hủy khoản vay và toàn bộ lịch trả nợ. Không thể hoàn tác.",
+    "scheduleEmpty": "Khoản vay này không có lịch trả nợ.",
+    "cycle": {
+      "regular": "Thường",
+      "off_cycle": "Ngoài chu kỳ",
+      "bonus": "Thưởng",
+      "adjustment": "Điều chỉnh"
+    },
+    "batchStatus": {
+      "processed": "Đã xử lý",
+      "closed": "Đã đóng"
     }
   },
   "payrollCycleConfig": {
@@ -8643,5 +8686,17 @@
     "noEmployees": "Không có nhân viên nào khớp với bộ lọc.",
     "selectedTag": "Đã chọn",
     "showingCapped": "Hiển thị {cap} trong số {total} kết quả — hãy thu hẹp tìm kiếm."
+  },
+  "appliedInPayroll": {
+    "searchPlaceholder": "Tìm tháng, nhân viên, công ty hoặc số tiền",
+    "nShown": "Hiển thị {count}",
+    "noMatches": "Không có khoản khấu trừ nào khớp với tìm kiếm của bạn.",
+    "colPeriod": "Tháng lương",
+    "colCycle": "Chu kỳ",
+    "colEmployee": "Nhân viên",
+    "colCompany": "Công ty",
+    "colAmount": "Số tiền",
+    "colStatus": "Trạng thái",
+    "colCreated": "Ghi nhận"
   }
 }

@@ -59,6 +59,7 @@ import {
   employment,
   employmentPayComponent,
   jobGrade,
+  loanRepayment,
   payComponent,
   payrollBatch,
   payrollBatchComponent,
@@ -1134,7 +1135,7 @@ export type ZakatElectionViewRow = {
  */
 export function listZakatElections(
   ctx: SessionContext,
-  p: { companyIds: string[] },
+  p: { companyIds: string[]; employmentId?: string },
 ): Promise<ZakatElectionViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
   return withTenant(ctx, (tx) =>
@@ -1161,6 +1162,11 @@ export function listZakatElections(
       .where(
         and(
           inArray(employment.companyId, p.companyIds),
+          // 6a1f2bd6 — NARROW IN THE QUERY, NOT AFTER IT. With an employee selected in the panel the Zakat
+          // screen shows that person's records and nobody else's; filtering the rendered array instead
+          // would still have read every colleague's election to throw it away, and the reporter's
+          // complaint was precisely that picking somebody changed nothing about what the lists showed.
+          p.employmentId ? eq(employment.id, p.employmentId) : undefined,
           isNull(employment.terminatedOn), // active employments (matches the election picker on the screen)
           // A "saved election" = a method was set OR the deduction is switched on. The kernel nulls the
           // method on switch-off, so the OR arm is a safety net for legacy inactive-with-method rows.
@@ -1329,6 +1335,88 @@ const zakatFilterPayload = (p: ZakatTxnFilter) => ({
   cycle: p.cycle ?? null,
   status: p.status ?? null,
 });
+
+/* ────────────── Loans "Applied in payroll" (feedback 6d72816e) ────────────── */
+
+/**
+ * The instalments a payroll run ACTUALLY deducted, for the Loans screen's "Applied in payroll" list.
+ *
+ * IT LIVES HERE, BESIDE listZakatTxnsAcross, ON PURPOSE. Zakat, Loans and TP1 were each asked for the same
+ * screen in the same words, and the one thing that would have produced three lookalikes is three separate
+ * "what was applied" reads written a week apart. So this returns the SAME row shape the zakat history
+ * returns (period, cycle, employee, company, amount, batch status, timestamp) and both screens render it
+ * through the one shared table — components/applied-in-payroll-list.tsx.
+ *
+ * NOTHING NEW IS STORED. `loan_repayment` has carried applied_batch_id / applied_amount / applied_at /
+ * status since ADR-0060; the figures were simply unreachable except by unfolding a row in the loan list.
+ * `status = 'applied'` is the whole predicate — 'scheduled' and 'reserved' rows are a plan, not a
+ * deduction, and 'skipped' ones were deliberately not taken.
+ *
+ * The join to payroll_batch goes through applied_batch_id, so a row whose batch has since been deleted
+ * simply does not appear rather than rendering a period-less line. Read-only, no domain event (pure
+ * SELECT). Fails closed on an empty `companyIds` set, like every other read in this file.
+ */
+export type AppliedLoanRepaymentViewRow = {
+  id: string;
+  loanId: string;
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  companyId: string;
+  company: string;
+  /** Instalment number within the loan's schedule (1..durationMonths). */
+  sequenceNo: number;
+  payPeriod: string; // = "effective payroll month"
+  runType: RunType;
+  runSeq: number;
+  batchStatus: string;
+  amount: string; // the RM actually deducted (loan_repayment.applied_amount)
+  createdOn: string; // 'YYYY-MM-DD HH:MM:SS' — when the run applied it
+};
+
+export function listAppliedLoanRepayments(
+  ctx: SessionContext,
+  p: { companyIds: string[]; employmentId?: string },
+): Promise<AppliedLoanRepaymentViewRow[]> {
+  if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: loanRepayment.id,
+        loanId: loanRepayment.loanId,
+        employmentId: loanRepayment.employmentId,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        companyId: payrollBatch.companyId,
+        company: company.legalName,
+        sequenceNo: loanRepayment.sequenceNo,
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
+        batchStatus: payrollBatch.status,
+        amount: loanRepayment.appliedAmount,
+        createdOn: sql<string>`to_char(${loanRepayment.appliedAt}, 'YYYY-MM-DD HH24:MI:SS')`,
+      })
+      .from(loanRepayment)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, loanRepayment.appliedBatchId))
+      .innerJoin(employment, eq(employment.id, loanRepayment.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(
+        and(
+          inArray(payrollBatch.companyId, p.companyIds),
+          eq(loanRepayment.status, 'applied'),
+          p.employmentId ? eq(loanRepayment.employmentId, p.employmentId) : undefined,
+        ),
+      )
+      .orderBy(
+        desc(payrollBatch.payPeriod),
+        asc(payrollBatch.runSeq),
+        asc(person.fullName),
+        asc(loanRepayment.sequenceNo),
+      ),
+  );
+}
 
 /* ─────────────────── Re-run disclosure (feedback 97a9b0ab) ─────────────────── */
 
