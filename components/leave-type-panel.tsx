@@ -21,10 +21,9 @@ import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
 // real one instead of the hand-synced copy it used to carry.
 import { MARITAL_STATUSES } from '@/lib/person-vocabulary';
 // 4a1abc4a — ONE way to print a number of days, shared with every balance screen (see lib/day-format.ts).
-// The band table passes ROUNDING_BAND_DECIMALS because its figures are FRACTIONS of a day, compared at 3dp
-// by checkRoundingBands; every other field here is a whole-day quantity and takes the 2dp default.
+// The band table used to be the module's single exception (ROUNDING_BAND_DECIMALS = 3); that constant is
+// retired and every figure on this screen, bands included, is printed and tidied at the 2dp default.
 import {
-  ROUNDING_BAND_DECIMALS,
   formatDayInput,
   formatDays,
   normalizeDayFieldOnBlur,
@@ -168,43 +167,59 @@ const roundingMethodValue = (m?: LeaveRoundingMethod | null): LeaveRoundingMetho
  *  case that made blunt whole-day rounding unsatisfactory in the first place. */
 const ROUNDING_EXAMPLE_RAW = Math.round((14 / 12) * 100) / 100;
 
-/** 8fec719e — three decimal places, the precision the reporter's tables are written at and the one
- *  `checkRoundingBands` / `applyRoundingBands` compare and snap to.
+/** 4a1abc4a — band figures print at the SAME two decimals as every other day figure on this screen.
  *
- *  4a1abc4a DELIBERATELY LEFT AT THREE while standardising every other day figure to two. A band is not a
- *  number of days; it is a FRACTION of one, in [0,1]. Printing a 0.125 boundary as "0.13" would be a lie on
- *  screen, and the on-blur tidier below would then write that lie back as the rule. The shared formatter is
- *  still the one doing the printing — precision is its parameter, which is the whole reason it takes one. */
-const bandText = (v: number) => formatDays(v, { decimals: ROUNDING_BAND_DECIMALS });
+ *  8fec719e wrote this table at three, because `checkRoundingBands` / `applyRoundingBands` compare and snap
+ *  the fraction under test at 3dp, so a 0.125 boundary was typeable and "0.13" would have been a lie the
+ *  on-blur tidier then saved. What the reporter's three tables actually contained was 0.401 and 0.701 — a
+ *  notch above 0.400 and 0.700, typed only because each row had to start somewhere after the one above
+ *  stopped. From is DERIVED now, so nothing needs a notch and nothing needs a third decimal. The engine is
+ *  unchanged: `bandRound` widens a stored 0.40 to 0.400 and reads the same rule. */
+const bandText = (v: number) => formatDays(v);
 
 /**
- * 8fec719e — ONE EDITOR ROW. The three figures are held as STRINGS, deliberately, for the reason the
- * retired threshold editor documented and this table makes worse: a controlled number input backed by a
- * number cannot be typed into, because "0.7" passes through "0." on the way and `Number('0.')` is 0, so
- * the field snaps back before the second digit lands. Keeping the raw text lets an administrator type;
- * the warnings below and the SERVER decide whether what they typed is legal.
+ * 8fec719e — ONE EDITOR ROW. The figures are held as STRINGS, deliberately, for the reason the retired
+ * threshold editor documented and this table makes worse: a controlled number input backed by a number
+ * cannot be typed into, because "0.7" passes through "0." on the way and `Number('0.')` is 0, so the field
+ * snaps back before the second digit lands. Keeping the raw text lets an administrator type; the warnings
+ * below and the SERVER decide whether what they typed is legal.
  *
- * `fromIsHint` carries the "light grey suggestion" the request asks for. When a row is added, its From is
- * pre-filled from the row above and marked as a hint: it is a REAL, POSTED, EDITABLE value that merely
- * looks provisional, not a placeholder. A placeholder would be the wrong shape — the reporter's words are
- * "you can accept it", and accepting something means doing nothing.
+ * ⚠️ 4a1abc4a — `from` IS NOT A FIELD ANY MORE. It is DERIVED (see `fromText`): row 0 starts at 0.00 and
+ * every later row starts where the row above stopped. The "light grey suggestion" this replaces was a real,
+ * editable value pre-filled from the row above — and editing it is exactly what produced the reporter's
+ * 0.401 / 0.701, because a row typed as 0.400→0.700 leaves the previous row's own end uncovered unless the
+ * next one starts a notch later. A derived From cannot be given a notch, so the holes at exactly 0.400 and
+ * 0.700 cannot exist. Two typed figures per row, and the table joins up by construction.
  */
-type BandRow = { from: string; to: string; result: string; fromIsHint: boolean };
+type BandRow = { to: string; result: string };
+
+/**
+ * Row i's From. The first row starts at the bottom of the decimal range; every other starts at the row
+ * above's Round To — the raw TEXT, not a re-formatted copy, so a half-typed row above shows through as
+ * half-typed rather than as a confident 0.
+ */
+const fromText = (rows: BandRow[], i: number): string => (i === 0 ? bandText(0) : rows[i - 1].to);
 
 const rowsFromStored = (bands: RoundingBand[] | null | undefined): BandRow[] =>
   (Array.isArray(bands) ? bands : [])
     .filter((b) => b != null && typeof b === 'object')
+    // The stored `from` is DROPPED, not read: it is derived from the row above. Migration 0414 already made
+    // every stored row contiguous, so there is nothing left for this to change — but a row written by hand
+    // with a From that does not meet the row above would be shown, and re-saved, joined up.
     .map((b) => ({
-      from: bandText(Number(b.from) || 0),
       to: bandText(Number(b.to) || 0),
       result: bandText(Number(b.result) || 0),
-      fromIsHint: false,
     }));
 
-/** The rows as the server will see them. A half-typed figure becomes NaN rather than 0 so the warnings
- *  below (and `setLeaveTypeRules`) call it a broken row instead of silently reading it as zero. */
+/** A typed cell as the server will see it. A BLANK or half-typed cell becomes NaN — which `JSON.stringify`
+ *  posts as null and `checkRoundingBands` calls a broken row — rather than `Number('')`'s silent 0, which
+ *  would post a rule nobody typed. */
+const bandNum = (s: string) => (s.trim() === '' ? Number.NaN : Number(s));
+
+/** The rows as the server will see them, WITH the derived From. The client is not trusted to have derived
+ *  it — `setLeaveTypeRules` runs the same `checkRoundingBands` over whatever actually arrives. */
 const rowsToBands = (rows: BandRow[]): RoundingBand[] =>
-  rows.map((r) => ({ from: Number(r.from), to: Number(r.to), result: Number(r.result) }));
+  rows.map((r, i) => ({ from: bandNum(fromText(rows, i)), to: bandNum(r.to), result: bandNum(r.result) }));
 
 /**
  * 8fec719e — the Custom Rounding table: From, Round To, Rounded Result, an Add Row button and as many
@@ -223,6 +238,14 @@ const rowsToBands = (rows: BandRow[]): RoundingBand[] =>
  * OVERLAPS AND DUPLICATES BLOCK THE SAVE; A GAP ONLY WARNS. That asymmetry is the service's, not a UI
  * choice — see checkRoundingBands. A gap is shown because part of the decimal range being left alone is
  * usually not what someone means, but a table has to be buildable one row at a time.
+ *
+ * ⚠️ 4a1abc4a — WHAT A DERIVED FROM TAKES OFF THE TABLE, and what it deliberately does not. With every row
+ * starting where the row above stopped, an INTERNAL gap, an overlap and a duplicate are all unreachable
+ * from this screen: they need two rows that disagree about a boundary, and there is only one boundary. What
+ * remains reachable is a row whose Round To is not above where it started (an `order` problem — the fix is
+ * to raise Round To, not to move From), a figure outside 0–1, a blank cell, and a TRAILING gap when the
+ * last row stops below 1.00. Every branch below stays anyway: `checkRoundingBands` is the SERVICE's
+ * validator and still has to answer for rows written by an older release or by hand.
  */
 function RoundingBandsEditor({
   t,
@@ -239,30 +262,23 @@ function RoundingBandsEditor({
   const gaps = problems.filter((p): p is Extract<RoundingBandProblem, { kind: 'gap' }> => p.kind === 'gap');
   const has = (kind: RoundingBandProblem['kind']) => problems.some((p) => p.kind === kind);
 
-  const patch = (i: number, field: 'from' | 'to' | 'result', v: string) =>
-    setRows(rows.map((r, j) => (j === i ? { ...r, [field]: v, ...(field === 'from' ? { fromIsHint: false } : {}) } : r)));
+  const patch = (i: number, field: 'to' | 'result', v: string) =>
+    setRows(rows.map((r, j) => (j === i ? { ...r, [field]: v } : r)));
 
-  // 4a1abc4a — tidy a cell to the band precision when the administrator clicks away, so what was typed and
-  // what is posted look the same ("0.5" becomes "0.500", the shape every other row is written in).
+  // 4a1abc4a — tidy a cell to 2dp when the administrator clicks away, so what was typed and what is posted
+  // look the same ("0.5" becomes "0.50", the shape every other figure on this screen is written in).
   //
-  // It patches ONLY when the text actually changes, and that is not an optimisation: `patch` clears
-  // `fromIsHint`, so an unconditional blur handler would strip the From cell's light-grey "suggestion"
-  // styling merely because someone tabbed through it. `normalizeDayText` leaves a blank cell blank and a
-  // half-typed one alone, which keeps `checkRoundingBands` calling that row broken rather than reading the
-  // empty box as a legal 0.
+  // `normalizeDayText` leaves a blank cell blank and a half-typed one alone, which keeps
+  // `checkRoundingBands` calling that row broken rather than reading the empty box as a legal 0.
   const tidyCell =
-    (i: number, field: 'from' | 'to' | 'result') => (e: { currentTarget: { value: string } }) => {
-      const next = normalizeDayText(e.currentTarget.value, ROUNDING_BAND_DECIMALS);
+    (i: number, field: 'to' | 'result') => (e: { currentTarget: { value: string } }) => {
+      const next = normalizeDayText(e.currentTarget.value);
       if (next !== e.currentTarget.value) patch(i, field, next);
     };
 
-  const addRow = () => {
-    // The suggestion the request asks for: the next band starts where the last one ended. When there is no
-    // row yet the decimal range starts at 0.000, which is the only sensible first From.
-    const prev = rows[rows.length - 1];
-    const suggested = prev ? prev.to : bandText(0);
-    setRows([...rows, { from: suggested, to: '', result: '', fromIsHint: rows.length > 0 }]);
-  };
+  // A new row's From needs no suggestion any more — `fromText` derives it from the row above the moment
+  // the row exists. Only the two typed cells start empty.
+  const addRow = () => setRows([...rows, { to: '', result: '' }]);
 
   return (
     <div className="space-y-2 rounded-lg border border-border p-2">
@@ -285,17 +301,15 @@ function RoundingBandsEditor({
             {rows.map((r, i) => (
               <tr key={i} className={badRows.has(i) ? 'bg-destructive/10' : undefined}>
                 <td className={cell}>
+                  {/* DERIVED, not typed — 4a1abc4a. `readOnly` rather than `disabled`: the cell is still
+                      reachable and still read out, it simply has no answer of its own to give. It carries no
+                      `name`; the whole table posts through the hidden JSON field below. */}
                   <input
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.001"
-                    value={r.from}
-                    onChange={(e) => patch(i, 'from', e.target.value)}
-                    onBlur={tidyCell(i, 'from')}
+                    type="text"
+                    readOnly
+                    value={fromText(rows, i)}
                     aria-label={t('subStep.roundingBandFrom')}
-                    // The light-grey suggestion. Styling only — the value is real, posted and editable.
-                    className={cn(inputCls, 'w-24', r.fromIsHint && 'text-muted-foreground/60')}
+                    className={cn(inputCls, 'w-24 bg-muted/40 text-muted-foreground')}
                   />
                 </td>
                 <td className={cell}>
@@ -303,7 +317,7 @@ function RoundingBandsEditor({
                     type="number"
                     min="0"
                     max="1"
-                    step="0.001"
+                    step="0.01"
                     value={r.to}
                     onChange={(e) => patch(i, 'to', e.target.value)}
                     onBlur={tidyCell(i, 'to')}
@@ -316,7 +330,7 @@ function RoundingBandsEditor({
                     type="number"
                     min="0"
                     max="1"
-                    step="0.001"
+                    step="0.01"
                     value={r.result}
                     onChange={(e) => patch(i, 'result', e.target.value)}
                     onBlur={tidyCell(i, 'result')}

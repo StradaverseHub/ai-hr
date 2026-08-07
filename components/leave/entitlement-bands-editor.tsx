@@ -50,6 +50,14 @@ export const DEFAULT_BANDS: EditableBand[] = [{ ...BLANK, fromYears: '0' }];
  * The stored JSONB the form actually posts. Blank optional cells are OMITTED rather than sent as 0:
  * `bandCarryMax` reads a finite number >= 0 as an OVERRIDE of the policy-level cap, so a blank box
  * persisted as 0 would silently mean "carry nothing" instead of "not set on this band".
+ *
+ * ⚠️ 4a1abc4a — A BLANK ENTITLED DAYS POSTS `null`, NOT 0, and that one character is a data-loss fix.
+ * It used to be `Number(r.days || 0)`: a blank box became a confident zero, `validateServiceBands`
+ * accepted it as "zero days is a legal entitlement", `updateEntitlementTemplate` closed the running
+ * version and opened a successor granting nothing, and the operator got a green "Saved". A template
+ * holding 18 days was observed becoming 0 that way. Blank now reaches the server as null and is REFUSED
+ * by name. A deliberately typed 0 is still legal — "this range grants nothing" is a real rule, and the
+ * whole point is that the two stop looking alike.
  */
 export function toStoredBands(rows: EditableBand[]) {
   return rows.map((r) => {
@@ -57,7 +65,7 @@ export function toStoredBands(rows: EditableBand[]) {
     const out: Record<string, number | null> = {
       fromYears: Number(r.fromYears || 0),
       toYears: num(r.toYears),
-      days: Number(r.days || 0),
+      days: num(r.days),
     };
     const carry = num(r.carryForwardDays);
     if (carry != null) out.carryForwardDays = carry;
