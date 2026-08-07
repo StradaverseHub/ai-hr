@@ -51,7 +51,10 @@ WITH shaped AS (
   SELECT lt.id,
          e.ord,
          round((e.value ->> 'to')::numeric, 2)     AS to_v,
-         round((e.value ->> 'result')::numeric, 2) AS result_v
+         round((e.value ->> 'result')::numeric, 2) AS result_v,
+         -- The stored From, rounded but NOT yet snapped to the row above — `joined` decides whether the gap
+         -- it leaves is a fencepost worth absorbing or a decision worth keeping.
+         round((e.value ->> 'from')::numeric, 2)   AS from_v_raw
   FROM leave_type lt
   CROSS JOIN LATERAL jsonb_array_elements(lt.rounding_bands) WITH ORDINALITY AS e(value, ord)
   WHERE jsonb_typeof(lt.rounding_bands) = 'array'
@@ -66,10 +69,30 @@ WITH shaped AS (
     )
 ),
 joined AS (
-  -- The whole conversion in one line: From is the row above's To, and the first row starts at 0.00.
+  -- CLOSE A FENCEPOST NOTCH, PRESERVE A DELIBERATE GAP.
+  --
+  -- Found in verification. The first version set From to the row above's To unconditionally, which is right
+  -- for the three tables that exist on production (their 0.401 / 0.701 are "one notch above 0.400", typed
+  -- because a row stops just before its Round To) but WRONG in general: a table that deliberately leaves a
+  -- fraction uncovered — a single row [0.50, 1.00], which is legal and savable today — would have had that
+  -- gap silently closed and started rounding fractions it was written to leave alone.
+  --
+  -- So the rule is narrow: only absorb a gap SMALLER THAN ONE HUNDREDTH, which is exactly a boundary that
+  -- 2dp cannot express and therefore can only be a fencepost. Anything 0.01 or wider is a decision somebody
+  -- made, and it survives, rounded to 2dp like everything else.
   SELECT id,
          ord,
-         COALESCE(lag(to_v) OVER (PARTITION BY id ORDER BY ord), round(0::numeric, 2)) AS from_v,
+         CASE
+           -- The FIRST row has no row above it, so its fencepost reference is 0 rather than a lag. Same
+           -- rule: absorb a sub-hundredth notch (a stored 0.001), keep anything wider. Forcing it to 0.00
+           -- unconditionally is what destroyed a single-row table like [{from: 0.50, to: 1.00}] — legal and
+           -- savable today — by making it round the whole lower half it was written to leave alone.
+           WHEN lag(to_v) OVER (PARTITION BY id ORDER BY ord) IS NULL
+             THEN CASE WHEN from_v_raw < 0.01 THEN round(0::numeric, 2) ELSE from_v_raw END
+           WHEN from_v_raw - lag(to_v) OVER (PARTITION BY id ORDER BY ord) < 0.01
+             THEN lag(to_v) OVER (PARTITION BY id ORDER BY ord)
+           ELSE from_v_raw
+         END AS from_v,
          to_v,
          result_v
   FROM shaped
