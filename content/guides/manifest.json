@@ -16,6 +16,7 @@
     { "slug": "employee-leave", "title": "Employee Guide: Checking Your Balance & Requesting Leave", "audience": "employee", "category": "leave", "order": 13 },
     { "slug": "employee-attendance", "title": "Employee Guide: Clocking In/Out & Correction Requests", "audience": "employee", "category": "attendance", "order": 14 },
     { "slug": "employee-payslips", "title": "Employee Guide: Payslips & Your Annual EA Form", "audience": "employee", "category": "payroll", "order": 15 },
-    { "slug": "employee-profile-performance", "title": "Employee Guide: Updating Your Profile & Self-Reviews", "audience": "employee", "category": "me", "order": 16 }
+    { "slug": "employee-profile-performance", "title": "Employee Guide: Updating Your Profile & Self-Reviews", "audience": "employee", "category": "me", "order": 16 },
+    { "slug": "admin-attendance-engine", "title": "Admin Guide: How Attendance Is Calculated (Roster, Backup Shift, Company Schedule)", "audience": "hr_admin", "category": "attendance", "order": 17 }
   ]
 }

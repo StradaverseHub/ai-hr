@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listAttendancePolicies } from '@/core/attendance';
+import { employmentsWithoutBackupShift } from '@/core/roster';
 import { listRegisteredDevices } from '@/core/attendance-device';
 import { ensureStandardRule, listAttendanceRules } from '@/core/attendance-rule';
 import { packFor } from '@/localization/registry';
@@ -92,6 +93,25 @@ export default async function AttendancePolicyPage({
   };
   const rm = (n: number) => `RM ${n.toLocaleString('en-MY')}`;
 
+  // b8aa3466 — the backup-shift coverage gate, made visible on the screen it gates. The reporter asked for
+  // the company work schedule to come OFF this page; it can only come off once nobody is calculated from
+  // it, and this banner is how you can tell. It is a live count, not a one-off audit: hire someone without
+  // a backup shift and the amber state comes back.
+  //
+  // Coverage reaching zero does NOT make this whole card dead, and the note says so. Universal coverage
+  // only closes scheduleFor's third fallback (core/attendance.ts — roster row → backup shift → policy).
+  // The working-days list is ALSO read, for every employee shift or no shift, by absence derivation
+  // (core/attendance.ts ~2014) and roster generation (core/roster.ts) — and the overtime rates below are
+  // the tenant's only editor for the statutory wage ceiling and the rest-day/holiday multipliers.
+  // b8aa3466 — scoped to the SAME companies every other list on this page uses (`visible`, from
+  // getScopeIds). An unscoped count here reported employees the viewer cannot open.
+  const uncovered = await employmentsWithoutBackupShift(s, { companyIds: visible.map((c) => c.id) });
+  const UNCOVERED_SHOWN = 10;
+  const uncoveredNames = uncovered
+    .slice(0, UNCOVERED_SHOWN)
+    .map((u) => (u.employeeCode ? `${u.employeeCode} ${u.name}` : u.name))
+    .join(', ');
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader
@@ -160,6 +180,27 @@ export default async function AttendancePolicyPage({
         <h2 className="text-sm font-semibold text-foreground">{tr('scheduleSectionTitle')}</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">{tr('scheduleSectionIntro')}</p>
       </div>
+
+      {/* b8aa3466 — backup-shift coverage. Amber while anyone is still calculated from the schedule below;
+          neutral, and explicit about what the schedule is still for, once nobody is. */}
+      <Card id="backup-shift-coverage" className="scroll-mt-6 p-4">
+        <h2 className="text-sm font-semibold text-foreground">{t('coverageTitle')}</h2>
+        {uncovered.length === 0 ? (
+          <p className="mt-1 text-xs text-muted-foreground">{t('coverageAllCovered')}</p>
+        ) : (
+          <div className="mt-2 rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            <p>{t('coverageGap', { count: uncovered.length })}</p>
+            <p className="mt-1">
+              {t('coverageGapNames', {
+                names:
+                  uncovered.length > UNCOVERED_SHOWN
+                    ? `${uncoveredNames}, +${uncovered.length - UNCOVERED_SHOWN}`
+                    : uncoveredNames,
+              })}
+            </p>
+          </div>
+        )}
+      </Card>
 
       {/* ── Overtime rates (relocated from Payroll > Statutory Configuration — feedback e776d17d) ──────── */}
       {otRuleset && otComponentDefaults && (
