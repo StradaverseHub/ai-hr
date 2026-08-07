@@ -1038,6 +1038,49 @@ describe('§7 an Employee ID held by a draft', () => {
     expect(await listEmployeeDrafts(ctx)).toHaveLength(0);
   });
 
+  it('the DATABASE holds the reservation, not merely the service — and only for non-null codes', async () => {
+    // The pre-checks above all live in TypeScript, and TypeScript loses a race. The partial unique index
+    // from 0415 is what actually makes a double-issue impossible, so it is asserted against the database
+    // directly, bypassing every service. A migration that shipped without the index would leave all the
+    // refusal tests above passing and the guarantee itself absent.
+    const row = (code: string | null) => ({
+      tenantId: b.tenantId,
+      companyId: b.companyId,
+      label: 'X',
+      reservedEmployeeCode: code,
+    });
+    await owner.db.insert(schema.employeeDraft).values(row('DUP-HOLD'));
+    // Assert the CONSTRAINT by name, not merely "it threw": a NOT NULL or a foreign key would also
+    // throw, and would prove nothing about the reservation. The driver nests the Postgres error, which
+    // is why core/employee-draft.ts walks the cause chain to turn this into a sentence.
+    const clash = await owner.db
+      .insert(schema.employeeDraft)
+      .values(row('DUP-HOLD'))
+      .then(() => null)
+      .catch((e: unknown) => e);
+    expect(clash).toBeTruthy();
+    // `constraint_name` is postgres.js's spelling; node-postgres calls it `constraint`. Accept either,
+    // because getting this wrong is exactly how a "friendly message" mapper ends up never firing.
+    type PgErr = { code?: string; constraint?: string; constraint_name?: string; cause?: unknown };
+    let cur = clash as PgErr | undefined;
+    let hit: PgErr | undefined;
+    for (let i = 0; cur && i < 4; i++) {
+      if (cur.code === '23505') { hit = cur; break; }
+      cur = cur.cause as PgErr | undefined;
+    }
+    expect(hit?.constraint_name ?? hit?.constraint, JSON.stringify(clash)).toBe(
+      'employee_draft_reserved_code_uq',
+    );
+    // PARTIAL: nulls do not collide, which is why every draft written before 0415 — and every draft that
+    // never reached Create — is untouched by the index.
+    await owner.db.insert(schema.employeeDraft).values(row(null));
+    await owner.db.insert(schema.employeeDraft).values(row(null));
+    const [{ n }] = await owner.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.employeeDraft);
+    expect(Number(n)).toBe(3);
+  });
+
   it('a non-admin cannot reserve an Employee ID', async () => {
     const employee = { ...adminCtx(b), roles: ['employee'] };
     await expect(createEmployeeDraftWithReservedCode(employee, four())).rejects.toThrow(/Only an admin/);

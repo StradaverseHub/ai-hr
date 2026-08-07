@@ -329,21 +329,33 @@ export async function createEmployeeDraftWithReservedCode(
     }
     data.profile!.employeeCode = code;
 
-    const [row] = await tx
-      .insert(employeeDraft)
-      .values({
-        tenantId: ctx.tenantId,
-        companyId,
-        createdByPersonId: ctx.personId ?? null,
-        label: draftLabel(data),
-        data,
-        currentStep: 1,
-        reservedEmployeeCode: code,
-        reservedAt: new Date(),
-        reservedConfigId: configId,
-        reservedNumber: number,
-      })
-      .returning({ id: employeeDraft.id });
+    // `employee_draft_reserved_code_uq` (0415) is the race net the check above cannot be: two
+    // administrators pressing Create on the same hand-keyed ID in the same second both pass the read and
+    // serialize HERE. Caught so the loser gets the sentence the winner's clash would have given them,
+    // rather than a raw 23505 — mirroring `isEmployeeCodeUniqueViolation` in core/org.ts.
+    let row: { id: string };
+    try {
+      [row] = await tx
+        .insert(employeeDraft)
+        .values({
+          tenantId: ctx.tenantId,
+          companyId,
+          createdByPersonId: ctx.personId ?? null,
+          label: draftLabel(data),
+          data,
+          currentStep: 1,
+          reservedEmployeeCode: code,
+          reservedAt: new Date(),
+          reservedConfigId: configId,
+          reservedNumber: number,
+        })
+        .returning({ id: employeeDraft.id });
+    } catch (e) {
+      if (isReservedCodeUniqueViolation(e)) {
+        throw new Error(`Employee ID "${code}" is reserved by a draft employee record`);
+      }
+      throw e;
+    }
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -681,6 +693,27 @@ function citizenship(v: string | undefined): 'citizen' | 'pr' | 'non_citizen' | 
   const s = (v ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (s === 'citizen' || s === 'pr' || s === 'non_citizen') return s;
   return undefined;
+}
+
+/**
+ * Postgres 23505 on the reservation index specifically.
+ *
+ * TWO TRAPS, both of which make a naive version silently never match. The driver wraps the Postgres
+ * error inside `cause` (the top-level error is a "Failed query:" envelope with no code at all), so the
+ * chain has to be walked. And `postgres.js` names the field `constraint_name`, not the `constraint` that
+ * node-postgres uses — `core/org.ts`'s twin only appears to work because it falls back to `?? true` and
+ * therefore matches ANY unique violation. Both spellings are accepted here so this cannot regress into
+ * quietly re-throwing the raw error the day the driver changes.
+ */
+function isReservedCodeUniqueViolation(e: unknown): boolean {
+  type PgErr = { code?: string; constraint?: string; constraint_name?: string; cause?: unknown };
+  let cur = e as PgErr | null | undefined;
+  for (let i = 0; cur && i < 4; i++) {
+    const name = cur.constraint_name ?? cur.constraint ?? '';
+    if (cur.code === '23505' && name.includes('reserved_code')) return true;
+    cur = cur.cause as PgErr | null | undefined;
+  }
+  return false;
 }
 
 function assertAdmin(ctx: SessionContext): void {
