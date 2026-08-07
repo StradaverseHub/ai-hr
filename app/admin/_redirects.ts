@@ -22,6 +22,12 @@ export const GENERATE = '/admin/leave/generate';
  *  and 2). Its saves return here rather than to ENTITLEMENTS: the two steps are one screen and an operator
  *  writing a table then assigning it must not be bounced back into the Leave Type workspace between them. */
 export const ENTITLEMENT_TEMPLATES = '/admin/leave/entitlements/templates';
+/** f12d77e5 — the Leave Approval Workflow screen, and the home of the relocated Grade Groups card.
+ *  The three grade-group writes return HERE, not to ENTITLEMENTS: moving a card without moving its
+ *  redirect would save the group and then throw the admin onto the exact screen this item takes grade
+ *  groups off — and send a failure's `?error=` to a page with no grade-group form to explain it.
+ *  app/admin/leave-approval/actions.ts holds the same literal as its own private `PAGE`. */
+export const LEAVE_APPROVAL = '/admin/leave/approval';
 
 export function fail(path: string, e: unknown): never {
   redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);

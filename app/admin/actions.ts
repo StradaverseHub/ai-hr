@@ -112,7 +112,7 @@ import { packFor } from '@/localization/registry';
 // 4e9a4d59 — the post-action redirect contract lives in a plain module so BOTH this file and
 // app/admin/leave-approval/actions.ts share ONE okEntitlements (a 'use server' file can only export
 // async functions, so these helpers could never be exported from here).
-import { ENTITLEMENTS, GENERATE, fail, ok, okToast, okEntitlements } from './_redirects';
+import { ENTITLEMENTS, GENERATE, LEAVE_APPROVAL, fail, ok, okToast, okEntitlements } from './_redirects';
 
 const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
@@ -1930,6 +1930,15 @@ function parseBands(fd: FormData): import('@/core/leave-compute').ServiceBand[] 
   }
 }
 
+/* f12d77e5 — ALL THREE GRADE-GROUP WRITES NOW RETURN TO LEAVE_APPROVAL, NOT ENTITLEMENTS.
+ *
+ * The editor moved to /admin/leave/approval, and a redirect left behind is not a cosmetic mismatch: the
+ * save would have worked and then thrown the admin onto the Entitlement screen — the one screen this item
+ * exists to take grade groups OFF — with no card there to show the result. A failure was worse: `fail()`
+ * carries the message in `?error=`, so "this grade group is used by one or more leave approval rules"
+ * would have surfaced on a page with no grade-group form to attach it to, while the Approval screen the
+ * admin was actually looking at silently reloaded unchanged. The services and the FormData contract are
+ * untouched; only where the redirect lands moved, with the card. */
 export async function createGradeGroupAction(fd: FormData) {
   const s = await requireAdmin();
   try {
@@ -1938,9 +1947,9 @@ export async function createGradeGroupAction(fd: FormData) {
       gradeIds: fd.getAll('gradeIds').map((v) => String(v)).filter(Boolean),
     });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    fail(LEAVE_APPROVAL, e);
   }
-  ok(ENTITLEMENTS);
+  ok(LEAVE_APPROVAL);
 }
 
 export async function updateGradeGroupAction(fd: FormData) {
@@ -1956,9 +1965,9 @@ export async function updateGradeGroupAction(fd: FormData) {
     // grade between groups changes approval routing only and has no balance to reproject. `gradeIds` is
     // still returned by the writer and still used by its own event payload.
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    fail(LEAVE_APPROVAL, e);
   }
-  ok(ENTITLEMENTS);
+  ok(LEAVE_APPROVAL);
 }
 
 export async function deleteGradeGroupAction(fd: FormData) {
@@ -1966,9 +1975,11 @@ export async function deleteGradeGroupAction(fd: FormData) {
   try {
     await deleteGradeGroup(s, { id: String(fd.get('id') ?? '') });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    // The refusal an admin is most likely to meet here ("used by one or more leave approval rules") is
+    // now shown on the screen that lists those rules, which is the whole reason the card moved.
+    fail(LEAVE_APPROVAL, e);
   }
-  ok(ENTITLEMENTS);
+  ok(LEAVE_APPROVAL);
 }
 
 

@@ -194,11 +194,17 @@ describe('Approval Workflow page — two headed sections', () => {
     // The derived data is gone too, not merely unrendered — the matrix cost a rule list PER COMPANY plus
     // the department / position / business-unit / grade-group catalogues, and nothing else on the page
     // used any of them.
+    //
+    // f12d77e5 (r171) REMOVED `gradeGroupsAll` FROM THIS LIST, and the reason matters. The page reads
+    // grade groups again — but for the relocated Grade Groups EDITOR (moved here off the Entitlements
+    // screen), not to label a rule's scope in a table that no longer exists. Leaving the assertion in
+    // would have been satisfied by a variable name rather than by the fact it was written to guard, which
+    // is the kind of green that stops meaning anything. test/grade-group-entitlement-relocation.test.ts
+    // asserts that read POSITIVELY. The other three catalogues are still matrix-only and still gone.
     for (const gone of [
       'listLeaveApprovalRules',
       'isCompanyDefaultApprovalRule',
       'buildWorkflowMatrixLabels',
-      'gradeGroupsAll',
       'businessUnitsAll',
       'departmentsAll',
       'positionsAll',
