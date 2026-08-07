@@ -18,63 +18,76 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-06 (r167 RELEASE THREE SHIPPED)
+## CURRENT STATE — snapshot 2026-08-07 (r169 SHIPPED — four items, statutory forms corrected)
 
-**`main@ea4f3d54` is what runs. Production on 332 migrations. Next free migration number is `0411`**
-(`0405` was RENUMBERED to `0410` and shipped; `0409` shipped with it). No half-applied migration, no
-pending deploy. Verified after deploy: 332 migrations, service `active`, `GET /` 401, zero-change
-`rsync -azi --delete --dry-run`.
+**`main@a65ec99f` is what runs. Production on 334 migrations. Next free migration number is `0414`**
+(`0411` attendance calc trace, `0413` back pay; `0412` was never used). No half-applied migration, no
+pending deploy. Verified after deploy: 334 migrations, service `active`, `GET /` 401, zero-change
+`rsync -azi --delete --dry-run`. Gate: 586 files / 7,119 tests green across all 3 chunks; `next build`
+clean; shadow rehearsal 332→334 and fresh 334/334 both PASS.
 
-### 6e9a126e RELEASE THREE IS DONE — the old entitlement layer is cleared
+### r169 shipped FOUR items — and verification, not the gate, is what made them correct
 
-`leave_policy`, `benefit_scheme`, `scheme_leave_entitlement` and `employment.benefit_scheme_id` are
-**GONE** from production. 292 entitlement tables + 67 policy rows cleared; **361 rows archived under
-`0410-release-three`**. KEPT and verified: **16 grade groups, 54 memberships, 205 of 261 approval rules
-still scoped by them**; 318 ledger rows and 40 leave requests untouched. Both `6e9a126e` and its
-decision gate `4861bcbb` are marked deployed.
+`7c834696` Attendance Calculation Engine · `2ef69d1e` Back Pay (Arrears) · `b7b22514` Entity Transfer ·
+`4a1abc4a` Entitlement Decimal Precision. All four marked deployed; **`building` and `approved` are now
+BOTH ZERO.**
 
-**THE CUSTOMER NOW HAS ZERO ENTITLEMENT CONFIGURED.** Every figure reads blank until 400 items are
+**EVERY ONE OF THESE PASSED tsc, its own targeted suite, and `next build` BEFORE it was caught.** This is
+the round's whole lesson — a green build says the code runs, not that it is right:
+
+1. **Entity Transfer silently corrupted two STATUTORY forms.** Until this item an employment belonged to
+   one company for life, so "this employment's year" and "this employer's year" were the same set of rows
+   and every annual read conflated them safely. The moment a transfer could move `employment.company_id`:
+   the **EA form** summed every payslip in the year and printed the CURRENT company as employer (A→B in
+   July ⇒ ONE form, on B's letterhead, under B's LHDN employer number, holding six months of A's pay);
+   and **Form E Part A** counted `employment.company_id` while the CP8D rows beneath it join through
+   `payroll_batch` — so a transferred person vanished from the old company's headcount **including for
+   years that closed before the transfer**. The plan had promised "two EA forms needs no code". It was
+   false. Fixed: `eaStatement` takes a `companyId`, `eaCompaniesInYear`/`employeeEaStatements` enumerate
+   the employers a year spans, the EA screen switches between them, and Part A's population now comes
+   from the payslips (company-true by construction) with new hires reading `join_date` — the date someone
+   joined THIS employer — instead of the group-wide `hired_on`.
+2. **A widened guard reached a movement the item never touched.** Adding `joinDate` to
+   `REVERSIBLE_INFO_DATE_FIELDS` was necessary for Entity Transfer and silently made the EXISTING
+   `joinDateChange` roll-back-able for the first time. Now keyed by kind.
+3. **The attendance panel printed a break that was never deducted.** It showed the CONFIGURED break, so a
+   4-hour day with a 1-hour break said "Break deducted: 1h 00m" directly above its own "span 4h, worked
+   4h". The figure is now derived as `span − worked`, so it cannot disagree with the numbers beside it.
+4. **An i18n claim that was true in five languages and false in the sixth.** Flattening two ICU plurals
+   was justified as "two visible fraction digits always select CLDR's `other`". Tamil's rule is
+   `i = 0 or n = 1`, so `1.00` selects `one` and Tamil uses a different word for one day. The obvious
+   correction — put a plain `{d, plural, …}` back — was ALSO wrong: ICU selects on the number formatted
+   with ZERO fraction digits, so English then read "1.00 day remaining". **The category has to be
+   computed at the precision the figure is DISPLAYED in**, which ICU cannot express: `dayPluralCategory`.
+
+**THE TEST THAT GREPS A CATALOG CANNOT SEE ANY OF THIS.** The false Tamil claim shipped with a passing
+test that pattern-matched the message string; rendering it through `createTranslator` failed instantly.
+Assert on rendered output, not on source text.
+
+### 6e9a126e RELEASE THREE — the one fact still live (full entry: history → r167)
+
+**THE CUSTOMER STILL HAS ZERO ENTITLEMENT CONFIGURED.** Every figure reads blank until ~400 items are
 retyped from the archive into Entitlement Templates + Employee Eligibility. The no-opinion guard is what
 keeps balances still while that is true — if a recalc ever starts posting non-zero deltas against an
 unconfigured type, that guard has broken and it is the first thing to check.
 
-**FOUR DEFECTS THIS ROUND THAT NEITHER `tsc` NOR A TARGETED RUN COULD SEE — the durable lessons:**
-1. **`0405` would have been SILENTLY SKIPPED.** Numbered when 0405 was free; r165/r166/r168 then shipped
-   0406-0408, so its `when` fell below the deployed watermark. Drizzle would have shipped the code and
-   never run the drop. **Re-check a held branch's journal `when` against production immediately before
-   merging, not when the number is allocated.**
-2. **Dropping a table silently DROPS ITS RLS.** `leave_policy` carried a company-scoped WITH CHECK
-   (0134); its replacement had only `app.is_admin()`. Release three was itself a privilege widening
-   across nine companies. **When a table is dropped, diff its policies against the replacement's.**
-3. **A guard whose source file is deleted does not fail loudly — it silently widens.** A schema slice
-   `leaveType` → `leavePolicy` returned -1 and swallowed the rest of the file.
-4. **A source-grep guard compiles fine and only fails when RUN.** 23 such files were invisible to the
-   whole tsc-driven workflow and appeared only in the full gate.
+### The board — counted on production 2026-08-07 after r169
 
-### The board — counted on production 2026-08-06 after r165 (owner role; `DATABASE_URL` is RLS-blocked)
+**`deployed = 605` · `cancelled = 12` · `open = 7` · `contested = 3` · `planned = 3`. `approved` and
+`building` are BOTH ZERO.** Re-count rather than trusting this line.
 
-**`deployed = 594` · `cancelled = 12` · `planned = 4` · `approved = 2` · `building = 2`. `open` and
-`contested` are BOTH ZERO.** Re-count rather than trusting this line.
+**NOTHING IS QUEUED TO BUILD.** The next round starts by planning: 7 open + 3 contested. The three
+contested are UI/UX items (`e440991b`, `6a1f2bd6`, `6d72816e`) — mockup them, that is what r165 is for.
 
-**ALL FOUR PLANNED ITEMS CARRY A MOCKUP** (the first use of r165), each pinned to its current revision:
-`e7eb5d83` rev 2 · `4861bcbb` rev 2 · `b7b22514` rev 1 · `e440991b` rev 1. Sources are in
-`docs/mockups/*.html`; re-render with `pnpm mockup`.
+**KNOWN FOLLOW-UP, deliberately not built this round:** `ea_override` is keyed
+`(employment, year, field)` with no company, so an EA amendment applies to the CURRENT employer's form
+only. Double-applying would inflate a group total in a statutory filing; under-applying is visible and
+recoverable. Keying that table by company is what makes a past employer's form amendable.
 
-**REPRODUCING FIRST CHANGED THE SCOPE ON THREE OF THE FOUR — the findings are in each item's own plan
-BUILD NOTES; read them there.** Headlines: `e7eb5d83` has **zero claims ever filed** and 55 job grades
-with **not one grade-scoped limit**, over a `claim_policy` table that has always carried `grade_id` — two
-of their three asks are a SCREEN over data that exists. `b7b22514`'s proposed data model **already exists
-verbatim** (`employment.hired_on` IS the Group Join Date); the real gap is that no movement writer takes a
-`companyId` at all. `e440991b` points 2 and 3 are **already built**, and `payroll_reprocess_job` holds 30
-rows on production.
-
-**r160/r161/r162/r163 shipped TEN board items between them on 2026-08-05/06.**
-
-**THE 1 APPROVED AND UNBUILT:** `2ef69d1e` (Back Pay — the largest thing left, must go LAST). Its
-plan's mandatory pre-build count is DONE, measured 2026-08-06: **26 compensation rows / 22 employees /
-3 periods** were keyed AFTER the payroll they should have affected, 9 with a real salary difference,
-moving in BOTH directions (one is 6000 → 5500). The naive query — valid_from before the last payslip —
-returns 41/36 and is WRONG; that is just "everyone has a salary".
+**STATED LIMIT, not hidden:** re-running a PRIOR year's Form E Part A reads today's `join_date`. The
+population and the year-end line are payslip-derived and historically correct; the new-hire line on a
+reprinted prior year is not. Fixing it needs a dated company history, which does not exist — the company
+timeline lives only in the event log (`core/movement.ts` `companyIdAtSequence`).
 
 ### Plans must carry a MOCKUP — shipped r165 (why, and the design findings: history → r165)
 
@@ -94,65 +107,25 @@ page's revision filter hides it, and the reporter sees a plan with no design and
 the certain parts, keep the uncertain ones in words, and let the six-language caveat under every mockup
 do its job, or this manufactures a NEW class of "not up to standard" instead of curing it.
 
-**STILL `building`, both deliberately partial. `improve:pull` HIDES `building`, so nothing but this
-file will ever surface them.** Keep their `build_ref` in step with the bullets below: the reporter reads
-the board, not this file.
+**NOTHING IS `building` OR `approved` AS OF r169.** `improve:pull` hides `building`, so whenever a
+partially-built item exists it MUST be recorded here — nothing else will surface it. `6e9a126e`
+(release three, r167), `7c834696` (all four points, r162 + r169), `35b7af0a` (r164) and `2ef69d1e`
+(back pay, r169) are all DONE and deployed; reasoning for each is in `docs/HANDOFF-HISTORY.md` under
+its round and in the item's own `build_ref`.
 
-- **`6e9a126e` — releases ONE (r141) and TWO (r159) are live. RELEASE THREE IS BUILT, UNMERGED, AND
-  CLEARED TO GO.** The reporter answered on 2026-08-06 (contest on `4861bcbb`): clear it, start from
-  zero, everything else untouched. No date given. **`4861bcbb` rev 2 is the plan to read** — it carries
-  the counts, what is cleared, what is kept and why, and its mockup.
-  **THE OWNER AUTHORISED EXACTLY FOUR OBJECTS** by naming them: `leave_policy`, `benefit_scheme`,
-  `scheme_leave_entitlement`, `employment.benefit_scheme_id`. The reporter's "any backend relationships"
-  is WIDER. **`grade_group` / `grade_group_member` are KEPT — 205 live `leave_approval_policy` rows
-  scope by them** and dropping them silently unscopes every one. Do not widen on the phrasing.
-  Measured on production: `benefit_scheme` **41** · `scheme_leave_entitlement` **292** · `leave_policy`
-  **67** = the plan's **359 pieces to retype**, against **0** in both new tables.
-  **BRANCHES: `build/r163-g-release3`** (migration `0405` written, `when` 1781862505000) **plus
-  `build/r163g-ui` and `build/r163g-picker`.** `RELEASE3-REMAINING.md` on the first branch is the
-  authoritative to-do list — read it rather than re-deriving. Still to do: `db/schema.ts`,
-  `packs/leave` satelliteTables, the `leave_policy` disposition in `core/leave-type-refs.ts` (its drift
-  test fails until then, deliberately), `db/seed.ts:13` (imports the removed `createLeavePolicy` — on
-  nobody's original list), `admin.entitlementTemplates.coexistNote` in six locales (it tells HR nothing
-  old was removed, which becomes false on deploy), and ~102 test errors. Then gate + shadow rehearsal.
-  **The grade-group CRUD UI lived INSIDE `components/benefit-scheme-config.tsx`** — the file the brief
-  said to delete while also saying grade groups must stay. It was extracted; following the brief
-  literally would have left the 205 rules pointing at groups nobody could create or re-staff.
-  `build/r154` is squashed and ancestrally unrelated to what shipped — ignore it in any branch scan.
-- **`7c834696` — points 1, 2 and 4 shipped in r162; POINT 3 IS NOT BUILT.** Point 1 (OT 1.0 no longer
-  carries normal hours) was display-only — the stored split was already correct. Point 2 added the
-  Lateness / Early Out columns from figures migration 0394 already stores. Point 4 removed the obsolete
-  grace inputs but KEPT the shift-differential PAY fields, relabelled — they are `shift.differential`,
-  the premium `core/payroll.ts` prefills, live on 2 of 9 shifts. **Remaining: point 3, the per-figure
-  calculation breakdown and hover** — engine work, and the only part needing a new stored trace. Its
-  board `build_ref` is NULL; this bullet is the record.
-- **`35b7af0a` is DONE and DEPLOYED (r164)** — kept here only so a scan of this list does not go looking
-  for it. Groups 1-8 shipped; the remaining 21 wizard labels are deliberately NOT shared (they already
-  render the same control on both screens). Reasoning: history → r164, and the item's own `build_ref`.
-### THE DELETE GUARD IS FIXED (r160) — and the durable lesson is the count, not the fix
+### THE DELETE GUARD (r160) — the durable lesson is the count, not the fix (full entry: history → r160)
 
-`deleteLeaveType` counted FIVE tables, `listLeaveTypes`' `inUse` predicate counted THREE, and the
-database carries **TWELVE** foreign keys to `leave_type`. So Delete was offered on a type Postgres would
-refuse and the admin got a raw 23503 — the reported "Special Leave cannot be deleted".
+`deleteLeaveType` counted FIVE tables, the `inUse` predicate counted THREE, and the database carries
+TWELVE foreign keys to `leave_type`. Both the plans and this file said ELEVEN — the twelfth arrived with
+release two and no hand-written list caught up. **A list of referrers maintained by hand is wrong the
+moment anyone adds a table**, so there is no list: `core/leave-type-refs.ts` declares each referrer with a
+disposition (`history` refuses, `config` cascades, the self-reference is NULLED on the OTHER type), both
+the button predicate and the delete guard are GENERATED from it, and `test/leave-type-referrers.test.ts`
+fails if the declaration and the live foreign keys disagree either way.
 
-**Both plans and this file said ELEVEN. The twelfth, `leave_generation_run_item`, arrived with
-`6e9a126e` release two and no hand-written list caught up.** That is the lesson worth keeping: a list of
-referrers maintained by hand is wrong the moment anyone adds a table.
-
-So there is no list any more. `core/leave-type-refs.ts` declares each referrer with a disposition —
-`history` REFUSES the delete, `config` is CASCADED with it in one transaction, and the self-reference
-`leave_type.balance_source_type_id` is NULLED on the OTHER type (deleting Caregiver Leave because it
-drew from Special Leave would be catastrophic). Both the button predicate and the delete guard are
-GENERATED from it, and `test/leave-type-referrers.test.ts` fails if the declaration and the live foreign
-keys disagree in either direction, or if a cascaded table ever acquires a referrer of its own.
-
-**`inUse` CHANGED MEANING and it is easy to misread:** it is now "this type has HISTORY", not "anything
-points at it", because configuration no longer blocks a delete. A type carrying only policies and
-approval rules is correctly deletable and shows Delete.
-
-**`core/read.ts` around line 1770 documents the identical hazard for job grades** and requires the
-button predicate and the delete guard to stay byte-identical. That rule is now structural for leave
-types rather than remembered.
+**`inUse` CHANGED MEANING:** it is "this type has HISTORY", not "anything points at it". A type carrying
+only policies and approval rules is correctly deletable. `core/read.ts` ~1770 documents the identical
+hazard for job grades.
 
 ### ⚠️ DECISIONS TAKEN THAT THE REPORTER SHOULD SEE
 

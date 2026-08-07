@@ -4,6 +4,28 @@ Archive of SHIPPED round entries, newest first. The living handoff is `../HANDOF
 current state and the entry for any round still in flight; when a round ships, its entry moves to the
 top of this file.
 
+## r167 — 6e9a126e RELEASE THREE (shipped 2026-08-06, main@ea4f3d54, 332 migrations)
+
+`leave_policy`, `benefit_scheme`, `scheme_leave_entitlement` and `employment.benefit_scheme_id` were
+dropped from production. 292 entitlement tables + 67 policy rows cleared; 361 rows archived under
+`0410-release-three`. KEPT and verified: 16 grade groups, 54 memberships, 205 of 261 approval rules still
+scoped by them; 318 ledger rows and 40 leave requests untouched. Both `6e9a126e` and its decision gate
+`4861bcbb` marked deployed.
+
+FOUR DEFECTS NEITHER `tsc` NOR A TARGETED RUN COULD SEE — the durable lessons:
+1. `0405` would have been SILENTLY SKIPPED. Numbered when 0405 was free; r165/r166/r168 then shipped
+   0406-0408, so its `when` fell below the deployed watermark. Drizzle would have shipped the code and
+   never run the drop. Re-check a held branch's journal `when` against production immediately before
+   merging, not when the number is allocated.
+2. Dropping a table silently DROPS ITS RLS. `leave_policy` carried a company-scoped WITH CHECK (0134);
+   its replacement had only `app.is_admin()`. Release three was itself a privilege widening across nine
+   companies. When a table is dropped, diff its policies against the replacement's.
+3. A guard whose source file is deleted does not fail loudly — it silently widens. A schema slice
+   `leaveType` → `leavePolicy` returned -1 and swallowed the rest of the file.
+4. A source-grep guard compiles fine and only fails when RUN. 23 such files were invisible to the whole
+   tsc-driven workflow and appeared only in the full gate.
+
+
 Nothing in this file is current state. Board counts, migration numbers, environment claims and "next
 steps" in these entries were true when written and are routinely superseded — trust HANDOFF.md and the
 tree, not this file. Its own standing rule applies here doubly: shipped lists are not evidence; verify
