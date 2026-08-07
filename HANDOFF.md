@@ -192,23 +192,19 @@ hazard for job grades.
 
 ### ⚠️ THE PAID-ITEM GUARD IS ONLY ~14% EFFECTIVE TODAY, AND THAT IS BY DESIGN
 
-`f1123afd` refuses to remove a recurring pay item that was paid on a processed payslip. **It can only
-fire where the payslip stored WHICH component produced a line — and measured 2026-08-05, only 7 of 50
-payslips carry `statutory.componentLines` (3 carry `recordLines`).** Line stamping began on
-2026-08-01 (`862ed0ad`) and the kernel's own comment says earlier runs cannot be itemised
-retrospectively.
+`f1123afd` refuses to remove a recurring pay item paid on a processed payslip, but it can only fire where
+the payslip stored WHICH component produced a line — measured 2026-08-05, **7 of 50 payslips** carry
+`statutory.componentLines`. Line stamping began 2026-08-01 (`862ed0ad`) and earlier runs cannot be
+itemised retrospectively.
 
-**There is no payslip LINE TABLE at all.** `payslip` holds aggregate columns plus a `statutory` jsonb,
-and the per-item detail lives inside it keyed by catalog CODE — **not** by
-`employment_pay_component.id`. So the stored link is to the pay ITEM, not to the specific
-effective-dated row; the guard additionally requires the batch's stored `pay_period` to fall inside
-that row's own `valid_from`/`valid_to` window to attribute a line to it rather than a sibling.
+**There is no payslip line table.** Per-item detail lives in `payslip.statutory` jsonb keyed by catalog
+CODE, not by `employment_pay_component.id`, so the guard also needs the batch's `pay_period` to fall
+inside that row's own validity window to attribute a line to it rather than a sibling.
 
-**When there is no stored evidence the removal is ALLOWED, deliberately.** Refusing on absence of
-evidence would block removing almost every recurring item paid before August with no way for an admin
-to prove otherwise. The choice is pinned by an explicit test, so reversing it requires changing a test
-and saying why. **The guard becomes fully effective as new payslips accrue** — it is protection going
-forward, not a repair of history. Say that plainly rather than implying the paid items are protected.
+**With no stored evidence the removal is ALLOWED, deliberately** — refusing on absence of evidence would
+block removing almost every pre-August recurring item with no way to prove otherwise. Pinned by a test, so
+reversing it means changing a test and saying why. **It is protection going forward, not a repair of
+history** — say that plainly rather than implying paid items are protected.
 
 ### Durable product facts and unbuilt follow-ups (measured 2026-08-04/05; the items themselves SHIPPED)
 
