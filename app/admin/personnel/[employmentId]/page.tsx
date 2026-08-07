@@ -2389,8 +2389,9 @@ export default async function EmployeePage({
         )}
         {/* History table — every revision, with search / status filter / column sort / CSV export, plus an
             edit affordance on the latest (open) record. Interactive client island (f2904eeb-safe). The
-            in-force revision is marked by its own Current badge and row tint, not by being first: the
-            table sorts and filters, so row order is the reader's choice, not the record's status. */}
+            in-force revision carries its own Active badge and row tint rather than being identified by
+            position: this table sorts and filters, so row order is the reader's choice, not the record's
+            status. (The summary strip above states the same figure once more, in words.) */}
         {salaryRowViews.length > 0 && <SalaryHistoryTable rows={salaryRowViews} />}
       </section>
 

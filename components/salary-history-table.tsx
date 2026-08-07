@@ -311,78 +311,78 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
               </tr>
             ) : (
               pageRows.map((r) => (
-                  <tr key={r.id} className={`border-b border-border/60 ${r.status === 'active' ? 'bg-primary/5' : ''}`}>
-                    <td className="whitespace-nowrap px-4 py-2 tabular-nums">{r.effectiveDate}</td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">
-                      {r.currency} {fmt(r.basic)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-muted-foreground">
-                      {r.previous != null ? `${r.currency} ${fmt(r.previous)}` : '—'}
-                    </td>
-                    <td className={`whitespace-nowrap px-4 py-2 text-right tabular-nums ${incrementCls(r.incrementAmount)}`}>
-                      {r.incrementAmount != null ? fmt(r.incrementAmount) : '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-muted-foreground">
-                      {r.incrementPct != null ? `${r.incrementPct.toFixed(2)}%` : '—'}
-                    </td>
-                    {/* ADR-0078 — the structure recorded with THIS revision; a daily/hourly row also shows
-                        its rate under the mode so the paying figure is visible in history. */}
-                    <td className="whitespace-nowrap px-4 py-2">
-                      {payModeLabel(r.payMode)}
-                      {r.rateAmount != null && (
-                        <span className="ml-1 text-xs text-muted-foreground tabular-nums">
-                          ({r.currency} {fmt(Number(r.rateAmount))})
-                        </span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">{paymentTermLabel(r.paymentTerm)}</td>
-                    <td className="px-4 py-2">
-                      <Badge variant={STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</Badge>
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">{r.remarks || '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {/* 18719ded — View exists so a HISTORICAL revision is readable at all: only the
-                            open row is editable, so before this the closed rows had no way to show their
-                            remarks or pay structure beyond what fits in the table. Same fields, disabled,
-                            no <form> — it can never drift from Edit and can never post. */}
+                <tr key={r.id} className={`border-b border-border/60 ${r.status === 'active' ? 'bg-primary/5' : ''}`}>
+                  <td className="whitespace-nowrap px-4 py-2 tabular-nums">{r.effectiveDate}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">
+                    {r.currency} {fmt(r.basic)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-muted-foreground">
+                    {r.previous != null ? `${r.currency} ${fmt(r.previous)}` : '—'}
+                  </td>
+                  <td className={`whitespace-nowrap px-4 py-2 text-right tabular-nums ${incrementCls(r.incrementAmount)}`}>
+                    {r.incrementAmount != null ? fmt(r.incrementAmount) : '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-muted-foreground">
+                    {r.incrementPct != null ? `${r.incrementPct.toFixed(2)}%` : '—'}
+                  </td>
+                  {/* ADR-0078 — the structure recorded with THIS revision; a daily/hourly row also shows
+                      its rate under the mode so the paying figure is visible in history. */}
+                  <td className="whitespace-nowrap px-4 py-2">
+                    {payModeLabel(r.payMode)}
+                    {r.rateAmount != null && (
+                      <span className="ml-1 text-xs text-muted-foreground tabular-nums">
+                        ({r.currency} {fmt(Number(r.rateAmount))})
+                      </span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">{paymentTermLabel(r.paymentTerm)}</td>
+                  <td className="px-4 py-2">
+                    <Badge variant={STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</Badge>
+                  </td>
+                  <td className="px-4 py-2 text-muted-foreground">{r.remarks || '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {/* 18719ded — View exists so a HISTORICAL revision is readable at all: only the
+                          open row is editable, so before this the closed rows had no way to show their
+                          remarks or pay structure beyond what fits in the table. Same fields, disabled,
+                          no <form> — it can never drift from Edit and can never post. */}
+                      <FamilyFormDialog
+                        triggerLabel={t('salaryView')}
+                        triggerVariant="outline"
+                        title={t('salaryViewTitle')}
+                      >
+                        <fieldset disabled>{salaryFields(r)}</fieldset>
+                      </FamilyFormDialog>
+                      {r.editable && (
                         <FamilyFormDialog
-                          triggerLabel={t('salaryView')}
+                          triggerLabel={t('salaryEdit')}
                           triggerVariant="outline"
-                          title={t('salaryViewTitle')}
+                          title={t('salaryEditTitle')}
                         >
-                          <fieldset disabled>{salaryFields(r)}</fieldset>
+                          {salaryEditForm(r)}
                         </FamilyFormDialog>
-                        {r.editable && (
-                          <FamilyFormDialog
-                            triggerLabel={t('salaryEdit')}
-                            triggerVariant="outline"
-                            title={t('salaryEditTitle')}
+                      )}
+                      {r.deletable && (
+                        /* Soft delete (7c7c2f80): confirmation-gated; the service refuses records a
+                           CLOSED payroll run relied on (this flag pre-hides those). */
+                        <form action={supersedeCompensationAction} className="inline-flex">
+                          <input type="hidden" name="employmentId" value={r.employmentId} />
+                          <input type="hidden" name="compensationId" value={r.id} />
+                          <ConfirmSubmit
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto px-0 py-0 text-sm font-medium text-red-700 hover:bg-transparent hover:underline dark:text-red-400"
+                            title={t('salaryDeleteConfirmTitle')}
+                            description={t('salaryDeleteConfirmDescription')}
+                            confirmLabel={t('salaryDelete')}
                           >
-                            {salaryEditForm(r)}
-                          </FamilyFormDialog>
-                        )}
-                        {r.deletable && (
-                          /* Soft delete (7c7c2f80): confirmation-gated; the service refuses records a
-                             CLOSED payroll run relied on (this flag pre-hides those). */
-                          <form action={supersedeCompensationAction} className="inline-flex">
-                            <input type="hidden" name="employmentId" value={r.employmentId} />
-                            <input type="hidden" name="compensationId" value={r.id} />
-                            <ConfirmSubmit
-                              variant="ghost"
-                              size="sm"
-                              className="h-auto px-0 py-0 text-sm font-medium text-red-700 hover:bg-transparent hover:underline dark:text-red-400"
-                              title={t('salaryDeleteConfirmTitle')}
-                              description={t('salaryDeleteConfirmDescription')}
-                              confirmLabel={t('salaryDelete')}
-                            >
-                              {t('salaryDelete')}
-                            </ConfirmSubmit>
-                          </form>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                            {t('salaryDelete')}
+                          </ConfirmSubmit>
+                        </form>
+                      )}
+                    </div>
+                  </td>
+                </tr>
               ))
             )}
           </tbody>
