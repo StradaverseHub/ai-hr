@@ -5922,7 +5922,7 @@
     },
     "benefitScheme": {
       "groupsTitle": "职级组",
-      "groupsHelp": "将多个职级分组，使一个方案可一次覆盖它们（例如\"职级12–15\"）。一个职级只属于一个组。",
+      "groupsHelp": "将多个职级分组，使一条审批规则可一次覆盖它们（例如\"职级12–15\"）。一个职级只属于一个组。",
       "noGroups": "尚无职级组。",
       "archived": "已归档",
       "memberCount": "{count} 个职级",

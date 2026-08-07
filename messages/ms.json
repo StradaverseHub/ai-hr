@@ -5922,7 +5922,7 @@
     },
     "benefitScheme": {
       "groupsTitle": "Kumpulan Gred",
-      "groupsHelp": "Kumpulkan beberapa gred supaya satu skim boleh meliputi kesemuanya sekali gus (cth. \"Gred 12–15\"). Satu gred tergolong dalam satu kumpulan.",
+      "groupsHelp": "Kumpulkan beberapa gred supaya satu peraturan kelulusan boleh meliputi kesemuanya sekali gus (cth. \"Gred 12–15\"). Satu gred tergolong dalam satu kumpulan.",
       "noGroups": "Tiada kumpulan gred lagi.",
       "archived": "Diarkib",
       "memberCount": "{count} gred",

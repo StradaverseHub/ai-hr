@@ -5922,7 +5922,7 @@
     },
     "benefitScheme": {
       "groupsTitle": "Grade Groups",
-      "groupsHelp": "Group several grades so a scheme can cover them at once (e.g. \"Grade 12–15\"). A grade belongs to one group.",
+      "groupsHelp": "Group several grades so an approval rule can cover them at once (e.g. \"Grade 12–15\"). A grade belongs to one group.",
       "noGroups": "No grade groups yet.",
       "archived": "Archived",
       "memberCount": "{count} grades",
