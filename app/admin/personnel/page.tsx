@@ -111,6 +111,10 @@ export default async function PeoplePage({
   // draft does not have. Each of those hides the drafts rather than pretending to match them, and
   // `draft` shows them alone. Company and the search box DO apply, because a draft has both.
   const drafts = allDrafts.filter((d) => {
+    // FIRST PAGE ONLY. Pinned rows that repeat above every page of a long list stop reading as "these
+    // are outstanding" and start reading as a rendering fault. With the Draft filter on there is only
+    // one page, so this costs nothing there.
+    if (pq.offset > 0) return false;
     if (dept || type || statusFilter) return false;
     if (company && d.companyId !== company) return false;
     if (q) {
