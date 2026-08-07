@@ -256,6 +256,10 @@ export async function isEmployeeCodeTaken(
  * setup screen. That decision now happens HERE instead of at the end, which is the actual behaviour
  * change — the ID is judged, issued and held while HR is still looking at the form that asked for it.
  */
+/** 06f0cb8f — how many taken running numbers the auto path will step over before giving up. Bounded so a
+ *  namespace somebody is actively filling makes the create FAIL with a sentence rather than hang. */
+const MAX_AUTO_CODE_SKIPS = 50;
+
 export async function createEmployeeDraftWithReservedCode(
   ctx: SessionContext,
   p: {
@@ -309,7 +313,31 @@ export async function createEmployeeDraftWithReservedCode(
     } else {
       // Auto. The counter advances INSIDE this transaction, so a refusal further down rolls it back —
       // the same atomicity `hireEmployee` has always had, now anchored to Create instead of to the hire.
-      const issued = await issueEmployeeCode(tx, ctx.tenantId, companyId);
+      // 06f0cb8f — THE AUTO BRANCH MUST ASK THE SAME QUESTION THE MANUAL ONE DOES.
+      //
+      // Found in verification. A running number and a hand-keyed code live in the same namespace: this
+      // tenant has 22 employments at ISEDECOR numbered A0001..A0014 by hand plus assorted others, and a
+      // company WITH a setup can still carry legacy codes from before it. So a counter sitting at 4 can
+      // issue ABC0005 when an employment already holds ABC0005 — and because nothing checked, HR was shown
+      // that number as "issued and reserved for you" and only found out at Activate, when hireEmployee's
+      // own uniqueness check refused. The reservation was never usable and the work is lost late.
+      //
+      // Skipping a taken number is the right answer rather than failing: the counter is a sequence, gaps in
+      // it are already accepted (see the release rule above), and the alternative is a create HR cannot
+      // complete without an administrator editing the counter by hand. Bounded, because an unbounded loop
+      // against a namespace someone is actively filling is how a create hangs instead of failing.
+      let issued = await issueEmployeeCode(tx, ctx.tenantId, companyId);
+      for (let attempt = 0; issued && attempt < MAX_AUTO_CODE_SKIPS; attempt += 1) {
+        if ((await findEmployeeCodeClaim(tx, ctx.tenantId, issued.code)) === null) break;
+        issued = await issueEmployeeCode(tx, ctx.tenantId, companyId);
+        if (attempt === MAX_AUTO_CODE_SKIPS - 1 && issued && (await findEmployeeCodeClaim(tx, ctx.tenantId, issued.code)) !== null) {
+          throw new Error(
+            `The next ${MAX_AUTO_CODE_SKIPS} running numbers for this company are already taken by existing ` +
+              `employees or draft records. Check the Employee ID Auto Running Number Setup — its counter is ` +
+              `behind the IDs already in use.`,
+          );
+        }
+      }
       if (issued) {
         ({ code, configId, number } = issued);
       } else {

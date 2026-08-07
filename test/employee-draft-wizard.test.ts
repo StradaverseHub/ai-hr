@@ -1085,6 +1085,36 @@ describe('§7 an Employee ID held by a draft', () => {
     const employee = { ...adminCtx(b), roles: ['employee'] };
     await expect(createEmployeeDraftWithReservedCode(employee, four())).rejects.toThrow(/Only an admin/);
   });
+
+  it('AUTO skips a running number an EMPLOYMENT already holds, rather than reserving it', async () => {
+    /**
+     * FOUND IN VERIFICATION. The manual branch asked findEmployeeCodeClaim; the auto branch did not. A
+     * running number and a hand-keyed code share ONE namespace — this tenant has 22 employments at
+     * ISEDECOR numbered A0001..A0014 by hand — so a counter sitting behind the codes already in use issues
+     * one that is taken. HR was shown it as "issued and reserved for you" and only found out at Activate,
+     * when hireEmployee refused. The reservation was never usable and the work was lost late.
+     */
+    await config({ allowManualOverride: false });
+    // Somebody already holds ABC0001, hand-keyed — exactly the ISEDECOR shape.
+    await hireEmployee(adminCtx(b), {
+      person: { fullName: 'Holder', primaryEmail: `hold.${randomUUID().slice(0, 8)}@demo.test` },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2020-01-01',
+      employeeCode: 'ABC0001',
+    });
+
+    const { employeeCode } = await createEmployeeDraftWithReservedCode(adminCtx(b), four());
+
+    expect(employeeCode, 'must not hand out the code an employment already holds').not.toBe('ABC0001');
+    expect(employeeCode).toMatch(/^ABC\d{4}$/);
+    const clash = await owner.db
+      .select({ id: schema.employment.id })
+      .from(schema.employment)
+      .where(eq(schema.employment.employeeCode, employeeCode));
+    expect(clash, 'the reserved code must be genuinely free').toHaveLength(0);
+  });
 });
 
 // ── §8 migration 0415 ─────────────────────────────────────────────────────────────────────────────
