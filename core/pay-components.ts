@@ -960,6 +960,122 @@ export function deriveIndividualTxnAmount(
   });
 }
 
+// ── 2da9937a — the worked overtime examples the reporter asked for ───────────────────────────────────
+
+/** One overtime item to create, as a MULTIPLE of the reference item's hourly rate. */
+export type OvertimeMultiplierSeed = { code: string; name: string; multiplier: number };
+
+/** Overtime 2.0 and Overtime 3.0, alongside the Overtime 1.5 the tenant already configured. */
+export const OVERTIME_MULTIPLIER_SEEDS: readonly OvertimeMultiplierSeed[] = [
+  { code: 'OT2_0', name: 'Overtime 2.0', multiplier: 2 },
+  { code: 'OT3_0', name: 'Overtime 3.0', multiplier: 3 },
+];
+
+/** Thrown when the reference overtime item cannot be used as the model for the new ones. `not_found` = no
+ *  such code in this tenant's catalog; `not_per_hour` = it exists but does not carry a per-hour rate, so
+ *  there is no hourly figure to scale and GUESSING one would seed a wrong rate into payroll. */
+export class OvertimeReferenceUnusableError extends Error {
+  constructor(public readonly reason: 'not_found' | 'not_per_hour') {
+    super(`The reference overtime pay item is unusable (${reason}).`);
+    this.name = 'OvertimeReferenceUnusableError';
+  }
+}
+
+/**
+ * 2da9937a — create Overtime 2.0 and Overtime 3.0 from the tenant's existing Overtime 1.5.
+ *
+ * THE RATE IS DERIVED, NOT ASSUMED. The reference item already carries this tenant's own per-hour figure at
+ * 1.5×, so the plain hourly rate is that figure divided by 1.5, and 2.0× / 3.0× are multiples of it. A
+ * hard-coded rate would be a number nobody in this codebase is entitled to choose; a rate scaled from the
+ * one the tenant configured is the same money they already agreed to, at the multiplier they asked for.
+ *
+ * IT GOES THROUGH upsertPayComponent — the writer the admin screen uses — rather than an INSERT, so the
+ * new items pass the same rule validation (structural + catalog-aware), get their resolution order
+ * recorded, and append the same `pay-component.created` event an admin's own save would. A raw insert
+ * would produce rows that no audit trail explains and that the graph planner has never seen.
+ *
+ * EVERY STATUTORY FLAG IS COPIED FROM THE REFERENCE. Overtime's EPF / SOCSO / PCB / HRDF treatment is a
+ * legal matter this function has no view on; the tenant already settled it on Overtime 1.5, and 2.0× of
+ * the same payment is treated the same way. Copying is the only answer that cannot be wrong here.
+ *
+ * IDEMPOTENT BY SKIPPING, NOT BY OVERWRITING. `upsertPayComponent` is upsert-by-code, so a re-run would
+ * silently reset a rate an admin had since corrected. An existing code (archived or not) is reported as
+ * skipped and left exactly as it is.
+ */
+export function seedOvertimeMultipliers(
+  ctx: SessionContext,
+  p: {
+    /** The already-configured overtime item to model the new ones on. */
+    fromCode?: string;
+    /** The multiplier that reference item's rate already encodes. */
+    fromMultiplier?: number;
+    seeds?: readonly OvertimeMultiplierSeed[];
+  } = {},
+): Promise<{ created: string[]; skipped: string[]; hourlyRate: number }> {
+  const fromCode = (p.fromCode ?? 'OT1_5').trim().toUpperCase();
+  const fromMultiplier = p.fromMultiplier ?? 1.5;
+  const seeds = p.seeds ?? OVERTIME_MULTIPLIER_SEEDS;
+  return withTenant(ctx, async (tx) => {
+    const [ref] = await tx
+      .select()
+      .from(payComponent)
+      .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, fromCode)))
+      .limit(1);
+    if (!ref) throw new OvertimeReferenceUnusableError('not_found');
+    const refRule = ref.rule as PayRule | null;
+    if (refRule == null || refRule.kind !== 'per_hour') throw new OvertimeReferenceUnusableError('not_per_hour');
+    // Four decimals, not two: the plain hourly rate is an INTERMEDIATE (RM 16.50 at 1.5× is RM 11.00 here,
+    // but RM 16.35 is RM 10.90), and rounding it to cents before multiplying would shift the 2.0× and 3.0×
+    // rates by more than the rounding itself.
+    const hourlyRate = Math.round((refRule.rate / fromMultiplier) * 1e4) / 1e4;
+
+    const created: string[] = [];
+    const skipped: string[] = [];
+    for (const seed of seeds) {
+      const code = seed.code.trim().toUpperCase();
+      const [existing] = await tx
+        .select({ id: payComponent.id })
+        .from(payComponent)
+        .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, code)))
+        .limit(1);
+      if (existing) {
+        skipped.push(code);
+        continue;
+      }
+      await upsertPayComponent(ctx, {
+        code,
+        name: seed.name,
+        kind: ref.kind as PayComponentInput['kind'],
+        includedInEpf: ref.includedInEpf,
+        includedInSocsoEis: ref.includedInSocsoEis,
+        includedInPcb: ref.includedInPcb,
+        includedInHrdfBase: ref.includedInHrdfBase,
+        isNonPayable: ref.isNonPayable,
+        prorates: ref.prorates,
+        eaFormLine: ref.eaFormLine,
+        roundingMethod: ref.roundingMethod ?? undefined,
+        // THE LHDN CLASSIFICATION IS COPIED ONLY WHEN THE REFERENCE HAS ONE. Passing an explicit null
+        // reads as "supplied" (classificationOf), which turns on the mandatory-classification guard — and
+        // a PCB-taxable overtime item whose tenant has not filled that in yet would then be refused a seed
+        // because of a field the item it is copying leaves blank. Undefined is "not supplied", the legacy
+        // caller's semantics, which is exactly what this is.
+        ...(ref.pcbRemunerationType != null || ref.pcbExemptionCode != null || ref.epfBonus2012
+          ? {
+              epfBonus2012: ref.epfBonus2012,
+              pcbRemunerationType: ref.pcbRemunerationType as PcbRemunerationType | null,
+              pcbExemptionCode: ref.pcbExemptionCode,
+            }
+          : {}),
+        // The payslip box this prints in — Overtime, not Bonus. Copied for the same reason the flags are.
+        displayCategory: ref.displayCategory,
+        rule: { kind: 'per_hour', rate: Math.round(hourlyRate * seed.multiplier * 1e4) / 1e4 },
+      });
+      created.push(code);
+    }
+    return { created, skipped, hourlyRate };
+  });
+}
+
 /**
  * Hard-delete a catalog component (#21). GUARDED: refuse if referenced by any recurring per-employment
  * value OR any batch line (draft or closed) — deleting would orphan those rows / past payslips. Callers
