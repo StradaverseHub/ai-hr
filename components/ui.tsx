@@ -138,6 +138,12 @@ const STATUS_STYLES: Record<string, string> = {
   // nor punitive. No employee can carry it until Payroll grows a hold setting; the colour is here so the
   // vocabulary is complete on the day it does.
   withhold: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400',
+  // 06f0cb8f — NOT a seventh derived bucket. `draft` is the one Personnel status that is a real stored
+  // state rather than a calculation over an employee's dates, because the thing it describes is not an
+  // employee yet: it is a reserved place in the list with an Employee ID held for it. Deliberately the
+  // QUIETEST entry in this table — a dashed neutral outline rather than a colour — so a row that is
+  // still being filled in never competes for attention with a person who is actually employed.
+  draft: 'border border-dashed border-border bg-transparent text-muted-foreground',
 };
 
 /**

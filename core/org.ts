@@ -9,6 +9,10 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } from '../db/events';
 import { nextEmployeeCode } from './comp';
 import { generateEmployeeCode } from './employee-id-config';
+// 06f0cb8f — "is this Employee ID free?" is a TWO-table question now (an employment may carry it, or a
+// draft may be holding it). Its own module because core/employee-draft.ts imports hireEmployee from here,
+// so the rule cannot live there without a cycle — and two copies of it would let an ID be issued twice.
+import { findEmployeeCodeClaim } from './employee-code-claims';
 import { requireEmployeeCode } from '../lib/employee-code';
 import { a2cFirstYearEntitledToDate, applyMaxBalance, applyRounding, composeEntitlement, isA2cFirstYear, isAccrualUnconfigured, isEarnedMethod, leaveTypeRuleColumns } from './leave';
 // 6e9a126e RELEASE TWO — the entitlement TEMPLATE resolver. Imported from its own module rather than
@@ -121,6 +125,13 @@ export type HireParams = {
    *  system falls back to the auto counter (EMP-####). Every HR-facing path passes an explicit code, so HR
    *  owns the ID in production. */
   employeeCode?: string;
+  /** The draft whose HELD Employee ID this hire is consuming (item 06f0cb8f). Set ONLY by
+   *  `completeEmployeeDraft`. Since 06f0cb8f an ID can be spoken for by a draft as well as by an
+   *  employment, and Activate hands `hireEmployee` the very code that draft is holding — so without this
+   *  the uniqueness check would refuse every activation on the grounds that the ID is taken, by the draft
+   *  being activated. It excludes exactly one row and nothing else; any OTHER draft holding the code is
+   *  still a refusal. */
+  fromEmployeeDraftId?: string;
   /** Seniority grade (ADR-0041 2E) — drives grade-scoped leave entitlements. Optional; null = ungraded. */
   gradeId?: string | null;
   /** Hiring enhancement: the administrative manager this new hire reports to (an employment id). When
@@ -217,7 +228,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
     let employeeCode: string;
     if (p.employeeCode != null && p.employeeCode.trim() !== '') {
       employeeCode = requireEmployeeCode(p.employeeCode);
-      await assertEmployeeCodeUnique(tx, ctx.tenantId, employeeCode);
+      await assertEmployeeCodeUnique(tx, ctx.tenantId, employeeCode, undefined, p.fromEmployeeDraftId);
     } else {
       // Employee ID Auto Running Number Setup (feedback 3d0031e6): when an ACTIVE config resolves for this
       // hire's company (company-specific first, else the tenant-wide GLOBAL config), generate the code from it
@@ -1450,20 +1461,27 @@ export async function updatePerson(
  * employment being edited so re-saving its own unchanged code is not a false collision. The DB unique
  * index (employment_employee_code_uq on tenant + code) is the race-safety net; this gives the friendly
  * message instead of a raw 23505.
+ *
+ * IT IS NOW A TWO-TABLE QUESTION (item 06f0cb8f). A Draft holds an Employee ID from the moment it is
+ * created, so an ID can be spoken for without any employment carrying it yet. This check runs on EVERY
+ * path that hands out an ID — the hire form, the bulk importer (`commitEmployeeImport` goes through
+ * `hireEmployee`, so it inherits it), and `setEmployeeCode` — which is what makes the reporter's
+ * "cannot be assigned to another employee, even if the employee remains in Draft status" true rather
+ * than merely intended. `excludeDraftId` is how a draft's own Activate does not collide with itself.
  */
 async function assertEmployeeCodeUnique(
   tx: Tx,
   tenantId: string,
   code: string,
   excludeEmploymentId?: string,
+  excludeDraftId?: string,
 ): Promise<void> {
-  const rows = await tx
-    .select({ id: employment.id })
-    .from(employment)
-    .where(and(eq(employment.tenantId, tenantId), eq(employment.employeeCode, code)))
-    .limit(2);
-  const clash = rows.find((r) => r.id !== excludeEmploymentId);
-  if (clash) throw new Error(`Employee ID "${code}" is already in use`);
+  const claim = await findEmployeeCodeClaim(tx, tenantId, code, { excludeEmploymentId, excludeDraftId });
+  if (claim === 'employment') throw new Error(`Employee ID "${code}" is already in use`);
+  // Named differently ON PURPOSE. "Already in use" sends HR looking for an employee who does not exist;
+  // the ID is being held by an unfinished record, and the way out is to find that Draft in the employee
+  // list and either finish it or discard it.
+  if (claim === 'draft') throw new Error(`Employee ID "${code}" is reserved by a draft employee record`);
 }
 
 /** Map a Postgres unique-violation on the employee-code index to the same friendly message. */

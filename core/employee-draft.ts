@@ -1,5 +1,19 @@
 /**
- * Create New Employee — drafts (item 6d671f44).
+ * Create New Employee — drafts (item 6d671f44, reshaped by 06f0cb8f).
+ *
+ * ITEM 06f0cb8f INVERTED EXACTLY ONE CLAUSE OF THE PARAGRAPH BELOW, and left the rest standing.
+ * A draft used to consume nothing at all, Employee ID included. The reporter's whole request is that the
+ * ID be taken THE MOMENT the record is created — because HR knows the name and the email at the moment
+ * the offer is accepted, and the number has to be theirs from then on. So `createEmployeeDraftWithReservedCode`
+ * asks four questions (Company, Employee ID, Full Name, Email), issues the ID and HOLDS it on the row.
+ * `completeEmployeeDraft` then hands that same held code to `hireEmployee` rather than letting it generate
+ * a second one, and `discardEmployeeDraft` gives the number back when it was the last one issued.
+ *
+ * A HELD NUMBER CAN STILL LEAVE A GAP, and the plan says so in the reporter's own words rather than
+ * pretending otherwise: if a draft is abandoned AFTER somebody else has been created behind it, its number
+ * is spent and the sequence skips it. Rolling back anything other than the tip would hand out an ID that
+ * is already on an employee. The alternative — settle the ID only at Activate, gapless but late — is the
+ * option the plan offered as a reject path and the reporter did not take.
  *
  * A DRAFT IS CAPTURED INPUT, NOT A RECORD. Nothing is created until `completeEmployeeDraft`, and when
  * it is, it goes through the SAME writers the single-hire form and the bulk importer use —
@@ -20,21 +34,25 @@
  * read in the product joins `employment`, so a flag would need a new exclusion in each of them forever,
  * and the failure mode is a half-entered person appearing in a headcount or a payroll run.
  */
-import { and, desc, eq } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
-import { company, employeeDraft, employment, person } from '../db/schema';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { company, employeeDraft, employeeIdConfig, person, tenantCounter } from '../db/schema';
 import { appendEvent, actorOf } from '../db/events';
 import { hireEmployee } from './org';
-import { setCompensation } from './comp';
+import { issueLegacyEmployeeCode, setCompensation } from './comp';
 import { setPersonComplianceFields } from './profile';
 import { listLeaveTypes } from './read';
-import { listConfigs, resolveEmployeeIdRule } from './employee-id-config';
+import { issueEmployeeCode, listConfigs, resolveEmployeeIdRule } from './employee-id-config';
+// 06f0cb8f — "is this Employee ID free?" spans employment AND employee_draft now. One definition, in its
+// own module, shared with core/org.ts (which cannot import this file: it is the other end of the cycle).
+import { findEmployeeCodeClaim } from './employee-code-claims';
 import { requirePackFor } from '../localization/registry';
-import { normalizeEmployeeCode } from '../lib/employee-code';
+import { normalizeEmployeeCode, requireEmployeeCode } from '../lib/employee-code';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
 import {
   draftLabel,
   missingForCreation,
+  missingToCreate,
   stepKey,
   type EmployeeDraftData,
 } from '../lib/employee-draft-schema';
@@ -51,6 +69,8 @@ export type EmployeeDraftRow = {
   createdByName: string | null;
   createdAt: Date;
   updatedAt: Date;
+  /** The held Employee ID (item 06f0cb8f), or null on a draft that predates the hold. */
+  reservedEmployeeCode: string | null;
   /** Outstanding required fields, recomputed on read so an old draft is judged by today's rules. */
   missing: string[];
 };
@@ -75,6 +95,7 @@ export function listEmployeeDrafts(ctx: SessionContext): Promise<EmployeeDraftRo
         createdByName: person.fullName,
         createdAt: employeeDraft.createdAt,
         updatedAt: employeeDraft.updatedAt,
+        reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
         data: employeeDraft.data,
       })
       .from(employeeDraft)
@@ -85,17 +106,38 @@ export function listEmployeeDrafts(ctx: SessionContext): Promise<EmployeeDraftRo
   });
 }
 
-export function getEmployeeDraft(
-  ctx: SessionContext,
-  id: string,
-): Promise<{ id: string; data: EmployeeDraftData; currentStep: number } | null> {
+export type EmployeeDraftDetail = {
+  id: string;
+  data: EmployeeDraftData;
+  currentStep: number;
+  companyId: string | null;
+  /** The held Employee ID. THE AUTHORITY on which ID this draft owns — `data.profile.employeeCode` is
+   *  only a mirror of it, kept so the form can render the value without a second prop. */
+  reservedEmployeeCode: string | null;
+};
+
+export function getEmployeeDraft(ctx: SessionContext, id: string): Promise<EmployeeDraftDetail | null> {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
-      .select({ id: employeeDraft.id, data: employeeDraft.data, currentStep: employeeDraft.currentStep })
+      .select({
+        id: employeeDraft.id,
+        data: employeeDraft.data,
+        currentStep: employeeDraft.currentStep,
+        companyId: employeeDraft.companyId,
+        reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
+      })
       .from(employeeDraft)
       .where(eq(employeeDraft.id, id))
       .limit(1);
-    return row ? { id: row.id, data: asData(row.data), currentStep: row.currentStep } : null;
+    return row
+      ? {
+          id: row.id,
+          data: asData(row.data),
+          currentStep: row.currentStep,
+          companyId: row.companyId,
+          reservedEmployeeCode: row.reservedEmployeeCode,
+        }
+      : null;
   });
 }
 
@@ -104,22 +146,38 @@ export function getEmployeeDraft(
  *
  * `label` and `companyId` are DERIVED from the payload here rather than passed in, so the list can
  * never show a name the draft does not actually contain.
+ *
+ * ON A RESERVED DRAFT (item 06f0cb8f) TWO VALUES ARE PINNED and the client cannot move them: the COMPANY,
+ * because it is the numbering rule the held ID came from and a draft pointing at a different company
+ * would be holding a number from a sequence it no longer belongs to; and the EMPLOYEE ID mirror in
+ * `data.profile.employeeCode`, because the held code lives in its own column and a payload disagreeing
+ * with it would show HR one ID while another was being kept for them. The continue form renders both
+ * read-only, so this is the server refusing to be told otherwise rather than a rule HR can trip over.
  */
 export async function saveEmployeeDraft(
   ctx: SessionContext,
   p: { id?: string; data: EmployeeDraftData; currentStep: number },
 ): Promise<{ id: string }> {
   assertAdmin(ctx);
-  const label = draftLabel(p.data);
-  const companyId = str(p.data.employment?.companyId) ?? null;
   const currentStep = Math.min(Math.max(Math.trunc(p.currentStep) || 1, 1), 20);
+  const existing = p.id ? await getEmployeeDraft(ctx, p.id) : null;
+  const data =
+    existing?.reservedEmployeeCode
+      ? {
+          ...p.data,
+          profile: { ...(p.data.profile ?? {}), employeeCode: existing.reservedEmployeeCode },
+          employment: { ...(p.data.employment ?? {}), companyId: existing.companyId ?? undefined },
+        }
+      : p.data;
+  const label = draftLabel(data);
+  const companyId = str(data.employment?.companyId) ?? null;
   return withTenant(ctx, async (tx) => {
     let id = p.id;
     if (id) {
       // RLS decides whether this row is even visible; `returning` tells us whether it applied.
       const updated = await tx
         .update(employeeDraft)
-        .set({ label, companyId, data: p.data, currentStep, updatedAt: new Date() })
+        .set({ label, companyId, data, currentStep, updatedAt: new Date() })
         .where(eq(employeeDraft.id, id))
         .returning({ id: employeeDraft.id });
       if (updated.length === 0) throw new Error('Draft not found (or not visible).');
@@ -131,7 +189,7 @@ export async function saveEmployeeDraft(
           companyId,
           createdByPersonId: ctx.personId ?? null,
           label,
-          data: p.data,
+          data,
           currentStep,
         })
         .returning({ id: employeeDraft.id });
@@ -163,42 +221,221 @@ export async function employeeIdRuleFor(ctx: SessionContext, companyId: string):
 }
 
 /**
- * Is this Employee ID already taken? Powers the wizard's on-blur look-ahead (item bd271009), so a clash
- * is named while HR is still in the field instead of at the final button.
+ * Is this Employee ID already taken? Powers the Create screen's on-blur look-ahead (item bd271009), so a
+ * clash is named while HR is still in the field instead of at the final button.
  *
- * ADVISORY ONLY. `hireEmployee`'s `assertEmployeeCodeUnique` plus the tenant-wide unique index remain the
- * authority — this read can go stale between the blur and the create, and is allowed to.
+ * IT CONSULTS BOTH TABLES SINCE 06f0cb8f (`findEmployeeCodeClaim`): an ID held by an unfinished Draft is
+ * taken, which is the whole point of holding it. `excludeDraftId` lets a draft ignore its own hold.
+ *
+ * ADVISORY ONLY. `hireEmployee`'s `assertEmployeeCodeUnique`, the reservation check inside
+ * `createEmployeeDraftWithReservedCode`, and the two unique indexes remain the authority — this read can
+ * go stale between the blur and the create, and is allowed to.
  */
-export async function isEmployeeCodeTaken(ctx: SessionContext, raw: string): Promise<boolean> {
+export async function isEmployeeCodeTaken(
+  ctx: SessionContext,
+  raw: string,
+  opts: { excludeDraftId?: string } = {},
+): Promise<boolean> {
   const code = normalizeEmployeeCode(raw);
   if (!code) return false;
+  return withTenant(
+    ctx,
+    async (tx) => (await findEmployeeCodeClaim(tx, ctx.tenantId, code, opts)) !== null,
+  );
+}
+
+/**
+ * Create the Draft and TAKE its Employee ID, in one transaction (item 06f0cb8f).
+ *
+ * This is the reporter's simplified first screen: four questions, then the record exists and its number
+ * is theirs. Everything else — profile details, department, salary, bank — is filled in afterwards on the
+ * continue form and checked at Activate.
+ *
+ * THE RULE IS RESOLVED FROM THE LIVE SETUP, exactly as `completeEmployeeDraft` has always done, and for
+ * the same reason: a rule remembered on a draft would go stale the moment an administrator edited the
+ * setup screen. That decision now happens HERE instead of at the end, which is the actual behaviour
+ * change — the ID is judged, issued and held while HR is still looking at the form that asked for it.
+ */
+export async function createEmployeeDraftWithReservedCode(
+  ctx: SessionContext,
+  p: {
+    companyId: string;
+    fullName: string;
+    primaryEmail: string;
+    employeeIdMode?: string;
+    employeeCode?: string;
+  },
+): Promise<{ id: string; employeeCode: string }> {
+  assertAdmin(ctx);
+  const companyId = str(p.companyId);
+  if (!companyId) throw new Error('Cannot create the employee record yet: company');
+
+  const rule = await employeeIdRuleFor(ctx, companyId);
+  const data: EmployeeDraftData = {
+    profile: {
+      fullName: str(p.fullName),
+      primaryEmail: str(p.primaryEmail),
+      employeeCode: str(p.employeeCode),
+      employeeIdMode: str(p.employeeIdMode),
+    },
+    employment: { companyId },
+  };
+  // The client renders the same four rules; the client is not trusted, so re-run them here.
+  const missing = missingToCreate(data, { employeeIdRule: rule });
+  if (missing.length > 0) throw new Error(`Cannot create the employee record yet: ${missing.join(', ')}`);
+
+  const decision = resolveEmployeeIdMode(rule, {
+    chosen: str(p.employeeIdMode),
+    hasCode: str(p.employeeCode) !== undefined,
+  });
+  const typedCode = str(p.employeeCode);
+  // Same refusal `completeEmployeeDraft` has made since bd271009, moved to the screen that now asks:
+  // HR typed an ID on purpose and must be told it will not be used, rather than have it quietly dropped.
+  if (typedCode && decision.forcedBecause === 'manualNotAllowed') {
+    throw new Error(
+      `Employee ID "${typedCode}" was entered by hand, but the selected company's Employee ID Auto Running Number Setup does not allow manual entry. Remove it and the next running number will be issued automatically.`,
+    );
+  }
+
   return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .where(and(eq(employment.tenantId, ctx.tenantId), eq(employment.employeeCode, code)))
-      .limit(1);
-    return rows.length > 0;
+    let code: string;
+    let configId: string | null = null;
+    let number: number | null = null;
+    if (decision.mode === 'manual') {
+      code = requireEmployeeCode(typedCode);
+      const claim = await findEmployeeCodeClaim(tx, ctx.tenantId, code);
+      if (claim === 'employment') throw new Error(`Employee ID "${code}" is already in use`);
+      if (claim === 'draft') throw new Error(`Employee ID "${code}" is reserved by a draft employee record`);
+    } else {
+      // Auto. The counter advances INSIDE this transaction, so a refusal further down rolls it back —
+      // the same atomicity `hireEmployee` has always had, now anchored to Create instead of to the hire.
+      const issued = await issueEmployeeCode(tx, ctx.tenantId, companyId);
+      if (issued) {
+        ({ code, configId, number } = issued);
+      } else {
+        // No active setup resolves for this company. The legacy per-tenant EMP-#### counter still runs,
+        // exactly as `hireEmployee` falls back today — a draft must not be impossible to create just
+        // because nobody has configured a numbering rule yet. `reserved_config_id` stays null, and the
+        // release path reads that null to know it is `tenant_counter` that has to be rolled back.
+        const legacy = await issueLegacyEmployeeCode(tx, ctx.tenantId);
+        code = legacy.code;
+        number = legacy.number;
+      }
+    }
+    data.profile!.employeeCode = code;
+
+    const [row] = await tx
+      .insert(employeeDraft)
+      .values({
+        tenantId: ctx.tenantId,
+        companyId,
+        createdByPersonId: ctx.personId ?? null,
+        label: draftLabel(data),
+        data,
+        currentStep: 1,
+        reservedEmployeeCode: code,
+        reservedAt: new Date(),
+        reservedConfigId: configId,
+        reservedNumber: number,
+      })
+      .returning({ id: employeeDraft.id });
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employee-draft',
+      aggregateId: row.id,
+      eventType: 'employee-draft.created',
+      actor: actorOf(ctx),
+      // The reserved code IS on the audit trail, unlike the rest of the payload: an Employee ID that
+      // exists but belongs to nobody yet is exactly the thing somebody will later have to account for.
+      payload: { companyId, reservedEmployeeCode: code, mode: decision.mode, hasLabel: true },
+    });
+    return { id: row.id, employeeCode: code };
   });
 }
 
 export async function discardEmployeeDraft(ctx: SessionContext, id: string): Promise<void> {
   assertAdmin(ctx);
   await withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
+        reservedConfigId: employeeDraft.reservedConfigId,
+        reservedNumber: employeeDraft.reservedNumber,
+      })
+      .from(employeeDraft)
+      .where(eq(employeeDraft.id, id))
+      .limit(1);
     const deleted = await tx
       .delete(employeeDraft)
       .where(eq(employeeDraft.id, id))
       .returning({ id: employeeDraft.id });
     if (deleted.length === 0) throw new Error('Draft not found (or not visible).');
+    const released = row ? await releaseReservedNumber(tx, ctx.tenantId, row) : false;
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-draft',
       aggregateId: id,
       eventType: 'employee-draft.discarded',
       actor: actorOf(ctx),
-      payload: {},
+      // `released: false` on a draft that held a number is the GAP, recorded rather than hidden — it is
+      // the answer to "why does the sequence skip 0042".
+      payload: row?.reservedEmployeeCode
+        ? { reservedEmployeeCode: row.reservedEmployeeCode, released }
+        : {},
     });
   });
+}
+
+/**
+ * Give a held number back — ONLY when it is still the tip of its sequence (item 06f0cb8f).
+ *
+ * THE TRADE-OFF, STATED PLAINLY, because the plan states it to the reporter in the same words: reserving
+ * a number early can leave a GAP. If somebody else was created behind this draft, the number in front is
+ * already on an employee and rolling the counter back would hand the NEXT hire an ID that exists. So the
+ * rollback is conditional in SQL — `where current_running_number = reserved_number` — and any other case
+ * simply leaves the gap. That is a documented cost, not a silent failure: the discard event records
+ * `released: false`.
+ *
+ * Returns whether the number was actually given back.
+ */
+async function releaseReservedNumber(
+  tx: Tx,
+  tenantId: string,
+  r: { reservedEmployeeCode: string | null; reservedConfigId: string | null; reservedNumber: number | null },
+): Promise<boolean> {
+  if (!r.reservedEmployeeCode || r.reservedNumber == null) return false;
+  if (r.reservedConfigId) {
+    // Row-locked so a concurrent issue cannot slip between the read and the write and be un-issued.
+    const rolled = await tx
+      .update(employeeIdConfig)
+      .set({
+        currentRunningNumber: sql`${employeeIdConfig.currentRunningNumber} - ${employeeIdConfig.increment}`,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(employeeIdConfig.id, r.reservedConfigId),
+          eq(employeeIdConfig.tenantId, tenantId),
+          eq(employeeIdConfig.currentRunningNumber, r.reservedNumber),
+        ),
+      )
+      .returning({ id: employeeIdConfig.id });
+    return rolled.length > 0;
+  }
+  // The legacy per-tenant EMP-#### counter (core/comp.ts). Same shape, same condition: only at the tip.
+  const rolled = await tx
+    .update(tenantCounter)
+    .set({ value: sql`${tenantCounter.value} - 1` })
+    .where(
+      and(
+        eq(tenantCounter.tenantId, tenantId),
+        eq(tenantCounter.kind, 'employee_code'),
+        eq(tenantCounter.value, r.reservedNumber),
+      ),
+    )
+    .returning({ tenantId: tenantCounter.tenantId });
+  return rolled.length > 0;
 }
 
 /**
@@ -227,17 +464,30 @@ export async function completeEmployeeDraft(
   const s = data.statutory ?? {};
   const pay = data.payroll ?? {};
 
-  // ── Employee ID (item bd271009) ────────────────────────────────────────────────────────────────
-  // The rule is resolved HERE, from the live setup, at the moment of creation — never from anything the
-  // draft remembered. A draft saved last week under a setup that has since been edited is judged by the
-  // setup that exists today, which is the only answer the engine can actually honour.
+  // ── Employee ID (item bd271009, reshaped by 06f0cb8f) ──────────────────────────────────────────
+  // A RESERVED DRAFT'S ID IS SETTLED. It was judged against the live setup at Create, issued, and has
+  // been held on the row ever since — so it is used verbatim and the numbering rule is NOT consulted
+  // again. Re-resolving it here is what would break the reporter's guarantee: an administrator editing
+  // the setup between Create and Activate could otherwise change, or refuse, an ID HR has already been
+  // shown and may already have printed on an offer letter.
+  //
+  // A DRAFT WITH NO RESERVATION — every draft written before this item, including the one sitting on
+  // production — still takes the bd271009 path below, unchanged, so it activates exactly as it always
+  // would have. That is why this is a fork and not a replacement.
   const chosenCompanyId = str(e.companyId);
-  const rule = chosenCompanyId ? await employeeIdRuleFor(ctx, chosenCompanyId) : null;
+  const reservedCode = str(draft.reservedEmployeeCode ?? undefined);
+  const rule = !reservedCode && chosenCompanyId ? await employeeIdRuleFor(ctx, chosenCompanyId) : null;
 
-  // The client renders the same rules, but the client is not trusted: re-run them here. The Employee ID
-  // is judged only once a company is known — demanding an ID before the company that decides its rule
-  // has been chosen would report a fault the reporter cannot act on.
-  const missing = chosenCompanyId ? missingForCreation(data, { employeeIdRule: rule }) : missingForCreation(data);
+  // The client renders the same rules, but the client is not trusted: re-run them here. BOTH rules run —
+  // the four Create fields and everything Activate needs — so nothing that used to be checked before an
+  // employee existed has stopped being checked. The Employee ID is judged only when it is not already
+  // held AND a company is known: demanding an ID before the company that decides its rule has been
+  // chosen would report a fault the reporter cannot act on.
+  const judgeTheId = !reservedCode && chosenCompanyId !== undefined;
+  const missing = [
+    ...missingToCreate(data, judgeTheId ? { employeeIdRule: rule } : {}),
+    ...missingForCreation(data),
+  ];
   if (missing.length > 0) throw new Error(`Cannot create the employee yet: ${missing.join(', ')}`);
 
   const companyId = chosenCompanyId!;
@@ -251,14 +501,17 @@ export async function completeEmployeeDraft(
   // "Allow manual override" is OFF for this company's setup — obeyed for the first time (the switch has
   // been stored and displayed since 0261 and read by nothing). Refusing LOUDLY rather than quietly
   // dropping the typed value: HR typed an ID on purpose and must be told it will not be used.
-  if (typedCode && decision.forcedBecause === 'manualNotAllowed') {
+  if (!reservedCode && typedCode && decision.forcedBecause === 'manualNotAllowed') {
     throw new Error(
       `Employee ID "${typedCode}" was entered by hand, but the selected company's Employee ID Auto Running Number Setup does not allow manual entry. Remove it and the next running number will be issued automatically.`,
     );
   }
-  // In Auto mode we send NO code, so `hireEmployee` runs the generator. A code left behind by someone who
-  // switched Manual → Auto is deliberately ignored rather than used — the mode on screen is the promise.
-  const employeeCodeToIssue = decision.mode === 'manual' ? typedCode : undefined;
+  // The held code, NEVER blank — handing `hireEmployee` an empty value would run the generator and
+  // advance the counter a second time, giving the employee a different ID from the one that has been
+  // reserved for them since Create. On an unreserved (pre-06f0cb8f) draft the bd271009 rule still
+  // decides: in Auto mode we send NO code, so `hireEmployee` runs the generator, and a code left behind
+  // by someone who switched Manual → Auto is ignored rather than used.
+  const employeeCodeToIssue = reservedCode ?? (decision.mode === 'manual' ? typedCode : undefined);
 
   // The company's country pack owns the IC rules (ADR-0080 D1/D6) — resolved from the COMPANY, never
   // from a hardcoded jurisdiction, and fail-loud when the country resolves nothing.
@@ -292,10 +545,14 @@ export async function completeEmployeeDraft(
       phone: str(p.phone),
       nationality,
     },
-    // Blank ⇒ hireEmployee generates the next code. That IS the reporter's rule that a draft consumes
-    // no Employee ID: the counter only ever advances inside this call. bd271009 decides WHICH of the two
-    // happens above, in the open, instead of leaving it to whether a box happened to be filled in.
+    // The ID the draft has been holding since Create (item 06f0cb8f) — so the counter does NOT advance
+    // again here, and the employee gets the number HR was promised. On an unreserved pre-06f0cb8f draft
+    // this is bd271009's answer instead, and blank ⇒ hireEmployee generates the next code, which is that
+    // item's rule that such a draft consumes no Employee ID until this call.
     employeeCode: employeeCodeToIssue,
+    // Without this the two-table uniqueness check would refuse the activation on the grounds that the ID
+    // is taken — by the very draft being activated.
+    fromEmployeeDraftId: reservedCode ? id : undefined,
     companyId,
     departmentId: str(e.departmentId)!,
     positionId: str(e.positionId),
@@ -381,7 +638,10 @@ export async function completeEmployeeDraft(
     remarks: str(pay.remarks),
   });
 
-  // Only now: the draft has become an employee, so it stops existing as a draft.
+  // Only now: the draft has become an employee, so it stops existing as a draft. THE RESERVATION GOES
+  // WITH IT — deleting the row releases the held code, and it must, because the employment now carries
+  // that same code and two live claims on one ID is the state the hold exists to prevent. Deliberately
+  // NOT `releaseReservedNumber`: the number was SPENT, not abandoned, so the counter stays where it is.
   await withTenant(ctx, async (tx) => {
     await tx.delete(employeeDraft).where(eq(employeeDraft.id, id));
     await appendEvent(tx, {
@@ -391,7 +651,7 @@ export async function completeEmployeeDraft(
       eventType: 'employee-draft.completed',
       actor: actorOf(ctx),
       subjectEmploymentId: employmentId,
-      payload: { employmentId, companyId },
+      payload: { employmentId, companyId, ...(reservedCode ? { reservedEmployeeCode: reservedCode } : {}) },
     });
   });
 

@@ -357,13 +357,11 @@
       "employeeIdLabel": "员工编号",
       "employeeIdPlaceholder": "例如 EMP-0001",
       "employeeIdHint": "字母、数字和连字符；最多 30 个字符。",
-      "draftsHeading": "未完成的新员工",
-      "draftsCount": "{count} 份草稿",
       "draftUntitled": "未命名草稿",
       "draftNoCompany": "尚未选择公司",
       "draftMissing": "还需 {count} 项",
-      "draftReady": "可以创建",
-      "draftContinue": "继续"
+      "draftReady": "可以启用",
+      "statusDraft": "草稿"
     },
     "switcher": {
       "ariaLabel": "搜索员工",
@@ -1397,44 +1395,31 @@
         "businessUnit": "仅用于筛选部门列表，不会保存到员工记录。",
         "hiredOn": "入职首日。创建之后，此日期只能通过异动事件更改。",
         "bankAccount": "银行与账号请同时填写，或都留空。",
-        "company": "先询问公司，因为它决定适用哪一套员工编号自动流水号设置。"
+        "companyFixed": "它决定适用哪条员工编号规则，记录创建后不可更改。"
       },
       "backLabel": "返回人事",
       "title": "创建新员工",
-      "description": "按步骤填写信息。随时可保存为草稿并稍后继续 — 在最后一步之前不会创建任何记录。",
+      "description": "记录及其员工编号已经存在。填写其余内容后点击“启用”——进度可随时保存。",
       "progressLabel": "创建步骤",
       "steps": {
-        "profile": "个人资料",
+        "profile": "个人资料明细",
         "employment": "雇佣信息",
         "statutory": "银行与法定",
-        "payroll": "薪资",
-        "review": "检查并创建"
+        "payroll": "薪资"
       },
       "notSet": "— 未设置 —",
       "selectPrompt": "— 请选择 —",
       "yes": "是",
       "no": "否",
-      "continueDraft": "继续草稿（{count}）",
       "untitledDraft": "未命名草稿",
-      "stepOf": "第 {current} 步，共 {total} 步",
-      "missingCount": "还需 {count} 项",
-      "readyToCreate": "可以创建",
-      "lastSaved": "保存于 {when}",
-      "startedBy": "由 {name} 创建",
-      "continue": "继续",
-      "complete": "已完成",
-      "reviewReady": "所需信息齐全。创建员工将生成员工编号并打开其档案。",
-      "reviewIncomplete": "请补齐上面列出的内容，或保存为草稿稍后继续。",
       "back": "上一步",
       "next": "下一步",
       "saveDraft": "保存草稿",
       "saving": "正在保存…",
       "draftSaved": "草稿已保存",
       "discardDraft": "放弃草稿",
-      "createEmployee": "创建员工",
       "creating": "正在创建…",
       "requiredField": "必填",
-      "companyOnProfileStep": "在「个人资料」步骤选择，因为它决定员工编号规则。",
       "employeeId": {
         "heading": "员工编号",
         "chooseCompanyFirst": "请先在上方选择公司 — 它决定适用哪一套员工编号规则。",
@@ -1445,14 +1430,22 @@
         "modeAuto": "自动流水号",
         "modeManual": "手动输入",
         "forcedAuto": "本公司的设置不允许手动输入，因此使用自动流水号。",
-        "previewNote": "是编号的样式。真正的员工编号在创建员工时发出。",
         "checking": "检查中…",
         "duplicate": "员工编号“{code}”已存在。请输入其他员工编号。",
         "available": "员工编号“{code}”可以使用。",
-        "staleCode": "先前输入的员工编号“{code}”不会被使用，因为本公司已不再允许手动输入。",
-        "removeCode": "移除",
-        "draftCostsNothing": "保存为草稿不会占用任何编号。员工编号只在员工成功创建时才被占用。"
-      }
+        "reserveNote": "就是点击“创建”时立即发出并保留的编号。",
+        "heldFromCreate": "员工编号在记录创建时即被保留，不会再分配给其他人。",
+        "issuedAtActivate": "启用时发出"
+      },
+      "createDescription": "只需四项信息，记录即刻建立，员工编号同时被保留。其余内容可稍后填写。",
+      "continueTitle": "完善员工资料",
+      "createDraft": "创建",
+      "createDraftNote": "以“草稿”状态创建记录，并立即保留员工编号。",
+      "companyFixedAfterCreate": "公司不可更改——保留的员工编号正是依照该公司的编号规则发出的。选错请放弃后重新开始。",
+      "activate": "启用",
+      "activating": "正在启用…",
+      "activateNeeds": "启用还需要：",
+      "discardReleasesTip": "只有当该员工编号是最近发出的一个时，放弃草稿才会把它退回。否则该编号仍算已用，序号将跳过它。"
     }
   },
   "leave": {
