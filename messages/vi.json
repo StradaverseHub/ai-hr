@@ -2845,7 +2845,6 @@
       "status_due_soon": "Sắp đến hạn",
       "status_upcoming": "Sắp tới",
       "status_unknown": "Chưa đặt hạn",
-      "deadlineNotConfigured": "Chưa đặt hạn nộp",
       "link_ea": "Biểu mẫu EA (theo nhân viên)",
       "link_ea_hint": "Bản kê thu nhập hằng năm của từng nhân viên, mở từ danh sách nhân viên của năm đó. Biểu mẫu hiển thị theo ngôn ngữ ứng dụng, nên bản tiếng Mã Lai là việc đổi ngôn ngữ chứ không phải một biểu mẫu thứ hai.",
       "link_cp22": "Thông báo CP22 / CP22A",

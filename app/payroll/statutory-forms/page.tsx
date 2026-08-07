@@ -211,9 +211,15 @@ export default async function StatutoryFormsPage({
             <ul className="divide-y divide-border">
               {forms.map((r) => {
                 const annual = r.periodKind === 'year';
-                const due = annual
-                  ? { dueBy: null as string | null, status: 'unknown' as const }
-                  : submissionDueFor(periodKey, r.submission!.dueDayOfNextMonth, today);
+                // `submissionDueFor` only models a monthly deadline (day N of the month AFTER the
+                // period), so a YEAR period correctly comes back "unknown" — which is the honest
+                // answer for the annual Form E, whose real statutory date was never stated to us. An
+                // invented deadline is worse than an absent one: somebody files against it.
+                const due = submissionDueFor(
+                  annual ? year : periodKey,
+                  r.submission!.dueDayOfNextMonth,
+                  today,
+                );
                 return (
                   <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
                     <div className="min-w-0">
@@ -232,9 +238,7 @@ export default async function StatutoryFormsPage({
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLS[due.status]}`}
                       >
-                        {annual && r.submission!.dueDayOfNextMonth == null
-                          ? t('deadlineNotConfigured')
-                          : t(`status_${due.status}` as 'status_upcoming')}
+                        {t(`status_${due.status}` as 'status_upcoming')}
                       </span>
                       <Link href={formHref(r.id, r.periodKind)} className="text-primary hover:underline">
                         {t('openForm')}

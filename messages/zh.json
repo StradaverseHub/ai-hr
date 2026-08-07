@@ -2845,7 +2845,6 @@
       "status_due_soon": "即将到期",
       "status_upcoming": "尚未到期",
       "status_unknown": "未设截止日期",
-      "deadlineNotConfigured": "未设截止日期",
       "link_ea": "EA 表格（每位员工）",
       "link_ea_hint": "每位员工的年度薪酬报表，从该年度的员工列表打开。表格随应用语言显示，因此马来文版是语言切换，而非另一张表格。",
       "link_cp22": "CP22 / CP22A 通知",

@@ -92,9 +92,9 @@ export default async function StatutoryFormPage({
 
   const result = companyId ? await reportPreview(s, { companyId, reportId: formId, periodKey }) : null;
   const companyName = companies.find((c) => c.id === companyId)?.name ?? '—';
-  const due = annual
-    ? { dueBy: null as string | null, status: 'unknown' as const }
-    : submissionDueFor(periodKey, def.submission?.dueDayOfNextMonth ?? null, today);
+  // `submissionDueFor` only models a monthly deadline, so an annual period comes back "unknown" — the
+  // honest answer for Form E, whose statutory date was never stated to us.
+  const due = submissionDueFor(periodKey, def.submission?.dueDayOfNextMonth ?? null, today);
   const periodLabel = annual ? year : `${monthName(month)} ${year}`;
   const ready = result != null && result.readiness.length === 0;
   const backHref = `/payroll/statutory-forms?companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}${
@@ -172,7 +172,7 @@ export default async function StatutoryFormPage({
           <div className="text-xs text-muted-foreground">{t('colDueBy')}</div>
           <div className="font-mono text-sm">{due.dueBy ?? '—'}</div>
           <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLS[due.status]}`}>
-            {due.dueBy == null ? t('deadlineNotConfigured') : t(`status_${due.status}` as 'status_upcoming')}
+            {t(`status_${due.status}` as 'status_upcoming')}
           </span>
         </div>
       </div>
