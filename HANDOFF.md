@@ -20,12 +20,12 @@ any of them):**
 
 ## CURRENT STATE — snapshot 2026-08-07 (r171 SHIPPED — six of eight approved items)
 
-**`main@704c64bc` is what runs. Production on 335 migrations. Next free migration number is `0415`**
+**`main@3a9a1a3c` is what runs. Production on 335 migrations. Next free migration number is `0415`**
 (`0414` rounding bands to 2dp; `0412` was never used, and `0415`/`0416` were allocated this round and
 returned unused). No half-applied migration, no pending deploy. Verified after deploy: 335 migrations,
 watermark 1781862514000, service `active`, `GET /` 401, zero-change `rsync -azi --delete --dry-run`.
-Gate: 594 files / 7,260 tests green across all 3 chunks; `next build` clean; shadow rehearsal 334→335 and
-fresh 335/335 both PASS.
+Gate: 595 files / 7,265 tests green across all 3 chunks; `next build` clean. (r172 added no migration —
+shadow 334→335 and fresh 335/335 were verified in r171.)
 
 ### r171 shipped SIX of EIGHT approved items — and the verify pass is why
 
@@ -64,6 +64,29 @@ the single-row case; only the scratch DB showed it. Final rule: absorb a gap sma
 fencepost 2dp cannot express), keep anything wider. **Verified live after deploy: all three types now
 `0.00/0.40/0.70` at 2dp.** Behaviour delta, deliberate: fractions of exactly 0.400 and 0.700 previously
 matched no band and now round.
+
+### r172 — the TP1 "security gap" DID NOT REPRODUCE, and the mutation check is why we know
+
+`3e3d3fb2`'s approved plan called the TP1 screen's `?employmentId=` handling a SECURITY GAP: it passes
+straight into `employmentSubject()` with no membership check, where five sibling screens run
+`employees.some(...)` first. **The first half is true. The second is not.** Three attempts, all refused by
+the database: a company-scoped admin reading an out-of-scope employment; the same id through the page;
+and an admin who ADMINISTRATIVELY MANAGES that out-of-company employee — the branch the plan predicted
+would leak.
+
+`employment`'s RLS is `tenant_id = current_tenant AND (can_see_employment(id) OR
+can_admin_payroll_for(company_id) OR …)` and **both helpers route through `app.is_admin_for()`**. It fails
+closed.
+
+**THE MUTATION CHECK IS WHAT CAUGHT IT.** With the page guard reverted, the whole new test file still
+passed — it was pinning RLS, not the change. That is the passes-for-the-wrong-reason trap, and without
+reverting-and-rerunning this would have shipped as a decorative guard under a security banner, with a
+green test apparently proving it. **Revert your own fix and re-run before you believe a refusal test.**
+
+The guard shipped anyway, as defence in depth and consistency (the reachable set now equals the set the
+picker offers), and `test/tp1-scope-guard.test.ts` asserts what is actually true so a future loosening of
+`can_see_employment` fails there rather than on a tax screen. `3e3d3fb2` stays **approved, not deployed** —
+only the guard landed; the redesign it asks for is unbuilt. Plan revision 2 tells the reporter both things.
 
 ### ⚠️ TWO ITEMS BUILT AND DEPLOYED BUT NOT MARKED — they need a decision
 
@@ -110,29 +133,22 @@ BEFORE forming any opinion: this session burned a whole plan revision writing fr
 the screenshot turned out to show a completely different screen. Extract one with
 `select encode(content,'base64') from feedback_attachment …`, strip psql's preamble, decode.
 
-### Plans must carry a MOCKUP — shipped r165 (why, and the design findings: history → r165)
-
-**Render the design, then push it with the plan in one call:**
+### Plans must carry a MOCKUP — shipped r165 (procedure: `scripts/mockup/README.md`; findings: history → r165)
 
     pnpm mockup docs/mockups/<item>.html /tmp/<item>.png --width 1240
     echo '{"id":…,"plan":…,"model":…,"mockupPaths":["/tmp/<item>.png"]}' | pnpm improve:push-plan
 
-Read `scripts/mockup/README.md` first. **ATTACH AFTER PUSHING, never before** — `plan_revision` is
-stamped SERVER-SIDE from the item, so a mockup attached first silently names the outgoing plan, the
-page's revision filter hides it, and the reporter sees a plan with no design and no error.
-`pushPlanWithMockups()` enforces the order so no caller has to remember it. Sources live in
-`docs/mockups/*.html`; a re-plan re-renders rather than redraws.
+**ATTACH AFTER PUSHING, never before** — `plan_revision` is stamped SERVER-SIDE, so a mockup attached
+first silently names the outgoing plan and the page's revision filter hides it. `pushPlanWithMockups()`
+enforces the order. Sources live in `docs/mockups/*.html`; a re-plan re-renders rather than redraws.
 
-**THE STANDING CAUTION: a mockup is a PROMISE, and a picture cannot hedge.** The `da4af51f` plan says
-"we will show every line we have and totals where we do not" — that sentence has no honest visual. Draw
-the certain parts, keep the uncertain ones in words, and let the six-language caveat under every mockup
-do its job, or this manufactures a NEW class of "not up to standard" instead of curing it.
+**A MOCKUP IS A PROMISE, AND A PICTURE CANNOT HEDGE.** Draw only what will be built; keep uncertain parts
+in words. **Use the reporter's OWN data** — real company names, real figures measured from production.
+r170 drew a shared mockup on invented employees and the critic caught it; the half-fix (real names, fake
+amounts) was worse than either, because it looks authoritative and is wrong. Re-render from measured rows.
 
-**NOTHING IS `building` OR `approved` AS OF r169.** `improve:pull` hides `building`, so whenever a
-partially-built item exists it MUST be recorded here — nothing else will surface it. `6e9a126e`
-(release three, r167), `7c834696` (all four points, r162 + r169), `35b7af0a` (r164) and `2ef69d1e`
-(back pay, r169) are all DONE and deployed; reasoning for each is in `docs/HANDOFF-HISTORY.md` under
-its round and in the item's own `build_ref`.
+**NOTHING IS `building` OR `approved`-and-unrecorded.** `improve:pull` hides `building`, so a partially
+built item MUST be recorded here — nothing else surfaces it.
 
 ### THE DELETE GUARD (r160) — the durable lesson is the count, not the fix (full entry: history → r160)
 
