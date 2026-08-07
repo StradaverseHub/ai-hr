@@ -28,11 +28,25 @@
  *    undefined, blank and unparseable ALL render as the placeholder, and `formatDayInput` keeps a blank
  *    input blank so "not set" never persists as "capped at zero".
  *
- * PRECISION IS A PARAMETER, NOT A CONSTANT, for exactly one caller: the custom rounding BANDS
- * (`RoundingBand`, 8fec719e) are fractions of a day in [0,1] and are compared and snapped at THREE
- * decimals by `checkRoundingBands` / `applyRoundingBands`. Printing a 0.125 boundary as "0.13" would be a
- * lie on screen and — once an on-blur tidier writes it back — a changed rule. So bands pass
- * `ROUNDING_BAND_DECIMALS`; everything measured in whole days uses the 2dp default.
+ * ═══ THERE IS NOW EXACTLY ONE PRECISION, AND THE ONE EXCEPTION IS RETIRED ═══
+ *
+ * This module used to export a second constant, `ROUNDING_BAND_DECIMALS = 3`, for a single caller: the
+ * custom rounding BAND table (`RoundingBand`, 8fec719e), whose figures are FRACTIONS of a day in [0,1] and
+ * are compared and snapped at three decimals by `checkRoundingBands` / `applyRoundingBands`. That carve-out
+ * was correct when it was written — a 0.125 boundary was genuinely typeable, printing it as "0.13" would
+ * have been a lie on screen, and the on-blur tidier would then have SAVED the lie as the rule.
+ *
+ * IT WENT because the third decimal was never used as a third decimal. Measured on production: three leave
+ * types carry a table, all identical, and the only figures in them that are not multiples of 0.01 are 0.401
+ * and 0.701 — "one notch above 0.400", typed because each row stopped just before its Round To and the next
+ * row had to start SOMEWHERE. Those notches left two HOLES: a fraction of exactly 0.400 or 0.700 matched no
+ * row at all and was left unrounded. The answer was to derive each row's From from the row above (see
+ * `components/leave-type-panel.tsx`), not to keep a decimal place nobody wanted. The engine is untouched
+ * and did not need touching: `bandRound` widens a stored 0.40 to 0.400, so the three-decimal comparison
+ * reads exactly the same rule.
+ *
+ * `decimals` survives as a PARAMETER — `dayPluralCategory` selects the plural at the precision a figure is
+ * DISPLAYED in, so the number has to be nameable — but nothing now passes anything but the default.
  *
  * Sibling of `lib/money.ts`, which does the same job for currency and whose em-dash-for-unknown
  * convention this follows on purpose: the two kinds of figure should fail to be printed the same way.
@@ -41,18 +55,15 @@
 /** The em dash every day-figure surface already uses for "no figure". Matches `lib/money.ts`. */
 export const DAY_DASH = '—';
 
-/** Whole-day quantities: entitlement, carry forward, balances, adjustments, ledger rows. */
-export const DAY_DECIMALS = 2;
-
 /**
- * Custom rounding bands only. Three, not two — the band table stores fractions of a day and the engine
- * compares them at three decimals; see the module header.
+ * EVERY day figure in the leave module, including the rounding BAND table's fractions of a day — there is
+ * no second precision any more; see the module header for the one that was retired and why.
  */
-export const ROUNDING_BAND_DECIMALS = 3;
+export const DAY_DECIMALS = 2;
 
 /** Options for {@link formatDays}. */
 export type FormatDaysOptions = {
-  /** Decimal places. Defaults to {@link DAY_DECIMALS}; only rounding bands should pass anything else. */
+  /** Decimal places. Defaults to {@link DAY_DECIMALS}; nothing passes anything else. */
   decimals?: number;
   /** What to render when there is no figure. Defaults to {@link DAY_DASH}; exports pass `''`. */
   placeholder?: string;

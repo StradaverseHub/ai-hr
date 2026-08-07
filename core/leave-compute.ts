@@ -654,6 +654,14 @@ export function validateServiceBands(bands: ServiceBand[]): void {
     if (b.toYears !== null && (!Number.isInteger(b.toYears) || b.toYears <= b.fromYears)) {
       throw new Error('Service bands: "to" years must be a whole number greater than "from", or left open-ended.');
     }
+    // 4a1abc4a — A BLANK Entitled Days IS ITS OWN REFUSAL, ahead of the numeric check below, because the
+    // two mean different things and only one of them was ever typed. The editor posts a blank cell as null
+    // (it used to post 0); accepted as 0 it read as "this range grants nothing", closed the running version
+    // and opened a successor granting nothing — with a green "Saved" and no error. A deliberate 0 is still
+    // legal and still falls through to the check below.
+    if (b.days == null) {
+      throw new Error('Service bands: enter the entitled days for every range — a blank box is not zero.');
+    }
     if (typeof b.days !== 'number' || !Number.isFinite(b.days) || b.days < 0) {
       throw new Error('Service bands: days must be zero or a positive number.');
     }

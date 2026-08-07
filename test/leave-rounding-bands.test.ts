@@ -20,6 +20,10 @@
  *    their year-open and are never rewritten by a configuration change. 6e9a126e release three narrowed
  *    this to the `leave_type` surface only; the second surface, `leave_policy.accrual`, was dropped by
  *    migration 0405 — see `runReset` for why the file-level guard on BOTH statements is still asserted.
+ * §5 MIGRATION 0414'S CONVERSION TO TWO DECIMALS (4a1abc4a), executed from the ACTUAL file. Each row's
+ *    From becomes the row above's To and every figure lands on 2dp. It is the one thing in this file that
+ *    CHANGES a credited figure: the old 0.401 / 0.701 notches left a fraction of exactly 0.400 or 0.700
+ *    matching no band at all, and those two holes close. Asserted, not described.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -464,6 +468,121 @@ describe('§4 migration 0358 — the reset, executed from the ACTUAL file', () =
     await runReset();
     const first = await typeRow(id);
     await runReset();
+    expect(await typeRow(id)).toEqual(first);
+  });
+});
+
+// ── §5 ────────────────────────────────────────────────────────────────────────────────────────────────
+describe('§5 migration 0414 — the table moves to 2dp and its rows are joined up', () => {
+  /**
+   * 4a1abc4a. The reporter's screenshot re-opened this table: it showed three decimals while everything
+   * else in Leave Configuration now shows two. What the three production tables actually held was
+   * multiples of 0.01 plus 0.401 and 0.701 — a notch above 0.400 and 0.700, typed because each row stops
+   * just BEFORE its Round To and the next row had to start somewhere.
+   *
+   * ⚠️ THE NOTCHES LEFT TWO HOLES, AND CLOSING THEM IS A REAL BEHAVIOUR CHANGE. A fraction of exactly
+   * 0.400 sat past the end of row 1 and below the start of row 2, so it matched NO band and was left
+   * unrounded. Same at 0.700. That is stated in the migration header and was stated to the reporter in
+   * the plan before approval, and it is asserted here rather than described: this is the only assertion
+   * in this file that changes how many days somebody is credited.
+   *
+   * Executed from the ACTUAL file for the same reason §4 is: a conversion that stops matching what ships
+   * is a conversion only the test believes in. NO ENGINE CHANGE accompanies it — `applyRoundingBands` and
+   * `bandRound` are untouched, which is why the assertions below run the real evaluator over the
+   * converted rows.
+   */
+  const CONVERT = resolve(here, '../db/migrations/0414_rounding_bands_two_decimals.sql');
+
+  /** Production's table, verbatim, on all three of the leave types that carry one. */
+  const STORED: RoundingBand[] = [
+    { from: 0, to: 0.4, result: 0 },
+    { from: 0.401, to: 0.7, result: 0.5 },
+    { from: 0.701, to: 1, result: 1 },
+  ];
+
+  async function runConvert(): Promise<void> {
+    const text = readFileSync(CONVERT, 'utf8');
+    // The From is DERIVED from the row above, over whatever tables exist — not a hardcoded rewrite of the
+    // nine rows we happen to know about. A tenant on another database has to be converted too.
+    expect(text, 'the conversion must derive From from the row above').toContain('lag(to_v)');
+    expect(text, 'and rebuild the array rather than patch known rows').toContain('jsonb_agg(');
+    const stmts = text
+      .split('--> statement-breakpoint')
+      .map((s) => s.replace(/^(?:\s*--[^\n]*\n)+/, '').trim().replace(/;$/, ''))
+      .filter((s) => /^WITH\b/.test(s));
+    expect(stmts, 'one statement, and it must actually be there').toHaveLength(1);
+    await owner.db.transaction(async (tx) => {
+      for (const s of stmts) await tx.execute(sql.raw(s));
+    });
+  }
+
+  const bandsOf = async (id: string) => (await typeRow(id)).roundingBands as RoundingBand[] | null;
+
+  it("each row's From becomes the row above's To, and every figure lands on 2dp", async () => {
+    const id = await annualId();
+    await owner.db
+      .update(schema.leaveType)
+      .set({ roundingMethod: 'custom', roundingBands: STORED })
+      .where(eq(schema.leaveType.id, id));
+    await runConvert();
+    expect(await bandsOf(id)).toEqual([
+      { from: 0, to: 0.4, result: 0 },
+      { from: 0.4, to: 0.7, result: 0.5 },
+      { from: 0.7, to: 1, result: 1 },
+    ]);
+  });
+
+  it('THE DELTA: a fraction of exactly 0.400 was left alone and now rounds to half a day', async () => {
+    const id = await annualId();
+    await owner.db
+      .update(schema.leaveType)
+      .set({ roundingMethod: 'custom', roundingBands: STORED })
+      .where(eq(schema.leaveType.id, id));
+    // Before: the two holes. Nothing matched, so the value came back exactly as calculated.
+    expect(applyRoundingBands(10.4, STORED)).toBe(10.4);
+    expect(applyRoundingBands(10.7, STORED)).toBe(10.7);
+    await runConvert();
+    const after = (await bandsOf(id))!;
+    expect(applyRoundingBands(10.4, after)).toBe(10.5);
+    expect(applyRoundingBands(10.7, after)).toBe(11);
+    // …and NOTHING ELSE MOVES. Only the two boundaries shifted, and only across the holes.
+    for (const v of [10, 10.001, 10.39, 10.401, 10.5, 10.69, 10.701, 10.999]) {
+      expect(applyRoundingBands(v, after), `fraction of ${v}`).toBe(applyRoundingBands(v, STORED));
+    }
+  });
+
+  it('leaves a table the engine could never read ALONE, rather than inventing figures for it', async () => {
+    // `applyRoundingBands` already ignores a malformed table and returns the value as calculated. Repairing
+    // one here would turn a rule nobody can read into a rule that silently starts moving days.
+    const id = await annualId();
+    const junk = [{ from: 0, to: 'half', result: 0 }] as unknown as RoundingBand[];
+    await owner.db
+      .update(schema.leaveType)
+      .set({ roundingMethod: 'custom', roundingBands: junk })
+      .where(eq(schema.leaveType.id, id));
+    await runConvert();
+    expect(await bandsOf(id)).toEqual(junk);
+  });
+
+  it('a type with no table at all is untouched', async () => {
+    const id = await annualId();
+    await owner.db
+      .update(schema.leaveType)
+      .set({ roundingMethod: 'none', roundingBands: null })
+      .where(eq(schema.leaveType.id, id));
+    await runConvert();
+    expect(await bandsOf(id)).toBeNull();
+  });
+
+  it('is idempotent — running it twice changes nothing the second time', async () => {
+    const id = await annualId();
+    await owner.db
+      .update(schema.leaveType)
+      .set({ roundingMethod: 'custom', roundingBands: STORED })
+      .where(eq(schema.leaveType.id, id));
+    await runConvert();
+    const first = await typeRow(id);
+    await runConvert();
     expect(await typeRow(id)).toEqual(first);
   });
 });

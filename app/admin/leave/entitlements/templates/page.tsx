@@ -248,7 +248,19 @@ export default async function EntitlementTemplatesPage({
                 <input className={inputCls} type="date" name="validFrom" defaultValue={today} required />
               </Field>
             </div>
+            {/* ⚠️ THE `key` IS THE FIX FOR A DATA-LOSS DEFECT, NOT A LIST-RENDERING HABIT (4a1abc4a).
+                `EntitlementBandsEditor` seeds its rows with `useState(initial)`, and useState reads its
+                argument ONLY on the first mount. The Edit control above is a next/link `Link`, so reaching
+                this form is a CLIENT-SIDE navigation: React re-renders the same component instance, the new
+                `initial` is discarded, and the blank new-table row stays on screen over a saved template.
+                Saving from there posted days 0 with a green toast — an 18-day table became 0. Keying on the
+                template being edited makes a different target a different instance, so it remounts and
+                re-reads `initial`; 'new' keeps the create form its own instance. Loading the URL directly
+                always worked (a fresh mount), which is why this survived a page-level check. `EligibilityRuleForm`
+                below has carried the same key since it was written — the two forms had drifted apart, and
+                only the one without it could lose a table. */}
             <EntitlementBandsEditor
+              key={editingTemplate?.lineageId ?? 'new'}
               initial={editingTemplate ? toEditable(editingTemplate.serviceBands) : []}
               maxBands={MAX_SERVICE_BANDS}
             />

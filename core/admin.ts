@@ -3857,7 +3857,11 @@ export async function setLeaveTypeRules(
       const rows = [...new Set(problems.map((x) => (x.kind === 'gap' ? 0 : x.index + 1)))].join(', ');
       throw new LeaveTypeRuleError(
         `The rounding table is not usable (${kinds.join(', ')}) at row ${rows}. ` +
-          'Every row needs a From below its To, both between 0.000 and 1.000, and no two rows may cover the same decimal.',
+          // 4a1abc4a — kept in step with the client string `roundingBandRowInvalid`. This one is thrown by
+          // the service and surfaced VERBATIM to the operator (the panel's submit is never disabled on a bad
+          // table), so it was still telling them to change From — the field this round made derived and
+          // read-only — and still quoting three decimals the boxes no longer accept.
+          'Every row needs a Round To above where the row before it stopped, and both figures must be between 0.00 and 1.00.',
       );
     }
   }
