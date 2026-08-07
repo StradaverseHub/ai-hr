@@ -5,7 +5,7 @@
 // pull their own (or a subordinate's, or — as admin — their company's) EA. Mirrors the payslip-pdf route.
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { employeeEaStatement } from '@/core/reporting';
+import { employeeEaCompanies, employeeEaStatement } from '@/core/reporting';
 import { renderEaPdf, type EaPdfData } from '@/lib/ea-pdf';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
@@ -20,8 +20,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
   const yearParam = new URL(req.url).searchParams.get('year') ?? '';
   const year = /^\d{4}$/.test(yearParam) ? yearParam : String(new Date().getFullYear());
 
+  // b7b22514 — an EA form belongs to ONE employer, and after an Entity Transfer a year can span two. The
+  // caller names which employer's form it wants; unnamed means the employment's current company, which is
+  // what every pre-transfer link resolves to. An unrecognised id is refused rather than quietly falling
+  // back — silently handing someone the WRONG employer's statement is the failure this route must not have.
+  const companyParam = new URL(req.url).searchParams.get('company');
+
   const s = await getSession();
-  const ea = await employeeEaStatement(s, { employmentId, year }); // RLS-gated: null → 404 (foreign id)
+  if (companyParam) {
+    const allowed = await employeeEaCompanies(s, { employmentId, year });
+    if (!allowed.some((c) => c.companyId === companyParam)) return new Response('Not found', { status: 404 });
+  }
+  const ea = await employeeEaStatement(s, {
+    employmentId,
+    year,
+    ...(companyParam ? { companyId: companyParam } : {}),
+  }); // RLS-gated: null → 404 (foreign id)
   if (!ea) return new Response('Not found', { status: 404 });
 
   const t = await getTranslations('payroll.ea');

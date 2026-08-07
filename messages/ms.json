@@ -1131,6 +1131,7 @@
         "eventType": {
           "hired": "Diambil Bekerja",
           "transfer": "Pertukaran",
+          "entityTransfer": "Pemindahan Entiti",
           "promotion": "Kenaikan Pangkat",
           "demotion": "Penurunan Pangkat",
           "increment": "Kenaikan Gaji Tahunan",
@@ -1189,7 +1190,10 @@
           "terminationTypeDerived": "Dilaporkan sebagai: {type}",
           "resignationDate": "Tarikh Peletakan Jawatan",
           "terminationNoticeDays": "Notis diberi (hari)",
-          "terminationPayrollFlag": "Penamatan disimpan. Gaji bagi {periods} telah pun diproses melebihi tarikh penamatan — sila semak larian gaji itu. Ia tidak diubah."
+          "terminationPayrollFlag": "Penamatan disimpan. Gaji bagi {periods} telah pun diproses melebihi tarikh penamatan — sila semak larian gaji itu. Ia tidak diubah.",
+          "entityTransferDateHint": "Tarikh ini ialah tarikh pemindahan berkuat kuasa, dan ia juga menjadi Tarikh Menyertai pekerja dengan syarikat yang mereka pindah. Tarikh Menyertai Kumpulan tidak berubah, jadi perkhidmatan, cuti dan kelayakan perkhidmatan panjang mereka dibawa bersama.",
+          "entityTransferHint": "Pilih syarikat yang pekerja ini akan pindah. Senarai Unit Perniagaan, Jabatan, Jawatan dan Lokasi Kerja di bawah kini menunjukkan pilihan syarikat destinasi — pilih Jabatan di situ. ID pekerja, Tarikh Menyertai Kumpulan dan sejarah mereka kekal seperti sedia ada.",
+          "selectPlaceholder": "Pilih…"
         },
         "edit": "Sunting",
         "rollback": "Batalkan",
@@ -2905,6 +2909,10 @@
         "fieldEis": "SIP / EIS",
         "filedTotal": "Jumlah CP39 / agensi difailkan",
         "cp39DivergenceWarning": "Angka pindaan ini berbeza daripada jumlah CP39 / agensi yang difailkan bagi tahun tersebut ({filed}; delta {delta}). Pindaan dan deltanya direkodkan dalam jejak audit."
+      },
+      "multiEmployer": {
+        "title": "Borang EA bagi {count} majikan",
+        "body": "Pekerja ini dibayar oleh lebih daripada satu syarikat pada tahun ini, jadi setiap satu perlu mengeluarkan Borang EA yang berasingan. Pilih majikan untuk melihat dan mencetak borangnya."
       }
     },
     "config": {

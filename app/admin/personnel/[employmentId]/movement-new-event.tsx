@@ -22,10 +22,23 @@ import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structu
 import { createMovementEventAction, editMovementEventAction } from './actions';
 
 export type MovementOption = { id: string; name: string };
+/** b7b22514 — a Direct Superior candidate, carrying the company that decides whether an Entity Transfer
+ *  may leave the employee reporting to them. */
+export type MovementManagerOption = MovementOption & { companyId: string };
+/** b7b22514 — one destination company's org pickers, so the grid can re-scope without a round trip. */
+export type MovementOrgScope = {
+  departments: MovementOption[];
+  positions: MovementOption[];
+  businessUnits: MovementOption[];
+  locations: MovementOption[];
+};
 
 /** The employee's current record, as the server read it — ids for pickers, text for the flat columns. */
 export type MovementCurrentValues = {
   companyName: string | null;
+  /** b7b22514 — the raw id, because Entity Transfer makes Company an editable field and a select needs a
+   *  value, not a label. Every other kind still renders `companyName` read-only. */
+  companyId: string;
   departmentId: string | null;
   positionId: string | null;
   businessUnitId: string | null;
@@ -63,6 +76,9 @@ const btnGhost =
  */
 const KINDS = [
   'transfer',
+  // b7b22514 — Entity Transfer sits next to Transfer because that is what it is: the same form, the same
+  // validations, plus the one field no other event may move.
+  'entityTransfer',
   'promotion',
   'demotion',
   'increment',
@@ -90,12 +106,21 @@ const KINDS = [
  *  3ced1040 — Confirmation belongs here too, and now needs the hint more than either of the others: it is
  *  the only one that ALSO shows the comparison grid, so without a word the date reads as "when the pay
  *  rise applies" rather than "the day this person is confirmed". It is both. */
-const DATE_VALUE_KINDS: readonly string[] = ['joinDateChange', 'groupJoinDateCorrection', 'confirmation'];
+const DATE_VALUE_KINDS: readonly string[] = [
+  'joinDateChange',
+  'groupJoinDateCorrection',
+  'confirmation',
+  // b7b22514 — an Entity Transfer's effective date is BOTH: the day the move takes effect AND the
+  // employee's new Join Date with the company they are moving to. It needs the hint more than Confirmation
+  // does, because the date it silently writes is one HR used to have to type on a second screen.
+  'entityTransfer',
+];
 
 // Mirrors core/movement.ts COMPARISON_KINDS — the kinds that render the Current / After grid.
 // 3ced1040 added `confirmation` to both; the two lists must move together or the grid does not render.
 const COMPARISON_KINDS: readonly string[] = [
   'transfer',
+  'entityTransfer',
   'promotion',
   'demotion',
   'increment',
@@ -133,6 +158,8 @@ export function MovementNewEvent({
   employmentTypes,
   terminationReasons,
   types,
+  companies,
+  orgByCompany,
   cancelHref,
   edit,
 }: {
@@ -145,7 +172,7 @@ export function MovementNewEvent({
   businessUnits: MovementOption[];
   grades: MovementOption[];
   locations: MovementOption[];
-  managers: MovementOption[];
+  managers: MovementManagerOption[];
   /** Pre-translated by the server page (reuses the existing people.detail labels). */
   employmentTypes: { value: string; label: string }[];
   /**
@@ -162,6 +189,18 @@ export function MovementNewEvent({
    * anything about Redeployment.
    */
   types?: { code: string; label: string | null; behaviourKind: string }[];
+  /**
+   * b7b22514 — the legal entities an Entity Transfer may move this employee to: the current one (always
+   * first, it is the select's initial value) followed by every company the actor ADMINISTERS. That set is
+   * the same one the writer accepts, so what the form offers and what the service permits cannot drift.
+   */
+  companies?: MovementOption[];
+  /**
+   * b7b22514 — each of those companies' org pickers, keyed by company id. Picking a destination re-scopes
+   * the Department / Position / Business Unit / Location selects to it IN THE BROWSER, so an incoherent
+   * cross-company placement is never offered — rather than offered and then refused on save.
+   */
+  orgByCompany?: Record<string, MovementOrgScope>;
   cancelHref: string;
   edit?: MovementEditTarget;
 }) {
@@ -183,6 +222,7 @@ export function MovementNewEvent({
     if (configured) return configured;
     switch (k) {
       case 'transfer': return t('eventType.transfer');
+      case 'entityTransfer': return t('eventType.entityTransfer');
       case 'promotion': return t('eventType.promotion');
       case 'demotion': return t('eventType.demotion');
       case 'increment': return t('eventType.increment');
@@ -204,6 +244,30 @@ export function MovementNewEvent({
   };
 
   const isComparison = COMPARISON_KINDS.includes(behaviour);
+  /**
+   * b7b22514 — ENTITY TRANSFER. The destination company is form STATE, not just a submitted value, because
+   * picking it has to re-scope the org pickers below it: the department list of the company they are
+   * LEAVING is exactly the list they must not choose from.
+   *
+   * `scopeCompanyId` is therefore the company whose labels the grid offers — the chosen destination on an
+   * Entity Transfer, the employee's own company on every other kind. When the destination has no entry in
+   * `orgByCompany` (an actor who does not administer it, so it was never loaded) the fall-back is the
+   * props the page already passes, which are the current company's: the same lists the form has always
+   * shown, never a wider set.
+   */
+  const isEntityTransfer = behaviour === 'entityTransfer';
+  const [destCompanyId, setDestCompanyId] = useState<string>(current.companyId);
+  const scopeCompanyId = isEntityTransfer ? destCompanyId : current.companyId;
+  const scopeChanged = scopeCompanyId !== current.companyId;
+  const scoped: MovementOrgScope = orgByCompany?.[scopeCompanyId] ?? {
+    departments,
+    positions,
+    businessUnits,
+    locations,
+  };
+  // The Direct Superior must belong to the company the employee lands in — the service refuses anything
+  // else, so the picker must not offer it.
+  const scopedManagers = managers.filter((m) => !scopeChanged || m.companyId === scopeCompanyId);
   // ae9350f2 — Termination now has a structured exit block. The old free `terminationType` picker is GONE:
   // the reason is the single thing HR picks and the classification is derived from it server-side, so the
   // two can never be saved in contradiction (a Misconduct exit filed as "voluntary" is a real data fault,
@@ -240,21 +304,41 @@ export function MovementNewEvent({
     </div>
   );
 
+  /**
+   * b7b22514 — two things were added here, and both exist only because the option list can now CHANGE
+   * while the form is open (an Entity Transfer re-scoping to the destination company).
+   *
+   * `key` forces a REMOUNT when the scope changes. These are uncontrolled selects: without it React keeps
+   * the DOM node and `defaultValue` is ignored on re-render, so the browser would silently keep whatever
+   * was selected — or, if that option no longer exists, fall back to the first one in the new list. Either
+   * way HR would submit a value they never chose.
+   *
+   * `preselect` refuses to pre-fill an id the new list does not contain, and the placeholder option below
+   * is what that empties INTO. A required picker (emptyLabel null — Department) normally has no empty
+   * option, which is right when the stored value is always in the list; on a company move it is not, and
+   * without somewhere valid to sit the browser would auto-select the destination's first department. An
+   * empty submission is refused by name ("Department is required"), which is the honest outcome.
+   */
   const select = (
     name: string,
     value: string | null,
     options: MovementOption[],
     emptyLabel: string | null,
-  ) => (
-    <select name={name} defaultValue={value ?? ''} className={inputCls}>
-      {emptyLabel != null && <option value="">{emptyLabel}</option>}
-      {options.map((o) => (
-        <option key={o.id} value={o.id}>
-          {o.name}
-        </option>
-      ))}
-    </select>
-  );
+  ) => {
+    const preselect = options.some((o) => o.id === value) ? (value ?? '') : '';
+    return (
+      <select key={`${name}-${scopeCompanyId}`} name={name} defaultValue={preselect} className={inputCls}>
+        {(emptyLabel != null || preselect === '') && (
+          <option value="">{emptyLabel ?? t('form.selectPlaceholder')}</option>
+        )}
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+    );
+  };
 
   const text = (name: string, value: string | null) => (
     <input name={name} defaultValue={value ?? ''} maxLength={120} className={inputCls} />
@@ -262,21 +346,44 @@ export function MovementNewEvent({
 
   // The requested field order, top to bottom (feedback 08913328).
   const comparisonRows: React.ReactNode[] = [
-    // Company is read-only here on purpose: moving an employee between legal entities is its own audited
-    // flow on the Employment tab, with its own pre-transaction gate.
+    /**
+     * b7b22514 — THE ONE PLACE COMPANY IS EDITABLE, and only on this one event type. Everywhere else it
+     * stays the read-only note it has always been: moving an employee between legal entities re-homes
+     * their statutory registration, payroll policy, approval routing and every company-scoped org label,
+     * so it is a movement HR records deliberately, never a field they can nudge while doing something
+     * else. The service ignores a submitted companyId on every other kind, so this is a rule and not
+     * merely an absent control.
+     */
     row(
       'company',
       t('field.company'),
       current.companyName,
-      <span className="text-sm text-muted-foreground">{t('form.companyReadOnly')}</span>,
+      isEntityTransfer ? (
+        <select
+          name="companyId"
+          value={destCompanyId}
+          onChange={(e) => setDestCompanyId(e.target.value)}
+          className={inputCls}
+        >
+          {(companies?.length ? companies : [{ id: current.companyId, name: current.companyName ?? '' }]).map(
+            (c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ),
+          )}
+        </select>
+      ) : (
+        <span className="text-sm text-muted-foreground">{t('form.companyReadOnly')}</span>
+      ),
     ),
     row('businessUnit', t('field.businessUnit'), nameOf(businessUnits, current.businessUnitId),
-      select('businessUnitId', current.businessUnitId, businessUnits, t('form.none'))),
+      select('businessUnitId', current.businessUnitId, scoped.businessUnits, t('form.none'))),
     row('orgDivision', t('field.orgDivision'), current.orgDivision, text('orgDivision', current.orgDivision)),
     row('department', t('field.department'), nameOf(departments, current.departmentId),
-      select('departmentId', current.departmentId, departments, null)),
+      select('departmentId', current.departmentId, scoped.departments, null)),
     row('position', t('field.position'), nameOf(positions, current.positionId),
-      select('positionId', current.positionId, positions, t('form.none'))),
+      select('positionId', current.positionId, scoped.positions, t('form.none'))),
     row('grade', t('field.grade'), nameOf(grades, current.gradeId),
       select('gradeId', current.gradeId, grades, t('form.none'))),
     row('category', t('field.employmentCategory'), current.employmentCategory,
@@ -288,7 +395,7 @@ export function MovementNewEvent({
     row('orgLine', t('field.orgLine'), current.orgLine, text('orgLine', current.orgLine)),
     row('orgBase', t('field.orgBase'), current.orgBase, text('orgBase', current.orgBase)),
     row('location', t('form.location'), nameOf(locations, current.locationId),
-      select('locationId', current.locationId, locations, t('form.none'))),
+      select('locationId', current.locationId, scoped.locations, t('form.none'))),
     row('employmentType', t('field.employmentType'),
       employmentTypes.find((o) => o.value === current.employmentType)?.label ?? null,
       <select name="employmentType" defaultValue={current.employmentType ?? ''} className={inputCls}>
@@ -299,7 +406,7 @@ export function MovementNewEvent({
         ))}
       </select>),
     row('manager', t('field.directSuperior'), nameOf(managers, current.managerEmploymentId),
-      select('managerEmploymentId', current.managerEmploymentId, managers, t('form.none'))),
+      select('managerEmploymentId', current.managerEmploymentId, scopedManagers, t('form.none'))),
     row('basicSalary', t('field.basicSalary'), current.basicSalary,
       <input
         name="basicSalary"
@@ -378,7 +485,9 @@ export function MovementNewEvent({
                   ? t('form.joinDateChangeHint')
                   : behaviour === 'confirmation'
                     ? t('form.confirmationHint')
-                    : t('form.groupJoinDateCorrectionHint')}
+                    : isEntityTransfer
+                      ? t('form.entityTransferDateHint')
+                      : t('form.groupJoinDateCorrectionHint')}
               </span>
             )}
           </label>
@@ -491,7 +600,12 @@ export function MovementNewEvent({
             <div className="font-medium">{t('form.afterInformation')}</div>
           </div>
           {comparisonRows}
-          <p className="px-4 py-3 text-xs text-muted-foreground">{t('form.comparisonHint')}</p>
+          <p className="px-4 py-3 text-xs text-muted-foreground">
+            {/* b7b22514 — an Entity Transfer needs to say what the other kinds do not: that the org
+                choices above it now belong to the DESTINATION company, and that group service is not
+                affected. Both are things HR would otherwise have to find out by trying it. */}
+            {isEntityTransfer ? t('form.entityTransferHint') : t('form.comparisonHint')}
+          </p>
         </div>
       )}
 

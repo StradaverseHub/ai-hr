@@ -16,7 +16,7 @@
  * untagged / historical events keep plain, factual fallback labels.
  */
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, type MovementTag } from '../db/events';
@@ -42,6 +42,7 @@ import {
   setEmploymentInfo,
   setReportingLine,
   terminateEmploymentTx,
+  transferEmploymentCompanyTx,
   type EmploymentTypeValue,
   type TerminationType,
 } from './org';
@@ -230,6 +231,16 @@ export class MovementNoChangeError extends Error {
 const MOVEMENT_EVENT_TYPES = [
   'employment.hired',
   'assignment.transferred',
+  // b7b22514 — the Entity Transfer's own leg. NOT `employment.company.changed`, which the pre-transaction
+  // hire-time correction appends and which stays off this list on purpose (a mis-picked company corrected
+  // on day one is not a career movement). Two acts, two event types; adding the other one here to make this
+  // feature work would have retroactively turned every past correction into a movement.
+  'employment.company.transferred',
+  // b7b22514 — and its rollback. Projects NO row of its own (the reversal already shows on the original
+  // row), but it MUST be loaded: the company as-of replay walks both types in sequence order, so a
+  // transfer that was later rolled back stops governing the rows after it. Without this the replay would
+  // keep reporting the destination company for an employment that has been moved back.
+  'employment.company.transfer.reverted',
   'employment.assignment.changed',
   'employment.grade.changed',
   'compensation.set',
@@ -541,6 +552,23 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
           remarks: mv?.remarks ?? null,
         });
         break;
+      case 'employment.company.transfer.reverted':
+        // b7b22514 — loaded for the as-of replay only. Like `employment.movement.reversed`, it projects no
+        // row: one movement keeps one line in the history, with its rollback shown ON that line.
+        break;
+      case 'employment.company.transferred':
+        // b7b22514 — the Entity Transfer. TAG REQUIRED even though this writer is not generic: it has
+        // exactly one caller, which always tags, so the check costs nothing and keeps "the tag decides"
+        // (30325fc1) true without an exception anyone has to remember.
+        if (!knownKind(mv?.type)) break;
+        rows.push({
+          ...base,
+          kind: mv.type,
+          effectiveDate: p.effectiveDate ?? occDate,
+          endDate: mv?.endDate ?? null,
+          remarks: mv?.remarks ?? null,
+        });
+        break;
       case 'employment.assignment.changed':
         // 30325fc1 — GENERIC WRITER, TAG REQUIRED (see the block comment above the switch).
         if (!knownKind(mv?.type)) break;
@@ -788,6 +816,11 @@ const groupEventsOf = (events: RawEvent[], row: ProjectedRow): RawEvent[] =>
  * second, weaker copy of them.
  */
 const REVERSIBLE_EVENT_TYPES = new Set([
+  // b7b22514 — the Entity Transfer's company leg. reverseLegTx knows how to undo it (put the company back,
+  // under the same last-write-wins rule the flat columns get), so it belongs here — and MUST: this set is
+  // an allowlist, and an unlisted leg makes the WHOLE movement uncorrectable. A company move with no way
+  // to roll it back would be the one comparison movement HR could not take back.
+  'employment.company.transferred',
   'assignment.transferred',
   'employment.assignment.changed',
   'employment.grade.changed',
@@ -833,14 +866,39 @@ const STATE_CHANGING_EVENT_TYPES = new Set(
  */
 const REVERSIBLE_INFO_DATE_FIELDS: readonly string[] = ['confirmationDate', 'finalConfirmationDate'];
 
+/**
+ * b7b22514 — dates that are reversible ONLY on the movement kind that owns them.
+ *
+ * The current-company Join Date rides on the Entity Transfer's info leg beside the flat columns, and
+ * reverseLegTx restores it there — so without it allowed, `infoLegIsFlatOnly` sees a date it does not
+ * recognise and quietly makes every Entity Transfer uncorrectable. That is this list's failure mode: not
+ * an error, an absent button.
+ *
+ * BUT IT MUST NOT BE ALLOWED KIND-BLIND. `joinDate` is also what the EXISTING `joinDateChange` movement
+ * writes (case 'joinDateChange' calls the same setEmploymentInfo, producing the same
+ * `employment.info.updated` with `joinDate` in its fields). Naming it unconditionally above therefore
+ * made a movement this item never touched roll-back-able for the first time — precisely what the comment
+ * on REVERSIBLE_INFO_DATE_FIELDS says is deliberately out of scope: "the two join dates are moved by
+ * kinds that are NOT comparison kinds ... each is maintained on its own screen with its own gates."
+ * Widening a correction gate is not a side effect an Entity Transfer gets to have.
+ */
+const KIND_SCOPED_INFO_DATE_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  entityTransfer: ['joinDate'],
+};
+
 /** A flat-column leg is undone field by field, and since 3ced1040 so is the confirmation date a
  *  Confirmation movement writes alongside it. Any OTHER lifecycle date on the leg puts the whole movement
- *  out of correction's reach (see REVERSIBLE_INFO_DATE_FIELDS). */
-function infoLegIsFlatOnly(e: RawEvent): boolean {
+ *  out of correction's reach (see REVERSIBLE_INFO_DATE_FIELDS) — unless this movement's own kind claims
+ *  it (see KIND_SCOPED_INFO_DATE_FIELDS). */
+function infoLegIsFlatOnly(e: RawEvent, kind: string): boolean {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fields: string[] = Array.isArray((e.payload as any)?.fields) ? (e.payload as any).fields : [];
+  const kindScoped = KIND_SCOPED_INFO_DATE_FIELDS[kind] ?? [];
   return fields.every(
-    (f) => (MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f) || REVERSIBLE_INFO_DATE_FIELDS.includes(f),
+    (f) =>
+      (MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f) ||
+      REVERSIBLE_INFO_DATE_FIELDS.includes(f) ||
+      kindScoped.includes(f),
   );
 }
 
@@ -855,7 +913,7 @@ function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolea
   const supported = group.every(
     (e) =>
       REVERSIBLE_EVENT_TYPES.has(e.eventType) &&
-      (e.eventType !== 'employment.info.updated' || infoLegIsFlatOnly(e)),
+      (e.eventType !== 'employment.info.updated' || infoLegIsFlatOnly(e, row.kind)),
   );
   const canReverse = supported && !row.reversed;
   const canEdit = canReverse && (!stateChanging || (isComparisonKind(row.kind) && isLatest));
@@ -904,20 +962,85 @@ function flatValueAtSequence(
 }
 
 /**
+ * b7b22514 — the legal entity in force just before/at an event, replayed from
+ * `employment.company.transferred` the way `gradeIdAtSequence` replays job grade and for the identical
+ * reason: `employment.company_id` is a FLAT column with no dated history, so as-of reconstruction can only
+ * come from the ledger.
+ *
+ * BEFORE THIS, EVERY HISTORY ROW SHOWED TODAY'S COMPANY. That was true while nothing could change it —
+ * placementColumnsTx said so in as many words. The moment a company can move, a live read makes the whole
+ * Company column a lie in the one case it finally matters: an employee who transferred in March would show
+ * the NEW entity against their 2019 promotion, and the transfer row itself would show the same name on both
+ * sides of a grid whose entire purpose is to name the two.
+ *
+ * `bound` is the row's sequence; `inclusive` includes the bound event itself (the After side). An
+ * employment that never transferred has no events here and falls through to the current id — byte-identical
+ * to the old behaviour for every existing record.
+ */
+const isCompanyReplayEvent = (e: RawEvent): boolean =>
+  e.eventType === 'employment.company.transferred' ||
+  e.eventType === 'employment.company.transfer.reverted';
+
+function companyIdAtSequence(
+  companyEvents: RawEvent[],
+  bound: number,
+  inclusive: boolean,
+  currentCompanyId: string,
+): string {
+  let c: string | undefined;
+  for (const e of companyEvents) {
+    if (inclusive ? e.sequence <= bound : e.sequence < bound) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      c = (((e.payload ?? {}) as any).after?.companyId as string | undefined) ?? c;
+    }
+  }
+  if (c !== undefined) return c;
+  // Before the FIRST transfer the employee was in that transfer's `before` company — the same
+  // walk-back-off-the-earliest-event rule the grade replay uses.
+  const first = companyEvents[0];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const beforeId = first ? (((first.payload ?? {}) as any).before?.companyId as string | undefined) : undefined;
+  return beforeId ?? currentCompanyId;
+}
+
+/** Legal-entity id → name, for every company this employment has ever been in (one query, not one per row). */
+async function companyNamesTx(tx: Tx, ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return new Map();
+  const rows = await tx
+    .select({ id: company.id, name: company.legalName })
+    .from(company)
+    .where(inArray(company.id, unique));
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
+
+/** The company ids an employment has ever held: today's, plus both sides of every transfer it recorded. */
+function companyIdsInPlay(companyEvents: RawEvent[], currentCompanyId: string): string[] {
+  const ids = [currentCompanyId];
+  for (const e of companyEvents) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const p = (e.payload ?? {}) as any;
+    if (p.before?.companyId) ids.push(p.before.companyId as string);
+    if (p.after?.companyId) ids.push(p.after.companyId as string);
+  }
+  return ids;
+}
+
+/**
  * r78c — the placement columns every history row shows (Company, Division, Department, Job Title, Basic),
  * loaded ONCE for the whole employment and resolved per row in memory. Deliberately not per-row queries:
  * the history is rendered whole, and one round trip per row per column is how a timeline screen becomes a
  * slow one.
  *
- * Company has no dated history (an employment holds one company_id; changeEmploymentCompany flips it),
- * so every row shows the current legal name — the same value the detail view's comparison grid shows.
+ * b7b22514 — COMPANY IS NOW REPLAYED, not read live. It used to be the one column with no dated history
+ * ("an employment holds one company_id"), so every row showed the current legal name. Entity Transfer makes
+ * that false: the column is still flat, but the ledger now records its moves, so it is reconstructed from
+ * the events exactly as `division` already is (companyIdAtSequence). Employments that never transferred are
+ * unaffected — no events, so the replay returns the current id.
  */
 async function placementColumnsTx(tx: Tx, employmentId: string, companyId: string, events: RawEvent[]) {
-  const [co] = await tx
-    .select({ name: company.legalName })
-    .from(company)
-    .where(eq(company.id, companyId))
-    .limit(1);
+  const companyEvents = events.filter(isCompanyReplayEvent);
+  const companyNames = await companyNamesTx(tx, companyIdsInPlay(companyEvents, companyId));
 
   const asgRows = await tx
     .select({
@@ -955,7 +1078,7 @@ async function placementColumnsTx(tx: Tx, employmentId: string, companyId: strin
     const asg = asgRows.filter((a) => a.validFrom <= asOf && (a.validTo == null || a.validTo > asOf)).pop() ?? null;
     const comp = compRows.filter((c) => c.validFrom <= asOf && (c.validTo == null || c.validTo > asOf)).pop() ?? null;
     return {
-      company: co?.name ?? null,
+      company: companyNames.get(companyIdAtSequence(companyEvents, seqBound, true, companyId)) ?? null,
       division: flatValueAtSequence(infoEvents, 'orgDivision', seqBound, empRow?.orgDivision ?? null),
       department: asg?.department ?? null,
       jobTitle: asg?.position ?? null,
@@ -1039,12 +1162,18 @@ async function snapshotAt(
   gradeEvents: RawEvent[],
   seqBound: number,
   inclusive: boolean,
+  /**
+   * b7b22514 — the employment's `employment.company.transferred` events. Threaded in exactly as
+   * `gradeEvents` is, and for the same reason: `company_id` is flat, so the Before column can only know
+   * which entity the employee was in by replaying the ledger. THIS IS WHAT MAKES AN ENTITY TRANSFER'S ROW
+   * NAME BOTH COMPANIES — without it the grid reads the live column twice and shows the destination on both
+   * sides, which is a Before/After view of a company move that omits the company move.
+   */
+  companyEvents: RawEvent[] = [],
 ): Promise<MovementSnapshot> {
-  const [co] = await tx
-    .select({ name: company.legalName })
-    .from(company)
-    .where(eq(company.id, emp.companyId))
-    .limit(1);
+  const companyNames = await companyNamesTx(tx, companyIdsInPlay(companyEvents, emp.companyId));
+  const companyName =
+    companyNames.get(companyIdAtSequence(companyEvents, seqBound, inclusive, emp.companyId)) ?? null;
 
   const asgRows = await tx
     .select({
@@ -1111,7 +1240,7 @@ async function snapshotAt(
   }
 
   return {
-    company: co?.name ?? null,
+    company: companyName,
     businessUnit: asg?.businessUnit ?? null,
     department: asg?.department ?? null,
     position: asg?.position ?? null,
@@ -1137,6 +1266,9 @@ export function movementDetail(
     const row = rows.find((r) => r.id === movementId);
     if (!row) return null;
     const gradeEvents = events.filter((e) => e.eventType === 'employment.grade.changed');
+    // b7b22514 — the company moves this employment recorded (and any that were rolled back), for the
+    // as-of replay in snapshotAt.
+    const companyEvents = events.filter(isCompanyReplayEvent);
 
     let actorName: string | null = null;
     const ev = events.find((e) => e.id === row.id);
@@ -1159,11 +1291,11 @@ export function movementDetail(
     const afterBound = Math.max(...seqs);
     const beforeBound = Math.min(...seqs);
 
-    const after = await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true);
+    const after = await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true, companyEvents);
     const before =
       row.kind === 'hired'
         ? null
-        : await snapshotAt(tx, emp, dayBefore(row.effectiveDate), gradeEvents, beforeBound, false);
+        : await snapshotAt(tx, emp, dayBefore(row.effectiveDate), gradeEvents, beforeBound, false, companyEvents);
 
     return {
       row: {
@@ -1193,6 +1325,12 @@ export function movementDetail(
  */
 export type MovementCurrentState = {
   companyName: string | null;
+  /** b7b22514 — the raw id, because Entity Transfer is the one kind that DIFFS this field. `companyName`
+   *  stays for the read-only left column every other kind renders; the dispatcher compares ids. */
+  companyId: string;
+  /** b7b22514 — the current legal entity's join date, diffed by Entity Transfer (whose effective date
+   *  becomes its new value). NOT `hired_on`: that is the group anchor and no movement here touches it. */
+  joinDate: string | null;
   departmentId: string | null;
   positionId: string | null;
   businessUnitId: string | null;
@@ -1214,6 +1352,8 @@ async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCur
     .select({
       gradeId: employment.gradeId,
       companyName: company.legalName,
+      companyId: employment.companyId,
+      joinDate: employment.joinDate,
       confirmationDate: employment.confirmationDate,
       orgDivision: employment.orgDivision,
       orgRegion: employment.orgRegion,
@@ -1282,6 +1422,8 @@ async function currentStateTx(tx: Tx, employmentId: string): Promise<MovementCur
 
   return {
     companyName: emp.companyName,
+    companyId: emp.companyId,
+    joinDate: emp.joinDate,
     departmentId: asg?.departmentId ?? null,
     positionId: asg?.positionId ?? null,
     businessUnitId: asg?.businessUnitId ?? null,
@@ -1328,6 +1470,14 @@ export type CreateMovementInput = {
   effectiveDate: string;
   endDate?: string | null;
   remarks?: string | null;
+  /**
+   * b7b22514 — the DESTINATION legal entity. Honoured by the `entityTransfer` kind and IGNORED by every
+   * other one, deliberately and in the service rather than in the form: `company_id` is the field that
+   * re-homes statutory registration, payroll policy, approval routing and every company-scoped org label,
+   * so a forged field posted alongside a Promotion must move nothing. The form only renders the control
+   * for Entity Transfer; this is what makes that a rule instead of a convention.
+   */
+  companyId?: string | null;
   /** Assignment-side fields — empty/absent means "keep current" (mapped to the writers' carry-forward). */
   departmentId?: string | null;
   positionId?: string | null;
@@ -1399,6 +1549,20 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
     return next === curVal ? undefined : next;
   };
 
+  /**
+   * b7b22514 — the ENTITY-TRANSFER deltas. Both are gated on the kind, not merely defaulted by it: on any
+   * other kind a submitted companyId is dropped here and never reaches a writer, so the one field that can
+   * re-home an employee's legal entity cannot ride in on a Promotion.
+   *
+   * The join date is not a form field. Like Confirmation's date it IS the movement's effective date, so the
+   * history row's Effective Date column and `employment.join_date` can never disagree — and unlike today,
+   * where the schema comment calls the auto-sync a documented follow-up, HR no longer has to remember to
+   * type it. `hired_on` is not in this function at all: group service is what survives the move.
+   */
+  const isEntityTransfer = p.kind === 'entityTransfer';
+  const dCompany = isEntityTransfer ? delta(p.companyId, cur.companyId) : undefined;
+  const dJoinDate = isEntityTransfer ? delta(p.effectiveDate, cur.joinDate) : undefined;
+
   const dDept = delta(p.departmentId, cur.departmentId);
   const dPos = delta(p.positionId, cur.positionId);
   const dBu = delta(p.businessUnitId, cur.businessUnitId);
@@ -1409,6 +1573,12 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
 
   // Department is NOT NULL on the assignment — an empty submission means "unchanged", never "clear".
   if (dDept === null) throw new Error('Department is required.');
+  // b7b22514 — an Entity Transfer with no destination is not a no-op, it is an unanswered question. Refused
+  // by name rather than left to the nothingChanged guard below, whose message ("there are no changes to
+  // record") would be true and useless. `dCompany === null` is an explicitly cleared select.
+  if (isEntityTransfer && (!p.companyId || dCompany === null)) {
+    throw new Error('Select the company this employee is transferring to.');
+  }
 
   const flat: Partial<Record<MovementFlatField, string | null>> = {};
   for (const f of MOVEMENT_FLAT_FIELDS) {
@@ -1450,10 +1620,16 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
     (hasComp && (dCurrency !== undefined || dPayMode !== undefined || dPaymentTerm !== undefined));
 
   const confirmationChanged = dConfirmation !== undefined;
+  // b7b22514 — the company move is a change in its own right: an Entity Transfer that moves ONLY the
+  // company (same department, same pay — the common case for a group restructure) must save. The join date
+  // deliberately does NOT count on its own: it is derived from the effective date, so on its own it would
+  // let a re-submitted transfer to the same company slip past the no-op guard.
+  const companyChanged = dCompany !== undefined;
+  const joinDateChanged = dJoinDate !== undefined;
 
   const nothingChanged =
     !assignmentChanged && !gradeChanged && !flatChanged && !managerChanged && !compChanged &&
-    !confirmationChanged;
+    !confirmationChanged && !companyChanged;
   if (dSalary !== undefined && (!Number.isFinite(dSalary) || dSalary < 0)) {
     throw new Error('A valid basic salary amount is required.');
   }
@@ -1465,6 +1641,10 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
     if (after === undefined) return;
     changes.push({ field, before, after });
   };
+  // b7b22514 — FIRST in the list, and both ids are recorded: this pair IS the audit answer to "which entity
+  // did they leave and which did they join", read back years later without depending on today's column.
+  add('companyId', cur.companyId, dCompany);
+  add('joinDate', cur.joinDate, dJoinDate);
   add('departmentId', cur.departmentId, dDept);
   add('positionId', cur.positionId, dPos);
   add('businessUnitId', cur.businessUnitId, dBu);
@@ -1485,10 +1665,11 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
 
   return {
     cur,
+    dCompany, dJoinDate,
     dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat,
     dSalary, dCurrency, dPayMode, dPaymentTerm, dConfirmation,
     assignmentChanged, gradeChanged, flatChanged, managerChanged, compChanged, hasComp,
-    confirmationChanged,
+    confirmationChanged, companyChanged, joinDateChanged,
     nothingChanged,
     changes,
     fields: changes.map((c) => c.field),
@@ -1526,9 +1707,11 @@ async function applyComparisonMovementTx(
     const cur = await currentStateTx(tx, p.employmentId);
     const d = movementDeltas(p, cur);
     const {
+      dCompany, dJoinDate,
       dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat,
       dSalary, dCurrency, dPayMode, dPaymentTerm, dConfirmation,
       assignmentChanged, gradeChanged, flatChanged, compChanged, confirmationChanged,
+      companyChanged, joinDateChanged,
     } = d;
 
     if (d.nothingChanged) {
@@ -1560,13 +1743,19 @@ async function applyComparisonMovementTx(
     // setEmploymentInfo re-derives finalConfirmationDate from it, which is what flips the derived
     // Employee Status from Probation to Confirmed — there is no status column to write.
     const infoLeg = async () => {
-      if (!flatChanged && !confirmationChanged) return;
+      if (!flatChanged && !confirmationChanged && !joinDateChanged) return;
       await setEmploymentInfo(
         ctx,
         {
           employmentId: p.employmentId,
           ...flat,
           ...(confirmationChanged ? { confirmationDate: dConfirmation } : {}),
+          // b7b22514 — the Entity Transfer's new current-company Join Date rides on the SAME
+          // setEmploymentInfo call as the flat columns, for the reason Confirmation's date does: two calls
+          // would be two `employment.info.updated` events for one movement, and the rollback would have to
+          // undo them in the right order to be correct. setEmploymentInfo's gate accepts the entityTransfer
+          // tag, so this column keeps exactly one writer.
+          ...(joinDateChanged ? { joinDate: dJoinDate } : {}),
           movement: tag({ withRemarks: true }),
         },
         tx,
@@ -1585,6 +1774,40 @@ async function applyComparisonMovementTx(
      * kind an info leg projects the keyed date too, so leading with it would move the same fault around.
      */
     if (confirmationChanged) await infoLeg();
+
+    /**
+     * b7b22514 — THE COMPANY LEG RUNS FIRST, and the ordering carries two separate loads.
+     *
+     * It owns the HISTORY ROW. The primary tag goes to the first leg with a real delta, and for an Entity
+     * Transfer that has to be this one: its event is the only one carrying both company ids, and it is the
+     * only effective-dated leg of a company-only transfer (a restructure that moves nobody's department
+     * writes no assignment version at all, so any other ordering would leave the movement with no row).
+     *
+     * And it makes every later leg resolve against the DESTINATION. setEmploymentAssignment,
+     * setEmploymentGrade and setReportingLine all read `employment.company_id` for their own guards; with
+     * the flip already applied in this transaction they validate against the company the employee is
+     * moving TO, without any of them learning that a company move exists.
+     *
+     * What travels to the guard is the DELTAS, not the result. The leg resolves the carry-forwards from the
+     * open assignment and reporting line itself, so a field this form cannot move — cost centre — is still
+     * checked against the destination. That is the case a caller-assembled placement would have quietly
+     * dropped, and it is the one most likely to dangle.
+     */
+    if (companyChanged && dCompany) {
+      await transferEmploymentCompanyTx(tx, ctx, {
+        employmentId: p.employmentId,
+        newCompanyId: dCompany,
+        effectiveDate: p.effectiveDate,
+        placement: {
+          departmentId: dDept,
+          positionId: dPos,
+          businessUnitId: dBu,
+          locationId: dLoc,
+          managerEmploymentId: dManager,
+        },
+        movement: tag({ withRemarks: true }),
+      });
+    }
 
     if (assignmentChanged) {
       // ONE assignment writer for every comparison kind, Transfer included. transferEmployee is NOT used
@@ -1673,6 +1896,10 @@ const applyComparisonMovement = (ctx: SessionContext, p: CreateMovementInput, ki
 function scheduledInputOf(p: CreateMovementInput): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const keys = [
+    // b7b22514 — the destination company must be frozen onto a SCHEDULED Entity Transfer like every other
+    // submitted value: the sweep replays this input months later, and without it a transfer keyed in
+    // January for July would arrive with no destination and refuse itself inside a cron job.
+    'companyId',
     'departmentId', 'positionId', 'businessUnitId', 'locationId', 'gradeId',
     'employmentType', 'managerEmploymentId', 'basicSalary', 'currency', 'payMode', 'paymentTerm',
     ...MOVEMENT_FLAT_FIELDS,
@@ -2100,6 +2327,12 @@ export async function createMovementEvent(ctx: SessionContext, rawInput: CreateM
     if (p.kind === 'employmentTypeChange' && !p.employmentType) {
       throw new Error('Select the new employment type.');
     }
+    // b7b22514 — refused HERE as well as inside movementDeltas, because this is the message HR reads on a
+    // FUTURE-dated transfer: scheduleMovementTx and applyComparisonMovementTx both diff, but only one of
+    // them runs, and a destination missing at keying time must not be discovered by the sweep in July.
+    if (p.kind === 'entityTransfer' && !p.companyId) {
+      throw new Error('Select the company this employee is transferring to.');
+    }
     // 941c9dac — the effective-date fork. A movement dated TODAY OR IN THE PAST applies immediately on
     // save (the reporter specified this explicitly: it must not wait for the next sweep). A movement
     // dated in the FUTURE is recorded as a pending intent and applies on the morning of its date.
@@ -2381,6 +2614,22 @@ function assertMovementAdmin(ctx: SessionContext, what: string): void {
 const crossesConfirmation = (from: string, to: string): boolean =>
   (from === 'confirmation') !== (to === 'confirmation');
 
+/**
+ * b7b22514 — the same rule for Entity Transfer, and it needs its own line rather than a widened
+ * `crossesConfirmation` because the two exclusions are unrelated facts that happen to share a shape:
+ * Confirmation completes probation, Entity Transfer moves a legal entity, and a future third exclusion
+ * should read as a third sentence, not as a growing boolean nobody can parse.
+ *
+ * BOTH DIRECTIONS ARE FAULTS, which is why it is an inequality and not a one-way check. Correcting a plain
+ * Transfer INTO an Entity Transfer has no destination company to move to — the form that recorded it never
+ * asked for one — so it would either refuse deep inside the writer or, worse, save a company move with no
+ * company. Correcting an Entity Transfer OUT of it silently drops the company move the event exists to
+ * record, leaving the employee in the destination with a history row that no longer says how they got
+ * there. Same posture and same message as the Confirmation and Termination guards beside it.
+ */
+const crossesEntityTransfer = (from: string, to: string): boolean =>
+  (from === 'entityTransfer') !== (to === 'entityTransfer');
+
 /** Undo ONE leg of a movement. `tag` marks every compensating write as a companion of the rollback, so the
  *  projection keeps rendering exactly one row per movement. */
 async function reverseLegTx(
@@ -2434,6 +2683,69 @@ async function reverseLegTx(
       return;
     }
 
+    /**
+     * b7b22514 — undo an Entity Transfer's company move.
+     *
+     * LAST-WRITE-WINS, exactly as the flat columns below: the company is put back only while the stored
+     * value is still the one THIS movement wrote. If a later transfer has since moved the employee on
+     * again, that transfer owns the column and rolling this one back must not reach past it — the same
+     * rule, for the same reason, as `employment.info.updated`'s per-field check.
+     *
+     * The reversal restores the company-scoped defaults to null rather than to their pre-transfer values,
+     * and that is deliberate: the transfer cleared them because they pointed at the OLD company, and their
+     * old values are exactly what the employee is going back to — but they are resolved per-company at
+     * render, so null re-resolves correctly and a restored stale id would not. changeEmploymentCompany
+     * nulls them on the same reasoning.
+     *
+     * NOT re-checked for cross-company coherence. Going back is going back to a state that was coherent
+     * when it was left, and the assignment / reporting-line legs of the same movement are reversed by their
+     * own cases in this switch, from their own stored before-values, inside this transaction.
+     *
+     * The compensating event is UNTAGGED, like `employment.assignment.superseded` and
+     * `reporting-line.reverted` beside it. A movement tag would put it in the reversed movement's own
+     * group, and REVERSIBLE_EVENT_TYPES is an allowlist over the whole group — so the movement would
+     * become uncorrectable BY BEING CORRECTED. The as-of replay does not need a tag; it walks sequences.
+     */
+    case 'employment.company.transferred': {
+      const before = (p.before ?? {}) as Record<string, unknown>;
+      const after = (p.after ?? {}) as Record<string, unknown>;
+      const restoreTo = (before.companyId as string | undefined) ?? null;
+      if (!restoreTo) return;
+      const [emp] = await tx
+        .select({ companyId: employment.companyId })
+        .from(employment)
+        .where(eq(employment.id, employmentId))
+        .limit(1);
+      if (!emp || emp.companyId !== (after.companyId as string | undefined)) return;
+      // The actor must administer the company the employee is going BACK to — the same WITH CHECK the
+      // forward move trips, asked in advance so the rollback fails with a sentence rather than an RLS error.
+      const adminRes = await tx.execute(sql`select app.is_admin_for(${restoreTo}::uuid) as ok`);
+      if (!(adminRes as unknown as { ok: boolean }[])[0]?.ok) {
+        throw new MovementNotCorrectableError(
+          'You can only roll this transfer back if you manage the company the employee came from.',
+        );
+      }
+      await tx
+        .update(employment)
+        .set({ companyId: restoreTo, payrollPolicyId: null, costAllocation: null })
+        .where(eq(employment.id, employmentId));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'employment',
+        aggregateId: employmentId,
+        eventType: 'employment.company.transfer.reverted',
+        actor: actorOf(ctx),
+        subjectEmploymentId: employmentId,
+        payload: {
+          employmentId,
+          before: { companyId: after.companyId ?? null },
+          after: { companyId: restoreTo },
+          reversalOf: e.id,
+        },
+      });
+      return;
+    }
+
     case 'employment.grade.changed': {
       const [emp] = await tx
         .select({ gradeId: employment.gradeId })
@@ -2473,12 +2785,15 @@ async function reverseLegTx(
           orgLine: employment.orgLine,
           orgBase: employment.orgBase,
           confirmationDate: employment.confirmationDate,
+          // b7b22514 — read so the join-date restore below can apply the same last-write-wins test the
+          // flat columns get: put it back only while the stored value is still the one this movement wrote.
+          joinDate: employment.joinDate,
         })
         .from(employment)
         .where(eq(employment.id, employmentId))
         .limit(1);
       if (!cur) return;
-      const restore: Partial<Record<MovementFlatField | 'confirmationDate', string | null>> = {};
+      const restore: Partial<Record<MovementFlatField | 'confirmationDate' | 'joinDate', string | null>> = {};
       for (const f of MOVEMENT_FLAT_FIELDS) {
         if (!fields.includes(f)) continue;
         if ((cur[f] ?? null) !== (after[f] ?? null)) continue; // a later movement owns this column now
@@ -2491,6 +2806,14 @@ async function reverseLegTx(
       // employee returns to Probation without this module ever touching a status.
       if (fields.includes('confirmationDate') && (cur.confirmationDate ?? null) === (after.confirmationDate ?? null)) {
         restore.confirmationDate = before.confirmationDate ?? null;
+      }
+      // b7b22514 — the current-company Join Date an Entity Transfer moved, undone on the identical
+      // last-write-wins rule. Without this the company would roll back and the join date would not, leaving
+      // the employee in the company they started in but dated from the transfer that no longer exists.
+      // setEmploymentInfo accepts it back under this movement's own tag (the reversal carries the same
+      // type), so the column still has exactly one writer.
+      if (fields.includes('joinDate') && (cur.joinDate ?? null) === (after.joinDate ?? null)) {
+        restore.joinDate = before.joinDate ?? null;
       }
       if (Object.keys(restore).length) {
         await setEmploymentInfo(ctx, { employmentId, ...restore, movement: tag }, tx);
@@ -2716,7 +3039,11 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
           ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
           : applyTerminationTx(tx, ctx, p.employmentId, plan);
       }
-      if (!isComparisonKind(p.kind) || crossesConfirmation(row.kind, p.kind)) {
+      if (
+        !isComparisonKind(p.kind) ||
+        crossesConfirmation(row.kind, p.kind) ||
+        crossesEntityTransfer(row.kind, p.kind)
+      ) {
         throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
       }
       if (p.kind === 'employmentTypeChange' && !p.employmentType) {
@@ -2788,7 +3115,11 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
       return { employmentId: p.employmentId };
     }
 
-    if (!isComparisonKind(p.kind) || crossesConfirmation(row.kind, p.kind)) {
+    if (
+      !isComparisonKind(p.kind) ||
+      crossesConfirmation(row.kind, p.kind) ||
+      crossesEntityTransfer(row.kind, p.kind)
+    ) {
       throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
     }
     if (p.kind === 'employmentTypeChange' && !p.employmentType) {
@@ -2800,6 +3131,10 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
     const same = (v: string | null | undefined, curVal: string | null) =>
       v === undefined || (v === null ? null : v.trim() || null) === curVal;
     const valuesUnchanged =
+      // b7b22514 — the destination company is part of what a correction can move. Without this line an Edit
+      // that changed ONLY the company (the fix for "we transferred them to the wrong entity") would read as
+      // an unchanged replay and be refused as a no-op.
+      same(p.companyId, cur.companyId) &&
       same(p.departmentId, cur.departmentId) &&
       same(p.positionId, cur.positionId) &&
       same(p.businessUnitId, cur.businessUnitId) &&

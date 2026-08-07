@@ -398,6 +398,10 @@ function parseMovementForm(formData: FormData) {
     effectiveDate: String(formData.get('effectiveDate') ?? '').trim(),
     endDate: orNull(formData.get('endDate')),
     remarks: orNull(formData.get('remarks')),
+    // b7b22514 — the Entity Transfer's destination company. Parsed unconditionally like every other field
+    // (the form only renders the control for that one kind), and IGNORED by core/movement.ts for every
+    // other kind — the check that matters is the service's, because a form field is not a permission.
+    companyId: optional('companyId'),
     departmentId: optional('departmentId'),
     positionId: optional('positionId'),
     businessUnitId: optional('businessUnitId'),

@@ -420,6 +420,58 @@ export default async function EmployeePage({
   // only offered on the LATEST movement, where "current" and "what this movement set" are the same values.
   const movementCurrent =
     admin && (spNewEvent || spEditMovement) ? await movementCurrentState(s, employmentId) : null;
+  /**
+   * b7b22514 — Entity Transfer's destination list, and the org option lists of every destination.
+   *
+   * WHY THE LISTS AND NOT JUST THE COMPANIES. The comparison grid's Department / Position / Business Unit /
+   * Location pickers are scoped to the employee's CURRENT company. The moment HR picks a destination those
+   * options are the wrong company's, and a form that lets someone keep a Johor department while moving to a
+   * KL company is a form that produces the exact cross-company incoherence the service then has to refuse.
+   * Shipping each destination's lists lets the grid re-scope in the browser, so the incoherent combination
+   * is never offered rather than offered and rejected.
+   *
+   * Read ONLY while the New Event / Edit screen is open, and only for companies the actor ADMINISTERS —
+   * which is also exactly the set the writer will accept (it requires is_admin_for(destination)), so what
+   * the form offers and what the service permits cannot drift apart. Each list is resolved per company
+   * rather than filtered from one query on purpose: a System Label may be SHARED into a company it does not
+   * originate in, so "usable by company X" is a question only the resolver can answer.
+   */
+  const movementCompanies =
+    // Gated on movementCurrent, which is itself gated on New Event OR Edit: a correction of an Entity
+    // Transfer renders this same form and needs the same destination list, or its Company select would
+    // have one option and silently re-affirm the move it is meant to be able to fix.
+    movementCurrent
+      ? await (async () => {
+          const managed = await adminCompanies(s);
+          // The current company leads and is always present, even for an actor who does not administer it:
+          // it is the select's initial value, and a control whose value matches no option is a broken one.
+          return [
+            { id: emp.companyId, name: movementCurrent.companyName ?? '' },
+            ...managed.filter((c) => c.id !== emp.companyId),
+          ];
+        })()
+      : [];
+  const movementOrgByCompany = Object.fromEntries(
+    await Promise.all(
+      movementCompanies.map(async (c) => {
+        const [deps, poss, bus, locs] = await Promise.all([
+          listDepartments(s, { companyIds: [c.id] }),
+          listPositions(s, { companyIds: [c.id] }),
+          listBusinessUnits(s, { companyIds: [c.id] }),
+          listLocations(s, [c.id]),
+        ]);
+        return [
+          c.id,
+          {
+            departments: deps.map((d) => ({ id: d.id, name: d.name })),
+            positions: poss.map((pos) => ({ id: pos.id, name: pos.title })),
+            businessUnits: bus.map((bu) => ({ id: bu.id, name: bu.name })),
+            locations: locs.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
+          },
+        ] as const;
+      }),
+    ),
+  );
   // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
   // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
   // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
@@ -2610,6 +2662,9 @@ export default async function EmployeePage({
     switch (kind) {
       case 'hired': return t('movement.eventType.hired');
       case 'transfer': return t('movement.eventType.transfer');
+      // b7b22514 — without this case the humanized fallback below would label the row "Entity Transfer" in
+      // English and leave it in English in the other five locales. A shipped kind belongs in the map.
+      case 'entityTransfer': return t('movement.eventType.entityTransfer');
       case 'promotion': return t('movement.eventType.promotion');
       case 'demotion': return t('movement.eventType.demotion');
       case 'increment': return t('movement.eventType.increment');
@@ -2930,7 +2985,14 @@ export default async function EmployeePage({
         businessUnits: businessUnits.map((bu) => ({ id: bu.id, name: bu.name })),
         grades: grades.map((g) => ({ id: g.id, name: g.name })),
         locations: locations.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
-        managers: others.map((o) => ({ id: o.employmentId, name: o.name })),
+        // b7b22514 — `companyId` rides along so the grid can narrow the Direct Superior list to the
+        // DESTINATION company on an Entity Transfer. No extra read: listEmployees already returns it.
+        // The service refuses a manager outside the destination, so offering one would be an affordance
+        // that lies.
+        managers: others.map((o) => ({ id: o.employmentId, name: o.name, companyId: o.companyId })),
+        // b7b22514 — the destinations, and each destination's org lists (see the read above).
+        companies: movementCompanies,
+        orgByCompany: movementOrgByCompany,
         employmentTypes: (['full_time', 'part_time', 'contract', 'intern'] as const).map((v) => ({
           value: v,
           label: t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time'),
@@ -2989,12 +3051,18 @@ export default async function EmployeePage({
             // completes probation, so a correction must not be able to turn it into a Transfer or a
             // Transfer into it. The service refuses the same crossing (crossesConfirmation), so the
             // affordance and the rule cannot drift apart.
+            // b7b22514 — Entity Transfer is its own family of one, exactly as Confirmation is, and for a
+            // consequence that is larger: it moved a legal entity. The service refuses the crossing in
+            // BOTH directions (crossesEntityTransfer), so offering any other type here would render a
+            // dropdown whose every other option fails on save. Same shape, same reason, one line down.
             const family =
               behaviour === 'confirmation'
                 ? ['confirmation']
-                : isComparisonKind(behaviour)
-                  ? [...INTERCHANGEABLE_COMPARISON_KINDS]
-                  : [behaviour, 'secondment', 'actingPosition'];
+                : behaviour === 'entityTransfer'
+                  ? ['entityTransfer']
+                  : isComparisonKind(behaviour)
+                    ? [...INTERCHANGEABLE_COMPARISON_KINDS]
+                    : [behaviour, 'secondment', 'actingPosition'];
             const codes = movementTypes
               .filter((r) => r.active && family.includes(r.behaviourKind))
               .map((r) => r.code);
