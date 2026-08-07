@@ -1,0 +1,115 @@
+<meta charset="utf-8">
+<title>4a1abc4a — The rounding table at 2 decimals, and the gap it hides</title>
+<!--
+  Mockup for 4a1abc4a (Standardize Entitlement Decimal Precision), plan revision 3.
+  Revision 3 answers the screenshot the reporter actually attached: the Custom rounding table at three
+  decimals. Their own production values (3 leave types, identical tables) are used verbatim, because the
+  third decimal turns out to be a fencepost workaround that is also hiding two holes.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 11px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .cell{display:inline-block;background:#fff;border:1px solid var(--border);border-radius:7px;
+        padding:5px 12px;font-variant-numeric:tabular-nums;min-width:74px;text-align:center}
+  .cell.ro{background:var(--muted);color:var(--mf);border-style:dashed}
+  .cell.hot{border-color:var(--bad);color:var(--bad);font-weight:700}
+  .rowline{display:flex;gap:8px;align-items:center;margin-bottom:7px}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;
+       width:74px;text-align:center}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .hole{background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:9px 11px;font-size:12px;
+        color:#7c2d12;margin-top:10px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Your rounding table — the third decimal, and what it is hiding</h2>
+  <p class="q">“it is still not displayed as 2 decimal place”</p>
+
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — your live table, all three leave types</span>
+      <div class="rowline"><span class="lbl">From</span><span class="lbl">Round to</span><span class="lbl">Result</span></div>
+      <div class="rowline"><span class="cell">0.000</span><span class="cell">0.400</span><span class="cell">0.000</span></div>
+      <div class="rowline"><span class="cell hot">0.401</span><span class="cell">0.700</span><span class="cell">0.500</span></div>
+      <div class="rowline"><span class="cell hot">0.701</span><span class="cell">1.000</span><span class="cell">1.000</span></div>
+      <p class="note" style="margin-top:9px">The only figures here that need a third decimal are
+        <b>0.401</b> and <b>0.701</b>. They are not really thousandths — they are “one notch above 0.400”,
+        typed because a row stops just before its Round To.</p>
+      <div class="hole"><b>And they leave two holes.</b> A part-day of exactly <b>0.400</b> matches no row —
+        it is above the first row’s end and below the second row’s start. So it is left alone instead of
+        rounding to half a day. Same at exactly <b>0.700</b>.</div>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER — two decimals, and no holes</span>
+      <div class="rowline"><span class="lbl">From</span><span class="lbl">Round to</span><span class="lbl">Result</span></div>
+      <div class="rowline"><span class="cell ro">0.00</span><span class="cell">0.40</span><span class="cell">0.00</span></div>
+      <div class="rowline"><span class="cell ro">0.40</span><span class="cell">0.70</span><span class="cell">0.50</span></div>
+      <div class="rowline"><span class="cell ro">0.70</span><span class="cell">1.00</span><span class="cell">1.00</span></div>
+      <p class="note" style="margin-top:9px"><b>From</b> is filled in for you — it is always where the row
+        above stopped, so the ranges cannot drift apart or leave a gap. You type only
+        <b>Round to</b> and <b>Result</b>.</p>
+      <div class="hole" style="background:var(--goodbg);border-color:#86efac;color:#14532d">
+        <b>Same rounding, two decimals, nothing uncovered.</b> The one change: a part-day of exactly 0.400
+        now becomes half a day, and exactly 0.700 becomes a full day — which is what the table was always
+        meant to say.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Your existing tables are converted for you <span class="chip new">nothing to retype</span></h2>
+  <table>
+    <thead><tr><th>Leave type</th><th>Today</th><th>After conversion</th><th>Any employee affected?</th></tr></thead>
+    <tbody>
+      <tr><td>Annual Leave</td><td>0.000 / 0.401 / 0.701</td><td>0.00 / 0.40 / 0.70</td><td>Only a part-day of exactly 0.400 or 0.700</td></tr>
+      <tr><td>Caregiver Leave</td><td>0.000 / 0.401 / 0.701</td><td>0.00 / 0.40 / 0.70</td><td>Only a part-day of exactly 0.400 or 0.700</td></tr>
+      <tr><td>Compassionate Leave</td><td>0.000 / 0.401 / 0.701</td><td>0.00 / 0.40 / 0.70</td><td>Only a part-day of exactly 0.400 or 0.700</td></tr>
+    </tbody>
+  </table>
+  <p class="note">These are the only three leave types with a custom rounding table, and all three hold the
+    same figures. No balance is recalculated by this change — it applies the next time entitlement is worked out.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Something else we found while checking — the Edit box comes up empty</h2>
+  <p class="q">Not what you reported, but it is next door and it destroys data, so it is in this plan.</p>
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — opening a saved entitlement table</span>
+      <div class="rowline"><span class="lbl" style="width:auto">Entitled days</span><span class="cell hot" style="min-width:110px">(empty)</span></div>
+      <p class="note">The table holds <b>18</b> days. The box shows nothing. Press Save and it is stored as
+        <b>0 days</b> — with a green “Saved” message and no error. Everyone on that table then earns nothing.</p>
+    </div>
+    <div class="box good">
+      <span class="tag good">AFTER</span>
+      <div class="rowline"><span class="lbl" style="width:auto">Entitled days</span><span class="cell" style="min-width:110px;border-color:#86efac;font-weight:700">18.00</span></div>
+      <p class="note">Opening a table shows what it holds. An empty box can no longer be saved as zero — the
+        save is refused and says so. Typing 0 on purpose still works.</p>
+    </div>
+  </div>
+  <p class="note">Nothing on your system has been damaged: you have no saved entitlement tables yet, so there
+    has been nothing to open and lose. We would like this fixed before you start typing them in.</p>
+</div>
