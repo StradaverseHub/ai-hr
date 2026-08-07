@@ -18,75 +18,60 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-07 (r171 SHIPPED — six of eight approved items)
+## CURRENT STATE — snapshot 2026-08-08 (r173 SHIPPED — the build queue is EMPTY)
 
-**`main@3a9a1a3c` is what runs. Production on 335 migrations. Next free migration number is `0415`**
-(`0414` rounding bands to 2dp; `0412` was never used, and `0415`/`0416` were allocated this round and
-returned unused). No half-applied migration, no pending deploy. Verified after deploy: 335 migrations,
-watermark 1781862514000, service `active`, `GET /` 401, zero-change `rsync -azi --delete --dry-run`.
-Gate: 595 files / 7,265 tests green across all 3 chunks; `next build` clean. (r172 added no migration —
-shadow 334→335 and fresh 335/335 were verified in r171.)
+**`main@3d792d02` is what runs. Production on 336 migrations. Next free migration number is `0416`**
+(`0414` rounding bands to 2dp, `0415` the employee-draft ID reservation; `0412` was never used). No
+half-applied migration, no pending deploy. Verified after deploy: **336 migrations, watermark
+1781862515000**, 0415's four `reserved_*` columns present, service `active`, `GET /` 401, zero-change
+`rsync -azi --delete --dry-run`. Gate: **600 files / 7,371 tests** green across all 3 chunks; `next build`
+clean; shadow 335→336 and fresh 336/336 both PASS.
 
-### r171 shipped SIX of EIGHT approved items — and the verify pass is why
+### r173 shipped FIVE items and CLEARED THE BUILD QUEUE — `approved` is now ZERO
 
-`4a1abc4a` decimals+editor · `f12d77e5` grade-groups move · `6a1f2bd6` Zakat · `6d72816e` Loans ·
-`e440991b` reprocess · `5c198931` payslip PDF. **Two are deliberately NOT marked deployed — see below.**
+`0386b95d` Documents tab · `18719ded` Payroll tab · `080de5cf` Transaction History grid ·
+`6babf4f6` Statutory Forms · `06f0cb8f` Create Employee with a reserved ID. `b8aa3466` closed out with an
+honest revision (below). Three worktrees, **merged with zero conflicts** — grouping by FILE OVERLAP again:
+the two personnel tabs edit one file so ONE agent built both, and the two report items share
+`lib/report-export.ts` so they ran SEQUENTIALLY in one tree.
 
-Built by a 13-agent workflow across FIVE worktrees grouped BY FILE OVERLAP: the four payroll items all
-touch `core/payroll-view.ts`, so they were built SEQUENTIALLY in one worktree instead of in parallel.
-**Five branches merged with zero conflicts** — the grouping removed the collision rather than leaving it
-to be resolved.
+**THREE VERIFIER FINDINGS THAT CHANGED THE CODE**, none caught by the builders' own green tests:
 
-**FOUR BLOCKERS THAT PASSED THEIR OWN BUILDER'S TESTS.** Every one was found by an adversarial verifier
-reading the diff, not by a gate:
+1. **A screen that contradicted its own export button.** The new per-form statutory page used
+   `requireAdmin()` and trusted `?companyId=`, while its export route fenced with `scopeIds`. The claim
+   was "it renders another company's full return" — **measured first, and that was wrong**: `payroll_batch`
+   RLS needs `can_admin_payroll_for(company_id)`, so the read returns ZERO rows. Nothing leaked. But
+   `listCompanies` IS tenant-wide, so the picker OFFERED those companies and rendering one produced an
+   EMPTY statutory return under its name — readable as "nothing to file" — while the export 404'd on the
+   same selection. Both now go through `scopeIds`.
+2. **A reservation that was never usable.** The auto running-number path skipped the uniqueness check the
+   manual path does. A running number and a hand-keyed code share ONE namespace (ISEDECOR: 22 employments,
+   14 in a hand-keyed `A0001..A0014` run), so a counter behind the codes in use issues a taken number, HR
+   is told it is reserved, and it only fails at Activate. Now checks and skips, bounded at 50.
+3. **An export that could 500.** `grid-export` interpolated an operator-controlled employee code into a
+   quoted `Content-Disposition`; a non-Latin-1 character makes the `Response` constructor throw. Now
+   RFC 5987, matching the sibling route written the same day.
 
-1. **A backfill script wrote to EVERY TENANT.** `scripts/backfill-backup-shift.ts` enumerated the whole
-   `tenant` table with no filter. Production has two tenants. `--tenant=<uuid>` is now mandatory.
-   `scripts/seed-overtime-multipliers.ts` has the SAME all-tenants default — always pass `--tenant`.
-2. **A pattern-less backup shift makes every day a rest day.** Making the shift mandatory promoted it to
-   the fallback for every uncovered date, and `core/attendance.ts` resolves that branch as
-   `ds.pattern?.includes(...)` — no pattern matches nothing, falls to `rest_day`, and pays rest-day
-   overtime on ordinary work. Measured first: 0 of 11 production shifts lack a pattern.
-3. **A silent underpayment.** `qty_rate` was in `DERIVED_AMOUNT_RULE_KINDS`, which locks the Amount box —
-   but `payRuleInputUnit` returns null for it, so the figure came from the CATALOG. A Commission item at
-   `{qty:1, rate:50}` would take a keyed 600 and pay 50. **Deriving is only safe when the operator has a
-   box that feeds the derivation.**
-4. A new guarded route missing from `lib/permissions.ts` — already failing red.
+**I GOT A FACT WRONG IN TWO APPROVED PLANS, and both are corrected on the board.** r170's plans told the
+reporter "no tab on the employee profile has search, sorting or page numbers, including Qualification",
+and used it to justify declining them. True of `page.tsx` — and **`components/salary-history-table.tsx` IS
+the Basic Salary section of the Payroll tab and has had all four, CSV export included, all along.** So that
+tab now has one section with them and two without: a version of the very inconsistency the item was raised
+about. Measure the SECTION, not the page file.
 
-**THE GATE WAS RED FIRST, and both failures were real:** a payroll pack-boundary violation (fixed at the
-facade; `pack-drift-allowlist.json` untouched — it only ever shrinks) and four more pattern-less shift
-fixtures (completed, not weakened — none asserted that behaviour).
+**NOT BUILT ON PURPOSE:** Pay Items has no per-row Edit. `setEmploymentPayComponent` closes the open row at
+the new `effectiveFrom` and inserts a fresh one, while the kernel selects every row overlapping the period
+— so re-stating an item inside its own running month leaves BOTH rows in the window and doubles it. The
+table already renders every column, so a View would be furniture. Safe editing needs a dating change, not
+a presentation change.
 
-**MIGRATION 0414 WAS PROVED AGAINST A SCRATCH DATABASE, NOT REASONED ABOUT.** Its first version set every
-row's From to the row above's To unconditionally — right for the three production tables, wrong for a
-legal single-row `[{from:0.50,to:1.00}]`, whose gap it silently closed. The *second* version still broke
-the single-row case; only the scratch DB showed it. Final rule: absorb a gap smaller than 0.01 (a
-fencepost 2dp cannot express), keep anything wider. **Verified live after deploy: all three types now
-`0.00/0.40/0.70` at 2dp.** Behaviour delta, deliberate: fractions of exactly 0.400 and 0.700 previously
-matched no band and now round.
+### r172 — the TP1 "security gap" DID NOT REPRODUCE (full entry: history → r172)
 
-### r172 — the TP1 "security gap" DID NOT REPRODUCE, and the mutation check is why we know
-
-`3e3d3fb2`'s approved plan called the TP1 screen's `?employmentId=` handling a SECURITY GAP: it passes
-straight into `employmentSubject()` with no membership check, where five sibling screens run
-`employees.some(...)` first. **The first half is true. The second is not.** Three attempts, all refused by
-the database: a company-scoped admin reading an out-of-scope employment; the same id through the page;
-and an admin who ADMINISTRATIVELY MANAGES that out-of-company employee — the branch the plan predicted
-would leak.
-
-`employment`'s RLS is `tenant_id = current_tenant AND (can_see_employment(id) OR
-can_admin_payroll_for(company_id) OR …)` and **both helpers route through `app.is_admin_for()`**. It fails
-closed.
-
-**THE MUTATION CHECK IS WHAT CAUGHT IT.** With the page guard reverted, the whole new test file still
-passed — it was pinning RLS, not the change. That is the passes-for-the-wrong-reason trap, and without
-reverting-and-rerunning this would have shipped as a decorative guard under a security banner, with a
-green test apparently proving it. **Revert your own fix and re-run before you believe a refusal test.**
-
-The guard shipped anyway, as defence in depth and consistency (the reachable set now equals the set the
-picker offers), and `test/tp1-scope-guard.test.ts` asserts what is actually true so a future loosening of
-`can_see_employment` fails there rather than on a tax screen. `3e3d3fb2` stays **approved, not deployed** —
-only the guard landed; the redesign it asks for is unbuilt. Plan revision 2 tells the reporter both things.
+`3e3d3fb2`'s plan called the TP1 `?employmentId=` handling a security gap. Three attempted exposures were
+all refused by RLS, including the manager branch the plan predicted would leak. **The mutation check is
+what caught it: with the guard reverted the whole test file still passed**, because it was pinning RLS
+rather than the fix. **Revert your own fix and re-run before you believe a refusal test.** The guard
+shipped as defence in depth; `3e3d3fb2` stays PLANNED because only the guard landed, not the redesign.
 
 ### ⚠️ ONE ITEM BUILT AND DEPLOYED BUT NOT MARKED — and one withdrawn scope worth reading
 
@@ -117,28 +102,26 @@ retyped from the archive into Entitlement Templates + Employee Eligibility. The 
 keeps balances still while that is true — if a recalc ever starts posting non-zero deltas against an
 unconfigured type, that guard has broken and it is the first thing to check.
 
-### The board — counted on production 2026-08-07 after r171
+### The board — counted on production 2026-08-08 after r173
 
-**`deployed = 610` · `approved = 8` · `planned = 7` · `cancelled = 13`. `open` and `contested` are BOTH
-ZERO.** Re-count rather than trusting this line.
+**`deployed = 617` · `planned = 8` · `open = 1` · `cancelled = 13`. `approved` and `contested` are BOTH
+ZERO — the build queue is EMPTY.** Re-count rather than trusting this line.
 
-**EIGHT ITEMS ARE APPROVED AND WAITING TO BUILD.** Two are the r171 holdovers above (`2da9937a`,
-`b8aa3466`); the other six the reporter approved DURING the r171 build, from the r170 planning round:
-`3e3d3fb2` TP1 Relief · `6babf4f6` Statutory Forms · `06f0cb8f` Create Employee draft · `0386b95d`
-Documents tab · `18719ded` Payroll tab · `080de5cf` Transaction History grid.
+**THE ONE OPEN ITEM IS A QUESTION WE RAISED, `b00f9e6e`** — what should Overtime 2.0 / 3.0 actually be?
+Their `OT1_5` pay item holds `{"kind":"per_hour","rate":1.5}`, which `core/pay-rule.ts` resolves as
+`rate * hours` validated by `inMoney`, i.e. **RM 1.50/hour**, assigned to 0 employments and the only
+`per_hour` item on the tenant. Overtime is ALREADY wage-derived and already follows the configured
+multipliers (`localization/my/payroll.ts overtimePay`), so a flat per-hour component is the wrong
+mechanism. **DO NOT run `scripts/seed-overtime-multipliers.ts`** — it is correct and its input is not.
 
-**`3e3d3fb2` CARRIES A SECURITY FIX** — its plan records that `app/payroll/transactions/tp1/page.tsx`
-passes `?employmentId=` into `employmentSubject()` with NO membership check against the admin's scoped
-list, where every sibling transaction screen runs `employees.some(...)` first. Build it early.
-
-**Two of the six are one build:** `0386b95d` and `18719ded` are the same change on two tabs and their
-plans say so; `080de5cf` reuses `deriveHistoryBreakdown` and the `EmployeeScopePanel` the r171 payroll
-work already shipped.
+**EIGHT PLANNED, three of them corrections we owe rather than new work:** `3e3d3fb2` TP1 (only the scope
+guard shipped; the redesign is unbuilt), `18719ded` and `0386b95d` (the search/sort/paging correction —
+`18719ded`'s recommends finishing the job), `b8aa3466` is already deployed. The rest are r170 plans the
+reporter has not acted on yet.
 
 **THE REPORTER COMMUNICATES IN PICTURES — 143 of 151 attachments are images.** Read an item's attachment
-BEFORE forming any opinion: this session burned a whole plan revision writing from the prose alone, and
-the screenshot turned out to show a completely different screen. Extract one with
-`select encode(content,'base64') from feedback_attachment …`, strip psql's preamble, decode.
+BEFORE forming any opinion; this session burned a plan revision writing from the prose alone and the
+screenshot showed a different screen entirely.
 
 ### Plans must carry a MOCKUP — shipped r165 (procedure: `scripts/mockup/README.md`; findings: history → r165)
 

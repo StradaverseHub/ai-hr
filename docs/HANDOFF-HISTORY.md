@@ -4,6 +4,46 @@ Archive of SHIPPED round entries, newest first. The living handoff is `../HANDOF
 current state and the entry for any round still in flight; when a round ships, its entry moves to the
 top of this file.
 
+## r171 — six of eight approved items (shipped 2026-08-07, main@704c64bc, 335 migrations)
+
+`4a1abc4a` decimals+editor · `f12d77e5` grade-groups move · `6a1f2bd6` Zakat · `6d72816e` Loans ·
+`e440991b` reprocess · `5c198931` payslip PDF. **Two are deliberately NOT marked deployed — see below.**
+
+Built by a 13-agent workflow across FIVE worktrees grouped BY FILE OVERLAP: the four payroll items all
+touch `core/payroll-view.ts`, so they were built SEQUENTIALLY in one worktree instead of in parallel.
+**Five branches merged with zero conflicts** — the grouping removed the collision rather than leaving it
+to be resolved.
+
+**FOUR BLOCKERS THAT PASSED THEIR OWN BUILDER'S TESTS.** Every one was found by an adversarial verifier
+reading the diff, not by a gate:
+
+1. **A backfill script wrote to EVERY TENANT.** `scripts/backfill-backup-shift.ts` enumerated the whole
+   `tenant` table with no filter. Production has two tenants. `--tenant=<uuid>` is now mandatory.
+   `scripts/seed-overtime-multipliers.ts` has the SAME all-tenants default — always pass `--tenant`.
+2. **A pattern-less backup shift makes every day a rest day.** Making the shift mandatory promoted it to
+   the fallback for every uncovered date, and `core/attendance.ts` resolves that branch as
+   `ds.pattern?.includes(...)` — no pattern matches nothing, falls to `rest_day`, and pays rest-day
+   overtime on ordinary work. Measured first: 0 of 11 production shifts lack a pattern.
+3. **A silent underpayment.** `qty_rate` was in `DERIVED_AMOUNT_RULE_KINDS`, which locks the Amount box —
+   but `payRuleInputUnit` returns null for it, so the figure came from the CATALOG. A Commission item at
+   `{qty:1, rate:50}` would take a keyed 600 and pay 50. **Deriving is only safe when the operator has a
+   box that feeds the derivation.**
+4. A new guarded route missing from `lib/permissions.ts` — already failing red.
+
+**THE GATE WAS RED FIRST, and both failures were real:** a payroll pack-boundary violation (fixed at the
+facade; `pack-drift-allowlist.json` untouched — it only ever shrinks) and four more pattern-less shift
+fixtures (completed, not weakened — none asserted that behaviour).
+
+**MIGRATION 0414 WAS PROVED AGAINST A SCRATCH DATABASE, NOT REASONED ABOUT.** Its first version set every
+row's From to the row above's To unconditionally — right for the three production tables, wrong for a
+legal single-row `[{from:0.50,to:1.00}]`, whose gap it silently closed. The *second* version still broke
+the single-row case; only the scratch DB showed it. Final rule: absorb a gap smaller than 0.01 (a
+fencepost 2dp cannot express), keep anything wider. **Verified live after deploy: all three types now
+`0.00/0.40/0.70` at 2dp.** Behaviour delta, deliberate: fractions of exactly 0.400 and 0.700 previously
+matched no band and now round.
+
+
+
 ## r169 — four items (shipped 2026-08-07, main@a65ec99f, 334 migrations)
 
 Originally — and verification, not the gate, is what made them correct
