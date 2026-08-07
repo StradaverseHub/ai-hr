@@ -1,0 +1,159 @@
+<meta charset="utf-8">
+<title>080de5cf — One person's payroll year, in the shape you reconcile in</title>
+<!--
+  Mockup for 080de5cf (Redesign Transaction View > History), plan revision 1.
+  Modelled directly on the reporter's attached BOSS/INet screenshot: item down the left, months across,
+  total on the right, rows split by run type. Deliberately NOT drawing a Transaction ID column — we do not
+  record a week against a run, and a picture cannot hedge.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--earn:#15803d;--ded:#b91c1c}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 11px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .filters{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:10px}
+  .fld{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;margin-bottom:3px}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:12px}
+  .inp.pick{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 10%,transparent)}
+  .switches{display:flex;gap:16px;align-items:center;margin-bottom:10px;font-size:12px}
+  .sw{display:flex;gap:6px;align-items:center}
+  .sw i{width:13px;height:13px;border-radius:3px;background:var(--primary);display:inline-block;
+        position:relative;top:2px}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;font-size:11.5px;font-weight:600}
+  .scroller{overflow-x:auto;border:1px solid var(--border);border-radius:11px}
+  table{border-collapse:separate;border-spacing:0;font-size:11.5px;min-width:100%}
+  th,td{padding:5px 8px;white-space:nowrap;border-bottom:1px solid var(--border)}
+  th{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;
+     background:var(--muted);position:sticky;top:0}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .frz{position:sticky;background:#fff;z-index:2}
+  th.frz{background:var(--muted);z-index:3}
+  .c0{left:0}.c1{left:88px}.c2{left:268px}
+  .frz.c2{box-shadow:2px 0 0 var(--border)}
+  .earn{color:var(--earn)}.ded{color:var(--ded)}
+  .tot{background:#fafaff;font-weight:700}
+  .zero{color:#c3c4d2}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .flag{border:1px solid #fed7aa;background:#fff7ed;border-radius:10px;padding:10px 12px;
+        font-size:11.5px;color:#7c2d12;margin-top:12px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px;font-size:12px}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>One person's payroll year on one screen</h2>
+  <p class="q">Modelled on your attached screenshot — item down the left, months across, total on the right.</p>
+
+  <div class="filters">
+    <div><div class="fld">Company</div><div class="inp">Demo Sdn Bhd ▾</div></div>
+    <div><div class="fld">Employee</div><div class="inp pick">🔍 Daniel Tan · EMP-0002</div></div>
+    <div><div class="fld">Year</div><div class="inp">2026 ▾</div></div>
+    <div><div class="fld">Months</div><div class="inp">Jan – Dec ▾</div></div>
+    <div><div class="fld">Payroll cycle</div><div class="inp">All cycles ▾</div></div>
+  </div>
+  <div class="switches">
+    <span class="sw"><i></i> Hide rows that are all zeroes</span>
+    <span class="sw"><i></i> Hide system codes</span>
+    <span style="margin-left:auto"><span class="btn">Export</span></span>
+  </div>
+
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr>
+          <th class="frz c0">Code</th><th class="frz c1">Description</th><th class="frz c2">Run</th>
+          <th class="n">Jan</th><th class="n">Feb</th><th class="n">Mar</th><th class="n">Apr</th>
+          <th class="n">May</th><th class="n">Jun</th><th class="n">Jul</th><th class="n">Aug</th>
+          <th class="n">Sep</th><th class="n">Oct</th><th class="n">Nov</th><th class="n">Dec</th>
+          <th class="n">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="frz c0">BASIC</td><td class="frz c1">Basic Salary</td><td class="frz c2">End-month</td>
+          <td class="n earn">12,000.00</td><td class="n earn">12,300.00</td><td class="n earn">12,300.00</td><td class="n earn">12,300.00</td>
+          <td class="n earn">12,300.00</td><td class="n earn">12,300.00</td><td class="n earn">12,300.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">85,800.00</td></tr>
+        <tr><td class="frz c0">A0027</td><td class="frz c1">Handphone Allowance</td><td class="frz c2">End-month</td>
+          <td class="n earn">100.00</td><td class="n earn">100.00</td><td class="n earn">100.00</td><td class="n earn">100.00</td>
+          <td class="n earn">100.00</td><td class="n earn">100.00</td><td class="n earn">100.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">700.00</td></tr>
+        <tr><td class="frz c0">A0080</td><td class="frz c1">Travel Allowance</td><td class="frz c2">End-month</td>
+          <td class="n earn">400.00</td><td class="n earn">400.00</td><td class="n earn">400.00</td><td class="n earn">400.00</td>
+          <td class="n earn">400.00</td><td class="n earn">400.00</td><td class="n earn">400.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">2,800.00</td></tr>
+        <tr><td class="frz c0">BONUS</td><td class="frz c1">Bonus</td><td class="frz c2">Bonus run</td>
+          <td class="n zero">0.00</td><td class="n earn">10,171.67</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">10,171.67</td></tr>
+        <tr><td class="frz c0">EPF_EE</td><td class="frz c1">EPF Employee</td><td class="frz c2">End-month</td>
+          <td class="n ded">1,958.00</td><td class="n ded">1,817.00</td><td class="n ded">1,485.00</td><td class="n ded">1,518.00</td>
+          <td class="n ded">1,452.00</td><td class="n ded">1,485.00</td><td class="n ded">1,276.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">10,991.00</td></tr>
+        <tr style="background:#fafaff"><td class="frz c0" style="background:#fafaff">EPF_EE</td>
+          <td class="frz c1" style="background:#fafaff">EPF Employee</td><td class="frz c2" style="background:#fafaff">Bonus run</td>
+          <td class="n zero">0.00</td><td class="n ded">1,114.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">1,114.00</td></tr>
+        <tr><td class="frz c0">ZAKAT</td><td class="frz c1">Zakat</td><td class="frz c2">End-month</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n ded">168.78</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n ded">86.04</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">254.82</td></tr>
+        <tr><td class="frz c0">EPF_ER</td><td class="frz c1">EPF Employer</td><td class="frz c2">End-month</td>
+          <td class="n">2,136.00</td><td class="n">1,983.00</td><td class="n">1,620.00</td><td class="n">1,656.00</td>
+          <td class="n">1,584.00</td><td class="n">1,620.00</td><td class="n">1,392.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">11,991.00</td></tr>
+        <!-- NETPAY row removed: every other row here carries a figure measured either from the
+     reporter's own screenshot or from production. A net-pay row would have been arithmetic
+     we invented, and a mockup is a promise. -->
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Code, description and run stay put while you scroll across the months. Earnings green,
+    deductions red, employer contributions plain — the same colours the itemised view already uses.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Why a pay item can appear twice</h2>
+  <div class="two">
+    <div class="box">
+      <b>Your reference does this too.</b> In your screenshot Gross appears four times — once each for
+      End-month, Bonus, Advance Processing and OT-Leave — and Employee EPF appears twice.
+    </div>
+    <div class="box">
+      <b>So do we.</b> A month can hold more than one payroll run, and a bonus run and an end-month run are
+      genuinely different lines. Splitting them is what makes the row totals reconcile against the runs.
+    </div>
+  </div>
+  <div class="flag"><b>One column from your screenshot will not appear.</b> Your old system stores a
+    Transaction ID against each line — WEEK 2, WEEK 4. We do not record a week against a payroll run, so we
+    are not going to draw a column we cannot fill. Everything else in your screenshot maps onto something we
+    already store.</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>What this replaces, and what it does not</h2>
+  <div class="two">
+    <div class="box">
+      <b>Today's History stays.</b> One line per payslip with the headline figures, and you can open a line to
+      see what it was made of. It answers “show me the payslips”, and some people use it exactly that way.
+    </div>
+    <div class="box">
+      <b>The grid arrives beside it.</b> It answers “show me one person's year”. Same stored figures, turned on
+      their side — nothing is recalculated and no payroll run is touched.
+    </div>
+  </div>
+</div>

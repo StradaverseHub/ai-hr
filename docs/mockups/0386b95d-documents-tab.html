@@ -1,0 +1,134 @@
+<meta charset="utf-8">
+<title>0386b95d — Documents tab: the fold-out becomes an Add button</title>
+<!--
+  Mockup for 0386b95d (Redesign Documents Tab), plan revision 1.
+  Sibling of 18719ded (Payroll tab) — same pattern, drawn the same way on purpose.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 11px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .tabs{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap}
+  .tabs span{padding:5px 11px;border-radius:8px;background:var(--muted);color:var(--mf);font-size:11.5px}
+  .tabs span.on{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary);font-weight:700}
+  .sechead{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;
+           border:1px solid var(--border);border-bottom:0;border-radius:11px 11px 0 0;background:#fff}
+  .sectitle{font-weight:700;font-size:12.5px}
+  .cnt{color:var(--mf);font-weight:400;font-size:11px}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:600}
+  .fold{border:1px solid var(--border);border-radius:9px;padding:9px 11px;background:#fff;font-size:12.5px}
+  .foldopen{border:1px dashed #fca5a5;border-radius:9px;padding:11px;background:#fff;margin-top:6px}
+  .fld{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;margin-bottom:3px}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12.5px;margin-bottom:8px}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .modal{border:1px solid var(--border);border-radius:12px;background:#fff;padding:13px;
+         box-shadow:0 10px 30px rgba(20,20,40,.13)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .act{color:var(--primary);font-weight:600}
+</style>
+
+<div class="card" style="padding-bottom:8px;margin-bottom:14px">
+  <div class="tabs">
+    <span>Profile</span><span>Employment</span><span>Family</span><span>Qualification</span>
+    <span class="on">Documents</span><span>Payroll</span><span>Leave</span><span>Attendance</span>
+  </div>
+  <p class="q" style="margin:0">Personnel (Admin) › Employee Profile › Documents</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">1</span>The Add control</h2>
+  <p class="q">“The Add Document function is displayed as a dropdown, which is not intuitive.”</p>
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — a fold-out panel</span>
+      <div class="fold">▸ &nbsp;Add Document</div>
+      <div class="foldopen">
+        <div class="fld">Document type</div><div class="inp">Employment Contract</div>
+        <div class="fld">Document name</div><div class="inp">&nbsp;</div>
+        <div class="fld">Attachment</div><div class="inp">Choose file…</div>
+      </div>
+      <p class="note">Clicking the words unfolds the form in the middle of the page and pushes the list down.
+        It is the only control of its kind anywhere on the employee profile.</p>
+    </div>
+    <div class="box good">
+      <span class="tag good">AFTER — a button and a pop-up</span>
+      <div class="sechead" style="border-radius:11px;border-bottom:1px solid var(--border)">
+        <span class="sectitle">Documents <span class="cnt">· 4</span></span>
+        <span class="btn">+ Add Document</span>
+      </div>
+      <div class="modal" style="margin-top:9px">
+        <div style="font-weight:700;font-size:12.5px;margin-bottom:9px">Add document</div>
+        <div class="grid2">
+          <div><div class="fld">Document type</div><div class="inp">Employment Contract</div></div>
+          <div><div class="fld">Document name</div><div class="inp">&nbsp;</div></div>
+        </div>
+        <div class="fld">Attachment</div><div class="inp">Choose file…</div>
+        <div style="text-align:right"><span class="btn">Save</span></div>
+      </div>
+      <p class="note">The same fields, the same upload, the same checks — in the pop-up the Qualification tab
+        already uses. The list never moves.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>The list, framed like every other tab</h2>
+  <div class="sechead">
+    <span class="sectitle">Documents <span class="cnt">· 4 records</span></span>
+    <span class="btn">+ Add Document</span>
+  </div>
+  <div style="border:1px solid var(--border);border-top:0;border-radius:0 0 11px 11px;overflow:hidden">
+    <div style="padding:9px 11px;border-bottom:1px solid var(--border);display:flex;gap:8px;font-size:12px">
+      <span class="inp" style="margin:0;flex:1">Search documents…</span>
+      <span class="inp" style="margin:0">All categories ▾</span>
+      <span class="inp" style="margin:0">All types ▾</span>
+    </div>
+    <table>
+      <thead><tr><th>Document type</th><th>Document name</th><th>Issued</th><th>Expires</th><th>Uploaded</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Employment Contract</td><td>Employment Contract</td><td>01 Jan 2026</td><td>—</td><td>01 Jan 2026</td><td>Active</td><td class="act">View · Edit</td></tr>
+        <tr><td>IC Copy</td><td>NRIC Front &amp; Back</td><td>—</td><td>—</td><td>15 Jan 2026</td><td>Active</td><td class="act">View · Edit</td></tr>
+        <tr><td>Passport</td><td>Passport Copy</td><td>15 May 2025</td><td>14 May 2030</td><td>15 May 2025</td><td>Active</td><td class="act">View · Edit</td></tr>
+        <tr><td>Academic Certificate</td><td>Degree Certificate</td><td>—</td><td>—</td><td>20 Jun 2024</td><td>Active</td><td class="act">View · Edit</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">The search box and the two filters are already on the tab today and stay exactly as they are.
+    The framed card with a title and a record count is what makes it match Qualification.</p>
+</div>
+
+<div class="card" style="background:#fff7ed;border-color:#fed7aa">
+  <h2 style="color:#7c2d12">Two things we are deliberately not building, and why</h2>
+  <p style="font-size:12px;color:#7c2d12;margin:0 0 8px">You asked for sorting and page numbers. We would rather
+    say why we are leaving them out than quietly skip them.</p>
+  <table>
+    <thead><tr><th>You asked for</th><th>What is true today</th><th>What we are doing</th></tr></thead>
+    <tbody>
+      <tr><td>Search</td><td>Already on the Documents tab</td><td>Keeping it, untouched</td></tr>
+      <tr><td>Sorting</td><td>No tab on the employee profile sorts — including Qualification</td><td>Deferring, so Documents matches</td></tr>
+      <tr><td>Pagination</td><td>Your whole system holds <b>1</b> document record. The busiest qualification list is <b>2</b> rows.</td><td>Deferring until a list needs it</td></tr>
+    </tbody>
+  </table>
+  <p class="note" style="color:#7c2d12">Adding them here alone would make Documents the odd one out again — the
+    opposite of what you asked for. When any list grows long enough, we add sorting and paging to all these tabs
+    together.</p>
+</div>

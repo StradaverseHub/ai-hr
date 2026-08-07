@@ -1,0 +1,133 @@
+<meta charset="utf-8">
+<title>18719ded — Payroll tab: three sections, one shape</title>
+<!--
+  Mockup for 18719ded (Redesign Payroll Tab), plan revision 1.
+  Sibling of 0386b95d (Documents tab) — deliberately drawn in the same visual language, because the
+  reporter's whole point is consistency. Pay item codes/names are real (A0027 HANDPHONE ALLOWANCE,
+  A0080 TRAVEL ALLOWANCE, measured on production 2026-08-07).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 11px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+  .r{text-align:right}
+  .tabs{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap}
+  .tabs span{padding:5px 11px;border-radius:8px;background:var(--muted);color:var(--mf);font-size:11.5px}
+  .tabs span.on{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary);font-weight:700}
+  .sec{border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:13px}
+  .sechead{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;background:#fff;
+           border-bottom:1px solid var(--border)}
+  .sectitle{font-weight:700;font-size:12.5px}
+  .cnt{color:var(--mf);font-weight:400;font-size:11px}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:600}
+  .act{color:var(--primary);font-weight:600}
+  .chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .now{background:#dcfce7;color:#166534}
+  .hist{background:var(--muted);color:var(--mf)}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:9px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+</style>
+
+<div class="card" style="padding-bottom:8px;margin-bottom:14px">
+  <div class="tabs">
+    <span>Profile</span><span>Employment</span><span>Bank &amp; Statutory</span><span>Family</span>
+    <span>Qualification</span><span>Documents</span><span class="on">Payroll</span><span>Leave</span>
+  </div>
+  <p class="q" style="margin:0">Personnel (Admin) › Employee Profile › Payroll</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">1</span>Three sections, one shape</h2>
+  <p class="q">“Read down the tab and it feels like three screens that grew at different times.”</p>
+
+  <div class="sec">
+    <div class="sechead"><span class="sectitle">Basic Salary <span class="cnt">· 3 records</span></span>
+      <span class="btn">+ Add Basic Salary</span></div>
+    <table>
+      <thead><tr><th>Effective from</th><th>Currency</th><th class="r">Basic salary</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>01 Jan 2026</td><td>MYR</td><td class="r">12,300.00</td><td><span class="chip now">Current</span></td><td class="act">View · Edit</td></tr>
+        <tr><td>01 Jan 2025</td><td>MYR</td><td class="r">12,000.00</td><td><span class="chip hist">History</span></td><td class="act">View</td></tr>
+        <tr><td>01 Jul 2024</td><td>MYR</td><td class="r">11,200.00</td><td><span class="chip hist">History</span></td><td class="act">View</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sec">
+    <div class="sechead"><span class="sectitle">Pay Items <span class="cnt">· 2 assigned</span></span>
+      <span class="btn">+ Add Pay Item</span></div>
+    <table>
+      <thead><tr><th>Code</th><th>Pay item</th><th>Type</th><th class="r">Amount</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>A0027</td><td>HANDPHONE ALLOWANCE</td><td>Allowance</td><td class="r">100.00</td><td><span class="chip now">Active</span></td><td class="act">View · Edit</td></tr>
+        <tr><td>A0080</td><td>TRAVEL ALLOWANCE</td><td>Allowance</td><td class="r">400.00</td><td><span class="chip now">Active</span></td><td class="act">View · Edit</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sec">
+    <div class="sechead"><span class="sectitle">CP38 Deduction <span class="cnt">· 1 record</span></span>
+      <span class="btn">+ Add CP38 Deduction</span></div>
+    <table>
+      <thead><tr><th>Effective from</th><th>Reference no.</th><th class="r">Monthly amount</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>01 Jan 2026</td><td>CP38-001</td><td class="r">150.00</td><td><span class="chip now">Active</span></td><td class="act">View · Edit</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="note">Same title-with-count, same Add button on the right, same table, same pop-up behind Add and
+    Edit — matching the Qualification tab. Money right-aligned at two decimals throughout, and the record in
+    force marked rather than left to row order.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>What is already there, and what actually changes</h2>
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">The request says these sections need building</span>
+      <p style="font-size:12px;margin:0">All three already exist on the tab today — Basic Salary, Pay Items and
+        CP38 each have their own card, their own Add control and their own list. Nothing here is new
+        functionality.</p>
+    </div>
+    <div class="box good">
+      <span class="tag good">What is genuinely inconsistent</span>
+      <p style="font-size:12px;margin:0">The three cards present records differently from each other, the Add
+        controls behave differently, and the tab does not use the full width. That is what this fixes.</p>
+    </div>
+  </div>
+  <p class="note"><b>Nothing about pay is touched.</b> No salary, no pay item amount, no CP38 instalment, no tax
+    figure and no effective-date rule. If a payroll figure moves, the change has gone wrong and gets reverted.</p>
+</div>
+
+<div class="card" style="background:#fff7ed;border-color:#fed7aa">
+  <h2 style="color:#7c2d12">Sorting and page numbers, deliberately left out</h2>
+  <table>
+    <thead><tr><th>Section</th><th class="r">Most records on one employee, anywhere on your system</th><th>Decision</th></tr></thead>
+    <tbody>
+      <tr><td>Basic Salary</td><td class="r">6</td><td>No paging needed</td></tr>
+      <tr><td>Pay Items</td><td class="r">8</td><td>No paging needed</td></tr>
+      <tr><td>CP38 Deduction</td><td class="r">2</td><td>No paging needed</td></tr>
+    </tbody>
+  </table>
+  <p class="note" style="color:#7c2d12">No tab on the employee profile has sorting or paging — including the
+    Qualification tab you asked us to match. Adding it to Payroll alone would recreate the inconsistency you are
+    asking us to remove. When a list grows long enough, we add it to all these tabs at once.</p>
+</div>
