@@ -51,6 +51,7 @@ import {
   upsertPayComponent,
 } from '../core/pay-components';
 import {
+  DERIVED_AMOUNT_RULE_KINDS,
   payRuleDerivesAmount,
   payRuleInputUnit,
   resolvePayComponentSet,
@@ -416,21 +417,24 @@ describe('2da9937a — payRuleDerivesAmount / payRuleInputUnit', () => {
   // The screen and the write path both branch on these two, so which rule kinds they claim IS the
   // behaviour. A silent widening would take the Amount box away from an item that has no input to
   // replace it with.
-  it('names exactly the four kinds that work an amount out from the operator’s input', () => {
+  it('names exactly the three kinds that work an amount out from the operator’s input', () => {
     expect(payRuleDerivesAmount(null)).toBe(false);
     expect(payRuleDerivesAmount({ kind: 'fixed' })).toBe(false);
     expect(payRuleDerivesAmount({ kind: 'percent_of', base: 'basic', pct: 10 })).toBe(false);
     expect(payRuleDerivesAmount({ kind: 'flat_capped', value: 10, cap: 5 })).toBe(false);
     expect(payRuleDerivesAmount({ kind: 'per_hour', rate: 1 })).toBe(true);
     expect(payRuleDerivesAmount({ kind: 'per_day', rate: 1 })).toBe(true);
-    expect(payRuleDerivesAmount({ kind: 'qty_rate', qty: 2, rate: 3 })).toBe(true);
+    // qty_rate is NOT here, and that is the point: it has no operator input to derive FROM
+    // (payRuleInputUnit returns null for it), so deriving would mean overwriting the typed amount with a
+    // catalog constant. See DERIVED_AMOUNT_RULE_KINDS.
+    expect(payRuleDerivesAmount({ kind: 'qty_rate', qty: 2, rate: 3 })).toBe(false);
   });
 
   it('asks for the input the rule actually reads', () => {
     expect(payRuleInputUnit(null)).toBeNull();
     expect(payRuleInputUnit({ kind: 'per_hour', rate: 1 })).toBe('hours');
     expect(payRuleInputUnit({ kind: 'per_day', rate: 1 })).toBe('days');
-    // qty_rate carries its own quantity — there is nothing for the operator to key.
+    // qty_rate has nothing for the operator to key, which is exactly why it does not derive either.
     expect(payRuleInputUnit({ kind: 'qty_rate', qty: 2, rate: 3 })).toBeNull();
     expect(
       payRuleInputUnit({ kind: 'formula', start: { ref: 'basic' }, terms: [{ op: '*', operand: { ref: 'hours' } }] }),
@@ -540,5 +544,33 @@ describe('2da9937a — the worked overtime examples', () => {
       (e: unknown) => expect((e as OvertimeReferenceUnusableError).reason).toBe('not_per_hour'),
     );
     expect((await listPayComponents(a)).some((c) => c.code === 'OT2_0')).toBe(false);
+  });
+});
+
+describe('2da9937a — a qty_rate item keeps the operator\'s typed amount', () => {
+  /**
+   * FOUND IN VERIFICATION, and it was a money defect.
+   *
+   * qty_rate was in DERIVED_AMOUNT_RULE_KINDS, which locks the Amount box and overwrites the typed figure.
+   * But payRuleInputUnit returns null for qty_rate — there IS no quantity box — so resolvePayComponentSet
+   * computed rule.qty * rule.rate from the CATALOG. A COMMISSION item configured {qty: 1, rate: 50} would
+   * take a keyed 600 for twelve units and pay 50, on a payslip, with nothing on screen to say so.
+   *
+   * Deriving is only safe when the operator has a box that feeds the derivation.
+   */
+  it('does NOT derive: the amount the operator keys is the amount written', () => {
+    const rule = { kind: 'qty_rate', qty: 1, rate: 50 } as const;
+    expect(payRuleDerivesAmount(rule), 'qty_rate must not lock the Amount box').toBe(false);
+    expect(payRuleInputUnit(rule), 'and it has no quantity box to key into').toBeNull();
+  });
+
+  it('the three kinds that DO derive each have a box that feeds them', () => {
+    // The other half: every kind we do derive must name the input the operator supplies, or it repeats
+    // exactly the qty_rate mistake under a different name.
+    for (const kind of DERIVED_AMOUNT_RULE_KINDS) {
+      if (kind === 'formula') continue; // a formula may be fully determined by the employee's own figures
+      const rule = { kind, rate: 10 } as unknown as Parameters<typeof payRuleInputUnit>[0];
+      expect(payRuleInputUnit(rule), `${kind} must name the quantity the operator keys`).not.toBeNull();
+    }
   });
 });

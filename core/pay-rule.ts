@@ -294,7 +294,26 @@ export function payRuleReadsOperand(rule: PayRule | null | undefined, ref: Formu
  * stored-amount case and stays byte-identical. Widening this list changes what a one-off pays, so it is a
  * decision, not a default.
  */
-export const DERIVED_AMOUNT_RULE_KINDS: readonly PayRuleKind[] = ['per_hour', 'per_day', 'qty_rate', 'formula'];
+/**
+ * 2da9937a — the rule kinds whose one-off amount is COMPUTED from what the operator keys.
+ *
+ * ⚠️ `qty_rate` IS DELIBERATELY ABSENT, and it was in this list until verification caught what that does.
+ *
+ * Deriving an amount is only safe when the operator has a box whose value feeds the derivation. For
+ * per_hour, per_day and an hours/days formula, `payRuleInputUnit` names that box and the keyed quantity
+ * REPLACES the scope input. `qty_rate` has no such box — payRuleInputUnit returns null for it, because the
+ * rule carries its own qty — so resolvePayComponentSet computes rule.qty * rule.rate from the CATALOG and
+ * nothing the operator does can change it.
+ *
+ * Put together, listing it here locked the Amount box and then overwrote the typed figure with a catalog
+ * constant. A COMMISSION item configured qty_rate {qty: 1, rate: 50} — and the board item names Commission
+ * explicitly — would take a keyed 600 for twelve units and pay 50. Silently, on a payslip.
+ *
+ * A one-off transaction is a statement about THIS month's quantity. Until qty_rate has a quantity box of
+ * its own, the operator's typed amount is the only figure that can be right, so it stays authoritative and
+ * this kind behaves exactly as it does today.
+ */
+export const DERIVED_AMOUNT_RULE_KINDS: readonly PayRuleKind[] = ['per_hour', 'per_day', 'formula'];
 
 /** Does a one-off transaction on this pay item COMPUTE its amount from the item's rule (rather than take
  *  the amount the operator typed)? One predicate, read by the entry screen to lock the Amount box and by
@@ -312,9 +331,10 @@ export function payRuleDerivesAmount(rule: PayRule | null | undefined): boolean 
  * overtime item resolves the rule with `hours = 10`, not with the employee's attendance total for the
  * month, because a one-off transaction is a statement about those ten hours and nothing else.
  *
- * `null` means the rule needs nothing from the operator — `qty_rate` carries its own quantity, and a
- * formula that reads only `basic` / `fixed_allowances` / another pay item is fully determined by the
- * employee's own figures. Those items still derive their amount; they simply have no box to fill.
+ * `null` means the rule needs nothing from the operator — a formula that reads only `basic` /
+ * `fixed_allowances` / another pay item is fully determined by the employee's own figures, and still
+ * derives its amount with no box to fill. `qty_rate` also returns null, and that is precisely why it is
+ * NOT in DERIVED_AMOUNT_RULE_KINDS — see the note there.
  *
  * The screen locks its Input Type to this answer and the write path REFUSES a save without it. Two
  * consumers, one function: an item whose Amount box is taken away always has the input that replaces it.
