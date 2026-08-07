@@ -30,11 +30,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { createTranslator } from 'next-intl';
 
 import {
   DAY_DASH,
   DAY_DECIMALS,
   ROUNDING_BAND_DECIMALS,
+  dayPluralCategory,
   formatDayInput,
   formatDays,
   normalizeDayFieldOnBlur,
@@ -244,24 +246,66 @@ describe('4a1abc4a · the two day SENTENCES print the same figure as the tables'
   const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
   const catalog = (loc: string) => JSON.parse(read(`/messages/${loc}.json`));
 
-  it('take a pre-formatted figure instead of formatting it themselves', () => {
-    // Both used to embed the number in an ICU plural, whose `#` formats with default number rules — so the
-    // dashboard said "12.5 days remaining" while the balance grid said "12.50". Dropping the plural loses
-    // nothing: a figure that always carries two decimals has visible fraction digits, so CLDR selects
-    // "other" for it in all six of these languages anyway.
+  /** Render the real message through the real ICU engine, with the SAME two arguments the components
+   *  pass. Grepping the catalog cannot tell you what a reader sees — the version of this block that did
+   *  only that asserted a claim which was false in Tamil, and passed. */
+  const say = (loc: string, ns: string, key: string, days: number) =>
+    createTranslator({ locale: loc, messages: catalog(loc), namespace: ns })(key, {
+      v: formatDays(days),
+      cat: dayPluralCategory(days, loc),
+    });
+
+  it('print exactly two decimals, in every locale', () => {
+    // The reported fault: the dashboard said "12.5 days remaining" while the balance grid said "12.50".
     for (const loc of LOCALES) {
-      const c = catalog(loc);
-      const remaining: string = c.dashboard.daysRemaining;
-      const duration: string = c.leave.durationLine;
-      expect(remaining, `${loc} dashboard.daysRemaining`).toContain('{d}');
-      expect(remaining, `${loc} dashboard.daysRemaining must not re-format the number`).not.toContain('plural');
-      expect(duration, `${loc} leave.durationLine`).toContain('{count}');
-      expect(duration, `${loc} leave.durationLine must not re-format the number`).not.toContain('plural');
+      expect(say(loc, 'dashboard', 'daysRemaining', 12.5), loc).toContain('12.50');
+      expect(say(loc, 'dashboard', 'daysRemaining', 12), loc).toContain('12.00');
+      expect(say(loc, 'leave', 'durationLine', 1), loc).toContain('1.00');
     }
   });
 
-  it('and their call sites hand them the shared formatter\'s output', () => {
-    expect(read('/components/leave-balance-card.tsx')).toMatch(/daysRemaining', \{ d: formatDays\(/);
-    expect(read('/components/leave/leave-history-cards.tsx')).toMatch(/durationLine', \{ count: formatDays\(/);
+  it('ENGLISH says "1.00 days", and TAMIL says "நாள்" — and no single rule gives you both', () => {
+    // THE TWO WRONG ANSWERS THIS PINS, both of which were written and both of which looked fine in review:
+    //
+    //   1. Drop the plural and print a bare placeholder, justified as "two visible fraction digits always
+    //      select CLDR's other form". True in five of our six locales. Tamil's rule is `i = 0 or n = 1`,
+    //      so 1.00 selects `one`, and Tamil uses a different word for one day. Silently changed the noun.
+    //   2. Put a plain ICU `{d, plural, ...}` back. ICU selects on the argument formatted with ZERO
+    //      fraction digits, so English got `one` and read "1.00 day remaining".
+    //
+    // The category has to be computed at the precision the figure is DISPLAYED in, which is what
+    // dayPluralCategory does and what neither of the above could express.
+    expect(dayPluralCategory(1, 'ta')).toBe('one');
+    expect(dayPluralCategory(1, 'en')).toBe('other');
+    expect(dayPluralCategory(2, 'ta')).toBe('other');
+
+    expect(say('en', 'dashboard', 'daysRemaining', 1)).toBe('1.00 days remaining');
+    expect(say('ta', 'dashboard', 'daysRemaining', 1)).toContain('நாள்');
+    expect(say('ta', 'dashboard', 'daysRemaining', 2)).toContain('நாட்கள்');
+    expect(say('ta', 'leave', 'durationLine', 1)).toContain('நாள்');
+    expect(say('ta', 'leave', 'durationLine', 2)).toContain('நாட்கள்');
+  });
+
+  it('no message re-formats the number itself', () => {
+    // The structural guard. `#` inside a plural branch formats with default number rules and is exactly
+    // how the two screens drifted apart in the first place, so no message may contain one.
+    for (const loc of LOCALES) {
+      const c = catalog(loc);
+      for (const [label, msg] of [
+        [`${loc} dashboard.daysRemaining`, c.dashboard.daysRemaining as string],
+        [`${loc} leave.durationLine`, c.leave.durationLine as string],
+      ] as const) {
+        expect(msg, `${label} must print the pre-formatted value`).toContain('{v}');
+        expect(msg, `${label} must never re-format the number with #`).not.toContain('#');
+      }
+    }
+  });
+
+  it('and their call sites hand them the formatted text AND the category', () => {
+    for (const f of ['/components/leave-balance-card.tsx', '/components/leave/leave-history-cards.tsx'] as const) {
+      const src = read(f);
+      expect(src, `${f} must print through the shared formatter`).toMatch(/v: formatDays\(/);
+      expect(src, `${f} must select the plural at display precision`).toMatch(/cat: dayPluralCategory\(/);
+    }
   });
 });

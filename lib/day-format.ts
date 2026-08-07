@@ -132,3 +132,29 @@ export function normalizeDayFieldOnBlur(
   const tidy = normalizeDayText(el.value, decimals);
   if (tidy !== el.value) el.value = tidy;
 }
+
+/**
+ * The CLDR plural category for a day figure AS IT WILL BE PRINTED.
+ *
+ * WHY THIS IS NOT LEFT TO ICU. A message written `{d, plural, one {# day} other {# days}}` selects on the
+ * argument formatted with DEFAULT number rules — zero fraction digits — so the number 1 selects `one` and
+ * the sentence reads "1.00 day remaining". Every day figure here carries two decimals, and CLDR's rules
+ * are defined over the digits actually shown (`v` = visible fraction digits): with v=2, English selects
+ * `other` ("1.00 days"), and Tamil — whose rule is `i = 0 or n = 1` — still selects `one`, because Tamil
+ * genuinely uses a different word for one day. ICU has no way to be told the display precision, so the
+ * category is computed here and the message does a plain `select` on it.
+ *
+ * Getting this wrong is invisible in English review and wrong in a language none of us reads, which is
+ * exactly why it is a function with a test rather than a comment.
+ */
+export function dayPluralCategory(
+  value: unknown,
+  locale: string,
+  decimals: number = DAY_DECIMALS,
+): Intl.LDMLPluralRule {
+  const n = finiteDays(value);
+  return new Intl.PluralRules(locale, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).select(n ?? 0);
+}

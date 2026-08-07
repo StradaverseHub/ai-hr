@@ -275,7 +275,10 @@ describe('657962ec §1: the self-service history renders as compact cards, newes
       const leave = (JSON.parse(read(`messages/${loc}.json`)) as { leave: Record<string, unknown> }).leave;
       expect(leave.historyCount, `${loc} leave.historyCount`).toContain('{count}');
       expect(leave.viewDetails, `${loc} leave.viewDetails`).toBeTruthy();
-      expect(leave.durationLine, `${loc} leave.durationLine`).toContain('{count');
+      // 4a1abc4a — the duration line no longer formats its own number. It takes `{v}` (the shared day
+      // formatter's output) and, where the language distinguishes them, a `{cat}` plural category computed
+      // at the SAME precision the figure is shown in. See lib/day-format.ts dayPluralCategory.
+      expect(leave.durationLine, `${loc} leave.durationLine`).toContain('{v}');
       const details = leave.details as Record<string, unknown>;
       for (const k of ['title', 'leaveType', 'duration', 'session', 'status', 'attachment']) {
         expect(details?.[k], `${loc} leave.details.${k}`).toBeTruthy();

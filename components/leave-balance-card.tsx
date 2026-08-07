@@ -13,9 +13,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Card } from '@/components/ui';
-import { formatDays } from '@/lib/day-format';
+import { dayPluralCategory, formatDays } from '@/lib/day-format';
 
 export type LeaveBalanceOption = { leaveTypeId: string; leaveType: string; available: number };
 
@@ -27,6 +27,7 @@ export function LeaveBalanceCard({
   href: string;
 }) {
   const t = useTranslations('dashboard');
+  const locale = useLocale();
   const [selectedId, setSelectedId] = useState(balances[0]?.leaveTypeId ?? '');
   const selected = balances.find((b) => b.leaveTypeId === selectedId) ?? balances[0] ?? null;
 
@@ -48,10 +49,19 @@ export function LeaveBalanceCard({
             {/* 4a1abc4a: the dashboard's headline balance is the SAME `available` figure the /leave cards
                 and the balance grid show, so it prints the same way. `daysRemaining` used to be an ICU
                 plural whose `#` formatted the raw number ("12.5 days remaining") — the drift the reporter
-                is describing. All six catalogs now take a pre-formatted `{d}`; dropping the plural is not a
-                translation loss, because a figure that always carries two decimals has visible fraction
-                digits and therefore always selects CLDR's "other" form anyway. */}
-            {t('daysRemaining', { d: formatDays(selected ? selected.available : 0) })}
+                is describing.
+
+                TWO ARGUMENTS, ON PURPOSE. `v` is the formatted text that prints; `cat` is the CLDR plural
+                category for that text, computed at the SAME precision it is shown in. An earlier version
+                dropped the plural and justified it with "two visible fraction digits always select CLDR's
+                other form" — true in five of our six locales, FALSE IN TAMIL, whose rule is `i = 0 or n = 1`,
+                so 1.00 selects `one` and Tamil uses a different word for it. Putting the plural back as a
+                plain ICU `plural` was ALSO wrong: ICU selects on the number with zero fraction digits, so
+                English read "1.00 day remaining". See dayPluralCategory. */}
+            {t('daysRemaining', {
+              v: formatDays(selected ? selected.available : 0),
+              cat: dayPluralCategory(selected ? selected.available : 0, locale),
+            })}
           </div>
           <select
             aria-label={t('selectLeaveType')}
