@@ -846,6 +846,12 @@ export type PayslipReviewRow = ProcessedPayslipViewRow & {
   /** IC, or the passport number when there is no IC (a non-Malaysian employee). */
   identityNumber: string | null;
   identityIsPassport: boolean;
+  /** 5c198931 — the statutory registration numbers an official payslip carries. Read from the
+   *  `employee_statutory_my` row this select already joins, so no new join and no new query. There is no
+   *  separate EIS number column: SOCSO and EIS share one number, which is what the attached design prints. */
+  epfNumber: string | null;
+  socsoNumber: string | null;
+  taxNumber: string | null;
   daysWorked: string | null;
   otherDeductions: string;
   employerCost: string;
@@ -912,6 +918,9 @@ export function payslipForReview(
         bankAccountNo: employeeStatutoryMy.bankAccountNo,
         icNumber: employeeStatutoryMy.icNumber,
         passportNumber: employeeStatutoryMy.passportNumber,
+        epfNumber: employeeStatutoryMy.epfNumber,
+        socsoNumber: employeeStatutoryMy.socsoNumber,
+        taxNumber: employeeStatutoryMy.taxNumber,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
@@ -945,6 +954,41 @@ export function payslipForReview(
       identityIsPassport: !icNumber?.trim() && !!passportNumber?.trim(),
     };
   });
+}
+
+/**
+ * 5c198931 — the year-to-date column, summed ONCE.
+ *
+ * The Individual Payslip screen computed this inline; the downloaded document did not carry it at all.
+ * Now that both the screen and the two PDF routes print it, the summation lives here so a payslip and its
+ * own PDF cannot disagree about the employee's year — a screen and a document each doing their own
+ * reduce is precisely how one of them drifts.
+ *
+ * PURE. It sums rows the caller already fetched; it issues no query and decides no scope. WHICH rows are
+ * in scope is the caller's fence: the admin surfaces pass every processed payslip for the year, and the
+ * employee's own copy passes only their RELEASED ones — an employee must not be shown a total containing
+ * a run that has not been released to them.
+ */
+export type PayslipYtdTotals = { gross: number; epf: number; socso: number; eis: number; pcb: number; net: number };
+
+export function sumPayslipYtd(
+  rows: readonly { gross: unknown; net: unknown; statutory: unknown }[],
+): PayslipYtdTotals {
+  const num = (v: unknown) => Number(v ?? 0);
+  return rows.reduce(
+    (acc, r) => {
+      const st = (r.statutory ?? {}) as Record<string, unknown>;
+      return {
+        gross: acc.gross + num(r.gross),
+        epf: acc.epf + num(st.epfEmployee),
+        socso: acc.socso + num(st.socsoEmployee),
+        eis: acc.eis + num(st.eisEmployee),
+        pcb: acc.pcb + num(st.pcb),
+        net: acc.net + num(r.net),
+      };
+    },
+    { gross: 0, epf: 0, socso: 0, eis: 0, pcb: 0, net: 0 },
+  );
 }
 
 /**

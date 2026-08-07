@@ -23,13 +23,16 @@ import {
   companyPayrollConfig,
   companyStatutoryMy,
   compensation,
+  department,
   domainEvent,
   employeeLoan,
   employeeStatutoryMy,
   employment,
   employmentPayComponent,
+  jobGrade,
   loanRepayment,
   payComponent,
+  position,
   payrollBatchComponent,
   leaveLedger,
   leaveRequest,
@@ -5426,17 +5429,29 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
 }
 
 /** A single payslip's full breakdown for the employee detail/print view. RLS scopes it to
- *  what the caller may see (the employee sees their own via can_see_employment). */
+ *  what the caller may see (the employee sees their own via can_see_employment).
+ *
+ *  5c198931 WIDENED IT so the employee's own downloaded payslip is the SAME document as the admin review
+ *  copy — it was a thin half page carrying neither the employee's identity and statutory numbers, nor
+ *  their employment info, nor bank details, nor the company's currency or payment date. Everything added
+ *  rides LEFT joins: an employee with no current assignment, no grade or no Malaysian statutory row must
+ *  still get their payslip, and an inner join here would make it disappear entirely.
+ *
+ *  THE RELEASE GATE BELOW IS UNCHANGED. Widening the select does not widen who may read the row. */
 export function payslipDetail(ctx: SessionContext, payslipId: string) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .select({
         id: payslip.id,
+        employmentId: payslip.employmentId,
         employee: person.fullName,
         employeeCode: employment.employeeCode,
+        companyId: payrollBatch.companyId,
         company: company.legalName,
         companyReg: company.registrationNo,
+        currency: company.currency,
         payPeriod: payrollBatch.payPeriod,
+        payDate: payrollBatch.batchDate,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
         status: payrollBatch.status,
@@ -5457,12 +5472,40 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
         // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe: readable by the
         // employee via their own payslip's batch, unlike the admin-only company_payroll_config).
         releasedAt: payrollBatch.releasedAt,
+        // 5c198931 — the employment + identity context the official document prints. Same columns
+        // core/payroll-view.ts `payslipForReview` already returns to the admin screen.
+        department: department.name,
+        position: position.title,
+        jobGrade: jobGrade.name,
+        employmentType: assignment.employmentType,
+        paymentMethod: employment.paymentMethod,
+        bankName: employeeStatutoryMy.bankName,
+        bankAccountNo: employeeStatutoryMy.bankAccountNo,
+        icNumber: employeeStatutoryMy.icNumber,
+        passportNumber: employeeStatutoryMy.passportNumber,
+        epfNumber: employeeStatutoryMy.epfNumber,
+        socsoNumber: employeeStatutoryMy.socsoNumber,
+        taxNumber: employeeStatutoryMy.taxNumber,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
+      // LEFT, every one of them. An employee with no current assignment, no grade or no MY statutory row
+      // would lose their payslip entirely behind an inner join — the one real risk in widening this read.
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(eq(payslip.id, payslipId))
       .limit(1);
     if (!row) return null;
@@ -5472,8 +5515,19 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
     // batch (backfilled to created_at by migration 0164), treated as released.
     const released = row.status === 'closed' && (row.releasedAt == null || row.releasedAt.getTime() <= Date.now());
     if (!released) return null;
-    const { releasedAt: _r, ...rest } = row;
-    return rest;
+    const { releasedAt: _r, bankAccountNo, icNumber, passportNumber, ...rest } = row;
+    // 5c198931 — the bank account is masked HERE, exactly as `payslipForReview` masks it:
+    // `employee_statutory_my.bank_account_no` is PDPA-scoped financial data (core/pdpa.ts) and the full
+    // number must never leave the server, not even to the account's own owner's browser.
+    const acct = (bankAccountNo ?? '').trim();
+    return {
+      ...rest,
+      bankAccountMasked: acct ? (acct.length > 4 ? `••••${acct.slice(-4)}` : acct) : null,
+      // IC first; a non-Malaysian employee carries a passport instead (icNumber has been nullable since
+      // migration 0212). The document labels which one it is showing rather than calling a passport an IC.
+      identityNumber: icNumber?.trim() || passportNumber?.trim() || null,
+      identityIsPassport: !icNumber?.trim() && !!passportNumber?.trim(),
+    };
   });
 }
 

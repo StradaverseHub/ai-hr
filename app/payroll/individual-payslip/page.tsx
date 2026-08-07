@@ -59,7 +59,7 @@ import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees, listCompanies } from '@/core/read';
-import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview } from '@/core/payroll-view';
+import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
 import { explainPcb } from '@/core/pcb-explain';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
 import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll-publication';
@@ -190,21 +190,10 @@ export default async function IndividualPayslipPage({
           employmentId,
         })
       : [];
-  const num = (v: unknown) => Number(v ?? 0);
-  const ytd = ytdRows.reduce(
-    (acc, r) => {
-      const st = (r.statutory ?? {}) as Record<string, unknown>;
-      return {
-        gross: acc.gross + num(r.gross),
-        epf: acc.epf + num(st.epfEmployee),
-        socso: acc.socso + num(st.socsoEmployee),
-        eis: acc.eis + num(st.eisEmployee),
-        pcb: acc.pcb + num(st.pcb),
-        net: acc.net + num(r.net),
-      };
-    },
-    { gross: 0, epf: 0, socso: 0, eis: 0, pcb: 0, net: 0 },
-  );
+  // 5c198931 — the summation moved to core/payroll-view.ts `sumPayslipYtd` (unchanged arithmetic) because
+  // the downloaded document now prints this column too. A screen and a document each running their own
+  // reduce over the same rows is how the two start disagreeing about someone's year.
+  const ytd = sumPayslipYtd(ytdRows);
 
   const b = row ? deriveHistoryBreakdown(row) : null;
   const eb = row ? payslipEmployerBorne(row.statutory) : null;
@@ -394,6 +383,13 @@ export default async function IndividualPayslipPage({
                 label={row.identityIsPassport ? t('fieldPassport') : t('fieldIc')}
                 value={row.identityNumber}
               />
+              {/* 5c198931 — the statutory registration numbers the downloaded document prints. Added here
+                  so the preview and the download show the same employee record, which was the whole
+                  complaint: the two had drifted. SOCSO and EIS share ONE number — there is no separate EIS
+                  column on employee_statutory_my, and the attached design prints them as one field. */}
+              <Info label={t('fieldEpfNumber')} value={row.epfNumber} />
+              <Info label={t('fieldSocsoNumber')} value={row.socsoNumber} />
+              <Info label={t('fieldTaxNumber')} value={row.taxNumber} />
               <Info label={t('fieldDepartment')} value={row.department} />
               <Info label={t('fieldPosition')} value={row.position} />
               <Info label={t('fieldGrade')} value={row.jobGrade} />
@@ -565,6 +561,15 @@ export default async function IndividualPayslipPage({
             <Row label={tSlip('totalEmployerCost')} value={rm(row.employerCost)} muted />
           </section>
 
+          {/* ── Net pay ──
+              5c198931 moved this ABOVE year-to-date so the screen reads in the same order as the
+              downloaded document (letterhead → employee → earnings/deductions → employer → net → YTD).
+              Presentation only: the figure and its source are untouched. */}
+          <div className="flex items-baseline justify-between rounded-lg bg-primary/5 px-4 py-3">
+            <span className="text-sm font-semibold">{tSlip('netPay')}</span>
+            <span className="text-lg font-bold tabular-nums text-primary">{rm(b.net)}</span>
+          </div>
+
           {/* ── Year to date ──
               Summed from the SAME read that lists this employee's months, so the column beside the
               current month can never disagree with the months it is made of. */}
@@ -605,12 +610,6 @@ export default async function IndividualPayslipPage({
                 from the deduction lines above when the employer bore part of them. Said, not hidden. */}
             <p className="mt-2 text-xs text-muted-foreground">{t('ytdNote')}</p>
           </section>
-
-          {/* ── Net pay ── */}
-          <div className="flex items-baseline justify-between rounded-lg bg-primary/5 px-4 py-3">
-            <span className="text-sm font-semibold">{tSlip('netPay')}</span>
-            <span className="text-lg font-bold tabular-nums text-primary">{rm(b.net)}</span>
-          </div>
 
           {b.recordLines.length > 0 && (
             <section>
