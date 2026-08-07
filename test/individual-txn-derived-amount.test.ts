@@ -21,6 +21,8 @@
  * The refusals assert the exact error key rather than "it failed", because on this subject the wrong
  * failure is a wrong payslip that got lucky.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -368,6 +370,31 @@ describe('2da9937a — a one-off transaction takes its amount from the pay item 
     ).toEqual({ ok: true, derived: false });
   });
 
+  it('the preview will not answer for an employee in a DIFFERENT company', async () => {
+    // RLS isolates tenants, not companies. Without the employment↔company check an admin scoped to one
+    // company could read another company's employee's basic salary back out of a formula's figure. The
+    // answer is "nothing derived" — the write path's own company guard is what refuses a save.
+    const e = await hire();
+    const otherCompany = (
+      await owner.db
+        .insert(schema.company)
+        .values({ tenantId: base.tenantId, legalName: 'Other Co', registrationNo: `OC-${randomUUID().slice(0, 8)}` })
+        .returning({ id: schema.company.id })
+    )[0].id;
+    const componentId = await payItem('OT1_5', 'Overtime 1.5', { kind: 'per_hour', rate: HOURLY_1_5 });
+    scope.scopeIds = [base.companyId, otherCompany];
+    expect(
+      await previewTxnAmountAction({
+        componentId,
+        employmentId: e.employmentId, // belongs to base.companyId
+        companyId: otherCompany,
+        payPeriod: PERIOD,
+        quantity: 10,
+        unit: 'hours',
+      }),
+    ).toEqual({ ok: true, derived: false });
+  });
+
   it('the preview refuses a company outside the caller’s scope', async () => {
     const e = await hire();
     const componentId = await payItem('OT1_5', 'Overtime 1.5', { kind: 'per_hour', rate: HOURLY_1_5 });
@@ -415,6 +442,35 @@ describe('2da9937a — payRuleDerivesAmount / payRuleInputUnit', () => {
     expect(
       payRuleInputUnit({ kind: 'formula', start: { ref: 'basic' }, terms: [{ op: '*', operand: { ref: 'number', value: 2 } }] }),
     ).toBeNull();
+  });
+});
+
+describe('2da9937a — the screen’s new copy resolves in every locale', () => {
+  /**
+   * THE DYNAMIC KEYS ARE THE ONES THAT BITE. `quantityLabel.<unit>` and `derivedAmountHint.<unit>` are
+   * built from payRuleInputUnit's answer at render time, so a missing branch is not a compile error and
+   * not a 500 — it is a MISSING_MESSAGE that renders as the raw key on a payroll entry screen. The static
+   * keys are covered by scripts/i18n-check.mjs's parity gate; these are the ones it cannot see.
+   */
+  it('every quantityLabel.* / derivedAmountHint.* branch resolves non-empty in all 6 locales', () => {
+    const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
+    const MESSAGES = path.resolve(__dirname, '../messages');
+    // Exactly the values payRuleInputUnit can return, plus the 'none' branch the form uses when it
+    // returns null — so this list cannot drift from the code without the type changing.
+    const UNITS: ReadonlyArray<'hours' | 'days'> = ['hours', 'days'];
+    for (const loc of LOCALES) {
+      const ind = JSON.parse(fs.readFileSync(path.join(MESSAGES, `${loc}.json`), 'utf8')).payroll.transactions.individual;
+      for (const u of UNITS) {
+        expect(String(ind.quantityLabel?.[u] ?? '').trim().length, `${loc} quantityLabel.${u}`).toBeGreaterThan(0);
+        expect(String(ind.derivedAmountHint?.[u] ?? '').trim().length, `${loc} derivedAmountHint.${u}`).toBeGreaterThan(0);
+      }
+      expect(String(ind.derivedAmountHint?.none ?? '').trim().length, `${loc} derivedAmountHint.none`).toBeGreaterThan(0);
+      // The two refusal keys the ACTION returns and the form resolves with t(res.error) — a bare error key
+      // on screen is the same class of fault as a bare label.
+      for (const k of ['quantityRequiredHours', 'quantityRequiredDays', 'derivedAmountUnavailable', 'derivedAmountPending', 'derivedAmountLabel']) {
+        expect(String(ind[k] ?? '').trim().length, `${loc} ${k}`).toBeGreaterThan(0);
+      }
+    }
   });
 });
 

@@ -607,6 +607,7 @@ export function TxnWorkspace({
         return;
       }
       const item = detail.componentId ? `c:${detail.componentId}` : `k:${detail.kind}`;
+      const resolvedItem = itemByValue.has(item) ? item : `k:${detail.kind}`;
       openForm({
         mode: mode === 'edit' ? 'edit' : 'create',
         id: mode === 'edit' ? detail.id : null,
@@ -615,11 +616,14 @@ export function TxnWorkspace({
         batchId: '',
         // A component that is archived (or hidden by requireComponent) is no longer an offered option;
         // fall back to the generic kind rather than a select stuck on a value that does not exist.
-        item: itemByValue.has(item) ? item : `k:${detail.kind}`,
+        item: resolvedItem,
         txnDate: detail.txnDate,
         amount: Number(detail.amount).toString(),
         quantity: detail.quantity != null ? Number(detail.quantity).toString() : '',
-        unit: detail.unit ?? '',
+        // 2da9937a — a row keyed BEFORE its pay item started calculating carries no unit (or the wrong
+        // one). The Input Type select is disabled on a calculating item, so leaving the stored value would
+        // strand the operator on a form they cannot make valid: the item's required input wins.
+        unit: unitFor(resolvedItem, detail.unit ?? ''),
         notes: detail.notes ?? '',
       });
     });

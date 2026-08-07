@@ -236,6 +236,7 @@ async function amountForWrite(
   p: {
     componentId: string | null;
     employmentId: string;
+    companyId: string;
     payPeriod: string;
     quantity: number | null;
     unit: string | null;
@@ -251,6 +252,7 @@ async function amountForWrite(
   const d = await deriveIndividualTxnAmount(s, {
     componentId: p.componentId,
     employmentId: p.employmentId,
+    companyId: p.companyId,
     payPeriod: p.payPeriod,
     quantity: p.quantity,
     unit: p.unit,
@@ -299,6 +301,7 @@ export async function previewTxnAmountAction(input: {
     const d = await deriveIndividualTxnAmount(s, {
       componentId: input.componentId,
       employmentId: input.employmentId,
+      companyId: input.companyId,
       payPeriod: input.payPeriod,
       quantity: input.quantity,
       unit: input.unit,
@@ -347,6 +350,7 @@ export async function createIndividualTxnAction(input: TxnFormInput): Promise<Tx
     const amount = await amountForWrite(s, {
       componentId: input.componentId,
       employmentId: input.employmentId,
+      companyId: input.companyId,
       // A batch-attached write takes the month from the RUN (the service does the same), not from the form
       // field, so the two can never resolve the rule against different months.
       payPeriod: input.batchId ? (targetImpact?.payPeriod ?? input.payPeriod) : input.payPeriod,
@@ -398,6 +402,8 @@ export async function updateIndividualTxnAction(
     const amount = await amountForWrite(s, {
       componentId: input.componentId,
       employmentId: existing.employmentId,
+      // The ROW's company, already checked against the caller's scope above — not the client's field.
+      companyId: existing.companyId,
       // The row's own stamped month — an edit cannot move a transaction between months.
       payPeriod: existing.payPeriod,
       quantity: input.quantity,

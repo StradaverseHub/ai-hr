@@ -906,6 +906,8 @@ export function deriveIndividualTxnAmount(
   p: {
     componentId: string;
     employmentId: string;
+    /** The company the caller has already established it may act in. The employment must belong to it. */
+    companyId: string;
     /** 'YYYY-MM' — the transaction's pay month, which bounds the attendance and recurring-item reads. */
     payPeriod: string;
     quantity: number | null;
@@ -913,6 +915,18 @@ export function deriveIndividualTxnAmount(
   },
 ): Promise<IndividualTxnAmountDerivation> {
   return withTenant(ctx, async (tx): Promise<IndividualTxnAmountDerivation> => {
+    // COMPANY SCOPE IS AN APPLICATION CONCERN — RLS only isolates tenants. Without this an admin scoped to
+    // one company could ask what a formula pays for an employee in another and read their basic salary
+    // back out of the figure. Answering "nothing derived" rather than throwing is deliberate: the write
+    // path's own C3 guard (CompanyMismatchError) is what refuses the save, and a second refusal here would
+    // give one mistake two names — and tell the caller the employment exists.
+    const [emp] = await tx
+      .select({ companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp || emp.companyId !== p.companyId) return { derived: false };
+
     const [item] = await tx
       .select({ code: payComponent.code, kind: payComponent.kind, rule: payComponent.rule, archivedAt: payComponent.archivedAt })
       .from(payComponent)
