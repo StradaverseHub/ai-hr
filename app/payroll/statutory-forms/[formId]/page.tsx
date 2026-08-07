@@ -91,13 +91,15 @@ export default async function StatutoryFormPage({
   // silently shows a different year beside the figures.
   const years = yearOptions(today, year);
 
-  const result = companyId ? await reportPreview(s, { companyId, reportId: formId, periodKey }) : null;
+  // Unconditional, and safe to be: past the `notFound` above, `companyId` named a company whose
+  // jurisdiction registers this report — an empty or foreign id yields no `def` and never reaches here.
+  const result = await reportPreview(s, { companyId, reportId: formId, periodKey });
   const companyName = companies.find((c) => c.id === companyId)?.name ?? '—';
   // `submissionDueFor` only models a monthly deadline, so an annual period comes back "unknown" — the
   // honest answer for Form E, whose statutory date was never stated to us.
   const due = submissionDueFor(periodKey, def.submission?.dueDayOfNextMonth ?? null, today);
   const periodLabel = annual ? year : `${monthName(month)} ${year}`;
-  const ready = result != null && result.readiness.length === 0;
+  const ready = result.readiness.length === 0;
   const backHref = `/payroll/statutory-forms?companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}${
     def.submission ? `&body=${def.submission.body}` : ''
   }`;
@@ -110,6 +112,14 @@ export default async function StatutoryFormPage({
     <div className="mx-auto max-w-[100rem] space-y-6 print:max-w-none">
       <div className="print:hidden">
         <PageHeader back={{ href: backHref, label: t('pageTitle') }} title={def.label} description={companyName} />
+      </div>
+      {/* The on-screen header carries a back link, so it is hidden on paper — but a printed statutory
+          return with no form name, company or period on it is not a document anybody can file. */}
+      <div className="hidden print:block">
+        <h1 className="text-lg font-semibold">{def.label}</h1>
+        <p className="text-sm">
+          {companyName} · {periodLabel}
+        </p>
       </div>
       <ErrorBanner message={sp.error} />
 
@@ -162,7 +172,7 @@ export default async function StatutoryFormPage({
         </div>
         <div className="bg-card p-4">
           <div className="text-xs text-muted-foreground">{t('previewEmployees')}</div>
-          <div className="text-lg font-semibold tabular-nums">{result?.rows.length ?? 0}</div>
+          <div className="text-lg font-semibold tabular-nums">{result.rows.length}</div>
         </div>
         <div className="bg-card p-4">
           <div className="text-xs text-muted-foreground">{t('colAgency')}</div>
@@ -178,70 +188,68 @@ export default async function StatutoryFormPage({
         </div>
       </div>
 
-      {result && !result.meta.hasBatch ? (
+      {!result.meta.hasBatch ? (
         <Card>
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">
             {t('noBatch', { company: companyName, period: periodLabel })}
           </p>
         </Card>
       ) : (
-        result && (
-          <StatutoryReportPanel
-            result={result}
-            /* An employee name opens that person's EA statement for the year — the ONLY route to a
-               per-employee EA, since an EA is one statement per person and never a company-wide table.
-               The YEAR, never the period: the EA page tests its `year` against /^\d{4}$/ and falls back
-               to the server's current year when it does not match. */
-            eaYear={year}
-            strings={{
-              heading: t('reportHeader', { label: def.label, period: periodLabel }),
-              readinessTitle: t('readinessTitle', { count: result.readiness.length }),
-              noRows: t('noRows'),
-            }}
-            actions={
-              <>
-                {/* Layer-B agency upload files, gated on readiness exactly as Reports gates them: a file
-                    generated while somebody is missing a number is a submission that omits them. */}
-                {formId === 'my.cp39' && ready && (
-                  <a
-                    href={`/payroll/reports/cp39-file?companyId=${companyId}&periodKey=${periodKey}`}
-                    className={fileBtn}
-                    title={t('cp39DownloadTitle')}
-                  >
-                    ⬇ {t('cp39DownloadLabel')}
-                  </a>
-                )}
-                {formId === 'my.socso-eis' && ready && (
-                  <a
-                    href={`/payroll/reports/socso-eis-file?companyId=${companyId}&periodKey=${periodKey}`}
-                    className={fileBtn}
-                    title={t('socsoEisDownloadTitle')}
-                  >
-                    ⬇ {t('socsoEisDownloadLabel')}
-                  </a>
-                )}
-                <a href={exportHref('pdf')} className={outBtn}>
-                  {t('downloadPdf')}
+        <StatutoryReportPanel
+          result={result}
+          /* An employee name opens that person's EA statement for the year — the ONLY route to a
+             per-employee EA, since an EA is one statement per person and never a company-wide table.
+             The YEAR, never the period: the EA page tests its `year` against /^\d{4}$/ and falls back
+             to the server's current year when it does not match. */
+          eaYear={year}
+          strings={{
+            heading: t('reportHeader', { label: def.label, period: periodLabel }),
+            readinessTitle: t('readinessTitle', { count: result.readiness.length }),
+            noRows: t('noRows'),
+          }}
+          actions={
+            <>
+              {/* Layer-B agency upload files, gated on readiness exactly as Reports gates them: a file
+                  generated while somebody is missing a number is a submission that omits them. */}
+              {formId === 'my.cp39' && ready && (
+                <a
+                  href={`/payroll/reports/cp39-file?companyId=${companyId}&periodKey=${periodKey}`}
+                  className={fileBtn}
+                  title={t('cp39DownloadTitle')}
+                >
+                  ⬇ {t('cp39DownloadLabel')}
                 </a>
-                <a href={exportHref('xlsx')} className={outBtn}>
-                  {t('downloadExcel')}
+              )}
+              {formId === 'my.socso-eis' && ready && (
+                <a
+                  href={`/payroll/reports/socso-eis-file?companyId=${companyId}&periodKey=${periodKey}`}
+                  className={fileBtn}
+                  title={t('socsoEisDownloadTitle')}
+                >
+                  ⬇ {t('socsoEisDownloadLabel')}
                 </a>
-                <a href={exportHref('csv')} className={outBtn}>
-                  {t('downloadCsv')}
-                </a>
-                <PrintButton />
-                <form action={recordReportAction}>
-                  <input type="hidden" name="companyId" value={companyId} />
-                  <input type="hidden" name="formId" value={formId} />
-                  <input type="hidden" name="periodKey" value={periodKey} />
-                  <input type="hidden" name="year" value={year} />
-                  <input type="hidden" name="month" value={month} />
-                  <button className={btnPrimary}>{t('recordGeneration')}</button>
-                </form>
-              </>
-            }
-          />
-        )
+              )}
+              <a href={exportHref('pdf')} className={outBtn}>
+                {t('downloadPdf')}
+              </a>
+              <a href={exportHref('xlsx')} className={outBtn}>
+                {t('downloadExcel')}
+              </a>
+              <a href={exportHref('csv')} className={outBtn}>
+                {t('downloadCsv')}
+              </a>
+              <PrintButton />
+              <form action={recordReportAction}>
+                <input type="hidden" name="companyId" value={companyId} />
+                <input type="hidden" name="formId" value={formId} />
+                <input type="hidden" name="periodKey" value={periodKey} />
+                <input type="hidden" name="year" value={year} />
+                <input type="hidden" name="month" value={month} />
+                <button className={btnPrimary}>{t('recordGeneration')}</button>
+              </form>
+            </>
+          }
+        />
       )}
     </div>
   );

@@ -217,7 +217,7 @@ describe('the per-form generation screen', () => {
 
   // A file generated while somebody is missing a tax or SOCSO number is a submission that omits them.
   it('gates the agency upload files on readiness, exactly as Reports does', () => {
-    expect(FORM_PAGE).toContain('const ready = result != null && result.readiness.length === 0');
+    expect(FORM_PAGE).toContain('const ready = result.readiness.length === 0');
     expect(FORM_PAGE).toContain("formId === 'my.cp39' && ready");
     expect(FORM_PAGE).toContain("formId === 'my.socso-eis' && ready");
   });
