@@ -12,6 +12,10 @@
 // time and never re-derives history (core/attendance.ts) — this changes how days are calculated from the
 // moment it is applied, forward, and nothing else.
 //
+// It also stamps the Shift arrangement as FIXED (see backfillBackupShift): everyone in this population
+// was left on 'roster' by migration 0162 purely because they had no shift, and "Roster shift" is the wrong
+// label for someone nobody rosters. Nothing in the engine branches on it; it is one click to change back.
+//
 // The shift is chosen BY CODE and must match exactly one non-archived shift. Shift codes are not unique in
 // this product (production carries two shifts both coded AM1, plus AM1-copy / Test / Test-2), so an
 // ambiguous code is an error rather than a coin-flip.

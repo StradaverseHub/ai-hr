@@ -670,7 +670,11 @@ export async function backfillBackupShift(
   if (!p.apply) return { before, after: before, assignedShiftId: null, applied: false };
   const target = matches[0];
   for (const row of before) {
-    // Fixed: an unrostered day is now this person's shift, which is exactly what a backup shift means.
+    // The arrangement is stamped FIXED, not left alone, and that is deliberate. Migration 0162 defaulted
+    // shift_type to 'roster' for everyone who had no default shift — which is precisely this population —
+    // so preserving it would leave 30 profiles reading "Roster shift" for people nobody rosters. Fixed is
+    // the truthful label for "works this shift every working day, roster the exceptions", and it is one
+    // click to change per employee afterwards. Nothing in the engine branches on shift_type either way.
     // One call per row on purpose — each needs its own DomainEvent to be individually reversible.
     await assignEmployeeShift(ctx, { employmentId: row.employmentId, shiftType: 'fixed', shiftId: target.id });
   }
