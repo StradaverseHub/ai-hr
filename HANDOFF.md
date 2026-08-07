@@ -88,15 +88,22 @@ picker offers), and `test/tp1-scope-guard.test.ts` asserts what is actually true
 `can_see_employment` fails there rather than on a tax screen. `3e3d3fb2` stays **approved, not deployed** —
 only the guard landed; the redesign it asks for is unbuilt. Plan revision 2 tells the reporter both things.
 
-### ⚠️ TWO ITEMS BUILT AND DEPLOYED BUT NOT MARKED — they need a decision
+### ⚠️ ONE ITEM BUILT AND DEPLOYED BUT NOT MARKED — and one withdrawn scope worth reading
 
-- **`2da9937a` (Formula Builder) — the code is live, the promised examples are not.** Overtime 2.0 and 3.0
-  are TENANT CATALOG ROWS created by `scripts/seed-overtime-multipliers.ts`, which has not been run: the
-  permission classifier refused it as a production write outside the deploy pipeline, correctly. Until
-  somebody runs it the reporter opens Payroll → Payroll Items, sees only their own OT1_5, and contests.
-  Run: `cd /opt/ai-hr && PATH=/opt/node20/bin:$PATH node --env-file=.env.production --import tsx
-  scripts/seed-overtime-multipliers.ts --tenant 11111111-1111-1111-1111-111111111111`
-  (idempotent — skips existing codes; derives the rate from OT1_5 rather than inventing one).
+- **`2da9937a` (Formula Builder) — SHIPPED and marked deployed (rev 3). THE SEED STEP IS WITHDRAWN, and
+  the reason is worth keeping.** The plan promised Overtime 2.0 / 3.0 seeded from the tenant's OT1_5.
+  `scripts/seed-overtime-multipliers.ts` is built, correct and deployed — **do not run it.** Measured:
+  `OT1_5` holds `{"kind":"per_hour","rate":1.5}`, is assigned to **0 employments**, and is the only
+  `per_hour` item on the tenant. `core/pay-rule.ts` resolves `per_hour` as `rate * hours` and validates it
+  with `inMoney`, so that is **RM 1.50/hour**, not 1.5× — somebody typed the multiplier into a money field.
+  Seeding from it yields OT2_0 at 2.00 and OT3_0 at 3.00.
+  **And a pay component is the wrong mechanism anyway:** `localization/my/payroll.ts overtimePay` already
+  derives `orp = monthlyWages / 26`, `hourly = orp / normalDailyHours`, workday OT `= hours * 1.5 * hourly`,
+  with the excess multipliers and wage ceiling configurable (ADR-0019) and the engine already splitting
+  minutes into `ot00/ot10/ot15/ot20/ot30`. That is wage-derived per employee; a `per_hour` component is one
+  flat rate for everyone and cannot express it. Raised as **`b00f9e6e`** asking the reporter what they meant
+  rather than guessing. If the answer is "follow each person's salary", the Formula Builder this item
+  shipped is what expresses it (`basic / 26 / 8 * 2.0 * hours`) and no seed is involved.
 - **`b8aa3466` (Attendance) — partially built, on purpose.** Its plan promised removing the Company work
   schedule and overtime-rate cards from Attendance Policy once backup-shift coverage hit zero. The builder
   refused: that card is the tenant's ONLY editor for the statutory OT wage ceiling and the rest-day /
