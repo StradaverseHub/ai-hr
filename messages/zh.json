@@ -212,7 +212,7 @@
     "joinedWeeksAgo": "{w, plural, one {# 周前} other {# 周前}}入职",
     "joinedMonthsAgo": "{m, plural, one {# 个月前} other {# 个月前}}入职",
     "leaveBalance": "假期余额",
-    "daysRemaining": "剩余 {v} 天",
+    "daysRemaining": "剩余 {cat, select, other {{v} 天}}",
     "selectLeaveType": "选择假期类型",
     "noLeaveTypes": "没有假期类型",
     "nextHoliday": "下一个公共假期",
@@ -1502,7 +1502,7 @@
     "submitRequest": "提交申请",
     "historyCount": "我的请假记录（{count}）",
     "viewDetails": "查看详情",
-    "durationLine": "时长：{v} 天",
+    "durationLine": "时长：{cat, select, other {{v} 天}}",
     "details": {
       "title": "请假详情",
       "leaveType": "休假类型",

@@ -212,7 +212,7 @@
     "joinedWeeksAgo": "เข้าร่วมเมื่อ {w, plural, one {# สัปดาห์} other {# สัปดาห์}} ที่แล้ว",
     "joinedMonthsAgo": "เข้าร่วมเมื่อ {m, plural, one {# เดือน} other {# เดือน}} ที่แล้ว",
     "leaveBalance": "ยอดวันลาคงเหลือ",
-    "daysRemaining": "เหลือ {v} วัน",
+    "daysRemaining": "เหลือ {cat, select, other {{v} วัน}}",
     "selectLeaveType": "เลือกประเภทการลา",
     "noLeaveTypes": "ไม่มีประเภทการลา",
     "nextHoliday": "วันหยุดถัดไป",
@@ -1502,7 +1502,7 @@
     "submitRequest": "ส่งคำขอ",
     "historyCount": "ประวัติการลาของฉัน ({count})",
     "viewDetails": "ดูรายละเอียด",
-    "durationLine": "ระยะเวลา: {v} วัน",
+    "durationLine": "ระยะเวลา: {cat, select, other {{v} วัน}}",
     "details": {
       "title": "รายละเอียดการลา",
       "leaveType": "ประเภทการลา",

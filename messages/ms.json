@@ -212,7 +212,7 @@
     "joinedWeeksAgo": "menyertai {w, plural, one {# minggu} other {# minggu}} lalu",
     "joinedMonthsAgo": "menyertai {m, plural, one {# bulan} other {# bulan}} lalu",
     "leaveBalance": "Baki cuti",
-    "daysRemaining": "{v} hari berbaki",
+    "daysRemaining": "{cat, select, other {{v} hari}} berbaki",
     "selectLeaveType": "Pilih jenis cuti",
     "noLeaveTypes": "Tiada jenis cuti",
     "nextHoliday": "Cuti umum seterusnya",
@@ -1502,7 +1502,7 @@
     "submitRequest": "Hantar permohonan",
     "historyCount": "Sejarah cuti saya ({count})",
     "viewDetails": "Lihat butiran",
-    "durationLine": "Tempoh: {v} hari",
+    "durationLine": "Tempoh: {cat, select, other {{v} hari}}",
     "details": {
       "title": "Butiran cuti",
       "leaveType": "Jenis cuti",
