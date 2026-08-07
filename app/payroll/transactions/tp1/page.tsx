@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployeesPage, listCompanies, listDepartments, employmentSubject } from '@/core/read';
+import { listEmployees, listEmployeesPage, listCompanies, listDepartments, employmentSubject } from '@/core/read';
 import { getTp1ForPerson, listTp1YearsForPerson } from '@/core/tax-relief';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { Tp1DeclarationForm } from '@/components/tp1-declaration-form';
@@ -46,7 +46,26 @@ export default async function Tp1DeclarationPage({
   const sp = await searchParams;
   const { q, companyId, departmentId, employmentId, year: spYear, error } = sp;
 
-  const subject = employmentId ? await employmentSubject(s, employmentId) : null;
+  // 3e3d3fb2 — NARROW THE SELECTION TO THE ADMIN'S OWN COMPANY SCOPE, the way every sibling transaction
+  // screen already does (fixed/page.tsx and zakat/page.tsx both run employees.some(...) before trusting
+  // the id). TP1 was the only one passing ?employmentId= straight through.
+  //
+  // WHAT THIS IS AND IS NOT — measured, because the difference matters to whoever reads this next.
+  // The database already fails closed on COMPANY SCOPE: employment's RLS is
+  //     tenant_id = current_tenant AND (can_see_employment(id) OR can_admin_payroll_for(company_id) OR …)
+  // and both helpers go through app.is_admin_for(). test/tp1-scope-guard.test.ts proves employmentSubject
+  // returns null for an out-of-scope employment even without this line. So this is NOT closing a hole
+  // through which anyone could read anyone.
+  //
+  // What it DOES close is the residue: can_see_employment also returns true through the manager and
+  // head-of-department branches, which cross company boundaries by design. An hr_admin who happens to
+  // line-manage somebody outside their admin companies would pass RLS for that person — fine for a
+  // profile screen, wrong for a tax declaration. Scoping to the same list the picker offers makes the
+  // reachable set and the visible set the same thing, which is the property the sibling screens have.
+  const scopedEmployees = await listEmployees(s, scopeIds);
+  const selectedEmploymentId =
+    employmentId && scopedEmployees.some((e) => e.employmentId === employmentId) ? employmentId : null;
+  const subject = selectedEmploymentId ? await employmentSubject(s, selectedEmploymentId) : null;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
