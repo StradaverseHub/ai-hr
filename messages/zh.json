@@ -2031,7 +2031,9 @@
       "otRounded": "由 {from} 进位为 {to}。",
       "otResult": "本日加班：{minutes}。",
       "otBucket": "{bucket}：{minutes}。",
-      "otNotApplicable": "本日未计算加班。"
+      "otNotApplicable": "本日未计算加班。",
+      "otBreakNoneCliff": "未扣除休息时间——当日工时未达到 {minutes} 休息的门槛。",
+      "otBreakNoneSpanned": "未扣除休息时间——打卡时段并未跨越该班次的休息时段。"
     }
   },
   "org": {

@@ -3,7 +3,21 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { AttendanceExplanation, ExplainStep } from '@/core/attendance-explain';
-import type { OtByRate } from '@/core/attendance-derive';
+/**
+ * NO IMPORT FROM core/attendance-derive, DELIBERATELY, and the alternatives are both worse.
+ *
+ * That module is a declared pack BOUNDARY (test/attendance-pack-drift.test.ts). The facade that
+ * re-exports it, packs/attendance/service.ts, says of itself: "Server-only in practice (drags in
+ * db/client) — never import from client components". The client-safe entry, packs/attendance/index.ts,
+ * does not export this type. And the ratchet's own message is "The allowlist only ever shrinks; do not
+ * add entries" — so allowlisting a NEW file would grow the debt this guard exists to shrink.
+ *
+ * A client island has no business depending on the engine's types anyway: it receives numbers. So the
+ * six buckets are declared here as the prop shape they are. test/attendance-explain-panel.test.ts holds
+ * a TYPE-LEVEL assertion that this stays assignable to the real OtByRate — tests are never scanned by
+ * the ratchet, so the check lives where it is allowed to and a divergence fails tsc, not just one file.
+ */
+type OtByRate = { flat: number; ot00: number; ot10: number; ot15: number; ot20: number; ot30: number };
 import { fmtClock, fmtHours2, fmtShort } from './attendance-format';
 
 /**

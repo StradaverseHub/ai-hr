@@ -2031,7 +2031,9 @@
       "otRounded": "ปัดจาก {from} เป็น {to}",
       "otResult": "ล่วงเวลาของวันนี้: {minutes}",
       "otBucket": "{bucket}: {minutes}",
-      "otNotApplicable": "วันนี้ไม่มีการคำนวณล่วงเวลา"
+      "otNotApplicable": "วันนี้ไม่มีการคำนวณล่วงเวลา",
+      "otBreakNoneCliff": "ไม่มีการหักเวลาพัก — ชั่วโมงทำงานของวันนั้นไม่ถึงเกณฑ์พัก {minutes}",
+      "otBreakNoneSpanned": "ไม่มีการหักเวลาพัก — ช่วงเวลาที่บันทึกไม่คร่อมช่วงพักของกะ"
     }
   },
   "org": {

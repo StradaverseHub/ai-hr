@@ -66,6 +66,33 @@ function deductionSteps(d: DeductionTrace | null, measured: number): ExplainStep
   ];
 }
 
+/**
+ * The break step, told from what the engine actually did.
+ *
+ * Returns NO step when nothing came off — a panel that says "Break deducted: 0m" is answering a question
+ * nobody asked and reads as a rule that fired. When something did come off, the wording says WHICH rule
+ * produced it, because a declared window and the legacy 6-hour cliff are genuinely different answers to
+ * "why was an hour removed from my day?".
+ */
+function breakStep(t: AttendanceTraceV1): ExplainStep[] {
+  const span = t.punch.spanMinutes;
+  const worked = t.punch.workedMinutes;
+  if (span == null || worked == null) return [];
+  const deducted = Math.max(0, span - worked);
+  if (deducted === 0) {
+    return [
+      t.schedule.breakSpanned == null
+        ? { key: 'otBreakNoneCliff', args: { minutes: t.schedule.breakMinutes } }
+        : { key: 'otBreakNoneSpanned' },
+    ];
+  }
+  return [
+    t.schedule.breakSpanned == null
+      ? { key: 'otBreakCliff', args: { minutes: deducted } }
+      : { key: 'otBreakSpanned', args: { minutes: deducted } },
+  ];
+}
+
 export function explainAttendanceDay(raw: unknown): AttendanceExplanation {
   if (raw == null) return { kind: 'unavailable', reason: 'no-trace' };
   if (!isAttendanceTrace(raw)) return { kind: 'unavailable', reason: 'unknown-version' };
@@ -116,9 +143,17 @@ export function explainAttendanceDay(raw: unknown): AttendanceExplanation {
         steps: [
           // The break is the step HR queries most often, and the two ways it can be reached are genuinely
           // different rules — a declared window that the clocking spanned, or the legacy 6-hour cliff.
-          t.schedule.breakSpanned == null
-            ? { key: 'otBreakCliff', args: { minutes: t.schedule.breakMinutes } }
-            : { key: 'otBreakSpanned', args: { minutes: t.schedule.breakSpanned } },
+          //
+          // REPORT WHAT WAS ACTUALLY DEDUCTED, NOT WHAT IS CONFIGURED. The first version printed
+          // `schedule.breakMinutes` on the cliff path and `breakSpanned` on the other, and both could
+          // lie: the cliff only deducts once the day is long enough, so a 4-hour day with a 1-hour break
+          // configured deducted NOTHING while the panel said "Break deducted: 1h 00m" — and its own next
+          // sentence gave span 4h and worked 4h, which does not add up. `breakSpanned: 0` said "the time
+          // clocked spanned the break window" when it had not.
+          //
+          // span − worked IS the deduction, by construction, so it cannot disagree with the figures
+          // beside it. The REASON still comes from which path ran; only the number is now derived.
+          ...breakStep(t),
           { key: 'otWorked', args: { span: t.punch.spanMinutes ?? 0, worked: t.punch.workedMinutes ?? 0 } },
           o.basis === 'nonWorkday'
             ? { key: 'otBasisNonWorkday', args: { minutes: o.rawMinutes } }

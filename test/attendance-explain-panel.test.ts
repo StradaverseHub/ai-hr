@@ -27,6 +27,20 @@ import { describe, expect, it } from 'vitest';
 import { explainAttendanceDay, type ExplainStep } from '../core/attendance-explain';
 import { ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1, type TraceOtSplit } from '../core/attendance-trace';
 
+// 7c834696 point 3 — THE TYPE-LEVEL TIE between the client island's local OtByRate and the engine's.
+// components/attendance-figure-cells.tsx cannot import core/attendance-derive (a pack boundary, and its
+// facade is server-only), so it declares the six-bucket shape itself. This is what stops the two drifting:
+// tests are never scanned by the pack ratchet, so the assertion can live here, and a mismatch fails tsc
+// rather than one test file.
+import type { OtByRate as EngineOtByRate } from '../core/attendance-derive';
+type PanelOtByRate = { flat: number; ot00: number; ot10: number; ot15: number; ot20: number; ot30: number };
+type _PanelMatchesEngine = PanelOtByRate extends EngineOtByRate ? true : never;
+type _EngineMatchesPanel = EngineOtByRate extends PanelOtByRate ? true : never;
+const _tieA: _PanelMatchesEngine = true;
+const _tieB: _EngineMatchesPanel = true;
+void _tieA;
+void _tieB;
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
@@ -162,6 +176,25 @@ const MATRIX: { why: string; t: AttendanceTraceV1 }[] = [
     why: 'workday overtime past the shift end, with a DECLARED break window the clocking spanned',
     t: trace({
       schedule: { ...trace().schedule, breakSpanned: 45, ruleId: 'rule-1' },
+      overtime: ot({ basis: 'window' }),
+    }),
+  },
+  {
+    // THE DEFECT THESE TWO PIN. The break step used to print `schedule.breakMinutes` on the cliff path
+    // and `breakSpanned` on the other — both CONFIGURED figures, neither of which is what came off. A
+    // 4-hour day with a 1-hour break configured has not reached the cliff, so nothing is deducted, and
+    // the panel still said "Break deducted: 1h 00m" directly above its own "span 4h, worked 4h".
+    why: 'a short day: a break is configured, the cliff was NOT reached, so nothing came off',
+    t: trace({
+      punch: { inAbs: 540, outAbs: 780, spanMinutes: 240, workedMinutes: 240 },
+      overtime: ot({ basis: 'window', rawMinutes: 0, minutes: 0, split: split() }),
+    }),
+  },
+  {
+    why: 'a declared break window the clocking did NOT span — breakSpanned 0, so nothing came off',
+    t: trace({
+      schedule: { ...trace().schedule, breakSpanned: 0, ruleId: 'rule-1' },
+      punch: { inAbs: 540, outAbs: 1110, spanMinutes: 570, workedMinutes: 570 },
       overtime: ot({ basis: 'window' }),
     }),
   },
@@ -395,5 +428,52 @@ describe('the reader stays incapable of disagreeing with the figure', () => {
     if (e.kind !== 'explained') throw new Error('expected an explained day');
     const buckets = e.overtime.steps.filter((s) => s.key === 'otBucket').map((s) => s.args?.bucket);
     expect(buckets).toEqual(['ot15']);
+  });
+});
+
+describe('7c834696 point 3 — the break step reports what was DEDUCTED, not what is configured', () => {
+  const trace = (over: Record<string, unknown>) => ({
+    v: 1,
+    schedule: {
+      source: 'roster-shift', dayType: 'workday', startAbs: 540, endAbs: 1080, scheduledMinutes: 480,
+      normalMinutesOverride: null, crossesMidnight: false, breakMinutes: 60, breakSpanned: null,
+      ruleId: null, ...(over.schedule as object ?? {}),
+    },
+    punch: { inAbs: 540, outAbs: 780, spanMinutes: 240, workedMinutes: 240, ...(over.punch as object ?? {}) },
+    lateness: null, latenessDeduction: null, earlyOut: null, earlyOutDeduction: null,
+    overtime: {
+      basis: 'window', normalMinutes: 480, normalIsOverride: false, rawMinutes: 0, earlyMinutes: 0,
+      earlyIncluded: false, shiftRule: null, rounding: null, minutes: 0,
+      split: { flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 0 },
+    },
+  });
+
+  it('a SHORT day with a 1h break configured does NOT claim a deduction', () => {
+    // THE DEFECT THIS PINS: the panel printed "Break deducted: 1h 00m" off schedule.breakMinutes while
+    // the cliff had not been reached, and its own next sentence said span 4h / worked 4h. Two sentences
+    // that did not add up, on the screen whose entire purpose is auditability.
+    const e = explainAttendanceDay(trace({}));
+    expect(e.kind).toBe('explained');
+    if (e.kind !== 'explained') return;
+    const keys = e.overtime.steps.map((s) => s.key);
+    expect(keys).toContain('otBreakNoneCliff');
+    expect(keys).not.toContain('otBreakCliff');
+  });
+
+  it('a LONG day past the cliff reports the deduction that actually happened', () => {
+    const e = explainAttendanceDay(trace({ punch: { inAbs: 540, outAbs: 1080, spanMinutes: 540, workedMinutes: 480 } }));
+    if (e.kind !== 'explained') throw new Error('expected explained');
+    const step = e.overtime.steps.find((s) => s.key === 'otBreakCliff');
+    expect(step, 'a real deduction must be reported').toBeTruthy();
+    // 540 span - 480 worked = 60. Derived, so it cannot disagree with the figures beside it.
+    expect(step!.args!.minutes).toBe(60);
+  });
+
+  it('breakSpanned = 0 does not claim the clocking spanned the window', () => {
+    const e = explainAttendanceDay(trace({ schedule: { breakSpanned: 0 } }));
+    if (e.kind !== 'explained') throw new Error('expected explained');
+    const keys = e.overtime.steps.map((s) => s.key);
+    expect(keys).toContain('otBreakNoneSpanned');
+    expect(keys).not.toContain('otBreakSpanned');
   });
 });

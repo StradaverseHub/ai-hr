@@ -2031,7 +2031,9 @@
       "otRounded": "Làm tròn từ {from} thành {to}.",
       "otResult": "Tăng ca trong ngày: {minutes}.",
       "otBucket": "{bucket}: {minutes}.",
-      "otNotApplicable": "Ngày này không tính tăng ca."
+      "otNotApplicable": "Ngày này không tính tăng ca.",
+      "otBreakNoneCliff": "Không trừ giờ nghỉ — ngày làm chưa đủ dài để đạt mức nghỉ {minutes}.",
+      "otBreakNoneSpanned": "Không trừ giờ nghỉ — thời gian chấm công không bắc qua khung giờ nghỉ của ca."
     }
   },
   "org": {

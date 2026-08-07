@@ -2031,7 +2031,9 @@
       "otRounded": "Rounded from {from} to {to}.",
       "otResult": "Overtime for the day: {minutes}.",
       "otBucket": "{bucket}: {minutes}.",
-      "otNotApplicable": "No overtime was calculated for this day."
+      "otNotApplicable": "No overtime was calculated for this day.",
+      "otBreakNoneCliff": "No break was deducted — the day was not long enough to reach the {minutes} break.",
+      "otBreakNoneSpanned": "No break was deducted — the time clocked did not span the shift’s break window."
     }
   },
   "org": {
