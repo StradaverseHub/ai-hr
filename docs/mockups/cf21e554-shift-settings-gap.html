@@ -1,0 +1,268 @@
+<meta charset="utf-8">
+<title>cf21e554 — Shift Setting: your reference screen vs ours, field by field</title>
+<!--
+  Mockup for cf21e554 (Shift Setting). The reporter's xlsx held five pasted screenshots of a legacy HRMS
+  Shift screen (tabs: General, General (More...), Break Time Schedule, Overtime Schedule) for shift MB28.
+  Every "In ours" cell was verified against app/admin/attendance/page.tsx, components/shift-time-fields.tsx,
+  core/roster.ts and the shift table in db/schema.ts. Figures measured on production 2026-08-07.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:17px;margin:0 0 4px}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .sub{font-size:12px;color:var(--mf);margin:0 0 16px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 10px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  table{width:100%;border-collapse:collapse;font-size:12.2px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:6px 9px;border-top:1px solid var(--border);vertical-align:top}
+  td.mono{font-variant-numeric:tabular-nums}
+  tr.miss td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
+  tr.part td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+  tr.have td:first-child{box-shadow:inset 3px 0 0 var(--good)}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:700;white-space:nowrap}
+  .p-have{background:#dcfce7;color:#166534}
+  .p-part{background:#fef3c7;color:#92400e}
+  .p-miss{background:#fee2e2;color:#991b1b}
+  .p-none{background:var(--muted);color:var(--mf)}
+  .act{font-weight:600}
+  .act.add{color:var(--primary)}
+  .act.no{color:var(--mf);font-weight:500}
+  .act.later{color:var(--warn)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--mf);margin:10px 0 0}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .hole{background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:9px 11px;font-size:12px;
+        color:#7c2d12;margin-top:11px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+  .f{display:flex;flex-direction:column;gap:3px}
+  .f label{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600}
+  .f .in{background:#fff;border:1px solid var(--border);border-radius:7px;padding:5px 9px;
+         font-size:12px;font-variant-numeric:tabular-nums;min-height:27px}
+  .f .in.new{border-color:var(--primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 12%,transparent)}
+  .f .in.ro{background:var(--muted);color:var(--mf);border-style:dashed}
+  .f .in.ph{color:#a1a1ac}
+  .f.wide{grid-column:span 2}
+  .badge{display:inline-block;padding:1px 6px;border-radius:5px;font-size:9.5px;font-weight:700;
+         background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary);margin-left:5px}
+  .badge.rec{background:#fef3c7;color:#92400e}
+  .tabs{display:flex;gap:4px;margin-bottom:12px}
+  .tab{padding:5px 13px;border-radius:9px 9px 0 0;font-size:11.5px;font-weight:600;
+       background:var(--muted);color:var(--mf);border:1px solid var(--border);border-bottom:none}
+  .tab.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .tab.ghost{opacity:.5}
+</style>
+
+<h1>Shift Setting — your reference screen beside ours, one field at a time</h1>
+<p class="sub">Compared against your own shift <b>MB28</b> (“WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700)”), which is
+  live on your system today. Sketch only — wording, spacing and colours will differ from the finished screen.</p>
+
+<div class="card">
+  <h2><span class="num">1</span>General tab — 4 of 14 boxes we already have</h2>
+  <p class="q">Reference tab: General. Every row below was checked against the real Shift settings screen, not assumed.</p>
+  <table>
+    <thead><tr>
+      <th style="width:19%">Field on your reference screen</th>
+      <th style="width:14%">Your value (MB28)</th>
+      <th style="width:9%">In ours</th>
+      <th style="width:32%">What ours has today</th>
+      <th style="width:26%">Action</th>
+    </tr></thead>
+    <tbody>
+      <tr class="have"><td>Shift Code</td><td class="mono">MB28</td><td><span class="pill p-have">Yes</span></td>
+        <td>Shift code — required, must be unique, and repeating one gives a clear message</td><td class="act no">No change</td></tr>
+      <tr class="part"><td>Description</td><td class="mono">WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700)</td><td><span class="pill p-part">Partly</span></td>
+        <td>No Description box — you typed the whole description into <b>Shift name</b></td><td class="act add">Add a Description box</td></tr>
+      <tr class="miss"><td>Day Type</td><td class="mono">Work Day [W]</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present. We set working days as a Mon–Sun tick row instead</td><td class="act add">Add — recorded and shown only</td></tr>
+      <tr class="miss"><td>Category</td><td class="mono">Morning [1]</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present</td><td class="act add">Add — recorded and shown only</td></tr>
+      <tr class="miss"><td>Early In</td><td class="mono">0500</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present — there is no earliest allowed clock-in</td><td class="act add">Add</td></tr>
+      <tr class="have"><td>Schedule In</td><td class="mono">0800</td><td><span class="pill p-have">Yes</span></td>
+        <td>Time in</td><td class="act no">No change</td></tr>
+      <tr class="have"><td>Schedule Out</td><td class="mono">1700</td><td><span class="pill p-have">Yes</span></td>
+        <td>Time out</td><td class="act no">No change</td></tr>
+      <tr class="miss"><td>Late Out</td><td class="mono">0430+</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present — there is no latest allowed clock-out, and no way to say “next morning”</td><td class="act add">Add, with the next-day marker</td></tr>
+      <tr class="have"><td>Schedule Hours</td><td class="mono">0900</td><td><span class="pill p-have">Yes</span></td>
+        <td>Worked out automatically from the times minus breaks, with a manual figure that overrides it</td><td class="act no">No change</td></tr>
+      <tr class="miss"><td>Full Day Leave Hours</td><td class="mono">0900</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present — leave is counted in days here</td><td class="act add">Add — recorded and shown only</td></tr>
+      <tr class="miss"><td>Normal Hours Rounding</td><td class="mono">(blank)</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present. Rounding exists only for overtime, and only in the other screen</td><td class="act add">Add</td></tr>
+      <tr class="miss"><td>Full Day OT Hours</td><td class="mono">0900</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present</td><td class="act add">Add — recorded and shown only</td></tr>
+      <tr class="part"><td>1st Half Day (Clock Out)</td><td class="mono">1300</td><td><span class="pill p-part">Partly</span></td>
+        <td>One half-day cut-off for the whole company (1300), not one per shift</td><td class="act add">Add on the shift; company value stays the fallback</td></tr>
+      <tr class="miss"><td>2nd Half Day (Clock In)</td><td class="mono">1200</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present</td><td class="act add">Add on the shift</td></tr>
+    </tbody>
+  </table>
+  <div class="hole"><b>The fourth tab was never opened.</b> Your pictures cover General, Break Time Schedule and
+    Overtime Schedule. <b>General (More…)</b> appears only as a greyed tab, so we cannot list what is on it and we
+    will not guess. One picture of that tab and its boxes join the same build.</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Break Time Schedule tab — breaks exist, but every one of them is unpaid</h2>
+  <table>
+    <thead><tr>
+      <th style="width:24%">Column on your reference screen</th><th style="width:9%">In ours</th>
+      <th style="width:41%">What ours has today</th><th style="width:26%">Action</th>
+    </tr></thead>
+    <tbody>
+      <tr class="part"><td>Sequence No.</td><td><span class="pill p-part">Partly</span></td>
+        <td>Rows keep their order, but carry no number</td><td class="act add">Show the row number</td></tr>
+      <tr class="have"><td>Start Time</td><td><span class="pill p-have">Yes</span></td>
+        <td>Break start</td><td class="act no">No change</td></tr>
+      <tr class="have"><td>End Time</td><td><span class="pill p-have">Yes</span></td>
+        <td>Break end</td><td class="act no">No change</td></tr>
+      <tr class="part"><td>Duration</td><td><span class="pill p-part">Partly</span></td>
+        <td>Only the combined total of all breaks is shown, never one row on its own</td><td class="act add">Show each row’s own length</td></tr>
+      <tr class="miss"><td>Paid?</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present — every break is treated as unpaid and taken off the hours</td><td class="act add">Add the Paid tick</td></tr>
+    </tbody>
+  </table>
+  <div class="two" style="margin-top:13px">
+    <div class="box bad">
+      <span class="tag bad">NOW</span>
+      <table><thead><tr><th>Start</th><th>End</th><th>Paid?</th><th>Taken off hours</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">12:00</td><td class="mono">13:00</td><td><span class="pill p-none">no such tick</span></td><td class="mono">60 min</td></tr>
+          <tr><td class="mono">15:00</td><td class="mono">15:15</td><td><span class="pill p-none">no such tick</span></td><td class="mono">15 min</td></tr>
+        </tbody></table>
+      <p class="note">Total taken off: <b>75 minutes</b>. A tea break you intend to pay for cannot be told apart from a lunch break you do not.</p>
+    </div>
+    <div class="box good">
+      <span class="tag good">AFTER</span>
+      <table><thead><tr><th>No.</th><th>Start</th><th>End</th><th>Length</th><th>Paid?</th><th>Taken off</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">1</td><td class="mono">12:00</td><td class="mono">13:00</td><td class="mono">60 min</td><td>unticked</td><td class="mono">60 min</td></tr>
+          <tr><td class="mono">2</td><td class="mono">15:00</td><td class="mono">15:15</td><td class="mono">15 min</td><td><b>ticked</b></td><td class="mono">0 min</td></tr>
+        </tbody></table>
+      <p class="note">Total taken off: <b>60 minutes</b>. Your two live shifts that use break windows both leave the
+        tick off, so their hours do not move by a single minute.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Overtime Schedule tab — ours exists, one screen away, and counts differently</h2>
+  <p class="q">Ours lives under “Lateness, Early Out &amp; Overtime Settings”, in bands measured in minutes past normal
+    hours — not in clock times like your 0500–0800 and 1700–2359+ rows.</p>
+  <table>
+    <thead><tr>
+      <th style="width:19%">Column on your reference screen</th><th style="width:14%">Your values (MB28)</th><th style="width:9%">In ours</th>
+      <th style="width:32%">What ours has today</th><th style="width:26%">Action</th>
+    </tr></thead>
+    <tbody>
+      <tr class="part"><td>Sequence No.</td><td class="mono">1, 2</td><td><span class="pill p-part">Partly</span></td>
+        <td>Overtime bands keep their order in the other screen</td><td class="act add">Number them on the shift</td></tr>
+      <tr class="miss"><td>OT</td><td class="mono">NORB, NORA</td><td><span class="pill p-miss">No</span></td>
+        <td>Bands have no name</td><td class="act add">Add a name per window</td></tr>
+      <tr class="miss"><td>OT Shift</td><td class="mono">(blank)</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present</td><td class="act later">Not this round</td></tr>
+      <tr class="miss"><td>Start Time / End Time</td><td class="mono">0500–0800, 1700–2359+</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present — ours counts from “minutes past normal hours”, never from the clock</td><td class="act add">Add clock-time windows</td></tr>
+      <tr class="part"><td>Min.Hrs.</td><td class="mono">0027</td><td><span class="pill p-part">Partly</span></td>
+        <td>The first overtime band starts at a From figure, which acts as the minimum</td><td class="act add">Put it on the shift window</td></tr>
+      <tr class="part"><td>Max.Hrs.</td><td class="mono">(blank)</td><td><span class="pill p-part">Partly</span></td>
+        <td>Each band has a To figure that bounds it</td><td class="act add">Put it on the shift window</td></tr>
+      <tr class="miss"><td>Next OT (if exceed max hours)</td><td class="mono">(blank)</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present</td><td class="act later">Not this round</td></tr>
+      <tr class="have"><td>Rounding Table</td><td class="mono">R31</td><td><span class="pill p-have">Yes</span></td>
+        <td>Each overtime band already has rounding and a round-to figure (yours rounds to the hour past 60 minutes)</td><td class="act no">No change</td></tr>
+      <tr class="miss"><td>OT Allowance</td><td class="mono">(blank)</td><td><span class="pill p-miss">No</span></td>
+        <td>A separate monthly attendance allowance exists, but it is not attached to an overtime band</td><td class="act later">Not this round</td></tr>
+      <tr class="miss"><td>Adjust OT 1 / Adjust OT W</td><td class="mono">0030- / 0130</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present — the “0.5 OT HOUR ADJ” in your own shift name has nowhere to live</td><td class="act add">Add the adjustment</td></tr>
+      <tr class="miss"><td>Adjust OT 2 and beyond</td><td class="mono">(blank)</td><td><span class="pill p-miss">No</span></td>
+        <td>Not present, and blank on both of your rows</td><td class="act later">Not this round</td></tr>
+    </tbody>
+  </table>
+  <div class="hole"><b>How we read your adjustment columns:</b> 0130 with 0030- means “once overtime reaches 1 hour
+    30 minutes, deduct 30 minutes”. That is what we will build, and it matches the name you gave MB28. If it means
+    something else, reject this plan and tell us — we would rather change it now than build it wrong.</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">4</span>What the General tab looks like afterwards, with your MB28 figures</h2>
+  <div class="tabs">
+    <span class="tab on">General</span><span class="tab ghost">General (More…)</span>
+    <span class="tab">Break Time Schedule</span><span class="tab">Overtime Schedule</span>
+  </div>
+  <div class="fgrid">
+    <div class="f"><label>Shift code</label><div class="in">MB28</div></div>
+    <div class="f wide"><label>Description <span class="badge">new</span></label><div class="in new">WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700)</div></div>
+    <div class="f"><label>Shift name</label><div class="in">MB28 Morning Full</div></div>
+    <div class="f"><label>Day type <span class="badge rec">shown only</span></label><div class="in new">Work Day</div></div>
+    <div class="f"><label>Category <span class="badge rec">shown only</span></label><div class="in new">Morning</div></div>
+    <div class="f"><label>Shift type</label><div class="in">Normal</div></div>
+    <div class="f"><label>Working days</label><div class="in">Mon Tue Wed Thu Fri</div></div>
+    <div class="f"><label>Earliest clock-in <span class="badge">new</span></label><div class="in new">05:00</div></div>
+    <div class="f"><label>Time in</label><div class="in">08:00</div></div>
+    <div class="f"><label>Time out</label><div class="in">17:00</div></div>
+    <div class="f"><label>Latest clock-out <span class="badge">new</span></label><div class="in new">04:30 next day</div></div>
+    <div class="f"><label>Normal hours</label><div class="in ro">9h 00m (worked out for you)</div></div>
+    <div class="f"><label>Normal hours rounding <span class="badge">new</span></label><div class="in new">Nearest 15 min</div></div>
+    <div class="f"><label>Full-day leave hours <span class="badge rec">shown only</span></label><div class="in new">9h 00m</div></div>
+    <div class="f"><label>Full-day overtime hours <span class="badge rec">shown only</span></label><div class="in new">9h 00m</div></div>
+    <div class="f"><label>1st half day — clock out <span class="badge">new</span></label><div class="in new">13:00</div></div>
+    <div class="f"><label>2nd half day — clock in <span class="badge">new</span></label><div class="in new">12:00</div></div>
+    <div class="f"><label>Lateness, Early Out &amp; Overtime</label><div class="in">Standard (default)</div></div>
+    <div class="f"><label>Shift premium (pay)</label><div class="in ph">None</div></div>
+  </div>
+  <div class="legend">
+    <span><b>new</b> — a box that does not exist today</span>
+    <span><b>shown only</b> — recorded and displayed, but not yet changing any figure; the screen says so</span>
+    <span>Every new box starts empty on your nine live shifts</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">5</span>The rest of your request — what already works, and what does not</h2>
+  <table>
+    <thead><tr><th style="width:30%">You asked for</th><th style="width:11%">Today</th><th style="width:59%">Detail</th></tr></thead>
+    <tbody>
+      <tr class="have"><td>Unique shift code, duplicates prevented</td><td><span class="pill p-have">Works</span></td>
+        <td>Repeating a code is refused with a message naming the code</td></tr>
+      <tr class="have"><td>Required boxes checked before saving</td><td><span class="pill p-have">Works</span></td>
+        <td>Code, name and both times are checked; breaks must sit inside the shift and start before they end</td></tr>
+      <tr class="have"><td>Working hours worked out automatically</td><td><span class="pill p-have">Works</span></td>
+        <td>Times minus breaks, with a manual figure that overrides it</td></tr>
+      <tr class="have"><td>Overnight shift, counted against the shift not the date</td><td><span class="pill p-have">Works</span></td>
+        <td>A shift ending at or before it starts is treated as crossing midnight, and the whole night lands on one record</td></tr>
+      <tr class="have"><td>Late arrival, early leaving, grace periods</td><td><span class="pill p-have">Works</span></td>
+        <td>Set in the Lateness, Early Out &amp; Overtime Settings screen; late minutes are stored per day</td></tr>
+      <tr class="have"><td>Overtime rounding, and different rates for rest day and public holiday</td><td><span class="pill p-have">Works</span></td>
+        <td>Per band, in that same screen</td></tr>
+      <tr class="miss"><td>Copy a shift</td><td><span class="pill p-miss">Missing</span></td>
+        <td>Was removed when shifts became shared across the whole organisation. Coming back</td></tr>
+      <tr class="miss"><td>Switch a deactivated shift back on</td><td><span class="pill p-miss">Missing</span></td>
+        <td>Deactivating is one way today; the shift disappears from the list. Being fixed</td></tr>
+      <tr class="miss"><td>Paid and unpaid breaks</td><td><span class="pill p-miss">Missing</span></td>
+        <td>See section 2 — being added</td></tr>
+      <tr class="miss"><td>Split shift (two work blocks in one day)</td><td><span class="pill p-miss">Missing</span></td>
+        <td>Not supported, and not in this round</td></tr>
+      <tr class="have"><td>Rotating shift</td><td><span class="pill p-have">Works</span></td>
+        <td>Handled by Roster Management, which assigns different shifts across the days</td></tr>
+      <tr class="part"><td>Ignore duplicate punches</td><td><span class="pill p-part">Partly</span></td>
+        <td>A repeat clocking at or before the previous one is refused outright; there is no setting for a tolerance window</td></tr>
+    </tbody>
+  </table>
+</div>

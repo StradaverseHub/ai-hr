@@ -1,0 +1,227 @@
+<meta charset="utf-8">
+<title>e440991b — Reprocess Payroll: the button, the page, the result</title>
+<!--
+  Mockup for e440991b (Payroll Process workflow), plan revision 2 — the reporter's rejection.
+  The rejection is a precise spec for a Reprocess Payroll button on the Payroll Process page leading to a
+  dedicated Reprocess Selected Employees page. The engine already exists (35 completed reprocess jobs on
+  production, latest 2026-08-07); what is missing is the route to it and the result afterwards.
+  Company names, periods, net totals, job counts and recalculation-entry counts are REAL production
+  figures measured 2026-08-07. Employee names are illustrative (two of them are the reporter's own
+  examples from the ticket) — labelled as such on the picture.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--goodbg:#f0fdf4;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h2{font-size:14px;margin:0 0 4px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border);vertical-align:middle}
+  .r{text-align:right}
+  .tn{font-variant-numeric:tabular-nums}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:12px;background:#fff}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:9px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap}
+  .proc{background:#dbeafe;color:#1d4ed8}
+  .new{background:color-mix(in srgb,var(--primary) 13%,white);color:var(--primary)}
+  .lnk{color:var(--primary);font-weight:600}
+  .lnk.mut{color:var(--mf);font-weight:500}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:6px 13px;
+       font-size:12px;font-weight:600}
+  .btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+  .btn.hot{box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 22%,transparent)}
+  .btn.off{background:#e6e7ef;color:#9a9aa6}
+  .note{font-size:11.5px;color:var(--mf);margin-top:9px}
+  .stat{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:12px}
+  .st{border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--muted)}
+  .st b{display:block;font-size:21px;line-height:1.25;font-variant-numeric:tabular-nums}
+  .st span{font-size:11px;color:var(--mf)}
+  .shot{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;
+       border-bottom:1px solid var(--border)}
+  .ttl{font-weight:700;font-size:14px}
+  .back{color:var(--primary);font-weight:600;font-size:12px;display:block;margin-bottom:3px}
+  .pad{padding:13px}
+  .summary{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin-bottom:12px}
+  .sm{border:1px solid var(--border);border-radius:9px;padding:8px 10px}
+  .sm span{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600}
+  .sm b{font-size:12.5px;font-variant-numeric:tabular-nums}
+  .cb{display:inline-block;width:13px;height:13px;border:1.5px solid #b6b8c8;border-radius:3.5px;
+      vertical-align:-2px;margin-right:8px;background:#fff}
+  .cb.on{background:var(--primary);border-color:var(--primary);position:relative}
+  .cb.on:after{content:"";position:absolute;left:3.6px;top:.9px;width:4px;height:8px;border:solid #fff;
+      border-width:0 2px 2px 0;transform:rotate(43deg)}
+  .picked{background:color-mix(in srgb,var(--primary) 6%,white)}
+  .rev{border:1px dashed color-mix(in srgb,var(--primary) 45%,white);border-radius:10px;padding:10px 12px;
+       background:color-mix(in srgb,var(--primary) 5%,white);margin-top:12px}
+  .rev b{font-size:12px}
+  .reason{border:1px solid var(--border);border-radius:9px;padding:8px 10px;color:#a4a5b3;font-size:12px;
+          margin-top:11px;background:#fff}
+  .scroll{border:1px solid var(--border);border-left:3px solid #fca5a5;border-radius:9px;padding:9px 11px;
+          font-size:12px;margin-top:8px;background:#fff}
+  .scroll i{color:var(--mf);font-style:normal}
+  .arrow{color:var(--mf);padding:0 5px}
+  .up{color:#166534;font-weight:700}
+  .done{border:1px solid #86efac;background:var(--goodbg);border-radius:10px;padding:10px 12px;
+        font-size:12.5px;font-weight:600;color:#14532d;margin-bottom:11px}
+  .amber{border:1px solid #fcd34d;background:#fffbeb;border-radius:10px;padding:9px 12px;font-size:11.5px;
+         color:#78350f;margin-top:11px}
+  .cap{font-size:11px;color:var(--mf);margin-top:8px;font-style:italic}
+</style>
+
+<div class="card">
+  <h2>What we found on your live system before drawing any of this</h2>
+  <p class="sub">Reprocessing is not missing — it works, and you are using it. What is missing is a way to reach it and a screen that shows you what it did.</p>
+  <div class="stat">
+    <div class="st"><b>35</b><span>reprocessing runs completed on your system</span></div>
+    <div class="st"><b>25 of 35</b><span>corrected exactly one employee</span></div>
+    <div class="st"><b>7 Aug 2026</b><span>the most recent one — this week</span></div>
+    <div class="st"><b>37</b><span>Recalculation History entries stacked on one January run</span></div>
+  </div>
+  <p class="note">Today the only route is: open the payroll run, scroll past the payslip list and past the
+    Recalculation History section, and find the tick-boxes at the very bottom. That is the workflow you are
+    asking us to replace, and you are right to.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">1</span>Payroll Process — a Reprocess button on the row itself</h2>
+  <p class="sub">Your own August runs, exactly as they stand today.</p>
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW</span>
+      <table>
+        <thead><tr><th>Period</th><th>Company</th><th>Status</th><th class="r">Actions</th></tr></thead>
+        <tbody>
+          <tr><td class="tn">2026-08</td><td>ISEDECOR BINA SDN BHD</td><td><span class="chip proc">Processed</span></td>
+              <td class="r"><span class="lnk">View</span> &nbsp; <span class="lnk mut">Reset Payroll</span></td></tr>
+          <tr><td class="tn">2026-08</td><td>SpaceX Sdn Bhd</td><td><span class="chip proc">Processed</span></td>
+              <td class="r"><span class="lnk">View</span> &nbsp; <span class="lnk mut">Reset Payroll</span></td></tr>
+          <tr><td class="tn">2026-08</td><td>Fiamma (Chin Hin Property)</td><td><span class="chip proc">Processed</span></td>
+              <td class="r"><span class="lnk">View</span> &nbsp; <span class="lnk mut">Reset Payroll</span></td></tr>
+        </tbody>
+      </table>
+      <div class="scroll"><b>No Reprocess anywhere on this screen.</b>
+        <i>View &rarr; scroll past 5 payslips &rarr; scroll past 9 Recalculation History entries &rarr; tick-boxes.</i></div>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER</span>
+      <table>
+        <thead><tr><th>Period</th><th>Company</th><th>Status</th><th class="r">Actions</th></tr></thead>
+        <tbody>
+          <tr><td class="tn">2026-08</td><td>ISEDECOR BINA SDN BHD</td><td><span class="chip proc">Processed</span></td>
+              <td class="r"><span class="lnk">View</span> &nbsp; <span class="chip new">Reprocess</span> &nbsp; <span class="lnk mut">Reset Payroll</span></td></tr>
+          <tr><td class="tn">2026-08</td><td>SpaceX Sdn Bhd</td><td><span class="chip proc">Processed</span></td>
+              <td class="r"><span class="lnk">View</span> &nbsp; <span class="chip new">Reprocess</span> &nbsp; <span class="lnk mut">Reset Payroll</span></td></tr>
+          <tr><td class="tn">2026-08</td><td>Fiamma (Chin Hin Property)</td><td><span class="chip proc">Processed</span></td>
+              <td class="r"><span class="lnk">View</span> &nbsp; <span class="chip new">Reprocess</span> &nbsp; <span class="lnk mut">Reset Payroll</span></td></tr>
+        </tbody>
+      </table>
+      <p class="note">One click from the list. The same Reprocess Payroll button also sits at the
+        <b>top</b> of the payroll run screen, next to Close Payroll — so you never scroll to find it.
+        It appears on Processed runs only, and never on a closed one.</p>
+    </div>
+  </div>
+  <p class="cap">Reset Payroll is a different thing and stays where it is: it sends the whole run back to
+    Draft. Reprocess recalculates only the people you pick and leaves everyone else's payslip untouched.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>The new page — Reprocess Selected Employees</h2>
+  <p class="sub">A screen of its own, not a panel buried under something else.</p>
+  <div class="shot">
+    <div class="bar">
+      <div><span class="back">&larr; Back to Payroll Process</span><span class="ttl">Reprocess Selected Employees</span></div>
+      <span class="chip proc">Processed &middot; not yet closed</span>
+    </div>
+    <div class="pad">
+      <div class="summary">
+        <div class="sm"><span>Payroll period</span><b>August 2026</b></div>
+        <div class="sm"><span>Payroll cycle</span><b>Regular</b></div>
+        <div class="sm"><span>Company</span><b>ISEDECOR BINA</b></div>
+        <div class="sm"><span>Payment date</span><b>28 Aug 2026</b></div>
+        <div class="sm"><span>Employees</span><b>5</b></div>
+        <div class="sm"><span>Total net pay</span><b>23,296.70</b></div>
+      </div>
+
+      <table>
+        <thead><tr><th style="width:38%">Employee &nbsp; &middot; &nbsp; 2 of 5 selected &nbsp;
+            <span class="lnk">Select all</span> &nbsp; <span class="lnk">Clear</span></th>
+            <th>Already reprocessed</th><th class="r">Gross pay</th><th class="r">Net pay</th></tr></thead>
+        <tbody>
+          <tr class="picked"><td><span class="cb on"></span><b>T100001</b> &nbsp; John Tan</td>
+              <td style="color:var(--mf)">&mdash;</td><td class="r tn">4,100.00</td><td class="r tn">3,200.00</td></tr>
+          <tr><td><span class="cb"></span><b>T100002</b> &nbsp; Alice Lim</td>
+              <td style="color:var(--mf)">&mdash;</td><td class="r tn">3,780.00</td><td class="r tn">2,950.00</td></tr>
+          <tr class="picked"><td><span class="cb on"></span><b>T100003</b> &nbsp; Raj Kumar</td>
+              <td>twice</td><td class="r tn">6,250.00</td><td class="r tn">5,014.20</td></tr>
+          <tr><td><span class="cb"></span><b>T100004</b> &nbsp; Wong Mei Ling</td>
+              <td>once</td><td class="r tn">7,400.00</td><td class="r tn">5,932.50</td></tr>
+          <tr><td><span class="cb"></span><b>T100005</b> &nbsp; Ahmad Faizal</td>
+              <td style="color:var(--mf)">&mdash;</td><td class="r tn">7,600.00</td><td class="r tn">6,200.00</td></tr>
+        </tbody>
+      </table>
+
+      <div class="rev">
+        <b>Before you submit &mdash; you are about to reprocess 2 of 5 employees</b>
+        <div style="margin-top:5px;font-size:12px">T100001 John Tan &nbsp;&middot;&nbsp; T100003 Raj Kumar</div>
+        <div class="note" style="margin-top:6px">The other 3 payslips are not touched. The run's totals
+          are adjusted by the difference only.</div>
+      </div>
+
+      <div class="reason">Reason for reprocessing (optional) — e.g. overtime claim approved late</div>
+
+      <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:12px">
+        <span class="btn ghost">Cancel</span>
+        <span class="btn hot">Reprocess 2 employees</span>
+      </div>
+    </div>
+  </div>
+  <p class="cap">Employee names and gross figures here are examples — two of the names are the ones from
+    your own request. The real screen lists this run's own five employees, and the net figures shown do
+    add up to this run's real total of 23,296.70.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>After it runs — what changed, on the same page</h2>
+  <p class="sub">Today this ends in a one-line message and you are returned to a long run screen. It will end here instead.</p>
+  <div class="shot">
+    <div class="bar">
+      <div><span class="back">&larr; Back to Payroll Process</span><span class="ttl">Reprocess Selected Employees</span></div>
+      <span class="chip new">August 2026 &middot; ISEDECOR BINA</span>
+    </div>
+    <div class="pad">
+      <div class="done">&#10003; Reprocessing complete — 2 of 5 employees recalculated · 7 Aug 2026, 09:09</div>
+      <table>
+        <thead><tr><th style="width:30%">Employee</th><th class="r">Net pay before</th><th class="r">Net pay after</th>
+            <th>What moved</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td><b>T100001</b> &nbsp; John Tan</td><td class="r tn">3,200.00</td>
+              <td class="r tn"><b class="up">3,412.55</b></td><td>Gross pay, EPF, PCB</td>
+              <td class="tn" style="color:var(--mf)">Overtime added after the run</td></tr>
+          <tr><td><b>T100003</b> &nbsp; Raj Kumar</td><td class="r tn">5,014.20</td>
+              <td class="r tn">5,014.20</td><td>PCB only — pay unchanged</td>
+              <td class="tn" style="color:var(--mf)">July was revised, so the year-to-date tax replays</td></tr>
+        </tbody>
+      </table>
+      <div class="amber"><b>Earlier reprocessing on this payroll run — 9 entries.</b> The Recalculation
+        History that clutters the payroll run screen today moves here, where it belongs. Nothing is
+        deleted, and it stays in the Audit Trail as well.</div>
+    </div>
+  </div>
+  <p class="cap">Figures in this results table are illustrative. The real screen reads them from the
+    payslips themselves, before and after — it never re-adds the numbers a second way.</p>
+</div>

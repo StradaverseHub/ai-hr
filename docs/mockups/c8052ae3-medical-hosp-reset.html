@@ -1,0 +1,159 @@
+<meta charset="utf-8">
+<title>c8052ae3 — Medical &amp; Hospitalization back to 0.00, and the fault that made them negative</title>
+<!--
+  Mockup for c8052ae3 (Reset Remaining Medical Leave & Hospitalization Leave Balances).
+  Every figure is REAL, measured on production 2026-08-07 (single tenant, Demo Group):
+    Mei Ling (employment 5162843b): SICK accrual +14.00 (2026-01-06), profile_recalc -28.00 (2026-07-23)
+                                    HOSPITALIZATION accrual +60.00, profile_recalc -120.00
+    leave_entitlement_recalc_audit: previous_entitlement 180.00 -> new 60.00, delta -120.00
+    Negatives as at today: SICK 8 employments (worst -28.00), HOSPITALIZATION 5 (all -60.00)
+    147 leave_ledger rows on the two types; ZERO debit rows on either.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:11px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+
+  /* leave balance tiles, as on My Leave */
+  .tiles{display:flex;gap:9px;margin-bottom:12px}
+  .tile{flex:1;background:#fff;border:1px solid var(--border);border-radius:11px;padding:10px 11px}
+  .tile .ico{font-size:13px;line-height:1;margin-bottom:5px;opacity:.8}
+  .tile .val{font-size:21px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .tile .cap{font-size:10.5px;color:var(--mf);margin-top:1px}
+  .tile.neg{border-color:var(--bad);box-shadow:0 0 0 2px #fee2e2 inset}
+  .tile.neg .val{color:var(--bad)}
+  .tile.ok{border-color:#86efac}
+  .tile.ok .val{color:var(--good)}
+  .tile.dim{opacity:.5}
+
+  /* breakdown drawer */
+  .drawer{background:#fff;border:1px solid var(--border);border-radius:11px;padding:12px 13px}
+  .drawer h3{margin:0 0 1px;font-size:12.5px}
+  .drawer .asat{font-size:10.5px;color:var(--mf);margin:0 0 9px}
+  .sum{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:6px}
+  .ln{display:flex;justify-content:space-between;align-items:baseline;padding:3.5px 0;font-size:12px}
+  .ln .n{font-variant-numeric:tabular-nums}
+  .ln.tot{border-top:1px solid var(--border);margin-top:5px;padding-top:6px;font-weight:700}
+  .ln.avail{border-top:1px solid var(--border);margin-top:4px;padding-top:6px;font-weight:700}
+  .hot{color:var(--bad);font-weight:700}
+  .okn{color:var(--good);font-weight:700}
+  .note{font-size:11.5px;color:var(--mf);margin-top:11px}
+  .why{background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:10px 12px;font-size:12px;
+       color:#7c2d12;margin-top:12px}
+  .why b{color:#7c2d12}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+  td.l{font-variant-numeric:normal}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .keep{background:#dcfce7;color:#166534}
+  .gone{background:#fee2e2;color:#991b1b}
+  .arch{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Mei Ling's leave screen — today, and after the correction</h2>
+  <p class="q">“Medical Leave and Hospitalization Leave are still showing negative balances”</p>
+
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">TODAY — your live figures</span>
+      <div class="tiles">
+        <div class="tile dim"><div class="ico">&#9992;</div><div class="val">6.50</div><div class="cap">Annual Leave</div></div>
+        <div class="tile neg"><div class="ico">&#127777;</div><div class="val">&minus;14.00</div><div class="cap">Medical Leave</div></div>
+        <div class="tile neg"><div class="ico">&#129658;</div><div class="val">&minus;60.00</div><div class="cap">Hospitalization</div></div>
+      </div>
+      <div class="drawer">
+        <h3>Medical Leave</h3>
+        <p class="asat">As at 2026-08-07</p>
+        <div class="sum">Leave summary</div>
+        <div class="ln"><span>Eligible (full year entitlement)</span><span class="n">0.00</span></div>
+        <div class="ln"><span>YTD entitled</span><span class="n">14.00</span></div>
+        <div class="ln"><span>+ Brought forward</span><span class="n">0.00</span></div>
+        <div class="ln"><span>+ Adjustments</span><span class="n hot">&minus;28.00</span></div>
+        <div class="ln tot"><span>Total</span><span class="n hot">&minus;14.00</span></div>
+        <div class="ln"><span>&minus; Taken</span><span class="n">0.00</span></div>
+        <div class="ln"><span>&minus; Pending approval</span><span class="n">0.00</span></div>
+        <div class="ln avail"><span>Available balance</span><span class="n hot">&minus;14.00</span></div>
+      </div>
+      <div class="why"><b>Where the &minus;28.00 came from.</b> Only 14 days were ever granted for 2026. But
+        the automatic recalculation also counted the grants written ahead for 1&nbsp;Jan&nbsp;2027 and
+        1&nbsp;Jan&nbsp;2028, decided that 42 days had already been given, and took the difference back.
+        On Hospitalization it counted 180 where 60 had been given, and took 120 away.</div>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER — a clean 0.00, and the fault fixed</span>
+      <div class="tiles">
+        <div class="tile dim"><div class="ico">&#9992;</div><div class="val">6.50</div><div class="cap">Annual Leave</div></div>
+        <div class="tile ok"><div class="ico">&#127777;</div><div class="val">0.00</div><div class="cap">Medical Leave</div></div>
+        <div class="tile ok"><div class="ico">&#129658;</div><div class="val">0.00</div><div class="cap">Hospitalization</div></div>
+      </div>
+      <div class="drawer">
+        <h3>Medical Leave</h3>
+        <p class="asat">As at 2026-08-07</p>
+        <div class="sum">Leave summary</div>
+        <div class="ln"><span>Eligible (full year entitlement)</span><span class="n">0.00</span></div>
+        <div class="ln"><span>YTD entitled</span><span class="n okn">0.00</span></div>
+        <div class="ln"><span>+ Brought forward</span><span class="n">0.00</span></div>
+        <div class="ln"><span>+ Adjustments</span><span class="n okn">0.00</span></div>
+        <div class="ln tot"><span>Total</span><span class="n okn">0.00</span></div>
+        <div class="ln"><span>&minus; Taken</span><span class="n">0.00</span></div>
+        <div class="ln"><span>&minus; Pending approval</span><span class="n">0.00</span></div>
+        <div class="ln avail"><span>Available balance</span><span class="n okn">0.00</span></div>
+      </div>
+      <div class="why" style="background:var(--goodbg);border-color:#86efac;color:#14532d">
+        <b>Every line reads 0.00, not just the total.</b> Annual Leave is untouched. And because the
+        recalculation is fixed in the same change, editing an employee's grade or details will no longer
+        drag these balances below zero again.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Who is affected — measured across your whole company today</h2>
+  <table>
+    <thead><tr><th>Leave type</th><th>Employees below zero</th><th>Worst balance</th><th>Employees above zero</th><th>Days ever taken</th></tr></thead>
+    <tbody>
+      <tr><td class="l">Medical Leave</td><td>8</td><td class="l"><span class="chip gone">&minus;28.00</span></td><td>10</td><td>0</td></tr>
+      <tr><td class="l">Hospitalization Leave</td><td>5</td><td class="l"><span class="chip gone">&minus;60.00</span></td><td>9</td><td>0</td></tr>
+      <tr><td class="l">Every other leave type</td><td>0</td><td class="l">&mdash;</td><td colspan="2">not affected, not touched</td></tr>
+    </tbody>
+  </table>
+  <p class="note">All 13 negative balances go to 0.00 &mdash; and so do the 19 positive ones, because you
+    asked for everyone to start from a clean state. Nobody has ever taken a day of either leave type, so
+    no leave history is affected.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Exactly what the cleanup removes, and what it keeps</h2>
+  <table>
+    <thead><tr><th>What</th><th>How many</th><th>What happens to it</th></tr></thead>
+    <tbody>
+      <tr><td class="l">Entitlement, adjustment and correction records on the two leave types</td><td>147</td><td class="l"><span class="chip arch">copied to a record you can read</span> then removed</td></tr>
+      <tr><td class="l">Grants queued for 1 Jan 2027 and 1 Jan 2028 on these two types</td><td>27<br><span style="font-size:11px;color:var(--mf)">168 Medical + 900 Hospitalization days</span></td><td class="l"><span class="chip gone">cancelled</span> so they cannot land on their own</td></tr>
+      <tr><td class="l">Leave anyone applied for or was approved for, on these two types</td><td>0</td><td class="l"><span class="chip keep">nothing to touch</span></td></tr>
+      <tr><td class="l">Annual Leave and every other leave type</td><td>&mdash;</td><td class="l"><span class="chip keep">untouched</span></td></tr>
+      <tr><td class="l">New entitlement generated automatically afterwards</td><td>0</td><td class="l">none &mdash; both types stay at 0.00 until you set them up</td></tr>
+    </tbody>
+  </table>
+  <p class="note">The written record is taken <b>before</b> anything is removed and is kept permanently, on
+    screen with a download &mdash; the same way the earlier entitlement reset was recorded. So the old
+    figures stay readable even though the balances are cleared.</p>
+</div>

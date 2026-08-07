@@ -1,0 +1,241 @@
+<meta charset="utf-8">
+<title>20e759a0 — Replacement Leave: one company at a time</title>
+<!--
+  Mockup for 20e759a0 (Simplify Replacement Leave Configuration Layout with Company Filter).
+  Real data: the nine companies on the live system (company.legal_name, measured 2026-08-07), and the
+  real field names from the reporter's own screenshot. 20 settings per company x 9 = 180 today.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .two{display:grid;grid-template-columns:1fr 1.25fr;gap:16px;align-items:start}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+
+  /* ---- the miniature "long page" on the BEFORE side ---- */
+  .scrollwrap{display:flex;gap:9px}
+  .ruler{width:52px;flex:none;font-size:9px;color:var(--mf);text-align:right;padding-top:2px}
+  .ruler div{height:47px;border-top:1px dashed #d9c2c2;padding-top:2px}
+  .mini{flex:1;background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .minico{border-bottom:1px solid var(--border);padding:5px 7px 6px}
+  .minico:last-child{border-bottom:none}
+  .minihd{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+  .mininame{font-size:9.5px;font-weight:700;letter-spacing:.01em}
+  .minioff{font-size:7.5px;font-weight:700;color:var(--mf);background:var(--muted);
+           border-radius:3px;padding:1px 4px}
+  .bars{display:grid;grid-template-columns:1fr 1fr;gap:2.5px}
+  .bar{height:5px;border-radius:2px;background:#e9eaf3}
+  .bar.w{background:#f2f3f8}
+  .minisave{margin-top:4px;height:8px;width:34px;border-radius:3px;background:#c7c8e8}
+
+  /* ---- the AFTER side: a real-looking screen ---- */
+  .screen{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .ptitle{padding:11px 14px 9px;border-bottom:1px solid var(--border)}
+  .ptitle b{font-size:14px}
+  .ptitle span{display:block;font-size:11px;color:var(--mf);margin-top:1px}
+  .filterbar{display:flex;align-items:center;gap:9px;padding:10px 14px;background:#f8f8fd;
+             border-bottom:1px solid var(--border)}
+  .flabel{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700}
+  .sel{flex:1;max-width:330px;display:flex;justify-content:space-between;align-items:center;
+       background:#fff;border:1.5px solid var(--primary);border-radius:7px;padding:6px 10px;
+       font-size:12.5px;font-weight:600}
+  .sel .cv{color:var(--mf);font-weight:400;font-size:11px}
+  .body{padding:12px 14px}
+  .cohd{display:flex;justify-content:space-between;align-items:center;
+        border-bottom:1px solid var(--border);padding-bottom:7px;margin-bottom:9px}
+  .cohd b{font-size:12.5px}
+  .offpill{font-size:9.5px;font-weight:700;color:var(--mf);background:var(--muted);
+           border-radius:4px;padding:2px 7px}
+  .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .f{min-width:0}
+  .f label{display:block;font-size:10px;color:var(--mf);font-weight:600;margin-bottom:2.5px}
+  .inp{border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11.5px;background:#fff}
+  .chk{display:flex;gap:6px;align-items:flex-start;font-size:11.5px;margin:9px 0}
+  .sq{width:11px;height:11px;border:1.5px solid #b9bacd;border-radius:2.5px;flex:none;margin-top:2px}
+  .chk .h{display:block;font-size:10px;color:var(--mf)}
+  .sub{border:1px solid var(--border);border-radius:8px;padding:9px;margin-top:9px}
+  .subt{font-size:11px;font-weight:700;margin-bottom:6px}
+  .pk{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .pkf{border:1px solid var(--border);border-radius:6px;padding:4px 7px;font-size:10.5px;
+       display:flex;justify-content:space-between;color:var(--mf);background:#fff}
+  .savebtn{margin-top:11px;display:inline-block;background:var(--primary);color:#fff;font-size:11.5px;
+           font-weight:600;border-radius:7px;padding:6px 16px}
+  .amber{background:#fffbeb;border:1px solid #fde68a;border-radius:7px;padding:7px 9px;
+         font-size:10.5px;color:#7c2d12;margin:9px 0}
+
+  /* dropdown list */
+  .ddl{border:1px solid var(--border);border-radius:9px;overflow:hidden;background:#fff}
+  .ddl div{padding:5px 11px;font-size:11.5px;border-bottom:1px solid #f0f1f7}
+  .ddl div:last-child{border-bottom:none}
+  .ddl .sel2{background:color-mix(in srgb,var(--primary) 9%,white);font-weight:700;color:var(--primary)}
+  .ddl .allrow{color:var(--mf);font-style:italic}
+  .facts{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-top:2px}
+  .fact{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#fff}
+  .fact b{display:block;font-size:19px;font-variant-numeric:tabular-nums;line-height:1.15}
+  .fact span{font-size:10.5px;color:var(--mf)}
+  .fact.g b{color:var(--good)}
+  .fact.r b{color:var(--bad)}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Today the page stacks all nine companies — and after the change you see one</h2>
+  <p class="q">“displayed by company, making the page unnecessarily long and difficult to navigate”</p>
+
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — one full form per company, nine in a row</span>
+      <div class="scrollwrap">
+        <div class="mini">
+          <div class="minico">
+            <div class="minihd"><span class="mininame">Chin Hin Construction Engineering</span><span class="minioff">Off</span></div>
+            <div class="bars"><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i></div>
+            <div class="minisave"></div>
+          </div>
+          <div class="minico">
+            <div class="minihd"><span class="mininame">Chin Hin Property Group</span><span class="minioff">Off</span></div>
+            <div class="bars"><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i></div>
+            <div class="minisave"></div>
+          </div>
+          <div class="minico">
+            <div class="minihd"><span class="mininame">Demo Group Holdings Bhd</span><span class="minioff">Off</span></div>
+            <div class="bars"><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i></div>
+            <div class="minisave"></div>
+          </div>
+          <div class="minico">
+            <div class="minihd"><span class="mininame">Demo Sdn Bhd</span><span class="minioff">Off</span></div>
+            <div class="bars"><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i></div>
+            <div class="minisave"></div>
+          </div>
+          <div class="minico">
+            <div class="minihd"><span class="mininame">Fiamma (Chin Hin Property)</span><span class="minioff">Off</span></div>
+            <div class="bars"><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i></div>
+            <div class="minisave"></div>
+          </div>
+          <div class="minico">
+            <div class="minihd"><span class="mininame">ISEDECOR BINA SDN BHD</span><span class="minioff">Off</span></div>
+            <div class="bars"><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i></div>
+            <div class="minisave"></div>
+          </div>
+          <div class="minico">
+            <div class="minihd"><span class="mininame">Signature Group of Companies</span><span class="minioff">Off</span></div>
+            <div class="bars"><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i></div>
+            <div class="minisave"></div>
+          </div>
+          <div class="minico">
+            <div class="minihd"><span class="mininame">SpaceX Sdn Bhd</span><span class="minioff">Off</span></div>
+            <div class="bars"><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i></div>
+            <div class="minisave"></div>
+          </div>
+          <div class="minico">
+            <div class="minihd"><span class="mininame">XYZ BINA SDN BHD</span><span class="minioff">Off</span></div>
+            <div class="bars"><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i><i class="bar w"></i><i class="bar"></i><i class="bar"></i></div>
+            <div class="minisave"></div>
+          </div>
+        </div>
+      </div>
+      <p class="note">Shrunk to fit this page. Each of the nine blocks is a full copy of the form you sent
+        us — 20 settings and its own Save button. To reach the last company you scroll past eight
+        complete copies of it.</p>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER — pick the company, configure it, save it</span>
+      <div class="screen">
+        <div class="ptitle"><b>Leave configuration</b><span>Leave types and their entitlement policies</span></div>
+        <div class="filterbar">
+          <span class="flabel">Company</span>
+          <span class="sel">Chin Hin Construction Engineering <span class="cv">&#9662;</span></span>
+        </div>
+        <div class="body">
+          <div class="cohd"><b>Chin Hin Construction Engineering</b><span class="offpill">Off</span></div>
+          <div class="chk"><i class="sq"></i><span><b>Enable replacement leave for this company</b>
+            <span class="h">Approved rest-day and public-holiday overtime can be banked as replacement leave instead of paid as cash.</span></span></div>
+          <div class="fgrid">
+            <div class="f"><label>Accrual basis</label><div class="inp">Hours worked</div></div>
+            <div class="f"><label>On expiry</label><div class="inp">Convert to pay</div></div>
+          </div>
+          <div class="subt" style="margin-top:11px">Expiry period</div>
+          <div class="fgrid" style="grid-template-columns:1fr 1fr 1fr">
+            <div class="f"><label>Expiry unit</label><div class="inp">Day(s)</div></div>
+            <div class="f"><label>Number of days</label><div class="inp">90</div></div>
+            <div class="f"><label>Number of months</label><div class="inp">3</div></div>
+          </div>
+          <div class="f" style="margin-top:9px"><label>Replacement leave from</label><div class="inp">Overtime</div></div>
+          <div class="amber"><b>Allow employees within the First Schedule</b> — unchanged, with its
+            existing compliance note.</div>
+          <div class="chk"><i class="sq"></i><span><b>Bank automatically when an attendance correction is approved</b></span></div>
+          <div class="chk"><i class="sq"></i><span><b>Carry forward at year end</b></span></div>
+          <div class="sub">
+            <div class="subt">Who may submit a replacement-leave request</div>
+            <div class="pk">
+              <span class="pkf">Company <span>All</span></span>
+              <span class="pkf">Employment type <span>All</span></span>
+              <span class="pkf">Department <span>All</span></span>
+              <span class="pkf">Division <span>All</span></span>
+              <span class="pkf">Position <span>All</span></span>
+              <span class="pkf">Grade <span>All</span></span>
+              <span class="pkf">Employee category <span>All</span></span>
+              <span class="pkf">Employee <span>All</span></span>
+            </div>
+          </div>
+          <span class="savebtn">Save</span>
+        </div>
+      </div>
+      <p class="note"><b>Every setting is the same, in the same order.</b> Nothing is removed, renamed or
+        recalculated — only eight other companies stop being printed underneath.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>What the Company dropdown holds <span class="chip new">your nine companies</span></h2>
+  <div class="two" style="grid-template-columns:1fr 1.25fr">
+    <div>
+      <div class="ddl">
+        <div class="allrow">All companies &mdash; show every company stacked, as it is today</div>
+        <div class="sel2">Chin Hin Construction Engineering</div>
+        <div>Chin Hin Property Group</div>
+        <div>Demo Group Holdings Bhd</div>
+        <div>Demo Sdn Bhd</div>
+        <div>Fiamma (Chin Hin Property)</div>
+        <div>ISEDECOR BINA SDN BHD</div>
+        <div>Signature Group of Companies</div>
+        <div>SpaceX Sdn Bhd</div>
+        <div>XYZ BINA SDN BHD</div>
+      </div>
+      <p class="note">The page opens on one company, so it is short from the first moment. The old stacked
+        view is still there for anyone who wants to compare — it is the first choice in the list.</p>
+    </div>
+    <div>
+      <div class="facts">
+        <div class="fact r"><b>9</b><span>company sections on the page today</span></div>
+        <div class="fact r"><b>180</b><span>settings printed at once today</span></div>
+        <div class="fact g"><b>1</b><span>company section after the change</span></div>
+        <div class="fact g"><b>20</b><span>settings on screen after the change</span></div>
+      </div>
+      <p class="note" style="margin-top:13px">Counted from your live system on 7 August 2026: nine active
+        companies, each with the same 20 replacement-leave settings and its own Save button.</p>
+      <div class="amber" style="margin-top:11px">Worth knowing: none of the nine has been saved yet, so all
+        nine sections currently show the same untouched starting values and all nine read
+        <b>Off</b>. That is why the page reads as nine identical copies of one form.</div>
+      <p class="note">Saving already affects only the company whose Save you press — that does not change.
+        After the change you also come back to the same company you were editing.</p>
+    </div>
+  </div>
+</div>

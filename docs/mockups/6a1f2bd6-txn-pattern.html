@@ -1,0 +1,213 @@
+<meta charset="utf-8">
+<title>Select employee, then Add — the Fixed Transaction pattern on Zakat, Loans and TP1 Relief</title>
+<!--
+  SHARED mockup for 6a1f2bd6 (Zakat), 6d72816e (Loans) and 3e3d3fb2 (TP1 Relief).
+  One picture, three items: the reporter's rejection of the first two spells out ONE pattern, so the
+  same image is attached to all three plans.
+  Figures are measured from production (2026-08-07): 4 saved zakat setups, 7 payslips carrying a zakat
+  deduction, 31 active employees, 9 companies, 18 departments, 1 loan, 2 TP1 declarations.
+  Tokens from app/globals.css; everything inline, no external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#b42318;--badbg:#fef3f2;--good:#065f46;--goodbg:#d1fae5}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px}
+  h2{font-size:14px;margin:0 0 4px}
+  h3{font-size:12px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf)}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .split{display:grid;grid-template-columns:224px 1fr;gap:16px;align-items:start}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:5px}
+  input,select{width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:8px;
+               font:inherit;background:#fff;font-size:12px;color:var(--fg)}
+  .filters{display:grid;gap:6px;margin:8px 0}
+  ul{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  li{padding:7px 10px;border-bottom:1px solid var(--border);font-size:12.5px}
+  li:last-child{border-bottom:0}
+  li.on{background:color-mix(in srgb,var(--primary) 9%,white);box-shadow:inset 3px 0 0 var(--primary)}
+  .who{font-weight:600}
+  .code{color:var(--mf);font-size:11px}
+  .hide{float:right;color:var(--primary);font-weight:600;font-size:11px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border);overflow:hidden;text-overflow:ellipsis}
+  .r{text-align:right}
+  .act{color:var(--primary);font-weight:600}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap}
+  .ok{background:var(--goodbg);color:var(--good)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .have{background:var(--muted);color:var(--mf)}
+  .warn{background:var(--badbg);color:var(--bad)}
+  .note{font-size:11.5px;color:var(--mf);margin:10px 0 0}
+  .btn{display:inline-block;background:var(--primary);color:#fff;font-weight:600;font-size:12px;
+       padding:6px 12px;border-radius:8px}
+  .ghost{display:inline-block;border:1px solid var(--border);color:var(--fg);font-weight:600;font-size:12px;
+       padding:6px 12px;border-radius:8px;background:#fff}
+  .emphead{display:flex;justify-content:space-between;align-items:center;gap:12px;
+           border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-bottom:10px}
+  .box{border:1px solid var(--border);border-radius:10px;padding:11px}
+  .box .k{font-weight:600;font-size:12.5px;margin-bottom:5px}
+  .box .v{font-size:11.5px;color:var(--mf)}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:4px}
+  .flag{border-left:3px solid var(--bad);background:var(--badbg);padding:6px 10px;border-radius:0 8px 8px 0;
+        font-size:11.5px;color:var(--bad);margin:8px 0 0}
+  .fakeform{border:1px solid var(--border);border-radius:10px;padding:11px;background:#fcfcfe}
+  .ff{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .tag{font-size:10.5px;color:var(--mf);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .sec{margin-top:14px}
+  .sechead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .sechead .t{font-size:12.5px;font-weight:600}
+  .sechead .c{font-size:11px;color:var(--mf)}
+</style>
+
+<div class="card">
+  <h1>Select the employee, then press Add <span class="chip new">proposed</span></h1>
+  <p class="sub">The same change on three screens: Zakat, Loans and TP1 Relief. Drawn once, on Zakat.</p>
+</div>
+
+<div class="card">
+  <h2>Before — what happens today <span class="chip warn">the problem</span></h2>
+  <p class="sub">You pick Daniel Tan. The edit form opens by itself, and the lists underneath still show everybody.</p>
+  <div class="split">
+    <div>
+      <div class="lbl">Find employee</div>
+      <input value="tan" aria-label="Search by ID or name">
+      <div class="filters">
+        <select><option>All companies</option></select>
+        <select><option>Finance</option></select>
+        <select><option>Active</option></select>
+      </div>
+      <ul>
+        <li class="on"><div class="who">Daniel Tan</div><div class="code">EMP-0002 &middot; Finance</div></li>
+        <li><div class="who">Aisyah Rahman</div><div class="code">EMP-0001 &middot; Operations</div></li>
+        <li><div class="who">NURUL ALIAH BINTI ACHIN</div><div class="code">100815 &middot; Production</div></li>
+      </ul>
+    </div>
+    <div>
+      <div class="fakeform">
+        <div class="tag">Zakat setup — opened on its own, nothing pressed</div>
+        <div class="ff" style="margin-top:8px">
+          <div><div class="lbl">State</div><select><option>Pulau Pinang</option></select></div>
+          <div><div class="lbl">Method</div><select><option>Percent of PCB</option></select></div>
+          <div><div class="lbl">Rate</div><input value="20.00"></div>
+          <div><div class="lbl">Fixed amount</div><input value=""></div>
+          <div><div class="lbl">Effective from</div><input value="01 Jul 2026"></div>
+          <div><div class="lbl">Effective to</div><input value=""></div>
+        </div>
+      </div>
+      <p class="flag">Picking an employee opened this form. Nobody asked for it.</p>
+
+      <div class="sec">
+        <div class="sechead"><div class="t">Saved zakat setups</div><div class="c">4 rows &middot; every employee</div></div>
+        <table>
+          <colgroup><col style="width:34%"><col style="width:26%"><col style="width:18%"><col style="width:22%"></colgroup>
+          <thead><tr><th>Employee</th><th>Company</th><th class="r">Amount</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>Aisyah Rahman <span class="code">(EMP-0001)</span></td><td>Demo Sdn Bhd</td><td class="r">RM 100.00</td><td><span class="chip ok">Active</span></td></tr>
+            <tr><td>Daniel Tan <span class="code">(EMP-0002)</span></td><td>Demo Sdn Bhd</td><td class="r">20.00%</td><td><span class="chip ok">Active</span></td></tr>
+            <tr><td>Daniel Tan <span class="code">(EMP-0005)</span></td><td>Demo Group Holdings Bhd</td><td class="r">20.00%</td><td><span class="chip ok">Active</span></td></tr>
+            <tr><td>NURUL ALIAH BINTI ACHIN <span class="code">(100815)</span></td><td>Fiamma (Chin Hin Property)</td><td class="r">50.00%</td><td><span class="chip">Starts 01 Sep</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="flag">You picked Daniel Tan, but this list still shows all four. So does the one below it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>After — the Fixed Transaction pattern <span class="chip new">what we will build</span></h2>
+  <p class="sub">Pick someone and you get their records, and only theirs. Nothing opens until you press Add.</p>
+  <div class="split">
+    <div>
+      <div class="lbl">Find employee <span class="hide">&lsaquo; Hide</span></div>
+      <input value="tan" aria-label="Search by ID or name">
+      <div class="filters">
+        <select><option>All companies</option></select>
+        <select><option>Finance</option></select>
+        <select><option>Active</option></select>
+      </div>
+      <ul>
+        <li class="on"><div class="who">Daniel Tan</div><div class="code">EMP-0002 &middot; Finance</div></li>
+        <li><div class="who">Aisyah Rahman</div><div class="code">EMP-0001 &middot; Operations</div></li>
+        <li><div class="who">NURUL ALIAH BINTI ACHIN</div><div class="code">100815 &middot; Production</div></li>
+      </ul>
+    </div>
+    <div>
+      <div class="emphead">
+        <div>
+          <div class="who">Daniel Tan <span class="code">EMP-0002</span></div>
+          <div class="code">Demo Sdn Bhd &middot; Finance &middot; Accounts Executive</div>
+        </div>
+        <div><span class="btn">+ Add zakat</span></div>
+      </div>
+
+      <div class="sec">
+        <div class="sechead"><div class="t">Transaction history</div><div class="c">Daniel Tan only &middot; 1 record</div></div>
+        <table>
+          <colgroup><col style="width:20%"><col style="width:22%"><col style="width:16%"><col style="width:14%"><col style="width:16%"><col style="width:12%"></colgroup>
+          <thead><tr><th>Effective from</th><th>Method</th><th class="r">Amount</th><th>State</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>01 Jul 2026</td><td>Percent of MTD</td><td class="r">20.00%</td><td>Pulau Pinang</td><td><span class="chip ok">Active</span></td><td class="act">View / Edit</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="sec">
+        <div class="sechead"><div class="t">Applied in payroll</div><div class="c">Daniel Tan only &middot; 2 runs</div></div>
+        <table>
+          <colgroup><col style="width:20%"><col style="width:22%"><col style="width:16%"><col style="width:14%"><col style="width:28%"></colgroup>
+          <thead><tr><th>Period</th><th>Run</th><th class="r">Deducted</th><th>Status</th><th>Processed on</th></tr></thead>
+          <tbody>
+            <tr><td>2026-04</td><td>Regular</td><td class="r">RM 168.78</td><td><span class="chip ok">Processed</span></td><td>30 Apr 2026</td></tr>
+            <tr><td>2026-07</td><td>Regular</td><td class="r">RM 86.04</td><td><span class="chip ok">Processed</span></td><td>31 Jul 2026</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="note">Add and View / Edit open on their own page, with every field, a Save and a Cancel.
+        Hide the employee panel and both lists take the full screen width. With nobody selected you still get
+        the everyone-at-once view you have today, export and all.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>The same three steps on each screen</h2>
+  <p class="sub">What each screen already has, and what this adds.</p>
+  <div class="grid3">
+    <div class="box">
+      <div class="k">Zakat <span class="chip have">panel done</span></div>
+      <div class="v">The searchable panel already works. Still to do: stop opening the setup form on selection,
+        narrow both lists to the person you picked, and move Add and Edit onto their own page.</div>
+    </div>
+    <div class="box">
+      <div class="k">Loans <span class="chip have">panel done</span></div>
+      <div class="v">The panel works and the loan list already narrows to the person you picked. Still to do:
+        the New loan form sits permanently open below the list — it becomes an Add button, and the instalments
+        actually deducted get their own Applied in payroll list.</div>
+    </div>
+    <div class="box">
+      <div class="k">TP1 Relief <span class="chip new">nothing yet</span></div>
+      <div class="v">Still a narrow single column with a search box. Picking someone replaces the search with the
+        declaration form. It gets the panel, a list of the years declared, and the same Add and Edit pages.</div>
+    </div>
+  </div>
+
+  <!-- A picture cannot hedge: the Applied in payroll list above is drawn populated because Zakat HAS run
+       through payroll. On the other two it starts empty, and the plans say so in words — so the picture
+       must say it too, or it promises data that does not exist. -->
+  <div style="margin-top:14px;padding:10px 13px;border:1px solid #fed7aa;background:#fff7ed;border-radius:10px;
+              font-size:11.5px;color:#7c2d12">
+    <b>One thing the picture cannot show.</b> The Applied in payroll list is drawn with real Zakat deductions
+    because Zakat has been through a payroll run. On <b>Loans</b> and <b>TP1 Relief</b> that list starts
+    <b>empty</b> — 24 instalments are scheduled but none deducted yet, and no payroll run has used a TP1
+    figure. That is correct, not broken.
+  </div>
+  <p class="note">Nothing here changes a rate, an effective date, a repayment schedule or a tax figure.
+    This is the screen you maintain them on, not the sums.</p>
+</div>

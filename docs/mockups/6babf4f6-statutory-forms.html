@@ -1,0 +1,284 @@
+<meta charset="utf-8">
+<title>6babf4f6 — Statutory Forms, grouped by the body you file with</title>
+<!--
+  Mockup for 6babf4f6 (Redesign Statutory Forms UI/UX and Generation Workflow), plan revision 1.
+  Every figure below is REAL, read from production on 2026-08-07: ISEDECOR BINA SDN BHD, payroll
+  month July 2026 (EPF 5 employees / RM 3,080.00 + RM 3,397.00; CP39 RM 2,097.55; SOCSO+EIS
+  RM 588.40 + RM 104.60). Only forms that EXIST today are drawn — the "Other statutory" shelf is
+  drawn empty on purpose, because it is empty.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:15px;margin:0 0 2px}
+  .sub{font-size:12px;color:var(--mf);margin:0 0 18px}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .ph{display:flex;align-items:baseline;gap:10px;margin:0 0 12px}
+  .ph h2{font-size:13.5px;margin:0}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700}
+  .tag.now{background:#fee2e2;color:#991b1b}
+  .tag.new{background:#dcfce7;color:#166534}
+  .ph .note{font-size:11.5px;color:var(--mf);margin-left:auto}
+
+  /* ── app chrome ─────────────────────────────────────────── */
+  .screen{border:1px solid var(--border);border-radius:11px;background:var(--bg);padding:12px;overflow:hidden}
+  .narrow{max-width:760px;margin:0 auto;position:relative}
+  .gutter{position:relative}
+  .gutterlbl{position:absolute;top:50%;transform:translateY(-50%);font-size:10.5px;color:#b45309;
+             letter-spacing:.03em;font-weight:600;text-align:center;width:150px}
+  .crumb{font-size:11px;color:var(--mf);margin-bottom:6px}
+  .ttl{font-size:14.5px;font-weight:700;margin:0 0 2px}
+  .desc{font-size:11.5px;color:var(--mf);margin:0 0 11px}
+  .cardish{background:var(--card);border:1px solid var(--border);border-radius:11px;margin-bottom:11px;overflow:hidden}
+  .cardhd{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--border)}
+  .cardhd .t{font-size:12.5px;font-weight:650}
+  .cnt{background:var(--muted);color:var(--mf);border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:600}
+  .hint{font-size:11px;color:var(--mf);padding:8px 12px 0}
+  .filters{display:flex;gap:10px;align-items:flex-end;padding:11px 12px;flex-wrap:wrap}
+  .f label{display:block;font-size:10.5px;color:var(--mf);margin-bottom:3px}
+  .inp{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:5px 9px;font-size:12px;min-width:150px}
+  .inp.sm{min-width:92px}
+  .btn{border:1px solid var(--border);background:var(--card);border-radius:7px;padding:5px 11px;font-size:11.5px;font-weight:600}
+  .btn.pri{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.gen{background:color-mix(in srgb,var(--primary) 10%,white);border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--primary)}
+  .btn.file{background:#fffbeb;border-color:#fcd34d;color:#92400e}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 12px;background:var(--muted)}
+  td{padding:7px 12px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+  .r{text-align:right}
+  .pill{display:inline-block;border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:600}
+  .pill.up{background:var(--muted);color:var(--mf)}
+  .pill.none{background:var(--muted);color:var(--mf)}
+  .pill.due{background:#fef3c7;color:#92400e}
+  .lnk{color:var(--primary);font-weight:600}
+  .warnband{background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:7px 11px;font-size:11.5px;color:#92400e;margin-bottom:11px}
+
+  /* ── body sections (after) ─────────────────────────────── */
+  .bodytabs{display:flex;gap:7px;margin-bottom:11px;flex-wrap:wrap}
+  .btab{border:1px solid var(--border);background:var(--card);border-radius:999px;padding:4px 12px;font-size:11.5px;font-weight:600;color:var(--mf)}
+  .btab.on{background:var(--primary);border-color:var(--primary);color:#fff}
+  .bodycard{background:var(--card);border:1px solid var(--border);border-radius:11px;margin-bottom:11px;overflow:hidden}
+  .bodyhd{display:flex;align-items:center;gap:10px;padding:10px 12px;background:linear-gradient(0deg,var(--muted),var(--muted))}
+  .badge{width:26px;height:26px;border-radius:8px;background:color-mix(in srgb,var(--primary) 12%,white);
+         color:var(--primary);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+  .bodyhd .n{font-size:12.5px;font-weight:700}
+  .bodyhd .ch{font-size:11px;color:var(--mf)}
+  .frow{display:flex;align-items:center;gap:12px;padding:9px 12px;border-top:1px solid var(--border)}
+  .frow .fn{font-size:12.5px;font-weight:600;min-width:250px}
+  .frow .fm{font-size:11px;color:var(--mf)}
+  .frow .sp{margin-left:auto;display:flex;gap:7px;align-items:center}
+  .due{font-size:11.5px;font-variant-numeric:tabular-nums}
+  .empty{border:1px dashed var(--border);border-radius:9px;margin:10px 12px;padding:13px;text-align:center;
+         font-size:11.5px;color:var(--mf);background:var(--bg)}
+
+  /* ── preview strip ─────────────────────────────────────── */
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border);
+         border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:11px}
+  .stat{background:var(--card);padding:10px 12px}
+  .stat .k{font-size:10.5px;color:var(--mf)}
+  .stat .v{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:1px}
+  .bar{height:9px;border-radius:4px;background:var(--muted)}
+  .outrow{display:flex;gap:7px;align-items:center;padding:10px 12px;border-top:1px solid var(--border);flex-wrap:wrap}
+  .outrow .lbl{font-size:11px;color:var(--mf);margin-right:2px}
+  .kicker{font-size:11.5px;color:var(--mf);margin:9px 0 0}
+  .kicker b{color:var(--fg)}
+</style>
+
+<h1>Statutory Forms — grouped by the body you file with, and one generation screen for every form</h1>
+<p class="sub">Sketch for request 6babf4f6. Figures are your real ones — ISEDECOR BINA SDN BHD, payroll month July 2026.</p>
+
+<!-- ══════════════ PANEL 1 — NOW ══════════════ -->
+<div class="panel">
+  <div class="ph"><span class="tag now">NOW</span><h2>One flat list, and “Open form” drops you back into the general Reports screen</h2>
+    <span class="note">Content stops at about two thirds of the screen</span></div>
+
+  <div class="screen gutter">
+    <div class="gutterlbl" style="left:6px">unused<br>screen width</div>
+    <div class="gutterlbl" style="right:6px">unused<br>screen width</div>
+    <div class="narrow">
+      <div class="crumb">Payroll</div>
+      <div class="ttl">Statutory Forms</div>
+      <p class="desc">Every Malaysian statutory submission in one place — where each is filed, by when, and the figures from your payroll.</p>
+
+      <div class="cardish">
+        <div class="filters">
+          <div class="f"><label>Company</label><div class="inp">ISEDECOR BINA SDN BHD</div></div>
+          <div class="f"><label>Payroll month</label><div class="inp sm">2026-07</div></div>
+          <span class="btn">Show</span>
+        </div>
+      </div>
+
+      <div class="cardish">
+        <div class="cardhd"><span class="t">Monthly submissions — 2026-07</span><span class="cnt">3</span></div>
+        <table>
+          <thead><tr><th>Form</th><th>Submitted to</th><th>How it is submitted</th><th>Due by</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>CP39 — MTD / PCB (LHDN)</td><td>LHDN</td><td>e-PCB / e-Data PCB / e-CP39</td><td>2026-08-15</td><td><span class="pill up">Upcoming</span></td><td class="r"><span class="lnk">Open form</span></td></tr>
+            <tr><td>EPF contributions (KWSP)</td><td>EPF (KWSP)</td><td>i-Akaun (Employer)</td><td>2026-08-15</td><td><span class="pill up">Upcoming</span></td><td class="r"><span class="lnk">Open form</span></td></tr>
+            <tr><td>SOCSO + EIS (PERKESO)</td><td>PERKESO</td><td>PERKESO ASSIST</td><td>2026-08-15</td><td><span class="pill up">Upcoming</span></td><td class="r"><span class="lnk">Open form</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="cardish">
+        <div class="cardhd"><span class="t">Annual submissions — 2026</span><span class="cnt">1</span></div>
+        <table>
+          <tbody>
+            <tr><td>Form E / CP8D — annual (LHDN) <span class="fm">· LHDN · e-Filing (Form E) · submission deadline not configured</span></td><td class="r"><span class="lnk">Open form</span></td></tr>
+            <tr><td>EA form (per employee) <span class="fm">· Each employee’s annual statement of remuneration</span></td><td class="r"><span class="lnk">Open employee list</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <p class="kicker">Nothing tells you which body a form belongs to except reading the “Submitted to” column, and
+    <b>“Open form” leaves this screen entirely</b> — it lands on the general Reports page, next to a dropdown of every
+    other report, a warning banner and a generation history. That round trip is the workflow complaint.</p>
+</div>
+
+<!-- ══════════════ PANEL 2 — AFTER, landing ══════════════ -->
+<div class="panel">
+  <div class="ph"><span class="tag new">AFTER · step 1</span><h2>Pick the body, then the form — full screen width</h2>
+    <span class="note">Sections are built from the form catalogue, so a new form appears on its own</span></div>
+
+  <div class="screen">
+    <div class="crumb">Payroll</div>
+    <div class="ttl">Statutory Forms</div>
+    <p class="desc">Choose the statutory body, then the form. Figures come from the payroll already calculated for the month you pick.</p>
+
+    <div class="cardish">
+      <div class="filters">
+        <div class="f"><label>Company</label><div class="inp">ISEDECOR BINA SDN BHD</div></div>
+        <div class="f"><label>Year</label><div class="inp sm">2026</div></div>
+        <div class="f"><label>Month</label><div class="inp sm">July</div></div>
+        <span class="btn">Show</span>
+      </div>
+    </div>
+
+    <div class="bodytabs">
+      <span class="btab on">All bodies</span>
+      <span class="btab">EPF (KWSP)</span>
+      <span class="btab">SOCSO / EIS (PERKESO)</span>
+      <span class="btab">Income Tax (LHDN)</span>
+      <span class="btab">Other statutory</span>
+    </div>
+
+    <div class="bodycard">
+      <div class="bodyhd"><span class="badge">EPF</span>
+        <span><span class="n">EPF (KWSP)</span> &nbsp;<span class="ch">Filed through i-Akaun (Employer)</span></span>
+        <span class="cnt" style="margin-left:auto">1 form</span></div>
+      <div class="frow"><span class="fn">EPF contributions schedule</span>
+        <span class="fm">Monthly</span>
+        <span class="sp"><span class="due">Due by 15 Aug 2026</span><span class="pill up">Upcoming</span><span class="btn gen">Generate</span></span></div>
+    </div>
+
+    <div class="bodycard">
+      <div class="bodyhd"><span class="badge" style="font-size:9px">PKS</span>
+        <span><span class="n">SOCSO / EIS (PERKESO)</span> &nbsp;<span class="ch">Filed through PERKESO ASSIST</span></span>
+        <span class="cnt" style="margin-left:auto">1 form</span></div>
+      <div class="frow"><span class="fn">SOCSO + EIS contributions</span>
+        <span class="fm">Monthly · includes the PERKESO ASSIST upload file</span>
+        <span class="sp"><span class="due">Due by 15 Aug 2026</span><span class="pill up">Upcoming</span><span class="btn gen">Generate</span></span></div>
+    </div>
+
+    <div class="bodycard">
+      <div class="bodyhd"><span class="badge" style="font-size:9px">LHDN</span>
+        <span><span class="n">Income Tax (LHDN)</span> &nbsp;<span class="ch">Filed through e-PCB / e-CP39 and e-Filing</span></span>
+        <span class="cnt" style="margin-left:auto">4 items</span></div>
+      <div class="frow"><span class="fn">CP39 — monthly tax deduction (MTD / PCB)</span>
+        <span class="fm">Monthly · includes the e-CP39 upload file</span>
+        <span class="sp"><span class="due">Due by 15 Aug 2026</span><span class="pill up">Upcoming</span><span class="btn gen">Generate</span></span></div>
+      <div class="frow"><span class="fn">Form E / CP8D</span>
+        <span class="fm">Annual · year 2026</span>
+        <span class="sp"><span class="due">&nbsp;</span><span class="pill none">No deadline set</span><span class="btn gen">Generate</span></span></div>
+      <div class="frow"><span class="fn">EA form (C.P.8A)</span>
+        <span class="fm">Annual · one per employee · English and Bahasa Malaysia</span>
+        <span class="sp"><span class="due">&nbsp;</span><span class="pill none">Year 2026</span><span class="btn gen">Open employee list</span></span></div>
+      <div class="frow"><span class="fn">CP22 / CP22A notifications</span>
+        <span class="fm">When someone joins or leaves · moved here from Reports</span>
+        <span class="sp"><span class="due">&nbsp;</span><span class="pill due">8 outstanding</span><span class="btn gen">Open list</span></span></div>
+    </div>
+
+    <div class="bodycard">
+      <div class="bodyhd"><span class="badge" style="font-size:9px">OTH</span>
+        <span><span class="n">Other statutory</span> &nbsp;<span class="ch">Zakat · HRD Corp · PTPTN · Tabung Haji · co-operative</span></span>
+        <span class="cnt" style="margin-left:auto">0 forms</span></div>
+      <div class="empty">No forms here yet. This shelf is ready — each of these reports appears here the moment it is built,
+        with its own due date and buttons, and no part of this screen has to be redesigned again.</div>
+    </div>
+  </div>
+
+  <p class="kicker">The <b>8 outstanding CP22A notices</b> shown against LHDN are your real ones today — they exist in the
+    system already, but they sit on the Reports screen where nobody looking for a statutory form would find them.</p>
+</div>
+
+<!-- ══════════════ PANEL 3 — AFTER, generation ══════════════ -->
+<div class="panel">
+  <div class="ph"><span class="tag new">AFTER · step 2</span><h2>One generation screen, identical for every form</h2>
+    <span class="note">Preview first, then generate — same layout whichever form you came from</span></div>
+
+  <div class="screen">
+    <div class="crumb">Payroll &nbsp;›&nbsp; Statutory Forms &nbsp;›&nbsp; EPF (KWSP)</div>
+    <div class="ttl">EPF contributions schedule</div>
+    <p class="desc">Submitted to EPF (KWSP) through i-Akaun (Employer) · due by 15 Aug 2026</p>
+
+    <div class="cardish">
+      <div class="filters">
+        <div class="f"><label>Company</label><div class="inp">ISEDECOR BINA SDN BHD</div></div>
+        <div class="f"><label>Year</label><div class="inp sm">2026</div></div>
+        <div class="f"><label>Month</label><div class="inp sm">July</div></div>
+        <span class="btn">Preview</span>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="k">Submission period</div><div class="v">July 2026</div></div>
+      <div class="stat"><div class="k">Employees</div><div class="v">5</div></div>
+      <div class="stat"><div class="k">Employee share</div><div class="v">RM 3,080.00</div></div>
+      <div class="stat"><div class="k">Employer share</div><div class="v">RM 3,397.00</div></div>
+      <div class="stat"><div class="k">Total payable</div><div class="v">RM 6,477.00</div></div>
+    </div>
+
+    <div class="warnband">Anyone missing an EPF number is named right here, before you generate — the same readiness
+      check the screen already runs today, now shown on every form’s own page.</div>
+
+    <div class="cardish">
+      <div class="cardhd"><span class="t">EPF contributions schedule — July 2026</span><span class="cnt">5 employees</span></div>
+      <table>
+        <thead><tr><th>Employee</th><th>EPF no.</th><th>IC</th><th class="r">Gross</th><th class="r">Employee</th><th class="r">Employer</th><th class="r">Total</th></tr></thead>
+        <tbody>
+          <tr><td><div class="bar" style="width:130px"></div></td><td><div class="bar" style="width:76px"></div></td><td><div class="bar" style="width:84px"></div></td><td class="r"><div class="bar" style="width:56px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td></tr>
+          <tr><td><div class="bar" style="width:112px"></div></td><td><div class="bar" style="width:76px"></div></td><td><div class="bar" style="width:84px"></div></td><td class="r"><div class="bar" style="width:56px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td></tr>
+          <tr><td><div class="bar" style="width:146px"></div></td><td><div class="bar" style="width:76px"></div></td><td><div class="bar" style="width:84px"></div></td><td class="r"><div class="bar" style="width:56px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td></tr>
+          <tr><td><div class="bar" style="width:104px"></div></td><td><div class="bar" style="width:76px"></div></td><td><div class="bar" style="width:84px"></div></td><td class="r"><div class="bar" style="width:56px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td></tr>
+          <tr><td><div class="bar" style="width:136px"></div></td><td><div class="bar" style="width:76px"></div></td><td><div class="bar" style="width:84px"></div></td><td class="r"><div class="bar" style="width:56px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td><td class="r"><div class="bar" style="width:52px;margin-left:auto"></div></td></tr>
+          <tr style="background:var(--muted)"><td colspan="3" style="font-weight:700">Total — 5 employees</td>
+            <td class="r" style="font-weight:700">RM 27,913.00</td><td class="r" style="font-weight:700">RM 3,080.00</td>
+            <td class="r" style="font-weight:700">RM 3,397.00</td><td class="r" style="font-weight:700">RM 6,477.00</td></tr>
+        </tbody>
+      </table>
+      <div class="outrow">
+        <span class="lbl">Output</span>
+        <span class="btn">Download PDF</span>
+        <span class="btn">Download Excel</span>
+        <span class="btn">Download CSV</span>
+        <span class="btn">Print</span>
+        <span class="btn pri">Record generation</span>
+      </div>
+    </div>
+
+    <p class="kicker" style="padding:0 2px">The five employee rows are drawn as grey bars here only because this is a sketch —
+      the real screen shows each person’s name, EPF number, IC and figures, exactly as it does today. Totals are your real July numbers.</p>
+  </div>
+
+  <p class="kicker">On CP39 and on SOCSO + EIS the same Output row also carries the agency upload file
+    (<b>e-CP39</b> and <b>PERKESO ASSIST</b>) that already exists today. EPF has no upload file yet — the schedule and its
+    totals are what you get, which is what the screen produces today as well.</p>
+</div>

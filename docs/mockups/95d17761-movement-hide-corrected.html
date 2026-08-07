@@ -1,0 +1,204 @@
+<meta charset="utf-8">
+<title>95d17761 — Corrected movement entries come off the profile</title>
+<!--
+  Mockup for 95d17761 (Deletion of Incorrect Movement Records), plan revision 1.
+
+  Real production data, measured 2026-08-07: employment 21fa1f24 (Ou Yang Na Na), Chin Hin Property Group,
+  Technology / Senior Project Manager, pay 2500 -> 3000 -> 3500. Seven rows on her Movement tab today, THREE
+  of them dead: transfer reversed (event 6509), increment corrected (6511), scheduled promotion 6513
+  superseded on basicSalary by the later-keyed salaryAdjustment 6606 the sweep already applied.
+
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 11px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .panel{border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-top:10px}
+  .panel.bad{border-color:#fca5a5}
+  .panel.good{border-color:#86efac}
+  .phead{padding:8px 12px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+  .phead.bad{background:var(--badbg);color:#991b1b}
+  .phead.good{background:var(--goodbg);color:#166534}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted);white-space:nowrap}
+  td{padding:7px 9px;border-top:1px solid var(--border);vertical-align:top}
+  td.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr.dead td{color:var(--mf);background:#fbfbfd}
+  .strike{text-decoration:line-through}
+  .badge{display:inline-block;margin-left:6px;border:1px solid var(--border);border-radius:4px;
+         padding:1px 6px;font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mf);
+         background:#fff;vertical-align:middle}
+  .badge.pend{border-color:#c7c5f7;background:#eeeefc;color:var(--primary)}
+  .act{color:var(--primary);margin-right:11px;font-size:12px}
+  .act.off{color:#c3c3ce}
+  .hidden-line{display:flex;align-items:center;gap:9px;padding:8px 11px;background:var(--muted);
+               border-top:1px solid var(--border);font-size:12px;color:var(--mf)}
+  .hidden-line b{color:var(--fg);font-weight:600}
+  .lnk{color:var(--primary);font-weight:600}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px;background:#fff}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:9px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .dlg{background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px}
+  .dlg h3{margin:0 0 5px;font-size:12.5px}
+  .dlg p{margin:0 0 9px;font-size:12px;color:var(--mf)}
+  .fld{border:1px solid var(--border);border-radius:7px;padding:6px 9px;font-size:11.5px;color:#a9a9b6;background:#fcfcfe}
+  .btns{margin-top:10px;display:flex;gap:8px;justify-content:flex-end}
+  .btn{border-radius:7px;padding:5px 13px;font-size:11.5px;font-weight:600}
+  .btn.p{background:var(--primary);color:#fff}
+  .btn.g{border:1px solid var(--border);color:var(--mf)}
+  .keep{background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:9px 11px;font-size:12px;
+        color:#7c2d12;margin-top:12px}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Ou Yang Na Na — Movement tab. Her real record, today.</h2>
+  <p class="q">“No historical record (e.g., Reversed, Corrected, or Superseded) should remain visible on the employee profile.”</p>
+
+  <div class="panel bad">
+    <div class="phead bad">NOW — seven entries, three of them dead</div>
+    <table>
+      <thead><tr>
+        <th>Event Type</th><th>Effective Date</th><th>Company</th><th>Division</th>
+        <th>Department</th><th>Job Title</th><th>Basic</th><th>Action</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td>Hired</td><td class="mono">2026-05-01</td><td>Chin Hin Property Group</td><td>—</td>
+          <td>Technology</td><td>Senior Project Manager</td><td class="mono">MYR 2500.00</td>
+          <td><span class="act">View</span></td>
+        </tr>
+        <tr>
+          <td>Confirmation</td><td class="mono">2026-08-04</td><td>Chin Hin Property Group</td><td>—</td>
+          <td>Technology</td><td>Senior Project Manager</td><td class="mono">MYR 2500.00</td>
+          <td><span class="act">View</span><span class="act">Roll Back</span></td>
+        </tr>
+        <tr class="dead">
+          <td><span class="strike">Transfer</span><span class="badge">Reversed</span></td>
+          <td class="mono">2026-08-05</td><td>Chin Hin Property Group</td><td>—</td>
+          <td>Technology</td><td>Senior Project Manager</td><td class="mono">MYR 2500.00</td>
+          <td><span class="act">View</span></td>
+        </tr>
+        <tr class="dead">
+          <td><span class="strike">Increment</span><span class="badge">Corrected</span></td>
+          <td class="mono">2026-08-06</td><td>Chin Hin Property Group</td><td>—</td>
+          <td>Technology</td><td>Senior Project Manager</td><td class="mono">MYR 3000.00</td>
+          <td><span class="act">View</span></td>
+        </tr>
+        <tr>
+          <td>Increment</td><td class="mono">2026-08-06</td><td>Chin Hin Property Group</td><td>—</td>
+          <td>Technology</td><td>Senior Project Manager</td><td class="mono">MYR 3000.00</td>
+          <td><span class="act">View</span><span class="act">Roll Back</span></td>
+        </tr>
+        <tr class="dead">
+          <td><span class="strike">Promotion</span><span class="badge">Superseded</span></td>
+          <td class="mono">2026-08-07</td><td>Chin Hin Property Group</td><td>—</td>
+          <td>Technology</td><td>Senior Project Manager</td><td class="mono">MYR 3500.00</td>
+          <td><span class="act">View</span></td>
+        </tr>
+        <tr>
+          <td>Salary Adjustment</td><td class="mono">2026-08-07</td><td>Chin Hin Property Group</td><td>—</td>
+          <td>Technology</td><td>Senior Project Manager</td><td class="mono">MYR 3500.00</td>
+          <td><span class="act">View</span><span class="act">Edit</span><span class="act">Roll Back</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="note">Every one of those three struck-through lines was already undone: her pay, position,
+    department and reporting line are correct on every other screen. Only the list still carries them.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>After — only the movements that count</h2>
+
+  <div class="panel good">
+    <div class="phead good">AFTER — four entries, and one line telling you the rest are there if you want them</div>
+    <table>
+      <thead><tr>
+        <th>Event Type</th><th>Effective Date</th><th>Company</th><th>Division</th>
+        <th>Department</th><th>Job Title</th><th>Basic</th><th>Action</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td>Hired</td><td class="mono">2026-05-01</td><td>Chin Hin Property Group</td><td>—</td>
+          <td>Technology</td><td>Senior Project Manager</td><td class="mono">MYR 2500.00</td>
+          <td><span class="act">View</span></td>
+        </tr>
+        <tr>
+          <td>Confirmation</td><td class="mono">2026-08-04</td><td>Chin Hin Property Group</td><td>—</td>
+          <td>Technology</td><td>Senior Project Manager</td><td class="mono">MYR 2500.00</td>
+          <td><span class="act">View</span><span class="act">Roll Back</span></td>
+        </tr>
+        <tr>
+          <td>Increment</td><td class="mono">2026-08-06</td><td>Chin Hin Property Group</td><td>—</td>
+          <td>Technology</td><td>Senior Project Manager</td><td class="mono">MYR 3000.00</td>
+          <td><span class="act">View</span><span class="act">Roll Back</span></td>
+        </tr>
+        <tr>
+          <td>Salary Adjustment</td><td class="mono">2026-08-07</td><td>Chin Hin Property Group</td><td>—</td>
+          <td>Technology</td><td>Senior Project Manager</td><td class="mono">MYR 3500.00</td>
+          <td><span class="act">View</span><span class="act">Edit</span><span class="act">Roll Back</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="hidden-line">
+      <span><b>3 corrected entries hidden</b> — rolled back, corrected or overtaken by a later entry.</span>
+      <span class="lnk">Show</span>
+    </div>
+  </div>
+
+  <p class="note">Press <b>Show</b> and the three come back exactly as they look today, with a
+    <b>Hide</b> link to put them away again. A movement dated in the future is never hidden — it has not
+    happened yet, and you still need to see it.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>The confirmation box says what will actually happen</h2>
+
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW</span>
+      <div class="dlg">
+        <h3>Roll this movement event back?</h3>
+        <p style="font-size:11.5px;color:#8b8b98">Transfer · 2026-08-05</p>
+        <p>The employee’s details revert to what they were immediately before this event.
+          <b style="color:#991b1b">The entry itself stays in Employment History</b>, marked as rolled back,
+          showing who did it, when and why.</p>
+        <div class="fld">Reason (required)</div>
+        <div class="btns"><span class="btn g">Cancel</span><span class="btn p">Roll Back</span></div>
+      </div>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER</span>
+      <div class="dlg">
+        <h3>Roll this movement event back?</h3>
+        <p style="font-size:11.5px;color:#8b8b98">Transfer · 2026-08-05</p>
+        <p>The employee’s salary, position, department and reporting line go back to what they were
+          immediately before this event. <b style="color:#166534">The entry comes off the employee’s
+          profile.</b> The audit record keeps who did it, when and why.</p>
+        <div class="fld">Reason (required)</div>
+        <div class="btns"><span class="btn g">Cancel</span><span class="btn p">Roll Back</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="keep"><b>What we are not doing, and why.</b> The entry is taken off the profile, not wiped
+    from the system. The employee’s pay history, their EA form and every closed payroll run are built from
+    that same record — once a line can be erased, none of them can be defended in an audit. This is the
+    shape you chose on 28 July; the only thing changing now is that you no longer have to look at it.</div>
+</div>

@@ -1,0 +1,204 @@
+<meta charset="utf-8">
+<title>06f0cb8f — Create New Employee: four fields, ID held on the spot, Draft in the list</title>
+<!--
+  Mockup for 06f0cb8f (Simplify Create New Employee Workflow with Draft Creation).
+  Real production data measured 2026-08-07: the reporter's 9 companies, ISEDECOR BINA SDN BHD's
+  A0001..A0014 hand-keyed run (22 people, no gaps), SpaceX Sdn Bhd's X prefix at 6 digits
+  (X000001 issued), Demo Sdn Bhd's DEMO/MY setup starting at 9. One unfinished draft, step 1,
+  saved 2026-08-05.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);
+       font-weight:600;display:block;margin-bottom:3px}
+  .req{color:var(--bad);font-weight:700}
+  .in{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12.5px;
+      margin-bottom:9px;color:var(--fg)}
+  .in.ph{color:#a3a3ad}
+  .in.ro{background:var(--muted);color:var(--mf);border-style:dashed}
+  .in.sel::after{content:"\25BE";float:right;color:var(--mf)}
+  .in.hot{border-color:var(--primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 16%,transparent)}
+  .steps{display:flex;gap:5px;margin-bottom:11px;flex-wrap:wrap}
+  .st{font-size:10.5px;padding:3px 9px;border-radius:999px;background:var(--muted);color:var(--mf);font-weight:600}
+  .st.on{background:var(--primary);color:#fff}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:6px 15px;
+       font-size:12px;font-weight:600}
+  .btn.sec{background:#fff;color:var(--fg);border:1px solid var(--border)}
+  .btn.off{background:#c9cad6;color:#fff}
+  .note{font-size:11.5px;color:var(--mf);margin:9px 0 0}
+  .hole{background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:9px 11px;font-size:11.5px;
+        color:#7c2d12;margin-top:10px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+  tr.draft td{background:#fbfaff}
+  .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700}
+  .b-draft{background:#e6e7f2;color:#45465c}
+  .b-prob{background:#fef3c7;color:#92400e}
+  .b-act{background:#dcfce7;color:#166534}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .held{background:#eef2ff;border:1px solid #c7d2fe;border-radius:9px;padding:9px 11px;font-size:11.5px;
+        color:#3730a3;margin-top:2px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .filt{display:inline-block;border:1px solid var(--border);background:#fff;border-radius:8px;
+        padding:4px 10px;font-size:11.5px;color:var(--mf);margin-right:6px}
+  .filt.on{border-color:var(--primary);color:var(--primary);font-weight:600;background:#eef2ff}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Create New Employee — the first screen</h2>
+  <p class="q">“The initial step will only require the minimum mandatory information to create and reserve the employee record.”</p>
+
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — step 1 of 5, ten fields, nothing created</span>
+      <div class="steps">
+        <span class="st on">Profile</span><span class="st">Employment</span><span class="st">Bank &amp; Statutory</span>
+        <span class="st">Payroll</span><span class="st">Review &amp; create</span>
+      </div>
+      <span class="lbl">Company <span class="req">*</span></span><div class="in sel">ISEDECOR BINA SDN BHD</div>
+      <span class="lbl">Employee ID <span class="req">*</span></span><div class="in">A0015</div>
+      <span class="lbl">Full name</span><div class="in ph">&nbsp;</div>
+      <span class="lbl">Email</span><div class="in ph">&nbsp;</div>
+      <span class="lbl">Nationality</span><div class="in ph">&nbsp;</div>
+      <span class="lbl">Identity No</span><div class="in ph">&nbsp;</div>
+      <span class="lbl">Mobile phone number</span><div class="in ph">&nbsp;</div>
+      <span class="lbl">Date of birth</span><div class="in ph">&nbsp;</div>
+      <span class="lbl">Gender</span><div class="in sel ph">&nbsp;</div>
+      <span class="lbl">Marital status</span><div class="in sel ph">&nbsp;</div>
+      <div><span class="btn sec">Save draft</span> <span class="btn">Next</span></div>
+      <p class="note">Four more steps before anything exists. The Employee ID above is only a typed
+        intention — nothing holds A0015 until the fifth step is finished.</p>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER — one screen, four fields, Create</span>
+      <span class="lbl">Company <span class="req">*</span></span><div class="in sel hot">ISEDECOR BINA SDN BHD</div>
+      <span class="lbl">Employee ID <span class="req">*</span></span><div class="in hot mono">A0015</div>
+      <div class="held">This company is numbered by hand, so type the ID. It is checked as you type and
+        held for this person the moment you press Create.</div>
+      <span class="lbl" style="margin-top:11px">Full name <span class="req">*</span></span><div class="in">Nur Aisyah binti Rahman</div>
+      <span class="lbl">Email address <span class="req">*</span></span><div class="in">aisyah.rahman@isedecor.example</div>
+      <div style="margin-top:4px"><span class="btn">Create</span> <span class="btn sec">Cancel</span></div>
+      <p class="note">That is the whole screen. Press Create and the record exists, the ID is taken,
+        and HR can walk away.</p>
+      <div class="held" style="margin-top:12px"><b>What Create does, in order.</b><br>
+        1. Holds the Employee ID against this person &mdash; nobody else can be given it, not the
+        hire form, not a bulk import, not a second draft.<br>
+        2. Saves the record with a Draft status.<br>
+        3. Shows it in the employee list straight away.<br>
+        4. Leaves everything else to be filled in whenever HR is ready.</div>
+    </div>
+  </div>
+
+  <div class="hole"><b>Where the ID comes from is unchanged.</b> Two of your nine companies have an
+    Auto Running Number setup: SpaceX Sdn Bhd would show the next number <span class="mono">X000002</span>
+    already filled in and greyed out, and Demo Sdn Bhd <span class="mono">DEMO000009MY</span>. The other
+    seven, ISEDECOR BINA SDN BHD included, are typed by hand exactly as they are today. Both kinds get held.</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Personnel list — Draft people sit in the table, not beside it</h2>
+  <p class="q">“Draft employees shall appear in the employee list with a clear status indicator.”</p>
+
+  <div style="margin-bottom:10px">
+    <span class="lbl" style="display:inline-block;margin-right:7px">Status filter</span>
+    <span class="filt sel" style="min-width:150px">Draft &nbsp;&#9662;</span>
+    <span class="filt on">Status: Draft &nbsp;&times;</span>
+    <span class="chip" style="margin-left:6px">Draft joins the existing Active / Resigned choices</span>
+  </div>
+
+  <table>
+    <thead><tr><th>Code</th><th>Name</th><th>Department</th><th>Company</th><th>Status</th><th>Hired</th></tr></thead>
+    <tbody>
+      <tr class="draft">
+        <td class="mono">A0015</td>
+        <td>Nur Aisyah binti Rahman<div style="font-size:11px;color:var(--mf)">aisyah.rahman@isedecor.example</div></td>
+        <td style="color:var(--mf)">&mdash;</td>
+        <td style="color:var(--mf)">ISEDECOR BINA SDN BHD</td>
+        <td><span class="badge b-draft">Draft</span></td>
+        <td style="color:var(--mf)">&mdash;</td>
+      </tr>
+      <tr class="draft">
+        <td class="mono">X000002</td>
+        <td>Lim Wei Sheng<div style="font-size:11px;color:var(--mf)">weisheng.lim@spacex.example</div></td>
+        <td style="color:var(--mf)">&mdash;</td>
+        <td style="color:var(--mf)">SpaceX Sdn Bhd</td>
+        <td><span class="badge b-draft">Draft</span></td>
+        <td style="color:var(--mf)">&mdash;</td>
+      </tr>
+      <tr><td class="mono">A0014</td><td>(existing employee)</td><td style="color:var(--mf)">Site Operations</td>
+          <td style="color:var(--mf)">ISEDECOR BINA SDN BHD</td><td><span class="badge b-prob">Probation</span></td>
+          <td style="color:var(--mf)">2026-06-01</td></tr>
+      <tr><td class="mono">A0013</td><td>(existing employee)</td><td style="color:var(--mf)">Finance</td>
+          <td style="color:var(--mf)">ISEDECOR BINA SDN BHD</td><td><span class="badge b-act">Active</span></td>
+          <td style="color:var(--mf)">2025-11-17</td></tr>
+      <tr><td class="mono">X000001</td><td>(existing employee)</td><td style="color:var(--mf)">Engineering</td>
+          <td style="color:var(--mf)">SpaceX Sdn Bhd</td><td><span class="badge b-act">Active</span></td>
+          <td style="color:var(--mf)">2025-03-03</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Draft rows are pinned to the top so nothing outstanding gets lost on page four.
+    They carry the ID that is being held for them, and no department or join date yet — because those
+    have not been decided. The amber “Unfinished drafts” panel that sits above this table today goes away.</p>
+  <p class="note"><b>A Draft is still not on the books.</b> It is out of headcount, out of payroll runs,
+    out of leave and out of every report until it is activated.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Finishing a Draft, and what Activate needs</h2>
+  <div class="two">
+    <div class="box">
+      <span class="tag" style="background:var(--muted);color:var(--mf)">CONTINUE — opened from the Draft row</span>
+      <div class="steps">
+        <span class="st">Profile details</span><span class="st on">Employment</span>
+        <span class="st">Bank &amp; Statutory</span><span class="st">Payroll</span>
+      </div>
+      <span class="lbl">Company</span><div class="in ro">ISEDECOR BINA SDN BHD (fixed)</div>
+      <span class="lbl">Employee ID</span><div class="in ro mono">A0015 &mdash; held for this person</div>
+      <span class="lbl">Department <span class="req">*</span></span><div class="in sel ph">&nbsp;</div>
+      <span class="lbl">Employment type <span class="req">*</span></span><div class="in sel ph">&nbsp;</div>
+      <span class="lbl">Join date <span class="req">*</span></span><div class="in ph">&nbsp;</div>
+      <span class="lbl">Initial basic salary (MYR) <span class="req">*</span></span><div class="in ph">&nbsp;</div>
+      <div><span class="btn sec">Save progress</span> <span class="btn off">Activate</span></div>
+      <p class="note">Activate stays greyed out until those four are in. Save progress works at any time,
+        as it does today. Profile details holds everything that came off the first screen &mdash;
+        Nationality, Identity No, Mobile Phone, Date of Birth, Gender and Marital Status.</p>
+    </div>
+    <div class="box good">
+      <span class="tag good">AFTER ACTIVATE</span>
+      <table style="margin-bottom:9px">
+        <thead><tr><th>Code</th><th>Status</th><th>Hired</th></tr></thead>
+        <tbody><tr><td class="mono">A0015</td><td><span class="badge b-prob">Probation</span></td><td>2026-09-01</td></tr></tbody>
+      </table>
+      <p class="note">The ID is the same <b>A0015</b> that was held from the first screen. The status is
+        worked out from the dates, not chosen — a join date of 1 September with a three-month probation
+        reads as Probation, and turns into Active by itself on 1 December.</p>
+      <p class="note">Only now do Family Information, Qualification, Documents and Movement open up, on
+        the normal employee profile.</p>
+    </div>
+  </div>
+  <div class="hole"><b>If a Draft is abandoned.</b> Discard it and the ID goes back when it was the most
+    recent one issued. If somebody has already been created behind it, the number stays spent and the
+    sequence skips it. Your A0001 to A0014 run has no gaps today, so this is the one real cost of
+    holding an ID early.</div>
+</div>

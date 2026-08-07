@@ -1,0 +1,243 @@
+<meta charset="utf-8">
+<title>ee6b7c69 — Entitlement tables inside the Entitlement step</title>
+<!--
+  Mockup for ee6b7c69 (Display Entitlement Tables Directly Within the Entitlement Page).
+  Answers the reporter's screenshot: Leave configuration > Annual Leave > step 3 Entitlement, where the
+  only thing in the step is an "Open Entitlement tables" link.
+  Measured on production 2026-08-07: 24 active leave types, 0 entitlement tables, 0 eligibility rules,
+  40 employments, 318 leave ledger rows. So the screen behind that link is EMPTY today — the empty state
+  drawn below is the real one, not an invention.
+  Column labels are verbatim from messages/en.json admin.entitlementTemplates.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:6px 8px;background:var(--muted)}
+  td{padding:7px 8px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .hole{background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:9px 11px;font-size:12px;
+        color:#7c2d12;margin-top:10px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  /* step bar, as on the real screen */
+  .steps{display:flex;gap:7px;align-items:center;margin-bottom:11px;flex-wrap:wrap}
+  .step{display:flex;align-items:center;gap:6px;border:1px solid var(--border);background:#fff;
+        border-radius:999px;padding:3px 11px 3px 4px;font-size:11.5px;color:var(--mf)}
+  .step.on{background:color-mix(in srgb,var(--primary) 10%,white);border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+  .sn{display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:999px;
+      background:var(--muted);color:var(--mf);font-size:9.5px;font-weight:700}
+  .step.on .sn{background:var(--primary);color:#fff}
+  .dash{color:#c9cad6;font-size:11px}
+  .panel{border:1px solid var(--border);border-radius:11px;background:#fff}
+  .ph{padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600}
+  .pb{padding:12px}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;display:block;margin-bottom:3px}
+  .hint{font-size:11px;color:var(--mf);margin:0 0 8px}
+  .link{color:var(--primary);text-decoration:underline;font-size:12px}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;font-size:11.5px;font-weight:600}
+  .btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+  .inp{display:block;width:100%;background:#fff;border:1px solid var(--border);border-radius:7px;
+       padding:5px 9px;font-size:11.5px;font-variant-numeric:tabular-nums}
+  .inp.ro{background:var(--muted);color:var(--mf)}
+  .inp.hot{border-color:var(--bad);color:var(--bad);font-weight:700}
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:10px}
+  .empty{text-align:center;color:var(--mf);font-size:11.5px;padding:16px 8px}
+  .strike{text-decoration:line-through;color:var(--mf)}
+  .cross{color:var(--bad);font-weight:700}
+  .tick{color:var(--good);font-weight:700}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>The Entitlement step today, and what replaces it</h2>
+  <p class="q">“The current Entitlement page requires users to click ‘Open Entitlement Tables’ to navigate to a separate screen.”</p>
+
+  <div class="two">
+    <!-- ── BEFORE ───────────────────────────────────────────────────────── -->
+    <div class="box bad">
+      <span class="tag bad">NOW — Annual Leave, step 3</span>
+      <div class="steps">
+        <span class="step"><span class="sn">1</span>General</span><span class="dash">—</span>
+        <span class="step"><span class="sn">2</span>Condition</span><span class="dash">—</span>
+        <span class="step on"><span class="sn">3</span>Entitlement</span><span class="dash">—</span>
+        <span class="step"><span class="sn">4</span>Custom Settings</span>
+      </div>
+      <div class="panel">
+        <div class="ph">Entitlement</div>
+        <div class="pb">
+          <span class="lbl">Entitlement tables</span>
+          <p class="hint">Days, service bands and who receives them are set on the Entitlement Tables
+            screen — once for the whole organisation, not once per leave type.</p>
+          <span class="link">Open Entitlement tables</span>
+          <div style="border-top:1px solid var(--border);margin:12px 0 10px"></div>
+          <span class="lbl">Run earned accrual</span>
+          <p class="hint">Processes earned entitlement for a leave year.</p>
+          <span class="btn ghost">▷ Run Accrual</span>
+        </div>
+      </div>
+      <p class="note">The step holds <b>no entitlement setting at all</b> — only a signpost to another
+        screen. And that screen is <b>empty</b>: across all 24 leave types there is not one saved
+        entitlement table yet.</p>
+    </div>
+
+    <!-- ── AFTER ────────────────────────────────────────────────────────── -->
+    <div class="box good">
+      <span class="tag good">AFTER — the tables are the step</span>
+      <div class="steps">
+        <span class="step"><span class="sn">1</span>General</span><span class="dash">—</span>
+        <span class="step"><span class="sn">2</span>Condition</span><span class="dash">—</span>
+        <span class="step on"><span class="sn">3</span>Entitlement</span><span class="dash">—</span>
+        <span class="step"><span class="sn">4</span>Custom Settings</span>
+      </div>
+      <div class="panel">
+        <div class="ph">Entitlement</div>
+        <div class="pb">
+          <span class="lbl">Entitlement tables for Annual Leave</span>
+          <table style="margin-bottom:10px">
+            <thead><tr><th>Name</th><th>Service ranges</th><th>In force</th><th>Rules</th><th></th></tr></thead>
+            <tbody><tr><td colspan="5" class="empty">No entitlement tables yet for Annual Leave.</td></tr></tbody>
+          </table>
+          <div style="border-top:1px solid var(--border);margin:0 0 10px"></div>
+          <div style="font-size:11.5px;font-weight:600;margin-bottom:8px">New entitlement table</div>
+          <div class="g3">
+            <div><span class="lbl">Table name</span><input class="inp" value="Executive annual"></div>
+            <div><span class="lbl">Leave type</span><input class="inp ro" value="Annual Leave" readonly></div>
+            <div><span class="lbl">Effective from</span><input class="inp" value="2026-08-07"></div>
+          </div>
+          <table>
+            <thead><tr><th>From year(s)</th><th>To year(s)</th><th>Entitled days</th>
+              <th>Max brought forward</th><th>Max entitled + brought forward</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><input class="inp" value="0"></td><td><input class="inp" value="2"></td>
+                  <td><input class="inp" value="12.00"></td><td><input class="inp" value="5.00"></td>
+                  <td><input class="inp" value="17.00"></td><td><span class="link">Remove</span></td></tr>
+              <tr><td><input class="inp" value="2"></td><td><input class="inp" value="5"></td>
+                  <td><input class="inp" value="16.00"></td><td><input class="inp" value="5.00"></td>
+                  <td><input class="inp" value="21.00"></td><td><span class="link">Remove</span></td></tr>
+              <tr><td><input class="inp" value="5"></td><td><input class="inp" placeholder="No limit"></td>
+                  <td><input class="inp" value="20.00"></td><td><input class="inp" value="8.00"></td>
+                  <td><input class="inp" value="28.00"></td><td><span class="link">Remove</span></td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:9px"><span class="btn ghost">Add a range</span>
+            <span class="btn" style="margin-left:6px">Create table</span></div>
+        </div>
+      </div>
+      <p class="note"><b>The leave type is already known</b>, so it is filled in and locked instead of
+        being a dropdown you pick from — and the list only shows Annual Leave’s tables, not all 24
+        types’ tables mixed together.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Who gets the table — also in the step, once a table exists</h2>
+  <p class="q">“Allow users to create, edit, and manage entitlement tables from the same page.”</p>
+  <div class="panel">
+    <div class="ph">Entitlement <span style="font-weight:400;color:var(--mf)">— Annual Leave, after you save your first table</span></div>
+    <div class="pb">
+      <span class="lbl">Entitlement tables for Annual Leave</span>
+      <table style="margin-bottom:12px">
+        <thead><tr><th>Name</th><th>Service ranges</th><th>In force</th><th>Rules</th><th></th></tr></thead>
+        <tbody>
+          <tr><td style="font-weight:600">Executive annual</td>
+              <td>0–2: 12.00 (+5.00) ≤17.00<br>2–5: 16.00 (+5.00) ≤21.00<br>5–No limit: 20.00 (+8.00) ≤28.00</td>
+              <td>2026-08-07<br><span style="color:var(--mf)">Still running</span></td>
+              <td>1</td>
+              <td style="text-align:right"><span class="link">Edit</span></td></tr>
+        </tbody>
+      </table>
+      <span class="lbl">Employee eligibility</span>
+      <table>
+        <thead><tr><th>Name</th><th>Entitlement table</th><th>Applies to</th><th>In force</th><th></th></tr></thead>
+        <tbody>
+          <tr><td style="font-weight:600">Executives</td><td>Executive annual</td>
+              <td>Grade: 3 selected</td>
+              <td>2026-08-07<br><span style="color:var(--mf)">Still running</span></td>
+              <td style="text-align:right"><span class="link">Edit</span></td></tr>
+        </tbody>
+      </table>
+      <p class="note">Everything the separate screen does — create a table, edit it, stop it from a date,
+        and say which employees it applies to — happens here. The separate screen stays reachable from the
+        top of the page for anyone who wants to see all 24 leave types’ tables side by side.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>A fault we have to fix at the same time <span class="chip new">found while planning this</span></h2>
+  <p class="q">Not reported — found by reading the editor. It would corrupt your days the first time you edit a saved table.</p>
+
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">TODAY — press Edit on a saved table</span>
+      <table>
+        <thead><tr><th>From year(s)</th><th>To year(s)</th><th>Entitled days</th></tr></thead>
+        <tbody>
+          <tr><td><input class="inp" value="0"></td><td><input class="inp" placeholder=""></td>
+              <td><input class="inp hot" placeholder=""></td></tr>
+        </tbody>
+      </table>
+      <p class="note">The saved table says <b>0–2: 12.00 days</b>. The boxes open <b>blank</b> — the
+        editor keeps showing the empty new-table form it was already displaying.</p>
+      <div class="hole"><b>And a blank days box saves as zero.</b> Press “Save as a new version” and the
+        running table becomes <b>0 entitled days</b> for everyone it covers. Nothing warns you.</div>
+    </div>
+    <div class="box good">
+      <span class="tag good">AFTER — Edit opens the real figures</span>
+      <table>
+        <thead><tr><th>From year(s)</th><th>To year(s)</th><th>Entitled days</th></tr></thead>
+        <tbody>
+          <tr><td><input class="inp" value="0"></td><td><input class="inp" value="2"></td>
+              <td><input class="inp" value="12.00"></td></tr>
+        </tbody>
+      </table>
+      <p class="note">Edit loads the table you clicked, every time — and clicking Edit on a second table
+        replaces the figures instead of leaving the first table’s.</p>
+      <div class="hole" style="background:var(--goodbg);border-color:#86efac;color:#14532d">
+        <b>No saved data is at risk today</b>, because there are no entitlement tables yet. But this is the
+        first thing that would go wrong once you start using them, so it is fixed as part of this work.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">4</span>What changes, point by point</h2>
+  <table>
+    <thead><tr><th>You asked for</th><th></th><th>What you get</th></tr></thead>
+    <tbody>
+      <tr><td>Remove the “Open Entitlement Tables” link</td><td class="tick">✓</td>
+          <td>Gone from the step — the tables themselves sit there instead</td></tr>
+      <tr><td>Show the tables inside the Entitlement step</td><td class="tick">✓</td>
+          <td>Scoped to the leave type you are configuring, so Annual Leave shows Annual Leave’s tables</td></tr>
+      <tr><td>Create, edit and manage from the same page</td><td class="tick">✓</td>
+          <td>Create, edit, stop from a date, and set who it applies to — all in the step</td></tr>
+      <tr><td>Changes save to the same underlying data</td><td class="tick">✓</td>
+          <td>The same tables, the same records — only the place you type them moves</td></tr>
+      <tr><td>Separate screen may remain</td><td class="tick">✓</td>
+          <td>Kept, linked from the top of the page, showing all leave types together</td></tr>
+      <tr><td>Search within the embedded view</td><td class="cross">—</td>
+          <td>There is no search on the tables screen today either. With one leave type’s tables on
+              screen there is nothing to search through, so none is added.</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Measured on your live system on 7 August 2026: 24 leave types, 40 employees,
+    <b>0 entitlement tables</b> and <b>0 eligibility rules</b> saved so far.</p>
+</div>

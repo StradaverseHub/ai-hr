@@ -1,0 +1,256 @@
+<meta charset="utf-8">
+<title>f1b994e3 — Leave Config Audit folded into the central Audit Trail</title>
+<!--
+  Mockup for f1b994e3 (Merge Leave Configuration Audit into System Audit Trail), plan revision 1.
+  Answers the reporter's screenshot directly: their own two menu entries, their own arrow.
+  Every figure measured on production 2026-08-07 (domain_event: 6,673 rows / 79 aggregate types).
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .hole{background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:9px 11px;font-size:11.5px;
+        color:#7c2d12;margin-top:10px}
+
+  /* sidebar sketch */
+  .sb{background:#fff;border:1px solid var(--border);border-radius:11px;padding:8px;font-size:12px}
+  .sbh{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mf);font-weight:700;
+       padding:5px 9px 4px}
+  .it{display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:7px;color:#3a3a46}
+  .it .ic{width:13px;height:13px;border:1.5px solid #b9bac9;border-radius:3px;flex:none}
+  .it.sel{background:#eceafc;color:var(--primary);font-weight:600}
+  .it.sel .ic{border-color:var(--primary)}
+  .it.hl{outline:2px solid var(--bad);outline-offset:-1px;background:#fff}
+  .it.gone{color:#b3b4c2;text-decoration:line-through;text-decoration-color:var(--bad)}
+  .it.keep{outline:2px solid var(--good);outline-offset:-1px;background:#f0fdf4;color:var(--good);font-weight:700}
+  .it.keep .ic{border-color:var(--good)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+
+  /* audit screen sketch */
+  .scr{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .scrh{padding:9px 12px;border-bottom:1px solid var(--border)}
+  .scrt{font-size:13px;font-weight:700}
+  .scrd{font-size:10.5px;color:var(--mf)}
+  .filters{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border);
+           background:#fcfcfe}
+  .f{border:1px solid var(--border);border-radius:7px;background:#fff;padding:3px 8px;font-size:10.5px;min-width:96px}
+  .f b{display:block;font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700}
+  .f span{color:#2c2c38}
+  .f.new{border-color:var(--primary);box-shadow:0 0 0 2px #eceafc}
+  .f.new b{color:var(--primary)}
+  .f.pick{background:#eceafc;border-color:var(--primary);font-weight:700}
+  .exp{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--primary);
+       align-self:flex-end;padding-bottom:2px}
+  .exp i{color:var(--mf);font-style:normal}
+  .daybar{background:#f2f2f7;border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+          padding:3px 12px;font-size:9.5px;font-weight:700;color:var(--mf)}
+  .row{display:flex;align-items:center;gap:7px;padding:6px 12px;border-top:1px solid #f0f0f6;font-size:11px}
+  .row:first-of-type{border-top:none}
+  .dot{width:6px;height:6px;border-radius:999px;background:#8b8b9c;flex:none}
+  .dot.sys{background:#f59e0b}
+  .bdg{padding:1px 6px;border-radius:999px;font-size:9px;font-weight:700}
+  .b-upd{background:#e0e7ff;color:#3730a3}
+  .b-del{background:#fee2e2;color:#991b1b}
+  .b-cre{background:#d1fae5;color:#065f46}
+  .ev{font-weight:600;color:#22222c}
+  .by{color:var(--mf)}
+  .chip{margin-left:auto;background:var(--muted);color:var(--mf);border-radius:999px;padding:1px 7px;font-size:9px;flex:none}
+  .agg{color:var(--mf);font-size:10px;flex:none}
+  .tm{color:var(--mf);font-size:10px;font-variant-numeric:tabular-nums;flex:none;width:74px;text-align:right}
+  .newrow{background:#f0fdf4}
+  .footer{padding:6px 12px;font-size:10px;color:var(--mf);border-top:1px solid var(--border);background:#fcfcfe}
+  .strike{text-decoration:line-through;color:#b3b4c2}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:700;padding:5px 9px;background:var(--muted)}
+  td{padding:5px 9px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+  td.n{text-align:right;width:70px}
+  tr.tot td{font-weight:700;background:#f9f9fd}
+  .big{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+  .big.b{color:var(--bad)} .big.g{color:var(--good)}
+  .cap{font-size:10px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+  .kpi{display:flex;gap:22px;margin-top:6px}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Your two menu entries — and there was only ever one set of records</h2>
+  <p class="q">“The Audit submenu under Leave Configuration is unnecessary because the system already has a central Audit Trail module.”</p>
+
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — two doors into the same history</span>
+      <div class="cols">
+        <div class="sb">
+          <div class="sbh">Leave config</div>
+          <div class="it"><span class="ic"></span>Entitlements</div>
+          <div class="it"><span class="ic"></span>Leave Adjustments</div>
+          <div class="it"><span class="ic"></span>Generate Entitlement</div>
+          <div class="it"><span class="ic"></span>Approval Workflow</div>
+          <div class="it"><span class="ic"></span>Payroll Related</div>
+          <div class="it"><span class="ic"></span>Replacement Leave</div>
+          <div class="it hl"><span class="ic"></span>Audit</div>
+        </div>
+        <div class="sb">
+          <div class="sbh">Admin</div>
+          <div class="it sel"><span class="ic"></span>Leave config</div>
+          <div class="it"><span class="ic"></span>Attendance</div>
+          <div class="it"><span class="ic"></span>Claims config</div>
+          <div class="it"><span class="ic"></span>Payroll</div>
+          <div class="it"><span class="ic"></span>Analytics</div>
+          <div class="it"><span class="ic"></span>Reports</div>
+          <div class="it hl"><span class="ic"></span>Audit trail</div>
+        </div>
+      </div>
+      <p class="note">Both pages read the <b>same</b> change history. Nothing is stored twice, and nothing
+        needs to be copied anywhere — your leave changes are <b>already</b> in the Audit trail today.</p>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER — one door, and it is the one you already have</span>
+      <div class="cols">
+        <div class="sb">
+          <div class="sbh">Leave config</div>
+          <div class="it"><span class="ic"></span>Entitlements</div>
+          <div class="it"><span class="ic"></span>Leave Adjustments</div>
+          <div class="it"><span class="ic"></span>Generate Entitlement</div>
+          <div class="it"><span class="ic"></span>Approval Workflow</div>
+          <div class="it"><span class="ic"></span>Payroll Related</div>
+          <div class="it"><span class="ic"></span>Replacement Leave</div>
+          <div class="it gone"><span class="ic"></span>Audit</div>
+        </div>
+        <div class="sb">
+          <div class="sbh">Admin</div>
+          <div class="it sel"><span class="ic"></span>Leave config</div>
+          <div class="it"><span class="ic"></span>Attendance</div>
+          <div class="it"><span class="ic"></span>Claims config</div>
+          <div class="it"><span class="ic"></span>Payroll</div>
+          <div class="it"><span class="ic"></span>Analytics</div>
+          <div class="it"><span class="ic"></span>Reports</div>
+          <div class="it keep"><span class="ic"></span>Audit trail</div>
+        </div>
+      </div>
+      <p class="note">One audit page. Old bookmarks to the leave audit page still open — they land on the
+        Audit trail with <b>Leave</b> already selected, so nothing breaks.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>The Audit trail keeps every tool the leave page had — and gains an Area filter</h2>
+  <p class="q">Real events from your system, 4–7 August 2026.</p>
+
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — Audit trail: only 4 filters, no download</span>
+      <div class="scr">
+        <div class="scrh"><div class="scrt">Audit trail</div><div class="scrd">Every recorded change, newest first</div></div>
+        <div class="filters">
+          <div class="f"><b>Record type</b><span>All</span></div>
+          <div class="f"><b>Search event</b><span>&nbsp;</span></div>
+          <div class="f"><b>From</b><span>dd/mm/yyyy</span></div>
+          <div class="f"><b>To</b><span>dd/mm/yyyy</span></div>
+        </div>
+        <div class="row"><span class="dot"></span><span class="bdg b-upd">Updated</span><span class="ev">Holiday group updated</span><span class="by">by HR Admin</span><span class="chip">Leave</span><span class="tm">7 Aug 13:44</span></div>
+        <div class="row"><span class="dot"></span><span class="bdg b-upd">Updated</span><span class="ev">Employment updated</span><span class="by">by HR Admin</span><span class="chip">Organization</span><span class="tm">7 Aug 09:12</span></div>
+        <div class="row"><span class="dot"></span><span class="bdg b-del">Deleted</span><span class="ev">Leave type deleted</span><span class="by">by HR Admin</span><span class="chip">Leave</span><span class="tm">6 Aug 11:00</span></div>
+        <div class="row"><span class="dot sys"></span><span class="bdg b-upd">Updated</span><span class="ev">Payroll batch updated</span><span class="by">by System</span><span class="chip">Payroll</span><span class="tm">6 Aug 03:00</span></div>
+        <div class="footer">Everything from every area, mixed together. No way to say “just show me leave”.
+          The top row is already labelled <b>Leave</b> here — yet the Leave Config Audit page does not list it.</div>
+      </div>
+      <div class="hole">No <b>who changed it</b> filter, no <b>company</b> filter, no <b>Today / Yesterday</b>
+        grouping and <b>no download</b>. Delete the leave page as it stands and you lose all four.</div>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER — Area filter added, leave page tools moved up</span>
+      <div class="scr">
+        <div class="scrh"><div class="scrt">Audit trail</div><div class="scrd">Every recorded change, newest first</div></div>
+        <div class="filters">
+          <div class="f new pick"><b>Area</b><span>Leave ▾</span></div>
+          <div class="f"><b>Record type</b><span>All leave</span></div>
+          <div class="f new"><b>Action</b><span>All actions</span></div>
+          <div class="f new"><b>User</b><span>All users</span></div>
+          <div class="f new"><b>Company</b><span>All companies</span></div>
+          <div class="f new"><b>Leave type</b><span>All</span></div>
+          <div class="f"><b>From</b><span>dd/mm/yyyy</span></div>
+          <div class="f"><b>To</b><span>dd/mm/yyyy</span></div>
+          <div class="exp"><i>Export as</i> CSV · Excel · PDF</div>
+        </div>
+        <div class="daybar">TODAY</div>
+        <div class="row newrow"><span class="dot"></span><span class="bdg b-upd">Updated</span><span class="ev">Holiday group updated</span><span class="by">by HR Admin</span><span class="chip">Leave</span><span class="tm">13:44</span></div>
+        <div class="row newrow"><span class="dot"></span><span class="bdg b-upd">Updated</span><span class="ev">Holiday group updated</span><span class="by">by HR Admin</span><span class="chip">Leave</span><span class="tm">13:43</span></div>
+        <div class="daybar">YESTERDAY</div>
+        <div class="row"><span class="dot"></span><span class="bdg b-del">Deleted</span><span class="ev">Leave type deleted</span><span class="by">by HR Admin</span><span class="chip">Leave</span><span class="tm">11:00</span></div>
+        <div class="row newrow"><span class="dot sys"></span><span class="bdg b-upd">Updated</span><span class="ev">Leave entitlement recalculated</span><span class="by">by System</span><span class="chip">Leave</span><span class="tm">03:00</span></div>
+        <div class="daybar">5 AUG 2026</div>
+        <div class="row"><span class="dot"></span><span class="bdg b-cre">Created</span><span class="ev">Leave year opened</span><span class="by">by HR Admin</span><span class="chip">Leave</span><span class="tm">07:59</span></div>
+        <div class="footer">Showing 1–25 of <b>1,231</b> leave changes &nbsp;·&nbsp; green rows are ones the old leave page could not show you at all</div>
+      </div>
+      <div class="hole" style="background:var(--goodbg);border-color:#86efac;color:#14532d">
+        Same page, same records, same permissions — plus <b>Area</b>, and every filter and download the
+        leave page had, now working for Payroll, Attendance and Organization too.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>What the leave page was hiding from you — 404 leave changes</h2>
+  <p class="q">Measured on your live system, 7 August 2026.</p>
+  <div class="two">
+    <div>
+      <table>
+        <thead><tr><th>Leave records the old Audit page never listed</th><th class="n">Changes</th></tr></thead>
+        <tbody>
+          <tr><td>Benefit scheme leave entitlement</td><td class="n">283</td></tr>
+          <tr><td>Entitlement recalculation</td><td class="n">91</td></tr>
+          <tr><td>Leave approval template</td><td class="n">9</td></tr>
+          <tr><td>Holiday calendar</td><td class="n">9</td></tr>
+          <tr><td>Holiday inside a calendar</td><td class="n">6</td></tr>
+          <tr><td>Combined leave limit</td><td class="n">4</td></tr>
+          <tr><td>Shared leave group</td><td class="n">1</td></tr>
+          <tr><td>Public holiday</td><td class="n">1</td></tr>
+          <tr class="tot"><td>Invisible today</td><td class="n">404</td></tr>
+        </tbody>
+      </table>
+      <p class="note">It listed 8 kinds of leave record. Your system produces 15.</p>
+    </div>
+    <div class="box good" style="display:flex;flex-direction:column;justify-content:center">
+      <span class="tag good">The number that changes</span>
+      <div class="kpi">
+        <div>
+          <div class="cap">Leave page today</div>
+          <div class="big b">799</div>
+          <div class="note" style="margin-top:2px">newest row: <b class="strike">6 Aug 11:00</b></div>
+        </div>
+        <div>
+          <div class="cap">Audit trail, Area = Leave</div>
+          <div class="big g">1,231</div>
+          <div class="note" style="margin-top:2px">newest row: <b>7 Aug 13:44</b></div>
+        </div>
+      </div>
+      <div class="hole" style="background:#fff;border-color:#86efac;color:#14532d">
+        The two most recent leave changes on your system — both <b>holiday calendar edits on 7 August</b> —
+        do not appear on the Leave Config Audit page at all. The newest thing it can show you is a day older.
+      </div>
+      <p class="note">Nothing is created, copied or rewritten to achieve this. Every one of those 404 changes
+        was already recorded; the leave page simply did not recognise them as leave.</p>
+    </div>
+  </div>
+</div>

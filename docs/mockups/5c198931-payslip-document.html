@@ -1,0 +1,318 @@
+<meta charset="utf-8">
+<title>5c198931 — Individual Payslip, the downloaded document</title>
+<!--
+  Mockup for board item 5c198931 (Redesign Individual Payslip with a modern professional layout),
+  plan revision 1.
+
+  SCOPE: the DOWNLOADED / PRINTED payslip document only. The on-screen preview at
+  Payroll > Individual Payslip already carries the logo, the employee panel, the earnings/deductions
+  split, employer contributions, year-to-date, the PCB drill-down and the net-pay band (169e3c24 +
+  da4af51f + 3c473773 + efece4ce). What is basic is the file that comes out of Download PDF, and that
+  is what is drawn here.
+
+  EVERY FIGURE IS REAL, measured from production 2026-08-07: ISEDECOR BINA SDN BHD, employee 100180,
+  pay period 2026-08. Basic 5,500.00 + one recorded pay item A0027 HANDPHONE ALLOWANCE 100.00 =
+  gross 5,600.00; EPF 616.00 / SOCSO 27.75 / EIS 11.10 / PCB 1,680.00 = 2,334.85; net 3,265.15;
+  employer EPF 672.00 / SOCSO 97.15 / EIS 11.10 / HRDF 56.00, employer cost 6,436.25; 31 days worked;
+  statutory ruleset 2026.6. Year-to-date is the sum of that employee's three 2026 runs.
+
+  DELIBERATELY NOT DRAWN:
+    - the "contribution bases" panel from the attached reference (EPF Base / SOCSO Base / EIS Base /
+      HRDF Base / Income Tax Base). Those figures were never written onto a payslip, so no existing
+      payslip can print them. Drawing them would promise a number we do not have.
+    - the REMARK box. There is no remark field on a payslip.
+    - a company logo image. Only 1 of the 9 companies has uploaded one, and this company is not it,
+      so the letterhead is drawn as the slot the uploaded logo fills.
+    - personal numbers. IC / EPF / SOCSO / tax / bank values are masked in this sketch; the real
+      document prints them from the employee record (bank account already masked to its last four).
+
+  Tokens copied from app/globals.css so this is a picture of OUR app, not a generic form.
+  Everything inline: scripts/mockup/render.ts blocks external requests and fails loudly.
+-->
+<style>
+  :root {
+    --background: #f5f6fa; --foreground: #1a1a22; --card: #ffffff;
+    --primary: #4f46e5; --muted: #f0f1f7; --muted-foreground: #63636f;
+    --border: #e7e8f1; --radius: 1rem;
+    --earn: #0f9b8e; --deduct: #e2564d; --paper: #ffffff; --rule: #d9dae6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 26px 26px 30px; background: var(--background); color: var(--foreground);
+    font: 14px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  h1.hd { font-size: 16px; margin: 0 0 4px; }
+  p.lede { margin: 0 0 20px; font-size: 12.5px; color: var(--muted-foreground); max-width: 100ch; }
+  .pair { display: grid; grid-template-columns: 392px 1fr; gap: 26px; align-items: start; }
+  .caption { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-foreground); margin: 0 0 8px; }
+  .tag { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 600; }
+  .tag.now { background: var(--muted); color: var(--muted-foreground); }
+  .tag.new { background: color-mix(in srgb, var(--primary) 12%, white); color: var(--primary); }
+  .note { font-size: 12px; color: var(--muted-foreground); margin: 10px 0 0; }
+  .note b { color: var(--foreground); font-weight: 600; }
+
+  /* the paper */
+  .paper { background: var(--paper); border: 1px solid var(--border); border-radius: 10px;
+           box-shadow: 0 1px 3px rgba(20,20,40,.06); padding: 22px 22px 18px; }
+  .paper.a5 { padding: 18px 18px 16px; }
+  .size { font-size: 10.5px; color: var(--muted-foreground); text-align: right; margin: 0 0 6px; letter-spacing: .05em; }
+
+  /* --- BEFORE --- */
+  .b-head { display: flex; justify-content: space-between; align-items: flex-start; }
+  .b-co { font-size: 13px; font-weight: 700; }
+  .b-ttl { font-size: 13px; font-weight: 700; color: #363c8c; }
+  .b-sub { font-size: 9.5px; color: var(--muted-foreground); }
+  .b-rule { border: 0; border-top: 1px solid var(--rule); margin: 9px 0 12px; }
+  .b-emp { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  .b-name { font-size: 12px; font-weight: 700; }
+  .sec { font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted-foreground);
+         font-weight: 700; margin: 10px 0 4px; }
+  .ln { display: flex; justify-content: space-between; font-size: 11px; padding: 2.5px 0; }
+  .ln.tot { font-weight: 700; border-top: 1px solid var(--rule); margin-top: 4px; padding-top: 5px; }
+  .ln.dim { color: var(--muted-foreground); }
+  .b-net { display: flex; justify-content: space-between; align-items: baseline;
+           background: #eef0ff; border-radius: 4px; padding: 8px 10px; margin: 12px 0 4px; }
+  .b-net span:first-child { font-size: 11.5px; font-weight: 700; }
+  .b-net span:last-child { font-size: 13px; font-weight: 700; color: #363c8c; }
+  .b-foot { font-size: 9px; color: var(--muted-foreground); margin-top: 10px; line-height: 1.45; }
+  ul.gone { margin: 10px 0 0; padding-left: 17px; font-size: 12px; color: var(--muted-foreground); }
+  ul.gone li { margin-bottom: 3px; }
+
+  /* --- AFTER --- */
+  .a-head { display: grid; grid-template-columns: 106px 1fr auto; gap: 16px; align-items: center;
+            padding-bottom: 14px; border-bottom: 2px solid var(--rule); }
+  .logo { height: 54px; border: 1.5px dashed #c3c5d8; border-radius: 8px; display: flex; align-items: center;
+          justify-content: center; text-align: center; font-size: 9px; letter-spacing: .07em;
+          text-transform: uppercase; color: #9a9cb2; line-height: 1.3; padding: 0 6px; }
+  .a-co { font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+  .a-doc { font-size: 12px; color: var(--muted-foreground); margin-top: 2px; }
+  .a-when { text-align: right; }
+  .a-when .m { font-size: 15px; font-weight: 700; }
+  .a-when .d { font-size: 11.5px; color: var(--muted-foreground); margin-top: 2px; }
+
+  .a-emp { display: grid; grid-template-columns: 1fr 1.25fr; gap: 18px; padding: 16px 0; }
+  .a-name { font-size: 16px; font-weight: 700; letter-spacing: .01em; }
+  .a-role { font-size: 12px; color: var(--muted-foreground); margin-top: 1px; }
+  .idgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-top: 11px; }
+  .idgrid .k { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); }
+  .idgrid .v { font-size: 12px; font-weight: 600; }
+  .pill { background: var(--primary); color: #fff; font-size: 10.5px; font-weight: 700; letter-spacing: .09em;
+          text-transform: uppercase; padding: 6px 12px; border-radius: 7px; }
+  .infogrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px 14px; margin-top: 11px; }
+  .infogrid .k { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); }
+  .infogrid .v { font-size: 12px; font-weight: 600; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .blk { border: 1px solid var(--rule); border-radius: 9px; overflow: hidden; }
+  .blk h3 { margin: 0; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; font-weight: 700;
+            padding: 9px 12px; background: #fafbff; border-bottom: 1px solid var(--rule);
+            display: flex; align-items: center; gap: 7px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .dot.e { background: var(--earn); } .dot.d { background: var(--deduct); }
+  .blk .r { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; padding: 6.5px 12px;
+            border-bottom: 1px solid #eff0f7; }
+  .blk .r:last-child { border-bottom: 0; }
+  .blk .r .amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .blk .r .code { color: var(--muted-foreground); font-size: 10.5px; }
+  .blk .r.sum { background: #fafbff; border-top: 1px solid var(--rule); border-bottom: 0;
+                font-weight: 700; font-size: 12.5px; padding: 9px 12px; }
+  .blk .r.sum .amt.e { color: var(--earn); } .blk .r.sum .amt.d { color: var(--deduct); }
+
+  .mid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+  .netbar { background: var(--primary); color: #fff; border-radius: 9px; padding: 15px 16px;
+            display: flex; justify-content: space-between; align-items: baseline; }
+  .netbar .l { font-size: 12.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+  .netbar .n { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .payinfo { border: 1px solid var(--rule); border-radius: 9px; padding: 11px 12px; margin-top: 14px; }
+  .payinfo .r { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; }
+  .payinfo .r span:first-child { color: var(--muted-foreground); }
+  .empnote { font-size: 10.5px; color: var(--muted-foreground); padding: 8px 12px 10px; }
+
+  table.ytd { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 12px; }
+  table.ytd th { text-align: right; font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+                 color: var(--muted-foreground); padding: 7px 12px; border-bottom: 1px solid var(--rule); }
+  table.ytd th:first-child { text-align: left; }
+  table.ytd td { padding: 6px 12px; text-align: right; font-variant-numeric: tabular-nums;
+                 border-bottom: 1px solid #eff0f7; }
+  table.ytd td:first-child { text-align: left; }
+  table.ytd tr.last td { font-weight: 700; border-bottom: 0; }
+  table.ytd caption { caption-side: top; text-align: left; font-size: 10.5px; letter-spacing: .09em;
+                      text-transform: uppercase; font-weight: 700; color: var(--muted-foreground); padding-bottom: 6px; }
+  .a-foot { margin-top: 16px; padding-top: 11px; border-top: 1px solid var(--rule);
+            font-size: 10px; color: var(--muted-foreground); text-align: center; line-height: 1.6; }
+</style>
+
+<h1 class="hd">Individual Payslip — the file that comes out of Download PDF</h1>
+<p class="lede">Sketch for board item 5c198931. Real figures from ISEDECOR BINA SDN BHD, employee 100180,
+  August 2026. Wording, spacing and colours will differ in the built version.</p>
+
+<div class="pair">
+
+  <!-- ────────────────────────────── BEFORE ────────────────────────────── -->
+  <div>
+    <p class="caption"><span class="tag now">Today</span></p>
+    <p class="size">HALF PAGE · A5</p>
+    <div class="paper a5">
+      <div class="b-head">
+        <div>
+          <div class="b-co">ISEDECOR BINA SDN BHD</div>
+        </div>
+        <div style="text-align:right">
+          <div class="b-ttl">PAYSLIP</div>
+          <div class="b-sub">Pay period: 2026-08</div>
+        </div>
+      </div>
+      <hr class="b-rule">
+      <div class="b-emp">
+        <span class="b-name">ISMAIL</span>
+        <span class="b-sub">Employee code: 100180</span>
+      </div>
+
+      <div class="sec">Earnings</div>
+      <div class="ln"><span>Basic salary</span><span>RM 5,500.00</span></div>
+      <div class="ln"><span>Allowances</span><span>RM 100.00</span></div>
+      <div class="ln"><span>Overtime</span><span>RM 0.00</span></div>
+      <div class="ln"><span>Bonus</span><span>RM 0.00</span></div>
+      <div class="ln tot"><span>Gross pay</span><span>RM 5,600.00</span></div>
+
+      <div class="sec">Deductions</div>
+      <div class="ln"><span>EPF</span><span>RM 616.00</span></div>
+      <div class="ln"><span>SOCSO</span><span>RM 27.75</span></div>
+      <div class="ln"><span>EIS</span><span>RM 11.10</span></div>
+      <div class="ln"><span>PCB / MTD (income tax)</span><span>RM 1,680.00</span></div>
+      <div class="ln tot"><span>Total deductions</span><span>- RM 2,334.85</span></div>
+
+      <div class="b-net"><span>Net pay</span><span>RM 3,265.15</span></div>
+
+      <div class="sec">Employer contributions (not deducted from you)</div>
+      <div class="ln dim"><span>EPF</span><span>RM 672.00</span></div>
+      <div class="ln dim"><span>SOCSO</span><span>RM 97.15</span></div>
+      <div class="ln dim"><span>EIS</span><span>RM 11.10</span></div>
+      <div class="ln dim"><span>Total employer cost</span><span>RM 6,436.25</span></div>
+
+      <div class="b-foot">
+        Prorated on 31 days worked in this period.<br>
+        This is a system-generated payslip.
+      </div>
+    </div>
+    <ul class="gone">
+      <li>No company logo and no payment date.</li>
+      <li>Only the name and staff number — no NRIC, department, position, grade or statutory numbers.</li>
+      <li>Allowances are one lump. The pay item that produced them is not named.</li>
+      <li>No year-to-date, no bank or payment details, no HRDF line.</li>
+      <li>Always writes "RM", even for a company that is paid in another currency.</li>
+    </ul>
+  </div>
+
+  <!-- ────────────────────────────── AFTER ────────────────────────────── -->
+  <div>
+    <p class="caption"><span class="tag new">Proposed</span></p>
+    <p class="size">FULL PAGE · A4</p>
+    <div class="paper">
+
+      <div class="a-head">
+        <div class="logo">Company<br>logo</div>
+        <div>
+          <div class="a-co">ISEDECOR BINA SDN BHD</div>
+          <div class="a-doc">Payroll Payslip · Regular cycle</div>
+        </div>
+        <div class="a-when">
+          <div class="m">August 2026</div>
+          <div class="d">Payment date: 31 Aug 2026</div>
+        </div>
+      </div>
+
+      <div class="a-emp">
+        <div>
+          <div class="a-name">ISMAIL</div>
+          <div class="a-role">Employee ID 100180</div>
+          <div class="idgrid">
+            <div><div class="k">NRIC</div><div class="v">••••••-••-••••</div></div>
+            <div><div class="k">Income tax no.</div><div class="v">••••••••••</div></div>
+            <div><div class="k">EPF no.</div><div class="v">••••••••</div></div>
+            <div><div class="k">SOCSO / EIS no.</div><div class="v">••••••••••</div></div>
+          </div>
+        </div>
+        <div>
+          <span class="pill">Employment info</span>
+          <div class="infogrid">
+            <div><div class="k">Department</div><div class="v">—</div></div>
+            <div><div class="k">Position</div><div class="v">—</div></div>
+            <div><div class="k">Employee type</div><div class="v">—</div></div>
+            <div><div class="k">Grade</div><div class="v">GRADE 13 (PERMANENT)</div></div>
+            <div><div class="k">Days worked</div><div class="v">31.00</div></div>
+            <div><div class="k">Currency</div><div class="v">MYR</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cols">
+        <div class="blk">
+          <h3><span class="dot e"></span>Earnings</h3>
+          <div class="r"><span>Basic salary</span><span class="amt">MYR 5,500.00</span></div>
+          <div class="r"><span>Handphone allowance <span class="code">· A0027</span></span><span class="amt">MYR 100.00</span></div>
+          <div class="r sum"><span>Total earnings</span><span class="amt e">MYR 5,600.00</span></div>
+        </div>
+        <div class="blk">
+          <h3><span class="dot d"></span>Deductions</h3>
+          <div class="r"><span>EPF</span><span class="amt">MYR 616.00</span></div>
+          <div class="r"><span>SOCSO</span><span class="amt">MYR 27.75</span></div>
+          <div class="r"><span>EIS</span><span class="amt">MYR 11.10</span></div>
+          <div class="r"><span>Income tax (PCB)</span><span class="amt">MYR 1,680.00</span></div>
+          <div class="r sum"><span>Total deductions</span><span class="amt d">MYR 2,334.85</span></div>
+        </div>
+      </div>
+
+      <div class="mid">
+        <div class="blk">
+          <h3>Employer contributions</h3>
+          <div class="r"><span>Employer EPF</span><span class="amt">MYR 672.00</span></div>
+          <div class="r"><span>Employer SOCSO</span><span class="amt">MYR 97.15</span></div>
+          <div class="r"><span>Employer EIS</span><span class="amt">MYR 11.10</span></div>
+          <div class="r"><span>Employer HRDF</span><span class="amt">MYR 56.00</span></div>
+          <div class="r sum"><span>Total employer cost</span><span class="amt">MYR 6,436.25</span></div>
+          <p class="empnote">For reference. Paid by the company and not deducted from net pay.</p>
+        </div>
+        <div>
+          <div class="netbar"><span class="l">Net pay</span><span class="n">MYR 3,265.15</span></div>
+          <div class="payinfo">
+            <div class="r"><span>Payment method</span><span>—</span></div>
+            <div class="r"><span>Bank name</span><span>••••••••</span></div>
+            <div class="r"><span>Account no.</span><span>•••• ••••</span></div>
+          </div>
+        </div>
+      </div>
+
+      <table class="ytd">
+        <caption>Year to date · 2026</caption>
+        <thead>
+          <tr><th>Item</th><th>This run</th><th>Year to date</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Gross pay</td><td>5,600.00</td><td>16,800.00</td></tr>
+          <tr><td>EPF</td><td>616.00</td><td>1,848.00</td></tr>
+          <tr><td>SOCSO</td><td>27.75</td><td>83.25</td></tr>
+          <tr><td>EIS</td><td>11.10</td><td>33.30</td></tr>
+          <tr><td>Income tax (PCB)</td><td>1,680.00</td><td>5,040.00</td></tr>
+          <tr class="last"><td>Net pay</td><td>3,265.15</td><td>9,795.45</td></tr>
+        </tbody>
+      </table>
+
+      <div class="a-foot">
+        Prorated on 31 days worked in this period. · Calculated under statutory rules version 2026.6<br>
+        This is a computer-generated document. No signature is required.
+      </div>
+    </div>
+
+    <p class="note"><b>Why some boxes are empty or dotted.</b> Personal numbers are hidden in this sketch —
+      the real document prints the employee's own NRIC, EPF, SOCSO/EIS, tax and bank details, with the bank
+      account masked to its last four digits exactly as it already is on screen. Department, Position,
+      Employee type and Payment method show a dash because they are genuinely blank on this employee's
+      record today; they fill in as soon as the record is completed. The logo box is drawn as a slot
+      because 1 of your 9 companies has uploaded a logo so far — where there is one, it prints; where
+      there is none, the company name stands alone.</p>
+    <p class="note"><b>Named pay items.</b> "Handphone allowance · A0027" is a real line on this payslip.
+      Payslips print each pay item by name where the run recorded it — 12 of your 67 payslips did.
+      Older runs saved only the totals, so those keep printing the grouped lines you see on the left.</p>
+  </div>
+</div>

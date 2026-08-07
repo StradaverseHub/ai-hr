@@ -1,0 +1,243 @@
+<meta charset="utf-8">
+<title>1fff489c — Clocking locations: a radius on the site, and a Branch that fills the location in</title>
+<!--
+  Mockup for 1fff489c (Locations, Clocking Locations (Geofencing), Branch-Based Assignment).
+  Real production data used throughout (measured 2026-08-07):
+    - 8 locations across 6 of 9 companies. HQ "Headquaters" + BU8 "Bandar Utama 8" belong to
+      Chin Hin Construction Engineering. ISEDECOR BINA SDN BHD has 22 employees and no location at all.
+    - 0 clocking locations saved anywhere. 0 employees with geofencing switched on.
+    - Branch values in use: BUKIT JALIL (5 people), MENARA CHIN HIN, 23ATH FLOOR (1 person).
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700;
+       display:block;margin-bottom:3px}
+  .fld{display:inline-block;vertical-align:top;margin:0 7px 8px 0}
+  .in{display:block;background:#fff;border:1px solid var(--border);border-radius:7px;padding:5px 9px;
+      font-size:12px;font-variant-numeric:tabular-nums;min-height:27px;white-space:nowrap}
+  .in.ro{background:var(--muted);color:var(--mf);border-style:dashed}
+  .in.hot{border-color:var(--bad);color:var(--bad);font-weight:700;background:#fff}
+  .in.new{border-color:var(--primary);border-width:2px;font-weight:700}
+  .in.ph{color:#a3a3ae}
+  .btn{display:inline-block;border-radius:7px;padding:5px 11px;font-size:11.5px;font-weight:600;
+       border:1px solid var(--border);background:#fff;color:var(--mf)}
+  .btn.p{background:var(--primary);border-color:var(--primary);color:#fff}
+  .grp{border:1px solid var(--border);border-radius:10px;background:#fff;margin-bottom:9px;overflow:hidden}
+  .grphd{background:var(--muted);padding:6px 11px;font-size:11.5px;font-weight:700;
+         display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .grprow{padding:7px 11px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;
+          flex-wrap:wrap;font-size:12px;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .pill.new{background:color-mix(in srgb,var(--primary) 13%,white);color:var(--primary)}
+  .pill.br{background:#eef2ff;color:#3730a3}
+  .pill.warn{background:#fff7ed;color:#9a3412}
+  .pill.ok{background:#dcfce7;color:#166534}
+  .note{font-size:11.5px;color:var(--mf);margin-top:9px}
+  .hole{background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:9px 11px;font-size:11.5px;
+        color:#7c2d12;margin-top:10px}
+  .hole.g{background:var(--goodbg);border-color:#86efac;color:#14532d}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:700;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border);vertical-align:top}
+  .tick{color:var(--good);font-weight:700}
+  .cross{color:var(--bad);font-weight:700}
+  .cb{display:inline-block;width:13px;height:13px;border:1.5px solid var(--mf);border-radius:3px;
+      vertical-align:-2px;margin-right:5px;background:#fff}
+  .cb.on{background:var(--primary);border-color:var(--primary);color:#fff;font-size:10px;line-height:11px;
+         text-align:center;font-weight:700}
+  .phase{display:inline-block;padding:2px 9px;border-radius:6px;font-size:10.5px;font-weight:700;
+         background:var(--primary);color:#fff;margin-right:8px}
+  .phase.b{background:#0e7490}
+  .phase.c{background:#78716c}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Attendance &gt; Clocking location — the site register</h2>
+  <p class="q">“Radius, meters — currently missing entirely. Without a radius, geofencing cannot be enforced.”</p>
+
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — what the Add form asks for</span>
+      <div>
+        <span class="fld"><span class="lbl">Name</span><span class="in">Headquaters</span></span>
+        <span class="fld"><span class="lbl">Latitude</span><span class="in">3.1390</span></span>
+        <span class="fld"><span class="lbl">Longitude</span><span class="in">101.6869</span></span>
+        <span class="fld"><span class="lbl">Address</span><span class="in ph">optional</span></span>
+        <span class="fld"><span class="lbl">Remarks</span><span class="in ph">optional</span></span>
+      </div>
+      <p class="note" style="margin-top:2px">No radius, and no tie to a Location code — the site name is
+        just typed in again by hand.</p>
+      <div class="hole"><b>The radius does exist — but on the person, not the site.</b> Each employee has
+        one “Allowed radius (metres)” box that covers every site they are assigned to. So a tight
+        150&nbsp;m office and a wide 500&nbsp;m project yard cannot both be right for the same person.</div>
+      <div class="hole" style="margin-top:9px"><b>Nothing has been set up here yet.</b> Across all nine of
+        your companies there are <b>no clocking points saved at all</b>, and geofencing is switched on for
+        nobody. Your largest company — ISEDECOR BINA SDN BHD, 22 people — has no work location either.</div>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER — grouped under the Location it belongs to</span>
+
+      <div class="grp">
+        <div class="grphd">HQ &nbsp;·&nbsp; Headquaters
+          <span class="pill br">Branch: BUKIT JALIL</span>
+          <span class="pill ok">Active</span></div>
+        <div class="grprow">HQ — North Gate
+          <span class="in" style="display:inline-block">3.1390</span>
+          <span class="in" style="display:inline-block">101.6869</span>
+          <span class="in new" style="display:inline-block">Radius 150 m</span>
+          <span class="pill new">NEW</span></div>
+        <div class="grprow">HQ — South Gate
+          <span class="in" style="display:inline-block">3.1385</span>
+          <span class="in" style="display:inline-block">101.6881</span>
+          <span class="in new" style="display:inline-block">Radius 150 m</span>
+          <span class="pill new">NEW</span></div>
+      </div>
+
+      <div class="grp">
+        <div class="grphd">BU8 &nbsp;·&nbsp; Bandar Utama 8
+          <span class="pill warn">Branch: not mapped yet</span>
+          <span class="pill ok">Active</span></div>
+        <div class="grprow" style="color:var(--mf)">This location has no geofenced clocking points
+          configured — clock-in is unavailable at this site. <span class="btn" style="margin-left:6px">Add a
+          clocking point</span></div>
+      </div>
+
+      <p class="note" style="margin-top:2px">Both locations shown belong to Chin Hin Construction
+        Engineering — they are your two real HQ-area locations today. The gate names are illustrative.</p>
+      <div class="hole g"><b>Two gates, one site.</b> A clock-in counts if it falls inside the radius of
+        <b>any</b> point under the same Location code — so a compound with a north and a south entrance
+        works without giving anybody a 500&nbsp;m circle.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Employee profile &gt; Attendance tab — the Branch fills the Location in</h2>
+  <p class="q">“Location tagging should be driven by the employee’s Branch rather than a separate manual pick.”</p>
+
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW — everything picked by hand, per person</span>
+      <div>
+        <span class="fld"><span class="lbl">Work location</span><span class="in hot">— No location —</span></span>
+        <span class="fld"><span class="lbl">Effective date</span><span class="in">07/08/2026</span></span>
+      </div>
+      <div style="margin-top:2px">
+        <span class="lbl">Assigned clocking locations</span>
+        <div class="in ro" style="height:52px;padding-top:8px">No clocking locations defined for this
+          company yet.</div>
+      </div>
+      <div style="margin-top:9px">
+        <span class="cb"></span><span style="font-size:12px">Enforce geofencing</span>
+        <span class="fld" style="margin-left:14px"><span class="lbl">Allowed radius (metres)</span>
+          <span class="in hot">300</span></span>
+      </div>
+      <p class="note">The employee’s Branch is already recorded on the Employment tab — but nothing here
+        reads it. Location stays blank until somebody sets it one person at a time.</p>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER — proposed from the Branch, confirmed by you</span>
+      <div>
+        <span class="fld"><span class="lbl">Work location</span>
+          <span class="in new">HQ — Headquaters</span></span>
+        <span class="fld"><span class="lbl">Effective date</span><span class="in">07/08/2026</span></span>
+        <span class="fld"><span class="lbl">&nbsp;</span><span class="btn p">Confirm</span></span>
+      </div>
+      <div style="margin:-2px 0 9px">
+        <span class="pill br">Suggested from Branch: BUKIT JALIL</span>
+        <span class="pill new">NEW</span>
+      </div>
+      <div>
+        <span class="lbl">Assigned clocking locations — ticked for you from that location</span>
+        <div style="background:#fff;border:1px solid var(--border);border-radius:7px;padding:7px 9px;font-size:12px">
+          <div><span class="cb on">&#10003;</span>HQ — North Gate
+            <span style="color:var(--mf)">· within 150 m</span></div>
+          <div style="margin-top:4px"><span class="cb on">&#10003;</span>HQ — South Gate
+            <span style="color:var(--mf)">· within 150 m</span></div>
+          <div style="margin-top:4px"><span class="cb"></span>BU8 — Bandar Utama 8
+            <span style="color:var(--mf)">· no clocking points yet</span></div>
+        </div>
+      </div>
+      <div style="margin-top:9px">
+        <span class="cb on">&#10003;</span><span style="font-size:12px">Enforce geofencing</span>
+        <span style="color:var(--mf);font-size:11.5px;margin-left:10px">each site uses its own radius —
+          no single number to keep in step</span>
+      </div>
+      <div class="hole g"><b>You are still in charge.</b> The Location is a suggestion until you press
+        Confirm, and you can always pick a different one. When you do, the record is marked
+        “set by hand” rather than “from Branch”, so a later report can tell the two apart.</div>
+    </div>
+  </div>
+
+  <div class="hole" style="margin-top:12px"><b>And when a Branch has no location, it says so.</b>
+    Today the field simply reads “No location”, which looks the same whether the master list is empty,
+    the branch is unmapped, or the person just has not been assigned. Each of those four cases gets its
+    own wording — for example “MENARA CHIN HIN, 23ATH FLOOR has not been given a work location yet”,
+    with a count of unmapped branches on the admin screen so it gets fixed once instead of chased
+    person by person.</div>
+</div>
+
+<div class="two">
+  <div class="card" style="margin-bottom:0">
+    <h2><span class="num">3</span>Already working today — we checked first</h2>
+    <table>
+      <tbody>
+        <tr><td class="tick">&#10003;</td><td><b>Active / Archived on both lists</b>, with buttons on
+          screen. Archived sites already drop out of every assignment dropdown and stay readable for
+          history. This was step 1 of your build order — it is done.</td></tr>
+        <tr><td class="tick">&#10003;</td><td><b>Clock-in is already checked on our side, not the
+          phone’s.</b> The time is stamped by the system, the distance is worked out by the system, and
+          a blocked attempt is recorded for audit even though no attendance row is created.</td></tr>
+        <tr><td class="tick">&#10003;</td><td><b>The refusal message already names the distance</b> —
+          “about 850 m from the nearest approved site (allowed radius 150 m)”.</td></tr>
+        <tr><td class="tick">&#10003;</td><td><b>Nobody is caught out by a missing setup.</b> If
+          geofencing is on and the person has no site assigned, the clock-in is refused rather than
+          waved through.</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Measured on your live system: 8 locations across 6 of your 9 companies, and no
+      clocking points saved anywhere yet — so every change below lands on empty ground and nothing
+      already recorded has to be converted.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:0">
+    <h2><span class="num">4</span>Two items we are leaving out, and why</h2>
+    <table>
+      <tbody>
+        <tr><td class="cross">&#10007;</td><td><b>Wi-Fi network whitelist.</b> A web browser is not
+          allowed to tell us which Wi-Fi network a laptop or phone is on — no browser on any device
+          exposes it. This one only becomes possible with a dedicated phone app, so we would rather not
+          put a box on screen that quietly enforces nothing.</td></tr>
+        <tr><td class="cross">&#10007;</td><td><b>Device restriction by type (Mobile / Web / Kiosk).</b>
+          There is no phone app and no kiosk today — clocking happens in the browser, plus files imported
+          from a terminal. A per-company “only from a registered device” control already exists and does
+          the real work. We will revisit the type list when there is a phone app to restrict to.</td></tr>
+      </tbody>
+    </table>
+    <p class="note" style="margin-top:14px"><span class="phase">STEP 1</span>Radius on each site, the
+      Location code link and grouping, and the four clearer messages.<br>
+      <span class="phase b">STEP 2</span>Branch on Locations, and the Attendance tab filling itself in
+      from it.<br>
+      <span class="phase c">STEP 3</span>Drop-a-pin-on-a-map entry for the coordinates.</p>
+  </div>
+</div>
