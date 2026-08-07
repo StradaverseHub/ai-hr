@@ -6993,7 +6993,9 @@ export const employeeDraft = pgTable(
     // service pre-check only exists to turn a 23505 into a sentence. Partial, so nulls never collide.
     uniqueIndex('employee_draft_reserved_code_uq')
       .on(t.tenantId, t.reservedEmployeeCode)
-      .where(sql`${t.reservedEmployeeCode} is not null`),
+      // Raw column name in the predicate, matching every other partial index in this file: the builder
+      // qualifies a `${t.col}` reference, which is not what a CREATE INDEX ... WHERE clause accepts.
+      .where(sql`reserved_employee_code is not null`),
   ],
 );
 
