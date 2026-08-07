@@ -118,8 +118,9 @@ const SYNTHETIC_ORDER = new Map(SYNTHETIC.map((s, i) => [s.key, i]));
 export const SYNTHETIC_LABEL_KEYS: readonly string[] = SYNTHETIC.map((s) => s.key);
 
 export type HistoryGridRow = {
-  /** Stable identity: kind + code + run type. `kind` is in the key so a pay item coded BASIC can never
-   *  merge with the synthetic BASIC line. */
+  /** Stable identity: kind + group + code + run type. Kind and group are in the key so two different
+   *  things carrying one code (a pay item coded BASIC vs the synthetic BASIC line; a cash item vs a
+   *  record-only line) can never merge into one row and double a figure. */
   key: string;
   kind: 'synthetic' | 'item';
   /** Leftmost column — the reference's "ADCode". */
@@ -313,7 +314,13 @@ export function pivotHistoryGrid(p: {
     const slip = cellsFor(row);
     if (slip.detailNotRecorded) detailNotRecorded = true;
     for (const c of slip.cells) {
-      const key = `${c.kind}:${c.code}:${row.runType}`;
+      // `kind` and `group` are in the key, not just the code. Two DIFFERENT things can carry one code and
+      // must never be summed into a single line: the synthetic BASIC row and a pay item an operator coded
+      // BASIC; a cash pay item and a record-only line of the same code (f1564110 Phase 3 merges consumed
+      // one-off transactions into recordLines by name); an item that was an earning in January and a
+      // deduction in March. Each of those merges would double a figure on a reconciliation screen and look
+      // entirely plausible while doing it.
+      const key = `${c.kind}:${c.group}:${c.code}:${row.runType}`;
       let target = acc.get(key);
       if (!target) {
         target = {

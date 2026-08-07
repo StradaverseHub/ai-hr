@@ -209,6 +209,31 @@ describe('080de5cf — the History grid pivot', () => {
     expect(sumMonth(grid.rows, 'deduction', 4)).toBe(430);
   });
 
+  it('a cash pay item and a record-only line sharing a code stay two rows', () => {
+    // f1564110 Phase 3 merges consumed one-off transactions into recordLines BY NAME, so a code can appear
+    // in both arrays. Keying on the code alone would sum a cash item and a record-only line into one
+    // figure — a doubling that would look entirely plausible on a reconciliation screen.
+    const grid = pivotHistoryGrid({
+      rows: [
+        slip({
+          statutory: {
+            epfEmployee: 330,
+            componentLines: [
+              { code: 'MEAL', name: 'Meal allowance', amount: 200, buckets: [{ bucket: 'wage', amount: 200 }] },
+            ],
+            recordLines: [{ code: 'MEAL', name: 'Meal allowance (recorded)', amount: 45 }],
+          },
+          totalDeductions: '330.00',
+        }),
+      ],
+      year: 2026,
+    });
+    const meal = grid.rows.filter((r) => r.code === 'MEAL');
+    expect(meal).toHaveLength(2);
+    expect(meal.map((r) => r.months[0]).sort((a, b) => a - b)).toEqual([45, 200]);
+    expect(meal.map((r) => r.group).sort()).toEqual(['earning', 'item']);
+  });
+
   it('an unselected month contributes nothing, so the row total is always what is on screen', () => {
     const grid = pivotHistoryGrid({
       rows: [slip({ payPeriod: '2026-01' }), slip({ payPeriod: '2026-02' }), slip({ payPeriod: '2026-03' })],

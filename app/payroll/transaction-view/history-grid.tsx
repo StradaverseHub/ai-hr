@@ -27,11 +27,15 @@ import { filterGridRows, type GridRowGroup, type HistoryGridRow } from './histor
  * container so the page body never scrolls sideways.
  */
 
-/** Sticky offsets must match these widths exactly, so the three frozen columns are declared once. */
+/**
+ * The three frozen columns, declared once: a sticky offset that disagrees with the width in front of it
+ * makes columns overlap while scrolling, and that is only visible on a wide screen mid-scroll. `cycle` is
+ * the last of the block and carries the rule that marks where the freeze ends.
+ */
 const COL = {
   code: { th: 'w-[7rem] min-w-[7rem]', left: 'md:left-0' },
   name: { th: 'w-[14rem] min-w-[14rem]', left: 'md:left-[7rem]' },
-  cycle: { th: 'w-[8rem] min-w-[8rem]', left: 'md:left-[21rem]' },
+  cycle: { th: 'w-[8rem] min-w-[8rem]', left: 'md:left-[21rem] md:border-e md:border-border' },
 };
 
 /** Section order + heading key, matching the pivot's own group ordering. */
@@ -53,7 +57,9 @@ const GROUP_TINT: Record<GridRowGroup, string> = {
   deduction: 'text-rose-600 dark:text-rose-400',
   employer: 'text-muted-foreground',
   item: 'text-muted-foreground',
-  summary: 'font-semibold text-foreground',
+  // Colour only — weight is set on the ROW (below). Two competing font-weight utilities on one cell
+  // resolve by stylesheet order, not by which one you meant.
+  summary: 'text-foreground',
 };
 
 const amount = (n: number) =>
@@ -141,7 +147,7 @@ export function HistoryGrid({
       {/* The scroll container. `overflow-x-auto` is on THIS div, never on the page, so the body never
           scrolls sideways however many months are selected. */}
       <div className="overflow-x-auto rounded-md border border-border">
-        <table className="w-full border-collapse text-sm">
+        <table className="w-full text-sm">
           <thead className="bg-muted text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className={`${COL.code.th} ${COL.code.left} sticky z-10 bg-muted px-3 py-2 font-medium`}>
@@ -167,16 +173,25 @@ export function HistoryGrid({
               if (groupRows.length === 0) return null;
               return (
                 <Fragment key={group}>
+                  {/* The heading spans the FROZEN block and sticks with it, rather than being one
+                      full-width colSpan cell: scroll a full-width heading away and the operator loses
+                      which section they are reading, which is when a deduction gets read as an earning. */}
                   <tr className="bg-muted/40">
                     <td
-                      colSpan={colCount}
-                      className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                      colSpan={3}
+                      className="sticky z-10 whitespace-nowrap bg-muted px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:left-0 md:border-e md:border-border"
                     >
                       {t(`view.grid.section.${key}`)}
                     </td>
+                    <td colSpan={colCount - 3} className="px-3 py-1.5" />
                   </tr>
                   {groupRows.map((r) => (
-                    <tr key={r.key} className="transition-colors hover:bg-muted/30">
+                    <tr
+                      key={r.key}
+                      className={`transition-colors hover:bg-muted/30 ${
+                        r.group === 'summary' ? 'font-semibold' : ''
+                      }`}
+                    >
                       <td
                         className={`${COL.code.th} ${COL.code.left} sticky z-10 bg-card px-3 py-2 font-mono text-xs`}
                       >
