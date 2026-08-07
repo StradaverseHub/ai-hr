@@ -144,15 +144,27 @@ ALTER TABLE back_pay_run ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 DROP POLICY IF EXISTS back_pay_run_rls ON "back_pay_run";
 --> statement-breakpoint
+-- COMPANY-SCOPED, matching the precedent this file cites rather than merely naming it. `app.is_admin()`
+-- alone is true for an hr_admin grant on ANY company in the tenant, so with it a Company A admin could
+-- read and cancel Company B's back pay runs — per-employee salary differences are the most sensitive
+-- payload here. back_pay_run carries company_id directly, so the term is a plain is_admin_for.
 CREATE POLICY back_pay_run_rls ON "back_pay_run" FOR ALL
-  USING (tenant_id = app.current_tenant_id() AND app.is_admin())
-  WITH CHECK (tenant_id = app.current_tenant_id() AND app.is_admin());
+  USING (tenant_id = app.current_tenant_id() AND app.is_admin_for(company_id))
+  WITH CHECK (tenant_id = app.current_tenant_id() AND app.is_admin_for(company_id));
 --> statement-breakpoint
 
 ALTER TABLE back_pay_line ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 DROP POLICY IF EXISTS back_pay_line_rls ON "back_pay_line";
 --> statement-breakpoint
+-- The line has no company of its own, so it reaches through its run — exactly the shape
+-- payroll_batch_component (0065) uses for the same reason.
 CREATE POLICY back_pay_line_rls ON "back_pay_line" FOR ALL
-  USING (tenant_id = app.current_tenant_id() AND app.is_admin())
-  WITH CHECK (tenant_id = app.current_tenant_id() AND app.is_admin());
+  USING (
+    tenant_id = app.current_tenant_id()
+    AND EXISTS (SELECT 1 FROM back_pay_run r WHERE r.id = run_id AND app.is_admin_for(r.company_id))
+  )
+  WITH CHECK (
+    tenant_id = app.current_tenant_id()
+    AND EXISTS (SELECT 1 FROM back_pay_run r WHERE r.id = run_id AND app.is_admin_for(r.company_id))
+  );

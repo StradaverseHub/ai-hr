@@ -69,7 +69,13 @@ export default async function BackPayPage({
   const companies = (await listCompanies(s)).filter((c) => scopeIds.includes(c.id));
   const companyId = companies.find((c) => c.id === sp.company)?.id ?? companies[0]?.id ?? null;
   const runs = await listBackPayRuns(s, { companyIds: scopeIds });
-  const detail = sp.run ? await backPayRunDetail(s, sp.run) : null;
+  // SCOPE. `listBackPayRuns` above is fenced by scopeIds; this was not, and the omission was the whole
+  // defect: an hr_admin scoped to Company A could open ?run=<Company B's run id> and read B's employee
+  // names, codes and per-month salary differences. RLS does not stop it — `app.is_admin()` is true for a
+  // grant on ANY company in the tenant. Same fail-closed shape as app/payroll/[batchId]/export/route.ts:
+  // not-found and not-yours are ONE answer, so the page cannot be used to probe which run ids exist.
+  const detailRaw = sp.run ? await backPayRunDetail(s, sp.run) : null;
+  const detail = detailRaw && scopeIds.includes(detailRaw.run.companyId) ? detailRaw : null;
   const candidates = companyId && !detail ? await detectArrears(s, { companyId }) : [];
 
   const err = ERROR_CODES.includes(sp.err as (typeof ERROR_CODES)[number]) ? sp.err : undefined;

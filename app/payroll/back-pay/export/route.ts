@@ -23,6 +23,7 @@
  * kept, XLSX and PDF show it plainly, and CSV shows it safely.
  */
 import { isAdmin } from '@/lib/authz';
+import { scopedAdmin } from '@/lib/scope';
 import { getSession } from '@/lib/session';
 import { backPayRunDetail } from '@/core/back-pay';
 import { serializeReport, type ReportData, type ReportFormat } from '@/lib/report-export';
@@ -42,8 +43,11 @@ function contentDisposition(base: string, ext: string): string {
 const num = (n: number) => n.toFixed(2);
 
 export async function GET(req: Request) {
-  const s = await getSession();
-  if (!isAdmin(s)) return new Response('Forbidden', { status: 403 });
+  // SCOPE. This was `isAdmin(s)` — strictly weaker than the sibling route this file says it copied.
+  // `isAdmin` is true for an hr_admin grant on ANY company, so a guessed run id belonging to another
+  // company exported that company's per-employee salary differences. Per-employee pay is the most
+  // sensitive payload in the product; this route now fails closed twice, like its sibling.
+  const { s, scopeIds } = await scopedAdmin();
 
   const url = new URL(req.url);
   const runId = url.searchParams.get('run') ?? '';
@@ -53,7 +57,9 @@ export async function GET(req: Request) {
 
   try {
     const detail = await backPayRunDetail(s, runId);
-    if (!detail) return new Response('Not found', { status: 404 });
+    // Not found, another tenant (RLS), or a company this admin is not scoped to — ALL ONE ANSWER, so the
+    // response cannot be used to probe which run ids exist.
+    if (!detail || !scopeIds.includes(detail.run.companyId)) return new Response('Not found', { status: 404 });
 
     // One column per affected month, plus the original/reworked pair the plan promises ("the original
     // month, the reworked month, the difference and the total"). Per-month originals and reworked
