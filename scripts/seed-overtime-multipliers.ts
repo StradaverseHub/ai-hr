@@ -15,7 +15,10 @@
 //   node --env-file=.env.production --import tsx scripts/seed-overtime-multipliers.ts [--tenant <id>] [--from OT1_5] [--from-multiplier 1.5]
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
-import { OvertimeReferenceUnusableError, seedOvertimeMultipliers } from '../core/pay-components';
+// ADR-0080 D9 — through the pack FACADE, not the implementation. packs/payroll/service re-exports
+// core/pay-components; importing that file directly is what the payroll pack ratchet refuses, and its
+// allowlist only ever shrinks.
+import { OvertimeReferenceUnusableError, seedOvertimeMultipliers } from '../packs/payroll/service';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);

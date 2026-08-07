@@ -84,6 +84,9 @@ describe('R33 shared shift library — cross-company assignment', () => {
       startTime: '09:00:00',
       endTime: '18:00:00',
       breakMinutes: 60,
+      // b8aa3466 — a backup shift must declare working days or every date resolves to rest_day. This
+      // fixture is about CROSS-COMPANY assignability, so it needs a workable pattern to reach that check.
+      weeklyPattern: [1, 2, 3, 4, 5],
     });
     // Assigning it to an employee in company B must SUCCEED (no ShiftCompanyMismatchError).
     await assignEmployeeShift(a, { employmentId: empInB, shiftType: 'fixed', shiftId: shiftA.id });
@@ -95,12 +98,12 @@ describe('R33 shared shift library — cross-company assignment', () => {
     const companyB = await makeCompany('Gamma Sdn Bhd');
     const { employmentId } = await makeEmp(companyB);
 
-    const global = await createShift(a, { name: 'Global Day', code: 'GDAY', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 });
+    const global = await createShift(a, { name: 'Global Day', code: 'GDAY', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] });
     await assignEmployeeShift(a, { employmentId, shiftType: 'fixed', shiftId: global.id });
     expect((await storedDefault(employmentId)).ds).toBe(global.id);
 
     // ArchivedShiftError still guards: an archived template cannot be assigned.
-    const stale = await createShift(a, { name: 'Stale', code: 'STALE', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    const stale = await createShift(a, { name: 'Stale', code: 'STALE', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] });
     await archiveShift(a, { shiftId: stale.id });
     await expect(
       assignEmployeeShift(a, { employmentId, shiftType: 'fixed', shiftId: stale.id }),
@@ -112,9 +115,9 @@ describe('R33 shared shift library — the pickers read the full shared set', ()
   it('listShiftsForTenant returns tenant-global AND legacy company-stamped rows; listShifts stays company-scoped', async () => {
     const a = adminCtx(b);
     const companyB = await makeCompany('Delta Sdn Bhd');
-    const global = await createShift(a, { name: 'Shared', code: 'SHARED', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
-    const stampedA = await createShift(a, { companyId: b.companyId, name: 'Company A Day', code: 'CADAY', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 });
-    const stampedB = await createShift(a, { companyId: companyB, name: 'Company B Day', code: 'CBDAY', startTime: '10:00:00', endTime: '19:00:00', breakMinutes: 60 });
+    const global = await createShift(a, { name: 'Shared', code: 'SHARED', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] });
+    const stampedA = await createShift(a, { companyId: b.companyId, name: 'Company A Day', code: 'CADAY', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] });
+    const stampedB = await createShift(a, { companyId: companyB, name: 'Company B Day', code: 'CBDAY', startTime: '10:00:00', endTime: '19:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] });
 
     const lib = await listShiftsForTenant(a);
     expect(new Set(lib.map((s) => s.id))).toEqual(new Set([global.id, stampedA.id, stampedB.id]));
@@ -129,7 +132,7 @@ describe('R33 shared shift library — existing assignments unaffected', () => {
   it('a legacy company-shift default reads back unchanged after being assigned', async () => {
     const a = adminCtx(b);
     const { employmentId } = await makeEmp(b.companyId);
-    const legacy = await createShift(a, { companyId: b.companyId, name: 'Legacy Day', code: 'LEG', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    const legacy = await createShift(a, { companyId: b.companyId, name: 'Legacy Day', code: 'LEG', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] });
     await assignEmployeeShift(a, { employmentId, shiftType: 'fixed', shiftId: legacy.id });
     expect(await storedDefault(employmentId)).toEqual({ ds: legacy.id, st: 'fixed' });
     // Re-reading via the library still surfaces the legacy row (it did not change scope).
@@ -144,11 +147,11 @@ describe('R33 shared shift library — RLS gates writes to tenant admins', () =>
     const uE = await createAppUser(b.tenantId, personId, 'employee');
     const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, roles: ['employee'] };
 
-    const existing = await createShift(a, { name: 'Admin Made', code: 'ADM', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    const existing = await createShift(a, { name: 'Admin Made', code: 'ADM', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] });
 
     // Service create (runs inside withTenant → RLS WITH CHECK app.is_admin()) is blocked for a non-admin.
     await expect(
-      createShift(empCtx, { name: 'Sneaky', code: 'SNK', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 }),
+      createShift(empCtx, { name: 'Sneaky', code: 'SNK', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] }),
     ).rejects.toThrow();
 
     // A raw UPDATE as the employee is also blocked by RLS.
@@ -166,13 +169,13 @@ describe('R33 shared shift library — tenant-wide uniqueness', () => {
   it('rejects a duplicate name or code anywhere in the tenant', async () => {
     const a = adminCtx(b);
     const companyB = await makeCompany('Epsilon Sdn Bhd');
-    await createShift(a, { companyId: b.companyId, name: 'Uniq', code: 'UNIQ', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    await createShift(a, { companyId: b.companyId, name: 'Uniq', code: 'UNIQ', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] });
     // Same name in a DIFFERENT company is now rejected (tenant-wide, not per company).
     await expect(
-      createShift(a, { companyId: companyB, name: 'Uniq', code: 'UNIQ2', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 }),
+      createShift(a, { companyId: companyB, name: 'Uniq', code: 'UNIQ2', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] }),
     ).rejects.toThrow(/already exists/i);
     await expect(
-      createShift(a, { companyId: companyB, name: 'Uniq2', code: 'uniq', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 }),
+      createShift(a, { companyId: companyB, name: 'Uniq2', code: 'uniq', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] }),
     ).rejects.toThrow(/already exists/i);
   });
 });
