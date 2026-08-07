@@ -3808,7 +3808,7 @@
           "hideZeroRows": "Ẩn các dòng toàn số không",
           "hideSystemCodes": "Ẩn mã hệ thống",
           "summary": "{payslips} phiếu lương · {rows} dòng",
-          "detailNotRecorded": "Một số lần tính lương trong năm nay được thực hiện trước khi hệ thống bắt đầu lưu chi tiết từng khoản, nên không thể liệt kê từng khoản lương của chúng. Các dòng tổng hợp là đầy đủ.",
+          "detailNotRecorded": "Một số lần tính lương trong năm nay không lưu chi tiết từng khoản — hoặc chúng được tính trước khi hệ thống bắt đầu ghi nhận, hoặc chúng là các lần tính bổ sung vốn cố ý không lặp lại các khoản định kỳ. Trong cả hai trường hợp, các dòng tổng hợp đều đầy đủ.",
           "notRegistered": "Chưa đăng ký",
           "colCode": "Mã khoản thanh toán",
           "colDescription": "Mô tả khoản thanh toán",

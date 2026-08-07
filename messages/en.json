@@ -3808,7 +3808,7 @@
           "hideZeroRows": "Hide rows that are all zeroes",
           "hideSystemCodes": "Hide system codes",
           "summary": "{payslips} payslips · {rows} rows",
-          "detailNotRecorded": "Some runs in this year were calculated before this payroll started keeping per-item detail, so their individual pay items cannot be listed. The summarised rows are complete.",
+          "detailNotRecorded": "Some runs in this year have no per-item detail stored — either they were calculated before this payroll began recording it, or they are additional runs, which deliberately do not repeat the recurring items. The summarised rows are complete either way.",
           "notRegistered": "Not registered",
           "colCode": "Payment item code",
           "colDescription": "Payment item description",

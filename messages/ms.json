@@ -3808,7 +3808,7 @@
           "hideZeroRows": "Sembunyikan baris yang semuanya sifar",
           "hideSystemCodes": "Sembunyikan kod sistem",
           "summary": "{payslips} slip gaji · {rows} baris",
-          "detailNotRecorded": "Sebahagian proses gaji pada tahun ini dikira sebelum sistem mula menyimpan butiran setiap item, jadi item gaji individunya tidak dapat disenaraikan. Baris ringkasan adalah lengkap.",
+          "detailNotRecorded": "Sebahagian proses gaji pada tahun ini tidak menyimpan butiran setiap item — sama ada ia dikira sebelum sistem mula merekodkannya, atau ia proses tambahan yang memang tidak mengulang item berulang. Baris ringkasan tetap lengkap.",
           "notRegistered": "Tidak berdaftar",
           "colCode": "Kod item bayaran",
           "colDescription": "Keterangan item bayaran",

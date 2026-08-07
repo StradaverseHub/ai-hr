@@ -26,6 +26,10 @@ import {
   listPayrollRegisterAcross,
   listProcessedPayslipsAcross,
 } from '../core/payroll-view';
+// 080de5cf — the History grid's fold. Exercised HERE against real kernel output as well as in
+// test/history-pivot.test.ts against fixtures: the fixtures catch a wrong fold, this catches a wrong
+// decomposition of what the payslip actually stores.
+import { pivotHistoryGrid } from '../app/payroll/transaction-view/history-pivot';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 /** A second company in the same tenant — the out-of-scope side of every fencing assertion. */
@@ -380,6 +384,72 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
         `limit ${limit} must fall back to unbounded`,
       ).toHaveLength(3);
     }
+  });
+
+  // ───────────────────── 3b. The History GRID pivot (feedback 080de5cf) ─────────────────────
+
+  it('grid: an employment outside the caller companies yields nothing, even named explicitly', async () => {
+    // THE REFUSAL. The grid narrows the SAME read by employmentId, and the tempting simplification is to
+    // let the employment id stand on its own once it is present — after all, an employment belongs to
+    // exactly one company. That would hand anyone who can edit a URL a payslip from a company they cannot
+    // see, and it would pass every other test in this file. So: company scope AND employment, always.
+    const a = adminCtx(base);
+    const outsider = await hirePayrollReady(a, companyB.companyId, companyB.deptId, 'Outsider', '900303031236');
+    const bB = await createBatch(a, { companyId: companyB.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId: bB.batchId });
+
+    // The payslip exists and is visible when company B is in scope…
+    expect(
+      await listProcessedPayslipsAcross(a, {
+        companyIds: [companyB.companyId],
+        employmentId: outsider.employmentId,
+      }),
+    ).toHaveLength(1);
+
+    // …and is invisible to a caller scoped to company A, however precisely it is asked for.
+    const refused = await listProcessedPayslipsAcross(a, {
+      companyIds: [base.companyId],
+      year: 2026,
+      employmentId: outsider.employmentId,
+    });
+    expect(refused).toEqual([]);
+    // An empty read folds to an empty grid — no synthetic rows conjured out of nothing.
+    expect(pivotHistoryGrid({ rows: refused, year: 2026 }).rows).toEqual([]);
+    expect(pivotHistoryGrid({ rows: refused, year: 2026 }).payslipCount).toBe(0);
+  });
+
+  it('grid: the pivot of REAL payslips reconciles with the kernel’s own gross and total deductions', async () => {
+    // test/history-pivot.test.ts proves the fold against hand-written fixtures; this proves the
+    // DECOMPOSITION against what core/payroll.ts actually stores. It is the assertion that would fail if
+    // the kernel ever changed which figure a box carries and the grid kept splitting money the old way —
+    // the grid would still add up internally and would no longer describe the payslip.
+    const a = adminCtx(base);
+    const e = await hirePayrollReady(a, base.companyId, base.deptA, 'Grid One', '900101011234');
+    for (const period of ['2026-01', '2026-02', '2026-03']) {
+      const b = await createBatch(a, { companyId: base.companyId, payPeriod: period });
+      await generatePayslips(a, { batchId: b.batchId });
+    }
+    const rows = await listProcessedPayslipsAcross(a, {
+      companyIds: [base.companyId],
+      year: 2026,
+      employmentId: e.employmentId,
+    });
+    expect(rows).toHaveLength(3);
+
+    const grid = pivotHistoryGrid({ rows, year: 2026 });
+    expect(grid.payslipCount).toBe(3);
+    const sum = (group: string, idx: number) =>
+      Math.round(
+        grid.rows.filter((r) => r.reconciling && r.group === group).reduce((s, r) => s + r.months[idx], 0) * 100,
+      ) / 100;
+    for (const r of rows) {
+      const idx = Number(r.payPeriod.slice(5, 7)) - 1;
+      expect(sum('earning', idx), `earnings ${r.payPeriod}`).toBe(Number(r.gross));
+      expect(sum('deduction', idx), `deductions ${r.payPeriod}`).toBe(Number(r.totalDeductions));
+    }
+    // The summary line the reference shows as GROSS is the stored figure, not a re-addition of the parts.
+    const gross = grid.rows.find((r) => r.code === 'GROSS' && r.kind === 'synthetic')!;
+    expect(gross.total).toBe(Math.round(rows.reduce((s, r) => s + Number(r.gross), 0) * 100) / 100);
   });
 
   // ───────────────────── 4. Payroll Register (feedback 622e12eb) ─────────────────────

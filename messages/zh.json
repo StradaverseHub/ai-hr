@@ -3808,7 +3808,7 @@
           "hideZeroRows": "隐藏全为零的行",
           "hideSystemCodes": "隐藏系统代码",
           "summary": "{payslips} 张工资单 · {rows} 行",
-          "detailNotRecorded": "本年度部分薪资计算发生在系统开始保存逐项明细之前，因此无法列出这些计算的单项薪资项目。汇总行是完整的。",
+          "detailNotRecorded": "本年度部分薪资计算没有保存逐项明细 —— 或是在系统开始记录之前计算的，或是附加计算，后者本就不重复列出经常性项目。无论哪种情况，汇总行都是完整的。",
           "notRegistered": "未注册",
           "colCode": "薪资项目代码",
           "colDescription": "薪资项目说明",

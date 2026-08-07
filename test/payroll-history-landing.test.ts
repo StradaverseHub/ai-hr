@@ -39,7 +39,10 @@ describe('862ed0ad — History is the tab that opens', () => {
   it('every tab is still reachable by ?tab=, so saved links keep working', () => {
     // Changing the DEFAULT must not narrow the set. A link to ?tab=fixed or ?tab=outstanding — the money
     // that never got paid — has to keep resolving.
-    expect(PAGE).toMatch(/const TABS = \['fixed', 'individual', 'history', 'outstanding'\] as const;/);
+    // 080de5cf added 'grid' (the spreadsheet view of the same History data) as a fifth sub-tab. This
+    // assertion is exact on purpose: a tab quietly REMOVED breaks saved links, which is the failure it
+    // guards, so it is updated deliberately when one is added rather than loosened to a subset match.
+    expect(PAGE).toMatch(/const TABS = \['fixed', 'individual', 'history', 'grid', 'outstanding'\] as const;/);
   });
 });
 

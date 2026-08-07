@@ -374,7 +374,11 @@ export function filterGridRows(
 ): HistoryGridRow[] {
   return rows.filter((r) => {
     if (opts.hideSystem && r.kind === 'synthetic') return false;
-    if (opts.hideZero && r.months.every((m) => m === 0)) return false;
+    // `notRegistered` survives hide-zero on purpose. Its zeroes are a POLICY STATEMENT — the company is
+    // not registered for the levy — and hide-zero exists to drop rows that carry no information. Letting
+    // the default switch delete the one row that explains itself would recreate feedback efece4ce, where
+    // an unregistered company was indistinguishable from a levy that failed to compute.
+    if (opts.hideZero && !r.notRegistered && r.months.every((m) => m === 0)) return false;
     return true;
   });
 }
