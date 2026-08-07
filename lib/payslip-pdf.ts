@@ -375,6 +375,21 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     while (cut.length > 1 && f.widthOfTextAtSize(`${cut}...`, size) > maxW) cut = cut.slice(0, -1);
     return `${cut}...`;
   };
+  /** Break a sentence across a column. Notes are prose and must not be `fit()`-truncated — a note whose
+   *  point is cut off ("…so the individual pay items can...") is worse than no note. */
+  const wrap = (s: string, f: PDFFont, size: number, maxW: number): string[] => {
+    const lines: string[] = [];
+    let line = '';
+    for (const w of safe(s).split(/\s+/).filter(Boolean)) {
+      const trial = line ? `${line} ${w}` : w;
+      if (line && f.widthOfTextAtSize(trial, size) > maxW) {
+        lines.push(line);
+        line = w;
+      } else line = trial;
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
 
   /**
    * One bordered block: a header band, a fixed-height body of rows, and an optional total row. Fixed
@@ -391,7 +406,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   ) => {
     const bodyH = o.bodyRows * ROW_H;
     const totalH = o.total ? BOX_TOTAL_H : 0;
-    const noteH = o.note ? 14 : 0;
+    const noteLines = o.note ? wrap(o.note, font, 7, o.w - 20) : [];
+    const noteH = noteLines.length > 0 ? noteLines.length * 9 + 7 : 0;
     const h = BOX_HEAD_H + bodyH + totalH + noteH;
     const top = o.y;
     page.drawRectangle({ x: o.x, y: top - h, width: o.w, height: h, borderColor: RULE, borderWidth: 0.8 });
@@ -431,7 +447,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       atR(page, o.total.value, o.x + o.w - 10, by - 14, 9.5, bold, o.total.color ?? INK);
       by -= BOX_TOTAL_H;
     }
-    if (o.note) at(page, fit(o.note, font, 7, o.w - 20), o.x + 10, by - 10, 7, font, MUTED);
+    noteLines.forEach((line, i) => at(page, line, o.x + 10, by - 10 - i * 9, 7, font, MUTED));
     return h;
   };
 
@@ -602,7 +618,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       const pillW = bold.widthOfTextAtSize(safe(t.employmentInfo.toUpperCase()), 7.5) + 20;
       pg.drawRectangle({ x: rightX, y: top - 17, width: pillW, height: 17, color: PRIMARY });
       at(pg, t.employmentInfo.toUpperCase(), rightX + 10, top - 12.5, 7.5, bold, WHITE);
-      rightH = 25 + drawGrid(pg, infoCells, rightX, top - 25, rightW, 3);
+      // TWO columns, not three: a position title ("Senior Business Analyst") does not fit a third of this
+      // panel and would print truncated on an official document.
+      rightH = 25 + drawGrid(pg, infoCells, rightX, top - 25, rightW, 2);
     }
 
     const h = Math.max(leftH, rightH, 40);
