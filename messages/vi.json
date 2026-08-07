@@ -7790,6 +7790,7 @@
       "adjustment": "Điều chỉnh"
     },
     "batchStatus": {
+      "draft": "Nháp",
       "processed": "Đã xử lý",
       "closed": "Đã đóng"
     }

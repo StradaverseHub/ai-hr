@@ -7790,6 +7790,7 @@
       "adjustment": "Adjustment"
     },
     "batchStatus": {
+      "draft": "Draft",
       "processed": "Processed",
       "closed": "Closed"
     }

@@ -403,7 +403,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     // Reimbursements. All requireAdmin (the same guard the single page used before).
     routes: ['/admin/claims', '/admin/claims/limits', '/admin/claims/reimbursements', '/admin/claims/mileage', '/admin/claims/forms'],
   },
-  { screenKey: 'loans', href: '/admin/loans', labelKey: 'admin.users.screen.loans', guard: 'requireAdmin', routes: ['/admin/loans'] },
+  {
+    screenKey: 'loans',
+    href: '/admin/loans',
+    labelKey: 'admin.users.screen.loans',
+    guard: 'requireAdmin',
+    // 6d72816e: the Add page and the loan's own View/Edit page, split out of the list so the new-loan
+    // form stops sitting permanently open and the five lifecycle actions stop living inside a table
+    // cell. Same requireAdmin guard as the list — same data, one loan at a time. The gate was NOT
+    // swapped to scopedAdmin during the redesign; that would be a privilege change dressed as a UI one.
+    routes: ['/admin/loans', '/admin/loans/new', '/admin/loans/[id]'],
+  },
   // ── Payroll (scopedAdmin/requireAdmin → hr_admin + super_admin; partners are redirected today) ──
   {
     screenKey: 'payroll',
@@ -462,6 +472,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/transactions/individual',
       '/payroll/transactions/tp1',
       '/payroll/transactions/zakat',
+      // 6a1f2bd6: the dedicated Add/Edit page for ONE employee's zakat setup, replacing the editor that
+      // opened by itself the moment somebody was selected. Same scopedAdmin guard as its list.
+      '/payroll/transactions/zakat/election',
     ],
   },
   {

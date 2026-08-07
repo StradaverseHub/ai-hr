@@ -7790,6 +7790,7 @@
       "adjustment": "调整"
     },
     "batchStatus": {
+      "draft": "草稿",
       "processed": "已处理",
       "closed": "已关闭"
     }

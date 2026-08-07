@@ -7790,6 +7790,7 @@
       "adjustment": "Pelarasan"
     },
     "batchStatus": {
+      "draft": "Draf",
       "processed": "Diproses",
       "closed": "Ditutup"
     }

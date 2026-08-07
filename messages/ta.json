@@ -7790,6 +7790,7 @@
       "adjustment": "சரிசெய்தல்"
     },
     "batchStatus": {
+      "draft": "வரைவு",
       "processed": "செயலாக்கப்பட்டது",
       "closed": "மூடப்பட்டது"
     }

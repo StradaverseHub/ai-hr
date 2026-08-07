@@ -7790,6 +7790,7 @@
       "adjustment": "การปรับปรุง"
     },
     "batchStatus": {
+      "draft": "ร่าง",
       "processed": "ประมวลผลแล้ว",
       "closed": "ปิดแล้ว"
     }
