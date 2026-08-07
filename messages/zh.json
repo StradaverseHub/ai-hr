@@ -3743,7 +3743,8 @@
           "fixed": "固定",
           "individual": "个人",
           "history": "历史",
-          "outstanding": "未支付"
+          "outstanding": "未支付",
+          "grid": "表格"
         },
         "filters": {
           "company": "公司",
@@ -3760,7 +3761,8 @@
           "createdBy": "创建者",
           "createdFrom": "创建起始",
           "createdTo": "创建截止",
-          "createdDate": "创建日期"
+          "createdDate": "创建日期",
+          "months": "月份"
         },
         "fixed": {
           "empty": "没有符合所选筛选条件的固定交易。"
@@ -3795,6 +3797,54 @@
           "runStateClosed": "已发布",
           "arrivedAfterProcessing": "在本月批次计算之后录入",
           "leftOutByScope": "批次范围被缩小，遗漏了这位员工"
+        },
+        "grid": {
+          "title": "交易历史表格",
+          "pickEmployee": "选择员工",
+          "pickEmployeeHint": "该表格显示一位员工的整年薪资 —— 左侧为每个薪资项目，上方为每个月份。",
+          "noEmployee": "请从列表中选择员工以查看其薪资年度。",
+          "empty": "在所选年份、月份和薪资周期内，该员工没有薪资历史。",
+          "export": "导出到 Excel",
+          "hideZeroRows": "隐藏全为零的行",
+          "hideSystemCodes": "隐藏系统代码",
+          "summary": "{payslips} 张工资单 · {rows} 行",
+          "detailNotRecorded": "本年度部分薪资计算发生在系统开始保存逐项明细之前，因此无法列出这些计算的单项薪资项目。汇总行是完整的。",
+          "notRegistered": "未注册",
+          "colCode": "薪资项目代码",
+          "colDescription": "薪资项目说明",
+          "colCycle": "薪资周期",
+          "colTotal": "合计",
+          "section": {
+            "earnings": "收入",
+            "deductions": "扣除",
+            "employer": "雇主缴纳",
+            "items": "记录项目",
+            "summary": "汇总"
+          },
+          "row": {
+            "basic": "基本工资",
+            "allowance": "津贴",
+            "otConvert": "以薪资项目支付的加班费",
+            "overtime": "加班费",
+            "bonus": "奖金",
+            "claim": "报销",
+            "epfEmployee": "EPF / KWSP（雇员）",
+            "socsoEmployee": "SOCSO / PERKESO（雇员）",
+            "skbbk": "SKBBK / Lindung 24 Jam",
+            "eisEmployee": "EIS / SIP（雇员）",
+            "pcb": "PCB / MTD（所得税）",
+            "cp38": "CP38（LHDN 分期扣款）",
+            "otherDeductions": "其他扣除",
+            "zakat": "天课（已在 PCB 中抵扣）",
+            "epfEmployer": "EPF / KWSP（雇主）",
+            "socsoEmployer": "SOCSO / PERKESO（雇主）",
+            "eisEmployer": "EIS / SIP（雇主）",
+            "hrdf": "HRDF",
+            "employerBorne": "由雇主承担",
+            "gross": "应发工资",
+            "totalDeductions": "扣除合计",
+            "net": "实发工资"
+          }
         }
       }
     },

@@ -3743,7 +3743,8 @@
           "fixed": "Tetap",
           "individual": "Individu",
           "history": "Sejarah",
-          "outstanding": "Tertunggak"
+          "outstanding": "Tertunggak",
+          "grid": "Grid"
         },
         "filters": {
           "company": "Syarikat",
@@ -3760,7 +3761,8 @@
           "createdBy": "Dicipta oleh",
           "createdFrom": "Dicipta dari",
           "createdTo": "Dicipta hingga",
-          "createdDate": "Tarikh dicipta"
+          "createdDate": "Tarikh dicipta",
+          "months": "Bulan"
         },
         "fixed": {
           "empty": "Tiada transaksi tetap yang sepadan dengan penapis dipilih."
@@ -3795,6 +3797,54 @@
           "runStateClosed": "Diterbitkan",
           "arrivedAfterProcessing": "Dimasukkan selepas proses bulan ini dikira",
           "leftOutByScope": "Proses telah disempitkan dan meninggalkan pekerja ini"
+        },
+        "grid": {
+          "title": "Grid sejarah transaksi",
+          "pickEmployee": "Pilih pekerja",
+          "pickEmployeeHint": "Grid ini menunjukkan setahun gaji seorang pekerja — setiap item gaji di sebelah kiri, setiap bulan di bahagian atas.",
+          "noEmployee": "Pilih pekerja daripada senarai untuk melihat tahun gaji mereka.",
+          "empty": "Tiada sejarah gaji untuk pekerja ini bagi tahun, bulan dan kitaran yang dipilih.",
+          "export": "Eksport ke Excel",
+          "hideZeroRows": "Sembunyikan baris yang semuanya sifar",
+          "hideSystemCodes": "Sembunyikan kod sistem",
+          "summary": "{payslips} slip gaji · {rows} baris",
+          "detailNotRecorded": "Sebahagian proses gaji pada tahun ini dikira sebelum sistem mula menyimpan butiran setiap item, jadi item gaji individunya tidak dapat disenaraikan. Baris ringkasan adalah lengkap.",
+          "notRegistered": "Tidak berdaftar",
+          "colCode": "Kod item bayaran",
+          "colDescription": "Keterangan item bayaran",
+          "colCycle": "Kitaran gaji",
+          "colTotal": "Jumlah",
+          "section": {
+            "earnings": "Pendapatan",
+            "deductions": "Potongan",
+            "employer": "Caruman majikan",
+            "items": "Item direkodkan",
+            "summary": "Ringkasan"
+          },
+          "row": {
+            "basic": "Gaji asas",
+            "allowance": "Elaun",
+            "otConvert": "Kerja lebih masa dibayar sebagai item gaji",
+            "overtime": "Kerja lebih masa",
+            "bonus": "Bonus",
+            "claim": "Tuntutan",
+            "epfEmployee": "EPF / KWSP (pekerja)",
+            "socsoEmployee": "SOCSO / PERKESO (pekerja)",
+            "skbbk": "SKBBK / Lindung 24 Jam",
+            "eisEmployee": "EIS / SIP (pekerja)",
+            "pcb": "PCB / MTD (cukai pendapatan)",
+            "cp38": "CP38 (ansuran LHDN)",
+            "otherDeductions": "Potongan lain",
+            "zakat": "Zakat (sudah ditolak dalam PCB)",
+            "epfEmployer": "EPF / KWSP (majikan)",
+            "socsoEmployer": "SOCSO / PERKESO (majikan)",
+            "eisEmployer": "EIS / SIP (majikan)",
+            "hrdf": "HRDF",
+            "employerBorne": "Ditanggung majikan",
+            "gross": "Gaji kasar",
+            "totalDeductions": "Jumlah potongan",
+            "net": "Gaji bersih"
+          }
         }
       }
     },

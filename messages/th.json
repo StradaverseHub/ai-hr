@@ -3743,7 +3743,8 @@
           "fixed": "คงที่",
           "individual": "รายบุคคล",
           "history": "ประวัติ",
-          "outstanding": "ค้างจ่าย"
+          "outstanding": "ค้างจ่าย",
+          "grid": "ตาราง"
         },
         "filters": {
           "company": "บริษัท",
@@ -3760,7 +3761,8 @@
           "createdBy": "สร้างโดย",
           "createdFrom": "สร้างตั้งแต่",
           "createdTo": "สร้างถึง",
-          "createdDate": "วันที่สร้าง"
+          "createdDate": "วันที่สร้าง",
+          "months": "เดือน"
         },
         "fixed": {
           "empty": "ไม่มีธุรกรรมคงที่ที่ตรงกับตัวกรองที่เลือก"
@@ -3795,6 +3797,54 @@
           "runStateClosed": "เผยแพร่แล้ว",
           "arrivedAfterProcessing": "บันทึกหลังจากคำนวณรอบของเดือนนี้แล้ว",
           "leftOutByScope": "รอบถูกจำกัดขอบเขตและข้ามพนักงานคนนี้"
+        },
+        "grid": {
+          "title": "ตารางประวัติธุรกรรม",
+          "pickEmployee": "เลือกพนักงาน",
+          "pickEmployeeHint": "ตารางนี้แสดงเงินเดือนหนึ่งปีของพนักงานหนึ่งคน — รายการจ่ายอยู่ทางซ้าย เดือนอยู่ด้านบน",
+          "noEmployee": "เลือกพนักงานจากรายการเพื่อดูปีเงินเดือนของพนักงานคนนั้น",
+          "empty": "ไม่มีประวัติเงินเดือนของพนักงานคนนี้ในปี เดือน และรอบการจ่ายที่เลือก",
+          "export": "ส่งออกเป็น Excel",
+          "hideZeroRows": "ซ่อนแถวที่เป็นศูนย์ทั้งหมด",
+          "hideSystemCodes": "ซ่อนรหัสของระบบ",
+          "summary": "สลิปเงินเดือน {payslips} รายการ · {rows} แถว",
+          "detailNotRecorded": "การคำนวณเงินเดือนบางรอบในปีนี้เกิดขึ้นก่อนที่ระบบจะเริ่มเก็บรายละเอียดรายรายการ จึงไม่สามารถแสดงรายการจ่ายแยกรายการได้ แถวสรุปนั้นครบถ้วน",
+          "notRegistered": "ไม่ได้ลงทะเบียน",
+          "colCode": "รหัสรายการจ่าย",
+          "colDescription": "คำอธิบายรายการจ่าย",
+          "colCycle": "รอบการจ่าย",
+          "colTotal": "รวม",
+          "section": {
+            "earnings": "รายได้",
+            "deductions": "รายการหัก",
+            "employer": "เงินสมทบนายจ้าง",
+            "items": "รายการที่บันทึกไว้",
+            "summary": "สรุป"
+          },
+          "row": {
+            "basic": "เงินเดือนพื้นฐาน",
+            "allowance": "เบี้ยเลี้ยง",
+            "otConvert": "ค่าล่วงเวลาที่จ่ายเป็นรายการจ่าย",
+            "overtime": "ล่วงเวลา",
+            "bonus": "โบนัส",
+            "claim": "การเบิกจ่าย",
+            "epfEmployee": "EPF / KWSP (ลูกจ้าง)",
+            "socsoEmployee": "SOCSO / PERKESO (ลูกจ้าง)",
+            "skbbk": "SKBBK / Lindung 24 Jam",
+            "eisEmployee": "EIS / SIP (ลูกจ้าง)",
+            "pcb": "PCB / MTD (ภาษีเงินได้)",
+            "cp38": "CP38 (เงินผ่อนชำระ LHDN)",
+            "otherDeductions": "รายการหักอื่น ๆ",
+            "zakat": "ซะกาต (หักกลบใน PCB แล้ว)",
+            "epfEmployer": "EPF / KWSP (นายจ้าง)",
+            "socsoEmployer": "SOCSO / PERKESO (นายจ้าง)",
+            "eisEmployer": "EIS / SIP (นายจ้าง)",
+            "hrdf": "HRDF",
+            "employerBorne": "นายจ้างรับภาระ",
+            "gross": "รายได้รวม",
+            "totalDeductions": "รวมรายการหัก",
+            "net": "รายได้สุทธิ"
+          }
         }
       }
     },

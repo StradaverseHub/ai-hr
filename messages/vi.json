@@ -3743,7 +3743,8 @@
           "fixed": "Cố định",
           "individual": "Cá nhân",
           "history": "Lịch sử",
-          "outstanding": "Chưa thanh toán"
+          "outstanding": "Chưa thanh toán",
+          "grid": "Lưới"
         },
         "filters": {
           "company": "Công ty",
@@ -3760,7 +3761,8 @@
           "createdBy": "Người tạo",
           "createdFrom": "Tạo từ",
           "createdTo": "Tạo đến",
-          "createdDate": "Ngày tạo"
+          "createdDate": "Ngày tạo",
+          "months": "Tháng"
         },
         "fixed": {
           "empty": "Không có giao dịch cố định nào khớp với bộ lọc đã chọn."
@@ -3795,6 +3797,54 @@
           "runStateClosed": "Đã công bố",
           "arrivedAfterProcessing": "Nhập sau khi kỳ lương tháng này đã được tính",
           "leftOutByScope": "Kỳ lương đã bị thu hẹp và bỏ sót nhân viên này"
+        },
+        "grid": {
+          "title": "Lưới lịch sử giao dịch",
+          "pickEmployee": "Chọn nhân viên",
+          "pickEmployeeHint": "Lưới hiển thị một năm lương của một nhân viên — mỗi khoản lương ở bên trái, mỗi tháng ở phía trên.",
+          "noEmployee": "Chọn một nhân viên từ danh sách để xem năm lương của họ.",
+          "empty": "Không có lịch sử lương cho nhân viên này trong năm, tháng và chu kỳ đã chọn.",
+          "export": "Xuất ra Excel",
+          "hideZeroRows": "Ẩn các dòng toàn số không",
+          "hideSystemCodes": "Ẩn mã hệ thống",
+          "summary": "{payslips} phiếu lương · {rows} dòng",
+          "detailNotRecorded": "Một số lần tính lương trong năm nay được thực hiện trước khi hệ thống bắt đầu lưu chi tiết từng khoản, nên không thể liệt kê từng khoản lương của chúng. Các dòng tổng hợp là đầy đủ.",
+          "notRegistered": "Chưa đăng ký",
+          "colCode": "Mã khoản thanh toán",
+          "colDescription": "Mô tả khoản thanh toán",
+          "colCycle": "Chu kỳ lương",
+          "colTotal": "Tổng",
+          "section": {
+            "earnings": "Thu nhập",
+            "deductions": "Khấu trừ",
+            "employer": "Đóng góp của người sử dụng lao động",
+            "items": "Khoản đã ghi nhận",
+            "summary": "Tổng hợp"
+          },
+          "row": {
+            "basic": "Lương cơ bản",
+            "allowance": "Phụ cấp",
+            "otConvert": "Tăng ca trả dưới dạng khoản lương",
+            "overtime": "Tăng ca",
+            "bonus": "Thưởng",
+            "claim": "Hoàn ứng",
+            "epfEmployee": "EPF / KWSP (người lao động)",
+            "socsoEmployee": "SOCSO / PERKESO (người lao động)",
+            "skbbk": "SKBBK / Lindung 24 Jam",
+            "eisEmployee": "EIS / SIP (người lao động)",
+            "pcb": "PCB / MTD (thuế thu nhập)",
+            "cp38": "CP38 (khoản trả góp LHDN)",
+            "otherDeductions": "Khấu trừ khác",
+            "zakat": "Zakat (đã bù trừ trong PCB)",
+            "epfEmployer": "EPF / KWSP (người sử dụng lao động)",
+            "socsoEmployer": "SOCSO / PERKESO (người sử dụng lao động)",
+            "eisEmployer": "EIS / SIP (người sử dụng lao động)",
+            "hrdf": "HRDF",
+            "employerBorne": "Do người sử dụng lao động chịu",
+            "gross": "Lương gộp",
+            "totalDeductions": "Tổng khấu trừ",
+            "net": "Lương thực lãnh"
+          }
         }
       }
     },

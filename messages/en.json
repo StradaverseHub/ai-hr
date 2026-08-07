@@ -3743,7 +3743,8 @@
           "fixed": "Fixed",
           "individual": "Individual",
           "history": "History",
-          "outstanding": "Outstanding"
+          "outstanding": "Outstanding",
+          "grid": "Grid"
         },
         "filters": {
           "company": "Company",
@@ -3760,7 +3761,8 @@
           "createdBy": "Created by",
           "createdFrom": "Created from",
           "createdTo": "Created to",
-          "createdDate": "Created date"
+          "createdDate": "Created date",
+          "months": "Months"
         },
         "fixed": {
           "empty": "No fixed transactions match the selected filters."
@@ -3795,6 +3797,54 @@
           "runStateClosed": "Published",
           "arrivedAfterProcessing": "Entered after this month's run was calculated",
           "leftOutByScope": "The run was narrowed and left this employee out"
+        },
+        "grid": {
+          "title": "Transaction history grid",
+          "pickEmployee": "Select an employee",
+          "pickEmployeeHint": "The grid shows one employee's payroll year — every pay item down the left, every month across the top.",
+          "noEmployee": "Select an employee from the list to see their payroll year.",
+          "empty": "No payroll history for this employee in the selected year, months and cycle.",
+          "export": "Export to Excel",
+          "hideZeroRows": "Hide rows that are all zeroes",
+          "hideSystemCodes": "Hide system codes",
+          "summary": "{payslips} payslips · {rows} rows",
+          "detailNotRecorded": "Some runs in this year were calculated before this payroll started keeping per-item detail, so their individual pay items cannot be listed. The summarised rows are complete.",
+          "notRegistered": "Not registered",
+          "colCode": "Payment item code",
+          "colDescription": "Payment item description",
+          "colCycle": "Pay cycle",
+          "colTotal": "Total",
+          "section": {
+            "earnings": "Earnings",
+            "deductions": "Deductions",
+            "employer": "Employer contributions",
+            "items": "Recorded items",
+            "summary": "Summary"
+          },
+          "row": {
+            "basic": "Basic salary",
+            "allowance": "Allowances",
+            "otConvert": "Overtime paid as a pay item",
+            "overtime": "Overtime",
+            "bonus": "Bonus",
+            "claim": "Claim",
+            "epfEmployee": "EPF / KWSP (employee)",
+            "socsoEmployee": "SOCSO / PERKESO (employee)",
+            "skbbk": "SKBBK / Lindung 24 Jam",
+            "eisEmployee": "EIS / SIP (employee)",
+            "pcb": "PCB / MTD (income tax)",
+            "cp38": "CP38 (LHDN instalment)",
+            "otherDeductions": "Other deductions",
+            "zakat": "Zakat (already offset in PCB)",
+            "epfEmployer": "EPF / KWSP (employer)",
+            "socsoEmployer": "SOCSO / PERKESO (employer)",
+            "eisEmployer": "EIS / SIP (employer)",
+            "hrdf": "HRDF",
+            "employerBorne": "Borne by employer",
+            "gross": "Gross pay",
+            "totalDeductions": "Total deductions",
+            "net": "Net pay"
+          }
         }
       }
     },
