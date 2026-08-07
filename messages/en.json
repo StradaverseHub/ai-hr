@@ -3095,6 +3095,10 @@
         "fieldEis": "EIS / SIP",
         "filedTotal": "Filed CP39 / agency total",
         "cp39DivergenceWarning": "This amended figure diverges from the year’s filed CP39 / agency total ({filed}; delta {delta}). The override and its delta are recorded in the audit trail."
+      },
+      "multiEmployer": {
+        "title": "EA forms for {count} employers",
+        "body": "This employee was paid by more than one company in this year, so each owes a separate EA form. Choose an employer to view and print its form."
       }
     },
     "config": {

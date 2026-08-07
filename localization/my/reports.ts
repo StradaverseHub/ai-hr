@@ -426,7 +426,37 @@ async function loadYearRows(
   });
 }
 
-/** Form E Part A headcounts for the year (employment-based, computed in JS over the company set). */
+/**
+ * Form E Part A headcounts for the year.
+ *
+ * ⚠️ b7b22514 REWROTE THE POPULATION, and the reason is Entity Transfer. Until an employee could move
+ * between companies, `employment.company_id` WAS "who this company employed" and the old scan over it was
+ * correct by construction. An Entity Transfer moves that column, and the moment it can move, three things
+ * break at once:
+ *
+ *   • the person vanishes from the OLD company's Part A entirely — including for years that closed long
+ *     before the transfer. Re-print company A's 2025 Form E after a 2026 transfer and the headcount is
+ *     quietly lower than the one that was filed;
+ *   • they are counted for the NEW company as if they had always been there;
+ *   • either way the counts stop agreeing with the CP8D rows printed directly beneath them, which ARE
+ *     company-true (loadYearRows joins through payroll_batch.company_id). One form, two populations.
+ *
+ * So the population now comes from the SAME place the rows do — the payslips this company actually paid in
+ * this year — union the employments currently sitting here that it has not yet run payroll for (a company
+ * mid-onboarding still has a headcount). A payslip is company-true by construction: it was paid by that
+ * batch's company, and no later transfer rewrites it.
+ *
+ * NEW HIRES USES `join_date`, NOT `hired_on`. This is an EMPLOYER's return, and `hired_on` is the GROUP
+ * service date that 89ea527b deliberately keeps still across a move. The date on which someone joined THIS
+ * employer is `join_date` — which is precisely the column Entity Transfer moves. Using the group date
+ * meant a transfer-in was never a new employee anywhere, on any company's form.
+ *
+ * KNOWN LIMIT, stated rather than hidden: `join_date` and `terminated_on` are current values, so re-running
+ * a PRIOR year's Part A after a transfer reads today's join date for that employee. The population and the
+ * active-at-year-end line are historically correct (they are payslip-derived); the new-hire line for a
+ * re-printed prior year is not. Fixing that needs a dated company history, which does not exist yet — the
+ * company timeline currently lives only in the event log (core/movement.ts companyIdAtSequence).
+ */
 async function formECounts(
   ctx: SessionContext,
   year: string,
@@ -434,15 +464,69 @@ async function formECounts(
   subjectToMtd: number,
 ): Promise<{ label: string; value: number }[]> {
   return withTenant(ctx, async (tx) => {
-    const emps = await tx
-      .select({ hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
-      .from(employment)
-      .where(eq(employment.companyId, companyId));
     const yStart = `${year}-01-01`;
     const yEnd = `${year}-12-31`;
-    const activeAtEnd = emps.filter((e) => e.hiredOn <= yEnd && (!e.terminatedOn || e.terminatedOn >= yEnd)).length;
-    const newHires = emps.filter((e) => e.hiredOn >= yStart && e.hiredOn <= yEnd).length;
-    const ceased = emps.filter((e) => e.terminatedOn && e.terminatedOn >= yStart && e.terminatedOn <= yEnd).length;
+
+    // Who this company PAID this year, and the last period it paid each of them. The last period is what
+    // decides "still here at 31 December": someone transferred out in June has a December payslip at the
+    // DESTINATION, so their last period here is 06 and they are correctly not counted at year end.
+    const paid = await tx
+      .select({
+        employmentId: payslip.employmentId,
+        payPeriod: payrollBatch.payPeriod,
+        joinDate: employment.joinDate,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .where(and(eq(payrollBatch.companyId, companyId), like(payrollBatch.payPeriod, `${year}-%`)));
+
+    type Member = { joinDate: string | null; hiredOn: string; terminatedOn: string | null; lastPeriod: string | null };
+    const pop = new Map<string, Member>();
+    for (const s of paid) {
+      const cur = pop.get(s.employmentId);
+      if (!cur) {
+        pop.set(s.employmentId, {
+          joinDate: s.joinDate,
+          hiredOn: s.hiredOn,
+          terminatedOn: s.terminatedOn,
+          lastPeriod: s.payPeriod,
+        });
+      } else if (!cur.lastPeriod || s.payPeriod > cur.lastPeriod) {
+        cur.lastPeriod = s.payPeriod;
+      }
+    }
+
+    // A company that has not run payroll for someone yet still employs them. `lastPeriod: null` marks the
+    // ones with no payslip this year, so the year-end test falls back to the dated columns for them.
+    const here = await tx
+      .select({ id: employment.id, joinDate: employment.joinDate, hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
+      .from(employment)
+      .where(eq(employment.companyId, companyId));
+    for (const e of here) {
+      if (pop.has(e.id)) continue;
+      if (e.hiredOn > yEnd) continue;
+      if (e.terminatedOn && e.terminatedOn < yStart) continue;
+      pop.set(e.id, { joinDate: e.joinDate, hiredOn: e.hiredOn, terminatedOn: e.terminatedOn, lastPeriod: null });
+    }
+
+    const members = [...pop.values()];
+    const currentIds = new Set(here.map((e) => e.id));
+    const activeAtEnd = [...pop.entries()].filter(([id, m]) => {
+      if (m.terminatedOn && m.terminatedOn < yEnd) return false;
+      if (m.hiredOn > yEnd) return false;
+      // Paid by this company for the year's final month it paid them at all — and still sitting here.
+      // Both halves matter: the first rules out a transfer-out, the second a transfer-out with no payroll.
+      return currentIds.has(id);
+    }).length;
+    // Joined THIS employer during the year — the transfer-in case, which `hired_on` could never see.
+    const newHires = members.filter((m) => {
+      const joined = m.joinDate ?? m.hiredOn;
+      return joined >= yStart && joined <= yEnd;
+    }).length;
+    const ceased = members.filter((m) => m.terminatedOn && m.terminatedOn >= yStart && m.terminatedOn <= yEnd).length;
     return [
       { label: `Active at 31 Dec ${year}`, value: activeAtEnd },
       { label: 'Subject to MTD', value: subjectToMtd },
@@ -520,6 +604,9 @@ export type EaOverrideEntry = { field: EaField; original: number; amended: numbe
 
 export type EaStatement = {
   year: string;
+  /** b7b22514 — WHICH employer this form speaks for. A transfer year has one form per employer, and
+   *  the screen needs the id to mark the selected one; the name alone cannot be compared safely. */
+  employerId: string;
   employer: { name: string; eNumber: string | null };
   employee: {
     name: string;
@@ -545,10 +632,70 @@ export type EaStatement = {
   overrides: EaOverrideEntry[];
 };
 
-/** Per-employee EA (C.P.8A) statement for a tax year, from the year's payslips. */
-export async function eaStatement(
+/**
+ * b7b22514 — every employer that owes this employee an EA form for the year, oldest first.
+ *
+ * An EA form is per EMPLOYER, and after an Entity Transfer one employment has had more than one. The set
+ * is derived from the payslips actually paid (company-true by construction, and unaffected by any later
+ * transfer), with the employment's CURRENT company always included last — a company that has not yet run
+ * payroll for someone it employs still owes them a form at year end.
+ *
+ * Returns a single entry for everyone who has never transferred, which is what keeps every existing
+ * caller's output byte-identical.
+ */
+export async function eaCompaniesInYear(
   ctx: SessionContext,
   p: { employmentId: string; year: string },
+): Promise<{ companyId: string; name: string; isCurrent: boolean }[]> {
+  return withTenant(ctx, async (tx) => {
+    const paid = await tx
+      .selectDistinct({ companyId: payrollBatch.companyId, name: company.legalName, first: payrollBatch.payPeriod })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(and(eq(payslip.employmentId, p.employmentId), like(payrollBatch.payPeriod, `${p.year}-%`)));
+
+    // Oldest employer first, so a transfer year reads in the order it happened.
+    const byCompany = new Map<string, { companyId: string; name: string; first: string }>();
+    for (const r of paid) {
+      const cur = byCompany.get(r.companyId);
+      if (!cur || r.first < cur.first) byCompany.set(r.companyId, { companyId: r.companyId, name: r.name, first: r.first });
+    }
+    const out = [...byCompany.values()].sort((a, b) => a.first.localeCompare(b.first));
+
+    const [cur] = await tx
+      .select({ companyId: employment.companyId, name: company.legalName })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    // `isCurrent` is returned rather than inferred from position: callers gate the amend panel on it, and
+    // "the last one in the list" is a guess that happens to hold today and would break the day the sort
+    // changes. The amend panel writing to the wrong employer's form is not a failure worth risking on one.
+    if (!cur) return out.map(({ companyId, name }) => ({ companyId, name, isCurrent: false }));
+    const result = out.map(({ companyId, name }) => ({ companyId, name, isCurrent: companyId === cur.companyId }));
+    if (!result.some((r) => r.isCurrent)) result.push({ ...cur, isCurrent: true });
+    return result;
+  });
+}
+
+/**
+ * Per-employee EA (C.P.8A) statement for a tax year, from the year's payslips — FOR ONE EMPLOYER.
+ *
+ * ⚠️ `companyId` EXISTS BECAUSE OF b7b22514 (Entity Transfer). An EA form is an EMPLOYER's statement of
+ * what IT paid, and until an employee could move company, "the employment's payslips for the year" and
+ * "this employer's payslips for the year" were the same set, so no filter was needed. They are no longer
+ * the same set. Left unfiltered, an employee transferred from A to B in July got ONE form, printed on B's
+ * letterhead with B's employer number, containing six months of A's remuneration — a wrong statutory
+ * form, filed under the wrong employer, overstating the year at one company and omitting it at the other.
+ *
+ * Omitting `companyId` means "the employer this employment currently sits at", which is byte-identical to
+ * the old behaviour for everyone who has never transferred. Use eaCompaniesInYear + one call per company
+ * to produce the full set of forms a transferred employee is owed.
+ */
+export async function eaStatement(
+  ctx: SessionContext,
+  p: { employmentId: string; year: string; companyId?: string },
 ): Promise<EaStatement | null> {
   return withTenant(ctx, async (tx) => {
     const [info] = await tx
@@ -572,10 +719,24 @@ export async function eaStatement(
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!info) return null;
+    // The employer this form speaks for. Defaults to where the employment sits now; for a past employer
+    // in a transfer year it is that company, and the name + E number must BOTH come from it — a form
+    // carrying one company's name and another's employer number is worse than either alone.
+    const employerId = p.companyId ?? info.companyId;
+    let employerName = info.companyName;
+    if (employerId !== info.companyId) {
+      const [co] = await tx
+        .select({ legalName: company.legalName })
+        .from(company)
+        .where(eq(company.id, employerId))
+        .limit(1);
+      if (!co) return null;
+      employerName = co.legalName;
+    }
     const [stat] = await tx
       .select({ eNumber: companyStatutoryMy.lhdnEmployerNo })
       .from(companyStatutoryMy)
-      .where(eq(companyStatutoryMy.companyId, info.companyId))
+      .where(eq(companyStatutoryMy.companyId, employerId))
       .limit(1);
     const slips = await tx
       .select({
@@ -588,7 +749,15 @@ export async function eaStatement(
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .where(and(eq(payslip.employmentId, p.employmentId), like(payrollBatch.payPeriod, `${p.year}-%`)));
+      .where(
+        and(
+          eq(payslip.employmentId, p.employmentId),
+          like(payrollBatch.payPeriod, `${p.year}-%`),
+          // THE FIX. A payslip belongs to the company whose batch paid it, and no later transfer rewrites
+          // that — so this join is company-true for closed years as well as the current one.
+          eq(payrollBatch.companyId, employerId),
+        ),
+      );
 
     let grossSalary = 0;
     let bonus = 0;
@@ -635,10 +804,23 @@ export async function eaStatement(
       socso: round2(socso),
       eis: round2(eis),
     };
-    const ovRows = await tx
-      .select({ field: eaOverride.field, amount: eaOverride.amount, reason: eaOverride.reason })
-      .from(eaOverride)
-      .where(and(eq(eaOverride.employmentId, p.employmentId), eq(eaOverride.year, p.year)));
+    // b7b22514 — AN AMENDMENT IS APPLIED TO EXACTLY ONE OF A TRANSFER YEAR'S FORMS.
+    //
+    // ea_override is keyed (employment, year, field) — it was designed when a year had one employer, so it
+    // carries no company. With two forms in play the same row would overlay BOTH, and an amendment meant to
+    // correct one employer's figure would be counted twice across the group. Under-applying is recoverable
+    // (HR sees the underived figure and re-amends); double-applying silently inflates the group total in a
+    // statutory filing, so the amendment lands on the CURRENT employer's form only.
+    //
+    // Every override row that exists today was written in a single-company world, so this is byte-identical
+    // for them. Keying the table by company is the follow-up that makes a past employer's form amendable.
+    const overridesApply = employerId === info.companyId;
+    const ovRows = overridesApply
+      ? await tx
+          .select({ field: eaOverride.field, amount: eaOverride.amount, reason: eaOverride.reason })
+          .from(eaOverride)
+          .where(and(eq(eaOverride.employmentId, p.employmentId), eq(eaOverride.year, p.year)))
+      : [];
     const merged: Record<EaField, number> = { ...derived };
     const overrides: EaOverrideEntry[] = [];
     let grossOverridden = false;
@@ -655,7 +837,8 @@ export async function eaStatement(
 
     return {
       year: p.year,
-      employer: { name: info.companyName, eNumber: stat?.eNumber ?? null },
+      employerId,
+      employer: { name: employerName, eNumber: stat?.eNumber ?? null },
       employee: {
         name: info.name,
         ic: info.ic,

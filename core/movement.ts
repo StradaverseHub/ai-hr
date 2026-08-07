@@ -864,24 +864,41 @@ const STATE_CHANGING_EVENT_TYPES = new Set(
  * join dates are moved by kinds that are NOT comparison kinds, they derive from one another, and each is
  * maintained on its own screen with its own gates.
  */
-const REVERSIBLE_INFO_DATE_FIELDS: readonly string[] = [
-  'confirmationDate',
-  'finalConfirmationDate',
-  // b7b22514 — the current-company Join Date an Entity Transfer moves. It rides on the info leg beside the
-  // flat columns, and reverseLegTx restores it there on the identical last-write-wins test — so without it
-  // named here, `infoLegIsFlatOnly` would see a date it does not recognise and quietly make every Entity
-  // Transfer uncorrectable. That is the failure mode this list produces: not an error, an absent button.
-  'joinDate',
-];
+const REVERSIBLE_INFO_DATE_FIELDS: readonly string[] = ['confirmationDate', 'finalConfirmationDate'];
+
+/**
+ * b7b22514 — dates that are reversible ONLY on the movement kind that owns them.
+ *
+ * The current-company Join Date rides on the Entity Transfer's info leg beside the flat columns, and
+ * reverseLegTx restores it there — so without it allowed, `infoLegIsFlatOnly` sees a date it does not
+ * recognise and quietly makes every Entity Transfer uncorrectable. That is this list's failure mode: not
+ * an error, an absent button.
+ *
+ * BUT IT MUST NOT BE ALLOWED KIND-BLIND. `joinDate` is also what the EXISTING `joinDateChange` movement
+ * writes (case 'joinDateChange' calls the same setEmploymentInfo, producing the same
+ * `employment.info.updated` with `joinDate` in its fields). Naming it unconditionally above therefore
+ * made a movement this item never touched roll-back-able for the first time — precisely what the comment
+ * on REVERSIBLE_INFO_DATE_FIELDS says is deliberately out of scope: "the two join dates are moved by
+ * kinds that are NOT comparison kinds ... each is maintained on its own screen with its own gates."
+ * Widening a correction gate is not a side effect an Entity Transfer gets to have.
+ */
+const KIND_SCOPED_INFO_DATE_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  entityTransfer: ['joinDate'],
+};
 
 /** A flat-column leg is undone field by field, and since 3ced1040 so is the confirmation date a
  *  Confirmation movement writes alongside it. Any OTHER lifecycle date on the leg puts the whole movement
- *  out of correction's reach (see REVERSIBLE_INFO_DATE_FIELDS). */
-function infoLegIsFlatOnly(e: RawEvent): boolean {
+ *  out of correction's reach (see REVERSIBLE_INFO_DATE_FIELDS) — unless this movement's own kind claims
+ *  it (see KIND_SCOPED_INFO_DATE_FIELDS). */
+function infoLegIsFlatOnly(e: RawEvent, kind: string): boolean {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fields: string[] = Array.isArray((e.payload as any)?.fields) ? (e.payload as any).fields : [];
+  const kindScoped = KIND_SCOPED_INFO_DATE_FIELDS[kind] ?? [];
   return fields.every(
-    (f) => (MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f) || REVERSIBLE_INFO_DATE_FIELDS.includes(f),
+    (f) =>
+      (MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f) ||
+      REVERSIBLE_INFO_DATE_FIELDS.includes(f) ||
+      kindScoped.includes(f),
   );
 }
 
@@ -896,7 +913,7 @@ function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolea
   const supported = group.every(
     (e) =>
       REVERSIBLE_EVENT_TYPES.has(e.eventType) &&
-      (e.eventType !== 'employment.info.updated' || infoLegIsFlatOnly(e)),
+      (e.eventType !== 'employment.info.updated' || infoLegIsFlatOnly(e, row.kind)),
   );
   const canReverse = supported && !row.reversed;
   const canEdit = canReverse && (!stateChanging || (isComparisonKind(row.kind) && isLatest));

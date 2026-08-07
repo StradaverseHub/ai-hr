@@ -259,7 +259,7 @@ export async function recordFileReport(
  */
 export async function employeeEaStatement(
   ctx: SessionContext,
-  p: { employmentId: string; year: string },
+  p: { employmentId: string; year: string; companyId?: string },
 ): Promise<EaStatement | null> {
   const country = await withTenant(ctx, async (tx) => {
     const [row] = await tx
@@ -273,6 +273,60 @@ export async function employeeEaStatement(
   const pack = packFor(country);
   if (!pack) return null;
   return pack.eaStatement(ctx, p);
+}
+
+/** b7b22514 — the employers that owe this employee an EA form for the year, oldest first. Drives the
+ *  employer switcher on the EA screen and the PDF route's `company` parameter. */
+export async function employeeEaCompanies(
+  ctx: SessionContext,
+  p: { employmentId: string; year: string },
+): Promise<{ companyId: string; name: string; isCurrent: boolean }[]> {
+  const country = await withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ country: company.country })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    return row?.country ?? null;
+  });
+  const pack = packFor(country);
+  if (!pack) return [];
+  return pack.eaCompaniesInYear(ctx, p);
+}
+
+/**
+ * b7b22514 — EVERY EA statement the employee is owed for the year, one per employer, oldest first.
+ *
+ * An Entity Transfer moves an employment between legal entities mid-year, and an EA form is a statement of
+ * what ONE employer paid. Before transfers existed the two were the same thing and a single statement was
+ * complete; now a transferred employee is owed one form per company that paid them, and the screens that
+ * render "the EA form" have to render all of them or they are handing out an incomplete tax record.
+ *
+ * Returns exactly one element for everyone who has never transferred.
+ */
+export async function employeeEaStatements(
+  ctx: SessionContext,
+  p: { employmentId: string; year: string },
+): Promise<EaStatement[]> {
+  const country = await withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ country: company.country })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    return row?.country ?? null;
+  });
+  const pack = packFor(country);
+  if (!pack) return [];
+  const companies = await pack.eaCompaniesInYear(ctx, p);
+  const out: EaStatement[] = [];
+  for (const c of companies) {
+    const ea = await pack.eaStatement(ctx, { ...p, companyId: c.companyId });
+    if (ea) out.push(ea);
+  }
+  return out;
 }
 
 // ── Compliance worklist (CP22 / CP22A) ──────────────────────────────────────

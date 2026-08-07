@@ -760,3 +760,39 @@ describe('SOURCE GUARDS — the New Event form', () => {
     }
   });
 });
+
+// ───────────────── the blast radius of allowing joinDate to be rolled back ─────────────────
+
+describe('allowing joinDate back is scoped to the Entity Transfer, and does NOT widen joinDateChange', () => {
+  // FOUND IN VERIFICATION. `joinDate` had to be named as a reversible info-leg date or every Entity
+  // Transfer would silently lose its correction button. But the EXISTING joinDateChange movement writes
+  // the SAME employment.info.updated with joinDate in its fields — so naming it kind-blind quietly made a
+  // movement this item never touched roll-back-able for the first time. core/movement.ts says that is out
+  // of scope in as many words: the two join dates "are moved by kinds that are NOT comparison kinds ...
+  // each is maintained on its own screen with its own gates".
+  //
+  // A widened correction gate is not a side effect a transfer gets to have, so it is now keyed by kind.
+  it('a joinDateChange is still NOT correctable', async () => {
+    const hire = await hireOne({ hiredOn: '2018-03-15' });
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'joinDateChange',
+      effectiveDate: '2026-04-01',
+      remarks: 'internal move',
+    });
+    const row = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'joinDateChange');
+    expect(row, 'the movement must exist to be judged').toBeTruthy();
+    expect(row!.canReverse, 'unchanged by this item — it was false before b7b22514').toBe(false);
+    expect(row!.canEdit, 'unchanged by this item').toBe(false);
+  });
+
+  it('and the Entity Transfer beside it still IS', async () => {
+    // The other half of the same claim: scoping by kind must not cost the transfer its own button.
+    const hire = await hireOne({ hiredOn: '2018-03-15' });
+    const asg = await openAssignment(hire.employmentId);
+    await owner.db.update(schema.assignment).set({ costCenterId: null }).where(eq(schema.assignment.id, asg.id));
+    await createMovementEvent(adminCtx(b), coherentMove(hire.employmentId));
+    const row = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'entityTransfer')!;
+    expect(row.canReverse).toBe(true);
+  });
+});

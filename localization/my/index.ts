@@ -39,7 +39,7 @@ import {
   validateStatutoryRuleset,
 } from './statutory-config';
 import { getCompanyStatutoryMY, listCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
-import { eaStatement, MY_REPORTS } from './reports';
+import { eaCompaniesInYear, eaStatement, MY_REPORTS } from './reports';
 import type { CountryPack } from '../country-pack';
 
 // ADR-0080 D1: the pack implements the registry-owned CountryPack contract (previously the
@@ -170,4 +170,5 @@ export const myPack: CountryPack = {
   seedReferenceData: seedReferenceDataMY,
   reports: MY_REPORTS,
   eaStatement,
+  eaCompaniesInYear,
 };

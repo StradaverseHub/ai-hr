@@ -2837,6 +2837,10 @@
         "fieldEis": "EIS / SIP",
         "filedTotal": "Tổng CP39 / cơ quan đã nộp",
         "cp39DivergenceWarning": "Con số được sửa đổi này khác với tổng CP39 / cơ quan đã nộp của năm ({filed}; chênh lệch {delta}). Việc sửa đổi và chênh lệch được ghi lại trong nhật ký kiểm toán."
+      },
+      "multiEmployer": {
+        "title": "Biểu mẫu EA cho {count} người sử dụng lao động",
+        "body": "Nhân viên này được nhiều công ty trả lương trong năm nay, nên mỗi công ty phải cấp một biểu mẫu EA riêng. Chọn một người sử dụng lao động để xem và in biểu mẫu."
       }
     },
     "config": {

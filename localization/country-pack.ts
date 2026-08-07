@@ -416,9 +416,18 @@ export interface CountryPack {
   /** Statutory report catalog (CP39, SOCSO/EIS files, …) the reporting engine enumerates. */
   reports: ReportDef[];
 
-  /** EA-statement generator (annual employee statement; MY: Borang EA). */
+  /** EA-statement generator (annual employee statement; MY: Borang EA), for ONE employer.
+   *  `companyId` defaults to the employment's current company; b7b22514 (Entity Transfer) means a year
+   *  can span more than one employer, and an EA form belongs to exactly one of them. */
   eaStatement: (
     ctx: SessionContext,
-    p: { employmentId: string; year: string },
+    p: { employmentId: string; year: string; companyId?: string },
   ) => Promise<EaStatement | null>;
+
+  /** Every employer that owes this employee a statement for the year, oldest first. One entry for anyone
+   *  who has never transferred — which is what keeps single-company output unchanged. */
+  eaCompaniesInYear: (
+    ctx: SessionContext,
+    p: { employmentId: string; year: string },
+  ) => Promise<{ companyId: string; name: string; isCurrent: boolean }[]>;
 }
