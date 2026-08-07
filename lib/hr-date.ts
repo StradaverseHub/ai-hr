@@ -32,3 +32,22 @@ export function timeInKualaLumpur(now: Date = new Date()): string {
     hour12: false,
   }).format(now);
 }
+
+/**
+ * The years a payroll-period picker should offer: `back` years of history ending at today's, plus
+ * `selected` whenever it falls outside that window (6babf4f6).
+ *
+ * The second half is the part that earns the helper. A link can legitimately carry an older year — a
+ * statutory amendment, a re-filing, a bookmark — and the page resolves it correctly. But a `<select>`
+ * whose `defaultValue` matches no `<option>` falls back to its FIRST option, so the screen would show
+ * the right figures under the wrong year label. Newest first, matching every other year picker here.
+ */
+export function yearOptions(today: string, selected?: string, back = 6): string[] {
+  const thisYear = Number(today.slice(0, 4));
+  const years = Array.from({ length: back + 1 }, (_, i) => String(thisYear - i));
+  if (selected && /^\d{4}$/.test(selected) && !years.includes(selected)) {
+    years.push(selected);
+    years.sort((a, b) => b.localeCompare(a));
+  }
+  return years;
+}

@@ -5,7 +5,7 @@ import { listCompanies } from '@/core/read';
 import { complianceWorklist, listReports, listStatutoryLinks, submissionDueFor } from '@/core/reporting';
 import type { StatutoryBodyKey } from '@/localization/country-pack';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { todayInKualaLumpur } from '@/lib/hr-date';
+import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 
 /**
  * Payroll → Statutory Forms: the shelf, by the authority you file with (6babf4f6, redesigning 956cec85).
@@ -96,10 +96,9 @@ export default async function StatutoryFormsPage({
   const year = /^\d{4}$/.test(sp.year ?? '') ? sp.year! : fallback.slice(0, 4);
   const month = MONTHS.includes(sp.month as (typeof MONTHS)[number]) ? sp.month! : fallback.slice(5, 7);
   const periodKey = `${year}-${month}`;
-  const thisYear = Number(today.slice(0, 4));
-  // Six years back plus the current one: a statutory amendment reaches back years, and a year that is
-  // not in the list is a year nobody can open.
-  const years = Array.from({ length: 7 }, (_, i) => String(thisYear - i));
+  // Six years back plus the current one, and ALWAYS the selected year — a link carrying an older year
+  // would otherwise resolve correctly while the select silently displayed a different one.
+  const years = yearOptions(today, year);
   const activeBody = BODY_ORDER.includes(sp.body as StatutoryBodyKey) ? (sp.body as StatutoryBodyKey) : null;
 
   // Only the pack entries that ARE submissions. The monthly contributions overview has no `submission`

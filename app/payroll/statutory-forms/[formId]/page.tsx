@@ -6,7 +6,7 @@ import { listReports, reportPreview, submissionDueFor } from '@/core/reporting';
 import { Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
 import { PrintButton } from '@/components/print-button';
 import { StatutoryReportPanel } from '@/components/statutory-report-panel';
-import { todayInKualaLumpur } from '@/lib/hr-date';
+import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 import { recordReportAction } from './actions';
 
 /**
@@ -87,8 +87,9 @@ export default async function StatutoryFormPage({
   // An annual form is filed for a YEAR: showing it a month filter would invite somebody to believe the
   // figures below are August's when they are the whole year's.
   const periodKey = annual ? year : `${year}-${month}`;
-  const thisYear = Number(today.slice(0, 4));
-  const years = Array.from({ length: 7 }, (_, i) => String(thisYear - i));
+  // Always includes the selected year, so an older link cannot resolve correctly while the select
+  // silently shows a different year beside the figures.
+  const years = yearOptions(today, year);
 
   const result = companyId ? await reportPreview(s, { companyId, reportId: formId, periodKey }) : null;
   const companyName = companies.find((c) => c.id === companyId)?.name ?? '—';

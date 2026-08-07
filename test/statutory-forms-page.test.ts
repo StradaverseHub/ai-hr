@@ -23,6 +23,7 @@ import { myPack } from '../localization/my';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import { payrollPack } from '../packs/payroll';
 import { PAYROLL_NAV_PHASE } from '../packs/payroll/phases';
+import { yearOptions } from '../lib/hr-date';
 import en from '../messages/en.json';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -176,6 +177,24 @@ describe('the landing page is a directory, not a second generator', () => {
     expect(PAGE).toContain('sp.periodKey');
     expect(PAGE).toMatch(/name="year"/);
     expect(PAGE).toMatch(/name="month"/);
+  });
+
+  /**
+   * The year picker, and the defect it exists to prevent: a `<select>` whose `defaultValue` matches no
+   * `<option>` silently falls back to its FIRST option. A link carrying an out-of-window year resolves
+   * correctly server-side, so the page would show the right figures under the WRONG year label — the
+   * worst kind of wrong for a statutory return, because nothing looks broken.
+   */
+  it('always offers the selected year, however far back the link reaches', () => {
+    expect(yearOptions('2026-08-07')).toEqual(['2026', '2025', '2024', '2023', '2022', '2021', '2020']);
+    expect(yearOptions('2026-08-07', '2026')[0]).toBe('2026');
+    const old = yearOptions('2026-08-07', '2015');
+    expect(old).toContain('2015');
+    expect(old[old.length - 1]).toBe('2015'); // newest first, like every other year picker here
+    // A junk value is NOT injected into the list — the page falls back to a real year for those.
+    expect(yearOptions('2026-08-07', 'abcd')).not.toContain('abcd');
+    expect(PAGE).toContain('yearOptions(today, year)');
+    expect(FORM_PAGE).toContain('yearOptions(today, year)');
   });
 });
 
