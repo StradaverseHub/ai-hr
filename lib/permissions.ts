@@ -423,6 +423,11 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: [
       '/payroll',
       '/payroll/[batchId]',
+      // e440991b — the dedicated Reprocess Selected Employees screen. Same requireAdmin guard as the run
+      // page it is reached from. Registered here because test/function-access.test.ts checks reverse
+      // completeness: a guarded page with no matrix column fails the suite rather than silently
+      // becoming a screen nobody can grant or revoke.
+      '/payroll/[batchId]/reprocess',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.
