@@ -271,9 +271,64 @@ export function payRuleDependencies(rule: PayRule | null): string[] {
  * consumers — the same "one definition of an edge" discipline payRuleDependencies has.
  */
 export function payRuleReadsFixedAllowanceTotal(rule: PayRule | null): boolean {
+  return payRuleReadsOperand(rule, 'fixed_allowances');
+}
+
+/** Does this rule's formula read a particular named input? Only a `formula` has operands at all, so every
+ *  other kind answers false. Shared by payRuleReadsFixedAllowanceTotal (the resolution-order edge) and by
+ *  payRuleInputUnit below (which input a one-off transaction must key), so "reads `hours`" has one
+ *  definition rather than one per consumer. */
+export function payRuleReadsOperand(rule: PayRule | null | undefined, ref: FormulaOperandRef): boolean {
   if (rule == null || rule.kind !== 'formula') return false;
   const operands: (FormulaOperand | undefined)[] = [rule.start, ...(Array.isArray(rule.terms) ? rule.terms.map((t) => t?.operand) : [])];
-  return operands.some((o) => o != null && o.ref === 'fixed_allowances');
+  return operands.some((o) => o != null && o.ref === ref);
+}
+
+/**
+ * 2da9937a — the rule kinds whose amount is WORKED OUT rather than typed.
+ *
+ * This is the list the approved plan names, and the omissions are deliberate rather than accidental:
+ * `percent_of` and `flat_capped` also compute a figure, but neither reads anything the operator keys on a
+ * one-off transaction, and taking the Amount box away from them would change what an existing screen asks
+ * for without giving the operator any input to supply instead. `fixed` (and a null rule) is the legacy
+ * stored-amount case and stays byte-identical. Widening this list changes what a one-off pays, so it is a
+ * decision, not a default.
+ */
+export const DERIVED_AMOUNT_RULE_KINDS: readonly PayRuleKind[] = ['per_hour', 'per_day', 'qty_rate', 'formula'];
+
+/** Does a one-off transaction on this pay item COMPUTE its amount from the item's rule (rather than take
+ *  the amount the operator typed)? One predicate, read by the entry screen to lock the Amount box and by
+ *  the write path to overwrite whatever amount arrived — so the box the operator cannot fill and the value
+ *  the server refuses to trust are the same set of items by construction. */
+export function payRuleDerivesAmount(rule: PayRule | null | undefined): boolean {
+  return rule != null && DERIVED_AMOUNT_RULE_KINDS.includes(rule.kind);
+}
+
+/**
+ * 2da9937a — WHICH quantity the operator must key for a one-off transaction on this pay item, and the ONE
+ * definition of it.
+ *
+ * The answer names the scope input the keyed quantity REPLACES: 10 hours entered against a `per_hour`
+ * overtime item resolves the rule with `hours = 10`, not with the employee's attendance total for the
+ * month, because a one-off transaction is a statement about those ten hours and nothing else.
+ *
+ * `null` means the rule needs nothing from the operator — `qty_rate` carries its own quantity, and a
+ * formula that reads only `basic` / `fixed_allowances` / another pay item is fully determined by the
+ * employee's own figures. Those items still derive their amount; they simply have no box to fill.
+ *
+ * The screen locks its Input Type to this answer and the write path REFUSES a save without it. Two
+ * consumers, one function: an item whose Amount box is taken away always has the input that replaces it.
+ */
+export function payRuleInputUnit(rule: PayRule | null | undefined): 'hours' | 'days' | null {
+  if (rule == null) return null;
+  if (rule.kind === 'per_hour') return 'hours';
+  if (rule.kind === 'per_day') return 'days';
+  // A formula may read both. `hours` wins because the reporter's own worked example
+  // (… / Working Days / Working Hours × Rate × Input Hours) divides by the establishment's day and hour
+  // figures and multiplies by the hours BEING CLAIMED — the keyed quantity is the hours, every time.
+  if (payRuleReadsOperand(rule, 'hours')) return 'hours';
+  if (payRuleReadsOperand(rule, 'days')) return 'days';
+  return null;
 }
 
 /**
