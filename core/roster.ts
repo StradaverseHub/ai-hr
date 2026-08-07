@@ -489,7 +489,7 @@ export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchive
 
 // R33 f21d6eee — ShiftCompanyMismatchError was REMOVED. Shifts are a tenant-wide shared library, so a
 // template may be assigned to ANY employee in the tenant regardless of which company (if any) authored it.
-// The same-company guard is gone; ArchivedShiftError + FixedShiftRequiresShiftError still apply.
+// The same-company guard is gone; ArchivedShiftError + BackupShiftRequiredError still apply.
 
 export class ArchivedShiftError extends Error {
   constructor(message = 'An archived shift cannot be assigned as a default shift') {
@@ -498,33 +498,45 @@ export class ArchivedShiftError extends Error {
   }
 }
 
-export class FixedShiftRequiresShiftError extends Error {
-  constructor(message = 'A Fixed shift arrangement requires a default shift to be selected') {
+/**
+ * b8aa3466 — every employment must carry a BACKUP SHIFT (the profile's `default_shift_id`), whichever
+ * arrangement they are on. Replaces R17's FixedShiftRequiresShiftError, which only demanded one for the
+ * Fixed arrangement and so left "Roster" as a way to decline — the decline path this item removes.
+ */
+export class BackupShiftRequiredError extends Error {
+  constructor(message = 'A backup shift is required — it is the shift used on any day the employee is not rostered') {
     super(message);
-    this.name = 'FixedShiftRequiresShiftError';
+    this.name = 'BackupShiftRequiredError';
   }
 }
 
 export type EmployeeShiftType = 'fixed' | 'roster';
 
 /**
- * R17 3e8350db — set an employee's shift ARRANGEMENT (the reporter's "Shift Type") plus, for a Fixed
- * arrangement, the default shift. This is the single write path that keeps `shift_type` and
- * `default_shift_id` consistent so the engine never sees a contradictory pair:
- *   • Fixed  ⇒ a default shift is REQUIRED (validated same-company + non-archived, exactly like the legacy
- *     assignDefaultShift). The person follows that shift every working day.
- *   • Roster ⇒ default_shift_id is FORCED to null. The person is scheduled purely from /roster; a day with
- *     no roster row falls back to the flat company policy (== the pre-default-shift behaviour).
- * The attendance engine (core/attendance.ts scheduleFor) keeps resolving roster row → default shift → policy,
- * so it needs no change: a roster employee simply has no default shift for the middle step.
+ * R17 3e8350db — set an employee's shift ARRANGEMENT (the reporter's "Shift Type") plus their BACKUP SHIFT.
+ * This is the single write path that keeps `shift_type` and `default_shift_id` consistent.
+ *
+ * b8aa3466 CHANGED THE INVARIANT. R17 read: Fixed ⇒ a default shift is required, Roster ⇒ default_shift_id
+ * is FORCED to null. That second half is why 30 of the reporter's 31 employments had no shift: "Roster" was
+ * a way to decline the field, and a declined field means scheduleFor falls all the way through to the flat
+ * company policy on every unrostered day. The rule is now:
+ *   • Fixed  ⇒ the person follows their backup shift every working day; the roster is for exceptions.
+ *   • Roster ⇒ the person is normally scheduled from /roster, and the backup shift covers any day that has
+ *     no roster row.
+ * Both REQUIRE a shift. `shift_type` survives as a statement of intent (nothing in the engine branches on
+ * it — grep it: the profile UI and this invariant are its only readers); `default_shift_id` remains the
+ * engine's single source of truth, resolved roster row → backup shift → company policy, unchanged.
+ *
+ * Nothing here touches attendance ALREADY RECORDED: the engine stamps its figures onto the attendance row
+ * at write time and never re-derives history, so changing a backup shift moves how future days calculate
+ * and no more.
  */
 export async function assignEmployeeShift(
   ctx: SessionContext,
   p: { employmentId: string; shiftType: EmployeeShiftType; shiftId: string | null },
 ): Promise<{ id: string }> {
-  // Roster arrangement never carries a permanent shift on the profile.
-  const shiftId = p.shiftType === 'roster' ? null : p.shiftId;
-  if (p.shiftType === 'fixed' && !shiftId) throw new FixedShiftRequiresShiftError();
+  const shiftId = p.shiftId || null;
+  if (!shiftId) throw new BackupShiftRequiredError();
   return withTenant(ctx, async (tx) => {
     const [emp] = await tx
       .select({
@@ -536,16 +548,14 @@ export async function assignEmployeeShift(
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!emp) throw new Error('Employment not found');
-    if (shiftId != null) {
-      const [sh] = await tx
-        .select({ id: shift.id, archivedAt: shift.archivedAt })
-        .from(shift)
-        .where(eq(shift.id, shiftId))
-        .limit(1);
-      if (!sh) throw new Error('Shift not found');
-      // R33 f21d6eee — no same-company check: a shared-library shift is assignable to any tenant employee.
-      if (sh.archivedAt) throw new ArchivedShiftError();
-    }
+    const [sh] = await tx
+      .select({ id: shift.id, archivedAt: shift.archivedAt })
+      .from(shift)
+      .where(eq(shift.id, shiftId))
+      .limit(1);
+    if (!sh) throw new Error('Shift not found');
+    // R33 f21d6eee — no same-company check: a shared-library shift is assignable to any tenant employee.
+    if (sh.archivedAt) throw new ArchivedShiftError();
     await tx
       .update(employment)
       .set({ shiftType: p.shiftType, defaultShiftId: shiftId })
@@ -568,17 +578,103 @@ export async function assignEmployeeShift(
 }
 
 /** Legacy default-shift assignment (ec4cbf63). Kept for back-compat: setting a shift is a Fixed
- *  arrangement, clearing it is a Roster arrangement. Delegates to assignEmployeeShift so `shift_type` stays
- *  in lockstep with `default_shift_id`. */
+ *  arrangement. b8aa3466 — CLEARING is no longer a thing: `shiftId: null` now raises
+ *  BackupShiftRequiredError instead of quietly dropping the employee onto the flat company policy. */
 export async function assignDefaultShift(
   ctx: SessionContext,
   p: { employmentId: string; shiftId: string | null },
 ): Promise<{ id: string }> {
   return assignEmployeeShift(ctx, {
     employmentId: p.employmentId,
-    shiftType: p.shiftId ? 'fixed' : 'roster',
+    shiftType: 'fixed',
     shiftId: p.shiftId,
   });
+}
+
+// ── Backup-shift coverage (b8aa3466) ───────────────────────────────────────────────────────────────
+
+export type UncoveredEmployment = {
+  employmentId: string;
+  employeeCode: string | null;
+  name: string;
+  companyId: string;
+};
+
+/**
+ * b8aa3466 — every ACTIVE employment that has no backup shift, i.e. every person for whom an unrostered
+ * day still falls through to the flat company work schedule. This is the coverage gate the Attendance
+ * Policy screen reads and the backfill script prints BEFORE and AFTER: "how many employees would notice
+ * if the company schedule went away" is the only honest way to ask whether it can.
+ *
+ * Active = not terminated (there is no stored status column — see core/employment-status.ts; a terminated
+ * employment is not scheduled, so it cannot be uncovered). Ordered by employee code so two runs of the
+ * script produce diffable output.
+ */
+export function employmentsWithoutBackupShift(ctx: SessionContext): Promise<UncoveredEmployment[]> {
+  return withTenant(ctx, async (tx) =>
+    tx
+      .select({
+        employmentId: employment.id,
+        employeeCode: employment.employeeCode,
+        name: person.fullName,
+        companyId: employment.companyId,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(and(isNull(employment.terminatedOn), isNull(employment.defaultShiftId)))
+      .orderBy(asc(employment.employeeCode), asc(person.fullName)),
+  );
+}
+
+export type BackfillBackupShiftResult = {
+  /** The uncovered employments as they were BEFORE the run — the reversal record. */
+  before: UncoveredEmployment[];
+  /** Still uncovered AFTER the run. Empty on a successful apply; identical to `before` on a dry run. */
+  after: UncoveredEmployment[];
+  /** The shift every `before` row was pointed at (null on a dry run — nothing was written). */
+  assignedShiftId: string | null;
+  applied: boolean;
+};
+
+/**
+ * b8aa3466 — point every ACTIVE employment with no backup shift at one named shift (the reporter asked for
+ * AM03: 09:00–18:00, 60-minute break).
+ *
+ * Deliberately NOT a migration. A migration is invisible and irreversible-by-inspection; this is a data
+ * decision that changes how every future day calculates for the people it touches, so it runs as an
+ * explicit admin action that reports the exact list BEFORE and AFTER, writes through assignEmployeeShift
+ * (so each row gets its own audited employment.shift-arrangement.assigned event carrying before → after,
+ * which IS the reversal instruction), and does nothing at all unless `apply` is passed.
+ *
+ * Attendance already recorded is untouched — the engine froze those rows' figures when they were written.
+ *
+ * `shiftCode` is resolved case-insensitively and MUST match exactly one non-archived shift: shift codes are
+ * not unique in this tenant (two rows both coded AM1, plus AM1-copy / Test / Test-2 on production), so a
+ * code that resolves to two shifts is an error, never a coin-flip.
+ */
+export async function backfillBackupShift(
+  ctx: SessionContext,
+  p: { shiftCode: string; apply: boolean },
+): Promise<BackfillBackupShiftResult> {
+  const before = await employmentsWithoutBackupShift(ctx);
+  const wanted = p.shiftCode.trim().toLowerCase();
+  const matches = (await listShiftsForTenant(ctx)).filter((sh) => (sh.code ?? '').trim().toLowerCase() === wanted);
+  if (matches.length === 0) throw new Error(`No active shift with code "${p.shiftCode}"`);
+  if (matches.length > 1) {
+    throw new Error(
+      `Shift code "${p.shiftCode}" matches ${matches.length} shifts (${matches
+        .map((sh) => `${sh.name} ${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)}`)
+        .join(', ')}) — codes are not unique in this tenant, so pick one and re-run.`,
+    );
+  }
+  if (!p.apply) return { before, after: before, assignedShiftId: null, applied: false };
+  const target = matches[0];
+  for (const row of before) {
+    // Fixed: an unrostered day is now this person's shift, which is exactly what a backup shift means.
+    // One call per row on purpose — each needs its own DomainEvent to be individually reversible.
+    await assignEmployeeShift(ctx, { employmentId: row.employmentId, shiftType: 'fixed', shiftId: target.id });
+  }
+  return { before, after: await employmentsWithoutBackupShift(ctx), assignedShiftId: target.id, applied: true };
 }
 
 // ── Roster assignments ──────────────────────────────────────────────
