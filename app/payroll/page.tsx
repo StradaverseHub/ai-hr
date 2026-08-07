@@ -11,7 +11,7 @@ import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { deleteDraftBatchAction, resetAction } from './actions';
 import { resumeHref } from './process/selection-logic';
-import { settingEnabledOrDefault } from '@/core/entitlements';
+import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { payrollPublicationState } from '@/lib/payroll-publication';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { formatMoney } from '@/lib/money';
@@ -97,6 +97,10 @@ export default async function PayrollPage({
   // Payroll Reset (a03b2d9b) shares the batch-detail namespace so the confirm copy is written once.
   const tb = await getTranslations('payroll.batch');
   const resetOn = settingEnabledOrDefault(s, 'payroll.reset_enabled');
+  // e440991b — the Reprocess row action. Gated exactly as the run screen gates the way in, so the list
+  // never offers a door the destination will refuse. This screen did not read the flag before: it had
+  // no reprocess action at all, which was the whole complaint.
+  const multiCycleOn = isModuleEnabledOrFalse(s, 'multi_cycle_payroll');
   const sp = await searchParams;
   const { error } = sp;
 
@@ -364,6 +368,21 @@ export default async function PayrollPage({
                               {t('deleteDraft')}
                             </ConfirmSubmit>
                           </form>
+                        )}
+                        {/* e440991b — REPROCESS, from the list. Correcting one person on a processed run
+                            used to mean opening the run, scrolling past the payslips and past the
+                            Recalculation History, and finding tick-boxes at the bottom of a 1,286-line
+                            page; this screen offered no way in at all. PROCESSED rows only (a draft has
+                            no payslips; a closed run is immutable) and only with multi-cycle on — the
+                            same gates the destination re-asserts and the service enforces. Placed
+                            between View and Reset because Reset is the different, whole-run action. */}
+                        {b.status === 'processed' && multiCycleOn && (
+                          <Link
+                            href={`/payroll/${b.id}/reprocess`}
+                            className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
+                          >
+                            {tb('reprocessAction')}
+                          </Link>
                         )}
                         {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED rows only — a processed run is
                             locked; the controlled reset returns it to Draft (payslips cleared, loan/claim

@@ -338,7 +338,13 @@ export async function resetAction(formData: FormData) {
  * totals), leaving everyone else physically untouched. Granular RBAC (payroll.reprocess.selective),
  * processed-only, membership intersection, the queue/idempotency guard and the delta recompute all live
  * in reprocessSelectedEmployees (the service); the session carries the real actor. Stays on the SAME
- * processed run (in-place), with an "N of M reprocessed" summary. Copy localised here.
+ * processed run (in-place). Copy localised here.
+ *
+ * e440991b — IT NOW ENDS WHERE IT STARTED. This used to redirect back to the long run screen with a
+ * one-line "N of M reprocessed" toast, which told the operator a count and nothing about what actually
+ * moved. It returns to /payroll/<id>/reprocess carrying the JOB ID, and that page renders the completed
+ * job: every employee reprocessed, net pay before and after off the stored snapshots, which figures
+ * moved and why. Refusals come back to the same screen so the selection is still in front of you.
  */
 export async function reprocessSelectedAction(formData: FormData) {
   const s = await getSession();
@@ -347,11 +353,11 @@ export async function reprocessSelectedAction(formData: FormData) {
   const reason = String(formData.get('reason') ?? '').trim();
   const idempotencyKey = String(formData.get('idempotencyKey') ?? '').trim();
   const t = await getTranslations('payroll.batch');
+  const back = `/payroll/${batchId}/reprocess`;
   if (employmentIds.length === 0) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent(t('reprocessNoneSelected'))}`);
+    redirect(`${back}?error=${encodeURIComponent(t('reprocessNoneSelected'))}`);
   }
-  let reprocessed = employmentIds.length;
-  let headcount = employmentIds.length;
+  let jobId = '';
   try {
     const r = await reprocessSelectedEmployees(s, {
       batchId,
@@ -359,8 +365,7 @@ export async function reprocessSelectedAction(formData: FormData) {
       reason: reason || undefined,
       idempotencyKey: idempotencyKey || undefined,
     });
-    if ('reprocessed' in r && typeof r.reprocessed === 'number') reprocessed = r.reprocessed;
-    if ('headcount' in r && typeof r.headcount === 'number') headcount = r.headcount;
+    jobId = r.jobId;
   } catch (e) {
     const msg =
       e instanceof PayrollPermissionDeniedError
@@ -368,11 +373,12 @@ export async function reprocessSelectedAction(formData: FormData) {
         : e instanceof BatchNotResettableError
           ? t('reprocessNotProcessed')
           : (e as Error).message;
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
+    redirect(`${back}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath('/payroll');
   revalidatePath(`/payroll/${batchId}`);
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(t('reprocessDone', { n: reprocessed, total: headcount }))}`);
+  revalidatePath(back);
+  redirect(`${back}?job=${encodeURIComponent(jobId)}`);
 }
 
 /**

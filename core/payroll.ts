@@ -4738,12 +4738,66 @@ export async function getReprocessJob(ctx: SessionContext, jobId: string) {
         status: payrollReprocessJob.status,
         result: payrollReprocessJob.result,
         error: payrollReprocessJob.error,
+        // e440991b — the RESULTS panel on /payroll/<id>/reprocess reads this job back to say what it
+        // did. It needs the SELECTION (which employees this job actually ran, after the cross-company
+        // intersection narrowed the posted ids) and the instant it was claimed, so it can pick out the
+        // payroll_employee_result_history rows THIS job wrote rather than every recomputation the run
+        // has ever had. Purely additive to the projection; the polling route JSON-encodes whatever it
+        // is handed and both fields are already tenant-fenced by RLS.
+        employmentIds: payrollReprocessJob.employmentIds,
+        reason: payrollReprocessJob.reason,
+        createdAt: payrollReprocessJob.createdAt,
         updatedAt: payrollReprocessJob.updatedAt,
       })
       .from(payrollReprocessJob)
       .where(eq(payrollReprocessJob.id, jobId))
       .limit(1);
     return job ?? null;
+  });
+}
+
+/**
+ * e440991b — CAN THIS RUN BE REPROCESSED, AND BY THIS CALLER? The three refusals
+ * `reprocessSelectedEmployees` makes at enqueue time, answered as a read so the dedicated Reprocess
+ * screen can refuse with an explanation instead of letting the operator discover it by pressing submit.
+ *
+ * It is deliberately NOT the authority: every field here is re-asserted inside the service's own
+ * transaction (permission → status → period), which is where a race between this read and the submit
+ * is decided. What this adds is that the screen and the service refuse for the SAME three reasons,
+ * resolved from the same rows — a second surface, not a second rule.
+ *
+ * Returns null when the batch is not readable (missing, or fenced off by RLS).
+ */
+export type ReprocessEligibility = {
+  /** The caller holds `payroll.reprocess.selective` for this run's company. */
+  permitted: boolean;
+  /** The run is PROCESSED — never a draft (no payslips) and never a closed run (immutable). */
+  processed: boolean;
+  /** The parent pay period is closed, so nothing in it may be recomputed. */
+  periodClosed: boolean;
+};
+
+export async function reprocessEligibility(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<ReprocessEligibility | null> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, payPeriodId: payrollBatch.payPeriodId })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) return null;
+    const [period] = await tx
+      .select({ status: payPeriod.status })
+      .from(payPeriod)
+      .where(eq(payPeriod.id, batch.payPeriodId))
+      .limit(1);
+    return {
+      permitted: await resolvePayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId),
+      processed: batch.status === 'processed',
+      periodClosed: period?.status === 'closed',
+    };
   });
 }
 
