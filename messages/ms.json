@@ -3613,7 +3613,21 @@
         "recalcNeededTitle": "Proses gaji ini kini perlu dikira semula.",
         "recalcNeededBody": "Slip gaji, angka berkanun dan jumlahnya tidak lagi sepadan dengan transaksi di sebaliknya.",
         "recalcNeededLink": "Kira semula pekerja yang terlibat",
-        "paidEditableHint": "Transaksi ini telah pun dibayar dalam proses yang telah diproses. Ia masih boleh dibetulkan, dan berbuat demikian akan menandakan proses itu untuk dikira semula."
+        "paidEditableHint": "Transaksi ini telah pun dibayar dalam proses yang telah diproses. Ia masih boleh dibetulkan, dan berbuat demikian akan menandakan proses itu untuk dikira semula.",
+        "quantityRequiredHours": "Masukkan bilangan jam — item gaji ini mengira jumlahnya daripada jam tersebut.",
+        "quantityRequiredDays": "Masukkan bilangan hari — item gaji ini mengira jumlahnya daripada hari tersebut.",
+        "derivedAmountUnavailable": "Jumlah bagi item gaji ini tidak dapat dikira. Semak tetapannya di bawah Item Gaji.",
+        "derivedAmountPending": "Sedang mengira…",
+        "derivedAmountLabel": "Jumlah dikira",
+        "quantityLabel": {
+          "hours": "Jam",
+          "days": "Hari"
+        },
+        "derivedAmountHint": {
+          "hours": "Item gaji ini mengira jumlahnya sendiri. Masukkan jam dan jumlah akan dikira daripada formula item — ia tidak ditaip.",
+          "days": "Item gaji ini mengira jumlahnya sendiri. Masukkan hari dan jumlah akan dikira daripada formula item — ia tidak ditaip.",
+          "none": "Item gaji ini mengira jumlahnya sendiri daripada formulanya, jadi jumlah tidak ditaip."
+        }
       },
       "tp1": {
         "title": "Pelepasan TP1",

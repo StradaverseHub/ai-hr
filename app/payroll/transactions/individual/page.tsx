@@ -4,6 +4,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
+import { payRuleDerivesAmount, payRuleInputUnit, type PayRule } from '@/core/pay-rule';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { ErrorBanner, PageHeader } from '@/components/ui';
 import { TxnWorkspace, type TxnBatch, type TxnEmployee } from './txn-workspace';
@@ -55,7 +56,18 @@ export default async function IndividualTransactionPage({
   // refuses it and the 0011 database triggers refuse it underneath, so listing one would only produce a
   // save that always fails. The status rides along so the form can warn before it lands on a processed run.
   const writableBatches = allBatches.filter((b) => b.status === 'draft' || b.status === 'processed');
-  const payItems = payComponents.map((c) => ({ id: c.id, code: c.code, name: c.name, kind: c.kind }));
+  // 2da9937a — the two things the entry form needs to know about a pay item's rule, resolved on the SERVER
+  // with the same pure predicates the write path uses. The rule VALUE never crosses to the client: the
+  // form's questions are only "is the Amount box mine to fill?" and "which quantity does it want?", and
+  // answering them here is what stops the screen and the service disagreeing about which items calculate.
+  const payItems = payComponents.map((c) => ({
+    id: c.id,
+    code: c.code,
+    name: c.name,
+    kind: c.kind,
+    derives: payRuleDerivesAmount(c.rule as PayRule | null),
+    inputUnit: payRuleInputUnit(c.rule as PayRule | null),
+  }));
 
   // The Company pre-filter is view-only narrowing on the already access-fenced employee list, so scope the
   // dropdown to the same authorised set (scopeIds) that listEmployees was fenced to — never let the

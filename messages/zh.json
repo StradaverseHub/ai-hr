@@ -3613,7 +3613,21 @@
         "recalcNeededTitle": "此薪资批次现在需要重新计算。",
         "recalcNeededBody": "其工资单、法定金额和合计已与背后的交易不一致。",
         "recalcNeededLink": "重新计算受影响的员工",
-        "paidEditableHint": "此交易已在已处理的批次中支付。仍可更正，更正后该批次会被标记为需要重新计算。"
+        "paidEditableHint": "此交易已在已处理的批次中支付。仍可更正，更正后该批次会被标记为需要重新计算。",
+        "quantityRequiredHours": "请输入小时数——此薪资项目会据此计算金额。",
+        "quantityRequiredDays": "请输入天数——此薪资项目会据此计算金额。",
+        "derivedAmountUnavailable": "无法计算此薪资项目的金额。请在「薪资项目」中检查其设置。",
+        "derivedAmountPending": "正在计算…",
+        "derivedAmountLabel": "计算所得金额",
+        "quantityLabel": {
+          "hours": "小时",
+          "days": "天"
+        },
+        "derivedAmountHint": {
+          "hours": "此薪资项目会自行计算金额。输入小时数后，系统按该项目的公式算出金额，无需手动输入。",
+          "days": "此薪资项目会自行计算金额。输入天数后，系统按该项目的公式算出金额，无需手动输入。",
+          "none": "此薪资项目按其公式自行计算金额，因此无需手动输入金额。"
+        }
       },
       "tp1": {
         "title": "TP1 减免",

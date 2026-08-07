@@ -3613,7 +3613,21 @@
         "recalcNeededTitle": "Kỳ lương này hiện cần được tính lại.",
         "recalcNeededBody": "Phiếu lương, các khoản theo luật định và tổng cộng không còn khớp với các giao dịch phía sau.",
         "recalcNeededLink": "Tính lại cho những nhân viên bị ảnh hưởng",
-        "paidEditableHint": "Giao dịch này đã được chi trả trong một kỳ đã xử lý. Vẫn có thể sửa, và việc sửa sẽ đánh dấu kỳ lương cần tính lại."
+        "paidEditableHint": "Giao dịch này đã được chi trả trong một kỳ đã xử lý. Vẫn có thể sửa, và việc sửa sẽ đánh dấu kỳ lương cần tính lại.",
+        "quantityRequiredHours": "Nhập số giờ — mục lương này tính số tiền từ số giờ đó.",
+        "quantityRequiredDays": "Nhập số ngày — mục lương này tính số tiền từ số ngày đó.",
+        "derivedAmountUnavailable": "Không tính được số tiền của mục lương này. Hãy kiểm tra thiết lập của nó trong phần Mục lương.",
+        "derivedAmountPending": "Đang tính…",
+        "derivedAmountLabel": "Số tiền đã tính",
+        "quantityLabel": {
+          "hours": "Giờ",
+          "days": "Ngày"
+        },
+        "derivedAmountHint": {
+          "hours": "Mục lương này tự tính số tiền. Nhập số giờ và số tiền sẽ được tính theo công thức của mục — không cần gõ tay.",
+          "days": "Mục lương này tự tính số tiền. Nhập số ngày và số tiền sẽ được tính theo công thức của mục — không cần gõ tay.",
+          "none": "Mục lương này tự tính số tiền theo công thức của nó, nên không cần gõ số tiền."
+        }
       },
       "tp1": {
         "title": "Miễn giảm TP1",

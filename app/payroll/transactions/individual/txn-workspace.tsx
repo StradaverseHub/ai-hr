@@ -13,6 +13,7 @@ import {
   fetchBatchImpactAction,
   fetchEmployeeTxnPanelAction,
   fetchTxnDetailAction,
+  previewTxnAmountAction,
   updateIndividualTxnAction,
   type TxnActionResult,
   type TxnBatchImpact,
@@ -33,11 +34,17 @@ import type { TxnPanel, TxnPanelRow } from './existing-context';
  * WHAT IS DELIBERATELY NOT HERE.
  *  - No Draft or Cancelled status. The ledger has no status column; what it supports is paid / not yet
  *    paid, and those two are what the rows show. See existing-context.ts.
- *  - No calculated-amount field. `generatePayslips` does NOT apply a pay item's catalog formula to a
- *    one-off row — the keyed amount is authoritative, because a per_day or percent rule would REPLACE
- *    what the operator typed. A "Calculated Amount" box would imply the opposite, so instead the form
- *    states the rule in one line.
  *  - No attachment upload. There is no document store behind this ledger to put one in.
+ *
+ * 2da9937a — THE AMOUNT IS NOT ALWAYS THE OPERATOR'S TO TYPE, AND THIS FILE USED TO SAY THE OPPOSITE.
+ * The note here read "no calculated-amount field … the keyed amount is authoritative", and it was the
+ * on-screen half of the reported defect: an item configured "RM x per hour" still demanded an Amount,
+ * still refused a save without one, and its rule never ran. Now, when the picked pay item carries a rule
+ * that works the amount out (per_hour / per_day / qty_rate / formula), the Amount box is READ-ONLY and
+ * shows the figure the item produces for the quantity keyed — resolved on the server by the same evaluator
+ * the payslip uses, never by arithmetic in this file. `generatePayslips` is unchanged: it still pays the
+ * STORED amount of a one-off row, which is why nothing already on file moves. What changed is which of the
+ * two boxes the operator fills in before it is stored.
  *
  * MULTI-EMPLOYEE ENTRY IS GONE WITH THE WIZARD, ON PURPOSE. The old grid recorded one set of rows for
  * many selected employees at once. A screen whose whole premise is "select an employee, see THEIR
@@ -62,8 +69,21 @@ const UNITS = ['amount', 'qty', 'hours', 'days', 'units'] as const;
  *  deduction (the two payable one-off classes). */
 const COMPONENT_KIND_TO_TXN: Record<string, TxnKind> = { allowance: 'earning', deduction: 'deduction' };
 
-/** A resolved item-picker option: a generic kind (`k:<kind>`) or a master component (`c:<id>`). */
-type ItemOption = { value: string; label: string; kind: TxnKind; fromMaster: boolean };
+/** The quantity a calculating pay item needs from the operator, or null when it needs none. Mirrors
+ *  core/pay-rule.ts payRuleInputUnit — the SERVER resolves it from the stored rule and hands it down, so
+ *  this file never inspects a rule. */
+type ItemInputUnit = 'hours' | 'days' | null;
+
+/** A resolved item-picker option: a generic kind (`k:<kind>`) or a master component (`c:<id>`).
+ *  `derives` / `inputUnit` (2da9937a) come from the pay item's rule, resolved server-side. */
+type ItemOption = {
+  value: string;
+  label: string;
+  kind: TxnKind;
+  fromMaster: boolean;
+  derives: boolean;
+  inputUnit: ItemInputUnit;
+};
 const componentIdOf = (value: string): string | null => (value.startsWith('c:') ? value.slice(2) : null);
 
 /** Real days-in-month (leap-year correct) — mirrors core/payroll.ts daysInMonth so the date input's max is
@@ -99,7 +119,17 @@ export type TxnBatch = {
   status: 'draft' | 'processed';
 };
 
-export type TxnPayItem = { id: string; code: string; name: string; kind: string };
+export type TxnPayItem = {
+  id: string;
+  code: string;
+  name: string;
+  kind: string;
+  /** 2da9937a — this item works its own amount out from its rule, so the Amount box is not the
+   *  operator's to fill. Resolved on the server (payRuleDerivesAmount) from the stored rule. */
+  derives: boolean;
+  /** Which quantity that rule needs keyed (payRuleInputUnit). null ⇒ none. */
+  inputUnit: ItemInputUnit;
+};
 
 export type TxnCompany = { id: string; name: string; currency: string | null };
 
@@ -174,10 +204,25 @@ export function TxnWorkspace({
     [requireComponent],
   );
   const itemOptions = useMemo<ItemOption[]>(() => {
-    const generic: ItemOption[] = genericKinds.map((k) => ({ value: `k:${k}`, label: t(`kindLabel.${k}`), kind: k, fromMaster: false }));
+    // A generic kind names no pay item, so there is no rule to calculate from — its amount is always typed.
+    const generic: ItemOption[] = genericKinds.map((k) => ({
+      value: `k:${k}`,
+      label: t(`kindLabel.${k}`),
+      kind: k,
+      fromMaster: false,
+      derives: false,
+      inputUnit: null,
+    }));
     const master: ItemOption[] = payItems
       .filter((c) => COMPONENT_KIND_TO_TXN[c.kind] != null)
-      .map((c) => ({ value: `c:${c.id}`, label: `${c.code} — ${c.name}`, kind: COMPONENT_KIND_TO_TXN[c.kind], fromMaster: true }));
+      .map((c) => ({
+        value: `c:${c.id}`,
+        label: `${c.code} — ${c.name}`,
+        kind: COMPONENT_KIND_TO_TXN[c.kind],
+        fromMaster: true,
+        derives: c.derives,
+        inputUnit: c.inputUnit,
+      }));
     return [...generic, ...master];
   }, [payItems, t, genericKinds]);
   const itemByValue = useMemo(() => new Map(itemOptions.map((o) => [o.value, o])), [itemOptions]);
@@ -436,6 +481,79 @@ export function TxnWorkspace({
     return { min: `${formPeriod}-01`, max: `${formPeriod}-${String(daysInMonth(y, m)).padStart(2, '0')}` };
   }, [formPeriod]);
 
+  // ── 2da9937a — the amount the PAY ITEM works out, when it is not the operator's to type ──
+  const pickedItem = form ? (itemByValue.get(form.item) ?? null) : null;
+  const derives = pickedItem?.derives === true;
+  /** The quantity this item's rule needs keyed, or null when it needs none (qty_rate carries its own). */
+  const requiredUnit: ItemInputUnit = derives ? pickedItem!.inputUnit : null;
+  /** True once the operator has supplied that quantity — the point at which a figure can be asked for. */
+  const quantityReady = requiredUnit == null || (form?.unit === requiredUnit && Number(form?.quantity) > 0);
+
+  /**
+   * The derived figure is FETCHED, never computed here. Re-implementing a per_hour multiply in the browser
+   * would be a second evaluator, and the moment a rule became a formula reading another pay item the two
+   * would part company — with the difference showing up as money on a payslip. The server answers with the
+   * same call the save makes, so the number on screen is the number that will be stored.
+   *
+   * Keyed on every input the answer depends on, stored WITH its key and "is this current?" DERIVED — the
+   * same shape as the employee panel and the batch impact above, and for the same reason: a slow reply for
+   * a quantity the operator has already changed must never paint over the figure now on screen.
+   *
+   * The key is EMPTY until the required quantity is present, so an item that calculates from hours does not
+   * fire a request (and surface a refusal) while the operator is still on their way to the Hours box.
+   */
+  const derivedKey =
+    derives && pickedItem?.fromMaster && selected && isPeriod(formPeriod) && quantityReady
+      ? [
+          componentIdOf(pickedItem.value) ?? '',
+          selected.employmentId,
+          selected.companyId,
+          formPeriod,
+          form?.quantity.trim() ?? '',
+          form?.unit ?? '',
+        ].join('|')
+      : '';
+  const [derivedState, setDerivedState] = useState<{
+    key: string;
+    amount: string | null;
+    zeroDivisor: string | null;
+    error: string | null;
+  }>({ key: '', amount: null, zeroDivisor: null, error: null });
+  useEffect(() => {
+    if (!derivedKey) return;
+    let live = true;
+    const [componentId, employmentId, companyId, payPeriod, quantity, unit] = derivedKey.split('|');
+    previewTxnAmountAction({
+      componentId: componentId!,
+      employmentId: employmentId!,
+      companyId: companyId!,
+      payPeriod: payPeriod!,
+      quantity: quantity === '' ? null : Number(quantity),
+      unit: unit === '' ? null : unit!,
+    })
+      .then((r) => {
+        if (!live) return;
+        if (!r.ok) setDerivedState({ key: derivedKey, amount: null, zeroDivisor: null, error: r.error });
+        else if (!r.derived) setDerivedState({ key: derivedKey, amount: null, zeroDivisor: null, error: null });
+        else setDerivedState({ key: derivedKey, amount: r.amount, zeroDivisor: r.zeroDivisor, error: null });
+      })
+      .catch(() => {
+        // A failed read must NOT fall back to the typed amount: on a calculating item there is no typed
+        // amount to fall back to, and pretending otherwise would save a zero.
+        if (live) setDerivedState({ key: derivedKey, amount: null, zeroDivisor: null, error: 'derivedAmountUnavailable' });
+      });
+    return () => {
+      live = false;
+    };
+  }, [derivedKey]);
+  const derivedCurrent = derivedState.key === derivedKey && derivedKey !== '' ? derivedState : null;
+  const derivedAmount = derives ? (derivedCurrent?.amount ?? null) : null;
+  const derivedError = derives ? (derivedCurrent?.error ?? null) : null;
+  const derivedZeroDivisor = derives ? (derivedCurrent?.zeroDivisor ?? null) : null;
+  const derivedPending = derives && derivedKey !== '' && derivedState.key !== derivedKey;
+  /** What the save will post: the item's own figure when it has one, otherwise the typed amount. */
+  const effectiveAmount = derives ? Number(derivedAmount ?? 0) : Number(form?.amount ?? 0);
+
   const dirty = form != null && JSON.stringify(form) !== formBaseline;
 
   const openForm = (next: FormState) => {
@@ -453,6 +571,11 @@ export function TxnWorkspace({
     setFormError(null);
   };
 
+  /** 2da9937a — an item that calculates from hours (or days) OWNS the Input Type: the quantity has to land
+   *  in the input its rule reads or the figure is meaningless, so it is set rather than offered. Items that
+   *  do not calculate keep the operator's own choice (or none), exactly as before. */
+  const unitFor = (itemValue: string, current: string): string => itemByValue.get(itemValue)?.inputUnit ?? current;
+
   const blankForm = (period: string): FormState => ({
     mode: 'create',
     id: null,
@@ -463,9 +586,15 @@ export function TxnWorkspace({
     txnDate: '',
     amount: '',
     quantity: '',
-    unit: '',
+    unit: unitFor(defaultItemValue, ''),
     notes: '',
   });
+
+  /** Changing the pay item can change WHICH box is the operator's to fill, so the two that belong to the
+   *  old item are reset with it: the Input Type follows the new item's rule, and a typed amount does not
+   *  survive onto an item that works its own amount out (nor a derived figure onto one that does not). */
+  const changeItem = (value: string) =>
+    patchForm({ item: value, unit: unitFor(value, form?.unit ?? ''), amount: '' });
 
   const startCreate = () => openForm(blankForm(periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod));
 
@@ -510,11 +639,26 @@ export function TxnWorkspace({
   /** Client-side validity. The server re-validates all of it; this only avoids a round trip. */
   const formInvalid = (f: FormState): string | null => {
     if (!isPeriod(f.payPeriod)) return 'periodInvalid';
-    if (!itemByValue.has(f.item)) return 'rowIncomplete';
+    const opt = itemByValue.get(f.item);
+    if (!opt) return 'rowIncomplete';
     if (!f.txnDate) return 'rowIncomplete';
     if (monthBounds && (f.txnDate < monthBounds.min || f.txnDate > monthBounds.max)) return 'dateOutOfPeriod';
-    if (!(Number(f.amount) > 0)) return 'amountNotPositive';
     if (f.quantity.trim() !== '' && !Number.isFinite(Number(f.quantity))) return 'rowIncomplete';
+    // 2da9937a — THE MAGNITUDE RULE IS NARROWED, NOT DELETED. On an item that works its own amount out the
+    // operator has no Amount box to be wrong about, so "amount must be greater than zero" would be a
+    // refusal about a field they cannot reach; what they can be missing is the QUANTITY the rule reads.
+    // The check itself survives — it just moves onto the derived figure, which is what actually gets
+    // stored, and which the service asserts again authoritatively.
+    if (opt.derives) {
+      if (opt.inputUnit && (f.unit !== opt.inputUnit || !(Number(f.quantity) > 0))) {
+        return opt.inputUnit === 'hours' ? 'quantityRequiredHours' : 'quantityRequiredDays';
+      }
+      if (derivedError) return derivedError;
+      if (derivedAmount == null) return 'derivedAmountPending';
+      if (!(Number(derivedAmount) > 0)) return 'amountNotPositive';
+      return null;
+    }
+    if (!(Number(f.amount) > 0)) return 'amountNotPositive';
     return null;
   };
 
@@ -527,8 +671,10 @@ export function TxnWorkspace({
   const identicalExisting = useMemo(() => {
     if (!form || form.mode !== 'create') return false;
     const r = resolveItem(form);
-    const amt = Number(form.amount);
-    if (!Number.isFinite(amt)) return false;
+    // The figure that will be POSTED, which on a calculating item is the derived one — comparing the empty
+    // Amount box against the ledger would report every such copy as identical.
+    const amt = effectiveAmount;
+    if (!Number.isFinite(amt) || amt === 0) return false;
     return panel.rows.some(
       (x) =>
         x.kind === r.kind &&
@@ -537,7 +683,7 @@ export function TxnWorkspace({
         (x.notes ?? '').trim().toLowerCase() === r.notes.trim().toLowerCase(),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, panel.rows, itemByValue]);
+  }, [form, panel.rows, itemByValue, effectiveAmount]);
 
   /** The ONE write path for the form, so "Save", "Save & add another" and the save-before-switching
    *  button in the unsaved-changes dialog cannot drift apart. An edit patches the row; anything else —
@@ -551,7 +697,10 @@ export function TxnWorkspace({
       kind: r.kind,
       componentId: r.componentId,
       txnDate: f.txnDate,
-      amount: Number(f.amount),
+      // 2da9937a — on a calculating item this is the figure the SERVER already worked out and showed the
+      // operator. The server re-derives it on the write and overwrites whatever arrives, so this is what
+      // was on screen rather than a value the browser gets to decide.
+      amount: effectiveAmount,
       quantity,
       unit,
       notes: r.notes || null,
@@ -894,7 +1043,7 @@ export function TxnWorkspace({
                     )}
                   </Field>
                   <Field label={t('colItem')}>
-                    <select value={form.item} onChange={(e) => patchForm({ item: e.target.value })} className={inputCls}>
+                    <select value={form.item} onChange={(e) => changeItem(e.target.value)} className={inputCls}>
                       <optgroup label={t('itemGroupGeneral')}>
                         {genericKinds.map((k) => (
                           <option key={k} value={`k:${k}`}>
@@ -932,8 +1081,15 @@ export function TxnWorkspace({
                       className={inputCls}
                     />
                   </Field>
+                  {/* 2da9937a — a calculating item OWNS the Input Type: the quantity has to land in the
+                      input its rule reads, so the select is fixed to it rather than left to be got wrong. */}
                   <Field label={t('inputType')}>
-                    <select value={form.unit} onChange={(e) => patchForm({ unit: e.target.value })} className={inputCls}>
+                    <select
+                      value={form.unit}
+                      disabled={requiredUnit != null}
+                      onChange={(e) => patchForm({ unit: e.target.value })}
+                      className={inputCls}
+                    >
                       <option value="">{t('inputTypeNone')}</option>
                       {UNITS.map((u) => (
                         <option key={u} value={u}>
@@ -942,23 +1098,28 @@ export function TxnWorkspace({
                       ))}
                     </select>
                   </Field>
-                  <Field label={t('quantity')}>
+                  <Field label={requiredUnit ? t(`quantityLabel.${requiredUnit}` as never) : t('quantity')}>
                     <input
                       type="number"
                       step="0.01"
+                      min={requiredUnit ? '0' : undefined}
                       value={form.quantity}
                       onChange={(e) => patchForm({ quantity: e.target.value })}
                       className={`${inputCls} text-right`}
                     />
                   </Field>
-                  <Field label={t('colAmount')}>
+                  {/* THE AMOUNT BOX. On an item that works its own amount out it is READ-ONLY and shows the
+                      server's figure — the operator is being shown what will be paid, not asked for it. */}
+                  <Field label={derives ? t('derivedAmountLabel') : t('colAmount')}>
                     <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={form.amount}
+                      type={derives ? 'text' : 'number'}
+                      min={derives ? undefined : '0'}
+                      step={derives ? undefined : '0.01'}
+                      readOnly={derives}
+                      aria-readonly={derives || undefined}
+                      value={derives ? (derivedPending ? t('derivedAmountPending') : (derivedAmount ?? '—')) : form.amount}
                       onChange={(e) => patchForm({ amount: e.target.value })}
-                      className={`${inputCls} text-right`}
+                      className={`${inputCls} text-right${derives ? ' bg-muted/40 text-muted-foreground' : ''}`}
                     />
                   </Field>
                   <div className="sm:col-span-2">
@@ -974,8 +1135,20 @@ export function TxnWorkspace({
                   </div>
                 </div>
 
-                {/* The amount is paid as typed — a pay item's catalog formula is NOT applied to a one-off. */}
-                <p className="text-xs text-muted-foreground">{t('amountIsFinalHint')}</p>
+                {/* Two different statements, and which one is true depends on the item picked: a plain
+                    amount item is paid as typed; a calculating item is paid what its own rule produces. */}
+                <p className="text-xs text-muted-foreground">
+                  {derives ? t(requiredUnit ? `derivedAmountHint.${requiredUnit}` : 'derivedAmountHint.none') : t('amountIsFinalHint')}
+                </p>
+                {/* The figure is a real 0 because a live divisor was zero for this employee this month —
+                    the explanation, in the same words the pay-item screen uses, rather than an unexplained
+                    RM 0.00 that the save will then refuse. */}
+                {derivedZeroDivisor && (
+                  <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                    {derivedZeroDivisor}
+                  </p>
+                )}
+                {derivedError && <p className="text-xs text-destructive">{t(derivedError as never)}</p>}
                 {requireComponent && <p className="text-xs text-muted-foreground">{t('componentRequiredHint')}</p>}
                 {periodKeyed && isPeriod(form.payPeriod) && (
                   <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
