@@ -39,7 +39,7 @@ import {
   validateStatutoryRuleset,
 } from './statutory-config';
 import { getCompanyStatutoryMY, listCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
-import { eaCompaniesInYear, eaStatement, MY_REPORTS } from './reports';
+import { eaCompaniesInYear, eaStatement, MY_REPORTS, MY_STATUTORY_LINKS } from './reports';
 import type { CountryPack } from '../country-pack';
 
 // ADR-0080 D1: the pack implements the registry-owned CountryPack contract (previously the
@@ -169,6 +169,10 @@ export const myPack: CountryPack = {
   // db/provision.ts + db/seed.ts invoke this through the registry instead of importing the MY pack.
   seedReferenceData: seedReferenceDataMY,
   reports: MY_REPORTS,
+  // 6babf4f6 (D4) — the shelf entries that are not generatable reports (the per-employee EA statement
+  // and the CP22/CP22A worklist). The Statutory Forms screen renders these from the catalog instead of
+  // hardcoding them, which is what it used to do for EA.
+  statutoryLinks: MY_STATUTORY_LINKS,
   eaStatement,
   eaCompaniesInYear,
 };

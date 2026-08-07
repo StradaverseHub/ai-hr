@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { cookies } from 'next/headers';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
@@ -11,12 +12,15 @@ import {
   listUnattachedTxnSummary,
 } from '@/core/payroll-view';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
-import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
+import { CollapsibleEmployeePanel, EmployeeScopePanel, type ScopeEmployee } from '@/components/collapsible-employee-panel';
 import { employeeLabel } from '@/lib/employee-code';
 import { packFor } from '@/localization/registry';
 import { IndividualTxnTable } from './individual-table';
 import { OutstandingTable } from './outstanding-table';
 import { HistoryTable } from './history-table';
+import { HistoryGrid } from './history-grid';
+import { cleanMonths, pivotHistoryGrid } from './history-pivot';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -43,7 +47,12 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 // test/payroll-flyout-nav.test.ts pins the six payroll destinations character for character and
 // asserts no entry is invented, and a new one would also need packs/payroll/index.ts +
 // lib/permissions.ts. A sub-tab needs none of that and inherits this route's scopedAdmin() fence.
-const TABS = ['fixed', 'individual', 'history', 'outstanding'] as const;
+// 080de5cf — 'grid' is a 5th SUB-TAB for the same reason 'outstanding' is a 4th: it is a second VIEW of
+// the History data (item down the left, month across the top), not a new destination. A sub-tab needs no
+// nav entry, no packs/payroll/index.ts change and no lib/permissions.ts column, and it inherits this
+// route's scopedAdmin() fence — whereas a new route would need all three and would let the two views of
+// one dataset drift apart.
+const TABS = ['fixed', 'individual', 'history', 'grid', 'outstanding'] as const;
 
 /**
  * 862ed0ad — the most recent N processed payslips the History tab will render.
@@ -63,6 +72,10 @@ const TABS = ['fixed', 'individual', 'history', 'outstanding'] as const;
  * operator cannot see would be a worse failure than the slow page it replaces.
  */
 const HISTORY_ROW_CAP = 200;
+
+/** 080de5cf — one cookie per screen, the convention f3ae3245 set for Fixed Transaction. */
+const GRID_PANEL_COOKIE = 'txnview_grid_panel';
+
 type Tab = (typeof TABS)[number];
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
@@ -87,6 +100,9 @@ export default async function TransactionViewPage({
     status?: string;
     year?: string;
     month?: string;
+    /** 080de5cf (Grid tab only) — repeated params from the month checkboxes, or one comma-joined value
+     *  when the employee panel carries the selection across a switch. `cleanMonths` accepts both. */
+    months?: string | string[];
     cycle?: string;
     // Individual-tab History filters (feedback 7b2d4228)
     kind?: string;
@@ -136,6 +152,12 @@ export default async function TransactionViewPage({
   const month = intParam(sp.month, 1, 12);
   const cycle = CYCLES.includes(sp.cycle as (typeof CYCLES)[number]) ? sp.cycle : undefined;
 
+  // 080de5cf (Grid tab) — the grid is twelve columns of ONE calendar year, so unlike the other tabs its
+  // year is never "all": an absent/tampered ?year= falls back to this year rather than to an unbounded
+  // read across every year the employee has ever been paid.
+  const gridYear = year ?? new Date().getFullYear();
+  const gridMonths = cleanMonths(sp.months);
+
   // Individual-tab History filters — each scope-guarded / whitelist-coerced (a tampered value ⇒ ignored).
   const kind = TXN_KINDS.includes(sp.kind as (typeof TXN_KINDS)[number]) ? sp.kind : undefined;
   const departmentId =
@@ -145,8 +167,8 @@ export default async function TransactionViewPage({
   const createdFrom = sp.createdFrom && ISO_DATE.test(sp.createdFrom) ? sp.createdFrom : undefined;
   const createdTo = sp.createdTo && ISO_DATE.test(sp.createdTo) ? sp.createdTo : undefined;
 
-  // Only the active tab's query runs — the other two stay empty (single round-trip per view).
-  const [fixedRows, individualRows, historyRows, outstandingRows] = await Promise.all([
+  // Only the active tab's query runs — the others stay empty (single round-trip per view).
+  const [fixedRows, individualRows, historyRows, gridPayslips, outstandingRows] = await Promise.all([
     tab === 'fixed'
       ? listFixedTransactionsAcross(s, { companyIds, employmentId, componentId, status })
       : Promise.resolve([]),
@@ -169,6 +191,12 @@ export default async function TransactionViewPage({
     tab === 'history'
       ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle, limit: HISTORY_ROW_CAP + 1 })
       : Promise.resolve([]),
+    // 080de5cf — the Grid pivot's source. NO row cap and none needed: one employee × one calendar year is
+    // twelve months of runs. It reads nothing until an employee is chosen, which is also what makes the
+    // absence of a cap safe — an unscoped variant of this query would be the whole payroll history.
+    tab === 'grid' && employmentId
+      ? listProcessedPayslipsAcross(s, { companyIds, year: gridYear, employmentId, cycle })
+      : Promise.resolve([]),
     // d0d2c9d1 — money entered but never paid, grouped and totalled. Same scope-guarded filters as the
     // other tabs; deliberately NO default run-state filter (see the read's doc comment).
     tab === 'outstanding'
@@ -181,7 +209,7 @@ export default async function TransactionViewPage({
   // Contribution Rate set) looked exactly like a levy that failed to compute. Read once per render for the
   // History tab only; `packFor('MY')` follows the Organization page — the levy is Malaysia-specific.
   const hrdfRegisteredCompanyIds =
-    tab === 'history'
+    tab === 'history' || tab === 'grid'
       ? ((await packFor('MY')?.companyStatutory.list(s)) ?? [])
           .filter((r) => r.hrdfStatus !== 'not_registered')
           .map((r) => r.companyId)
@@ -191,6 +219,66 @@ export default async function TransactionViewPage({
   // and reported instead.
   const historyTruncated = historyRows.length > HISTORY_ROW_CAP;
   const shownHistoryRows = historyTruncated ? historyRows.slice(0, HISTORY_ROW_CAP) : historyRows;
+
+  // ── 080de5cf — the Grid tab's pivot + the plain data its client component needs ──
+  // The fold happens on the SERVER: the browser gets finished rows, so the two switches over them cost no
+  // round-trip. Everything crossing to the client is plain data — a function prop from a server component
+  // to a client one returns a 500 on every request while tsc, the suite and `next build` all stay green.
+  const grid =
+    tab === 'grid'
+      ? pivotHistoryGrid({
+          rows: gridPayslips,
+          year: gridYear,
+          months: gridMonths,
+          hrdfRegisteredCompanyIds,
+        })
+      : null;
+  const locale = await getLocale();
+  // Month captions resolved HERE, not in the browser: Node and the browser can carry different ICU data,
+  // and a header formatted on both sides is a hydration mismatch waiting for a locale that differs.
+  const monthFmt = new Intl.DateTimeFormat(locale, { month: 'short', timeZone: 'UTC' });
+  const monthLabels = Array.from({ length: 12 }, (_, i) => monthFmt.format(new Date(Date.UTC(2001, i, 1))));
+  // Dynamic lookups resolved by this page so the grid component stays single-namespace for i18n check C.
+  const cycleLabels: Record<string, string> = {
+    regular: t('individual.cycle.regular'),
+    off_cycle: t('individual.cycle.off_cycle'),
+    bonus: t('individual.cycle.bonus'),
+    adjustment: t('individual.cycle.adjustment'),
+  };
+  // The searchable employee panel every keying screen already uses (r168a) — the reporter asked for "the
+  // same searchable employee selector as the Fixed and Individual Transaction modules", and this is it.
+  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
+    employmentId: e.employmentId,
+    name: e.name,
+    employeeCode: e.employeeCode,
+    company: e.company,
+    companyId: e.companyId,
+    department: e.department,
+    departmentId: e.departmentId,
+    businessUnit: e.businessUnit,
+    businessUnitId: e.businessUnitId,
+    status: e.terminatedOn == null ? 'active' : 'ended',
+  }));
+  // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
+  const gridPanelDefaultOpen = (await cookies()).get(GRID_PANEL_COOKIE)?.value !== '0';
+  // The panel carries the grid's own filters across an employee switch. `months` rides as ONE comma-joined
+  // value because `preserve` is a flat string map — `cleanMonths` accepts that form as well as the
+  // checkboxes' repeated params, so both routes into this screen mean the same thing.
+  const gridPanelPreserve: Record<string, string> = {
+    tab: 'grid',
+    year: String(gridYear),
+    months: gridMonths.join(','),
+    ...(cycle ? { cycle } : {}),
+    ...(companyId ? { companyId } : {}),
+  };
+  const gridExportParams: Record<string, string> = {
+    ...(companyId ? { companyId } : {}),
+    ...(employmentId ? { employmentId } : {}),
+    year: String(gridYear),
+    months: gridMonths.join(','),
+    ...(cycle ? { cycle } : {}),
+  };
+  const selectedGridEmployee = employees.find((e) => e.employmentId === employmentId);
 
   const today = todayInKualaLumpur();
   const nowYear = new Date().getFullYear();
@@ -247,11 +335,15 @@ export default async function TransactionViewPage({
   );
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    // 080de5cf — the Grid tab is twelve month columns plus a frozen block, and the reporter's whole point
+    // is that the screen "does not fully utilise the available screen width". So that ONE tab drops the
+    // 6xl reading measure; every other tab keeps it, because a 6-column table stretched across a 32-inch
+    // monitor is worse, not better.
+    <div className={tab === 'grid' ? pageWideCls : 'mx-auto max-w-6xl space-y-6'}>
       <PageHeader title={t('view.title')} description={t('view.subtitle')} />
 
-      {/* Sub-tab strip (Fixed | Individual | History | Outstanding). Switching tabs resets the filters on purpose —
-          each view has its own filter set. */}
+      {/* Sub-tab strip (Fixed | Individual | History | Grid | Outstanding). Switching tabs resets the filters
+          on purpose — each view has its own filter set. */}
       <div className="flex gap-1 border-b border-border">
         {TABS.map((k) => (
           <Link
@@ -270,7 +362,11 @@ export default async function TransactionViewPage({
 
       <p className="text-xs text-muted-foreground">{t('view.readOnly')}</p>
 
-      {/* ── Filters (GET form — pure navigation, no mutation) ── */}
+      {/* ── Filters (GET form — pure navigation, no mutation) ──
+          The Grid tab is excluded: its employee comes from the shared searchable panel rather than a
+          dropdown, and its own year / months / cycle row lives inside the panel's workspace. Rendering
+          both would put two employee controls that disagree on one screen. */}
+      {tab !== 'grid' && (
       <Card className="p-4">
         <form method="GET" className="flex flex-wrap items-end gap-3">
           <input type="hidden" name="tab" value={tab} />
@@ -365,6 +461,7 @@ export default async function TransactionViewPage({
           </Button>
         </form>
       </Card>
+      )}
 
       {/* ── 1. Fixed Transaction View ── */}
       {tab === 'fixed' && (
@@ -471,7 +568,121 @@ export default async function TransactionViewPage({
         </Card>
       )}
 
-      {/* ── 4. Outstanding transactions (feedback d0d2c9d1) ──
+      {/* ── 4. Transaction History GRID (feedback 080de5cf) ──
+          The same processed payslips as the tab beside it, turned on their side: pay item down the left,
+          month across the top, annual total on the right — the shape the reporter reconciles in. The
+          payslip-by-payslip view is NOT replaced; it answers a different question. */}
+      {tab === 'grid' && (
+        <CollapsibleEmployeePanel
+          defaultOpen={gridPanelDefaultOpen}
+          cookieKey={GRID_PANEL_COOKIE}
+          panel={
+            <Card className="p-4">
+              <h2 className="text-sm font-semibold">{t('view.grid.pickEmployee')}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">{t('view.grid.pickEmployeeHint')}</p>
+              <div className="mt-3">
+                <EmployeeScopePanel
+                  employees={panelEmployees}
+                  selectedId={employmentId ?? null}
+                  basePath="/payroll/transaction-view"
+                  preserve={gridPanelPreserve}
+                />
+              </div>
+            </Card>
+          }
+        >
+          <div className="space-y-4">
+            {/* Year / months / cycle — a plain GET form, so the whole screen stays a server component and
+                the address bar is the state. `tab` and `employmentId` ride as hidden fields: a submit must
+                not silently drop the employee the panel chose. */}
+            <Card className="p-4">
+              <form method="GET" className="flex flex-wrap items-end gap-4">
+                <input type="hidden" name="tab" value="grid" />
+                {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
+                {companyId && <input type="hidden" name="companyId" value={companyId} />}
+                <Field label={t('view.filters.year')}>
+                  <select name="year" defaultValue={String(gridYear)} className={inputCls}>
+                    {years.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <fieldset className="min-w-0">
+                  <legend className="mb-1 text-xs font-medium text-muted-foreground">
+                    {t('view.filters.months')}
+                  </legend>
+                  {/* Twelve checkboxes rather than a native multi-select: they post the same repeated
+                      `months` params without ctrl-clicking, and every choice is visible at a glance —
+                      which is the point of a filter you change on every reconciliation. */}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {MONTHS.map((m, i) => (
+                      <label key={m} className="flex items-center gap-1.5 text-sm">
+                        <input
+                          type="checkbox"
+                          name="months"
+                          value={String(i + 1)}
+                          defaultChecked={gridMonths.includes(i + 1)}
+                          className="h-4 w-4 rounded border-border"
+                        />
+                        {monthLabels[i]}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <Field label={t('view.filters.cycle')}>
+                  <select name="cycle" defaultValue={cycle ?? ''} className={inputCls}>
+                    <option value="">{t('view.filters.all')}</option>
+                    {CYCLES.map((c) => (
+                      <option key={c} value={c}>
+                        {t(`individual.cycle.${c}`)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Button type="submit" variant="secondary">
+                  {t('view.filters.apply')}
+                </Button>
+              </form>
+            </Card>
+
+            <Card className="p-4">
+              {selectedGridEmployee ? (
+                <>
+                  <div className="mb-3 flex flex-wrap items-baseline gap-2">
+                    {/* Employee ID left-of-name (feedback 38668d9b) */}
+                    <EmployeeName
+                      code={selectedGridEmployee.employeeCode}
+                      name={selectedGridEmployee.name}
+                      className="text-sm font-semibold text-foreground"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {selectedGridEmployee.company} · {gridYear}
+                    </span>
+                  </div>
+                  <HistoryGrid
+                    rows={grid?.rows ?? []}
+                    months={grid?.months ?? gridMonths}
+                    monthLabels={monthLabels}
+                    cycleLabels={cycleLabels}
+                    exportParams={gridExportParams}
+                    payslipCount={grid?.payslipCount ?? 0}
+                    detailNotRecorded={grid?.detailNotRecorded ?? false}
+                  />
+                </>
+              ) : (
+                // No employee, no grid — and said in words rather than shown as an empty table, because the
+                // grid is one person's year by definition and a blank one reads as "no data" instead of
+                // "choose someone".
+                <p className="py-8 text-center text-sm text-muted-foreground">{t('view.grid.noEmployee')}</p>
+              )}
+            </Card>
+          </div>
+        </CollapsibleEmployeePanel>
+      )}
+
+      {/* ── 5. Outstanding transactions (feedback d0d2c9d1) ──
           Money entered against an employee and a month that has never reached a payslip. The rows were
           always listable on the Individual tab (?txnStatus=unattached); what was missing — and what let
           RM23,170 accumulate unnoticed — is the per-employee/per-month grouping and the grand total. */}

@@ -59,7 +59,15 @@ import type {
   StatutoryRulesetRow,
   StatutorySource,
 } from './my/statutory-config';
-import type { EaField, EaOverrideEntry, EaStatement, ReportDef, ReportResult } from './my/reports';
+import type {
+  EaField,
+  EaOverrideEntry,
+  EaStatement,
+  ReportDef,
+  ReportResult,
+  StatutoryBodyKey,
+  StatutoryFormLink,
+} from './my/reports';
 import type { PayComponentSeed } from './my/pay-components';
 
 // ── Contract-fronted vocabulary types (rung 5a) ────────────────────────────────────────────────────
@@ -78,6 +86,8 @@ export type {
   PcbRemunerationType,
   PayComponentSeed,
   SocsoBand,
+  StatutoryBodyKey,
+  StatutoryFormLink,
   StatutoryRuleset,
 };
 
@@ -415,6 +425,14 @@ export interface CountryPack {
 
   /** Statutory report catalog (CP39, SOCSO/EIS files, …) the reporting engine enumerates. */
   reports: ReportDef[];
+
+  /**
+   * 6babf4f6 (D4) — statutory forms that belong on the Statutory Forms shelves but are NOT generatable
+   * `ReportDef`s: the per-employee annual statement and the event-driven joiner/leaver worklist. Flat
+   * descriptors, so the screen renders its shelves entirely from the catalog and a newly built form
+   * appears in its authority's section without the page being edited.
+   */
+  statutoryLinks: StatutoryFormLink[];
 
   /** EA-statement generator (annual employee statement; MY: Borang EA), for ONE employer.
    *  `companyId` defaults to the employment's current company; b7b22514 (Entity Transfer) means a year

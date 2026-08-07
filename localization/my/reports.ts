@@ -51,13 +51,58 @@ export type ReportParams = { companyId: string; periodKey: string };
  * invented one is worse than an absent one — the screen says "not configured" rather than printing a
  * date somebody might file against.
  */
+/**
+ * The statutory BODY a form is filed with — the category axis of the Statutory Forms screen (6babf4f6).
+ *
+ * A KEY, NOT THE `agency` STRING. `agency` is free text sourced from the reporter ("EPF (KWSP)",
+ * "PERKESO", "LHDN") and exists to be READ; grouping on it would mean a section silently splitting the
+ * day somebody tidies a label. The key is what makes the shelf stable.
+ *
+ * The vocabulary is deliberately COARSER than lib/statutory-authorities.ts, and lines up with it rather
+ * than competing: `perkeso` is the one body that administers both `socso` and `eis` — the reporter's own
+ * "SOCSO / EIS (PERKESO)" shelf — and the authorities that have no form yet (hrdf, zakat, ptptn,
+ * tabung_haji, koperasi) all land under `other`, which is exactly the shelf the reporter called "Other
+ * Statutory". When one of those grows a real form, it declares `other` and appears there with no screen
+ * change; if it ever earns its own shelf, that is one key and one heading.
+ */
+export type StatutoryBodyKey = 'epf' | 'perkeso' | 'lhdn' | 'other';
+
+/** Fixed display order of the shelves — the order the reporter listed them in. */
+export const STATUTORY_BODY_ORDER = ['epf', 'perkeso', 'lhdn', 'other'] as const;
+
 export type ReportSubmission = {
+  /** Which shelf this form sits on. REQUIRED: a new submission cannot be added without choosing one. */
+  body: StatutoryBodyKey;
   /** The body the form is submitted to, as the reporter names it. */
   agency: string;
   /** The portal/channel they actually use. */
   channel: string;
   /** Day of the month FOLLOWING the period, or null when the deadline is not established. */
   dueDayOfNextMonth: number | null;
+};
+
+/**
+ * A statutory form that is NOT a generatable `ReportDef` but still belongs on the shelf (6babf4f6).
+ *
+ * Two exist, and both were previously HARDCODED into the Statutory Forms page — which is precisely why
+ * the screen had to be edited every time the catalog moved. The per-employee EA is one statement per
+ * person, not one table per company; the CP22/CP22A worklist is driven by the hire/termination lifecycle
+ * rather than a payroll period. Neither has a `generate`, so neither can be a ReportDef — but both are
+ * things a user opens Statutory Forms looking for.
+ *
+ * FLAT DATA, no closures (ADR-0080 D4 anti-framework, and a server component must never hand a closure
+ * to a client one). `href` carries `{companyId}` / `{year}` placeholders the screen substitutes.
+ */
+export type StatutoryFormLink = {
+  id: string;
+  /** i18n key under `payroll.statutoryForms` — the pack names the key, the app owns the words. */
+  labelKey: string;
+  /** i18n key for the one-line explanation beneath the label. */
+  hintKey: string;
+  body: StatutoryBodyKey;
+  cadence: 'monthly' | 'annual' | 'event';
+  /** Target route. Placeholders: `{companyId}`, `{year}`. */
+  href: string;
 };
 
 export type ReportDef = {
@@ -863,15 +908,53 @@ export const MY_REPORTS: ReportDef[] = [
   // No `submission`: an internal reconciliation view, not a form anybody files.
   { id: 'my.contributions', label: 'Monthly statutory contributions (overview)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: contributions },
   { id: 'my.cp39', label: 'CP39 — MTD / PCB (LHDN)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: cp39,
-    submission: { agency: 'LHDN', channel: 'e-PCB / e-Data PCB / e-CP39', dueDayOfNextMonth: 15 } },
+    submission: { body: 'lhdn', agency: 'LHDN', channel: 'e-PCB / e-Data PCB / e-CP39', dueDayOfNextMonth: 15 } },
   { id: 'my.epf', label: 'EPF contributions (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: epfReport,
-    submission: { agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
+    submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
   // SOCSO and EIS go up TOGETHER through ASSIST's combined contribution function — the reporter's words.
+  // ONE `perkeso` shelf for the same reason: they are one filing, not two that happen to share a portal.
   { id: 'my.socso-eis', label: 'SOCSO + EIS (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: socsoEis,
-    submission: { agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
+    submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
   // dueDayOfNextMonth null: the annual deadline was never stated to us. See ReportSubmission.
   { id: 'my.cp8d', label: 'Form E / CP8D — annual (LHDN)', cadence: 'annual', scope: 'year', periodKind: 'year', generate: cp8d,
-    submission: { agency: 'LHDN', channel: 'e-Filing (Form E)', dueDayOfNextMonth: null } },
+    submission: { body: 'lhdn', agency: 'LHDN', channel: 'e-Filing (Form E)', dueDayOfNextMonth: null } },
+];
+
+/**
+ * The statutory forms that are NOT generatable reports (6babf4f6). See `StatutoryFormLink`.
+ *
+ * THIS LIST IS THE HONEST LENGTH. The request that prompted the redesign lists roughly thirty forms —
+ * Borang BBCB, PERKESO 8B, SIP 2 / 2A, TP3, PCB 2(II), CP21, CP39A, and zakat / HRD Corp / PTPTN /
+ * Tabung Haji / co-operative reports. NONE of them exist, and a menu row that opens nothing is worse
+ * than an absent one: it reads as broken software rather than as an unbuilt form. Each is a real form
+ * with its own official layout and its own rules — a build per form, not a screen layout change. When
+ * one is built it declares its `body` and appears on the right shelf without this screen being touched,
+ * which is the entire point of driving the page off this catalog.
+ *
+ * The EA form in Bahasa Malaysia is deliberately NOT a second entry: messages/ms.json already carries
+ * every `payroll.ea` key, so BM is a locale switch on the same screen.
+ */
+export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
+  // The EA statement is per EMPLOYEE, so it has no single company-wide table to open. The year's
+  // employee list IS the CP8D screen — every row there links to that person's EA for the year.
+  {
+    id: 'my.ea',
+    labelKey: 'link_ea',
+    hintKey: 'link_ea_hint',
+    body: 'lhdn',
+    cadence: 'annual',
+    href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}',
+  },
+  // CP22 / CP22A are event-driven (a hire, a cessation), not period-driven, so they are a worklist
+  // rather than a form you pick a month for. It renders on the Statutory Forms landing page itself.
+  {
+    id: 'my.cp22',
+    labelKey: 'link_cp22',
+    hintKey: 'link_cp22_hint',
+    body: 'lhdn',
+    cadence: 'event',
+    href: '/payroll/statutory-forms?companyId={companyId}#worklist',
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
