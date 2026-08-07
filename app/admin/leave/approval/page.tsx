@@ -1,5 +1,9 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
+// f12d77e5 — `isAdmin` is the SAME predicate `requireAdmin()` applies. It gates the relocated Grade Groups
+// card, because this page's own guard is `scopedSession` (all seven roles reach it by URL) while the page
+// the card came from was `requireAdmin`. Moving the mount must not widen who can see it.
+import { isAdmin } from '@/lib/authz';
 import { listCompanies, listJobGrades, listLeaveTypes } from '@/core/read';
 import { getLeaveEscalationPolicy } from '@/core/leave-approval-policy';
 import {
@@ -7,9 +11,14 @@ import {
   listEligibilityRuleScopes,
   listTemplateAssignments,
 } from '@/core/leave-approval-template';
+// f12d77e5 — grade groups: the routing scope this screen's rules are built on. The module name is a
+// leftover (see its header) — nothing benefit-scheme survives in it but grade groups.
+import { listGradeGroups } from '@/core/benefit-scheme';
+import { GradeGroupConfig } from '@/components/leave/grade-group-config';
 // `SectionHeader` was imported here and unused BEFORE 706d34e8 (the two sections use plain <h2>s); dropped
-// while this import line was being edited anyway, so the file lints clean.
-import { Card, ErrorBanner, PageHeader } from '@/components/ui';
+// then, and back with f12d77e5 — the Grade Groups card heads itself with one, exactly as it did on the
+// Entitlements page, so the relocated card looks like the card that moved.
+import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { LeaveEscalationEditor, type EscalationLabels } from '../../leave-approval/escalation-editor';
 import {
   ApprovalAssignmentManager,
@@ -26,6 +35,14 @@ import {
   setTenantDefaultTemplateAction,
   unassignApprovalTemplateAction,
 } from '../../leave-approval/actions';
+// f12d77e5 — the three grade-group writes, unchanged, imported from the shared admin actions file (their
+// only previous caller was app/admin/leave/entitlements/page.tsx). Each one calls `requireAdmin()` itself,
+// so the card's `isAdmin` gate below hides a surface a non-admin could not have posted to anyway.
+import {
+  createGradeGroupAction,
+  deleteGradeGroupAction,
+  updateGradeGroupAction,
+} from '../../actions';
 
 /**
  * Leave Settings — Approval Workflow tab (0d147b78 — Leave Settings Reorganization).
@@ -76,6 +93,24 @@ import {
  * The SERVICES are untouched: core/leave-approval-policy.ts keeps createLeaveApprovalRule /
  * updateLeaveApprovalRule / archiveLeaveApprovalRule and every reader, because resolveApprovalChain and
  * core/leave-approval-consolidation.ts still run on these rows. Removing a screen is not removing a service.
+ *
+ * ── f12d77e5 (r171) — THE GRADE GROUPS EDITOR NOW LIVES AT THE FOOT OF THIS PAGE.
+ *
+ * It arrived from Settings → Leave → Entitlements, where the reporter correctly said it did not belong:
+ * a grade group has not selected an entitlement since 6e9a126e release three (that is
+ * `entitlement_eligibility_rule`'s job, and its criteria carry individual `gradeIds`, never a GROUP). It
+ * was on that page only because its editor had been inside the deleted BenefitSchemeConfig workbench and
+ * was parked on the nearest surviving screen so the rules pointing at groups would not be orphaned.
+ *
+ * THIS is the screen that uses them: 205 of the tenant's 261 `leave_approval_policy` rows carry a
+ * non-null `grade_group_id` — "Grade 16–19 permanent, 3 days or more, HOD then HR" — and
+ * core/leave-approval-policy.ts treats a NULL group as a WILDCARD rather than a non-match, so a group
+ * that vanished would widen its rules to every employee silently. The editor and the rules it scopes are
+ * now on one page, which is where someone re-scoping a rule will look for it.
+ *
+ * NOTHING about routing, resolution or the assignment sections changed: the card is a mount, the three
+ * server actions are the same ones, and `deleteGradeGroup`'s refusal (a group any rule still references
+ * cannot be deleted) is enforced in core, not here.
  */
 export default async function LeaveApprovalTabPage({
   searchParams,
@@ -84,7 +119,15 @@ export default async function LeaveApprovalTabPage({
 }) {
   const { s, scopeIds } = await scopedSession();
   const t = await getTranslations('leaveApproval');
+  // f12d77e5 — the relocated Grade Groups card reuses the editor's OWN message namespace rather than
+  // minting a second copy of every string in six locales. It is the same discipline the card followed on
+  // the Entitlements page, and it is why moving the mount orphans no key: `admin.benefitScheme` is read
+  // by components/leave/grade-group-config.tsx itself for everything except the card heading.
+  const tGroups = await getTranslations('admin.benefitScheme');
   const { error } = await searchParams;
+  // Same predicate `requireAdmin()` applies — see the import note. Non-admins reach this page (guard =
+  // scopedSession, seven roles in lib/permissions.ts) and must not gain a surface they never had.
+  const canEditGradeGroups = isAdmin(s);
 
   const all = await listCompanies(s);
   const companies = all.filter((c) => scopeIds.includes(c.id));
@@ -94,8 +137,17 @@ export default async function LeaveApprovalTabPage({
   // with the WorkflowMatrix; they fed nothing else on this page. Removing the reads, not just the render,
   // is the point (the e4238594 precedent: an embed's data prep left behind is a fan of queries per render
   // for a screen nobody sees). `gradesAll` and `leaveTypesAll` STAY — the Assign Template form uses both.
-  const [leaveTypesAll, gradesAll, eligibilityRulesAll] = await Promise.all([
+  //
+  // f12d77e5 — `gradeGroups` is READ AGAIN, and it is NOT the matrix's old `gradeGroupsAll` catalogue
+  // coming back: that one existed to LABEL a rule's scope in a table this page no longer has. This one
+  // feeds the relocated EDITOR, and only for an admin — a non-admin cannot see the card, so it must not
+  // cost them a query either. `Promise.resolve([])` keeps the destructure positional and honest.
+  const [leaveTypesAll, gradesAll, eligibilityRulesAll, gradeGroups] = await Promise.all([
     listLeaveTypes(s),
+    // f12d77e5 — this is ALSO the grade list the grade-group membership tick-boxes need, and it is
+    // already active-only (listJobGrades excludes archived unless asked), which is exactly the list the
+    // Entitlements page filtered to by hand. Offering an archived grade would be worse than useless: the
+    // membership form posts only the boxes it renders, so a grade shown nowhere is dropped on save.
     listJobGrades(s),
     // 22de47c4 — the Assign Template employee scope is a named population, so the populations come along.
     // 6e9a126e release three — those are entitlement eligibility rules now, and they arrive ALREADY
@@ -103,6 +155,7 @@ export default async function LeaveApprovalTabPage({
     // does not re-derive that translation: one implementation is what stops the picker offering a rule the
     // service would refuse.
     listEligibilityRuleScopes(s),
+    canEditGradeGroups ? listGradeGroups(s) : Promise.resolve([]),
   ]);
 
   const rows = await Promise.all(
@@ -350,6 +403,37 @@ export default async function LeaveApprovalTabPage({
                 placeholder and the reporter rejected it, and the same reasoning applies to a stub here. */}
           </section>
         </>
+      )}
+
+      {/* ── Grade Groups (f12d77e5, relocated from Settings → Leave → Entitlements) ────────────────────
+          OUTSIDE the company-scope branch above, deliberately. A grade group is TENANT-level — it names a
+          band of job grades and carries no company — so hiding it behind "this admin has companies in
+          view" would take the editor away from someone who can still legitimately write one. The sections
+          above are per-company and rightly do live inside that branch.
+
+          The card is the last thing on the page because it is the vocabulary the sections above use, not
+          another step in configuring a workflow: you come here to add "Grade 16–19", then scope a rule
+          with it. Same component, same three actions, same `admin.benefitScheme` strings as on the page it
+          came from — only the mount moved, so no approval rule, entitlement figure or eligibility rule is
+          touched by this change. */}
+      {canEditGradeGroups && (
+        <Card>
+          <SectionHeader title={tGroups('groupsTitle')} count={gradeGroups.length} />
+          <GradeGroupConfig
+            gradeGroups={gradeGroups.map((g) => ({
+              id: g.id,
+              name: g.name,
+              gradeIds: g.gradeIds,
+              archived: g.archived,
+            }))}
+            grades={gradesAll.map((g) => ({ id: g.id, name: g.name }))}
+            actions={{
+              createGradeGroup: createGradeGroupAction,
+              updateGradeGroup: updateGradeGroupAction,
+              deleteGradeGroup: deleteGradeGroupAction,
+            }}
+          />
+        </Card>
       )}
     </div>
   );

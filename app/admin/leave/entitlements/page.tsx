@@ -14,15 +14,13 @@ import { listAllProfileOptions } from '@/core/profile-options';
 // approval-policy/template reads and the 4e9a4d59 stay-on-this-type action wrappers) all went with the
 // sub-step. This page no longer touches approval configuration at all; /admin/leave/approval owns it.
 // 6e9a126e release three — `listBenefitSchemes` / `listSchemeEntitlements` are gone from this page with
-// the layer they read. `listGradeGroups` STAYS: grade groups scope approval routing (205 live rules name
-// one), so the migration keeps `grade_group` / `grade_group_member` and this screen keeps their editor.
-import { listGradeGroups } from '@/core/benefit-scheme';
+// the layer they read. f12d77e5 — `listGradeGroups` and the Grade Groups EDITOR have gone from this page
+// too, but they MOVED (to Settings → Leave → Approval); they were not deleted. The note at the foot of
+// this file says why that distinction is the whole item.
 // r88 1ef1cf95 — shared leave groups are tenant-level and read from their own module; they are no longer a
 // property of a benefit scheme, so they are no longer read through the benefit-scheme one.
 import { listLeaveSharedGroups } from '@/core/leave-shared-group';
 import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
-// The Grade Groups editor, lifted out of the deleted BenefitSchemeConfig workbench so it outlives it.
-import { GradeGroupConfig } from '@/components/leave/grade-group-config';
 import type { LeaveRoundingMethod, RoundingBand } from '@/core/leave-compute';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 // 10e96227 — the half-day-deduction card's company picker, behind a CLIENT wrapper. This page is a SERVER
@@ -40,14 +38,12 @@ import {
   deleteLeaveTypeAction,
   setLeaveTypeRulesAction,
   updateLeaveTypeAction,
-  // 6e9a126e release three — the grade-group writes SURVIVE the drop (approval routing scopes by them);
-  // the policy writes (create / update / delete) and the scheme writes (scheme CRUD, entitlement upsert /
-  // delete / copy) went with the tables they wrote, as did countEmployeesInScopeAction's only caller here
-  // — the Employee Selection chips on the add-policy form. Who receives an entitlement is now an
-  // eligibility rule, counted by countEligibilityTargetsAction on the Entitlement Tables screen.
-  createGradeGroupAction,
-  updateGradeGroupAction,
-  deleteGradeGroupAction,
+  // 6e9a126e release three — the policy writes (create / update / delete) and the scheme writes (scheme
+  // CRUD, entitlement upsert / delete / copy) went with the tables they wrote, as did
+  // countEmployeesInScopeAction's only caller here — the Employee Selection chips on the add-policy form.
+  // Who receives an entitlement is now an eligibility rule, counted by countEligibilityTargetsAction on
+  // the Entitlement Tables screen. f12d77e5 — the three grade-group writes are no longer imported here
+  // either: they are still exported, still called, but from /admin/leave/approval, with their editor.
   // r88 1ef1cf95 — the tenant-level shared-group writes. The scheme-level combined-limit actions (update /
   // delete / move / group-from-drag) are gone with the surface and the tables they wrote.
   createLeaveSharedGroupAction,
@@ -78,16 +74,19 @@ import {
  * WHAT THE PAGE STILL OWNS, and what a reader should expect to find: leave TYPE CRUD (the workspace and the
  * Add Leave Type dialog), each type's Condition / Custom Settings steps, the consolidated Earning Method and
  * Carry Forward rules (written to the leave TYPE since 9816a5ad, not to a policy row), Shared Leave Groups,
- * the company-wide Half-Day Deduction card, Run Earned Accrual — and Grade Groups, in their own card at the
- * bottom. Grade groups scope APPROVAL routing (205 live rules name one) and no longer select an entitlement;
- * they are here because their editor was inside the deleted scheme workbench and had to land somewhere real.
+ * the company-wide Half-Day Deduction card and Run Earned Accrual.
+ *
+ * f12d77e5 (Remove Grade Groups from the Leave Entitlement framework): Grade Groups are no longer on this
+ * page. The card at the bottom MOVED to Settings → Leave → Approval — it was not deleted, and the note
+ * where it stood explains why deleting it would have re-routed 205 live approval rules in silence. The
+ * Entitlement module is now Entitlement Tables and Employee Eligibility and nothing else, which is what the
+ * item asked for; no entitlement figure and no eligibility rule changed.
  *
  * b1b81a08 (Grade relocation): the Grades catalogue is no longer maintained anywhere on this page. Grades
  * are organisation-level master data, so add/edit/archive/delete now lives on Settings → System Labels →
  * Organisation Labels beside Departments and Positions. The grade LIST is still read here — it feeds the
- * Run Earned Accrual selector and the Grade Groups membership tick-boxes — and no grade record was copied,
- * renamed or re-created, so every employment, approval rule, claim limit and grade group still points at the
- * same row.
+ * Run Earned Accrual selector — and no grade record was copied, renamed or re-created, so every employment,
+ * approval rule, claim limit and grade group still points at the same row.
  *
  * 4b0e76ae (Remove Leave Year Configuration): the Leave Year Configuration block is GONE from Custom
  * Settings on every leave type — the year list, the Draft/Open/Closed badge, the Open Leave Year Date, the
@@ -109,23 +108,22 @@ export default async function LeaveEntitlementsPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
-  // The Grade Groups card reuses the workbench's OWN heading rather than minting a seventh copy of it in
-  // six locales — the same discipline the templates screen follows for the criteria label namespaces.
-  const tGroups = await getTranslations('admin.benefitScheme');
+  // f12d77e5 — the `admin.benefitScheme` translator that headed the Grade Groups card went with the card.
   const { error } = await searchParams;
-  const [types, companies, grades, gradeGroups, sharedGroups, profileOptionsActive] =
+  const [types, companies, grades, sharedGroups, profileOptionsActive] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
       listCompanies(s),
       // b1b81a08 — grade MANAGEMENT moved to Settings → System Labels → Organisation Labels, but the grade
-      // list is still READ here: it feeds the Run Earned Accrual selector and the Grade Groups membership
-      // tick-boxes. 6e9a126e release three: the leave-policy scope dropdown and the preview dialog that
-      // also read it are gone, but archived rows still load — `gradeOptions` filters them out itself, and
-      // narrowing the query would change what other readers of this list see for no gain.
+      // list is still READ here: it feeds the Run Earned Accrual selector. 6e9a126e release three: the
+      // leave-policy scope dropdown and the preview dialog that also read it are gone, and f12d77e5 took
+      // the Grade Groups membership tick-boxes with the editor — but archived rows still load, because
+      // `gradeOptions` filters them out itself and narrowing the query would change what other readers of
+      // this list see for no gain.
       listJobGrades(s, { includeArchived: true }),
-      // Grade groups (b83c6a3b, kept by release three): the approval-routing scope. The two scheme reads
-      // that used to sit beside this one are gone with `benefit_scheme` / `scheme_leave_entitlement`.
-      listGradeGroups(s),
+      // f12d77e5 — `listGradeGroups(s)` STOOD HERE and moved to /admin/leave/approval with its editor. The
+      // name came out of the destructure above IN THE SAME EDIT: dropping one without the other silently
+      // shifts every later variable by one position and every value on this page is wrong by a slot.
       // Shared Leave Groups (r88 1ef1cf95): tenant-level groups of leave types sharing one allowance. Read
       // once here and rendered beside Add Leave Type — there is no scheme dimension to scope them by.
       listLeaveSharedGroups(s),
@@ -151,7 +149,8 @@ export default async function LeaveEntitlementsPage({
   const formulaTemplate = leaveFormulaTemplateFrom(
     types.map((lt) => lt.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
   );
-  // Active grades — the Grade Groups membership tick-boxes and the Run Earned Accrual grade filter.
+  // Active grades — the Run Earned Accrual grade filter. (f12d77e5: the Grade Groups membership tick-boxes
+  // were the other reader and they are on the Approval screen now, which builds its own active-grade list.)
   const gradeOptions = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
   const companyOptions = companies.map((c) => ({ id: c.id, name: c.name }));
   const effectiveGrants = withEffectiveGrants(s);
@@ -194,21 +193,9 @@ export default async function LeaveEntitlementsPage({
    *     by every panel.
    * The three tables they read are dropped in this release. Their replacement is not another page-level
    * prep here: it is the Entitlement Tables screen, which loads its own templates and eligibility rules.
-   * The grade-group half of `schemeConfigProps` survives as `gradeGroupProps` below — a grade group is an
+   * The grade-group half of `schemeConfigProps` survived release three as `gradeGroupProps` — and f12d77e5
+   * has now taken THAT to /admin/leave/approval, where a grade group is actually used. A grade group is an
    * approval-routing scope, not an entitlement axis, and 205 live approval rules depend on it. */
-
-  // Grade Groups (kept): the rows plus the three writes, for the standalone card near the page bottom.
-  // Grades are the ACTIVE list — the same one the workbench passed — because the membership form posts
-  // only the boxes it renders, so offering an archived grade nowhere would silently drop it on save.
-  const gradeGroupProps = {
-    gradeGroups: gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived })),
-    grades: gradeOptions,
-    actions: {
-      createGradeGroup: createGradeGroupAction,
-      updateGradeGroup: updateGradeGroupAction,
-      deleteGradeGroup: deleteGradeGroupAction,
-    },
-  };
 
   // e4238594 removed the Approval Workflow sub-step data block that stood here (e1a51aea). It prepared
   // the WorkflowMatrix rows, the wildcard list, the per-company default chain and the label bag for a
@@ -621,19 +608,23 @@ export default async function LeaveEntitlementsPage({
         </p>
       </Card>
 
-      {/* ── Grade Groups (6e9a126e release three) ────────────────────────────────────────────────────
-          ADR-0041 2E + Grade Management (728a7db6): the grade MASTER does not sit here at all — b1b81a08
-          relocated it to Settings → System Labels → Organisation Labels. Grade GROUPS did stay, but inside
-          the Benefit Schemes workbench, and that workbench is deleted with the scheme layer. They are
-          lifted out to their own card rather than deleted WITH it, because they were never a scheme
-          concept: 205 live approval rules scope by grade group, and the release-three migration keeps
-          `grade_group` / `grade_group_member` for exactly that reason. Page-bottom and standalone is the
-          honest placement — a grade group no longer selects an entitlement, so it does not belong inside
-          any leave type's Entitlement step. */}
-      <Card>
-        <SectionHeader title={tGroups('groupsTitle')} count={gradeGroupProps.gradeGroups.length} />
-        <GradeGroupConfig {...gradeGroupProps} />
-      </Card>
+      {/* ── f12d77e5 — THE GRADE GROUPS CARD STOOD HERE AND IS NOW ON /admin/leave/approval ──────────
+          The reporter asked for Grade Groups to be out of the Leave Entitlement framework, and they are:
+          nothing on this page reads a grade group, and nothing in `core/entitlement-template.ts` or
+          `core/org-criteria.ts` ever did — an entitlement eligibility rule scopes by individual `gradeIds`,
+          never by a GROUP. Release three already severed the backend half of the request.
+
+          IT IS A MOVE, NOT A DELETE, AND THAT DISTINCTION IS THE WHOLE ITEM. 205 of the tenant's 261
+          `leave_approval_policy` rows carry a non-null `grade_group_id`, and
+          core/leave-approval-policy.ts treats a NULL group as a WILDCARD rather than a non-match — so
+          clearing the groups would not clear those rules, it would silently widen each one from the grades
+          it names to EVERY employee, with no error and nothing on screen to say so. Leave would start
+          routing to the wrong approvers. (core/benefit-scheme.ts's `deleteGradeGroup` refuses while any
+          rule points at a group, which is the guard that keeps that from happening one group at a time.)
+
+          The card was only ever here by accident: the editor lived inside the deleted BenefitSchemeConfig
+          workbench and was parked on the nearest surviving page so the 205 rules would not point at groups
+          nobody could create or re-staff. Its real home is the screen that uses it. */}
     </div>
   );
 }
