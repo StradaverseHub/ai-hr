@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
-import { requireAdmin } from '@/lib/authz';
+import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listReports, reportPreview, submissionDueFor } from '@/core/reporting';
 import { Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -63,7 +63,19 @@ export default async function StatutoryFormPage({
     error?: string;
   }>;
 }) {
-  const s = await requireAdmin();
+  // 6babf4f6 — scopedAdmin, NOT requireAdmin, and the company list is narrowed to what this admin actually
+  // administers. Found in verification.
+  //
+  // WHAT WAS AND WAS NOT WRONG, measured rather than assumed (test/statutory-forms-scope.test.ts): the READ
+  // already fails closed — payroll_batch's RLS needs can_admin_payroll_for(company_id), so reportPreview
+  // returns NO rows for a company this admin does not administer. Nothing leaked.
+  //
+  // What did happen is worse than harmless: listCompanies() is tenant-wide, so the picker OFFERED those
+  // companies. Choosing one rendered an EMPTY statutory return under that company's name — which an
+  // operator can read as "nothing to file" — while the export route on the same screen answers 404 for the
+  // identical selection, because it already fenced with scopeIds. A screen that disagrees with its own
+  // export button is the defect; the empty return is how it shows up.
+  const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.statutoryForms');
   const locale = await getLocale();
   const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' });
@@ -71,8 +83,11 @@ export default async function StatutoryFormPage({
   const { formId } = await params;
   const sp = await searchParams;
 
-  const companies = (await listCompanies(s)).filter((c) => !c.archivedAt);
-  const companyId = sp.companyId || companies[0]?.id || '';
+  const companies = (await listCompanies(s)).filter((c) => !c.archivedAt && scopeIds.includes(c.id));
+  // An out-of-scope companyId in the URL falls back to the first company this admin CAN administer, rather
+  // than being honoured. Same rule the export route applies, so the two cannot disagree again.
+  const requested = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : '';
+  const companyId = requested || companies[0]?.id || '';
   const reports = companyId ? await listReports(s, companyId) : [];
   const def = reports.find((r) => r.id === formId);
   // Unknown id, or a form this company's jurisdiction does not have. One answer for both, so the URL

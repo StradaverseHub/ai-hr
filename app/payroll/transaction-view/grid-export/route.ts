@@ -31,6 +31,16 @@ function monthLabels(locale: string): string[] {
   return Array.from({ length: 12 }, (_, i) => fmt.format(new Date(Date.UTC(2001, i, 1))));
 }
 
+/** RFC 5987 Content-Disposition: an ASCII-safe fallback plus a UTF-8 `filename*`. Same helper the
+ *  statutory-forms export uses — kept identical on purpose rather than shared, because the two routes have
+ *  no other reason to import from each other. */
+function contentDisposition(base: string, ext: string): string {
+  const full = `${base}.${ext}`;
+  const ascii = full.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
+  const encoded = encodeURIComponent(full).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
 export async function GET(req: Request) {
   const { s, scopeIds } = await scopedAdmin();
   const url = new URL(req.url);
@@ -120,7 +130,11 @@ export async function GET(req: Request) {
   return new Response(Buffer.from(file.bytes), {
     headers: {
       'Content-Type': file.contentType,
-      'Content-Disposition': `attachment; filename="${data.filename}.${file.ext}"`,
+      // The filename carries an operator-controlled employee code. Interpolating it raw into a quoted
+      // header lets a double quote or backslash truncate it, and a non-Latin-1 character makes the Response
+      // constructor THROW — the download 500s instead of arriving. The statutory export added in this same
+      // round already does this properly; two export routes written together must not disagree about it.
+      'Content-Disposition': contentDisposition(data.filename, file.ext),
     },
   });
 }
