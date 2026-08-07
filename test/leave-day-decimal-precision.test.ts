@@ -20,12 +20,23 @@
  *    one is only a fix for as long as a tenth does not appear, so the source guards below fail if any of
  *    the eleven day-rendering surfaces grows its own again.
  *
- * AND TWO THINGS DELIBERATELY NOT DONE, pinned here so a later reader does not "finish the job":
+ * ONE THING DELIBERATELY NOT DONE, pinned here so a later reader does not "finish the job":
  *   - THE ENGINE IS UNTOUCHED. No rounding was added to core/leave-compute.ts. Rounding a figure that is
  *     already exact is how a total stops matching the parts printed above it.
- *   - ROUNDING BANDS STAY AT THREE DECIMALS. They are fractions of a day in [0,1] that
- *     `checkRoundingBands` compares and snaps at 3dp; 2dp would render a 0.125 boundary as "0.13" and the
- *     on-blur tidier would then save that, changing a rule.
+ *
+ * ═══ THE SECOND PASS: THE ROUNDING TABLE'S THIRD DECIMAL IS GONE ═══
+ *
+ * This file used to assert the opposite of §3 below — that rounding bands STAY at three decimals, because
+ * they are fractions of a day that `checkRoundingBands` compares and snaps at 3dp, and 2dp would render a
+ * 0.125 boundary as "0.13" which the on-blur tidier would then save. That reasoning was sound and the
+ * assertion was right to exist; what it did not check was whether anyone had ever typed a genuine
+ * thousandth. Nobody had. The reporter's screenshot of the rounding table is what re-opened this, and the
+ * three tables on production hold nothing but multiples of 0.01 except 0.401 and 0.701 — a notch above
+ * 0.400 and 0.700, typed because each row stops just before its Round To and the next row had to start
+ * somewhere. The notches left two HOLES: a fraction of exactly 0.400 or 0.700 matched no row at all.
+ *
+ * So the exception was retired and From was made DERIVED instead — and the assertions below now pin that,
+ * including the fraction of exactly 0.40 that used to fall through and now lands in the second band.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -35,13 +46,13 @@ import { createTranslator } from 'next-intl';
 import {
   DAY_DASH,
   DAY_DECIMALS,
-  ROUNDING_BAND_DECIMALS,
   dayPluralCategory,
   formatDayInput,
   formatDays,
   normalizeDayFieldOnBlur,
   normalizeDayText,
 } from '@/lib/day-format';
+import { applyRoundingBands } from '@/core/leave-compute';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -137,25 +148,77 @@ describe('4a1abc4a · typing into a day field', () => {
   });
 });
 
-describe('4a1abc4a · rounding bands keep THREE decimals, and that is not an oversight', () => {
-  it('a band boundary survives formatting; 2dp would corrupt it', () => {
-    // This is the assertion that explains the exception. A band is a FRACTION of a day, and the engine
-    // compares and snaps at 3dp — so 0.125 is a real, typeable boundary.
-    expect(ROUNDING_BAND_DECIMALS).toBe(3);
-    expect(formatDays(0.125, { decimals: ROUNDING_BAND_DECIMALS })).toBe('0.125');
-    // …and here is what standardising it to 2dp would have done. Rendered as "0.13" it is already wrong on
-    // screen; once the on-blur tidier writes that back it is a changed rule, on a screen whose entire
-    // promise to the reporter is that no figure changes.
-    expect(formatDays(0.125)).toBe('0.13');
-    expect(normalizeDayText('0.125', ROUNDING_BAND_DECIMALS)).toBe('0.125');
+describe('4a1abc4a · rounding bands are TWO decimals now, and From is derived', () => {
+  it('there is exactly ONE precision — the band exception is retired from the module', () => {
+    // The constant this file used to assert on is gone. Asserted on the SOURCE rather than by importing it,
+    // because an import of a removed export is a compile error and would say nothing about why.
+    const mod = read('/lib/day-format.ts');
+    expect(codeOnly(mod), 'ROUNDING_BAND_DECIMALS must not come back as a second precision').not.toContain(
+      'ROUNDING_BAND_DECIMALS',
+    );
+    expect(DAY_DECIMALS).toBe(2);
+    // The header has to keep the RETIRED reasoning, or the next reader re-derives the 3dp carve-out from
+    // first principles and puts it back. It was correct; it stopped being load-bearing.
+    expect(mod).toContain('ROUNDING_BAND_DECIMALS');
   });
 
-  it('the band editor tidies at band precision, and the worked EXAMPLE beside it at day precision', () => {
+  it('the band editor tidies at DAY precision, and its From column is DERIVED, not typed', () => {
     const panel = codeOnly(read('/components/leave-type-panel.tsx'));
-    expect(panel).toMatch(/formatDays\(v, \{ decimals: ROUNDING_BAND_DECIMALS \}\)/);
-    expect(panel).toMatch(/normalizeDayText\(e\.currentTarget\.value, ROUNDING_BAND_DECIMALS\)/);
+    // Bands print through the shared formatter at its default — no second precision passed anywhere.
+    expect(panel).toMatch(/const bandText = \(v: number\) => formatDays\(v\);/);
+    expect(panel).toMatch(/normalizeDayText\(e\.currentTarget\.value\)/);
+    expect(panel, 'no band figure may ask for a precision of its own').not.toMatch(/decimals:/);
+    // THE STRUCTURAL HALF, and the one that closes the holes: row 0 starts at 0.00 and row n starts at the
+    // row above's Round To. A typed From is what produced 0.401 / 0.701 in the first place.
+    expect(panel).toMatch(/const fromText = \(rows: BandRow\[\], i: number\): string =>\s*\(i === 0 \? bandText\(0\) : rows\[i - 1\]\.to\);/);
+    expect(panel, 'the From cell must be read-only').toMatch(/readOnly[\s\S]{0,200}roundingBandFrom/);
+    expect(panel, 'a From cell nobody can type into cannot be patched').not.toMatch(/patch\(i, 'from'/);
+    // The steppers follow the precision: a 0.001 step invites the third decimal back through the arrows.
+    expect(panel).not.toContain('step="0.001"');
     // The example is "one month of a 14-day entitlement" — a number of DAYS, so it takes the 2dp default.
     expect(panel).toMatch(/formatDays\(ROUNDING_EXAMPLE_RAW\)/);
+  });
+
+  it('THE BEHAVIOUR DELTA: a fraction of exactly 0.40 used to fall through a hole and now rounds', () => {
+    // The reporter's stored table, before and after. The engine is UNCHANGED — `applyRoundingBands` still
+    // snaps the fraction to 3dp and `bandRound` still widens a stored 0.40 to 0.400 — so this test is
+    // entirely about the two boundaries the migration moves.
+    const before = [
+      { from: 0, to: 0.4, result: 0 },
+      { from: 0.401, to: 0.7, result: 0.5 },
+      { from: 0.701, to: 1, result: 1 },
+    ];
+    const after = [
+      { from: 0, to: 0.4, result: 0 },
+      { from: 0.4, to: 0.7, result: 0.5 },
+      { from: 0.7, to: 1, result: 1 },
+    ];
+    // THE HOLES. 10.4 is past the end of row 1 and below the start of row 2, so nothing matched and the
+    // value was left exactly as calculated. This is the line the reporter was warned about in the plan.
+    expect(applyRoundingBands(10.4, before)).toBe(10.4);
+    expect(applyRoundingBands(10.7, before)).toBe(10.7);
+    // …and closed. 0.40 now lands in the SECOND band (half a day), 0.70 in the third (a whole day).
+    expect(applyRoundingBands(10.4, after)).toBe(10.5);
+    expect(applyRoundingBands(10.7, after)).toBe(11);
+    // Nothing else moves: every other fraction lands where it always landed.
+    for (const [v, want] of [[10.39, 10], [10.401, 10.5], [10.69, 10.5], [10.701, 11], [10.999, 11]] as const) {
+      expect(applyRoundingBands(v, after), `fraction ${v}`).toBe(applyRoundingBands(v, before));
+      expect(applyRoundingBands(v, after), `fraction ${v}`).toBe(want);
+    }
+  });
+
+  it('the user-visible refusal moved to two decimals, in ALL SIX locales', () => {
+    // MISSING_MESSAGE and a stale figure both pass a 200. The catalogs are read, not assumed.
+    for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const) {
+      const sub = JSON.parse(read(`/messages/${loc}.json`)).admin.leave.subStep;
+      expect(sub.roundingBandRowInvalid, loc).toContain('0.00');
+      expect(sub.roundingBandRowInvalid, loc).toContain('1.00');
+      expect(sub.roundingBandRowInvalid, loc).not.toContain('0.000');
+      expect(sub.roundingBandRowInvalid, loc).not.toContain('1.000');
+      // The help text carries worked figures of its own and must not contradict the table beside it.
+      expect(sub.roundingBandsHelp, loc).not.toContain('0.000');
+      expect(sub.roundingBandsHelp, loc).not.toContain('1.000');
+    }
   });
 
   it('ROUNDING METHOD IS STILL AN ENUM — no decimals were invented for it', () => {
