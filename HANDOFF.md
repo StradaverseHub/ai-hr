@@ -18,51 +18,67 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-07 (r169 SHIPPED — four items, statutory forms corrected)
+## CURRENT STATE — snapshot 2026-08-07 (r171 SHIPPED — six of eight approved items)
 
-**`main@a65ec99f` is what runs. Production on 334 migrations. Next free migration number is `0414`**
-(`0411` attendance calc trace, `0413` back pay; `0412` was never used). No half-applied migration, no
-pending deploy. Verified after deploy: 334 migrations, service `active`, `GET /` 401, zero-change
-`rsync -azi --delete --dry-run`. Gate: 586 files / 7,119 tests green across all 3 chunks; `next build`
-clean; shadow rehearsal 332→334 and fresh 334/334 both PASS.
+**`main@704c64bc` is what runs. Production on 335 migrations. Next free migration number is `0415`**
+(`0414` rounding bands to 2dp; `0412` was never used, and `0415`/`0416` were allocated this round and
+returned unused). No half-applied migration, no pending deploy. Verified after deploy: 335 migrations,
+watermark 1781862514000, service `active`, `GET /` 401, zero-change `rsync -azi --delete --dry-run`.
+Gate: 594 files / 7,260 tests green across all 3 chunks; `next build` clean; shadow rehearsal 334→335 and
+fresh 335/335 both PASS.
 
-### r169 shipped FOUR items — and verification, not the gate, is what made them correct
+### r171 shipped SIX of EIGHT approved items — and the verify pass is why
 
-`7c834696` Attendance Calculation Engine · `2ef69d1e` Back Pay (Arrears) · `b7b22514` Entity Transfer ·
-`4a1abc4a` Entitlement Decimal Precision. All four marked deployed; **`building` and `approved` are now
-BOTH ZERO.**
+`4a1abc4a` decimals+editor · `f12d77e5` grade-groups move · `6a1f2bd6` Zakat · `6d72816e` Loans ·
+`e440991b` reprocess · `5c198931` payslip PDF. **Two are deliberately NOT marked deployed — see below.**
 
-**EVERY ONE OF THESE PASSED tsc, its own targeted suite, and `next build` BEFORE it was caught.** This is
-the round's whole lesson — a green build says the code runs, not that it is right:
+Built by a 13-agent workflow across FIVE worktrees grouped BY FILE OVERLAP: the four payroll items all
+touch `core/payroll-view.ts`, so they were built SEQUENTIALLY in one worktree instead of in parallel.
+**Five branches merged with zero conflicts** — the grouping removed the collision rather than leaving it
+to be resolved.
 
-1. **Entity Transfer silently corrupted two STATUTORY forms.** Until this item an employment belonged to
-   one company for life, so "this employment's year" and "this employer's year" were the same set of rows
-   and every annual read conflated them safely. The moment a transfer could move `employment.company_id`:
-   the **EA form** summed every payslip in the year and printed the CURRENT company as employer (A→B in
-   July ⇒ ONE form, on B's letterhead, under B's LHDN employer number, holding six months of A's pay);
-   and **Form E Part A** counted `employment.company_id` while the CP8D rows beneath it join through
-   `payroll_batch` — so a transferred person vanished from the old company's headcount **including for
-   years that closed before the transfer**. The plan had promised "two EA forms needs no code". It was
-   false. Fixed: `eaStatement` takes a `companyId`, `eaCompaniesInYear`/`employeeEaStatements` enumerate
-   the employers a year spans, the EA screen switches between them, and Part A's population now comes
-   from the payslips (company-true by construction) with new hires reading `join_date` — the date someone
-   joined THIS employer — instead of the group-wide `hired_on`.
-2. **A widened guard reached a movement the item never touched.** Adding `joinDate` to
-   `REVERSIBLE_INFO_DATE_FIELDS` was necessary for Entity Transfer and silently made the EXISTING
-   `joinDateChange` roll-back-able for the first time. Now keyed by kind.
-3. **The attendance panel printed a break that was never deducted.** It showed the CONFIGURED break, so a
-   4-hour day with a 1-hour break said "Break deducted: 1h 00m" directly above its own "span 4h, worked
-   4h". The figure is now derived as `span − worked`, so it cannot disagree with the numbers beside it.
-4. **An i18n claim that was true in five languages and false in the sixth.** Flattening two ICU plurals
-   was justified as "two visible fraction digits always select CLDR's `other`". Tamil's rule is
-   `i = 0 or n = 1`, so `1.00` selects `one` and Tamil uses a different word for one day. The obvious
-   correction — put a plain `{d, plural, …}` back — was ALSO wrong: ICU selects on the number formatted
-   with ZERO fraction digits, so English then read "1.00 day remaining". **The category has to be
-   computed at the precision the figure is DISPLAYED in**, which ICU cannot express: `dayPluralCategory`.
+**FOUR BLOCKERS THAT PASSED THEIR OWN BUILDER'S TESTS.** Every one was found by an adversarial verifier
+reading the diff, not by a gate:
 
-**THE TEST THAT GREPS A CATALOG CANNOT SEE ANY OF THIS.** The false Tamil claim shipped with a passing
-test that pattern-matched the message string; rendering it through `createTranslator` failed instantly.
-Assert on rendered output, not on source text.
+1. **A backfill script wrote to EVERY TENANT.** `scripts/backfill-backup-shift.ts` enumerated the whole
+   `tenant` table with no filter. Production has two tenants. `--tenant=<uuid>` is now mandatory.
+   `scripts/seed-overtime-multipliers.ts` has the SAME all-tenants default — always pass `--tenant`.
+2. **A pattern-less backup shift makes every day a rest day.** Making the shift mandatory promoted it to
+   the fallback for every uncovered date, and `core/attendance.ts` resolves that branch as
+   `ds.pattern?.includes(...)` — no pattern matches nothing, falls to `rest_day`, and pays rest-day
+   overtime on ordinary work. Measured first: 0 of 11 production shifts lack a pattern.
+3. **A silent underpayment.** `qty_rate` was in `DERIVED_AMOUNT_RULE_KINDS`, which locks the Amount box —
+   but `payRuleInputUnit` returns null for it, so the figure came from the CATALOG. A Commission item at
+   `{qty:1, rate:50}` would take a keyed 600 and pay 50. **Deriving is only safe when the operator has a
+   box that feeds the derivation.**
+4. A new guarded route missing from `lib/permissions.ts` — already failing red.
+
+**THE GATE WAS RED FIRST, and both failures were real:** a payroll pack-boundary violation (fixed at the
+facade; `pack-drift-allowlist.json` untouched — it only ever shrinks) and four more pattern-less shift
+fixtures (completed, not weakened — none asserted that behaviour).
+
+**MIGRATION 0414 WAS PROVED AGAINST A SCRATCH DATABASE, NOT REASONED ABOUT.** Its first version set every
+row's From to the row above's To unconditionally — right for the three production tables, wrong for a
+legal single-row `[{from:0.50,to:1.00}]`, whose gap it silently closed. The *second* version still broke
+the single-row case; only the scratch DB showed it. Final rule: absorb a gap smaller than 0.01 (a
+fencepost 2dp cannot express), keep anything wider. **Verified live after deploy: all three types now
+`0.00/0.40/0.70` at 2dp.** Behaviour delta, deliberate: fractions of exactly 0.400 and 0.700 previously
+matched no band and now round.
+
+### ⚠️ TWO ITEMS BUILT AND DEPLOYED BUT NOT MARKED — they need a decision
+
+- **`2da9937a` (Formula Builder) — the code is live, the promised examples are not.** Overtime 2.0 and 3.0
+  are TENANT CATALOG ROWS created by `scripts/seed-overtime-multipliers.ts`, which has not been run: the
+  permission classifier refused it as a production write outside the deploy pipeline, correctly. Until
+  somebody runs it the reporter opens Payroll → Payroll Items, sees only their own OT1_5, and contests.
+  Run: `cd /opt/ai-hr && PATH=/opt/node20/bin:$PATH node --env-file=.env.production --import tsx
+  scripts/seed-overtime-multipliers.ts --tenant 11111111-1111-1111-1111-111111111111`
+  (idempotent — skips existing codes; derives the rate from OT1_5 rather than inventing one).
+- **`b8aa3466` (Attendance) — partially built, on purpose.** Its plan promised removing the Company work
+  schedule and overtime-rate cards from Attendance Policy once backup-shift coverage hit zero. The builder
+  refused: that card is the tenant's ONLY editor for the statutory OT wage ceiling and the rest-day /
+  holiday multipliers. Everything else in the item shipped. The reporter was promised that removal, so
+  this needs a plan revision telling them why it did not happen — not silence.
 
 ### 6e9a126e RELEASE THREE — the one fact still live (full entry: history → r167)
 
@@ -71,23 +87,28 @@ retyped from the archive into Entitlement Templates + Employee Eligibility. The 
 keeps balances still while that is true — if a recalc ever starts posting non-zero deltas against an
 unconfigured type, that guard has broken and it is the first thing to check.
 
-### The board — counted on production 2026-08-07 after r169
+### The board — counted on production 2026-08-07 after r171
 
-**`deployed = 605` · `cancelled = 12` · `open = 7` · `contested = 3` · `planned = 3`. `approved` and
-`building` are BOTH ZERO.** Re-count rather than trusting this line.
+**`deployed = 610` · `approved = 8` · `planned = 7` · `cancelled = 13`. `open` and `contested` are BOTH
+ZERO.** Re-count rather than trusting this line.
 
-**NOTHING IS QUEUED TO BUILD.** The next round starts by planning: 7 open + 3 contested. The three
-contested are UI/UX items (`e440991b`, `6a1f2bd6`, `6d72816e`) — mockup them, that is what r165 is for.
+**EIGHT ITEMS ARE APPROVED AND WAITING TO BUILD.** Two are the r171 holdovers above (`2da9937a`,
+`b8aa3466`); the other six the reporter approved DURING the r171 build, from the r170 planning round:
+`3e3d3fb2` TP1 Relief · `6babf4f6` Statutory Forms · `06f0cb8f` Create Employee draft · `0386b95d`
+Documents tab · `18719ded` Payroll tab · `080de5cf` Transaction History grid.
 
-**KNOWN FOLLOW-UP, deliberately not built this round:** `ea_override` is keyed
-`(employment, year, field)` with no company, so an EA amendment applies to the CURRENT employer's form
-only. Double-applying would inflate a group total in a statutory filing; under-applying is visible and
-recoverable. Keying that table by company is what makes a past employer's form amendable.
+**`3e3d3fb2` CARRIES A SECURITY FIX** — its plan records that `app/payroll/transactions/tp1/page.tsx`
+passes `?employmentId=` into `employmentSubject()` with NO membership check against the admin's scoped
+list, where every sibling transaction screen runs `employees.some(...)` first. Build it early.
 
-**STATED LIMIT, not hidden:** re-running a PRIOR year's Form E Part A reads today's `join_date`. The
-population and the year-end line are payslip-derived and historically correct; the new-hire line on a
-reprinted prior year is not. Fixing it needs a dated company history, which does not exist — the company
-timeline lives only in the event log (`core/movement.ts` `companyIdAtSequence`).
+**Two of the six are one build:** `0386b95d` and `18719ded` are the same change on two tabs and their
+plans say so; `080de5cf` reuses `deriveHistoryBreakdown` and the `EmployeeScopePanel` the r171 payroll
+work already shipped.
+
+**THE REPORTER COMMUNICATES IN PICTURES — 143 of 151 attachments are images.** Read an item's attachment
+BEFORE forming any opinion: this session burned a whole plan revision writing from the prose alone, and
+the screenshot turned out to show a completely different screen. Extract one with
+`select encode(content,'base64') from feedback_attachment …`, strip psql's preamble, decode.
 
 ### Plans must carry a MOCKUP — shipped r165 (why, and the design findings: history → r165)
 
@@ -152,10 +173,6 @@ hazard for job grades.
 2. **"Overtime beyond the final band shall not be counted"** would cut `ot_minutes` DOWNWARD and
    retroactively. Not built — those minutes keep the final band's rate. Truncation needs its own opt-in.
 
-**One human-visible consequence of r140 on production:** rule `A01`'s band ladder breaks contiguity,
-so the new validation refuses to SAVE it until repaired. Deliberate — a hole in the ladder used to be
-cosmetic and now decides which rate column overtime lands in. The band editor flags the offending row
-on OPEN, in the same wording as the save error, so it is visible rather than a surprise at save time.
 
 ### ⚠️ THE PAID-ITEM GUARD IS ONLY ~14% EFFECTIVE TODAY, AND THAT IS BY DESIGN
 
@@ -189,8 +206,7 @@ Per-item measurements are in `docs/HANDOFF-HISTORY.md` under their rounds. What 
 - **`EMERGENCY_LEAVE_CODE = 'EMERGENCY'` is still hardcoded** while production's type is `EL` — the
   constant is documented as "the code the PACK SEEDS" and the resolver has changed, so **re-verify
   against the tree before reusing the old diagnosis**; its old line numbers have moved.
-- **A company logo EXISTS** (`company_logo`, read by the report letterhead). `169e3c24` shipped a
-  payslip without one on the false premise that none existed; `da4af51f`'s plan corrects it.
+- **A company logo EXISTS** (`company_logo`) and r171's payslip PDF now prints it.
 - **"Processed By" on the payroll dashboard is viable** — 43 processed events, 43 with a resolvable
   actor name. A two-join + one-`<td>` change; shipped without it only because an agent could not
   verify from its sandbox.

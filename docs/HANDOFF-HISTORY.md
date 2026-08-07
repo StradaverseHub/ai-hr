@@ -4,6 +4,48 @@ Archive of SHIPPED round entries, newest first. The living handoff is `../HANDOF
 current state and the entry for any round still in flight; when a round ships, its entry moves to the
 top of this file.
 
+## r169 — four items (shipped 2026-08-07, main@a65ec99f, 334 migrations)
+
+Originally — and verification, not the gate, is what made them correct
+
+`7c834696` Attendance Calculation Engine · `2ef69d1e` Back Pay (Arrears) · `b7b22514` Entity Transfer ·
+`4a1abc4a` Entitlement Decimal Precision. All four marked deployed; **`building` and `approved` are now
+BOTH ZERO.**
+
+**EVERY ONE OF THESE PASSED tsc, its own targeted suite, and `next build` BEFORE it was caught.** This is
+the round's whole lesson — a green build says the code runs, not that it is right:
+
+1. **Entity Transfer silently corrupted two STATUTORY forms.** Until this item an employment belonged to
+   one company for life, so "this employment's year" and "this employer's year" were the same set of rows
+   and every annual read conflated them safely. The moment a transfer could move `employment.company_id`:
+   the **EA form** summed every payslip in the year and printed the CURRENT company as employer (A→B in
+   July ⇒ ONE form, on B's letterhead, under B's LHDN employer number, holding six months of A's pay);
+   and **Form E Part A** counted `employment.company_id` while the CP8D rows beneath it join through
+   `payroll_batch` — so a transferred person vanished from the old company's headcount **including for
+   years that closed before the transfer**. The plan had promised "two EA forms needs no code". It was
+   false. Fixed: `eaStatement` takes a `companyId`, `eaCompaniesInYear`/`employeeEaStatements` enumerate
+   the employers a year spans, the EA screen switches between them, and Part A's population now comes
+   from the payslips (company-true by construction) with new hires reading `join_date` — the date someone
+   joined THIS employer — instead of the group-wide `hired_on`.
+2. **A widened guard reached a movement the item never touched.** Adding `joinDate` to
+   `REVERSIBLE_INFO_DATE_FIELDS` was necessary for Entity Transfer and silently made the EXISTING
+   `joinDateChange` roll-back-able for the first time. Now keyed by kind.
+3. **The attendance panel printed a break that was never deducted.** It showed the CONFIGURED break, so a
+   4-hour day with a 1-hour break said "Break deducted: 1h 00m" directly above its own "span 4h, worked
+   4h". The figure is now derived as `span − worked`, so it cannot disagree with the numbers beside it.
+4. **An i18n claim that was true in five languages and false in the sixth.** Flattening two ICU plurals
+   was justified as "two visible fraction digits always select CLDR's `other`". Tamil's rule is
+   `i = 0 or n = 1`, so `1.00` selects `one` and Tamil uses a different word for one day. The obvious
+   correction — put a plain `{d, plural, …}` back — was ALSO wrong: ICU selects on the number formatted
+   with ZERO fraction digits, so English then read "1.00 day remaining". **The category has to be
+   computed at the precision the figure is DISPLAYED in**, which ICU cannot express: `dayPluralCategory`.
+
+**THE TEST THAT GREPS A CATALOG CANNOT SEE ANY OF THIS.** The false Tamil claim shipped with a passing
+test that pattern-matched the message string; rendering it through `createTranslator` failed instantly.
+Assert on rendered output, not on source text.
+
+
+
 ## r167 — 6e9a126e RELEASE THREE (shipped 2026-08-06, main@ea4f3d54, 332 migrations)
 
 `leave_policy`, `benefit_scheme`, `scheme_leave_entitlement` and `employment.benefit_scheme_id` were
