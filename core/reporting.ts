@@ -30,7 +30,12 @@ import {
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { packFor } from '../localization/registry';
 // Rung 5a (ADR-0080 D1): report/EA types come from the pack CONTRACT, never from localization/my.
-import type { EaStatement, ReportDef, ReportResult } from '../localization/country-pack';
+import type {
+  EaStatement,
+  ReportDef,
+  ReportResult,
+  StatutoryFormLink,
+} from '../localization/country-pack';
 import type { ReportData } from '../lib/report-export';
 import { daysInMonth } from './payroll';
 
@@ -61,8 +66,23 @@ export async function listReports(ctx: SessionContext, companyId: string) {
     periodKind: r.periodKind,
     // 956cec85 — where this form is filed and by when, as the pack declares it. Absent for reports that
     // are not themselves a submission, which is how the Statutory Forms screen tells the two apart.
+    // 6babf4f6 added `submission.body`, the shelf key — it rides through here untouched, so a newly
+    // registered form lands in its authority's section with no change to this seam or to the screen.
     submission: r.submission ?? null,
   }));
+}
+
+/**
+ * 6babf4f6 — the pack's non-generatable statutory-form entries (the per-employee EA statement, the
+ * CP22/CP22A worklist). Separate from `listReports` because they have no `generate`: they are places to
+ * go, not tables to produce. Empty for a jurisdiction no pack owns, exactly like `listReports`.
+ */
+export async function listStatutoryLinks(
+  ctx: SessionContext,
+  companyId: string,
+): Promise<StatutoryFormLink[]> {
+  const country = await companyCountry(ctx, companyId);
+  return packFor(country)?.statutoryLinks ?? [];
 }
 
 /**

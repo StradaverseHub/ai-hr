@@ -462,6 +462,14 @@ export const SCREENS: readonly ScreenEntry[] = [
       // 956cec85: the statutory-form directory. Same guard as the rest of the Payroll hub — it exposes
       // which submissions are due and links to their figures, so it is admin-scoped like Reports.
       '/payroll/statutory-forms',
+      // 6babf4f6: ONE generation screen serving every form on the shelf, addressed by report id. Same
+      // scopedAdmin key as the directory it is reached from — it shows per-employee statutory numbers
+      // (name, IC, EPF/SOCSO/tax number and the contribution split), so it is admin-scoped like Reports.
+      // Registered here because test/function-access.test.ts checks reverse completeness: a guarded
+      // page with no matrix column fails the suite rather than silently becoming a screen nobody can
+      // grant or revoke. Its `export` sibling is a route handler, not a guarded page, so it is not
+      // listed (the reverse-completeness check walks page.tsx files).
+      '/payroll/statutory-forms/[formId]',
       '/payroll/setup',
       // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
       // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.
