@@ -4695,8 +4695,7 @@
       },
       "entitlementStep": {
         "gradesCompanyWideBadge": "Applies company-wide",
-        "tablesHint": "Days, service bands and who receives them are set on the Entitlement Tables screen — once for the whole organisation, not once per leave type.",
-        "tablesOpen": "Open Entitlement tables",
+        "tablesHint": "Set this leave type's days, service ranges and who receives them below. Each table takes effect from a date, and an eligibility rule decides who it applies to.",
         "accrualHint": "Processes earned entitlement for a leave year — preview the dry run first, then confirm."
       },
       "noLeaveTypes": "No leave types.",
@@ -4716,7 +4715,7 @@
       "paidLabel": "Paid",
       "addType": "+ Add leave type",
       "addTypeDialogTitle": "Add Leave Type",
-      "typesHelp": "Statutory minimums come from the country pack (EA 1955; bands are <2 / 2–5 / 5+ years of service) and are not configurable. Grants apply the entitlement you <strong>configure</strong> — the statutory minimum is shown as guidance and a figure below it is flagged, not overridden. Days are typed on <strong>Entitlement tables</strong>, where each table is effective-dated and an eligibility rule decides who receives it. Annual leave pro-rates in the hire year; sick and hospitalization grant in full.",
+      "typesHelp": "Statutory minimums come from the country pack (EA 1955; bands are <2 / 2–5 / 5+ years of service) and are not configurable. Grants apply the entitlement you <strong>configure</strong> — the statutory minimum is shown as guidance and a figure below it is flagged, not overridden. Days are typed in each type's <strong>Entitlement</strong> step, where each table is effective-dated and an eligibility rule decides who receives it. Annual leave pro-rates in the hire year; sick and hospitalization grant in full.",
       "yearLabel": "Year",
       "accrualMethodLabel": "Accrual",
       "methodLumpSum": "Lump sum",
@@ -6219,6 +6218,7 @@
       "datedNote": "Both tables and rules carry a start date, and editing one closes the old version rather than overwriting it, so a report for a closed year still reads the figures that were in force back then.",
       "backToEntitlements": "Back to Entitlements",
       "templatesTitle": "Entitlement tables",
+      "templatesTitleForType": "Entitlement tables for {type}",
       "templatesNone": "No entitlement tables yet.",
       "colName": "Name",
       "colLeaveType": "Leave type",

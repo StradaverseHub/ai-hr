@@ -4695,8 +4695,7 @@
       },
       "entitlementStep": {
         "gradesCompanyWideBadge": "Áp dụng toàn công ty",
-        "tablesHint": "Số ngày, các mốc thâm niên và ai được hưởng đều được đặt trên màn hình Bảng định mức phép — một lần cho toàn tổ chức, không phải mỗi loại phép một lần.",
-        "tablesOpen": "Mở Bảng định mức phép",
+        "tablesHint": "Đặt số ngày, các mốc thâm niên và ai được hưởng cho loại phép này ở bên dưới. Mỗi bảng có hiệu lực từ một ngày, và một quy tắc điều kiện quyết định bảng áp dụng cho ai.",
         "accrualHint": "Xử lý định mức đã tích lũy cho một năm nghỉ phép — xem trước bản chạy thử trước, rồi xác nhận."
       },
       "noLeaveTypes": "Không có loại nghỉ phép.",
@@ -4716,7 +4715,7 @@
       "paidLabel": "Có lương",
       "addType": "+ Thêm loại nghỉ phép",
       "addTypeDialogTitle": "Thêm loại nghỉ phép",
-      "typesHelp": "Mức tối thiểu pháp định đến từ gói quốc gia (EA 1955; các bậc là <2 / 2–5 / 5+ năm thâm niên) và không thể cấu hình. Khi cấp phép, áp dụng đúng mức hưởng bạn <strong>cấu hình</strong> — mức tối thiểu pháp định chỉ hiển thị để tham khảo, con số thấp hơn sẽ được cảnh báo chứ không bị thay thế. Số ngày được nhập trên <strong>Bảng định mức phép</strong>, nơi mỗi bảng có ngày hiệu lực riêng và một quy tắc điều kiện quyết định ai được hưởng. Phép năm được tính theo tỷ lệ trong năm tuyển dụng; nghỉ ốm và nghỉ nằm viện được cấp đầy đủ.",
+      "typesHelp": "Mức tối thiểu pháp định đến từ gói quốc gia (EA 1955; các bậc là <2 / 2–5 / 5+ năm thâm niên) và không thể cấu hình. Khi cấp phép, áp dụng đúng mức hưởng bạn <strong>cấu hình</strong> — mức tối thiểu pháp định chỉ hiển thị để tham khảo, con số thấp hơn sẽ được cảnh báo chứ không bị thay thế. Số ngày được nhập ngay trong bước <strong>Định mức</strong> của từng loại phép, nơi mỗi bảng có ngày hiệu lực riêng và một quy tắc điều kiện quyết định ai được hưởng. Phép năm được tính theo tỷ lệ trong năm tuyển dụng; nghỉ ốm và nghỉ nằm viện được cấp đầy đủ.",
       "yearLabel": "Năm",
       "accrualMethodLabel": "Tích lũy",
       "methodLumpSum": "Trọn gói",
@@ -6219,6 +6218,7 @@
       "datedNote": "Cả bảng lẫn quy tắc đều có ngày bắt đầu, và việc chỉnh sửa sẽ đóng phiên bản cũ thay vì ghi đè, nên báo cáo của một năm đã khép lại vẫn đọc đúng các con số có hiệu lực khi đó.",
       "backToEntitlements": "Quay lại Định mức phép",
       "templatesTitle": "Bảng định mức phép",
+      "templatesTitleForType": "Bảng định mức phép cho {type}",
       "templatesNone": "Chưa có bảng định mức nào.",
       "colName": "Tên",
       "colLeaveType": "Loại phép",

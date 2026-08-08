@@ -4695,8 +4695,7 @@
       },
       "entitlementStep": {
         "gradesCompanyWideBadge": "Terpakai seluruh syarikat",
-        "tablesHint": "Bilangan hari, julat tempoh perkhidmatan dan siapa yang menerimanya ditetapkan pada skrin Jadual Kelayakan — sekali untuk seluruh organisasi, bukan sekali bagi setiap jenis cuti.",
-        "tablesOpen": "Buka Jadual kelayakan",
+        "tablesHint": "Tetapkan bilangan hari, julat tempoh perkhidmatan dan siapa yang menerimanya bagi jenis cuti ini di bawah. Setiap jadual berkuat kuasa dari satu tarikh, dan peraturan kelayakan menentukan siapa yang terpakai.",
         "accrualHint": "Memproses hak cuti terkumpul bagi satu tahun cuti — pratonton larian percubaan dahulu, kemudian sahkan."
       },
       "noLeaveTypes": "Tiada jenis cuti.",
@@ -4716,7 +4715,7 @@
       "paidLabel": "Berbayar",
       "addType": "+ Tambah jenis cuti",
       "addTypeDialogTitle": "Tambah Jenis Cuti",
-      "typesHelp": "Minimum berkanun datang daripada pek negara (EA 1955; jalur ialah <2 / 2–5 / 5+ tahun perkhidmatan) dan tidak boleh dikonfigurasikan. Pemberian menggunakan kelayakan yang <strong>anda konfigurasikan</strong> — minimum berkanun dipaparkan sebagai panduan dan angka di bawahnya ditandakan, bukan diganti. Bilangan hari ditaip pada <strong>Jadual kelayakan</strong>, di mana setiap jadual berkuat kuasa tarikh dan peraturan kelayakan menentukan siapa yang menerimanya. Cuti tahunan diprorata pada tahun ambil; cuti sakit dan hospitalisasi diberi sepenuhnya.",
+      "typesHelp": "Minimum berkanun datang daripada pek negara (EA 1955; jalur ialah <2 / 2–5 / 5+ tahun perkhidmatan) dan tidak boleh dikonfigurasikan. Pemberian menggunakan kelayakan yang <strong>anda konfigurasikan</strong> — minimum berkanun dipaparkan sebagai panduan dan angka di bawahnya ditandakan, bukan diganti. Bilangan hari ditaip dalam langkah <strong>Kelayakan</strong> setiap jenis cuti, di mana setiap jadual berkuat kuasa tarikh dan peraturan kelayakan menentukan siapa yang menerimanya. Cuti tahunan diprorata pada tahun ambil; cuti sakit dan hospitalisasi diberi sepenuhnya.",
       "yearLabel": "Tahun",
       "accrualMethodLabel": "Pengumpulan",
       "methodLumpSum": "Sekali gus",
@@ -6219,6 +6218,7 @@
       "datedNote": "Kedua-dua jadual dan peraturan mempunyai tarikh mula, dan menyuntingnya akan menutup versi lama dan bukan menimpanya, jadi laporan bagi tahun yang telah ditutup masih membaca angka yang berkuat kuasa pada masa itu.",
       "backToEntitlements": "Kembali ke Kelayakan",
       "templatesTitle": "Jadual kelayakan",
+      "templatesTitleForType": "Jadual kelayakan untuk {type}",
       "templatesNone": "Belum ada jadual kelayakan.",
       "colName": "Nama",
       "colLeaveType": "Jenis cuti",

@@ -4695,8 +4695,7 @@
       },
       "entitlementStep": {
         "gradesCompanyWideBadge": "适用于全公司",
-        "tablesHint": "天数、服务年资分段以及由谁享有，均在「额度表」页面设置 — 面向整个组织统一配置，而非按假期类型分别配置。",
-        "tablesOpen": "打开额度表",
+        "tablesHint": "在下方设置本假期类型的天数、服务年资分段以及由谁享有。每张表按生效日期启用，并由适用规则决定适用对象。",
         "accrualHint": "处理某个假期年度的已赚取额度 — 先预览试运行结果，再确认执行。"
       },
       "noLeaveTypes": "无休假类型。",
@@ -4716,7 +4715,7 @@
       "paidLabel": "带薪",
       "addType": "+ 添加休假类型",
       "addTypeDialogTitle": "添加休假类型",
-      "typesHelp": "法定最低标准来自国家包（EA 1955；档位为服务年限 <2 / 2–5 / 5+ 年），不可配置。授予采用您<strong>所配置</strong>的应享天数——法定最低标准仅作提示，低于它的数字会被标示，而不会被覆盖。天数在<strong>额度表</strong>页面录入，每张表按生效日期处理，并由适用规则决定由谁享有。年假在入职当年按比例计算；病假和住院假全额授予。",
+      "typesHelp": "法定最低标准来自国家包（EA 1955；档位为服务年限 <2 / 2–5 / 5+ 年），不可配置。授予采用您<strong>所配置</strong>的应享天数——法定最低标准仅作提示，低于它的数字会被标示，而不会被覆盖。天数在每个假期类型的<strong>额度</strong>步骤中录入，每张表按生效日期处理，并由适用规则决定由谁享有。年假在入职当年按比例计算；病假和住院假全额授予。",
       "yearLabel": "年度",
       "accrualMethodLabel": "累积方式",
       "methodLumpSum": "一次性",
@@ -6219,6 +6218,7 @@
       "datedNote": "额度表与规则都带有生效日期，编辑会关闭旧版本而不是覆盖它，因此已结束年度的报表仍会读取当时生效的数字。",
       "backToEntitlements": "返回额度设置",
       "templatesTitle": "额度表",
+      "templatesTitleForType": "{type} 额度表",
       "templatesNone": "尚无额度表。",
       "colName": "名称",
       "colLeaveType": "假期类型",
