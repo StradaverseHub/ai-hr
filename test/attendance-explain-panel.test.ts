@@ -222,6 +222,26 @@ const MATRIX: { why: string; t: AttendanceTraceV1 }[] = [
     }),
   },
   {
+    // cf21e554 stage 2 — the shift's own clock-time Overtime Schedule decided the figure. The panel must
+    // NAME that basis and print one line per window: "which window paid, and which one its own minimum
+    // zeroed" is indistinguishable from the total alone.
+    why: 'the shift’s own overtime windows produced the figure, one of them zeroed by its minimum',
+    t: trace({
+      overtime: ot({
+        basis: 'shiftWindows',
+        rawMinutes: 90,
+        minutes: 90,
+        earlyMinutes: 60,
+        earlyIncluded: false,
+        shiftOtWindows: [
+          { label: 'Before', rawMinutes: 20, minutes: 0 },
+          { label: 'Evening', rawMinutes: 120, minutes: 90 },
+        ],
+        split: split({ ot15: 90 }),
+      }),
+    }),
+  },
+  {
     why: 'an OPEN day — clocked in, not yet out: lateness is knowable, overtime is not',
     t: trace({ punch: { inAbs: 545, outAbs: null, spanMinutes: null, workedMinutes: null }, lateness: late(5, false) }),
   },

@@ -21,6 +21,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { checkIn, checkOut } from '../core/attendance';
 import { createAttendanceRule } from '../core/attendance-rule';
@@ -211,5 +212,136 @@ describe('b7b886e2 — a day with no assigned shift is unchanged (company-policy
     await checkIn(a, { employmentId: emp2, date: WED, time: '10:00:00' });
     const out2 = await checkOut(a, { employmentId: emp2, date: WED, time: '19:00:00' });
     expect(out2).toMatchObject({ workedMinutes: 480, otMinutes: 0 }); // legacy: duration, not window
+  });
+});
+
+// ── cf21e554 stage 1 — paid breaks, normal-hours rounding, and the per-shift half-day cut-off ─────────
+
+describe('cf21e554 — a PAID break is not deducted from the shift’s hours', () => {
+  /**
+   * THE ONE BEHAVIOUR CHANGE ON STORED DATA IN STAGE 1, and it is a no-op today: `paid` is a new optional
+   * key on BreakPeriod and ABSENT MEANS UNPAID, so not one of the 2 production shifts that carry break
+   * windows has it. core/roster.ts now persists break_minutes as Σ of the UNPAID windows.
+   */
+  it('the legacy, untouched shift derives BYTE-IDENTICAL scheduled minutes and worked hours', async () => {
+    // The reporter's shift exactly as it is stored today: one 13:00–14:00 window, no `paid` key anywhere.
+    const s = await reporterShift('LEGACY');
+    const [row] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, s.id));
+    // The stored JSON is unchanged — no `paid` key was invented on the way through the service.
+    expect(row.breakPeriods).toEqual([{ start: '13:00:00', end: '14:00:00' }]);
+    expect(row.breakMinutes).toBe(60); // Σ unpaid == Σ all, because nothing is paid
+    // …and the engine's figures are the ones the b7b886e2 suite above already pins: 09:00→18:00 spans the
+    // break, so 540 − 60 = 480 worked, no overtime.
+    expect(await day(s.id, '09:00:00', '18:00:00')).toMatchObject({ worked: 480, ot: 0 });
+  });
+
+  it('marking the break PAID stops it coming off the hours', async () => {
+    const a = adminCtx(b);
+    const s = await createShift(a, {
+      companyId: b.companyId,
+      name: 'Paid break',
+      code: 'PAIDBRK',
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      breakPeriods: [{ start: '13:00:00', end: '14:00:00', paid: true }],
+      weeklyPattern: [1, 2, 3, 4, 5],
+    });
+    const [row] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, s.id));
+    // break_minutes is Σ of the UNPAID windows — there are none, so it is zero even though a 60-minute
+    // window exists and even though the caller passed breakMinutes: 60.
+    expect(row.breakMinutes).toBe(0);
+    expect(row.breakPeriods).toEqual([{ start: '13:00:00', end: '14:00:00', paid: true }]);
+    // A full 09:00→18:00 day is now 9 paid hours, not 8.
+    expect(await day(s.id, '09:00:00', '18:00:00')).toMatchObject({ worked: 540, ot: 0 });
+  });
+
+  it('mixed paid + unpaid windows: only the unpaid one is deducted', async () => {
+    const a = adminCtx(b);
+    const s = await createShift(a, {
+      companyId: b.companyId,
+      name: 'Mixed breaks',
+      code: 'MIXBRK',
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 0,
+      breakPeriods: [
+        { start: '10:30:00', end: '10:45:00', paid: true }, // paid tea break
+        { start: '13:00:00', end: '14:00:00' }, // unpaid lunch
+      ],
+      weeklyPattern: [1, 2, 3, 4, 5],
+    });
+    const [row] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, s.id));
+    expect(row.breakMinutes).toBe(60);
+    // The clocking spans BOTH windows, but only 60 minutes comes off (b7b886e2 caps the spanned deduction
+    // at the canonical scalar, which is now the unpaid sum).
+    expect(await day(s.id, '09:00:00', '18:00:00')).toMatchObject({ worked: 480 });
+  });
+});
+
+describe('cf21e554 — normal-hours rounding is applied inside netScheduledMinutes', () => {
+  it('rounds the shift’s normal hours DOWN to the configured multiple, in the real engine path', async () => {
+    const a = adminCtx(b);
+    // 09:00–17:50 with a 60-minute break = 470 net minutes. Rounded down to a 15-minute multiple ⇒ 465.
+    // Proved through the DURATION branch (a manual normal-minutes override is absent, so the shift-window
+    // branch owns OT) by asking for SHORT HOURS instead: `underMinutes` is measured against exactly the
+    // same figure, so a shift that rounds has 5 fewer minutes to make up.
+    const rounded = await createShift(a, {
+      companyId: b.companyId,
+      name: 'Rounded',
+      code: 'ROUND15',
+      startTime: '09:00:00',
+      endTime: '17:50:00',
+      breakMinutes: 60,
+      weeklyPattern: [1, 2, 3, 4, 5],
+      normalHoursRoundingMinutes: 15,
+    });
+    const plain = await createShift(a, {
+      companyId: b.companyId,
+      name: 'Unrounded',
+      code: 'ROUND0',
+      startTime: '09:00:00',
+      endTime: '17:50:00',
+      breakMinutes: 60,
+      weeklyPattern: [1, 2, 3, 4, 5],
+    });
+    const under = async (shiftId: string) => {
+      const empId = await makeEmp();
+      await assignDefaultShift(a, { employmentId: empId, shiftId });
+      await checkIn(a, { employmentId: empId, date: WED, time: '09:00:00' });
+      // Out at 16:50 ⇒ span 470, minus the 6h-cliff break 60 ⇒ 410 worked.
+      await checkOut(a, { employmentId: empId, date: WED, time: '16:50:00' });
+      // `underMinutes` is a STORED column (migration 0394), not part of checkOut's return — read it back.
+      const [row] = await owner.db
+        .select({ under: schema.attendance.underMinutes, trace: schema.attendance.calcTrace })
+        .from(schema.attendance)
+        .where(eq(schema.attendance.employmentId, empId));
+      return row;
+    };
+    // 470 normal − 410 worked; and the trace records the very figure the OT threshold used.
+    expect(await under(plain.id)).toMatchObject({ under: 60 });
+    expect((await under(plain.id)).trace).toMatchObject({ schedule: { scheduledMinutes: 470 } });
+    expect(await under(rounded.id)).toMatchObject({ under: 55 }); // 465 normal − 410 worked
+    expect((await under(rounded.id)).trace).toMatchObject({ schedule: { scheduledMinutes: 465 } });
+  });
+});
+
+describe('cf21e554 — the shift’s own half-day clock-out wins over the company setting', () => {
+  it('a shift with half_day_first_out set uses it; a blank shift is unchanged', async () => {
+    const a = adminCtx(b);
+    // Blank shift: the legacy threshold is the shift MIDPOINT, 09:00 + 270 = 13:30. A 14:00 checkout is
+    // therefore NOT a half day today.
+    const blank = await reporterShift('HDBLANK');
+    const empA = await makeEmp();
+    await assignDefaultShift(a, { employmentId: empA, shiftId: blank.id });
+    await checkIn(a, { employmentId: empA, date: WED, time: '09:00:00' });
+    expect((await checkOut(a, { employmentId: empA, date: WED, time: '14:00:00' })).status).not.toBe('half_day');
+
+    // Same clocking on a shift whose own cut-off is 15:00 IS a half day — the per-shift box decided it.
+    const own = await reporterShift('HDOWN', { halfDayFirstOut: '15:00', halfDaySecondIn: '15:30' });
+    const empB = await makeEmp();
+    await assignDefaultShift(a, { employmentId: empB, shiftId: own.id });
+    await checkIn(a, { employmentId: empB, date: WED, time: '09:00:00' });
+    expect((await checkOut(a, { employmentId: empB, date: WED, time: '14:00:00' })).status).toBe('half_day');
   });
 });
