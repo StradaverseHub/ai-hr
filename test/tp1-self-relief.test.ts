@@ -510,8 +510,32 @@ describe('ADR-0050 — TP1 self-relief', () => {
         .where(eq(schema.domainEvent.tenantId, base.tenantId));
       const blob = JSON.stringify(events.map((r) => r.payload));
       expect(blob).toContain('categories'); // the field NAME is logged
-      expect(blob).not.toContain('7654'); // but never the amounts
-      expect(blob).not.toContain('3210');
+
+      // DO NOT SUBSTRING-SEARCH THE BLOB FOR THE AMOUNTS. That is what this test used to do, and it
+      // produced a FALSE RED GATE on 2026-08-09: the tenant-wide payload set contains random UUIDs,
+      // UUIDs are hex, and hex contains every decimal digit — so `companyId` came back as
+      // "907524b4-...-b4c0f7765446", whose tail literally contains "7654". The test file had not been
+      // touched since 2026-07-06 and passed on re-run; the collision is luck, roughly one gate in a
+      // few hundred, and it will recur. Compare LEAF VALUES instead, which a UUID can never equal,
+      // and keep a substring scan only for leaves that are not UUID-shaped so an amount embedded in a
+      // message string ("charged 7654") is still caught.
+      const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const leaves: unknown[] = [];
+      const walk = (v: unknown): void => {
+        if (v === null || v === undefined) return;
+        if (Array.isArray(v)) return v.forEach(walk);
+        if (typeof v === 'object') return Object.values(v as Record<string, unknown>).forEach(walk);
+        leaves.push(v);
+      };
+      events.forEach((r) => walk(r.payload));
+      for (const amount of [7654, 3210]) {
+        expect(leaves, `${amount} logged as a value`).not.toContain(amount);
+        expect(leaves, `${amount} logged as a string`).not.toContain(String(amount));
+        const embedded = leaves.filter(
+          (l) => typeof l === 'string' && !UUID.test(l) && l.includes(String(amount)),
+        );
+        expect(embedded, `${amount} embedded in a logged string`).toEqual([]);
+      }
     });
   });
 });
