@@ -1,7 +1,7 @@
 'use server';
 
 import { requireAdmin } from '@/lib/authz';
-import { ENTITLEMENT_TEMPLATES, fail, okToast } from '@/app/admin/_redirects';
+import { ENTITLEMENT_TEMPLATES, fail, failEntitlements, okEntitlements, okToast } from '@/app/admin/_redirects';
 import { orgCriteriaFromFields, countOrgCriteriaTargets } from '@/core/org-criteria';
 import {
   createEligibilityRule,
@@ -50,12 +50,47 @@ function bandsFrom(fd: FormData): ServiceBand[] {
 }
 
 /**
+ * ee6b7c69 — WHERE THIS SAVE CAME FROM, AND THEREFORE WHERE IT MUST RETURN TO.
+ *
+ * These six actions now serve TWO mounts of the same block: the standalone Entitlement Tables screen and
+ * the Entitlement step of a leave type on /admin/leave/entitlements. The embedded mount posts
+ * `embeddedLeaveTypeId`; the standalone one does not. Without this the item's central promise breaks on
+ * the very first save — HR types a table inside Annual Leave, presses Save, and is redirected onto the
+ * separate screen the whole item exists to stop them needing. The anchor is what puts them back on the
+ * SAME leave type: `LeaveTypeWorkspace` seeds its selection from items[0] and only then reads #type-<id>,
+ * so a return without it lands on the first type alphabetically.
+ *
+ * The value is a leave type id interpolated into a fixed internal path fragment — never a caller-supplied
+ * URL, so there is no redirect a hand-crafted post could open.
+ */
+function returnFor(fd: FormData): string {
+  return String(fd.get('embeddedLeaveTypeId') ?? '').trim();
+}
+
+/** Success: back to the embedded step if that is where the form was, otherwise the standalone screen. */
+function saved(fd: FormData, msg: string): never {
+  const embedded = returnFor(fd);
+  if (embedded) okEntitlements(msg, embedded);
+  okToast(ENTITLEMENT_TEMPLATES, msg);
+}
+
+/** Failure: the same rule. A message about a form the operator can no longer see is not a message. */
+function refused(fd: FormData, e: unknown): never {
+  const embedded = returnFor(fd);
+  if (embedded) failEntitlements(e, embedded);
+  fail(ENTITLEMENT_TEMPLATES, e);
+}
+
+/**
  * Read the criteria the form posted through the SHARED reader.
  *
  * `orgCriteriaFromFields` is the same reader the Leave Adjustments screen and the Notice Board post
  * through. That is the whole point of this item: "Finance + Executive" must select the same people
  * wherever it is typed. A hand-rolled reader here would list the field names itself, and the axis somebody
  * forgot would post fine, resolve to nothing and narrow NOBODY — silently.
+ *
+ * ee6b7c69's `embeddedLeaveTypeId` is invisible to it for the same reason: the reader ASKS for the axes it
+ * knows by name rather than sweeping the FormData, so a field that is not an axis cannot become one.
  */
 function criteriaFrom(fd: FormData) {
   return orgCriteriaFromFields(
@@ -77,9 +112,9 @@ export async function createEntitlementTemplateAction(formData: FormData) {
       validFrom: String(formData.get('validFrom') ?? ''),
     });
   } catch (e) {
-    fail(ENTITLEMENT_TEMPLATES, e);
+    refused(formData, e);
   }
-  okToast(ENTITLEMENT_TEMPLATES, `Saved ${String(formData.get('name') ?? '')}`);
+  saved(formData, `Saved ${String(formData.get('name') ?? '')}`);
 }
 
 /**
@@ -100,9 +135,9 @@ export async function updateEntitlementTemplateAction(formData: FormData) {
       validFrom: String(formData.get('validFrom') ?? ''),
     });
   } catch (e) {
-    fail(ENTITLEMENT_TEMPLATES, e);
+    refused(formData, e);
   }
-  okToast(ENTITLEMENT_TEMPLATES, `Saved ${String(formData.get('name') ?? '')}`);
+  saved(formData, `Saved ${String(formData.get('name') ?? '')}`);
 }
 
 /** Stop a table from a date. There is no delete — see `retireEntitlementTemplate`. */
@@ -114,9 +149,9 @@ export async function retireEntitlementTemplateAction(formData: FormData) {
       validTo: String(formData.get('validTo') ?? ''),
     });
   } catch (e) {
-    fail(ENTITLEMENT_TEMPLATES, e);
+    refused(formData, e);
   }
-  okToast(ENTITLEMENT_TEMPLATES, `Stopped ${String(formData.get('name') ?? '')}`);
+  saved(formData, `Stopped ${String(formData.get('name') ?? '')}`);
 }
 
 export async function createEligibilityRuleAction(formData: FormData) {
@@ -129,9 +164,9 @@ export async function createEligibilityRuleAction(formData: FormData) {
       validFrom: String(formData.get('validFrom') ?? ''),
     });
   } catch (e) {
-    fail(ENTITLEMENT_TEMPLATES, e);
+    refused(formData, e);
   }
-  okToast(ENTITLEMENT_TEMPLATES, `Saved ${String(formData.get('name') ?? '')}`);
+  saved(formData, `Saved ${String(formData.get('name') ?? '')}`);
 }
 
 export async function updateEligibilityRuleAction(formData: FormData) {
@@ -145,9 +180,9 @@ export async function updateEligibilityRuleAction(formData: FormData) {
       validFrom: String(formData.get('validFrom') ?? ''),
     });
   } catch (e) {
-    fail(ENTITLEMENT_TEMPLATES, e);
+    refused(formData, e);
   }
-  okToast(ENTITLEMENT_TEMPLATES, `Saved ${String(formData.get('name') ?? '')}`);
+  saved(formData, `Saved ${String(formData.get('name') ?? '')}`);
 }
 
 export async function retireEligibilityRuleAction(formData: FormData) {
@@ -158,9 +193,9 @@ export async function retireEligibilityRuleAction(formData: FormData) {
       validTo: String(formData.get('validTo') ?? ''),
     });
   } catch (e) {
-    fail(ENTITLEMENT_TEMPLATES, e);
+    refused(formData, e);
   }
-  okToast(ENTITLEMENT_TEMPLATES, `Stopped ${String(formData.get('name') ?? '')}`);
+  saved(formData, `Stopped ${String(formData.get('name') ?? '')}`);
 }
 
 /**

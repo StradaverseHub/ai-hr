@@ -45,7 +45,16 @@ import { validateServiceBands, type ServiceBand } from '../core/leave-compute';
 /** Off `process.cwd()`, not `import.meta.url`: in the jsdom project `import.meta.url` is an http:// URL
  *  and `fileURLToPath` throws on it before a single test runs. Vitest's cwd is the repo root. */
 const read = (rel: string) => readFileSync(resolve(process.cwd(), rel), 'utf8');
-const PAGE = 'app/admin/leave/entitlements/templates/page.tsx';
+/**
+ * ee6b7c69 MOVED THE FORM, NOT THE FIX. The two Cards that were
+ * app/admin/leave/entitlements/templates/page.tsx are now a shared block with two mount points (the
+ * standalone screen and each leave type's Entitlement step), so the source guard at the end of §1 follows
+ * the JSX to where it lives. It is pointed at the block rather than loosened, and the extraction makes it
+ * MORE load-bearing, not less: the embedded mount is conditional (`activeStep === 'entitlement'`), so a
+ * dropped key there would remount-and-re-seed on a step change and misbehave only when Edit is clicked
+ * while already standing on the step — an intermittent version of the same data loss.
+ */
+const PAGE = 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
 
 /** One saved template's bands, in the string shape the page's `toEditable` hands the editor. */
 const SAVED: EditableBand[] = [
@@ -117,9 +126,22 @@ describe('§1 4a1abc4a · clicking Edit is a client-side navigation, and the edi
     expect(daysBox().value, 'this is the wipe: an 18-day table showing an empty box').toBe('');
   });
 
-  it('the real page passes that key — the harness above is not the thing being shipped', () => {
+  it('the real block passes that key — the harness above is not the thing being shipped', () => {
     const page = read(PAGE);
     expect(page).toMatch(/<EntitlementBandsEditor\s+key=\{editingTemplate\?\.lineageId \?\? 'new'\}/);
+  });
+
+  it('…and there is exactly ONE definition of that editor mount, so neither surface can drift', () => {
+    // ee6b7c69: the whole reason the tables were EXTRACTED rather than copied into the Entitlement step.
+    // A second `<EntitlementBandsEditor` in an app/ page would be a second create/edit form writing the
+    // same effective-dated lineage — and the copy without the key would lose tables exactly as the
+    // original did, silently, while both still saved.
+    const mounts = ['app/admin/leave/entitlements/page.tsx', 'app/admin/leave/entitlements/templates/page.tsx'];
+    for (const f of mounts) {
+      expect(read(f), `${f} must mount the shared block, never its own editor`).not.toContain(
+        '<EntitlementBandsEditor',
+      );
+    }
   });
 });
 

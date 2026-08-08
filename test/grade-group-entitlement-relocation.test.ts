@@ -119,7 +119,11 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
     // removed one card; entitlement configuration itself is untouched by design.
     expect(entitlementsCode).toContain('<LeaveTypeWorkspace');
     expect(entitlementsCode).toContain('<LeaveSharedGroupConfig');
-    expect(entitlementsCode).toContain('entitlementTablesLink');
+    // ee6b7c69 renamed this slot, and the rename IS the surface change: `entitlementTablesLink` held a
+    // caption and a link to a separate screen; `entitlementTablesSection` holds the tables themselves,
+    // filtered to the panel's leave type. Updated rather than loosened — the guard's job is to fail if the
+    // Entitlement step loses its entitlement surface, which is exactly as true of the new name.
+    expect(entitlementsCode).toContain('entitlementTablesSection');
     expect(entitlementsCode).toContain('<EarnedAccrualDialog');
   });
 

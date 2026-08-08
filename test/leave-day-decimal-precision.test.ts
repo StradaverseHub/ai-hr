@@ -261,7 +261,11 @@ describe('4a1abc4a · ONE formatter, and it stays one', () => {
     '/components/leave-type-panel.tsx',
     '/app/leave/employee-balances/page.tsx',
     '/app/leave/employee-balances/export/route.ts',
-    '/app/admin/leave/entitlements/templates/page.tsx',
+    // ee6b7c69 — the Entitlement Tables' day cells moved OUT of templates/page.tsx into the shared block
+    // that page and each leave type's Entitlement step both mount. Repointed rather than dropped: this is
+    // where the day figures are TYPED, so it is the one surface where the summary line and the editor cell
+    // beside it must agree digit for digit, and it now renders on two screens instead of one.
+    '/app/admin/leave/entitlements/templates/entitlement-tables-block.tsx',
     '/components/leave/adjustment-form.tsx',
     '/app/leave/employee-records/page.tsx',
     '/app/leave/employee-records/export/route.ts',

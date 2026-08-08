@@ -1540,7 +1540,7 @@ export function LeaveTypePanel({
   typeRules,
   halfDaySection,
   accrualSection,
-  entitlementTablesLink,
+  entitlementTablesSection,
   updateTypeAction,
   archiveTypeAction,
   deleteTypeAction,
@@ -1684,12 +1684,14 @@ export function LeaveTypePanel({
    *  Server-composed slot (page-level data prep, one shared node). 6e9a126e release three: it is also the
    *  only WORKING control left in the Entitlement step, which is why the step still exists. */
   accrualSection?: ReactNode;
-  /** 6e9a126e release three: the pointer to Entitlement Tables (/admin/leave/entitlements/templates),
-   *  where a type's days and service bands are now typed and where eligibility rules decide who receives
-   *  them. Composed on the server for the same reason halfDaySection is — one node, shared by every panel
-   *  — and passed as a slot so this client component needs no router import. Without it the Entitlement
-   *  step is a dead end: every configuration surface that used to live here has moved to that screen. */
-  entitlementTablesLink?: ReactNode;
+  /** ee6b7c69: THIS TYPE'S Entitlement Tables and eligibility rules — the day figures, the service ranges
+   *  and who receives them — server-composed and filtered to this panel. It replaces the release-three
+   *  `entitlementTablesLink` slot, which held a caption and a link to /admin/leave/entitlements/templates;
+   *  the reporter's whole point was that a step called Entitlement should contain entitlement. Unlike
+   *  halfDaySection / accrualSection this is NOT one node shared by every panel — the leave-type filter is
+   *  the item — but the READS behind it are still one page-level load, sliced in memory. The standalone
+   *  screen still exists and is still linked from the page header for a side-by-side view of all types. */
+  entitlementTablesSection?: ReactNode;
   updateTypeAction: Action;
   archiveTypeAction: Action;
   deleteTypeAction: Action;
@@ -2262,25 +2264,28 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryEntitlement')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-entitlement-${id}`} className="space-y-3">
-          {/* 6e9a126e RELEASE THREE — THE ENTITLEMENT STEP NO LONGER CONFIGURES ENTITLEMENT, and has no
-              sub-flow left to walk. It ran two sub-steps: Benefit Schemes (the scheme workbench plus this
-              type's per-scheme day table) and Service Based Entitlements (the company x scheme matrix, the
-              effective-dated per-company/grade policy timeline with its add / edit / remove forms, and the
-              Preview Scenario checker). Every one of them wrote `benefit_scheme`,
-              `scheme_leave_entitlement` or `leave_policy`, the three tables this release removes.
-              NOTHING WAS MOVED IN HERE TO REPLACE THEM, deliberately: a type's days, its service bands and
-              the rule deciding who receives them are typed ONCE on Entitlement Tables for the whole
-              tenant, instead of a private copy per leave type — which is the duplication the reporter
-              asked to end. The link below is that pointer; without it this step is a dead end for anyone
-              who came here to set a number. Run Earned Accrual stays because it PROCESSES entitlement
-              rather than defining it, and this is still its only mount (962077a8 cleared the page header
-              and test/entitlement-header-actions-removal.test.ts guards that it stays cleared). */}
+          {/* ee6b7c69 — THE ENTITLEMENT STEP CONFIGURES ENTITLEMENT AGAIN.
+              6e9a126e release three emptied it: the Benefit Schemes workbench and the Service Based
+              Entitlements sub-steps all wrote `benefit_scheme` / `scheme_leave_entitlement` /
+              `leave_policy`, the three tables that release dropped, and what replaced them — a named day
+              table plus an eligibility rule — was typed once for the whole tenant on a SEPARATE screen.
+              What was left here was a caption and an "Open Entitlement tables" link. The reporter's
+              complaint was precisely that, and it was right: a step called Entitlement that contains no
+              entitlement setting is a signpost, not a step.
+              The slot below now holds the tables THEMSELVES, filtered to this leave type and rendered from
+              the SAME definition the standalone screen renders — one component, two mount points, so the
+              two surfaces cannot drift. Nothing is duplicated by doing so: it is still one table per
+              lineage in one place in the database, and the standalone screen (linked from the page header)
+              still shows every type side by side.
+              Run Earned Accrual stays below it because it PROCESSES entitlement rather than defining it,
+              and this is still its only mount (962077a8 cleared the page header and
+              test/entitlement-header-actions-removal.test.ts guards that it stays cleared). */}
           {/* Each server-composed slot is the SOLE child of a wrapper this component creates — the
               `halfDaySection` pattern in the Condition step, and not decoration. Two slot elements sitting
               side by side as CardContent's children put two page-created, key-less elements in one child
               array, which React's dev build reports as "Each child in a list should have a unique key"
               (seen in the dev console before this wrapper was added). */}
-          <div className="mb-3">{entitlementTablesLink}</div>
+          <div className="mb-3">{entitlementTablesSection}</div>
           <div>{accrualSection}</div>
             </CardContent>
           </Card>

@@ -31,6 +31,14 @@ import { HalfDayCompanyPicker } from '@/components/leave/half-day-company-picker
 import { LeaveTypePanel, type LeaveEligibilityRule } from '@/components/leave-type-panel';
 import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
 import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
+// ee6b7c69 — the Entitlement Tables + Employee Eligibility block, defined once beside the standalone screen
+// it also serves and mounted here filtered to each panel's own leave type. Reads are loaded ONCE below and
+// sliced in memory: this page composes a panel for every leave type, so a block that read for itself would
+// cost eleven queries per type.
+import {
+  EntitlementTablesBlock,
+  loadEntitlementTablesData,
+} from './templates/entitlement-tables-block';
 import {
   archiveLeaveTypeAction,
   setLeaveHalfDayFullDeductionCompaniesAction,
@@ -104,12 +112,15 @@ import {
 export default async function LeaveEntitlementsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  // ee6b7c69 — `editTemplate` / `editRule` are the embedded Entitlement Tables' edit state. Kept as SEARCH
+  // PARAMS rather than moved into client state: they already work, they survive a reload, and they are the
+  // same two params the standalone screen uses, so the one block reads one contract on both mounts.
+  searchParams: Promise<{ error?: string; editTemplate?: string; editRule?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   // f12d77e5 — the `admin.benefitScheme` translator that headed the Grade Groups card went with the card.
-  const { error } = await searchParams;
+  const { error, editTemplate, editRule } = await searchParams;
   const [types, companies, grades, sharedGroups, profileOptionsActive] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
@@ -279,20 +290,34 @@ export default async function LeaveEntitlementsPage({
 
   // ── Entitlement-step slots ───────────────────────────────────────────────────────────────────────
   // 6e9a126e release three: `previewScenarioSection` is gone with LeaveRulePreviewDialog (see the data-prep
-  // note above). What the step mounts now is the pointer to Entitlement Tables plus Run Accrual — one
-  // shared node each, composed here on the server and handed to every panel as a slot (no N+1 per type).
+  // note above). What the step mounts now is the Entitlement Tables themselves plus Run Accrual — one
+  // shared node each, composed here on the server and handed to every panel as a slot.
   //
-  // THE POINTER IS NOT DECORATION. Every configuration control the Entitlement step used to carry has moved
-  // to that screen, so a step with only Run Accrual in it would read as "entitlement is not configured
-  // here any more" without saying where it IS. The same two links sit in the PageHeader; repeating one
-  // inside the step is deliberate — the step is where someone looking for the setting will arrive.
-  const entitlementTablesLink = (
+  // ⚠️ ee6b7c69 — THE POINTER BECAME THE THING IT POINTED AT. Until this item the step held a caption and
+  // an "Open Entitlement tables" link to a second screen, because release three had moved every entitlement
+  // control off this page. The reporter's complaint was exactly that: entitlement is not set where
+  // entitlement is configured. So the tables are now IN the step, filtered to the type being configured,
+  // and the link is gone with the `entitlementStep.tablesOpen` key that labelled it. The standalone screen
+  // survives and is still linked from this page's header — it is the only place all 24 types can be read
+  // side by side — but it is no longer where day-to-day configuration happens.
+  //
+  // ⚠️ ELEVEN READS, ONCE, FOR THE WHOLE PAGE. `loadEntitlementTablesData` is called here and its result
+  // is SLICED per type inside the block. `panels` below composes an entry for every leave type (they are
+  // props of a client workspace, so all of them render), and a block that loaded for itself would turn
+  // eleven queries into eleven times the number of leave types — 264 on this tenant, for a screen showing
+  // one type's tables.
+  const entitlementTablesData = await loadEntitlementTablesData(s);
+  /** The step's own Entitlement Tables, scoped to one type. Per type — the ONE thing on this page that
+   *  legitimately cannot be a single shared node, because the filter IS the item. */
+  const entitlementTablesSectionFor = (leaveTypeId: string) => (
     <div className="space-y-1.5">
-      <span className="text-xs font-medium text-muted-foreground">{t('entitlementTablesAction')}</span>
       <p className="text-xs text-muted-foreground">{t('entitlementStep.tablesHint')}</p>
-      <Link href="/admin/leave/entitlements/templates" className="inline-block text-sm underline">
-        {t('entitlementStep.tablesOpen')}
-      </Link>
+      <EntitlementTablesBlock
+        data={entitlementTablesData}
+        leaveTypeId={leaveTypeId}
+        editTemplate={editTemplate}
+        editRule={editRule}
+      />
     </div>
   );
   const accrualSection = (
@@ -511,7 +536,7 @@ export default async function LeaveEntitlementsPage({
                  existed only for the add-policy form's Employee Selection chips. */
               halfDaySection={halfDaySection}
               accrualSection={accrualSection}
-              entitlementTablesLink={entitlementTablesLink}
+              entitlementTablesSection={entitlementTablesSectionFor(lt.id)}
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}

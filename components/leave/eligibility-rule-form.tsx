@@ -44,6 +44,7 @@ export function EligibilityRuleForm({
   initial,
   today,
   submitLabel,
+  embeddedLeaveTypeId,
 }: {
   action: (formData: FormData) => Promise<void>;
   countAction: (p: { criteria: Record<string, string[] | string>; asOf: string }) => Promise<number>;
@@ -52,6 +53,11 @@ export function EligibilityRuleForm({
   initial?: EligibilityRuleInitial;
   today: string;
   submitLabel: string;
+  /** ee6b7c69 — set only when this form is mounted INSIDE a leave type's Entitlement step. Posted as a
+   *  hidden field so the save returns to that step (with its `#type-<id>` selection intact) rather than
+   *  bouncing HR onto the standalone Entitlement Tables screen the embed exists to make unnecessary. A
+   *  plain string: nothing about this prop crosses the boundary as anything but data. */
+  embeddedLeaveTypeId?: string;
 }) {
   const t = useTranslations('admin.entitlementTemplates');
   const [criteria, setCriteria] = useState<Record<string, string[] | string>>(initial?.criteria ?? {});
@@ -88,6 +94,9 @@ export function EligibilityRuleForm({
 
   return (
     <form action={action} className="space-y-4">
+      {embeddedLeaveTypeId ? (
+        <input type="hidden" name="embeddedLeaveTypeId" value={embeddedLeaveTypeId} />
+      ) : null}
       {initial?.lineageId ? <input type="hidden" name="lineageId" value={initial.lineageId} /> : null}
 
       <div className="grid gap-3 sm:grid-cols-3">

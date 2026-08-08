@@ -61,3 +61,19 @@ export function okEntitlements(msg: string, leaveTypeId: string): never {
   revalidatePath(ENTITLEMENTS);
   redirect(`${ENTITLEMENTS}?toast=${encodeURIComponent(msg)}${leaveTypeId ? `#type-${leaveTypeId}` : ''}`);
 }
+
+/**
+ * ee6b7c69 — okEntitlements' failure twin, and it exists for the same reason.
+ *
+ * The Entitlement Tables are now typed INSIDE a leave type's Entitlement step as well as on the standalone
+ * screen. A save from the embedded mount that failed had to be able to report the failure where the form
+ * is: `fail(ENTITLEMENT_TEMPLATES, e)` would have thrown HR onto the standalone screen — the screen the
+ * embed exists so they need not visit — with a message about a form they can no longer see. The anchor
+ * rides AFTER the query for the same reason it does in okEntitlements: ErrorBanner reads ?error=, and the
+ * workspace reads #type-. An empty id degrades to the bare route rather than emitting a stray '#type-'.
+ */
+export function failEntitlements(e: unknown, leaveTypeId: string): never {
+  redirect(
+    `${ENTITLEMENTS}?error=${encodeURIComponent((e as Error).message)}${leaveTypeId ? `#type-${leaveTypeId}` : ''}`,
+  );
+}
