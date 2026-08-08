@@ -4,6 +4,54 @@ Archive of SHIPPED round entries, newest first. The living handoff is `../HANDOF
 current state and the entry for any round still in flight; when a round ships, its entry moves to the
 top of this file.
 
+## r174 round 2 — 1fff489c locations, solo against the settled tree (shipped 2026-08-09, main@4342a51c, 341 migrations)
+
+`1fff489c` Locations / clocking geofencing / branch-based assignment, both phases, migrations `0419`
+and `0420`. Held back from round 1 on purpose: it touches `core/attendance.ts`, `app/admin/actions.ts`
+and the personnel page, all three of which round 1 changed, so it ran SOLO and LAST.
+
+**THE SAME DEFECT SHIPPED TWICE IN ONE ROUND, IN DIFFERENT FILES.** The "Add a clocking point" link
+pre-selects a location via `?addPoint=`, but the create form's `<select>` is UNCONTROLLED
+(`defaultValue`, no `value`) and the link is a next/link SOFT navigation to the same route — so React
+reuses the form at the same tree position and never re-applies `defaultValue`. It worked only after a
+hard reload. This is exactly `ee6b7c69`'s entitlement-bands-editor defect (`4a1abc4a`) in another
+guise. The verifier proved it against react-dom's own update path and found that EVERY other
+searchParams-driven form in the repo already carries a `key` (`/admin/attendance`,
+`pay-components/new`, `payroll-cycle`, `claims`) — this was the only one missing the convention.
+**A soft-navigated form whose fields are uncontrolled needs `key={param ?? 'new'}`. Treat that as the
+house rule, not as a fix for two specific screens.**
+
+**Decisions.**
+
+- **A raw drizzle error was reaching the admin's error banner** — `Failed query: update "location" set
+  "code" = $1 ... params: TWO,Two,MY,,BUKIT JALIL,...`, i.e. SQL and parameter values shown to a user.
+  Pre-existing behaviour for a duplicate Code, but the new Branch dropdown made it far likelier. Closed
+  with a constraint-name-specific 23505 catch following `shiftUniqueError`. **The recovery read that
+  resolves the conflicting location's code runs in a SECOND transaction and is now wrapped** — if it
+  threw, the raw error replaced the typed one and re-opened the very defect the catch exists to close.
+- **`resolveGeofence` was genuinely rewritten, not column-moved.** "Pass if ANY assigned active site
+  has distance <= its own effective radius", nearest computed only for the error payload. The old rule
+  compared one employee radius against the nearest site, so a 400 m site with a 500 m radius failed
+  whenever a 300 m site with a 100 m radius was nearer. Effective radius = employment override ?? the
+  site's own; a site with neither fails closed. `employment_geofence_radius_required` is dropped so the
+  override may be blank while geofencing is on.
+- **A test that did not test what its name claimed.** "a duplicate CODE is the OTHER constraint, told
+  apart by name" set no branch, so the `n.branch &&` guard short-circuited before the constraint name
+  was consulted — it would have passed with the regex deleted. Replaced with the case where both arms
+  are live. **Watched-fail verified.** A second test written during the same fix claimed to race the
+  recovery-read window and did not; it was deleted and the gap recorded rather than faked, because that
+  path is not producible from the public surface (archiving the holder frees the branch, so no 23505).
+- **NOT BUILT, as the plan told the reporter:** phase 3's map pin picker (no tile provider on the box),
+  the Wi-Fi SSID/BSSID whitelist (no browser exposes SSID to page JavaScript, so the control would
+  enforce nothing) and device-type restriction (`clock_method` is only web and import).
+
+**A LATENT FLAKE COST ONE GATE AND IS NOW FIXED.** `test/tp1-self-relief.test.ts` asserted the PDPA
+guarantee by substring-searching a blob of EVERY tenant event for the amount `7654`. Payloads carry
+random UUIDs, UUIDs are hex, hex contains every decimal digit — `companyId` came back as
+`907524b4-...-b4c0f7765446`. The file was untouched since 2026-07-06 and passed 3/3 on re-run. Now
+compares leaf VALUES, with a substring scan kept only for non-UUID-shaped leaves. Watched-fail
+verified: leaking `categories` into the payload fails exactly that test.
+
 ## r174 round 1 — seven items, eight agents, one gate failure nobody could have caught (shipped 2026-08-09, main@8168e648, 339 migrations)
 
 `c8052ae3` leave recalc window + balance archive (migration `0416`) · `ee6b7c69` entitlement tables

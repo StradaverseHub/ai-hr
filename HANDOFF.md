@@ -18,25 +18,22 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-09 (r174 round 1 SHIPPED — 7 of 8; round 2 IN FLIGHT)
+## CURRENT STATE — snapshot 2026-08-09 (r174 SHIPPED IN FULL — all 8 approved items deployed)
 
-**`main@8168e648` is what runs. Production on 339 migrations. Next free migration number is `0421`**
-(`0416` the leave-ledger reset archive, `0417` shift general fields, `0418` `shift_ot_window`;
-**`0419` and `0420` are ALLOCATED to the in-flight locations round — do not reuse them**). No
-half-applied migration. Verified after deploy: **339 migrations, watermark 1781862518000**,
-`leave_ledger_reset_archive` and `shift_ot_window` both present, 5/5 new `shift` columns, service
-`active`, `GET /` 401, and a dry-run rsync whose only line is the **gitignored, Next-generated**
-`next-env.d.ts` (local `pnpm dev` writes `.next/dev/types/`, the box's build writes `.next/types/` —
-the box's version is the correct one; do not "fix" it). Gate: **606 files / 7,504 tests** green across
-all 3 chunks; `next build` clean; shadow 336→339 PASS.
+**`main@4342a51c` is what runs. Production on 341 migrations. Next free migration number is `0421`.**
+`0416` leave-ledger reset archive · `0417` shift general fields · `0418` `shift_ot_window` ·
+`0419` clocking-location radius + location link · `0420` `location.branch`. No half-applied migration,
+no pending deploy, nothing in flight. Verified after deploy: **341 migrations, watermark
+1781862520000**, `leave_ledger_reset_archive` + `shift_ot_window` present, 5/5 new `shift` columns,
+`clocking_location.radius_m` + `location_id` present, `location.branch` present,
+`employment_geofence_radius_required` CHECK dropped, service `active`, `GET /` 401. Gate:
+**607 files / 7,541 tests** green across all 3 chunks; `next build` clean; shadow 339→341 PASS.
+Render-checked on a dev server across **all six locales** — zero MISSING_MESSAGE, ICU, RSC or
+duplicate-key errors.
 
-⚠️ **ROUND 2 IS IN FLIGHT AND UNMERGED: `1fff489c` (Locations / clocking geofencing / branch
-assignment) on `build/r174h-locations` in worktree `r108`.** It is the only item still `approved` on
-the board. It runs SOLO because it touches three files round 1 changed — `core/attendance.ts`
-(`resolveGeofence`, vs the shift item's `netScheduledMinutes` + `shift_ot_window` read),
-`app/admin/actions.ts` (vs the replacement-leave redirects) and
-`app/admin/personnel/[employmentId]/page.tsx` (vs the movement `showCorrected` param). If that branch
-is unmerged when you read this, it is NOT shipped — check `git rev-list --count main..build/r174h-locations`.
+**THE BOARD IS EMPTY OF APPROVED WORK: `approved = 0`, `contested = 0`, `open = 1`** (`b00f9e6e`, the
+Overtime 2.0/3.0 question we raised). Re-count rather than trusting this line — it said `approved = 0`
+on 2026-08-08 and eight items were approved the next morning.
 
 **2026-08-09, OUTSIDE any release: `capture-usage` was added to the production crontab** (daily 01:00)
 and run once by hand — 9 rows, 0 failures. Pre-change crontab saved at
@@ -48,13 +45,16 @@ and it REFUSES on any of: debits, request-sourced rows, approved requests, `toil
 encashment snapshots, or a row count ≠ 147. `deploy.sh` does NOT invoke it (verified: it runs only
 `seed-catalogs`, `backfill-plan-history`, `backfill-country-modules`). Run report-only first, read the
 census, then `--apply`. **The archive→verify→delete sequence has never been exercised end to end** —
-only the individual SQL shapes are covered by tests.
+only the individual SQL shapes are covered by tests. This is the last unfinished part of `c8052ae3`:
+the reporter was promised both leave types would read 0.00, and until this runs they do not.
 
 ⚠️ **`HANDOFF.md` IS ITSELF RSYNCED TO THE BOX, so editing it makes the dry-run report exactly one
-changed file — which looks identical to an undeployed release.** If the next dry-run's ONLY line is
-`<f.st.... HANDOFF.md`, that is this doc edit, not pending code. Anything else is a real delta.
+changed file — which looks identical to an undeployed release.** The dry-run also permanently reports
+`next-env.d.ts`: it is **gitignored and Next-generated**, and local `pnpm dev` writes the
+`.next/dev/types/` variant while the box's build writes `.next/types/`. The box's version is correct —
+do not "fix" it. Those two lines are noise; anything else is a real delta.
 
-### r174 round 1, r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
+### r174, r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
 
 Two things outlive those rounds and are deliberately NOT archived with them:
 
@@ -94,10 +94,10 @@ retyped from the archive into Entitlement Templates + Employee Eligibility. The 
 keeps balances still while that is true — if a recalc ever starts posting non-zero deltas against an
 unconfigured type, that guard has broken and it is the first thing to check.
 
-### The board — counted on production 2026-08-09 after r174 round 1
+### The board — counted on production 2026-08-09 after r174
 
-**`approved = 1` (that is `1fff489c`, BUILDING — see CURRENT STATE) · `open = 1` · `contested = 0`.**
-Seven items moved approved → building → done → deployed this round, each with `buildRef` `8168e648`.
+**`approved = 0` · `contested = 0` · `open = 1`.** All eight items moved approved → building → done →
+deployed this round: seven at `buildRef` `8168e648`, `1fff489c` at `4342a51c`.
 **Re-count rather than trusting this line — it said `approved = 0` on 2026-08-08 and eight items were
 approved the next morning.**
 
