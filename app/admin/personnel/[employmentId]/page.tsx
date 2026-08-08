@@ -3033,7 +3033,8 @@ export default async function EmployeePage({
       {/* 95d17761 — one quiet line under the table. Rolled back, corrected, cancelled and superseded
           entries are OFF the profile by default (nothing is deleted — the ledger and every payroll/EA
           figure built from it are untouched), and Show puts them back exactly as they used to render.
-          `correctedHidden` carries a {count} placeholder, so it is called WITH the argument. */}
+          correctedHidden carries a count placeholder — an ICU contract, so it is called WITH the
+          argument; calling it bare throws at render while the route still returns 200. */}
       {correctedMovementCount > 0 && (
         <div className="border-t border-border px-4 py-2.5 text-sm text-muted-foreground">
           {t('movement.correctedHidden', { count: correctedMovementCount })}{' '}
