@@ -106,7 +106,14 @@ export class OutsideGeofenceError extends Error {
       lng: number;
       nearestLocationId: string | null;
       distanceM: number | null;
-      radiusM: number;
+      /**
+       * The allowed distance the NEAREST site was judged against — the number the refusal message quotes
+       * beside the measured distance. 1fff489c widened this from `number` to `number | null` for exactly
+       * one case: zero assigned sites, where there is no nearest site and therefore no radius to name. It
+       * travels with distanceM: both are null together, and the message only quotes either when they are
+       * not (app/attendance/clock/actions.ts localizeClockError).
+       */
+      radiusM: number | null;
       punch: 'in' | 'out';
     },
   ) {
@@ -131,9 +138,33 @@ type GeofenceCheck =
 /**
  * Resolve the geofence outcome for one punch. When geofencing is OFF, never queries the assignment
  * join or computes a distance (ADR-0070 §8 — keeps the non-enforced hot path lean); stamps raw
- * coordinates only. When ON: loads the employment's active assigned sites, finds the nearest, and
- * either returns the passing match or THROWS OutsideGeofenceError (zero sites or outside every radius
- * — fail-closed). Missing coordinates while enforced THROWS GeolocationRequiredError before any query.
+ * coordinates only. When ON: loads the employment's active assigned sites and either returns the passing
+ * match or THROWS OutsideGeofenceError (zero sites or outside every radius — fail-closed). Missing
+ * coordinates while enforced THROWS GeolocationRequiredError before any query.
+ *
+ * ── 1fff489c: PER-SITE RADII. THIS IS A BEHAVIOUR CHANGE, NOT A COLUMN MOVE. ──────────────────────────
+ *
+ * This function used to pick the NEAREST site and compare it against the ONE radius stored on the
+ * employment. With a radius on each site that is wrong, because the nearest site is no longer necessarily
+ * the deciding one:
+ *
+ *     site A — 300 m away, radius 100 m  → fails
+ *     site B — 400 m away, radius 500 m  → PASSES
+ *
+ * The old logic would have picked A (nearest), compared 300 m against the employee radius, and refused a
+ * punch that site B plainly authorises. The rule is therefore now "pass if ANY assigned active site has
+ * distance ≤ its effective radius", and the nearest is computed ONLY to populate the refusal payload —
+ * "you are 850 m from the nearest approved site" is still the most useful thing to tell somebody who has
+ * been refused, even though nearness no longer decides anything.
+ *
+ * EFFECTIVE RADIUS = employment.geofence_radius_m when set (an optional per-EMPLOYEE override that
+ * replaces every site's own figure for this person), otherwise the site's own radius_m. A site with
+ * NEITHER cannot be matched — it has no allowed distance, so there is no distance it can be inside of, and
+ * fail-closed is the only safe reading. Every production site has a radius (the admin form requires one);
+ * this only bites a row written before migration 0419, of which there are none.
+ *
+ * The MATCH is the closest PASSING site, not merely the first one found — with two gates in range the row
+ * should record the one the employee actually stood at.
  */
 async function resolveGeofence(
   tx: Tx,
@@ -152,21 +183,39 @@ async function resolveGeofence(
   if (p.lat == null || p.lng == null || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
     throw new GeolocationRequiredError();
   }
-  const radiusM = emp!.geofenceRadiusM!; // CHECK constraint guarantees this is set + positive while enabled
+  // The per-employee OVERRIDE. Null is now valid and normal (migration 0419 dropped the CHECK that used to
+  // force a value here) and means "each site uses its own radius".
+  const overrideRadiusM = emp?.geofenceRadiusM ?? null;
 
   const sites = await tx
-    .select({ id: clockingLocation.id, lat: clockingLocation.lat, lng: clockingLocation.lng })
+    .select({
+      id: clockingLocation.id,
+      lat: clockingLocation.lat,
+      lng: clockingLocation.lng,
+      radiusM: clockingLocation.radiusM,
+    })
     .from(employeeClockingLocation)
     .innerJoin(clockingLocation, eq(clockingLocation.id, employeeClockingLocation.clockingLocationId))
     .where(and(eq(employeeClockingLocation.employmentId, p.employmentId), isNull(clockingLocation.archivedAt)));
 
-  let nearest: { id: string; distanceM: number } | null = null;
+  /** The nearest site of ALL of them — for the refusal payload only. */
+  let nearest: { id: string; distanceM: number; radiusM: number | null } | null = null;
+  /** The nearest site that actually PASSES its own effective radius — the decision. */
+  let match: { id: string; distanceM: number; radiusM: number } | null = null;
+
   for (const s of sites) {
-    const d = haversineMetres(p.lat, p.lng, s.lat, s.lng);
-    if (!nearest || d < nearest.distanceM) nearest = { id: s.id, distanceM: d };
+    const distanceM = haversineMetres(p.lat, p.lng, s.lat, s.lng);
+    const effectiveRadiusM = overrideRadiusM ?? s.radiusM;
+    if (!nearest || distanceM < nearest.distanceM) {
+      nearest = { id: s.id, distanceM, radiusM: effectiveRadiusM };
+    }
+    if (effectiveRadiusM == null || distanceM > effectiveRadiusM) continue;
+    if (!match || distanceM < match.distanceM) {
+      match = { id: s.id, distanceM, radiusM: effectiveRadiusM };
+    }
   }
 
-  if (!nearest || nearest.distanceM > radiusM) {
+  if (!match) {
     throw new OutsideGeofenceError({
       employmentId: p.employmentId,
       date: p.date,
@@ -175,7 +224,7 @@ async function resolveGeofence(
       lng: p.lng,
       nearestLocationId: nearest?.id ?? null,
       distanceM: nearest ? Math.round(nearest.distanceM) : null,
-      radiusM,
+      radiusM: nearest?.radiusM ?? null,
       punch: p.punch,
     });
   }
@@ -183,9 +232,9 @@ async function resolveGeofence(
     enforced: true,
     lat: p.lat,
     lng: p.lng,
-    clockingLocationId: nearest.id,
-    distanceM: Math.round(nearest.distanceM),
-    radiusM,
+    clockingLocationId: match.id,
+    distanceM: Math.round(match.distanceM),
+    radiusM: match.radiusM,
   };
 }
 

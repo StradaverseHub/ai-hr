@@ -61,7 +61,11 @@ function parseDeviceToken(formData: FormData): string | undefined {
 async function localizeClockError(e: unknown): Promise<string> {
   const t = await getTranslations('attendance.clock');
   if (e instanceof OutsideGeofenceError) {
-    return e.info.distanceM != null
+    // 1fff489c — radiusM is now nullable and travels WITH distanceM: both are null together, in the one
+    // case where the employee has no assigned site at all and there is no nearest site to quote. Guarding
+    // on both is what keeps the ICU {radius} argument from ever being called with null, which THROWS at
+    // render behind an otherwise-healthy 200.
+    return e.info.distanceM != null && e.info.radiusM != null
       ? t('outsideGeofenceDistance', { distance: e.info.distanceM, radius: e.info.radiusM })
       : t('outsideGeofence');
   }

@@ -5,10 +5,11 @@
  * DomainEvent (substrate discipline). The employee↔location link is assignment.location_id, set through
  * the existing effective-dated transferEmployee path in core/org.ts (no assign function here).
  */
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { company, holidayGroup, location } from '../db/schema';
+import { company, domainEvent, employment, holidayGroup, location } from '../db/schema';
+import { assertProfileValueAllowed } from './profile-options';
 import { validateStateFor } from './state-vocabulary';
 
 /** Resolve a holiday-group (calendar) id to a tenant-scoped group, or null when no calendar is assigned.
@@ -57,6 +58,22 @@ function cleanState(v: string | null | undefined, companyCountry: string | null 
   return validateStateFor(v, [companyCountry]);
 }
 
+/**
+ * 1fff489c — the Branch this location serves, validated against the SAME catalogue employment.org_branch
+ * is validated against: profile_option category 'branch', with the same legacy-value tolerance and the
+ * same empty-catalogue free-text fallback (see assertProfileValueAllowed). One vocabulary, one rule — a
+ * second validator here would be the thing that eventually lets a branch be mapped to a location under a
+ * spelling the Employment tab will not accept, and then the resolver silently matches nobody.
+ *
+ * Null/blank clears the mapping. Runs inside the caller's tx so it shares the RLS session.
+ */
+async function cleanBranch(tx: Tx, v: string | null | undefined, legacy: string | null): Promise<string | null> {
+  const s = (v ?? '').replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  await assertProfileValueAllowed(tx, 'branch', s, legacy);
+  return s;
+}
+
 /** The owning company's country — the vocabulary the state above is judged against. */
 async function companyCountryOf(tx: Tx, companyId: string): Promise<string | null> {
   const [row] = await tx.select({ country: company.country }).from(company).where(eq(company.id, companyId)).limit(1);
@@ -73,6 +90,8 @@ export type CreateLocationInput = {
   // ADR-0067: the named holiday CALENDAR (holiday_group) every employee at this location follows. Null =
   // unmapped → today's resolution (state override → company default → national), byte-identical.
   holidayGroupId?: string | null;
+  // 1fff489c — the Branch (profile_option 'branch') this location serves. Null = not mapped yet.
+  branch?: string | null;
 };
 
 export async function createLocation(ctx: SessionContext, p: CreateLocationInput) {
@@ -85,9 +104,11 @@ export async function createLocation(ctx: SessionContext, p: CreateLocationInput
     // rather than validating against a company the caller cannot see.
     const state = cleanState(p.state, await companyCountryOf(tx, p.companyId));
     const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
+    // No legacy value on a create — an out-of-catalogue branch is refused outright.
+    const branch = await cleanBranch(tx, p.branch, null);
     const [row] = await tx
       .insert(location)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, country, state, holidayGroupId })
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, country, state, holidayGroupId, branch })
       .returning({ id: location.id });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -95,7 +116,7 @@ export async function createLocation(ctx: SessionContext, p: CreateLocationInput
       aggregateId: row.id,
       eventType: 'location.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, code, name, country, state, holidayGroupId },
+      payload: { companyId: p.companyId, code, name, country, state, holidayGroupId, branch },
     });
     return { id: row.id };
   });
@@ -108,6 +129,7 @@ export type UpdateLocationInput = {
   country?: string;
   state?: string | null;
   holidayGroupId?: string | null;
+  branch?: string | null;
 };
 
 export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput) {
@@ -122,6 +144,7 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
         country: location.country,
         state: location.state,
         holidayGroupId: location.holidayGroupId,
+        branch: location.branch,
         // Selected for validation, NOT echoed into the event payload below — `before` is the audit
         // record of what the user changed, and companyId is not one of the editable fields.
         companyId: location.companyId,
@@ -133,9 +156,12 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
     const { companyId, ...beforeAudit } = before;
     const state = cleanState(p.state, await companyCountryOf(tx, companyId));
     const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
+    // Legacy-value tolerance: re-saving a location whose branch was recorded before the catalogue tightened
+    // must never fail on the value it already had — the same rule setEmploymentInfo applies to org_branch.
+    const branch = await cleanBranch(tx, p.branch, before.branch);
     await tx
       .update(location)
-      .set({ code, name, country, state, holidayGroupId })
+      .set({ code, name, country, state, holidayGroupId, branch })
       .where(eq(location.id, p.locationId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -143,7 +169,7 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
       aggregateId: p.locationId,
       eventType: 'location.updated',
       actor: actorOf(ctx),
-      payload: { before: beforeAudit, after: { code, name, country, state, holidayGroupId } },
+      payload: { before: beforeAudit, after: { code, name, country, state, holidayGroupId, branch } },
     });
     return { id: p.locationId };
   });
@@ -191,6 +217,8 @@ export type LocationRow = {
   holidayGroupId: string | null;
   holidayGroupName: string | null;
   holidayGroupArchetype: string | null;
+  // 1fff489c — the mapped Branch (null = not mapped yet, one of the four distinct empty states).
+  branch: string | null;
   archivedAt: Date | null;
   headcount: number;
 };
@@ -219,6 +247,7 @@ export function listLocations(
         holidayGroupId: location.holidayGroupId,
         holidayGroupName: holidayGroup.name,
         holidayGroupArchetype: holidayGroup.archetype,
+        branch: location.branch,
         archivedAt: location.archivedAt,
         headcount: sql<number>`(
           select count(*)::int from assignment a
@@ -243,5 +272,161 @@ export async function locationCompanyId(ctx: SessionContext, locationId: string)
       .where(eq(location.id, locationId))
       .limit(1);
     return row?.companyId ?? null;
+  });
+}
+
+// ── 1fff489c PHASE 2: Branch-driven location assignment ──────────────────────────────────────────────
+
+/** The location a branch resolves to, as the Attendance tab's SUGGESTION needs it. */
+export type ResolvedBranchLocation = { id: string; code: string; name: string; branch: string };
+
+/**
+ * The non-archived location in THIS COMPANY whose branch equals the given value, or null.
+ *
+ * SCOPE IS THE POINT. `profile_option` (where branch values live) is tenant-wide, but `location` is
+ * company-scoped, so "BUKIT JALIL" is one catalogue entry that nine companies may each map to a location
+ * of their own. Resolving tenant-wide would hand an ISEDECOR employee a Chin Hin location. The company
+ * always comes from the employment, never from the caller's form.
+ *
+ * Archived locations are excluded here, not filtered by the caller: an archived location is out of every
+ * assignment dropdown by design, and a suggestion the admin cannot then select is worse than no
+ * suggestion. Comparison is exact — cleanBranch stores the catalogue's own text on both sides.
+ */
+export function resolveLocationForBranch(
+  ctx: SessionContext,
+  companyId: string,
+  branch: string | null | undefined,
+): Promise<ResolvedBranchLocation | null> {
+  const b = (branch ?? '').replace(/\s+/g, ' ').trim();
+  if (!b) return Promise.resolve(null);
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ id: location.id, code: location.code, name: location.name, branch: location.branch })
+      .from(location)
+      .where(
+        and(
+          eq(location.companyId, companyId),
+          eq(location.branch, b),
+          isNull(location.archivedAt),
+        ),
+      )
+      .limit(1);
+    return row?.branch ? { id: row.id, code: row.code, name: row.name, branch: row.branch } : null;
+  });
+}
+
+/** One branch in use by live employees that no live location claims, plus how many people it affects. */
+export type UnmappedBranch = { companyId: string; branch: string; headcount: number };
+
+/**
+ * Every branch that live employees in these companies actually carry but which has NO live location
+ * mapped to it — the admin screen's "fix it once instead of chasing it person by person" count.
+ *
+ * Grouped BY COMPANY for the same reason resolveLocationForBranch is scoped by company: BUKIT JALIL can
+ * be mapped in one company and unmapped in the next, and reporting it tenant-wide would either hide a
+ * real gap or invent one. Terminated employments are excluded — a branch nobody works at any more is not
+ * a configuration gap.
+ */
+export function listUnmappedBranches(ctx: SessionContext, companyIds: string[]): Promise<UnmappedBranch[]> {
+  if (!companyIds.length) return Promise.resolve([]);
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        companyId: employment.companyId,
+        branch: sql<string>`${employment.orgBranch}`,
+        headcount: sql<number>`count(*)::int`,
+      })
+      .from(employment)
+      .where(
+        and(
+          inArray(employment.companyId, companyIds),
+          isNotNull(employment.orgBranch),
+          sql`btrim(${employment.orgBranch}) <> ''`,
+          isNull(employment.terminatedOn),
+          sql`not exists (
+            select 1 from location l
+            where l.company_id = ${employment.companyId}
+              and l.branch = ${employment.orgBranch}
+              and l.archived_at is null
+          )`,
+        ),
+      )
+      .groupBy(employment.companyId, employment.orgBranch)
+      .orderBy(asc(employment.companyId), asc(employment.orgBranch)),
+  );
+}
+
+/** How an employee's work location came to be what it is. Recorded on the event stream, not on a column. */
+export type LocationSource = 'branch_derived' | 'manual';
+
+/**
+ * 1fff489c step 9 — stamp the PROVENANCE of a work-location change.
+ *
+ * The location itself is written by the effective-dated movement path (setLocationAction →
+ * createMovementEvent → setEmploymentAssignment), which is shared by half a dozen callers and deliberately
+ * knows nothing about branches. Rather than thread a provenance flag through that writer — and change the
+ * meaning of `employment.assignment.changed` for every one of them — this appends a small companion event
+ * carrying only the answer to "who decided this": the admin, or the branch mapping.
+ *
+ * No new column, per the plan: the event stream already carries it and core/read.ts can project the split
+ * whenever a report wants it. Called AFTER the movement succeeds, so a rejected movement leaves no claim
+ * about a change that never happened.
+ */
+export function recordLocationSource(
+  ctx: SessionContext,
+  p: { employmentId: string; locationId: string | null; effectiveDate: string; source: LocationSource },
+) {
+  return withTenant(ctx, async (tx) => {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.location.changed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: {
+        employmentId: p.employmentId,
+        locationId: p.locationId,
+        effectiveDate: p.effectiveDate,
+        source: p.source,
+      },
+    });
+    return { employmentId: p.employmentId, source: p.source };
+  });
+}
+
+/**
+ * The date the employee's Branch last changed, as a YYYY-MM-DD string, or null if it never has.
+ *
+ * Read straight off the ledger rather than through movementHistory: the branch lives on
+ * employment.org_branch, a FLAT (non-effective-dated) column whose before/after only exists inside the
+ * `employment.info.updated` payload — movementHistory's row summary does not carry it, and reconstructing
+ * it would mean a movementDetail call per row. This is the one query that answers the question.
+ *
+ * A branch change made through the Movement comparison form carries the movement's own effective date in
+ * the payload; a plain Employment-tab save does not (flat columns apply immediately), so the event's own
+ * occurrence date in Kuala Lumpur is the honest answer there. Used ONLY to pre-fill the suggestion's
+ * effective date — the admin can always overtype it, and nothing commits without Confirm.
+ */
+export function branchChangeDateFor(ctx: SessionContext, employmentId: string): Promise<string | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        effectiveDate: sql<string>`coalesce(
+          ${domainEvent.payload}->>'effectiveDate',
+          to_char((${domainEvent.occurredAt} at time zone 'Asia/Kuala_Lumpur')::date, 'YYYY-MM-DD')
+        )`,
+      })
+      .from(domainEvent)
+      .where(
+        and(
+          eq(domainEvent.subjectEmploymentId, employmentId),
+          eq(domainEvent.eventType, 'employment.info.updated'),
+          sql`${domainEvent.payload}->'before'->>'orgBranch' is distinct from ${domainEvent.payload}->'after'->>'orgBranch'`,
+        ),
+      )
+      .orderBy(desc(domainEvent.sequence))
+      .limit(1);
+    return row?.effectiveDate ?? null;
   });
 }

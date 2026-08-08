@@ -12,9 +12,94 @@ import {
   company,
   employeeClockingLocation,
   employment,
+  location,
 } from '../db/schema';
 
 const MAX_RADIUS_M = 100_000;
+
+/**
+ * 1fff489c — the SOFT advisory band for a site radius, in metres. Outside it the service returns a
+ * `warning` string the UI shows; it NEVER refuses the save. Spec section B is explicit that some sites
+ * genuinely need a bigger circle (a project yard, a plantation) and a hard cap would make the field
+ * unusable for exactly the customers who need it most. The only HARD limits are >0 (DB CHECK) and
+ * ≤ MAX_RADIUS_M (a 100 km "geofence" is a typo, not a site).
+ */
+export const RADIUS_ADVISORY_MIN_M = 10;
+export const RADIUS_ADVISORY_MAX_M = 5_000;
+
+/** Thrown when a clocking point is saved without its Location link, or with one the site may not use. */
+export class ClockingLocationLinkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ClockingLocationLinkError';
+  }
+}
+
+/**
+ * The per-site radius. REQUIRED on every create/update (the whole point of 1fff489c), a positive integer,
+ * hard-capped at MAX_RADIUS_M. The 10..5000 band is NOT enforced here — see RADIUS_ADVISORY_MIN_M.
+ */
+function cleanRadius(v: number | string | null | undefined): number {
+  const n = Math.trunc(Number(v));
+  if (v == null || v === '' || !Number.isFinite(n)) {
+    throw new Error('Radius (metres) is required — a clocking point without one cannot be geofenced.');
+  }
+  if (n <= 0) throw new Error('Radius must be a positive number of metres.');
+  if (n > MAX_RADIUS_M) throw new Error(`Radius cannot exceed ${MAX_RADIUS_M} metres.`);
+  return n;
+}
+
+/** The advisory string for a radius outside the band, or null. Returned to the caller, never thrown. */
+export function radiusWarning(radiusM: number): string | null {
+  if (radiusM < RADIUS_ADVISORY_MIN_M) {
+    return `A radius of ${radiusM} m is unusually tight — GPS on a phone is rarely accurate to better than ${RADIUS_ADVISORY_MIN_M} m, so staff may be refused while standing on site. Saved anyway.`;
+  }
+  if (radiusM > RADIUS_ADVISORY_MAX_M) {
+    return `A radius of ${radiusM} m is unusually wide — anyone within ${(radiusM / 1000).toFixed(1)} km of this point can clock in. Saved anyway.`;
+  }
+  return null;
+}
+
+/**
+ * Resolve and validate the REQUIRED link from a clocking point to a `location` master record.
+ *
+ * Two guards, both of which must run inside the caller's tx so they share the RLS session:
+ *   • SAME COMPANY — the same cross-company coherence setEmployeeClockingLocations enforces. A group admin
+ *     editing several companies would otherwise silently file a point under another company's location.
+ *   • NOT ARCHIVED — an archived location is out of every assignment dropdown by design; letting a new
+ *     point be filed under one would resurrect it as a group heading nobody can select.
+ */
+async function resolveLocationLink(tx: Tx, locationId: string | null | undefined, companyId: string): Promise<string> {
+  const id = (locationId ?? '').trim();
+  if (!id) {
+    throw new ClockingLocationLinkError(
+      'A clocking point must be linked to a location — pick one from the Locations list above.',
+    );
+  }
+  const [row] = await tx
+    .select({ id: location.id, companyId: location.companyId, archivedAt: location.archivedAt })
+    .from(location)
+    .where(eq(location.id, id))
+    .limit(1);
+  if (!row || row.companyId !== companyId) {
+    throw new ClockingLocationLinkError('That location belongs to a different company.');
+  }
+  if (row.archivedAt) {
+    throw new ClockingLocationLinkError('That location is archived — restore it first, or pick another.');
+  }
+  return row.id;
+}
+
+/** The owning company of an existing clocking point (the company its location link is judged against). */
+async function companyOfClockingLocation(tx: Tx, clockingLocationId: string): Promise<string> {
+  const [row] = await tx
+    .select({ companyId: clockingLocation.companyId })
+    .from(clockingLocation)
+    .where(eq(clockingLocation.id, clockingLocationId))
+    .limit(1);
+  if (!row) throw new Error('Clocking location not found');
+  return row.companyId;
+}
 
 function cleanName(v: string | undefined): string {
   const s = (v ?? '').replace(/\s+/g, ' ').trim();
@@ -37,20 +122,32 @@ export type CreateClockingLocationInput = {
   name: string;
   lat: number;
   lng: number;
+  /** 1fff489c — REQUIRED. Metres. See cleanRadius / radiusWarning for the hard vs advisory split. */
+  radiusM: number | string;
+  /** 1fff489c — REQUIRED. A non-archived `location` in the SAME company. */
+  locationId: string;
   address?: string | null;
   remarks?: string | null;
 };
 
-export async function createClockingLocation(ctx: SessionContext, p: CreateClockingLocationInput) {
+/** Every write returns the site id plus an optional SOFT advisory about the radius (never a refusal). */
+export type ClockingLocationWriteResult = { id: string; warning: string | null };
+
+export async function createClockingLocation(
+  ctx: SessionContext,
+  p: CreateClockingLocationInput,
+): Promise<ClockingLocationWriteResult> {
   const name = cleanName(p.name);
   const lat = cleanCoord(p.lat, 'Latitude', -90, 90);
   const lng = cleanCoord(p.lng, 'Longitude', -180, 180);
+  const radiusM = cleanRadius(p.radiusM);
   const address = cleanOptional(p.address);
   const remarks = cleanOptional(p.remarks);
   return withTenant(ctx, async (tx) => {
+    const locationId = await resolveLocationLink(tx, p.locationId, p.companyId);
     const [row] = await tx
       .insert(clockingLocation)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, name, lat, lng, address, remarks })
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, name, lat, lng, radiusM, locationId, address, remarks })
       .returning({ id: clockingLocation.id });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -58,9 +155,9 @@ export async function createClockingLocation(ctx: SessionContext, p: CreateClock
       aggregateId: row.id,
       eventType: 'clocking-location.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, name, lat, lng, address, remarks },
+      payload: { companyId: p.companyId, name, lat, lng, radiusM, locationId, address, remarks },
     });
-    return { id: row.id };
+    return { id: row.id, warning: radiusWarning(radiusM) };
   });
 }
 
@@ -69,14 +166,20 @@ export type UpdateClockingLocationInput = {
   name: string;
   lat: number;
   lng: number;
+  radiusM: number | string;
+  locationId: string;
   address?: string | null;
   remarks?: string | null;
 };
 
-export async function updateClockingLocation(ctx: SessionContext, p: UpdateClockingLocationInput) {
+export async function updateClockingLocation(
+  ctx: SessionContext,
+  p: UpdateClockingLocationInput,
+): Promise<ClockingLocationWriteResult> {
   const name = cleanName(p.name);
   const lat = cleanCoord(p.lat, 'Latitude', -90, 90);
   const lng = cleanCoord(p.lng, 'Longitude', -180, 180);
+  const radiusM = cleanRadius(p.radiusM);
   const address = cleanOptional(p.address);
   const remarks = cleanOptional(p.remarks);
   return withTenant(ctx, async (tx) => {
@@ -85,6 +188,8 @@ export async function updateClockingLocation(ctx: SessionContext, p: UpdateClock
         name: clockingLocation.name,
         lat: clockingLocation.lat,
         lng: clockingLocation.lng,
+        radiusM: clockingLocation.radiusM,
+        locationId: clockingLocation.locationId,
         address: clockingLocation.address,
         remarks: clockingLocation.remarks,
       })
@@ -92,9 +197,16 @@ export async function updateClockingLocation(ctx: SessionContext, p: UpdateClock
       .where(eq(clockingLocation.id, p.clockingLocationId))
       .limit(1);
     if (!before) throw new Error('Clocking location not found');
+    // The link is judged against the SITE's own company, not a caller-supplied one — a forged form field
+    // cannot re-home a point into another company's location.
+    const locationId = await resolveLocationLink(
+      tx,
+      p.locationId,
+      await companyOfClockingLocation(tx, p.clockingLocationId),
+    );
     await tx
       .update(clockingLocation)
-      .set({ name, lat, lng, address, remarks })
+      .set({ name, lat, lng, radiusM, locationId, address, remarks })
       .where(eq(clockingLocation.id, p.clockingLocationId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -102,9 +214,9 @@ export async function updateClockingLocation(ctx: SessionContext, p: UpdateClock
       aggregateId: p.clockingLocationId,
       eventType: 'clocking-location.updated',
       actor: actorOf(ctx),
-      payload: { before, after: { name, lat, lng, address, remarks } },
+      payload: { before, after: { name, lat, lng, radiusM, locationId, address, remarks } },
     });
-    return { id: p.clockingLocationId };
+    return { id: p.clockingLocationId, warning: radiusWarning(radiusM) };
   });
 }
 
@@ -192,14 +304,33 @@ export type ClockingLocationRow = {
   name: string;
   lat: number;
   lng: number;
+  /** 1fff489c — the site's own allowed distance. Null only for a row written before 0419 (none exist). */
+  radiusM: number | null;
+  locationId: string | null;
+  locationCode: string | null;
+  locationName: string | null;
   address: string | null;
   remarks: string | null;
   archivedAt: Date | null;
   assignedCount: number;
 };
 
-/** Clocking sites in scope, joined with company name + assigned-employee headcount. Tenant-catalog read
- *  (RLS lets every tenant member through); companyIds narrows to the admin UI's active scope. */
+/**
+ * Clocking sites in scope, joined with company name + assigned-employee headcount + the LOCATION the point
+ * sits under (code and name, which drive the grouped admin render and the personnel pre-tick). Tenant-
+ * catalog read (RLS lets every tenant member through); companyIds narrows to the admin UI's active scope.
+ *
+ * The plan called for an INNER join on `location`. It is a LEFT join instead, for two reasons, the second
+ * of which is not optional:
+ *   1. location_id is nullable in the database (migration 0419 explains why), and an inner join would make
+ *      such a row vanish from the admin screen entirely — the one screen on which an unlinked point must
+ *      stay visible so it can be fixed. Zero such rows exist today; this is a safety net, not a feature.
+ *   2. RLS. `clocking_location` is a TENANT-CATALOG read (every tenant member, ADR-0070 §1) but `location`
+ *      is admin-only-read (migration 0111, app.is_admin_for(company_id)). An INNER join would therefore
+ *      return ZERO rows for a plain employee — silently emptying the clock-in screen's site list. With a
+ *      LEFT join the employee still sees every site; only the location's code/name come back null, which
+ *      is exactly the visibility the two policies were written to give.
+ */
 export function listClockingLocations(
   ctx: SessionContext,
   companyIds: string[],
@@ -217,6 +348,10 @@ export function listClockingLocations(
         name: clockingLocation.name,
         lat: clockingLocation.lat,
         lng: clockingLocation.lng,
+        radiusM: clockingLocation.radiusM,
+        locationId: clockingLocation.locationId,
+        locationCode: location.code,
+        locationName: location.name,
         address: clockingLocation.address,
         remarks: clockingLocation.remarks,
         archivedAt: clockingLocation.archivedAt,
@@ -227,6 +362,7 @@ export function listClockingLocations(
       })
       .from(clockingLocation)
       .innerJoin(company, eq(company.id, clockingLocation.companyId))
+      .leftJoin(location, eq(location.id, clockingLocation.locationId))
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(asc(company.legalName), asc(clockingLocation.name));
   });
@@ -242,9 +378,19 @@ async function clockingLocationCompanyId(tx: Tx, clockingLocationId: string): Pr
   return row?.companyId ?? null;
 }
 
-export type AssignedClockingLocation = { id: string; name: string; lat: number; lng: number };
+export type AssignedClockingLocation = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  /** 1fff489c — the site's own radius, so the clock-in screen can say "within 150 m" per site. */
+  radiusM: number | null;
+  locationId: string | null;
+};
 
-/** The clocking sites currently assigned to one employment. */
+/** The clocking sites currently assigned to one employment. Deliberately does NOT join `location`: this is
+ *  read by the EMPLOYEE's own clock-in screen, and `location` is admin-only under RLS (see
+ *  listClockingLocations above for what an inner join to it costs). */
 export function listEmployeeClockingLocations(
   ctx: SessionContext,
   employmentId: string,
@@ -256,6 +402,8 @@ export function listEmployeeClockingLocations(
         name: clockingLocation.name,
         lat: clockingLocation.lat,
         lng: clockingLocation.lng,
+        radiusM: clockingLocation.radiusM,
+        locationId: clockingLocation.locationId,
       })
       .from(employeeClockingLocation)
       .innerJoin(clockingLocation, eq(clockingLocation.id, employeeClockingLocation.clockingLocationId))
@@ -322,12 +470,21 @@ export function setEmployeeClockingLocations(
 }
 
 /**
- * Enable/disable geofencing for one employment + set its radius (metres). Radius is required and must be
- * a positive integer ≤ MAX_RADIUS_M when enabling; ignored (stored null) when disabling.
+ * Enable/disable geofencing for one employment + set its OPTIONAL radius override (metres).
+ *
+ * 1fff489c CHANGED THE MEANING OF THE RADIUS HERE. It used to be the ONLY radius, and was therefore
+ * REQUIRED while enabling (backed by the employment_geofence_radius_required CHECK). The authoritative
+ * distance now lives on each clocking site (clocking_location.radius_m), and this column is an OVERRIDE
+ * that, when set, replaces every site's radius FOR THIS EMPLOYEE — the escape hatch for a field engineer
+ * who legitimately needs a wider circle than the sites themselves define.
+ *
+ * So: blank while enabled is now VALID and means "each site uses its own radius" (the recommended
+ * setting, and what the admin screen says). A supplied value is still validated — positive, ≤ MAX_RADIUS_M
+ * — because a zero override would silently make every site unreachable. Disabling still clears it.
  */
 export function setGeofencing(
   ctx: SessionContext,
-  p: { employmentId: string; enabled: boolean; radiusM?: number | null },
+  p: { employmentId: string; enabled: boolean; radiusM?: number | string | null },
 ) {
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
@@ -338,7 +495,7 @@ export function setGeofencing(
     if (!before) throw new Error('Employment not found');
 
     let radiusM: number | null = null;
-    if (p.enabled) {
+    if (p.enabled && p.radiusM != null && String(p.radiusM).trim() !== '') {
       const n = Math.trunc(Number(p.radiusM));
       if (!Number.isFinite(n) || n <= 0) throw new Error('Geofencing radius must be a positive number of metres.');
       if (n > MAX_RADIUS_M) throw new Error(`Geofencing radius cannot exceed ${MAX_RADIUS_M} metres.`);
