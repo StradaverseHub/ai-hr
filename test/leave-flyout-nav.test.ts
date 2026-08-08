@@ -63,7 +63,12 @@ const RETIRED_STRIP: readonly { href: string; labelKey: string }[] = [
   { href: '/admin/leave/approval', labelKey: 'leaveApprovalWorkflow' },
   { href: '/admin/leave/payroll', labelKey: 'leavePayroll' },
   { href: '/admin/leave/replacement', labelKey: 'leaveReplacement' },
-  { href: '/admin/leave/audit', labelKey: 'leaveAudit' },
+  // f1b994e3 — `{ '/admin/leave/audit', 'leaveAudit' }` STOOD HERE and is DELIBERATELY GONE, not lost,
+  // for the reason the df00b85f note above states: this list is an exact-set guard, so the ONLY correct
+  // way to retire a destination is to delete its line here in the same commit that deletes the row. The
+  // two properties the removal has to keep have their own tests below: the ROUTE still resolves (as a
+  // redirect stub carrying ?module=leave, so no bookmark 404s) and the label key is pruned rather than
+  // left as an untranslatable orphan.
 ] as const;
 
 /** href → the route file that must exist for it to be a live destination. */
@@ -112,6 +117,47 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(permissions).not.toContain("'/admin/leave',");
     // The screen column survives, re-pointed at the page a reader can actually open.
     expect(permissions).toContain("href: '/admin/leave/entitlements'");
+  });
+
+  /**
+   * f1b994e3 — the Audit row is retired into the ONE central Audit Trail (/admin/audit), which gained an
+   * Area filter plus every filter the leave page had. The three things that make that removal safe rather
+   * than merely tidy are each pinned here: the route still resolves so no saved link 404s and it lands
+   * with Leave already chosen; the stub carries NO page guard, which is what lets `/admin/leave/audit`
+   * leave lib/permissions.ts without test/function-access.test.ts reddening in either direction; and the
+   * label key retires WITH the row instead of lingering as an orphan.
+   */
+  it('the Audit row is gone and Replacement is last', () => {
+    expect(NODE.children.map((c) => c.href)).not.toContain('/admin/leave/audit');
+    expect(NODE.children.at(-1)!.href).toBe('/admin/leave/replacement');
+    expect(read('packs/leave/index.ts')).not.toContain("labelKey: 'leaveAudit'");
+  });
+
+  it('/admin/leave/audit survives as an UNGUARDED redirect stub to the central Audit Trail', () => {
+    const stub = read('app/admin/leave/audit/page.tsx');
+    expect(stub, 'the route file must still exist').toContain('redirect(');
+    // The destination is the one audit page, with the Leave area already chosen — a bookmark opens the
+    // same view it always did, not an unfiltered firehose.
+    expect(stub).toContain('/admin/audit');
+    expect(stub).toContain("usp.set('module', 'leave')");
+    expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession|requirePayrollAccess/);
+    // A stub is not a guarded page, so the route MUST have left the permission grid in the same change.
+    const permissions = read('lib/permissions.ts');
+    expect(permissions).not.toContain("'/admin/leave/audit',");
+    // The export route retires the same way, so an old download link still returns a file.
+    const exportStub = read('app/admin/leave/audit/export/route.ts');
+    expect(exportStub).toContain('redirect(');
+    expect(exportStub).toContain('/admin/audit/export');
+    expect(exportStub).toContain("out.set('module', 'leave')");
+  });
+
+  it('nav.leaveAudit is pruned in all six catalogues — no orphan label', () => {
+    // Grepped first, the r137 way: `nav.leaveAudit` had exactly ONE reader, the row deleted above, and
+    // no computed `nav.${x}` form can reach it now that no descriptor names it.
+    for (const loc of LOCALES) {
+      const dict = JSON.parse(read(`messages/${loc}.json`));
+      expect(dict.nav.leaveAudit, `${loc}: nav.leaveAudit must be pruned`).toBeUndefined();
+    }
   });
 
   /**

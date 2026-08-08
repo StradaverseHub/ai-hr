@@ -108,7 +108,6 @@
     "leaveApproval": "Chuỗi phê duyệt",
     "leavePayroll": "Liên quan bảng lương",
     "leaveReplacement": "Nghỉ bù",
-    "leaveAudit": "Kiểm toán",
     "holidays": "Ngày lễ",
     "payroll": "Bảng lương",
     "payrollGuide": "Hướng dẫn quy trình",
@@ -5491,6 +5490,8 @@
     "audit": {
       "title": "Nhật ký kiểm toán",
       "description": "Mọi thay đổi được ghi nhận — ai, cái gì, khi nào (chỉ thêm mới)",
+      "area": "Phân hệ",
+      "allAreas": "Tất cả phân hệ",
       "recordType": "Loại bản ghi",
       "all": "Tất cả",
       "searchEvent": "Tìm sự kiện",

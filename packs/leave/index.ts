@@ -113,7 +113,6 @@ import {
   ClipboardList,
   GitBranch,
   Repeat2,
-  ScrollText,
   SlidersHorizontal,
   Wallet,
 } from 'lucide-react';
@@ -205,7 +204,19 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     { href: '/admin/leave/approval', labelKey: 'leaveApprovalWorkflow', icon: GitBranch },
     { href: '/admin/leave/payroll', labelKey: 'leavePayroll', icon: Wallet },
     { href: '/admin/leave/replacement', labelKey: 'leaveReplacement', icon: Repeat2 },
-    { href: '/admin/leave/audit', labelKey: 'leaveAudit', icon: ScrollText },
+    // f1b994e3 — `{ '/admin/leave/audit', 'leaveAudit' }` STOOD HERE and is DELIBERATELY GONE.
+    //
+    // "The Audit submenu under Leave Configuration is unnecessary because the system already has a
+    // central Audit Trail module." It was right: this page and /admin/audit always read the SAME
+    // append-only domain_event ledger through the same predicate and rendered the same table — this one
+    // just pre-applied a hardcoded eight-aggregate list that hid 404 real leave rows and listed
+    // job-grade rows the central page chips Organization. The central page gained an Area filter plus
+    // every filter this page had, so the destination is strictly richer than the row removed.
+    //
+    // The ROUTE survives as a redirect stub (app/admin/leave/audit/page.tsx → /admin/audit?module=leave)
+    // so saved links land somewhere real. A stub is NOT a guarded page, so it also left lib/permissions.ts's
+    // leaveConfig `routes` in the same change — test/function-access.test.ts fails on a registered route
+    // with no guarded page on disk, which is why that is one move, not two. Same for the export route.
   ],
 };
 

@@ -108,7 +108,6 @@
     "leaveApproval": "Approval chain",
     "leavePayroll": "Payroll Related",
     "leaveReplacement": "Replacement Leave",
-    "leaveAudit": "Audit",
     "holidays": "Holidays",
     "payroll": "Payroll",
     "payrollGuide": "Workflow Guide",
@@ -5491,6 +5490,8 @@
     "audit": {
       "title": "Audit trail",
       "description": "Every recorded change — who, what, when (append-only)",
+      "area": "Area",
+      "allAreas": "All areas",
       "recordType": "Record type",
       "all": "All",
       "searchEvent": "Search event",

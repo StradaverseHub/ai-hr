@@ -63,7 +63,7 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(REGISTERED_ROUTES.has('/admin/toil')).toBe(true);
   });
 
-  it('the leave fly-out still carries the replacement entry, between Payroll Related and Audit', () => {
+  it('the leave fly-out still carries the replacement entry, after Payroll Related', () => {
     // 645e67c4 — this asserted against components/leave-tabs.tsx, now deleted: Leave config is a sidebar
     // fly-out. The ORDER the reporter sees is unchanged and is still worth guarding, so the same promise
     // is re-made against the pack node that actually renders it.
@@ -72,7 +72,11 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(hrefs).toContain('/admin/leave/replacement');
     const at = (href: string) => hrefs.indexOf(href);
     expect(at('/admin/leave/replacement')).toBeGreaterThan(at('/admin/leave/payroll'));
-    expect(at('/admin/leave/audit')).toBeGreaterThan(at('/admin/leave/replacement'));
+    // f1b994e3 — `expect(at('/admin/leave/audit')).toBeGreaterThan(at('/admin/leave/replacement'))`
+    // STOOD HERE. The Audit row is retired into the one central Audit Trail, so there is no longer an
+    // entry after Replacement for it to sit before; the position this item actually promised (after
+    // Payroll Related) is asserted above and is unchanged. test/leave-flyout-nav.test.ts owns the
+    // retirement itself, including that the route still resolves as a stub.
   });
 
   it('the page no longer marks itself as an active tab — there is no strip to be active in', () => {

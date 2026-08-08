@@ -327,7 +327,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/leave/generate',
       '/admin/leave/payroll',
       '/admin/leave/replacement',
-      '/admin/leave/audit',
+      // f1b994e3 — `/admin/leave/audit` STOOD HERE and is DELIBERATELY GONE. The Leave Config Audit tab
+      // is retired into the one central Audit Trail (/admin/audit, screenKey `auditTrail` below, also
+      // requireAdmin — so nobody who could open the leave page loses access). The route survives as an
+      // unguarded redirect stub carrying ?module=leave, and a stub is not a screen this grid can
+      // describe, so it leaves `routes` in the SAME change that empties the page: test/function-access
+      // .test.ts fails BOTH ways, and the direction that bites here is "no stale routes" — a registered
+      // route whose page no longer calls a guard. Same precedent as `/admin/leave` (df00b85f) above.
     ],
   },
   {
