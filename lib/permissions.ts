@@ -310,6 +310,14 @@ export const SCREENS: readonly ScreenEntry[] = [
       // REGISTERING IT IS NOT COSMETIC: test/function-access.test.ts fails BOTH ways — a guarded page.tsx
       // absent from REGISTERED_ROUTES, and a registered route with no page on disk.
       '/admin/leave/entitlements/archive',
+      // c8052ae3 — the read-only BALANCE record: what the Medical/Hospitalization ledger correction
+      // archived before deleting it. Sibling of the configuration record one line up, same admin
+      // surface, same requireAdmin guard, so it is a ROUTE on this screenKey rather than a new one.
+      // It was added by a different workstream from the one that owned this file, which is exactly how
+      // it reached the integration gate unregistered — test/function-access.test.ts caught it, as it is
+      // meant to. Its /export sibling is deliberately NOT listed: the reverse-completeness scan reads
+      // page.tsx files only, and a route handler has no screen column to describe.
+      '/admin/leave/entitlements/ledger-archive',
       // 6e9a126e RELEASE TWO — the Entitlement Tables + Employee Eligibility editor. Same admin surface,
       // same requireAdmin guard, so it is a ROUTE on this screenKey rather than a new one. Registering it
       // is not paperwork: test/function-access.test.ts fails BOTH ways — a guarded page.tsx absent from
