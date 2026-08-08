@@ -57,6 +57,13 @@ const TAB_CONTENT_COMPONENTS = [
   'app/admin/leave-approval/template-manager.tsx',
   'app/admin/leave-approval/step-list-editor.tsx',
   'app/admin/leave-approval/escalation-editor.tsx',
+  // f1b994e3 — the Leave Config Audit tab is retired into the CENTRAL Audit Trail, so the destination
+  // this convention has to hold on moved with it. app/admin/leave/audit/page.tsx is now a redirect stub
+  // (still covered by the glob above, and a stub can never grow a width cap); app/admin/audit/page.tsx
+  // is the page a reader now opens from Leave Config, and it carried `mx-auto max-w-5xl` until this
+  // change, with a filter grid that grew from five controls to eight. Scanned here rather than in a new
+  // file because this test owns the convention.
+  'app/admin/audit/page.tsx',
 ];
 
 /** All string-literal className values in a source file (double-quoted or template literal). */

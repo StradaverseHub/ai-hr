@@ -60,6 +60,16 @@ const AGGREGATE: Record<string, { label: string; href?: (id: string) => string }
   'job-grade': { label: 'Job grade' },
   holiday: { label: 'Holiday' },
   'holiday-group': { label: 'Holiday group' },
+  // f1b994e3 — the six leave aggregates the retired Leave Audit page could never show (its own
+  // hardcoded eight-type list gated them out). They are options in the Area=Leave record-type filter
+  // now, so they get real labels instead of the humanizeEvent slug fallback, for the reason the
+  // 4ec5a940 note above gives.
+  'scheme-leave-entitlement': { label: 'Entitlement scheme' },
+  'leave-ledger': { label: 'Leave balance' },
+  'leave-approval-template': { label: 'Approval template' },
+  'scheme-leave-combined-limit': { label: 'Combined limit' },
+  'leave-shared-group': { label: 'Shared leave group' },
+  'holiday-group-holiday': { label: 'Holiday calendar entry' },
   attendance: { label: 'Attendance' },
   'attendance-correction': { label: 'Attendance correction' },
   'profile-change': { label: 'Profile change' },
@@ -108,6 +118,25 @@ const AGGREGATE_MODULE: Record<string, string> = {
   'leave-ledger-import': 'leave',
   holiday: 'leave',
   'holiday-group': 'leave',
+  // f1b994e3 — the mapping gap the retired Leave Audit page hid. These six aggregate types were written
+  // to the ledger by the leave services but had no module, so they chipped `Other` on the central page
+  // and were excluded outright by the leave page's hardcoded eight-type list — 394 production rows
+  // invisible on both, including the newest leave-config changes on the system. They are leave.
+  'scheme-leave-entitlement': 'leave',
+  'leave-ledger': 'leave',
+  'leave-approval-template': 'leave',
+  'scheme-leave-combined-limit': 'leave',
+  'leave-shared-group': 'leave',
+  'holiday-group-holiday': 'leave',
+  // f1b994e3 — the SEVENTH entry, beyond the six the plan enumerates. The plan's promised Leave count
+  // (1,231) is arithmetic that only closes if leave-cancellation-request counts as leave, and
+  // lib/approval-history.ts ALREADY maps it to the leave module (aggregateTypesOfModule('leave') is
+  // ['leave-request', 'leave-cancellation-request']). Leaving it out would chip a cancellation `Other`
+  // while its sibling request chips `Leave`, which is the exact disagreement this item removes.
+  'leave-cancellation-request': 'leave',
+  // NOTE: `job-grade` deliberately stays `organization` above. The retired leave page listed grade
+  // changes among its leave rows, but the central page has always CHIPPED them Organization — honouring
+  // the one mapping removes that contradiction rather than creating one (f1b994e3 plan, "Good to know").
   attendance: 'attendance',
   'attendance-correction': 'attendance',
   'payroll-batch': 'payroll',
@@ -127,6 +156,29 @@ export type ModuleKey = (typeof MODULE_KEYS)[number];
 export function moduleKeyOf(type: string): ModuleKey {
   return (AGGREGATE_MODULE[type] as ModuleKey) ?? 'other';
 }
+
+/** Is `v` one of the Area (module) slugs? Guards the `?module=` query param on the Audit Trail. */
+export function isModuleKey(v: string | null | undefined): v is ModuleKey {
+  return v != null && (MODULE_KEYS as readonly string[]).includes(v);
+}
+
+/**
+ * f1b994e3 — every aggregate type belonging to `module`, DERIVED FROM AGGREGATE_MODULE rather than
+ * hand-listed. This is the whole point: the Area filter that finds a row and the module chip the row
+ * renders read the same map, so they cannot disagree — the failure the retired Leave Audit page had,
+ * where its own hardcoded eight-type list both hid 404 real leave rows and listed job-grade rows that
+ * the chip called Organization.
+ *
+ * `other` is the RESIDUAL bucket and owns no entries of its own: it means "no mapping", so a caller
+ * filtering for it must ask for the COMPLEMENT of MAPPED_AGGREGATE_TYPES (core/read.ts's auditWhere
+ * does exactly that). This function honestly returns [] for it rather than pretending otherwise.
+ */
+export function aggregateTypesForModule(module: ModuleKey): string[] {
+  return Object.keys(AGGREGATE_MODULE).filter((t) => AGGREGATE_MODULE[t] === module);
+}
+
+/** Every aggregate type that HAS a module mapping. Its complement is exactly what chips `other`. */
+export const MAPPED_AGGREGATE_TYPES: readonly string[] = Object.keys(AGGREGATE_MODULE);
 
 /** English module labels — used by the CSV/XLSX/PDF export headers (kept English for byte-stable,
  *  external-consumer output, mirroring ADR-0047). The on-screen chip is localized in the component. */

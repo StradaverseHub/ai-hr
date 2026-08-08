@@ -108,7 +108,6 @@
     "leaveApproval": "审批链",
     "leavePayroll": "薪资相关",
     "leaveReplacement": "替假",
-    "leaveAudit": "审计",
     "holidays": "公共假期",
     "payroll": "薪资",
     "payrollGuide": "工作流程指南",
@@ -5451,6 +5450,8 @@
     "audit": {
       "title": "审计日志",
       "description": "每一项已记录的变更 — 谁、做了什么、何时（仅追加）",
+      "area": "模块",
+      "allAreas": "所有模块",
       "recordType": "记录类型",
       "all": "全部",
       "searchEvent": "搜索事件",

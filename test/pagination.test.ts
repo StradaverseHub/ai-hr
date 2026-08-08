@@ -119,8 +119,10 @@ describe('fc776376 — one implementation, not a sixth', () => {
     // or the ?size= contract. /leave/employee-records below is the surviving shared-pager leave surface.
     'app/leave/employee-records/page.tsx',
     'app/approvals/history/page.tsx',
+    // f1b994e3 — 'app/admin/leave/audit/page.tsx' STOOD HERE and is now a redirect stub with no list to
+    // page. Its pager, filters and export moved UP to the central Audit Trail one line above, which was
+    // already on this list; the entry is removed rather than repointed because the two were one screen.
     'app/admin/audit/page.tsx',
-    'app/admin/leave/audit/page.tsx',
   ];
 
   it.each(converted)('%s pages through the shared helper and pager', (file) => {

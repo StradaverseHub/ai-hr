@@ -1,5 +1,20 @@
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, or, sql, type AnyColumn } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  notInArray,
+  or,
+  sql,
+  type AnyColumn,
+} from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
@@ -8,6 +23,9 @@ import {
   type ApprovalHistoryAction,
   type ApprovalHistoryModule,
 } from '../lib/approval-history';
+// f1b994e3 — the Audit Trail's Area filter resolves a module to its aggregate types from the SAME map
+// the row chip reads, so the filter and the chip can never disagree. Pure, no DB, safe to import here.
+import { MAPPED_AGGREGATE_TYPES, aggregateTypesForModule, type ModuleKey } from '../lib/audit-format';
 import {
   AGED_FORFEIT_REASON,
   CARRY_FORFEIT_REASON_CAP,
@@ -3573,6 +3591,11 @@ export type AuditFilters = {
   /** Restrict to a single aggregate INSTANCE (e.g. one payroll batch's lifecycle events for a per-run
    *  History card). AND-ed onto the other filters; read-only, no event appended. */
   aggregateId?: string;
+  /** f1b994e3 — the Area filter: the bounded context an event's aggregate belongs to (leave /
+   *  organization / payroll / attendance / performance / other). Resolved against AGGREGATE_MODULE, the
+   *  same map components/audit-table.tsx chips each row with. The caller passes a validated ModuleKey
+   *  (isModuleKey); an out-of-set `?module=` is dropped by the caller, never narrowed to nothing. */
+  module?: ModuleKey;
   eventQuery?: string; // matches event type / aggregate type
   actorId?: string;
   /** 4ec5a940 — action filter: matches the event's last dot-segment (created/updated/deleted/…). The
@@ -3599,6 +3622,15 @@ function auditWhere(f: AuditFilters) {
       ? inArray(domainEvent.aggregateType, f.aggregateTypes)
       : undefined,
     f.aggregateId ? eq(domainEvent.aggregateId, f.aggregateId) : undefined,
+    // f1b994e3 — Area (module). Derived from AGGREGATE_MODULE, so a row this clause returns chips the
+    // area that found it. `other` is the RESIDUAL bucket — it owns no aggregate types of its own, so it
+    // is expressed as the COMPLEMENT of the mapped set rather than as an empty IN-list (which would
+    // match nothing and silently claim the Other area is empty).
+    f.module === 'other'
+      ? notInArray(domainEvent.aggregateType, [...MAPPED_AGGREGATE_TYPES])
+      : f.module
+        ? inArray(domainEvent.aggregateType, aggregateTypesForModule(f.module))
+        : undefined,
     f.actorId ? eq(domainEvent.actorId, f.actorId) : undefined,
     // 4ec5a940 — action = the event's last dot-segment. Parameterised (never interpolated), so the
     // caller's allowlist + this bound param double-guard against injection.
@@ -3667,12 +3699,15 @@ export function auditAggregateTypes(ctx: SessionContext): Promise<{ aggregateTyp
   );
 }
 
-/** 4ec5a940 — the distinct actors who appear in the log (optionally within a set of aggregate types,
- *  e.g. the leave module for the Leave Audit tab), with their resolved display name — drives the User
- *  filter dropdown. SYSTEM/AGENT/unlinked principals surface as a null name (the UI labels them). */
+/** 4ec5a940 — the distinct actors who appear in the log, with their resolved display name; drives the
+ *  User filter dropdown. SYSTEM/AGENT/unlinked principals surface as a null name (the UI labels them).
+ *  f1b994e3 — narrowed by AREA rather than by a caller-supplied aggregate list: the User dropdown on the
+ *  Audit Trail must offer exactly the people who appear in the area on screen, and reusing `auditWhere`
+ *  means it resolves an area the same way the rows do (including `other`, the residual bucket, which an
+ *  aggregate-type list could not express). */
 export function auditActors(
   ctx: SessionContext,
-  aggregateTypes?: string[],
+  f: Pick<AuditFilters, 'module'> = {},
 ): Promise<{ actorId: string | null; actorName: string | null }[]> {
   return withTenant(ctx, (tx) =>
     tx
@@ -3680,11 +3715,7 @@ export function auditActors(
       .from(domainEvent)
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
       .leftJoin(person, eq(person.id, appUser.personId))
-      .where(
-        aggregateTypes && aggregateTypes.length
-          ? inArray(domainEvent.aggregateType, aggregateTypes)
-          : undefined,
-      )
+      .where(auditWhere({ module: f.module }))
       .orderBy(person.fullName),
   ) as Promise<{ actorId: string | null; actorName: string | null }[]>;
 }

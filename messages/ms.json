@@ -108,7 +108,6 @@
     "leaveApproval": "Rantaian kelulusan",
     "leavePayroll": "Berkaitan Gaji",
     "leaveReplacement": "Cuti Ganti",
-    "leaveAudit": "Audit",
     "holidays": "Cuti umum",
     "payroll": "Gaji",
     "payrollGuide": "Panduan Aliran Kerja",
@@ -5451,6 +5450,8 @@
     "audit": {
       "title": "Jejak audit",
       "description": "Setiap perubahan direkodkan — siapa, apa, bila (tambah-sahaja)",
+      "area": "Bidang",
+      "allAreas": "Semua bidang",
       "recordType": "Jenis rekod",
       "all": "Semua",
       "searchEvent": "Cari peristiwa",
