@@ -127,9 +127,29 @@ When `employment.geofencing_enabled` is false, `checkIn`/`checkOut` never query
 supplied) with `status: 'not_enforced'` and leave site/distance/radius null. This keeps the
 non-enforced hot path at its pre-existing query count.
 
+## Superseded in part by 1fff489c (2026-08-09)
+Two deferrals recorded below are now CLOSED, and one decision here was reversed:
+- **The convergence link is built.** `clocking_location.location_id` (migration 0419) is nullable in
+  the database but REQUIRED by the service, and points render grouped under their location on the
+  admin screen. The "double-master smell" of §1 is resolved in the direction §1 anticipated: two
+  tables, one of them now explicitly subordinate.
+- **The radius moved onto the site.** `clocking_location.radius_m` (0419) is the authoritative
+  allowed distance. `employment.geofence_radius_m` survives as an OPTIONAL PER-EMPLOYEE OVERRIDE,
+  and `employment_geofence_radius_required` is DROPPED, because "enabled with no override" is now
+  the recommended state. `resolveGeofence` was rewritten from "nearest site vs one radius" to
+  "pass if ANY assigned site contains me, judged against its own radius" — the nearest site is no
+  longer the deciding one when radii differ, and the nearest is computed only for the refusal
+  payload. `OutsideGeofenceError.info.radiusM` is consequently nullable (null only when there is no
+  nearest site, i.e. zero assigned sites, where it travels with a null `distanceM`).
+- **`location` gains a `branch`** (0420), unique per COMPANY, which lets the employee's Attendance
+  tab PROPOSE a work location from the branch already on their Employment tab. It never
+  auto-commits.
+- Still deferred: the embedded map picker (no tile provider is configured and the deployed host has
+  no outbound key for one).
+
 ## Consequences
-- Two site registries exist side by side (see §1); a future nullable
-  `clocking_location.location_id` convergence link is deferred, not built.
+- Two site registries exist side by side (see §1); the nullable
+  `clocking_location.location_id` convergence link is now BUILT (1fff489c, migration 0419).
 - A determined employee can still get a blocked punch recorded by filing an attendance-correction
   request, which routes through the existing HR-approval flow (`decideAttendanceCorrection`). This
   is treated as acceptable — a human approves it — but is a known, disclosed bypass alongside the
@@ -145,4 +165,5 @@ non-enforced hot path at its pre-existing query count.
   copied from Google Maps, for now); reverse-geocoding captured coordinates into a street address
   (we store coordinates + the matched named site, which satisfies "address if available" without a
   paid geocoding service); kiosk or native-mobile enforcement (neither exists in this codebase);
-  additional anti-spoofing hardening; the `location` ↔ `clocking_location` convergence link.
+  additional anti-spoofing hardening; the `location` ↔ `clocking_location` convergence link (this
+  last one is no longer deferred — see "Superseded in part by 1fff489c" above).

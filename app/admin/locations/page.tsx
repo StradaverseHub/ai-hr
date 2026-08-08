@@ -361,11 +361,14 @@ export default async function LocationsPage({
             <Card key={`clocking-${c.id}`} className="overflow-hidden">
               <SectionHeader title={c.name} count={rows.length} />
 
-              {/* EMPTY STATE 1 of 4 (spec section E): this company has no locations at all, so there is
-                  nothing to file a clocking point under and the create form below cannot be completed. */}
-              {assignableLocations.length === 0 ? (
+              {/* EMPTY STATE 1 of 4 (spec section E): this company has no LIVE locations, so there is
+                  nothing to file a clocking point under and the create form below cannot be completed.
+                  Shown alongside any groups rather than instead of them — a company whose only locations
+                  are archived-but-still-holding-points must still see those points to fix them. */}
+              {assignableLocations.length === 0 && (
                 <p className="px-4 py-3 text-sm text-muted-foreground">{t('noLocationsForCompany')}</p>
-              ) : (
+              )}
+              {(companyLocations.length > 0 || orphans.length > 0) && (
                 <div className="space-y-3 p-4">
                   {companyLocations.map((l) => {
                     const points = clockingByLocation.get(l.id) ?? [];
