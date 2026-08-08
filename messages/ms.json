@@ -4715,7 +4715,7 @@
       "paidLabel": "Berbayar",
       "addType": "+ Tambah jenis cuti",
       "addTypeDialogTitle": "Tambah Jenis Cuti",
-      "typesHelp": "Minimum berkanun datang daripada pek negara (EA 1955; jalur ialah <2 / 2–5 / 5+ tahun perkhidmatan) dan tidak boleh dikonfigurasikan. Pemberian menggunakan kelayakan yang <strong>anda konfigurasikan</strong> — minimum berkanun dipaparkan sebagai panduan dan angka di bawahnya ditandakan, bukan diganti. Bilangan hari ditaip dalam langkah <strong>Kelayakan</strong> setiap jenis cuti, di mana setiap jadual berkuat kuasa tarikh dan peraturan kelayakan menentukan siapa yang menerimanya. Cuti tahunan diprorata pada tahun ambil; cuti sakit dan hospitalisasi diberi sepenuhnya.",
+      "typesHelp": "Minimum berkanun datang daripada pek negara (EA 1955; jalur ialah <2 / 2–5 / 5+ tahun perkhidmatan) dan tidak boleh dikonfigurasikan. Pemberian menggunakan kelayakan yang <strong>anda konfigurasikan</strong> — minimum berkanun dipaparkan sebagai panduan dan angka di bawahnya ditandakan, bukan diganti. Bilangan hari ditaip dalam langkah <strong>Hak Cuti</strong> setiap jenis cuti, di mana setiap jadual berkuat kuasa tarikh dan peraturan kelayakan menentukan siapa yang menerimanya. Cuti tahunan diprorata pada tahun ambil; cuti sakit dan hospitalisasi diberi sepenuhnya.",
       "yearLabel": "Tahun",
       "accrualMethodLabel": "Pengumpulan",
       "methodLumpSum": "Sekali gus",
