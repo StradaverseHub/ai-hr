@@ -27,6 +27,15 @@ half-applied migration, no pending deploy. Verified after deploy: **336 migratio
 `rsync -azi --delete --dry-run`. Gate: **600 files / 7,371 tests** green across all 3 chunks; `next build`
 clean; shadow 335→336 and fresh 336/336 both PASS.
 
+**2026-08-09, OUTSIDE any release: `capture-usage` was added to the production crontab** (daily 01:00)
+and run once by hand — 9 rows, 0 failures. **No application code changed and nothing was deployed** —
+the dry-run rsync was ZERO-change immediately before this edit. Pre-change crontab saved at
+`/home/ubuntu/crontab.backup-2026-08-09`. Detail in the ADR-0077 table, slice 10.
+
+⚠️ **`HANDOFF.md` IS ITSELF RSYNCED TO THE BOX, so editing it makes the dry-run report exactly one
+changed file — which looks identical to an undeployed release.** If the next dry-run's ONLY line is
+`<f.st.... HANDOFF.md`, that is this doc edit, not pending code. Anything else is a real delta.
+
 ### r173 shipped FIVE items and CLEARED THE BUILD QUEUE — `approved` is now ZERO
 
 `0386b95d` Documents tab · `18719ded` Payroll tab · `080de5cf` Transaction History grid ·
@@ -108,11 +117,8 @@ unconfigured type, that guard has broken and it is the first thing to check.
 ZERO — the build queue is EMPTY.** Re-count rather than trusting this line.
 
 **THE ONE OPEN ITEM IS A QUESTION WE RAISED, `b00f9e6e`** — what should Overtime 2.0 / 3.0 actually be?
-Their `OT1_5` pay item holds `{"kind":"per_hour","rate":1.5}`, which `core/pay-rule.ts` resolves as
-`rate * hours` validated by `inMoney`, i.e. **RM 1.50/hour**, assigned to 0 employments and the only
-`per_hour` item on the tenant. Overtime is ALREADY wage-derived and already follows the configured
-multipliers (`localization/my/payroll.ts overtimePay`), so a flat per-hour component is the wrong
-mechanism. **DO NOT run `scripts/seed-overtime-multipliers.ts`** — it is correct and its input is not.
+The measurement behind it, and why **`scripts/seed-overtime-multipliers.ts` MUST NOT BE RUN**, is under
+`2da9937a` above and is not repeated here.
 
 **EIGHT PLANNED, three of them corrections we owe rather than new work:** `3e3d3fb2` TP1 (only the scope
 guard shipped; the redesign is unbuilt), `18719ded` and `0386b95d` (the search/sort/paging correction —
@@ -215,13 +221,15 @@ Per-item measurements are in `docs/HANDOFF-HISTORY.md` under their rounds. What 
 
 ### Waiting on the owner, not on code
 
-1. **`usage:capture` is the ONLY unscheduled sweep, and the gap BLEEDS** — usage cannot be
-   backfilled, so every unscheduled day is permanently unbillable. **FOUR** jobs run (verified with `crontab -l` on 2026-08-05): `accrue-earned` (monthly, 1st 02:00),
-   `review-sweep` (daily 03:00), `expire-carry` (yearly, 1 Apr 03:00) and `provision-runner` (every
-   minute). **`expire-aged-leave` is NOT among them** — an older note here claimed five including it. **Verify with `crontab -l` as `ubuntu`, NOT `systemctl list-timers`** (no timers
-   exist). Suggested: daily 01:00, ahead of the leave sweeps.
-2. **Slice 6's deploy-failing flip** (unclassifiable company: warning → failed deploy) needs explicit
+1. **Slice 6's deploy-failing flip** (unclassifiable company: warning → failed deploy) needs explicit
    confirmation before shipping — right end state, deliberate foot-gun.
+
+**FIVE cron jobs now, not four (2026-08-09).** `accrue-earned` (monthly, 1st 02:00), `review-sweep`
+(daily 03:00), `expire-carry` (yearly, 1 Apr 03:00), `provision-runner` (every minute), and
+**`capture-usage` (daily 01:00)** — ahead of the leave sweeps so it meters the day before they mutate
+it. **`expire-aged-leave` is NOT among them** (an older note here claimed five including it; its line
+is commented out on the box). **Verify with `crontab -l` as `ubuntu`, NOT `systemctl list-timers`** —
+no timers exist.
 
 ### Known live defects, deliberately left standing
 
@@ -239,11 +247,13 @@ Per-item measurements are in `docs/HANDOFF-HISTORY.md` under their rounds. What 
 
 - **Finish slice 6**: sweep remaining reports for one-jurisdiction assumptions — grep `packFor(` in
   `core/` and check each against "whose jurisdiction is this row?". r115 fixed the overtime report.
-- **Slice 9's remainder**: tenant CLOSURE (dual-controlled, own retention check) and REACTIVATION
-  (record the suspended window, replay skipped sweeps with it EXCLUDED from expiry clocks — the r108
-  history entry explains why expiry cannot simply re-run).
-- **Slice 10's dashboard**, now that the meter records. Arguably wants slice 7's platform plane first.
-- **Slices 7 and 8** — the big untouched ones (platform role/process/systemd; audit-chain lifecycle).
+- **Provision slice 7** — create `ai_hr_platform` from `deploy/bootstrap-db.sql`, set
+  `PLATFORM_DATABASE_URL`. No code; turns `pnpm platform:usage` from exit-2 into a working report.
+- **Slice 9's ONE gap: give `closureDecision` a caller.** Decision function, retention check and schema
+  are built and tested; nothing invokes them. Reactivation already has its runner.
+- **Slice 10's dashboard**, now that the meter records daily. Wants slice 7 provisioned first.
+- **The old line here called 7 and 8 "the big untouched ones" — wrong for both.** This table has now
+  gone stale on 7, 8, 9 and 10 in turn: **check the tree before believing any row of it.**
 
 ## Settled decisions — do not reopen
 
@@ -681,12 +691,14 @@ method or carry-forward is WRONG.**
    | 0–4 | **DONE** (invitation privesc fix · schema · `isModuleEnabled` (`a38ed02f`, 50 sites) · gate classification · nav/page gating) |
    | 5 | **DONE r97–r100** except the admin setup notification (no natural key on `notification`) |
    | 6 | **steps 1–5 done** (r102/r103/r110/r111/r115). Remaining: sweep reports for one-jurisdiction assumptions · per-country subtotals + mixed-currency refusal · the deploy-failing flip (**confirm first**) |
-   | 7 | **PARTLY BUILT — the old "appears in zero files" note was STALE.** `core/platform-usage.ts` (148 lines), `test/platform-plane.test.ts` (203) and the `ai_hr_platform` role definition in `deploy/bootstrap-db.sql` all exist. **But the role does NOT exist on production** (only `ai_hr_app`) — written, never provisioned |
-   | 8 | **PARTLY BUILT — also stale.** `core/audit-chain-arming.ts` (90 lines) exists, and it documents a real hazard: **DISARMING THE CHAIN IS NEITHER REVERSIBLE NOR VISIBLE.** Events appended while the gate is off carry `chain_seq IS NULL`, so they are ABSENT from the chain rather than breaking it; re-arming links onto the last chained event, every `prev_hash` matches, and `verifyTenantChain()` returns valid over a log with an unprotected hole — the DPO surface renders a green "intact". Decide whether that gate should be removable at all |
-   | 9 | **mostly done** (r104/r105/r108/r109). Remaining: CLOSURE (dual-controlled, own retention check) · REACTIVATION (suspended window excluded from expiry clocks) |
-   | 10 | **THE METER HAS RUN EXACTLY ONCE.** Verified 2026-08-05: `usage_snapshot` holds **8 rows, all dated 2026-08-02** — one distinct day. **`usage:capture` IS NOT IN THE CRONTAB.** Usage CANNOT be backfilled, so every unscheduled day is permanently unbillable and the count grows daily. One crontab line fixes it (suggested 01:00, ahead of the 02:00/03:00 leave sweeps so it meters the day before they mutate it). The dashboard that reads it is also unbuilt |
-   Slice 9's enforcement is inert in production today (both tenants `active`); `apply-dunning` is
-   report-only and unscheduled.
+   | 7 | **WRITTEN, NEVER PROVISIONED.** `core/platform-usage.ts` (148 lines), `test/platform-plane.test.ts` (203), migration `0351` and the `ai_hr_platform` role definition in `deploy/bootstrap-db.sql` all exist. **But `PLATFORM_DATABASE_URL` is ABSENT from production's `.env.production` (re-verified 2026-08-09)**, so `platformPlaneConfigured()` is false and `pnpm platform:usage` exits 2 on the box. Create the role from `bootstrap-db.sql` and set the URL — cheapest remaining slice |
+   | 8 | **DONE (r121 `901352c5`) — this row used to say "decide whether that gate should be removable at all", and that decision HAS been taken: not once history exists.** `chainArmingDecision` is wired into `db/client.ts:13` and REFUSES to disarm a tenant with chained history; `test/audit-hash-chain.test.ts:134` used to assert the hole and now asserts the refusal. Preflight `scripts/check-audit-chain-gate.ts`; `app/admin/privacy/page.tsx:53` records why there is no banner. **The hazard it closed, worth keeping:** events appended while the gate is off carry `chain_seq IS NULL`, so they are ABSENT from the chain rather than breaking it — re-arming links onto the last chained event, every `prev_hash` matches, and `verifyTenantChain()` returns valid over a log with an unprotected hole |
+   | 9 | **CLOSURE AND REACTIVATION ARE BOTH BUILT — the old "Remaining: CLOSURE · REACTIVATION" here was stale.** `core/tenant-lifecycle.ts` carries `closureDecision` (dual control + its own retention check), `suspendedDaysWithin`, `shiftExpiryForSuspension` and `replayPlan`, all pinned by `test/tenant-lifecycle.test.ts`; schema in `0350`. `scripts/reactivate-tenant.ts` (145 lines) closes the window, records the event and PRINTS the replay plan — report-only until `--apply`, deliberately not firing sweeps at a customer's live payroll. **The one real gap: `closureDecision` has ZERO callers** — decision logic and schema with no operator entry point |
+   | 10 | **SCHEDULED 2026-08-09 — the bleed is STOPPED.** `capture-usage` runs daily at 01:00 (crontab, ahead of the leave sweeps); first scheduled-era run wrote 9 rows / 0 failures across 9 companies in 1 tenant. Env contract is **`MIGRATION_DATABASE_URL`, NOT the platform pool** — slice 7 is not a prerequisite, which is why this could ship ahead of it. **2026-08-03 → 2026-08-08 are permanently unbillable** — before this, `usage_snapshot` held 8 rows all dated 2026-08-02. The read model (`platformUsageSummary`, `pnpm platform:usage`) is done; the DASHBOARD is still unbuilt, deliberately — `/platform` needs its own auth boundary (`platform_user` ≠ `app_user`, ADR-0077 D5) and cannot reuse the tenant session |
+   Slice 9's enforcement is inert in production today; `apply-dunning` is report-only and unscheduled.
+   **An older line here said "both tenants `active`" — 2026-08-09's `capture-usage` run reported
+   `1 tenant(s) in scope, 0 skipped` via the shared `loadSweepScope`, i.e. ONE tenant, not two out of
+   two. Count before relying on either number.**
 5. **Test-DB teardown is FIXED — kept so nobody "fixes" it again.** `test/global-setup.ts:298`,
    best-effort and never fatal. A run drops its own template and workers on exit.
 6. **Dead/misplaced payroll config** (r78): `payment_basis` is written and read by nothing; probation
