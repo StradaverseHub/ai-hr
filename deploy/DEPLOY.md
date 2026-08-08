@@ -63,19 +63,38 @@ rsync -az --delete \
 
 ## 2. One-time database bootstrap
 
-Generate two DB passwords and create the database + the two roles (owner + app):
+Generate **three** DB passwords and create the database + the three roles (owner, app, platform):
 
 ```bash
 cd /opt/ai-hr
 # hex (not base64) so the passwords are URL-safe inside the postgresql:// connection strings:
-OWNER_PW=$(openssl rand -hex 24); APP_PW=$(openssl rand -hex 24)
-echo "owner: $OWNER_PW"; echo "app: $APP_PW"   # copy these into .env.production next
-sudo -u postgres psql -v owner_pw="$OWNER_PW" -v app_pw="$APP_PW" -f deploy/bootstrap-db.sql
+OWNER_PW=$(openssl rand -hex 24); APP_PW=$(openssl rand -hex 24); PLATFORM_PW=$(openssl rand -hex 24)
+sudo -u postgres psql -v owner_pw="$OWNER_PW" -v app_pw="$APP_PW" -v platform_pw="$PLATFORM_PW" \
+  -f deploy/bootstrap-db.sql
 ```
 
-This creates `ai_hr` owned by `ai_hr_owner`, the non-privileged `ai_hr_app`, and the default
-privileges that auto-grant later migrations' tables to the app role (see the comments in the SQL —
-do not blanket-grant after migrating).
+> **ALL THREE `-v` FLAGS ARE REQUIRED — omitting one creates NO ROLES AT ALL, not two of three.**
+> An undefined `:'var'` is a psql **syntax error**, not an empty string, so that `set_config` line
+> never runs; the `DO` block then calls `current_setting()` on the unset GUC and throws; and a `DO`
+> block is a single statement, so the failure rolls back the *whole* block including the `CREATE ROLE`
+> statements that had already succeeded inside it. Verified on PostgreSQL 16.14, 2026-08-09. This
+> section previously documented only two, which is why an install can end up with no `ai_hr_platform`
+> (see "Provisioning the platform plane" below).
+
+Read the passwords back from your shell when you fill in `.env.production` — `echo` them only if you
+must. They are about to be written to a `0600` file; printing them also puts them in your shell
+history and your terminal scrollback.
+
+This creates `ai_hr` owned by `ai_hr_owner`, the non-privileged `ai_hr_app`, the BYPASSRLS
+`ai_hr_platform` control-plane role (ADR-0077 D5), and the default privileges that auto-grant later
+migrations' tables to the app role (see the comments in the SQL — do not blanket-grant after
+migrating).
+
+> Secret hygiene, known and not yet fixed: these passwords are passed to `psql` in **argv**, so sudo
+> records them in `/var/log/auth.log` and `/proc/<pid>/cmdline` is world-readable while psql runs.
+> `deploy/provision-platform-role.sh` shows the fix (pipe the statement in on **stdin** — a `printf`
+> builtin never enters the process table). Converting `bootstrap-db.sql` to psql 16's `\getenv` is the
+> clean follow-up; it is not done here because that file is pinned by `test/platform-plane.test.ts`.
 
 ## 3. Configure the environment
 
@@ -393,6 +412,42 @@ per-type assignments, so a leave type added afterwards needs an assignment of it
 inheriting the company's base chain. That is inherent in the Assignment Template model — its assign form
 requires at least one leave type — and it is the price of having one place to configure approvals. Tell
 the customer before you run `--apply`, not after.
+
+### Provisioning the platform plane on an EXISTING install (ADR-0077 slice 7)
+
+If `ai_hr_platform` is missing — which is the case on any database bootstrapped before the role was
+added to `bootstrap-db.sql`, and on any install that followed the old two-password instructions above:
+
+```bash
+sudo -u postgres psql -d ai_hr -At -c "select rolname from pg_roles where rolname like 'ai_hr%'"
+```
+
+Two rows instead of three means the plane was never provisioned. Fix it with:
+
+```bash
+bash deploy/provision-platform-role.sh          # run on the server, as the deploy user
+```
+
+**Re-running `bootstrap-db.sql` is NOT sufficient, and this is the whole reason the script exists.**
+Migration `0351_platform_plane.sql` wraps every one of its `GRANT`s in
+`IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ai_hr_platform') THEN RAISE NOTICE; RETURN`.
+On a database where the role was absent when `0351` ran, that guard fired and **every grant was
+skipped** — and drizzle has recorded `0351` as applied, so it will never run again. Creating the role
+on its own therefore yields a role that can log in and read nothing. The script creates the role *and*
+replays `0351`'s grant list, then verifies the boundary (it asserts SQLSTATE `42501` specifically, so a
+probe that fails for an unrelated reason cannot masquerade as a boundary).
+
+It is idempotent, refuses to run twice, backs up `.env.production`, generates the password on the host
+so it never reaches a transcript, and derives `PLATFORM_DATABASE_URL` from `DATABASE_URL` so the host,
+port and database name cannot drift. No service restart is needed — `db/platform.ts` is imported only
+by `scripts/platform-usage-report.ts`.
+
+To undo:
+
+```bash
+sudo -u postgres psql -d ai_hr -c 'DROP OWNED BY ai_hr_platform; DROP ROLE ai_hr_platform;'
+# then remove the PLATFORM_DATABASE_URL line from .env.production
+```
 
 ### Switching a platform-scoped setting on (until slice 7)
 
