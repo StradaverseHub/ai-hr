@@ -1687,8 +1687,25 @@ export async function closeReplacementLeaveYearAction() {
 // beside `fail`/`ok`, which is what the plan asked for ("move the policy editor form and its
 // setToilPolicyAction TARGET"). Redirecting to the old page would have landed the admin on a screen that
 // no longer shows the form they just submitted, with their validation error invisible.
+//
+// 20e759a0 — THE PAGE IS NOW FILTERED TO ONE COMPANY (`?company=`), so every return path out of this
+// action has to carry that selection back. It did not, and all three targets dropped it: `saved=1`, the
+// premium-equivalent `warning=`, and `fail(LEAVE_REPLACEMENT, e)` on the error path. The consequence is
+// worst on the error path — the admin is thrown onto the DEFAULT company's form, where the `?error=`
+// banner describes a validation failure in a form that is no longer on screen.
+//
+// The id comes off the FormData, from the hidden `companyId` input the form already posts, so there is
+// nothing new for the page to send. Saving from the "All companies" view therefore lands on the company
+// whose Save was pressed rather than back on the stacked list — that is the company being edited, and it
+// is where the saved/error banner belongs.
+//
+// `fail()` cannot be used any more: it appends `?error=` to whatever path it is given, so passing it a
+// path that already carries `?company=` would produce two `?`. The redirect is built here instead.
 export async function setToilPolicyAction(fd: FormData) {
   const s = await getSession();
+  const companyId = String(fd.get('companyId') ?? '');
+  const back = (params: string) =>
+    `${LEAVE_REPLACEMENT}?${params}${companyId ? `&company=${encodeURIComponent(companyId)}` : ''}`;
   let warning: string | undefined;
   try {
     // 296fc027 — the eligibility criteria, read the way every other multi-select criteria form in this
@@ -1702,7 +1719,7 @@ export async function setToilPolicyAction(fd: FormData) {
     }
     // Phase-B #14: premium_equivalent + allowing First-Schedule staff returns a banking-risk warning.
     const r = await setToilPolicy(s, {
-      companyId: String(fd.get('companyId') ?? ''),
+      companyId,
       enabled: fd.get('enabled') === 'on',
       accrualBasis: String(fd.get('accrualBasis') ?? 'hours_worked') as ToilAccrualBasis,
       expiryDays: Number(fd.get('expiryDays') ?? 90),
@@ -1720,12 +1737,12 @@ export async function setToilPolicyAction(fd: FormData) {
     });
     warning = r.premiumEquivalentWarning;
   } catch (e) {
-    fail(LEAVE_REPLACEMENT, e);
+    redirect(back(`error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(LEAVE_REPLACEMENT);
   // The warning has been produced since Phase-B #14 but the old target never read the param, so it was
   // dropped on every save. The new page renders it.
-  redirect(warning ? `${LEAVE_REPLACEMENT}?warning=${encodeURIComponent(warning)}` : `${LEAVE_REPLACEMENT}?saved=1`);
+  redirect(warning ? back(`warning=${encodeURIComponent(warning)}`) : back('saved=1'));
 }
 
 // ADR-0069 — upsert one company's leave encashment policy (Company Leave Settings -> Encashment Policy).

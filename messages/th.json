@@ -6133,6 +6133,8 @@
       "on": "On",
       "off": "Off",
       "noCompanies": "No companies in your scope.",
+      "companyFilterLabel": "บริษัท",
+      "companyFilterAll": "ทุกบริษัท",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
       "moduleOff": "การลาชดเชยไม่ได้อยู่ในแพ็กเกจของบัญชีนี้ จึงยังไม่มีการสะสมวันลา คุณตั้งค่าไว้ล่วงหน้าที่นี่ได้ — การตั้งค่าจะมีผลทันทีที่เปิดใช้ส่วนเสริมนี้",
