@@ -429,6 +429,16 @@ export default async function LocationsPage({
                 <form
                   action={createClockingLocationAction}
                   id={`clocking-form-${c.id}`}
+                  // THE KEY IS LOAD-BEARING, not decoration. The Location <select> below is
+                  // UNCONTROLLED (defaultValue, no value), and "Add a clocking point" is a next/link
+                  // SOFT navigation to the same route — so React reuses this form at the same tree
+                  // position and never re-applies defaultValue (react-dom's update path skips
+                  // updateOptions when value == null). Without a key the pre-pick silently no-ops on
+                  // the exact path users take, and works only after a hard reload. Every other
+                  // searchParams-driven form in this repo carries one: /admin/attendance
+                  // key={editing?.id ?? 'new'}, pay-components/new, payroll-cycle, claims. Same
+                  // failure the entitlement bands editor shipped with (4a1abc4a).
+                  key={addPoint ?? 'new'}
                   className="grid scroll-mt-6 grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-7"
                 >
                   <input type="hidden" name="companyId" value={c.id} />

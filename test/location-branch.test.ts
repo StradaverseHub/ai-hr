@@ -208,6 +208,41 @@ describe('a duplicate save reports itself, never the raw query', () => {
     expect((err as Error).message).not.toMatch(RAW_SQL);
   });
 
+  // THE TEST ABOVE DOES NOT ACTUALLY TEST DISCRIMINATION, which is why this one exists. It sets no
+  // branch, so `locationUniqueError`'s `n.branch && /location_branch_uq/i` arm is short-circuited by
+  // the falsy branch before the constraint name is ever consulted — it would still pass if the name
+  // check were deleted. Here BOTH arms are live: a branch is supplied and is FREE, while the code
+  // clashes. Only the constraint name can tell the two apart, so this is the case that fails if
+  // someone reorders the arms or drops the regex.
+  it('a CODE clash while a FREE branch is also being set is still the CODE error, not the branch one', async () => {
+    const a = adminCtx(b);
+    await createProfileOption(a, { category: 'branch', value: BUKIT });
+    await createLocation(a, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
+
+    const err = await createLocation(a, {
+      companyId: b.companyId,
+      code: 'HQ', // taken
+      name: 'Second HQ',
+      branch: BUKIT, // free — nothing else holds it
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(LocationCodeTakenError);
+    expect(err).not.toBeInstanceOf(LocationBranchTakenError);
+    expect((err as LocationCodeTakenError).code).toBe('HQ');
+    expect((err as Error).message).not.toMatch(RAW_SQL);
+  });
+
+  // NOT TESTED HERE, DELIBERATELY, AND SAID OUT LOUD RATHER THAN FAKED: the try/catch around the
+  // failure-path recovery read in withBranchConflictCode (core/location.ts). Reaching it needs
+  // branchConflictCode itself to throw — a dropped connection, a statement timeout, or the holder
+  // archived in the window between the 23505 and the follow-up read. None of those is producible
+  // from this file's public surface: archiving the holder FREES the branch, so no 23505 is raised at
+  // all and the path is never entered. A first draft of this test claimed to race that window and
+  // did not — it archived nothing and passed because the code resolved normally, i.e. it passed for
+  // a reason other than its name. That is the failure mode this repo keeps writing down, so the test
+  // is gone and the gap is recorded instead. The catch is defence in depth; the invariant it protects
+  // (a typed error, never raw SQL) IS covered by every other case in this describe block.
+
   it('an ARCHIVED holder does not collide — the partial index and the message agree', async () => {
     const a = adminCtx(b);
     await createProfileOption(a, { category: 'branch', value: BUKIT });

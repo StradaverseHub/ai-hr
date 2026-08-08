@@ -181,7 +181,18 @@ async function withBranchConflictCode(
   scope: { companyId: string } | { locationId: string },
 ): Promise<unknown> {
   if (!(e instanceof LocationBranchTakenError) || e.conflictCode) return e;
-  const code = await branchConflictCode(ctx, e.branch, scope);
+  // THE RECOVERY READ MUST NEVER REPLACE THE TYPED ERROR. It runs on the failure path, in a SECOND
+  // transaction (the first is aborted by the 23505), so it can fail for reasons of its own — a dropped
+  // connection, a statement timeout, the row archived between the two reads. If it throws and we let
+  // that propagate, the caller's `fail()` renders THAT raw drizzle message in the admin banner, which
+  // is precisely the defect this whole path exists to close. Losing the conflicting code costs the
+  // reader one detail; losing the typed error costs them the SQL.
+  let code: string | null = null;
+  try {
+    code = await branchConflictCode(ctx, e.branch, scope);
+  } catch {
+    return e; // typed, without the code — branchTakenNoCode covers the wording
+  }
   return code ? new LocationBranchTakenError(e.branch, code) : e;
 }
 
