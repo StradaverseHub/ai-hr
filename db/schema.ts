@@ -1828,6 +1828,71 @@ export const entitlementResetArchive = pgTable(
   ],
 );
 
+/**
+ * c8052ae3 (migration 0416) — the written record of the leave_ledger rows the Medical / Hospitalization
+ * reset REMOVES, and of the recalc-audit rows that describe them.
+ *
+ * ⚠️ THIS IS THE TABLE THAT MAKES A DELETION FROM AN APPEND-ONLY LEDGER DEFENSIBLE. `leave_ledger` is
+ * append-only by documented posture, and `leave_adjustment_batch` reverses by writing compensating rows.
+ * That posture is set aside for exactly one correction — see migration 0416's header for the four
+ * conditions that justify it (a compensating row cannot cancel the 2027/2028 future-dated grants; the
+ * reporter was promised a clean 0.00 rather than "14.00 with a −14.00 beside it"; both types carry zero
+ * debits and zero approved requests; and this archive is written and VERIFIED before anything is deleted).
+ * Remove any one of those and the deletion stops being justified.
+ *
+ * EVERY COLUMN IS TEXT, like `entitlementResetArchive` above and for the same reason: the record has to
+ * outlive the rows, the employments and eventually the leave types it describes, so it holds no ids that
+ * can dangle and no joins that can fail. `sourceRowId` is the original uuid AS TEXT, deliberately without
+ * a reference — a real FK would point at a row this correction is about to delete.
+ *
+ * THE WRITER IS SQL (`app.capture_leave_ledger_reset_archive`, migration 0416), not this schema entry.
+ * There is no TypeScript insert path and inventing one for a test would be a second mechanism. The
+ * READERS are core/leave-ledger-archive.ts and the admin listing it feeds.
+ */
+export const leaveLedgerResetArchive = pgTable(
+  'leave_ledger_reset_archive',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // NOT `createdAt()`: that helper hardcodes the COLUMN NAME `created_at` and this column is
+    // `captured_at` — the same trap `entitlementResetArchive` documents above.
+    capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
+    /** Which capture run wrote this row — a rehearsal on a restored copy and the real run must never read
+     *  as one record. */
+    captureTag: text('capture_tag').notNull(),
+    /** 'ledger' (leave_ledger) | 'recalc_audit' (leave_entitlement_recalc_audit). */
+    layer: text('layer').notNull(),
+    /** The ORIGINAL row's id as TEXT, with no reference — see the header. */
+    sourceRowId: text('source_row_id'),
+    employeeName: text('employee_name'),
+    employeeCode: text('employee_code'),
+    employeeEmail: text('employee_email'),
+    companyName: text('company_name'),
+    leaveTypeName: text('leave_type_name'),
+    leaveTypeCode: text('leave_type_code'),
+    /** ledger layer: 'accrual' / 'adjustment' / … . recalc_audit layer: NULL. */
+    entryType: text('entry_type'),
+    /** ledger layer: the row's SIGNED days. recalc_audit layer: the audit row's delta. */
+    daysText: text('days_text'),
+    effectiveOnText: text('effective_on_text'),
+    /** ledger layer: `leave_ledger.reason` verbatim. recalc_audit layer: the trigger that caused it. */
+    reason: text('reason'),
+    /** recalc_audit layer only: "previous 180.00 → new 60.00 (delta −120.00)" — the sentence that explains
+     *  every negative balance the reporter reported. */
+    entitlementText: text('entitlement_text'),
+    /** ledger layer only. Expected to read "not sourced from a leave request" on EVERY row (production
+     *  shows zero debits on both types); anything else means the safety argument did not hold. */
+    sourceRequestText: text('source_request_text'),
+    recordedAtText: text('recorded_at_text'),
+    note: text('note'),
+  },
+  (t) => [
+    index('leave_ledger_reset_archive_tenant_idx').on(t.tenantId, t.captureTag),
+    index('leave_ledger_reset_archive_layer_idx').on(t.tenantId, t.layer),
+  ],
+);
+export type LeaveLedgerResetArchiveRow = typeof leaveLedgerResetArchive.$inferSelect;
+
 // leave_shared_group (r88, feedback 1ef1cf95 — migration 0342) = a SHARED LEAVE GROUP: several leave types
 // drawing on ONE pooled allowance (e.g. "Special Leave: 10 days a year shared, max 3 days per application").
 //
