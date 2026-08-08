@@ -64,6 +64,12 @@ export * from '../../core/benefit-scheme';
 // documented to only ever shrink.
 export * from '../../core/entitlement-template';
 export * from '../../core/entitlement-archive';
+// c8052ae3 — the read-only record of the leave_ledger rows the Medical / Hospitalization reset removes.
+// Same registration discipline as the two lines above (BOUNDARIES + ALWAYS_ALLOWED in
+// test/leave-pack-drift.test.ts, no allowlist entry): the only outside reader is app/admin/leave/, which
+// is already always-allowed, and the correction SCRIPT deliberately imports none of this — it talks to
+// db/schema and the SQL capture function directly, so an operator one-off never becomes a pack consumer.
+export * from '../../core/leave-ledger-archive';
 // 93249794 — the Generate Entitlement service. Outside callers reach it HERE, never through core/,
 // which is what keeps it inside the pack boundary declared in test/leave-pack-drift.test.ts.
 export * from '../../core/leave-generation';

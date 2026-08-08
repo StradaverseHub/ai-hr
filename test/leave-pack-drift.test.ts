@@ -80,6 +80,11 @@ const BOUNDARIES = [
   // is added — the only outside importer is app/admin/leave/, which is already always-allowed.
   'core/entitlement-template',
   'core/entitlement-archive',
+  // c8052ae3 — the record of the leave_ledger rows the Medical / Hospitalization reset removes. In BOTH
+  // lists for the reason every note above gives. No allowlist entry: its only outside reader is
+  // app/admin/leave/, already always-allowed, and the correction script imports db/schema directly rather
+  // than this module precisely so an operator one-off never becomes a leave-pack consumer.
+  'core/leave-ledger-archive',
 ];
 
 /** The pack surface (see packs/leave/index.ts header): wiring/facade, implementation, routes. */
@@ -102,6 +107,7 @@ const ALWAYS_ALLOWED = [
   'core/benefit-scheme.ts',
   'core/entitlement-template.ts', // 6e9a126e — see the BOUNDARIES note above
   'core/entitlement-archive.ts', // 6e9a126e — see the BOUNDARIES note above
+  'core/leave-ledger-archive.ts', // c8052ae3 — see the BOUNDARIES note above
   'core/leave-generation.ts', // 93249794 — a leave SERVICE (it drives openLeaveYear), so it is pack
   // implementation, not a consumer. Declared here rather than allowlisted, following entitlement-template's
   // precedent: the allowlist is audited debt that may only shrink.

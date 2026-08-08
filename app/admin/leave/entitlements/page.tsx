@@ -344,6 +344,15 @@ export default async function LeaveEntitlementsPage({
             <Link href="/admin/leave/entitlements/archive" className="text-sm underline">
               {t('configurationRecordAction')}
             </Link>
+            {/* c8052ae3 — the record of the Medical / Hospitalization balance rows the one-off correction
+                removes. Beside the configuration record for the same reason that one sits here: both are
+                reference documents about a correction in progress, reached from the screen the correction
+                is about, and neither belongs in the sidebar. Rendered unconditionally: an empty record
+                renders its own "nothing recorded yet" card, and a link that appears only once rows exist
+                is a link nobody knows to look for. */}
+            <Link href="/admin/leave/entitlements/ledger-archive" className="text-sm underline">
+              {t('balanceRecordAction')}
+            </Link>
             <Link href="/admin/leave/import" className={btnPrimary}>
               {t('importAction')}
             </Link>
