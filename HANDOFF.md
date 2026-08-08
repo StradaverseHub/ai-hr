@@ -36,53 +36,23 @@ the dry-run rsync was ZERO-change immediately before this edit. Pre-change cront
 changed file — which looks identical to an undeployed release.** If the next dry-run's ONLY line is
 `<f.st.... HANDOFF.md`, that is this doc edit, not pending code. Anything else is a real delta.
 
-### r173 shipped FIVE items and CLEARED THE BUILD QUEUE — `approved` is now ZERO
+### r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
 
-`0386b95d` Documents tab · `18719ded` Payroll tab · `080de5cf` Transaction History grid ·
-`6babf4f6` Statutory Forms · `06f0cb8f` Create Employee with a reserved ID. `b8aa3466` closed out with an
-honest revision (below). Three worktrees, **merged with zero conflicts** — grouping by FILE OVERLAP again:
-the two personnel tabs edit one file so ONE agent built both, and the two report items share
-`lib/report-export.ts` so they ran SEQUENTIALLY in one tree.
+Two things outlive those rounds and are deliberately NOT archived with them:
 
-**THREE VERIFIER FINDINGS THAT CHANGED THE CODE**, none caught by the builders' own green tests:
+**NOT BUILT ON PURPOSE — Pay Items has no per-row Edit, and adding one naively DOUBLES PAY.**
+`setEmploymentPayComponent` closes the open row at the new `effectiveFrom` and inserts a fresh one, while
+the kernel selects every row overlapping the period — so re-stating an item inside its own running month
+leaves BOTH rows in the window. The table already renders every column, so a View would be furniture.
+**Safe editing needs a dating change, not a presentation change.**
 
-1. **A screen that contradicted its own export button.** The new per-form statutory page used
-   `requireAdmin()` and trusted `?companyId=`, while its export route fenced with `scopeIds`. The claim
-   was "it renders another company's full return" — **measured first, and that was wrong**: `payroll_batch`
-   RLS needs `can_admin_payroll_for(company_id)`, so the read returns ZERO rows. Nothing leaked. But
-   `listCompanies` IS tenant-wide, so the picker OFFERED those companies and rendering one produced an
-   EMPTY statutory return under its name — readable as "nothing to file" — while the export 404'd on the
-   same selection. Both now go through `scopeIds`.
-2. **A reservation that was never usable.** The auto running-number path skipped the uniqueness check the
-   manual path does. A running number and a hand-keyed code share ONE namespace (ISEDECOR: 22 employments,
-   14 in a hand-keyed `A0001..A0014` run), so a counter behind the codes in use issues a taken number, HR
-   is told it is reserved, and it only fails at Activate. Now checks and skips, bounded at 50.
-3. **An export that could 500.** `grid-export` interpolated an operator-controlled employee code into a
-   quoted `Content-Disposition`; a non-Latin-1 character makes the `Response` constructor throw. Now
-   RFC 5987, matching the sibling route written the same day.
+**TWO CORRECTIONS ARE OWED TO THE REPORTER,** on `18719ded` and `0386b95d`. r170's plans declined them on
+the claim that no tab on the employee profile has search, sorting or page numbers — true of `page.tsx`,
+but NOT of `components/salary-history-table.tsx`, which IS the Basic Salary section of the Payroll tab and
+has had all four, CSV export included, all along. Both are corrected on the board. **Measure the SECTION,
+not the page file.**
 
-**I GOT A FACT WRONG IN TWO APPROVED PLANS, and both are corrected on the board.** r170's plans told the
-reporter "no tab on the employee profile has search, sorting or page numbers, including Qualification",
-and used it to justify declining them. True of `page.tsx` — and **`components/salary-history-table.tsx` IS
-the Basic Salary section of the Payroll tab and has had all four, CSV export included, all along.** So that
-tab now has one section with them and two without: a version of the very inconsistency the item was raised
-about. Measure the SECTION, not the page file.
-
-**NOT BUILT ON PURPOSE:** Pay Items has no per-row Edit. `setEmploymentPayComponent` closes the open row at
-the new `effectiveFrom` and inserts a fresh one, while the kernel selects every row overlapping the period
-— so re-stating an item inside its own running month leaves BOTH rows in the window and doubles it. The
-table already renders every column, so a View would be furniture. Safe editing needs a dating change, not
-a presentation change.
-
-### r172 — the TP1 "security gap" DID NOT REPRODUCE (full entry: history → r172)
-
-`3e3d3fb2`'s plan called the TP1 `?employmentId=` handling a security gap. Three attempted exposures were
-all refused by RLS, including the manager branch the plan predicted would leak. **The mutation check is
-what caught it: with the guard reverted the whole test file still passed**, because it was pinning RLS
-rather than the fix. **Revert your own fix and re-run before you believe a refusal test.** The guard
-shipped as defence in depth; `3e3d3fb2` stays PLANNED because only the guard landed, not the redesign.
-
-### ⚠️ ONE ITEM BUILT AND DEPLOYED BUT NOT MARKED — and one withdrawn scope worth reading
+### ⚠️ TWO STANDING WARNINGS — a script that must not be run, and a promise not yet kept
 
 - **`2da9937a` (Formula Builder) — SHIPPED and marked deployed (rev 3). THE SEED STEP IS WITHDRAWN, and
   the reason is worth keeping.** The plan promised Overtime 2.0 / 3.0 seeded from the tenant's OT1_5.
@@ -644,6 +614,12 @@ grep — an empty result is a parser gap, not proof of no callers.
   200, tsc passed, and check C passed.** Only the dev-server log on a real render showed it. Use
   `t.raw()` when the braces are meant literally (e.g. a template a client island substitutes into),
   and remember that placeholder-looking text is a formatting contract, not decoration.
+- **A REFUSAL TEST CAN BE PINNING SOMETHING OTHER THAN YOUR FIX — so REVERT THE FIX AND RE-RUN before
+  you believe it (r172).** `3e3d3fb2`'s plan called the TP1 `?employmentId=` handling a security gap;
+  three attempted exposures were all refused by RLS, including the manager branch the plan predicted
+  would leak. The mutation check is what caught it: **with the guard reverted, the whole test file still
+  passed**, because it was pinning RLS rather than the new guard. A green refusal test proves the
+  behaviour is refused — NOT that your code is what refuses it.
 - **`rejects.toThrow()` passes on the WRONG throw** — a fixture failing NOT NULL before reaching the
   constraint under test reads as a pass. Assert the constraint NAME or match the real Postgres error
   via `.cause` (Drizzle wraps as "Failed query: …").
@@ -711,13 +687,15 @@ method or carry-forward is WRONG.**
 
 ---
 
-**Nothing is in flight.** r159 shipped and is verified on production; the 2026-08-05 planning pass
-after it wrote NO code — it pushed six plans and this snapshot, nothing more. Both pre-planning checks
-were run first and both were clean: the dry-run rsync reported ZERO changes (production matches
-`main`), and the only unmerged `build/*` branches are the three known-stale ones (`r71`, `r83`, and
-`r154`, which is squashed and ancestrally unrelated). When a round is built but unshipped, its entry
-goes HERE and CURRENT STATE says so; on ship it moves to the top of `docs/HANDOFF-HISTORY.md`.
+**Nothing is in flight.** r173 shipped 2026-08-08 and is verified on production; the only change since is
+the 2026-08-09 crontab line at the top of this file, which touched no code. Both pre-planning checks were
+re-run 2026-08-09 and both were clean: the dry-run rsync reported ZERO changes before this document was
+edited, and every unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed,
+ancestrally unrelated) and **two that the old version of this line did not list, `r163-g-release3` and
+`r163g-picker`**, whose content reached main by another route: their migration `0405` is on main as
+`0410_entitlement_reset_drop_old_layers.sql`, and `main` DELETES ~45,000 lines relative to both, which is
+the tell. On ship, a round's entry moves to the top of `docs/HANDOFF-HISTORY.md`.
 **"Nothing in flight" is a claim about BRANCHES — it is not a claim that `main` has been deployed.
 Prove that separately with the dry-run rsync above; r159 exists because those two were conflated.**
 
-**Shipped round entries (r66–r159): `docs/HANDOFF-HISTORY.md`.**
+**Shipped round entries (r66–r173): `docs/HANDOFF-HISTORY.md`.**

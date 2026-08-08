@@ -4,6 +4,58 @@ Archive of SHIPPED round entries, newest first. The living handoff is `../HANDOF
 current state and the entry for any round still in flight; when a round ships, its entry moves to the
 top of this file.
 
+## r173 — five items, and the build queue cleared (shipped 2026-08-08, main@3d792d02, 336 migrations)
+
+`0386b95d` Documents tab · `18719ded` Payroll tab · `080de5cf` Transaction History grid ·
+`6babf4f6` Statutory Forms · `06f0cb8f` Create Employee with a reserved ID, carrying migration `0415`
+(the employee-draft ID reservation). `b8aa3466` closed out with an honest revision. **`approved` and
+`contested` both reached ZERO — the first empty build queue.**
+
+Three worktrees, **merged with zero conflicts** — grouping by FILE OVERLAP again: the two personnel tabs
+edit one file so ONE agent built both, and the two report items share `lib/report-export.ts` so they ran
+SEQUENTIALLY in one tree.
+
+**THREE VERIFIER FINDINGS THAT CHANGED THE CODE**, none caught by the builders' own green tests:
+
+1. **A screen that contradicted its own export button.** The new per-form statutory page used
+   `requireAdmin()` and trusted `?companyId=`, while its export route fenced with `scopeIds`. The claim
+   was "it renders another company's full return" — **measured first, and that was wrong**: `payroll_batch`
+   RLS needs `can_admin_payroll_for(company_id)`, so the read returns ZERO rows. Nothing leaked. But
+   `listCompanies` IS tenant-wide, so the picker OFFERED those companies and rendering one produced an
+   EMPTY statutory return under its name — readable as "nothing to file" — while the export 404'd on the
+   same selection. Both now go through `scopeIds`.
+2. **A reservation that was never usable.** The auto running-number path skipped the uniqueness check the
+   manual path does. A running number and a hand-keyed code share ONE namespace (ISEDECOR: 22 employments,
+   14 in a hand-keyed `A0001..A0014` run), so a counter behind the codes in use issues a taken number, HR
+   is told it is reserved, and it only fails at Activate. Now checks and skips, bounded at 50.
+3. **An export that could 500.** `grid-export` interpolated an operator-controlled employee code into a
+   quoted `Content-Disposition`; a non-Latin-1 character makes the `Response` constructor throw. Now
+   RFC 5987, matching the sibling route written the same day.
+
+**Decisions.**
+
+- **A FACT WAS WRONG IN TWO APPROVED PLANS, and both are corrected on the board.** r170's plans told the
+  reporter "no tab on the employee profile has search, sorting or page numbers, including Qualification",
+  and used it to justify declining them. True of `page.tsx` — and **`components/salary-history-table.tsx`
+  IS the Basic Salary section of the Payroll tab and has had all four, CSV export included, all along.**
+  So that tab now has one section with them and two without: a version of the very inconsistency the item
+  was raised about. **Measure the SECTION, not the page file.**
+- **Pay Items ships with NO per-row Edit, deliberately.** The dating reason is a standing warning against
+  a plausible future change, so it stays in `../HANDOFF.md` rather than being archived here.
+
+## r172 — the TP1 "security gap" DID NOT REPRODUCE (shipped 2026-08-07, main@240c0613, 335 migrations, none of its own)
+
+`3e3d3fb2`'s plan called the TP1 `?employmentId=` handling a security gap. **Three attempted exposures
+were all refused by RLS**, including the manager branch the plan predicted would leak.
+
+**Decisions.**
+
+- **The mutation check is what caught it: with the guard reverted, the whole test file still passed** —
+  it was pinning RLS rather than the fix. **Revert your own fix and re-run before you believe a refusal
+  test.** Promoted to `../HANDOFF.md` → Traps, because it generalises well past this round.
+- The guard shipped anyway, as defence in depth. **`3e3d3fb2` stays PLANNED**: only the guard landed, not
+  the redesign the plan described, so the item is not done.
+
 ## r171 — six of eight approved items (shipped 2026-08-07, main@704c64bc, 335 migrations)
 
 `4a1abc4a` decimals+editor · `f12d77e5` grade-groups move · `6a1f2bd6` Zakat · `6d72816e` Loans ·
