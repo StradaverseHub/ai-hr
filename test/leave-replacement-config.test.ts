@@ -185,6 +185,36 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(read(PAGE_REL)).not.toContain('href="/admin/toil"');
   });
 
+  // ── 20e759a0 · the company filter's two easiest mistakes ───────────────────────────────────────────
+  // The filter's BEHAVIOUR is tested for real in test/replacement-leave-controls.test.ts (the resolver
+  // and the save round-trip). These two are source assertions because what they guard is a swap a tidy-up
+  // would make on sight, and neither swap changes a type, breaks a build, or fails any behavioural test.
+  it('narrows this page WITHOUT touching the global company-scope cookie', () => {
+    const src = read(PAGE_REL);
+    // The selection is a URL parameter. `getScopeIds` is still read — it stays the OUTER bound — but the
+    // page must never WRITE `company_scope`, which would silently re-scope Roster, Payroll and the rest.
+    expect(src).toContain('resolveCompanyFilter');
+    expect(src, 'the global scope is still the outer bound').toContain('getScopeIds');
+    // Matched against CODE with comments stripped, for the same reason the `.raw` test below does it: the
+    // page explains this trap in a comment that NAMES the cookie, and a naive negative match would force
+    // the next author to delete the warning to make the test pass — precisely backwards.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(code, 'writing the global scope cookie from this page re-scopes every other screen').not.toContain(
+      'company_scope',
+    );
+  });
+
+  it('the companyIds ELIGIBILITY criterion still offers the FULL in-scope list, not the filtered one', () => {
+    // "Who may SUBMIT a request" is a different question from "which company am I configuring". Narrowing
+    // this one with the page filter would delete the ability to name another in-scope company as eligible
+    // — and, because the picker posts what it holds, would drop it from the criterion on the next save.
+    const src = read(PAGE_REL);
+    const opts = src.slice(src.indexOf('const eligibilityOptions'));
+    const companyLine = opts.slice(opts.indexOf('companyIds:'), opts.indexOf('employmentTypes:'));
+    expect(companyLine).toContain('visible.map(');
+    expect(companyLine, 'the page-level filter must not narrow who may submit').not.toContain('shown.map(');
+  });
+
   // ── The boundary that took a page down three rounds ago ────────────────────────────────────────────
   it('the eligibility picker receives only SERIALISABLE props from the server page', () => {
     // test/server-client-boundary.test.ts is the general guard; this is the specific one, because this is
