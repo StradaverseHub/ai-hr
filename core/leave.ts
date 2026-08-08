@@ -7074,6 +7074,13 @@ export async function accrueEarnedLeave(
  * type completely alone": the type is not configured (bc36c768), NOTHING resolves for this employee
  * (`noOpinion`, the 6e9a126e guard), or an anniversary company's calendar-year re-resolution flips the
  * winner to an earned method (mixing windows).
+ *
+ * ⚠️ c8052ae3 — IT RETURNS THE CYCLE AS A CLOSED INTERVAL, `windowStart` AND `windowEnd`, AND `windowEnd`
+ * IS NOT OPTIONAL GARNISH. Callers subtract "already granted inside the window" from `expected`. Before
+ * `windowEnd` existed they had only a start, so a grant already written ahead for the NEXT leave year fell
+ * inside every caller's filter and was counted as this cycle's — and the difference came back as a large
+ * negative clawback on an ordinary profile save (production: 180.00 read against 60.00, −120.00 posted).
+ * A caller that uses `windowStart` without `windowEnd` is reintroducing that defect. See `leaveCycleEnd`.
  */
 export function projectExpectedEntitlement(
   // Leave Year Type override (e1a51aea): `leaveCycle` is the EFFECTIVE cycle for the (type, company) pair —
@@ -7115,11 +7122,6 @@ export function projectExpectedEntitlement(
    *  and a band resolved once by the caller would pin the first resolution while the second silently used
    *  the wrong service length. */
   templateBandForYears?: (years: number) => ServiceBand | null,
-  //
-  // c8052ae3 — `windowEnd` is the INCLUSIVE last day of the same cycle, and it is not optional garnish.
-  // Callers subtract "already granted in the window" from `expected`; before this field existed they had
-  // only a start, so a grant already written ahead for the NEXT leave year counted as this year's and the
-  // difference was posted as a negative clawback. See `leaveCycleEnd`.
 ): { expected: number; windowStart: string; windowEnd: string } | null {
   // bc36c768 — THE NOT-CONFIGURED GATE, first, before any method resolution.
   //
