@@ -70,7 +70,14 @@ import { orgCriteriaFromFields } from '@/core/org-criteria';
 // cannot disagree about which rows exist.
 import { LEAVE_OVERRIDE_TRIGGERS, type LeaveOverrideAction } from '@/core/leave-override';
 import { setAttendancePolicy } from '@/packs/attendance/service';
-import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
+import {
+  createLocation,
+  updateLocation,
+  archiveLocation,
+  restoreLocation,
+  LocationBranchTakenError,
+  LocationCodeTakenError,
+} from '@/core/location';
 import {
   createClockingLocation,
   updateClockingLocation,
@@ -78,6 +85,7 @@ import {
   restoreClockingLocation,
   deleteClockingLocation,
   ClockingLocationInUseError,
+  type RadiusAdvisory,
 } from '@/packs/attendance/service';
 import { countEmployeesInScope } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
@@ -1801,6 +1809,30 @@ export async function setAttendancePolicyAction(fd: FormData) {
 }
 
 // ADR-0054 — Location master data CRUD. requireAdmin gates the route; RLS gates the write per company.
+/**
+ * 1fff489c — the duplicate banner. core/location.ts turns a 23505 on either partial unique index into a
+ * typed error (the shiftUniqueError pattern); the SENTENCE is composed here, because `fail()` puts
+ * `(e as Error).message` verbatim into ?error= and only this layer can reach getTranslations. Without it
+ * the admin saw drizzle's "Failed query: update "location" set "code" = $1 … params: TWO,Two,MY,,BUKIT
+ * JALIL,…" — SQL and parameter values — which is what the reporter's screen actually showed.
+ */
+async function failLocationSave(e: unknown): Promise<never> {
+  if (e instanceof LocationBranchTakenError || e instanceof LocationCodeTakenError) {
+    const t = await getTranslations('admin.locations');
+    if (e instanceof LocationCodeTakenError) fail(LOCATIONS, new Error(t('codeTaken', { code: e.code })));
+    // conflictCode is null only if the holding row vanished between the failure and the follow-up read.
+    fail(
+      LOCATIONS,
+      new Error(
+        e.conflictCode
+          ? t('branchTaken', { branch: e.branch, code: e.conflictCode })
+          : t('branchTakenNoCode', { branch: e.branch }),
+      ),
+    );
+  }
+  fail(LOCATIONS, e);
+}
+
 export async function createLocationAction(fd: FormData) {
   const user = await requireAdmin();
   try {
@@ -1811,9 +1843,11 @@ export async function createLocationAction(fd: FormData) {
       country: String(fd.get('country') ?? '') || undefined,
       state: (fd.get('state') as string) || null,
       holidayGroupId: (fd.get('holidayGroupId') as string) || null,
+      // 1fff489c — the Branch this location serves. Blank = not mapped (the field is optional).
+      branch: (fd.get('branch') as string) || null,
     });
   } catch (e) {
-    fail(LOCATIONS, e);
+    await failLocationSave(e);
   }
   ok(LOCATIONS);
 }
@@ -1828,9 +1862,10 @@ export async function updateLocationAction(fd: FormData) {
       country: String(fd.get('country') ?? '') || undefined,
       state: (fd.get('state') as string) || null,
       holidayGroupId: (fd.get('holidayGroupId') as string) || null,
+      branch: (fd.get('branch') as string) || null,
     });
   } catch (e) {
-    fail(LOCATIONS, e);
+    await failLocationSave(e);
   }
   ok(LOCATIONS);
 }
@@ -1857,38 +1892,63 @@ export async function restoreLocationAction(fd: FormData) {
 
 // ADR-0070 — Clocking Location Management CRUD. requireAdmin gates the route; RLS gates the write per
 // company (tenant-catalog read, admin-of-company write — mirrors 0065 pay_component, NOT `location`).
+/**
+ * 1fff489c — the radius advisory. The write ALREADY SUCCEEDED when this runs: an unusual radius is a
+ * warning, never a refusal (spec section B — some sites genuinely need a bigger circle), so it returns
+ * through a success toast rather than the ?error= banner. Null advisory ⇒ the plain ok() redirect,
+ * byte-identical to before.
+ */
+async function okWithRadiusAdvisory(warning: RadiusAdvisory | null): Promise<never> {
+  if (!warning) ok(LOCATIONS);
+  const t = await getTranslations('admin.locations');
+  okToast(
+    LOCATIONS,
+    warning.code === 'tight'
+      ? t('radiusWarningTight', { radius: warning.radiusM })
+      : t('radiusWarningWide', { radius: warning.radiusM }),
+  );
+}
+
 export async function createClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  let warning: RadiusAdvisory | null = null;
   try {
-    await createClockingLocation(user, {
+    ({ warning } = await createClockingLocation(user, {
       companyId: String(fd.get('companyId') ?? ''),
       name: String(fd.get('name') ?? ''),
       lat: Number(fd.get('lat')),
       lng: Number(fd.get('lng')),
+      // 1fff489c — both REQUIRED by the service. Passed as the raw form strings so a blank field reaches
+      // the "Radius is required" / "pick a location" message rather than becoming NaN or ''.
+      radiusM: String(fd.get('radiusM') ?? ''),
+      locationId: String(fd.get('locationId') ?? ''),
       address: (fd.get('address') as string) || null,
       remarks: (fd.get('remarks') as string) || null,
-    });
+    }));
   } catch (e) {
     fail(LOCATIONS, e);
   }
-  ok(LOCATIONS);
+  await okWithRadiusAdvisory(warning);
 }
 
 export async function updateClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  let warning: RadiusAdvisory | null = null;
   try {
-    await updateClockingLocation(user, {
+    ({ warning } = await updateClockingLocation(user, {
       clockingLocationId: String(fd.get('clockingLocationId') ?? ''),
       name: String(fd.get('name') ?? ''),
       lat: Number(fd.get('lat')),
       lng: Number(fd.get('lng')),
+      radiusM: String(fd.get('radiusM') ?? ''),
+      locationId: String(fd.get('locationId') ?? ''),
       address: (fd.get('address') as string) || null,
       remarks: (fd.get('remarks') as string) || null,
-    });
+    }));
   } catch (e) {
     fail(LOCATIONS, e);
   }
-  ok(LOCATIONS);
+  await okWithRadiusAdvisory(warning);
 }
 
 export async function archiveClockingLocationAction(fd: FormData) {

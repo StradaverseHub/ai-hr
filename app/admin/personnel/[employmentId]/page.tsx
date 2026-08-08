@@ -121,7 +121,7 @@ import { listShiftsForTenant } from '@/core/roster';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
 import { setDefaultShiftAction } from './actions';
 import { listHolidayGroups, listPositions, listBusinessUnits } from '@/core/admin';
-import { listLocations } from '@/core/location';
+import { listLocations, resolveLocationForBranch, branchChangeDateFor } from '@/core/location';
 import { listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
 import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actions';
 import { ReviewSection } from './review-section';
@@ -381,6 +381,45 @@ export default async function EmployeePage({
   const clockingLocations = admin ? await listClockingLocations(s, [emp.companyId]) : [];
   const assignedClockingLocations = admin ? await listEmployeeClockingLocations(s, employmentId) : [];
   const assignedClockingLocationIds = new Set(assignedClockingLocations.map((l) => l.id));
+
+  // ── 1fff489c PHASE 2 — the Branch proposes a work location, HR confirms it ──────────────────────────
+  // ONLY when the open assignment has none. An employee who already has a location is left alone: the
+  // suggestion is a first-fill aid, not a nag, and re-proposing over a deliberate manual pick is exactly
+  // the "it changed itself" behaviour spec section C forbids. NOTHING here writes — the Confirm button
+  // posts the same effective-dated setLocationAction a manual pick does.
+  const branchLocationSuggestion =
+    admin && !emp.terminatedOn && !emp.locationId
+      ? await resolveLocationForBranch(s, emp.companyId, emp.orgBranch)
+      : null;
+  // The effective date the suggestion offers: the date the Branch last changed, falling back to today.
+  // Pre-fill only — the field stays editable, because HR is the one who knows when the move really took
+  // effect for payroll.
+  const branchChangeDate = branchLocationSuggestion ? await branchChangeDateFor(s, employmentId) : null;
+  const suggestedEffectiveDate = branchChangeDate ?? today;
+  // 1fff489c step 10 — the clocking pre-fill. Sites whose location_id matches the employee's CONFIRMED
+  // location (or, before Confirm, the suggested one) seed the multi-select's defaults. It seeds only: the
+  // save is still a full-set replace, so an admin who unticks one gets exactly what they ticked.
+  const preTickLocationId = emp.locationId ?? branchLocationSuggestion?.id ?? null;
+  const clockingDefaultIds = assignedClockingLocationIds.size
+    ? [...assignedClockingLocationIds]
+    : preTickLocationId
+      ? clockingLocations.filter((cl) => cl.locationId === preTickLocationId).map((cl) => cl.id)
+      : [];
+  // 1fff489c — how many points sit under the employee's RESOLVED location (confirmed, else suggested).
+  // null when no location resolves at all: that is a DIFFERENT empty state, and it is answered on the Work
+  // Location card above (branch unmapped / no branch recorded), not by a sentence about clocking points.
+  //
+  // This is what empty state 3 keys off. It used to key off `clockingLocations.length === 0` — the whole
+  // COMPANY having no points — while saying "This location has no clocking points yet", so a company that
+  // had points but none under this employee's location (the case the wording describes) showed nothing at
+  // all. Mirrors the admin screen's per-location groupNoPoints, which was already right.
+  const resolvedLocationPointCount = preTickLocationId
+    ? clockingLocations.filter((cl) => cl.locationId === preTickLocationId).length
+    : null;
+  // …and the mockup's third multi-select line: a mapped location that holds no point yet is LISTED and
+  // unselectable ("BU8 · Bandar Utama 8 · no clocking points yet") rather than silently absent, so the
+  // admin can see the location exists and why nothing can be ticked under it.
+  const locationsWithNoPoints = locations.filter((l) => !clockingLocations.some((cl) => cl.locationId === l.id));
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
@@ -2081,17 +2120,40 @@ export default async function EmployeePage({
               <select
                 name="clockingLocationIds"
                 multiple
-                defaultValue={[...assignedClockingLocationIds]}
+                // 1fff489c step 10 — pre-ticked from the confirmed (or suggested) location when the
+                // employee has nothing assigned yet. Seeds the control only; the save is still a full-set
+                // replace of whatever is ticked at submit time.
+                defaultValue={clockingDefaultIds}
                 className={`${inputCls} h-28`}
               >
                 {clockingLocations.map((cl) => (
-                  <option key={cl.id} value={cl.id}>{cl.name}</option>
+                  <option key={cl.id} value={cl.id}>
+                    {cl.locationCode ? `${cl.locationCode} · ` : ''}
+                    {cl.name}
+                    {cl.radiusM != null ? ` · ${tc('withinRadius', { radius: cl.radiusM })}` : ''}
+                  </option>
+                ))}
+                {/* The mockup's third line. A location with no points yet is shown DISABLED — it can
+                    never be ticked or submitted (there is nothing to clock at), but leaving it out made
+                    a configured location look like it did not exist. */}
+                {locationsWithNoPoints.map((l) => (
+                  <option key={`nopoints-${l.id}`} value="" disabled>
+                    {`${l.code} · ${l.name} · ${tc('noPointsYet')}`}
+                  </option>
                 ))}
               </select>
             </Field>
-            {clockingLocations.length === 0 && (
+            {/* The four distinct empty states (spec section E). Today all four render as one blank field,
+                which is the reporter's actual complaint: "No location" cannot be acted on because it does
+                not say WHICH thing is missing. States 1, 3 and 4 live here; state 2 (branch not mapped)
+                is on the Work Location card above, where the branch is the thing to fix. */}
+            {locations.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{tc('noCompanyLocations')}</p>
+            ) : resolvedLocationPointCount === 0 ? (
               <p className="text-xs text-muted-foreground">{tc('noSites')}</p>
-            )}
+            ) : assignedClockingLocationIds.size === 0 && emp.locationId ? (
+              <p className="text-xs text-muted-foreground">{tc('noAssignedSites')}</p>
+            ) : null}
             <button className={btnPrimary}>{tc('save')}</button>
           </form>
           <form action={setGeofencingAction} className="flex flex-wrap items-end gap-3 border-t border-border p-4">
@@ -2100,14 +2162,20 @@ export default async function EmployeePage({
               <input type="checkbox" name="enabled" defaultChecked={emp.geofencingEnabled} />
               {tc('geofencingToggle')}
             </label>
-            <Field label={tc('radiusLabel')}>
+            {/* 1fff489c — this is now an OPTIONAL OVERRIDE, not the radius. Each site carries its own
+                allowed distance; leaving this blank (the recommended setting, and the new default for an
+                employee who has never had one) means "use each site's own radius". Filling it in replaces
+                every site's figure FOR THIS PERSON. Hence no defaultValue of 300 any more — pre-filling a
+                number here would silently override eight correctly-tuned sites on the next save. */}
+            <Field label={tc('radiusOverrideLabel')}>
               <input
                 name="radiusM"
                 type="number"
                 min={1}
                 max={100000}
-                defaultValue={emp.geofenceRadiusM ?? 300}
-                className={`${inputCls} w-28`}
+                placeholder={tc('radiusOverridePlaceholder')}
+                defaultValue={emp.geofenceRadiusM ?? ''}
+                className={`${inputCls} w-36`}
               />
             </Field>
             <button className={btnPrimary}>{tc('save')}</button>
@@ -3979,9 +4047,55 @@ export default async function EmployeePage({
       <div className="px-4 pt-3 text-sm text-muted-foreground">
         {t('locationCurrent', { location: emp.locationName ? `${emp.locationName} (${emp.locationCode})` : t('locationNone') })}
       </div>
+
+      {/* 1fff489c PHASE 2 — the SUGGESTION. Pre-selected and dated, but it is still a form the admin has to
+          submit: spec section C is explicit that a work location moves payroll and OT history, so nothing
+          auto-commits. Confirm posts source=branch_derived; the manual form below posts source=manual, and
+          the two are told apart on the event stream afterwards (core/location.ts recordLocationSource). */}
+      {!emp.terminatedOn && branchLocationSuggestion && (
+        <form
+          action={setLocationAction}
+          className="mx-4 mt-3 grid grid-cols-1 items-end gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3 sm:grid-cols-3"
+        >
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="locationId" value={branchLocationSuggestion.id} />
+          <input type="hidden" name="source" value="branch_derived" />
+          <div className="sm:col-span-3 text-xs font-medium text-primary">
+            {t('locationSuggestedFromBranch', { branch: branchLocationSuggestion.branch })}
+          </div>
+          <Field label={t('locationSelect')}>
+            <div className={`${inputCls} bg-muted`}>
+              {branchLocationSuggestion.name} ({branchLocationSuggestion.code})
+            </div>
+          </Field>
+          <Field label={t('effectiveDate')}>
+            <input name="effectiveDate" type="date" required defaultValue={suggestedEffectiveDate} className={inputCls} />
+          </Field>
+          <div>
+            <button className={btnPrimary}>{t('locationConfirm')}</button>
+          </div>
+          <p className="sm:col-span-3 text-xs text-muted-foreground">{t('locationSuggestionNote')}</p>
+        </form>
+      )}
+
+      {/* EMPTY STATE 2 of 4 (spec section E): the employee HAS a branch, but no live location in their own
+          company claims it. Today this reads as a bare "No location", which looks identical to the three
+          other reasons the field can be blank — naming the branch is what makes it fixable. */}
+      {!emp.terminatedOn && !emp.locationId && !branchLocationSuggestion && emp.orgBranch && (
+        <p className="px-4 pt-3 text-xs text-muted-foreground">
+          {t('locationBranchUnmapped', { branch: emp.orgBranch })}
+        </p>
+      )}
+      {!emp.terminatedOn && !emp.locationId && !emp.orgBranch && (
+        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('locationNoBranch')}</p>
+      )}
+
       {!emp.terminatedOn && (
         <form action={setLocationAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
           <input type="hidden" name="employmentId" value={emp.employmentId} />
+          {/* Anything picked here is a deliberate human choice — stamped `manual` so a later report can
+              tell a hand-set location from one taken off the Branch. */}
+          <input type="hidden" name="source" value="manual" />
           <Field label={t('locationSelect')}>
             <select name="locationId" defaultValue={emp.locationId ?? ''} className={inputCls}>
               <option value="">{t('locationNone')}</option>

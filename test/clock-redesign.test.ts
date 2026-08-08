@@ -24,6 +24,7 @@ import {
   setEmployeeClockingLocations,
   setGeofencing,
 } from '../core/clocking-location';
+import { createLocation } from '../core/location';
 import {
   RING_CLASSES,
   completedSessions,
@@ -241,11 +242,16 @@ describe('attendancePunchesForRange — per-punch matched site + coordinates (af
   it('carries the geofence-matched clocking-location name and captured coordinates on each punch', async () => {
     const a = adminCtx(b);
     const { employmentId } = await hire();
+    // 1fff489c — a clocking point now REQUIRES its own radius and a link to a `location` in the same
+    // company. Neither is what this test is about; both are supplied so the punch path still runs.
+    const { id: locationId } = await createLocation(a, { companyId: b.companyId, code: 'MCH', name: 'Menara Chin Hin' });
     const { id: site } = await createClockingLocation(a, {
       companyId: b.companyId,
       name: 'MENARA CHIN HIN',
       lat: HQ.lat,
       lng: HQ.lng,
+      radiusM: 500,
+      locationId,
     });
     await setEmployeeClockingLocations(a, { employmentId, clockingLocationIds: [site] });
     await setGeofencing(a, { employmentId, enabled: true, radiusM: 500 });
