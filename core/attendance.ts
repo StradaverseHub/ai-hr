@@ -1064,6 +1064,7 @@ export async function payableHoursForCycle(
       end: shift.endTime,
       brk: shift.breakMinutes,
       crosses: shift.crossesMidnight,
+      rounding: shift.normalHoursRoundingMinutes,
     })
     .from(rosterAssignment)
     .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -1080,7 +1081,11 @@ export async function payableHoursForCycle(
   for (const r of ras) {
     rosteredDates.add(r.shiftDate);
     if (r.isRestDay || !r.start || !r.end) continue; // a rostered rest day is not an assigned shift
-    schedByDate.set(r.shiftDate, Math.max(0, shiftSpan(r.start, r.end, r.crosses!) - r.brk!));
+    // cf21e554 — was an inlined copy of netScheduledMinutes; now the shared helper, so the shift's
+    // Normal-Hours Rounding reaches the hourly clamp's ceiling too. A clamp measured against an unrounded
+    // figure while the engine measures the day against a rounded one is a divergence nobody would see
+    // until a payslip. Identical output for every shift whose rounding column is NULL.
+    schedByDate.set(r.shiftDate, netScheduledMinutes(r.start, r.end, r.crosses!, r.brk!, r.rounding));
   }
 
   // ec4cbf63 — the employee's DEFAULT shift (profile assignment) IS an assigned shift: on a day with NO
@@ -1095,12 +1100,13 @@ export async function payableHoursForCycle(
       brk: shift.breakMinutes,
       crosses: shift.crossesMidnight,
       pattern: shift.weeklyPattern,
+      rounding: shift.normalHoursRoundingMinutes,
     })
     .from(employment)
     .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
     .where(eq(employment.id, employmentId))
     .limit(1);
-  const dsNet = ds ? netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk) : null;
+  const dsNet = ds ? netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding) : null;
 
   let payableMinutes = 0;
   for (const row of rows) {
@@ -1470,8 +1476,12 @@ export type ShiftDisplay = {
 
 const NO_SHIFT: ShiftDisplay = { shiftCode: null, scheduledMinutes: null, shiftStart: null, shiftEnd: null, isRosterRest: false };
 
-type RosterDisplayRow = { isRestDay: boolean; code: string | null; start: string | null; end: string | null; brk: number | null; crosses: boolean | null };
-type DefaultShiftRow = { code: string | null; start: string; end: string; brk: number; crosses: boolean; pattern: number[] | null };
+// cf21e554 — `rounding` (shift.normal_hours_rounding_minutes) is carried here for the reason this
+// module's own comment gives two lines below: the table must not disagree with the engine. Without it a
+// shift that rounds its normal hours would render 7h 50m in the Scheduled column while scheduleFor
+// measured the day against 7h 45m. Null on every legacy row ⇒ byte-identical.
+type RosterDisplayRow = { isRestDay: boolean; code: string | null; start: string | null; end: string | null; brk: number | null; crosses: boolean | null; rounding: number | null };
+type DefaultShiftRow = { code: string | null; start: string; end: string; brk: number; crosses: boolean; pattern: number[] | null; rounding: number | null };
 
 /**
  * Resolve the shift-DISPLAY subset for one (employee, date) from already-batched inputs, mirroring
@@ -1490,7 +1500,7 @@ function resolveShiftDisplay(
     if (!roster.isRestDay && roster.start && roster.end) {
       return {
         shiftCode: roster.code,
-        scheduledMinutes: netScheduledMinutes(roster.start, roster.end, roster.crosses!, roster.brk!),
+        scheduledMinutes: netScheduledMinutes(roster.start, roster.end, roster.crosses!, roster.brk!, roster.rounding),
         shiftStart: roster.start.slice(0, 5),
         shiftEnd: roster.end.slice(0, 5),
         isRosterRest: false,
@@ -1502,7 +1512,7 @@ function resolveShiftDisplay(
     if (def.pattern?.includes(isoWeekday(date))) {
       return {
         shiftCode: def.code,
-        scheduledMinutes: netScheduledMinutes(def.start, def.end, def.crosses, def.brk),
+        scheduledMinutes: netScheduledMinutes(def.start, def.end, def.crosses, def.brk, def.rounding),
         shiftStart: def.start.slice(0, 5),
         shiftEnd: def.end.slice(0, 5),
         isRosterRest: false,
@@ -1640,6 +1650,7 @@ export function attendanceForDate(
         end: shift.endTime,
         brk: shift.breakMinutes,
         crosses: shift.crossesMidnight,
+        rounding: shift.normalHoursRoundingMinutes,
       })
       .from(rosterAssignment)
       .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -1656,6 +1667,7 @@ export function attendanceForDate(
         brk: shift.breakMinutes,
         crosses: shift.crossesMidnight,
         pattern: shift.weeklyPattern,
+        rounding: shift.normalHoursRoundingMinutes,
       })
       .from(employment)
       .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
@@ -1826,6 +1838,7 @@ export function attendanceForEmploymentRange(
         end: shift.endTime,
         brk: shift.breakMinutes,
         crosses: shift.crossesMidnight,
+        rounding: shift.normalHoursRoundingMinutes,
       })
       .from(rosterAssignment)
       .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -1842,6 +1855,7 @@ export function attendanceForEmploymentRange(
           brk: shift.breakMinutes,
           crosses: shift.crossesMidnight,
           pattern: shift.weeklyPattern,
+          rounding: shift.normalHoursRoundingMinutes,
         })
         .from(shift)
         .where(eq(shift.id, emp.defShiftId))
