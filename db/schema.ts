@@ -382,6 +382,12 @@ export const location = pgTable(
     name: text('name').notNull(),
     country: text('country').notNull().default('MY'), // ISO-3166 alpha-2 (display only)
     state: text('state'), // holiday-state override; null = inherit work_state/default/national
+    // 1fff489c PHASE 2 — the Branch this location serves. NOT an FK: Branch is profile_option category
+    // 'branch' (a tenant-wide flat catalogue, core/profile-options.ts) stored as text on
+    // employment.org_branch, so this column stores the same text and core/location.ts validates it through
+    // the same assertProfileValueAllowed() setEmploymentInfo uses. Null = not mapped yet, which is one of
+    // the four distinct empty states. Uniqueness is PER COMPANY (see the index below and migration 0420).
+    branch: text('branch'),
     // PH-calendars-by-location (ADR-0067): the NAMED holiday calendar every employee at this location
     // follows. Null = unmapped → byte-identical to today's resolution (state override → company default →
     // national). A holiday_group with an `archetype` IS the calendar. ON DELETE SET NULL: deleting a group
@@ -396,6 +402,12 @@ export const location = pgTable(
     index('location_company_idx').on(t.tenantId, t.companyId),
     // Code unique per tenant among non-archived (mirrors shift_company_name_uq).
     uniqueIndex('location_code_uq').on(t.tenantId, t.code).where(sql`archived_at is null`),
+    // 1fff489c — one location per branch PER COMPANY. Deliberately not per tenant: the branch catalogue is
+    // tenant-wide but locations are company-scoped, so two companies mapping the same branch name to their
+    // own location is the normal case here, not a conflict. See migration 0420.
+    uniqueIndex('location_branch_uq')
+      .on(t.tenantId, t.companyId, t.branch)
+      .where(sql`archived_at is null and branch is not null`),
   ],
 );
 
@@ -415,6 +427,17 @@ export const clockingLocation = pgTable(
     name: text('name').notNull(),
     lat: doublePrecision('lat').notNull(),
     lng: doublePrecision('lng').notNull(),
+    // 1fff489c PHASE 1 — the allowed distance, ON THE SITE. The radius already existed before this, but on
+    // EMPLOYMENT (geofence_radius_m), i.e. one number per PERSON covering every site they clock at, which
+    // cannot describe a 150 m office and a 500 m yard at once. Nullable in the DB (0 rows existed at the
+    // time, so a NOT NULL would only be a deploy hazard); core/clocking-location.ts makes it REQUIRED on
+    // every create/update, so nothing an admin can save leaves it blank. See migration 0419.
+    radiusM: integer('radius_m'),
+    // 1fff489c PHASE 1 — the explicit link to the `location` master record, replacing the loose habit of
+    // retyping the site name. Nullable for the same deploy reason; required by the service. Several points
+    // may share one location (the reporter's "HQ — North Gate" / "HQ — South Gate" compound), which is why
+    // the point keeps its OWN name and the location supplies the code and group heading.
+    locationId: uuid('location_id').references((): AnyPgColumn => location.id),
     address: text('address'),
     remarks: text('remarks'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -422,9 +445,11 @@ export const clockingLocation = pgTable(
   },
   (t) => [
     index('clocking_location_company_idx').on(t.tenantId, t.companyId),
+    index('clocking_location_location_idx').on(t.tenantId, t.locationId),
     uniqueIndex('clocking_location_name_uq').on(t.tenantId, t.companyId, t.name),
     check('clocking_location_lat_range', sql`${t.lat} BETWEEN -90 AND 90`),
     check('clocking_location_lng_range', sql`${t.lng} BETWEEN -180 AND 180`),
+    check('clocking_location_radius_m_ck', sql`${t.radiusM} IS NULL OR ${t.radiusM} > 0`),
   ],
 );
 
@@ -884,8 +909,11 @@ export const employment = pgTable(
     // Inter-company cost split for shared-services staff (ADR-0009): [{ companyId, percent }].
     costAllocation: jsonb('cost_allocation'),
     // Clocking Location & Geofencing (ADR-0070): per-employee enforcement toggle + radius. Mirrors the
-    // payroll_policy_id precedent of per-employee config living on employment columns. Radius is only
-    // meaningful (and required) while enforcement is on — enforced by the CHECK below.
+    // payroll_policy_id precedent of per-employee config living on employment columns.
+    // 1fff489c — geofenceRadiusM is now an OPTIONAL PER-EMPLOYEE OVERRIDE, not the only radius. The
+    // authoritative distance lives on clocking_location.radius_m (one per site); this column, when set,
+    // replaces it for THIS employee at EVERY site. Null while enabled is valid and means "use each site's
+    // own radius" — which is why the old employment_geofence_radius_required CHECK is gone (0419).
     geofencingEnabled: boolean('geofencing_enabled').notNull().default(false),
     geofenceRadiusM: integer('geofence_radius_m'),
     // Employment Information enhancement (2323f671, migration 0181): employment master-data captured on the
@@ -976,12 +1004,12 @@ export const employment = pgTable(
       'employment_holiday_assignment_xor',
       sql`${t.workState} IS NULL OR ${t.holidayGroupId} IS NULL`,
     ),
-    // Geofencing ON requires a positive radius; OFF leaves it however it was left (null or a stale value —
-    // harmless, since it is never read while disabled).
-    check(
-      'employment_geofence_radius_required',
-      sql`NOT ${t.geofencingEnabled} OR (${t.geofenceRadiusM} IS NOT NULL AND ${t.geofenceRadiusM} > 0)`,
-    ),
+    // 1fff489c — `employment_geofence_radius_required` was DROPPED here (migration 0419). It forced a
+    // positive radius while geofencing was enabled, which was right when the employment radius was the
+    // ONLY radius. It is now an optional per-employee OVERRIDE of the site's own radius_m, so "enabled
+    // with a blank override" is a valid, and in fact the expected, state. Safe to drop: 0 production rows
+    // had geofencing enabled. The remaining guard is `geofence_radius_m > 0` when a value IS supplied,
+    // enforced in core/clocking-location.ts setGeofencing.
   ],
 );
 
