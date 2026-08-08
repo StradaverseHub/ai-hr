@@ -112,6 +112,17 @@ function loadEnv() {
   }
 }
 
+/**
+ * A Postgres uuid[] bound from a JS array.
+ *
+ * ⚠️ `sql`...${ids}::uuid[]`` DOES NOT WORK and fails at run time, not at compile time: drizzle SPREADS a
+ * JS array into one placeholder per element, so the statement goes out as `($3)::uuid[]` with a bare uuid
+ * string bound to it and Postgres answers `malformed array literal`. Found by
+ * test/leave-ledger-reset-archive.test.ts, which sends the same shapes this file does precisely because
+ * this file is never executed in a test.
+ */
+const uuidArray = (ids: string[]) => sql`array[${sql.join(ids.map((v) => sql`${v}::uuid`), sql`, `)}]::uuid[]`;
+
 const argOf = (flag: string): string | null => {
   const i = process.argv.indexOf(flag);
   return i >= 0 ? (process.argv[i + 1] ?? null) : null;
@@ -232,11 +243,11 @@ export async function runReset(
     );
   const approvedRequests = Number(approvedRow?.n ?? 0);
 
-  const [toilRow] = await owner.db.execute(
+  const [toilRow] = (await owner.db.execute(
     sql`select count(*)::int as n from toil_accrual ta
         join leave_ledger ll on ll.id = ta.ledger_entry_id
-        where ll.tenant_id = ${TENANT_ID} and ll.leave_type_id = any(${LEAVE_TYPE_IDS})`,
-  ) as unknown as { n: number }[];
+        where ll.tenant_id = ${TENANT_ID}::uuid and ll.leave_type_id = any(${uuidArray(LEAVE_TYPE_IDS)})`,
+  )) as unknown as { n: number }[];
   const toilRefs = Number(toilRow?.n ?? 0);
 
   // ADR-0069: a frozen encashment snapshot makes its (employment, leave type) balance untouchable, and a
@@ -244,7 +255,7 @@ export async function runReset(
   // trigger error, which is safe but unreadable. Refusing here turns that into a sentence.
   const [snapRow] = (await owner.db.execute(
     sql`select count(*)::int as n from leave_encashment_snapshot
-        where tenant_id = ${TENANT_ID} and leave_type_id = any(${LEAVE_TYPE_IDS})`,
+        where tenant_id = ${TENANT_ID}::uuid and leave_type_id = any(${uuidArray(LEAVE_TYPE_IDS)})`,
   )) as unknown as { n: number }[];
   const encashmentSnapshots = Number(snapRow?.n ?? 0);
 
@@ -307,7 +318,7 @@ export async function runReset(
   await owner.db.transaction(async (tx) => {
     const captured = (await tx.execute(
       sql`select ledger_rows, audit_rows from app.capture_leave_ledger_reset_archive(
-            ${tag}, ${TENANT_ID}::uuid, ${LEAVE_TYPE_IDS}::uuid[])`,
+            ${tag}, ${TENANT_ID}::uuid, ${uuidArray(LEAVE_TYPE_IDS)})`,
     )) as unknown as { ledger_rows: number; audit_rows: number }[];
     const archivedLedger = Number(captured[0]?.ledger_rows ?? 0);
     const archivedAudit = Number(captured[0]?.audit_rows ?? 0);
