@@ -6307,6 +6307,29 @@ export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | 
   return `${cycleYear}-${hireMonth}-01`;
 }
 
+/**
+ * c8052ae3 — THE LAST DAY OF THE CYCLE THAT OPENS AT `cycleStart`, inclusive.
+ *
+ * ⚠️ THIS EXISTS BECAUSE A CYCLE HAD A START AND NO END, AND THAT COST A CUSTOMER 147 LEDGER ROWS.
+ * Every "how much has this cycle already granted" sum in this file filtered ledger rows on
+ * `effectiveOn >= cycleStart` with NO UPPER BOUND. A tenant that had opened the 2027 and 2028 leave
+ * years ahead therefore had those years' 1-January grants counted as "already granted THIS cycle": the
+ * profile recalc read 180.00 posted against a single-year expectation of 60.00 and clawed back −120.00,
+ * driving Hospitalization Leave to −60.00 on an ordinary profile save. The recalc audit says so in its
+ * own words (previous 180.00 → new 60.00).
+ *
+ * Calendar cycle (`YYYY-01-01`) ⇒ `YYYY-12-31`. Anniversary cycle (`YYYY-MM-01`) ⇒ the day before the
+ * next anniversary. Pure UTC calendar arithmetic on a date-only string — it derives nothing from an
+ * instant, so no tenant-timezone question arises (the DATES rule is about `new Date()`, not about
+ * adding a year to a stored ISO date).
+ *
+ * INCLUSIVE, because ledger comparisons here are `<=`: a 31-December accrual belongs to its own year.
+ */
+export function leaveCycleEnd(cycleStart: string): string {
+  const [y, m, d] = cycleStart.split('-').map(Number);
+  return new Date(Date.UTC(y + 1, m - 1, d) - 86_400_000).toISOString().slice(0, 10);
+}
+
 /** Whole days from `from` to `to`, INCLUSIVE of both ends. UTC arithmetic on date-only strings, so no
  *  timezone or DST offset can shorten a day. Negative windows clamp to 0 at the call sites that care. */
 function daysInclusive(from: string, to: string): number {
@@ -6722,7 +6745,15 @@ export async function accrueEarnedLeave(
     // 2D-2: the cycle start varies per employee (calendar = yearStart; anniversary = their hire-month
     // anniversary), so we can't sum "already accrued this cycle" in SQL with one bound. Fetch the
     // trailing ~12 months of accrual rows (covers any cycle start) and sum per employee in JS below.
+    //
+    // c8052ae3 — BOUNDED AT THE TOP TOO, the exact mirror of `accrualFrom`, for the same reason the
+    // profile recalc now is (see `leaveCycleEnd`): the current cycle can end no later than one year
+    // after asOf's month-start, so anything beyond `accrualTo` is a FUTURE leave year's grant and was
+    // never this cycle's business. Here the defect is quiet rather than loud — `toGrant > 0` means a
+    // future-dated grant could only ever SUPPRESS the monthly top-up, so an employee with next year's
+    // entitlement already written would silently stop earning this year rather than go negative.
     const accrualFrom = `${Number(p.asOf.slice(0, 4)) - 1}-${p.asOf.slice(5, 7)}-01`;
+    const accrualTo = `${Number(p.asOf.slice(0, 4)) + 1}-${p.asOf.slice(5, 7)}-01`;
     const accrualRows = await tx
       .select({
         employmentId: leaveLedger.employmentId,
@@ -6748,6 +6779,7 @@ export async function accrueEarnedLeave(
             ),
           ),
           gte(leaveLedger.effectiveOn, accrualFrom),
+          lte(leaveLedger.effectiveOn, accrualTo),
         ),
       );
     const accrualRowsBy = new Map<string, { days: number; effectiveOn: string }[]>();
@@ -6949,7 +6981,16 @@ export async function accrueEarnedLeave(
           earnedToDate = Math.min(earnedToDate, room);
         }
         const rows = accrualRowsBy.get(`${e.employmentId}|${typeId}`) ?? [];
-        const already = rows.reduce((s, r) => (r.effectiveOn >= cycleStart ? s + r.days : s), 0);
+        // c8052ae3 — the SAME closed interval the profile recalc uses. This sum had a start and no end,
+        // so a grant already written for the NEXT leave year counted as this cycle's accrual and the
+        // monthly top-up went quiet for the rest of the year. `leaveCycleEnd` is the one definition of
+        // where a cycle stops, shared with `projectExpectedEntitlement`, so the engine that CREDITS and
+        // the kernel that PROJECTS cannot disagree about which rows belong to the window.
+        const cycleEnd = leaveCycleEnd(cycleStart);
+        const already = rows.reduce(
+          (s, r) => (r.effectiveOn >= cycleStart && r.effectiveOn <= cycleEnd ? s + r.days : s),
+          0,
+        );
         const toGrant = Math.round((earnedToDate - already) * 100) / 100;
         if (toGrant > 0) {
           // dryRun (feedback 2c7c6385): compute the same top-up but write NOTHING — preview == commit.
@@ -7074,7 +7115,12 @@ export function projectExpectedEntitlement(
    *  and a band resolved once by the caller would pin the first resolution while the second silently used
    *  the wrong service length. */
   templateBandForYears?: (years: number) => ServiceBand | null,
-): { expected: number; windowStart: string } | null {
+  //
+  // c8052ae3 — `windowEnd` is the INCLUSIVE last day of the same cycle, and it is not optional garnish.
+  // Callers subtract "already granted in the window" from `expected`; before this field existed they had
+  // only a start, so a grant already written ahead for the NEXT leave year counted as this year's and the
+  // difference was posted as a negative clawback. See `leaveCycleEnd`.
+): { expected: number; windowStart: string; windowEnd: string } | null {
   // bc36c768 — THE NOT-CONFIGURED GATE, first, before any method resolution.
   //
   // ⚠️ IT MUST RETURN null (SKIP THE TYPE), NOT 0. All three callers treat null as "leave this
@@ -7203,7 +7249,9 @@ export function projectExpectedEntitlement(
   if (pol?.maxBalanceDays != null) {
     expected = Math.min(expected, round2(Math.max(0, pol.maxBalanceDays)));
   }
-  return { expected, windowStart };
+  // c8052ae3: the cycle is a CLOSED interval now — [windowStart, windowEnd] — and both ends travel
+  // together so no caller can accidentally use one without the other.
+  return { expected, windowStart, windowEnd: leaveCycleEnd(windowStart) };
 }
 
 /** Anniversary to Calendar (f3a64d90 → adcdf215): the SYSTEM-generated adjustment reasons the a2c first-year
@@ -7543,7 +7591,16 @@ export async function reprojectEntitlementForEmployment(
 
     // 4. This employment's ledger across all types (accrual grants + prior recalc adjustments) — the
     //    trailing ~12 months covers every possible cycle start (calendar Jan-1 and any anniversary month).
+    //
+    //    c8052ae3 — THE FETCH IS BOUNDED AT BOTH ENDS NOW, and `accrualTo` is the exact mirror of
+    //    `accrualFrom`. The current cycle can start no later than asOf's own month-start (anniversary,
+    //    hire month ≤ asOf month), so it can end no later than one year after that — which is precisely
+    //    `accrualTo`. Every possible current cycle is inside [accrualFrom, accrualTo]; a grant written
+    //    ahead for a LATER leave year is not, and can no longer be read as "already granted this cycle".
+    //    The per-type `[windowStart, windowEnd]` filter below is the load-bearing bound; this one keeps
+    //    the query from dragging years of future-dated rows into memory to be discarded in JS.
     const accrualFrom = `${Number(asOf.slice(0, 4)) - 1}-${asOf.slice(5, 7)}-01`;
+    const accrualTo = `${Number(asOf.slice(0, 4)) + 1}-${asOf.slice(5, 7)}-01`;
     const ledgerRows = await tx
       .select({
         leaveTypeId: leaveLedger.leaveTypeId,
@@ -7557,6 +7614,7 @@ export async function reprojectEntitlementForEmployment(
           eq(leaveLedger.employmentId, p.employmentId),
           inArray(leaveLedger.leaveTypeId, typeIds),
           gte(leaveLedger.effectiveOn, accrualFrom),
+          lte(leaveLedger.effectiveOn, accrualTo),
           or(
             eq(leaveLedger.entryType, 'accrual'),
             and(eq(leaveLedger.entryType, 'adjustment'), recalcAdjustmentReasonCond()),
@@ -7598,7 +7656,7 @@ export async function reprojectEntitlementForEmployment(
         (years) => templates.bandFor(emp.employmentId, type.id, years),
       );
       if (!projected) continue;
-      const { expected, windowStart } = projected;
+      const { expected, windowStart, windowEnd } = projected;
 
       // f3a64d90: DELEGATE a2c's first ANNUAL year to reprojectA2cEntitlement — it posts ACCRUAL-class rows
       // (this path's `adjustment` never moves YTD Entitled) and reconciles the superseded system rows.
@@ -7614,7 +7672,16 @@ export async function reprojectEntitlementForEmployment(
         continue;
       }
 
-      const inWindow = (ledgerByType.get(type.id) ?? []).filter((r) => r.effectiveOn >= windowStart);
+      // ⚠️ c8052ae3 — THE CLOSED INTERVAL. This filter read `>= windowStart` ONLY, and that single
+      // missing bound is the whole of the reported fault: a tenant with the 2027 and 2028 leave years
+      // already opened had those years' 1-January accruals summed into `alreadyPosted` as though they
+      // were this cycle's, so `expected − alreadyPosted` came out as a large NEGATIVE and every ordinary
+      // profile save (grade, employment details, confirmation) posted a clawback. Measured on production:
+      // Hospitalization read 180.00 already-granted against a 60.00 expectation and posted −120.00.
+      // Both ends, always — a row dated outside this cycle belongs to the cycle that owns it.
+      const inWindow = (ledgerByType.get(type.id) ?? []).filter(
+        (r) => r.effectiveOn >= windowStart && r.effectiveOn <= windowEnd,
+      );
       // Materialized-only guard: no `accrual` row this cycle ⇒ nothing granted yet ⇒ nothing to correct.
       if (!inWindow.some((r) => r.entryType === 'accrual')) continue;
       const alreadyPosted = round2(inWindow.reduce((s, r) => s + r.days, 0));
