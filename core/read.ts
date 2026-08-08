@@ -3585,9 +3585,12 @@ export type AuditRow = {
 
 export type AuditFilters = {
   aggregateType?: string;
-  /** Restrict to a fixed SET of aggregate types (e.g. the leave module's aggregates for the leave
-   *  Audit tab). Applied alongside `aggregateType` — pass one or the other, not both. */
-  aggregateTypes?: string[];
+  // f1b994e3 — `aggregateTypes?: string[]` STOOD HERE and is deliberately gone. It existed for ONE
+  // caller, the retired Leave Audit page, which hand-listed the leave module's aggregate types — and
+  // that hand-list is precisely what drifted from AGGREGATE_MODULE and produced the bug this item fixes
+  // (404 leave rows hidden, job-grade rows shown under a chip that said Organization). `module` below
+  // asks the same question and derives its answer, so keeping a second, hand-fed way to express
+  // "restrict to a set of aggregate types" would just re-open the door. It had no other caller.
   /** Restrict to a single aggregate INSTANCE (e.g. one payroll batch's lifecycle events for a per-run
    *  History card). AND-ed onto the other filters; read-only, no event appended. */
   aggregateId?: string;
@@ -3618,9 +3621,6 @@ export type AuditFilters = {
 function auditWhere(f: AuditFilters) {
   return and(
     f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
-    f.aggregateTypes && f.aggregateTypes.length
-      ? inArray(domainEvent.aggregateType, f.aggregateTypes)
-      : undefined,
     f.aggregateId ? eq(domainEvent.aggregateId, f.aggregateId) : undefined,
     // f1b994e3 — Area (module). Derived from AGGREGATE_MODULE, so a row this clause returns chips the
     // area that found it. `other` is the RESIDUAL bucket — it owns no aggregate types of its own, so it

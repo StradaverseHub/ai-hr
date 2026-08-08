@@ -19,6 +19,8 @@
  *     is why auditWhere expresses it as the complement rather than as an empty IN-list;
  *   - an out-of-set `?module=` is IGNORED (the whole log), never narrowed to nothing.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
@@ -150,6 +152,49 @@ describe('f1b994e3 — Audit Trail Area filter', () => {
     // The whole log, not an empty page — the leave page's treatment of an out-of-set ?type=.
     expect(rows.length).toBe(SEEDED.length);
     expect(isModuleKey('leave')).toBe(true);
+  });
+
+  /**
+   * The Area control's strings, pinned HERE because nothing else can see them: app/admin/audit/page.tsx
+   * now reads TWO namespaces (admin.audit for the filters, components.auditTable for the area labels —
+   * deliberately the chip's own strings, so the label on the option and the label on the row are one
+   * string in six languages), and test/i18n-coverage.test.ts check C skips multi-namespace files. A
+   * missing key here throws MISSING_MESSAGE at render while still returning 200 and passing tsc.
+   */
+  it('every string the Area control renders resolves in all six catalogues', () => {
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const dict = JSON.parse(
+        fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'),
+      ) as {
+        admin: { audit: Record<string, string> };
+        components: { auditTable: Record<string, string> };
+      };
+      expect(dict.admin.audit.area, `${loc}: admin.audit.area`).toBeTruthy();
+      expect(dict.admin.audit.allAreas, `${loc}: admin.audit.allAreas`).toBeTruthy();
+      for (const m of MODULE_KEYS) {
+        expect(dict.components.auditTable[`module_${m}`], `${loc}: components.auditTable.module_${m}`).toBeTruthy();
+      }
+      // The filters carried up from the retired leave page resolve from admin.audit, not admin.leave —
+      // that is what let the move happen without new keys. Assert it rather than assume it.
+      for (const k of [
+        'action',
+        'allActions',
+        'user',
+        'allUsers',
+        'company',
+        'allCompanies',
+        'leaveType',
+        'exportAs',
+        'exportCsv',
+        'exportExcel',
+        'exportPdf',
+        'today',
+        'yesterday',
+        'systemActor',
+      ]) {
+        expect(dict.admin.audit[k], `${loc}: admin.audit.${k}`).toBeTruthy();
+      }
+    }
   });
 
   it('every named area owns at least one aggregate type (an empty IN-list would match nothing)', () => {
