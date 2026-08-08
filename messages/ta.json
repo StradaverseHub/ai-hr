@@ -6133,6 +6133,8 @@
       "on": "On",
       "off": "Off",
       "noCompanies": "No companies in your scope.",
+      "companyFilterLabel": "நிறுவனம்",
+      "companyFilterAll": "அனைத்து நிறுவனங்கள்",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
       "moduleOff": "மாற்று விடுப்பு இந்தக் கணக்கின் திட்டத்தில் இல்லை, எனவே இதுவரை எந்த வரவும் சேமிக்கப்படவில்லை. நீங்கள் இப்போதே இங்கு அமைக்கலாம் — கூடுதல் தொகுப்பு இயக்கப்பட்டவுடன் அமைப்புகள் நடைமுறைக்கு வரும்.",

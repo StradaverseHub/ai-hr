@@ -1,15 +1,21 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
+import { ALL_COMPANIES, resolveCompanyFilter } from '@/lib/company-filter';
 import { listCompanies, listDepartments, listEmployees, listJobGrades } from '@/core/read';
 import { listPositions } from '@/core/admin';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { listToilPolicies } from '@/packs/leave/service';
 import { REPLACEMENT_ELIGIBILITY_CRITERIA } from '@/core/replacement-eligibility';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { CompanyFilterSelect } from '@/components/company-filter-select';
 import { ReplacementEligibilityPicker } from '@/components/replacement-eligibility-picker';
 import { setToilPolicyAction } from '../../actions';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
+
+// Not exported: Next refuses unknown exports from a page module. The company picker's hrefs are built
+// here on the server, so the choice rides in the address bar and the page stays a server render.
+const PAGE = '/admin/leave/replacement';
 
 /**
  * Leave Config → Replacement Leave — THE HOME OF REPLACEMENT-LEAVE CONFIGURATION (296fc027).
@@ -48,19 +54,43 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
  * bought. That was the reason `setToilPolicy` carried an entitlement assert; see its header for why the
  * owner accepted removing it.
  *
- * SERVER/CLIENT BOUNDARY: `ReplacementEligibilityPicker` is a client component and receives ONLY
- * serialisable props — option arrays and a plain `labels` object of already-translated strings. No `t`
- * and no closure crosses the boundary; see that file's header and test/server-client-boundary.test.ts.
+ * ONE COMPANY AT A TIME (20e759a0) — the screen used to print EVERY in-scope company's form one under
+ * the other. With the reporter's nine companies that was 180 controls and nine Save buttons on one page,
+ * and reaching the last company meant scrolling past eight identical copies of the form. A `?company=`
+ * parameter now picks one; `all` keeps the old stacked view for anyone who wants it.
+ *
+ * WHY A QUERY PARAMETER AND NOT THE `company_scope` COOKIE, which is the obvious-looking shortcut and is
+ * wrong: `getScopeIds` is GLOBAL. Narrowing this page by writing that cookie would silently re-scope
+ * Roster, Payroll and every other screen — the reporter asked to shorten ONE page, not to change what
+ * the rest of the product shows. The cookie therefore stays the OUTER bound (`visible` is still
+ * companies ∩ scopeIds) and the dropdown picks one from inside it. See lib/company-filter.ts for the
+ * resolution rules, including why an unrecognised id falls back to the first visible company rather than
+ * rendering an empty page.
+ *
+ * THE SAVE CARRIES THE SELECTION BACK. `setToilPolicyAction` appends `company=` to all three of its
+ * redirect targets (saved, warning, AND the error path). Without that, every save would bounce the admin
+ * onto the default company — and on the error path it would also hide the form the error is about.
+ *
+ * WHAT THE SELECTION DOES *NOT* NARROW: `listJobGrades` and `listAllProfileOptions` are tenant-wide
+ * catalogues, not company-scoped ones. And the `companyIds` ELIGIBILITY criterion still offers the FULL
+ * in-scope list — it says who may SUBMIT a replacement-leave request, which is a different question from
+ * which company is being configured.
+ *
+ * SERVER/CLIENT BOUNDARY: `ReplacementEligibilityPicker` and `CompanyFilterSelect` are client components
+ * and receive ONLY serialisable props — option arrays, pre-built hrefs and a plain `labels` object of
+ * already-translated strings. No `t` and no closure crosses the boundary; see those files' headers and
+ * test/server-client-boundary.test.ts. Keeping the page itself a server render is what lets the eight
+ * eligibility pickers keep their server-resolved option arrays.
  */
 export default async function LeaveReplacementPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; warning?: string; saved?: string }>;
+  searchParams: Promise<{ error?: string; warning?: string; saved?: string; company?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const tr = await getTranslations('admin.replacementLeave');
-  const { error, warning, saved } = await searchParams;
+  const { error, warning, saved, company } = await searchParams;
   // 1cf5b37c — TWO QUESTIONS, NOT ONE. They used to be the same flag, which is why this screen looked
   // like an unfinished placeholder: `toil` is not in the tenant's modules, so every control rendered
   // disabled with no Save.
@@ -78,17 +108,30 @@ export default async function LeaveReplacementPage({
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
   const visible = companies.filter((c) => scopeIds.includes(c.id));
   const visibleIds = visible.map((c) => c.id);
-  const policies = await listToilPolicies(s, visibleIds);
+
+  // 20e759a0 — `?company=`. `all` keeps the stacked view; a known id narrows to that one; anything else
+  // (absent, junk, a bookmark held after the company was archived) falls back to the first visible
+  // company. `shown` is therefore empty ONLY when `visible` is, which is exactly today's empty case —
+  // the filter can never manufacture a blank page of its own.
+  const selected = resolveCompanyFilter(company, visibleIds);
+  const shown = selected === ALL_COMPANIES ? visible : visible.filter((c) => c.id === selected);
+  const shownIds = shown.map((c) => c.id);
+
+  const policies = await listToilPolicies(s, shownIds);
   const byCompany = new Map(policies.map((p) => [p.companyId, p]));
 
   // The eight pickers' option lists. Loaded ONCE for the whole page rather than per company card: the
   // catalogues are tenant-wide (grades, profile options) or already company-filtered by the scope above,
   // and a group with six companies would otherwise run the same six reads six times.
+  //
+  // Narrowed to `shownIds`, not `visibleIds` (20e759a0): with one company selected, serialising the other
+  // eight companies' departments, positions and employees into the pickers is work nothing on screen can
+  // use. Grades and profile options stay tenant-wide because they ARE tenant-wide catalogues.
   const [departments, positions, grades, employees, profileOptions] = await Promise.all([
-    listDepartments(s, { companyIds: visibleIds }),
-    listPositions(s, { companyIds: visibleIds }),
+    listDepartments(s, { companyIds: shownIds }),
+    listPositions(s, { companyIds: shownIds }),
     listJobGrades(s),
-    listEmployees(s, visibleIds),
+    listEmployees(s, shownIds),
     listAllProfileOptions(s, { activeOnly: true }),
   ]);
 
@@ -104,6 +147,10 @@ export default async function LeaveReplacementPage({
   ];
 
   const eligibilityOptions: Record<string, { id: string; name: string }[]> = {
+    // `visible`, NOT `shown`, and deliberately so (20e759a0). This criterion answers "who may SUBMIT a
+    // replacement-leave request", which is a different question from "which company am I configuring".
+    // Narrowing it with the page filter would quietly delete the ability to name another in-scope company
+    // as eligible — and would silently drop that company from the criterion on the next save.
     companyIds: visible.map((c) => ({ id: c.id, name: c.name })),
     employmentTypes: employmentTypeOptions,
     departmentIds: departments.map((d) => ({ id: d.id, name: d.name })),
@@ -135,9 +182,31 @@ export default async function LeaveReplacementPage({
     selectedCountTemplate: tr.raw('pickerSelectedCount') as string,
   };
 
+  // Every href is built here, on the server, so the choice lands in the address bar and a copied link
+  // opens on the same company. Switching company deliberately DROPS `saved`/`warning`/`error`: those
+  // banners describe the save you just made to the company you are leaving.
+  const companyHref = (v: string) => `${PAGE}?company=${encodeURIComponent(v)}`;
+  const companyOptions = [
+    { value: ALL_COMPANIES, label: tr('companyFilterAll'), href: companyHref(ALL_COMPANIES) },
+    ...visible.map((c) => ({ value: c.id, label: c.name, href: companyHref(c.id) })),
+  ];
+
   return (
     <div className="space-y-6">
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <PageHeader
+        title={t('pageTitle')}
+        description={t('pageDescription')}
+        actions={
+          visible.length > 0 ? (
+            <CompanyFilterSelect
+              id="replacement-company-filter"
+              label={tr('companyFilterLabel')}
+              value={selected ?? ALL_COMPANIES}
+              options={companyOptions}
+            />
+          ) : undefined
+        }
+      />
 
       <ErrorBanner message={error} />
       {saved !== undefined && (
@@ -166,10 +235,10 @@ export default async function LeaveReplacementPage({
           ledger and the two settlement sweeps still live there and are unchanged; nothing about that
           page moved, was unlocked, or was retired by this item. */}
 
-      {visible.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="text-sm text-muted-foreground">{tr('noCompanies')}</p>
       ) : (
-        visible.map((c) => {
+        shown.map((c) => {
           const p = byCompany.get(c.id);
           if (!p) return null;
           const elig = p.requestEligibility ?? {};

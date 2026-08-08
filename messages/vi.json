@@ -6133,6 +6133,8 @@
       "on": "On",
       "off": "Off",
       "noCompanies": "No companies in your scope.",
+      "companyFilterLabel": "Công ty",
+      "companyFilterAll": "Tất cả công ty",
       "save": "Save",
       "savedBanner": "Replacement leave settings saved.",
       "moduleOff": "Nghỉ bù không nằm trong gói của tài khoản này nên chưa có ngày nào được tích lũy. Bạn vẫn có thể thiết lập tại đây — các thiết lập sẽ có hiệu lực ngay khi bật tiện ích bổ sung.",

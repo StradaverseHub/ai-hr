@@ -10,8 +10,28 @@
  * Gated by the `toil` MODULE ENTITLEMENT (ADR-0077 slice 3 — no longer the TOIL_ENABLED env flag).
  * today/asOf are injected.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
+
+// ── 20e759a0: the three Next primitives setToilPolicyAction needs, and nothing else ─────────────────
+// The action itself runs FOR REAL against this file's database; only `redirect`, `revalidatePath` and
+// `getSession` are stubbed, so the URL asserted below is the one the action actually builds.
+//
+// `redirect` THROWS, the way Next's does. A stub that merely records and returns would let the action
+// fall out of its own `catch` and issue a SECOND redirect — the error-path assertion would then be
+// reading the success URL and would pass no matter what the catch did. That is the exact
+// "passes for the wrong reason" shape, so the throw is load-bearing rather than cosmetic.
+const { redirectMock, revalidateMock, sessionHolder } = vi.hoisted(() => ({
+  redirectMock: vi.fn((url: string): never => {
+    throw Object.assign(new Error('NEXT_REDIRECT'), { digest: `NEXT_REDIRECT;replace;${url}` });
+  }),
+  revalidateMock: vi.fn((_path: string) => undefined),
+  sessionHolder: { s: null as unknown },
+}));
+vi.mock('next/navigation', () => ({ redirect: redirectMock, notFound: vi.fn(() => undefined) }));
+vi.mock('next/cache', () => ({ revalidatePath: revalidateMock, revalidateTag: vi.fn(() => undefined) }));
+vi.mock('@/lib/session', () => ({ getSession: vi.fn(async () => sessionHolder.s) }));
+
 import * as schema from '../db/schema';
 import {
   closeAll,
@@ -52,6 +72,10 @@ import {
   type ReplacementEligibilityFacts,
 } from '../core/replacement-eligibility';
 import { isModuleEnabled } from '../core/entitlements';
+// 20e759a0 — the page-level company filter: the resolver the page reads `?company=` with, and the save
+// action whose redirects have to carry that selection back.
+import { ALL_COMPANIES, resolveCompanyFilter } from '../lib/company-filter';
+import { setToilPolicyAction } from '../app/admin/actions';
 
 let b: Base;
 /**
@@ -1100,5 +1124,146 @@ describe('Payroll interaction under a PAYROLL PARTNER’s row-level security (AD
         .returning({ id: schema.toilAccrual.id }),
     );
     expect(byAdmin.length, 'an hr_admin for the company is still authorised to delete').toBe(1);
+  });
+});
+
+/**
+ * 20e759a0 · THE PAGE-LEVEL COMPANY FILTER.
+ *
+ * The reporter's screen printed all nine of their companies' policy forms one under the other — 20
+ * settings and a Save button each. `app/admin/leave/replacement/page.tsx` now picks ONE via `?company=`.
+ * Two halves of that are easy to get wrong and are pinned here:
+ *
+ *   1. THE FALLBACK. Absent, junk, or an id that has since left the admin's scope must all land on a
+ *      usable page — the first visible company — never on an empty one. A bookmark kept after a company
+ *      is archived is the realistic case, and "renders nothing" is indistinguishable from "broken".
+ *   2. THE SAVE ROUND-TRIP. Every redirect out of `setToilPolicyAction` has to carry the selection back.
+ *      All three dropped it before this item, so a save bounced the admin onto the DEFAULT company — and
+ *      on the error path onto a company whose form the `?error=` banner does not describe.
+ *
+ * The resolver is unit-tested (it is a rule, not a query); the action is driven for real against this
+ * file's database with only Next's redirect/revalidate/getSession stubbed.
+ */
+describe('20e759a0 · company filter — resolving ?company=', () => {
+  const ids = ['c-first', 'c-second', 'c-third'];
+
+  it('the literal "all" keeps the stacked every-company view', () => {
+    expect(resolveCompanyFilter(ALL_COMPANIES, ids)).toBe(ALL_COMPANIES);
+  });
+
+  it('an id the admin can see selects exactly that company', () => {
+    expect(resolveCompanyFilter('c-second', ids)).toBe('c-second');
+  });
+
+  it('an UNRECOGNISED id falls back to the first visible company, not to nothing', () => {
+    // The archived-company bookmark. Rendering an empty page here is the defect this pins.
+    expect(resolveCompanyFilter('c-archived-last-year', ids)).toBe('c-first');
+  });
+
+  it('no parameter at all opens on the first visible company — the page is short from load', () => {
+    expect(resolveCompanyFilter(undefined, ids)).toBe('c-first');
+    expect(resolveCompanyFilter('', ids)).toBe('c-first');
+  });
+
+  it('an id OUTSIDE the global company scope is not honoured — the cookie stays the outer bound', () => {
+    // `visible` is already companies ∩ scopeIds, so a URL naming a company the top-bar switcher has
+    // excluded must not smuggle it back onto the page.
+    expect(resolveCompanyFilter('c-out-of-scope', ['c-first'])).toBe('c-first');
+  });
+
+  it('with nothing visible it selects nothing, so the page can say so instead of guessing', () => {
+    expect(resolveCompanyFilter(undefined, [])).toBeNull();
+    expect(resolveCompanyFilter('c-first', [])).toBeNull();
+    // …but "all" is still "all": an empty stacked view is the same empty view.
+    expect(resolveCompanyFilter(ALL_COMPANIES, [])).toBe(ALL_COMPANIES);
+  });
+});
+
+describe('20e759a0 · company filter — the save redirect carries the selection', () => {
+  /** The form the page posts. Only `companyId` is load-bearing here; the rest are the screen's defaults. */
+  const saveForm = (companyId: string, over: Record<string, string> = {}) => {
+    const fd = new FormData();
+    fd.set('companyId', companyId);
+    fd.set('enabled', 'on');
+    fd.set('accrualBasis', 'hours_worked');
+    fd.set('expiryUnit', 'days');
+    fd.set('expiryDays', '90');
+    fd.set('expiryMonths', '3');
+    fd.set('onExpiry', 'convert_to_pay');
+    fd.set('replacementLeaveFrom', 'overtime');
+    for (const [k, v] of Object.entries(over)) fd.set(k, v);
+    return fd;
+  };
+
+  /** Run the action and return the single URL it redirected to. */
+  async function redirectedTo(fd: FormData): Promise<string> {
+    redirectMock.mockClear();
+    revalidateMock.mockClear();
+    sessionHolder.s = ctx;
+    let threw: unknown;
+    try {
+      await setToilPolicyAction(fd);
+    } catch (e) {
+      threw = e;
+    }
+    // Asserted rather than `rejects.toThrow`: what matters is that the action left through EXACTLY ONE
+    // redirect. Two calls would mean it fell through its own catch, and the first URL would be a lie.
+    expect(threw, 'the action must leave through redirect()').toBeDefined();
+    expect(redirectMock).toHaveBeenCalledTimes(1);
+    return redirectMock.mock.calls[0][0] as string;
+  }
+
+  it('a clean save returns to the company that was being edited, not to the default one', async () => {
+    const url = await redirectedTo(saveForm(b.companyId));
+    expect(url).toContain('/admin/leave/replacement?saved=1');
+    expect(url, 'without this the admin lands back on the first company after every save').toContain(
+      `company=${encodeURIComponent(b.companyId)}`,
+    );
+  });
+
+  it('the premium-equivalent WARNING return carries it too', async () => {
+    const url = await redirectedTo(
+      saveForm(b.companyId, { accrualBasis: 'premium_equivalent', allowFirstScheduleEligible: 'on' }),
+    );
+    expect(url, 'the Phase-B #14 banking-risk warning still rides in the URL').toContain('warning=');
+    expect(url).toContain(`company=${encodeURIComponent(b.companyId)}`);
+  });
+
+  it('the ERROR path carries it — the path where losing it hides the form the error is about', async () => {
+    // 500 months is refused by setToilPolicy's own 1..24 bound, so this is a genuine failed save and not
+    // a fabricated throw.
+    const url = await redirectedTo(saveForm(b.companyId, { expiryUnit: 'months', expiryMonths: '500' }));
+    expect(url).toContain('error=');
+    expect(url).toMatch(/between\+1\+and\+24|between%201%20and%2024/i);
+    expect(url).toContain(`company=${encodeURIComponent(b.companyId)}`);
+    // And the failed save wrote nothing: the policy is still the synthesized default.
+    const [p] = await listToilPolicies(ctx, [b.companyId]);
+    expect(p.isDefault, 'a refused save must not have persisted a policy row').toBe(true);
+  });
+
+  it('every redirect is a well-formed URL with ONE query string', async () => {
+    // The reason `fail()` could not be reused: it appends `?error=` to whatever path it is handed, so a
+    // path already carrying `?company=` would produce two `?` and the second parameter would be lost.
+    for (const fd of [
+      saveForm(b.companyId),
+      saveForm(b.companyId, { accrualBasis: 'premium_equivalent', allowFirstScheduleEligible: 'on' }),
+      saveForm(b.companyId, { expiryUnit: 'months', expiryMonths: '500' }),
+    ]) {
+      const url = await redirectedTo(fd);
+      expect(url.split('?').length, `two query strings in ${url}`).toBe(2);
+      const parsed = new URL(url, 'https://example.test');
+      expect(parsed.pathname).toBe('/admin/leave/replacement');
+      expect(parsed.searchParams.get('company')).toBe(b.companyId);
+    }
+  });
+
+  it('a form posting no companyId still redirects to a usable page rather than a broken URL', async () => {
+    // setToilPolicy refuses the empty id, so this is the error path; the point is that the trailing
+    // `&company=` is omitted entirely rather than emitted empty.
+    const fd = saveForm('');
+    const url = await redirectedTo(fd);
+    expect(url).toContain('error=');
+    expect(url).not.toContain('company=');
+    expect(url.split('?').length).toBe(2);
   });
 });
