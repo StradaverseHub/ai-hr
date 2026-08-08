@@ -157,12 +157,24 @@ export function explainAttendanceDay(raw: unknown): AttendanceExplanation {
           { key: 'otWorked', args: { span: t.punch.spanMinutes ?? 0, worked: t.punch.workedMinutes ?? 0 } },
           o.basis === 'nonWorkday'
             ? { key: 'otBasisNonWorkday', args: { minutes: o.rawMinutes } }
-            : o.basis === 'window'
-              ? { key: 'otBasisWindow', args: { end: t.schedule.endAbs ?? 0, minutes: o.rawMinutes } }
-              : {
-                  key: o.normalIsOverride ? 'otBasisOverride' : 'otBasisDuration',
-                  args: { normal: o.normalMinutes ?? 0, minutes: o.rawMinutes },
-                },
+            : // cf21e554 stage 2 — the shift's own clock-time Overtime Schedule ran. Naming the basis is not
+              // decoration: the panel's whole job is that the sentence matches the arithmetic, and printing
+              // "overtime is the time worked past the shift's end" for a figure that came from declared
+              // windows would be the exact class of small lie this module exists to prevent.
+              o.basis === 'shiftWindows'
+              ? { key: 'otBasisShiftWindows', args: { count: o.shiftOtWindows?.length ?? 0, minutes: o.rawMinutes } }
+              : o.basis === 'window'
+                ? { key: 'otBasisWindow', args: { end: t.schedule.endAbs ?? 0, minutes: o.rawMinutes } }
+                : {
+                    key: o.normalIsOverride ? 'otBasisOverride' : 'otBasisDuration',
+                    args: { normal: o.normalMinutes ?? 0, minutes: o.rawMinutes },
+                  },
+          // One line per declared window, so an operator can see WHICH window paid and which one its own
+          // minimum zeroed — the two are indistinguishable from the total alone.
+          ...(o.shiftOtWindows ?? []).map((win) => ({
+            key: 'otShiftWindowRow',
+            args: { label: win.label ?? '', raw: win.rawMinutes, minutes: win.minutes },
+          })),
           // Only worth a line when there ARE early minutes; otherwise it is noise on every ordinary day.
           ...(o.earlyMinutes > 0
             ? [{ key: o.earlyIncluded ? 'otEarlyIncluded' : 'otEarlyExcluded', args: { minutes: o.earlyMinutes } }]

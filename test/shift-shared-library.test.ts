@@ -22,9 +22,11 @@ import {
   ArchivedShiftError,
   archiveShift,
   assignEmployeeShift,
+  copyShift,
   createShift,
   listShifts,
   listShiftsForTenant,
+  unarchiveShift,
 } from '../core/roster';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -177,5 +179,63 @@ describe('R33 shared shift library — tenant-wide uniqueness', () => {
     await expect(
       createShift(a, { companyId: companyB, name: 'Uniq2', code: 'uniq', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] }),
     ).rejects.toThrow(/already exists/i);
+  });
+});
+
+describe('cf21e554 — Copy and Reactivate inside the shared library', () => {
+  /**
+   * R33 f21d6eee RETIRED duplicateShift because it copied a template ACROSS COMPANIES, which the shared
+   * tenant-wide library made both pointless and harmful. copyShift is a different operation and this
+   * suite is where that distinction has to hold: the copy is ONE more row in the SAME shared library, it
+   * takes the source's company_id rather than being pushed into another company, and it is subject to the
+   * same tenant-wide uniqueness as anything else.
+   */
+  it('a copy stays in the one shared library and keeps the source’s company stamp', async () => {
+    const a = adminCtx(b);
+    const companyB = await makeCompany('Zeta Sdn Bhd');
+    const { employmentId: empInB } = await makeEmp(companyB);
+    const src = await createShift(a, {
+      companyId: b.companyId,
+      name: 'Company A Morning',
+      code: 'CAM',
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      weeklyPattern: [1, 2, 3, 4, 5],
+    });
+    const copy = await copyShift(a, { shiftId: src.id });
+    const [row] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, copy.id));
+    expect(row).toMatchObject({ name: 'Company A Morning (copy)', code: 'CAM-2', companyId: b.companyId });
+    // …and, being a shared-library row, it is assignable to an employee in a DIFFERENT company, exactly
+    // like its source. That is the whole reason cross-company duplication was retired.
+    await assignEmployeeShift(a, { employmentId: empInB, shiftType: 'fixed', shiftId: copy.id });
+    expect((await storedDefault(empInB)).ds).toBe(copy.id);
+  });
+
+  it('reactivating is refused by a clash in ANOTHER company — uniqueness is tenant-wide', async () => {
+    const a = adminCtx(b);
+    const companyB = await makeCompany('Eta Sdn Bhd');
+    const s = await createShift(a, {
+      companyId: b.companyId,
+      name: 'Shared Night',
+      code: 'SNIGHT',
+      startTime: '22:00:00',
+      endTime: '06:00:00',
+      breakMinutes: 30,
+      weeklyPattern: [1, 2, 3, 4, 5],
+    });
+    await archiveShift(a, { shiftId: s.id });
+    // A different COMPANY takes the freed code. Under the pre-R33 per-company indexes this would not have
+    // clashed at all; under the tenant-wide ones it does, and reactivating has to say so.
+    await createShift(a, {
+      companyId: companyB,
+      name: 'Other Night',
+      code: 'SNIGHT',
+      startTime: '22:00:00',
+      endTime: '06:00:00',
+      breakMinutes: 30,
+      weeklyPattern: [1, 2, 3, 4, 5],
+    });
+    await expect(unarchiveShift(a, { shiftId: s.id })).rejects.toThrow(/already exists/i);
   });
 });

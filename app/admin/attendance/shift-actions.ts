@@ -3,7 +3,16 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { archiveShift, createShift, deleteShift, updateShift } from '@/core/roster';
+import {
+  archiveShift,
+  copyShift,
+  createShift,
+  deleteShift,
+  replaceShiftOtWindows,
+  unarchiveShift,
+  updateShift,
+  type ShiftOtWindowInput,
+} from '@/core/roster';
 
 /**
  * Shift-schedule server actions for the Shift Settings page (/admin/attendance). R33 f21d6eee — the page is
@@ -17,17 +26,67 @@ const norm = (t: string) => (/^\d{2}:\d{2}$/.test(t) ? `${t}:00` : t);
 
 const DIFF_KINDS = ['percent', 'flat_hourly', 'flat_per_shift'] as const;
 
-/** The break-period rows post as one JSON array of { start, end } 'HH:MM' pairs (the client island's hidden
- *  field). Empty/absent/invalid JSON ⇒ null ⇒ the legacy single breakMinutes scalar is the fallback. */
-const parseBreakPeriods = (raw: string): { start: string; end: string }[] | null => {
+/** An optional text box: blank ⇒ null so the column says "not configured" rather than storing "". */
+const optStr = (formData: FormData, key: string): string | null => {
+  const v = String(formData.get(key) ?? '').trim();
+  return v === '' ? null : v;
+};
+/** An optional time box: blank ⇒ null, otherwise normalised to HH:MM:SS. */
+const optTime = (formData: FormData, key: string): string | null => {
+  const v = String(formData.get(key) ?? '').trim();
+  return v === '' ? null : norm(v);
+};
+/** An optional whole-number box: blank ⇒ null (the service validates the range). */
+const optNum = (formData: FormData, key: string): number | null => {
+  const v = String(formData.get(key) ?? '').trim();
+  return v === '' ? null : Number(v);
+};
+
+/** The break-period rows post as one JSON array of { start, end, paid? } 'HH:MM' pairs (the client island's
+ *  hidden field). Empty/absent/invalid JSON ⇒ null ⇒ the legacy single breakMinutes scalar is the fallback.
+ *  cf21e554 — `paid` is carried through ONLY when true, so an unpaid row is the byte-identical
+ *  { start, end } it has always been. */
+const parseBreakPeriods = (raw: string): { start: string; end: string; paid?: boolean }[] | null => {
   if (!raw) return null;
   try {
     const arr: unknown = JSON.parse(raw);
     if (!Array.isArray(arr)) return null;
     const out = arr
-      .filter((x): x is { start: string; end: string } => !!x && typeof x === 'object' && 'start' in x && 'end' in x)
-      .map((x) => ({ start: norm(String(x.start)), end: norm(String(x.end)) }));
+      .filter((x): x is { start: string; end: string; paid?: boolean } => !!x && typeof x === 'object' && 'start' in x && 'end' in x)
+      .map((x) => {
+        const row: { start: string; end: string; paid?: boolean } = { start: norm(String(x.start)), end: norm(String(x.end)) };
+        if (x.paid === true) row.paid = true;
+        return row;
+      });
     return out.length > 0 ? out : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * cf21e554 stage 2 — the Overtime Schedule grid posts as one JSON array. An ABSENT field and an EMPTY array
+ * are deliberately different: absent means "this form did not carry the tab, leave the windows alone", an
+ * empty array means "the operator deleted the last row". Returning null vs [] is what keeps those apart.
+ */
+const parseOtWindows = (raw: string): ShiftOtWindowInput[] | null => {
+  if (!raw) return null;
+  try {
+    const arr: unknown = JSON.parse(raw);
+    if (!Array.isArray(arr)) return null;
+    const num = (v: unknown): number | null => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
+    return arr
+      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && 'startTime' in x && 'endTime' in x)
+      .map((x) => ({
+        label: x.label == null ? null : String(x.label),
+        startTime: norm(String(x.startTime)),
+        endTime: norm(String(x.endTime)),
+        endNextDay: x.endNextDay === true,
+        minMinutes: num(x.minMinutes),
+        maxMinutes: num(x.maxMinutes),
+        adjustAfterMinutes: num(x.adjustAfterMinutes),
+        adjustDeltaMinutes: num(x.adjustDeltaMinutes),
+      }));
   } catch {
     return null;
   }
@@ -71,6 +130,19 @@ function shiftFields(formData: FormData) {
     ruleId: String(formData.get('attendanceRuleId') ?? '').trim() || null,
     weeklyPattern: weeklyPattern.length > 0 ? weeklyPattern : null,
     differential,
+    // cf21e554 stage 1 — the General tab. Unlike the two grace fields above these ARE on the form, so a
+    // blank box genuinely means "cleared" and posting null is correct.
+    description: optStr(formData, 'description'),
+    dayType: optStr(formData, 'shiftDayType'),
+    category: optStr(formData, 'category'),
+    earlyIn: optTime(formData, 'earlyIn'),
+    lateOut: optTime(formData, 'lateOut'),
+    lateOutNextDay: formData.get('lateOutNextDay') != null,
+    fullDayLeaveMinutes: optNum(formData, 'fullDayLeaveMinutes'),
+    normalHoursRoundingMinutes: optNum(formData, 'normalHoursRoundingMinutes'),
+    fullDayOtMinutes: optNum(formData, 'fullDayOtMinutes'),
+    halfDayFirstOut: optTime(formData, 'halfDayFirstOut'),
+    halfDaySecondIn: optTime(formData, 'halfDaySecondIn'),
   };
 }
 
@@ -80,8 +152,11 @@ const errTarget = (e: unknown) => `${BASE}?error=${encodeURIComponent((e as Erro
 export async function createShiftAction(formData: FormData) {
   const s = await getSession();
   // Tenant-global template (company_id NULL) — a single shared library, assignable to any employee.
+  let created: { id: string };
   try {
-    await createShift(s, shiftFields(formData));
+    created = await createShift(s, shiftFields(formData));
+    const windows = parseOtWindows(String(formData.get('otWindows') ?? ''));
+    if (windows) await replaceShiftOtWindows(s, { shiftId: created.id, windows });
   } catch (e) {
     redirect(errTarget(e));
   }
@@ -91,8 +166,11 @@ export async function createShiftAction(formData: FormData) {
 
 export async function updateShiftAction(formData: FormData) {
   const s = await getSession();
+  const shiftId = String(formData.get('shiftId') ?? '');
   try {
-    await updateShift(s, { shiftId: String(formData.get('shiftId') ?? ''), ...shiftFields(formData) });
+    await updateShift(s, { shiftId, ...shiftFields(formData) });
+    const windows = parseOtWindows(String(formData.get('otWindows') ?? ''));
+    if (windows) await replaceShiftOtWindows(s, { shiftId, windows });
   } catch (e) {
     redirect(errTarget(e));
   }
@@ -109,6 +187,38 @@ export async function archiveShiftAction(formData: FormData) {
   }
   revalidatePath(BASE);
   redirect(BASE);
+}
+
+/**
+ * cf21e554 stage 1 — REACTIVATE a deactivated shift. The service re-checks name and code first: the
+ * partial unique indexes skip archived rows, so the name may well have been taken while the shift was off.
+ */
+export async function unarchiveShiftAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await unarchiveShift(s, { shiftId: String(formData.get('shiftId') ?? '') });
+  } catch (e) {
+    redirect(errTarget(e));
+  }
+  revalidatePath(BASE);
+  redirect(BASE);
+}
+
+/**
+ * cf21e554 stage 1 — COPY a shift. Lands the operator straight on the NEW shift's edit form, because the
+ * point of copying is to change the two or three boxes that differ; dropping them back on the list would
+ * make them hunt for the row they just created.
+ */
+export async function copyShiftAction(formData: FormData) {
+  const s = await getSession();
+  let copied: { id: string };
+  try {
+    copied = await copyShift(s, { shiftId: String(formData.get('shiftId') ?? '') });
+  } catch (e) {
+    redirect(errTarget(e));
+  }
+  revalidatePath(BASE);
+  redirect(`${BASE}?editShift=${copied.id}#shift-form`);
 }
 
 /** R17 3e8350db — hard-delete a shift template (distinct from Archive). The service refuses if the shift is

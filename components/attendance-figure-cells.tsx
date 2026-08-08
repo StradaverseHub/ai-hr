@@ -62,8 +62,9 @@ type Section = 'lateness' | 'earlyOut' | 'overtime';
  *  core/attendance-explain.ts should format correctly without a matching edit here, while a new INSTANT
  *  would print obviously wrong ("24h 30m" where "00:30 (+1)" belongs) and be caught immediately. */
 const CLOCK_ARGS = new Set(['at', 'threshold', 'end']);
-/** Plain counts — not minutes of anything. */
-const COUNT_ARGS = new Set(['blocks']);
+/** Plain counts — not minutes of anything. cf21e554 adds `count` (how many overtime windows the shift
+ *  declares); without it the default would print "2 windows" as "2m". */
+const COUNT_ARGS = new Set(['blocks', 'count']);
 
 /** The six OT buckets to the column headings already on screen, so the panel and the columns cannot use
  *  different names for the same money. */

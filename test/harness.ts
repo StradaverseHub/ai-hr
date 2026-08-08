@@ -39,7 +39,11 @@ const ALL_TABLES = [
   'claim_type', 'claim_policy', 'claim_request', 'claim_attachment',
   'employee_loan', 'loan_repayment',
   'performance_goal', 'review_goal', 'performance_checkin', 'peer_feedback_request', 'peer_feedback', 'calibration_session', 'calibration_entry', 'performance_attachment',
-  'shift', 'roster_assignment', 'toil_policy', 'toil_accrual', 'location',
+  // cf21e554 — shift_ot_window cascades from `shift`, but it is listed EXPLICITLY for the reason recorded
+  // throughout this list: a table only ever cleared as a side effect is a table that stops being cleared
+  // the day the cascade path changes. A leaked window would also switch a later test file's shift onto the
+  // clock-time OT basis, and the symptom would be an overtime figure that is wrong for no visible reason.
+  'shift', 'shift_ot_window', 'roster_assignment', 'toil_policy', 'toil_accrual', 'location',
   'clocking_location', 'employee_clocking_location',
   // 5249d43f — registered clocking devices: truncate between test files (the global unique token index
   // means a leaked row can't collide, but a surviving device would make a later gate test false-green).

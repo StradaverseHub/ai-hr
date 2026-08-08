@@ -3603,7 +3603,20 @@ export type ShiftOtRule = { eligible: boolean; minMinutes?: number; dailyCapMinu
 // today's behaviour). `flexible` = the break window is a target, not a fixed clock. `clockingRequired` =
 // employees must punch in/out for the break. For a Semi-Flexi shift the service FORCES flexible=true and
 // clockingRequired=false (the reporter's fixed rule). Absent on legacy rows / Normal shifts ⇒ unset.
-export type BreakPeriod = { start: string; end: string; flexible?: boolean; clockingRequired?: boolean };
+//
+// cf21e554 stage 1 — the reference Break tab's "Paid?" tick. ABSENT MEANS UNPAID, which is the whole point:
+// every break window stored before this change is byte-identical afterwards, and the shift's canonical
+// break_minutes scalar (Σ of the UNPAID windows — core/roster.ts normalizeShiftInput) is unchanged for all
+// of them. A paid break is time the employer pays for, so it is NOT taken off the scheduled hours; an
+// unpaid one comes off exactly as it does today.
+export type BreakPeriod = { start: string; end: string; flexible?: boolean; clockingRequired?: boolean; paid?: boolean };
+
+// cf21e554 stage 1 — the reference General tab's "Day Type" box. RECORDED ONLY in stage 1: nothing in the
+// engine reads it, and the form says so on the box. The value set is THIS PRODUCT'S OWN day vocabulary
+// (core/attendance.ts DayType), not a guess at the legacy HRMS's dropdown — the reference screenshot showed
+// the field, never its options, and the plan is explicit that we do not invent what was not captured.
+export const SHIFT_DAY_TYPES = ['workday', 'rest_day', 'holiday'] as const;
+export type ShiftDayType = (typeof SHIFT_DAY_TYPES)[number];
 
 // f3321963 — Shift Settings Enhancement: which attendance/scheduling behaviour a shift template follows.
 //   'normal'      = fixed Time-In/Time-Out schedule (today's engine behaviour). DEFAULT (legacy rows).
@@ -3723,6 +3736,44 @@ export const shift = pgTable(
     // shift.ot_rule stays as a higher-precedence per-shift OT-shape override (legacy, byte-identical).
     ruleId: uuid('rule_id').references((): AnyPgColumn => attendanceRule.id),
     differential: jsonb('differential').$type<ShiftDifferential | null>(),
+    // ── cf21e554 stage 1 · the reference General tab (migration 0417) ────────────────────────────────
+    // ALL NULLABLE, NO DEFAULTS, NO BACKFILL. The reporter was promised every new box starts empty and no
+    // saved shift changes; NULL is the only value that means "this shift does not use this box".
+    //
+    // The reference description of shift MB28 is currently living in shift.name ("WITH 0.5 OT HOUR ADJ -
+    // MORNING FULL (0800 - 1700)") because there was nowhere else to put it. This is that place.
+    description: text('description'),
+    // RECORDED ONLY in stage 1 (see ShiftDayType above). CHECK in migration 0417.
+    dayType: text('day_type').$type<ShiftDayType | null>(),
+    // RECORDED ONLY in stage 1 — a free-text grouping label from the reference screen. No enum: the
+    // screenshot showed a typed value, not a dropdown, and inventing a closed set would refuse real data.
+    category: text('category'),
+    // Earliest allowed clock-in. Validated at or before start_time (core/roster.ts). Recorded + displayed
+    // in stage 1; the engine's early-OT attribution is owned by the attendance rule's applyToEarlyOt flag
+    // and by stage 2's OT windows, so this box does not silently become a second early-OT switch.
+    earlyIn: time('early_in'),
+    // Latest allowed clock-out, with the reference screen's "0430+" next-day marker. Validated at or after
+    // the shift end ON THE SHIFT'S OWN TIMELINE (a cross-midnight shift's end is already next-day).
+    lateOut: time('late_out'),
+    lateOutNextDay: boolean('late_out_next_day'),
+    // RECORDED ONLY in stage 1 — how many minutes of leave a full day of this shift consumes.
+    fullDayLeaveMinutes: integer('full_day_leave_minutes'),
+    // APPLIED — the one General box in stage 1 that moves a figure on its own. Rounds the shift's NET
+    // SCHEDULED MINUTES DOWN to a multiple of this many minutes, inside core/attendance.ts
+    // netScheduledMinutes, so the form's readout and the engine's threshold can never disagree.
+    // NULL or 0 ⇒ no rounding (byte-identical).
+    normalHoursRoundingMinutes: integer('normal_hours_rounding_minutes'),
+    // RECORDED ONLY in stage 1 — the reference "Full Day OT Hours" box.
+    fullDayOtMinutes: integer('full_day_ot_minutes'),
+    // The half-day PAIR. `halfDayFirstOut` is the per-shift replacement for the ONE company-wide
+    // attendance_policy.half_day_before: when set it is this shift's half-day cut-off, and when NULL the
+    // shift keeps exactly the behaviour it has today (grace-derived threshold / the shift midpoint), so a
+    // blank shift is unchanged. `halfDaySecondIn` is the afternoon half's clock-in — recorded, validated
+    // against its partner and displayed; it has NO company-level counterpart and no engine consumer, and
+    // deliberately does not reclassify a late arrival as a half-day (that would be a status change the
+    // approved plan never described).
+    halfDayFirstOut: time('half_day_first_out'),
+    halfDaySecondIn: time('half_day_second_in'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -3732,6 +3783,54 @@ export const shift = pgTable(
   (t) => [
     uniqueIndex('shift_tenant_name_uq').on(t.tenantId, sql`lower(${t.name})`).where(sql`archived_at is null`),
     uniqueIndex('shift_tenant_code_uq').on(t.tenantId, sql`lower(${t.code})`).where(sql`archived_at is null`),
+  ],
+);
+
+/**
+ * cf21e554 STAGE 2 — the shift's own Overtime Schedule (migration 0418). One row = one overtime window on
+ * ONE shift, expressed in WALL-CLOCK time ("05:00–08:00", "17:00–23:59"), which is how the reporter's
+ * reference screen states them.
+ *
+ * WHY NOT attendance_rule_ot_row. That table's bands are measured in MINUTES PAST NORMAL and belong to a
+ * RULE several shifts share. Different unit, different owner. See migration 0418's header.
+ *
+ * WHAT IT OWNS AND WHAT IT DOES NOT. These windows decide WHICH clocked minutes count as workday overtime
+ * (and apply the window's own minimum, maximum and adjustment). They do NOT round and they do NOT price:
+ * the engine hands the total to applyOtRuleRows afterwards, so the rule's band rounding and the statutory
+ * 1.5×/2×/3× cap keep owning rounding and pay exactly as before.
+ */
+export const shiftOtWindow = pgTable(
+  'shift_ot_window',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    shiftId: uuid('shift_id')
+      .notNull()
+      .references(() => shift.id, { onDelete: 'cascade' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    /** The reference grid's "OT" column — a name for the window. Optional. */
+    label: text('label'),
+    startTime: time('start_time').notNull(),
+    endTime: time('end_time').notNull(),
+    /** The window ends on the day AFTER it starts (the reference's next-day marker). */
+    endNextDay: boolean('end_next_day').notNull().default(false),
+    /** Min.Hrs / Max.Hrs in MINUTES. Below the minimum the window yields nothing; above the maximum it is
+     *  clamped. NULL = unbounded on that side. */
+    minMinutes: integer('min_minutes'),
+    maxMinutes: integer('max_minutes'),
+    /** The reference's "0030-" against "0130" on a shift named "WITH 0.5 OT HOUR ADJ": once this window's
+     *  overtime reaches `adjustAfterMinutes`, ADD `adjustDeltaMinutes` to it. The delta is SIGNED — −30 is
+     *  the reporter's deduction. Both columns or neither (DB CHECK). */
+    adjustAfterMinutes: integer('adjust_after_minutes'),
+    adjustDeltaMinutes: integer('adjust_delta_minutes'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('shift_ot_window_shift_idx').on(t.tenantId, t.shiftId, t.sortOrder),
+    // One row per grid position, so which adjustment belongs to which window can never depend on physical
+    // row order after a re-save.
+    uniqueIndex('shift_ot_window_shift_sort_uq').on(t.shiftId, t.sortOrder),
   ],
 );
 

@@ -51,6 +51,26 @@ describe('shift template (R7 Multi-Shift Phase 1)', () => {
     expect(netScheduledMinutes('09:00:00', '10:00:00', false, 90)).toBe(0); // floored at 0
   });
 
+  /** cf21e554 stage 1 — the reference General tab's "Normal Hours Rounding" box. The parameter is
+   *  optional and every existing caller omits it, so the three assertions above are the proof that the
+   *  default path is untouched; these are the new behaviour. */
+  it('normal-hours rounding rounds the NET figure DOWN to a multiple, and null/0 is a strict no-op', () => {
+    // 09:00–17:50 − 60 = 470 net. Down to the quarter hour ⇒ 465.
+    expect(netScheduledMinutes('09:00:00', '17:50:00', false, 60, 15)).toBe(465);
+    expect(netScheduledMinutes('09:00:00', '17:50:00', false, 60, 30)).toBe(450);
+    // Already a multiple ⇒ unchanged.
+    expect(netScheduledMinutes('09:00:00', '18:00:00', false, 60, 15)).toBe(480);
+    // No rounding configured, in each of the three ways that can be expressed.
+    expect(netScheduledMinutes('09:00:00', '17:50:00', false, 60)).toBe(470);
+    expect(netScheduledMinutes('09:00:00', '17:50:00', false, 60, null)).toBe(470);
+    expect(netScheduledMinutes('09:00:00', '17:50:00', false, 60, 0)).toBe(470);
+    // A rounding unit larger than the shift floors it to zero — which is what "round down" means, and why
+    // the column is bounded at 1440 rather than left open.
+    expect(netScheduledMinutes('09:00:00', '12:00:00', false, 0, 240)).toBe(0);
+    // Cross-midnight is rounded the same way (480 − 45 = 435 ⇒ 420 at the half hour).
+    expect(netScheduledMinutes('22:00:00', '06:00:00', true, 45, 30)).toBe(420);
+  });
+
   it('multiple break periods persist AND the canonical breakMinutes scalar = their sum', async () => {
     const ctx = adminCtx(b);
     const r = await createShift(ctx, {

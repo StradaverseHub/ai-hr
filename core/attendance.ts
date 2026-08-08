@@ -15,7 +15,7 @@ import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { enforceDeviceGateTx } from './attendance-device';
 import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
-import { ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1 } from './attendance-trace';
+import { ATTENDANCE_TRACE_VERSION, type AttendanceTraceV1, type TraceOtWindow } from './attendance-trace';
 // 7c834696 stage 1 — the pure per-day arithmetic lives in its own module so the release gate ("no bands,
 // deductions off ⇒ every figure byte-identical") can be asserted on the functions directly, without
 // fixtures. The two measurement helpers are aliased because `earlyOutMinutes` is also a local variable name
@@ -30,6 +30,9 @@ import {
 } from './attendance-calc';
 import { holidayDatesFor } from './holidays';
 import { approvedLeaveDates } from './leave';
+// cf21e554 stage 2 — the shift's own clock-time overtime windows. Pure, DB-free arithmetic in its own
+// module (see its header): this file reads the rows and hands them over, it does not restate the rule.
+import { otMinutesFromWindows, type ShiftOtWindowSpec } from './shift-ot-window';
 import { maybeAutoAccrueOnApprovalTx } from './toil';
 import {
   assignment,
@@ -45,6 +48,7 @@ import {
   person,
   rosterAssignment,
   shift,
+  shiftOtWindow,
   type BreakPeriod,
   type ShiftOtRule,
 } from '../db/schema';
@@ -304,10 +308,33 @@ const spanMinutes = (checkInAt: string, checkOutAt: string): number => {
 export const shiftSpan = (start: string, end: string, crosses: boolean): number =>
   crosses ? toMinutes(end) + MINS_PER_DAY - toMinutes(start) : toMinutes(end) - toMinutes(start);
 
-/** Net scheduled minutes of a shift: span − break. The SHARED auto normal-hours figure (R7 Phase 1) — the
- *  shift form's auto readout and the engine's scheduledMinutes are this one expression, never persisted. */
-export const netScheduledMinutes = (start: string, end: string, crosses: boolean, breakMinutes: number): number =>
-  Math.max(0, shiftSpan(start, end, crosses) - breakMinutes);
+/**
+ * Net scheduled minutes of a shift: span − break, then the shift's own Normal-Hours Rounding.
+ * The SHARED auto normal-hours figure (R7 Phase 1) — the shift form's auto readout and the engine's
+ * scheduledMinutes are this one expression, never persisted.
+ *
+ * cf21e554 stage 1 — `roundingMinutes` is the reference General tab's "Normal Hours Rounding" box
+ * (shift.normal_hours_rounding_minutes). It rounds the net figure DOWN to a multiple of itself:
+ *   • DOWN, not nearest: this figure is a SCHEDULE, and the honest reading of "round my normal hours to the
+ *     quarter hour" on a 7h50m shift is 7h45m of normal time, not 8h the employee was never scheduled for.
+ *     (The OT band rounding in core/attendance-rule.ts rounds to NEAREST — deliberately different: that one
+ *     rounds MEASURED overtime, where nearest is the neutral choice between the two parties.)
+ *   • The parameter is OPTIONAL and null/0/absent is a strict no-op, so every one of the caller sites that
+ *     does not pass it — and every shift whose column is NULL, which is all 11 rows on production — returns
+ *     byte-identically to before.
+ */
+export const netScheduledMinutes = (
+  start: string,
+  end: string,
+  crosses: boolean,
+  breakMinutes: number,
+  roundingMinutes?: number | null,
+): number => {
+  const net = Math.max(0, shiftSpan(start, end, crosses) - breakMinutes);
+  const unit = Math.trunc(roundingMinutes ?? 0);
+  if (!Number.isFinite(unit) || unit <= 0) return net;
+  return Math.floor(net / unit) * unit;
+};
 
 // b7b886e2 — the punch placed on the SHIFT's own timeline, in minutes from midnight of the attendance date,
 // so a cross-midnight shift's end (and its after-midnight breaks) sit past 1440 and can be compared with
@@ -321,18 +348,27 @@ type PunchWindow = { inAbs: number; outAbs: number; startAbs: number; endAbs: nu
 const anchorToShift = (minutes: number, shiftStartAbs: number): number =>
   minutes < shiftStartAbs - MINS_PER_DAY / 2 ? minutes + MINS_PER_DAY : minutes;
 
-/** Minutes of the punch that fell inside the shift's declared break WINDOWS. Null when the shift carries no
- *  windows — a break scalar alone gives nothing to test the clocking against, so those shifts keep
- *  workedFromSpan's 6h cliff (byte-identical). Capped at the canonical breakMinutes so a drifted row
+/** Minutes of the punch that fell inside the shift's declared UNPAID break WINDOWS. Null when the shift
+ *  carries no windows — a break scalar alone gives nothing to test the clocking against, so those shifts
+ *  keep workedFromSpan's 6h cliff (byte-identical). Capped at the canonical breakMinutes so a drifted row
  *  (Σ windows ≠ break_minutes — see core/shift-break-display.ts) can never deduct more than the figure the
- *  rest of the system reports as the shift's break. */
+ *  rest of the system reports as the shift's break.
+ *
+ *  cf21e554 — the filter and the cap MUST range over the same set. `breakMinutes` is Σ of the UNPAID
+ *  windows (core/roster.ts normalizeShiftInput), so summing the overlap across ALL windows counted a PAID
+ *  window's overlap as unpaid deduction, up to the unpaid total. Reproduced: 09:00–18:00 with a paid
+ *  10:30–10:45 tea break and an unpaid 13:00–14:00 lunch ⇒ break_minutes 60; a 09:00→12:00 clocking spans
+ *  only the PAID window, and min(15, 60) took 15 minutes off a day that owed nothing. The full-day case
+ *  hid it because the cap happened to equal the unpaid total. */
 const spannedBreakMinutes = (periods: BreakPeriod[] | null, breakMinutes: number, w: PunchWindow): number | null => {
   if (!periods || periods.length === 0) return null;
-  const overlap = periods.reduce((acc, bp) => {
-    const bs = anchorToShift(toMinutes(bp.start), w.startAbs);
-    const be = anchorToShift(toMinutes(bp.end), w.startAbs);
-    return acc + Math.max(0, Math.min(w.outAbs, be) - Math.max(w.inAbs, bs));
-  }, 0);
+  const overlap = periods
+    .filter((bp) => bp.paid !== true)
+    .reduce((acc, bp) => {
+      const bs = anchorToShift(toMinutes(bp.start), w.startAbs);
+      const be = anchorToShift(toMinutes(bp.end), w.startAbs);
+      return acc + Math.max(0, Math.min(w.outAbs, be) - Math.max(w.inAbs, bs));
+    }, 0);
   return Math.min(overlap, breakMinutes);
 };
 
@@ -359,6 +395,11 @@ type ResolvedSchedule = {
   // WORKDAY OT accrual only (deriveAttendance); statutory rest/holiday premium is untouched. Null on the
   // policy branch and whenever the shift carries no rule ⇒ byte-identical legacy OT.
   otRule: ShiftOtRule | null;
+  // cf21e554 stage 2 — the resolved shift's own Overtime Schedule (shift_ot_window), in grid order. NULL on
+  // the policy branch and on any shift with no windows ⇒ workday OT keeps being "time past the shift end",
+  // byte-identical. When present these windows decide WHICH minutes count; rounding and pay stay with the
+  // attendance rule and the statutory cap.
+  otWindows: ShiftOtWindowSpec[] | null;
   // 88e94371 — the resolved attendance rule ("Lateness, Early Out & Overtime Settings"): the shift's rule_id
   // when set, else the tenant's Standard rule (6da67ab7 — the library is no longer company-scoped), else null
   // (⇒ legacy behaviour). Its OT rows drive OT-minute rounding + early-OT inclusion in deriveAttendance; its
@@ -402,9 +443,31 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   // the rule's grace-period section; else the policy-derived grace / midpoint heuristic (null ⇒ legacy).
   const ruleFor = (ruleId: string | null): Promise<ResolvedAttendanceRule | null> =>
     ruleId ? resolveRuleTx(tx, { ruleId }) : Promise.resolve(defaultRule);
+  // cf21e554 — the OT windows of one shift, in grid order, or null when it declares none (which is every
+  // shift until someone opens the new tab). Null and [] are deliberately the same thing to the caller: no
+  // windows ⇒ workday OT stays "time worked past the shift end", byte-identical.
+  const otWindowsFor = async (shiftId: string | null): Promise<ShiftOtWindowSpec[] | null> => {
+    if (!shiftId) return null;
+    const rows = await tx
+      .select({
+        label: shiftOtWindow.label,
+        startTime: shiftOtWindow.startTime,
+        endTime: shiftOtWindow.endTime,
+        endNextDay: shiftOtWindow.endNextDay,
+        minMinutes: shiftOtWindow.minMinutes,
+        maxMinutes: shiftOtWindow.maxMinutes,
+        adjustAfterMinutes: shiftOtWindow.adjustAfterMinutes,
+        adjustDeltaMinutes: shiftOtWindow.adjustDeltaMinutes,
+      })
+      .from(shiftOtWindow)
+      .where(eq(shiftOtWindow.shiftId, shiftId))
+      .orderBy(shiftOtWindow.sortOrder);
+    return rows.length > 0 ? rows : null;
+  };
   const [ra] = await tx
     .select({
       isRestDay: rosterAssignment.isRestDay,
+      shiftId: shift.id,
       start: shift.startTime,
       end: shift.endTime,
       brk: shift.breakMinutes,
@@ -415,6 +478,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
       otRule: shift.otRule,
       ruleId: shift.ruleId,
+      // cf21e554 stage 1 — the two General boxes that MOVE a figure (see db/schema.ts).
+      rounding: shift.normalHoursRoundingMinutes,
+      halfDayFirstOut: shift.halfDayFirstOut,
     })
     .from(rosterAssignment)
     .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -432,6 +498,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     breakPeriods: null,
     normalMinutesOverride: null,
     otRule: null,
+    // The company-policy branch has no shift, so there is nothing to carry OT windows.
+    otWindows: null,
     rule: defaultRule,
     // The policy branch's schedule IS work_start → work_end, and its late grace is the policy's own
     // (late_after − work_start) — the same figure `lateAfter` above is built from, so the measurement and
@@ -448,8 +516,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   // A rostered shift defines the schedule even on a calendar holiday or weekend; the day TYPE still comes
   // from the calendar (holiday) so OT is classified at the right premium.
   if (ra && !ra.isRestDay && ra.start && ra.end) {
-    const sched = netScheduledMinutes(ra.start, ra.end, ra.crosses!, ra.brk!);
+    const sched = netScheduledMinutes(ra.start, ra.end, ra.crosses!, ra.brk!, ra.rounding);
     const rule = await ruleFor(ra.ruleId);
+    const otWindows = await otWindowsFor(ra.shiftId);
     // 88e94371 — grace precedence: explicit per-shift grace (R17) → rule grace section → policy-derived grace
     // / midpoint. The Standard rule's late grace is seeded to equal the policy grace, so a shift with no
     // explicit grace + the Standard rule stays byte-identical to before.
@@ -460,10 +529,16 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     return {
       dayType: isHoliday ? 'holiday' : 'workday',
       lateAfter: addGrace(ra.start, lateGrace),
+      // cf21e554 stage 1 — the shift's OWN half-day clock-out wins when it is set. It is the per-shift
+      // replacement for attendance_policy.half_day_before, which is one value for the whole company; a
+      // shift that leaves it blank keeps exactly the threshold it has today (grace-derived, else the shift
+      // midpoint), so nothing already saved moves.
       halfDayBefore:
-        earlyGrace != null
-          ? subGrace(ra.end, earlyGrace)
-          : fmtTime((toMinutes(ra.start) + Math.floor(shiftSpan(ra.start, ra.end, ra.crosses!) / 2)) % MINS_PER_DAY),
+        ra.halfDayFirstOut != null
+          ? ra.halfDayFirstOut
+          : earlyGrace != null
+            ? subGrace(ra.end, earlyGrace)
+            : fmtTime((toMinutes(ra.start) + Math.floor(shiftSpan(ra.start, ra.end, ra.crosses!) / 2)) % MINS_PER_DAY),
       scheduledMinutes: sched,
       breakMinutes: ra.brk!,
       shiftStart: ra.start,
@@ -471,6 +546,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       breakPeriods: ra.periods ?? null,
       normalMinutesOverride: ra.override ?? null,
       otRule: ra.otRule ?? null,
+      otWindows,
       rule,
       scheduledStart: ra.start,
       scheduledEnd: ra.end,
@@ -494,6 +570,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   // shift; only NEW assignments of archived shifts are blocked (core/roster.ts assignDefaultShift).
   const [ds] = await tx
     .select({
+      shiftId: shift.id,
       start: shift.startTime,
       end: shift.endTime,
       brk: shift.breakMinutes,
@@ -505,6 +582,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
       otRule: shift.otRule,
       ruleId: shift.ruleId,
+      rounding: shift.normalHoursRoundingMinutes,
+      halfDayFirstOut: shift.halfDayFirstOut,
     })
     .from(employment)
     .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
@@ -515,17 +594,22 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       // Working day of the default shift — mirror the roster-shift branch byte-for-byte, incl. the
       // holiday day-type overlay (the default shift's hours still define the schedule on a holiday), the
       // R17 per-shift grace override, and the 88e94371 rule grace fallback.
-      const sched = netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk);
+      const sched = netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding);
       const rule = await ruleFor(ds.ruleId);
+      const otWindows = await otWindowsFor(ds.shiftId);
       const lateGrace = ds.lateGrace ?? rule?.lateGracePeriodMinutes ?? grace;
       const earlyGrace = ds.earlyLeaveGrace ?? (rule && rule.earlyGracePeriodMinutes > 0 ? rule.earlyGracePeriodMinutes : null);
       return {
         dayType: isHoliday ? 'holiday' : 'workday',
         lateAfter: addGrace(ds.start, lateGrace),
+        // cf21e554 — same per-shift half-day override as the roster branch above; the two branches mirror
+        // each other byte-for-byte on purpose.
         halfDayBefore:
-          earlyGrace != null
-            ? subGrace(ds.end, earlyGrace)
-            : fmtTime((toMinutes(ds.start) + Math.floor(shiftSpan(ds.start, ds.end, ds.crosses) / 2)) % MINS_PER_DAY),
+          ds.halfDayFirstOut != null
+            ? ds.halfDayFirstOut
+            : earlyGrace != null
+              ? subGrace(ds.end, earlyGrace)
+              : fmtTime((toMinutes(ds.start) + Math.floor(shiftSpan(ds.start, ds.end, ds.crosses) / 2)) % MINS_PER_DAY),
         scheduledMinutes: sched,
         breakMinutes: ds.brk,
         shiftStart: ds.start,
@@ -533,6 +617,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
         breakPeriods: ds.periods ?? null,
         normalMinutesOverride: ds.override ?? null,
         otRule: ds.otRule ?? null,
+        otWindows,
         rule,
         scheduledStart: ds.start,
         scheduledEnd: ds.end,
@@ -724,11 +809,30 @@ function deriveAttendance(
   let earlyOtMinutes = 0;
   let otMinutes: number;
   // 7c834696 point 3 — which arithmetic ran. Captured here rather than re-derived by the panel, because
-  // the three branches are indistinguishable from the stored figures alone.
-  let otBasis: 'window' | 'duration' | 'nonWorkday';
+  // the branches are indistinguishable from the stored figures alone.
+  let otBasis: 'window' | 'duration' | 'nonWorkday' | 'shiftWindows';
+  // cf21e554 stage 2 — per-window detail for the trace (null unless the shiftWindows branch ran).
+  let otWindowRows: TraceOtWindow[] | null = null;
   if (s.dayType !== 'workday') {
     otMinutes = workedMinutes;
     otBasis = 'nonWorkday';
+  } else if (w && s.otWindows && s.otWindows.length > 0) {
+    // cf21e554 stage 2 — the shift declares its overtime BY CLOCK TIME ("05:00–08:00", "17:00–23:59"), so
+    // those windows decide which minutes count and the duration/past-the-end comparisons below do not run.
+    //
+    // WHY THIS OUTRANKS normalMinutesOverride. A manual normal-hours figure is a statement that normal
+    // hours are N minutes "regardless of the clock"; an OT schedule is a statement about the clock itself,
+    // and it is both newer and more specific. A shift carrying both would otherwise have its whole new tab
+    // silently ignored. The override still owns SHORT HOURS (`under`, below) and the half-day/normal-hours
+    // readout, which is where "normal hours are N" actually means something.
+    //
+    // Pre-shift minutes are NOT folded in on this branch: a before-shift window (the reporter's 05:00–08:00)
+    // already counts them, and adding them again through the rule's applyToEarlyOt would pay them twice.
+    earlyOtMinutes = Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs);
+    const fromWindows = otMinutesFromWindows(s.otWindows, { inAbs: w.inAbs, outAbs: w.outAbs }, w.startAbs);
+    otMinutes = fromWindows.total;
+    otWindowRows = fromWindows.rows;
+    otBasis = 'shiftWindows';
   } else if (w && s.normalMinutesOverride == null) {
     otMinutes = Math.max(0, w.outAbs - Math.max(w.inAbs, w.endAbs));
     earlyOtMinutes = Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs);
@@ -740,8 +844,10 @@ function deriveAttendance(
   const otRawMinutes = otMinutes;
   // 88e94371's documented GAP — "the engine does not yet attribute pre-shift punch minutes" — is what the
   // window above now supplies. The rule's opt-in folds them in HERE, before the per-shift OT shape below, so
-  // an ineligible or capped shift can never let early minutes leak past its own limits.
-  if (s.dayType === 'workday' && s.rule?.applyToEarlyOt) otMinutes += earlyOtMinutes;
+  // an ineligible or capped shift can never let early minutes leak past its own limits. The shiftWindows
+  // branch is excluded because its own before-shift window has already counted them (see above).
+  const earlyOtFolded = s.dayType === 'workday' && otBasis !== 'shiftWindows' && (s.rule?.applyToEarlyOt ?? false);
+  if (earlyOtFolded) otMinutes += earlyOtMinutes;
   // R17 3e8350db — per-shift "OT Rules" shape WORKDAY OT accrual only (rest/holiday premium is statutory and
   // untouched): eligible=false zeroes workday OT; a minimum block drops OT below the threshold to zero; a
   // daily cap clamps it. Null rule ⇒ byte-identical to before.
@@ -832,7 +938,10 @@ function deriveAttendance(
     normalIsOverride: otBasis !== 'nonWorkday' && s.normalMinutesOverride != null,
     rawMinutes: otRawMinutes,
     earlyMinutes: earlyOtMinutes,
-    earlyIncluded: s.dayType === 'workday' && (s.rule?.applyToEarlyOt ?? false),
+    earlyIncluded: earlyOtFolded,
+    // cf21e554 stage 2 — what each declared OT window contributed. Null on every other branch, which is
+    // every shift that has not opened the new tab.
+    shiftOtWindows: otWindowRows,
     shiftRule:
       s.dayType === 'workday' && s.otRule
         ? {
@@ -964,6 +1073,7 @@ export async function payableHoursForCycle(
       end: shift.endTime,
       brk: shift.breakMinutes,
       crosses: shift.crossesMidnight,
+      rounding: shift.normalHoursRoundingMinutes,
     })
     .from(rosterAssignment)
     .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -980,7 +1090,11 @@ export async function payableHoursForCycle(
   for (const r of ras) {
     rosteredDates.add(r.shiftDate);
     if (r.isRestDay || !r.start || !r.end) continue; // a rostered rest day is not an assigned shift
-    schedByDate.set(r.shiftDate, Math.max(0, shiftSpan(r.start, r.end, r.crosses!) - r.brk!));
+    // cf21e554 — was an inlined copy of netScheduledMinutes; now the shared helper, so the shift's
+    // Normal-Hours Rounding reaches the hourly clamp's ceiling too. A clamp measured against an unrounded
+    // figure while the engine measures the day against a rounded one is a divergence nobody would see
+    // until a payslip. Identical output for every shift whose rounding column is NULL.
+    schedByDate.set(r.shiftDate, netScheduledMinutes(r.start, r.end, r.crosses!, r.brk!, r.rounding));
   }
 
   // ec4cbf63 — the employee's DEFAULT shift (profile assignment) IS an assigned shift: on a day with NO
@@ -995,12 +1109,13 @@ export async function payableHoursForCycle(
       brk: shift.breakMinutes,
       crosses: shift.crossesMidnight,
       pattern: shift.weeklyPattern,
+      rounding: shift.normalHoursRoundingMinutes,
     })
     .from(employment)
     .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
     .where(eq(employment.id, employmentId))
     .limit(1);
-  const dsNet = ds ? netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk) : null;
+  const dsNet = ds ? netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding) : null;
 
   let payableMinutes = 0;
   for (const row of rows) {
@@ -1370,8 +1485,12 @@ export type ShiftDisplay = {
 
 const NO_SHIFT: ShiftDisplay = { shiftCode: null, scheduledMinutes: null, shiftStart: null, shiftEnd: null, isRosterRest: false };
 
-type RosterDisplayRow = { isRestDay: boolean; code: string | null; start: string | null; end: string | null; brk: number | null; crosses: boolean | null };
-type DefaultShiftRow = { code: string | null; start: string; end: string; brk: number; crosses: boolean; pattern: number[] | null };
+// cf21e554 — `rounding` (shift.normal_hours_rounding_minutes) is carried here for the reason this
+// module's own comment gives two lines below: the table must not disagree with the engine. Without it a
+// shift that rounds its normal hours would render 7h 50m in the Scheduled column while scheduleFor
+// measured the day against 7h 45m. Null on every legacy row ⇒ byte-identical.
+type RosterDisplayRow = { isRestDay: boolean; code: string | null; start: string | null; end: string | null; brk: number | null; crosses: boolean | null; rounding: number | null };
+type DefaultShiftRow = { code: string | null; start: string; end: string; brk: number; crosses: boolean; pattern: number[] | null; rounding: number | null };
 
 /**
  * Resolve the shift-DISPLAY subset for one (employee, date) from already-batched inputs, mirroring
@@ -1390,7 +1509,7 @@ function resolveShiftDisplay(
     if (!roster.isRestDay && roster.start && roster.end) {
       return {
         shiftCode: roster.code,
-        scheduledMinutes: netScheduledMinutes(roster.start, roster.end, roster.crosses!, roster.brk!),
+        scheduledMinutes: netScheduledMinutes(roster.start, roster.end, roster.crosses!, roster.brk!, roster.rounding),
         shiftStart: roster.start.slice(0, 5),
         shiftEnd: roster.end.slice(0, 5),
         isRosterRest: false,
@@ -1402,7 +1521,7 @@ function resolveShiftDisplay(
     if (def.pattern?.includes(isoWeekday(date))) {
       return {
         shiftCode: def.code,
-        scheduledMinutes: netScheduledMinutes(def.start, def.end, def.crosses, def.brk),
+        scheduledMinutes: netScheduledMinutes(def.start, def.end, def.crosses, def.brk, def.rounding),
         shiftStart: def.start.slice(0, 5),
         shiftEnd: def.end.slice(0, 5),
         isRosterRest: false,
@@ -1540,6 +1659,7 @@ export function attendanceForDate(
         end: shift.endTime,
         brk: shift.breakMinutes,
         crosses: shift.crossesMidnight,
+        rounding: shift.normalHoursRoundingMinutes,
       })
       .from(rosterAssignment)
       .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -1556,6 +1676,7 @@ export function attendanceForDate(
         brk: shift.breakMinutes,
         crosses: shift.crossesMidnight,
         pattern: shift.weeklyPattern,
+        rounding: shift.normalHoursRoundingMinutes,
       })
       .from(employment)
       .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
@@ -1726,6 +1847,7 @@ export function attendanceForEmploymentRange(
         end: shift.endTime,
         brk: shift.breakMinutes,
         crosses: shift.crossesMidnight,
+        rounding: shift.normalHoursRoundingMinutes,
       })
       .from(rosterAssignment)
       .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -1742,6 +1864,7 @@ export function attendanceForEmploymentRange(
           brk: shift.breakMinutes,
           crosses: shift.crossesMidnight,
           pattern: shift.weeklyPattern,
+          rounding: shift.normalHoursRoundingMinutes,
         })
         .from(shift)
         .where(eq(shift.id, emp.defShiftId))

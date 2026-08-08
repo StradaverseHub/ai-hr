@@ -17,10 +17,12 @@ import * as schema from '../db/schema';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { checkIn, checkOut } from '../core/attendance';
 import {
+  archiveShift,
   assignDefaultShift,
   assignEmployeeShift,
   assignShift,
   copyRoster,
+  copyShift,
   createShift,
   deleteShift,
   BackupShiftRequiredError,
@@ -29,6 +31,7 @@ import {
   listShiftsForTenant,
   rosterForRange,
   ShiftInUseError,
+  unarchiveShift,
   updateShift,
 } from '../core/roster';
 
@@ -361,5 +364,201 @@ describe('b8aa3466 — a MANDATORY backup shift must be one an employee can actu
     });
     const res = await assignEmployeeShift(a, { employmentId: emp, shiftType: 'fixed', shiftId: workable.id });
     expect(res.id).toBe(emp);
+  });
+});
+
+// ── cf21e554 stage 1 — the reference General tab, Copy and Reactivate ────────────────────────────────
+
+describe('cf21e554 — General-tab validation', () => {
+  const base = () => ({
+    name: `Gen ${randomUUID().slice(0, 8)}`,
+    code: `GEN${randomUUID().slice(0, 6)}`,
+    startTime: '09:00:00',
+    endTime: '18:00:00',
+    breakMinutes: 60,
+  });
+
+  it('accepts the whole General tab and stores every box (the positive half)', async () => {
+    // A refusal suite on its own passes just as well against a function that always throws, so the
+    // ACCEPTED case is pinned first and read back from the database.
+    const a = adminCtx(b);
+    const created = await createShift(a, {
+      ...base(),
+      description: 'WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700)',
+      dayType: 'workday',
+      category: 'Production',
+      earlyIn: '07:30',
+      lateOut: '20:00',
+      fullDayLeaveMinutes: 480,
+      normalHoursRoundingMinutes: 15,
+      fullDayOtMinutes: 120,
+      halfDayFirstOut: '13:00',
+      halfDaySecondIn: '14:00',
+    });
+    const [row] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, created.id));
+    expect(row).toMatchObject({
+      description: 'WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700)',
+      dayType: 'workday',
+      category: 'Production',
+      earlyIn: '07:30:00',
+      lateOut: '20:00:00',
+      fullDayLeaveMinutes: 480,
+      normalHoursRoundingMinutes: 15,
+      fullDayOtMinutes: 120,
+      halfDayFirstOut: '13:00:00',
+      halfDaySecondIn: '14:00:00',
+    });
+  });
+
+  it('refuses an earliest clock-in AFTER the shift start', async () => {
+    const a = adminCtx(b);
+    await expect(createShift(a, { ...base(), earlyIn: '09:30' })).rejects.toThrow(/at or before the shift start/i);
+    // Exactly at the start is allowed — the boundary is inclusive.
+    const ok = await createShift(a, { ...base(), earlyIn: '09:00' });
+    expect(ok.id).toBeTruthy();
+  });
+
+  it('refuses a latest clock-out BEFORE the shift end, and measures it on the shift’s own timeline', async () => {
+    const a = adminCtx(b);
+    await expect(createShift(a, { ...base(), lateOut: '17:00' })).rejects.toThrow(/at or after the shift end/i);
+    // Exactly at the end is allowed.
+    expect((await createShift(a, { ...base(), lateOut: '18:00' })).id).toBeTruthy();
+    // A 04:30 late-out is BEFORE 18:00 as a plain time — it is only valid with the next-day marker, which
+    // is the reference screen's "0430+". Without the marker it must be refused.
+    await expect(createShift(a, { ...base(), lateOut: '04:30' })).rejects.toThrow(/at or after the shift end/i);
+    expect((await createShift(a, { ...base(), lateOut: '04:30', lateOutNextDay: true })).id).toBeTruthy();
+  });
+
+  it('a cross-midnight shift compares its late-out against its NEXT-DAY end', async () => {
+    const a = adminCtx(b);
+    const night = { ...base(), startTime: '22:00:00', endTime: '06:00:00' };
+    // The shift already ends at 06:00 next day, so a same-day 07:00 late-out is BEFORE it.
+    await expect(createShift(a, { ...night, lateOut: '07:00' })).rejects.toThrow(/at or after the shift end/i);
+    expect((await createShift(a, { ...night, lateOut: '07:00', lateOutNextDay: true })).id).toBeTruthy();
+  });
+
+  it('refuses a half-day pair in the wrong order, and allows either box alone', async () => {
+    const a = adminCtx(b);
+    await expect(
+      createShift(a, { ...base(), halfDayFirstOut: '14:00', halfDaySecondIn: '13:00' }),
+    ).rejects.toThrow(/first half-day clock-out must be before/i);
+    // Equal is also wrong — the two halves would touch at a single instant.
+    await expect(
+      createShift(a, { ...base(), halfDayFirstOut: '13:00', halfDaySecondIn: '13:00' }),
+    ).rejects.toThrow(/first half-day clock-out must be before/i);
+    // Only the morning cut-off is meaningful on its own (it replaces the company-wide half_day_before).
+    expect((await createShift(a, { ...base(), halfDayFirstOut: '13:00' })).id).toBeTruthy();
+  });
+
+  it('refuses an unknown day type and a negative / oversized minutes box', async () => {
+    const a = adminCtx(b);
+    await expect(createShift(a, { ...base(), dayType: 'sabbatical' })).rejects.toThrow(/Invalid shift day type/i);
+    await expect(createShift(a, { ...base(), normalHoursRoundingMinutes: -5 })).rejects.toThrow(/non-negative/i);
+    await expect(createShift(a, { ...base(), fullDayLeaveMinutes: 2000 })).rejects.toThrow(/24 hours/i);
+  });
+});
+
+describe('cf21e554 — copyShift', () => {
+  it('copies every field, suffixes the code, and steps past a collision instead of failing', async () => {
+    const a = adminCtx(b);
+    const src = await createShift(a, {
+      companyId: b.companyId,
+      name: 'MB28',
+      code: 'MB28',
+      startTime: '08:00:00',
+      endTime: '17:00:00',
+      breakMinutes: 60,
+      breakPeriods: [{ start: '12:00', end: '13:00' }],
+      weeklyPattern: [1, 2, 3, 4, 5],
+      description: 'MORNING FULL',
+      normalHoursRoundingMinutes: 15,
+      halfDayFirstOut: '13:00',
+    });
+    const first = await copyShift(a, { shiftId: src.id });
+    const [c1] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, first.id));
+    expect(c1).toMatchObject({
+      name: 'MB28 (copy)',
+      code: 'MB28-2',
+      startTime: '08:00:00',
+      endTime: '17:00:00',
+      breakMinutes: 60,
+      description: 'MORNING FULL',
+      normalHoursRoundingMinutes: 15,
+      halfDayFirstOut: '13:00:00',
+      companyId: b.companyId,
+      archivedAt: null,
+    });
+    expect(c1.breakPeriods).toEqual([{ start: '12:00:00', end: '13:00:00' }]);
+
+    // COPY CODE COLLISION. A second copy cannot reuse MB28-2, so it steps to the next free pair rather
+    // than dying on the unique index.
+    const second = await copyShift(a, { shiftId: src.id });
+    const [c2] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, second.id));
+    expect(c2).toMatchObject({ name: 'MB28 (copy 2)', code: 'MB28-3' });
+  });
+
+  it('steps past a code someone else already took, and re-uses one freed by archiving', async () => {
+    const a = adminCtx(b);
+    const src = await createShift(a, { name: 'AM', code: 'AM', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    // Somebody already created AM-2 by hand.
+    await createShift(a, { name: 'Something else', code: 'AM-2', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    const copy = await copyShift(a, { shiftId: src.id });
+    const [c] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, copy.id));
+    expect(c.code).toBe('AM-3');
+
+    // Archiving AM-3 frees its code again (the unique indexes are partial on archived_at IS NULL), so the
+    // NEXT copy is allowed to land back on AM-3. The probe and the index must agree on what "taken" means.
+    await archiveShift(a, { shiftId: copy.id });
+    const again = await copyShift(a, { shiftId: src.id });
+    const [c2] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, again.id));
+    expect(c2.code).toBe('AM-3');
+  });
+
+  it('copies an ARCHIVED shift as an ACTIVE one', async () => {
+    const a = adminCtx(b);
+    const src = await createShift(a, { name: 'Retired', code: 'RET', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    await archiveShift(a, { shiftId: src.id });
+    const copy = await copyShift(a, { shiftId: src.id });
+    const [c] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, copy.id));
+    expect(c.archivedAt).toBeNull();
+    // …and the copy is in the live library, which is the point of copying one.
+    expect((await listShiftsForTenant(a)).map((x) => x.id)).toContain(copy.id);
+  });
+});
+
+describe('cf21e554 — unarchiveShift', () => {
+  it('reactivates a deactivated shift and is idempotent on an active one', async () => {
+    const a = adminCtx(b);
+    const s = await createShift(a, { name: 'Back', code: 'BACK', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    await archiveShift(a, { shiftId: s.id });
+    expect((await listShiftsForTenant(a)).map((x) => x.id)).not.toContain(s.id);
+
+    await unarchiveShift(a, { shiftId: s.id });
+    expect((await listShiftsForTenant(a)).map((x) => x.id)).toContain(s.id);
+    // Already active ⇒ a no-op, not an error.
+    await expect(unarchiveShift(a, { shiftId: s.id })).resolves.toMatchObject({ id: s.id });
+  });
+
+  it('REFUSES to reactivate when the code was taken while the shift was off', async () => {
+    // THE TRAP: shift_tenant_code_uq is PARTIAL (archived rows are skipped), so archiving frees the code
+    // and someone can create a live shift using it. Un-archiving is a re-entry into that namespace.
+    const a = adminCtx(b);
+    const s = await createShift(a, { name: 'Old MB28', code: 'MB28', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 });
+    await archiveShift(a, { shiftId: s.id });
+    await createShift(a, { name: 'New MB28', code: 'MB28', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 });
+
+    await expect(unarchiveShift(a, { shiftId: s.id })).rejects.toThrow(/A shift with code “MB28” already exists/);
+    // The refused write changed nothing — the shift is still archived.
+    const [row] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, s.id));
+    expect(row.archivedAt).not.toBeNull();
+  });
+
+  it('REFUSES to reactivate when the NAME was taken while the shift was off', async () => {
+    const a = adminCtx(b);
+    const s = await createShift(a, { name: 'Morning', code: 'M1', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 });
+    await archiveShift(a, { shiftId: s.id });
+    // Case-insensitively the same name, on a different code — the index is on lower(name).
+    await createShift(a, { name: 'morning', code: 'M2', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 });
+    await expect(unarchiveShift(a, { shiftId: s.id })).rejects.toThrow(/A shift named “Morning” already exists/);
   });
 });
