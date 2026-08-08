@@ -3693,19 +3693,55 @@
       "tp1": {
         "title": "TP1 减免",
         "subtitle": "维护员工的 LHDN TP1 个人税务减免申报。",
-        "searchLabel": "搜索员工",
-        "searchPlaceholder": "姓名、员工编号或电子邮件",
         "companyLabel": "公司",
         "departmentLabel": "部门",
-        "allCompanies": "所有公司",
-        "allDepartments": "所有部门",
-        "search": "搜索",
-        "results": "员工",
         "employee": "员工",
         "employeeCode": "员工编号",
-        "open": "打开",
-        "noResults": "没有符合搜索条件的员工。",
-        "changeEmployee": "更换员工"
+        "pickEmployee": "员工",
+        "pickEmployeeHint": "请在左侧选择一位员工，以查看其 TP1 个人税务减免申报。",
+        "noEmployees": "当前公司范围内没有员工。",
+        "addButton": "添加 TP1 减免（{year}）",
+        "editButton": "编辑 TP1 减免（{year}）",
+        "employeeSection": "员工信息",
+        "addTitle": "添加 TP1 减免",
+        "editTitle": "编辑 TP1 减免",
+        "viewTitle": "TP1 减免",
+        "yearSubtitle": "课税年度 {year} — 与员工在个人档案中看到的申报相同。",
+        "cancel": "取消",
+        "historyNote": "更正将保留为历史记录。过往课税年度为只读。",
+        "history": {
+          "title": "交易历史",
+          "subtitle": "每个课税年度一行 — 该年度员工的当前申报。",
+          "empty": "尚未申报 TP1 减免。",
+          "colYear": "课税年度",
+          "colAmount": "减免总额",
+          "colStatus": "状态",
+          "colLastSaved": "最后保存",
+          "colActions": "操作",
+          "statusDraft": "草稿",
+          "statusSubmitted": "已提交",
+          "versions": "{count} 个版本",
+          "view": "查看",
+          "viewEdit": "查看 / 编辑",
+          "searchPlaceholder": "搜索年度、金额或日期",
+          "nShown": "显示 {count} 项",
+          "noMatches": "没有符合搜索条件的申报。"
+        },
+        "applied": {
+          "title": "已在薪资中应用",
+          "subtitle": "每个已处理薪资批次为该员工采用的 TP1 减免金额。",
+          "empty": "尚无薪资批次使用该员工的 TP1 减免。"
+        },
+        "cycle": {
+          "regular": "常规",
+          "off_cycle": "非常规",
+          "bonus": "奖金",
+          "adjustment": "调整"
+        },
+        "batchStatus": {
+          "processed": "已处理",
+          "closed": "已关闭"
+        }
       },
       "zakat": {
         "title": "天课",
