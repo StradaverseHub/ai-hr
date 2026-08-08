@@ -3701,7 +3701,52 @@
         "employeeCode": "ID Pekerja",
         "open": "Buka",
         "noResults": "Tiada pekerja sepadan dengan carian anda.",
-        "changeEmployee": "Tukar pekerja"
+        "changeEmployee": "Tukar pekerja",
+        "pickEmployee": "Pekerja",
+        "pickEmployeeHint": "Pilih seorang pekerja di sebelah kiri untuk melihat perisytiharan pelepasan TP1 mereka.",
+        "noEmployees": "Tiada pekerja dalam skop syarikat semasa.",
+        "addButton": "Tambah pelepasan TP1 ({year})",
+        "editButton": "Sunting pelepasan TP1 ({year})",
+        "employeeSection": "Maklumat pekerja",
+        "addTitle": "Tambah pelepasan TP1",
+        "editTitle": "Sunting pelepasan TP1",
+        "viewTitle": "Pelepasan TP1",
+        "yearSubtitle": "Tahun taksiran {year} — perisytiharan yang sama seperti yang dilihat pekerja pada profil mereka.",
+        "cancel": "Batal",
+        "historyNote": "Pembetulan disimpan sebagai sejarah. Tahun taksiran lepas adalah baca sahaja.",
+        "history": {
+          "title": "Sejarah transaksi",
+          "subtitle": "Satu baris bagi setiap tahun taksiran — perisytiharan semasa pekerja bagi tahun tersebut.",
+          "empty": "Belum ada pelepasan TP1 diisytiharkan.",
+          "colYear": "Tahun taksiran",
+          "colAmount": "Jumlah pelepasan",
+          "colStatus": "Status",
+          "colLastSaved": "Kali terakhir disimpan",
+          "colActions": "Tindakan",
+          "statusDraft": "Draf",
+          "statusSubmitted": "Dihantar",
+          "versions": "{count} versi",
+          "view": "Lihat",
+          "viewEdit": "Lihat / Sunting",
+          "searchPlaceholder": "Cari tahun, jumlah atau tarikh",
+          "nShown": "{count} dipaparkan",
+          "noMatches": "Tiada perisytiharan sepadan dengan carian anda."
+        },
+        "applied": {
+          "title": "Digunakan dalam gaji",
+          "subtitle": "Pelepasan TP1 yang dibawa oleh setiap kitaran gaji yang diproses untuk pekerja ini.",
+          "empty": "Belum ada kitaran gaji yang menggunakan pelepasan TP1 untuk pekerja ini."
+        },
+        "cycle": {
+          "regular": "Biasa",
+          "off_cycle": "Luar kitaran",
+          "bonus": "Bonus",
+          "adjustment": "Pelarasan"
+        },
+        "batchStatus": {
+          "processed": "Diproses",
+          "closed": "Ditutup"
+        }
       },
       "zakat": {
         "title": "Zakat",

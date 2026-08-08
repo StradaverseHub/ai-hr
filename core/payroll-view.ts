@@ -1462,6 +1462,91 @@ export function listAppliedLoanRepayments(
   );
 }
 
+/* ────────────── TP1 Relief "Applied in payroll" (feedback 3e3d3fb2) ────────────── */
+
+/**
+ * The TP1 relief a payroll run ACTUALLY carried, for the TP1 Relief screen's "Applied in payroll" list.
+ *
+ * IT LIVES HERE, BESIDE listZakatTxnsAcross AND listAppliedLoanRepayments, FOR THE SAME REASON THEY DO.
+ * Zakat (6a1f2bd6), Loans (6d72816e) and TP1 Relief (3e3d3fb2) are one request written three times, and
+ * the thing that would have produced three lookalikes is three "what was applied" reads written weeks
+ * apart. So this returns the SAME row shape the other two return — period, cycle, employee, company,
+ * amount, batch status, timestamp — and all three render through components/applied-in-payroll-list.tsx.
+ *
+ * WHY payroll_input.tp1_deduction AND NOT payslip.statutory->>'lp', WHICH IS THE OBVIOUS MIRROR OF THE
+ * ZAKAT READ. `lp` is NOT the TP1 figure: core/payroll.ts:3482 computes it as
+ *     lp = tp1ByEmp(employment) + (isAdditionalRun ? 0 : lpDeclared)
+ * so it BLENDS the declaration-fed TP1 with the optional-deduction pay codes (09b554e9) and is charged on
+ * the regular run only. A column headed "TP1 relief" showing that number would be wrong twice over. The
+ * per-run TP1 figure the kernel consumed is `payroll_input.tp1_deduction` — the row the declaration feeds
+ * through prefillTp1FromSelfRelief and the row the Individual Transaction override writes — so that is
+ * what this reads. (It is the PRE-clamp input, which core/read.ts myTaxRelief notes; the clamp only ever
+ * reduces the claim inside the kernel's own ∑LP ceiling, and the employee's payslip is where the applied
+ * figure is shown. This list answers "what did each run take from this declaration".)
+ *
+ * NOTHING NEW IS STORED, and the STATUS PREDICATE IS LOAD-BEARING. Unlike the zakat read — which starts
+ * from `payslip`, a row that only exists post-generation — payroll_input rows exist on DRAFT batches, as
+ * keyed intent. A draft is not an application, so `status IN ('processed','closed')` is what makes the
+ * word "applied" true here; dropping it would report unrun months as deducted. Rows with a zero TP1 are
+ * excluded by construction (an employee with no relief is not a line in this list).
+ *
+ * Read-only, no domain event (pure SELECT). Fails closed on an empty `companyIds` set, like every other
+ * read in this file.
+ */
+export type AppliedTp1ViewRow = {
+  id: string;
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  companyId: string;
+  company: string;
+  payPeriod: string; // = "effective payroll month"
+  runType: RunType;
+  runSeq: number;
+  batchStatus: string; // processed / closed — a draft batch is intent, not an application
+  amount: string; // the RM TP1 relief the run carried (payroll_input.tp1_deduction)
+  createdOn: string; // 'YYYY-MM-DD HH:MM:SS' — when the input row was created
+};
+
+export function listAppliedTp1Deductions(
+  ctx: SessionContext,
+  p: { companyIds: string[]; employmentId?: string },
+): Promise<AppliedTp1ViewRow[]> {
+  if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: payrollInput.id,
+        employmentId: payrollInput.employmentId,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        companyId: payrollBatch.companyId,
+        company: company.legalName,
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
+        batchStatus: payrollBatch.status,
+        amount: payrollInput.tp1Deduction,
+        createdOn: sql<string>`to_char(${payrollInput.createdAt}, 'YYYY-MM-DD HH24:MI:SS')`,
+      })
+      .from(payrollInput)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payrollInput.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .innerJoin(employment, eq(employment.id, payrollInput.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          inArray(payrollBatch.companyId, p.companyIds),
+          p.employmentId ? eq(payrollInput.employmentId, p.employmentId) : undefined,
+          // A draft batch has keyed inputs that no run has taken — see the note above.
+          inArray(payrollBatch.status, ['processed', 'closed']),
+          sql`${payrollInput.tp1Deduction}::numeric > 0`,
+        ),
+      )
+      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName)),
+  );
+}
+
 /* ─────────────────── Re-run disclosure (feedback 97a9b0ab) ─────────────────── */
 
 /**

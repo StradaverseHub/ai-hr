@@ -3701,7 +3701,52 @@
         "employeeCode": "Employee ID",
         "open": "Open",
         "noResults": "No employees match your search.",
-        "changeEmployee": "Change employee"
+        "changeEmployee": "Change employee",
+        "pickEmployee": "Employee",
+        "pickEmployeeHint": "Pick an employee on the left to see their TP1 relief declarations.",
+        "noEmployees": "No employees in the current company scope.",
+        "addButton": "Add TP1 relief ({year})",
+        "editButton": "Edit TP1 relief ({year})",
+        "employeeSection": "Employee information",
+        "addTitle": "Add TP1 relief",
+        "editTitle": "Edit TP1 relief",
+        "viewTitle": "TP1 relief",
+        "yearSubtitle": "Assessment year {year} — the same declaration the employee sees on their own profile.",
+        "cancel": "Cancel",
+        "historyNote": "Corrections are kept as history. Past assessment years are read-only.",
+        "history": {
+          "title": "Transaction history",
+          "subtitle": "One row per assessment year — the employee's current declaration for that year.",
+          "empty": "No TP1 relief declared yet.",
+          "colYear": "Assessment year",
+          "colAmount": "Total relief",
+          "colStatus": "Status",
+          "colLastSaved": "Last saved",
+          "colActions": "Actions",
+          "statusDraft": "Draft",
+          "statusSubmitted": "Submitted",
+          "versions": "{count} versions",
+          "view": "View",
+          "viewEdit": "View / Edit",
+          "searchPlaceholder": "Search year, amount or date",
+          "nShown": "{count} shown",
+          "noMatches": "No declarations match your search."
+        },
+        "applied": {
+          "title": "Applied in payroll",
+          "subtitle": "The TP1 relief each processed payroll run carried for this employee.",
+          "empty": "No payroll run has used a TP1 relief for this employee yet."
+        },
+        "cycle": {
+          "regular": "Regular",
+          "off_cycle": "Off-cycle",
+          "bonus": "Bonus",
+          "adjustment": "Adjustment"
+        },
+        "batchStatus": {
+          "processed": "Processed",
+          "closed": "Closed"
+        }
       },
       "zakat": {
         "title": "Zakat",

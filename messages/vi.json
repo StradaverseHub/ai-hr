@@ -3701,7 +3701,52 @@
         "employeeCode": "Mã nhân viên",
         "open": "Mở",
         "noResults": "Không có nhân viên nào phù hợp với tìm kiếm của bạn.",
-        "changeEmployee": "Đổi nhân viên"
+        "changeEmployee": "Đổi nhân viên",
+        "pickEmployee": "Nhân viên",
+        "pickEmployeeHint": "Chọn một nhân viên ở bên trái để xem các bản khai miễn trừ thuế TP1 của họ.",
+        "noEmployees": "Không có nhân viên trong phạm vi công ty hiện tại.",
+        "addButton": "Thêm miễn trừ TP1 ({year})",
+        "editButton": "Sửa miễn trừ TP1 ({year})",
+        "employeeSection": "Thông tin nhân viên",
+        "addTitle": "Thêm miễn trừ TP1",
+        "editTitle": "Sửa miễn trừ TP1",
+        "viewTitle": "Miễn trừ TP1",
+        "yearSubtitle": "Năm tính thuế {year} — cùng một bản khai mà nhân viên nhìn thấy trên hồ sơ của họ.",
+        "cancel": "Hủy",
+        "historyNote": "Các bản đính chính được lưu làm lịch sử. Các năm tính thuế trước chỉ xem.",
+        "history": {
+          "title": "Lịch sử giao dịch",
+          "subtitle": "Mỗi năm tính thuế một dòng — bản khai hiện tại của nhân viên cho năm đó.",
+          "empty": "Chưa khai miễn trừ TP1 nào.",
+          "colYear": "Năm tính thuế",
+          "colAmount": "Tổng miễn trừ",
+          "colStatus": "Trạng thái",
+          "colLastSaved": "Lưu lần cuối",
+          "colActions": "Hành động",
+          "statusDraft": "Bản nháp",
+          "statusSubmitted": "Đã nộp",
+          "versions": "{count} phiên bản",
+          "view": "Xem",
+          "viewEdit": "Xem / Sửa",
+          "searchPlaceholder": "Tìm năm, số tiền hoặc ngày",
+          "nShown": "Hiển thị {count}",
+          "noMatches": "Không có bản khai nào khớp với tìm kiếm của bạn."
+        },
+        "applied": {
+          "title": "Đã áp dụng trong lương",
+          "subtitle": "Số miễn trừ TP1 mà mỗi kỳ lương đã xử lý dùng cho nhân viên này.",
+          "empty": "Chưa có kỳ lương nào sử dụng miễn trừ TP1 của nhân viên này."
+        },
+        "cycle": {
+          "regular": "Thường",
+          "off_cycle": "Ngoài chu kỳ",
+          "bonus": "Thưởng",
+          "adjustment": "Điều chỉnh"
+        },
+        "batchStatus": {
+          "processed": "Đã xử lý",
+          "closed": "Đã đóng"
+        }
       },
       "zakat": {
         "title": "Zakat",

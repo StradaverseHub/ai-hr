@@ -243,6 +243,72 @@ export function getLatestSubmittedTp1(
   });
 }
 
+/**
+ * One row per ASSESSMENT YEAR for a selected employee — the TP1 Relief screen's "Transaction history"
+ * (feedback 3e3d3fb2). Admin-gated (requireAdminTarget); RLS confines the read to self+admin.
+ *
+ * WHAT A ROW IS, AND WHY IT IS NOT ONE PER tp1_relief ROW. `tp1_relief` is APPEND-ONLY: a correction
+ * INSERTs another submitted row and the LATEST one wins (submitTp1ForPersonId, and the
+ * `orderBy(desc(createdAt)).limit(1)` in getTp1ForPersonId that every read goes through). The superseded
+ * rows are version history, not records — listing them would show HR three "2026" lines of which only one
+ * is the declaration, and clicking any of them would open the same single per-year form. So this collapses
+ * to the winning row per year and reports how many versions sit behind it (`versions`), which is the fact
+ * a reader actually wants from the older rows.
+ *
+ * THE LATEST-WINS RULE IS COPIED, NOT REINVENTED: newest `created_at` within the year, tie-broken on `id`
+ * so two runs of this list can never disagree about which row won. (getTp1ForPersonId does not tie-break —
+ * on the microsecond-identical created_at that would need, Postgres picks; the tie-break here only makes
+ * THIS list deterministic, it cannot make the pair disagree in any case that is not already arbitrary.)
+ *
+ * `tp1_relief` HAS NO updated_at COLUMN — a draft is UPDATEd in place, so "last saved" for a draft is its
+ * created_at (when the draft was started) and for a submitted row its submitted_at. Both are returned; the
+ * screen decides. Adding an updated_at is a migration, deliberately not taken for a UI change.
+ *
+ * Read-only, no domain event (pure SELECT).
+ */
+export type Tp1DeclarationSummary = {
+  id: string;
+  assessmentYear: number;
+  status: 'draft' | 'submitted';
+  /** The authoritative server-computed annual total on the winning row. */
+  tp1Amount: number;
+  submittedAt: Date | null;
+  createdAt: Date;
+  /** How many append-only rows exist for this year, the winning one included (1 ⇒ no corrections). */
+  versions: number;
+};
+
+export async function listTp1DeclarationsForPerson(
+  ctx: SessionContext,
+  p: { personId: string },
+): Promise<Tp1DeclarationSummary[]> {
+  const personId = requireAdminTarget(ctx, p.personId);
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: tp1Relief.id,
+        assessmentYear: tp1Relief.assessmentYear,
+        status: tp1Relief.status,
+        tp1Amount: tp1Relief.tp1Amount,
+        submittedAt: tp1Relief.submittedAt,
+        createdAt: tp1Relief.createdAt,
+      })
+      .from(tp1Relief)
+      .where(eq(tp1Relief.personId, personId))
+      .orderBy(desc(tp1Relief.assessmentYear), desc(tp1Relief.createdAt), desc(tp1Relief.id));
+    const byYear = new Map<number, Tp1DeclarationSummary>();
+    for (const r of rows) {
+      const won = byYear.get(r.assessmentYear);
+      if (won) {
+        won.versions += 1; // an older, superseded row — counted, never listed
+        continue;
+      }
+      byYear.set(r.assessmentYear, { ...r, tp1Amount: Number(r.tp1Amount), versions: 1 });
+    }
+    return [...byYear.values()];
+  });
+}
+
 /** Distinct assessment years the caller has TP1 rows for (drives the year selector + historical view). */
 export function listTp1Years(ctx: SessionContext): Promise<number[]> {
   return listTp1YearsForPersonId(ctx, requirePerson(ctx));
