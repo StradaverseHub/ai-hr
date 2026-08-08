@@ -5784,7 +5784,7 @@
       "shiftNormalHoursRoundingHint": "Giờ chuẩn được làm tròn XUỐNG theo bội số của số phút này. Để trống nếu không làm tròn.",
       "shiftHalfDayFirstOut": "Giờ ra nửa ngày (lần 1)",
       "shiftHalfDaySecondIn": "Giờ vào nửa ngày (lần 2)",
-      "shiftHalfDayHint": "Nếu điền, giờ ra nửa ngày lần 1 sẽ thay cho mốc nửa ngày chung của công ty đối với ca này; để trống thì vẫn dùng thiết lập của công ty. Giờ vào nửa ngày lần 2 chỉ được ghi nhận để tham chiếu.",
+      "shiftHalfDayHint": "Nếu điền, giờ ra nửa ngày lần 1 sẽ trở thành mốc nửa ngày của ca này. Để trống thì ca này vẫn giữ mốc đang dùng hiện nay — thời gian châm chước về sớm trước khi hết ca, hoặc điểm giữa ca. Mốc nửa ngày chung của công ty chỉ áp dụng cho nhân viên không có ca.",
       "recordedOnlyLegend": "Ghi nhận để tham chiếu",
       "recordedOnlyNote": "được lưu và hiển thị, nhưng chưa làm thay đổi con số nào",
       "shiftDayType": "Loại ngày",

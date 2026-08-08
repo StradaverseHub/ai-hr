@@ -5784,7 +5784,7 @@
       "shiftNormalHoursRoundingHint": "Normal hours are rounded DOWN to a multiple of this many minutes. Leave blank for no rounding.",
       "shiftHalfDayFirstOut": "1st half-day clock-out",
       "shiftHalfDaySecondIn": "2nd half-day clock-in",
-      "shiftHalfDayHint": "Set here, the 1st half-day clock-out replaces the company-wide half-day cut-off for this shift; left blank, the company setting still applies. The 2nd half-day clock-in is recorded for reference.",
+      "shiftHalfDayHint": "Set here, the 1st half-day clock-out becomes this shift's half-day cut-off. Left blank, the shift keeps the cut-off it uses today — its early-out grace before the shift end, or else the shift's midpoint. The company-wide half-day cut-off applies only to employees who have no shift.",
       "recordedOnlyLegend": "Recorded for reference",
       "recordedOnlyNote": "saved and shown, but does not change any figure yet",
       "shiftDayType": "Day type",

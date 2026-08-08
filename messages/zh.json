@@ -5784,7 +5784,7 @@
       "shiftNormalHoursRoundingHint": "正常工时会向下取整为该分钟数的倍数。留空表示不取整。",
       "shiftHalfDayFirstOut": "半日第一次下班时间",
       "shiftHalfDaySecondIn": "半日第二次上班时间",
-      "shiftHalfDayHint": "填写后，半日第一次下班时间将取代公司统一的半日界限；留空则仍沿用公司设置。半日第二次上班时间仅作记录参考。",
+      "shiftHalfDayHint": "填写后，半日第一次下班时间将成为本班次的半日界限；留空则本班次沿用目前的界限——班次结束前的提早下班宽限时间，若无则取班次中点。公司统一的半日界限仅适用于没有班次的员工。",
       "recordedOnlyLegend": "仅作记录",
       "recordedOnlyNote": "会保存并显示，但目前不会改变任何数字",
       "shiftDayType": "日期类型",

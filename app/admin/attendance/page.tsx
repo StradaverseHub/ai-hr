@@ -340,6 +340,47 @@ export default async function ShiftSettingsPage({
             <fieldset className="w-full">
               <legend className="mb-1.5 text-sm font-medium text-foreground">{t('generalSectionLegend')}</legend>
               <div className="flex flex-wrap items-end gap-2">
+                <Field label={t('shiftNormalHoursRounding')}>
+                  <input
+                    name="normalHoursRoundingMinutes"
+                    type="number"
+                    min={0}
+                    max={1440}
+                    defaultValue={editing?.normalHoursRoundingMinutes ?? ''}
+                    className={`${inputCls} w-28`}
+                    aria-label={t('shiftNormalHoursRounding')}
+                  />
+                </Field>
+                <Field label={t('shiftHalfDayFirstOut')}>
+                  <input
+                    name="halfDayFirstOut"
+                    type="time"
+                    defaultValue={editing?.halfDayFirstOut?.slice(0, 5) ?? ''}
+                    className={inputCls}
+                    aria-label={t('shiftHalfDayFirstOut')}
+                  />
+                </Field>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">{t('shiftNormalHoursRoundingHint')}</p>
+              <p className="text-xs text-muted-foreground">{t('shiftHalfDayHint')}</p>
+            </fieldset>
+
+            {/* cf21e554 — the boxes that are RECORDED ONLY in this stage. Grouped and labelled as such,
+                because the plan promises "the screen will say so on the box itself, so nobody fills one in
+                and expects a different pay result".
+
+                Earliest clock-in, Latest clock-out, its next-day marker and the 2nd half-day clock-in were
+                shipped in the General fieldset beside controls that DO move figures — but they have no
+                reader anywhere in core/, app/, packs/ or components/ either (only validation in
+                normalizeShiftInput and the copy in copyShift), so they belong here. Verified per field
+                before moving. `halfDayFirstOut` deliberately STAYS in General: it is genuinely wired, at
+                core/attendance.ts:528 and :599. Nothing is being wired up here — that is a later stage. */}
+            <fieldset className="w-full">
+              <legend className="mb-1.5 text-sm font-medium text-foreground">
+                {t('recordedOnlyLegend')}{' '}
+                <span className="font-normal text-muted-foreground">({t('recordedOnlyNote')})</span>
+              </legend>
+              <div className="flex flex-wrap items-end gap-2">
                 <Field label={t('shiftEarlyIn')}>
                   <input
                     name="earlyIn"
@@ -367,26 +408,6 @@ export default async function ShiftSettingsPage({
                   />
                   {t('shiftLateOutNextDay')}
                 </label>
-                <Field label={t('shiftNormalHoursRounding')}>
-                  <input
-                    name="normalHoursRoundingMinutes"
-                    type="number"
-                    min={0}
-                    max={1440}
-                    defaultValue={editing?.normalHoursRoundingMinutes ?? ''}
-                    className={`${inputCls} w-28`}
-                    aria-label={t('shiftNormalHoursRounding')}
-                  />
-                </Field>
-                <Field label={t('shiftHalfDayFirstOut')}>
-                  <input
-                    name="halfDayFirstOut"
-                    type="time"
-                    defaultValue={editing?.halfDayFirstOut?.slice(0, 5) ?? ''}
-                    className={inputCls}
-                    aria-label={t('shiftHalfDayFirstOut')}
-                  />
-                </Field>
                 <Field label={t('shiftHalfDaySecondIn')}>
                   <input
                     name="halfDaySecondIn"
@@ -396,20 +417,6 @@ export default async function ShiftSettingsPage({
                     aria-label={t('shiftHalfDaySecondIn')}
                   />
                 </Field>
-              </div>
-              <p className="mt-1.5 text-xs text-muted-foreground">{t('shiftNormalHoursRoundingHint')}</p>
-              <p className="text-xs text-muted-foreground">{t('shiftHalfDayHint')}</p>
-            </fieldset>
-
-            {/* The four boxes that are RECORDED ONLY in this stage. Grouped and labelled as such, because
-                the plan promises "the screen will say so on the box itself, so nobody fills one in and
-                expects a different pay result". */}
-            <fieldset className="w-full">
-              <legend className="mb-1.5 text-sm font-medium text-foreground">
-                {t('recordedOnlyLegend')}{' '}
-                <span className="font-normal text-muted-foreground">({t('recordedOnlyNote')})</span>
-              </legend>
-              <div className="flex flex-wrap items-end gap-2">
                 <Field label={t('shiftDayType')}>
                   <select
                     name="shiftDayType"

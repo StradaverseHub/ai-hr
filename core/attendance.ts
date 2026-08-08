@@ -348,18 +348,27 @@ type PunchWindow = { inAbs: number; outAbs: number; startAbs: number; endAbs: nu
 const anchorToShift = (minutes: number, shiftStartAbs: number): number =>
   minutes < shiftStartAbs - MINS_PER_DAY / 2 ? minutes + MINS_PER_DAY : minutes;
 
-/** Minutes of the punch that fell inside the shift's declared break WINDOWS. Null when the shift carries no
- *  windows — a break scalar alone gives nothing to test the clocking against, so those shifts keep
- *  workedFromSpan's 6h cliff (byte-identical). Capped at the canonical breakMinutes so a drifted row
+/** Minutes of the punch that fell inside the shift's declared UNPAID break WINDOWS. Null when the shift
+ *  carries no windows — a break scalar alone gives nothing to test the clocking against, so those shifts
+ *  keep workedFromSpan's 6h cliff (byte-identical). Capped at the canonical breakMinutes so a drifted row
  *  (Σ windows ≠ break_minutes — see core/shift-break-display.ts) can never deduct more than the figure the
- *  rest of the system reports as the shift's break. */
+ *  rest of the system reports as the shift's break.
+ *
+ *  cf21e554 — the filter and the cap MUST range over the same set. `breakMinutes` is Σ of the UNPAID
+ *  windows (core/roster.ts normalizeShiftInput), so summing the overlap across ALL windows counted a PAID
+ *  window's overlap as unpaid deduction, up to the unpaid total. Reproduced: 09:00–18:00 with a paid
+ *  10:30–10:45 tea break and an unpaid 13:00–14:00 lunch ⇒ break_minutes 60; a 09:00→12:00 clocking spans
+ *  only the PAID window, and min(15, 60) took 15 minutes off a day that owed nothing. The full-day case
+ *  hid it because the cap happened to equal the unpaid total. */
 const spannedBreakMinutes = (periods: BreakPeriod[] | null, breakMinutes: number, w: PunchWindow): number | null => {
   if (!periods || periods.length === 0) return null;
-  const overlap = periods.reduce((acc, bp) => {
-    const bs = anchorToShift(toMinutes(bp.start), w.startAbs);
-    const be = anchorToShift(toMinutes(bp.end), w.startAbs);
-    return acc + Math.max(0, Math.min(w.outAbs, be) - Math.max(w.inAbs, bs));
-  }, 0);
+  const overlap = periods
+    .filter((bp) => bp.paid !== true)
+    .reduce((acc, bp) => {
+      const bs = anchorToShift(toMinutes(bp.start), w.startAbs);
+      const be = anchorToShift(toMinutes(bp.end), w.startAbs);
+      return acc + Math.max(0, Math.min(w.outAbs, be) - Math.max(w.inAbs, bs));
+    }, 0);
   return Math.min(overlap, breakMinutes);
 };
 

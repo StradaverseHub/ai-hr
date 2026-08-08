@@ -5784,7 +5784,7 @@
       "shiftNormalHoursRoundingHint": "Jam biasa dibundarkan KE BAWAH kepada gandaan minit ini. Biarkan kosong untuk tiada pembundaran.",
       "shiftHalfDayFirstOut": "Waktu keluar separuh hari (1)",
       "shiftHalfDaySecondIn": "Waktu masuk separuh hari (2)",
-      "shiftHalfDayHint": "Jika diisi, waktu keluar separuh hari pertama menggantikan had separuh hari peringkat syarikat bagi syif ini; jika kosong, tetapan syarikat kekal digunakan. Waktu masuk separuh hari kedua direkod sebagai rujukan.",
+      "shiftHalfDayHint": "Jika diisi, waktu keluar separuh hari pertama menjadi had separuh hari bagi syif ini. Jika kosong, syif ini kekal menggunakan had yang digunakannya hari ini — tempoh bertimbang rasa keluar awal sebelum syif tamat, atau titik tengah syif. Had separuh hari peringkat syarikat hanya terpakai kepada pekerja yang tiada syif.",
       "recordedOnlyLegend": "Direkod sebagai rujukan",
       "recordedOnlyNote": "disimpan dan dipaparkan, tetapi belum mengubah sebarang angka",
       "shiftDayType": "Jenis hari",

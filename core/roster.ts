@@ -22,7 +22,7 @@ import {
   type ShiftOtRule,
   type ShiftType,
 } from '../db/schema';
-import { isoWeekday, shiftSpan } from './attendance';
+import { isoWeekday, netScheduledMinutes, shiftSpan } from './attendance';
 import { approvedLeaveDates } from './leave';
 import { listEmployeesPage } from './read';
 
@@ -1537,11 +1537,6 @@ export type RosterVarianceRow = {
   kind: RosterVarianceKind;
 };
 
-const toMin = (t: string): number => {
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-};
-
 /**
  * Compare the roster (expected) to attendance (actual) over a date range. For each rostered shift: a
  * no-show (rostered, no attendance, not on leave, date ≤ today), a late check-in, short hours (worked <
@@ -1565,6 +1560,10 @@ export function rosterVariance(
         end: shift.endTime,
         brk: shift.breakMinutes,
         crosses: shift.crossesMidnight,
+        // cf21e554 — the Roster screen must expect the SAME figure the engine schedules against, so it has
+        // to fetch the shift's Normal-Hours Rounding too. Without it /roster computed the unrounded net and
+        // flagged a fully-worked rounded day as 'short', contradicting the Attendance screen.
+        rounding: shift.normalHoursRoundingMinutes,
       })
       .from(rosterAssignment)
       .innerJoin(employment, eq(employment.id, rosterAssignment.employmentId))
@@ -1619,10 +1618,10 @@ export function rosterVariance(
     const out: RosterVarianceRow[] = [];
     for (const r of ras) {
       const att = attBy.get(`${r.employmentId}|${r.shiftDate}`) ?? null;
+      // cf21e554 — one shared helper, never an inlined copy. This was the FIFTH inlined span−break and the
+      // only one rounding never reached, so /roster could call a fully-worked day 'short'.
       const expectedMinutes =
-        r.isRestDay || !r.start || !r.end
-          ? null
-          : Math.max(0, (r.crosses ? toMin(r.end) + 1440 - toMin(r.start) : toMin(r.end) - toMin(r.start)) - (r.brk ?? 0));
+        r.isRestDay || !r.start || !r.end ? null : netScheduledMinutes(r.start, r.end, r.crosses ?? false, r.brk ?? 0, r.rounding);
       let kind: RosterVarianceKind;
       if (r.isRestDay) {
         if (!att) continue; // rest day with no work is expected

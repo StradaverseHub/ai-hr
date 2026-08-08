@@ -276,6 +276,12 @@ describe('cf21e554 — a PAID break is not deducted from the shift’s hours', (
     // The clocking spans BOTH windows, but only 60 minutes comes off (b7b886e2 caps the spanned deduction
     // at the canonical scalar, which is now the unpaid sum).
     expect(await day(s.id, '09:00:00', '18:00:00')).toMatchObject({ worked: 480 });
+
+    // …and a PARTIAL day is where the paid window actually has to be excluded from the SUM, not merely
+    // masked by the cap. 09:00→12:00 spans only the PAID 10:30–10:45 tea break; the unpaid lunch is never
+    // reached. Before the fix spannedBreakMinutes summed the overlap across ALL windows and returned
+    // min(15, 60) = 15, so a 3-hour morning was paid as 165 minutes. It must be the full 180.
+    expect(await day(s.id, '09:00:00', '12:00:00')).toMatchObject({ worked: 180 });
   });
 });
 
