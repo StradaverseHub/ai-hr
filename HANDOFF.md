@@ -18,25 +18,43 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-08 (r173 SHIPPED — the build queue is EMPTY)
+## CURRENT STATE — snapshot 2026-08-09 (r174 round 1 SHIPPED — 7 of 8; round 2 IN FLIGHT)
 
-**`main@3d792d02` is what runs. Production on 336 migrations. Next free migration number is `0416`**
-(`0414` rounding bands to 2dp, `0415` the employee-draft ID reservation; `0412` was never used). No
-half-applied migration, no pending deploy. Verified after deploy: **336 migrations, watermark
-1781862515000**, 0415's four `reserved_*` columns present, service `active`, `GET /` 401, zero-change
-`rsync -azi --delete --dry-run`. Gate: **600 files / 7,371 tests** green across all 3 chunks; `next build`
-clean; shadow 335→336 and fresh 336/336 both PASS.
+**`main@8168e648` is what runs. Production on 339 migrations. Next free migration number is `0421`**
+(`0416` the leave-ledger reset archive, `0417` shift general fields, `0418` `shift_ot_window`;
+**`0419` and `0420` are ALLOCATED to the in-flight locations round — do not reuse them**). No
+half-applied migration. Verified after deploy: **339 migrations, watermark 1781862518000**,
+`leave_ledger_reset_archive` and `shift_ot_window` both present, 5/5 new `shift` columns, service
+`active`, `GET /` 401, and a dry-run rsync whose only line is the **gitignored, Next-generated**
+`next-env.d.ts` (local `pnpm dev` writes `.next/dev/types/`, the box's build writes `.next/types/` —
+the box's version is the correct one; do not "fix" it). Gate: **606 files / 7,504 tests** green across
+all 3 chunks; `next build` clean; shadow 336→339 PASS.
+
+⚠️ **ROUND 2 IS IN FLIGHT AND UNMERGED: `1fff489c` (Locations / clocking geofencing / branch
+assignment) on `build/r174h-locations` in worktree `r108`.** It is the only item still `approved` on
+the board. It runs SOLO because it touches three files round 1 changed — `core/attendance.ts`
+(`resolveGeofence`, vs the shift item's `netScheduledMinutes` + `shift_ot_window` read),
+`app/admin/actions.ts` (vs the replacement-leave redirects) and
+`app/admin/personnel/[employmentId]/page.tsx` (vs the movement `showCorrected` param). If that branch
+is unmerged when you read this, it is NOT shipped — check `git rev-list --count main..build/r174h-locations`.
 
 **2026-08-09, OUTSIDE any release: `capture-usage` was added to the production crontab** (daily 01:00)
-and run once by hand — 9 rows, 0 failures. **No application code changed and nothing was deployed** —
-the dry-run rsync was ZERO-change immediately before this edit. Pre-change crontab saved at
+and run once by hand — 9 rows, 0 failures. Pre-change crontab saved at
 `/home/ubuntu/crontab.backup-2026-08-09`. Detail in the ADR-0077 table, slice 10.
+
+**`scripts/reset-medical-hospitalization-ledger.ts` IS DEPLOYED BUT HAS NEVER RUN, ANYWHERE.** It is
+report-only without `--apply`, hardcoded to tenant `11111111-…` and the SICK/HOSPITALIZATION type ids,
+and it REFUSES on any of: debits, request-sourced rows, approved requests, `toil_accrual` references,
+encashment snapshots, or a row count ≠ 147. `deploy.sh` does NOT invoke it (verified: it runs only
+`seed-catalogs`, `backfill-plan-history`, `backfill-country-modules`). Run report-only first, read the
+census, then `--apply`. **The archive→verify→delete sequence has never been exercised end to end** —
+only the individual SQL shapes are covered by tests.
 
 ⚠️ **`HANDOFF.md` IS ITSELF RSYNCED TO THE BOX, so editing it makes the dry-run report exactly one
 changed file — which looks identical to an undeployed release.** If the next dry-run's ONLY line is
 `<f.st.... HANDOFF.md`, that is this doc edit, not pending code. Anything else is a real delta.
 
-### r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
+### r174 round 1, r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
 
 Two things outlive those rounds and are deliberately NOT archived with them:
 
@@ -54,20 +72,15 @@ not the page file.**
 
 ### ⚠️ TWO STANDING WARNINGS — a script that must not be run, and a promise not yet kept
 
-- **`2da9937a` (Formula Builder) — SHIPPED and marked deployed (rev 3). THE SEED STEP IS WITHDRAWN, and
-  the reason is worth keeping.** The plan promised Overtime 2.0 / 3.0 seeded from the tenant's OT1_5.
-  `scripts/seed-overtime-multipliers.ts` is built, correct and deployed — **do not run it.** Measured:
-  `OT1_5` holds `{"kind":"per_hour","rate":1.5}`, is assigned to **0 employments**, and is the only
-  `per_hour` item on the tenant. `core/pay-rule.ts` resolves `per_hour` as `rate * hours` and validates it
-  with `inMoney`, so that is **RM 1.50/hour**, not 1.5× — somebody typed the multiplier into a money field.
-  Seeding from it yields OT2_0 at 2.00 and OT3_0 at 3.00.
-  **And a pay component is the wrong mechanism anyway:** `localization/my/payroll.ts overtimePay` already
-  derives `orp = monthlyWages / 26`, `hourly = orp / normalDailyHours`, workday OT `= hours * 1.5 * hourly`,
-  with the excess multipliers and wage ceiling configurable (ADR-0019) and the engine already splitting
-  minutes into `ot00/ot10/ot15/ot20/ot30`. That is wage-derived per employee; a `per_hour` component is one
-  flat rate for everyone and cannot express it. Raised as **`b00f9e6e`** asking the reporter what they meant
-  rather than guessing. If the answer is "follow each person's salary", the Formula Builder this item
-  shipped is what expresses it (`basic / 26 / 8 * 2.0 * hours`) and no seed is involved.
+- **`scripts/seed-overtime-multipliers.ts` IS DEPLOYED, CORRECT, AND MUST NOT BE RUN** (`2da9937a`, seed
+  step withdrawn). Its input is wrong: `OT1_5` holds `{"kind":"per_hour","rate":1.5}`, which
+  `core/pay-rule.ts` resolves as `rate * hours` validated by `inMoney` — i.e. **RM 1.50/hour, not 1.5×**.
+  Someone typed a multiplier into a money field. It is assigned to 0 employments and is the tenant's only
+  `per_hour` item. A pay component is also the wrong mechanism: overtime is ALREADY wage-derived per
+  employee (`localization/my/payroll.ts overtimePay`, multipliers and ceiling configurable per ADR-0019),
+  and one flat rate for everyone cannot express that. Asked back as **`b00f9e6e`** rather than guessed;
+  if the answer is "follow each person's salary", the Formula Builder already expresses it
+  (`basic / 26 / 8 * 2.0 * hours`) and no seed is involved.
 - **`b8aa3466` (Attendance) — partially built, on purpose.** Its plan promised removing the Company work
   schedule and overtime-rate cards from Attendance Policy once backup-shift coverage hit zero. The builder
   refused: that card is the tenant's ONLY editor for the statutory OT wage ceiling and the rest-day /
@@ -81,19 +94,16 @@ retyped from the archive into Entitlement Templates + Employee Eligibility. The 
 keeps balances still while that is true — if a recalc ever starts posting non-zero deltas against an
 unconfigured type, that guard has broken and it is the first thing to check.
 
-### The board — counted on production 2026-08-08 after r173
+### The board — counted on production 2026-08-09 after r174 round 1
 
-**`deployed = 617` · `planned = 8` · `open = 1` · `cancelled = 13`. `approved` and `contested` are BOTH
-ZERO — the build queue is EMPTY.** Re-count rather than trusting this line.
+**`approved = 1` (that is `1fff489c`, BUILDING — see CURRENT STATE) · `open = 1` · `contested = 0`.**
+Seven items moved approved → building → done → deployed this round, each with `buildRef` `8168e648`.
+**Re-count rather than trusting this line — it said `approved = 0` on 2026-08-08 and eight items were
+approved the next morning.**
 
 **THE ONE OPEN ITEM IS A QUESTION WE RAISED, `b00f9e6e`** — what should Overtime 2.0 / 3.0 actually be?
 The measurement behind it, and why **`scripts/seed-overtime-multipliers.ts` MUST NOT BE RUN**, is under
 `2da9937a` above and is not repeated here.
-
-**EIGHT PLANNED, three of them corrections we owe rather than new work:** `3e3d3fb2` TP1 (only the scope
-guard shipped; the redesign is unbuilt), `18719ded` and `0386b95d` (the search/sort/paging correction —
-`18719ded`'s recommends finishing the job), `b8aa3466` is already deployed. The rest are r170 plans the
-reporter has not acted on yet.
 
 **THE REPORTER COMMUNICATES IN PICTURES — 143 of 151 attachments are images.** Read an item's attachment
 BEFORE forming any opinion; this session burned a plan revision writing from the prose alone and the
@@ -202,6 +212,19 @@ is commented out on the box). **Verify with `crontab -l` as `ubuntu`, NOT `syste
 no timers exist.
 
 ### Known live defects, deliberately left standing
+
+- **THERE ARE SIX INLINED COPIES OF THE SHIFT SPAN-MINUS-BREAK CALCULATION, and the sixth cannot be
+  deduplicated (r174).** The canonical one is `netScheduledMinutes`; `rosterVariance` was the fifth and
+  was fixed this round after it disagreed with the engine on a rounded shift. The sixth is
+  `components/shift-time-fields.tsx:63-71`, which recomputes span, the unpaid-only break sum and the
+  rounding floor by hand. **It is CORRECT today** — already rounding-aware and paid-aware — but nothing
+  tests that it tracks the engine, and it is `'use client'` while `core/attendance.ts` imports
+  `db/client` and drizzle, so it CANNOT import the shared helper. If the scheduling rule changes again,
+  this is the copy that silently drifts. The real fix is extracting `netScheduledMinutes`/`shiftSpan`
+  into a dependency-free module both sides can import. Two further copies exist at
+  `core/attendance.ts:279` and `app/admin/attendance-policy/page.tsx:251` — those are the
+  `attendance_policy` domain, which has no rounding column and no shift, and must NOT take the shift
+  rounding parameter.
 
 - **`${inputCls} w-<n>` is a width NO-OP in ~133 files** — `inputCls` contains `w-full`, and the
   stylesheet's emission order wins, not the class attribute. Recorded as `it.fails` in
@@ -348,6 +371,13 @@ Established pattern (r73–r137). The rules, each learned the hard way:
   `ADMIN_GROUP_FLAT_HREFS`, the dashboard card catalogue. Two branches editing the same literal is a
   guaranteed conflict, and r159 hit the same class from the other side: two workstreams independently
   tripping one drift guard.
+- **THAT RULE HAS A HOLE, AND r174 FELL IN IT: OWNERSHIP COVERS EDITS, NOT SIDE EFFECTS.**
+  `lib/permissions.ts` was assigned to the audit workstream for a route REMOVAL. A different
+  workstream ADDED a guarded `page.tsx` (`/admin/leave/entitlements/ledger-archive`) and never touched
+  the registry, so `test/function-access.test.ts` reverse-completeness failed at the integration gate —
+  the one place it could be caught, since no single agent could see it. **Either the integrator owns
+  every registry edit, or every agent that adds a guarded page must declare it in its report.** Ask
+  each agent for the list; do not infer it from the diff at merge time.
 - **Anything cross-cutting runs SOLO and LAST**, against the settled tree.
 - **Tell each agent the traps its items will hit** — the guards it must not weaken, the writers that
   recently broke. The best results come from briefs that name the specific hazard.

@@ -4,6 +4,64 @@ Archive of SHIPPED round entries, newest first. The living handoff is `../HANDOF
 current state and the entry for any round still in flight; when a round ships, its entry moves to the
 top of this file.
 
+## r174 round 1 — seven items, eight agents, one gate failure nobody could have caught (shipped 2026-08-09, main@8168e648, 339 migrations)
+
+`c8052ae3` leave recalc window + balance archive (migration `0416`) · `ee6b7c69` entitlement tables
+embedded · `f1b994e3` leave audit merged into the central Audit Trail · `95d17761` corrected movement
+rows hidden · `3e3d3fb2` TP1 Relief redesign · `20e759a0` Replacement Leave company filter ·
+`cf21e554` Shift Settings stage 1+2 (migrations `0417`, `0418`). The eighth approved item,
+`1fff489c`, was deliberately held for a solo round.
+
+Seven parallel worktrees grouped BY FILE OVERLAP, each with its own `TEST_DB_NAMESPACE` and centrally
+allocated migration numbers. Every build was followed by an adversarial verifier reading the diff
+against the approved plan; six returned ship, one returned fix-first.
+
+**THE GATE CAUGHT WHAT NO AGENT COULD SEE, and the cause is a hole in this file's own grouping rule.**
+`test/function-access.test.ts` reverse-completeness failed: `c8052ae3` added the guarded page
+`/admin/leave/entitlements/ledger-archive` with no column in the access matrix. The standing rule is
+"only ONE agent per round may own each exact-set registry", and `lib/permissions.ts` was assigned to
+`f1b994e3` — for a route REMOVAL. **The rule does not cover a DIFFERENT workstream ADDING a guarded
+route.** Fix carried forward into HANDOFF: either the integrator owns all registry edits, or any agent
+adding a guarded `page.tsx` must declare it in its integrator notes.
+
+**THREE MEASURED BLOCKERS ON THE SHIFT ITEM**, none caught by the builder's green tests:
+
+1. **A paid break was still deducted on partial days.** `normalizeShiftInput` stored `break_minutes`
+   as the unpaid sum, but `spannedBreakMinutes` summed overlap across ALL windows and only then capped
+   at that total — so a paid window's overlap counted as unpaid, up to the unpaid total. The
+   verifier reproduced it: 165 minutes worked instead of 180. The builder's own "mixed paid + unpaid"
+   test passed only because the full-day case let the cap mask it. **The re-verifier then built a
+   discriminator** — the byte-identical shift with the tea break marked unpaid still measures 165 — so
+   the new test cannot pass for the wrong reason.
+2. **Normal-hours rounding reached four call sites and missed the fifth.** `rosterVariance` held
+   another inlined copy and its select never fetched the column, so the Roster screen would flag a day
+   "short" that the Attendance engine considered complete.
+3. **Seven new fields were inert but only four said so.** The plan promised the screen would say so on
+   the box; Earliest clock-in and Latest clock-out — the two the reporter's expected behaviour names
+   explicitly — sat beside controls that do move figures.
+
+**Decisions.**
+
+- **The append-only posture of `leave_ledger` is set aside for ONE correction, deliberately.** The
+  justification and its four conditions are written into
+  `scripts/reset-medical-hospitalization-ledger.ts` and migration `0416`'s headers. Deletion is safe
+  only because both leave types carry zero debits and zero approved requests, and it is made
+  recoverable by an archive written first. The script is deployed and has NEVER RUN.
+- **`c8052ae3`'s reported premise was wrong and the plan corrected it.** The negative balances were
+  not leftover entitlement; they came from a recalc window with a start and no end, counting
+  2027-01-01 and 2028-01-01 grants as already-granted this cycle. The builder enumerated every site
+  that sums "already granted": two were defective and fixed, two already correct and now pinned, two
+  more unbounded in a DIFFERENT shape (`openLeaveYear`'s carry-in sum and `core/read.ts`
+  `leaveBalances`) and deliberately NOT changed — they answer a different question and changing them
+  would move every balance figure on every screen.
+- **`reprojectEntitlementForPolicy` DOES NOT EXIST** — the plan asked for it to be checked; release
+  three deleted it with `leave_policy`. Only stale comments reference it.
+- **`3e3d3fb2`'s "security gap" stayed refused** — revision 1's claim was tested and RLS refused all
+  three attempted exposures. Only the UI redesign was built.
+- **A hard delete of movement records stayed refused** (`95d17761`, the fourth raise of one request).
+  Employment History is a projection over the append-only ledger. Hiding is a view concern; the detail
+  view still resolves a hidden row by id so audit-trail links never break.
+
 ## r173 — five items, and the build queue cleared (shipped 2026-08-08, main@3d792d02, 336 migrations)
 
 `0386b95d` Documents tab · `18719ded` Payroll tab · `080de5cf` Transaction History grid ·
