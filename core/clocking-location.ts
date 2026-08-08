@@ -49,14 +49,20 @@ function cleanRadius(v: number | string | null | undefined): number {
   return n;
 }
 
-/** The advisory string for a radius outside the band, or null. Returned to the caller, never thrown. */
-export function radiusWarning(radiusM: number): string | null {
-  if (radiusM < RADIUS_ADVISORY_MIN_M) {
-    return `A radius of ${radiusM} m is unusually tight — GPS on a phone is rarely accurate to better than ${RADIUS_ADVISORY_MIN_M} m, so staff may be refused while standing on site. Saved anyway.`;
-  }
-  if (radiusM > RADIUS_ADVISORY_MAX_M) {
-    return `A radius of ${radiusM} m is unusually wide — anyone within ${(radiusM / 1000).toFixed(1)} km of this point can clock in. Saved anyway.`;
-  }
+/**
+ * The advisory for a radius outside the band, or null. RETURNED to the caller, never thrown — the save
+ * has already happened by the time the caller reads this.
+ *
+ * A CODE, not a sentence: the toast that carries it is user-facing and this product ships in six locales,
+ * so the wording lives in messages/*.json (admin.locations.radiusWarningTight / …Wide) and the action
+ * localises it. Core stays free of display text, the way the rest of the module's *thrown* messages
+ * unfortunately are not.
+ */
+export type RadiusAdvisory = { code: 'tight' | 'wide'; radiusM: number };
+
+export function radiusWarning(radiusM: number): RadiusAdvisory | null {
+  if (radiusM < RADIUS_ADVISORY_MIN_M) return { code: 'tight', radiusM };
+  if (radiusM > RADIUS_ADVISORY_MAX_M) return { code: 'wide', radiusM };
   return null;
 }
 
@@ -131,7 +137,7 @@ export type CreateClockingLocationInput = {
 };
 
 /** Every write returns the site id plus an optional SOFT advisory about the radius (never a refusal). */
-export type ClockingLocationWriteResult = { id: string; warning: string | null };
+export type ClockingLocationWriteResult = { id: string; warning: RadiusAdvisory | null };
 
 export async function createClockingLocation(
   ctx: SessionContext,

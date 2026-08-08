@@ -19,6 +19,7 @@ import {
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 import { assignEmployeeShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/packs/attendance/service';
+import { recordLocationSource } from '@/core/location';
 import { FixedTransactionAmountError, FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, uploadReviewDocument, type ReviewType } from '@/core/employment-review';
 import {
@@ -314,14 +315,25 @@ export async function setEmploymentComponentAction(formData: FormData) {
 export async function setLocationAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  const effectiveDate = String(formData.get('effectiveDate'));
+  const locationId = (formData.get('locationId') as string) || null;
+  // 1fff489c step 9 — PROVENANCE. The card posts `branch_derived` from the Confirm button on the
+  // branch suggestion and `manual` from the hand-picked select. Anything else (an older cached form, a
+  // forged field) is read as manual: claiming a change came from the Branch when it may not have is the
+  // one direction of this that could mislead a later report.
+  const source = formData.get('source') === 'branch_derived' ? 'branch_derived' : 'manual';
   try {
     await createMovementEvent(s, {
       employmentId,
       kind: 'transfer',
-      effectiveDate: String(formData.get('effectiveDate')),
+      effectiveDate,
       // Present-but-blank clears the location; the field is always rendered by the card.
-      locationId: (formData.get('locationId') as string) || null,
+      locationId,
     });
+    // Stamped only AFTER the movement commits, and in its own event — see recordLocationSource for why
+    // the provenance is not threaded through the shared assignment writer. A refused movement leaves no
+    // claim behind about a change that never happened.
+    await recordLocationSource(s, { employmentId, locationId, effectiveDate, source });
   } catch (e) {
     // Choosing the location the employee already has is not an error — nothing to record, nothing to say.
     if (!(e instanceof MovementNoChangeError)) {

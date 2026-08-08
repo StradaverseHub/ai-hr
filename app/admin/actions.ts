@@ -78,6 +78,7 @@ import {
   restoreClockingLocation,
   deleteClockingLocation,
   ClockingLocationInUseError,
+  type RadiusAdvisory,
 } from '@/packs/attendance/service';
 import { countEmployeesInScope } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
@@ -1811,6 +1812,8 @@ export async function createLocationAction(fd: FormData) {
       country: String(fd.get('country') ?? '') || undefined,
       state: (fd.get('state') as string) || null,
       holidayGroupId: (fd.get('holidayGroupId') as string) || null,
+      // 1fff489c — the Branch this location serves. Blank = not mapped (the field is optional).
+      branch: (fd.get('branch') as string) || null,
     });
   } catch (e) {
     fail(LOCATIONS, e);
@@ -1828,6 +1831,7 @@ export async function updateLocationAction(fd: FormData) {
       country: String(fd.get('country') ?? '') || undefined,
       state: (fd.get('state') as string) || null,
       holidayGroupId: (fd.get('holidayGroupId') as string) || null,
+      branch: (fd.get('branch') as string) || null,
     });
   } catch (e) {
     fail(LOCATIONS, e);
@@ -1857,38 +1861,63 @@ export async function restoreLocationAction(fd: FormData) {
 
 // ADR-0070 — Clocking Location Management CRUD. requireAdmin gates the route; RLS gates the write per
 // company (tenant-catalog read, admin-of-company write — mirrors 0065 pay_component, NOT `location`).
+/**
+ * 1fff489c — the radius advisory. The write ALREADY SUCCEEDED when this runs: an unusual radius is a
+ * warning, never a refusal (spec section B — some sites genuinely need a bigger circle), so it returns
+ * through a success toast rather than the ?error= banner. Null advisory ⇒ the plain ok() redirect,
+ * byte-identical to before.
+ */
+async function okWithRadiusAdvisory(warning: RadiusAdvisory | null): Promise<never> {
+  if (!warning) ok(LOCATIONS);
+  const t = await getTranslations('admin.locations');
+  okToast(
+    LOCATIONS,
+    warning.code === 'tight'
+      ? t('radiusWarningTight', { radius: warning.radiusM })
+      : t('radiusWarningWide', { radius: warning.radiusM }),
+  );
+}
+
 export async function createClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  let warning: RadiusAdvisory | null = null;
   try {
-    await createClockingLocation(user, {
+    ({ warning } = await createClockingLocation(user, {
       companyId: String(fd.get('companyId') ?? ''),
       name: String(fd.get('name') ?? ''),
       lat: Number(fd.get('lat')),
       lng: Number(fd.get('lng')),
+      // 1fff489c — both REQUIRED by the service. Passed as the raw form strings so a blank field reaches
+      // the "Radius is required" / "pick a location" message rather than becoming NaN or ''.
+      radiusM: String(fd.get('radiusM') ?? ''),
+      locationId: String(fd.get('locationId') ?? ''),
       address: (fd.get('address') as string) || null,
       remarks: (fd.get('remarks') as string) || null,
-    });
+    }));
   } catch (e) {
     fail(LOCATIONS, e);
   }
-  ok(LOCATIONS);
+  await okWithRadiusAdvisory(warning);
 }
 
 export async function updateClockingLocationAction(fd: FormData) {
   const user = await requireAdmin();
+  let warning: RadiusAdvisory | null = null;
   try {
-    await updateClockingLocation(user, {
+    ({ warning } = await updateClockingLocation(user, {
       clockingLocationId: String(fd.get('clockingLocationId') ?? ''),
       name: String(fd.get('name') ?? ''),
       lat: Number(fd.get('lat')),
       lng: Number(fd.get('lng')),
+      radiusM: String(fd.get('radiusM') ?? ''),
+      locationId: String(fd.get('locationId') ?? ''),
       address: (fd.get('address') as string) || null,
       remarks: (fd.get('remarks') as string) || null,
-    });
+    }));
   } catch (e) {
     fail(LOCATIONS, e);
   }
-  ok(LOCATIONS);
+  await okWithRadiusAdvisory(warning);
 }
 
 export async function archiveClockingLocationAction(fd: FormData) {

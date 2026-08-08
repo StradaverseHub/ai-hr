@@ -750,11 +750,16 @@
       "clocking": {
         "cardTitle": "打卡地点与地理围栏",
         "assignedLocations": "已分配的打卡地点",
-        "noSites": "该公司尚未定义任何打卡地点。",
+        "noSites": "此地点尚无打卡点。请先在 考勤 › 打卡地点 下添加，然后再分配场地。",
         "save": "保存",
         "geofencingToggle": "启用地理围栏",
         "radiusLabel": "允许半径（米）",
-        "hint": "启用地理围栏后，除非员工位于已分配地点的半径范围内，否则将阻止签到/签退。关闭时，仍会记录位置以供审计。"
+        "hint": "启用地理围栏后，除非员工位于已分配地点的半径范围内，否则将阻止签到/签退。关闭时，仍会记录位置以供审计。",
+        "noCompanyLocations": "此公司尚未设置任何地点。请先在 考勤 › 打卡地点 下添加。",
+        "noAssignedSites": "该员工已有工作地点，但未分配任何打卡场地。地理围栏开启时，在勾选至少一个场地之前，其打卡将被拒绝。",
+        "withinRadius": "{radius} 米以内",
+        "radiusOverrideLabel": "半径覆盖（米）",
+        "radiusOverridePlaceholder": "各场地自身半径"
       },
       "directorySubtitle": "员工通讯录档案",
       "viewFullRecord": "查看完整记录",
@@ -1290,7 +1295,12 @@
       "childReliefTableNote": "请填写各官方减免类别下的子女人数。若该员工就该名子女申请全额减免，请填在 100% 栏；若与另一方家长分摊，请填在 50% 栏——50% 栏中的子女其价值恰为该类别减免额的一半。仅限填写零或以上的整数。上方的「子女（PCB 减免）」数字即为本表的合计。",
       "childReliefTableCategoryCol": "减免类别",
       "childReliefTableFullCol": "100%",
-      "childReliefTableHalfCol": "50%"
+      "childReliefTableHalfCol": "50%",
+      "locationSuggestedFromBranch": "根据分行建议：{branch}",
+      "locationConfirm": "确认",
+      "locationSuggestionNote": "在您点击确认之前不会保存任何内容。工作地点会影响薪资和加班记录，因此系统绝不会替您更改。",
+      "locationBranchUnmapped": "{branch} 尚未指定工作地点。请在 考勤 › 打卡地点 下将该分行映射到某个地点，之后系统会在此处提出建议。",
+      "locationNoBranch": "雇佣标签页未记录分行，因此无法据此建议工作地点。"
     },
     "import": {
       "title": "导入员工",
@@ -5955,7 +5965,25 @@
       "deleteConfirmTitle": "删除打卡地点？",
       "deleteConfirmDescription": "永久删除“{name}”？此操作无法撤销。仅当没有员工被分配且没有考勤记录引用该地点时才能删除。",
       "clockingInUse": "无法删除：已被 {count} 条记录引用。请改为归档。",
-      "clockingNote": "只有当地点没有员工分配且没有考勤历史记录时才能删除，否则请改为归档。"
+      "clockingNote": "只有当地点没有员工分配且没有考勤历史记录时才能删除，否则请改为归档。",
+      "branch": "分行",
+      "branchNone": "未映射",
+      "branchPill": "分行：{branch}",
+      "branchPillUnmapped": "分行：尚未映射",
+      "statusActive": "启用",
+      "statusArchived": "已归档",
+      "radius": "半径（米）",
+      "radiusNote": "每个打卡点都有自己的允许距离，因此狭小的办公室和宽阔的工地可以同时正确。超出 10–5000 米时我们会提醒，但绝不会阻止保存。",
+      "radiusWarningTight": "已保存。{radius} 米的半径异常狭小——手机 GPS 很少能精确到 10 米以内，员工即使站在现场也可能被拒绝。",
+      "radiusWarningWide": "已保存。{radius} 米的半径异常宽大——该距离内的任何人都可以打卡。",
+      "clockingLocationLink": "地点",
+      "clockingLocationPick": "选择地点",
+      "clockingNamePlaceholder": "总部 — 北门",
+      "groupNoPoints": "此地点尚未设置带地理围栏的打卡点——该场地无法打卡。",
+      "noLocationsForCompany": "此公司尚无地点。请先在上方添加——每个打卡点都归属于某个地点。",
+      "unlinkedGroupTitle": "未链接到任何地点",
+      "unmappedBranchesHeading": "尚未映射到地点的分行",
+      "unmappedBranchRow": "{branch} — {count} 名员工，暂时无法为他们建议工作地点"
     },
     "systemLabelsTabs": {
       "organisation": "组织标签",

@@ -750,11 +750,16 @@
       "clocking": {
         "cardTitle": "Địa điểm chấm công & ranh giới địa lý",
         "assignedLocations": "Địa điểm chấm công đã gán",
-        "noSites": "Chưa có địa điểm chấm công nào được xác định cho công ty này.",
+        "noSites": "Địa điểm này chưa có điểm chấm công. Hãy thêm một điểm trong Chấm công › Địa điểm chấm công trước khi gán.",
         "save": "Lưu",
         "geofencingToggle": "Áp dụng ranh giới địa lý",
         "radiusLabel": "Bán kính cho phép (mét)",
-        "hint": "Khi ranh giới địa lý được áp dụng, việc chấm công vào/ra sẽ bị chặn trừ khi nhân viên nằm trong bán kính của địa điểm được gán. Khi tắt, vị trí vẫn được ghi lại để kiểm toán."
+        "hint": "Khi ranh giới địa lý được áp dụng, việc chấm công vào/ra sẽ bị chặn trừ khi nhân viên nằm trong bán kính của địa điểm được gán. Khi tắt, vị trí vẫn được ghi lại để kiểm toán.",
+        "noCompanyLocations": "Chưa thiết lập địa điểm nào cho công ty này. Hãy thêm trong Chấm công › Địa điểm chấm công trước.",
+        "noAssignedSites": "Nhân viên này có địa điểm làm việc nhưng chưa được gán điểm chấm công nào. Khi khoanh vùng đang bật, việc chấm công sẽ bị từ chối cho đến khi chọn ít nhất một điểm.",
+        "withinRadius": "trong {radius} m",
+        "radiusOverrideLabel": "Ghi đè bán kính (mét)",
+        "radiusOverridePlaceholder": "theo từng điểm"
       },
       "directorySubtitle": "Hồ sơ danh bạ nhân viên",
       "viewFullRecord": "Xem hồ sơ đầy đủ",
@@ -1290,7 +1295,12 @@
       "childReliefTableNote": "Nhập số con trong từng nhóm miễn giảm chính thức. Dùng cột 100% khi nhân viên này nhận toàn bộ khoản miễn giảm cho đứa trẻ đó, và cột 50% khi chia sẻ với người còn lại — một trẻ ở cột 50% có giá trị đúng bằng một nửa khoản miễn giảm của nhóm đó. Chỉ nhập số nguyên từ không trở lên. Con số Số con (miễn giảm PCB) ở trên là tổng của bảng này.",
       "childReliefTableCategoryCol": "Nhóm miễn giảm",
       "childReliefTableFullCol": "100%",
-      "childReliefTableHalfCol": "50%"
+      "childReliefTableHalfCol": "50%",
+      "locationSuggestedFromBranch": "Đề xuất từ Chi nhánh: {branch}",
+      "locationConfirm": "Xác nhận",
+      "locationSuggestionNote": "Không có gì được lưu cho đến khi bạn bấm Xác nhận. Địa điểm làm việc ảnh hưởng đến lịch sử lương và tăng ca, nên hệ thống không bao giờ tự đổi giúp bạn.",
+      "locationBranchUnmapped": "{branch} chưa được gán địa điểm làm việc. Hãy ánh xạ chi nhánh tới một địa điểm trong Chấm công › Địa điểm chấm công, khi đó nó sẽ được đề xuất ở đây.",
+      "locationNoBranch": "Không có chi nhánh nào được ghi ở thẻ Việc làm, nên không thể đề xuất địa điểm làm việc từ đó."
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -5955,7 +5965,25 @@
       "deleteConfirmTitle": "Xóa địa điểm chấm công?",
       "deleteConfirmDescription": "Xóa vĩnh viễn “{name}”? Hành động này không thể hoàn tác. Chỉ có thể thực hiện khi không có nhân viên nào được gán và không có bản ghi chấm công nào tham chiếu đến địa điểm này.",
       "clockingInUse": "Không thể xóa: được tham chiếu bởi {count} bản ghi. Hãy lưu trữ thay vào đó.",
-      "clockingNote": "Chỉ có thể xóa khi địa điểm không có nhân viên được gán và không có lịch sử chấm công. Nếu không, hãy lưu trữ địa điểm đó."
+      "clockingNote": "Chỉ có thể xóa khi địa điểm không có nhân viên được gán và không có lịch sử chấm công. Nếu không, hãy lưu trữ địa điểm đó.",
+      "branch": "Chi nhánh",
+      "branchNone": "Chưa ánh xạ",
+      "branchPill": "Chi nhánh: {branch}",
+      "branchPillUnmapped": "Chi nhánh: chưa ánh xạ",
+      "statusActive": "Đang hoạt động",
+      "statusArchived": "Đã lưu trữ",
+      "radius": "Bán kính (m)",
+      "radiusNote": "Mỗi điểm chấm công có khoảng cách cho phép riêng, nên một văn phòng chật và một bãi dự án rộng đều có thể đúng. Chúng tôi cảnh báo khi ngoài khoảng 10–5000 m nhưng không bao giờ chặn việc lưu.",
+      "radiusWarningTight": "Đã lưu. Bán kính {radius} m hẹp bất thường — GPS trên điện thoại hiếm khi chính xác hơn 10 m, nên nhân viên có thể bị từ chối dù đang đứng tại chỗ.",
+      "radiusWarningWide": "Đã lưu. Bán kính {radius} m rộng bất thường — bất kỳ ai trong khoảng cách đó đều có thể chấm công.",
+      "clockingLocationLink": "Địa điểm",
+      "clockingLocationPick": "Chọn địa điểm",
+      "clockingNamePlaceholder": "HQ — Cổng Bắc",
+      "groupNoPoints": "Địa điểm này chưa có điểm chấm công khoanh vùng — không thể chấm công tại đây.",
+      "noLocationsForCompany": "Chưa có địa điểm nào cho công ty này. Hãy thêm một địa điểm ở trên trước — mọi điểm chấm công đều thuộc về một địa điểm.",
+      "unlinkedGroupTitle": "Chưa liên kết với địa điểm nào",
+      "unmappedBranchesHeading": "Chi nhánh chưa được ánh xạ tới địa điểm",
+      "unmappedBranchRow": "{branch} — {count} nhân viên, chưa thể đề xuất địa điểm làm việc cho họ"
     },
     "systemLabelsTabs": {
       "organisation": "Nhãn tổ chức",
