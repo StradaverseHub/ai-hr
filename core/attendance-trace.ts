@@ -98,22 +98,41 @@ export type DeductionTrace = {
   minutes: number;
 };
 
+/**
+ * cf21e554 stage 2 — what ONE declared overtime window of the shift contributed. Mirrors
+ * core/shift-ot-window.ts ShiftOtWindowMatch; restated here because this module is the STORED shape (it is
+ * read back out of jsonb months later) and must not move when the calculator's internals do.
+ */
+export type TraceOtWindow = {
+  label: string | null;
+  /** Clocked minutes inside the window, before its own minimum / maximum / adjustment. */
+  rawMinutes: number;
+  /** What the window finally credited. */
+  minutes: number;
+};
+
 export type OvertimeTrace = {
   /**
    * Which arithmetic produced the raw figure:
+   *  • 'shiftWindows' — the shift's own clock-time Overtime Schedule decided which minutes count (cf21e554)
    *  • 'window'     — worked BEYOND the shift's time-out (a resolved shift, no manual override)
    *  • 'duration'   — worked minus normal minutes (company-policy branch, or a manual normal-hours override)
    *  • 'nonWorkday' — every worked minute is overtime (rest day / holiday)
    */
-  basis: 'window' | 'duration' | 'nonWorkday';
+  basis: 'window' | 'duration' | 'nonWorkday' | 'shiftWindows';
   /** Normal minutes the day was measured against. Null on 'nonWorkday', which has none. */
   normalMinutes: number | null;
   /** True when normalMinutes came from the shift's manual override rather than its span. */
   normalIsOverride: boolean;
   rawMinutes: number;
-  /** Pre-shift minutes, and whether the rule opted to fold them in (applyToEarlyOt). */
+  /** Pre-shift minutes, and whether the rule opted to fold them in (applyToEarlyOt). On the 'shiftWindows'
+   *  basis `earlyIncluded` is always false: a before-shift OT window has already counted them. */
   earlyMinutes: number;
   earlyIncluded: boolean;
+  /** cf21e554 stage 2 — per-window detail on the 'shiftWindows' basis; null on every other basis, and on
+   *  every trace written before the Overtime Schedule tab existed. Optional so an OLD stored trace still
+   *  satisfies the type when it is read back. */
+  shiftOtWindows?: TraceOtWindow[] | null;
   /** The per-shift OT rule's shaping, in the order the engine applies it. Null ⇒ no rule on the shift. */
   shiftRule: {
     eligible: boolean;

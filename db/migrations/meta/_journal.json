@@ -2353,6 +2353,20 @@
       "when": 1781862515000,
       "tag": "0415_employee_draft_reserved_code",
       "breakpoints": true
+    },
+    {
+      "idx": 417,
+      "version": "7",
+      "when": 1781862517000,
+      "tag": "0417_shift_general_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 418,
+      "version": "7",
+      "when": 1781862518000,
+      "tag": "0418_shift_ot_window",
+      "breakpoints": true
     }
   ]
 }
