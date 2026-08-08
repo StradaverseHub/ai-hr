@@ -21,6 +21,8 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EntitlementBandsEditor, type EditableBand } from '@/components/leave/entitlement-bands-editor';
 import { EligibilityRuleForm } from '@/components/leave/eligibility-rule-form';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+// ee6b7c69 — "which tables and rules are this leave type's", pure and tested on its own.
+import { scopeEntitlementTables } from '@/lib/entitlement-tables-scope';
 // 4a1abc4a — the Entitlement Table is where day figures are TYPED, so it is the one screen where the
 // summary line and the editor cell beside it must agree digit for digit.
 import { DAY_DASH, formatDayInput, formatDays } from '@/lib/day-format';
@@ -171,14 +173,10 @@ export async function EntitlementTablesBlock({
   const scopedTypeName = scoped ? (typeNameById.get(leaveTypeId!) ?? '') : '';
 
   // ── The slice this mount shows ────────────────────────────────────────────────────────────────────
-  // Filtered IN MEMORY off the one page-level read (see loadEntitlementTablesData's note). Templates carry
-  // their leave type directly. Eligibility rules do NOT — a rule names a template lineage and nothing else
-  // — so a rule belongs to this type exactly when the lineage it points at does. Derived from EVERY
-  // template version, not just the running ones: a rule pointing at a lineage whose current version has
-  // been stopped is still this type's rule and must not vanish from the step that owns it.
-  const templates = scoped ? data.templates.filter((x) => x.leaveTypeId === leaveTypeId) : data.templates;
-  const ownLineages = new Set(templates.map((x) => x.lineageId));
-  const rules = scoped ? data.rules.filter((x) => ownLineages.has(x.templateLineageId)) : data.rules;
+  // Filtered IN MEMORY off the one page-level read (see loadEntitlementTablesData's note), through the
+  // shared pure scoper — which is where the "a rule has no leave type of its own" reasoning lives, and
+  // where it is tested.
+  const { templates, rules } = scopeEntitlementTables(data, leaveTypeId);
 
   const running = templates.filter((x) => x.validTo == null);
   const runningRules = rules.filter((x) => x.validTo == null);
