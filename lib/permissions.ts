@@ -484,6 +484,10 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/transactions/fixed/[id]',
       '/payroll/transactions/individual',
       '/payroll/transactions/tp1',
+      // 3e3d3fb2: the dedicated Add / View / Edit page for ONE employee's TP1 declaration for ONE
+      // assessment year, replacing the form that opened by itself the moment somebody was selected.
+      // Same scopedAdmin guard as its list — it is the same data, one year at a time.
+      '/payroll/transactions/tp1/[year]',
       '/payroll/transactions/zakat',
       // 6a1f2bd6: the dedicated Add/Edit page for ONE employee's zakat setup, replacing the editor that
       // opened by itself the moment somebody was selected. Same scopedAdmin guard as its list.
