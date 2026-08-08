@@ -38,6 +38,9 @@ import {
   reverseMovementEvent,
 } from '../core/movement';
 import { sweepDueMovements } from '../core/movement-apply';
+// 95d17761 — the pure rule the Movement tab filters with. Exercised HERE against the real projection so
+// the screen's default view and the ledger it reads can never drift apart.
+import { partitionMovementRows } from '../lib/movement-visibility';
 import * as schema from '../db/schema';
 
 let b: Base;
@@ -337,11 +340,110 @@ describe('10fcf6df — Rollback restores the employee, it does not erase the rec
         'cancelConfirmTitle',
         'cancelConfirmDescription',
         'cancelledBadge',
+        // 95d17761 — the hide/show vocabulary. A MISSING_MESSAGE here throws at render while the route
+        // still returns 200, so the pin is the only thing that catches a half-translated tab.
+        'correctedHidden',
+        'showCorrected',
+        'hideCorrected',
+        'empty',
       ]) {
         expect(typeof mv[k], `messages/${loc}.json missing movement.${k}`).toBe('string');
       }
       expect(mv.delete, `messages/${loc}.json still carries the old movement.delete label`).toBeUndefined();
     }
+  });
+
+  // 95d17761 — the three confirmations used to promise "The entry itself stays in Employment History".
+  // That stops being true by default the moment the corrected rows come off the profile, so the wording
+  // had to move with the behaviour: the record is still kept, it is simply no longer on the list.
+  it('the confirmations no longer promise the entry stays on Employment History', () => {
+    const en = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8'));
+    const mv = en.people.detail.movement;
+    for (const k of ['rollbackConfirmDescription', 'cancelConfirmDescription', 'rollbackConfirmPayroll']) {
+      expect(mv[k], `movement.${k} still promises the entry stays in Employment History`).not.toMatch(
+        /stays in Employment History/i,
+      );
+      // …and it still says what DOES happen — the entry leaves the profile, nothing is erased.
+      expect(mv[k], `movement.${k} must say the entry comes off the profile`).toMatch(/comes off the profile/i);
+      expect(mv[k], `movement.${k} must say nothing is erased`).toMatch(/nothing is erased/i);
+    }
+  });
+});
+
+/**
+ * 95d17761 — "Hide corrected movement records by default". A VIEW change and nothing else.
+ *
+ * The reporter asked (for the fourth time) for a hard delete; it stays refused, and the plan says so in
+ * as many words. What this asserts is the promise that makes the refusal survivable: a row taken off the
+ * list is still IN the projection, still reachable by id, and one click from being back on screen.
+ */
+describe('95d17761 — hiding a corrected row changes the VIEW, never the record', () => {
+  it('a rolled-back movement stays in the projection and its detail view still opens by id', async () => {
+    const hire = await hireOne();
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'transfer',
+      effectiveDate: '2026-06-01',
+      departmentId: b.deptB,
+    });
+    const before = await movementHistory(adminCtx(b), hire.employmentId);
+    const move = before.find((r) => r.kind === 'transfer')!;
+
+    await reverseMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      movementId: move.id,
+      reason: 'Keyed against the wrong employee',
+    });
+
+    // The projection is untouched: same number of rows, the transfer still among them, now marked.
+    const after = await movementHistory(adminCtx(b), hire.employmentId);
+    expect(after.length, 'movementHistory still returns every row').toBe(before.length);
+    expect(after.find((r) => r.id === move.id)!.reversed).not.toBeNull();
+
+    // The audit trail links into a movement by id, so a hidden row must still resolve — this is the
+    // guarantee that makes hiding it acceptable at all.
+    const detail = await movementDetail(adminCtx(b), hire.employmentId, move.id);
+    expect(detail, 'the detail view of a hidden row still opens').not.toBeNull();
+    expect(detail!.row.id).toBe(move.id);
+    expect(detail!.row.reversed, 'and it still shows as reversed once opened').not.toBeNull();
+
+    // …while the DEFAULT list drops it, and Show puts it straight back. Same rule the page runs.
+    const hidden = partitionMovementRows(after, false);
+    expect(hidden.visible.some((r) => r.id === move.id), 'default view drops the reversed row').toBe(false);
+    expect(hidden.hiddenCount).toBe(1);
+    const shown = partitionMovementRows(after, true);
+    expect(shown.visible.some((r) => r.id === move.id), 'showCorrected=1 restores it').toBe(true);
+    expect(shown.hiddenCount).toBe(0);
+  });
+
+  it('a PENDING movement is never hidden — and cancelling it does hide it', async () => {
+    const hire = await hireOne();
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'transfer',
+      effectiveDate: '2099-01-01',
+      departmentId: b.deptB,
+    });
+    const pending = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'transfer')!;
+    expect(pending.status).toBe('pending');
+    expect(
+      partitionMovementRows(await movementHistory(adminCtx(b), hire.employmentId), false).hiddenCount,
+      'a live future-dated movement is never hidden',
+    ).toBe(0);
+
+    await reverseMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      movementId: pending.id,
+      reason: 'Wrong employee',
+    });
+
+    const after = await movementHistory(adminCtx(b), hire.employmentId);
+    expect(after.find((r) => r.id === pending.id)!.reversed!.cancelled, 'it reads as CANCELLED').toBe(true);
+    const hidden = partitionMovementRows(after, false);
+    expect(hidden.hiddenCount, 'a cancelled row does come off the list').toBe(1);
+    expect(hidden.visible.some((r) => r.id === pending.id)).toBe(false);
+    // The record itself is still there — nothing was deleted.
+    expect(await movementDetail(adminCtx(b), hire.employmentId, pending.id)).not.toBeNull();
   });
 });
 
