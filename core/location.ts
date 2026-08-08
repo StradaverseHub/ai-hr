@@ -5,7 +5,7 @@
  * DomainEvent (substrate discipline). The employee↔location link is assignment.location_id, set through
  * the existing effective-dated transferEmployee path in core/org.ts (no assign function here).
  */
-import { and, asc, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, isNotNull, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { company, domainEvent, employment, holidayGroup, location } from '../db/schema';
@@ -74,6 +74,117 @@ async function cleanBranch(tx: Tx, v: string | null | undefined, legacy: string 
   return s;
 }
 
+// ── 1fff489c — duplicate saves are a USER MISTAKE, not a crash ────────────────────────────────────────
+//
+// `location` carries TWO partial unique indexes — location_code_uq (tenant, code) and location_branch_uq
+// (tenant, company, branch), both WHERE archived_at IS NULL. Until this block, tripping either one let the
+// raw driver error out to app/admin/_redirects.ts `fail()`, which puts `(e as Error).message` straight in
+// the ?error= banner — and drizzle's message is "Failed query: update "location" set "code" = $1, …
+// params: TWO,Two,MY,,BUKIT JALIL,…". SQL and parameter VALUES, shown to an HR admin.
+//
+// The data was never at risk (the index does its job and the transaction rolls back); the banner was. The
+// Branch dropdown makes it far likelier to be hit — nine companies picking from a two-value catalogue —
+// so both constraints are now mapped to a typed error the action layer localises.
+//
+// SHAPE COPIED FROM core/roster.ts shiftUniqueError: sniff 23505 down the cause chain, then discriminate
+// on the CONSTRAINT NAME (drizzle keeps the driver error as `cause`, whose message names the index) rather
+// than on which field the caller happened to change.
+
+/** 23505 anywhere in the cause chain. Same walk as roster.ts / payroll-policy.ts / admin.ts. */
+function isUniqueViolation(e: unknown): boolean {
+  let cur = e as { code?: string; cause?: unknown } | null | undefined;
+  for (let i = 0; cur && i < 4; i++) {
+    if (cur.code === '23505') return true;
+    cur = cur.cause as { code?: string; cause?: unknown } | null | undefined;
+  }
+  return false;
+}
+
+/**
+ * A live location in this company already maps this branch. `conflictCode` is the CODE of that location
+ * when it could be resolved (a second read — see branchConflictCode), null when it could not.
+ */
+export class LocationBranchTakenError extends Error {
+  constructor(
+    public readonly branch: string,
+    public readonly conflictCode: string | null,
+  ) {
+    super('location-branch-taken');
+    this.name = 'LocationBranchTakenError';
+  }
+}
+
+/** A live location in this TENANT already uses this code (location_code_uq is tenant-wide, not per company). */
+export class LocationCodeTakenError extends Error {
+  constructor(public readonly code: string) {
+    super('location-code-taken');
+    this.name = 'LocationCodeTakenError';
+  }
+}
+
+/** Map a unique-index violation to the typed error for its constraint; pass anything else through. */
+function locationUniqueError(e: unknown, n: { code: string; branch: string | null }): unknown {
+  if (!isUniqueViolation(e)) return e;
+  let msg = '';
+  let cur = e as { message?: string; cause?: unknown } | null | undefined;
+  for (let i = 0; cur && i < 4; i++) {
+    msg += cur.message ?? '';
+    cur = cur.cause as { message?: string; cause?: unknown } | null | undefined;
+  }
+  if (n.branch && /location_branch_uq/i.test(msg)) return new LocationBranchTakenError(n.branch, null);
+  if (/location_code_uq/i.test(msg)) return new LocationCodeTakenError(n.code);
+  // Unreachable while those two are the only unique indexes on the table; kept for the same reason
+  // shiftUniqueError keeps its fallback — a third index must not re-open the raw-SQL banner.
+  return new Error('A location with this code or branch already exists.');
+}
+
+/**
+ * The CODE of the live location that already claims `branch`, so the message can name it.
+ *
+ * A SECOND transaction, deliberately: the one that hit the 23505 is aborted, and every further statement
+ * on it would fail with "current transaction is aborted". Called only on the failure path, so the happy
+ * path costs nothing. Returns null if the holder cannot be read (a race that archived it in between, or
+ * RLS) — the caller then falls back to the wording that names only the branch.
+ */
+function branchConflictCode(
+  ctx: SessionContext,
+  branch: string,
+  scope: { companyId: string } | { locationId: string },
+): Promise<string | null> {
+  return withTenant(ctx, async (tx) => {
+    let companyId: string | null = null;
+    let excludeId: string | null = null;
+    if ('companyId' in scope) {
+      companyId = scope.companyId;
+    } else {
+      // An UPDATE clashes with some OTHER row in its own company — resolve both from the id being saved.
+      excludeId = scope.locationId;
+      const [self] = await tx
+        .select({ companyId: location.companyId })
+        .from(location)
+        .where(eq(location.id, scope.locationId))
+        .limit(1);
+      companyId = self?.companyId ?? null;
+    }
+    if (!companyId) return null;
+    const conds = [eq(location.companyId, companyId), eq(location.branch, branch), isNull(location.archivedAt)];
+    if (excludeId) conds.push(ne(location.id, excludeId));
+    const [row] = await tx.select({ code: location.code }).from(location).where(and(...conds)).limit(1);
+    return row?.code ?? null;
+  });
+}
+
+/** Re-throwable: fill in the conflicting location's code on a branch clash, leave everything else alone. */
+async function withBranchConflictCode(
+  ctx: SessionContext,
+  e: unknown,
+  scope: { companyId: string } | { locationId: string },
+): Promise<unknown> {
+  if (!(e instanceof LocationBranchTakenError) || e.conflictCode) return e;
+  const code = await branchConflictCode(ctx, e.branch, scope);
+  return code ? new LocationBranchTakenError(e.branch, code) : e;
+}
+
 /** The owning company's country — the vocabulary the state above is judged against. */
 async function companyCountryOf(tx: Tx, companyId: string): Promise<string | null> {
   const [row] = await tx.select({ country: company.country }).from(company).where(eq(company.id, companyId)).limit(1);
@@ -98,28 +209,39 @@ export async function createLocation(ctx: SessionContext, p: CreateLocationInput
   const code = cleanCode(p.code);
   const name = cleanName(p.name);
   const country = cleanCountry(p.country);
-  return withTenant(ctx, async (tx) => {
-    // Inside the transaction: the state is judged against the OWNING COMPANY's country, which has to be
-    // read first. RLS scopes that read to this tenant, so a companyId from another tenant fails here
-    // rather than validating against a company the caller cannot see.
-    const state = cleanState(p.state, await companyCountryOf(tx, p.companyId));
-    const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
-    // No legacy value on a create — an out-of-catalogue branch is refused outright.
-    const branch = await cleanBranch(tx, p.branch, null);
-    const [row] = await tx
-      .insert(location)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, country, state, holidayGroupId, branch })
-      .returning({ id: location.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'location',
-      aggregateId: row.id,
-      eventType: 'location.created',
-      actor: actorOf(ctx),
-      payload: { companyId: p.companyId, code, name, country, state, holidayGroupId, branch },
+  try {
+    return await withTenant(ctx, async (tx) => {
+      // Inside the transaction: the state is judged against the OWNING COMPANY's country, which has to be
+      // read first. RLS scopes that read to this tenant, so a companyId from another tenant fails here
+      // rather than validating against a company the caller cannot see.
+      const state = cleanState(p.state, await companyCountryOf(tx, p.companyId));
+      const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
+      // No legacy value on a create — an out-of-catalogue branch is refused outright.
+      const branch = await cleanBranch(tx, p.branch, null);
+      let row: { id: string };
+      try {
+        [row] = await tx
+          .insert(location)
+          .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, country, state, holidayGroupId, branch })
+          .returning({ id: location.id });
+      } catch (e) {
+        // 1fff489c — a duplicate code or branch leaves as a typed error, never as raw SQL + parameters.
+        throw locationUniqueError(e, { code, branch });
+      }
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'location',
+        aggregateId: row.id,
+        eventType: 'location.created',
+        actor: actorOf(ctx),
+        payload: { companyId: p.companyId, code, name, country, state, holidayGroupId, branch },
+      });
+      return { id: row.id };
     });
-    return { id: row.id };
-  });
+  } catch (e) {
+    // The aborted transaction cannot answer "which location holds it?" — a fresh one can.
+    throw await withBranchConflictCode(ctx, e, { companyId: p.companyId });
+  }
 }
 
 export type UpdateLocationInput = {
@@ -136,43 +258,53 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
   const code = cleanCode(p.code);
   const name = cleanName(p.name);
   const country = cleanCountry(p.country);
-  return withTenant(ctx, async (tx) => {
-    const [before] = await tx
-      .select({
-        code: location.code,
-        name: location.name,
-        country: location.country,
-        state: location.state,
-        holidayGroupId: location.holidayGroupId,
-        branch: location.branch,
-        // Selected for validation, NOT echoed into the event payload below — `before` is the audit
-        // record of what the user changed, and companyId is not one of the editable fields.
-        companyId: location.companyId,
-      })
-      .from(location)
-      .where(eq(location.id, p.locationId))
-      .limit(1);
-    if (!before) throw new Error('Location not found');
-    const { companyId, ...beforeAudit } = before;
-    const state = cleanState(p.state, await companyCountryOf(tx, companyId));
-    const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
-    // Legacy-value tolerance: re-saving a location whose branch was recorded before the catalogue tightened
-    // must never fail on the value it already had — the same rule setEmploymentInfo applies to org_branch.
-    const branch = await cleanBranch(tx, p.branch, before.branch);
-    await tx
-      .update(location)
-      .set({ code, name, country, state, holidayGroupId, branch })
-      .where(eq(location.id, p.locationId));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'location',
-      aggregateId: p.locationId,
-      eventType: 'location.updated',
-      actor: actorOf(ctx),
-      payload: { before: beforeAudit, after: { code, name, country, state, holidayGroupId, branch } },
+  try {
+    return await withTenant(ctx, async (tx) => {
+      const [before] = await tx
+        .select({
+          code: location.code,
+          name: location.name,
+          country: location.country,
+          state: location.state,
+          holidayGroupId: location.holidayGroupId,
+          branch: location.branch,
+          // Selected for validation, NOT echoed into the event payload below — `before` is the audit
+          // record of what the user changed, and companyId is not one of the editable fields.
+          companyId: location.companyId,
+        })
+        .from(location)
+        .where(eq(location.id, p.locationId))
+        .limit(1);
+      if (!before) throw new Error('Location not found');
+      const { companyId, ...beforeAudit } = before;
+      const state = cleanState(p.state, await companyCountryOf(tx, companyId));
+      const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
+      // Legacy-value tolerance: re-saving a location whose branch was recorded before the catalogue tightened
+      // must never fail on the value it already had — the same rule setEmploymentInfo applies to org_branch.
+      const branch = await cleanBranch(tx, p.branch, before.branch);
+      try {
+        await tx
+          .update(location)
+          .set({ code, name, country, state, holidayGroupId, branch })
+          .where(eq(location.id, p.locationId));
+      } catch (e) {
+        // 1fff489c — mapping a branch another live location already holds is the likeliest way to reach
+        // here (nine companies, a two-value catalogue). It leaves as a typed error, never as raw SQL.
+        throw locationUniqueError(e, { code, branch });
+      }
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'location',
+        aggregateId: p.locationId,
+        eventType: 'location.updated',
+        actor: actorOf(ctx),
+        payload: { before: beforeAudit, after: { code, name, country, state, holidayGroupId, branch } },
+      });
+      return { id: p.locationId };
     });
-    return { id: p.locationId };
-  });
+  } catch (e) {
+    throw await withBranchConflictCode(ctx, e, { locationId: p.locationId });
+  }
 }
 
 export async function archiveLocation(ctx: SessionContext, p: { locationId: string }) {

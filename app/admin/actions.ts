@@ -70,7 +70,14 @@ import { orgCriteriaFromFields } from '@/core/org-criteria';
 // cannot disagree about which rows exist.
 import { LEAVE_OVERRIDE_TRIGGERS, type LeaveOverrideAction } from '@/core/leave-override';
 import { setAttendancePolicy } from '@/packs/attendance/service';
-import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
+import {
+  createLocation,
+  updateLocation,
+  archiveLocation,
+  restoreLocation,
+  LocationBranchTakenError,
+  LocationCodeTakenError,
+} from '@/core/location';
 import {
   createClockingLocation,
   updateClockingLocation,
@@ -1802,6 +1809,30 @@ export async function setAttendancePolicyAction(fd: FormData) {
 }
 
 // ADR-0054 — Location master data CRUD. requireAdmin gates the route; RLS gates the write per company.
+/**
+ * 1fff489c — the duplicate banner. core/location.ts turns a 23505 on either partial unique index into a
+ * typed error (the shiftUniqueError pattern); the SENTENCE is composed here, because `fail()` puts
+ * `(e as Error).message` verbatim into ?error= and only this layer can reach getTranslations. Without it
+ * the admin saw drizzle's "Failed query: update "location" set "code" = $1 … params: TWO,Two,MY,,BUKIT
+ * JALIL,…" — SQL and parameter values — which is what the reporter's screen actually showed.
+ */
+async function failLocationSave(e: unknown): Promise<never> {
+  if (e instanceof LocationBranchTakenError || e instanceof LocationCodeTakenError) {
+    const t = await getTranslations('admin.locations');
+    if (e instanceof LocationCodeTakenError) fail(LOCATIONS, new Error(t('codeTaken', { code: e.code })));
+    // conflictCode is null only if the holding row vanished between the failure and the follow-up read.
+    fail(
+      LOCATIONS,
+      new Error(
+        e.conflictCode
+          ? t('branchTaken', { branch: e.branch, code: e.conflictCode })
+          : t('branchTakenNoCode', { branch: e.branch }),
+      ),
+    );
+  }
+  fail(LOCATIONS, e);
+}
+
 export async function createLocationAction(fd: FormData) {
   const user = await requireAdmin();
   try {
@@ -1816,7 +1847,7 @@ export async function createLocationAction(fd: FormData) {
       branch: (fd.get('branch') as string) || null,
     });
   } catch (e) {
-    fail(LOCATIONS, e);
+    await failLocationSave(e);
   }
   ok(LOCATIONS);
 }
@@ -1834,7 +1865,7 @@ export async function updateLocationAction(fd: FormData) {
       branch: (fd.get('branch') as string) || null,
     });
   } catch (e) {
-    fail(LOCATIONS, e);
+    await failLocationSave(e);
   }
   ok(LOCATIONS);
 }

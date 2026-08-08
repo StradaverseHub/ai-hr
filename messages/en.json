@@ -756,8 +756,9 @@
         "radiusLabel": "Allowed radius (metres)",
         "hint": "When geofencing is enforced, clock-in/out is blocked unless the employee is within the radius of an assigned site. When off, location is still captured for audit.",
         "noCompanyLocations": "No locations have been set up for this company yet. Add them under Attendance › Clocking location first.",
-        "noAssignedSites": "This employee has a work location but no clocking sites assigned. While geofencing is on, their clock-in will be refused until at least one is ticked.",
+        "noAssignedSites": "No clocking sites are saved for this employee yet. The sites ticked above are proposed from their work location and will be assigned when you press Save. While geofencing is on, their clock-in is refused until at least one is saved.",
         "withinRadius": "within {radius} m",
+        "noPointsYet": "no clocking points yet",
         "radiusOverrideLabel": "Radius override (metres)",
         "radiusOverridePlaceholder": "each site's own"
       },
@@ -5983,7 +5984,11 @@
       "noLocationsForCompany": "No locations for this company yet. Add one above first — every clocking point belongs to a location.",
       "unlinkedGroupTitle": "Not linked to a location",
       "unmappedBranchesHeading": "Branches with no location mapped yet",
-      "unmappedBranchRow": "{branch} — {count} staff, no work location can be proposed for them"
+      "unmappedBranchRow": "{branch} — {count} staff, no work location can be proposed for them",
+      "addPointCta": "Add a clocking point",
+      "branchTaken": "{branch} is already mapped to location {code} in this company. A branch can only be mapped to one location — clear it there first, or choose another branch.",
+      "branchTakenNoCode": "{branch} is already mapped to another location in this company. A branch can only be mapped to one location.",
+      "codeTaken": "A location with code {code} already exists. Location codes must be unique — choose a different one."
     },
     "systemLabelsTabs": {
       "organisation": "Organisation Labels",

@@ -405,6 +405,21 @@ export default async function EmployeePage({
     : preTickLocationId
       ? clockingLocations.filter((cl) => cl.locationId === preTickLocationId).map((cl) => cl.id)
       : [];
+  // 1fff489c — how many points sit under the employee's RESOLVED location (confirmed, else suggested).
+  // null when no location resolves at all: that is a DIFFERENT empty state, and it is answered on the Work
+  // Location card above (branch unmapped / no branch recorded), not by a sentence about clocking points.
+  //
+  // This is what empty state 3 keys off. It used to key off `clockingLocations.length === 0` — the whole
+  // COMPANY having no points — while saying "This location has no clocking points yet", so a company that
+  // had points but none under this employee's location (the case the wording describes) showed nothing at
+  // all. Mirrors the admin screen's per-location groupNoPoints, which was already right.
+  const resolvedLocationPointCount = preTickLocationId
+    ? clockingLocations.filter((cl) => cl.locationId === preTickLocationId).length
+    : null;
+  // …and the mockup's third multi-select line: a mapped location that holds no point yet is LISTED and
+  // unselectable ("BU8 · Bandar Utama 8 · no clocking points yet") rather than silently absent, so the
+  // admin can see the location exists and why nothing can be ticked under it.
+  const locationsWithNoPoints = locations.filter((l) => !clockingLocations.some((cl) => cl.locationId === l.id));
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
@@ -2118,6 +2133,14 @@ export default async function EmployeePage({
                     {cl.radiusM != null ? ` · ${tc('withinRadius', { radius: cl.radiusM })}` : ''}
                   </option>
                 ))}
+                {/* The mockup's third line. A location with no points yet is shown DISABLED — it can
+                    never be ticked or submitted (there is nothing to clock at), but leaving it out made
+                    a configured location look like it did not exist. */}
+                {locationsWithNoPoints.map((l) => (
+                  <option key={`nopoints-${l.id}`} value="" disabled>
+                    {`${l.code} · ${l.name} · ${tc('noPointsYet')}`}
+                  </option>
+                ))}
               </select>
             </Field>
             {/* The four distinct empty states (spec section E). Today all four render as one blank field,
@@ -2126,7 +2149,7 @@ export default async function EmployeePage({
                 is on the Work Location card above, where the branch is the thing to fix. */}
             {locations.length === 0 ? (
               <p className="text-xs text-muted-foreground">{tc('noCompanyLocations')}</p>
-            ) : clockingLocations.length === 0 ? (
+            ) : resolvedLocationPointCount === 0 ? (
               <p className="text-xs text-muted-foreground">{tc('noSites')}</p>
             ) : assignedClockingLocationIds.size === 0 && emp.locationId ? (
               <p className="text-xs text-muted-foreground">{tc('noAssignedSites')}</p>

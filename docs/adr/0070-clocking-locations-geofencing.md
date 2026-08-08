@@ -144,6 +144,15 @@ Two deferrals recorded below are now CLOSED, and one decision here was reversed:
 - **`location` gains a `branch`** (0420), unique per COMPANY, which lets the employee's Attendance
   tab PROPOSE a work location from the branch already on their Employment tab. It never
   auto-commits.
+- **A duplicate save no longer reaches the banner as SQL.** `location` carries two partial unique
+  indexes (`location_code_uq`, `location_branch_uq`); tripping either used to surface drizzle's
+  `Failed query: update "location" … params: TWO,Two,MY,,BUKIT JALIL,…` in `?error=`, because
+  `app/admin/_redirects.ts fail()` copies `(e as Error).message` verbatim. `createLocation` /
+  `updateLocation` now map 23505 to `LocationBranchTakenError` / `LocationCodeTakenError` (the
+  `core/roster.ts shiftUniqueError` shape: sniff the code down the cause chain, discriminate on the
+  constraint NAME), and `app/admin/actions.ts` localises them. The branch error carries the CODE of
+  the location already holding the branch, resolved in a SECOND transaction because the one that hit
+  the violation is aborted.
 - Still deferred: the embedded map picker (no tile provider is configured and the deployed host has
   no outbound key for one).
 

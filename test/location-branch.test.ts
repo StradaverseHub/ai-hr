@@ -27,6 +27,8 @@ import {
   branchChangeDateFor,
   createLocation,
   listUnmappedBranches,
+  LocationBranchTakenError,
+  LocationCodeTakenError,
   recordLocationSource,
   resolveLocationForBranch,
   updateLocation,
@@ -115,12 +117,11 @@ describe('location.branch — validated against the tenant branch catalogue', ()
     // Same branch, different company — allowed, and this is the live tenant's normal case.
     await createLocation(a, { companyId: coB, code: 'B-HQ', name: 'B HQ', branch: BUKIT });
 
-    // …but a SECOND live location in the SAME company claiming it is refused by the partial unique index.
-    // Asserted on the OUTCOME rather than on the message: drizzle wraps the driver error as
-    // "Failed query: insert into …" and the constraint name does not survive into `.message`.
+    // …but a SECOND live location in the SAME company claiming it is refused by the partial unique index,
+    // as the TYPED error (never the raw driver message — see the duplicate-message describe below).
     await expect(
       createLocation(a, { companyId: b.companyId, code: 'A-ALT', name: 'A Alt', branch: BUKIT }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(LocationBranchTakenError);
     const liveInA = await owner.db
       .select({ id: schema.location.id })
       .from(schema.location)
@@ -141,6 +142,80 @@ describe('location.branch — validated against the tenant branch catalogue', ()
     await archiveLocation(a, { locationId: old });
     const { id: fresh } = await createLocation(a, { companyId: b.companyId, code: 'NEW', name: 'New HQ', branch: BUKIT });
     expect(fresh).toBeTruthy();
+  });
+});
+
+/**
+ * 1fff489c — WHAT THE ADMIN SEES WHEN A SAVE COLLIDES.
+ *
+ * Measured on this branch before the fix: mapping a branch that another LIVE location in the same company
+ * already held put drizzle's own text into the ?error= banner — `Failed query: update "location" set
+ * "code" = $1 … params: TWO,Two,MY,,BUKIT JALIL,feb9dc15-…`. SQL and parameter VALUES, on an HR screen.
+ * The data was never at risk (the partial unique index rejected the write and the transaction rolled
+ * back); the message was. app/admin/_redirects.ts `fail()` copies `(e as Error).message` verbatim into
+ * the query string, so whatever core throws IS the banner.
+ *
+ * These assert the shape the action layer needs — a typed error naming the branch and the CODE of the
+ * location already holding it — plus the negative that matters: no driver text on the message. Removing
+ * either catch in core/location.ts fails every test in this block (verified).
+ */
+describe('a duplicate save reports itself, never the raw query', () => {
+  const RAW_SQL = /Failed query|insert into|update "location"|params:|\$1/i;
+
+  it('CREATE with a branch another live location holds — typed, names the branch AND the holder’s code', async () => {
+    const a = adminCtx(b);
+    await createProfileOption(a, { category: 'branch', value: BUKIT });
+    await createLocation(a, { companyId: b.companyId, code: 'HQ', name: 'Headquarters', branch: BUKIT });
+
+    const err = await createLocation(a, { companyId: b.companyId, code: 'ALT', name: 'Alt', branch: BUKIT }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(LocationBranchTakenError);
+    expect((err as LocationBranchTakenError).branch).toBe(BUKIT);
+    // Resolved in a SECOND transaction — the one that hit the 23505 is aborted and cannot be read from.
+    expect((err as LocationBranchTakenError).conflictCode).toBe('HQ');
+    expect((err as Error).message).not.toMatch(RAW_SQL);
+  });
+
+  it('UPDATE remapping onto a taken branch — the exact save the verifier measured', async () => {
+    const a = adminCtx(b);
+    await createProfileOption(a, { category: 'branch', value: BUKIT });
+    await createLocation(a, { companyId: b.companyId, code: 'ONE', name: 'One', branch: BUKIT });
+    const { id: two } = await createLocation(a, { companyId: b.companyId, code: 'TWO', name: 'Two' });
+
+    const err = await updateLocation(a, { locationId: two, code: 'TWO', name: 'Two', branch: BUKIT }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(LocationBranchTakenError);
+    // The holder is resolved EXCLUDING the row being saved, so it names ONE and not TWO itself.
+    expect((err as LocationBranchTakenError).conflictCode).toBe('ONE');
+    expect((err as Error).message).not.toMatch(RAW_SQL);
+
+    // …and the refused save changed nothing.
+    const [row] = await owner.db.select().from(schema.location).where(eq(schema.location.id, two));
+    expect(row.branch).toBeNull();
+  });
+
+  it('a duplicate CODE is the OTHER constraint, told apart by name', async () => {
+    const a = adminCtx(b);
+    await createLocation(a, { companyId: b.companyId, code: 'HQ', name: 'Headquarters' });
+
+    const err = await createLocation(a, { companyId: b.companyId, code: 'HQ', name: 'Second HQ' }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(LocationCodeTakenError);
+    expect((err as LocationCodeTakenError).code).toBe('HQ');
+    expect((err as Error).message).not.toMatch(RAW_SQL);
+  });
+
+  it('an ARCHIVED holder does not collide — the partial index and the message agree', async () => {
+    const a = adminCtx(b);
+    await createProfileOption(a, { category: 'branch', value: BUKIT });
+    const { id: old } = await createLocation(a, { companyId: b.companyId, code: 'OLD', name: 'Old', branch: BUKIT });
+    await archiveLocation(a, { locationId: old });
+    // No throw at all: archiving frees the branch, so there is nothing to report.
+    const { id } = await createLocation(a, { companyId: b.companyId, code: 'NEW', name: 'New', branch: BUKIT });
+    expect(id).toBeTruthy();
   });
 });
 

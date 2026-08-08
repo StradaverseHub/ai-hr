@@ -756,8 +756,9 @@
         "radiusLabel": "Bán kính cho phép (mét)",
         "hint": "Khi ranh giới địa lý được áp dụng, việc chấm công vào/ra sẽ bị chặn trừ khi nhân viên nằm trong bán kính của địa điểm được gán. Khi tắt, vị trí vẫn được ghi lại để kiểm toán.",
         "noCompanyLocations": "Chưa thiết lập địa điểm nào cho công ty này. Hãy thêm trong Chấm công › Địa điểm chấm công trước.",
-        "noAssignedSites": "Nhân viên này có địa điểm làm việc nhưng chưa được gán điểm chấm công nào. Khi khoanh vùng đang bật, việc chấm công sẽ bị từ chối cho đến khi chọn ít nhất một điểm.",
+        "noAssignedSites": "Chưa có điểm chấm công nào được lưu cho nhân viên này. Các điểm được chọn ở trên là đề xuất từ địa điểm làm việc của họ và sẽ được gán khi bạn bấm Lưu. Khi khoanh vùng đang bật, việc chấm công sẽ bị từ chối cho đến khi lưu ít nhất một điểm.",
         "withinRadius": "trong {radius} m",
+        "noPointsYet": "chưa có điểm chấm công",
         "radiusOverrideLabel": "Ghi đè bán kính (mét)",
         "radiusOverridePlaceholder": "theo từng điểm"
       },
@@ -5983,7 +5984,11 @@
       "noLocationsForCompany": "Chưa có địa điểm nào cho công ty này. Hãy thêm một địa điểm ở trên trước — mọi điểm chấm công đều thuộc về một địa điểm.",
       "unlinkedGroupTitle": "Chưa liên kết với địa điểm nào",
       "unmappedBranchesHeading": "Chi nhánh chưa được ánh xạ tới địa điểm",
-      "unmappedBranchRow": "{branch} — {count} nhân viên, chưa thể đề xuất địa điểm làm việc cho họ"
+      "unmappedBranchRow": "{branch} — {count} nhân viên, chưa thể đề xuất địa điểm làm việc cho họ",
+      "addPointCta": "Thêm điểm chấm công",
+      "branchTaken": "{branch} đã được ánh xạ tới địa điểm {code} trong công ty này. Mỗi chi nhánh chỉ được ánh xạ tới một địa điểm — hãy xóa ánh xạ ở đó trước, hoặc chọn chi nhánh khác.",
+      "branchTakenNoCode": "{branch} đã được ánh xạ tới một địa điểm khác trong công ty này. Mỗi chi nhánh chỉ được ánh xạ tới một địa điểm.",
+      "codeTaken": "Đã tồn tại địa điểm có mã {code}. Mã địa điểm phải là duy nhất — hãy chọn mã khác."
     },
     "systemLabelsTabs": {
       "organisation": "Nhãn tổ chức",

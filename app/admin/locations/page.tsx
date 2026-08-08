@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
@@ -24,11 +25,14 @@ import {
 export default async function LocationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  // `addPoint` = the location the "Add a clocking point" link inside an empty group asked to file the new
+  // point under. It only pre-selects the create form's Location picker (the /admin/attendance ?editShift=
+  // pattern) — nothing is written by a GET.
+  searchParams: Promise<{ error?: string; addPoint?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.locations');
-  const { error } = await searchParams;
+  const { error, addPoint } = await searchParams;
 
   const companies = await listCompanies(s);
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
@@ -387,8 +391,22 @@ export default async function LocationsPage({
                         </div>
                         {points.length === 0 ? (
                           /* EMPTY STATE 3 of 4: the location exists but nobody has dropped a gate under
-                             it, so nobody can clock in at this site however it is assigned. */
-                          <p className="px-3 py-2 text-xs text-muted-foreground">{t('groupNoPoints')}</p>
+                             it, so nobody can clock in at this site however it is assigned. The mockup
+                             puts the way OUT of the empty state inside it — the link jumps to the create
+                             form below with this location already picked (a GET; nothing is written). An
+                             empty group is always a LIVE location, so the form it targets is always
+                             rendered (see the companyLocations filter above). */
+                          <p className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                            {t('groupNoPoints')}
+                            {/* btnGhost's tokens at this row's xs scale — the mockup draws a small
+                                bordered button here, and h-9 would double the height of the row. */}
+                            <Link
+                              href={`/admin/locations?addPoint=${l.id}#clocking-form-${c.id}`}
+                              className="inline-flex h-7 items-center rounded-md border border-input px-2 text-xs font-medium transition duration-150 ease-snappy hover:bg-accent hover:text-accent-foreground"
+                            >
+                              {t('addPointCta')}
+                            </Link>
+                          </p>
                         ) : (
                           <ul>{points.map(pointRow)}</ul>
                         )}
@@ -410,14 +428,22 @@ export default async function LocationsPage({
               {assignableLocations.length > 0 && (
                 <form
                   action={createClockingLocationAction}
-                  className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-7"
+                  id={`clocking-form-${c.id}`}
+                  className="grid scroll-mt-6 grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-7"
                 >
                   <input type="hidden" name="companyId" value={c.id} />
                   <Field label={t('name')}>
                     <input name="name" required placeholder={t('clockingNamePlaceholder')} className={inputCls} />
                   </Field>
                   <Field label={t('clockingLocationLink')}>
-                    <select name="locationId" defaultValue="" required className={inputCls}>
+                    {/* Pre-picked when the admin arrived from an empty group's "Add a clocking point"
+                        link, and only ever to a location THIS form can accept. */}
+                    <select
+                      name="locationId"
+                      defaultValue={assignableLocations.some((l) => l.id === addPoint) ? addPoint : ''}
+                      required
+                      className={inputCls}
+                    >
                       <option value="">{t('clockingLocationPick')}</option>
                       {assignableLocations.map((l) => (
                         <option key={l.id} value={l.id}>
