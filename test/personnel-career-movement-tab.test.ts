@@ -10,6 +10,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { isCorrectedMovementRow, partitionMovementRows } from '../lib/movement-visibility';
+import type { MovementHistoryRow, MovementReversal, MovementStatus } from '../core/movement';
 
 const PAGE = fs.readFileSync(
   path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
@@ -169,11 +171,19 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     expect(PAGE.includes("t('movement.deleteConfirm")).toBe(false);
   });
 
-  it('shows a rolled-back movement as reversed rather than removing the row', () => {
+  // 95d17761 superseded the second half of this guard. The BADGES stay — a rolled-back movement is still
+  // rendered as reversed, never erased — but the row is now off the default list behind a Show link. What
+  // must never come back is a filter applied to the PROJECTION: `movements` stays the complete history,
+  // and it is the list the detail lookup, the Edit lookup and the pending banner all keep reading.
+  it('shows a rolled-back movement as reversed rather than removing the record', () => {
     expect(PAGE.includes("t('movement.reversedBadge')")).toBe(true);
     expect(PAGE.includes("t('movement.correctedBadge')")).toBe(true);
-    // The row is still rendered — nothing filters `movements` by the reversal.
-    expect(PAGE.includes('movements.filter(')).toBe(false);
+    // The projection is read whole and never narrowed at the source.
+    expect(PAGE.includes('await movementHistory(s, employmentId)')).toBe(true);
+    // The Edit lookup resolves against the FULL history, so a hidden row is still reachable by id.
+    expect(PAGE.includes('movements.find((m) => m.id === spEditMovement')).toBe(true);
+    // …and the pending banner on the Employment tab reads the full history too.
+    expect(PAGE.includes("movements\n    .filter((m) => m.status === 'pending')")).toBe(true);
   });
 
   it('the Edit form is the same island, posting to the correction action', () => {
@@ -222,6 +232,155 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
       ]) {
         expect(typeof types[kind], `messages/${loc}.json missing movement.eventType.${kind}`).toBe('string');
       }
+    }
+  });
+});
+
+/**
+ * 95d17761 — "Hide corrected movement records by default".
+ *
+ * A HARD DELETE STAYS REFUSED (9064cffb settled it with the reporter, and Employment History is a
+ * projection over the append-only ledger — there is no row to delete). This is a VIEW change and only a
+ * view change: nothing is written, nothing is deleted, no figure moves. The rule that decides what the
+ * table draws is a pure function, so it is asserted DIRECTLY here rather than pattern-matched out of the
+ * page source; the source guards below only pin the wiring the pure function cannot see.
+ */
+const rev = (over: Partial<MovementReversal> = {}): MovementReversal => ({
+  at: new Date('2026-08-01T02:00:00Z'),
+  reason: 'Keyed against the wrong employee',
+  corrected: false,
+  cancelled: false,
+  by: 'HR Admin',
+  ...over,
+});
+type Row = Pick<MovementHistoryRow, 'id' | 'status' | 'reversed'>;
+const row = (id: string, status: MovementStatus, reversed: MovementReversal | null = null): Row => ({
+  id,
+  status,
+  reversed,
+});
+
+describe('95d17761 — the Movement tab hides corrected records by default', () => {
+  // The worst live profile measured on production, 7 Aug: 7 rows of which 3 are dead — a reversed
+  // transfer, a corrected increment (the reverse half of an edit) and a superseded scheduled promotion.
+  const productionShapedHistory: Row[] = [
+    row('hired', 'applied'),
+    row('confirmation', 'applied'),
+    row('transfer', 'reversed', rev()),
+    row('increment-corrected', 'reversed', rev({ corrected: true })),
+    row('salaryAdjustment', 'applied'),
+    row('promotion-superseded', 'superseded'),
+    row('future-promotion', 'pending'),
+  ];
+
+  it('the DEFAULT view omits reversed, corrected, cancelled and superseded rows', () => {
+    const { visible } = partitionMovementRows(productionShapedHistory, false);
+    expect(visible.map((r) => r.id)).toEqual([
+      'hired',
+      'confirmation',
+      'salaryAdjustment',
+      'future-promotion',
+    ]);
+    // Every one of the four dead shapes is individually recognised — not just the two on this profile.
+    expect(isCorrectedMovementRow(row('x', 'reversed', rev())), 'rolled back').toBe(true);
+    expect(isCorrectedMovementRow(row('x', 'reversed', rev({ corrected: true }))), 'corrected').toBe(true);
+    expect(isCorrectedMovementRow(row('x', 'reversed', rev({ cancelled: true }))), 'cancelled').toBe(true);
+    expect(isCorrectedMovementRow(row('x', 'superseded')), 'superseded').toBe(true);
+    expect(isCorrectedMovementRow(row('x', 'applied')), 'applied').toBe(false);
+  });
+
+  it('the count line names the right number — what was removed, not what was kept', () => {
+    expect(partitionMovementRows(productionShapedHistory, false).hiddenCount).toBe(3);
+    // …and it is exactly the rows the table stopped drawing.
+    const { visible, hiddenCount } = partitionMovementRows(productionShapedHistory, false);
+    expect(hiddenCount).toBe(productionShapedHistory.length - visible.length);
+    // A clean career hides nothing, so the line never renders on a profile with no corrections.
+    expect(partitionMovementRows([row('hired', 'applied')], false).hiddenCount).toBe(0);
+  });
+
+  it('showCorrected=1 restores every row, exactly as the list rendered before this item', () => {
+    const { visible, hiddenCount } = partitionMovementRows(productionShapedHistory, true);
+    expect(visible.map((r) => r.id)).toEqual(productionShapedHistory.map((r) => r.id));
+    // Nothing is hidden, so the count line gives way to the Hide link.
+    expect(hiddenCount).toBe(0);
+  });
+
+  it('a PENDING row is never hidden — it has not happened yet and HR still has to see it', () => {
+    // Dated in the future, live: kept in the default view.
+    expect(isCorrectedMovementRow(row('x', 'pending'))).toBe(false);
+    expect(partitionMovementRows([row('p', 'pending')], false)).toEqual({
+      visible: [row('p', 'pending')],
+      hiddenCount: 0,
+    });
+    // A pending movement that was CANCELLED is a different thing: statusOfRow reports it as `reversed`
+    // (the reversal wins over every other status), the badge says Cancelled, and it DOES drop off.
+    expect(isCorrectedMovementRow(row('c', 'reversed', rev({ cancelled: true })))).toBe(true);
+  });
+
+  it('an all-dead history hides everything and leaves nothing to draw', () => {
+    const allDead: Row[] = [
+      row('a', 'reversed', rev()),
+      row('b', 'reversed', rev({ corrected: true })),
+      row('c', 'superseded'),
+    ];
+    const { visible, hiddenCount } = partitionMovementRows(allDead, false);
+    expect(visible).toEqual([]);
+    expect(hiddenCount).toBe(3);
+    // Which is why the page must render the empty message AND the count line, not a bare table head.
+    expect(PAGE.includes("t('movement.empty')")).toBe(true);
+    expect(PAGE.includes('visibleMovements.length === 0 &&')).toBe(true);
+    // The two blocks are siblings, each with its own condition — the count line is NOT nested inside the
+    // rows branch, so an all-dead history still gets its Show link.
+    expect(PAGE.includes('correctedMovementCount > 0 &&')).toBe(true);
+  });
+
+  it('SOURCE GUARD: the table draws the filtered list; the detail view still resolves a hidden row by id', () => {
+    // The table body maps the FILTERED list…
+    expect(PAGE.includes('{visibleMovements.map((m) => (')).toBe(true);
+    expect(PAGE.includes('{movements.map((m) => (')).toBe(false);
+    // …computed by the shared pure rule, never re-implemented inline on the page.
+    expect(PAGE.includes('partitionMovementRows(')).toBe(true);
+    expect(PAGE.includes("const showCorrectedMovements = spShowCorrected === '1';")).toBe(true);
+    // The detail view goes straight to the service by id and never looks in the rendered list, so a link
+    // to a hidden row from the audit trail keeps working (asserted for real against the DB in
+    // test/movement-rollback.test.ts).
+    expect(PAGE.includes('await movementDetail(s, employmentId, spMovement)')).toBe(true);
+  });
+
+  it('SOURCE GUARD: Show / Hide preserve the tab and every other search param', () => {
+    expect(PAGE.includes("t('movement.showCorrected')")).toBe(true);
+    expect(PAGE.includes("t('movement.hideCorrected')")).toBe(true);
+    // Built from the CURRENT query string rather than a hand-written href, so nothing else is dropped.
+    expect(PAGE.includes('const movementVisibilityHref = (show: boolean): string')).toBe(true);
+    expect(PAGE.includes('Object.entries(rawSearchParams)')).toBe(true);
+    expect(PAGE.includes("qs.set('tab', 'careerMovement');")).toBe(true);
+    expect(PAGE.includes("qs.set('showCorrected', '1');")).toBe(true);
+    expect(PAGE.includes('href={movementVisibilityHref(true)}')).toBe(true);
+    expect(PAGE.includes('href={movementVisibilityHref(false)}')).toBe(true);
+    // The param is declared on the page's searchParams contract (a stray key would be silently dropped).
+    expect(PAGE.includes('showCorrected?: string;')).toBe(true);
+  });
+
+  it('SOURCE GUARD: correctedHidden is called WITH its {count} argument (an ICU contract, not a label)', () => {
+    // next-intl throws at render for a message with a placeholder called without arguments — a 200 and a
+    // green tsc would both still pass, so the call shape is pinned here.
+    expect(PAGE.includes("t('movement.correctedHidden', { count: correctedMovementCount })")).toBe(true);
+    const en = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8'));
+    expect(en.people.detail.movement.correctedHidden).toContain('{count, plural,');
+  });
+
+  it('the hide/show vocabulary exists in all six locales, with the count placeholder intact', () => {
+    for (const loc of LOCALES) {
+      const msg = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
+      const mv = msg?.people?.detail?.movement ?? {};
+      for (const k of ['correctedHidden', 'showCorrected', 'hideCorrected', 'empty']) {
+        expect(typeof mv[k], `messages/${loc}.json missing movement.${k}`).toBe('string');
+        expect((mv[k] as string).length, `messages/${loc}.json movement.${k} is empty`).toBeGreaterThan(0);
+      }
+      // A locale that lost the placeholder would render a fixed number in every language but English.
+      expect(mv.correctedHidden, `messages/${loc}.json movement.correctedHidden lost {count}`).toContain(
+        '{count, plural,',
+      );
     }
   });
 });

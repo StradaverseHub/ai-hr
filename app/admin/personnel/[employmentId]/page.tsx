@@ -77,6 +77,9 @@ import {
   isComparisonKind,
   MOVEMENT_FLAT_FIELDS,
 } from '@/core/movement';
+// 95d17761 — the DEFAULT Employment History view drops the correction artefacts. A pure view filter, so
+// it lives beside the screen and never touches the ledger projection above.
+import { partitionMovementRows } from '@/lib/movement-visibility';
 // ae9350f2 — the built-in exit-reason catalogue behind the Termination movement.
 import { TERMINATION_REASONS } from '@/core/termination-reason';
 // 476f23ed — the tenant's configurable movement event-type catalogue.
@@ -174,6 +177,11 @@ export default async function EmployeePage({
     newEvent?: string;
     // 66a63bd6: `editMovement=<domainEventId>` reopens that movement for correction (same comparison form).
     editMovement?: string;
+    // 95d17761: `showCorrected=1` puts the correction artefacts (reversed / corrected / cancelled /
+    // superseded rows) back on the Employment History list. Absent — the default — they are hidden
+    // behind a one-line count. A VIEW filter only: movementHistory still returns every row and the
+    // detail view (?movement=<id>) still resolves a hidden one by id.
+    showCorrected?: string;
     // R46 47146ea3 — Children (PCB Relief) auto-sync feedback. `childReliefSynced` = the count moved
     // quietly (to this value); `childReliefAlert` = it moved while a payroll batch for that 'YYYY-MM'
     // period was still open, which is the case HR must actually see (rail (d): alert, never block).
@@ -193,6 +201,10 @@ export default async function EmployeePage({
   const tStatus = await getTranslations('people.employeeStatus');
   const admin = isAdmin(s);
   const { employmentId } = await params;
+  // 95d17761 — kept whole (not just destructured) so the Show / Hide link under Employment History can
+  // rebuild the CURRENT query string and preserve every param it does not own, rather than dropping the
+  // reader back onto a bare tab.
+  const rawSearchParams = await searchParams;
   const {
     error,
     from,
@@ -207,7 +219,8 @@ export default async function EmployeePage({
     childReliefAlert,
     childReliefTo,
     companyChange,
-  } = await searchParams;
+    showCorrected: spShowCorrected,
+  } = rawSearchParams;
   // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
   // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
   const back =
@@ -409,6 +422,27 @@ export default async function EmployeePage({
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
   const movements = admin ? await movementHistory(s, employmentId) : [];
+  // 95d17761 — the DEFAULT view drops the correction artefacts (rolled back / corrected / cancelled /
+  // superseded) so the tab reads as a career rather than a list of mistakes. Nothing is deleted and the
+  // projection above is untouched: `movements` stays the complete history and is what the Edit lookup,
+  // the pending-movement banner and the detail view keep reading. Only the TABLE draws `visibleMovements`.
+  const showCorrectedMovements = spShowCorrected === '1';
+  const { visible: visibleMovements, hiddenCount: correctedMovementCount } = partitionMovementRows(
+    movements,
+    showCorrectedMovements,
+  );
+  // The Show / Hide link keeps the reader exactly where they are: same tab, same open detail view, same
+  // every other param. Only `showCorrected` is rewritten.
+  const movementVisibilityHref = (show: boolean): string => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(rawSearchParams)) {
+      if (k === 'showCorrected' || v === undefined) continue;
+      qs.set(k, v);
+    }
+    qs.set('tab', 'careerMovement');
+    if (show) qs.set('showCorrected', '1');
+    return `/admin/personnel/${employmentId}?${qs.toString()}`;
+  };
   // 476f23ed — the tenant's movement event-type catalogue. Read UNFILTERED, because Employment History has
   // to label a movement recorded under a type that has since been switched off; the New Event form filters
   // to the active ones below. A tenant that has configured nothing gets the built-in list unchanged.
@@ -2872,7 +2906,16 @@ export default async function EmployeePage({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {movements.map((m) => (
+          {/* 95d17761 — an employment whose whole history is correction artefacts must say so, not draw a
+              bare table head. The hidden-count line below still renders, so the rows are one click away. */}
+          {visibleMovements.length === 0 && (
+            <tr>
+              <td colSpan={8} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                {t('movement.empty')}
+              </td>
+            </tr>
+          )}
+          {visibleMovements.map((m) => (
             // 66a63bd6 — a rolled-back movement KEEPS its line, visibly marked, and loses its actions. It is
             // never removed: the history is the evidence payroll and statutory reporting lean on.
             <tr
@@ -2987,6 +3030,26 @@ export default async function EmployeePage({
         </tbody>
       </table>
       </div>
+      {/* 95d17761 — one quiet line under the table. Rolled back, corrected, cancelled and superseded
+          entries are OFF the profile by default (nothing is deleted — the ledger and every payroll/EA
+          figure built from it are untouched), and Show puts them back exactly as they used to render.
+          correctedHidden carries a count placeholder — an ICU contract, so it is called WITH the
+          argument; calling it bare throws at render while the route still returns 200. */}
+      {correctedMovementCount > 0 && (
+        <div className="border-t border-border px-4 py-2.5 text-sm text-muted-foreground">
+          {t('movement.correctedHidden', { count: correctedMovementCount })}{' '}
+          <Link href={movementVisibilityHref(true)} className="text-primary hover:underline">
+            {t('movement.showCorrected')}
+          </Link>
+        </div>
+      )}
+      {showCorrectedMovements && (
+        <div className="border-t border-border px-4 py-2.5 text-sm text-muted-foreground">
+          <Link href={movementVisibilityHref(false)} className="text-primary hover:underline">
+            {t('movement.hideCorrected')}
+          </Link>
+        </div>
+      )}
     </Card>
   );
 
