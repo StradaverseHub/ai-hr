@@ -70,7 +70,9 @@ export async function GET(req: Request) {
   const branch = (q.get('lhdnBranch') ?? '').slice(0, BRANCH_MAX).trim();
   const bytes = await renderCp22Batch(readCp22Template(), records, { lhdnBranch: branch || null });
 
-  const slug = records[0].employer.name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-|-$/g, '');
+  // ASCII-only, because Content-Disposition's plain `filename` is Latin-1. A legal name written entirely in
+  // a non-Latin script would otherwise leave `cp22--2026-07.pdf`, so it falls back to a word.
+  const slug = records[0].employer.name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'company';
   return new Response(Buffer.from(bytes), {
     headers: {
       'Content-Type': 'application/pdf',
