@@ -1100,9 +1100,11 @@
       "movement": {
         "title": "雇佣历史",
         "newEvent": "新建事件",
+        "exportExcel": "下载 Excel",
         "view": "查看",
         "columns": {
           "eventType": "事件类型",
+          "eventStatus": "事件状态",
           "effectiveDate": "生效日期",
           "company": "公司",
           "division": "事业部",
@@ -1111,7 +1113,8 @@
           "basic": "基本薪资",
           "endDate": "结束日期",
           "remarks": "备注",
-          "action": "操作"
+          "action": "操作",
+          "correctionReason": "更正原因"
         },
         "detail": {
           "eventInformation": "事件信息",

@@ -1100,9 +1100,11 @@
       "movement": {
         "title": "Employment History",
         "newEvent": "New Event",
+        "exportExcel": "Download Excel",
         "view": "View",
         "columns": {
           "eventType": "Event Type",
+          "eventStatus": "Event Status",
           "effectiveDate": "Effective Date",
           "company": "Company",
           "division": "Division",
@@ -1111,7 +1113,8 @@
           "basic": "Basic",
           "endDate": "End Date",
           "remarks": "Remarks",
-          "action": "Action"
+          "action": "Action",
+          "correctionReason": "Correction Reason"
         },
         "detail": {
           "eventInformation": "Event Information",

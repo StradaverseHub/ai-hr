@@ -122,6 +122,23 @@ export type MovementHistoryRow = {
   department: string | null;
   jobTitle: string | null;
   basic: string | null;
+  /**
+   * e6a144d4 — three columns the LIST does not draw, added for the Employment History download
+   * (lib/movement-export.ts). Additive only: the r78c eight-column table above is unchanged, and every
+   * existing consumer of this row keeps reading exactly what it read before.
+   *
+   * `section` is the flat `employment.org_section` column replayed as-of, identical in shape and reasoning
+   * to `division` above — the column holds only today's value, so an as-of read has to come from the ledger.
+   *
+   * `currency` / `basicAmount` are the two halves `basic` joins. The export needs the amount BARE: the
+   * xlsx writer marks a cell numeric only when it parses as a plain number (lib/report-export.ts), so
+   * "MYR 4500.00" lands as text an operator cannot sum. They are returned separately rather than re-split
+   * downstream — a formatted string this function assembled is not a parseable source of truth (a null
+   * compensation and a currency label containing a space both break the split).
+   */
+  section: string | null;
+  currency: string | null;
+  basicAmount: string | null;
 };
 
 /**
@@ -1067,7 +1084,7 @@ async function placementColumnsTx(tx: Tx, employmentId: string, companyId: strin
     .orderBy(asc(compensation.validFrom));
 
   const [empRow] = await tx
-    .select({ orgDivision: employment.orgDivision })
+    .select({ orgDivision: employment.orgDivision, orgSection: employment.orgSection })
     .from(employment)
     .where(eq(employment.id, employmentId))
     .limit(1);
@@ -1080,9 +1097,16 @@ async function placementColumnsTx(tx: Tx, employmentId: string, companyId: strin
     return {
       company: companyNames.get(companyIdAtSequence(companyEvents, seqBound, true, companyId)) ?? null,
       division: flatValueAtSequence(infoEvents, 'orgDivision', seqBound, empRow?.orgDivision ?? null),
+      // e6a144d4 — the same flat-column replay as `division` one line up; `orgSection` is already in
+      // MOVEMENT_FLAT_FIELDS, so a movement that moved Section has the before/after in its own event.
+      section: flatValueAtSequence(infoEvents, 'orgSection', seqBound, empRow?.orgSection ?? null),
       department: asg?.department ?? null,
       jobTitle: asg?.position ?? null,
       basic: comp ? `${comp.currency} ${comp.basicSalary}` : null,
+      // e6a144d4 — the two halves of `basic`, unjoined. See MovementHistoryRow: the export needs the
+      // amount bare or the spreadsheet cell is text.
+      currency: comp?.currency ?? null,
+      basicAmount: comp?.basicSalary ?? null,
     };
   };
 }

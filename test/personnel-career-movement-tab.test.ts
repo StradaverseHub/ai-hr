@@ -22,6 +22,12 @@ const NEW_EVENT = fs.readFileSync(
   path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-new-event.tsx'),
   'utf8',
 );
+// e6a144d4 — the event-type map, extracted out of the page so the Download Excel route shares it.
+const KIND_LABEL = fs.readFileSync(path.resolve(__dirname, '../lib/movement-kind-label.ts'), 'utf8');
+const EXPORT_ROUTE = fs.readFileSync(
+  path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-export/route.ts'),
+  'utf8',
+);
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 // Slice out the panels object body so we can assert WHICH panel each card lives in, not just that the
@@ -85,18 +91,27 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     expect(PAGE.includes("t('movement.view')")).toBe(true);
   });
 
+  // e6a144d4 — the switch MOVED to lib/movement-kind-label.ts so the Download Excel route prints the same
+  // caption the screen does. The invariant is unchanged (static keys, humanized fallback, no dynamic
+  // template) — it is now asserted where the map actually lives, plus a guard that the page did not keep a
+  // second copy of it.
   it('labels event types through a STATIC key map with a humanized fallback (no dynamic t() keys)', () => {
     for (const kind of [
       'hired', 'transfer', 'promotion', 'demotion', 'increment', 'salaryAdjustment', 'confirmation',
       'probationExtension', 'secondment', 'actingPosition', 'resignation', 'termination', 'blacklist',
       'blacklistCleared', 'orgAssignmentChange', 'reportingLineChange', 'employmentTypeChange', 'gradeChange',
     ]) {
-      expect(PAGE.includes(`t('movement.eventType.${kind}')`), `missing static label for ${kind}`).toBe(true);
+      expect(KIND_LABEL.includes(`t('movement.eventType.${kind}')`), `missing static label for ${kind}`).toBe(true);
     }
     // The fallback formatter for unknown/extensible kinds (never renders a raw key).
-    expect(/default: return kind\.replace/.test(PAGE)).toBe(true);
-    // No dynamic movement.eventType template anywhere.
+    expect(/default: return kind\.replace/.test(KIND_LABEL)).toBe(true);
+    // No dynamic movement.eventType template in EITHER file.
+    expect(KIND_LABEL.includes('movement.eventType.${')).toBe(false);
     expect(PAGE.includes('movement.eventType.${')).toBe(false);
+    // The page calls the shared resolver and holds no second copy of the map.
+    expect(PAGE.includes("from '@/lib/movement-kind-label'")).toBe(true);
+    expect(PAGE.includes('movementKindLabelOf(kind, movementTypeByCode.get(kind)?.label, t)')).toBe(true);
+    expect(PAGE.includes("t('movement.eventType.hired')"), 'the switch must not be duplicated on the page').toBe(false);
   });
 
   it('detail view renders the before/after comparison fields', () => {
@@ -381,6 +396,94 @@ describe('95d17761 — the Movement tab hides corrected records by default', () 
       expect(mv.correctedHidden, `messages/${loc}.json movement.correctedHidden lost {count}`).toContain(
         '{count, plural,',
       );
+    }
+  });
+});
+
+/**
+ * e6a144d4 — "Download Excel on the Movement tab".
+ *
+ * The builder itself is unit-tested in test/movement-export.test.ts. What only source can show is the
+ * WIRING the reporter approved on the mockup: a Download Excel control beside New Event, and an action bar
+ * that survives termination while New Event does not.
+ */
+describe('Movement tab — Download Excel (e6a144d4)', () => {
+  /** The Employment History card's action bar, from the card's opening paren to the table container. */
+  const actionBar = (() => {
+    const from = PAGE.indexOf('const employmentHistoryCard = (');
+    const to = PAGE.indexOf('<div className="overflow-x-auto">', from);
+    expect(from, 'employmentHistoryCard not found').toBeGreaterThan(-1);
+    expect(to, 'the table container not found').toBeGreaterThan(from);
+    return PAGE.slice(from, to);
+  })();
+
+  /** The body of the `{canCreateMovement && ( … )}` block inside the bar, paren-balanced. */
+  const gateBlock = (() => {
+    const start = actionBar.indexOf('{canCreateMovement && (');
+    if (start === -1) return '';
+    let i = actionBar.indexOf('(', actionBar.indexOf('&&', start));
+    let depth = 0;
+    for (; i < actionBar.length; i++) {
+      if (actionBar[i] === '(') depth++;
+      else if (actionBar[i] === ')' && --depth === 0) break;
+    }
+    return actionBar.slice(start, i + 1);
+  })();
+
+  it('puts a Download Excel control in the Employment History action bar', () => {
+    expect(actionBar.includes("t('movement.exportExcel')"), 'no Download Excel control on the card').toBe(true);
+    // A plain link straight at the route: one click, the file downloads, no approval step and no waiting.
+    expect(actionBar.includes('/movement-export')).toBe(true);
+  });
+
+  it('the bar is OUTSIDE the canCreateMovement gate, and only New Event is inside it', () => {
+    // This is the whole of the terminated-employee promise: exit paperwork is exactly when the record is
+    // asked for, so the bar must not vanish with the writer.
+    expect(gateBlock, 'the canCreateMovement gate disappeared from the bar').not.toBe('');
+    expect(gateBlock.includes("t('movement.newEvent')"), 'New Event must stay gated').toBe(true);
+    expect(gateBlock.includes("t('movement.exportExcel')"), 'the download must NOT be gated').toBe(false);
+    // …and the bar's own container is not itself wrapped in the gate.
+    const barDiv = actionBar.indexOf('border-b border-border px-4 py-2');
+    const gateAt = actionBar.indexOf('{canCreateMovement && (');
+    expect(barDiv).toBeGreaterThan(-1);
+    expect(barDiv, 'the action bar container is still inside the gate').toBeLessThan(gateAt);
+  });
+
+  it('the route reads the COMPLETE history — 95d17761 is a view filter and the file ignores it', () => {
+    expect(EXPORT_ROUTE.includes('movementHistory(s, employmentId)')).toBe(true);
+    // The one assertion this item turns on: applying the screen's filter here would silently drop the
+    // rolled-back, cancelled, corrected and superseded events the reporter explicitly asked to keep.
+    // Matched on the CALL and the IMPORT, not the bare name — the route names the filter in prose to say
+    // why it does not use it, and a guard that forbids explaining itself would get the comment deleted.
+    expect(EXPORT_ROUTE.includes('partitionMovementRows('), 'the download must not apply the view filter').toBe(false);
+    expect(EXPORT_ROUTE.includes("from '@/lib/movement-visibility'")).toBe(false);
+  });
+
+  it('the route matches the page guard, reuses the shared writer, and writes nothing', () => {
+    expect(EXPORT_ROUTE.includes('await scopedAdmin()')).toBe(true);
+    expect(EXPORT_ROUTE.includes('await employeeDetail(s, employmentId)')).toBe(true);
+    expect(EXPORT_ROUTE.includes("return new Response('Not found', { status: 404 })")).toBe(true);
+    expect(/UUID_RE\s*=\s*\/\^\[0-9a-f\]\{8\}/.test(EXPORT_ROUTE)).toBe(true);
+    // No fifth serializer — the shared ADR-0047 writer, exactly like the three export routes before it.
+    expect(EXPORT_ROUTE.includes("from '@/lib/report-export'")).toBe(true);
+    expect(EXPORT_ROUTE.includes('toXlsxReport(data)')).toBe(true);
+    // Read-only: downloading a report mutates nothing, so no DomainEvent (the precedents' posture).
+    expect(EXPORT_ROUTE.includes('appendEvent')).toBe(false);
+    // A raw non-Latin-1 filename makes the Response constructor THROW and the download 500s.
+    expect(EXPORT_ROUTE.includes("filename*=UTF-8''")).toBe(true);
+    expect(EXPORT_ROUTE.includes('contentDisposition(data.filename, file.ext)')).toBe(true);
+  });
+
+  it('has the three new captions in all six locales (no raw key at runtime)', () => {
+    for (const loc of LOCALES) {
+      const msg = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
+      const mv = msg?.people?.detail?.movement ?? {};
+      expect(typeof mv.exportExcel, `messages/${loc}.json missing movement.exportExcel`).toBe('string');
+      expect((mv.exportExcel as string).length).toBeGreaterThan(0);
+      for (const k of ['eventStatus', 'correctionReason']) {
+        expect(typeof mv.columns?.[k], `messages/${loc}.json missing movement.columns.${k}`).toBe('string');
+        expect((mv.columns[k] as string).length).toBeGreaterThan(0);
+      }
     }
   });
 });

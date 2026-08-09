@@ -350,6 +350,9 @@ describe('r78c — one movement, one Employment History row', () => {
       departmentId: b.deptB,
       positionId: pos2.id,
       orgDivision: 'Northern',
+      // e6a144d4 — Section joins the projection for the Employment History download. It is a flat column
+      // exactly like Division, so it is moved here in the same movement and replayed the same way.
+      orgSection: 'Treasury',
       basicSalary: 7000,
     });
 
@@ -372,6 +375,23 @@ describe('r78c — one movement, one Employment History row', () => {
     // Hired row shows the value before the movement (none) and the movement's row shows what it set.
     expect(hired.division, 'the flat column replayed, not read live').toBeNull();
     expect(transfer.division).toBe('Northern');
+
+    // e6a144d4 — Section reconstructs as-of by the SAME replay. The screen has never shown it; the
+    // download does, so a live read here would print today's Section against a row from years ago.
+    expect(hired.section, 'the flat column replayed, not read live').toBeNull();
+    expect(transfer.section).toBe('Treasury');
+
+    // e6a144d4 — the two halves of `basic`, returned unjoined so the file can put a real figure in the
+    // Basic Salary cell. They must AGREE with the joined string, not be a second source of truth.
+    expect(hired.currency).toBe('MYR');
+    expect(hired.basicAmount).toBe('3000.00');
+    expect(transfer.currency).toBe('MYR');
+    expect(transfer.basicAmount).toBe('7000.00');
+    for (const r of [hired, transfer]) {
+      expect(`${r.currency} ${r.basicAmount}`, 'currency + amount must rebuild `basic` exactly').toBe(r.basic);
+      // The whole point: the amount is bare, so the spreadsheet writer marks the cell numeric.
+      expect(r.basicAmount).toMatch(/^-?\d+(\.\d+)?$/);
+    }
   });
 
   it('(6) the columns reach the reader — the page renders every projection field', () => {
