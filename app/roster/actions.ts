@@ -73,7 +73,10 @@ export async function accrueToilAction(input: {
     };
   } catch (e) {
     if (e instanceof ToilFirstScheduleConsentRequiredError) return { ok: false, needsConsent: true };
-    return { ok: false, error: (e as Error).message };
+    // Same treatment as its neighbours: this message is toasted too, and the file's rule is that none of
+    // them may be the driver's. No GATING is added here — who may bank a rest day in lieu is TOIL's
+    // question, not the roster's, and answering it in this file would be a different change.
+    return { ok: false, error: readableError(e) };
   }
 }
 
