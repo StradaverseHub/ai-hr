@@ -3,7 +3,16 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { assignShift, assignShiftBulk, clearRoster, copyRoster, generateRosterFromTemplate, setRestDay } from '@/core/roster';
+import {
+  assertRosterDatesWritable,
+  assignRosterRow,
+  assignShift,
+  assignShiftBulk,
+  clearRoster,
+  copyRoster,
+  generateRosterFromTemplate,
+  setRestDay,
+} from '@/core/roster';
 import { accrueToil, ToilFirstScheduleConsentRequiredError } from '@/core/toil';
 
 export type CellResult = { ok: true } | { ok: false; error: string };
@@ -40,11 +49,15 @@ export async function accrueToilAction(input: {
 }
 
 /** Apply a "brush" to one (employee, date) cell of the roster grid: a shift id, 'rest', or 'clear'.
- *  Returns the outcome to the client island (no navigation). */
+ *  Returns the outcome to the client island (no navigation).
+ *
+ *  23390097 — the past-date right is RE-CHECKED here. The grid disables those cells for a non-admin, but
+ *  a disabled button is an affordance, not a guard: the action is reachable directly. */
 export async function assignCellAction(input: { employmentId: string; shiftDate: string; brush: string }): Promise<CellResult> {
   const s = await getSession();
   const { employmentId, shiftDate, brush } = input;
   try {
+    assertRosterDatesWritable(s, [shiftDate]);
     if (brush === 'rest') await setRestDay(s, { employmentId, shiftDate });
     else if (brush === 'clear') await clearRoster(s, { employmentId, shiftDate });
     else await assignShift(s, { employmentId, shiftDate, shiftId: brush });
@@ -62,6 +75,7 @@ export async function bulkAssignAction(input: {
 }): Promise<CellResult> {
   const s = await getSession();
   try {
+    assertRosterDatesWritable(s, input.shiftDates);
     if (input.brush === 'clear') {
       for (const employmentId of input.employmentIds) {
         for (const shiftDate of input.shiftDates) await clearRoster(s, { employmentId, shiftDate });
@@ -73,6 +87,29 @@ export async function bulkAssignAction(input: {
     } else {
       await assignShiftBulk(s, { employmentIds: input.employmentIds, shiftDates: input.shiftDates, shiftId: input.brush });
     }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/**
+ * 23390097 — the row Edit panel: ONE employee, several ticked dates, one shift.
+ *
+ * It routes through assignRosterRow, NOT bulkAssignAction. The bulk primitives write a single summary
+ * event with a shift id and counts — no per-date row and no previous shift — and requirement 10 asks the
+ * Audit Trail for exactly those. One employee × at most 31 dates is bounded, so the per-date events the
+ * bulk path exists to avoid are affordable here. assignRosterRow re-checks the past-date right too.
+ */
+export async function rowAssignAction(input: {
+  employmentId: string;
+  shiftDates: string[];
+  brush: string;
+}): Promise<CellResult> {
+  const s = await getSession();
+  try {
+    await assignRosterRow(s, input);
+    revalidatePath('/roster');
     return { ok: true };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
@@ -101,7 +138,7 @@ export async function generateRosterAction(formData: FormData) {
   }
   revalidatePath('/roster');
   redirect(
-    `/roster?companyId=${companyId}&week=${from}&generated=${summary.employments}.${summary.workingRows}.${summary.restRows}`,
+    `/roster?companyId=${companyId}&month=${from.slice(0, 7)}&generated=${summary.employments}.${summary.workingRows}.${summary.restRows}`,
   );
 }
 
@@ -126,5 +163,5 @@ export async function copyRosterAction(formData: FormData) {
     redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/roster');
-  redirect(`/roster?companyId=${companyId}&week=${targetFrom}&copied=${summary.copied}`);
+  redirect(`/roster?companyId=${companyId}&month=${targetFrom.slice(0, 7)}&copied=${summary.copied}`);
 }

@@ -24,8 +24,9 @@ import {
 } from '../db/schema';
 import { isoWeekday, netScheduledMinutes, shiftSpan } from './attendance';
 import { approvedLeaveDates } from './leave';
-import { listEmployeesPage } from './read';
+import { listEmployees, listEmployeesPage } from './read';
 import { isAdmin } from '../lib/authz';
+import { cellKey, monthDates, monthRange, type AssignedCell, type UsualShift } from '../lib/roster-month';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -1337,8 +1338,22 @@ export async function assignShiftBulk(
  *  mirroring assignShiftBulk's idempotent upsert. ONE thin summary event (per-row roster.rest-day.set
  *  events would spam the log at scale — documented skip, same rationale as assignShiftBulk), anchored on
  *  the driving shift template exactly like roster.bulk.assigned. */
-export async function setRestDayBulk(ctx: SessionContext, p: { employmentIds: string[]; shiftDates: string[]; forShiftId: string }) {
+export async function setRestDayBulk(
+  ctx: SessionContext,
+  p: {
+    employmentIds: string[];
+    shiftDates: string[];
+    /** The shift template that DROVE these rest days (the generator's case). */
+    forShiftId?: string | null;
+    /** 23390097 — an upload's rest days are not driven by any shift, so it anchors on its company
+     *  instead. Anchoring them on an arbitrary shift would put an event on a row that had nothing to
+     *  do with the change; one of the two must be supplied. */
+    anchorId?: string;
+  },
+) {
   if (p.employmentIds.length === 0 || p.shiftDates.length === 0) return { rested: 0 };
+  const anchorId = p.forShiftId ?? p.anchorId;
+  if (!anchorId) throw new Error('setRestDayBulk needs forShiftId or anchorId to anchor its event');
   const values = p.employmentIds.flatMap((employmentId) =>
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: null, isRestDay: true })),
   );
@@ -1353,10 +1368,15 @@ export async function setRestDayBulk(ctx: SessionContext, p: { employmentIds: st
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'roster-assignment',
-      aggregateId: p.forShiftId,
+      aggregateId: anchorId,
       eventType: 'roster.bulk.rest-day.set',
       actor: actorOf(ctx),
-      payload: { shiftId: p.forShiftId, employmentCount: p.employmentIds.length, dateCount: p.shiftDates.length, rows: values.length },
+      payload: {
+        shiftId: p.forShiftId ?? null,
+        employmentCount: p.employmentIds.length,
+        dateCount: p.shiftDates.length,
+        rows: values.length,
+      },
     });
     return { rested: values.length };
   });
@@ -1589,6 +1609,107 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
       .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
       .where(inArray(employment.id, employmentIds)),
   );
+}
+
+/** One row of the month grid's pinned block. Every field comes from listEmployees, which already
+ *  returns them — the month view adds no new read for the filters. */
+export type RosterMonthEmployee = {
+  employmentId: string;
+  name: string;
+  code: string | null;
+  department: string | null;
+  departmentId: string | null;
+  businessUnit: string | null;
+  businessUnitId: string | null;
+  occupation: string | null;
+};
+
+export type RosterMonthView = {
+  month: string;
+  from: string;
+  to: string;
+  dates: string[];
+  /** After Business Group / Department / Employee filtering — what the grid draws. */
+  employees: RosterMonthEmployee[];
+  /** Before filtering — what the filter dropdowns are built from, so choosing one never empties them. */
+  allEmployees: RosterMonthEmployee[];
+  shifts: { id: string; code: string | null; name: string; startTime: string; endTime: string }[];
+  /** `employmentId|date` → what is STORED (null for the dates nobody rostered). */
+  cells: Record<string, AssignedCell>;
+  /** employmentId → usual shift, for the grey ghost cells and the OFF markers. */
+  usual: Record<string, UsualShift>;
+  usualNames: Record<string, { code: string | null; name: string }>;
+};
+
+/**
+ * THE month view, read once and shared by the screen and the export so the file can never disagree with
+ * what was on screen. Filtering is in-memory over listEmployees' already-RLS-fenced rows: the caller sees
+ * only the people they are responsible for, and the Business Group / Department / Employee filters narrow
+ * that further without a second query.
+ */
+export async function rosterMonthView(
+  ctx: SessionContext,
+  p: { companyId: string; month: string; businessUnitId?: string; departmentId?: string; q?: string },
+): Promise<RosterMonthView> {
+  const { from, to } = monthRange(p.month);
+  const dates = monthDates(p.month);
+  const [employeeRows, shiftRows, roster] = await Promise.all([
+    listEmployees(ctx, [p.companyId]),
+    listShiftsForTenant(ctx),
+    rosterForRange(ctx, { from, to }),
+  ]);
+
+  const allEmployees: RosterMonthEmployee[] = employeeRows
+    .filter((e) => !e.terminatedOn)
+    .map((e) => ({
+      employmentId: e.employmentId,
+      name: e.name,
+      code: e.employeeCode,
+      department: e.department,
+      departmentId: e.departmentId,
+      businessUnit: e.businessUnit,
+      businessUnitId: e.businessUnitId,
+      occupation: e.position,
+    }));
+
+  const needle = (p.q ?? '').trim().toLowerCase();
+  const employees = allEmployees.filter(
+    (e) =>
+      (!p.businessUnitId || e.businessUnitId === p.businessUnitId) &&
+      (!p.departmentId || e.departmentId === p.departmentId) &&
+      (needle === '' || e.name.toLowerCase().includes(needle) || (e.code ?? '').toLowerCase().includes(needle)),
+  );
+
+  const visible = new Set(employees.map((e) => e.employmentId));
+  const cells: Record<string, AssignedCell> = {};
+  for (const r of roster) {
+    if (!visible.has(r.employmentId)) continue;
+    cells[cellKey(r.employmentId, r.shiftDate)] = r.isRestDay
+      ? { kind: 'rest' }
+      : r.shiftId
+        ? { kind: 'shift', shiftId: r.shiftId }
+        : null;
+  }
+
+  const usual: Record<string, UsualShift> = {};
+  const usualNames: Record<string, { code: string | null; name: string }> = {};
+  for (const u of await usualShiftsFor(ctx, [...visible])) {
+    usual[u.employmentId] = { shiftId: u.shiftId, pattern: u.pattern };
+    usualNames[u.shiftId] = { code: u.code, name: u.name };
+  }
+
+  return {
+    month: p.month,
+    from,
+    to,
+    dates,
+    employees,
+    allEmployees,
+    shifts: shiftRows.map((s) => ({ id: s.id, code: s.code, name: s.name, startTime: s.startTime, endTime: s.endTime })),
+    cells,
+    usual,
+    usualNames,
+  };
 }
 
 /**

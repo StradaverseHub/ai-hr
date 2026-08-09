@@ -1,32 +1,46 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listDepartments, listEmployees } from '@/core/read';
-import { listShiftsForTenant, rosterForRange, rosterVariance } from '@/core/roster';
+import { isAdmin } from '@/lib/authz';
+import { listCompanies, listDepartments } from '@/core/read';
+import { rosterMonthView, rosterVariance } from '@/core/roster';
 import { listToilPolicies } from '@/core/toil';
-import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { RosterGrid } from '@/components/roster-grid';
+import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
+import { RosterGrid, RosterTemplateButton } from '@/components/roster-grid';
 import { ToilElectButton } from '@/components/toil-elect-button';
 import { copyRosterAction, generateRosterAction } from './actions';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { addDaysIso, addMonths, isMonthParam, monthOf, shiftCodeOf } from '@/lib/roster-month';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
-const DAY = 86_400_000;
-const mondayOf = (iso: string): string => {
-  const d = new Date(`${iso}T00:00:00Z`);
-  return new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY).toISOString().slice(0, 10);
-};
-const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
-
 /**
- * Roster scheduling (ADR-0032 C3) — build the weekly shift roster for one company's employees. Manager/
- * admin only via RLS (can_admin_employment). Define shifts, then paint them onto the employee × week grid.
+ * Roster scheduling (ADR-0032 C3) — the MONTHLY shift roster for one company's employees. Manager/admin
+ * only via RLS (can_admin_employment).
+ *
+ * 23390097 turned this screen from a seven-day window into a month: one column per date, the identity
+ * columns pinned left, weekends shaded, Business Group / Department / Employee filters and a Query
+ * button, an Excel round trip, and an export. The DATA LAYER did not move — roster_assignment already
+ * held (employment, date, shift, is_rest_day) and every attendance, lateness and overtime figure is
+ * already measured against it. This was a screen problem.
+ *
+ * Roster deliberately stays BESIDE Attendance in the sidebar rather than inside it: the Attendance menu
+ * is administrators-only, and a supervisor who is not an administrator still needs the roster. Uploading
+ * is administrators-only either way — that button is gated below and /roster/import calls requireAdmin.
  */
 export default async function RosterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ companyId?: string; week?: string; error?: string; generated?: string; copied?: string }>;
+  searchParams: Promise<{
+    companyId?: string;
+    month?: string;
+    bu?: string;
+    dept?: string;
+    q?: string;
+    error?: string;
+    generated?: string;
+    copied?: string;
+  }>;
 }) {
   const { s, scopeIds } = await scopedSession();
   const t = await getTranslations('roster');
@@ -44,18 +58,23 @@ export default async function RosterPage({
   }
   const companyId = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : companies[0].id;
   const todayIso = todayInKualaLumpur();
-  const weekStart = mondayOf(sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? sp.week : todayIso);
-  const weekEnd = addDays(weekStart, 6);
+  const month = isMonthParam(sp.month) ? sp.month : monthOf(todayIso);
+  const admin = isAdmin(s);
 
-  const [employees, shifts, roster, variance, toilPolicies, departments] = await Promise.all([
-    listEmployees(s, [companyId]),
-    // R33 f21d6eee — the shared shift library (tenant-wide); any shift can be painted onto any employee.
-    listShiftsForTenant(s),
-    rosterForRange(s, { from: weekStart, to: weekEnd }),
-    rosterVariance(s, { from: weekStart, to: weekEnd, companyIds: [companyId], today: todayIso }),
+  const view = await rosterMonthView(s, {
+    companyId,
+    month,
+    ...(sp.bu ? { businessUnitId: sp.bu } : {}),
+    ...(sp.dept ? { departmentId: sp.dept } : {}),
+    ...(sp.q ? { q: sp.q } : {}),
+  });
+
+  const [variance, toilPolicies, departments] = await Promise.all([
+    rosterVariance(s, { from: view.from, to: view.to, companyIds: [companyId], today: todayIso }),
     listToilPolicies(s, [companyId]),
     listDepartments(s, { companyIds: [companyId] }),
   ]);
+
   // Success banner for the roster generator: "employments.workingRows.restRows" packed by the action.
   const gen = sp.generated && /^\d+\.\d+\.\d+$/.test(sp.generated) ? sp.generated.split('.').map(Number) : null;
   // R17 3e8350db — success banner for "copy roster": the number of rows copied onto the target window.
@@ -75,31 +94,53 @@ export default async function RosterPage({
     short: t('kindShort'),
     rest_worked: t('kindRestWorked'),
   };
-  const activeEmployees = employees.filter((e) => !e.terminatedOn);
-  const empIds = new Set(activeEmployees.map((e) => e.employmentId));
-
-  const initial: Record<string, { kind: 'shift'; shiftId: string } | { kind: 'rest' } | null> = {};
-  for (const r of roster) {
-    if (!empIds.has(r.employmentId)) continue;
-    initial[`${r.employmentId}|${r.shiftDate}`] = r.isRestDay
-      ? { kind: 'rest' }
-      : r.shiftId
-        ? { kind: 'shift', shiftId: r.shiftId }
-        : null;
-  }
 
   const dowFmt = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' });
-  const dayFmt = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' });
-  const weekDates = Array.from({ length: 7 }, (_, i) => {
-    const iso = addDays(weekStart, i);
+  const dayFmt = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+  const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const gridDates = view.dates.map((iso) => {
     const d = new Date(`${iso}T00:00:00Z`);
     return { iso, dow: dowFmt.format(d), day: dayFmt.format(d) };
   });
-  const weekHref = (w: string) => `/roster?companyId=${companyId}&week=${w}`;
+  const monthLabel = monthFmt.format(new Date(`${view.from}T00:00:00Z`));
+
+  // Filter dropdown values come from the employees this session can already see, so a Business Group
+  // with nobody in it never appears and a supervisor is never offered somebody else's department.
+  const buOptions = dedupe(view.allEmployees.map((e) => ({ id: e.businessUnitId, name: e.businessUnit })));
+  const deptOptions = dedupe(view.allEmployees.map((e) => ({ id: e.departmentId, name: e.department })));
+
+  const qs = (over: Record<string, string | undefined>) => {
+    const p = new URLSearchParams({ companyId, month });
+    if (sp.bu) p.set('bu', sp.bu);
+    if (sp.dept) p.set('dept', sp.dept);
+    if (sp.q) p.set('q', sp.q);
+    for (const [k, v] of Object.entries(over)) {
+      if (v == null || v === '') p.delete(k);
+      else p.set(k, v);
+    }
+    return p.toString();
+  };
+  const monthHref = (m: string) => `/roster?${qs({ month: m })}`;
   const navBtn = 'rounded-md border border-border px-2.5 py-1 text-sm text-foreground hover:bg-muted';
 
+  // The Excel template is the month grid PRE-FILLED WITH WHAT IS ROSTERED — never with the grey ghosts.
+  // A ghosted day has no stored row; writing its code into the template and sending it back would harden
+  // every un-rostered day into an explicit assignment, which is not what "prepare the month" means.
+  const shiftCodeById = new Map(view.shifts.map((sh) => [sh.id, shiftCodeOf(sh)]));
+  const templateHeader = [t('colEmployeeNo'), t('colEmployeeName'), t('colDepartment'), t('colOccupation'), ...view.dates];
+  const templateRows = view.employees.map((e) => [
+    e.code ?? '',
+    e.name,
+    e.department ?? '',
+    e.occupation ?? '',
+    ...view.dates.map((iso) => {
+      const c = view.cells[`${e.employmentId}|${iso}`] ?? null;
+      return c == null ? '' : c.kind === 'rest' ? 'RD' : (shiftCodeById.get(c.shiftId) ?? '');
+    }),
+  ]);
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={sp.error} />
       {gen && (
@@ -116,7 +157,7 @@ export default async function RosterPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         {companies.length > 1 ? (
           <form method="get" className="flex items-center gap-2">
-            <input type="hidden" name="week" value={weekStart} />
+            <input type="hidden" name="month" value={month} />
             <select name="companyId" defaultValue={companyId} className={inputCls}>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -129,21 +170,85 @@ export default async function RosterPage({
         ) : (
           <span className="text-sm font-medium">{companies[0].name}</span>
         )}
-        <div className="flex items-center gap-2">
-          <Link href={weekHref(addDays(weekStart, -7))} className={navBtn} aria-label={t('prevWeek')}>
-            ‹
-          </Link>
-          <span className="text-sm text-muted-foreground">
-            {weekDates[0].day} – {weekDates[6].day}
-          </span>
-          <Link href={weekHref(addDays(weekStart, 7))} className={navBtn} aria-label={t('nextWeek')}>
-            ›
-          </Link>
-          <Link href={weekHref(todayIso)} className={navBtn}>
-            {t('thisWeek')}
+        <div className="flex flex-wrap items-center gap-2">
+          {admin && (
+            <Link href={`/roster/import?companyId=${companyId}&month=${month}`} className={navBtn}>
+              {t('uploadRoster')}
+            </Link>
+          )}
+          <RosterTemplateButton
+            header={templateHeader}
+            rows={templateRows}
+            month={month}
+            codes={view.shifts.map((sh) => shiftCodeOf(sh))}
+            label={t('downloadTemplate')}
+            notesTitle={t('templateNotesTitle')}
+            notes={[
+              t('templateNoteBlank'),
+              t('templateNoteCode'),
+              t('templateNoteRd'),
+              t('templateNoteOff'),
+              t('templateNoteMonth', { month }),
+            ]}
+            failedLabel={t('templateFailed')}
+          />
+          <Link href={`/roster/export?${qs({ format: 'xlsx' })}`} className={navBtn} prefetch={false}>
+            {t('exportLabel')}
           </Link>
         </div>
       </div>
+
+      {/* Filters — Business Group, Department, Employee, Month, and a Query button, exactly the row the
+          reporter's own screen carries. A plain GET form: the URL is the state, so a filtered month is
+          shareable and the export link below carries the same narrowing. */}
+      <Card>
+        <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-3">
+          <input type="hidden" name="companyId" value={companyId} />
+          <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t('filterBusinessGroup')}
+            <select name="bu" defaultValue={sp.bu ?? ''} className={inputCls}>
+              <option value="">{t('filterAll')}</option>
+              {buOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t('filterDepartment')}
+            <select name="dept" defaultValue={sp.dept ?? ''} className={inputCls}>
+              <option value="">{t('filterAll')}</option>
+              {deptOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t('filterEmployee')}
+            <input name="q" defaultValue={sp.q ?? ''} placeholder={t('filterEmployeePlaceholder')} className={inputCls} />
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t('filterMonth')}
+            <input type="month" name="month" defaultValue={month} className={inputCls} />
+          </label>
+          <button className={btnPrimary}>{t('query')}</button>
+          <span className="ml-auto flex items-center gap-2">
+            <Link href={monthHref(addMonths(month, -1))} className={navBtn} aria-label={t('prevMonth')}>
+              ‹
+            </Link>
+            <span className="text-sm text-muted-foreground">{monthLabel}</span>
+            <Link href={monthHref(addMonths(month, 1))} className={navBtn} aria-label={t('nextMonth')}>
+              ›
+            </Link>
+            <Link href={monthHref(monthOf(todayIso))} className={navBtn}>
+              {t('thisMonth')}
+            </Link>
+          </span>
+        </form>
+      </Card>
 
       {/* Configurable Multi-Shift Attendance Management: shift setup moved to Attendance Policy (admin-only).
           This screen is now purely for assigning shifts onto the calendar; the hint points anyone who looks
@@ -151,19 +256,48 @@ export default async function RosterPage({
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
           <span className="text-muted-foreground">{t('manageShiftsHint')}</span>
-          <Link
-            href="/admin/attendance"
-            className="font-medium text-primary hover:underline"
-          >
+          <Link href="/admin/attendance" className="font-medium text-primary hover:underline">
             {t('manageShiftsLink')} →
           </Link>
         </div>
       </Card>
 
       <Card>
+        <SectionHeader title={t('monthlyRoster')} count={view.employees.length} />
+        <div className="px-4 py-3">
+          {view.employees.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('noEmployees')}</p>
+          ) : view.shifts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('createShiftFirst')}</p>
+          ) : (
+            <RosterGrid
+              dates={gridDates}
+              employees={view.employees.map((e) => ({
+                employmentId: e.employmentId,
+                name: e.name,
+                code: e.code,
+                department: e.department,
+                occupation: e.occupation,
+              }))}
+              shifts={view.shifts}
+              initial={view.cells}
+              usual={view.usual}
+              isAdmin={admin}
+              today={todayIso}
+              month={month}
+              companyName={companies.find((c) => c.id === companyId)?.name ?? ''}
+            />
+          )}
+        </div>
+      </Card>
+
+      {/* R7 Phase 2 — generate a roster window from a shift's weekly pattern. KEPT (with its dates
+          retargeted to the month on screen): it and Copy roster are the only bulk roster tools today, and
+          dropping them while adding an upload would be a regression dressed as a feature. */}
+      <Card>
         <SectionHeader title={t('generate')} />
         <div className="space-y-3 px-4 py-3">
-          {shifts.length === 0 ? (
+          {view.shifts.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('createShiftFirst')}</p>
           ) : (
             <form action={generateRosterAction} className="flex flex-wrap items-end gap-2">
@@ -171,7 +305,7 @@ export default async function RosterPage({
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('shifts')}
                 <select name="shiftId" required className={inputCls}>
-                  {shifts.map((sh) => (
+                  {view.shifts.map((sh) => (
                     <option key={sh.id} value={sh.id}>
                       {sh.code ? `${sh.code} · ` : ''}
                       {sh.name}
@@ -194,7 +328,7 @@ export default async function RosterPage({
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('employee')}
                 <select name="employmentIds" multiple size={4} className={`${inputCls} min-w-44`} aria-label={t('scopeEmployees')}>
-                  {activeEmployees.map((e) => (
+                  {view.employees.map((e) => (
                     <option key={e.employmentId} value={e.employmentId}>
                       {e.name}
                     </option>
@@ -204,9 +338,9 @@ export default async function RosterPage({
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('dateRange')}
                 <span className="flex items-center gap-1.5">
-                  <input type="date" name="from" required defaultValue={weekStart} className={inputCls} />
+                  <input type="date" name="from" required defaultValue={view.from} className={inputCls} />
                   <span className="text-xs text-muted-foreground">–</span>
-                  <input type="date" name="to" required defaultValue={addDays(weekStart, 27)} className={inputCls} />
+                  <input type="date" name="to" required defaultValue={view.to} className={inputCls} />
                 </span>
               </label>
               <button className={btnPrimary}>{t('generate')}</button>
@@ -218,53 +352,41 @@ export default async function RosterPage({
 
       {/* R17 3e8350db — "Copy roster schedules from previous weeks or months". Copies every roster row from a
           source window forward onto a target window starting at targetFrom, preserving each row's day-offset.
-          Scoped to this company's active employees (posted as hidden employmentIds). Defaults: source = the
-          previous week, target = the current week. */}
+          Scoped to this company's active employees (posted as hidden employmentIds). Defaults now: source =
+          the PREVIOUS month, target = the month on screen. */}
       <Card>
         <SectionHeader title={t('copyTitle')} />
         <div className="space-y-3 px-4 py-3">
-          {activeEmployees.length === 0 ? (
+          {view.employees.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('noEmployees')}</p>
           ) : (
             <form action={copyRosterAction} className="flex flex-wrap items-end gap-2">
               <input type="hidden" name="companyId" value={companyId} />
-              {activeEmployees.map((e) => (
+              {view.employees.map((e) => (
                 <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
               ))}
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('copySource')}
                 <span className="flex items-center gap-1.5">
-                  <input type="date" name="sourceFrom" required defaultValue={addDays(weekStart, -7)} className={inputCls} />
+                  <input
+                    type="date"
+                    name="sourceFrom"
+                    required
+                    defaultValue={`${addMonths(month, -1)}-01`}
+                    className={inputCls}
+                  />
                   <span className="text-xs text-muted-foreground">–</span>
-                  <input type="date" name="sourceTo" required defaultValue={addDays(weekStart, -1)} className={inputCls} />
+                  <input type="date" name="sourceTo" required defaultValue={addDaysIso(view.from, -1)} className={inputCls} />
                 </span>
               </label>
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('copyTargetStart')}
-                <input type="date" name="targetFrom" required defaultValue={weekStart} className={inputCls} />
+                <input type="date" name="targetFrom" required defaultValue={view.from} className={inputCls} />
               </label>
               <button className={btnPrimary}>{t('copyButton')}</button>
             </form>
           )}
           <p className="text-xs text-muted-foreground">{t('copyHint')}</p>
-        </div>
-      </Card>
-
-      <Card>
-        <SectionHeader title={t('weeklyRoster')} count={activeEmployees.length} />
-        <div className="px-4 py-3">
-          {activeEmployees.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('noEmployees')}</p>
-          ) : shifts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('createShiftFirst')}</p>
-          ) : (
-            <RosterGrid
-              weekDates={weekDates}
-              employees={activeEmployees.map((e) => ({ employmentId: e.employmentId, name: e.name, code: e.employeeCode }))}
-              shifts={shifts.map((sh) => ({ id: sh.id, name: sh.name, startTime: sh.startTime, endTime: sh.endTime }))}
-              initial={initial}
-            />
-          )}
         </div>
       </Card>
 
@@ -294,4 +416,12 @@ export default async function RosterPage({
       )}
     </div>
   );
+}
+
+/** Distinct, named options for a filter dropdown, sorted by name. Rows with no value are dropped —
+ *  "unassigned" is not a Business Group you can filter to. */
+function dedupe(rows: { id: string | null; name: string | null }[]): { id: string; name: string }[] {
+  const out = new Map<string, string>();
+  for (const r of rows) if (r.id && r.name) out.set(r.id, r.name);
+  return [...out].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
 }
