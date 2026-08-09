@@ -441,6 +441,126 @@ export function complianceWorklist(
   });
 }
 
+// ── CP22 month cohort (db46d9a2) ────────────────────────────────────────────
+/**
+ * Who started at one company in one CALENDAR MONTH, and whether their CP22 pages will come out complete.
+ *
+ * WHY IT IS A SECOND READ RATHER THAN A PARAMETER ON `complianceWorklist`. That read is a DEADLINE ALARM:
+ * hires in the last 60 days and cessations in a 150-day band around today, ranked overdue → due soon →
+ * upcoming, so it answers "what is outstanding right now". This one answers a different question — "who
+ * started in July 2026" — for any month, including one years past whose deadline is long gone and for
+ * which no status is meaningful. Widening the worklist's window would have made its statuses lie, so the
+ * worklist is untouched and this sits beside it.
+ *
+ * GATED IDENTICALLY to the worklist and to `cp22Particulars`: RLS decides which employments are visible at
+ * all, and the company's pack decides whether the form applies. A company whose jurisdiction no pack owns
+ * gets `null`, not an empty month — CP22 is an LHDN form, and "nobody started in July" is a different (and
+ * false) statement from "this company has no CP22". The route turns that null into the same 404 an unknown
+ * company gets, and the screen draws no card at all.
+ *
+ * TERMINATED EMPLOYMENTS ARE INCLUDED. Someone hired in July and gone in August still needed a CP22 for
+ * the hire, and the notice is often what a late filing is chasing.
+ *
+ * NO MISSING-HIRE-DATE BRANCH EXISTS, because `employment.hiredOn` is `.notNull()` (db/schema.ts) — an
+ * employment record cannot exist without one, so nobody can be silently dropped from this list for want of
+ * a date. The readiness flags below are the honest equivalent: they name what a page will be MISSING.
+ */
+export type Cp22CohortRow = {
+  employmentId: string;
+  name: string;
+  /** ISO yyyy-mm-dd, inside the requested month by construction. */
+  hiredOn: string;
+  /** An IC number OR a passport number is on file — the form takes either. */
+  hasIdentityNo: boolean;
+  /** An LHDN income tax number is on file. */
+  hasTaxNo: boolean;
+};
+
+export type Cp22MonthCohort = {
+  /** yyyy-mm, echoed back so a caller cannot mismatch the list against the month it asked for. */
+  periodKey: string;
+  /** The month's first and last day, ISO — the inclusive bounds the rows were read with. */
+  from: string;
+  to: string;
+  /**
+   * The COMPANY-level readiness flag: `company_statutory_my.lhdn_employer_no` is one row per company
+   * (uniqueIndex company_statutory_my_company_uq), so its absence gaps box 3 on EVERY page at once. A
+   * boolean rather than the number itself: the screen only ever needs to know whether to warn.
+   */
+  employerNoOnFile: boolean;
+  /** Hire date, then name — the order the screen lists and the order the batch document pages. */
+  rows: Cp22CohortRow[];
+};
+
+const PERIOD_KEY = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+export function cp22MonthCohort(
+  ctx: SessionContext,
+  p: { companyId: string; periodKey: string },
+): Promise<Cp22MonthCohort | null> {
+  const m = PERIOD_KEY.exec(p.periodKey);
+  // A malformed month is not an empty month. Null here is what makes the route answer 404 rather than
+  // silently rendering some other month's joiners.
+  if (!m) return Promise.resolve(null);
+  const from = `${p.periodKey}-01`;
+  const to = `${p.periodKey}-${String(daysInMonth(Number(m[1]), Number(m[2]))).padStart(2, '0')}`;
+  return withTenant(ctx, async (tx) => {
+    // Resolved BEFORE the employee scan, exactly as the worklist does it: a company whose jurisdiction no
+    // pack owns has no CP22, and the cheapest correct answer is not to look at its employees at all.
+    const [co] = await tx
+      .select({ country: company.country })
+      .from(company)
+      .where(eq(company.id, p.companyId))
+      .limit(1);
+    if (!co || !packFor(co.country)) return null;
+
+    const [statutory] = await tx
+      .select({ eNumber: companyStatutoryMy.lhdnEmployerNo })
+      .from(companyStatutoryMy)
+      .where(eq(companyStatutoryMy.companyId, p.companyId))
+      .limit(1);
+
+    // LEFT join, not inner: an employee with no Malaysian statutory row is exactly the person this list
+    // has to NAME, and an inner join would hide them instead. Safe against duplication —
+    // employee_statutory_my is unique on person_id (employee_statutory_my_person_uq).
+    const rows = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        hiredOn: employment.hiredOn,
+        taxNumber: employeeStatutoryMy.taxNumber,
+        icNumber: employeeStatutoryMy.icNumber,
+        passportNumber: employeeStatutoryMy.passportNumber,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(
+        and(
+          eq(employment.companyId, p.companyId),
+          // Inclusive at BOTH edges: a hire on the 1st and a hire on the last day are both this month's.
+          gte(employment.hiredOn, from),
+          lte(employment.hiredOn, to),
+        ),
+      )
+      .orderBy(employment.hiredOn, person.fullName);
+
+    return {
+      periodKey: p.periodKey,
+      from,
+      to,
+      employerNoOnFile: Boolean(statutory?.eNumber?.trim()),
+      rows: rows.map((r) => ({
+        employmentId: r.employmentId,
+        name: r.name,
+        hiredOn: r.hiredOn,
+        hasIdentityNo: Boolean(r.icNumber?.trim() || r.passportNumber?.trim()),
+        hasTaxNo: Boolean(r.taxNumber?.trim()),
+      })),
+    };
+  });
+}
+
 // ── CP22 particulars (the new-hire notice itself, d3a9383c) ─────────────────
 /**
  * Everything the CP22 (Pin. 1/2020) form can be filled from, for one employment.

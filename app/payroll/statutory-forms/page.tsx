@@ -2,9 +2,15 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
-import { complianceWorklist, listReports, listStatutoryLinks, submissionDueFor } from '@/core/reporting';
+import {
+  complianceWorklist,
+  cp22MonthCohort,
+  listReports,
+  listStatutoryLinks,
+  submissionDueFor,
+} from '@/core/reporting';
 import type { StatutoryBodyKey } from '@/localization/country-pack';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 
 /**
@@ -111,6 +117,16 @@ export default async function StatutoryFormsPage({
   const links = companyId ? await listStatutoryLinks(s, companyId) : [];
   const worklist = companyId ? await complianceWorklist(s, { companyId }) : [];
   const companyName = companies.find((c) => c.id === companyId)?.name ?? '—';
+  // db46d9a2 — the month cohort, driven by the SAME two selects at the top of this screen. Null for a
+  // company whose jurisdiction no pack owns: CP22 is an LHDN form, and the honest answer there is no card
+  // at all, not "nobody started in July". The 60-day worklist below is untouched — it is the deadline
+  // alarm, this is the month view, and widening the worklist's window would have made its statuses lie.
+  const cohort = companyId ? await cp22MonthCohort(s, { companyId, periodKey }) : null;
+  // Named BEFORE the download, not discovered after it: whose page will come out with a gap in it.
+  const cohortGaps = (cohort?.rows ?? []).filter((r) => !r.hasIdentityNo || !r.hasTaxNo);
+  // The heading names the month explicitly, because the control above it is labelled "Payroll month" and
+  // this list is a HIRE month. Same Intl month name the selects use, so the two always agree.
+  const cohortMonthLabel = `${monthName(month)} ${year}`;
 
   const qs = `companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}`;
   const formHref = (reportId: string, kind: 'month' | 'year' | 'event') =>
@@ -284,6 +300,129 @@ export default async function StatutoryFormsPage({
           )}
         </Card>
       ))}
+
+      {/* db46d9a2 — THE MONTH VIEW. The Company and Payroll-month selects at the top of this screen already
+          existed and already drove everything except CP22; now they drive this card too, so ANY month is
+          reachable — July 2026, March 2026, a month two years back — rather than only the last 60 days.
+
+          NO NEW PICKERS AND NO CLIENT STATE: it reads the same `companyId` / `year` / `month` search params
+          the filter bar writes, so the list is addressable and can be sent to somebody.
+
+          THE DOWNLOAD FORM IS A SIBLING OF THE FILTER FORM, NEVER NESTED INSIDE IT. A form inside a form is
+          invalid HTML and browsers drop the inner one, which would silently turn the download button into a
+          second "Show". It carries its own hidden companyId/year/month for the same reason. */}
+      {cohort && (
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-4 py-3">
+            <div className="text-sm font-medium">
+              {tCp22('monthTitle', { month: cohortMonthLabel })}
+              <span className="ml-2 text-muted-foreground">({cohort.rows.length})</span>
+            </div>
+            {/* A month with nobody in it offers NO download button — an empty file is not a useful
+                answer, and the route 404s on it. The card still says which month was asked for, so the
+                operator knows the answer came back rather than the screen failing. */}
+            {cohort.rows.length > 0 && (
+              <form method="get" action="/payroll/cp22/batch" className="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="companyId" value={companyId} />
+                <input type="hidden" name="year" value={year} />
+                <input type="hidden" name="month" value={month} />
+                {/* TYPED, not picked: we hold no list of LHDN branches, and a dropdown built from one we
+                    invented would be worse than a blank box. What they type lands in box 1 of EVERY page. */}
+                <Field label={tCp22('branchLabel')} className="w-full sm:w-72">
+                  <input
+                    type="text"
+                    name="lhdnBranch"
+                    maxLength={240}
+                    placeholder={tCp22('branchPlaceholder')}
+                    className={inputCls}
+                  />
+                </Field>
+                <button className={btnPrimary} title={tCp22('downloadAllTitle')}>
+                  {tCp22('downloadAll')}
+                </button>
+              </form>
+            )}
+          </div>
+
+          {cohort.rows.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <p className="text-sm font-medium">{tCp22('monthEmpty', { month: cohortMonthLabel })}</p>
+              <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
+                {tCp22('monthEmptyHint', { company: companyName })}
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* THE CORRECTION WE OWE THE READER, and it sits beside the button rather than in a tooltip.
+                  Since 1 September 2024 a CP22 goes through e-CP22 on MyTax; posted and hand-delivered
+                  forms are not accepted. Nothing on this screen is labelled "for submission". */}
+              <div className="mx-4 mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                <span className="font-medium">{tCp22('notFilingTitle')}</span>{' '}
+                <span className="text-muted-foreground">{tCp22('notFiling')}</span>
+              </div>
+
+              {/* Before the download, not after it. `readinessTitle` is the SAME key the per-form screens
+                  use for the same sentence — one wording for "these people are missing identifiers". */}
+              {(cohortGaps.length > 0 || !cohort.employerNoOnFile) && (
+                <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                  {cohortGaps.length > 0 && (
+                    <p className="font-medium">{t('readinessTitle', { count: cohortGaps.length })}</p>
+                  )}
+                  <ul className="mt-1 space-y-0.5">
+                    {cohortGaps.map((r) => (
+                      <li key={r.employmentId}>
+                        <span className="font-medium">{r.name}</span> —{' '}
+                        {[
+                          !r.hasTaxNo ? tCp22('missingTaxNo') : null,
+                          !r.hasIdentityNo ? tCp22('missingIdentityNo') : null,
+                        ]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </li>
+                    ))}
+                    {/* One row per company, so its absence gaps box 3 on every page at once. */}
+                    {!cohort.employerNoOnFile && <li>{tCp22('missingEmployerNo', { company: companyName })}</li>}
+                  </ul>
+                </div>
+              )}
+
+              <p className="px-4 pt-3 text-xs text-muted-foreground">{tCp22('monthHint')}</p>
+
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                      <th className="px-4 py-2 font-medium">{tCp22('colHireDate')}</th>
+                      <th className="px-4 py-2 font-medium">
+                        <span className="sr-only">{tCp22('columnHeading')}</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {cohort.rows.map((r) => (
+                      <tr key={r.employmentId}>
+                        <td className="px-4 py-2.5 font-medium">{r.name}</td>
+                        <td className="px-4 py-2.5 font-mono text-xs">{r.hiredOn}</td>
+                        <td className="px-4 py-2.5 text-right">
+                          {/* The single-person document, unchanged — the same link the worklist offers. */}
+                          <Link
+                            href={`/payroll/cp22/${r.employmentId}/pdf`}
+                            title={tCp22('downloadTitle')}
+                            className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-medium text-primary hover:bg-accent"
+                          >
+                            {tCp22('download')}
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </Card>
+      )}
 
       {/* CP22 / CP22A live HERE now, not on Reports: they are LHDN statutory notices, and this is where
           somebody looking for a statutory form goes. Driven by the hire/termination lifecycle rather than
