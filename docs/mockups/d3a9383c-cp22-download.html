@@ -1,0 +1,427 @@
+<meta charset="utf-8">
+<title>d3a9383c — CP22: a Download button on the reminder you already have</title>
+<!--
+  Mockup for d3a9383c ("To configure CP22 form"), plan revision 1.
+
+  WHAT IS REAL HERE
+  · The screen: Payroll › Statutory Forms › Income Tax (LHDN). Shelf row "CP22 / CP22A notices"
+    (localization/my/reports.ts:951, cadence 'event', href …#worklist) and the worklist card
+    (app/payroll/statutory-forms/page.tsx:273-313, six columns, no action column). Column headings,
+    the hint text, the status labels and the "Open form" wording are the live strings from
+    messages/en.json → payroll.statutoryForms.
+  · The rule drawn in the Notify-by column is the live one: notify by = start date + 30 days
+    (core/reporting.ts, isoAddDays(hiredOn, 30)); the list covers hires in the last 60 days.
+  · The counts on the form map are the plan's canonical enumeration: 33 entry areas, 26 pre-filled,
+    7 that cannot be. Every box is numbered so the 26 / 7 can be counted off the picture.
+  · Company: ISEDECOR BINA SDN BHD, read from production for this tenant on 2026-08-07.
+
+  WHAT IS DELIBERATELY NOT REAL, AND SAID SO ON THE PAGE
+  · Joiner names are drawn as grey bars — we are not putting invented people in front of the reporter.
+  · The three dates are illustrative against today, 9 Aug 2026, so the three status labels can be seen.
+
+  WHAT IS DELIBERATELY NOT DRAWN (the plan hedges it, and a picture cannot hedge)
+  · Where each box physically lands on LHDN's page — this is a labelled map, not a facsimile.
+  · A filled value for any box: the plan promises the SOURCE, not a value, and 7 of the 26 fill only
+    when that detail is on record. Those carry a ° and a legend line instead of a fake value.
+  · CP22A: out of scope this round, so its row is drawn with NO button.
+  · Marking a notice as filed — still absent, so nothing here suggests it.
+  · The "reject this and we will add the two missing fields first" offer — that is a decision for the
+    reporter, not a feature, so it stays in the plan text.
+
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--fillbg:#eef0fe;--fillbd:#c3c8f7;--fillfg:#3f37c9;
+        --emptybd:#c9ccd8;--emptybg:#fcfcfe;--warn:#92400e}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:15px;margin:0 0 2px}
+  .sub{font-size:12px;color:var(--mf);margin:0 0 16px}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .ph{display:flex;align-items:baseline;gap:10px;margin:0 0 12px}
+  .ph h2{font-size:13.5px;margin:0}
+  .ph .note{font-size:11.5px;color:var(--mf);margin-left:auto}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;white-space:nowrap}
+  .tag.now{background:#fee2e2;color:#991b1b}
+  .tag.new{background:#dcfce7;color:#166534}
+
+  .two{display:grid;grid-template-columns:1fr 1.16fr;gap:14px;align-items:start}
+  .screen{border:1px solid var(--border);border-radius:11px;background:var(--bg);padding:11px}
+  .crumb{font-size:10.5px;color:var(--mf);margin-bottom:5px}
+  .bodycard{background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden}
+  .bodyhd{display:flex;align-items:center;gap:8px;padding:8px 11px;background:var(--muted)}
+  .badge{height:22px;padding:0 6px;border-radius:7px;background:color-mix(in srgb,var(--primary) 12%,white);
+         color:var(--primary);font-size:9.5px;font-weight:800;display:flex;align-items:center}
+  .bodyhd .n{font-size:12px;font-weight:700}
+  .frow{display:flex;align-items:center;gap:10px;padding:8px 11px;border-top:1px solid var(--border)}
+  .frow:first-of-type{border-top:0}
+  .frow .fn{font-size:12px;font-weight:600}
+  .frow .fm{font-size:10.5px;color:var(--mf);display:block;font-weight:400;margin-top:1px;max-width:330px}
+  .frow .sp{margin-left:auto;display:flex;gap:8px;align-items:center;flex-shrink:0}
+  .lnk{color:var(--primary);font-weight:600;font-size:11.5px;white-space:nowrap}
+  .lnk.dim{color:var(--mf)}
+  .cardhd{display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid var(--border)}
+  .cardhd .t{font-size:12px;font-weight:650}
+  .cnt{background:var(--muted);color:var(--mf);border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:600}
+  .hint{font-size:10.5px;color:var(--mf);padding:7px 11px 0;margin:0}
+
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:5px 8px;background:var(--muted);white-space:nowrap}
+  td{padding:7px 8px;border-top:1px solid var(--border);white-space:nowrap}
+  td.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
+  .bar{height:9px;border-radius:4px;background:#dfe1ec}
+  .pill{display:inline-block;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:600}
+  .pill.over{background:#fee2e2;color:#991b1b}
+  .pill.soon{background:#fef3c7;color:#92400e}
+  .pill.up{background:var(--muted);color:var(--mf)}
+  .btn{border:1px solid var(--border);background:var(--card);border-radius:7px;padding:4px 9px;
+       font-size:10.5px;font-weight:600;display:inline-block;white-space:nowrap}
+  .btn.pri{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.gen{background:color-mix(in srgb,var(--primary) 10%,white);
+           border-color:color-mix(in srgb,var(--primary) 32%,white);color:var(--primary)}
+  .none{color:var(--mf);font-size:10.5px}
+  .anno{font-size:11px;color:var(--warn);background:#fffbeb;border:1px solid #fde68a;
+        border-radius:8px;padding:6px 9px;margin-top:9px}
+  .anno.ok{color:#166534;background:#f0fdf4;border-color:#bbf7d0}
+  .kicker{font-size:11.5px;color:var(--mf);margin:10px 0 0}
+  .kicker b{color:var(--fg)}
+
+  /* ── the form map ──────────────────────────────────────── */
+  .maprow{display:grid;grid-template-columns:1fr 400px;gap:16px;align-items:start}
+  .legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+  .lg{display:flex;gap:7px;align-items:center;font-size:11.5px;color:var(--mf)}
+  .swatch{width:34px;height:16px;border-radius:4px}
+  .swatch.fill{background:var(--fillbg);border:1px solid var(--fillbd)}
+  .swatch.empty{background:var(--emptybg);border:1px dashed var(--emptybd)}
+  .lg b{color:var(--fg)}
+
+  .paper{border:1px solid #d7d9e4;border-radius:8px;background:#fff;padding:12px;box-shadow:0 1px 2px rgba(20,20,40,.05)}
+  .paperhd{text-align:center;border:1px solid #d7d9e4;border-radius:6px;padding:7px;margin-bottom:9px;background:#fafafd}
+  .paperhd .l1{font-size:11px;font-weight:800;letter-spacing:.02em}
+  .paperhd .l2{font-size:10px;color:var(--mf);margin-top:1px}
+  .band{background:#eceef5;border:1px solid #d7d9e4;border-radius:5px;text-align:center;
+        font-size:9.5px;font-weight:700;letter-spacing:.05em;color:#4a4a58;padding:3px;margin:9px 0 7px}
+  .band .my{font-weight:600;color:#7b7b8a}
+  .sec{border:1px solid #dcdee8;border-radius:7px;padding:9px;margin-bottom:8px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .fld{margin-bottom:7px}
+  .fld:last-child{margin-bottom:0}
+  .flbl{font-size:9.5px;color:#585866;margin-bottom:2.5px;line-height:1.25}
+  .box{border-radius:5px;font-size:9.5px;line-height:1.25;padding:5px 7px;display:flex;
+       align-items:center;gap:6px;min-height:26px}
+  .box.f{background:var(--fillbg);border:1px solid var(--fillbd);color:var(--fillfg)}
+  .box.e{background:var(--emptybg);border:1px dashed var(--emptybd);color:#8a8a99;font-style:italic}
+  .box.tall{min-height:38px;align-items:flex-start}
+  .no{flex:0 0 auto;width:15px;height:15px;border-radius:4px;font-size:8.5px;font-weight:800;
+      display:flex;align-items:center;justify-content:center;margin-top:0}
+  .box.f .no{background:#dcdffb;color:#3730a3}
+  .box.e .no{background:#eceef4;color:#6b7280}
+  .src{font-style:normal}
+  .cond{font-weight:800}
+  .tick{display:flex;gap:6px;align-items:center}
+  .tickbox{width:16px;height:16px;border:1px dashed var(--emptybd);border-radius:3px;background:var(--emptybg);flex:0 0 auto}
+  .phone{display:grid;grid-template-columns:1fr 10px 1.5fr;gap:5px;align-items:center}
+  .dash{text-align:center;color:#585866;font-size:11px}
+  .sigrow{display:grid;grid-template-columns:118px 1fr;gap:8px;align-items:center;margin-bottom:6px}
+  .siglbl{font-size:9.5px;color:#585866}
+
+  .side .sbox{border:1px solid var(--border);border-radius:10px;padding:11px;margin-bottom:11px}
+  .side h3{font-size:12px;margin:0 0 7px}
+  .side ol{margin:0;padding-left:16px}
+  .side li{font-size:11.5px;margin-bottom:6px;line-height:1.45}
+  .side li b{font-weight:650}
+  .side .why{color:var(--mf)}
+  .side .sbox.ok{background:#f7f8ff;border-color:var(--fillbd)}
+  .side .sbox.warn{background:#fffdf6;border-color:#fde68a}
+  .side p{font-size:11.5px;margin:0 0 7px;line-height:1.45}
+  .side p:last-child{margin-bottom:0}
+  .facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+  .fact{border:1px solid var(--border);border-radius:9px;padding:8px 10px;background:#fff}
+  .fact .k{font-size:10px;color:var(--mf)}
+  .fact .v{font-size:16px;font-weight:800;margin-top:1px}
+</style>
+
+<h1>CP22 — a Download button on the reminder you already have, and the form arrives 26 boxes filled</h1>
+<p class="sub">Sketch for request d3a9383c · Payroll › Statutory Forms › Income Tax (LHDN) ·
+  ISEDECOR BINA SDN BHD. Wording, spacing and colours will differ from the built screen.</p>
+
+<!-- ══════════════ PANEL 1 — before / after on the screen ══════════════ -->
+<div class="panel">
+  <div class="ph"><h2>The reminder list already exists. What it never gave you was the form.</h2>
+    <span class="note">Both sides are the same card on the same page</span></div>
+
+  <div class="two">
+
+    <!-- ─────────── NOW ─────────── -->
+    <div>
+      <div class="ph" style="margin-bottom:8px"><span class="tag now">TODAY</span>
+        <h2 style="font-size:12.5px">“Open form” scrolls you down the page</h2></div>
+
+      <div class="screen">
+        <div class="crumb">Payroll › Statutory Forms › Income Tax (LHDN)</div>
+
+        <div class="bodycard">
+          <div class="bodyhd"><span class="badge">LHDN</span><span class="n">Income Tax (LHDN)</span></div>
+          <div class="frow"><span class="fn">EA form (per employee)
+              <span class="fm">Annual · each employee’s annual statement of remuneration</span></span>
+            <span class="sp"><span class="lnk">Open form</span></span></div>
+          <div class="frow"><span class="fn">CP22 / CP22A notices
+              <span class="fm">When it happens · New joiner and cessation notifications to LHDN,
+                driven by your hire and termination dates.</span></span>
+            <span class="sp"><span class="lnk">Open form</span></span></div>
+        </div>
+
+        <div class="bodycard">
+          <div class="cardhd"><span class="t">Compliance worklist · CP22 / CP22A</span><span class="cnt">3</span></div>
+          <p class="hint">New-hire (CP22) and cessation (CP22A) notifications due to LHDN for
+            ISEDECOR BINA SDN BHD. File in MyTax; this surfaces what’s outstanding.</p>
+          <table style="margin-top:7px">
+            <thead><tr><th>Employee</th><th>Form</th><th>Reason</th><th>Event date</th><th>Notify by</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td><div class="bar" style="width:96px"></div></td><td>CP22</td><td style="color:var(--mf)">New hire</td>
+                  <td class="mono">2026-07-02</td><td class="mono">2026-08-01</td><td><span class="pill over">Overdue</span></td></tr>
+              <tr><td><div class="bar" style="width:78px"></div></td><td>CP22</td><td style="color:var(--mf)">New hire</td>
+                  <td class="mono">2026-07-15</td><td class="mono">2026-08-14</td><td><span class="pill soon">Due soon</span></td></tr>
+              <tr><td><div class="bar" style="width:110px"></div></td><td>CP22A</td><td style="color:var(--mf)">Cessation</td>
+                  <td class="mono">2026-09-30</td><td class="mono">2026-08-31</td><td><span class="pill up">Upcoming</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="anno"><b>This is the whole of it today.</b> “Open form” is a link to this same page —
+          it scrolls you to the table and stops. There is no CP22 document anywhere in the system, so the
+          notice itself is still a blank form you open by hand and re-type about thirty details into.</div>
+      </div>
+    </div>
+
+    <!-- ─────────── AFTER ─────────── -->
+    <div>
+      <div class="ph" style="margin-bottom:8px"><span class="tag new">PROPOSED</span>
+        <h2 style="font-size:12.5px">The same rows, with the document attached to them</h2></div>
+
+      <div class="screen">
+        <div class="crumb">Payroll › Statutory Forms › Income Tax (LHDN)</div>
+
+        <div class="bodycard">
+          <div class="bodyhd"><span class="badge">LHDN</span><span class="n">Income Tax (LHDN)</span></div>
+          <div class="frow"><span class="fn">EA form (per employee)
+              <span class="fm">Annual · each employee’s annual statement of remuneration</span></span>
+            <span class="sp"><span class="lnk">Open form</span></span></div>
+          <div class="frow"><span class="fn">CP22 / CP22A notices
+              <span class="fm">When it happens · New joiner and cessation notifications to LHDN,
+                driven by your hire and termination dates.</span></span>
+            <span class="sp"><span class="btn">Download blank CP22</span><span class="lnk">Open worklist</span></span></div>
+        </div>
+
+        <div class="bodycard">
+          <div class="cardhd"><span class="t">Compliance worklist · CP22 / CP22A</span><span class="cnt">3</span></div>
+          <p class="hint">New-hire (CP22) and cessation (CP22A) notifications due to LHDN for
+            ISEDECOR BINA SDN BHD. File in MyTax; this surfaces what’s outstanding.</p>
+          <table style="margin-top:7px">
+            <thead><tr><th>Employee</th><th>Form</th><th>Reason</th><th>Event date</th><th>Notify by</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><div class="bar" style="width:96px"></div></td><td>CP22</td><td style="color:var(--mf)">New hire</td>
+                  <td class="mono">2026-07-02</td><td class="mono">2026-08-01</td><td><span class="pill over">Overdue</span></td>
+                  <td><span class="btn gen">Download CP22</span></td></tr>
+              <tr><td><div class="bar" style="width:78px"></div></td><td>CP22</td><td style="color:var(--mf)">New hire</td>
+                  <td class="mono">2026-07-15</td><td class="mono">2026-08-14</td><td><span class="pill soon">Due soon</span></td>
+                  <td><span class="btn gen">Download CP22</span></td></tr>
+              <tr><td><div class="bar" style="width:110px"></div></td><td>CP22A</td><td style="color:var(--mf)">Cessation</td>
+                  <td class="mono">2026-09-30</td><td class="mono">2026-08-31</td><td><span class="pill up">Upcoming</span></td>
+                  <td><span class="none">—</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="anno ok"><b>Three changes, and nothing else on the screen moves.</b>
+          A <b>Download CP22</b> button on each new-joiner row · a <b>blank fillable copy</b> on the
+          CP22 row itself, for a late filing or one you would rather do by hand · and the link finally
+          says <b>Open worklist</b>, because that is what it does. The EA row above keeps “Open form”,
+          and so does every other row on the screen.</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="kicker">Names are drawn as grey bars on purpose — this sketch is not going to put invented
+    people in front of you; the live row shows your actual joiner. The three dates are illustrative
+    against today, 9 Aug 2026, so you can see all three status labels at once. Everything else —
+    the columns, the wording, the 30-day rule behind <b>Notify by</b>, the 60-day window the list covers —
+    is exactly what the screen does today. <b>The CP22A row has no button</b>: the leaver notice is a
+    later round, and this sketch will not pretend otherwise.</p>
+</div>
+
+<!-- ══════════════ PANEL 2 — what arrives filled ══════════════ -->
+<div class="panel">
+  <div class="ph"><span class="tag new">WHAT DOWNLOADS</span>
+    <h2>26 of the 33 boxes arrive filled. The other 7 are empty — and still typeable.</h2>
+    <span class="note">A map of the page, not the page — the real download is LHDN’s own artwork, unchanged</span></div>
+
+  <div class="facts">
+    <div class="fact"><div class="k">Entry areas on the CP22 page</div><div class="v">33</div></div>
+    <div class="fact"><div class="k">Arrive pre-filled from your records</div><div class="v" style="color:var(--fillfg)">26</div></div>
+    <div class="fact"><div class="k">Left empty for you to type</div><div class="v" style="color:#6b7280">7</div></div>
+  </div>
+
+  <div class="legend">
+    <span class="lg"><span class="swatch fill"></span><b>Pre-filled</b> from records you already keep — and still editable</span>
+    <span class="lg"><span class="swatch empty"></span><b>Empty</b>, because we do not hold it — type it in the downloaded file</span>
+    <span class="lg"><span class="cond" style="color:var(--fillfg);font-size:14px">°</span>Fills only when that detail is on record. Never guessed.</span>
+    <span class="lg" style="margin-left:auto">Boxes are numbered 1–33 so the 26 and the 7 can be counted off the picture.</span>
+  </div>
+
+  <div class="maprow">
+
+    <!-- ── the simplified page ── -->
+    <div class="paper">
+      <div class="paperhd">
+        <div class="l1">LEMBAGA HASIL DALAM NEGERI MALAYSIA · CP22 [Pin. 1/2020]</div>
+        <div class="l2">Pemberitahuan Pekerja Baharu / Notification of new employee — [Subsection 83(2) of the Income Tax Act 1967]</div>
+      </div>
+
+      <div class="cols">
+        <div class="sec">
+          <div class="fld"><div class="flbl">Kepada / To — LHDN branch address</div>
+            <div class="box e tall"><span class="no">1</span>you type this — which branch you file with is your choice</div></div>
+        </div>
+        <div class="sec">
+          <div class="fld"><div class="flbl">Employer’s name and address</div>
+            <div class="box f tall"><span class="no">2</span><span class="src">from your company record</span></div></div>
+          <div class="fld"><div class="flbl">Employer’s no. (E)</div>
+            <div class="box f"><span class="no">3</span><span class="src">your LHDN employer number</span></div></div>
+          <div class="fld"><div class="flbl">Employer’s telephone no.</div>
+            <div class="box f"><span class="no">4</span><span class="src">from your company record</span></div></div>
+        </div>
+      </div>
+
+      <div class="band">MAKLUMAT PEKERJA BAHARU <span class="my">/ PARTICULARS OF NEW EMPLOYEE</span></div>
+
+      <div class="cols">
+        <!-- left column of the real form -->
+        <div class="sec">
+          <div class="fld"><div class="flbl">Full name</div>
+            <div class="box f"><span class="no">5</span><span class="src">the joiner’s record</span></div></div>
+          <div class="fld"><div class="flbl">Nature of employment</div>
+            <div class="box f"><span class="no">6</span><span class="src">their job title</span></div></div>
+          <div class="fld"><div class="flbl">Commencement date of current employment (dd/mm/yyyy)</div>
+            <div class="box f"><span class="no">7</span><span class="src">their start date</span></div></div>
+          <div class="fld"><div class="flbl">Expected duration of employment</div>
+            <div class="box f"><span class="no">8</span><span class="src">“Permanent”, or the contract dates</span></div></div>
+          <div class="fld"><div class="flbl">Current residential address</div>
+            <div class="box f tall"><span class="no">9</span><span class="src">home address on file</span></div></div>
+          <div class="fld"><div class="flbl">Current correspondence address</div>
+            <div class="box f tall"><span class="no">10</span><span class="src">correspondence address on file</span></div></div>
+          <div class="fld"><div class="tick"><span class="tickbox"></span>
+            <span class="no" style="background:#eceef4;color:#6b7280">11</span>
+            <span class="flbl" style="margin:0">“X” if that correspondence address is a tax agent’s
+              <span style="color:#8a8a99;font-style:italic"> — you tick this</span></span></div></div>
+          <div class="fld"><div class="flbl">Telephone no. — two boxes, one each side of the printed dash</div>
+            <div class="phone">
+              <div class="box f"><span class="no">12</span></div>
+              <div class="dash">–</div>
+              <div class="box f"><span class="no">13</span><span class="src">their phone number</span></div>
+            </div></div>
+          <div class="fld"><div class="flbl">e-Mail address</div>
+            <div class="box f"><span class="no">14</span><span class="src">their email on file</span></div></div>
+        </div>
+
+        <!-- right column of the real form -->
+        <div class="sec">
+          <div class="fld"><div class="flbl">Income tax no.</div>
+            <div class="box f"><span class="no">15</span><span class="src">their tax number <span class="cond">°</span></span></div></div>
+          <div class="fld"><div class="flbl">Identity card no.</div>
+            <div class="box f"><span class="no">16</span><span class="src">their IC <span class="cond">°</span></span></div></div>
+          <div class="fld"><div class="flbl">Current passport no.</div>
+            <div class="box f"><span class="no">17</span><span class="src">their passport <span class="cond">°</span></span></div></div>
+          <div class="fld"><div class="flbl">Passport no. previously registered with LHDNM (if any)</div>
+            <div class="box e"><span class="no">18</span>you type this — never collected anywhere</div></div>
+          <div class="cols" style="gap:8px">
+            <div class="fld"><div class="flbl">Gender</div>
+              <div class="box f"><span class="no">19</span><span class="src">1 or 2</span></div></div>
+            <div class="fld"><div class="flbl">Citizen</div>
+              <div class="box f"><span class="no">20</span><span class="src">nationality</span></div></div>
+          </div>
+          <div class="cols" style="gap:8px">
+            <div class="fld"><div class="flbl">Date of birth</div>
+              <div class="box f"><span class="no">21</span><span class="src">on file</span></div></div>
+            <div class="fld"><div class="flbl">Marital status</div>
+              <div class="box f"><span class="no">22</span><span class="src">on file</span></div></div>
+          </div>
+          <div class="flbl" style="margin-top:2px;font-weight:700;color:#4a4a58">Jika berkahwin, nyatakan: / If married, state:</div>
+          <div class="fld"><div class="flbl">(a) Full name of husband / wife</div>
+            <div class="box f"><span class="no">23</span><span class="src">spouse on record <span class="cond">°</span></span></div></div>
+          <div class="fld"><div class="flbl">(b) Husband’s / wife’s identity card / passport no.</div>
+            <div class="box f"><span class="no">24</span><span class="src">spouse on record <span class="cond">°</span></span></div></div>
+          <div class="fld"><div class="flbl">(c) Husband’s / wife’s income tax no.</div>
+            <div class="box e"><span class="no">25</span>you type this — no place in the system holds it</div></div>
+        </div>
+      </div>
+
+      <div class="band">TERMA-TERMA PENGGAJIAN <span class="my">/ TERMS OF EMPLOYMENT</span></div>
+
+      <div class="sec">
+        <div class="fld"><div class="flbl">(a) Monthly rate of fixed remuneration</div>
+          <div class="box f"><span class="no">26</span><span class="src">RM — their monthly basic pay</span></div></div>
+        <div class="fld"><div class="flbl">(b) Monthly cash allowances, cost-of-living or other fixed allowances, and allowances in kind</div>
+          <div class="box f tall"><span class="no">27</span><span class="src">their fixed monthly allowances</span></div></div>
+        <div class="fld"><div class="flbl">(c) Fluctuating emoluments he may be entitled to, and the date the amount will be known</div>
+          <div class="box e tall"><span class="no">28</span>you type this — not held anywhere in the system</div></div>
+      </div>
+
+      <div class="sec">
+        <div class="fld"><div class="flbl">Name and address of previous employer in Malaysia</div>
+          <div class="box e tall"><span class="no">29</span>you type this — the system has never collected it</div></div>
+      </div>
+
+      <div class="sec">
+        <div class="sigrow"><span class="siglbl">Tandatangan majikan / Employer’s signature</span>
+          <div class="box e"><span class="no">30</span>you sign it</div></div>
+        <div class="sigrow"><span class="siglbl">Nama / Name</span>
+          <div class="box f"><span class="no">31</span><span class="src">your own name <span class="cond">°</span></span></div></div>
+        <div class="sigrow"><span class="siglbl">Jawatan / Designation</span>
+          <div class="box f"><span class="no">32</span><span class="src">your own job title <span class="cond">°</span></span></div></div>
+        <div class="sigrow" style="margin-bottom:0"><span class="siglbl">Tarikh / Date</span>
+          <div class="box f"><span class="no">33</span><span class="src">today’s date</span></div></div>
+      </div>
+    </div>
+
+    <!-- ── side notes ── -->
+    <div class="side">
+      <div class="sbox">
+        <h3>The 7 you will still type — every time, and here is why</h3>
+        <ol>
+          <li><b>LHDN branch address</b> <span class="why">(box 1) — which branch you file with is your choice, not a record we hold.</span></li>
+          <li><b>The tax-agent tick</b> <span class="why">(11) — only you know whether that correspondence address is your agent’s.</span></li>
+          <li><b>Passport previously registered with LHDN</b> <span class="why">(18) — never collected.</span></li>
+          <li><b>Spouse’s income tax number</b> <span class="why">(25) — there has never been a place in the system to keep it.</span></li>
+          <li><b>Fluctuating payments and when they will be known</b> <span class="why">(28) — not held anywhere.</span></li>
+          <li><b>Previous employer in Malaysia</b> <span class="why">(29) — the system has never asked for it when hiring.</span></li>
+          <li><b>Your signature</b> <span class="why">(30) — yours to sign.</span></li>
+        </ol>
+      </div>
+
+      <div class="sbox ok">
+        <h3>What the download actually is</h3>
+        <p>LHDN’s own CP22 (Pin. 1/2020) page, <b>unaltered</b> — same layout, same wording, same Malay
+          and English. The typing boxes sit <b>on top</b> of it.</p>
+        <p><b>Every box stays typeable</b>, including the 26 filled ones, so you can change anything before
+          you sign. Nothing is locked.</p>
+        <p>Nothing is saved back. This reads records you already keep and hands you a file.</p>
+      </div>
+
+      <div class="sbox warn">
+        <h3>What this picture does not promise</h3>
+        <p><b>The ° boxes fill only when the detail is on record.</b> 33 of your 40 staff records hold
+          Malaysian tax details today; the other 7 produce a form with those boxes empty rather than wrong.
+          Your own name and job title (31, 32) fill only when you have your own staff record.
+          <b>Nothing is ever guessed.</b></p>
+        <p><b>This is a map of the page, not the page.</b> Exactly where each box sits on LHDN’s artwork is
+          settled when you see the first real one — if a box lands badly, say so and it moves.</p>
+        <p><b>CP22A is not in this round</b>, and there is still no way to mark a notice as filed — an item
+          ages off the list about a month after its deadline. Both are separate gaps this plan leaves open.</p>
+      </div>
+    </div>
+  </div>
+</div>

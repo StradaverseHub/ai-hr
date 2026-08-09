@@ -1,0 +1,360 @@
+<meta charset="utf-8">
+<title>18504ca6 — Shift arrangement gets an effective date and a history</title>
+<!--
+  Mockup for 18504ca6 (Shift arrangement effective date), plan revision as pushed 2026-08-09.
+
+  BEFORE is a faithful redraw of the reporter's own screenshot (word/media/image1.png): personnel
+  Attendance tab, Location card WITH an Effective date (09/08/2026, "Set location"), and the Shift
+  arrangement card directly below it WITHOUT one — Shift type "Fixed shift", Backup shift
+  "MB28 — WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700) (08:00–17:00)", the fixed-arrangement hint
+  (messages/en.json:919, verbatim) and a "Save" button. No employee is named because the screenshot
+  crops the name away — nothing about the employee is invented.
+
+  "Shift B" and the 13/14/15/16 August dates are the REPORTER'S OWN example, quoted from the plan
+  ("WHAT YOU'LL GET"). MB28 and its description are their live shift. "HR Admin" is the actor label the
+  audit list already uses.
+
+  DELIBERATELY NOT DRAWN: the re-process / recompute screen (stood down to item 1c1b321a), any hours,
+  lateness or overtime figures (the plan says those stay frozen — a number here would be invented), and
+  the Roster "paint Shift B" workaround (real today, but not part of what is being approved).
+
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:17px;margin:0 0 4px}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .sub{font-size:12px;color:var(--mf);margin:0 0 16px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 11px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .panel{border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-top:11px;background:#eef0f7}
+  .panel.bad{border-color:#fca5a5}
+  .panel.good{border-color:#86efac}
+  .phead{padding:8px 12px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+  .phead.bad{background:var(--badbg);color:#991b1b}
+  .phead.good{background:var(--goodbg);color:#166534}
+  .screen{padding:13px;display:flex;flex-direction:column;gap:13px}
+
+  /* --- redraw of a real product card --- */
+  .pc{background:#fff;border:1px solid var(--border);border-radius:12px}
+  .pc>.t{padding:11px 15px;border-bottom:1px solid var(--border);font-size:13.5px;font-weight:600}
+  .pc>.b{padding:14px 15px}
+  .cur{font-size:12.5px;margin:0 0 2px}
+  .curs{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .row{display:flex;gap:11px;align-items:flex-end}
+  .f{display:flex;flex-direction:column;gap:4px}
+  .f label{font-size:11px;color:var(--mf)}
+  .f label .req{color:var(--bad);font-weight:700}
+  .ctl{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;
+       border:1px solid #cfd1de;border-radius:8px;padding:7px 11px;font-size:12.5px;min-height:33px;white-space:nowrap}
+  .ctl.new{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 13%,transparent)}
+  .ctl.err{border-color:var(--bad);box-shadow:0 0 0 3px color-mix(in srgb,var(--bad) 11%,transparent)}
+  .ctl svg{flex:none}
+  .hint{font-size:11.5px;color:var(--mf);margin:9px 0 0}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:8px 15px;
+       font-size:12.5px;font-weight:600;white-space:nowrap}
+  .btn.mt{margin-top:12px}
+  .flag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:9.5px;font-weight:700;
+        letter-spacing:.04em;text-transform:uppercase;vertical-align:middle;margin-left:6px}
+  .flag.new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .flag.has{background:#dcfce7;color:#166534}
+  .flag.no{background:#fee2e2;color:#991b1b}
+
+  /* --- callouts --- */
+  .call{display:flex;gap:8px;align-items:flex-start;border-radius:9px;padding:9px 11px;font-size:12px;margin-top:11px}
+  .call.bad{background:var(--badbg);border:1px solid #fca5a5;color:#991b1b}
+  .call.good{background:var(--goodbg);border:1px solid #86efac;color:#14532d}
+  .call.warn{background:#fff7ed;border:1px solid #fed7aa;color:#7c2d12}
+  .note{font-size:11.5px;color:var(--mf);margin-top:11px}
+  .note b{color:var(--fg)}
+
+  /* --- history list --- */
+  .hist{margin-top:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .hist .ht{padding:9px 12px;font-size:12.5px;font-weight:600;background:#fbfbfe;border-bottom:1px solid var(--border)}
+  table{width:100%;border-collapse:collapse;font-size:12.2px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 12px;background:var(--muted);white-space:nowrap}
+  td{padding:8px 12px;border-top:1px solid var(--border);vertical-align:top}
+  td.mono{font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr.fresh td{background:color-mix(in srgb,var(--primary) 5%,white)}
+  .dim{color:var(--mf)}
+
+  /* --- day strip --- */
+  .days{display:flex;gap:9px;margin-top:11px}
+  .day{flex:1;border:1px solid var(--border);border-radius:10px;background:#fff;padding:9px 11px}
+  .day .d{font-size:11px;color:var(--mf);font-variant-numeric:tabular-nums}
+  .day .s{font-size:12.5px;font-weight:600;margin-top:2px}
+  .day.old{border-color:#c7c5f7;background:#f6f6fe}
+  .day.new{border-color:#86efac;background:var(--goodbg)}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:11px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px;background:#fff}
+  .box.warn{border-color:#fed7aa;background:#fffbf6}
+  .box h3{margin:0 0 7px;font-size:12.5px}
+  .box ul{margin:0;padding-left:17px;font-size:12px;color:var(--mf)}
+  .box li{margin-bottom:6px}
+  .box li b{color:var(--fg)}
+</style>
+
+<h1>Shift arrangement — an effective date, and a record of what came before</h1>
+<p class="sub">Drawn from your own screenshot of the Attendance tab. Sketch only — wording, spacing and
+  colours will differ from the finished screen.</p>
+
+<!-- ============================= 1. BEFORE ============================= -->
+<div class="card">
+  <h2><span class="num">1</span>Today — the Location card is dated, the card right below it is not</h2>
+  <p class="q">Your screenshot, redrawn. Both cards sit on the same tab, one above the other.</p>
+
+  <div class="panel bad">
+    <div class="phead bad">NOW — one card asks when, the other does not</div>
+    <div class="screen">
+
+      <div class="pc">
+        <div class="t">Location <span class="flag has">has an effective date</span></div>
+        <div class="b">
+          <p class="cur">Current location: No location</p>
+          <p class="curs">No branch is recorded on the Employment tab, so no work location can be proposed from it.</p>
+          <div class="row">
+            <div class="f" style="flex:1 1 46%">
+              <label>Location</label>
+              <div class="ctl"><span>No location</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
+            <div class="f" style="flex:1 1 40%">
+              <label>Effective date</label>
+              <div class="ctl"><span>09/08/2026</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+              </div>
+            </div>
+            <span class="btn">Set location</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pc">
+        <div class="t">Shift arrangement <span class="flag no">no effective date</span></div>
+        <div class="b">
+          <div class="row">
+            <div class="f" style="flex:0 0 168px">
+              <label>Shift type</label>
+              <div class="ctl"><span>Fixed shift</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
+            <div class="f" style="flex:1 1 auto">
+              <label>Backup shift</label>
+              <div class="ctl"><span>MB28 — WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700) (08:00–17:00)</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
+          </div>
+          <p class="hint">The shift used on any day this employee is not rostered. On a Fixed arrangement
+            that is every working day — roster only the days that differ.</p>
+          <span class="btn mt">Save</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="call bad"><span><b>Press Save and the old shift is gone.</b> There is no date to say when the
+    new one starts and no line saying what the old one was, so the system can no longer answer
+    “which shift was this person on last month?”.</span></div>
+
+  <p class="note">What does <b>not</b> happen: nothing already recorded is recalculated. Every day’s worked
+    hours, lateness and overtime were frozen the moment that day was calculated. What does happen, and you
+    would not expect it: past days start <b>showing</b> the new shift beside figures that were never measured
+    against it, and any old day later corrected or re-imported is re-measured against today’s shift — because
+    today’s shift is the only one on file.</p>
+</div>
+
+<!-- ============================= 2. AFTER ============================= -->
+<div class="card">
+  <h2><span class="num">2</span>After — the same card, with a date on the same row and a history underneath</h2>
+  <p class="q">Nothing else on the card moves. Shift type and Backup shift keep your values.</p>
+
+  <div class="panel good">
+    <div class="phead good">AFTER — matching the Location card above it</div>
+    <div class="screen">
+      <div class="pc">
+        <div class="t">Shift arrangement</div>
+        <div class="b">
+          <div class="row">
+            <div class="f" style="flex:0 0 168px">
+              <label>Shift type</label>
+              <div class="ctl"><span>Fixed shift</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
+            <div class="f" style="flex:1 1 auto">
+              <label>Backup shift</label>
+              <div class="ctl"><span>MB28 — WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700) (08:00–17:00)</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
+            <div class="f" style="flex:0 0 196px">
+              <label>Effective date <span class="req">*</span><span class="flag new">new</span></label>
+              <div class="ctl new"><span>09/08/2026</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+              </div>
+            </div>
+          </div>
+          <p class="hint">The shift used on any day this employee is not rostered. On a Fixed arrangement
+            that is every working day — roster only the days that differ. The change starts on the effective
+            date: days before it keep the shift that was in force then.</p>
+          <span class="btn mt">Save</span>
+
+          <div class="hist">
+            <div class="ht">Shift history <span class="flag new">new</span></div>
+            <table>
+              <thead><tr>
+                <th style="width:14%">Effective date</th>
+                <th style="width:31%">Previous shift</th>
+                <th style="width:31%">New shift</th>
+                <th style="width:12%">Changed by</th>
+                <th style="width:12%">Changed on</th>
+              </tr></thead>
+              <tbody>
+                <tr>
+                  <td class="mono">Their start date</td>
+                  <td class="dim">—</td>
+                  <td>MB28 — WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700)</td>
+                  <td class="dim">—</td>
+                  <td class="dim">Recorded on release</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="call good"><span><b>Nothing already saved changes on release.</b> Every employee keeps the shift
+    they have now, recorded as having applied since their own start date — that single line above. No figure
+    and no screen moves until you make a change.</span></div>
+</div>
+
+<!-- ============================= 3. THEIR EXAMPLE ============================= -->
+<div class="card">
+  <h2><span class="num">3</span>Your own example — moving someone onto Shift B from 15/08/2026</h2>
+  <p class="q">“Shift B” is your wording; on the real screen you pick a shift from the list, as you do today.</p>
+
+  <div class="panel good">
+    <div class="phead good">AFTER SAVING — the previous shift is kept and closed off, not overwritten</div>
+    <div class="screen">
+      <div class="pc">
+        <div class="t">Shift arrangement</div>
+        <div class="b">
+          <div class="row">
+            <div class="f" style="flex:0 0 168px">
+              <label>Shift type</label>
+              <div class="ctl"><span>Fixed shift</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
+            <div class="f" style="flex:1 1 auto">
+              <label>Backup shift</label>
+              <div class="ctl"><span>Shift B</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
+            <div class="f" style="flex:0 0 196px">
+              <label>Effective date <span class="req">*</span></label>
+              <div class="ctl new"><span>15/08/2026</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+              </div>
+            </div>
+          </div>
+          <span class="btn mt">Save</span>
+
+          <div class="hist">
+            <div class="ht">Shift history</div>
+            <table>
+              <thead><tr>
+                <th style="width:14%">Effective date</th>
+                <th style="width:31%">Previous shift</th>
+                <th style="width:31%">New shift</th>
+                <th style="width:12%">Changed by</th>
+                <th style="width:12%">Changed on</th>
+              </tr></thead>
+              <tbody>
+                <tr class="fresh">
+                  <td class="mono">15/08/2026</td>
+                  <td>MB28 — WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700)</td>
+                  <td>Shift B</td>
+                  <td>HR Admin</td>
+                  <td class="mono">09/08/2026</td>
+                </tr>
+                <tr>
+                  <td class="mono">Their start date</td>
+                  <td class="dim">—</td>
+                  <td>MB28 — WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700)</td>
+                  <td class="dim">—</td>
+                  <td class="dim">Recorded on release</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note" style="margin-bottom:0"><b>And from then on, every screen answers by date.</b> Ask the
+    system which shift this person was on, for any day, and it names the one that was in force on that day:</p>
+  <div class="days">
+    <div class="day old"><div class="d">13 Aug 2026</div><div class="s">MB28</div></div>
+    <div class="day old"><div class="d">14 Aug 2026</div><div class="s">MB28</div></div>
+    <div class="day new"><div class="d">15 Aug 2026</div><div class="s">Shift B</div></div>
+    <div class="day new"><div class="d">16 Aug 2026</div><div class="s">Shift B</div></div>
+  </div>
+  <p class="note">13 and 14 August keep the old shift’s rules; 15 and 16 August use Shift B’s. A roster entry
+    for a specific day still wins, exactly as it does today. No hours are shown here on purpose — figures
+    already recorded do not move, and this change does not recalculate them.</p>
+</div>
+
+<!-- ============================= 4. LIMITS ============================= -->
+<div class="card">
+  <h2><span class="num">4</span>One limit you should see before you approve, and what this picture leaves out</h2>
+
+  <div class="two">
+    <div class="box">
+      <h3>Dating a change <i>before</i> one already recorded is refused for now</h3>
+      <div class="f" style="max-width:230px">
+        <label>Effective date <span class="req">*</span></label>
+        <div class="ctl err"><span>10/08/2026</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+        </div>
+      </div>
+      <div class="call bad" style="margin-top:9px"><span>This employee already has a shift change dated
+        15/08/2026. A change dated before that one cannot be added yet.</span></div>
+      <p class="note">Past dates and future dates are both fine — as long as they come after the last change
+        already recorded for that person. Slotting one in earlier is a rarer case and deserves its own request.
+        Saving twice for the same date simply replaces that entry; periods can never overlap.</p>
+    </div>
+
+    <div class="box warn">
+      <h3>Deliberately not in this picture</h3>
+      <ul>
+        <li><b>No re-processing screen.</b> You asked for “Recompute Attendance” separately and it should be
+          built once, so this request stands it down. Dating the shift is what makes a recompute give the
+          right answer — approving both, in that order, gets you the whole thing without it being built twice.</li>
+        <li><b>No hours, no overtime figures.</b> Nothing already calculated is recalculated by this change,
+          so there is no new number to show you.</li>
+        <li><b>Editing a shift itself</b> — changing MB28’s hours, breaks or overtime windows — still affects
+          every date that uses it, past included. That hole stays open and is worth its own request.</li>
+        <li><b>The Roster screen already does part of this today</b>, dated day by day, and a roster entry for
+          a date always beats the shift on the profile. It is not drawn here because it is not what this
+          request builds.</li>
+      </ul>
+    </div>
+  </div>
+</div>

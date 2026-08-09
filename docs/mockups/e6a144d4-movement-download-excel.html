@@ -1,0 +1,321 @@
+<meta charset="utf-8">
+<title>e6a144d4 — Download the Movement history to Excel</title>
+<!--
+  Mockup for e6a144d4 (Download Employment History from the Movement tab), plan revision 1.
+
+  BEFORE and AFTER are the reporter's OWN screen, transcribed cell-for-cell from their attached
+  screenshot: five events (Hired 2026-07-23, Confirmation 2026-08-05, Confirmation 2026-08-06,
+  Promotion 2026-08-10 PENDING, Entity Transfer 2026-08-11 PENDING), Fiamma (Chin Hin Property),
+  Division an em-dash on every row, Finance / Finance Executive, MYR 4500.00 with no thousands
+  separator. Nothing on those two tables is invented.
+
+  DELIBERATELY NOT DRAWN — a picture cannot hedge:
+    * No spreadsheet BODY. Recorded At, End Date, Remarks and Correction Reason have no value on
+      their screenshot; drawing a cell would invent data and drawing it empty would promise blank.
+      Section is hedged in the plan ("may come out blank at first"), so it is named, never filled.
+      Only the column HEADERS, in order, are drawn.
+    * No rolled-back / cancelled / corrected / superseded rows. The file always carries them, but
+      this employee has none — inventing one would picture a record they do not have.
+    * No "Show hidden entries" link: it appears only for an employee who has some, and theirs has none.
+    * No filename with a real ID or name — the screenshot is cropped above the header, so the naming
+      pattern is stated in words instead of drawn as a fake file.
+    * The plan's "reject if you would rather the file mirror the screen" is a choice, and a choice
+      has no honest single picture. It stays in the plan text.
+
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:15px;margin:0 0 2px}
+  .sub{font-size:12px;color:var(--mf);margin:0 0 18px}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 11px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+
+  .panel{border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-top:10px}
+  .panel.bad{border-color:#fca5a5}
+  .panel.good{border-color:#86efac}
+  .phead{padding:8px 12px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+  .phead.bad{background:var(--badbg);color:#991b1b}
+  .phead.good{background:var(--goodbg);color:#166534}
+
+  .screen{background:var(--card)}
+  .ctitle{padding:11px 14px 0;font-size:13px;font-weight:600}
+  .bar{display:flex;justify-content:flex-end;align-items:center;gap:9px;padding:11px 14px 13px}
+  .btn{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:6px 14px;
+       font-size:12px;font-weight:600;white-space:nowrap}
+  .btn.p{background:var(--primary);color:#fff}
+  .btn.sec{background:#fff;border:1px solid var(--border);color:var(--fg)}
+  .btn.spot{border-color:#a5a0f2;box-shadow:0 0 0 3px rgba(79,70,229,.16)}
+  .arrow{font-size:11px;color:var(--primary);font-weight:600;margin-right:auto;padding-left:2px}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted);white-space:nowrap}
+  td{padding:7px 9px;border-top:1px solid var(--border);vertical-align:middle}
+  td.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+          font-variant-numeric:tabular-nums;white-space:nowrap}
+  .badge{display:inline-block;margin-left:6px;border:1px solid #c7c5f7;background:#eeeefc;color:var(--primary);
+         border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:700;letter-spacing:.05em;
+         text-transform:uppercase;vertical-align:middle}
+  .act{color:var(--primary);margin-right:11px;font-size:12px}
+
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .note b{color:var(--fg)}
+
+  .term{margin-top:13px;border:1px dashed var(--border);border-radius:11px;padding:11px 13px;background:#fbfbfe}
+  .term .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700}
+  .term .row{display:flex;align-items:center;gap:12px;margin-top:7px}
+  .term .txt{font-size:11.5px;color:var(--mf)}
+
+  /* ── the file's columns ─────────────────────────────────── */
+  .sheet{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-top:9px}
+  table.cols{table-layout:fixed;width:100%;font-size:11px;border-collapse:collapse}
+  table.cols td{padding:0;border:none}
+  table.cols .ltr{background:#f7f7fb;color:#a3a3b4;font-size:9px;text-align:center;padding:3px 2px;
+                  border-right:1px solid var(--border);border-bottom:1px solid var(--border);font-weight:600}
+  table.cols .hdr{padding:8px 6px;font-size:10.5px;font-weight:650;line-height:1.25;
+                  border-right:1px solid var(--border);background:var(--muted);color:var(--fg)}
+  table.cols .hdr.new{background:#eeeefc;color:#3730a3}
+  table.cols td:last-child{border-right:none}
+  .rowhint{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#fff;
+           border-top:1px solid var(--border);font-size:11.5px;color:var(--mf)}
+  .rowhint b{color:var(--fg)}
+
+  .legend{display:flex;gap:16px;margin-top:9px;font-size:11px;color:var(--mf);align-items:center}
+  .chip{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px solid var(--border);
+        vertical-align:-1px;margin-right:5px}
+  .chip.a{background:var(--muted)}
+  .chip.b{background:#eeeefc;border-color:#c7c5f7}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:12px 13px;font-size:11.5px;color:var(--mf);background:#fff}
+  .box b{color:var(--fg)}
+  .box .h{font-size:12px;font-weight:650;color:var(--fg);margin-bottom:4px}
+  .flag{border:1px solid #fed7aa;background:#fff7ed;border-radius:10px;padding:10px 12px;
+        font-size:11.5px;color:#7c2d12;margin-top:14px}
+  .flag b{color:#7c2d12}
+  .flag p{margin:0 0 6px}
+  .flag p:last-child{margin:0}
+</style>
+
+<h1>Movement → Employment History: a Download Excel button</h1>
+<p class="sub">Sketch for request e6a144d4. Both tables below are your own screenshot, event for event —
+  Fiamma (Chin Hin Property), Finance, Finance Executive, MYR 4500.00. Sketch only: wording, spacing and
+  colours will differ from the finished screen.</p>
+
+<div class="card">
+  <h2><span class="num">1</span>Your Movement tab today</h2>
+  <p class="q">“There is no way to download the employment history.” — the only control above the table is New Event.</p>
+
+  <div class="panel bad">
+    <div class="phead bad">NOW — one button, and no way to get the record out</div>
+    <div class="screen">
+      <div class="ctitle">Employment History</div>
+      <div class="bar"><span class="btn p">New Event</span></div>
+      <table>
+        <thead><tr>
+          <th>Event Type</th><th>Effective Date</th><th>Company</th><th>Division</th>
+          <th>Department</th><th>Job Title</th><th>Basic</th><th>Action</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>Hired</td><td class="mono">2026-07-23</td><td>Fiamma (Chin Hin Property)</td><td>—</td>
+            <td>Finance</td><td>Finance Executive</td><td class="mono">MYR 4500.00</td>
+            <td><span class="act">View</span></td>
+          </tr>
+          <tr>
+            <td>Confirmation</td><td class="mono">2026-08-05</td><td>Fiamma (Chin Hin Property)</td><td>—</td>
+            <td>Finance</td><td>Finance Executive</td><td class="mono">MYR 4500.00</td>
+            <td><span class="act">View</span><span class="act">Edit</span><span class="act">Roll Back</span></td>
+          </tr>
+          <tr>
+            <td>Confirmation</td><td class="mono">2026-08-06</td><td>Fiamma (Chin Hin Property)</td><td>—</td>
+            <td>Finance</td><td>Finance Executive</td><td class="mono">MYR 4500.00</td>
+            <td><span class="act">View</span><span class="act">Roll Back</span></td>
+          </tr>
+          <tr>
+            <td>Promotion<span class="badge">Pending</span></td><td class="mono">2026-08-10</td>
+            <td>Fiamma (Chin Hin Property)</td><td>—</td>
+            <td>Finance</td><td>Finance Executive</td><td class="mono">MYR 4500.00</td>
+            <td><span class="act">View</span><span class="act">Edit</span><span class="act">Cancel</span></td>
+          </tr>
+          <tr>
+            <td>Entity Transfer<span class="badge">Pending</span></td><td class="mono">2026-08-11</td>
+            <td>Fiamma (Chin Hin Property)</td><td>—</td>
+            <td>Finance</td><td>Finance Executive</td><td class="mono">MYR 4500.00</td>
+            <td><span class="act">View</span><span class="act">Edit</span><span class="act">Cancel</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="note">Handing this career record to a manager, an auditor or group HR means reading the rows off
+    the screen and retyping them. The Basic Salary card on this same employee already has an Export CSV link,
+    and Payroll and Leave both gained an Excel download in the past week.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>After — one more button, and nothing else moves</h2>
+
+  <div class="panel good">
+    <div class="phead good">AFTER — Download Excel sits beside New Event</div>
+    <div class="screen">
+      <div class="ctitle">Employment History</div>
+      <div class="bar">
+        <span class="arrow">↓ the only new thing on this screen</span>
+        <span class="btn sec spot">Download Excel</span>
+        <span class="btn p">New Event</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Event Type</th><th>Effective Date</th><th>Company</th><th>Division</th>
+          <th>Department</th><th>Job Title</th><th>Basic</th><th>Action</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>Hired</td><td class="mono">2026-07-23</td><td>Fiamma (Chin Hin Property)</td><td>—</td>
+            <td>Finance</td><td>Finance Executive</td><td class="mono">MYR 4500.00</td>
+            <td><span class="act">View</span></td>
+          </tr>
+          <tr>
+            <td>Confirmation</td><td class="mono">2026-08-05</td><td>Fiamma (Chin Hin Property)</td><td>—</td>
+            <td>Finance</td><td>Finance Executive</td><td class="mono">MYR 4500.00</td>
+            <td><span class="act">View</span><span class="act">Edit</span><span class="act">Roll Back</span></td>
+          </tr>
+          <tr>
+            <td>Confirmation</td><td class="mono">2026-08-06</td><td>Fiamma (Chin Hin Property)</td><td>—</td>
+            <td>Finance</td><td>Finance Executive</td><td class="mono">MYR 4500.00</td>
+            <td><span class="act">View</span><span class="act">Roll Back</span></td>
+          </tr>
+          <tr>
+            <td>Promotion<span class="badge">Pending</span></td><td class="mono">2026-08-10</td>
+            <td>Fiamma (Chin Hin Property)</td><td>—</td>
+            <td>Finance</td><td>Finance Executive</td><td class="mono">MYR 4500.00</td>
+            <td><span class="act">View</span><span class="act">Edit</span><span class="act">Cancel</span></td>
+          </tr>
+          <tr>
+            <td>Entity Transfer<span class="badge">Pending</span></td><td class="mono">2026-08-11</td>
+            <td>Fiamma (Chin Hin Property)</td><td>—</td>
+            <td>Finance</td><td>Finance Executive</td><td class="mono">MYR 4500.00</td>
+            <td><span class="act">View</span><span class="act">Edit</span><span class="act">Cancel</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="note">Same five events, same order, same columns — the screen itself is untouched.
+    <b>One click and the file downloads straight away</b>: no approval step, no waiting, and nothing is
+    written, changed or deleted. This only adds a way to read the record out.</p>
+
+  <div class="term">
+    <div class="lbl">And when this employee eventually leaves</div>
+    <div class="row">
+      <span class="btn sec">Download Excel</span>
+      <span class="txt">New Event disappears once someone is terminated. The download stays — that is
+        exactly when the record gets asked for.</span>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>What the downloaded file carries</h2>
+  <p class="q">One row per event, in the order you see above. These are its columns, left to right.</p>
+
+  <div class="sheet">
+    <table class="cols">
+      <colgroup>
+        <col style="width:8.0%"><col style="width:6.8%"><col style="width:7.6%"><col style="width:7.2%">
+        <col style="width:6.4%"><col style="width:11.4%"><col style="width:6.0%"><col style="width:7.4%">
+        <col style="width:5.8%"><col style="width:8.6%"><col style="width:5.8%"><col style="width:6.8%">
+        <col style="width:5.8%"><col style="width:6.4%">
+      </colgroup>
+      <tr>
+        <td class="ltr">A</td><td class="ltr">B</td><td class="ltr">C</td><td class="ltr">D</td>
+        <td class="ltr">E</td><td class="ltr">F</td><td class="ltr">G</td><td class="ltr">H</td>
+        <td class="ltr">I</td><td class="ltr">J</td><td class="ltr">K</td><td class="ltr">L</td>
+        <td class="ltr">M</td><td class="ltr">N</td>
+      </tr>
+      <tr>
+        <td class="hdr">Event Type</td>
+        <td class="hdr new">Event Status</td>
+        <td class="hdr">Effective Date</td>
+        <td class="hdr new">Recorded At</td>
+        <td class="hdr new">End Date</td>
+        <td class="hdr">Company</td>
+        <td class="hdr">Division</td>
+        <td class="hdr">Department</td>
+        <td class="hdr new">Section</td>
+        <td class="hdr">Job Title</td>
+        <td class="hdr new">Currency</td>
+        <td class="hdr new">Basic Salary</td>
+        <td class="hdr new">Remarks</td>
+        <td class="hdr new">Correction Reason</td>
+      </tr>
+    </table>
+    <div class="rowhint">
+      <span><b>Then one row per event.</b> For this employee that is the five you can see — Hired, the two
+        Confirmations, and the Promotion and Entity Transfer both marked Pending — plus anything recorded
+        on them since.</span>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="chip a"></span>Already on your screen today</span>
+    <span><span class="chip b"></span>New — the file has room the screen does not</span>
+    <span style="margin-left:auto">Only the column headings are drawn. The cell values are not sketched,
+      because four of these columns are not on your screen and we are not going to invent them.</span>
+  </div>
+
+  <div class="two">
+    <div class="box">
+      <div class="h">Event Status (column B)</div>
+      Applied, Pending, Reversed, Cancelled, Corrected or Superseded, spelled out on every row so you can
+      sort and filter inside Excel. Your five read <b>Applied, Applied, Applied, Pending, Pending</b>.
+    </div>
+    <div class="box">
+      <div class="h">Currency and Basic Salary (K and L)</div>
+      Your screen shows <b>MYR 4500.00</b> as one piece of text. The file splits it — <b>MYR</b> in Currency,
+      <b>4500.00</b> in Basic Salary as a real figure, so it can be summed and charted the moment the file opens.
+    </div>
+    <div class="box">
+      <div class="h">Recorded At (D)</div>
+      When the event was keyed in, as against the date it takes effect. It is not editable, and it is not
+      shown anywhere on the tab today.
+    </div>
+    <div class="box">
+      <div class="h">End Date and Remarks (E and M)</div>
+      Both were taken off the on-screen table to save width. A spreadsheet has room for them, so they come back.
+    </div>
+    <div class="box">
+      <div class="h">Section (I)</div>
+      The screen has never shown it. On your rows Division already prints a dash, which means these placement
+      fields have not been filled in for this employee — <b>Section may come out blank at first</b> and will
+      fill itself in as soon as they are.
+    </div>
+    <div class="box">
+      <div class="h">Correction Reason (N)</div>
+      The reason someone typed in when an event was rolled back or cancelled. Blank on events that were neither.
+    </div>
+  </div>
+
+  <div class="flag">
+    <p><b>Every event, including the ones the profile keeps out of sight.</b> The file always carries the
+      rolled-back, cancelled, corrected and superseded entries too, with the status spelled out on each row.
+      Your employee has none of those — which is why your screen shows all five events, and why the download
+      will hold exactly those five. We have not drawn an employee who does have them.</p>
+    <p><b>The file itself.</b> An Excel workbook of the same kind the Payroll and Leave downloads already
+      produce, so it behaves identically. Excel, Numbers and Google Sheets all open it by double-click. It is
+      not the newer package format, so the name ends <b>.xls</b> rather than .xlsx. The name is built from the
+      employee's own ID and name followed by <b>EmploymentHistory</b>, so a folder of them sorts itself — your
+      screenshot is cropped above the header, so we have not guessed at the name to print here.</p>
+  </div>
+</div>

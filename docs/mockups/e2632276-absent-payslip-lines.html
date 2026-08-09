@@ -1,0 +1,304 @@
+<meta charset="utf-8">
+<title>e2632276 — "Absent" as its own payslip line</title>
+<!--
+  Mockup for board item e2632276 (deduct absent days / the ABSENT pay code), plan revision 1.
+
+  WHAT IT ARGUES: the plan's whole message is "you do not need the pay code — the calculation already
+  runs, it is just invisible". So the drawing is the DEDUCTIONS BLOCK, before and after: one unnamed
+  "Other deductions" lump today, two named lines with day counts after. Plus the draft payroll grid
+  gaining an "Absent days" column beside the "Unpaid days" column it already has.
+
+  Labels are the product's own strings from messages/en.json:
+    payslip  — "Deductions (your share)", "EPF / KWSP", "SOCSO / PERKESO", "EIS / SIP",
+               "PCB / MTD (income tax)", "Other deductions", "Total deductions"
+    grid     — "Code", "Employee", "Basic", "OT · Bonus · TP1 · Zakat", "Unpaid days"
+               (the "—" for a zero day count is what the screen prints today)
+
+  THE FIGURES ARE A WORKED EXAMPLE, AND THE SKETCH SAYS SO ON ITS FACE. Nothing here is measured from
+  production: an absent-day figure does not exist in payroll yet, so there is no real "after" number to
+  take. Rather than dress invented amounts in a real employee's name — which an earlier round did, and a
+  critic rightly caught — the example is round, labelled, and checkable against the plan's own arithmetic
+  (basic ÷ divisor × days, rounded once to 2 decimals).
+
+  DELIBERATELY NOT DRAWN:
+    - The Create New Pay Code screen the reporter sent. The plan says NOT to use it; drawing it would
+      contradict the thing being approved.
+    - The four statutory amounts and the deductions total. This deduction is taken BEFORE EPF, SOCSO,
+      EIS and PCB, so all four change — by amounts that come out of the statutory tables, which we have
+      not calculated. They are drawn as "⋯" with a legend. The reduced wage they are worked out ON is
+      shown, because that figure IS derivable from the example.
+    - Net pay, for the same reason (080de5cf dropped its net-pay row on exactly this principle).
+    - Anything about archiving the saved ABSENT item: the plan makes that conditional on checking that
+      nothing is attached to it, and a picture cannot hedge.
+    - Half-day and hourly absence, which the plan says already work and have their own divisor.
+    - EA / CP39 / KWSP / PERKESO boxes: the plan is explicit that this gets no box of its own.
+
+  Tokens copied from app/globals.css so this is a picture of OUR app, not a generic form.
+  Everything inline: scripts/mockup/render.ts blocks external requests and fails loudly.
+-->
+<style>
+  :root {
+    --background: #f5f6fa; --foreground: #1a1a22; --card: #ffffff;
+    --primary: #4f46e5; --muted: #f0f1f7; --muted-foreground: #63636f;
+    --border: #e7e8f1; --rule: #d9dae6;
+    --warn-bg: #fff7ed; --warn-br: #fed7aa; --warn-fg: #7c2d12;
+    --good-bg: #f0fdf4; --good-br: #bbf7d0; --good-fg: #14532d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 26px 26px 30px; background: var(--background); color: var(--foreground);
+    font: 14px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap { max-width: 1188px; margin: 0 auto; }
+  h1.hd { font-size: 17px; margin: 0 0 5px; letter-spacing: -.01em; }
+  p.lede { margin: 0 0 20px; font-size: 12.5px; color: var(--muted-foreground); max-width: 108ch; }
+  p.lede b { color: var(--foreground); font-weight: 600; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 15px;
+          padding: 17px 18px 18px; margin-bottom: 18px; }
+  h2 { font-size: 13.5px; margin: 0 0 3px; display: flex; align-items: center; gap: 8px; }
+  .num { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center;
+         border-radius: 6px; background: var(--primary); color: #fff; font-size: 11px; font-weight: 700; }
+  p.sub { font-size: 12px; color: var(--muted-foreground); margin: 0 0 13px; }
+
+  /* worked-example strip */
+  .given { border: 1px solid var(--border); background: #fafbff; border-radius: 11px;
+           padding: 10px 13px; margin-bottom: 14px; font-size: 12px; }
+  .given .k { font-size: 9.5px; text-transform: uppercase; letter-spacing: .07em;
+              color: var(--muted-foreground); font-weight: 700; margin-bottom: 5px; }
+  .given ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 22px; }
+  .given li b { font-variant-numeric: tabular-nums; }
+  .given .why { margin: 8px 0 0; font-size: 11.5px; color: var(--muted-foreground); }
+
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  .caption { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase;
+             color: var(--muted-foreground); margin: 0 0 8px; }
+  .tag { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 600; }
+  .tag.now { background: var(--muted); color: var(--muted-foreground); }
+  .tag.new { background: color-mix(in srgb, var(--primary) 12%, white); color: var(--primary); }
+  .chip { display: inline-block; border-radius: 999px; padding: 1px 7px; font-size: 9.5px; font-weight: 700;
+          letter-spacing: .06em; text-transform: uppercase; background: var(--primary); color: #fff;
+          vertical-align: 1px; }
+
+  /* the payslip section */
+  .blk { border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: #fff; }
+  .blk h3 { margin: 0; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; font-weight: 700;
+            padding: 9px 13px; background: #fafbff; border-bottom: 1px solid var(--rule);
+            color: var(--muted-foreground); }
+  .r { display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+       font-size: 12.5px; padding: 7px 13px; border-bottom: 1px solid #eff0f7; }
+  .r:last-child { border-bottom: 0; }
+  .r .amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .r .days { color: var(--muted-foreground); font-size: 11px; margin-left: 6px; }
+  .r .dots { color: #b9bacb; letter-spacing: .18em; }
+  .r.sum { background: #fafbff; border-top: 1px solid var(--rule); border-bottom: 0;
+           font-weight: 700; padding: 9px 13px; }
+  .r.lump { background: var(--warn-bg); }
+  .r.named { background: color-mix(in srgb, var(--primary) 7%, white); }
+  .base { font-size: 11px; color: var(--muted-foreground); padding: 7px 13px 8px; background: #fbfbfe;
+          border-bottom: 1px solid #eff0f7; }
+  .base b { color: var(--foreground); font-variant-numeric: tabular-nums; }
+
+  .flag { border-radius: 10px; padding: 9px 12px; font-size: 11.5px; margin-top: 11px; line-height: 1.5; }
+  .flag.bad { border: 1px solid var(--warn-br); background: var(--warn-bg); color: var(--warn-fg); }
+  .flag.good { border: 1px solid var(--good-br); background: var(--good-bg); color: var(--good-fg); }
+  .flag b { font-weight: 700; }
+
+  .legend { margin: 14px 0 0; font-size: 11.5px; color: var(--muted-foreground);
+            border-top: 1px dashed var(--border); padding-top: 11px; line-height: 1.55; }
+  .legend .dots { color: #b9bacb; letter-spacing: .18em; }
+
+  /* the draft grid */
+  .scroller { overflow-x: auto; border: 1px solid var(--border); border-radius: 11px; }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12.5px; }
+  th, td { padding: 8px 14px; white-space: nowrap; border-bottom: 1px solid var(--border); text-align: left; }
+  tbody tr:last-child td { border-bottom: 0; }
+  th { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground);
+       font-weight: 600; background: #f7f7fc; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  td.n { color: var(--muted-foreground); }
+  .col-new { background: color-mix(in srgb, var(--primary) 7%, white); }
+  th.col-new { background: color-mix(in srgb, var(--primary) 13%, white); color: var(--primary); }
+  td.col-new { color: var(--foreground); font-weight: 600; }
+  .otcell { display: inline-flex; gap: 5px; }
+  .otcell i { display: inline-block; width: 42px; height: 20px; border: 1px solid var(--border);
+              border-radius: 6px; background: #fff; }
+  .ecode { display: inline-block; background: var(--muted); border-radius: 6px; padding: 1px 7px;
+           font-size: 11px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+
+  .three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .box { border: 1px solid var(--border); border-radius: 11px; padding: 12px 13px; font-size: 12px;
+         line-height: 1.55; }
+  .box b { display: block; margin-bottom: 3px; font-size: 12px; }
+  .box.no { border-color: var(--warn-br); background: var(--warn-bg); color: var(--warn-fg); }
+  .box.no b { color: var(--warn-fg); }
+  .note { font-size: 11.5px; color: var(--muted-foreground); margin: 11px 0 0; line-height: 1.55; }
+  .note b { color: var(--foreground); font-weight: 600; }
+</style>
+
+<div class="wrap">
+
+<h1 class="hd">“Absent” on the payslip — as its own line, with its own day count</h1>
+<p class="lede">Sketch for board item e2632276. <b>The deduction you asked for is already running</b> — it is
+  just folded into one unnamed figure. This shows what changes: the same block, named. Wording, spacing and
+  colours will differ in the built version.</p>
+
+<!-- ══════════════════ 1 · THE PAYSLIP ══════════════════ -->
+<div class="card">
+  <h2><span class="num">1</span>The payslip — Deductions (your share)</h2>
+  <p class="sub">The same employee, the same month, the same payroll. On the left, how it prints today.
+    On the right, how it prints after this change.</p>
+
+  <div class="given">
+    <div class="k">The worked example</div>
+    <ul>
+      <li>Basic salary <b>RM 6,000.00</b></li>
+      <li>August 2026</li>
+      <li>Unpaid leave divisor: <b>calendar days in the month (31)</b></li>
+      <li>Approved unpaid leave: <b>2 days</b></li>
+      <li>Marked Absent: <b>1 day</b></li>
+      <li>Daily rate: <b>6,000.00 ÷ 31</b></li>
+    </ul>
+    <p class="why">Round numbers on purpose, so you can check the arithmetic yourself. They are <b>not</b>
+      taken from your data — an absent-day figure does not exist anywhere in payroll yet, so there is no
+      real “after” number to take.</p>
+  </div>
+
+  <div class="pair">
+
+    <!-- ─────────── TODAY ─────────── -->
+    <div>
+      <p class="caption"><span class="tag now">Today</span></p>
+      <div class="blk">
+        <h3>Deductions (your share)</h3>
+        <div class="r"><span>EPF / KWSP</span><span class="amt dots">⋯</span></div>
+        <div class="r"><span>SOCSO / PERKESO</span><span class="amt dots">⋯</span></div>
+        <div class="r"><span>EIS / SIP</span><span class="amt dots">⋯</span></div>
+        <div class="r"><span>PCB / MTD (income tax)</span><span class="amt dots">⋯</span></div>
+        <div class="base">All four worked out on <b>RM 5,612.90</b> — the salary after the unpaid-leave
+          deduction, not the full RM 6,000.00.</div>
+        <div class="r lump"><span>Other deductions</span><span class="amt">387.10</span></div>
+        <div class="r sum"><span>Total deductions</span><span class="amt dots">⋯</span></div>
+      </div>
+      <div class="flag bad">
+        <b>One figure, no name, no day count.</b> RM 387.10 is your two days of unpaid leave, worked out
+        exactly as you asked — but nothing on the payslip says so, and nobody can check it.
+        <b>And the day marked Absent cost nothing at all</b>: it is not in this figure.
+      </div>
+    </div>
+
+    <!-- ─────────── AFTER ─────────── -->
+    <div>
+      <p class="caption"><span class="tag new">After this change</span></p>
+      <div class="blk">
+        <h3>Deductions (your share)</h3>
+        <div class="r"><span>EPF / KWSP</span><span class="amt dots">⋯</span></div>
+        <div class="r"><span>SOCSO / PERKESO</span><span class="amt dots">⋯</span></div>
+        <div class="r"><span>EIS / SIP</span><span class="amt dots">⋯</span></div>
+        <div class="r"><span>PCB / MTD (income tax)</span><span class="amt dots">⋯</span></div>
+        <div class="base">All four now worked out on <b>RM 5,419.35</b> — the absence comes off
+          <em>before</em> the contributions, exactly as unpaid leave already does.</div>
+        <div class="r named"><span>Unpaid leave<span class="days">2 days</span></span><span class="amt">387.10</span></div>
+        <div class="r named"><span>Absent<span class="days">1 day</span> <span class="chip">New</span></span><span class="amt">193.55</span></div>
+        <div class="r sum"><span>Total deductions</span><span class="amt dots">⋯</span></div>
+      </div>
+      <div class="flag good">
+        <b>Two named lines, each with its day count.</b> 6,000.00 ÷ 31 × 2 = 387.10 and
+        6,000.00 ÷ 31 × 1 = 193.55 — same daily rate, same rounding, same place in the calculation.
+        The unnamed “Other deductions” line has gone because there was nothing left in it.
+        <b>That is what the ABSENT pay code was for, delivered without the pay code.</b>
+      </div>
+    </div>
+  </div>
+
+  <p class="legend"><span class="dots">⋯</span> is a real figure that is on the payslip but that this
+    sketch does not draw. Because the absence comes off <em>before</em> EPF, SOCSO, EIS and PCB are worked
+    out, all four change — by amounts that come from the statutory tables. We are not going to sketch a
+    number we have not calculated. The salary they are worked out <em>on</em> is shown, because that one
+    follows from the example.<br>
+    <b>“Other deductions” disappears here only because there was nothing else in it.</b> If you also keyed
+    other deductions that month, that line stays and shows what is left after the two named lines come out
+    of it. When there are no unpaid and no absent days, neither line appears at all.</p>
+</div>
+
+<!-- ══════════════════ 2 · THE DRAFT PAYROLL RUN ══════════════════ -->
+<div class="card">
+  <h2><span class="num">2</span>A payroll run you are still preparing</h2>
+  <p class="sub">One new column beside the “Unpaid days” column you already have, so you can check the
+    count before you process. Everything else on this screen is unchanged.</p>
+
+  <div class="scroller">
+    <table>
+      <thead>
+        <tr>
+          <th>Code</th>
+          <th>Employee</th>
+          <th class="n">Basic</th>
+          <th>OT · Bonus · TP1 · Zakat</th>
+          <th class="n">Unpaid days</th>
+          <th class="n col-new">Absent days <span class="chip">New</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="ecode">EX-001</span></td>
+          <td style="font-weight:600">Employee A <span style="color:var(--muted-foreground);font-weight:400">— the worked example above</span></td>
+          <td class="n">6,000.00</td>
+          <td><span class="otcell"><i></i><i></i><i></i><i></i></span></td>
+          <td class="n">2</td>
+          <td class="n col-new">1</td>
+        </tr>
+        <tr>
+          <td><span class="ecode">EX-002</span></td>
+          <td style="font-weight:600">Employee B</td>
+          <td class="n">3,200.00</td>
+          <td><span class="otcell"><i></i><i></i><i></i><i></i></span></td>
+          <td class="n">—</td>
+          <td class="n col-new">1</td>
+        </tr>
+        <tr>
+          <td><span class="ecode">EX-003</span></td>
+          <td style="font-weight:600">Employee C</td>
+          <td class="n">4,500.00</td>
+          <td><span class="otcell"><i></i><i></i><i></i><i></i></span></td>
+          <td class="n">—</td>
+          <td class="n col-new">—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="note">Example rows, to show the column in place. <b>A day is counted as absent</b> when it is a
+    scheduled working day with no attendance record at all, or a day someone has explicitly marked Absent.
+    Approved leave, public holidays and rest days are never counted.<br>
+    <b>Your roster wins.</b> A day you rostered as a rest day is never counted, even when the company
+    calendar calls it a working day — today the Attendance screens wrongly show that day in red as Absent,
+    and we are fixing that at the same time so it can never cost anyone a day's pay.<br>
+    This grid is only on runs that are still drafts, which is why the column will not appear on your 22
+    completed runs.</p>
+</div>
+
+<!-- ══════════════════ 3 · WHAT DOES NOT CHANGE ══════════════════ -->
+<div class="card">
+  <h2><span class="num">3</span>What this does <em>not</em> change</h2>
+  <div class="three">
+    <div class="box">
+      <b>It starts switched off.</b>
+      All 9 of your companies keep behaving exactly as they do now until you turn it on, in Payroll Policy,
+      right beside your “Unpaid leave divisor” setting. It then applies to runs made from that point on.
+    </div>
+    <div class="box">
+      <b>Nothing already issued moves.</b>
+      Your 22 completed runs and 67 issued payslips print exactly what they print today. The two named
+      lines appear on runs made after this is released.
+    </div>
+    <div class="box no">
+      <b>No ABSENT pay code.</b>
+      A pay code would deduct a <em>second</em> time on top of the deduction already running, and it would
+      be taken <em>after</em> EPF, SOCSO, EIS and PCB — so your contributions would be worked out on the
+      full salary. That is why this is not drawn as a pay code.
+    </div>
+  </div>
+</div>
+
+</div>

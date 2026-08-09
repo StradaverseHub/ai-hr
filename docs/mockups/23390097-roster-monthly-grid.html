@@ -1,0 +1,547 @@
+<meta charset="utf-8">
+<title>23390097 — Roster as a monthly grid</title>
+<!--
+  Mockup for board item 23390097 (Create a Roster function under HR Admin > Attendance), plan revision 1.
+
+  WHAT IS REAL HERE (measured on production 2026-08-07, or taken from the reporter's own attachment):
+    - The month: 01/08/2026 – 31/08/2026. That is the Date Range showing in their own screenshot.
+      01, 02, 08, 09 August 2026 really are Sat/Sun, which is why those columns are the shaded ones.
+    - WFO-HQ-FWH: the reporter's own shift code, used in their screenshot and named in their request text
+      ("Employee A is assigned WFO-HQ-FWH on 10/08/2026").
+    - MB28: a live shift on this tenant — 08:00–17:00, 60-minute break (item cf21e554, measured).
+    - OFF / RD / Edit / the filter row / the four button names: all from the reporter's own screen and
+      their own "Recommended screen design" list.
+    - 9 live shifts, 315 rostered days, 269 attendance days: measured on production.
+    - ISEDECOR BINA SDN BHD and its A00nn employee-number series, and the departments Site Operations
+      and Finance: measured. The occupations EXECUTIVE / SENIOR EXECUTIVE / DEPARTMENT HEAD are the ones
+      printed in the reporter's own screenshot.
+    - The BEFORE card is today's real /roster screen: 7-day window, "Assign" brush palette, the shift's
+      full NAME in the cell (components/roster-grid.tsx renders shiftName, not code), "0 selected /
+      Apply to selected, whole week", the Attendance Policy hint line. Wording taken from messages/en.json.
+
+  WHAT IS ILLUSTRATIVE, AND SAID SO ON THE PAGE:
+    - Employee NAMES. Their screenshot has the name column blank, so we have no real names to print;
+      the numbers follow their real A00nn series but the names against them are examples.
+    - Only MB28's hours are printed in the legend, because those are the ones we measured. The built
+      legend prints each of the 9 live shifts with its own start and end time.
+
+  DELIBERATELY NOT DRAWN:
+    - The Upload Shift Roster preview (employees read / days read / valid / duplicates / rejected lines)
+      and the Download Template workbook. They are promised in the plan but they are separate screens;
+      this sketch is the grid, and drawing a preview we have not designed would promise a shape.
+    - The Edit panel itself, and the confirmation dialogs.
+    - The Audit Trail rows.
+    - The plan's one genuinely open question — "if you would rather upload a plain list instead of the
+      month grid, reject this plan and say so". A choice has no honest picture. It stays in the words.
+    - Any shift code other than MB28 and WFO-HQ-FWH. Inventing a code that looks official is exactly
+      the mistake a mockup is supposed to prevent.
+
+  Tokens from app/globals.css. Everything inline — scripts/mockup/render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--ghost:#9a9bab;--wk:#fffbeb;--wkhd:#fef3c7;--wkbd:#f5e6b8;
+        --good:#15803d;--goodbg:#f0fdf4;--goodbd:#bbf7d0;--warn:#b45309;--warnbd:#fed7aa;--warnbg:#fff7ed;
+        --ind:#e0e7ff;--indfg:#3730a3;--eme:#d1fae5;--emefg:#065f46;--rose:#fee2e2;--rosefg:#b91c1c}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+
+  .sketch{border:1px dashed #c7c8d8;background:#fdfdff;border-radius:12px;padding:10px 13px;margin-bottom:16px}
+  .sketch b{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--primary)}
+  .sketch p{margin:3px 0 0;font-size:11.5px;color:var(--mf)}
+
+  /* ── screen chrome ─────────────────────────────────────────────── */
+  .toprow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+  .co{display:flex;align-items:center;gap:7px}
+  .sel{border:1px solid var(--border);background:#fff;border-radius:8px;padding:5px 10px;font-size:11.5px}
+  .sel .cv{color:var(--mf);margin-left:6px}
+  .ghostbtn{border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11.5px;color:var(--fg);background:#fff}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;font-size:11.5px;font-weight:600;display:inline-block}
+
+  .filters{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
+           border:1px solid var(--border);border-radius:11px;padding:11px 12px;background:#fbfbfe;margin-bottom:10px}
+  .fset{display:flex;align-items:flex-end;gap:9px;flex-wrap:wrap}
+  .fld{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:3px}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:5px 9px;font-size:11.5px;white-space:nowrap}
+  .inp.pick{border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,70,229,.10)}
+  .mo{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11.5px}
+  .mo span.a{color:var(--mf);font-size:12px}
+  .acts{display:flex;align-items:center;gap:7px}
+
+  .legend{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:9px}
+  .lg{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700;margin-right:2px}
+  .chip{border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:600;border:1px solid transparent}
+  .chip.ind{background:var(--ind);color:var(--indfg)}
+  .chip.eme{background:var(--eme);color:var(--emefg)}
+  .chip.rd{background:var(--muted);color:var(--mf);border-color:var(--border)}
+  .chip.off{background:#fff;color:var(--ghost);border-color:var(--border);font-weight:500}
+  .chip.more{background:#fff;color:var(--mf);border-color:var(--border);font-weight:500;font-style:italic}
+  .chip .hrs{font-weight:500;opacity:.85}
+
+  /* ── the month grid ────────────────────────────────────────────── */
+  .scroller{border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  table.grid{border-collapse:separate;border-spacing:0;table-layout:fixed;width:1150px}
+  table.grid th,table.grid td{border-bottom:1px solid var(--border);padding:3px 4px;vertical-align:middle}
+  table.grid thead th{background:var(--muted);color:var(--mf);font-size:9px;font-weight:700;
+                      text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:5px 4px}
+  table.grid thead th.d{text-align:center;text-transform:none;letter-spacing:0}
+  th.d .dd{font-size:10px;color:var(--fg);font-weight:700}
+  th.d .dw{font-size:8.5px;color:var(--mf);font-weight:600}
+  th.d .tdy{display:block;font-size:7.5px;color:var(--primary);font-weight:700;letter-spacing:.04em}
+  .wk{background:var(--wk)}
+  thead th.wk{background:var(--wkhd)}
+  .pinend{box-shadow:2px 0 0 var(--border)}
+  td.eno{font-size:9.5px;color:var(--mf);font-variant-numeric:tabular-nums}
+  td.enm{font-size:9px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  td.edp{font-size:8.5px;color:var(--mf);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  td.eoc{font-size:8px;color:var(--mf);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  td.eed{text-align:center}
+  .edit{font-size:9px;color:var(--primary);font-weight:600;text-decoration:underline}
+  td.c{text-align:center;padding:2px}
+  .cc{display:block;border-radius:5px;padding:2px 1px;font-size:9px;font-weight:700;letter-spacing:-.1px;
+      white-space:nowrap;overflow:hidden}
+  .cc.ind{background:var(--ind);color:var(--indfg)}
+  .cc.eme{background:var(--eme);color:var(--emefg)}
+  .cc.rd{background:var(--muted);color:#4b4c5a;border:1px solid var(--border);padding:1px 1px}
+  .cc.gh{color:var(--ghost);font-weight:500}
+  .cc.nil{color:#cdced9;font-weight:500}
+  td.cont{text-align:center;color:var(--ghost);font-size:11px;
+          background:linear-gradient(to right,rgba(255,255,255,0),#f7f7fc)}
+  thead th.cont{text-align:center;color:var(--mf)}
+  .norest{display:inline-block;background:var(--rose);color:var(--rosefg);border-radius:999px;
+          padding:0 4px;font-size:7.5px;font-weight:700;margin-left:4px;vertical-align:1px}
+  tfoot td{background:#fbfbfe;font-size:9.5px;color:var(--mf);padding:5px 8px}
+
+  .notes{display:grid;grid-template-columns:1fr 1fr;gap:9px 18px;margin-top:11px}
+  .note{font-size:11.5px;color:var(--mf);margin:0}
+  .note b{color:var(--fg)}
+  .swatch{display:inline-block;border-radius:4px;padding:0 5px;font-size:9.5px;font-weight:700;vertical-align:1px}
+
+  .keep{display:flex;gap:10px;margin-top:12px}
+  .keepbox{flex:1;border:1px solid var(--border);border-radius:10px;padding:9px 11px;font-size:11.5px;background:#fbfbfe}
+  .keepbox b{display:block;font-size:11.5px;margin-bottom:1px;color:var(--fg)}
+  .keepbox span{color:var(--mf)}
+
+  /* ── the before grid ───────────────────────────────────────────── */
+  table.wkgrid{border-collapse:separate;border-spacing:0;table-layout:fixed;width:1120px;font-size:11px}
+  table.wkgrid th,table.wkgrid td{border-bottom:1px solid var(--border);padding:4px 6px}
+  table.wkgrid thead th{background:var(--muted);color:var(--mf);font-size:9.5px;font-weight:700;text-align:center}
+  table.wkgrid thead th.emp{text-align:left}
+  table.wkgrid th .wd{font-size:10.5px;color:var(--fg)}
+  table.wkgrid td.emp{font-size:10.5px}
+  table.wkgrid td.emp .cd{color:var(--mf);font-size:9.5px;margin-right:5px}
+  .wcell{display:block;border-radius:5px;padding:3px 3px;font-size:9px;font-weight:600;
+         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+  .wcell.ind{background:var(--ind);color:var(--indfg)}
+  .wcell.eme{background:var(--eme);color:var(--emefg)}
+  .wcell.rest{background:var(--muted);color:var(--mf)}
+  .wcell.nil{color:#cdced9}
+  .cb{display:inline-block;width:10px;height:10px;border:1px solid #b9bac9;border-radius:2px;
+      background:#fff;vertical-align:-1px;margin-right:6px}
+  .hintbar{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border);
+           border-radius:10px;padding:7px 11px;font-size:11px;color:var(--mf);margin-bottom:9px;background:#fbfbfe}
+  .hintbar a{color:var(--primary);font-weight:600}
+  .palette{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px}
+  .bulkbar{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--mf);margin-bottom:9px}
+
+  .ok{border:1px solid var(--goodbd);background:var(--goodbg);border-radius:10px;padding:10px 12px;
+      font-size:11.5px;color:#14532d;margin-top:11px}
+  .flag{border:1px solid var(--warnbd);background:var(--warnbg);border-radius:10px;padding:10px 12px;
+        font-size:11.5px;color:#7c2d12;margin-top:11px}
+  ul.tight{margin:6px 0 0;padding-left:17px}
+  ul.tight li{margin-bottom:3px;font-size:11.5px}
+</style>
+
+<div class="sketch">
+  <b>Sketch — layout only</b>
+  <p>Wording, spacing and colours will differ in the built screen. The month (01/08/2026–31/08/2026), the
+    shift codes <b>WFO-HQ-FWH</b> and <b>MB28</b>, the OFF / RD markers, the four buttons and the Edit link
+    are all your own. Employee <i>numbers</i> follow your real A00nn series at ISEDECOR BINA SDN BHD; the
+    <i>names</i> beside them are examples, because the name column in your screenshot is blank.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">1</span>Roster, as a month — the AFTER</h2>
+  <p class="q">Roster · sits beside Attendance in the sidebar, not inside it (Attendance is administrators-only,
+    and a supervisor who is not an administrator still needs the roster).</p>
+
+  <div class="toprow">
+    <div class="co">
+      <span class="sel">ISEDECOR BINA SDN BHD<span class="cv">&#9662;</span></span>
+      <span class="ghostbtn">Switch</span>
+    </div>
+    <div class="acts">
+      <span class="ghostbtn">Upload Shift Roster</span>
+      <span class="ghostbtn">Download Template</span>
+      <span class="ghostbtn">Export</span>
+    </div>
+  </div>
+
+  <div class="filters">
+    <div class="fset">
+      <div><div class="fld">Business Group</div><div class="inp">&ndash; ALL &ndash; <span style="color:var(--mf)">&#9662;</span></div></div>
+      <div><div class="fld">Department</div><div class="inp">&ndash; ALL &ndash; <span style="color:var(--mf)">&#9662;</span></div></div>
+      <div><div class="fld">Employee</div><div class="inp">&#128269; name or employee no.</div></div>
+      <div><div class="fld">Month</div><div class="mo"><span class="a">&#8249;</span><b>August 2026</b><span class="a">&#8250;</span></div></div>
+      <div><span class="btn">Query</span></div>
+    </div>
+    <div style="font-size:10.5px;color:var(--mf);text-align:right;max-width:250px">
+      Upload Shift Roster is HR&nbsp;Administrator only. Everyone else sees only the people they are
+      responsible for.
+    </div>
+  </div>
+
+  <div class="legend">
+    <span class="lg">Legend</span>
+    <span class="chip ind">MB28 <span class="hrs">08:00–17:00</span></span>
+    <span class="chip eme">WFO-HQ-FWH <span class="hrs">hours as set in Shift settings</span></span>
+    <span class="chip rd">RD <span class="hrs">rest day</span></span>
+    <span class="chip off">OFF <span class="hrs">not scheduled</span></span>
+    <span class="chip more">…and the rest of your 9 live shifts, each with its own hours</span>
+  </div>
+
+  <div class="scroller">
+    <table class="grid">
+      <colgroup>
+        <col style="width:58px"><col style="width:140px"><col style="width:88px"><col style="width:84px"><col style="width:34px">
+        <col style="width:60px"><col style="width:60px"><col style="width:60px"><col style="width:60px">
+        <col style="width:60px"><col style="width:60px"><col style="width:60px"><col style="width:60px">
+        <col style="width:60px"><col style="width:60px"><col style="width:60px"><col style="width:60px">
+        <col style="width:26px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Employee No</th><th>Employee Name</th><th>Department</th><th>Occupation</th>
+          <th class="pinend"></th>
+          <th class="d wk"><span class="dd">01/08</span><span class="dw">Sat</span></th>
+          <th class="d wk"><span class="dd">02/08</span><span class="dw">Sun</span></th>
+          <th class="d"><span class="dd">03/08</span><span class="dw">Mon</span></th>
+          <th class="d"><span class="dd">04/08</span><span class="dw">Tue</span></th>
+          <th class="d"><span class="dd">05/08</span><span class="dw">Wed</span></th>
+          <th class="d"><span class="dd">06/08</span><span class="dw">Thu</span></th>
+          <th class="d"><span class="dd">07/08</span><span class="dw">Fri</span></th>
+          <th class="d wk"><span class="dd">08/08</span><span class="dw">Sat</span></th>
+          <th class="d wk"><span class="dd">09/08</span><span class="dw">Sun</span><span class="tdy">TODAY</span></th>
+          <th class="d"><span class="dd">10/08</span><span class="dw">Mon</span></th>
+          <th class="d"><span class="dd">11/08</span><span class="dw">Tue</span></th>
+          <th class="d"><span class="dd">12/08</span><span class="dw">Wed</span></th>
+          <th class="cont">&#8943;</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="eno">A0001</td><td class="enm">AHMAD ZULKIFLI BIN HASSAN</td>
+          <td class="edp">Site Operations</td><td class="eoc">DEPARTMENT HEAD</td>
+          <td class="eed pinend"><span class="edit">Edit</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="cont">&#8943;</td>
+        </tr>
+        <tr>
+          <td class="eno">A0002</td><td class="enm">NURUL AIN BINTI ABDULLAH</td>
+          <td class="edp">Site Operations</td><td class="eoc">EXECUTIVE</td>
+          <td class="eed pinend"><span class="edit">Edit</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="cont">&#8943;</td>
+        </tr>
+        <tr>
+          <td class="eno">A0003</td><td class="enm">LIM CHEE KEONG</td>
+          <td class="edp">Finance</td><td class="eoc">SENIOR EXECUTIVE</td>
+          <td class="eed pinend"><span class="edit">Edit</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="cont">&#8943;</td>
+        </tr>
+        <tr>
+          <td class="eno">A0004</td><td class="enm">SITI ROHANA BINTI YUSOF</td>
+          <td class="edp">Finance</td><td class="eoc">EXECUTIVE</td>
+          <td class="eed pinend"><span class="edit">Edit</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="cont">&#8943;</td>
+        </tr>
+        <tr>
+          <td class="eno">A0005</td><td class="enm">MUTHUSAMY A/L RAMASAMY<span class="norest">NO REST</span></td>
+          <td class="edp">Site Operations</td><td class="eoc">EXECUTIVE</td>
+          <td class="eed pinend"><span class="edit">Edit</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c wk"><span class="cc eme">WFO-HQ-FWH</span></td>
+          <td class="c wk"><span class="cc eme">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="cont">&#8943;</td>
+        </tr>
+        <tr>
+          <td class="eno">A0006</td><td class="enm">TAN MEI LING</td>
+          <td class="edp">Finance</td><td class="eoc">EXECUTIVE</td>
+          <td class="eed pinend"><span class="edit">Edit</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c wk"><span class="cc eme">WFO-HQ-FWH</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc rd">RD</span></td>
+          <td class="cont">&#8943;</td>
+        </tr>
+        <tr>
+          <td class="eno">A0007</td><td class="enm">MOHD HAFIZ BIN OTHMAN</td>
+          <td class="edp">Site Operations</td><td class="eoc">SENIOR EXECUTIVE</td>
+          <td class="eed pinend"><span class="edit">Edit</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c"><span class="cc gh">WFO-HQ-FWH</span></td>
+          <td class="c wk"><span class="cc gh">OFF</span></td>
+          <td class="c wk"><span class="cc rd">RD</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="c"><span class="cc ind">MB28</span></td>
+          <td class="cont">&#8943;</td>
+        </tr>
+        <tr>
+          <td class="eno">A0008</td><td class="enm">WAN NURHALIZA BINTI ISMAIL</td>
+          <td class="edp">Site Operations</td><td class="eoc">EXECUTIVE</td>
+          <td class="eed pinend"><span class="edit">Edit</span></td>
+          <td class="c wk"><span class="cc nil">&mdash;</span></td>
+          <td class="c wk"><span class="cc nil">&mdash;</span></td>
+          <td class="c"><span class="cc nil">&mdash;</span></td>
+          <td class="c"><span class="cc nil">&mdash;</span></td>
+          <td class="c"><span class="cc nil">&mdash;</span></td>
+          <td class="c"><span class="cc nil">&mdash;</span></td>
+          <td class="c"><span class="cc nil">&mdash;</span></td>
+          <td class="c wk"><span class="cc nil">&mdash;</span></td>
+          <td class="c wk"><span class="cc nil">&mdash;</span></td>
+          <td class="c"><span class="cc nil">&mdash;</span></td>
+          <td class="c"><span class="cc nil">&mdash;</span></td>
+          <td class="c"><span class="cc nil">&mdash;</span></td>
+          <td class="cont">&#8943;</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr><td colspan="18">Showing 1–8 of 22 employees &nbsp;·&nbsp; 01/08/2026 – 31/08/2026 &nbsp;·&nbsp;
+          the four left-hand columns and Edit stay put while the dates scroll sideways to 31/08</td></tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="notes">
+    <p class="note"><span class="swatch" style="background:var(--eme);color:var(--emefg)">WFO-HQ-FWH</span>
+      <b>Coloured = rostered.</b> Somebody set that shift on that date, and it is one of the 315 rostered days
+      already saved.</p>
+    <p class="note"><span class="swatch" style="color:var(--ghost);border:1px solid var(--border)">WFO-HQ-FWH</span>
+      <b>Grey = the person's usual shift</b> filling a date nothing was rostered on. The whole month reads as
+      covered without rostering every day by hand.</p>
+    <p class="note"><b>OFF vs RD.</b> RD is a rest day that was rostered. OFF is a day the usual shift does not
+      work at all, so nothing is scheduled. Saturday and Sunday columns are shaded, as on your own screen.</p>
+    <p class="note"><b>A0005 shows the rest-day warning.</b> Seven days in a row with a shift and no rest day —
+      the EA 1955 s.59 flag the roster already carries, now checked across the whole month.</p>
+    <p class="note"><b>A0008's month is empty</b> because no usual shift is set for her. The Attendance Policy
+      screen already lists exactly who those people are, and setting it there fills this in.</p>
+    <p class="note"><b>Edit</b> opens that one person's month, where you tick several dates and set them all to
+      one shift, with a confirmation before it saves. A single cell can still be changed by clicking it.</p>
+    <p class="note"><b>09/08 is today.</b> Dates today or earlier can only be changed by an HR Administrator,
+      and only after confirming. From 10/08 onwards a supervisor can change them too.</p>
+    <p class="note"><b>Export</b> downloads exactly what is on screen. Every change — one cell, one row, or a
+      whole upload — is filed in the Audit Trail under Attendance with the shift before and the shift after.</p>
+  </div>
+
+  <div class="keep">
+    <div class="keepbox"><b>Generate roster — still here</b>
+      <span>Fills a date range from a shift's weekly pattern. Its dates now default to August 2026.</span></div>
+    <div class="keepbox"><b>Copy roster — still here</b>
+      <span>Copies an earlier period forward. Its dates now default to August 2026.</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>The same screen today — the BEFORE</h2>
+  <p class="q">Roster, exactly as it is now: the grid already exists, and it is one week wide.</p>
+
+  <div class="toprow">
+    <div class="co">
+      <span class="sel">ISEDECOR BINA SDN BHD<span class="cv">&#9662;</span></span>
+      <span class="ghostbtn">Switch</span>
+    </div>
+    <div class="acts">
+      <span class="ghostbtn">&#8249;</span>
+      <span style="font-size:11.5px;color:var(--mf)">3 Aug – 9 Aug</span>
+      <span class="ghostbtn">&#8250;</span>
+      <span class="ghostbtn">This week</span>
+    </div>
+  </div>
+
+  <div class="hintbar">
+    <span>Shift schedules are managed in Attendance Policy; a person's usual shift is set on their profile as
+      their Default shift. Use the roster for date-specific exceptions.</span>
+    <a>Manage shift schedules &rarr;</a>
+  </div>
+
+  <div class="palette">
+    <span class="lg">Assign</span>
+    <span class="chip ind">WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700) <span class="hrs">· 08:00–17:00</span></span>
+    <span class="chip rd">Rest day</span>
+    <span class="chip off">Clear</span>
+    <span class="chip more">+ 8 more shift chips</span>
+  </div>
+  <div class="bulkbar">
+    <span>0 selected</span>
+    <span class="ghostbtn" style="padding:3px 8px;font-size:10.5px">Apply to selected, whole week</span>
+  </div>
+
+  <div class="scroller">
+    <table class="wkgrid">
+      <colgroup>
+        <col style="width:330px"><col style="width:112px"><col style="width:112px"><col style="width:112px">
+        <col style="width:112px"><col style="width:112px"><col style="width:112px"><col style="width:112px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="emp"><span class="cb"></span>Employee</th>
+          <th><span class="wd">Mon</span><br>3 Aug</th><th><span class="wd">Tue</span><br>4 Aug</th>
+          <th><span class="wd">Wed</span><br>5 Aug</th><th><span class="wd">Thu</span><br>6 Aug</th>
+          <th><span class="wd">Fri</span><br>7 Aug</th><th><span class="wd">Sat</span><br>8 Aug</th>
+          <th><span class="wd">Sun</span><br>9 Aug</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="emp"><span class="cb"></span><span class="cd">A0004</span>SITI ROHANA BINTI YUSOF</td>
+          <td><span class="wcell ind">WITH 0.5 OT HOUR ADJ - MO…</span></td>
+          <td><span class="wcell ind">WITH 0.5 OT HOUR ADJ - MO…</span></td>
+          <td><span class="wcell ind">WITH 0.5 OT HOUR ADJ - MO…</span></td>
+          <td><span class="wcell ind">WITH 0.5 OT HOUR ADJ - MO…</span></td>
+          <td><span class="wcell ind">WITH 0.5 OT HOUR ADJ - MO…</span></td>
+          <td><span class="wcell nil">&mdash;</span></td>
+          <td><span class="wcell rest">Rest</span></td>
+        </tr>
+        <tr>
+          <td class="emp"><span class="cb"></span><span class="cd">A0007</span>MOHD HAFIZ BIN OTHMAN</td>
+          <td><span class="wcell ind">WITH 0.5 OT HOUR ADJ - MO…</span></td>
+          <td><span class="wcell ind">WITH 0.5 OT HOUR ADJ - MO…</span></td>
+          <td><span class="wcell ind">WITH 0.5 OT HOUR ADJ - MO…</span></td>
+          <td><span class="wcell nil">&mdash;</span></td>
+          <td><span class="wcell nil">&mdash;</span></td>
+          <td><span class="wcell nil">&mdash;</span></td>
+          <td><span class="wcell rest">Rest</span></td>
+        </tr>
+        <tr>
+          <td class="emp"><span class="cb"></span><span class="cd">A0001</span>AHMAD ZULKIFLI BIN HASSAN</td>
+          <td><span class="wcell nil">&mdash;</span></td><td><span class="wcell nil">&mdash;</span></td>
+          <td><span class="wcell nil">&mdash;</span></td><td><span class="wcell nil">&mdash;</span></td>
+          <td><span class="wcell nil">&mdash;</span></td><td><span class="wcell nil">&mdash;</span></td>
+          <td><span class="wcell rest">Rest</span></td>
+        </tr>
+        <tr>
+          <td class="emp"><span class="cb"></span><span class="cd">A0008</span>WAN NURHALIZA BINTI ISMAIL</td>
+          <td><span class="wcell nil">&mdash;</span></td><td><span class="wcell nil">&mdash;</span></td>
+          <td><span class="wcell nil">&mdash;</span></td><td><span class="wcell nil">&mdash;</span></td>
+          <td><span class="wcell nil">&mdash;</span></td><td><span class="wcell nil">&mdash;</span></td>
+          <td><span class="wcell nil">&mdash;</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="notes">
+    <p class="note"><b>Seven days, never a month.</b> Prev / next move a week at a time, so preparing August
+      means fourteen separate visits to this screen.</p>
+    <p class="note"><b>The cell prints the shift's whole name,</b> not its code — which is why MB28's
+      48-character name has to be cut off mid-word.</p>
+    <p class="note"><b>No Business Group, Department or Employee filter,</b> and no Employee No, Department or
+      Occupation column to sort or read by.</p>
+    <p class="note"><b>A dash means "nothing rostered on this date"</b> — even when the person has a usual shift.
+      A0001's week is covered by his usual shift and the grid cannot say so; that is what the grey cells in
+      card 1 fix.</p>
+    <p class="note"><b>No weekend shading, no Edit link, no upload, no export.</b></p>
+    <p class="note"><b>The click-to-assign cell stays.</b> Picking an assignment and clicking a cell works
+      exactly as it does today and is not being rebuilt.</p>
+  </div>
+
+  <div class="ok"><b>What is already underneath, and is not changing.</b> 315 rostered days are saved, and every
+    attendance, lateness and overtime figure is already measured against whatever the roster says for that date.
+    Your 269 attendance days keep working exactly as they do now, and changing a roster date never goes back and
+    re-does an attendance day that was already recorded.</div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>What this sketch deliberately does not show</h2>
+  <ul class="tight">
+    <li><b>The Upload Shift Roster preview and the template file.</b> The plan promises both — you will see how
+      many employees and days were read, how many are valid, how many are duplicated, and every rejected line
+      with its reason, before anything is saved. They are separate screens and this sketch is the grid; drawing
+      a preview we have not laid out yet would be promising a shape rather than a behaviour.</li>
+    <li><b>The Edit panel, the confirmation prompts, and the Audit Trail rows.</b> Described in the plan, not
+      drawn here.</li>
+    <li><b>Any shift code except MB28 and WFO-HQ-FWH.</b> Those two are yours — MB28 is live on your data and
+      WFO-HQ-FWH is the code in your own screenshot. The rest of your 9 live shifts are counted, not invented,
+      and only MB28's hours are printed in the legend because those are the ones we measured. The built legend
+      prints every code with its own start and end time.</li>
+  </ul>
+  <div class="flag"><b>One thing in the plan has no honest picture.</b> The upload file drawn here is the month
+    grid itself — download it, fill it in, send it back. The plan also says that if you would rather upload a
+    plain list instead — one line per employee per date with a shift code — you should reject the plan and say
+    so. A choice cannot be drawn, so it stays in the words.</div>
+</div>

@@ -1,0 +1,414 @@
+<meta charset="utf-8">
+<title>0fcb2557 — Export to Excel on the History tab</title>
+<!--
+  Mockup for 0fcb2557 (Export payroll history to Excel), plan revision 1.
+
+  EVERY FIGURE IS THE REPORTER'S OWN. Ismail's row and expanded panel are transcribed from their
+  attached screenshot (2026-01, Regular, 100180 ISMAIL, ISEDECOR BINA SDN BHD): gross 5,600.00,
+  basic 5,500.00, allowances 100.00 (HANDPHONE ALLOWANCE 100.00), EPF 616.00, SOCSO 27.75,
+  EIS 11.10, PCB 1,680.00, total deductions 2,334.85, net 3,265.15, employer EPF 672.00,
+  SOCSO 97.15, EIS 11.10, HRDF 56.00, total employer contributions 836.25. Both sides reconcile.
+  67 = the processed payslips on the live system (plan: "the other 66 processed payslips").
+  Tab names, section header "History (n)", filter labels and the Export to Excel wording are the
+  product's own strings (messages/en.json payroll.transactions.view.*).
+
+  DELIBERATELY NOT DRAWN:
+   - No second employee row carrying figures. We have Ismail's numbers and nobody else's; the other
+     rows are drawn as blank placeholder bars. Real names with invented amounts is the worse half-fix.
+   - No blank-named-column example row. The plan hedges WHICH runs lack per-item detail (bonus,
+     off-cycle, adjustment, and anything calculated before itemised detail was kept). That sentence
+     has no honest picture, so it stays in words.
+   - No 200-row truncation banner: with 67 processed payslips the cap note is not on screen today.
+   - No file name (.xls vs .xlsx is not something this plan raises) and no recorded-items columns
+     (the reporter-facing plan does not promise them).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;
+        --grid:#d8dae6;--hl:#eef0ff}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px;font-size:12px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .amber{background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:10px 12px;
+         font-size:11.5px;color:#7c2d12}
+
+  /* ---------- product chrome ---------- */
+  .tabs{display:flex;gap:5px;flex-wrap:wrap}
+  .tabs span{padding:5px 12px;border-radius:8px;background:var(--muted);color:var(--mf);font-size:11.5px}
+  .tabs span.on{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary);font-weight:700}
+  .screen{background:#fff;border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .filterbar{display:flex;align-items:flex-end;gap:10px;padding:10px 12px;background:#f8f8fd;
+             border-bottom:1px solid var(--border)}
+  .f{flex:1;min-width:0}
+  .f label{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;
+           color:var(--mf);font-weight:700;margin-bottom:3px}
+  .inp{border:1px solid var(--border);border-radius:7px;padding:5px 9px;font-size:11.5px;background:#fff;
+       display:flex;justify-content:space-between;gap:6px;color:var(--fg)}
+  .inp i{color:#9698ab;font-style:normal}
+  .applybtn{background:var(--primary);color:#fff;border-radius:7px;padding:6px 14px;font-size:11.5px;
+            font-weight:600;flex:none}
+  .sechead{display:flex;align-items:center;justify-content:space-between;gap:12px;
+           padding:10px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600}
+  .sechead .cnt{color:var(--mf);font-weight:400}
+  .ghostslot{border:1.5px dashed #f0a8a8;border-radius:8px;padding:3px 12px;font-size:10.5px;
+             color:#b91c1c;font-weight:600;background:#fff5f5}
+  .xbtn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:#fff;
+        border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:600;color:var(--fg);flex:none}
+  .xbtn .ca{color:var(--mf);font-size:9px}
+  .menu{position:relative}
+  .ddl{border:1px solid var(--border);border-radius:9px;background:#fff;overflow:hidden;
+       box-shadow:0 6px 18px rgba(20,20,45,.10);width:330px;margin-top:6px;margin-left:auto}
+  .ddl a{display:block;padding:8px 12px;border-bottom:1px solid #f0f1f7;text-decoration:none;color:var(--fg)}
+  .ddl a:last-child{border-bottom:none}
+  .ddl b{display:block;font-size:11.5px}
+  .ddl span{display:block;font-size:10.5px;color:var(--mf);line-height:1.35}
+
+  /* ---------- the history table ---------- */
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:6px 6px;background:#fafafd;border-bottom:1px solid var(--border);vertical-align:bottom}
+  td{padding:7px 6px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;vertical-align:top}
+  .r{text-align:right}
+  .eid{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:var(--mf);margin-right:5px}
+  .badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:9.5px;font-weight:600;
+         background:#dcfce7;color:#166534}
+  .tw{width:22px;color:var(--mf);text-align:center;padding-left:8px}
+
+  /* expanded panel */
+  .panel{padding:12px 14px 14px 58px;background:#fff}
+  .plabel{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);font-weight:700;
+          margin:0 0 4px}
+  .line{display:flex;justify-content:space-between;gap:16px;padding:4px 0;border-bottom:1px solid #f1f2f8;
+        font-size:12px}
+  .line:last-child{border-bottom:none}
+  .line span:last-child{font-variant-numeric:tabular-nums}
+  .line.b{font-weight:700;border-bottom:none;padding-top:7px}
+  .sub{margin:0 0 0 14px;padding:2px 0 2px 12px;border-left:1px solid #e3e4ee;display:flex;
+       justify-content:space-between;gap:16px;font-size:10.5px;color:var(--mf)}
+  .sub.hi{background:var(--hl);border-left:2px solid var(--primary);border-radius:0 6px 6px 0;
+          color:var(--primary);font-weight:700}
+  .pcols{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:12px}
+  .pmuted .line span{color:var(--mf)}
+  .netbar{margin-top:12px;background:#f4f4fd;border-radius:9px;padding:8px 14px;display:flex;
+          justify-content:space-between;align-items:center;font-weight:700;font-size:12.5px}
+  .netbar span:last-child{color:var(--primary);font-size:15px}
+
+  /* ---------- the spreadsheet strip ---------- */
+  .xl{border:1px solid var(--grid);border-radius:8px;overflow:hidden;background:#fff}
+  .xtab{display:flex;gap:4px;padding:5px 7px;background:#f4f5f9;border-top:1px solid var(--grid)}
+  .xtab i{font-style:normal;font-size:10px;padding:3px 12px;border-radius:5px 5px 0 0;background:#fff;
+          border:1px solid var(--grid);border-bottom:none;font-weight:700}
+  .xtab u{text-decoration:none;font-size:10px;color:var(--mf);padding:3px 6px}
+  .xt{width:100%;border-collapse:collapse;font-size:9.5px;table-layout:fixed}
+  .xt td,.xt th{border:1px solid var(--grid);padding:4px 5px;white-space:nowrap;overflow:hidden;
+                text-overflow:ellipsis;font-variant-numeric:tabular-nums;vertical-align:middle}
+  .xt th{background:#eceef6;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;
+         color:#3b3d4d;white-space:normal;line-height:1.2;text-align:right}
+  .xt th.l{text-align:left}
+  .xt .g{width:26px;background:#eceef6;color:#7b7d8e;text-align:center;font-weight:700;font-size:8.5px;
+         border-color:var(--grid)}
+  .xt .rr{text-align:right}
+  .xt .meta{border:none;padding:2px 5px;text-align:left;white-space:nowrap}
+  .xt .mt1{font-weight:700;font-size:11px}
+  .xt .mt2{font-size:9.5px;color:#556}
+  .xt .mt3{font-size:8.5px;color:#778}
+  .xt .frz{background:#f6f7fb}
+  .xt th.frz{background:#e2e5f1}
+  .xt .hl{background:var(--hl);color:var(--primary);font-weight:700}
+  .xt th.hl{background:#dcdffb;color:#3730a3}
+  .xt .ph{height:15px}
+  .xt .ph div{height:6px;border-radius:3px;background:#eceef4}
+  .xcap{font-size:10.5px;color:var(--mf);margin:0 0 6px;font-weight:600;text-transform:uppercase;
+        letter-spacing:.05em}
+  .legend{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--primary);font-weight:600}
+  .legend i{width:11px;height:11px;border-radius:3px;background:var(--hl);border:1px solid var(--primary);
+            display:inline-block}
+</style>
+
+<!-- ───────────────── context ───────────────── -->
+<div class="card" style="padding:14px 16px 12px;margin-bottom:14px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:9px">
+    <div><b style="font-size:14px">Transaction View</b>
+      <span style="display:block;font-size:11px;color:var(--mf)">Payroll › Transaction View — inquiry only, records cannot be created or changed here.</span></div>
+    <span style="font-size:10.5px;color:var(--mf);font-style:italic">Sketch — wording, spacing and colours will differ</span>
+  </div>
+  <div class="tabs">
+    <span>Fixed</span><span>Individual</span><span class="on">History</span><span>Grid</span><span>Outstanding</span>
+  </div>
+</div>
+
+<!-- ───────────────── 1. BEFORE ───────────────── -->
+<div class="card">
+  <h2><span class="num">1</span>Today — your screenshot, and there is nothing to download it with</h2>
+  <p class="q">“I have to open each payslip one at a time to compare them.”</p>
+  <span class="tag bad">NOW — the History tab has no download control</span>
+
+  <div class="screen">
+    <div class="filterbar">
+      <div class="f"><label>Company</label><div class="inp">All <i>&#9662;</i></div></div>
+      <div class="f"><label>Employee</label><div class="inp">All <i>&#9662;</i></div></div>
+      <div class="f"><label>Year</label><div class="inp">All <i>&#9662;</i></div></div>
+      <div class="f"><label>Month</label><div class="inp">All <i>&#9662;</i></div></div>
+      <div class="f"><label>Payroll cycle</label><div class="inp">All <i>&#9662;</i></div></div>
+      <span class="applybtn">Apply filters</span>
+    </div>
+
+    <div class="sechead">
+      <span>History <span class="cnt">(67)</span></span>
+      <span class="ghostslot">nothing here — no export, no download</span>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="tw"></th><th>Period</th><th>Payroll cycle</th><th>Employee</th><th>Company</th>
+          <th class="r">Gross</th><th class="r">EPF</th><th class="r">SOCSO</th><th class="r">EIS</th>
+          <th class="r">PCB</th><th class="r">Total deductions</th><th class="r">Net</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:none">
+          <td class="tw">&#9660;</td>
+          <td>2026-01</td>
+          <td>Regular</td>
+          <td><span class="eid">100180</span>ISMAIL</td>
+          <td>ISEDECOR BINA SDN BHD</td>
+          <td class="r">RM 5,600.00</td>
+          <td class="r">RM 616.00</td>
+          <td class="r">RM 27.75</td>
+          <td class="r">RM 11.10</td>
+          <td class="r">RM 1,680.00</td>
+          <td class="r">RM 2,334.85</td>
+          <td class="r">RM 3,265.15</td>
+          <td><span class="badge">Processed</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="panel">
+      <p class="plabel">Earnings</p>
+      <div class="line"><span>Basic salary</span><span>RM 5,500.00</span></div>
+      <div class="line"><span>Allowances</span><span>RM 100.00</span></div>
+      <div class="sub hi"><span>HANDPHONE ALLOWANCE</span><span>RM 100.00</span></div>
+      <div class="line"><span>Overtime</span><span>RM 0.00</span></div>
+      <div class="line"><span>Bonus</span><span>RM 0.00</span></div>
+      <div class="line b"><span>Gross pay</span><span>RM 5,600.00</span></div>
+
+      <div class="pcols">
+        <div>
+          <p class="plabel">Deductions (your share)</p>
+          <div class="line"><span>EPF / KWSP</span><span>RM 616.00</span></div>
+          <div class="line"><span>SOCSO / PERKESO</span><span>RM 27.75</span></div>
+          <div class="line"><span>EIS / SIP</span><span>RM 11.10</span></div>
+          <div class="line"><span>PCB / MTD (income tax)</span><span>RM 1,680.00</span></div>
+          <div class="line b"><span>Total deductions</span><span>&minus;RM 2,334.85</span></div>
+        </div>
+        <div class="pmuted">
+          <p class="plabel">Employer contributions (not deducted from you)</p>
+          <div class="line"><span>EPF / KWSP</span><span>RM 672.00</span></div>
+          <div class="line"><span>SOCSO / PERKESO</span><span>RM 97.15</span></div>
+          <div class="line"><span>EIS / SIP</span><span>RM 11.10</span></div>
+          <div class="line"><span>HRDF</span><span>RM 56.00</span></div>
+          <div class="line b"><span>Total employer contributions</span><span>RM 836.25</span></div>
+        </div>
+      </div>
+
+      <div class="netbar"><span>Net pay</span><span>RM 3,265.15</span></div>
+    </div>
+  </div>
+
+  <div class="two" style="margin-top:12px">
+    <div class="box">
+      <b>Everything you need is already on the screen.</b> Ismail's January run reads correctly — RM 5,600.00
+      gross, RM 100.00 Handphone Allowance, RM 3,265.15 net. Nothing here is being changed.
+    </div>
+    <div class="box bad">
+      <b>But it only reads one payslip at a time.</b> The <span class="legend"><i></i>Handphone Allowance</span>
+      line exists only inside an opened row. To line it up against your other 66 processed payslips you open
+      each one and copy it out by hand.
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── 2. AFTER — the header row ───────────────── -->
+<div class="card">
+  <h2><span class="num">2</span>After — the same header row, with a download on it</h2>
+  <p class="q">In the same place the Individual tab already keeps its download.</p>
+  <span class="tag good">AFTER — Export to Excel, offering the two choices you asked for</span>
+
+  <div class="screen">
+    <div class="filterbar">
+      <div class="f"><label>Company</label><div class="inp">All <i>&#9662;</i></div></div>
+      <div class="f"><label>Employee</label><div class="inp">All <i>&#9662;</i></div></div>
+      <div class="f"><label>Year</label><div class="inp">All <i>&#9662;</i></div></div>
+      <div class="f"><label>Month</label><div class="inp">All <i>&#9662;</i></div></div>
+      <div class="f"><label>Payroll cycle</label><div class="inp">All <i>&#9662;</i></div></div>
+      <span class="applybtn">Apply filters</span>
+    </div>
+
+    <div class="sechead">
+      <span>History <span class="cnt">(67)</span></span>
+      <span class="xbtn">Export to Excel <i class="ca">&#9660;</i></span>
+    </div>
+
+    <div style="padding:0 14px 12px">
+      <div class="ddl">
+        <a><b>This view</b><span>The company, employee, year, month and payroll cycle you have filtered to above.</span></a>
+        <a><b>All processed payroll</b><span>Every processed payslip you are allowed to see, ignoring the filters above.</span></a>
+      </div>
+      <table style="margin-top:10px;opacity:.4">
+        <thead><tr><th class="tw"></th><th>Period</th><th>Payroll cycle</th><th>Employee</th><th>Company</th>
+          <th class="r">Gross</th><th class="r">Total deductions</th><th class="r">Net</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="tw">&#9658;</td><td>2026-01</td><td>Regular</td><td><span class="eid">100180</span>ISMAIL</td>
+            <td>ISEDECOR BINA SDN BHD</td><td class="r">RM 5,600.00</td><td class="r">RM 2,334.85</td>
+            <td class="r">RM 3,265.15</td><td><span class="badge">Processed</span></td></tr>
+          <tr><td class="tw">&#9658;</td><td colspan="8" style="color:var(--mf);font-style:italic">
+            the rest of your 67 processed payslips, exactly as they are today</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="note"><b>The table itself does not change.</b> Same rows, same columns, same expanding breakdown —
+    the only new thing on this screen is the button and its two choices. As the filters are set here both
+    choices produce the same 67 rows; narrow the filters and <b>This view</b> narrows with them.</p>
+</div>
+
+<!-- ───────────────── 3. the spreadsheet ───────────────── -->
+<div class="card">
+  <h2><span class="num">3</span>What lands in Excel — Ismail's row, and Handphone Allowance as its own column</h2>
+  <p class="q">A strip of the sheet. Every figure below is the one on your screen above.</p>
+
+  <p class="xcap">The left of the sheet</p>
+  <div class="xl">
+    <table class="xt">
+      <colgroup>
+        <col style="width:26px"><col style="width:60px"><col style="width:62px"><col style="width:62px">
+        <col style="width:96px"><col style="width:140px"><col style="width:68px"><col style="width:70px">
+        <col style="width:62px"><col style="width:62px"><col style="width:58px"><col style="width:58px">
+        <col style="width:66px"><col style="width:56px"><col style="width:58px"><col style="width:74px"><col style="width:70px">
+      </colgroup>
+      <tr><td class="g">1</td><td class="meta mt1" colspan="16">Payroll Transaction History</td></tr>
+      <tr><td class="g">2</td><td class="meta mt2" colspan="16">All companies &middot; all employees &middot; all periods</td></tr>
+      <tr><td class="g">3</td><td class="meta mt3" colspan="16">Filters applied: Company — All &middot; Employee — All &middot; Year — All &middot; Month — All &middot; Payroll cycle — All</td></tr>
+      <tr><td class="g">4</td><td class="meta" colspan="16">&nbsp;</td></tr>
+      <tr>
+        <th class="g">5</th>
+        <th class="l frz">Period</th><th class="l frz">Payroll Cycle</th><th class="l frz">Employee ID</th>
+        <th class="l frz">Employee Name</th><th class="l">Company</th><th class="l">Status</th>
+        <th>Gross</th><th>EPF</th><th>SOCSO</th><th>SKBBK</th><th>EIS</th><th>PCB</th><th>CP38</th>
+        <th>Zakat</th><th>Total Deductions</th><th>Net</th>
+      </tr>
+      <tr>
+        <td class="g">6</td>
+        <td class="frz">2026-01</td><td class="frz">Regular</td><td class="frz">100180</td>
+        <td class="frz">ISMAIL</td><td>ISEDECOR BINA SDN BHD</td><td>Processed</td>
+        <td class="rr">5600.00</td><td class="rr">616.00</td><td class="rr">27.75</td><td class="rr">0.00</td>
+        <td class="rr">11.10</td><td class="rr">1680.00</td><td class="rr">0.00</td><td class="rr">0.00</td>
+        <td class="rr">2334.85</td><td class="rr">3265.15</td>
+      </tr>
+      <tr class="ph"><td class="g">7</td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td></tr>
+      <tr class="ph"><td class="g">8</td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td></tr>
+      <tr class="ph"><td class="g">9</td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td></tr>
+    </table>
+    <div class="xtab"><i>Payroll Transaction History</i><u>one sheet — no second tab to match up by hand</u></div>
+  </div>
+  <p class="note" style="margin-bottom:16px">Rows 7 onward are your other 66 processed payslips, one row each —
+    left blank here because we are not going to put invented figures next to real names. Employee ID and
+    Employee Name sit in their own columns, and the four columns on the left stay put while you scroll across.</p>
+
+  <p class="xcap">The same rows, scrolled right — the first four columns stay put</p>
+  <div class="xl">
+    <table class="xt">
+      <colgroup>
+        <col style="width:26px"><col style="width:60px"><col style="width:62px"><col style="width:62px">
+        <col style="width:78px"><col style="width:66px"><col style="width:70px"><col style="width:62px">
+        <col style="width:58px"><col style="width:72px"><col style="width:78px"><col style="width:70px">
+        <col style="width:60px"><col style="width:88px"><col style="width:104px"><col style="width:96px">
+      </colgroup>
+      <tr>
+        <th class="g">5</th>
+        <th class="l frz">Period</th><th class="l frz">Payroll Cycle</th><th class="l frz">Employee ID</th>
+        <th class="l frz">Employee Name</th>
+        <th>Basic Salary</th><th>Allowances</th><th>Overtime</th><th>Bonus</th>
+        <th>Employer EPF</th><th>Employer SOCSO</th><th>Employer EIS</th><th>HRDF</th>
+        <th>Total Employer Contributions</th>
+        <th class="hl">Handphone Allowance</th><th class="hl">Travel Allowance</th>
+      </tr>
+      <tr>
+        <td class="g">6</td>
+        <td class="frz">2026-01</td><td class="frz">Regular</td><td class="frz">100180</td><td class="frz">ISMAIL</td>
+        <td class="rr">5500.00</td><td class="rr">100.00</td><td class="rr">0.00</td><td class="rr">0.00</td>
+        <td class="rr">672.00</td><td class="rr">97.15</td><td class="rr">11.10</td><td class="rr">56.00</td>
+        <td class="rr">836.25</td>
+        <td class="rr hl">100.00</td><td class="rr"></td>
+      </tr>
+      <tr class="ph"><td class="g">7</td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td></tr>
+      <tr class="ph"><td class="g">8</td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td></tr>
+      <tr class="ph"><td class="g">9</td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td class="frz"><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td><td><div></div></td></tr>
+    </table>
+    <div class="xtab"><i>Payroll Transaction History</i></div>
+  </div>
+
+  <div class="two" style="margin-top:12px">
+    <div class="box good">
+      <b>Each named allowance becomes a column of its own.</b> Handphone Allowance is no longer a line buried
+      inside one opened payslip — it is a column you can sort, total and filter like any other. A named item
+      that is not on a given payslip leaves its cell empty rather than printing a nought, which is why Travel
+      Allowance is blank on Ismail's row.
+    </div>
+    <div class="box">
+      <b>Figures, not text.</b> The cells hold numbers — <i>5600.00</i>, not “RM 5,600.00” — so selecting a
+      column totals it in one click. There is deliberately no grand-total line at the bottom: a totals row
+      sitting inside the data is what breaks Excel's own sorting and filtering.
+    </div>
+  </div>
+
+  <p class="note">The deduction columns add up to Total Deductions, and the employer columns add up to Total
+    Employer Contributions — RM 836.25, the same figure the screen shows. SKBBK, CP38 and Zakat are there so
+    the arithmetic closes even when they are nil, as they are on this run. The download is not limited to the
+    number of rows the screen stops at; it carries every payslip your filters match.</p>
+</div>
+
+<!-- ───────────────── 4. said in words, not drawn ───────────────── -->
+<div class="card" style="background:#fff7ed;border-color:#fed7aa">
+  <h2 style="color:#7c2d12">Three things we have deliberately left in words rather than drawn</h2>
+  <div class="two" style="grid-template-columns:1fr 1fr 1fr;margin-top:10px">
+    <div class="box" style="border-color:#fed7aa;background:#fff">
+      <b>Where the named columns will be blank.</b> Bonus, off-cycle and adjustment runs never recorded
+      per-item detail, and neither did runs calculated before this payroll started keeping it. On those rows
+      the summary figures and the Allowances total are still exact and the named columns are simply empty. We
+      have not drawn an example, because we cannot yet tell you which of your runs it will be — the file
+      itself will say so at the top.
+    </div>
+    <div class="box" style="border-color:#fed7aa;background:#fff">
+      <b>One wide sheet, not the two you asked for.</b> The sketch shows a single tab on purpose. A single
+      table is what Excel's sort, filter and pivot tools work on; two sheets would leave you matching rows up
+      by Employee ID and period by hand. If you would rather have the two-sheet version, reject this plan and
+      say so.
+    </div>
+    <div class="box" style="border-color:#fed7aa;background:#fff">
+      <b>Nobody else's numbers.</b> Every figure in this sketch is Ismail's own, taken from the screenshot you
+      sent. We have left the other rows blank rather than fill them with plausible-looking amounts for real
+      colleagues.
+    </div>
+  </div>
+  <p class="note" style="color:#7c2d12;margin-top:12px"><b>Nothing about your payroll changes.</b> No figure is
+    recalculated — the file reads the same saved figures the screen reads, which is why it cannot disagree with
+    it. Access is unchanged: only administrators reach this screen, and a download can only ever contain the
+    companies you are already allowed to see.</p>
+</div>

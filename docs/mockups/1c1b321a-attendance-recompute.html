@@ -1,0 +1,371 @@
+<meta charset="utf-8">
+<title>1c1b321a — Recompute attendance: the filters, the preview, the result</title>
+<!--
+  Mockup for 1c1b321a (recompute attendance after a shift / roster / rule change).
+  Drawn strictly against the approved-pending plan text. Everything the plan hedges is left in WORDS in
+  the final card and is deliberately NOT drawn: the effective-date dependency on item 18504ca6, the
+  "refuse to touch processed runs instead" alternative the plan invites a rejection for, per-row reasons
+  (the preview prints figures, not explanations), and the Audit Trail screen.
+  Column vocabulary + number formats taken from the live Records table:
+    app/attendance/daily/page.tsx (colShiftCode / colLateness / colEarlyOut / colStatus, OT rate columns)
+    components/attendance-format.ts (fmtMin "8h 17m", fmtShort "14m", fmtHours2 "1.75")
+  Tabs and the header action strip from app/attendance/page.tsx + components/attendance-tabs.tsx —
+  the plan says explicitly DO NOT add a tab, so the tab row is identical on both sides.
+  Tenant totals (269 attendance days / 40 employees / 9 companies / 9 shifts / 22 of 22 pay runs
+  processed) and the company name are the reporter's own live figures, from the plan. Employee codes,
+  names and individual clock times are illustrative and labelled as such on the picture.
+  Tokens from app/globals.css; everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--goodbg:#f0fdf4;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px}
+  h2{font-size:14px;margin:0 0 4px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border);vertical-align:middle}
+  .r{text-align:right}
+  .tn{font-variant-numeric:tabular-nums}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:12px;background:#fff}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:9px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap}
+  .proc{background:#dbeafe;color:#1d4ed8}
+  .new{background:color-mix(in srgb,var(--primary) 13%,white);color:var(--primary)}
+  .warnchip{background:#fef3c7;color:#92400e}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:6px 13px;
+       font-size:12px;font-weight:600}
+  .btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+  .btn.hot{box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 22%,transparent)}
+  .note{font-size:11.5px;color:var(--mf);margin-top:9px}
+  .cap{font-size:11px;color:var(--mf);margin-top:8px;font-style:italic}
+  .stat{display:grid;grid-template-columns:repeat(5,1fr);gap:11px}
+  .st{border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--muted)}
+  .st b{display:block;font-size:21px;line-height:1.25;font-variant-numeric:tabular-nums}
+  .st span{font-size:11px;color:var(--mf)}
+  /* a drawn screen */
+  .shot{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;
+       border-bottom:1px solid var(--border)}
+  .ttl{font-weight:700;font-size:14px}
+  .back{color:var(--primary);font-weight:600;font-size:12px;display:block;margin-bottom:3px}
+  .pad{padding:13px}
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-top:9px}
+  .tb{padding:5px 11px;font-size:12px;color:var(--mf);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tb.on{color:var(--primary);font-weight:600;border-bottom-color:var(--primary)}
+  .hdrrow{display:flex;align-items:center;justify-content:space-between}
+  .hdrrow .h{font-size:16px;font-weight:700}
+  .lnkbtn{display:inline-block;border:1px solid var(--border);border-radius:8px;padding:5px 11px;
+          font-size:12px;font-weight:500;background:#fff}
+  .lnkbtn.hi{border-color:var(--primary);color:var(--primary);font-weight:600;
+             box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 16%,transparent)}
+  /* filter row */
+  .filters{display:grid;grid-template-columns:2.1fr 1.5fr 1.5fr 1fr 1fr auto;gap:10px;align-items:end}
+  .f label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+           font-weight:600;margin-bottom:3px}
+  .f .in{border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:12px;background:#fff;
+         min-height:30px;font-variant-numeric:tabular-nums}
+  .f .in.ph{color:#a1a1ac}
+  .req{color:var(--primary);font-weight:700}
+  /* diff table */
+  table.diff{font-size:11px}
+  table.diff th{padding:5px 6px;font-size:9px;letter-spacing:.03em}
+  table.diff td{padding:5px 6px;vertical-align:middle;border-top:1px solid var(--border)}
+  th.gnow{background:#eceef5;color:#5b5c69;text-align:center;border-left:2px solid #d6d8e4}
+  th.gaft{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary);text-align:center;
+          border-left:2px solid color-mix(in srgb,var(--primary) 35%,white)}
+  th.fixed{background:var(--muted)}
+  td.now{background:#f7f8fb;color:#5b5c69}
+  td.aft{background:color-mix(in srgb,var(--primary) 5%,white)}
+  td.b1{border-left:2px solid #d6d8e4}
+  td.b2{border-left:2px solid color-mix(in srgb,var(--primary) 35%,white)}
+  td.moved{font-weight:700;color:var(--primary)}
+  td.worse{font-weight:700;color:#b45309}
+  .ot2{display:block;line-height:1.35}
+  .lock{color:#8a8b98}
+  .amber{border:1px solid #fcd34d;background:#fffbeb;border-radius:10px;padding:10px 12px;font-size:12px;
+         color:#78350f;margin-top:12px}
+  .amber b{color:#78350f}
+  .review{border:1px solid #fdba74;border-radius:10px;overflow:hidden;margin-top:12px}
+  .review .rh{background:#fff7ed;padding:8px 11px;font-size:12px;font-weight:700;color:#7c2d12;
+              border-bottom:1px solid #fdba74}
+  .done{border:1px solid #86efac;background:var(--goodbg);border-radius:10px;padding:10px 12px;
+        font-size:12.5px;font-weight:600;color:#14532d;margin-bottom:11px}
+  .result{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .rs{border:1px solid var(--border);border-radius:10px;padding:9px 11px}
+  .rs span{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600}
+  .rs b{font-size:19px;font-variant-numeric:tabular-nums}
+  .rs.rev{border-color:#fdba74;background:#fff7ed}
+  .rs.rev b{color:#9a3412}
+  .hole{background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:9px 11px;font-size:12px;
+        color:#7c2d12;margin-top:11px}
+  ul.words{margin:6px 0 0;padding-left:18px;font-size:12.5px}
+  ul.words li{margin-bottom:7px}
+  .lnk{color:var(--primary);font-weight:600}
+</style>
+
+<div class="card">
+  <h1>Recompute attendance — what you would see before anything is saved</h1>
+  <p class="sub">Sketch only — wording, spacing and colours will differ from the finished screen. Company name and the
+    totals below are your live figures; employee codes, names and clock times on this picture are examples.</p>
+  <div class="stat">
+    <div class="st"><b>269</b><span>attendance days recorded</span></div>
+    <div class="st"><b>40</b><span>employees</span></div>
+    <div class="st"><b>9</b><span>companies</span></div>
+    <div class="st"><b>9</b><span>shifts</span></div>
+    <div class="st"><b>22 of 22</b><span>pay runs already processed</span></div>
+  </div>
+  <p class="note">A day keeps the figures it was given on the day it was recorded. Change the shift afterwards and the
+    Records screen shows the new shift beside a Late mark measured against the old start time. This screen is the way
+    to ask the system to work those days out again — for one person, one department, or a whole company.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">1</span>Attendance Records — one new button, and nothing else moves</h2>
+  <p class="sub">Your Records page as it stands, beside the same page with the Recompute button on it.</p>
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">NOW</span>
+      <div class="hdrrow"><span class="h">Attendance</span><span class="lnkbtn">Import punches</span></div>
+      <div class="tabs"><span class="tb on">Overview</span><span class="tb">Daily Attendance</span><span class="tb">Individual Attendance</span></div>
+      <p class="note">No way to ask for a day to be worked out again. Re-uploading the clocking file for that day is
+        the only route, and it only exists if you still have the file.</p>
+    </div>
+    <div class="box good">
+      <span class="tag good">AFTER</span>
+      <div class="hdrrow"><span class="h">Attendance</span>
+        <span><span class="lnkbtn hi">Recompute</span> &nbsp; <span class="lnkbtn">Import punches</span></span></div>
+      <div class="tabs"><span class="tb on">Overview</span><span class="tb">Daily Attendance</span><span class="tb">Individual Attendance</span></div>
+      <p class="note"><b>No new tab.</b> The three tabs stay exactly as they are. The button sits beside Import punches
+        and only HR administrators see it — everybody else's Records page is unchanged.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>The Recompute screen — choose the scope, then Preview</h2>
+  <p class="sub">Nothing is saved when you press Preview.</p>
+  <div class="shot">
+    <div class="bar">
+      <div><span class="back">&larr; Back to Attendance</span><span class="ttl">Recompute attendance</span></div>
+      <span class="chip new">HR administrators only</span>
+    </div>
+    <div class="pad">
+      <div class="filters">
+        <div class="f"><label>Company <span class="req">required</span></label><div class="in">ISEDECOR BINA SDN BHD</div></div>
+        <div class="f"><label>Department <span style="color:var(--mf)">optional</span></label><div class="in ph">All departments</div></div>
+        <div class="f"><label>Employee <span style="color:var(--mf)">optional</span></label><div class="in ph">All employees</div></div>
+        <div class="f"><label>Date from</label><div class="in">01/07/2026</div></div>
+        <div class="f"><label>Date to</label><div class="in">31/07/2026</div></div>
+        <div class="f"><span class="btn hot">Preview</span></div>
+      </div>
+      <p class="note">Narrow to one department or one employee, or leave both blank for the whole company. On your data
+        even a whole company over a full month finishes while you wait.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>The preview — every day that would change, as it stands now and as it would become</h2>
+  <p class="sub">ISEDECOR BINA SDN BHD &middot; 1–31 July 2026 &middot; <b>31 days checked &middot; 6 would change &middot;
+    23 unchanged &middot; 2 need review</b>. Nothing here is saved yet.</p>
+  <table class="diff">
+    <thead>
+      <tr>
+        <th class="fixed" rowspan="2" style="width:122px">Employee</th>
+        <th class="fixed" rowspan="2" style="width:70px">Date</th>
+        <th class="fixed" rowspan="2" style="width:46px">Shift</th>
+        <th class="fixed" rowspan="2" style="width:96px">Clock in &rarr; out<br><span style="text-transform:none;letter-spacing:0;font-weight:500">never changed</span></th>
+        <th class="gnow" colspan="6">Now — as recorded</th>
+        <th class="gaft" colspan="6">After — as it would become</th>
+      </tr>
+      <tr>
+        <th class="gnow" style="width:60px">Hours worked</th>
+        <th class="gnow" style="width:44px">Late in</th>
+        <th class="gnow" style="width:50px">Early out</th>
+        <th class="gnow" style="width:72px">Overtime</th>
+        <th class="gnow" style="width:66px">Day type</th>
+        <th class="gnow" style="width:52px">Status</th>
+        <th class="gaft" style="width:60px">Hours worked</th>
+        <th class="gaft" style="width:44px">Late in</th>
+        <th class="gaft" style="width:50px">Early out</th>
+        <th class="gaft" style="width:72px">Overtime</th>
+        <th class="gaft" style="width:66px">Day type</th>
+        <th class="gaft" style="width:52px">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>T100001</b> John Tan</td><td class="tn">02 Jul 2026</td><td>MB28</td>
+        <td class="tn lock">08:14 &rarr; 17:31</td>
+        <td class="now b1 tn">8h 17m</td><td class="now tn">14m</td><td class="now tn">0m</td>
+        <td class="now tn">&mdash;</td><td class="now">Working day</td><td class="now">Present</td>
+        <td class="aft b2 tn moved">8h 15m</td><td class="aft tn moved">0m</td><td class="aft tn">0m</td>
+        <td class="aft tn">&mdash;</td><td class="aft">Working day</td><td class="aft">Present</td>
+      </tr>
+      <tr>
+        <td><b>T100001</b> John Tan</td><td class="tn">10 Jul 2026</td><td>MB28</td>
+        <td class="tn lock">08:22 &rarr; 19:04</td>
+        <td class="now b1 tn">9h 42m</td><td class="now tn">22m</td><td class="now tn">0m</td>
+        <td class="now tn"><span class="ot2">1.0 &times; 1.00</span></td><td class="now">Working day</td><td class="now">Present</td>
+        <td class="aft b2 tn moved">9h 45m</td><td class="aft tn moved">0m</td><td class="aft tn">0m</td>
+        <td class="aft tn moved"><span class="ot2">1.0 &times; 1.75</span></td><td class="aft">Working day</td><td class="aft">Present</td>
+      </tr>
+      <tr>
+        <td><b>T100002</b> Alice Lim</td><td class="tn">14 Jul 2026</td><td>MB28</td>
+        <td class="tn lock">08:29 &rarr; 16:52</td>
+        <td class="now b1 tn">7h 23m</td><td class="now tn">29m</td><td class="now tn">8m</td>
+        <td class="now tn">&mdash;</td><td class="now">Working day</td><td class="now">Present</td>
+        <td class="aft b2 tn moved">7h 30m</td><td class="aft tn moved">0m</td><td class="aft tn worse">38m</td>
+        <td class="aft tn">&mdash;</td><td class="aft">Working day</td><td class="aft">Present</td>
+      </tr>
+      <tr>
+        <td><b>T100003</b> Raj Kumar</td><td class="tn">12 Jul 2026</td><td>CP39</td>
+        <td class="tn lock">09:02 &rarr; 14:30</td>
+        <td class="now b1 tn">4h 28m</td><td class="now tn">1h 02m</td><td class="now tn">2h 30m</td>
+        <td class="now tn">&mdash;</td><td class="now">Working day</td><td class="now">Present</td>
+        <td class="aft b2 tn moved">5h 28m</td><td class="aft tn moved">0m</td><td class="aft tn moved">0m</td>
+        <td class="aft tn moved"><span class="ot2">2.0 &times; 5.25</span></td>
+        <td class="aft moved">Rest day</td><td class="aft moved">Rest</td>
+      </tr>
+      <tr>
+        <td><b>T100003</b> Raj Kumar</td><td class="tn">22 Jul 2026</td><td>CP39</td>
+        <td class="tn lock">08:28 &rarr; 20:12</td>
+        <td class="now b1 tn">10h 44m</td><td class="now tn">28m</td><td class="now tn">0m</td>
+        <td class="now tn"><span class="ot2">1.0 &times; 2.50</span></td><td class="now">Working day</td><td class="now">Present</td>
+        <td class="aft b2 tn moved">10h 45m</td><td class="aft tn moved">0m</td><td class="aft tn">0m</td>
+        <td class="aft tn moved"><span class="ot2">1.0 &times; 1.00</span><span class="ot2">1.5 &times; 1.75</span></td>
+        <td class="aft">Working day</td><td class="aft">Present</td>
+      </tr>
+      <tr>
+        <td><b>T100005</b> Ahmad Faizal</td><td class="tn">20 Jul 2026</td><td>MB28</td>
+        <td class="tn lock">08:35 &rarr; 17:44</td>
+        <td class="now b1 tn">8h 09m</td><td class="now tn">35m</td><td class="now tn">0m</td>
+        <td class="now tn">&mdash;</td><td class="now">Working day</td><td class="now">Present</td>
+        <td class="aft b2 tn moved">8h 15m</td><td class="aft tn moved">5m</td><td class="aft tn">0m</td>
+        <td class="aft tn">&mdash;</td><td class="aft">Working day</td><td class="aft">Present</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="cap">Overtime reads the way the Records table already reads it — hours against the rate they fall into
+    (Flat, 0.0, 1.0, 1.5, 2.0, 3.0). Day type is one of Working day, Rest day or Public holiday, and it is re-decided
+    too, because it is what overtime is priced from. The 23 unchanged days are not listed; only days that would move
+    appear here.</p>
+
+  <div class="review">
+    <div class="rh">Needs review — 2 days that cannot be worked out, and are left exactly as they are</div>
+    <table>
+      <thead><tr><th style="width:20%">Employee</th><th style="width:13%">Date</th><th style="width:9%">Shift</th>
+        <th style="width:18%">Clock in &rarr; out</th><th style="width:22%">Why</th><th>What happens</th></tr></thead>
+      <tbody>
+        <tr><td><b>T100002</b> Alice Lim</td><td class="tn">08 Jul 2026</td><td>MB28</td>
+          <td class="tn">08:31 &rarr; <b>&mdash;</b></td><td>Clock-in with no clock-out</td>
+          <td>Left untouched — nothing is guessed at</td></tr>
+        <tr><td><b>T100005</b> Ahmad Faizal</td><td class="tn">17 Jul 2026</td><td>MB28</td>
+          <td class="tn">21:58 &rarr; <b>&mdash;</b></td><td>Clock-in with no clock-out</td>
+          <td>Left untouched — nothing is guessed at</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="amber">
+    <b>&#9888; One pay run that is already processed would be flagged.</b>
+    <div style="margin-top:6px">
+      <span class="chip proc">July 2026 &middot; ISEDECOR BINA SDN BHD &middot; Processed</span>
+      &nbsp; covers all 6 days above, for 4 employees (T100001, T100002, T100003, T100005).
+    </div>
+    <div style="margin-top:6px">No payslip and no run total is edited. That run's existing
+      <b>needs-recalculation</b> notice is raised, and it cannot be closed until those 4 employees have been
+      reprocessed. Nothing about the run changes on its own. All 22 of your pay runs are currently processed, so a
+      recompute over past dates will usually flag one.</div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:9px;margin-top:12px">
+    <span style="font-size:11.5px;color:var(--mf)">The clock-in and clock-out times above are never rewritten — only
+      the calculated figures are.</span>
+    <span><span class="btn ghost">Cancel</span> &nbsp; <span class="btn hot">Apply to 6 days</span></span>
+  </div>
+  <p class="cap">What moved these six days in this example: MB28's start time went 08:00 &rarr; 08:30 and gained
+    15-minute normal-hours rounding, CP39's overtime windows were re-cut, and 12 July became a rostered rest day.
+    The preview itself does not print a reason per row — it prints the two sets of figures and lets you compare them.
+    Note the third row: an early-out of 8 minutes becomes 38 minutes, because the shift now ends later. The preview
+    shows figures that get worse just as plainly as ones that get better.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">4</span>After you press Apply</h2>
+  <div class="shot">
+    <div class="bar">
+      <div><span class="back">&larr; Back to Attendance</span><span class="ttl">Recompute attendance</span></div>
+      <span class="chip new">ISEDECOR BINA SDN BHD &middot; 1–31 Jul 2026</span>
+    </div>
+    <div class="pad">
+      <div class="done">&#10003; Recompute finished — 9 Aug 2026, 09:14</div>
+      <div class="result">
+        <div class="rs"><span>Days checked</span><b>31</b></div>
+        <div class="rs"><span>Updated</span><b>6</b></div>
+        <div class="rs"><span>Unchanged</span><b>23</b></div>
+        <div class="rs rev"><span>Need review</span><b>2</b></div>
+      </div>
+      <div class="amber"><b>July 2026 &middot; ISEDECOR BINA SDN BHD is now marked Needs recalculation</b> — 4
+        employees. Its payslips and totals are exactly as they were.</div>
+
+      <div style="margin-top:16px">
+        <div style="font-size:12.5px;font-weight:700;margin-bottom:7px">Recent recomputes</div>
+        <table>
+          <thead><tr><th style="width:16%">When</th><th style="width:14%">Run by</th><th style="width:26%">Scope</th>
+            <th style="width:16%">Dates</th><th>Result</th><th class="r">&nbsp;</th></tr></thead>
+          <tbody>
+            <tr><td class="tn">9 Aug 2026, 09:14</td><td>You (HR admin)</td><td>ISEDECOR BINA SDN BHD</td>
+              <td class="tn">1–31 Jul 2026</td><td>31 checked &middot; <b>6 updated</b> &middot; 23 unchanged &middot; 2 need review</td>
+              <td class="r"><span class="lnk">Open</span></td></tr>
+            <tr><td class="tn">8 Aug 2026, 17:20</td><td>You (HR admin)</td><td>SpaceX Sdn Bhd</td>
+              <td class="tn">1–30 Jun 2026</td><td>18 checked &middot; 0 updated &middot; 18 unchanged</td>
+              <td class="r"><span class="lnk">Open</span></td></tr>
+            <tr><td class="tn">8 Aug 2026, 16:58</td><td>You (HR admin)</td><td>Chin Hin Property Sdn Bhd &middot; one employee</td>
+              <td class="tn">1–31 May 2026</td><td>4 checked &middot; 1 updated &middot; 3 unchanged</td>
+              <td class="r"><span class="lnk">Open</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <p class="cap">Every run is kept permanently — who ran it, which employees and dates, and the before-and-after
+    figures for each day that moved. Open re-opens that same day-by-day list. Running the same range again changes
+    nothing the second time: the row above with 0 updated is what a repeat run looks like.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">5</span>What this picture does <u>not</u> promise</h2>
+  <p class="sub">Four things in the plan cannot be drawn honestly, so they are left in words here.</p>
+  <ul class="words">
+    <li><b>Which shift an older day is measured against.</b> This screen re-measures a past day against the shift the
+      person is on <i>now</i> — right when the shift itself was corrected, wrong when the person was moved between
+      shifts. Your other request, the effective date on the Shift arrangement card, is what fixes that. It is a
+      separate decision you have not made yet, so nothing on this picture depends on it.</li>
+    <li><b>The alternative behaviour for processed pay runs.</b> The plan offers one course of action: flag the run.
+      If you would rather the recompute refuse to touch any day inside an already-processed run and leave those days
+      alone entirely, that is a different screen and it is deliberately not drawn — reject the plan and say so.</li>
+    <li><b>Days with no clocking at all.</b> A day shows as Absent because no record exists for it. There is nothing
+      to re-work where nothing was recorded, so those days will never appear in this table. Spotting and creating
+      absences is a separate request.</li>
+    <li><b>The Audit Trail.</b> Each run also appears in the Audit Trail under Attendance. That is an existing screen
+      and is not redrawn here.</li>
+  </ul>
+  <div class="hole"><b>On the data in this sketch:</b> the company names, and the totals in the first card — 269
+    attendance days, 40 employees, 9 companies, 9 shifts, 22 of 22 pay runs processed — are read from your live
+    system. The employee codes, employee names, individual clock times and the six changed days are worked examples
+    chosen to show one of each kind of change; they are not real days from your records.</div>
+</div>
