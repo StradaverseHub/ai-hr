@@ -3878,7 +3878,14 @@
           "itemsHeading": "逐项列出的薪资项目",
           "itemsNote": "在本工资单上单独记录。一次性项目已包含在上方合计内；仅作记录的项目（如实物福利）既不影响总额也不影响实发。",
           "detailNotRecorded": "本次薪资计算早于系统开始保存逐项明细，因此这些金额背后的个别项目从未被保存，无法显示。",
-          "hrdfNotRegistered": "未注册"
+          "hrdfNotRegistered": "未注册",
+          "export": "导出到 Excel",
+          "exportCurrent": "当前视图",
+          "exportCurrentHint": "您在上方筛选的公司、员工、年份、月份和薪资周期。",
+          "exportAll": "所有已处理薪资",
+          "exportAllHint": "您有权查看的每一张已处理工资单，忽略上方的筛选条件。",
+          "exportTitle": "薪资交易历史",
+          "exportDetailNote": "部分薪资运行未保存逐项明细——奖金、非常规周期和调整运行从未记录过，在本系统开始记录之前计算的运行也没有。在这些行上，汇总金额和津贴合计仍然准确，具名项目列只是留空。"
         },
         "exportCsv": "导出 CSV",
         "outstanding": {
