@@ -58,7 +58,11 @@ const num = (v: unknown): number => {
  */
 export const UNTUNED_DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   'net-swing': { netSwingPct: 30 },
+  'batch-swing': { batchSwingPct: 15 },
 };
+
+/** The run-level circuit breaker's id. Not in DETECTORS — it is not a per-employee detector. */
+export const CIRCUIT_BREAKER_ID = 'batch-swing';
 
 export type SkippedDetector = { id: string; reason: string };
 
@@ -631,4 +635,214 @@ export async function resolveAnomalyVerdict(
       payload: { batchId: row.batchId, disposition: row.disposition, resolution: p.resolution, note: p.note ?? null },
     });
   });
+}
+
+/**
+ * THE RUN-LEVEL CIRCUIT BREAKER (ADR-0076 §4). Total batch net movement against the prior cycle.
+ *
+ * WHY THIS CANNOT BE A PER-EMPLOYEE DETECTOR, which is the whole reason it exists separately: a global
+ * mis-key — the wrong pack version, the wrong period, a rate applied to everyone — moves EVERY employee
+ * together. Each individual movement can sit comfortably inside `net-swing`'s threshold while the batch
+ * total moves by a third. Per-employee detectors rate that as unremarkable precisely because it is
+ * uniform; only the aggregate sees it.
+ *
+ * IT IS RECOMPUTED, NOT STORED. The comparison is a pure function of two batches' payslip totals, so
+ * recomputing at close time is always current and cannot go stale behind a re-run — whereas a stored
+ * verdict would have to be superseded in lockstep with every payslip edit. The trade is that there is no
+ * per-batch "accepted" row to tick.
+ *
+ * SO THE ESCAPE HATCH IS THE THRESHOLD ITSELF. A genuine month-end (a bonus run, a group-wide increment)
+ * legitimately moves the total, and the operator raises `batchSwingPct` for that company in
+ * `payroll_anomaly_config` — a versioned, audited, deploy-free change, which is the entire reason
+ * thresholds live in the database. Disabling the row switches the breaker off for that company.
+ */
+export type CircuitBreakerVerdict = {
+  tripped: boolean;
+  /** Null when there is no prior cycle to compare against — the breaker self-disables on cycle one. */
+  movementPct: number | null;
+  thresholdPct: number;
+  currentNet: number;
+  priorNet: number;
+  skippedReason: string | null;
+};
+
+export async function evaluateCircuitBreaker(tx: Tx, tenantId: string, batchId: string): Promise<CircuitBreakerVerdict> {
+  const [batch] = await tx
+    .select({
+      companyId: schema.payrollBatch.companyId,
+      payPeriod: schema.payrollBatch.payPeriod,
+    })
+    .from(schema.payrollBatch)
+    .where(eq(schema.payrollBatch.id, batchId))
+    .limit(1);
+
+  const cfgRows = await tx
+    .select({
+      companyId: schema.payrollAnomalyConfig.companyId,
+      enabled: schema.payrollAnomalyConfig.enabled,
+      params: schema.payrollAnomalyConfig.params,
+    })
+    .from(schema.payrollAnomalyConfig)
+    .where(
+      and(
+        eq(schema.payrollAnomalyConfig.tenantId, tenantId),
+        eq(schema.payrollAnomalyConfig.detectorId, CIRCUIT_BREAKER_ID),
+        isNull(schema.payrollAnomalyConfig.archivedAt),
+      ),
+    );
+  const cfg =
+    cfgRows.find((r) => batch && r.companyId === batch.companyId) ?? cfgRows.find((r) => r.companyId === null) ?? null;
+  const thresholdPct = num((cfg?.params as Record<string, unknown>)?.batchSwingPct) || 15;
+
+  const blank: CircuitBreakerVerdict = {
+    tripped: false,
+    movementPct: null,
+    thresholdPct,
+    currentNet: 0,
+    priorNet: 0,
+    skippedReason: null,
+  };
+  if (!batch) return { ...blank, skippedReason: 'batch not found' };
+  if (cfg && cfg.enabled === false) return { ...blank, skippedReason: 'disabled by configuration' };
+
+  const netOf = async (id: string): Promise<number> => {
+    const [row] = await tx
+      .select({ total: sql<number>`coalesce(sum(${schema.payslip.netPay}), 0)::float8` })
+      .from(schema.payslip)
+      .where(eq(schema.payslip.batchId, id));
+    return num(row?.total);
+  };
+
+  const [priorBatch] = await tx
+    .select({ id: schema.payrollBatch.id })
+    .from(schema.payrollBatch)
+    .where(
+      and(eq(schema.payrollBatch.companyId, batch.companyId), lt(schema.payrollBatch.payPeriod, batch.payPeriod)),
+    )
+    .orderBy(sql`${schema.payrollBatch.payPeriod} desc`)
+    .limit(1);
+  if (!priorBatch) return { ...blank, skippedReason: 'no prior cycle to compare against' };
+
+  const [currentNet, priorNet] = [await netOf(batchId), await netOf(priorBatch.id)];
+  // A prior cycle that paid nothing gives no meaningful percentage; the per-employee detectors own that.
+  if (priorNet === 0) return { ...blank, currentNet, skippedReason: 'prior cycle net was zero' };
+
+  const movementPct = ((currentNet - priorNet) / Math.abs(priorNet)) * 100;
+  return {
+    tripped: Math.abs(movementPct) > thresholdPct,
+    movementPct: Math.round(movementPct * 10) / 10,
+    thresholdPct,
+    currentNet,
+    priorNet,
+    skippedReason: null,
+  };
+}
+
+/**
+ * ADR-0076 §5 — the instrumentation. These are the numbers ADR-0074's success is defined in, and the
+ * reason Phase 1a ships them even though early figures will be small and dull: nobody currently knows
+ * the baseline, so no autonomy claim downstream can be grounded in anything.
+ *
+ * COVERAGE IS REPORTED BESIDE THE AUTO-CLEAR RATE, ALWAYS. A 100% auto-clear rate on 40% coverage is not
+ * a clean bill of health, it is a thin one, and separating the two numbers is what stops the first from
+ * being read as the second.
+ */
+export type AnomalyMetrics = {
+  batchId: string;
+  total: number;
+  autoClear: number;
+  review: number;
+  block: number;
+  /** autoClear / total. The ADR-0074 headline; target >= 0.95. */
+  autoClearRate: number;
+  /** detectorsRun / (run + skipped), averaged. Read this BEFORE trusting autoClearRate. */
+  coverage: number;
+  /** (review + block) / total * 1000. ADR-0074 target <= 50. */
+  flaggedPerThousand: number;
+  /** resolution = 'false_positive' over all flagged-and-resolved verdicts. */
+  falsePositiveRate: number | null;
+  /** Median seconds between computedAt and resolvedAt for resolved flags. ADR-0074 target < 300s. */
+  mttrSeconds: number | null;
+  /** Flagged verdicts a human has not yet dispositioned. */
+  unresolvedFlagged: number;
+};
+
+export async function anomalyMetrics(ctx: SessionContext, p: { batchId: string }): Promise<AnomalyMetrics> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        disposition: schema.payrollAnomalyVerdict.disposition,
+        detectorsRun: schema.payrollAnomalyVerdict.detectorsRun,
+        detectorsSkipped: schema.payrollAnomalyVerdict.detectorsSkipped,
+        computedAt: schema.payrollAnomalyVerdict.computedAt,
+        resolvedAt: schema.payrollAnomalyVerdict.resolvedAt,
+        resolution: schema.payrollAnomalyVerdict.resolution,
+      })
+      .from(schema.payrollAnomalyVerdict)
+      .where(
+        and(
+          eq(schema.payrollAnomalyVerdict.batchId, p.batchId),
+          isNull(schema.payrollAnomalyVerdict.supersededAt),
+        ),
+      );
+
+    const total = rows.length;
+    const autoClear = rows.filter((r) => r.disposition === 'auto_clear').length;
+    const review = rows.filter((r) => r.disposition === 'review').length;
+    const block = rows.filter((r) => r.disposition === 'block').length;
+    const flagged = rows.filter((r) => r.disposition !== 'auto_clear');
+    const resolvedFlags = flagged.filter((r) => r.resolvedAt != null);
+
+    const coverage =
+      total === 0
+        ? 1
+        : rows.reduce((acc, r) => {
+            const ran = (r.detectorsRun as string[] | null)?.length ?? 0;
+            const skipped = (r.detectorsSkipped as unknown[] | null)?.length ?? 0;
+            return acc + (ran + skipped === 0 ? 1 : ran / (ran + skipped));
+          }, 0) / total;
+
+    const durations = resolvedFlags
+      .map((r) => (r.resolvedAt!.getTime() - r.computedAt.getTime()) / 1000)
+      .sort((x, y) => x - y);
+    const median = durations.length
+      ? durations.length % 2
+        ? durations[(durations.length - 1) / 2]
+        : (durations[durations.length / 2 - 1] + durations[durations.length / 2]) / 2
+      : null;
+
+    return {
+      batchId: p.batchId,
+      total,
+      autoClear,
+      review,
+      block,
+      autoClearRate: total === 0 ? 1 : autoClear / total,
+      coverage,
+      flaggedPerThousand: total === 0 ? 0 : ((review + block) / total) * 1000,
+      falsePositiveRate: resolvedFlags.length
+        ? resolvedFlags.filter((r) => r.resolution === 'false_positive').length / resolvedFlags.length
+        : null,
+      mttrSeconds: median,
+      unresolvedFlagged: flagged.length - resolvedFlags.length,
+    };
+  });
+}
+
+/**
+ * Has the evaluator ever written a live verdict for this batch?
+ *
+ * The circuit breaker's additivity gate. The per-employee guard is inherently additive because it reads
+ * stored verdicts and finds none on an un-evaluated batch; the breaker is recomputed from payslip totals
+ * and would happily fire on a batch this layer has never seen. This is what stops it.
+ */
+export async function anomalyEvaluated(tx: Tx, batchId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: schema.payrollAnomalyVerdict.id })
+    .from(schema.payrollAnomalyVerdict)
+    .where(
+      and(eq(schema.payrollAnomalyVerdict.batchId, batchId), isNull(schema.payrollAnomalyVerdict.supersededAt)),
+    )
+    .limit(1);
+  return !!row;
 }

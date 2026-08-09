@@ -16,7 +16,7 @@ import {
 import { absentDaysByEmployment, deductAbsentDaysByEmployment } from './absence-days';
 import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
-import { openBlockingVerdicts } from './payroll-anomaly';
+import { anomalyEvaluated, evaluateCircuitBreaker, openBlockingVerdicts } from './payroll-anomaly';
 import { assertStatutory } from './company-tier';
 import { toCsv } from '../lib/csv';
 import {
@@ -142,6 +142,31 @@ export class BatchHasBlockingAnomaliesError extends Error {
       `This payroll run cannot be closed until ${employmentIds.length} blocking anomal${employmentIds.length === 1 ? 'y is' : 'ies are'} resolved.`,
     );
     this.name = 'BatchHasBlockingAnomaliesError';
+  }
+}
+
+/**
+ * ADR-0076 §4 — the RUN-LEVEL circuit breaker tripped: the batch's total net moved further than the
+ * configured percentage against the prior cycle.
+ *
+ * This is the failure the per-employee detectors are structurally blind to. A global mis-key — wrong pack
+ * version, wrong period, a rate applied to everyone — moves EVERY employee together, so each individual
+ * movement sits inside `net-swing`'s threshold while the batch total moves by a third. Only the aggregate
+ * sees it, which is why this is a separate gate and not another detector.
+ *
+ * THE ESCAPE HATCH IS THE THRESHOLD, not an override flag. A real bonus month or a group-wide increment
+ * legitimately moves the total; the operator raises `batchSwingPct` for that company in
+ * payroll_anomaly_config — versioned, audited and deploy-free.
+ */
+export class BatchSwingTooLargeError extends Error {
+  constructor(
+    public readonly movementPct: number,
+    public readonly thresholdPct: number,
+  ) {
+    super(
+      `This payroll run's total net pay moved ${movementPct}% against the previous cycle, beyond the ${thresholdPct}% limit. Confirm the run is correct, or raise the limit for this company.`,
+    );
+    this.name = 'BatchSwingTooLargeError';
   }
 }
 
@@ -4296,6 +4321,16 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     const blocking = await openBlockingVerdicts(tx, p.batchId);
     if (blocking.length > 0) {
       throw new BatchHasBlockingAnomaliesError(blocking.map((b) => b.employmentId));
+    }
+    // THE CIRCUIT BREAKER ONLY APPLIES ONCE THIS BATCH HAS ACTUALLY BEEN EVALUATED, and that condition is
+    // what keeps the whole slice additive. Unlike the per-employee guard above, the breaker is RECOMPUTED
+    // from payslip totals rather than read from stored verdicts — so without this gate it would fire on
+    // batches that predate the anomaly layer entirely, and a legitimate bonus month on an un-evaluated run
+    // would suddenly refuse to close. `anomalyEvaluated` is true only when the evaluator has written
+    // verdicts for this batch, i.e. when the operator is deliberately using the layer.
+    if (await anomalyEvaluated(tx, p.batchId)) {
+      const swing = await evaluateCircuitBreaker(tx, ctx.tenantId, p.batchId);
+      if (swing.tripped) throw new BatchSwingTooLargeError(swing.movementPct ?? 0, swing.thresholdPct);
     }
     // Step 6 (f3148da1) — compute the payslip RELEASE instant NOW, under this admin session (which can read the
     // company release config; the ESS employee session cannot, so the gate must be materialized here, not at

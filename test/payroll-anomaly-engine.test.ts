@@ -27,7 +27,11 @@ import {
   resolveAnomalyVerdict,
   UNTUNED_DEFAULT_PARAMS,
 } from '../core/payroll-anomaly';
-import { BatchHasBlockingAnomaliesError, closeBatch } from '../core/payroll';
+import {
+  anomalyMetrics,
+  evaluateCircuitBreaker,
+} from '../core/payroll-anomaly';
+import { BatchHasBlockingAnomaliesError, BatchSwingTooLargeError, closeBatch } from '../core/payroll';
 import { closeAll, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const PERIOD = '2026-05';
@@ -454,5 +458,131 @@ describe('ADR-0076 — RLS', () => {
       tx.select().from(schema.payrollAnomalyVerdict),
     ).catch(() => []);
     expect(rows).toHaveLength(0);
+  });
+});
+
+
+describe('ADR-0076 §4 — the run-level circuit breaker', () => {
+  /** Two cycles for the same company, each with `n` employees paid `net`. */
+  async function twoCycles(priorNet: string, currentNet: string, n = 3) {
+    const prior = await makeBatch('2026-04');
+    const current = await makeBatch('2026-05');
+    for (let i = 0; i < n; i++) {
+      const { employmentId, personId } = await makeEmp(`CB${i}_${randomUUID().slice(0, 6)}`);
+      await giveProfile(personId);
+      await addPayslip(prior, employmentId, { netPay: priorNet }, { noAttendance: true });
+      await addPayslip(current, employmentId, { netPay: currentNet });
+    }
+    return { prior, current };
+  }
+
+  it('self-disables on cycle one — there is nothing to compare against', async () => {
+    const { employmentId, personId } = await makeEmp('CBFirst');
+    await giveProfile(personId);
+    const batchId = await makeBatch();
+    await addPayslip(batchId, employmentId);
+    const cb = await withTenant(a, (tx) => evaluateCircuitBreaker(tx, b.tenantId, batchId));
+    expect(cb.tripped).toBe(false);
+    expect(cb.movementPct).toBeNull();
+    expect(cb.skippedReason).toMatch(/no prior cycle/i);
+  });
+
+  it('does NOT trip on an ordinary month', async () => {
+    const { current } = await twoCycles('4000.00', '4100.00'); // +2.5%
+    const cb = await withTenant(a, (tx) => evaluateCircuitBreaker(tx, b.tenantId, current));
+    expect(cb.tripped).toBe(false);
+    expect(cb.movementPct).toBeCloseTo(2.5, 1);
+  });
+
+  it('TRIPS on a uniform global mis-key that every per-employee detector rates as unremarkable', async () => {
+    // +25% for everyone. net-swing's 30% default does NOT fire per employee, which is exactly the blind
+    // spot this breaker exists to cover.
+    const { current } = await twoCycles('4000.00', '5000.00');
+    await evaluateBatchAnomalies(a, { batchId: current });
+    const perEmployee = await liveVerdicts(current);
+    for (const v of perEmployee) {
+      const ids = (await findingsOf(v.id)).map((f) => f.detectorId);
+      expect(ids).not.toContain('net-swing');
+    }
+
+    const cb = await withTenant(a, (tx) => evaluateCircuitBreaker(tx, b.tenantId, current));
+    expect(cb.tripped).toBe(true);
+    expect(cb.movementPct).toBeCloseTo(25, 1);
+    await expect(closeBatch(a, { batchId: current })).rejects.toBeInstanceOf(BatchSwingTooLargeError);
+  });
+
+  it('the threshold is data: raising it for the company lets the same run close', async () => {
+    const { current } = await twoCycles('4000.00', '5000.00');
+    await evaluateBatchAnomalies(a, { batchId: current });
+    await expect(closeBatch(a, { batchId: current })).rejects.toBeInstanceOf(BatchSwingTooLargeError);
+
+    await owner.db.insert(schema.payrollAnomalyConfig).values({
+      tenantId: b.tenantId,
+      companyId: b.companyId,
+      detectorId: 'batch-swing',
+      params: { batchSwingPct: 40 },
+      effectiveFrom: '2026-01-01',
+    });
+    await expectCloses(current);
+  });
+
+  it('AN UN-EVALUATED BATCH IS UNAFFECTED — the breaker cannot fire on a run this layer never saw', async () => {
+    // Same 25% swing, but evaluateBatchAnomalies is never called. This is the additivity guarantee for the
+    // breaker: unlike the per-employee guard it is RECOMPUTED, so without the gate it would refuse to close
+    // batches that predate the anomaly layer entirely.
+    const { current } = await twoCycles('4000.00', '5000.00');
+    const cb = await withTenant(a, (tx) => evaluateCircuitBreaker(tx, b.tenantId, current));
+    expect(cb.tripped).toBe(true); // the swing IS real...
+    await expectCloses(current); // ...and the close is still allowed, because the layer is not in use here
+  });
+});
+
+describe('ADR-0076 §5 — the metrics ADR-0074 is judged on', () => {
+  it('reports the auto-clear rate BESIDE coverage, so a thin clean cannot read as a clean bill of health', async () => {
+    const clean = await makeEmp('X1');
+    const flagged = await makeEmp('X2');
+    for (const e of [clean, flagged]) await giveProfile(e.personId);
+    const batchId = await makeBatch();
+    await addPayslip(batchId, clean.employmentId);
+    await addPayslip(batchId, flagged.employmentId, { netPay: '-1.00' });
+    await evaluateBatchAnomalies(a, { batchId });
+
+    const m = await anomalyMetrics(a, { batchId });
+    expect(m.total).toBe(2);
+    expect(m.autoClear).toBe(1);
+    expect(m.block).toBe(1);
+    expect(m.autoClearRate).toBeCloseTo(0.5, 3);
+    expect(m.flaggedPerThousand).toBeCloseTo(500, 0);
+    // First cycle ⇒ the prior-period detectors could not run ⇒ coverage is BELOW 1 and says so.
+    expect(m.coverage).toBeGreaterThan(0);
+    expect(m.coverage).toBeLessThan(1);
+    expect(m.unresolvedFlagged).toBe(1);
+    expect(m.falsePositiveRate).toBeNull(); // nothing resolved yet
+    expect(m.mttrSeconds).toBeNull();
+  });
+
+  it('false-positive rate and MTTR appear once a human dispositions a flag', async () => {
+    const { employmentId, personId } = await makeEmp('FP');
+    await giveProfile(personId);
+    const batchId = await makeBatch();
+    await addPayslip(batchId, employmentId, { netPay: '-1.00' });
+    await evaluateBatchAnomalies(a, { batchId });
+    const [v] = await liveVerdicts(batchId);
+
+    await resolveAnomalyVerdict(a, { verdictId: v.id, resolution: 'false_positive', note: 'expected' });
+
+    const m = await anomalyMetrics(a, { batchId });
+    expect(m.falsePositiveRate).toBe(1);
+    expect(m.mttrSeconds).not.toBeNull();
+    expect(m.mttrSeconds!).toBeGreaterThanOrEqual(0);
+    expect(m.unresolvedFlagged).toBe(0);
+  });
+
+  it('an un-evaluated batch reports zeroes rather than throwing', async () => {
+    const batchId = await makeBatch();
+    const m = await anomalyMetrics(a, { batchId });
+    expect(m.total).toBe(0);
+    expect(m.autoClearRate).toBe(1);
+    expect(m.flaggedPerThousand).toBe(0);
   });
 });
