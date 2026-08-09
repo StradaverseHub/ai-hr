@@ -320,8 +320,13 @@ describe('Partial Leave Cancellation — reject + cancel-all', () => {
   it('cancelling all 3 dates is equivalent to cancelling the request (every segment cancelled, full restore)', async () => {
     const reqId = await approvedThreeDay();
     const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      // `today` PINNED, not left to the wall clock. These fixtures run in a fixed 10-12 Aug 2026 window and
+      // this test cancels 10 Aug; on 2026-08-10 the real clock made that date "today", the cancellation gate
+      // (d <= today) refused it, and three tests in this file failed for a reason that had nothing to do with
+      // the code under test. Every other clock-sensitive test here already pins today the same way.
       leaveRequestId: reqId,
       cancelDates: ['2026-08-10', '2026-08-11', '2026-08-12'],
+      today: '2026-08-01',
     });
     const dec = await decideLeaveCancellation(mgrCtx, { cancellationRequestId, decision: 'approved' });
     expect(dec.restoredDays).toBe(3);
@@ -414,7 +419,11 @@ describe('Partial Leave Cancellation — gates', () => {
       requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
     ).rejects.toBeInstanceOf(LeaveCancellationDateInvalidError);
     // Cancelling an APPROVED date succeeds.
-    const ok = await requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-10'] });
+    const ok = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: res.leaveRequestId,
+      cancelDates: ['2026-08-10'],
+      today: '2026-08-01',
+    });
     expect(ok.requestedDays).toBe(1);
   });
 
@@ -846,6 +855,7 @@ describe('R5 Build #2 — attachment visibility on a non-first surviving segment
     const c = await requestLeaveCancellation(subjectCtx, {
       leaveRequestId: res.leaveRequestId,
       cancelDates: ['2026-08-10'],
+      today: '2026-08-01',
     });
     await decideLeaveCancellation(mgrCtx, { cancellationRequestId: c.cancellationRequestId, decision: 'approved' });
 
