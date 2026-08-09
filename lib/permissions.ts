@@ -385,7 +385,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/attendance',
     labelKey: 'nav.shiftSettings',
     guard: 'requireAdmin',
-    routes: ['/admin/attendance', '/attendance/import'],
+    // '/roster/import' (23390097) and '/attendance/recompute' (1c1b321a) BOTH call requireAdmin, so both
+    // are guarded pages and test/function-access.test.ts asserts reverse completeness over every one on
+    // disk. They ride THIS screen rather than getting their own: same admin surface, same guard — the
+    // '/attendance/import' precedent already on this line.
+    // They must NOT ride the '/roster' column: that one's guard is scopedSession, and function-access
+    // checks guard-derived access in BOTH directions, so registering them there swaps one failure for
+    // another. And the entry cannot land before the page does — the test fails both ways — which is why
+    // the two builders were told to declare these rather than edit this file.
+    routes: ['/admin/attendance', '/attendance/import', '/roster/import', '/attendance/recompute'],
   },
   {
     // R33 f21d6eee: the per-company working-hours + overtime-rates config relocated off the shift library

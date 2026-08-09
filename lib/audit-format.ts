@@ -139,6 +139,13 @@ const AGGREGATE_MODULE: Record<string, string> = {
   // the one mapping removes that contradiction rather than creating one (f1b994e3 plan, "Good to know").
   attendance: 'attendance',
   'attendance-correction': 'attendance',
+  // 1c1b321a — a recompute run is filed as its own aggregate so the whole run is one audit row rather
+  // than one per changed day. Without this it chips as 'Other' and the Attendance area filter cannot
+  // find it, which the plan promised it would.
+  'attendance-recompute': 'attendance',
+  // 23390097 — roster writes (single cell, row Edit, and one row per upload) carry before/after. Same
+  // reason: the plan promises they appear under Attendance in the Audit Trail.
+  'roster-assignment': 'attendance',
   'payroll-batch': 'payroll',
   payslip: 'payroll',
   compensation: 'payroll',
