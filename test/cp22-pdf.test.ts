@@ -116,9 +116,11 @@ function appearanceLines(doc: PDFDocument, name: string) {
 }
 
 /**
- * Assert a block's drawn lines are all there AND all whole: pdf-lib clips the appearance to the rect inset
- * by 1pt, so a baseline less than one descender above that floor is a line sliced at the baseline (which
- * is what "the box looks full and correct" looked like), and a baseline below it is a line never drawn.
+ * Assert a block's drawn lines are all whole. pdf-lib's appearance is a Form XObject whose /BBox is the
+ * widget rect, with a clip path 1pt further in; a baseline less than one descender above that inner floor
+ * is a row with its descenders cut off (which is exactly what "the box looks full and correct" looked
+ * like), and a baseline below the floor is a row that was never drawn. The inner floor is the strictest of
+ * the floors the real renderers apply, so clearing it clears all of them.
  */
 function expectInsideTheClip(f: Cp22Field, drawn: { size: number; lines: { y: number; text: string }[] }) {
   const ascender = drawn.size * 0.718; // Helvetica AFM, /1000
@@ -365,16 +367,19 @@ describe('CP22 renderer — the produced file', () => {
  *
  * Two shapes, both ordinary in Malaysia, both silently wrong before this:
  *   - a FOUR-entry address (line1 / line2 / line3 / "postcode city, state"), which is the shape LHDN rules
- *     the box for: drawn, but sliced at the baseline with every descender gone;
+ *     the box for: drawn, but with everything below the last row's baseline cut away. Measured at 900dpi,
+ *     the "Selangor" band was 8.56pt deep — the same as the rows that have no descenders at all — against
+ *     10.80pt once the rect had room for it;
  *   - a FIVE-entry address, and a payroll with four recurring allowances against a three-row box: the last
  *     line laid out under the widget rect and NEVER DRAWN. "Selangor Darul Ehsan" absent from an address;
  *     "Meal - RM 75.00" absent from the remuneration declared to LHDN, understating it by RM 900 a year.
  * Nothing failed. Every fixture in this file used three address lines and one or two allowances — the
  * shapes that happen to fit — so the suite was green, `next build` was green and the download was a 200.
- * TWO PDF RENDERERS DISAGREED about it: Poppler honours NeedAppearances and re-lays the text out itself,
- * so it drew the sliced line whole, while MuPDF and Preview drew the embedded stream and showed the
- * damage. That disagreement is the tool that found this — so these assertions read the EMBEDDED stream's
- * own geometry, and the fix goes into /DA and /V, which is what a regenerating viewer reads too.
+ * AND THE TWO PDF RENDERERS DISAGREED: probed with a marker stream, MuPDF draws the EMBEDDED appearance
+ * and showed the damage, while Poppler regenerates from /V and /DA (NeedAppearances is set), lays the
+ * lines out a little higher and drew the same address whole. "It looks fine in one renderer" is not
+ * evidence. So these assertions read the EMBEDDED stream's own geometry, which is the stricter of the two,
+ * while the fix itself lands in /DA and /V, which is what a regenerating viewer reads.
  *
  * Everything below is parameterised on the block's own `rows`, so a block cannot be added without its full
  * height being covered. The two blocks nothing pre-fills (1 and 29) have no fixture that can reach them;
