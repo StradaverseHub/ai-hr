@@ -709,6 +709,14 @@ export async function runReportSpec(
    * column. A dataset that carries none puts every row in one bucket and takes the single-total path —
    * byte-identical to before, which is what keeps this additive for the eight datasets without one.
    *
+   * THE MIX IS JUDGED OVER CONTRIBUTING ROWS ONLY, and that detail is load-bearing. `master` is the one
+   * dataset whose `currency` is NOT the company's — it is `compensation.currency`, which is NULLABLE, so
+   * an employee with no compensation row carries no currency. Judging the mix over EVERY row put those
+   * employees in their own unlabelled bucket and split the Average on the present all-Malaysian tenant:
+   * a figure moving today, on the box, for a change whose whole promise is that nothing moves until a
+   * second country arrives. A row that contributes no value to any summed money column cannot make the
+   * money mixed, so it is excluded from the question.
+   *
    * LATENT TODAY: production is nine Malaysian companies in one tenant, so every bucket is MYR and this
    * changes nothing on the box. It is the second country that makes the old row wrong.
    */
@@ -716,10 +724,18 @@ export async function runReportSpec(
     const v = r['currency'];
     return typeof v === 'string' && v.trim() ? v.trim() : null;
   };
-  const currencyKeys = rows.map((r) => ({ currency: currencyOf(r) }));
+  const hasValue = (r: ReportRow, colId: string): boolean => {
+    const v = r[colId];
+    return v !== null && v !== undefined && v !== '';
+  };
   const aggFor = (setIds: Set<string>, label: string) => {
     const avg = label === 'Average';
-    const touchesMoney = [...setIds].some((c) => byId.get(c)?.type === 'currency');
+    const moneyCols = [...setIds].filter((c) => byId.get(c)?.type === 'currency');
+    const touchesMoney = moneyCols.length > 0;
+    // Only rows that actually put a figure into one of THESE money columns get a say in whether the
+    // money is mixed — see the note above on `master`'s nullable compensation currency.
+    const contributing = touchesMoney ? rows.filter((r) => moneyCols.some((c) => hasValue(r, c))) : [];
+    const currencyKeys = contributing.map((r) => ({ currency: currencyOf(r) }));
     if (!touchesMoney || !isMixedCurrency(currencyKeys)) {
       body.push(aggOver(setIds, label, avg, rows));
       return;
