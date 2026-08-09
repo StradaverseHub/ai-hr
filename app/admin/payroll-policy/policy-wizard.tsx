@@ -172,6 +172,16 @@ export function PolicyWizard({
     rows.push({ label: t('config.negativeNetLabel'), value: enumLabel('config.negative', { retain: 'Retain', set_zero: 'SetZero', carry_forward: 'CarryForward' }[val('negativeNet')] ?? 'Retain') });
     if (val('otMultiplier')) rows.push({ label: t('config.otMultiplier'), value: val('otMultiplier') });
     rows.push({ label: t('config.unpaidLeaveDivisor'), value: enumLabel('config.leaveDivisor', val('unpaidLeaveDivisor')) });
+    // e2632276 — a checkbox's `.value` is the constant "on" whether or not it is ticked, so the summary
+    // reads `.checked`. Getting that wrong would print "on" beside a setting that is off.
+    rows.push({
+      label: t('config.deductAbsentDays'),
+      value: t(
+        (formRef.current?.elements.namedItem('deductAbsentDays') as HTMLInputElement | null)?.checked
+          ? 'config.deductAbsentDaysOn'
+          : 'config.deductAbsentDaysOff',
+      ),
+    });
     rows.push({ label: t('config.roundingNetPay'), value: enumLabel('config.rounding', val('roundingNetPay')) });
     const desc = val('description');
     if (desc) rows.push({ label: t('fieldDescription'), value: desc });
@@ -500,6 +510,23 @@ export function PolicyWizard({
                 <input name="leaveCustomMinutes" type="number" min={0} step="1" inputMode="numeric" defaultValue={num(cfgLeave?.customMinutes)} placeholder="—" className={inputCls} />
               </Field>
             </div>
+            {/* e2632276 — "Deduct absence days", beside the Unpaid leave divisor that values them. OFF for
+                every existing policy, which is how this ships: nothing changes for any company until it is
+                ticked here, and then only for runs made after that. */}
+            <label className="mt-3 flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                name="deductAbsentDays"
+                defaultChecked={cfgLeave?.deductAbsentDays === true}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">{t('config.deductAbsentDays')}</span>
+                <span className="block text-xs text-muted-foreground dark:text-muted-foreground">
+                  {t('config.deductAbsentDaysHint')}
+                </span>
+              </span>
+            </label>
             <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('config.leaveHint')}</p>
           </div>
 

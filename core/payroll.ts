@@ -11,6 +11,9 @@ import {
   decidePayrollPermission,
   type PayrollPermissionKey,
 } from '../lib/payroll-permissions';
+// e2632276 — absence days (a scheduled working day with no attendance row, or one marked Absent), counted
+// by the SAME helper the Attendance month roll-up reads so the screens and the deduction cannot drift.
+import { absentDaysByEmployment } from './absence-days';
 import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
 import { assertStatutory } from './company-tier';
@@ -2381,6 +2384,11 @@ export async function generatePayslips(
     // f3148da1 Step 5 (R17 gap-fix reinstatement) — the PARTIAL-DAY (time-off) subset of unpaidByEmp, populated
     // ONLY for employments whose policy configures a distinct unpaidTimeOffDivisor (see the group query below).
     const unpaidTimeOffByEmp = new Map<string, number>();
+    // e2632276 — ABSENCE days, populated ONLY for employments whose assigned PAYROLL POLICY sets
+    // `leave.deductAbsentDays` (see the group query below). Empty for every other employment ⇒ absentAmount
+    // is 0 ⇒ the payslip is byte-identical to a pre-flag run. It is a POLICY setting, not a company one:
+    // resolveAssignedPolicy answers it per employment, so two employees of one company can differ.
+    const absentByEmp = new Map<string, number>();
 
     // ── 2.1.1 (ADR-0064) — Monthly payroll-policy General Settings, resolved at RUN TIME ──
     // The load-bearing new plumbing: for each employment, resolve its assigned policy's config (raw
@@ -2488,6 +2496,25 @@ export async function generatePayslips(
           const [start, end] = key.split('|');
           const part = await unpaidDaysByEmployment(tx, start, end, scoped, true);
           for (const [k, v] of part) unpaidTimeOffByEmp.set(k, v);
+        }
+      }
+      // e2632276 — ABSENCE days, resolved through the SAME per-employment LEAVE cut-off windows as the
+      // unpaid-leave days above, so the two counts can never disagree about which month a day belongs to
+      // (they are added at the same daily rate, and a day counted in two different months would be paid
+      // for twice). Queried ONLY for employments whose policy switches the deduction on: with the setting
+      // off everywhere — which is how it ships, for all nine companies — this issues NO query at all.
+      const absIds = new Set(
+        emps
+          .filter((e) => policyConfigByEmp.get(e.employmentId)?.leave?.deductAbsentDays === true)
+          .map((e) => e.employmentId),
+      );
+      if (absIds.size > 0) {
+        for (const [key, ids] of groups) {
+          const scoped = ids.filter((id) => absIds.has(id));
+          if (scoped.length === 0) continue;
+          const [start, end] = key.split('|');
+          const part = await absentDaysByEmployment(tx, start, end, scoped);
+          for (const [k, v] of part) absentByEmp.set(k, v);
         }
       }
     }
@@ -3462,13 +3489,27 @@ export async function generatePayslips(
       // byte-identical. Regular run only (an additional run charges no unpaid, like cp38/hrdf). Applied even
       // on the daily path — a keyed amount is an explicit instruction, not the derived not-a-worked-day case.
       const txnUnpaid = isAdditionalRun ? 0 : round2(txnUnpaidByEmp.get(e.employmentId) ?? 0);
-      const unpaidDeduction = round2(
-        (daily
-          ? 0
-          : timeOffRate !== null
-            ? round2((basicRaw / unpaidDivisor) * (unpaidDaysAll - timeOffDays) + timeOffRate * timeOffDays)
-            : round2((basicRaw / unpaidDivisor) * unpaidDaysAll)) + txnUnpaid,
-      );
+      const unpaidLeaveAmount = daily
+        ? 0
+        : timeOffRate !== null
+          ? round2((basicRaw / unpaidDivisor) * (unpaidDaysAll - timeOffDays) + timeOffRate * timeOffDays)
+          : round2((basicRaw / unpaidDivisor) * unpaidDaysAll);
+      // e2632276 — ABSENCE, at exactly the unpaid-leave daily rate: the same `basicRaw` (the UNFACTORED
+      // monthly basic, so the rate is not shortened for a mid-month joiner or leaver) over the same
+      // policy-configured `unpaidDivisor`, rounded ONCE on the amount — the per-day rate is never rounded
+      // first. absentByEmp is empty unless the employment's policy sets leave.deductAbsentDays, so this is
+      // 0 and the whole expression below is byte-identical to the pre-flag one.
+      //
+      // The daily/hourly guard is inherited deliberately: a daily wage already pays only worked days, so an
+      // absent day is simply not a worked day and deducting off basicRaw/divisor would charge it twice —
+      // the identical reasoning the `daily ? 0` unpaid branch has always used.
+      const absentDays = daily ? 0 : (absentByEmp.get(e.employmentId) ?? 0);
+      const absentAmount = daily ? 0 : round2((basicRaw / unpaidDivisor) * absentDays);
+      // Both halves ride INSIDE unpaidDeduction on purpose: wagesExOt and hrdfBase below subtract it, which
+      // is what makes the absence deduction PRE-statutory (EPF / SOCSO / EIS / PCB are worked out on the
+      // reduced wage) — the treatment a `kind='deduction'` pay code could never have, because a pay code is
+      // applied after the statutory calculation. See the item's build note.
+      const unpaidDeduction = round2(unpaidLeaveAmount + absentAmount + txnUnpaid);
       const normalWage = round2(basic + allowance + overtime); // regular monthly remuneration
       // Agency bases differ (STATUTORY-SOURCES §6): EPF EXCLUDES overtime, SOCSO/EIS/PCB
       // include it — so the calculator takes wages ex-OT and the OT separately. The all-false
@@ -3868,6 +3909,20 @@ export async function generatePayslips(
           // Only stamped when non-zero (byte-identical to today for every other path); the NEXT cycle's balance
           // derivation replays these stamps (Σ added − applied) off closed payslips.
           ...(carryForward ? { carryForward } : {}),
+          // e2632276 — NAME THE ABSENCE. `slipUnpaid` is merged into `other_deductions` below and recorded
+          // nowhere else, so a payslip could never say how much of that one unnamed figure was unpaid leave
+          // and how much was absence, nor how many days either was. These two stamps are that record, and
+          // they are the only place it exists: history cannot be split retroactively, which is why a slip
+          // WITHOUT them still prints the single lumped "Other deductions" row exactly as it does today.
+          // Each is stamped only when it has an amount (a zero half prints no line at all), and never on an
+          // additional run, which charges no unpaid/absence at all (slipUnpaid is 0 there).
+          // A manually-keyed 'unpaid' ledger amount (txnUnpaid) is deliberately NOT folded into either
+          // line: it carries no day count, so putting it under a line that prints one would make the days
+          // and the ringgit disagree. It stays in the residual, which is what that row is for.
+          ...(!isAdditionalRun && unpaidLeaveAmount > 0
+            ? { unpaidLeave: { days: unpaidDaysAll, amount: unpaidLeaveAmount } }
+            : {}),
+          ...(!isAdditionalRun && absentAmount > 0 ? { absent: { days: absentDays, amount: absentAmount } } : {}),
           // c7fdfcf6 gap-fix — the per-cycle DISBURSEMENT schedule for a weekly/bi-weekly run (present only when
           // the run frequency is weekly/biweekly; absent ⇒ byte-identical monthly slip). The employer pays each
           // cycle's `amount` on its cadence; statutory contributions stay settled monthly on this same payslip.
@@ -5602,6 +5657,15 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
     const otBreakdownMap = new Map(inputs.map((r) => [r.employmentId, r.otBreakdown ?? null]));
     const otSourceMap = new Map(inputs.map((r) => [r.employmentId, r.otSource ?? null]));
     const unpaid = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
+    // e2632276 — the ABSENT-days preview beside the unpaid-days one, so the count can be checked BEFORE the
+    // run is processed. Read-only and ungated: the days exist whether or not the policy deducts for them,
+    // and this grid is draft-only (the 22 processed batches never render it).
+    const absent = await absentDaysByEmployment(
+      tx,
+      periodStart,
+      periodEnd,
+      emps.map((e) => e.employmentId),
+    );
     return emps.map((e) => {
       const wages = round2(Number(e.basic) + Number(e.allowance ?? 0));
       // s.60I(1A): ORP = wages/26, hourly = ORP/8. Run the engine with no days to get just the basis +
@@ -5639,6 +5703,10 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
         zakat: zakatMap.get(e.employmentId) ?? 0,
         loanDeduction: loanMap.get(e.employmentId) ?? 0,
         unpaidDays: unpaid.get(e.employmentId) ?? 0,
+        // e2632276 — scheduled working days with no attendance record, or one marked Absent. Never
+        // approved leave, never a public holiday, never a rest day (the roster wins over the company
+        // calendar). See core/absence-days.ts.
+        absentDays: absent.get(e.employmentId) ?? 0,
       };
     });
   });

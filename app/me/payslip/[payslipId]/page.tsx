@@ -8,6 +8,7 @@ import { payslipProvenance } from '@/core/payslip-recompute';
 // 3c473773 — which box each earning belongs in (read from the payslip's own stamp), and the employer-borne
 // disclosure (read from the payslip's own snapshot). Neither is re-derived from today's settings.
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
+import { payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
 
 /** The label key for each employer-borne component, exhaustive over EmployerBorneKey. */
@@ -60,6 +61,9 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
   // pay items carried a category, in which case these are the stored columns and the page is unchanged.
   const disp = payslipDisplayEarnings(p);
   const eb = payslipEmployerBorne(p.statutory);
+  // e2632276 — the unpaid-leave / absence halves of "Other deductions", named and day-counted. Read from
+  // THIS payslip's own stamp; a slip issued before this shipped has none and renders exactly as before.
+  const absence = payslipAbsenceLines(p.statutory, p.otherDeductions);
   const t = await getTranslations('me.payslip');
 
   return (
@@ -135,7 +139,21 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           {Number(st.zakat) > 0 && (
             <Row label={t('zakat')} value={`${rm(st.zakat)} · ${t('zakatOffsetNote')}`} muted />
           )}
-          {Number(p.otherDeductions) > 0 && <Row label={t('otherDeductions')} value={rm(p.otherDeductions)} />}
+          {/* e2632276 — two named lines in place of the unnamed lump; the residual keeps the section
+              summing to Total deductions, and is hidden when it nets to zero. */}
+          {absence.unpaidLeave && (
+            <Row
+              label={`${t('unpaidLeaveLine')} · ${absence.unpaidLeave.days} ${t('daysUnit')}`}
+              value={rm(absence.unpaidLeave.amount)}
+            />
+          )}
+          {absence.absent && (
+            <Row
+              label={`${t('absentLine')} · ${absence.absent.days} ${t('daysUnit')}`}
+              value={rm(absence.absent.amount)}
+            />
+          )}
+          {absence.showResidual && <Row label={t('otherDeductions')} value={rm(absence.residual)} />}
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
             <span>{t('totalDeductions')}</span>
             <span className="tabular-nums">−{rm(p.totalDeductions)}</span>

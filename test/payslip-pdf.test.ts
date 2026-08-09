@@ -38,6 +38,10 @@ const labels: PayslipPdfLabels = {
   pcb: 'PCB',
   cp38: 'CP38',
   otherDeductions: 'Other deductions',
+  // e2632276 — the two named absence lines that come OUT of "Other deductions".
+  unpaidLeaveLine: 'Unpaid leave',
+  absentLine: 'Absent',
+  daysUnit: 'days',
   totalDeductions: 'Total deductions',
   netPay: 'Net pay',
   employerContributions: 'Employer contributions',
@@ -96,6 +100,8 @@ const data: PayslipPdfData = {
   pcb: 350,
   cp38: 0,
   otherDeductions: 0,
+  // e2632276 — no stamp on this fixture ⇒ the pre-feature path: no named lines, residual === otherDeductions.
+  absence: { unpaidLeave: null, absent: null, residual: 0, showResidual: false, any: false },
   totalDeductions: 1099.65,
   net: 6020.35,
   epfEmployer: 925,
