@@ -6,6 +6,11 @@
  *     --tenant <uuid> --requested-by <uuid> --approved-by <uuid> --no-retention-hold
  *   …same line plus --apply to actually record it.
  *
+ * `--env-file` IS MANDATORY, not decoration. db/client.ts reads DATABASE_URL at MODULE SCOPE and throws
+ * if it is missing, so an import of this file fails before argv is looked at — which is why there is no
+ * in-file `loadEnvFile` fallback here. (scripts/apply-dunning.ts carries one; it is unreachable for
+ * exactly this reason. scripts/reactivate-tenant.ts, the sibling this file follows, does not.)
+ *
  * REPORT-ONLY BY DEFAULT and it writes NOTHING without --apply, the same contract as its sibling
  * scripts/reactivate-tenant.ts and scripts/apply-dunning.ts. Reactivation and closure are the two ends
  * of one slice and the operator should meet ONE idiom, so the flag names, the env contract, the
@@ -219,18 +224,6 @@ const USAGE = [
   '                      [--requested-at <iso>] [--approved-at <iso>] [--today YYYY-MM-DD] [--apply]',
 ].join('\n');
 
-function loadEnv() {
-  try {
-    process.loadEnvFile('.env.production');
-  } catch {
-    try {
-      process.loadEnvFile('.env.local');
-    } catch {
-      // env supplied directly
-    }
-  }
-}
-
 /** Usage error → exit 2, distinct from a policy REFUSAL (exit 1). A malformed id is not a decision. */
 function usage(message: string): never {
   console.error(`${message}\n\n${USAGE}`);
@@ -270,8 +263,6 @@ function printReport(i: ClosureImpact, opts: ClosureOptions): void {
 }
 
 if (process.argv[1]?.endsWith('close-tenant.ts')) {
-  loadEnv();
-
   const tenantId = argOf('--tenant');
   if (!tenantId || !UUID.test(tenantId)) usage('--tenant must be a tenant uuid');
 
