@@ -35,11 +35,13 @@ import {
 } from 'pdf-lib';
 import { CP22_DEFAULT_FONT_SIZE, CP22_FIELDS, type Cp22Field } from '../lib/cp22-fields';
 import {
+  cp22BatchPrefix,
   cp22FieldValues,
   cp22FittingLineCount,
   ddmmyyyy,
   dmy,
   fitMultilineValue,
+  renderCp22Batch,
   renderCp22Pdf,
   splitMyPhone,
   taxNoComb,
@@ -206,7 +208,13 @@ describe('CP22 — the bundled LHDN template', () => {
   it('is read through the one helper, not by a path inlined at each call site', () => {
     const helper = fs.readFileSync(path.join(ROOT, 'lib', 'cp22-template.ts'), 'utf8');
     expect(helper).toContain("'forms', 'cp22-pin-1-2020.pdf'");
-    for (const f of ['app/payroll/cp22/[employmentId]/pdf/route.ts', 'app/payroll/cp22/blank/route.ts']) {
+    for (const f of [
+      'app/payroll/cp22/[employmentId]/pdf/route.ts',
+      'app/payroll/cp22/blank/route.ts',
+      // db46d9a2 — the batch renders the SAME artwork through the SAME helper. A third route with its own
+      // path would be the second place to edit when the asset moves.
+      'app/payroll/cp22/batch/route.ts',
+    ]) {
       const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
       expect(src, `${f} must go through readCp22Template`).toContain('readCp22Template');
       expect(src, `${f} must not inline the asset path`).not.toContain('cp22-pin-1-2020.pdf');
@@ -587,5 +595,164 @@ describe('CP22 value formatting', () => {
       'Elaun tetap bulanan / Fixed monthly allowance - RM 250.00\nTransport allowance - RM 300.50',
     );
     expect(v.monthlyFixedRemuneration).toBe('6,500.00');
+  });
+});
+
+/**
+ * db46d9a2 — THE BATCH: one document, one page per joiner, every box on every page still editable.
+ *
+ * Everything that can go wrong here produces a file that OPENS, PRINTS and passes every green check while
+ * being wrong, which is why each of these is an assertion rather than a code review note:
+ *
+ *   1. ACROFORM FIELD NAMES ARE DOCUMENT-GLOBAL. Two widgets called `employeeFullName` are ONE field with
+ *      two appearances — type into page 3's name box and page 1's changes too. The operator's whole job
+ *      with this file is typing into it, so this is not a corner case, it is the main path.
+ *   2. THE ARTWORK MUST BE EMBEDDED ONCE. `copyPages` per joiner duplicates 153 KB of LHDN's page per
+ *      person; the reporter's own reference is 38 pages, which would be ~5.8 MB for nothing. Nothing about
+ *      the file LOOKS wrong when this regresses, so the proof is in the byte count.
+ *   3. THE FORM MUST NOT BE FLATTENED and NeedAppearances / /DR must reach the finished document — the same
+ *      three silent failures the single-page renderer has always guarded, now across N pages.
+ */
+describe('CP22 batch — one file, one page per joiner', () => {
+  const NAMES = ['Amir bin Hassan', 'Bala a/l Suppiah', 'Chen Wei Ling', 'Devi a/p Krishnan', 'Elena Gomez'];
+  const records = (n = NAMES.length): Cp22PdfData[] =>
+    NAMES.slice(0, n).map((fullName, i) => ({
+      ...data,
+      employee: { ...data.employee, fullName, commencementDate: `2026-07-0${i + 1}` },
+    }));
+
+  /** Which PAGE a field's widget actually sits on — "the field exists" is not "it is on page 3". */
+  function pageOf(doc: PDFDocument, name: string): number {
+    const dicts = new Set(doc.getForm().getField(name).acroField.getWidgets().map((w) => w.dict));
+    return doc.getPages().findIndex((p) => {
+      const annots = p.node.Annots();
+      if (!annots) return false;
+      for (let i = 0; i < annots.size(); i++) {
+        const d = doc.context.lookup(annots.get(i));
+        if (d instanceof PDFDict && dicts.has(d)) return true;
+      }
+      return false;
+    });
+  }
+
+  it('has exactly one page per record, at the template’s own page size', async () => {
+    const doc = await reload(await renderCp22Batch(template(), records()));
+    expect(doc.getPageCount()).toBe(NAMES.length);
+    for (const p of doc.getPages()) {
+      expect(p.getWidth()).toBeCloseTo(595.44, 2);
+      expect(p.getHeight()).toBeCloseTo(841.68, 2);
+    }
+  });
+
+  /** 1 — the document-global name trap. 33 boxes × N pages, and no two of them share a name. */
+  it('gives every page its own field names, so typing on one page cannot change another', async () => {
+    const doc = await reload(await renderCp22Batch(template(), records()));
+    const names = doc.getForm().getFields().map((f) => f.getName());
+    expect(names).toHaveLength(33 * NAMES.length);
+    expect(new Set(names).size).toBe(names.length);
+    // Every page's set is the full 33, prefixed with that page's own index.
+    for (let i = 0; i < NAMES.length; i++) {
+      const mine = names.filter((n) => n.startsWith(cp22BatchPrefix(i)));
+      expect(mine, `page ${i + 1}`).toHaveLength(33);
+      expect(mine.map((n) => n.slice(cp22BatchPrefix(i).length)).sort()).toEqual(
+        CP22_FIELDS.map((f) => f.name).sort(),
+      );
+    }
+    // The single-person document is UNCHANGED: its names are still unprefixed, which is what an operator's
+    // viewer shows and what every other assertion in this file addresses.
+    const single = (await reload(await renderCp22Pdf(template(), data))).getForm().getFields().map((f) => f.getName());
+    expect(single).toContain('employeeFullName');
+    expect(single.some((n) => /^p\d+_/.test(n))).toBe(false);
+  });
+
+  it('puts record 3’s name in page 3’s name box, and draws it there', async () => {
+    const bytes = await renderCp22Batch(template(), records());
+    const doc = await reload(bytes);
+    for (let i = 0; i < NAMES.length; i++) {
+      const name = `${cp22BatchPrefix(i)}employeeFullName`;
+      expect(doc.getForm().getTextField(name).getText()).toBe(NAMES[i]);
+      expect(pageOf(doc, name), `${name} must sit on page ${i + 1}`).toBe(i);
+      // …and the value is DRAWN into that widget's own appearance, not merely held in /V.
+      expect(appearanceLines(doc, name).lines.map((l) => l.text).join('')).toBe(NAMES[i]);
+    }
+    // Each joiner's own commencement date travels with them, so the pages are not N copies of record 1.
+    expect(doc.getForm().getTextField('p3_commencementDate').getText()).toBe('03072026');
+    const drawn = drawnText(bytes);
+    for (const n of NAMES) expect(drawn).toContain(n);
+  });
+
+  /** 2 — the artwork is embedded ONCE and drawn N times. */
+  it('costs far less than one copy of the artwork per extra joiner', async () => {
+    const one = await renderCp22Batch(template(), records(1));
+    const five = await renderCp22Batch(template(), records(5));
+    const artwork = template().length;
+    // Four more joiners must not cost even ONE more copy of LHDN's page.
+    expect(five.length - one.length).toBeLessThan(artwork);
+    // And the whole five-page file stays well under five separate single-person documents.
+    const single = await renderCp22Pdf(template(), data);
+    expect(five.length).toBeLessThan(single.length * 2);
+  });
+
+  /** 3 — the three silent failures, on the finished multi-page document. */
+  it('stays editable, sets NeedAppearances once, and carries the /DR font dictionary', async () => {
+    const doc = await reload(await renderCp22Batch(template(), records()));
+    expect(doc.getForm().getFields().length).toBe(33 * NAMES.length); // a flattened form has ZERO
+    // ONE AcroForm dictionary governs the whole document — these entries live on it, so they are set once
+    // after every page exists rather than per page.
+    const acro = doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict);
+    expect(acro.get(PDFName.of('NeedAppearances'))).toBe(PDFBool.True);
+    expect(acro.lookupMaybe(PDFName.of('DR'), PDFDict)?.lookupMaybe(PDFName.of('Font'), PDFDict)).toBeDefined();
+    const src = code(path.join(ROOT, 'lib', 'cp22-pdf.ts'));
+    expect(src).not.toContain('.flatten(');
+    // `copyPages` per joiner is the tempting way to write this and duplicates the artwork per person.
+    expect(src).not.toContain('copyPages');
+  });
+
+  it('keeps every page’s combs, multilines and maxLen despite the name prefix', async () => {
+    const doc = await reload(await renderCp22Batch(template(), records(2)));
+    const form = doc.getForm();
+    for (const i of [0, 1]) {
+      for (const f of CP22_FIELDS) {
+        const found = form.getFieldMaybe(cp22BatchPrefix(i) + f.name);
+        expect(found, `${cp22BatchPrefix(i)}${f.name}`).toBeDefined();
+        expect(found!.constructor.name).toBe(f.type === 'checkbox' ? 'PDFCheckBox' : 'PDFTextField');
+        if (f.type === 'comb' && f.maxLen) {
+          const tf = form.getTextField(cp22BatchPrefix(i) + f.name);
+          expect(tf.getMaxLength()).toBe(f.maxLen);
+          expect(tf.isCombed()).toBe(true);
+        }
+        if (f.type === 'multiline') expect(form.getTextField(cp22BatchPrefix(i) + f.name).isMultiline()).toBe(true);
+      }
+    }
+  });
+
+  // Box 1 has no answer anywhere in the schema, so it is normally an empty editable box. The branch the
+  // OPERATOR typed is not an invented value — and typing it once must beat typing it on every page.
+  it('stamps the typed LHDN branch onto every page, and leaves box 1 empty when nothing was typed', async () => {
+    const branch = 'LHDN Cawangan Kajang\nTingkat 3, Wisma LHDN';
+    const withBranch = await reload(await renderCp22Batch(template(), records(3), { lhdnBranch: branch }));
+    for (let i = 0; i < 3; i++) {
+      expect(withBranch.getForm().getTextField(`${cp22BatchPrefix(i)}lhdnBranchAddress`).getText()).toBe(branch);
+    }
+    for (const empty of [undefined, null, '', '   ']) {
+      const doc = await reload(await renderCp22Batch(template(), records(2), { lhdnBranch: empty }));
+      expect(doc.getForm().getTextField('p1_lhdnBranchAddress').getText()).toBeUndefined();
+    }
+    // The rest of the seven unanswerable boxes stay empty and typeable on every page — the branch is the
+    // ONLY one an operator can answer from the screen.
+    const doc = await reload(await renderCp22Batch(template(), records(2), { lhdnBranch: branch }));
+    for (const f of CP22_FIELDS.filter((x) => !x.prefilled && x.name !== 'lhdnBranchAddress')) {
+      for (const i of [0, 1]) {
+        const name = cp22BatchPrefix(i) + f.name;
+        if (f.type === 'checkbox') expect(doc.getForm().getCheckBox(name).isChecked(), name).toBe(false);
+        else expect(doc.getForm().getTextField(name).getText(), name).toBeUndefined();
+      }
+    }
+  });
+
+  // A month with no joiners is a 404 at the route. A zero-page PDF is not a document, and producing one
+  // silently would be the failure mode this throw exists to make loud.
+  it('refuses to produce a document for no records at all', async () => {
+    await expect(renderCp22Batch(template(), [])).rejects.toThrow(/no records/);
   });
 });
