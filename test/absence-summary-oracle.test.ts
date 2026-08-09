@@ -35,7 +35,7 @@ import { statusOf } from '../core/attendance-derive';
 import { holidayDatesFor } from '../core/holidays';
 import { approvedLeaveDates } from '../core/leave';
 import { assignPolicy, createPolicy } from '../core/payroll-policy';
-import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const PERIOD = '2026-05';
 /** Past the month end, so the "not yet happened" clamp is inert and the run is deterministic. */
@@ -386,11 +386,14 @@ describe('e2632276 — with the switch OFF the month roll-up is main, field for 
     expect(rows).toHaveLength(Object.keys(cast).length);
     // A vacuous fixture — one where the corrected rules happen to have nothing to bite on — would make the
     // deep-equal below pass for the wrong reason. These are the legacy figures the corrections will move.
-    expect(rowFor(rows, cast.markedAbsent).present).toBe(3); //   two of them are explicit no-shows
-    expect(rowFor(rows, cast.rosteredRest).absent).toBe(21); //   both rostered rest days charged
-    expect(rowFor(rows, cast.rosteredWeekend).absent).toBe(21); // the rostered Saturday NOT charged
-    expect(rowFor(rows, cast.patternRest).absent).toBe(21); //    all 5 Fridays charged
-    expect(rowFor(rows, cast.halfDayLeave).absent).toBe(21); //   the half-day leave date charged in full
+    // BASELINE = 20: the month's 21 Mon–Fri days less the 25 May public holiday, which is national and so
+    // applies to every one of these employees under both rule sets.
+    expect(rowFor(rows, cast.markedAbsent).present).toBe(3); //    two of them are explicit no-shows
+    expect(rowFor(rows, cast.markedAbsent).absent).toBe(17); //    20 − the 3 recorded dates, absent or not
+    expect(rowFor(rows, cast.rosteredRest).absent).toBe(20); //    both rostered rest days charged
+    expect(rowFor(rows, cast.rosteredWeekend).absent).toBe(20); // the rostered Saturday NOT charged
+    expect(rowFor(rows, cast.patternRest).absent).toBe(20); //     all 5 Fridays charged
+    expect(rowFor(rows, cast.halfDayLeave).absent).toBe(20); //    the half-day leave date charged in full
   });
 
   it('THE DELIVERABLE — attendanceMonthSummary === main, every row, every field', async () => {
@@ -422,7 +425,7 @@ describe('e2632276 — with the switch OFF the month roll-up is main, field for 
       if (row.employmentId === cast.rosteredRest) continue;
       expect(rowFor(mine, row.employmentId)).toEqual(row);
     }
-    expect(rowFor(mine, cast.rosteredRest).absent).toBe(19); // …and that one did move
+    expect(rowFor(mine, cast.rosteredRest).absent).toBe(18); // …and that one did move (20 − 2 rest days)
   });
 });
 
@@ -435,17 +438,18 @@ describe('e2632276 — with the switch ON each correction appears (the gate open
     await switchOn(a, Object.values(cast));
     const mine = await summary(a);
 
+    // Baseline for every employee is 20 scheduled days: 21 Mon–Fri less the 25 May public holiday.
     // (a) an explicitly-marked Absent row is absent, not present.
-    expect(rowFor(main, cast.markedAbsent)).toMatchObject({ present: 3, absent: 18 });
-    expect(rowFor(mine, cast.markedAbsent)).toMatchObject({ present: 1, absent: 20 });
+    expect(rowFor(main, cast.markedAbsent)).toMatchObject({ present: 3, absent: 17 });
+    expect(rowFor(mine, cast.markedAbsent)).toMatchObject({ present: 1, absent: 19 });
     // (b) a rostered rest day on a company working day is no longer an absence.
-    expect(rowFor(mine, cast.rosteredRest).absent).toBe(19);
+    expect(rowFor(mine, cast.rosteredRest).absent).toBe(18); //   20 − 2 rostered rest days
     // (b′) …nor is a Friday the employee's default-shift pattern excludes.
-    expect(rowFor(mine, cast.patternRest).absent).toBe(16); // 21 − the month's 5 Fridays
+    expect(rowFor(mine, cast.patternRest).absent).toBe(15); //    20 − the month's 5 Fridays
     // (c) a rostered SHIFT on a company non-working day IS a scheduled day, and so can be absent.
-    expect(rowFor(mine, cast.rosteredWeekend).absent).toBe(22); // 21 weekdays + the rostered Saturday
+    expect(rowFor(mine, cast.rosteredWeekend).absent).toBe(21); // 20 + the rostered Saturday
     // (d) an approved half-day leave date is not a whole absent day.
-    expect(rowFor(mine, cast.halfDayLeave).absent).toBe(20);
+    expect(rowFor(mine, cast.halfDayLeave).absent).toBe(19);
 
     // The controls do not move — under either rule set.
     for (const key of ['fullDayLeave', 'leaveAndRow', 'onHoliday', 'joiner', 'tally', 'bare'] as const) {
@@ -559,5 +563,55 @@ describe('e2632276 — the switch resolves exactly as the payroll kernel resolve
         set: { defaultPayrollPolicyId: id },
       });
     expect((await summary(a)).find((r) => r.employmentId === e)!.absent).toBe(20);
+  });
+
+  it('RLS: a plain employee resolves a DIRECTLY-ASSIGNED switch, and fails SAFE on a company default', async () => {
+    // Two tables answer "is the switch on", and they do not have the same read RLS.
+    //   payroll_policy            — tenant-wide SELECT (migration 0128, deliberately: the kernel resolves it
+    //                               under the caller's possibly-non-admin session).
+    //   company_payroll_config    — app.is_admin_for(company_id) for READ as well as write (migration 0081).
+    // So the company-DEFAULT rung is invisible to a non-admin session. `resolveAssignedPolicy` has always
+    // had that property; it never mattered because only the payroll kernel called it, and payroll is
+    // admin-gated. It matters now that the Records screens read the same switch, so the direction it fails
+    // in is pinned here: a non-admin sees LEGACY, which is exactly what production shows today. Never the
+    // other way round — a non-admin must not be shown a corrected count an admin would not.
+    const a = await entitledCtx(b);
+    const [p] = await owner.db
+      .insert(schema.person)
+      .values({ tenantId: b.tenantId, fullName: 'Self Service', primaryEmail: `self_${randomUUID()}@t.local` })
+      .returning({ id: schema.person.id });
+    const [emp] = await owner.db
+      .insert(schema.employment)
+      .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
+      .returning({ id: schema.employment.id });
+    await owner.db.insert(schema.rosterAssignment).values({
+      tenantId: b.tenantId,
+      employmentId: emp.id,
+      shiftDate: '2026-05-04',
+      isRestDay: true,
+    });
+    const uid = await createAppUser(b.tenantId, p.id, 'employee');
+    const self = { tenantId: b.tenantId, userId: uid, personId: p.id, roles: ['employee'] } as unknown as SessionContext;
+    const contextFor = async (ctx: SessionContext) =>
+      (await attendanceForEmploymentRange(ctx, emp.id, '2026-05-04', '2026-05-04'))[0].context;
+
+    // (1) COMPANY DEFAULT — the admin sees the corrected rest day; the employee's own screen does not.
+    const { id: defPolicy } = await createPolicy(a, {
+      companyId: b.companyId,
+      name: `Default ${randomUUID().slice(0, 8)}`,
+      policyType: 'monthly',
+      config: { leave: { deductAbsentDays: true } },
+    });
+    await owner.db
+      .insert(schema.companyPayrollConfig)
+      .values({ tenantId: b.tenantId, companyId: b.companyId, defaultPayrollPolicyId: defPolicy })
+      .onConflictDoUpdate({ target: schema.companyPayrollConfig.companyId, set: { defaultPayrollPolicyId: defPolicy } });
+    expect(await contextFor(a)).toBe('rest_day');
+    expect(await contextFor(self)).toBeNull(); // fails SAFE: today's behaviour, not a corrected one
+
+    // (2) DIRECT ASSIGNMENT — payroll_policy is tenant-wide readable, so both sessions agree.
+    await assignPolicy(a, { employmentId: emp.id, policyId: defPolicy });
+    expect(await contextFor(a)).toBe('rest_day');
+    expect(await contextFor(self)).toBe('rest_day');
   });
 });

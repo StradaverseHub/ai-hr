@@ -138,6 +138,22 @@ type RosterDay = { isRestDay: boolean; hasShift: boolean };
  * Only `status='active'` policies count, exactly as the kernel's resolver has it: an inactive or draft
  * policy resolves to the monthly default, which has no absence deduction.
  *
+ * ── ONE ASYMMETRY, AND THE DIRECTION IT FAILS IN ────────────────────────────────────────────────────
+ * The two tables consulted here do NOT share a read policy:
+ *   payroll_policy         — tenant-wide SELECT (migration 0128, deliberately, so the kernel can resolve a
+ *                            policy under a non-admin session instead of silently downgrading to monthly).
+ *   company_payroll_config — `app.is_admin_for(company_id)` for READ as well as write (migration 0081).
+ * So the company-DEFAULT rung is invisible to a non-admin session. `resolveAssignedPolicy` has always had
+ * that property; it never showed because only the payroll kernel called it and payroll is admin-gated. It
+ * shows now that the Attendance screens read the same switch: an employment switched on ONLY through the
+ * company default resolves ON for an admin and OFF for the employee's own screen. OFF is legacy, i.e.
+ * exactly what production renders today, so the failure is in the safe direction — a non-admin is never
+ * shown a corrected figure an admin would not be — and it cannot reach money, because both the deduction
+ * and the attendance-allowance transfer run admin-gated. Pinned in test/absence-summary-oracle.test.ts
+ * ("RLS: a plain employee resolves a DIRECTLY-ASSIGNED switch, and fails SAFE on a company default").
+ * A DIRECTLY-ASSIGNED policy resolves identically for every session; the fix for the other rung is a
+ * tenant-wide SELECT policy on company_payroll_config, which needs a migration number of its own.
+ *
  * Returns the SET of employmentIds that are switched on. Absent from the set ⇒ off ⇒ legacy behaviour
  * everywhere, which is what all nine companies get until somebody ticks the box.
  */

@@ -3507,7 +3507,11 @@ export async function generatePayslips(
       // count (absentByEmp is only populated for switched-on employments) AND the payslip stamps below.
       const deductAbsentDays = cfg?.leave?.deductAbsentDays === true;
       const absentDays = daily ? 0 : (absentByEmp.get(e.employmentId) ?? 0);
-      const absentAmount = daily ? 0 : round2((basicRaw / unpaidDivisor) * absentDays);
+      // The `absentDays === 0` short-circuit is not an optimisation, it is the byte-identity guarantee: it
+      // keeps the switched-off path from evaluating `basicRaw / unpaidDivisor` at all, so no divisor value
+      // — including a pathological 0, which would make `Infinity * 0` NaN and poison `unpaidDeduction` —
+      // can change a figure on a payslip nobody switched this on for.
+      const absentAmount = daily || absentDays === 0 ? 0 : round2((basicRaw / unpaidDivisor) * absentDays);
       // Both halves ride INSIDE unpaidDeduction on purpose: wagesExOt and hrdfBase below subtract it, which
       // is what makes the absence deduction PRE-statutory (EPF / SOCSO / EIS / PCB are worked out on the
       // reduced wage) — the treatment a `kind='deduction'` pay code could never have, because a pay code is

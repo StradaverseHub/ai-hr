@@ -42,7 +42,7 @@ import { statusOf } from '../core/attendance-derive';
 import { payslipAbsenceLines } from '../core/payslip-absence-lines';
 import { cleanPayrollPolicyConfig } from '../core/payroll-policy-config';
 import { setCompensation } from '../core/comp';
-import { createBatch, generatePayslips, unpaidDaysByEmployment } from '../core/payroll';
+import { batchInputRows, createBatch, generatePayslips, unpaidDaysByEmployment } from '../core/payroll';
 import { assignPolicy, createPolicy } from '../core/payroll-policy';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -474,6 +474,27 @@ describe('e2632276 — the payroll gate', () => {
     expect(lines.unpaidLeave).toBeNull();
     expect(lines.showResidual).toBe(true);
     expect(lines.residual).toBeCloseTo(387.1, 2);
+  });
+
+  it('the draft grid does no absence work at all when the switch is off', async () => {
+    // The "Absent days" column is draft-only and read-only, but filling it costs a holiday resolution and
+    // a roster scan PER EMPLOYEE, on every page load of every draft batch. Ungated, all nine companies
+    // would pay for N sequential round trips to render a column of dashes. So the switch is resolved
+    // first (three set-based queries for the whole batch) and the count is asked for only where it is on.
+    const a = await entitledCtx(b);
+    const off = await makeEmp('GridOff');
+    const on = await makeEmp('GridOn');
+    for (const e of [off, on]) await setCompensation(a, { employmentId: e, basicSalary: 3000, effectiveFrom: '2020-01-01' });
+    await presentExcept(off, ['2026-05-06']);
+    await presentExcept(on, ['2026-05-06']);
+    await switchOn(a, on);
+
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
+    const rows = await batchInputRows(a, batchId);
+    // 0 renders as "—" on the grid (app/payroll/[batchId]/page.tsx), which is the honest preview of a
+    // deduction that is not running — not a claim that the employee was never absent.
+    expect(rows.find((r) => r.employmentId === off)!.absentDays).toBe(0);
+    expect(rows.find((r) => r.employmentId === on)!.absentDays).toBe(1);
   });
 
   it('ON — the absence deducts at basic / calendar days and comes off BEFORE the statutory contributions', async () => {
