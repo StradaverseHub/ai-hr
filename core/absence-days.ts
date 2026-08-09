@@ -70,7 +70,9 @@ const unionDays = (workingDays: number[], halfWorkingDays: number[]): number[] =
 export type AbsenceBreakdown = {
   /** Scheduled working days with no attendance row, or a row explicitly marked absent. */
   absentDays: number;
-  /** Scheduled working days covered by an APPROVED FULL-DAY leave request. */
+  /** Scheduled working days covered by an APPROVED FULL-DAY leave request AND carrying no attendance row.
+   *  A leave date the employee also has an attendance row for is spoken for by that row (the month
+   *  roll-up counts it under `present`), exactly as the loop this replaced had it — see the day loop. */
   leaveDays: number;
 };
 
@@ -260,7 +262,16 @@ export async function absenceBreakdownByEmployment(
       if (!scheduled) continue;
 
       if (onLeave.has(d)) {
-        leaveDays += 1;
+        // A leave date that ALSO carries an attendance row is NOT a leave DAY in this tally. The loop this
+        // replaced tested `recorded.has(d)` BEFORE the on-leave test, so such a date was reported as neither
+        // leave nor absence — the attendance row spoke for it, and the tally above filed it under `present`.
+        // Dropping that ordering would report the SAME date as both present and leave (22 accounted days in
+        // a 21-working-day month) and `leaveDays` is not cosmetic: evaluateMonthly gates an attendance
+        // allowance on `leaveDays <= maxTotalLeaveDays` (core/attendance-allowance.ts 181-182), so an
+        // inflated count withholds a real payment — and it would do so on every company, un-gated by
+        // `leave.deductAbsentDays`. Only the REPORTING tally is restored here; the absence exclusion below
+        // is unchanged, so an on-leave date is still never an absence whatever it carries.
+        if (!recorded.has(d)) leaveDays += 1;
         continue;
       }
       // An approved HALF-DAY or HOURLY absence accounts for the day. Its unpaid portion is deducted by

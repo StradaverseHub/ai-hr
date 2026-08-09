@@ -31,7 +31,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { absentDaysByEmployment } from '../core/absence-days';
-import { attendanceForDate, attendanceForEmploymentRange } from '../core/attendance';
+import { attendanceForDate, attendanceForEmploymentRange, attendanceMonthSummary } from '../core/attendance';
+import { evaluateMonthly } from '../core/attendance-allowance';
 import { statusOf } from '../core/attendance-derive';
 import { payslipAbsenceLines } from '../core/payslip-absence-lines';
 import { cleanPayrollPolicyConfig } from '../core/payroll-policy-config';
@@ -297,6 +298,93 @@ describe('e2632276 — the Attendance screens: the roster wins', () => {
       ['2026-05-04', 'rest_day', 'rest'],
       ['2026-05-05', null, 'absent'], //  an ordinary unexplained Tuesday is still an absence
     ]);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────────
+// THE MONTH ROLL-UP, which is not a report. `attendanceMonthSummary` is what `evaluateAllowancesForPeriod`
+// (core/attendance-allowance.ts) feeds to `evaluateMonthly`, and `evaluateMonthly` decides whether an
+// attendance allowance is transferred onto the payroll batch. So `present` / `absent` / `leaveDays` here
+// are money, and — unlike the deduction — they are NOT behind `leave.deductAbsentDays`: whatever this
+// roll-up says lands on all nine companies the day this deploys. Hence a test per figure.
+describe('e2632276 — the month roll-up counts each day exactly once', () => {
+  const summaryFor = async (a: SessionContext, employmentId: string) => {
+    const rows = await attendanceMonthSummary(a, {
+      month: PERIOD,
+      companyIds: [b.companyId],
+      today: '2026-06-30', // past the month end, so the "not yet happened" clamp is inert and deterministic
+    });
+    return rows.find((r) => r.employmentId === employmentId)!;
+  };
+
+  it('a date carrying BOTH an attendance row and approved FULL-DAY leave is counted once, as present', async () => {
+    const a = await entitledCtx(b);
+    const e = await makeEmp('CameInAnyway');
+    await presentExcept(e, []); //                                       present on all 21 weekdays
+    await addLeave(e, '2026-05-04', '2026-05-04', { paid: true, days: 1 }); // …and Monday is on leave too
+
+    const s = await summaryFor(a, e);
+    expect(s.present).toBe(21);
+    // 0, NOT 1. The attendance row speaks for the day; adding a leave day on top would report 22 accounted
+    // days in a 21-working-day month. This is exactly the ordering the loop this replaced had — it tested
+    // `recorded.has(d)` BEFORE the on-leave test — and it is not cosmetic (see the allowance below).
+    expect(s.leaveDays).toBe(0);
+    expect(s.absent).toBe(0);
+    expect(s.present + s.late + s.halfDay + s.absent + s.leaveDays).toBe(WEEKDAYS.length);
+
+    // WHY IT IS MONEY: evaluateMonthly gates the allowance on leaveDays <= maxTotalLeaveDays. An inflated
+    // leaveDays disqualifies an employee who was at work all month, and policy.amount is then not
+    // transferred onto the batch.
+    expect(evaluateMonthly(s, { maxTotalLeaveDays: 0 }).qualified).toBe(true);
+  });
+
+  it('a date with approved FULL-DAY leave and NO attendance row is still a leave day', async () => {
+    const a = await entitledCtx(b);
+    const e = await makeEmp('ActuallyOff');
+    await presentExcept(e, ['2026-05-04']); //                              20 rows; Monday has none
+    await addLeave(e, '2026-05-04', '2026-05-04', { paid: true, days: 1 });
+
+    const s = await summaryFor(a, e);
+    expect(s.present).toBe(20);
+    expect(s.leaveDays).toBe(1); // the exclusion is unchanged — it is only the double count that went
+    expect(s.absent).toBe(0);
+    expect(s.present + s.leaveDays + s.absent).toBe(WEEKDAYS.length);
+  });
+
+  it('THE ROSTER WINS in the roll-up too — a rostered rest day is 20 absences, not 21', async () => {
+    const a = await entitledCtx(b);
+    const e = await makeEmp('RollupRest');
+    expect((await summaryFor(a, e)).absent).toBe(21); // nothing recorded, nothing rostered
+
+    // One ordinary Monday the employer personally rostered this employee to rest. The old roll-up read the
+    // COMPANY weekday pattern alone and charged it as an absence — the same day the Records screen already
+    // showed in red, and the day the deduction would have taken pay for.
+    await owner.db.insert(schema.rosterAssignment).values({
+      tenantId: b.tenantId,
+      employmentId: e,
+      shiftDate: '2026-05-04',
+      isRestDay: true,
+    });
+    const s = await summaryFor(a, e);
+    expect(s.absent).toBe(20);
+    expect(s.leaveDays).toBe(0);
+    expect(s.present).toBe(0);
+  });
+
+  it('an attendance row marked ABSENT is absent in the roll-up, not present', async () => {
+    const a = await entitledCtx(b);
+    const e = await makeEmp('RollupMarked');
+    await presentExcept(e, []);
+    // Re-mark every one of the 21 rows as an explicit no-show. Each date already HAS a row, so the loop
+    // this replaced skipped all of them AND filed them under `present`.
+    await owner.db
+      .update(schema.attendance)
+      .set({ status: 'absent', workedMinutes: 0 })
+      .where(eq(schema.attendance.employmentId, e));
+
+    const s = await summaryFor(a, e);
+    expect(s.present).toBe(0);
+    expect(s.absent).toBe(21);
   });
 });
 
