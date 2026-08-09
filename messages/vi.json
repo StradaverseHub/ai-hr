@@ -8993,6 +8993,10 @@
       "usage-capture": {
         "name": "Ghi nhận mức sử dụng",
         "description": "Ghi lại số nhân sự, người dùng, phiếu lương và các phân hệ đang bật của từng khách hàng mỗi ngày."
+      },
+      "anomaly-sweep": {
+        "name": "Kiểm tra ngoại lệ bảng lương",
+        "description": "Kiểm tra mọi kỳ lương đang mở để tìm bất thường vào ban đêm, để các ngoại lệ đã nằm sẵn trong hàng đợi khi có người xem."
       }
     }
   },

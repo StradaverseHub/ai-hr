@@ -30,6 +30,9 @@ export const JOB_KEYS = [
   // ADR-0077 slice 10 (r113) — the usage meter. Unlike the sweeps above, a MISSED RUN IS A PERMANENT HOLE:
   // the others recompute from stored dates, this one records a fact that stops being observable.
   'usage.capture',
+  // ADR-0076 slice 7 — the nightly provisional dry-run. A MISSED RUN IS HARMLESS, unlike usage.capture:
+  // the evaluator is idempotent and recomputes from stored payslips, so the next run catches up fully.
+  'anomaly.sweep',
 ] as const;
 export type JobKey = (typeof JOB_KEYS)[number];
 
@@ -54,6 +57,7 @@ export const JOBS: readonly JobDescriptor[] = [
   { key: 'review.sweep', i18nKey: 'review-sweep', schedule: 'Daily — 03:00' },
   { key: 'leave.expire-carry', i18nKey: 'leave-expire-carry', schedule: 'Yearly — 1 April at 03:00' },
   { key: 'usage.capture', i18nKey: 'usage-capture', schedule: 'Daily — 01:00' },
+  { key: 'anomaly.sweep', i18nKey: 'anomaly-sweep', schedule: 'Daily — 02:30' },
 ];
 
 /**

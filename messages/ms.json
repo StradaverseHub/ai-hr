@@ -8993,6 +8993,10 @@
       "usage-capture": {
         "name": "Rakaman penggunaan",
         "description": "Merekod bilangan pekerja, pengguna, slip gaji dan modul aktif setiap pelanggan setiap hari."
+      },
+      "anomaly-sweep": {
+        "name": "Semakan pengecualian gaji",
+        "description": "Menyemak setiap pusingan gaji terbuka untuk anomali pada waktu malam, supaya pengecualian sudah dalam baris gilir apabila seseorang melihatnya."
       }
     }
   },

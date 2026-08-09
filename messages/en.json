@@ -8993,6 +8993,10 @@
       "usage-capture": {
         "name": "Usage capture",
         "description": "Records each customer's daily headcount, users, payslips and active modules."
+      },
+      "anomaly-sweep": {
+        "name": "Payroll exception check",
+        "description": "Checks every open payroll run for anomalies overnight, so exceptions are already queued when someone looks."
       }
     }
   },
