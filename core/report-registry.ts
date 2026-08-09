@@ -22,6 +22,8 @@ import { payslipDisplayEarnings } from './pay-display-category';
 import { listClaimTypes } from './claims';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
+// ADR-0077 slice 6 (D-9) — the mixed-currency REFUSAL, not a formatter. See `runReportSpec`'s summary row.
+import { isMixedCurrency } from '../lib/money';
 
 /** Alignment/type of a field. Drives the AI designer's default alignment + numeric summary eligibility. */
 export type ReportFieldType = 'text' | 'date' | 'number' | 'currency' | 'status';
@@ -127,6 +129,14 @@ const ATTENDANCE_OT: ReportDataset = {
     { id: 'restDayOtHours', label: 'Rest-day OT Hours', type: 'number', group: 'Overtime' },
     { id: 'publicHolidayOtHours', label: 'Public-holiday OT Hours', type: 'number', group: 'Overtime' },
     { id: 'otAmount', label: 'OT Amount', type: 'currency', group: 'Overtime' },
+    // ADR-0077 slice 6 — r115 gave `overtimeReport` a per-company currency EXACTLY so a cross-company OT
+    // export is visibly mixed rather than silently addable, and this projection then dropped the column
+    // on the floor: the field list offered `OT Amount` as a bare number with nothing saying what it is
+    // in. This dataset is built with `companyIds: scopeIds`, so it spans every company the operator can
+    // see — the one place the label is not decoration. Offered as a field, deliberately NOT added to
+    // `defaultColumns`: every saved report keeps its exact column set, so this is additive by
+    // construction. See MASTER above, which already carries its own `currency` for the same reason.
+    { id: 'currency', label: 'Currency', type: 'text', group: 'Overtime' },
     { id: 'eligible', label: 'OT Eligible', type: 'status', group: 'Overtime' },
     { id: 'otApprovalStatus', label: 'Approval Status', type: 'status', group: 'Overtime' },
   ],
@@ -148,6 +158,7 @@ const ATTENDANCE_OT: ReportDataset = {
       restDayOtHours: r.restDayOtHours,
       publicHolidayOtHours: r.publicHolidayOtHours,
       otAmount: r.otAmount,
+      currency: r.currency,
       eligible: r.eligible ? 'Eligible' : 'Not eligible',
       otApprovalStatus: r.otApprovalStatus,
     }));
@@ -238,6 +249,11 @@ const PAYROLL_REGISTER: ReportDataset = {
     { id: 'employeeCode', label: 'Employee ID', type: 'text', group: 'Employee & Organisation Info' },
     { id: 'employeeName', label: 'Employee Name', type: 'text', group: 'Employee & Organisation Info' },
     { id: 'company', label: 'Company', type: 'text', group: 'Employee & Organisation Info' },
+    // ADR-0077 slice 6 (D-9) — twenty-one currency columns follow, and this dataset is read across every
+    // company in scope. Offered as a field, deliberately NOT in `defaultColumns`, so every saved report
+    // keeps its exact column set; `runReportSpec` reads the currency off the ROW either way, so the
+    // summary row is protected whether or not the operator ever adds the column.
+    { id: 'currency', label: 'Currency', type: 'text', group: 'Employee & Organisation Info' },
     { id: 'department', label: 'Department', type: 'text', group: 'Employee & Organisation Info' },
     { id: 'position', label: 'Position', type: 'text', group: 'Employee & Organisation Info' },
     { id: 'jobGrade', label: 'Job Grade', type: 'text', group: 'Employee & Organisation Info' },
@@ -305,6 +321,7 @@ const PAYROLL_REGISTER: ReportDataset = {
       employeeCode: r.employeeCode,
       employeeName: r.employeeName,
       company: r.company,
+      currency: r.currency,
       department: r.department,
       position: r.position,
       jobGrade: r.jobGrade,
@@ -348,6 +365,9 @@ const PAYROLL_HISTORY: ReportDataset = {
     { id: 'employeeName', label: 'Employee Name', type: 'text', group: 'Identity' },
     { id: 'employeeCode', label: 'Employee ID', type: 'text', group: 'Identity' },
     { id: 'company', label: 'Company', type: 'text', group: 'Organisation' },
+    // ADR-0077 slice 6 (D-9) — same reason as `payroll_register`: seven money columns, read across every
+    // company in scope. Offered as a field, NOT in `defaultColumns`, so saved reports are unchanged.
+    { id: 'currency', label: 'Currency', type: 'text', group: 'Organisation' },
     { id: 'payPeriod', label: 'Pay Period', type: 'text', group: 'Period' },
     { id: 'runType', label: 'Run Type', type: 'text', group: 'Period' },
     { id: 'basic', label: 'Basic', type: 'currency', group: 'Earnings' },
@@ -374,6 +394,9 @@ const PAYROLL_HISTORY: ReportDataset = {
       employeeName: r.employeeName,
       employeeCode: r.employeeCode,
       company: r.company,
+      // `?? null` because ProcessedPayslipViewRow.currency is optional (see its note): a ReportRow value
+      // may be null but never undefined, and null is the "unknown currency" the runner buckets separately.
+      currency: r.currency ?? null,
       payPeriod: r.payPeriod,
       runType: r.runType,
       // 3c473773 — same box stamp as the register above, for the same reason.
@@ -653,11 +676,11 @@ export async function runReportSpec(
   // applied to the aggregate too so the summary line matches the body cells.
   const summarySet = new Set(L?.summary ?? []);
   const avgSet = new Set(L?.averages ?? []);
-  const aggFor = (setIds: Set<string>, label: string, avg: boolean) => {
+  const aggOver = (setIds: Set<string>, label: string, avg: boolean, over: ReportRow[]) => {
     const row: (string | number | null)[] = spec.columns.map((c) => {
       const f = byId.get(c);
       if (setIds.has(c) && f && (f.type === 'number' || f.type === 'currency')) {
-        const nums = rows.map((r) => Number(r[c])).filter((n) => !Number.isNaN(n));
+        const nums = over.map((r) => Number(r[c])).filter((n) => !Number.isNaN(n));
         const total = nums.reduce((a, b) => a + b, 0);
         const val = avg && nums.length ? total / nums.length : total;
         const rounded = Math.round((val + Number.EPSILON) * 100) / 100;
@@ -669,8 +692,70 @@ export async function runReportSpec(
     if (labelIdx >= 0) row[labelIdx] = label;
     return row;
   };
-  if (summarySet.size > 0) body.push(aggFor(summarySet, 'Total', false));
-  if (avgSet.size > 0) body.push(aggFor(avgSet, 'Average', true));
+
+  /**
+   * ADR-0077 slice 6 (D-9) — THE SUMMARY ROW IS THE ONE PLACE THIS RUNNER DOES ARITHMETIC, and every
+   * dataset here is read with `companyIds: scopeIds`, i.e. across every company the operator can see.
+   * A `Total` over a currency column therefore ADDED ringgit to whatever else was in scope and printed
+   * one number — the exact fault lib/money.ts exists to make unrepresentable, arriving through the
+   * report builder rather than a hand-written screen.
+   *
+   * The precedent is `app/payroll/transaction-view/outstanding-table.tsx`: take the single-total path
+   * ONLY when there is one currency, and emit per-currency subtotals otherwise. No grand total is
+   * invented across the buckets, because there is no number to give.
+   *
+   * The currency is read off the ROW, not off the chosen columns: `ds.run()` returns every projected
+   * field, so a dataset that carries `currency` is protected whether or not the operator picked that
+   * column. A dataset that carries none puts every row in one bucket and takes the single-total path —
+   * byte-identical to before, which is what keeps this additive for the eight datasets without one.
+   *
+   * THE MIX IS JUDGED OVER CONTRIBUTING ROWS ONLY, and that detail is load-bearing. `master` is the one
+   * dataset whose `currency` is NOT the company's — it is `compensation.currency`, which is NULLABLE, so
+   * an employee with no compensation row carries no currency. Judging the mix over EVERY row put those
+   * employees in their own unlabelled bucket and split the Average on the present all-Malaysian tenant:
+   * a figure moving today, on the box, for a change whose whole promise is that nothing moves until a
+   * second country arrives. A row that contributes no value to any summed money column cannot make the
+   * money mixed, so it is excluded from the question.
+   *
+   * LATENT TODAY: production is nine Malaysian companies in one tenant, so every bucket is MYR and this
+   * changes nothing on the box. It is the second country that makes the old row wrong.
+   */
+  const currencyOf = (r: ReportRow): string | null => {
+    const v = r['currency'];
+    return typeof v === 'string' && v.trim() ? v.trim() : null;
+  };
+  const hasValue = (r: ReportRow, colId: string): boolean => {
+    const v = r[colId];
+    return v !== null && v !== undefined && v !== '';
+  };
+  const aggFor = (setIds: Set<string>, label: string) => {
+    const avg = label === 'Average';
+    const moneyCols = [...setIds].filter((c) => byId.get(c)?.type === 'currency');
+    const touchesMoney = moneyCols.length > 0;
+    // Only rows that actually put a figure into one of THESE money columns get a say in whether the
+    // money is mixed — see the note above on `master`'s nullable compensation currency.
+    const contributing = touchesMoney ? rows.filter((r) => moneyCols.some((c) => hasValue(r, c))) : [];
+    const currencyKeys = contributing.map((r) => ({ currency: currencyOf(r) }));
+    if (!touchesMoney || !isMixedCurrency(currencyKeys)) {
+      body.push(aggOver(setIds, label, avg, rows));
+      return;
+    }
+    const byCurrency = new Map<string, ReportRow[]>();
+    for (const r of rows) {
+      const k = currencyOf(r) ?? '';
+      const bucket = byCurrency.get(k);
+      if (bucket) bucket.push(r);
+      else byCurrency.set(k, [r]);
+    }
+    // Stable currency order, matching lib/money.totalsByCurrency. The unlabelled bucket is its own row
+    // and says so — folding it into a neighbour is precisely how a foreign figure disappears into a
+    // ringgit total.
+    for (const [k, sub] of [...byCurrency.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+      body.push(aggOver(setIds, `${label} (${k || 'unlabelled'})`, avg, sub));
+    }
+  };
+  if (summarySet.size > 0) aggFor(summarySet, 'Total');
+  if (avgSet.size > 0) aggFor(avgSet, 'Average');
 
   // Presentation layout for the serializers: per-column alignment (explicit override ⇒ field-type default),
   // relative widths, frozen leading-column count, plus the header/footer/branding properties.
