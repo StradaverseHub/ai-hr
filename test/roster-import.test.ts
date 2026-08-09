@@ -243,7 +243,6 @@ describe('roster upload — analyze (23390097)', () => {
       cells: { [cellKey(empA, '2026-08-24')]: { kind: 'shift', shiftId: morning } },
       shiftCode: (id) => (id === morning ? 'MB28' : 'WFO-HQ-FWH'),
     });
-    expect(tpl.header.slice(0, 4)).toEqual(['Employee No', 'Employee Name', 'Department', 'Occupation']);
 
     // HR types two more days into it, exactly as they would in Excel, and sends it back.
     const col = (iso: string) => tpl.header.indexOf(iso);
@@ -265,6 +264,9 @@ describe('roster upload — analyze (23390097)', () => {
     expect(r.changed).toBe(2); // the 24th is already stored exactly like that
     expect((await storedFor(empA, '2026-08-25'))[0]).toMatchObject({ isRestDay: true, shiftId: null });
     expect((await storedFor(empB, '2026-08-26'))[0]).toMatchObject({ shiftId: night });
+
+    // …and the reason it worked: the identity headings are the machine header, in every locale.
+    expect(tpl.header.slice(0, 4)).toEqual(['Employee No', 'Employee Name', 'Department', 'Occupation']);
   });
 
   it('…and the ms labels that header used to carry are precisely what the importer cannot read', async () => {
