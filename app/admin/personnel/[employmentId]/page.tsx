@@ -2924,15 +2924,22 @@ export default async function EmployeePage({
           terminated employment now keeps the download and loses only the button that would write. */}
       <div className="flex flex-wrap items-center justify-end gap-2 border-b border-border px-4 py-2">
         {/* A plain link straight at the export route — no client component, no form, no approval step:
-            one click and the file downloads (the precedent is the Leave employee-records export link,
-            with the payroll history-grid anchor's styling). It carries no query string: the file is the
-            COMPLETE history and never the filtered view, so there is no view state to hand over. */}
-        <Link
+            one click and the file downloads. It carries no query string: the file is the COMPLETE
+            history and never the filtered view, so there is no view state to hand over.
+
+            A BARE <a>, NOT next/link, AND THAT IS THE POINT. Next 16 prefetches a <Link> when it enters
+            the viewport in production, so merely OPENING this tab would fire a background GET at the
+            export route — replaying the whole ledger and serialising an entire workbook for a file
+            nobody asked for, on every visit. A route handler returning a spreadsheet is not an RSC
+            payload, so the prefetch buys nothing and the click still does a hard navigation. The
+            payroll grid-export anchor next door is a bare <a> for the same reason; the Leave
+            employee-records link is a <Link> and pays this cost today. */}
+        <a
           href={`/admin/personnel/${employmentId}/movement-export`}
           className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
           {t('movement.exportExcel')}
-        </Link>
+        </a>
         {canCreateMovement && (
           <Link
             href={`/admin/personnel/${employmentId}?tab=careerMovement&newEvent=1`}
