@@ -46,9 +46,9 @@
 # the correct response to corruption is to run this script again. PRODUCTION IS A DIFFERENT MACHINE
 # and none of this touches it. Never copy these settings to a server.
 #
-#   ./scripts/dev-db-rebuild.sh          rebuild ON DISK (default since 2026-08-10)
+#   ./scripts/dev-db-rebuild.sh          rebuild on a RAM disk (default; use with gate-chunked.sh)
 #   ./scripts/dev-db-rebuild.sh --purge  also delete previously-moved-aside on-disk clusters
-#   AIHR_RAMDISK_GB=8 ./scripts/dev-db-rebuild.sh   rebuild on an 8 GB RAM disk (targeted runs only)
+#   AIHR_RAMDISK_GB=0 ./scripts/dev-db-rebuild.sh   rebuild ON DISK (no ceiling; for a bare full run)
 #
 # SIZING: 8 GB by default on an 18 GB machine. Steady state is well under 1 GB of WAL (see the block below)
 # plus ~0.4 GB of worker databases, so about 1 GB in use and the rest is headroom. Two LARGER WAL settings
@@ -69,10 +69,17 @@ sleep 1
 pkill -f "postgres.*$(basename "$DATA")" 2>/dev/null
 sleep 1
 
-# DEFAULT 0 = ON DISK. Changed 2026-08-10 after three consecutive gates died with the 8 GB RAM disk
-# full of WAL — see the WAL-sizing block below for the measurement. Set AIHR_RAMDISK_GB=8 to opt back in
-# for short, targeted runs (a single test file never comes close to the ceiling); a FULL suite must not.
-RAMDISK_GB="${AIHR_RAMDISK_GB:-0}"
+# DEFAULT 8 = RAM DISK, which is correct FOR THE INTENDED WORKFLOW and only for it.
+#
+# A FULL suite generates ~10 GB of WAL and does not fit here. That is not what this default is for:
+# scripts/gate-chunked.sh rebuilds the cluster between chunks precisely so no single run accumulates
+# more than a fraction of it, and HANDOFF.md says to ALWAYS gate through that script and never through
+# a bare `vitest run`. Three gates died on 2026-08-10 relearning this the hard way — they were bare
+# full-suite runs, which the RAM disk was never sized for.
+#
+# So: RAM disk + chunked gate + targeted single-file runs = correct and fast. Bare full-suite run =
+# use AIHR_RAMDISK_GB=0 and the SSD, where there is no ceiling.
+RAMDISK_GB="${AIHR_RAMDISK_GB:-8}"
 MOUNT="${DATA}-ram"          # the RAM disk itself
 REAL="$MOUNT/data"           # PGDATA lives one level DOWN — see below
 is_mounted() { mount | grep -q " on $MOUNT "; }
@@ -196,7 +203,8 @@ CONF
 #              it is charged against a volume that cannot grow. Small is right; it still is not small
 #              enough to survive a full suite, which is why the default below is now the SSD.
 #
-# THE DEFAULT IS NOW AIHR_RAMDISK_GB=0. A gate that finishes slowly beats a gate that dies at 90%.
+# The RAM disk stays the default because the CHUNKED gate keeps each run well inside it; AIHR_RAMDISK_GB=0
+# is the escape hatch when something really must run the whole suite in one go.
 if [ "$RAMDISK_GB" != "0" ]; then
   cat >> "$DATA/postgresql.conf" <<'CONF'
 min_wal_size = 192MB
