@@ -4,7 +4,11 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
-import { listAttendanceCorrections } from '@/core/attendance';
+// 1e9145d4 adds dayTypesForPairs to this EXISTING direct import. app/approvals/page.tsx is already an
+// audited kernel-contract entry on the attendance pack's drift allowlist (the approvals inbox is
+// cross-module substrate awaiting an approvals contract, ADR-0080 open decision 6) — this widens no
+// allowlist and copies no new pattern.
+import { dayTypesForPairs, listAttendanceCorrections } from '@/core/attendance';
 import { listTravelRequests } from '@/core/travel-request';
 import { listProfileChangeRequests } from '@/core/profile';
 import { listPendingClaims } from '@/core/claims';
@@ -165,6 +169,21 @@ export default async function ApprovalsPage({
     listPendingClaims(s),
     admin ? listResignationRequests(s, { status: 'pending' }) : Promise.resolve([]),
   ]);
+  // 1e9145d4 — the kind of day each OVERTIME row is asking for, so a rest-day or public-holiday plan is
+  // impossible to miss while saying no is still cheap. Resolved through scheduleFor (the same resolver the
+  // clocking path uses), and ONLY for overtime rows: a clock-time correction is about punches, not about
+  // what the day is worth. This is also the reason the item does NOT add escalation above four hours —
+  // overtime has no second approval level, so the answer is to put the fact in front of the one approver.
+  const otDayTypes = await dayTypesForPairs(
+    s,
+    corrections
+      .filter(isOvertimeCorrection)
+      .map((c) => ({ employmentId: c.employmentId, date: c.attendanceDate })),
+  );
+  // "Long plan": four hours or more. That is the threshold the rejected auto-escalation rule named, kept
+  // as a MARKER rather than a gate — the plan's explicit decision.
+  const LONG_PLAN_MINUTES = 4 * 60;
+
   // Employment-review queues (0110): the manager stage (assigned to the caller's own employment, even
   // without the `manager` platform role) + the HR stage (admin-only).
   const tReview = await getTranslations('review');
@@ -714,6 +733,29 @@ export default async function ApprovalsPage({
                     {c.requestedOtMinutes != null
                       ? `${c.proposedCheckIn ? ' · ' : ''}${t('otHoursLabel')} ${(c.requestedOtMinutes / 60).toFixed(1)}h`
                       : ''}
+                    {/* 1e9145d4 — the two facts an overtime approver must not have to work out for
+                        themselves. An ordinary working day gets no chip: a marker on everything marks
+                        nothing. No new section, no new column — this rides in the Proposed cell that
+                        already carries the hours. */}
+                    {c.requestedOtMinutes != null && (
+                      <span className="ml-1.5 inline-flex flex-wrap gap-1 align-middle">
+                        {otDayTypes.get(`${c.employmentId}|${c.attendanceDate}`) === 'rest_day' && (
+                          <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                            {t('otDayRestDay')}
+                          </span>
+                        )}
+                        {otDayTypes.get(`${c.employmentId}|${c.attendanceDate}`) === 'holiday' && (
+                          <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-500/10 dark:text-violet-400">
+                            {t('otDayHoliday')}
+                          </span>
+                        )}
+                        {c.requestedOtMinutes >= LONG_PLAN_MINUTES && (
+                          <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-500/10 dark:text-sky-400">
+                            {t('otLongPlan')}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">{c.reason ?? '—'}</td>
                   <td className="px-4 py-2.5">

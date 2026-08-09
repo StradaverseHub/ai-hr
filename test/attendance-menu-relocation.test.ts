@@ -160,6 +160,9 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
       '/attendance/clock',
       '/attendance',
       '/attendance/requests',
+      // 1e9145d4 — Plan OT joined the node as the fourth self-service row when overtime moved off the
+      // Attendance Request screen. Ungated for the same reason, and pinned by its own describe below.
+      '/attendance/plan-ot',
     ]);
     const row = mine.children.find((c) => c.href === '/attendance/requests')!;
     expect({ adminOnly: row.adminOnly, managerUp: row.managerUp }).toEqual({

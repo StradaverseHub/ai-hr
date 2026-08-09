@@ -3070,6 +3070,39 @@ export function myOvertimePlans(
   );
 }
 
+/**
+ * Day types for a LIST of (employment, date) pairs — what the approvals inbox needs to flag a rest-day or
+ * public-holiday overtime plan on the row, so the approver cannot miss it.
+ *
+ * Keyed `${employmentId}|${date}`. Sequential rather than batched on purpose: scheduleFor is
+ * single-employment (roster → holiday calendar → default shift → policy) and the calls share one
+ * transaction connection, exactly as attendanceMonthSummary's holiday resolution does. `limit` is a
+ * deliberate ceiling — this runs on a page render, and an inbox with hundreds of pending overtime rows
+ * should degrade to "no chip on the tail" rather than to a slow page.
+ */
+export function dayTypesForPairs(
+  ctx: SessionContext,
+  pairs: { employmentId: string; date: string }[],
+  limit = 60,
+): Promise<Map<string, PlanOtDayType>> {
+  return withTenant(ctx, async (tx) => {
+    const out = new Map<string, PlanOtDayType>();
+    // De-duplicate first: two plans for one employee-day resolve to the same schedule.
+    const seen = new Set<string>();
+    const unique: { employmentId: string; date: string }[] = [];
+    for (const p of pairs) {
+      const k = `${p.employmentId}|${p.date}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      unique.push(p);
+    }
+    for (const p of unique.slice(0, limit)) {
+      out.set(`${p.employmentId}|${p.date}`, (await scheduleFor(tx, p.employmentId, p.date)).dayType);
+    }
+    return out;
+  });
+}
+
 /** The approved, not-yet-landed OT plan for one (employment, date), if there is one. Tx-level so both the
  *  request guard and the application step ask the same question the same way. */
 async function liveOtPlanTx(tx: Tx, employmentId: string, date: string) {

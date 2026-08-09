@@ -93,6 +93,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // 0bb0e303 rev2 — Attendance Request, the third self-service row. Ungated like Clock in/out and
     // Records: the forms it opens are the caller's own requests (see the node in packs/attendance/index.ts).
     { href: '/attendance/requests', labelKey: 'attendanceRequest', icon: FilePen },
+    // 1e9145d4 — Plan OT, the FOURTH self-service row: overtime agreed before it is worked. Ungated for
+    // the same reason as its three siblings (it is the caller's own request), and carrying Hourglass
+    // rather than a third Clock or a second FilePen, because the collapsed rail renders glyphs only.
+    { href: '/attendance/plan-ot', labelKey: 'planOvertime', icon: Hourglass },
   ] as const;
 
   // 0bb0e303 split the node three ways and a324a4b3 rev2 merged two of the three back, so parity is
@@ -135,6 +139,9 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       '/attendance/clock',
       '/attendance',
       '/attendance/requests',
+      // 1e9145d4 — Plan OT lands LAST, after Attendance Request, exactly where the reporter's screenshot
+      // put it. Overtime moved off Attendance Request onto this row, which is why the two are adjacent.
+      '/attendance/plan-ot',
     ]);
   });
 
@@ -247,6 +254,9 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       '/attendance/clock',
       '/attendance',
       '/attendance/requests',
+      // 1e9145d4 — Plan OT lands LAST, after Attendance Request, exactly where the reporter's screenshot
+      // put it. Overtime moved off Attendance Request onto this row, which is why the two are adjacent.
+      '/attendance/plan-ot',
     ]);
     // The invariant that has held through every regrouping: nothing gated lives in the ungated node.
     expect(mine.children.every((c) => !c.adminOnly && !c.managerUp)).toBe(true);
