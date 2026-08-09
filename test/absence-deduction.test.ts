@@ -17,6 +17,11 @@
  *     whole argument against the pay code, so it is asserted rather than described.
  *   • THE PAYSLIP — the two named lines reconcile, with and without the stamp.
  *
+ * ITS SIBLING: test/absence-summary-oracle.test.ts owns the OTHER half of the gate — that
+ * `attendanceMonthSummary` and the two Records loaders are byte-identical to main while the switch is off.
+ * It proves that by running main's own algorithm beside this branch's over the same fixtures rather than
+ * by listing expected differences. The screen- and roll-up-gating assertions live there, not here.
+ *
  * MAY 2026, and the month is chosen rather than convenient. It is 31 days long (so the default
  * calendar-month divisor is 31 and the arithmetic is checkable by hand), it holds exactly 21 Mon–Fri days
  * and 5 Fridays, and it is safely in the PAST — the helper refuses to bill a day that has not happened
@@ -144,6 +149,19 @@ const payslipFor = async (employmentId: string) => {
   return ps;
 };
 
+/** Switch `leave.deductAbsentDays` ON for one employment, via a directly-assigned payroll policy. Nothing
+ *  in this feature — the deduction, the payslip's named lines, the month roll-up's corrected counts, the
+ *  Records screens' rest-day rule — happens for an employment until this has been done for it. */
+async function switchOn(a: SessionContext, employmentId: string) {
+  const { id } = await createPolicy(a, {
+    companyId: b.companyId,
+    name: `Absence ${randomUUID().slice(0, 8)}`,
+    policyType: 'monthly',
+    config: { leave: { deductAbsentDays: true } },
+  });
+  await assignPolicy(a, { employmentId, policyId: id });
+}
+
 beforeAll(async () => {
   await migrateTestDb();
 });
@@ -253,38 +271,16 @@ describe('e2632276 — what counts as an absent day', () => {
 // missing row explained?" from the COMPANY weekday list alone, while the shift column beside it already
 // honoured the roster. An employee rostered to rest on a company working day therefore rendered a red
 // "Absent" — and under the new deduction that red day would have cost them real money.
-describe('e2632276 — the Attendance screens: the roster wins', () => {
-  it('daily Records: a rostered rest day on a company working day reads REST, not ABSENT', async () => {
-    const a = await entitledCtx(b);
-    const e = await makeEmp('DailyRest');
-    const before = (await attendanceForDate(a, '2026-05-04')).find((r) => r.employmentId === e)!;
-    expect(before.context).toBeNull();
-    expect(statusOf(before)).toBe('absent'); // the wrong red day, as reported
-
-    await owner.db.insert(schema.rosterAssignment).values({
-      tenantId: b.tenantId,
-      employmentId: e,
-      shiftDate: '2026-05-04',
-      isRestDay: true,
-    });
-    const after = (await attendanceForDate(a, '2026-05-04')).find((r) => r.employmentId === e)!;
-    expect(after.context).toBe('rest_day');
-    expect(after.isRosterRest).toBe(true);
-    expect(statusOf(after)).toBe('rest');
-  });
-
-  it("daily Records: a default-shift pattern rest day reads OFF, not ABSENT", async () => {
-    const a = await entitledCtx(b);
-    const e = await makeEmp('DailyOff');
-    const shiftId = await makeShift([1, 2, 3, 4]); // Mon–Thu; no Friday
-    await owner.db.update(schema.employment).set({ defaultShiftId: shiftId }).where(eq(schema.employment.id, e));
-    const row = (await attendanceForDate(a, '2026-05-08')).find((r) => r.employmentId === e)!; // a Friday
-    expect(row.context).toBe('rest_day');
-    expect(row.isRosterRest).toBe(false); // a pattern rest day is OFF, not an explicit rostered rest
-    expect(statusOf(row)).toBe('off');
-  });
-
-  it('the individual Records range agrees with the daily screen, day for day', async () => {
+//
+// THE FIX IS GATED, and that is not a hedge. The same rule feeds `attendanceMonthSummary`, whose figures
+// `evaluateMonthly` turns into an attendance-allowance payment, so correcting it un-gated would start and
+// stop real payments on nine companies on day one. It therefore ships behind `leave.deductAbsentDays`
+// like everything else here: OFF, the screens are exactly what they are today; ON, the roster wins.
+// Both halves are asserted in test/absence-summary-oracle.test.ts ("the Records screens are gated on the
+// same switch"), which also runs main's own month-summary algorithm beside this branch's; this file keeps
+// only the ONE case those loaders share with the count — that the two screens agree with each other.
+describe('e2632276 — the Attendance screens: the roster wins once the switch is on', () => {
+  it('the daily screen and the individual range agree, day for day', async () => {
     const a = await entitledCtx(b);
     const e = await makeEmp('RangeRest');
     await owner.db.insert(schema.rosterAssignment).values({
@@ -293,6 +289,10 @@ describe('e2632276 — the Attendance screens: the roster wins', () => {
       shiftDate: '2026-05-04',
       isRestDay: true,
     });
+    await switchOn(a, e);
+
+    const daily = (await attendanceForDate(a, '2026-05-04')).find((r) => r.employmentId === e)!;
+    expect([daily.context, daily.isRosterRest, statusOf(daily)]).toEqual(['rest_day', true, 'rest']);
     const rows = await attendanceForEmploymentRange(a, e, '2026-05-04', '2026-05-05');
     expect(rows.map((r) => [r.date, r.context, statusOf(r)])).toEqual([
       ['2026-05-04', 'rest_day', 'rest'],
@@ -305,8 +305,10 @@ describe('e2632276 — the Attendance screens: the roster wins', () => {
 // THE MONTH ROLL-UP, which is not a report. `attendanceMonthSummary` is what `evaluateAllowancesForPeriod`
 // (core/attendance-allowance.ts) feeds to `evaluateMonthly`, and `evaluateMonthly` decides whether an
 // attendance allowance is transferred onto the payroll batch. So `present` / `absent` / `leaveDays` here
-// are money, and — unlike the deduction — they are NOT behind `leave.deductAbsentDays`: whatever this
-// roll-up says lands on all nine companies the day this deploys. Hence a test per figure.
+// are money — a SECOND kind of money, quite separate from the deduction — which is why every correction to
+// them sits behind `leave.deductAbsentDays` too, and why test/absence-summary-oracle.test.ts proves the
+// switched-off roll-up equal to main's own algorithm rather than merely asserting it looks right. The two
+// tests below that need the corrected counts therefore switch it on first.
 describe('e2632276 — the month roll-up counts each day exactly once', () => {
   const summaryFor = async (a: SessionContext, employmentId: string) => {
     const rows = await attendanceMonthSummary(a, {
@@ -354,6 +356,7 @@ describe('e2632276 — the month roll-up counts each day exactly once', () => {
   it('THE ROSTER WINS in the roll-up too — a rostered rest day is 20 absences, not 21', async () => {
     const a = await entitledCtx(b);
     const e = await makeEmp('RollupRest');
+    await switchOn(a, e); // the corrected count is behind the switch — see the note above this describe
     expect((await summaryFor(a, e)).absent).toBe(21); // nothing recorded, nothing rostered
 
     // One ordinary Monday the employer personally rostered this employee to rest. The old roll-up read the
@@ -374,6 +377,7 @@ describe('e2632276 — the month roll-up counts each day exactly once', () => {
   it('an attendance row marked ABSENT is absent in the roll-up, not present', async () => {
     const a = await entitledCtx(b);
     const e = await makeEmp('RollupMarked');
+    await switchOn(a, e); // …and so is this one
     await presentExcept(e, []);
     // Re-mark every one of the 21 rows as an explicit no-show. Each date already HAS a row, so the loop
     // this replaced skipped all of them AND filed them under `present`.
@@ -420,17 +424,6 @@ describe('e2632276 — absence and unpaid leave are disjoint', () => {
 
 // ───────────────────────────────────────────────────────────────────────────────────────────────────
 describe('e2632276 — the payroll gate', () => {
-  /** A policy with the absence deduction switched on (everything else default). */
-  async function switchOn(a: SessionContext, employmentId: string) {
-    const { id } = await createPolicy(a, {
-      companyId: b.companyId,
-      name: `Absence ${randomUUID().slice(0, 8)}`,
-      policyType: 'monthly',
-      config: { leave: { deductAbsentDays: true } },
-    });
-    await assignPolicy(a, { employmentId, policyId: id });
-  }
-
   it('the setting is persisted only when TRUE (an untouched policy stays byte-identical)', () => {
     expect(cleanPayrollPolicyConfig({ leave: { deductAbsentDays: false } })).toBeNull();
     expect(cleanPayrollPolicyConfig({ leave: {} })).toBeNull();
@@ -453,6 +446,34 @@ describe('e2632276 — the payroll gate', () => {
     const st = ps.statutory as Record<string, unknown>;
     expect(st.absent).toBeUndefined();
     expect(st.unpaidLeave).toBeUndefined();
+  });
+
+  it('OFF — an UNPAID-LEAVE month is not renamed either: the payslip keeps its one unnamed row', async () => {
+    // The near-miss this pins. Naming a line is a visible change to a document, and `unpaidLeave` has
+    // nothing to do with absence — so a stamp written whenever `unpaidLeaveAmount > 0` would have renamed
+    // "Other deductions" to "Unpaid leave · 2 days" on the FIRST run after deploy, for every one of the
+    // nine companies, for anybody with an unpaid day, with the switch untouched. The stamp is what the
+    // payslip renders off (payslipAbsenceLines reads the slip's own blob), so its absence is the whole
+    // guarantee that a switched-off company's payslip prints exactly what it prints today.
+    const a = await entitledCtx(b);
+    const e = await makeEmp('UnpaidGateOff');
+    await setCompensation(a, { employmentId: e, basicSalary: 6000, effectiveFrom: '2020-01-01' });
+    await addLeave(e, '2026-05-04', '2026-05-05', { paid: false, days: 2 });
+    await presentExcept(e, ['2026-05-04', '2026-05-05']); // every other day worked ⇒ no absence at all
+
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
+    await generatePayslips(a, { batchId });
+    const ps = await payslipFor(e);
+    expect(Number(ps.otherDeductions)).toBeCloseTo(387.1, 2); // 6000/31 × 2 — the deduction still runs
+    const st = ps.statutory as Record<string, unknown>;
+    expect(st.unpaidLeave).toBeUndefined();
+    expect(st.absent).toBeUndefined();
+    // …and the payslip therefore renders the single lumped row, exactly as it does in production today.
+    const lines = payslipAbsenceLines(ps.statutory, ps.otherDeductions);
+    expect(lines.any).toBe(false);
+    expect(lines.unpaidLeave).toBeNull();
+    expect(lines.showResidual).toBe(true);
+    expect(lines.residual).toBeCloseTo(387.1, 2);
   });
 
   it('ON — the absence deducts at basic / calendar days and comes off BEFORE the statutory contributions', async () => {

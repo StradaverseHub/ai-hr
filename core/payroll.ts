@@ -13,7 +13,7 @@ import {
 } from '../lib/payroll-permissions';
 // e2632276 — absence days (a scheduled working day with no attendance row, or one marked Absent), counted
 // by the SAME helper the Attendance month roll-up reads so the screens and the deduction cannot drift.
-import { absentDaysByEmployment } from './absence-days';
+import { absentDaysByEmployment, deductAbsentDaysByEmployment } from './absence-days';
 import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
 import { assertStatutory } from './company-tier';
@@ -3503,6 +3503,9 @@ export async function generatePayslips(
       // The daily/hourly guard is inherited deliberately: a daily wage already pays only worked days, so an
       // absent day is simply not a worked day and deducting off basicRaw/divisor would charge it twice —
       // the identical reasoning the `daily ? 0` unpaid branch has always used.
+      // e2632276 — THE SWITCH for this employment, read off the config already resolved above. It gates the
+      // count (absentByEmp is only populated for switched-on employments) AND the payslip stamps below.
+      const deductAbsentDays = cfg?.leave?.deductAbsentDays === true;
       const absentDays = daily ? 0 : (absentByEmp.get(e.employmentId) ?? 0);
       const absentAmount = daily ? 0 : round2((basicRaw / unpaidDivisor) * absentDays);
       // Both halves ride INSIDE unpaidDeduction on purpose: wagesExOt and hrdfBase below subtract it, which
@@ -3919,10 +3922,21 @@ export async function generatePayslips(
           // A manually-keyed 'unpaid' ledger amount (txnUnpaid) is deliberately NOT folded into either
           // line: it carries no day count, so putting it under a line that prints one would make the days
           // and the ringgit disagree. It stays in the residual, which is what that row is for.
-          ...(!isAdditionalRun && unpaidLeaveAmount > 0
+          //
+          // BOTH STAMPS ARE BEHIND THE SWITCH, including the unpaid-leave one, which has nothing to do
+          // with absence. Naming a line is a visible change to a document: without the gate, the very
+          // first run after this deploys would print "Unpaid leave · 2 days · 387.10" in place of the
+          // "Other deductions" row every one of the nine companies sees today, for anybody with an unpaid
+          // day — un-asked-for, and flatly contrary to "nothing changes until you turn it on". A payslip
+          // is also its own record (payslipAbsenceLines reads THIS blob, never today's policy), so a slip
+          // stamped now keeps its named lines for ever even if the switch is later turned off — which is
+          // correct, and another reason not to stamp before the employer has asked for it.
+          ...(deductAbsentDays && !isAdditionalRun && unpaidLeaveAmount > 0
             ? { unpaidLeave: { days: unpaidDaysAll, amount: unpaidLeaveAmount } }
             : {}),
-          ...(!isAdditionalRun && absentAmount > 0 ? { absent: { days: absentDays, amount: absentAmount } } : {}),
+          ...(deductAbsentDays && !isAdditionalRun && absentAmount > 0
+            ? { absent: { days: absentDays, amount: absentAmount } }
+            : {}),
           // c7fdfcf6 gap-fix — the per-cycle DISBURSEMENT schedule for a weekly/bi-weekly run (present only when
           // the run frequency is weekly/biweekly; absent ⇒ byte-identical monthly slip). The employer pays each
           // cycle's `amount` on its cadence; statutory contributions stay settled monthly on this same payslip.
@@ -5657,15 +5671,22 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
     const otBreakdownMap = new Map(inputs.map((r) => [r.employmentId, r.otBreakdown ?? null]));
     const otSourceMap = new Map(inputs.map((r) => [r.employmentId, r.otSource ?? null]));
     const unpaid = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
-    // e2632276 — the ABSENT-days preview beside the unpaid-days one, so the count can be checked BEFORE the
-    // run is processed. Read-only and ungated: the days exist whether or not the policy deducts for them,
-    // and this grid is draft-only (the 22 processed batches never render it).
-    const absent = await absentDaysByEmployment(
+    // e2632276 — the ABSENT-days preview beside the unpaid-days one, so the count can be checked BEFORE
+    // the run is processed. GATED, and the gate is a performance property as much as a safety one: the
+    // count costs a holiday resolution and a roster scan, and this runs on every draft-batch page load.
+    // Computing it for an employment whose policy will not deduct for it would be N round trips to fill a
+    // column that prints "—". So resolve the switch first (three set-based queries) and ask only for the
+    // employments it is on for; with it off everywhere — the shipped state, all nine companies — this
+    // issues no absence query at all and every cell reads "—", which is the honest preview of a deduction
+    // that is not running.
+    const deductAbsence = await deductAbsentDaysByEmployment(
       tx,
-      periodStart,
-      periodEnd,
       emps.map((e) => e.employmentId),
     );
+    const absent =
+      deductAbsence.size > 0
+        ? await absentDaysByEmployment(tx, periodStart, periodEnd, [...deductAbsence])
+        : new Map<string, number>();
     return emps.map((e) => {
       const wages = round2(Number(e.basic) + Number(e.allowance ?? 0));
       // s.60I(1A): ORP = wages/26, hourly = ORP/8. Run the engine with no days to get just the basis +
