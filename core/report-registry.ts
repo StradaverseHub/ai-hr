@@ -365,6 +365,9 @@ const PAYROLL_HISTORY: ReportDataset = {
     { id: 'employeeName', label: 'Employee Name', type: 'text', group: 'Identity' },
     { id: 'employeeCode', label: 'Employee ID', type: 'text', group: 'Identity' },
     { id: 'company', label: 'Company', type: 'text', group: 'Organisation' },
+    // ADR-0077 slice 6 (D-9) — same reason as `payroll_register`: seven money columns, read across every
+    // company in scope. Offered as a field, NOT in `defaultColumns`, so saved reports are unchanged.
+    { id: 'currency', label: 'Currency', type: 'text', group: 'Organisation' },
     { id: 'payPeriod', label: 'Pay Period', type: 'text', group: 'Period' },
     { id: 'runType', label: 'Run Type', type: 'text', group: 'Period' },
     { id: 'basic', label: 'Basic', type: 'currency', group: 'Earnings' },
@@ -391,6 +394,9 @@ const PAYROLL_HISTORY: ReportDataset = {
       employeeName: r.employeeName,
       employeeCode: r.employeeCode,
       company: r.company,
+      // `?? null` because ProcessedPayslipViewRow.currency is optional (see its note): a ReportRow value
+      // may be null but never undefined, and null is the "unknown currency" the runner buckets separately.
+      currency: r.currency ?? null,
       payPeriod: r.payPeriod,
       runType: r.runType,
       // 3c473773 — same box stamp as the register above, for the same reason.

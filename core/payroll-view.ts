@@ -575,6 +575,17 @@ export type ProcessedPayslipViewRow = {
   employeeCode: string | null;
   companyId: string;
   company: string;
+  /** ADR-0077 slice 6 (D-9): the PAYING company's currency. This read is `companyIds`-plural — it backs
+   *  the `payroll_history` custom-report dataset, whose seven money columns are summable from the
+   *  builder — so without one, a `Total` over a mixed-currency scope is not merely unlabelled, it is
+   *  UNDETECTABLE. Additive, exactly like the two columns the note below records.
+   *
+   *  OPTIONAL, and that is a statement rather than laziness: the SELECT below always fills it, but three
+   *  test files hand-build this row from a literal, and an absent currency is a state the consumer must
+   *  already handle correctly — `runReportSpec` puts it in its own bucket rather than folding it into a
+   *  neighbouring one. Requiring it here would have bought a compile error in fixtures and nothing at
+   *  runtime. */
+  currency?: string | null;
   payPeriod: string;
   runType: RunType;
   runSeq: number;
@@ -640,6 +651,8 @@ export function listProcessedPayslipsAcross(
         employeeCode: employment.employeeCode,
         companyId: payrollBatch.companyId,
         company: company.legalName,
+        // ADR-0077 slice 6 (D-9). The `company` join is already here — one column, no new join.
+        currency: company.currency,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,

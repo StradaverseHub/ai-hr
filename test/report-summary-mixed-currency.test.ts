@@ -165,7 +165,30 @@ describe('the real datasets carry the currency the runner needs', () => {
     expect(ds.defaultColumns).not.toContain('currency');
   });
 
+  it('payroll_history offers Currency — seven money columns, read across every company in scope', () => {
+    const ds = getDataset('payroll_history')!;
+    expect(ds.fields.some((f) => f.id === 'currency')).toBe(true);
+    expect(ds.defaultColumns).not.toContain('currency');
+  });
+
   it('master already carried one — this slice did not invent the pattern', () => {
     expect(getDataset('master')!.fields.some((f) => f.id === 'currency')).toBe(true);
+  });
+
+  /**
+   * THE GAP THIS SLICE DID NOT CLOSE, pinned so it is a failing expectation the day someone fixes it
+   * rather than a paragraph nobody reads. `attendance_daily` has one money column
+   * (`attendanceAllowance`) and no currency, so a mixed-currency Total over it is not merely unlabelled —
+   * the runner cannot even SEE that it is mixed, and takes the single-total path. Harmless today (nine
+   * Malaysian companies); wrong the day a second country lands. Closing it means threading the company
+   * currency through `attendanceDailyReport` (core/reporting.ts), which is a wider read than this sweep
+   * took on.
+   */
+  it('KNOWN GAP: every dataset with a money column carries a currency, EXCEPT attendance_daily', () => {
+    const unguarded = Object.values(REPORT_DATASETS)
+      .filter((d) => d.fields.some((f) => f.type === 'currency'))
+      .filter((d) => !d.fields.some((f) => f.id === 'currency'))
+      .map((d) => d.id);
+    expect(unguarded).toEqual(['attendance_daily']);
   });
 });
