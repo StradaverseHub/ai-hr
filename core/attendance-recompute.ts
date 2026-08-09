@@ -40,8 +40,12 @@ import { and, asc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { recomputeDayFigures, type DayType } from './attendance';
-import { batchesCoveringAttendanceDates, markBatchNeedsRecalc } from './payroll';
+// ADR-0080 D9/D11 — attendance and payroll services are consumed through their PACK FACADES, not
+// their implementation files. The two import ratchets scan core/ and the allowlist only ever
+// SHRINKS, so a new file reaching into core/attendance or core/payroll directly is a gate failure
+// by design, not an omission to be allowlisted.
+import { recomputeDayFigures, type DayType } from '../packs/attendance/service';
+import { batchesCoveringAttendanceDates, markBatchNeedsRecalc } from '../packs/payroll/service';
 import { assignment, attendance, attendanceCorrection, employment, person } from '../db/schema';
 
 /** Why a stored day was left alone. Every value here means "untouched", never "guessed at". */
