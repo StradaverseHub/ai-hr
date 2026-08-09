@@ -14,6 +14,8 @@
  * Pure unit test — no DB. The builder is presentation-only over already-fetched, already scope-guarded
  * rows, exactly like test/history-pivot.test.ts next door.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ProcessedPayslipViewRow } from '../core/payroll-view';
 import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
@@ -436,6 +438,47 @@ describe('0fcb2557 — layout the reporter was shown', () => {
     expect(data.columns).toEqual([...HISTORY_EXPORT_FIXED_COLUMNS]);
     expect(data.layout?.header).toBeNull();
     expect(toXlsxReport(data).bytes.length).toBeGreaterThan(0);
+  });
+});
+
+describe('0fcb2557 — the download can never contain a company the caller may not see', () => {
+  // Source-level, the house convention test/back-pay-company-scope.test.ts set for export routes: the
+  // hole these guard against is an omission in the route, and an omission is exactly what a happy-path
+  // integration test does not notice. "Even if someone edits the link by hand" is the reporter-facing
+  // promise, so both the fence and the re-guard are pinned here.
+  const src = readFileSync(
+    resolve(__dirname, '..', 'app/payroll/transaction-view/history-export/route.ts'),
+    'utf8',
+  );
+
+  it('the route is scopedAdmin() and re-guards the company id rather than trusting the link', () => {
+    expect(src, 'export route must use scopedAdmin, not a bare isAdmin').toContain('scopedAdmin()');
+    expect(src, 'a hand-edited companyId must be checked against the caller’s scope').toMatch(
+      /scopeIds\.includes\(rawCompany\)/,
+    );
+    // …and the employee too: an out-of-scope employmentId resolves to "no selection", never to a read.
+    expect(src).toMatch(/employees\.find\(\(e\) => e\.employmentId === rawEmployment\)/);
+  });
+
+  it('scope=all widens to the caller’s OWN companies and never past them', () => {
+    expect(src, 'scope=all must fall back to scopeIds, not to every company').toMatch(/companyIds:\s*scopeIds/);
+    expect(src, 'anything but the explicit opt-out must mean "this view"').toMatch(
+      /sp\.get\('scope'\) === 'all' \? 'all' : 'current'/,
+    );
+  });
+
+  it('the file is NOT clipped to the screen’s row cap', () => {
+    // `limit` is optional on `listProcessedPayslipsAcross` precisely so an export is never truncated. A
+    // silently short spreadsheet is the worst failure a reconciliation file can have.
+    const call = src.slice(src.indexOf('listProcessedPayslipsAcross(s, {'));
+    expect(call.slice(0, call.indexOf('});'))).not.toMatch(/\blimit\s*:/);
+  });
+
+  it('Content-Disposition goes through the RFC 5987 helper', () => {
+    // A raw non-Latin-1 filename makes the Response constructor THROW and the download 500s — this repo
+    // has hit it. The helper emits an ASCII fallback plus a UTF-8 `filename*`.
+    expect(src).toContain("filename*=UTF-8''");
+    expect(src).toMatch(/'Content-Disposition': contentDisposition\(/);
   });
 });
 
