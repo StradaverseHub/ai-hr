@@ -25,7 +25,9 @@ import {
 } from '../db/schema';
 import { isoWeekday, netScheduledMinutes, shiftSpan } from './attendance';
 import { approvedLeaveDates } from './leave';
-import { listEmployeesPage } from './read';
+import { listEmployees, listEmployeesPage } from './read';
+import { isAdmin } from '../lib/authz';
+import { cellKey, monthDates, monthRange, type AssignedCell, type UsualShift } from '../lib/roster-month';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -1230,9 +1232,27 @@ export async function backfillBackupShift(
 
 // ── Roster assignments ──────────────────────────────────────────────
 
+/** The (employee, date) row as it stood BEFORE a write, for the audit payload's `prev*` fields. Read
+ *  inside the same transaction as the upsert so the "before" can never be a different row's state. */
+async function rosterRowBefore(
+  tx: Parameters<Parameters<typeof withTenant>[1]>[0],
+  employmentId: string,
+  shiftDate: string,
+): Promise<{ prevShiftId: string | null; prevIsRestDay: boolean | null }> {
+  const [prev] = await tx
+    .select({ shiftId: rosterAssignment.shiftId, isRestDay: rosterAssignment.isRestDay })
+    .from(rosterAssignment)
+    .where(and(eq(rosterAssignment.employmentId, employmentId), eq(rosterAssignment.shiftDate, shiftDate)))
+    .limit(1);
+  // No row at all ⇒ nulls, not `false`: "nothing was rostered" and "an explicit working day" are
+  // different befores, and the Audit Trail has to be able to say which one it was.
+  return { prevShiftId: prev?.shiftId ?? null, prevIsRestDay: prev ? prev.isRestDay : null };
+}
+
 /** Assign (or re-assign) a shift to an employee on a date. Upsert: one assignment per (employee, date). */
 export async function assignShift(ctx: SessionContext, p: { employmentId: string; shiftDate: string; shiftId: string }) {
   return withTenant(ctx, async (tx) => {
+    const before = await rosterRowBefore(tx, p.employmentId, p.shiftDate);
     const [row] = await tx
       .insert(rosterAssignment)
       .values({ tenantId: ctx.tenantId, employmentId: p.employmentId, shiftDate: p.shiftDate, shiftId: p.shiftId, isRestDay: false })
@@ -1248,7 +1268,7 @@ export async function assignShift(ctx: SessionContext, p: { employmentId: string
       eventType: 'roster.shift.assigned',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { employmentId: p.employmentId, shiftDate: p.shiftDate, shiftId: p.shiftId },
+      payload: { employmentId: p.employmentId, shiftDate: p.shiftDate, shiftId: p.shiftId, ...before },
     });
     return { id: row.id };
   });
@@ -1257,6 +1277,7 @@ export async function assignShift(ctx: SessionContext, p: { employmentId: string
 /** Mark a date as an explicit rest day for an employee (vs no row = company-policy fallback). */
 export async function setRestDay(ctx: SessionContext, p: { employmentId: string; shiftDate: string; note?: string }) {
   return withTenant(ctx, async (tx) => {
+    const before = await rosterRowBefore(tx, p.employmentId, p.shiftDate);
     const [row] = await tx
       .insert(rosterAssignment)
       .values({ tenantId: ctx.tenantId, employmentId: p.employmentId, shiftDate: p.shiftDate, shiftId: null, isRestDay: true, note: p.note ?? null })
@@ -1272,7 +1293,7 @@ export async function setRestDay(ctx: SessionContext, p: { employmentId: string;
       eventType: 'roster.rest-day.set',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { employmentId: p.employmentId, shiftDate: p.shiftDate },
+      payload: { employmentId: p.employmentId, shiftDate: p.shiftDate, ...before },
     });
     return { id: row.id };
   });
@@ -1281,10 +1302,11 @@ export async function setRestDay(ctx: SessionContext, p: { employmentId: string;
 /** Remove an assignment → the date falls back to the company policy. */
 export async function clearRoster(ctx: SessionContext, p: { employmentId: string; shiftDate: string }) {
   return withTenant(ctx, async (tx) => {
+    // The deleted row IS the "before" — returning it costs nothing and needs no second read.
     const [row] = await tx
       .delete(rosterAssignment)
       .where(and(eq(rosterAssignment.employmentId, p.employmentId), eq(rosterAssignment.shiftDate, p.shiftDate)))
-      .returning({ id: rosterAssignment.id });
+      .returning({ id: rosterAssignment.id, shiftId: rosterAssignment.shiftId, isRestDay: rosterAssignment.isRestDay });
     if (!row) return { id: null };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1293,7 +1315,12 @@ export async function clearRoster(ctx: SessionContext, p: { employmentId: string
       eventType: 'roster.cleared',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { employmentId: p.employmentId, shiftDate: p.shiftDate },
+      payload: {
+        employmentId: p.employmentId,
+        shiftDate: p.shiftDate,
+        prevShiftId: row.shiftId,
+        prevIsRestDay: row.isRestDay,
+      },
     });
     return { id: row.id };
   });
@@ -1333,8 +1360,22 @@ export async function assignShiftBulk(
  *  mirroring assignShiftBulk's idempotent upsert. ONE thin summary event (per-row roster.rest-day.set
  *  events would spam the log at scale — documented skip, same rationale as assignShiftBulk), anchored on
  *  the driving shift template exactly like roster.bulk.assigned. */
-async function setRestDayBulk(ctx: SessionContext, p: { employmentIds: string[]; shiftDates: string[]; forShiftId: string }) {
+export async function setRestDayBulk(
+  ctx: SessionContext,
+  p: {
+    employmentIds: string[];
+    shiftDates: string[];
+    /** The shift template that DROVE these rest days (the generator's case). */
+    forShiftId?: string | null;
+    /** 23390097 — an upload's rest days are not driven by any shift, so it anchors on its company
+     *  instead. Anchoring them on an arbitrary shift would put an event on a row that had nothing to
+     *  do with the change; one of the two must be supplied. */
+    anchorId?: string;
+  },
+) {
   if (p.employmentIds.length === 0 || p.shiftDates.length === 0) return { rested: 0 };
+  const anchorId = p.forShiftId ?? p.anchorId;
+  if (!anchorId) throw new Error('setRestDayBulk needs forShiftId or anchorId to anchor its event');
   const values = p.employmentIds.flatMap((employmentId) =>
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: null, isRestDay: true })),
   );
@@ -1349,10 +1390,15 @@ async function setRestDayBulk(ctx: SessionContext, p: { employmentIds: string[];
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'roster-assignment',
-      aggregateId: p.forShiftId,
+      aggregateId: anchorId,
       eventType: 'roster.bulk.rest-day.set',
       actor: actorOf(ctx),
-      payload: { shiftId: p.forShiftId, employmentCount: p.employmentIds.length, dateCount: p.shiftDates.length, rows: values.length },
+      payload: {
+        shiftId: p.forShiftId ?? null,
+        employmentCount: p.employmentIds.length,
+        dateCount: p.shiftDates.length,
+        rows: values.length,
+      },
     });
     return { rested: values.length };
   });
@@ -1540,6 +1586,289 @@ export function rosterForRange(ctx: SessionContext, p: { employmentIds?: string[
       .where(and(...conds))
       .orderBy(asc(rosterAssignment.shiftDate));
   });
+}
+
+// ── 23390097 · Monthly roster grid ──────────────────────────────────
+//
+// The month view has to answer "what is this person doing on this date" for ~31 × N cells, including
+// the dates nobody rostered. That answer is the DEFAULT (usual) shift, resolved by exactly the order
+// core/attendance.ts's scheduleFor uses — see lib/roster-month.ts, which owns the pure precedence and is
+// shared by the grid, the export and the upload analyzer. This half is only the BATCHED READ: one query
+// for everyone's default shift, so a 200-employee month is not 200 round trips.
+
+/** One employee's usual shift, as the grid ghosts it onto un-rostered dates. */
+export type UsualShiftRow = {
+  employmentId: string;
+  shiftId: string;
+  code: string | null;
+  name: string;
+  startTime: string;
+  endTime: string;
+  /** ISO weekdays the shift works (1=Mon…7=Sun). NULL ⇒ the shift schedules nothing (same as scheduleFor). */
+  pattern: number[] | null;
+};
+
+/**
+ * Every listed employee's DEFAULT shift, batched — the same join core/attendance.ts makes near line 1888
+ * for its own display resolution (employment.default_shift_id → shift). Employees with no default shift
+ * are simply absent from the result; their month reads as blank, which is the honest answer and is what
+ * the Attendance Policy screen's "no usual shift" list already exists to fix.
+ */
+export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Promise<UsualShiftRow[]> {
+  if (employmentIds.length === 0) return Promise.resolve([]);
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        employmentId: employment.id,
+        shiftId: shift.id,
+        code: shift.code,
+        name: shift.name,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+        pattern: shift.weeklyPattern,
+      })
+      .from(employment)
+      .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
+      .where(inArray(employment.id, employmentIds)),
+  );
+}
+
+/** One row of the month grid's pinned block. Every field comes from listEmployees, which already
+ *  returns them — the month view adds no new read for the filters. */
+export type RosterMonthEmployee = {
+  employmentId: string;
+  name: string;
+  code: string | null;
+  department: string | null;
+  departmentId: string | null;
+  businessUnit: string | null;
+  businessUnitId: string | null;
+  occupation: string | null;
+};
+
+export type RosterMonthView = {
+  month: string;
+  from: string;
+  to: string;
+  dates: string[];
+  /** After Business Group / Department / Employee filtering — what the grid draws. */
+  employees: RosterMonthEmployee[];
+  /** Before filtering — what the filter dropdowns are built from, so choosing one never empties them. */
+  allEmployees: RosterMonthEmployee[];
+  shifts: { id: string; code: string | null; name: string; startTime: string; endTime: string }[];
+  /** `employmentId|date` → what is STORED (null for the dates nobody rostered). */
+  cells: Record<string, AssignedCell>;
+  /** employmentId → usual shift, for the grey ghost cells and the OFF markers. */
+  usual: Record<string, UsualShift>;
+  usualNames: Record<string, { code: string | null; name: string }>;
+};
+
+/**
+ * THE month view, read once and shared by the screen and the export so the file can never disagree with
+ * what was on screen. Filtering is in-memory over listEmployees' already-RLS-fenced rows: the caller sees
+ * only the people they are responsible for, and the Business Group / Department / Employee filters narrow
+ * that further without a second query.
+ */
+export async function rosterMonthView(
+  ctx: SessionContext,
+  p: { companyId: string; month: string; businessUnitId?: string; departmentId?: string; q?: string },
+): Promise<RosterMonthView> {
+  const { from, to } = monthRange(p.month);
+  const dates = monthDates(p.month);
+  const [employeeRows, shiftRows] = await Promise.all([listEmployees(ctx, [p.companyId]), listShiftsForTenant(ctx)]);
+
+  const allEmployees: RosterMonthEmployee[] = employeeRows
+    .filter((e) => !e.terminatedOn)
+    .map((e) => ({
+      employmentId: e.employmentId,
+      name: e.name,
+      code: e.employeeCode,
+      department: e.department,
+      departmentId: e.departmentId,
+      businessUnit: e.businessUnit,
+      businessUnitId: e.businessUnitId,
+      occupation: e.position,
+    }));
+
+  const needle = (p.q ?? '').trim().toLowerCase();
+  const employees = allEmployees.filter(
+    (e) =>
+      (!p.businessUnitId || e.businessUnitId === p.businessUnitId) &&
+      (!p.departmentId || e.departmentId === p.departmentId) &&
+      (needle === '' || e.name.toLowerCase().includes(needle) || (e.code ?? '').toLowerCase().includes(needle)),
+  );
+
+  // The roster read is narrowed to the employees actually on screen. A filtered month must not drag the
+  // whole company's rows across just to throw them away, and an empty result must not fall through to
+  // rosterForRange's "no employmentIds ⇒ everyone" branch.
+  const visible = employees.map((e) => e.employmentId);
+  const [roster, usualRows] = await Promise.all([
+    visible.length > 0 ? rosterForRange(ctx, { employmentIds: visible, from, to }) : Promise.resolve([]),
+    usualShiftsFor(ctx, visible),
+  ]);
+
+  const cells: Record<string, AssignedCell> = {};
+  for (const r of roster) {
+    cells[cellKey(r.employmentId, r.shiftDate)] = r.isRestDay
+      ? { kind: 'rest' }
+      : r.shiftId
+        ? { kind: 'shift', shiftId: r.shiftId }
+        : null;
+  }
+
+  const usual: Record<string, UsualShift> = {};
+  const usualNames: Record<string, { code: string | null; name: string }> = {};
+  for (const u of usualRows) {
+    usual[u.employmentId] = { shiftId: u.shiftId, pattern: u.pattern };
+    usualNames[u.shiftId] = { code: u.code, name: u.name };
+  }
+
+  return {
+    month: p.month,
+    from,
+    to,
+    dates,
+    employees,
+    allEmployees,
+    shifts: shiftRows.map((s) => ({ id: s.id, code: s.code, name: s.name, startTime: s.startTime, endTime: s.endTime })),
+    cells,
+    usual,
+    usualNames,
+  };
+}
+
+/**
+ * 23390097 BLOCKER — WHO MAY CHANGE THE ROSTER AT ALL, answered in the SERVER before any SQL runs.
+ *
+ * Writing roster_assignment requires app.can_admin_employment → app.is_admin_for, so ROW-LEVEL SECURITY
+ * already refuses a supervisor. WHAT IT REFUSES WITH was the hole: drizzle wraps PostgresError 42501 as
+ * `Failed query: insert into "roster_assignment" … params: <tenant uuid>,<employment uuid>,…`, and the
+ * roster actions copy `(e as Error).message` verbatim into a toast (the three cell actions) or into
+ * `?error=`, which app/roster/page.tsx renders in ErrorBanner (Generate / Copy). The database's own
+ * refusal — SQL text and internal identifiers — was being printed to whoever asked for it.
+ *
+ * HIDING THE BUTTONS IS NOT A GUARD, and cannot be. components/roster-grid.tsx renders a supervisor a
+ * read-only month, but the three cell actions are Server Actions: their ids ship inside that same
+ * supervisor's bundle and they are POST endpoints reachable with or without a button on screen. An
+ * affordance that is merely absent is still callable, so the refusal has to live here.
+ *
+ * Deliberately SEPARATE from canWriteRosterDate below. That predicate answers "is this DATE writable",
+ * is pure over (session, date, today) and is unchanged. This answers the PRIOR question — "may this
+ * session write the roster at all" — which does not depend on a date and must be asked first.
+ */
+export class RosterAdminRequiredError extends Error {
+  constructor() {
+    super('Only an HR administrator can change the roster. Ask an administrator to make this change.');
+    this.name = 'RosterAdminRequiredError';
+  }
+}
+
+/** Throws unless this session may write the roster. Call it FIRST in every roster write action, before
+ *  the date rule and before any database call. */
+export function assertRosterAdmin(ctx: SessionContext): void {
+  if (!isAdmin(ctx)) throw new RosterAdminRequiredError();
+}
+
+/**
+ * The past-date rule (requirement 9 of the reporter's list). A date that is TODAY or earlier has usually
+ * already been attended — the attendance figures for it were fixed when the day was saved — so only an
+ * HR administrator may re-write it, and the UI confirms first.
+ *
+ * READ THIS BEFORE QUOTING THE `shiftDate > today` BRANCH AS A SUPERVISOR CAPABILITY. Writing
+ * roster_assignment at all already requires app.can_admin_employment → app.is_admin_for, i.e. an
+ * hr_admin or super_admin grant. Every session that reaches a roster write is therefore an admin,
+ * `isAdmin(ctx)` is already true, and the left-hand branch never decides anything at the write boundary.
+ * A supervisor clicking tomorrow does not get "allowed" — RLS refuses the insert with 42501. The grid is
+ * rendered READ-ONLY for a non-admin for exactly that reason (components/roster-grid.tsx).
+ *
+ * The predicate is kept as belt-and-braces, so that if roster_assignment's RLS is ever widened to
+ * supervisors, today-and-earlier stays administrator-only without a second change. It is NOT evidence
+ * that a supervisor can roster tomorrow today; that would be a separate RLS decision.
+ *
+ * A PURE predicate over the session, deliberately: `today` is injectable so the test does not depend on
+ * the day it runs, and the server actions call `assertRosterDatesWritable` before any write.
+ */
+export const canWriteRosterDate = (ctx: SessionContext, shiftDate: string, today = todayInKualaLumpur()): boolean =>
+  shiftDate > today || isAdmin(ctx);
+
+export class PastRosterDateError extends Error {
+  readonly dates: string[];
+  constructor(dates: string[]) {
+    super(
+      `Only an HR administrator can change a roster date that is today or earlier (${dates.slice(0, 5).join(', ')}${
+        dates.length > 5 ? `, +${dates.length - 5}` : ''
+      }).`,
+    );
+    this.name = 'PastRosterDateError';
+    this.dates = dates;
+  }
+}
+
+/** Throws unless every date is writable by this session. Call it in the server action BEFORE any write. */
+export function assertRosterDatesWritable(ctx: SessionContext, dates: string[], today = todayInKualaLumpur()): void {
+  const blocked = dates.filter((d) => !canWriteRosterDate(ctx, d, today));
+  if (blocked.length > 0) throw new PastRosterDateError([...new Set(blocked)].sort());
+}
+
+/**
+ * ONE employee, MANY dates, one brush — the row Edit panel (requirement: "tick several dates and set
+ * them all to one shift").
+ *
+ * It deliberately loops the PER-DATE primitives instead of calling assignShiftBulk / setRestDayBulk.
+ * Those write a single summary event carrying only a shift id and counts: no per-date row and no
+ * previous shift, which is exactly what the audit requirement asks for. The 4,500-staff event-spam
+ * rationale that justifies the bulk summaries does not apply here — one employee × at most 31 dates is
+ * bounded, so the row panel can afford a reversible event per date and the Audit Trail gets the
+ * before/after it was promised.
+ */
+export async function assignRosterRow(
+  ctx: SessionContext,
+  p: { employmentId: string; shiftDates: string[]; brush: string },
+): Promise<{ applied: number }> {
+  const dates = [...new Set(p.shiftDates)].filter(isIsoDate).sort();
+  // Both rights, in order: may this session write the roster at all, then may it write these dates.
+  assertRosterAdmin(ctx);
+  assertRosterDatesWritable(ctx, dates);
+  for (const shiftDate of dates) {
+    if (p.brush === 'rest') await setRestDay(ctx, { employmentId: p.employmentId, shiftDate });
+    else if (p.brush === 'clear') await clearRoster(ctx, { employmentId: p.employmentId, shiftDate });
+    else await assignShift(ctx, { employmentId: p.employmentId, shiftDate, shiftId: p.brush });
+  }
+  return { applied: dates.length };
+}
+
+/** The upload's single audit entry (requirement 10: "each upload is ONE entry with the file name,
+ *  counts and rejects"). Anchored on the company so the Audit Trail groups uploads sensibly. */
+export async function recordRosterUpload(
+  ctx: SessionContext,
+  p: {
+    companyId: string;
+    month: string;
+    fileName: string;
+    employees: number;
+    rowsRead: number;
+    changed: number;
+    rejected: number;
+  },
+): Promise<void> {
+  await withTenant(ctx, (tx) =>
+    appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'roster-assignment',
+      aggregateId: p.companyId,
+      eventType: 'roster.bulk.uploaded',
+      actor: actorOf(ctx),
+      payload: {
+        companyId: p.companyId,
+        month: p.month,
+        fileName: p.fileName,
+        employees: p.employees,
+        rowsRead: p.rowsRead,
+        changed: p.changed,
+        rejected: p.rejected,
+      },
+    }),
+  );
 }
 
 // ── Roster vs actual (ADR-0032 C4) ──────────────────────────────────

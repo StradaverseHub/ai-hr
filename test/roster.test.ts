@@ -7,14 +7,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, eventTypesFor, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import {
   archiveShift,
+  assignRosterRow,
   assignShift,
   assignShiftBulk,
+  assertRosterDatesWritable,
+  canWriteRosterDate,
   clearRoster,
   createShift,
   listShifts,
+  PastRosterDateError,
   rosterForRange,
   setRestDay,
   shiftCrossesMidnight,
@@ -119,6 +123,75 @@ describe('shift rosters (ADR-0032 C1, Phase C)', () => {
     expect(r.assigned).toBe(6);
     expect(await rosterForRange(ctx, { from: '2026-07-01', to: '2026-07-31' })).toHaveLength(6);
     expect(await eventTypesFor(b.tenantId, m.id)).toContain('roster.bulk.assigned');
+  });
+
+  // ── 23390097 · what the Audit Trail must be able to say about a roster change ──────────────────
+
+  it('every per-date event carries the PREVIOUS shift, not just the new one', async () => {
+    const ctx = adminCtx(b);
+    const m = await createShift(ctx, { companyId: b.companyId, name: 'M', code: 'M', startTime: '08:00:00', endTime: '17:00:00' });
+    const n = await createShift(ctx, { companyId: b.companyId, name: 'N', code: 'N', startTime: '22:00:00', endTime: '06:00:00' });
+
+    // First write: nothing was there before, and nulls say so rather than pretending it was a working day.
+    const a = await assignShift(ctx, { employmentId, shiftDate: '2026-07-01', shiftId: m.id });
+    expect(await latestEventPayload(b.tenantId, a.id, 'roster.shift.assigned')).toMatchObject({
+      shiftId: m.id,
+      prevShiftId: null,
+      prevIsRestDay: null,
+    });
+
+    // Re-assign: the before is the shift that was displaced.
+    await assignShift(ctx, { employmentId, shiftDate: '2026-07-01', shiftId: n.id });
+    expect(await latestEventPayload(b.tenantId, a.id, 'roster.shift.assigned')).toMatchObject({
+      shiftId: n.id,
+      prevShiftId: m.id,
+      prevIsRestDay: false,
+    });
+
+    await setRestDay(ctx, { employmentId, shiftDate: '2026-07-01' });
+    expect(await latestEventPayload(b.tenantId, a.id, 'roster.rest-day.set')).toMatchObject({
+      prevShiftId: n.id,
+      prevIsRestDay: false,
+    });
+
+    await clearRoster(ctx, { employmentId, shiftDate: '2026-07-01' });
+    expect(await latestEventPayload(b.tenantId, a.id, 'roster.cleared')).toMatchObject({
+      prevShiftId: null,
+      prevIsRestDay: true,
+    });
+  });
+
+  it('the row editor writes ONE event per date (not a single bulk summary)', async () => {
+    const ctx = adminCtx(b);
+    const m = await createShift(ctx, { companyId: b.companyId, name: 'M', code: 'M', startTime: '08:00:00', endTime: '17:00:00' });
+    const dates = ['2026-07-06', '2026-07-07', '2026-07-08'];
+    const r = await assignRosterRow(ctx, { employmentId, shiftDates: dates, brush: m.id });
+    expect(r.applied).toBe(3);
+
+    const rows = await rosterForRange(ctx, { employmentIds: [employmentId], from: '2026-07-01', to: '2026-07-31' });
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      // One reversible event per date, each anchored on its OWN assignment row — the property the bulk
+      // primitives cannot give, because they write one summary keyed on the shift.
+      expect(await eventTypesFor(b.tenantId, row.id)).toEqual(['roster.shift.assigned']);
+    }
+    expect(await eventTypesFor(b.tenantId, m.id)).not.toContain('roster.bulk.assigned');
+  });
+
+  it('a non-admin cannot write a date that is today or earlier; tomorrow onward is fine', async () => {
+    const admin = adminCtx(b);
+    const supervisor = { ...admin, roles: ['manager'] };
+    const TODAY = '2026-08-09';
+
+    expect(canWriteRosterDate(supervisor, '2026-08-08', TODAY)).toBe(false);
+    expect(canWriteRosterDate(supervisor, TODAY, TODAY)).toBe(false);
+    expect(canWriteRosterDate(supervisor, '2026-08-10', TODAY)).toBe(true);
+    // An HR administrator may — the screen confirms first, the service does not refuse.
+    expect(canWriteRosterDate(admin, '2026-08-08', TODAY)).toBe(true);
+
+    expect(() => assertRosterDatesWritable(supervisor, ['2026-08-10', '2026-08-08'], TODAY)).toThrow(PastRosterDateError);
+    expect(() => assertRosterDatesWritable(supervisor, ['2026-08-10', '2026-08-11'], TODAY)).not.toThrow();
+    expect(() => assertRosterDatesWritable(admin, ['2026-08-08'], TODAY)).not.toThrow();
   });
 
   it('DB CHECK rejects a row that is neither a shift nor a rest day', async () => {
