@@ -499,6 +499,71 @@ export async function resolveBatchCutOffWindow(
 }
 
 /**
+ * 1c1b321a (Recompute Attendance) — which ALREADY-PROCESSED runs of a company own a given set of
+ * (employment, attendance date) pairs, so a recompute can raise those runs' existing needs-recalculation
+ * notice instead of quietly editing a payslip that has been paid and filed.
+ *
+ * A run owns a pair when BOTH hold: the employment has a payslip on that run (the exact test for "this
+ * person was in this run", rather than inferring it from the run's scope blob), and the date falls inside
+ * that employment's ATTENDANCE cut-off window for the run's pay period — resolved per employment through
+ * its assigned policy exactly as the payslip loop does, so a company whose employments sit on different
+ * policies gets each person's own window rather than the company default.
+ *
+ * A thin READ over the private window helpers above, exported deliberately narrowly: the alternative was
+ * widening `unionTypeWindow` / `employmentTypeWindow`, and this file is heavily covered — a narrow new
+ * export is the smaller blast radius. Derived read ⇒ no DomainEvent (the caller's
+ * `markBatchNeedsRecalc` appends the one event that belongs to the mark).
+ *
+ * Draft and closed runs are not returned at all: a draft recalculates by being generated, and a closed run
+ * cannot be written — `markBatchNeedsRecalc` is already a no-op for both, and so is this.
+ */
+export async function batchesCoveringAttendanceDates(
+  tx: Tx,
+  p: { companyId: string; entries: { employmentId: string; date: string }[] },
+): Promise<{ batchId: string; payPeriod: string; batchDate: string; employmentIds: string[] }[]> {
+  if (p.entries.length === 0) return [];
+  const batches = await tx
+    .select({ id: payrollBatch.id, payPeriod: payrollBatch.payPeriod, batchDate: payrollBatch.batchDate })
+    .from(payrollBatch)
+    .where(and(eq(payrollBatch.companyId, p.companyId), eq(payrollBatch.status, 'processed')))
+    .orderBy(payrollBatch.payPeriod);
+  if (batches.length === 0) return [];
+  const batchIds = batches.map((b) => b.id);
+  const slips = await tx
+    .select({ batchId: payslip.batchId, employmentId: payslip.employmentId })
+    .from(payslip)
+    .where(inArray(payslip.batchId, batchIds));
+  const onRun = new Set(slips.map((s) => `${s.batchId}|${s.employmentId}`));
+  const sched = await loadBatchCutOffSchedule(tx, p.companyId);
+  // Keyed by employment+period: one employment's window differs BETWEEN periods, so caching on the
+  // employment alone would hand January's window to February.
+  const windows = new Map<string, { start: string; end: string }>();
+  const windowFor = async (employmentId: string, payPeriod: string) => {
+    const key = `${employmentId}|${payPeriod}`;
+    const hit = windows.get(key);
+    if (hit) return hit;
+    const cfg = (await resolveAssignedPolicy(tx, employmentId))?.config ?? null;
+    const w = cutOffWindowFor('attendance', cfg, sched.companyCfg, payPeriod);
+    windows.set(key, w);
+    return w;
+  };
+  const out: { batchId: string; payPeriod: string; batchDate: string; employmentIds: string[] }[] = [];
+  for (const b of batches) {
+    const hit = new Set<string>();
+    for (const e of p.entries) {
+      if (hit.has(e.employmentId)) continue;
+      if (!onRun.has(`${b.id}|${e.employmentId}`)) continue;
+      const w = await windowFor(e.employmentId, b.payPeriod);
+      if (e.date >= w.start && e.date <= w.end) hit.add(e.employmentId);
+    }
+    if (hit.size > 0) {
+      out.push({ batchId: b.id, payPeriod: b.payPeriod, batchDate: b.batchDate, employmentIds: [...hit].sort() });
+    }
+  }
+  return out;
+}
+
+/**
  * c7fdfcf6 gap-fix (per-employment cut-off) — the UNION of a transaction TYPE's cut-off window across the
  * company-default schedule and EVERY active payroll policy in the company. A prefill query that must bound a
  * single fetch (it discovers which employments have rows only after the fetch) widens to this union, then filters

@@ -81,12 +81,22 @@ export default async function AttendancePage({
           title={t('title')}
           actions={
             isAdmin ? (
-              <Link
-                href="/attendance/import"
-                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-              >
-                {t('importPunches')}
-              </Link>
+              <>
+                {/* 1c1b321a — Recompute sits BESIDE Import Punches and deliberately NOT in the tab strip:
+                    AttendanceTabs renders for every role, while /attendance/recompute is requireAdmin. */}
+                <Link
+                  href="/attendance/recompute"
+                  className="rounded-lg border border-primary px-3 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-accent"
+                >
+                  {t('recompute.entryLabel')}
+                </Link>
+                <Link
+                  href="/attendance/import"
+                  className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                >
+                  {t('importPunches')}
+                </Link>
+              </>
             ) : undefined
           }
         />
