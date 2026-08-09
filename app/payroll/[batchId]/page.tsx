@@ -56,6 +56,7 @@ export default async function BatchPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
+  const ta = await getTranslations('anomaly');
   const { batchId } = await params;
   if (!UUID_RE.test(batchId)) notFound(); // see UUID_RE — a non-uuid segment must 404, not 500
   const sp = await searchParams;
@@ -264,6 +265,17 @@ export default async function BatchPage({
         }
         actions={
           <div className="flex items-center gap-2">
+            {/* ADR-0076 — the exceptions queue. Only from `processed` onward: a draft has no payslips, and
+                the checks read payslips. It is a plain Link because the page is read-only; running the
+                checks is a deliberate action taken ON that page, not a side effect of navigating to it. */}
+            {batch.status !== 'draft' && (
+              <Link
+                href={`/payroll/${batch.id}/anomalies`}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                {ta('title')}
+              </Link>
+            )}
             {batch.status !== 'draft' && (
               <a
                 href={`/payroll/reports/payment-summary?batchId=${batch.id}`}

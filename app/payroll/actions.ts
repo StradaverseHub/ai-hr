@@ -5,8 +5,10 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
+  BatchHasBlockingAnomaliesError,
   BatchNeedsRecalculationError,
   BatchNotCloseableError,
+  BatchSwingTooLargeError,
   BatchNotDraftError,
   BatchNotResettableError,
   BatchNotUnlockableError,
@@ -27,6 +29,7 @@ import {
   setPayrollInput,
   unlockClosedBatch,
 } from '@/core/payroll';
+import { evaluateBatchAnomalies, resolveAnomalyVerdict } from '@/core/payroll-anomaly';
 // ADR-0080 rung 3 (D9): the claims payout path rides the PayrollInputContributor kernel contract
 // instead of a direct core/claims import. The side-effect import evaluates the claims pack's
 // contributor wiring (static registration at module load — the D8 convention), so the by-id
@@ -430,6 +433,7 @@ export async function closeAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
   const t = await getTranslations('payroll.batch');
+  const ta = await getTranslations('anomaly');
   try {
     await closeBatch(s, { batchId });
   } catch (e) {
@@ -442,12 +446,63 @@ export async function closeAction(formData: FormData) {
           // own language, rather than the service's raw English.
           e instanceof BatchNeedsRecalculationError
           ? t('closeBlockedRecalc')
-          : e instanceof PayrollPermissionDeniedError
-            ? t('closePermissionDenied')
-            : (e as Error).message;
+          : // ADR-0076 — the two anomaly refusals. Both are reachable from a direct post or a verdict that
+            // landed between the render and the submit, so both get the real reason in the operator's own
+            // language rather than the service's raw English.
+            e instanceof BatchHasBlockingAnomaliesError
+            ? ta('closeBlockedByAnomalies', { count: e.employmentIds.length })
+            : e instanceof BatchSwingTooLargeError
+              ? ta('closeBlockedBySwing', { movement: e.movementPct, threshold: e.thresholdPct })
+              : e instanceof PayrollPermissionDeniedError
+                ? t('closePermissionDenied')
+                : (e as Error).message;
     redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(`/payroll/${batchId}`);
   revalidatePath('/payroll');
   redirect(`/payroll/${batchId}?toast=${encodeURIComponent(t('closeDone'))}`);
+}
+
+/**
+ * ADR-0076 — run the anomaly checks over a batch.
+ *
+ * READ-ONLY with respect to money, which is why this needs no confirmation dialog: it reads the payslips
+ * and writes verdicts, and re-running is the normal case rather than the exception.
+ */
+export async function evaluateAnomaliesAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const t = await getTranslations('anomaly');
+  let summary: { block: number; review: number; autoClear: number };
+  try {
+    const run = await evaluateBatchAnomalies(s, { batchId });
+    summary = { block: run.block, review: run.review, autoClear: run.autoClear };
+  } catch (e) {
+    redirect(`/payroll/${batchId}/anomalies?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/payroll/${batchId}/anomalies`);
+  revalidatePath(`/payroll/${batchId}`);
+  redirect(
+    `/payroll/${batchId}/anomalies?toast=${encodeURIComponent(
+      t('evaluated', { block: summary.block, review: summary.review, clear: summary.autoClear }),
+    )}`,
+  );
+}
+
+/** Record a human's disposition of one verdict. The note is optional; the resolution is not. */
+export async function resolveAnomalyAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const verdictId = String(formData.get('verdictId'));
+  const resolution = String(formData.get('resolution')) as 'accepted' | 'fixed_upstream' | 'false_positive';
+  const note = String(formData.get('note') ?? '').trim();
+  const t = await getTranslations('anomaly');
+  try {
+    await resolveAnomalyVerdict(s, { verdictId, resolution, note: note || undefined });
+  } catch (e) {
+    redirect(`/payroll/${batchId}/anomalies?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/payroll/${batchId}/anomalies`);
+  revalidatePath(`/payroll/${batchId}`);
+  redirect(`/payroll/${batchId}/anomalies?toast=${encodeURIComponent(t('resolved'))}`);
 }

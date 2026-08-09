@@ -41,6 +41,7 @@ import {
   type Disposition,
   type Finding,
   type PayslipFigures,
+  type Severity,
 } from './payroll-anomaly-detectors';
 
 const num = (v: unknown): number => {
@@ -845,4 +846,107 @@ export async function anomalyEvaluated(tx: Tx, batchId: string): Promise<boolean
     )
     .limit(1);
   return !!row;
+}
+
+/** One row of the exceptions queue: the verdict, its findings, and enough identity to act on it. */
+export type QueueRow = {
+  verdictId: string;
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  disposition: Disposition;
+  computedAt: Date;
+  resolution: string | null;
+  resolvedAt: Date | null;
+  detectorsRunCount: number;
+  detectorsSkipped: SkippedDetector[];
+  findings: { detectorId: string; severity: Severity; facts: Record<string, string | number>; suggestedAction: string }[];
+};
+
+/**
+ * The exceptions queue for one batch — the analyst's whole day, in ADR-0074's terms.
+ *
+ * ORDERED WORST-FIRST AND UNRESOLVED-FIRST, because the queue's job is to be worked top-down: blocks stop
+ * the run from closing, reviews do not, and anything already dispositioned is history. Auto-cleared
+ * verdicts are included but sort last — they are the denominator of the auto-clear rate and the only place
+ * a human can raise a FALSE NEGATIVE, which ADR-0076 §5 says must be possible from day one.
+ */
+export async function anomalyQueue(ctx: SessionContext, p: { batchId: string }): Promise<QueueRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const verdicts = await tx
+      .select({
+        verdictId: schema.payrollAnomalyVerdict.id,
+        employmentId: schema.payrollAnomalyVerdict.employmentId,
+        disposition: schema.payrollAnomalyVerdict.disposition,
+        computedAt: schema.payrollAnomalyVerdict.computedAt,
+        resolution: schema.payrollAnomalyVerdict.resolution,
+        resolvedAt: schema.payrollAnomalyVerdict.resolvedAt,
+        detectorsRun: schema.payrollAnomalyVerdict.detectorsRun,
+        detectorsSkipped: schema.payrollAnomalyVerdict.detectorsSkipped,
+        employeeName: schema.person.fullName,
+        employeeCode: schema.employment.employeeCode,
+      })
+      .from(schema.payrollAnomalyVerdict)
+      .innerJoin(schema.employment, eq(schema.employment.id, schema.payrollAnomalyVerdict.employmentId))
+      .innerJoin(schema.person, eq(schema.person.id, schema.employment.personId))
+      .where(
+        and(
+          eq(schema.payrollAnomalyVerdict.batchId, p.batchId),
+          isNull(schema.payrollAnomalyVerdict.supersededAt),
+        ),
+      );
+    if (verdicts.length === 0) return [];
+
+    // One read for every finding in the batch, then grouped in memory — the same no-N+1 discipline the
+    // evaluator follows, for the same reason: this page must open for a 3,000-person run.
+    const findings = await tx
+      .select({
+        verdictId: schema.payrollAnomalyFinding.verdictId,
+        detectorId: schema.payrollAnomalyFinding.detectorId,
+        severity: schema.payrollAnomalyFinding.severity,
+        facts: schema.payrollAnomalyFinding.facts,
+        suggestedAction: schema.payrollAnomalyFinding.suggestedAction,
+      })
+      .from(schema.payrollAnomalyFinding)
+      .where(
+        inArray(
+          schema.payrollAnomalyFinding.verdictId,
+          verdicts.map((v) => v.verdictId),
+        ),
+      );
+    const byVerdict = new Map<string, QueueRow['findings']>();
+    for (const f of findings) {
+      const list = byVerdict.get(f.verdictId) ?? [];
+      list.push({
+        detectorId: f.detectorId,
+        severity: f.severity as Severity,
+        facts: (f.facts ?? {}) as Record<string, string | number>,
+        suggestedAction: f.suggestedAction,
+      });
+      byVerdict.set(f.verdictId, list);
+    }
+
+    const rank: Record<string, number> = { block: 0, review: 1, auto_clear: 2 };
+    return verdicts
+      .map((v) => ({
+        verdictId: v.verdictId,
+        employmentId: v.employmentId,
+        employeeName: v.employeeName,
+        employeeCode: v.employeeCode,
+        disposition: v.disposition as Disposition,
+        computedAt: v.computedAt,
+        resolution: v.resolution,
+        resolvedAt: v.resolvedAt,
+        detectorsRunCount: (v.detectorsRun as string[] | null)?.length ?? 0,
+        detectorsSkipped: (v.detectorsSkipped as SkippedDetector[] | null) ?? [],
+        findings: byVerdict.get(v.verdictId) ?? [],
+      }))
+      .sort((x, y) => {
+        const unresolved = Number(x.resolvedAt != null) - Number(y.resolvedAt != null);
+        if (unresolved !== 0) return unresolved;
+        const d = rank[x.disposition] - rank[y.disposition];
+        if (d !== 0) return d;
+        return x.employeeName.localeCompare(y.employeeName);
+      });
+  });
 }
