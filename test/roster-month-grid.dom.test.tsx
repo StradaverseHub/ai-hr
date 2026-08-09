@@ -75,7 +75,6 @@ function renderGrid(over?: {
         usual={over?.usual ?? {}}
         isAdmin={over?.isAdmin ?? true}
         today={TODAY}
-        month={MONTH}
         companyName="ISEDECOR BINA SDN BHD"
       />
     </NextIntlClientProvider>,

@@ -83,7 +83,6 @@ export function RosterGrid({
   usual,
   isAdmin,
   today,
-  month,
   companyName,
 }: {
   dates: GridDate[];
@@ -95,7 +94,6 @@ export function RosterGrid({
   /** HR administrator: may write a date that is today or earlier (after confirming). */
   isAdmin: boolean;
   today: string;
-  month: string;
   companyName: string;
 }) {
   const t = useTranslations('roster');

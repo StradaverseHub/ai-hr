@@ -284,7 +284,6 @@ export default async function RosterPage({
               usual={view.usual}
               isAdmin={admin}
               today={todayIso}
-              month={month}
               companyName={companies.find((c) => c.id === companyId)?.name ?? ''}
             />
           )}
