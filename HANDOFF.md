@@ -18,47 +18,43 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-09 (r175a CP22 SHIPPED · SIX ITEMS NEWLY APPROVED AND UNBUILT)
+## CURRENT STATE — snapshot 2026-08-09 (r175 SHIPPED IN FULL — 14 items deployed today)
 
-**`main@2449b0f6` is what runs. Production on 341 migrations. Next free migration number is `0421`.**
-r175a (`d3a9383c`, CP22) added NO migration — 341 before and after. Verified after deploy: service
-`active`, `GET /` 401, both CP22 routes present on the box, and the bundled LHDN template's sha256
-`5b516429e896…` identical to the reporter's own upload. Gate: **610 files / 7,543 tests** green across
-all 3 chunks; `next build` clean; render-checked on a dev server in all six locales with zero
-MISSING_MESSAGE / ICU / RSC errors, and the produced PDF opened and read.
+**`main@fd53ca64` is what runs. Production on 344 migrations. Next free migration number is `0425`**
+(`0423` was ALLOCATED AND DELIBERATELY UNUSED — `1c1b321a` stores its recompute-run history in the
+append-only `domain_event` ledger rather than a new table; gaps are fine). No half-applied migration,
+no pending deploy, nothing in flight. Verified after deploy: **344 migrations**, `0424`'s four
+`attendance_correction` columns + its CHECK + its partial index all present, `0422`'s column comment
+present, **0 payroll policies with `deductAbsentDays` on**, `0421`'s ladder rows intact, service
+`active`, `GET /` 401. Gate: **624 files / 7,884 tests** green across all 3 chunks; `next build` clean;
+shadow 342→344 PASS; render-checked on a dev server across all six locales with zero MISSING_MESSAGE /
+ICU / RSC errors.
 
-⚠️ **THE BUILD QUEUE IS NOT EMPTY: `approved = 6`, all unbuilt.** The reporter approved six plans while
-CP22 was building. In board order they are `e6a144d4` (Download Excel on the Movement tab · Quick),
-`0fcb2557` (Export to Excel on Payroll Transaction History · Moderate), `18504ca6` (effective date on
-Shift arrangement · Large), `1c1b321a` (Recompute Attendance · Large), `23390097` (monthly Roster grid ·
-Large), `e2632276` (name the absence deduction · Large). Plans, mockups and measured facts for all six
-are on the board at revision 1.
+**FOURTEEN ITEMS SHIPPED TODAY**: r174's eight, then `d3a9383c` CP22 · `e6a144d4` movement export ·
+`0fcb2557` payroll export · `18504ca6` shift effective date · then `23390097` roster grid ·
+`e2632276` absence deduction · `1c1b321a` recompute · `db46d9a2` CP22 month batch · `1e9145d4` Plan OT.
 
-**TWO OF THOSE SIX ARE COUPLED AND MUST NOT BE BUILT INDEPENDENTLY.** `18504ca6` and `1c1b321a` were
-planned in the same batch and BOTH first promised the same re-processing screen; `18504ca6` was stood
-down and its plan now says so on its face. `1c1b321a` OWNS the recompute screen and its writer;
-`18504ca6` owns making `scheduleFor` date-aware. They meet in `core/attendance.ts`. Build `18504ca6`
-first or build them together — if only `1c1b321a` ships, a recompute of an older day resolves the shift
-as the employment's CURRENT one, which is right for a corrected shift and WRONG for a moved employee.
+**The board: `deployed = 634` · `planned = 1` · `open = 1` · `approved = 0` · `contested = 0`.**
+`b00f9e6e` (the overtime question, answer: "Already works") is PLANNED and awaiting the reporter.
+`42afb2d2` is OPEN and is ours — see below. Re-count rather than trusting this line.
 
-**`e2632276` IS NOT A PAY CODE.** The deduction the reporter asked for ALREADY RUNS (basic ÷ divisor ×
-unpaid days, taken BEFORE EPF/SOCSO/EIS/PCB, which is the correct treatment); it is invisible because it
-is folded into an unnamed "Other deductions" figure. A pay code would deduct a SECOND time and would be
-taken AFTER the statutory contributions. The approved plan names the existing lines and adds absent
-days; it does not create the pay code the reporter had already saved on screen.
+⚠️ **WE OWE THE REPORTER AN ANSWER WE HAVE ALREADY ASKED FOR: `42afb2d2`.** `23390097`'s approved plan
+promised "from 10/08 onwards a supervisor can change them too". That was never achievable — writing
+`roster_assignment` requires an hr_admin/super_admin grant, and a manager session is refused by RLS
+with 42501 (measured). What SHIPPED is the honest version: supervisors get the whole month read-only
+with filters and download, no controls that would fail. The decision — leave it view-only, or widen
+the permission so a supervisor may roster their own reports — is the reporter's, and it is raised.
+**Do not "fix" this in code before they answer.**
 
-**2026-08-09, OUTSIDE any release: `capture-usage` was added to the production crontab** (daily 01:00)
-and run once by hand — 9 rows, 0 failures. Pre-change crontab at `/home/ubuntu/crontab.backup-2026-08-09`.
-
-**`scripts/reset-medical-hospitalization-ledger.ts` IS DEPLOYED BUT HAS NEVER RUN.** Report-only without
-`--apply`; `deploy.sh` does NOT invoke it (verified). The report-only census was run 2026-08-09 and
-matches the approved plan exactly — 147 ledger rows, 22 recalc-audit rows, and all four safety
+**`scripts/reset-medical-hospitalization-ledger.ts` IS DEPLOYED AND HAS STILL NEVER RUN.** Report-only
+without `--apply`; `deploy.sh` does not invoke it (verified). The report-only census was run 2026-08-09
+and matched the approved plan exactly — 147 ledger rows, 22 recalc-audit rows, and all four safety
 conditions (debits, request-sourced rows, approved requests, encashment snapshots) at ZERO. **This is
 the last unfinished part of `c8052ae3`:** the reporter was promised Medical and Hospitalization read
 0.00, and until this runs they do not. The archive→verify→delete sequence has never executed end to end.
 
 ⚠️ **`HANDOFF.md` IS ITSELF RSYNCED TO THE BOX**, so editing it makes the dry-run report one changed
-file — which looks identical to an undeployed release. The dry-run also permanently reports
+file — indistinguishable from an undeployed release. The dry-run also permanently reports
 `next-env.d.ts`: gitignored and Next-generated, local `pnpm dev` writes the `.next/dev/types/` variant
 while the box's build writes `.next/types/`. The box's version is correct. Those two lines are noise;
 anything else is a real delta.
@@ -659,6 +655,33 @@ grep — an empty result is a parser gap, not proof of no callers.
   would leak. The mutation check is what caught it: **with the guard reverted, the whole test file still
   passed**, because it was pinning RLS rather than the new guard. A green refusal test proves the
   behaviour is refused — NOT that your code is what refuses it.
+- **THE PACK IMPORT RATCHET'S ALLOWLIST IS NOT A REGISTRATION POINT — READ ITS FAILURE TEXT (r175).**
+  A new `core/` file imported `core/attendance` and `core/payroll` directly and turned BOTH drift
+  ratchets red. The tempting fix is `test/pack-drift-allowlist.json`; the guards refuse it in their own
+  message — "The allowlist only ever shrinks; do not add entries." That list is audited kernel-contract
+  DEBT, not a place to file new work, and adding to it silently widens the ADR-0080 boundary the guard
+  exists to hold. **Import from `packs/<pack>/service` instead.** Two things make that safe and both are
+  worth checking rather than assuming: the facades re-export with `export *`, so every symbol resolves
+  unchanged; and several `core/` files already import a facade (`absence-days`, `admin`, `entitlements`,
+  `movement-apply`, `operator`), so it introduces no cycle. Check for the documented comment false
+  positive first — the ratchet does not strip comments.
+
+- **A MERGE CONFLICT WHERE NEITHER "OURS" NOR "THEIRS" IS CORRECT (r175).** `core/attendance.ts`
+  collided between the shift item (which had just made `scheduleFor` DATE-AWARE via a new `defShiftOn(d)`
+  helper) and the absence item (which had moved the same declaration earlier, still using the old
+  `defShift` variable — which no longer existed). Taking ours dropped the absence item's roster-wins
+  gate; taking theirs silently reverted date-aware shift resolution that was ALREADY DEPLOYED, and would
+  not even have compiled. The resolution was semantic: one declaration on the date-aware helper, with the
+  other branch's new gate rewired onto it. **When two branches touch one function in the same release,
+  read what each was FOR before resolving — a clean-looking pick can revert live behaviour.**
+
+- **A PLAN THAT PROMISED WHAT THE DATABASE REFUSES GETS RAISED, NOT PATCHED, AND NOT PUSHED AS A PLAN
+  REVISION (r175).** `23390097` promised supervisors could roster future dates; RLS refuses it. Note the
+  mechanism trap: `improve:push-plan` sets `status = 'planned'`, so pushing a revision onto a DEPLOYED
+  item un-deploys it on the board and loses the record that the work shipped. Use `improve:raise`
+  instead — the CLI documents it for exactly this ("a decision the pipeline surfaced that the reporter
+  must own"), it lands as `open`, and `raiseFeedback` stamps `reporter_label = 'CLAUDE AI'`.
+
 - **A GREEN SUITE, A 200, AND ONE OF TWO PDF RENDERERS ALL CALLED A PAGE CORRECT WHILE IT WAS WRONG
   (r175a).** The CP22 renderer silently DROPPED any line past the third in a multi-row block: a
   four-line Malaysian address filed to LHDN without its state, and box (b) short an allowance,

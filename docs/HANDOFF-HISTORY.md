@@ -4,6 +4,54 @@ Archive of SHIPPED round entries, newest first. The living handoff is `../HANDOF
 current state and the entry for any round still in flight; when a round ships, its entry moves to the
 top of this file.
 
+## r175 — nine more items across three waves (shipped 2026-08-09, main@fd53ca64, 344 migrations)
+
+After r174's eight, the board refilled twice in one day: `d3a9383c` CP22 · `e6a144d4` movement export ·
+`0fcb2557` payroll export · `18504ca6` shift effective date (`0421`) · `23390097` roster grid ·
+`e2632276` absence deduction (`0422`) · `1c1b321a` recompute · `db46d9a2` CP22 month batch ·
+`1e9145d4` Plan OT (`0424`). Fourteen items deployed in the day.
+
+**THE GROUPING WAS FORCED BY ONE FILE.** `core/attendance.ts` is touched by four of the six late items,
+so they ran in FUNCTION-OWNED LANES rather than in parallel by theme, with `components/attendance-tabs.tsx`
+assigned outright to `1c1b321a` and Plan OT told its row belongs in the My Attendance nav instead. Every
+verifier checked lane discipline explicitly; every lane held.
+
+**THE REGISTRY PROCESS FROM r174 WORKED.** Two builders added a `requireAdmin` page, neither touched
+`lib/permissions.ts`, and both declared it in integrator notes — the integrator registered
+`/roster/import` and `/attendance/recompute` on the existing admin screen, plus `attendance-recompute`
+and `roster-assignment` in `AGGREGATE_MODULE`. Note the entry cannot land BEFORE the page: the test
+fails both ways, which is exactly why declaring beats editing.
+
+**Decisions.**
+
+- **`e2632276` is not a pay code, and saying so was the item.** The deduction the reporter asked for
+  already ran, before EPF/SOCSO/EIS/PCB; a pay code would have deducted a SECOND time and after the
+  statutory contributions. The plan named the existing lines instead. Its verifier then caught the
+  feature ESCAPING ITS OWN OFF-SWITCH: `attendanceMonthSummary` changed for all nine companies un-gated
+  in six ways and fed attendance-allowance qualification — money, on a feature the reporter was told
+  ships switched off. Fixed, and 0 policies carry the flag on production.
+- **A payslip that did not add up.** The named absence lines assumed they were always a subset of
+  `otherDeductions` "by construction". Under a `carry_forward` negative-net policy they are not, and an
+  "Absent 12,600.00" line printed inside a 6,000.00 deductions block. The split now refuses to carve out
+  more than its column holds and falls back to the single lumped row.
+- **Day type belongs in the recompute pay-run interlock.** A rest day re-decided as a public holiday
+  moved `ot20`→`ot30` on an already-processed run with worked and OT minutes both unchanged — so the
+  minutes-only predicate raised nothing. That is the exact silent difference the interlock exists to
+  prevent, and recomputing after a holiday is recorded is the normal path, not an edge case.
+- **`1c1b321a` needed `18504ca6` first**, and the order was enforced: without the date-aware
+  `scheduleFor`, a recompute of an older day resolves the employee's CURRENT shift — right for a
+  corrected shift, wrong for a moved employee.
+- **A false sentence shown to every employee.** Plan OT's form rendered "You already have an approved
+  overtime plan for this date… withdraw the first" unconditionally, with no query behind it. The mockup
+  drew it as a conditional refusal; the real one already came through the error banner with the date.
+- **`23390097`'s supervisor promise was undeliverable and is now the reporter's decision**, raised as
+  `42afb2d2` rather than patched or silently dropped.
+- **`db46d9a2` shipped with a correction the reporter accepted.** Manual CP22 filing has not been
+  accepted since 1 September 2024 (e-CP22 on MyTax only), so the batch is a keying aid and an internal
+  record, not a filing — and the plan we had already shipped said otherwise. They approved it on the
+  corrected terms. The batch was verified by opening it: 132 fields = 4 pages x 33, distinct joiners per
+  page, unflattened, LHDN artwork hash unchanged, "Download For Submission" absent from the tree.
+
 ## r175a — d3a9383c, the CP22 fillable form (shipped 2026-08-09, main@2449b0f6, 341 migrations, none of its own)
 
 The first item of a new cycle: seven open items were planned and pushed with mockups, the reporter
