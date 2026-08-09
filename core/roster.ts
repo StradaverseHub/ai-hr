@@ -1718,11 +1718,21 @@ export async function rosterMonthView(
 /**
  * The past-date rule (requirement 9 of the reporter's list). A date that is TODAY or earlier has usually
  * already been attended — the attendance figures for it were fixed when the day was saved — so only an
- * HR administrator may re-write it, and the UI confirms first. A supervisor may roster tomorrow onward.
+ * HR administrator may re-write it, and the UI confirms first.
  *
- * A PURE predicate over the session, deliberately: the client disables those cells as an affordance, and
- * the server actions call `assertRosterDatesWritable` for the actual guard. `today` is injectable so the
- * test does not depend on the day it runs.
+ * READ THIS BEFORE QUOTING THE `shiftDate > today` BRANCH AS A SUPERVISOR CAPABILITY. Writing
+ * roster_assignment at all already requires app.can_admin_employment → app.is_admin_for, i.e. an
+ * hr_admin or super_admin grant. Every session that reaches a roster write is therefore an admin,
+ * `isAdmin(ctx)` is already true, and the left-hand branch never decides anything at the write boundary.
+ * A supervisor clicking tomorrow does not get "allowed" — RLS refuses the insert with 42501. The grid is
+ * rendered READ-ONLY for a non-admin for exactly that reason (components/roster-grid.tsx).
+ *
+ * The predicate is kept as belt-and-braces, so that if roster_assignment's RLS is ever widened to
+ * supervisors, today-and-earlier stays administrator-only without a second change. It is NOT evidence
+ * that a supervisor can roster tomorrow today; that would be a separate RLS decision.
+ *
+ * A PURE predicate over the session, deliberately: `today` is injectable so the test does not depend on
+ * the day it runs, and the server actions call `assertRosterDatesWritable` before any write.
  */
 export const canWriteRosterDate = (ctx: SessionContext, shiftDate: string, today = todayInKualaLumpur()): boolean =>
   shiftDate > today || isAdmin(ctx);

@@ -109,7 +109,7 @@
     "templateNoteOff": "Type OFF to remove any entry for that date.",
     "templateNoteMonth": "Only dates inside {month} are saved — any other date column is reported and ignored.",
     "templateFailed": "Could not build the template file.",
-    "pastLocked": "Only an HR Administrator can change a date that is today or earlier.",
+    "viewOnly": "A supervisor views the roster; an HR Administrator changes it.",
     "pastConfirm": "{count, plural, =1 {# date is} other {# dates are}} today or earlier and may already have been attended. Change anyway?",
     "rowConfirm": "Set {count, plural, =1 {# date} other {# dates}} for this employee?",
     "rowApplied": "Updated {count, plural, =1 {# date} other {# dates}}.",

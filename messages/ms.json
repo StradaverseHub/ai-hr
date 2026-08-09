@@ -109,7 +109,7 @@
     "templateNoteOff": "Taip OFF untuk membuang sebarang catatan pada tarikh itu.",
     "templateNoteMonth": "Hanya tarikh dalam {month} disimpan — lajur tarikh lain dilaporkan dan diabaikan.",
     "templateFailed": "Gagal menjana fail templat.",
-    "pastLocked": "Hanya Pentadbir HR boleh mengubah tarikh hari ini atau sebelumnya.",
+    "viewOnly": "Penyelia melihat jadual syif; Pentadbir HR yang mengubahnya.",
     "pastConfirm": "{count, plural, other {# tarikh}} adalah hari ini atau sebelumnya dan mungkin sudah direkodkan kehadiran. Teruskan?",
     "rowConfirm": "Tetapkan {count, plural, other {# tarikh}} untuk pekerja ini?",
     "rowApplied": "{count, plural, other {# tarikh}} dikemas kini.",

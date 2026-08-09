@@ -20,7 +20,7 @@ import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 import { rosterMonthView } from '@/core/roster';
 import { serializeReport, type ReportFormat } from '@/lib/report-export';
-import { isMonthParam, monthOf, resolveRosterCell, shiftCodeOf } from '@/lib/roster-month';
+import { ROSTER_TEMPLATE_ID_COLUMNS, isMonthParam, monthOf, resolveRosterCell, shiftCodeOf } from '@/lib/roster-month';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
@@ -65,8 +65,9 @@ export async function GET(req: Request) {
     // default), so the usual-shift names read back from the view rather than the live list.
     const usualCode = (id: string) => codeById.get(id) ?? shiftCodeOf(view.usualNames[id]);
 
-    // Export-payload headers stay ENGLISH (ADR-0047 §9) — the file is read by external tools.
-    const columns = ['Employee No', 'Employee Name', 'Department', 'Occupation', ...view.dates];
+    // Export-payload headers stay ENGLISH (ADR-0047 §9) — the file is read by external tools. Shared
+    // with the upload template, so the file you download and the file the analyzer accepts are one shape.
+    const columns = [...ROSTER_TEMPLATE_ID_COLUMNS, ...view.dates];
     const rows = view.employees.map((e) => [
       e.code ?? '',
       e.name,

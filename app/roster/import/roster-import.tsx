@@ -33,7 +33,7 @@ export function RosterImport({
   companyId: string;
   month: string;
   shiftCodes: { code: string; name: string }[];
-  template: { header: string[]; rows: string[][]; codes: string[] };
+  template: { dates: string[]; rows: string[][]; codes: string[] };
 }) {
   const t = useTranslations('roster.import');
   const tr = useTranslations('roster');
@@ -149,7 +149,7 @@ export function RosterImport({
           </div>
           <div className="flex items-end gap-2">
             <RosterTemplateButton
-              header={template.header}
+              dates={template.dates}
               rows={template.rows}
               month={month}
               codes={template.codes}

@@ -10,7 +10,7 @@ import { RosterGrid, RosterTemplateButton } from '@/components/roster-grid';
 import { ToilElectButton } from '@/components/toil-elect-button';
 import { copyRosterAction, generateRosterAction } from './actions';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
-import { addDaysIso, addMonths, isMonthParam, monthOf, shiftCodeOf } from '@/lib/roster-month';
+import { addDaysIso, addMonths, buildRosterTemplate, isMonthParam, monthOf, shiftCodeOf } from '@/lib/roster-month';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -126,18 +126,15 @@ export default async function RosterPage({
   // The Excel template is the month grid PRE-FILLED WITH WHAT IS ROSTERED — never with the grey ghosts.
   // A ghosted day has no stored row; writing its code into the template and sending it back would harden
   // every un-rostered day into an explicit assignment, which is not what "prepare the month" means.
+  // Its four identity headings are the MACHINE header (lib/roster-month#ROSTER_TEMPLATE_ID_COLUMNS) and
+  // stay English in every locale — a translated heading made the round trip impossible outside en.
   const shiftCodeById = new Map(view.shifts.map((sh) => [sh.id, shiftCodeOf(sh)]));
-  const templateHeader = [t('colEmployeeNo'), t('colEmployeeName'), t('colDepartment'), t('colOccupation'), ...view.dates];
-  const templateRows = view.employees.map((e) => [
-    e.code ?? '',
-    e.name,
-    e.department ?? '',
-    e.occupation ?? '',
-    ...view.dates.map((iso) => {
-      const c = view.cells[`${e.employmentId}|${iso}`] ?? null;
-      return c == null ? '' : c.kind === 'rest' ? 'RD' : (shiftCodeById.get(c.shiftId) ?? '');
-    }),
-  ]);
+  const template = buildRosterTemplate({
+    dates: view.dates,
+    employees: view.employees,
+    cells: view.cells,
+    shiftCode: (id) => shiftCodeById.get(id) ?? '',
+  });
 
   return (
     <div className={pageWideCls}>
@@ -170,28 +167,33 @@ export default async function RosterPage({
         ) : (
           <span className="text-sm font-medium">{companies[0].name}</span>
         )}
+        {/* Upload and its template are ADMINISTRATORS ONLY, together: /roster/import calls requireAdmin,
+            so a template handed to a supervisor is a file they could never send back. Export stays open —
+            reading the month is exactly what a supervisor is here to do. */}
         <div className="flex flex-wrap items-center gap-2">
           {admin && (
-            <Link href={`/roster/import?companyId=${companyId}&month=${month}`} className={navBtn}>
-              {t('uploadRoster')}
-            </Link>
+            <>
+              <Link href={`/roster/import?companyId=${companyId}&month=${month}`} className={navBtn}>
+                {t('uploadRoster')}
+              </Link>
+              <RosterTemplateButton
+                dates={view.dates}
+                rows={template.rows}
+                month={month}
+                codes={view.shifts.map((sh) => shiftCodeOf(sh))}
+                label={t('downloadTemplate')}
+                notesTitle={t('templateNotesTitle')}
+                notes={[
+                  t('templateNoteBlank'),
+                  t('templateNoteCode'),
+                  t('templateNoteRd'),
+                  t('templateNoteOff'),
+                  t('templateNoteMonth', { month }),
+                ]}
+                failedLabel={t('templateFailed')}
+              />
+            </>
           )}
-          <RosterTemplateButton
-            header={templateHeader}
-            rows={templateRows}
-            month={month}
-            codes={view.shifts.map((sh) => shiftCodeOf(sh))}
-            label={t('downloadTemplate')}
-            notesTitle={t('templateNotesTitle')}
-            notes={[
-              t('templateNoteBlank'),
-              t('templateNoteCode'),
-              t('templateNoteRd'),
-              t('templateNoteOff'),
-              t('templateNoteMonth', { month }),
-            ]}
-            failedLabel={t('templateFailed')}
-          />
           <Link href={`/roster/export?${qs({ format: 'xlsx' })}`} className={navBtn} prefetch={false}>
             {t('exportLabel')}
           </Link>
@@ -292,102 +294,111 @@ export default async function RosterPage({
 
       {/* R7 Phase 2 — generate a roster window from a shift's weekly pattern. KEPT (with its dates
           retargeted to the month on screen): it and Copy roster are the only bulk roster tools today, and
-          dropping them while adding an upload would be a regression dressed as a feature. */}
-      <Card>
-        <SectionHeader title={t('generate')} />
-        <div className="space-y-3 px-4 py-3">
-          {view.shifts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('createShiftFirst')}</p>
-          ) : (
-            <form action={generateRosterAction} className="flex flex-wrap items-end gap-2">
-              <input type="hidden" name="companyId" value={companyId} />
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                {t('shifts')}
-                <select name="shiftId" required className={inputCls}>
-                  {view.shifts.map((sh) => (
-                    <option key={sh.id} value={sh.id}>
-                      {sh.code ? `${sh.code} · ` : ''}
-                      {sh.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                {t('scope')}
-                {/* A chosen department wins over the employee multi-select (the action prefers it). */}
-                <select name="departmentId" defaultValue="" className={inputCls}>
-                  <option value="">{t('scopeEmployees')}</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {t('scopeDepartment')}: {d.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                {t('employee')}
-                <select name="employmentIds" multiple size={4} className={`${inputCls} min-w-44`} aria-label={t('scopeEmployees')}>
-                  {view.employees.map((e) => (
-                    <option key={e.employmentId} value={e.employmentId}>
-                      {e.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                {t('dateRange')}
-                <span className="flex items-center gap-1.5">
-                  <input type="date" name="from" required defaultValue={view.from} className={inputCls} />
-                  <span className="text-xs text-muted-foreground">–</span>
-                  <input type="date" name="to" required defaultValue={view.to} className={inputCls} />
-                </span>
-              </label>
-              <button className={btnPrimary}>{t('generate')}</button>
-            </form>
-          )}
-          <p className="text-xs text-muted-foreground">{t('generateHint')}</p>
-        </div>
-      </Card>
+          dropping them while adding an upload would be a regression dressed as a feature.
+
+          BOTH ARE ADMIN-ONLY, for the same reason the grid is read-only for a supervisor: they write
+          roster_assignment, whose RLS requires can_admin_employment, so for anybody else they are a form
+          that can only ever end in a 42501. */}
+      {admin && (
+        <Card>
+          <SectionHeader title={t('generate')} />
+          <div className="space-y-3 px-4 py-3">
+            {view.shifts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('createShiftFirst')}</p>
+            ) : (
+              <form action={generateRosterAction} className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="companyId" value={companyId} />
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  {t('shifts')}
+                  <select name="shiftId" required className={inputCls}>
+                    {view.shifts.map((sh) => (
+                      <option key={sh.id} value={sh.id}>
+                        {sh.code ? `${sh.code} · ` : ''}
+                        {sh.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  {t('scope')}
+                  {/* A chosen department wins over the employee multi-select (the action prefers it). */}
+                  <select name="departmentId" defaultValue="" className={inputCls}>
+                    <option value="">{t('scopeEmployees')}</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {t('scopeDepartment')}: {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  {t('employee')}
+                  <select name="employmentIds" multiple size={4} className={`${inputCls} min-w-44`} aria-label={t('scopeEmployees')}>
+                    {view.employees.map((e) => (
+                      <option key={e.employmentId} value={e.employmentId}>
+                        {e.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  {t('dateRange')}
+                  <span className="flex items-center gap-1.5">
+                    <input type="date" name="from" required defaultValue={view.from} className={inputCls} />
+                    <span className="text-xs text-muted-foreground">–</span>
+                    <input type="date" name="to" required defaultValue={view.to} className={inputCls} />
+                  </span>
+                </label>
+                <button className={btnPrimary}>{t('generate')}</button>
+              </form>
+            )}
+            <p className="text-xs text-muted-foreground">{t('generateHint')}</p>
+          </div>
+        </Card>
+      )}
 
       {/* R17 3e8350db — "Copy roster schedules from previous weeks or months". Copies every roster row from a
           source window forward onto a target window starting at targetFrom, preserving each row's day-offset.
           Scoped to this company's active employees (posted as hidden employmentIds). Defaults now: source =
-          the PREVIOUS month, target = the month on screen. */}
-      <Card>
-        <SectionHeader title={t('copyTitle')} />
-        <div className="space-y-3 px-4 py-3">
-          {view.employees.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('noEmployees')}</p>
-          ) : (
-            <form action={copyRosterAction} className="flex flex-wrap items-end gap-2">
-              <input type="hidden" name="companyId" value={companyId} />
-              {view.employees.map((e) => (
-                <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
-              ))}
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                {t('copySource')}
-                <span className="flex items-center gap-1.5">
-                  <input
-                    type="date"
-                    name="sourceFrom"
-                    required
-                    defaultValue={`${addMonths(month, -1)}-01`}
-                    className={inputCls}
-                  />
-                  <span className="text-xs text-muted-foreground">–</span>
-                  <input type="date" name="sourceTo" required defaultValue={addDaysIso(view.from, -1)} className={inputCls} />
-                </span>
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                {t('copyTargetStart')}
-                <input type="date" name="targetFrom" required defaultValue={view.from} className={inputCls} />
-              </label>
-              <button className={btnPrimary}>{t('copyButton')}</button>
-            </form>
-          )}
-          <p className="text-xs text-muted-foreground">{t('copyHint')}</p>
-        </div>
-      </Card>
+          the PREVIOUS month, target = the month on screen. Administrators only, with Generate and for
+          the same reason. */}
+      {admin && (
+        <Card>
+          <SectionHeader title={t('copyTitle')} />
+          <div className="space-y-3 px-4 py-3">
+            {view.employees.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('noEmployees')}</p>
+            ) : (
+              <form action={copyRosterAction} className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="companyId" value={companyId} />
+                {view.employees.map((e) => (
+                  <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
+                ))}
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  {t('copySource')}
+                  <span className="flex items-center gap-1.5">
+                    <input
+                      type="date"
+                      name="sourceFrom"
+                      required
+                      defaultValue={`${addMonths(month, -1)}-01`}
+                      className={inputCls}
+                    />
+                    <span className="text-xs text-muted-foreground">–</span>
+                    <input type="date" name="sourceTo" required defaultValue={addDaysIso(view.from, -1)} className={inputCls} />
+                  </span>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  {t('copyTargetStart')}
+                  <input type="date" name="targetFrom" required defaultValue={view.from} className={inputCls} />
+                </label>
+                <button className={btnPrimary}>{t('copyButton')}</button>
+              </form>
+            )}
+            <p className="text-xs text-muted-foreground">{t('copyHint')}</p>
+          </div>
+        </Card>
+      )}
 
       {exceptions.length > 0 && (
         <Card>

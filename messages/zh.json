@@ -109,7 +109,7 @@
     "templateNoteOff": "输入 OFF 可清除该日期的安排。",
     "templateNoteMonth": "只有 {month} 内的日期会被保存——其他月份的日期列会被列出并忽略。",
     "templateFailed": "无法生成模板文件。",
-    "pastLocked": "只有人力资源管理员可以修改今天或更早的日期。",
+    "viewOnly": "主管查看排班表，由人力资源管理员进行修改。",
     "pastConfirm": "有 {count} 个日期为今天或更早，可能已有考勤记录。仍要修改吗？",
     "rowConfirm": "为该员工设置 {count} 个日期？",
     "rowApplied": "已更新 {count} 个日期。",

@@ -118,3 +118,58 @@ export const cellKey = (employmentId: string, iso: string): string => `${employm
  *  as "not scheduled", which is a different fact. */
 export const shiftCodeOf = (s: { code?: string | null; name: string } | undefined): string =>
   (s?.code && s.code.trim() !== '' ? s.code : s?.name) ?? '?';
+
+/**
+ * THE MACHINE HEADER of the Excel template. Never translated, in any locale, for the same reason
+ * app/roster/export/route.ts hard-codes its payload headers (ADR-0047 §9): this row is READ BY A
+ * PROGRAM, not by a person.
+ *
+ * The template used to build these four cells from `t('colEmployeeNo')` &c, and that made Download
+ * Template unusable in every non-English locale. Measured, not theorised: lib/csv.ts#parseCsvRecords
+ * normalises a heading to lower/trim/underscore, and core/roster-import.ts accepts only
+ * employee_no | employee_number | employee_code | staff_id. `Employee No` normalises to `employee_no`;
+ * the Malay `No. Pekerja` normalises to `no._pekerja` and the Chinese heading to itself. An admin
+ * working in ms / zh / ta / th / vi downloaded the template, filled it in, uploaded it, and every row
+ * came back rejected `missing_employee_no` — pointing at a column that was visibly populated.
+ *
+ * If a localised caption is ever wanted it belongs on a SECOND row the analyzer is taught to skip. It
+ * does not belong here.
+ */
+export const ROSTER_TEMPLATE_ID_COLUMNS = ['Employee No', 'Employee Name', 'Department', 'Occupation'] as const;
+
+export type RosterTemplateEmployee = {
+  employmentId: string;
+  name: string;
+  code?: string | null;
+  department?: string | null;
+  occupation?: string | null;
+};
+
+/**
+ * The Download Template payload: the month grid pre-filled with what is ROSTERED — never with the grey
+ * ghosts, which have no stored row and must not be hardened into one by a round trip.
+ *
+ * Shared by app/roster/page.tsx and app/roster/import/page.tsx so the two buttons cannot drift, and so
+ * there is exactly one place a translated heading could ever be reintroduced.
+ */
+export function buildRosterTemplate(p: {
+  dates: string[];
+  employees: RosterTemplateEmployee[];
+  cells: Record<string, AssignedCell>;
+  /** shiftId → the code the importer matches on. */
+  shiftCode: (shiftId: string) => string;
+}): { header: string[]; rows: string[][] } {
+  return {
+    header: [...ROSTER_TEMPLATE_ID_COLUMNS, ...p.dates],
+    rows: p.employees.map((e) => [
+      e.code ?? '',
+      e.name,
+      e.department ?? '',
+      e.occupation ?? '',
+      ...p.dates.map((iso) => {
+        const c = p.cells[cellKey(e.employmentId, iso)] ?? null;
+        return c == null ? '' : c.kind === 'rest' ? 'RD' : p.shiftCode(c.shiftId);
+      }),
+    ]),
+  };
+}

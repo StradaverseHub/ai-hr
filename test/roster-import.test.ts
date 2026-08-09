@@ -22,6 +22,8 @@ import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, 
 import { hireEmployee } from '../core/org';
 import { archiveShift, assignShift, createShift, rosterForRange, setRestDay } from '../core/roster';
 import { analyzeRosterImport } from '../core/roster-import';
+import { ROSTER_TEMPLATE_ID_COLUMNS, buildRosterTemplate, cellKey, monthDates } from '../lib/roster-month';
+import ms from '../messages/ms.json';
 
 let b: Base;
 let ctx: ReturnType<typeof adminCtx>;
@@ -211,6 +213,75 @@ describe('roster upload — analyze (23390097)', () => {
       rejected: 1,
     });
     expect((await storedFor(empB, '2026-08-19'))[0]).toMatchObject({ shiftId: morning });
+  });
+
+  /**
+   * THE HEADLINE FEATURE, END TO END: download the template, fill it in, upload it.
+   *
+   * This exists because the round trip was broken in EVERY non-English locale and nothing caught it. The
+   * template header was built from `t('colEmployeeNo')` &c, lib/csv.ts normalises a heading to
+   * lower/trim/underscore, and the analyzer accepts only employee_no | employee_number | employee_code |
+   * staff_id. In Bahasa Malaysia the heading `No. Pekerja` normalised to `no._pekerja`, so an admin who
+   * downloaded the template, filled it in and uploaded it got employees=0, daysRead=0, valid=0, changed=0
+   * and every row rejected `missing_employee_no` — against a column that was visibly populated. Save was
+   * disabled, so nothing could be uploaded at all. Same in zh, ta, th and vi.
+   *
+   * The template now emits the MACHINE header (lib/roster-month#ROSTER_TEMPLATE_ID_COLUMNS), which is the
+   * one the export route already writes, and RosterTemplateButton builds it from that constant rather
+   * than accepting one from its caller.
+   */
+  it('the template a non-English admin downloads is READ by the importer, in full', async () => {
+    await assignShift(ctx, { employmentId: empA, shiftDate: '2026-08-24', shiftId: morning });
+
+    // Exactly what both Download Template buttons hand to the browser.
+    const tpl = buildRosterTemplate({
+      dates: monthDates(MONTH),
+      employees: [
+        { employmentId: empA, name: 'Ahmad Zulkifli', code: 'A0001', department: 'Site Operations', occupation: 'EXECUTIVE' },
+        { employmentId: empB, name: 'Nurul Ain', code: 'A0002', department: 'Finance', occupation: 'EXECUTIVE' },
+      ],
+      cells: { [cellKey(empA, '2026-08-24')]: { kind: 'shift', shiftId: morning } },
+      shiftCode: (id) => (id === morning ? 'MB28' : 'WFO-HQ-FWH'),
+    });
+    expect(tpl.header.slice(0, 4)).toEqual(['Employee No', 'Employee Name', 'Department', 'Occupation']);
+
+    // HR types two more days into it, exactly as they would in Excel, and sends it back.
+    const col = (iso: string) => tpl.header.indexOf(iso);
+    tpl.rows[0][col('2026-08-25')] = 'RD';
+    tpl.rows[1][col('2026-08-26')] = 'WFO-HQ-FWH';
+
+    const r = await analyzeRosterImport(ctx, {
+      csvText: csv([tpl.header, ...tpl.rows]),
+      month: MONTH,
+      companyId: b.companyId,
+      fileName: 'roster-2026-08.xlsx',
+      dryRun: false,
+    });
+    expect(r.rejects).toEqual([]);
+    expect(r.employees).toBe(2);
+    expect(r.rowsRead).toBe(2);
+    expect(r.daysRead).toBe(3); // the pre-filled 24th plus the two typed in
+    expect(r.valid).toBe(3);
+    expect(r.changed).toBe(2); // the 24th is already stored exactly like that
+    expect((await storedFor(empA, '2026-08-25'))[0]).toMatchObject({ isRestDay: true, shiftId: null });
+    expect((await storedFor(empB, '2026-08-26'))[0]).toMatchObject({ shiftId: night });
+  });
+
+  it('…and the ms labels that header used to carry are precisely what the importer cannot read', async () => {
+    // Not a hypothetical: this is the header the ms template shipped, and this is what it did.
+    const header = [ms.roster.colEmployeeNo, ms.roster.colEmployeeName, ms.roster.colDepartment, ms.roster.colOccupation, '2026-08-27'];
+    const r = await analyzeRosterImport(ctx, {
+      csvText: csv([header, ['A0001', 'Ahmad Zulkifli', 'Site Operations', 'EXECUTIVE', 'MB28']]),
+      month: MONTH,
+      companyId: b.companyId,
+      dryRun: true,
+    });
+    expect(r.employees).toBe(0);
+    expect(r.daysRead).toBe(0);
+    expect(r.valid).toBe(0);
+    expect(r.rejects.map((x) => x.reason)).toEqual(['missing_employee_no']);
+    // …so the machine header must never be any locale's translation of it.
+    expect(ROSTER_TEMPLATE_ID_COLUMNS).not.toContain(ms.roster.colEmployeeNo);
   });
 
   it('a rest day that is already stored is not re-written, and RD after a shift flips the row', async () => {

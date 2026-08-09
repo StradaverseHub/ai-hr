@@ -4,7 +4,7 @@ import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 import { rosterMonthView } from '@/core/roster';
 import { PageHeader, Card } from '@/components/ui';
-import { isMonthParam, monthOf, shiftCodeOf } from '@/lib/roster-month';
+import { buildRosterTemplate, isMonthParam, monthOf, shiftCodeOf } from '@/lib/roster-month';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { RosterImport } from './roster-import';
 
@@ -47,19 +47,16 @@ export default async function RosterImportPage({
 
   // The template is the month as it stands, pre-filled with the ROSTERED days only. Blank means "leave
   // this date exactly as it is", so a partly-filled month can be topped up without disturbing the rest.
+  // Built by the SHARED builder, whose four identity headings are the machine header and stay English in
+  // every locale — see lib/roster-month#ROSTER_TEMPLATE_ID_COLUMNS for what a translated one cost.
   const view = await rosterMonthView(s, { companyId: company.id, month });
   const codeById = new Map(view.shifts.map((sh) => [sh.id, shiftCodeOf(sh)]));
-  const templateHeader = [tr('colEmployeeNo'), tr('colEmployeeName'), tr('colDepartment'), tr('colOccupation'), ...view.dates];
-  const templateRows = view.employees.map((e) => [
-    e.code ?? '',
-    e.name,
-    e.department ?? '',
-    e.occupation ?? '',
-    ...view.dates.map((iso) => {
-      const c = view.cells[`${e.employmentId}|${iso}`] ?? null;
-      return c == null ? '' : c.kind === 'rest' ? 'RD' : (codeById.get(c.shiftId) ?? '');
-    }),
-  ]);
+  const template = buildRosterTemplate({
+    dates: view.dates,
+    employees: view.employees,
+    cells: view.cells,
+    shiftCode: (id) => codeById.get(id) ?? '',
+  });
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -70,8 +67,8 @@ export default async function RosterImportPage({
         month={month}
         shiftCodes={view.shifts.map((sh) => ({ code: shiftCodeOf(sh), name: sh.name }))}
         template={{
-          header: templateHeader,
-          rows: templateRows,
+          dates: view.dates,
+          rows: template.rows,
           codes: view.shifts.map((sh) => shiftCodeOf(sh)),
         }}
       />

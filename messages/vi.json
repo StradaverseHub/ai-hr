@@ -109,7 +109,7 @@
     "templateNoteOff": "Nhập OFF để xoá mục của ngày đó.",
     "templateNoteMonth": "Chỉ lưu các ngày trong {month} — mọi cột ngày khác được báo cáo và bỏ qua.",
     "templateFailed": "Không thể tạo tệp biểu mẫu.",
-    "pastLocked": "Chỉ Quản trị viên Nhân sự mới có thể thay đổi ngày hôm nay hoặc trước đó.",
+    "viewOnly": "Người giám sát xem lịch ca; Quản trị viên Nhân sự là người thay đổi.",
     "pastConfirm": "{count} ngày là hôm nay hoặc trước đó và có thể đã chấm công. Vẫn thay đổi?",
     "rowConfirm": "Đặt {count} ngày cho nhân viên này?",
     "rowApplied": "Đã cập nhật {count} ngày.",

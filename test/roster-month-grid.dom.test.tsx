@@ -9,7 +9,7 @@
  *
  * It also pins the three things the reporter will look at first: the cell prints the shift CODE (not the
  * long name that used to be cut off mid-word), an un-rostered date shows the person's USUAL shift instead
- * of a dash, and a supervisor cannot click a date that is today or earlier.
+ * of a dash, and a supervisor gets the month READ-ONLY rather than clickable cells the database refuses.
  *
  * Scope note, inherited from client-pager.dom.test.tsx: jsdom applies no CSS and computes no layout, so
  * this catches rendering and interaction logic — not the sticky columns or the weekend tint.
@@ -129,22 +129,44 @@ describe('monthly roster grid (23390097)', () => {
     expect(within(rowFor('Nurul Ain')).getByText('No rest')).toBeInTheDocument();
   });
 
-  it('a supervisor cannot click a date that is today or earlier; tomorrow onward stays clickable', () => {
-    renderGrid({ isAdmin: false });
-    const cells = within(rowFor('Ahmad Zulkifli')).getAllByRole('button');
-    // One Edit button precedes the date cells in the row.
-    const dateCells = cells.slice(1);
-    expect(dateCells).toHaveLength(DATES.length);
-    const idxToday = DATES.indexOf(TODAY);
-    expect(dateCells[idxToday]).toBeDisabled();
-    expect(dateCells[idxToday - 1]).toBeDisabled();
-    expect(dateCells[idxToday + 1]).toBeEnabled();
+  /**
+   * THE SECOND REGRESSION THIS FILE EXISTS FOR — and the one a passing suite previously hid.
+   *
+   * The grid used to grey today-and-earlier for a supervisor and leave tomorrow onward CLICKABLE. That is
+   * a positive claim the database refuses: writing roster_assignment requires app.can_admin_employment,
+   * so a manager clicking 2026-08-10 got PostgresError 42501 surfaced as a toast carrying the raw
+   * `Failed query: insert into "roster_assignment" … params: …`. The screen must not offer what RLS will
+   * refuse, so a non-administrator now gets the month as text.
+   */
+  it('a supervisor gets a READ-ONLY month: no cell buttons, no Edit, no bulk apply, and a line saying so', () => {
+    renderGrid({ isAdmin: false, initial: { [cellKey('e1', '2026-08-10')]: { kind: 'shift', shiftId: 'sh-mb28' } } });
+    const row = rowFor('Ahmad Zulkifli');
+
+    // Not one clickable cell — not even tomorrow, which is the date that used to 42501.
+    expect(within(row).queryAllByRole('button')).toHaveLength(0);
+    expect(within(row).queryAllByRole('checkbox')).toHaveLength(0);
+    // The month is still fully READABLE: every date is shown, tomorrow's code included.
+    expect(within(row).getAllByText('MB28').length).toBeGreaterThan(0);
+
+    // No brush palette, no bulk toolbar, no row Edit, no select-all — and one line of copy instead.
+    expect(screen.queryByText('Apply to selected, whole month')).toBeNull();
+    expect(screen.queryByLabelText('Select all rows')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'Edit' })).toBeNull();
+    expect(screen.getByText('A supervisor views the roster; an HR Administrator changes it.')).toBeInTheDocument();
+    // The legend survives as text — the codes still have to be readable — but not as buttons.
+    expect(screen.getByText('WFO-HQ-FWH')).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: /MB28/ })).toHaveLength(0);
   });
 
-  it('an HR administrator may click those same dates', () => {
+  it('an HR administrator keeps every one of those affordances, today and earlier included', () => {
     renderGrid({ isAdmin: true });
-    const dateCells = within(rowFor('Ahmad Zulkifli')).getAllByRole('button').slice(1);
+    const row = rowFor('Ahmad Zulkifli');
+    const dateCells = within(row).getAllByRole('button').slice(1); // the row Edit button comes first
+    expect(dateCells).toHaveLength(DATES.length);
     expect(dateCells[DATES.indexOf(TODAY)]).toBeEnabled();
+    expect(dateCells[DATES.indexOf(TODAY) - 1]).toBeEnabled();
+    expect(screen.getByLabelText('Select all rows')).toBeInTheDocument();
+    expect(screen.queryByText('A supervisor views the roster; an HR Administrator changes it.')).toBeNull();
   });
 
   it('shows every date of the chosen month as a column', () => {

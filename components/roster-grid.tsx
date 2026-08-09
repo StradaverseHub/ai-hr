@@ -15,7 +15,17 @@
  *   · an un-rostered date shows the person's USUAL shift in grey, so the month reads as covered without
  *     rostering every day by hand. The precedence is lib/roster-month.ts's, which mirrors the engine's;
  *   · an Edit link per row opens that person's month for a tick-several-dates-set-them-all edit;
- *   · dates today or earlier are HR-administrator-only, and confirm before they save.
+ *   · a date today or earlier prompts the administrator to confirm before it saves.
+ *
+ * WHO MAY CHANGE ANYTHING: only an HR administrator, and the grid now says so instead of implying
+ * otherwise. Writing roster_assignment requires app.can_admin_employment → app.is_admin_for, so a
+ * supervisor's write is refused by ROW-LEVEL SECURITY (PostgresError 42501) before any application check
+ * runs. An earlier shape of this component greyed today-and-earlier for a supervisor and left tomorrow
+ * onward CLICKABLE — a positive promise the database refuses; clicking tomorrow produced a toast carrying
+ * a raw `Failed query: insert into "roster_assignment" …`. A supervisor now gets the month as READ-ONLY
+ * TEXT — no brush, no bulk toolbar, no row Edit, no clickable cells — with one line saying a supervisor
+ * views the roster and an HR administrator changes it. Widening that right is an RLS decision, not a
+ * screen decision.
  *
  * THE s.59 CHECK CHANGED SHAPE, and it had to. The weekly grid asked "does EVERY visible day carry a
  * shift?" — on a 31-column month that is almost never true, so the warning would have silently stopped
@@ -31,6 +41,7 @@ import { toast } from 'sonner';
 import { assignCellAction, bulkAssignAction, rowAssignAction } from '@/app/roster/actions';
 import { EmployeeCode } from '@/components/ui';
 import {
+  ROSTER_TEMPLATE_ID_COLUMNS,
   breachesRestDayRule,
   cellKey,
   isWeekendDate,
@@ -64,16 +75,26 @@ const SHIFT_COLORS = [
 const hhmm = (t: string) => t.slice(0, 5);
 
 /** The pinned block. Widths are explicit because sticky columns need a known left offset each. */
-const PINNED = [
-  { key: 'check', w: 36 },
-  { key: 'no', w: 96 },
-  { key: 'name', w: 190 },
-  { key: 'dept', w: 132 },
-  { key: 'occ', w: 132 },
-  { key: 'edit', w: 54 },
-] as const;
-const LEFT_OF = PINNED.reduce<number[]>((acc, c, i) => [...acc, i === 0 ? 0 : acc[i - 1] + PINNED[i - 1].w], []);
+const PINNED_W = { check: 36, no: 96, name: 190, dept: 132, occ: 132, edit: 54 } as const;
+type PinnedKey = keyof typeof PINNED_W;
+const EDIT_ORDER: PinnedKey[] = ['check', 'no', 'name', 'dept', 'occ', 'edit'];
+/** Read-only drops the two columns that exist only in order to change something. */
+const VIEW_ORDER: PinnedKey[] = ['no', 'name', 'dept', 'occ'];
 const DATE_W = 78;
+const HEAD_CLS = 'bg-muted/50 px-2 py-2 text-left text-[11px] font-medium uppercase tracking-wide';
+const CELL_MUTED = 'truncate bg-background px-2 py-1.5 text-xs text-muted-foreground';
+
+/** Sticky left offsets, recomputed rather than constant because the read-only grid has fewer columns. */
+function pinnedLayout(canEdit: boolean) {
+  const left = {} as Record<PinnedKey, number>;
+  let x = 0;
+  for (const k of canEdit ? EDIT_ORDER : VIEW_ORDER) {
+    left[k] = x;
+    x += PINNED_W[k];
+  }
+  const w = (k: PinnedKey) => ({ left: left[k], width: PINNED_W[k], minWidth: PINNED_W[k] });
+  return { width: x, sty: w, styTrunc: (k: PinnedKey) => ({ ...w(k), maxWidth: PINNED_W[k] }) };
+}
 
 export function RosterGrid({
   dates,
@@ -91,7 +112,8 @@ export function RosterGrid({
   initial: Record<string, AssignedCell>;
   /** employmentId → the person's usual (default) shift, for the grey ghost cells. */
   usual: Record<string, UsualShift>;
-  /** HR administrator: may write a date that is today or earlier (after confirming). */
+  /** HR administrator. THE ONLY ROLE THAT MAY CHANGE ANYTHING HERE — see the file header. False renders
+   *  the whole month read-only rather than offering cells whose write RLS refuses. */
   isAdmin: boolean;
   today: string;
   companyName: string;
@@ -113,25 +135,19 @@ export function RosterGrid({
   const resolve = (employmentId: string, iso: string): ResolvedCell =>
     resolveRosterCell(iso, cells[cellKey(employmentId, iso)] ?? null, usual[employmentId] ?? null);
 
-  /** The affordance half of the past-date rule; the server action re-checks it (lib/authz is the guard). */
+  /** Only an HR administrator can change the roster AT ALL — the database, not this flag, is the guard. */
+  const canEdit = isAdmin;
   const isPast = (iso: string) => iso <= today;
-  const locked = (iso: string) => isPast(iso) && !isAdmin;
-  /** Admins confirm before overwriting a day that has probably already been attended. */
+  /** The half of the past-date requirement that does work: confirm before overwriting a day that has
+   *  probably already been attended. Only ever reached by an administrator. */
   const confirmPast = (isoDates: string[]): boolean => {
     const past = isoDates.filter(isPast);
     if (past.length === 0) return true;
-    if (!isAdmin) {
-      toast.error(t('pastLocked'));
-      return false;
-    }
     return window.confirm(t('pastConfirm', { count: past.length }));
   };
 
   const paint = (employmentId: string, iso: string) => {
-    if (locked(iso)) {
-      toast.error(t('pastLocked'));
-      return;
-    }
+    if (!canEdit) return;
     if (!confirmPast([iso])) return;
     const key = cellKey(employmentId, iso);
     const prev = cells[key] ?? null;
@@ -146,15 +162,9 @@ export function RosterGrid({
   };
 
   const applyBulk = () => {
-    if (selected.size === 0) return;
+    if (!canEdit || selected.size === 0) return;
     const empIds = [...selected];
-    // Non-admins can only touch tomorrow onward; rather than refusing the whole action, the writable
-    // dates go through and the count in the toast says how many.
-    const isoDates = dates.map((d) => d.iso).filter((iso) => !locked(iso));
-    if (isoDates.length === 0) {
-      toast.error(t('pastLocked'));
-      return;
-    }
+    const isoDates = dates.map((d) => d.iso);
     if (!confirmPast(isoDates)) return;
     const snapshot = cells;
     setCells((c) => {
@@ -171,12 +181,8 @@ export function RosterGrid({
     });
   };
 
-  const applyRow = (employmentId: string, isoDates: string[], rowBrush: Brush) => {
-    const writable = isoDates.filter((iso) => !locked(iso));
-    if (writable.length === 0) {
-      toast.error(t('pastLocked'));
-      return;
-    }
+  const applyRow = (employmentId: string, writable: string[], rowBrush: Brush) => {
+    if (!canEdit || writable.length === 0) return;
     if (!window.confirm(t('rowConfirm', { count: writable.length }))) return;
     if (!confirmPast(writable)) return;
     const snapshot = cells;
@@ -217,6 +223,8 @@ export function RosterGrid({
       (iso) => resolve(employmentId, iso),
     );
 
+  /** A chip is a BRUSH for an administrator and just the key-to-the-codes for everybody else — the
+   *  read-only grid keeps the legend (the codes still have to be readable) but not the palette. */
   const legendChip = (value: Brush | null, label: string, hint: string, cls: string) => {
     const content = (
       <>
@@ -224,9 +232,9 @@ export function RosterGrid({
         {hint && <span className="ml-1 font-normal opacity-75">{hint}</span>}
       </>
     );
-    if (value == null)
+    if (value == null || !canEdit)
       return (
-        <span key={label} className={`rounded-full border px-2.5 py-1 text-xs ${cls}`}>
+        <span key={value ?? label} className={`rounded-full border px-2.5 py-1 text-xs ${cls}`}>
           {content}
         </span>
       );
@@ -244,11 +252,13 @@ export function RosterGrid({
     );
   };
 
-  const editingEmployee = employees.find((e) => e.employmentId === editing) ?? null;
+  const editingEmployee = canEdit ? (employees.find((e) => e.employmentId === editing) ?? null) : null;
+  const pinned = pinnedLayout(canEdit);
 
   return (
     <div className="space-y-3">
-      {/* Legend — also the brush palette: the code you can read is the code you paint with. */}
+      {/* Legend — for an administrator it doubles as the brush palette: the code you can read is the code
+          you paint with. Read-only, it is only the key. */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('legend')}</span>
         {shifts.map((s) => legendChip(s.id, shiftCodeOf(s), `${hhmm(s.startTime)}–${hhmm(s.endTime)}`, shiftColor(s.id)))}
@@ -258,64 +268,57 @@ export function RosterGrid({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span>{t('selectedCount', { n: selected.size })}</span>
-        <button
-          type="button"
-          onClick={applyBulk}
-          disabled={selected.size === 0}
-          className="rounded-md border border-border px-2 py-1 font-medium text-foreground enabled:hover:bg-muted disabled:opacity-40"
-        >
-          {t('applyToMonth')}
-        </button>
+        {canEdit ? (
+          <>
+            <span>{t('selectedCount', { n: selected.size })}</span>
+            <button
+              type="button"
+              onClick={applyBulk}
+              disabled={selected.size === 0}
+              className="rounded-md border border-border px-2 py-1 font-medium text-foreground enabled:hover:bg-muted disabled:opacity-40"
+            >
+              {t('applyToMonth')}
+            </button>
+          </>
+        ) : (
+          /* The one line of copy that stands in for every affordance a supervisor cannot use. */
+          <span className="rounded-md border border-border bg-muted/40 px-2 py-1 font-medium text-foreground">{t('viewOnly')}</span>
+        )}
         <span className="ml-auto">{t('ghostHint')}</span>
       </div>
 
       {/* Grid */}
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="border-collapse text-sm" style={{ minWidth: LEFT_OF[5] + PINNED[5].w + dates.length * DATE_W }}>
+        <table className="border-collapse text-sm" style={{ minWidth: pinned.width + dates.length * DATE_W }}>
           <thead>
             <tr className="bg-muted/50">
-              <th
-                className="sticky z-20 bg-muted/50 px-2 py-2 text-left font-medium"
-                style={{ left: LEFT_OF[0], width: PINNED[0].w, minWidth: PINNED[0].w }}
-              >
-                <input
-                  type="checkbox"
-                  aria-label={t('selectAll')}
-                  checked={allSelected}
-                  onChange={() => setSelected(allSelected ? new Set() : new Set(pageEmployees.map((e) => e.employmentId)))}
-                />
-              </th>
-              <th
-                className="sticky z-20 bg-muted/50 px-2 py-2 text-left text-[11px] font-medium uppercase tracking-wide"
-                style={{ left: LEFT_OF[1], width: PINNED[1].w, minWidth: PINNED[1].w }}
-              >
+              {canEdit && (
+                <th className="sticky z-20 bg-muted/50 px-2 py-2 text-left font-medium" style={pinned.sty('check')}>
+                  <input
+                    type="checkbox"
+                    aria-label={t('selectAll')}
+                    checked={allSelected}
+                    onChange={() => setSelected(allSelected ? new Set() : new Set(pageEmployees.map((e) => e.employmentId)))}
+                  />
+                </th>
+              )}
+              <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.sty('no')}>
                 {t('colEmployeeNo')}
               </th>
-              <th
-                className="sticky z-20 bg-muted/50 px-2 py-2 text-left text-[11px] font-medium uppercase tracking-wide"
-                style={{ left: LEFT_OF[2], width: PINNED[2].w, minWidth: PINNED[2].w }}
-              >
+              <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.sty('name')}>
                 {t('colEmployeeName')}
               </th>
-              <th
-                className="sticky z-20 bg-muted/50 px-2 py-2 text-left text-[11px] font-medium uppercase tracking-wide"
-                style={{ left: LEFT_OF[3], width: PINNED[3].w, minWidth: PINNED[3].w }}
-              >
+              <th className={`sticky z-20 ${HEAD_CLS}`} style={pinned.sty('dept')}>
                 {t('colDepartment')}
               </th>
-              <th
-                className="sticky z-20 bg-muted/50 px-2 py-2 text-left text-[11px] font-medium uppercase tracking-wide"
-                style={{ left: LEFT_OF[4], width: PINNED[4].w, minWidth: PINNED[4].w }}
-              >
+              <th className={`sticky z-20 ${HEAD_CLS} ${canEdit ? '' : 'border-r border-border'}`} style={pinned.sty('occ')}>
                 {t('colOccupation')}
               </th>
-              <th
-                className="sticky z-20 border-r border-border bg-muted/50 px-2 py-2 text-left text-[11px] font-medium uppercase tracking-wide"
-                style={{ left: LEFT_OF[5], width: PINNED[5].w, minWidth: PINNED[5].w }}
-              >
-                {t('colEdit')}
-              </th>
+              {canEdit && (
+                <th className={`sticky z-20 border-r border-border ${HEAD_CLS}`} style={pinned.sty('edit')}>
+                  {t('colEdit')}
+                </th>
+              )}
               {dates.map((d) => {
                 const weekend = isWeekendDate(d.iso);
                 return (
@@ -337,27 +340,20 @@ export function RosterGrid({
           <tbody className="divide-y divide-border">
             {pageEmployees.map((e) => (
               <tr key={e.employmentId}>
-                <td
-                  className="sticky z-10 bg-background px-2 py-1.5"
-                  style={{ left: LEFT_OF[0], width: PINNED[0].w, minWidth: PINNED[0].w }}
-                >
-                  <input
-                    type="checkbox"
-                    aria-label={e.name}
-                    checked={selected.has(e.employmentId)}
-                    onChange={() => toggle(e.employmentId)}
-                  />
-                </td>
-                <td
-                  className="sticky z-10 bg-background px-2 py-1.5"
-                  style={{ left: LEFT_OF[1], width: PINNED[1].w, minWidth: PINNED[1].w }}
-                >
+                {canEdit && (
+                  <td className="sticky z-10 bg-background px-2 py-1.5" style={pinned.sty('check')}>
+                    <input
+                      type="checkbox"
+                      aria-label={e.name}
+                      checked={selected.has(e.employmentId)}
+                      onChange={() => toggle(e.employmentId)}
+                    />
+                  </td>
+                )}
+                <td className="sticky z-10 bg-background px-2 py-1.5" style={pinned.sty('no')}>
                   <EmployeeCode code={e.code} />
                 </td>
-                <td
-                  className="sticky z-10 truncate bg-background px-2 py-1.5 font-medium"
-                  style={{ left: LEFT_OF[2], width: PINNED[2].w, minWidth: PINNED[2].w, maxWidth: PINNED[2].w }}
-                >
+                <td className="sticky z-10 truncate bg-background px-2 py-1.5 font-medium" style={pinned.styTrunc('name')}>
                   <span className="flex items-center gap-1.5">
                     <span className="truncate">{e.name}</span>
                     {noRestDay(e.employmentId) && (
@@ -370,51 +366,48 @@ export function RosterGrid({
                     )}
                   </span>
                 </td>
-                <td
-                  className="sticky z-10 truncate bg-background px-2 py-1.5 text-xs text-muted-foreground"
-                  style={{ left: LEFT_OF[3], width: PINNED[3].w, minWidth: PINNED[3].w, maxWidth: PINNED[3].w }}
-                >
+                <td className={`sticky z-10 ${CELL_MUTED}`} style={pinned.styTrunc('dept')}>
                   {e.department ?? '—'}
                 </td>
-                <td
-                  className="sticky z-10 truncate bg-background px-2 py-1.5 text-xs text-muted-foreground"
-                  style={{ left: LEFT_OF[4], width: PINNED[4].w, minWidth: PINNED[4].w, maxWidth: PINNED[4].w }}
-                >
+                <td className={`sticky z-10 ${CELL_MUTED} ${canEdit ? '' : 'border-r border-border'}`} style={pinned.styTrunc('occ')}>
                   {e.occupation ?? '—'}
                 </td>
-                <td
-                  className="sticky z-10 border-r border-border bg-background px-2 py-1.5"
-                  style={{ left: LEFT_OF[5], width: PINNED[5].w, minWidth: PINNED[5].w }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setEditing(editing === e.employmentId ? null : e.employmentId)}
-                    className="text-xs font-medium text-primary underline-offset-2 hover:underline"
-                  >
-                    {t('colEdit')}
-                  </button>
-                </td>
+                {canEdit && (
+                  <td className="sticky z-10 border-r border-border bg-background px-2 py-1.5" style={pinned.sty('edit')}>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(editing === e.employmentId ? null : e.employmentId)}
+                      className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                    >
+                      {t('colEdit')}
+                    </button>
+                  </td>
+                )}
                 {dates.map((d) => {
                   const cell = resolve(e.employmentId, d.iso);
                   const weekend = isWeekendDate(d.iso);
-                  const dis = locked(d.iso);
+                  const label = cellLabel(cell, codeOf, t('rdCode'), t('offCode'));
+                  const box = `min-h-[26px] w-full truncate rounded px-0.5 py-1 text-[11px] font-medium ${cellClass(cell, shiftColor)}`;
                   return (
                     <td
                       key={d.iso}
                       className={`p-0.5 text-center ${weekend ? 'bg-amber-50 dark:bg-amber-500/10' : ''}`}
                       style={{ width: DATE_W, minWidth: DATE_W }}
                     >
-                      <button
-                        type="button"
-                        onClick={() => paint(e.employmentId, d.iso)}
-                        disabled={dis}
-                        title={dis ? t('pastLocked') : undefined}
-                        className={`min-h-[26px] w-full truncate rounded px-0.5 py-1 text-[11px] font-medium transition ${
-                          dis ? 'cursor-not-allowed opacity-60' : 'hover:ring-1 hover:ring-foreground/30'
-                        } ${cellClass(cell, shiftColor)}`}
-                      >
-                        {cellLabel(cell, codeOf, t('rdCode'), t('offCode'))}
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => paint(e.employmentId, d.iso)}
+                          className={`${box} transition hover:ring-1 hover:ring-foreground/30`}
+                        >
+                          {label}
+                        </button>
+                      ) : (
+                        // TEXT, not a disabled control. A supervisor is not momentarily blocked from
+                        // painting this cell — a supervisor does not paint cells, and a greyed-out button
+                        // says "not yet" where the truth is "not you".
+                        <span className={`${box} block`}>{label}</span>
+                      )}
                     </td>
                   );
                 })}
@@ -430,8 +423,6 @@ export function RosterGrid({
           employee={editingEmployee}
           dates={dates}
           shifts={shifts}
-          today={today}
-          isAdmin={isAdmin}
           resolve={(iso) => resolve(editingEmployee.employmentId, iso)}
           codeOf={codeOf}
           onCancel={() => setEditing(null)}
@@ -482,13 +473,14 @@ function cellLabel(cell: ResolvedCell, codeOf: (id: string) => string, rd: strin
  * rowAssignAction → assignRosterRow, which loops the PER-DATE primitives so the Audit Trail gets one
  * reversible entry per date with the shift before and after — the bulk primitives would have written a
  * single summary with no previous shift in it.
+ *
+ * ADMINISTRATORS ONLY by construction: the Edit affordance that opens it is not rendered for anybody
+ * else, so every date in it is writable and there is no half-disabled state to explain.
  */
 function RowEditor({
   employee,
   dates,
   shifts,
-  today,
-  isAdmin,
   resolve,
   codeOf,
   onCancel,
@@ -498,8 +490,6 @@ function RowEditor({
   employee: GridEmployee;
   dates: GridDate[];
   shifts: ShiftLite[];
-  today: string;
-  isAdmin: boolean;
   resolve: (iso: string) => ResolvedCell;
   codeOf: (id: string) => string;
   onCancel: () => void;
@@ -509,7 +499,6 @@ function RowEditor({
   const t = useTranslations('roster');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [rowBrush, setRowBrush] = useState<Brush>(shifts[0]?.id ?? 'rest');
-  const writable = dates.filter((d) => isAdmin || d.iso > today);
 
   return (
     <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
@@ -526,19 +515,17 @@ function RowEditor({
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         {dates.map((d) => {
-          const dis = !isAdmin && d.iso <= today;
           const on = picked.has(d.iso);
           return (
             <label
               key={d.iso}
               className={`flex min-w-[68px] cursor-pointer flex-col items-center rounded border px-1.5 py-1 text-[11px] ${
-                dis ? 'cursor-not-allowed opacity-40' : on ? 'border-primary bg-primary/15' : 'border-border bg-background'
+                on ? 'border-primary bg-primary/15' : 'border-border bg-background'
               }`}
             >
               <input
                 type="checkbox"
                 className="sr-only"
-                disabled={dis}
                 checked={on}
                 onChange={() =>
                   setPicked((s) => {
@@ -562,7 +549,7 @@ function RowEditor({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => setPicked(new Set(writable.map((d) => d.iso)))}
+          onClick={() => setPicked(new Set(dates.map((d) => d.iso)))}
           className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
         >
           {t('selectAllDates')}
@@ -612,12 +599,16 @@ function RowEditor({
  *     OFF clears — so the file explains itself away from this screen.
  *
  * SheetJS is dynamically imported: the ~400 KB library never enters the initial bundle and never
- * reaches a server action. The rows are prepared on the SERVER (app/roster/page.tsx) and carry only the
- * dates that are actually rostered — never the grey ghosts, which have no stored row and must not be
- * hardened into one by a round trip.
+ * reaches a server action. The rows are prepared on the SERVER (lib/roster-month#buildRosterTemplate)
+ * and carry only the dates that are actually rostered — never the grey ghosts, which have no stored row
+ * and must not be hardened into one by a round trip.
+ *
+ * IT TAKES `dates`, NOT A HEADER, ON PURPOSE. The four identity headings are the MACHINE header and are
+ * built here from ROSTER_TEMPLATE_ID_COLUMNS, so no caller can hand this button `t('colEmployeeNo')`
+ * again — which is exactly what made the download/upload round trip impossible in ms, zh, ta, th and vi.
  */
 export function RosterTemplateButton({
-  header,
+  dates,
   rows,
   month,
   codes,
@@ -626,7 +617,8 @@ export function RosterTemplateButton({
   notes,
   failedLabel,
 }: {
-  header: string[];
+  /** The ISO dates of the month, in order — the date half of the header. */
+  dates: string[];
   rows: string[][];
   month: string;
   codes: string[];
@@ -635,6 +627,7 @@ export function RosterTemplateButton({
   notes: string[];
   failedLabel: string;
 }) {
+  const header = [...ROSTER_TEMPLATE_ID_COLUMNS, ...dates];
   const [busy, setBusy] = useState(false);
   const download = async () => {
     setBusy(true);
