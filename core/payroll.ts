@@ -16,6 +16,7 @@ import {
 import { absentDaysByEmployment, deductAbsentDaysByEmployment } from './absence-days';
 import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
+import { openBlockingVerdicts } from './payroll-anomaly';
 import { assertStatutory } from './company-tier';
 import { toCsv } from '../lib/csv';
 import {
@@ -116,6 +117,31 @@ export class BatchNeedsRecalculationError extends Error {
       `This payroll run cannot be closed until ${employmentIds.length} employee${employmentIds.length === 1 ? '' : 's'} ${employmentIds.length === 1 ? 'is' : 'are'} recalculated: its transactions changed after it was processed.`,
     );
     this.name = 'BatchNeedsRecalculationError';
+  }
+}
+
+/**
+ * ADR-0076 slice 3 — the batch carries unresolved BLOCK anomalies (negative net, an over-cap statutory
+ * contribution, a payable employee with no bank account, the same person paid twice in one period).
+ *
+ * WHY THESE BLOCK AND NOTHING STATISTICAL DOES. Every blocking detector is a tripwire with no threshold
+ * and no history behind it — each one is an unambiguous bug, not a judgement about whether a figure looks
+ * unusual. ADR-0076 open decision 2 settles it that way deliberately: block on the things that are simply
+ * wrong, warn on everything that is merely surprising, because an untuned statistical detector that can
+ * refuse to close payroll would be a worse failure than the thing it was trying to catch.
+ *
+ * ADDITIVE BY CONSTRUCTION. A batch with no verdict rows — every batch that predates this layer, and any
+ * batch the evaluator has not been run against — behaves EXACTLY as before. The guard can only fire on
+ * rows this layer wrote, which is what keeps the golden byte-identical statutory tests untouched.
+ *
+ * It names the employments so the operator can go straight to them, mirroring BatchNeedsRecalculationError.
+ */
+export class BatchHasBlockingAnomaliesError extends Error {
+  constructor(public readonly employmentIds: string[]) {
+    super(
+      `This payroll run cannot be closed until ${employmentIds.length} blocking anomal${employmentIds.length === 1 ? 'y is' : 'ies are'} resolved.`,
+    );
+    this.name = 'BatchHasBlockingAnomaliesError';
   }
 }
 
@@ -4263,6 +4289,13 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     // write, so a refused close changes nothing.
     if (batch.needsRecalcAt != null) {
       throw new BatchNeedsRecalculationError(asIdArray(batch.recalcEmploymentIds));
+    }
+    // ADR-0076 slice 3 — refuse while unresolved BLOCK anomalies stand against this run. Thrown BEFORE any
+    // write, for the same reason as the check above: a refused close must change nothing. A batch with no
+    // verdict rows returns an empty list here and is unaffected.
+    const blocking = await openBlockingVerdicts(tx, p.batchId);
+    if (blocking.length > 0) {
+      throw new BatchHasBlockingAnomaliesError(blocking.map((b) => b.employmentId));
     }
     // Step 6 (f3148da1) — compute the payslip RELEASE instant NOW, under this admin session (which can read the
     // company release config; the ESS employee session cannot, so the gate must be materialized here, not at

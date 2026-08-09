@@ -5040,6 +5040,110 @@ export const payrollReprocessJob = pgTable(
   (t) => [uniqueIndex('payroll_reprocess_job_idem_uq').on(t.tenantId, t.idempotencyKey)],
 );
 
+// ─────────────── ADR-0076: the payroll anomaly layer (the ADR-0074 control-tower keystone) ───────────────
+//
+// READ-ONLY RELATIVE TO MONEY. The evaluator reads payslips and writes verdicts; it never mutates a
+// payslip, a batch total or a statutory figure. Nothing else references these tables, and both the
+// verdict and its findings cascade from the batch, because a verdict is an OPINION about a payslip —
+// deleting one destroys an opinion, never a financial record. That is also why these are the only
+// payroll-area tables permitted to cascade.
+//
+// The point of the layer is a number nobody currently measures: the AUTO-CLEAR RATE. ADR-0074 targets
+// ~3,000 headcount run by 3 payroll staff, which is only reachable if the overwhelming majority of
+// people are paid with zero human touch. That makes it an exception-rate problem, and these rows are
+// where the exception rate becomes visible.
+
+/** One LIVE verdict per (batch, employment); re-runs supersede rather than overwrite. */
+export const payrollAnomalyVerdict = pgTable(
+  'payroll_anomaly_verdict',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id, { onDelete: 'cascade' }),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    /** 'auto_clear' | 'review' | 'block' — DERIVED from finding severities, never scored (ADR-0076 §2.5). */
+    disposition: text('disposition').notNull(),
+    /** Stays NULL until Phase 1b. A confidence number with no history behind it is decoration. */
+    score: numeric('score', { precision: 5, scale: 4 }),
+    /** COVERAGE TRANSPARENCY: which detectors ran, and which could not and why. Without the second, a
+     *  statistical detector returning nothing on a two-cycle client is indistinguishable from "clean". */
+    detectorsRun: jsonb('detectors_run').$type<string[]>().notNull().default([]),
+    detectorsSkipped: jsonb('detectors_skipped')
+      .$type<{ id: string; reason: string }[]>()
+      .notNull()
+      .default([]),
+    computedAt: timestamp('computed_at', { withTimezone: true }).defaultNow().notNull(),
+    /** Set when a re-run replaces this row. Superseded rows are kept — they are the audit trail of what
+     *  the system believed at the time, which the daily dry-run will make plentiful. */
+    supersededAt: timestamp('superseded_at', { withTimezone: true }),
+    resolvedByUserId: uuid('resolved_by_user_id').references(() => appUser.id),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    /** 'accepted' | 'fixed_upstream' | 'false_positive'. The last is the FP-rate numerator (§5). */
+    resolution: text('resolution'),
+    resolutionNote: text('resolution_note'),
+  },
+  (t) => [
+    uniqueIndex('payroll_anomaly_verdict_live_uq')
+      .on(t.batchId, t.employmentId)
+      .where(sql`superseded_at IS NULL`),
+    index('payroll_anomaly_verdict_batch_idx')
+      .on(t.tenantId, t.batchId, t.disposition)
+      .where(sql`superseded_at IS NULL`),
+  ],
+);
+
+/** One row per detector hit. `facts` is the provenance of every number the narrative prints. */
+export const payrollAnomalyFinding = pgTable(
+  'payroll_anomaly_finding',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    verdictId: uuid('verdict_id')
+      .notNull()
+      .references(() => payrollAnomalyVerdict.id, { onDelete: 'cascade' }),
+    detectorId: text('detector_id').notNull(),
+    /** 'block' | 'review' | 'info'. */
+    severity: text('severity').notNull(),
+    facts: jsonb('facts').$type<Record<string, string | number>>().notNull().default({}),
+    sourceEventIds: jsonb('source_event_ids').$type<string[]>().notNull().default([]),
+    /** An i18n KEY, never prose — rendered in six locales. */
+    suggestedAction: text('suggested_action').notNull(),
+    /** OPTIONAL LLM prose, additive only, generated AFTER classification and unable to revise it. */
+    narrative: text('narrative'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('payroll_anomaly_finding_verdict_idx').on(t.verdictId),
+    index('payroll_anomaly_finding_detector_idx').on(t.tenantId, t.detectorId),
+  ],
+);
+
+/** Thresholds as DATA, mirroring statutory_ruleset, so calibration never requires a deploy. */
+export const payrollAnomalyConfig = pgTable(
+  'payroll_anomaly_config',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** NULL = the tenant-wide default; a company row overrides it, so one entity of a 60-entity group
+     *  can be tuned without disturbing the rest. */
+    companyId: uuid('company_id').references(() => company.id),
+    detectorId: text('detector_id').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    params: jsonb('params').$type<Record<string, unknown>>().notNull().default({}),
+    effectiveFrom: date('effective_from').notNull(),
+    createdByUserId: uuid('created_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    /** Archived, never deleted: a verdict computed last cycle must stay explicable by the thresholds
+     *  that were in force when it was computed. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (t) => [index('payroll_anomaly_config_lookup_idx').on(t.tenantId, t.detectorId)],
+);
+
 // Granular RBAC permission grants (reporter req.: payroll.rollback / unlock / reprocess.selective / close,
 // configurable per company/tenant). Rows OVERRIDE the code defaults for a (permission_key, role) pair;
 // company_id NULL = tenant-wide. Resolver in lib/payroll-permissions.ts.
