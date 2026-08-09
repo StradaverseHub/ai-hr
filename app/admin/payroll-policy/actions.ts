@@ -149,6 +149,9 @@ function configFromForm(fd: FormData, policyType: string): PayrollPolicyConfig {
       customDays: numOrUndef(fd, 'leaveCustomDays'),
       customHours: numOrUndef(fd, 'leaveCustomHours'),
       customMinutes: numOrUndef(fd, 'leaveCustomMinutes'),
+      // e2632276 — "Deduct absence days". Unticked ⇒ false ⇒ cleanPayrollPolicyConfig drops the key, so a
+      // policy saved without touching it is byte-identical to one saved before this existed.
+      deductAbsentDays: checked(fd, 'deductAbsentDays'),
     },
     rounding: {
       earnings: String(fd.get('roundingEarnings') ?? 'none'),

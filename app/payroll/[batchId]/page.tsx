@@ -966,6 +966,9 @@ export default async function BatchPage({
                   <th className="px-4 py-2 text-right font-medium">{t('colBasic')}</th>
                   <th className="px-4 py-2 text-right font-medium">{t('colOtBonusTp1Zakat')}</th>
                   <th className="px-4 py-2 text-right font-medium">{t('colUnpaidDays')}</th>
+                  {/* e2632276 — the absent-day count, so it can be checked BEFORE the run is processed.
+                      This grid is draft-only, which is why it never appears on a processed batch. */}
+                  <th className="px-4 py-2 text-right font-medium">{t('colAbsentDays')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -999,11 +1002,14 @@ export default async function BatchPage({
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
                       {r.unpaidDays > 0 ? r.unpaidDays : '—'}
                     </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                      {r.absentDays > 0 ? r.absentDays : '—'}
+                    </td>
                   </tr>
                 ))}
                 {inputPage.rows.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                       {t('noActiveEmployees')}
                     </td>
                   </tr>

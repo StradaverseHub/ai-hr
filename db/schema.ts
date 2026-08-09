@@ -2458,6 +2458,14 @@ export type PayrollPolicyConfig = {
     customDays?: number; //                     used when a *_Divisor is 'custom_days'
     customHours?: number; //                    used when unpaidTimeOffDivisor is 'custom_hours'
     customMinutes?: number; //                  used when unpaidTimeOffDivisor is 'custom_minutes'
+    // e2632276 — DEDUCT ABSENCE DAYS. Absent/false (the shipped default, and what every existing row
+    // holds) ⇒ no absence is counted and every figure is byte-identical to a pre-flag run. True ⇒ a
+    // scheduled working day with no attendance record, or one marked Absent, deducts at the SAME daily rate
+    // as an unpaid-leave day — `unpaidLeaveDivisor` above, rounded once on the amount — and, like unpaid
+    // leave, BEFORE EPF/SOCSO/EIS/PCB are worked out. Approved leave, public holidays and rest days are
+    // never counted, and the employee's roster beats the company calendar (core/absence-days.ts).
+    // It lives on the POLICY, not the company: resolveAssignedPolicy answers it per employment.
+    deductAbsentDays?: boolean;
   };
   // 2.1.4 (Custom period) — the operational cut-off WINDOW. Default (absent / mode='calendar') = the statutory
   // calendar month, byte-identical to today. mode='custom' records an anchor day so the window runs

@@ -1,0 +1,43 @@
+-- e2632276 — NAME THE ABSENCE DEDUCTION, and put its switch on the payroll policy.
+--
+-- ── WHY THERE IS NO DDL HERE, AND WHY THE FILE STILL EXISTS ───────────────────────────────────────────
+-- The switch is `leave.deductAbsentDays` inside `payroll_policy.config`, which is already `jsonb`. There
+-- is no column to add, no constraint to widen and NOTHING TO BACKFILL: an absent key and a stored `false`
+-- must mean the same thing, cleanPayrollPolicyConfig persists the key only when it is TRUE, and the kernel
+-- gates on `=== true`. Every one of the existing policy rows therefore reads "off" without being touched,
+-- and every payslip they produce stays byte-identical.
+--
+-- What a jsonb config CANNOT do is tell the next reader what its keys mean. `payroll_policy.config` is now
+-- carrying a key that changes how much money comes off a person's pay, and the only description of it
+-- lived in TypeScript. This migration writes that description into the database, where a DBA reading the
+-- table — or an engineer reconstructing a disputed payslip a year from now — will actually find it.
+--
+-- ── WHAT THE SETTING DOES ────────────────────────────────────────────────────────────────────────────
+-- OFF (absent / false — the shipped default, and what all nine companies have today): nothing is counted
+-- and nothing is deducted for absence. The unpaid-LEAVE deduction that has always run is unaffected.
+--
+-- ON: a SCHEDULED WORKING DAY on which the employee has no attendance row at all, or a row explicitly
+-- marked `status='absent'`, is deducted at exactly the unpaid-leave daily rate — the UNFACTORED monthly
+-- basic over the policy's own `leave.unpaidLeaveDivisor` (default: calendar days in the month), rounded
+-- ONCE on the resulting amount rather than on the per-day rate. Approved full-day leave, public holidays
+-- and rest days are never counted, and the EMPLOYEE'S ROSTER beats the company weekday calendar
+-- (core/absence-days.ts states that ladder once, for the Attendance screens and for payroll alike).
+--
+-- ── WHY THIS IS NOT A PAY CODE, WHICH IS WHAT WAS ASKED FOR ──────────────────────────────────────────
+-- The amount is folded into the same `unpaid_deduction` the unpaid-leave days produce, and that figure is
+-- subtracted from `wagesExOt` and `hrdfBase` BEFORE the statutory engine runs — so EPF, SOCSO, EIS and PCB
+-- are worked out on the reduced wage, which is the correct treatment. A `kind='deduction'` pay component
+-- cannot reach that position: it folds into `otherDeductions` AFTER the statutory calculation and is
+-- clamped by the s.24 net floor. An ABSENT pay code would therefore have been taxed wrongly AND would have
+-- charged a second time on top of the deduction already running.
+--
+-- ── PER POLICY, NOT PER COMPANY ──────────────────────────────────────────────────────────────────────
+-- payroll_policy rows are company-scoped but ASSIGNED per employment (employment.payroll_policy_id), and
+-- the kernel resolves the config through resolveAssignedPolicy. Two employees of one company on different
+-- policies can differ on this. That is why the setting sits beside "Unpaid leave divisor" in Payroll
+-- Policy and not on the company record.
+--
+-- No GRANT: nothing is created. No RLS: no new table. No backfill, deliberately — see above.
+
+COMMENT ON COLUMN "payroll_policy"."config" IS
+  'PayrollPolicyConfig (db/schema.ts) as jsonb. NULL = every legacy default, byte-identical to a pre-policy run. Keys are persisted ONLY when they differ from the default, so an absent key and the default are the same thing. leave.deductAbsentDays (e2632276) switches the ABSENCE deduction on for the employments assigned to this policy: a scheduled working day with no attendance row, or one marked absent, deducts at the unpaid-leave daily rate (basic / leave.unpaidLeaveDivisor, rounded once on the amount) and is taken BEFORE EPF/SOCSO/EIS/PCB, exactly as unpaid leave is. Approved leave, public holidays and rest days are never counted and the roster beats the company calendar. Absent/false = off, which is how it ships; it never rewrites an already-issued payslip.';

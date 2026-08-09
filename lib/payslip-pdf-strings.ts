@@ -83,6 +83,11 @@ export async function payslipPdfStrings(p: {
       pcb: t('pcb'),
       cp38: t('cp38'),
       otherDeductions: t('otherDeductions'),
+      // e2632276 — the two named absence lines + the bare "days" word appended to each count.
+      unpaidLeaveLine: t('unpaidLeaveLine'),
+      absentLine: t('absentLine'),
+      dayUnit: t('dayUnit'),
+      daysUnit: t('daysUnit'),
       totalDeductions: t('totalDeductions'),
       netPay: t('netPay'),
       employerContributions: t('employerContributionsHeading'),

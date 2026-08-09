@@ -249,6 +249,11 @@ export function cleanPayrollPolicyConfig(raw: unknown): PayrollPolicyConfig | nu
   if (lch !== undefined && lch > 0) leave.customHours = lch;
   const lcm = cleanNonNegNum(lRaw.customMinutes);
   if (lcm !== undefined && lcm > 0) leave.customMinutes = lcm;
+  // e2632276 — "Deduct absence days". Persisted ONLY when true, exactly like salaryIncrementProration: a
+  // stored `false` and an absent key must mean the same thing, and the absent key is what every one of the
+  // existing rows has. So an untouched policy stays byte-identical and the kernel's `=== true` gate reads
+  // false for it.
+  if (cleanBool(lRaw.deductAbsentDays)) leave.deductAbsentDays = true;
   if (Object.keys(leave).length) out.leave = leave;
 
   // 2.1.4 (Custom period) — the cut-off WINDOW. Only persisted when mode='custom' AND anchorDay is a valid

@@ -28,6 +28,15 @@ import {
   splitOtMinutes,
   type OtSplit,
 } from './attendance-calc';
+// e2632276 — absence days are counted in ONE place now (see core/absence-days.ts), because the same count
+// is what payroll deducts. attendanceMonthSummary reads it rather than restating the rule — but under the
+// LEGACY rules (byte-identical to what this file used to compute inline) for every employment whose
+// payroll policy has not switched `leave.deductAbsentDays` on. See the note above the call site.
+import {
+  absenceBreakdownByEmployment,
+  deductAbsentDaysByEmployment,
+  type AbsenceBreakdown,
+} from './absence-days';
 import { holidayDatesFor } from './holidays';
 import { approvedLeaveDates } from './leave';
 // cf21e554 stage 2 — the shift's own clock-time overtime windows. Pure, DB-free arithmetic in its own
@@ -1591,6 +1600,64 @@ type RosterDisplayRow = { isRestDay: boolean; code: string | null; start: string
 type DefaultShiftRow = { code: string | null; start: string; end: string; brk: number; crosses: boolean; pattern: number[] | null; rounding: number | null };
 
 /**
+ * e2632276 — THE ONE SCHEDULING LADDER the Records surfaces read, stated once. It mirrors scheduleFor()'s
+ * precedence exactly (rostered shift → rostered rest → default shift's weekly pattern → default-shift rest
+ * → company policy) and is consumed by BOTH `resolveShiftDisplay` (what the row shows) and
+ * `isScheduledOffDay` (whether a missing row is explained by a rest day or is a real absence). Those two
+ * questions used to be answered from different inputs — the display honoured the roster while the context
+ * looked only at the company weekday list — which is why an employee ROSTERED TO REST on a company working
+ * day was shown in red as Absent. Under the absence deduction that discrepancy would have cost them a
+ * day's pay, so the ladder now has exactly one statement of itself.
+ *
+ * A roster row that is not a rest day but resolves no shift times is NOT a scheduled shift: scheduleFor
+ * requires start AND end before it treats the row as work, and falls through to its rostered-rest branch.
+ */
+type ScheduleClass = 'roster_shift' | 'roster_rest' | 'default_shift' | 'default_rest' | 'policy_work' | 'policy_rest';
+
+function classifyScheduleDay(
+  date: string,
+  roster: RosterDisplayRow | undefined,
+  def: DefaultShiftRow | undefined,
+  companyWorkingDay: boolean,
+): ScheduleClass {
+  if (roster) return !roster.isRestDay && roster.start && roster.end ? 'roster_shift' : 'roster_rest';
+  if (def) return def.pattern?.includes(isoWeekday(date)) ? 'default_shift' : 'default_rest';
+  return companyWorkingDay ? 'policy_work' : 'policy_rest';
+}
+
+/**
+ * e2632276 — true when this employee has NO work on this date, i.e. a missing attendance row is explained
+ * by a rest day rather than being a real absence. The Records loaders use it to set `context='rest_day'`
+ * instead of letting `statusOf` print a red "Absent".
+ *
+ * `deductAbsence` IS THE SAFETY GATE, and it is why this function takes a boolean rather than simply
+ * reading the ladder. With it FALSE — which is every employment on every one of the nine companies until
+ * somebody ticks "Deduct absence days" on a payroll policy — the answer is `!companyWorkingDay`, exactly
+ * what this file computed before e2632276: the roster is ignored, and an employee rostered to rest on a
+ * company working day still renders the wrong red "Absent". That is a real bug and it is deliberately
+ * left alone, because the same rule feeds `attendanceMonthSummary`, whose `absent` / `present` /
+ * `leaveDays` figures `evaluateMonthly` (core/attendance-allowance.ts) turns into a real payment. Fixing
+ * it un-gated would start and stop attendance allowances on day one, for everybody, which is precisely
+ * what the approved plan promised would not happen ("all 9 of your companies keep behaving exactly as
+ * they do now until you turn it on").
+ *
+ * With it TRUE the full ladder applies — rostered shift → rostered rest → default-shift weekly pattern →
+ * company policy — so the screen, the month roll-up and the payroll deduction all read the same schedule
+ * and a rostered rest day can never cost anybody a day's pay.
+ */
+function isScheduledOffDay(
+  date: string,
+  roster: RosterDisplayRow | undefined,
+  def: DefaultShiftRow | undefined,
+  companyWorkingDay: boolean,
+  deductAbsence: boolean,
+): boolean {
+  if (!deductAbsence) return !companyWorkingDay;
+  const c = classifyScheduleDay(date, roster, def, companyWorkingDay);
+  return c === 'roster_rest' || c === 'default_rest' || c === 'policy_rest';
+}
+
+/**
  * Resolve the shift-DISPLAY subset for one (employee, date) from already-batched inputs, mirroring
  * scheduleFor()'s precedence exactly so the table can't disagree with the engine:
  *   rostered shift → rostered rest → default shift (pattern working day) → default-shift rest → policy.
@@ -1603,32 +1670,31 @@ function resolveShiftDisplay(
   def: DefaultShiftRow | undefined,
   policyScheduled: number | null,
 ): ShiftDisplay {
-  if (roster) {
-    if (!roster.isRestDay && roster.start && roster.end) {
+  switch (classifyScheduleDay(date, roster, def, policyScheduled !== null)) {
+    case 'roster_shift':
       return {
-        shiftCode: roster.code,
-        scheduledMinutes: netScheduledMinutes(roster.start, roster.end, roster.crosses!, roster.brk!, roster.rounding),
-        shiftStart: roster.start.slice(0, 5),
-        shiftEnd: roster.end.slice(0, 5),
+        shiftCode: roster!.code,
+        scheduledMinutes: netScheduledMinutes(roster!.start!, roster!.end!, roster!.crosses!, roster!.brk!, roster!.rounding),
+        shiftStart: roster!.start!.slice(0, 5),
+        shiftEnd: roster!.end!.slice(0, 5),
         isRosterRest: false,
       };
-    }
-    return { ...NO_SHIFT, isRosterRest: true }; // an explicit rostered rest day
-  }
-  if (def) {
-    if (def.pattern?.includes(isoWeekday(date))) {
+    case 'roster_rest':
+      return { ...NO_SHIFT, isRosterRest: true }; // an explicit rostered rest day
+    case 'default_shift':
       return {
-        shiftCode: def.code,
-        scheduledMinutes: netScheduledMinutes(def.start, def.end, def.crosses, def.brk, def.rounding),
-        shiftStart: def.start.slice(0, 5),
-        shiftEnd: def.end.slice(0, 5),
+        shiftCode: def!.code,
+        scheduledMinutes: netScheduledMinutes(def!.start, def!.end, def!.crosses, def!.brk, def!.rounding),
+        shiftStart: def!.start.slice(0, 5),
+        shiftEnd: def!.end.slice(0, 5),
         isRosterRest: false,
       };
-    }
-    return NO_SHIFT; // default shift's own rest day (pattern excludes) → OFF, not an explicit rostered rest
+    case 'default_rest':
+      return NO_SHIFT; // default shift's own rest day (pattern excludes) → OFF, not an explicit rostered rest
+    default:
+      // Company-policy branch: a working day carries the policy schedule; a non-working day is OFF (no shift).
+      return { ...NO_SHIFT, scheduledMinutes: policyScheduled };
   }
-  // Company-policy branch: a working day carries the policy schedule; a non-working day is OFF (no shift).
-  return { ...NO_SHIFT, scheduledMinutes: policyScheduled };
 }
 
 /**
@@ -1828,17 +1894,34 @@ export function attendanceForDate(
       if (hs.has(date)) holidayEmp.add(r.employmentId);
     }
 
+    // e2632276 — the absence GATE, per employment (it lives on the assigned PAYROLL POLICY, so two
+    // employees of one company can differ). Empty for every company until somebody ticks the box, and an
+    // empty set makes `isScheduledOffDay` fall back to `!isWorkingDay` — the exact expression this loader
+    // used before this item. Batched: three set-based queries for the whole grid, never one per row.
+    const deductAbsence = await deductAbsentDaysByEmployment(
+      tx,
+      rows.filter((r) => !r.attendanceId).map((r) => r.employmentId),
+    );
+
     return rows.map(({ companyId, ...r }) => {
       const isWorkingDay = (daysByCompany.get(companyId) ?? DEFAULTS.workingDays).includes(dow);
+      // bbada39c — shift-display subset (code / scheduled minutes / start-end / rostered-rest) for the row.
+      const policyScheduled = isWorkingDay ? (policySchedByCompany.get(companyId) ?? scheduledMinutes(DEFAULTS)) : null;
+      const roster = rosterByEmp.get(r.employmentId);
+      const def = defaultShiftByEmp.get(r.employmentId);
+      const shiftDisplay = resolveShiftDisplay(date, roster, def, policyScheduled);
       let context: DayContext = null;
       if (!r.attendanceId) {
         if (leaveSet.has(r.employmentId)) context = 'on_leave';
         else if (holidayEmp.has(r.employmentId)) context = 'holiday';
-        else if (!isWorkingDay) context = 'rest_day';
+        // e2632276 — the ROSTER WINS, but only once the deduction is switched on for this employment.
+        // Off (every company, day one) this is `!isWorkingDay`, byte-identical to before. On, an employee
+        // rostered to rest (or whose default-shift pattern excludes the day) on a company working day
+        // reads REST instead of a red "Absent", and a rostered SHIFT on a company non-working day becomes
+        // a scheduled day that CAN be absent — matching what payroll will charge for.
+        else if (isScheduledOffDay(date, roster, def, isWorkingDay, deductAbsence.has(r.employmentId)))
+          context = 'rest_day';
       }
-      // bbada39c — shift-display subset (code / scheduled minutes / start-end / rostered-rest) for the row.
-      const policyScheduled = isWorkingDay ? (policySchedByCompany.get(companyId) ?? scheduledMinutes(DEFAULTS)) : null;
-      const shiftDisplay = resolveShiftDisplay(date, rosterByEmp.get(r.employmentId), defaultShiftByEmp.get(r.employmentId), policyScheduled);
       return { ...r, context, ...shiftDisplay };
     });
   });
@@ -2020,6 +2103,11 @@ export function attendanceForEmploymentRange(
       return p ? shiftById.get(p.shiftId) : cachedDefShift;
     };
 
+    // e2632276 — the absence GATE for this one employment (see isScheduledOffDay). False until the
+    // employment's assigned payroll policy sets `leave.deductAbsentDays`, and false ⇒ the rest-day test
+    // below is `!isWorkingDay`, exactly as it was before this item.
+    const deductAbsence = (await deductAbsentDaysByEmployment(tx, [employmentId])).has(employmentId);
+
     const out: AttendanceRangeRow[] = [];
     let d = from;
     // Guard against a pathological range; a first-of-month → today window is ≤ 31 days.
@@ -2030,7 +2118,10 @@ export function attendanceForEmploymentRange(
       if (!row) {
         if (leaveSet.has(d)) context = 'on_leave';
         else if (holidays.has(d)) context = 'holiday';
-        else if (!isWorkingDay) context = 'rest_day';
+        // e2632276 — the ROSTER WINS once the deduction is on (same gate as attendanceForDate above; see
+        // isScheduledOffDay). Off ⇒ `!isWorkingDay`, byte-identical to before.
+        else if (isScheduledOffDay(d, rosterByDate.get(d), defShiftOn(d), isWorkingDay, deductAbsence))
+          context = 'rest_day';
       }
       // bbada39c — per-date shift display (code / scheduled minutes / start-end / rostered-rest).
       const shiftDisplay = resolveShiftDisplay(d, rosterByDate.get(d), defShiftOn(d), isWorkingDay ? policyScheduledMin : null);
@@ -2156,8 +2247,7 @@ export function attendanceMonthSummary(
     const monthStart = `${p.month}-01`;
     const [y, m] = p.month.split('-').map(Number);
     const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-    const today = p.today ?? todayInKualaLumpur();
-    const lastCounted = today < monthEnd ? today : monthEnd; // absence only up to today
+    const today = p.today ?? todayInKualaLumpur(); // absence only up to today (clamped in absence-days.ts)
 
     const emps = await tx
       .select({
@@ -2181,53 +2271,65 @@ export function attendanceMonthSummary(
     if (emps.length === 0) return [];
     const empIds = emps.map((e) => e.employmentId);
 
-    const [rows, approvedDates, policies] = await Promise.all([
-      tx
-        .select({
-          employmentId: attendance.employmentId,
-          date: attendance.attendanceDate,
-          status: attendance.status,
-          dayType: attendance.dayType,
-          workedMinutes: attendance.workedMinutes,
-          otMinutes: attendance.otMinutes,
-        })
-        .from(attendance)
-        .where(
-          and(
-            inArray(attendance.employmentId, empIds),
-            gte(attendance.attendanceDate, monthStart),
-            lte(attendance.attendanceDate, monthEnd),
-          ),
+    const rows = await tx
+      .select({
+        employmentId: attendance.employmentId,
+        date: attendance.attendanceDate,
+        status: attendance.status,
+        dayType: attendance.dayType,
+        workedMinutes: attendance.workedMinutes,
+        otMinutes: attendance.otMinutes,
+      })
+      .from(attendance)
+      .where(
+        and(
+          inArray(attendance.employmentId, empIds),
+          gte(attendance.attendanceDate, monthStart),
+          lte(attendance.attendanceDate, monthEnd),
         ),
-      // ADR-0068 §4A: EFFECTIVELY-approved dates for the month (per-date decisions respected). Only full_day
-      // leave counts as a full leave day in the monthly summary (approvedLeaveDates already filters full_day);
-      // a per-date request's interior REJECTED date is excluded, so it is not miscounted as a leave day.
-      approvedLeaveDates(tx, empIds, monthStart, monthEnd),
-      tx
-        .select({
-          companyId: attendancePolicy.companyId,
-          workingDays: attendancePolicy.workingDays,
-          halfWorkingDays: attendancePolicy.halfWorkingDays,
-        })
-        .from(attendancePolicy),
-    ]);
-
-    // D2: a Half-day marker still counts as a working day for absence derivation — union with halfWorkingDays.
-    const daysByCompany = new Map(
-      policies.map((pp) => [pp.companyId, unionWorkingDays(pp.workingDays, pp.halfWorkingDays)]),
-    );
-    // ADR-0055: each employee's holiday calendar for the month via the unified resolver (business-group →
-    // state → national), the SAME calendar leave + checkIn use. One call per employee (the resolver is
-    // single-employment, as leave.ts consumes it); sequential because the calls share one transaction
-    // connection. Used only so a holiday is never miscounted as absence — the OT split below reads each
-    // row's stored dayType (already frozen by scheduleFor through this same resolver).
-    const holidaysByEmp = new Map<string, Set<string>>();
-    for (const e of emps) {
-      holidaysByEmp.set(
-        e.employmentId,
-        await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: monthStart, endDate: monthEnd }),
       );
-    }
+    // e2632276 — the absence / leave-day counts are no longer derived here. They come from
+    // core/absence-days.ts, the SAME helper the payroll deduction reads, so the number the month roll-up
+    // prints and the number an employee is charged for can never drift apart.
+    //
+    // BUT THIS ROLL-UP IS MONEY, AND IT IS NOT THE DEDUCTION'S MONEY. `evaluateAllowancesForPeriod` →
+    // `evaluateMonthly` (core/attendance-allowance.ts) gates a policy's `amount` on `present`, `absent`,
+    // `late` and `leaveDays` straight off these rows. Every correction the `scheduled` rules make is
+    // therefore a live change to who is paid an attendance allowance — landing on all nine companies the
+    // day it deploys, with nobody having asked for it. The approved plan promises the opposite ("all 9 of
+    // your companies keep behaving exactly as they do now until you turn it on"), so the corrections ride
+    // behind the same switch the deduction does, resolved PER EMPLOYMENT off its assigned payroll policy:
+    //
+    //   OFF (every employment, day one) → `legacy`, a transcription of the loop that used to live right
+    //       here. Company weekday pattern only; any attendance row means the day is spoken for; a
+    //       partial-day leave date with no clock-in is an absence. Pinned byte-for-byte against a copy of
+    //       main's algorithm over identical fixtures in test/absence-deduction.test.ts.
+    //   ON  → `scheduled`, which differs in exactly four ways, all of them corrections:
+    //       (a) an attendance row explicitly marked `status='absent'` is counted as ABSENT (legacy skipped
+    //           every recorded date, and the tally below filed such a row under `present` — while the
+    //           daily and individual screens have always shown it in red);
+    //       (b) the ROSTER wins over the company weekday pattern, so a rostered rest day — or a
+    //           default-shift pattern rest day — on a company working day is no longer an absence;
+    //       (c) …and symmetrically a rostered SHIFT on a company non-working day now IS a scheduled day
+    //           that can be absent;
+    //       (d) an approved HALF-DAY or HOURLY leave date is no longer counted as a whole absent day.
+    //
+    // Two calls, not one, because the rule set is per employment. Each returns immediately on an empty id
+    // list, so with the switch off nowhere — the shipped state — this is exactly one call, doing exactly
+    // what the inline loop did.
+    const deductAbsence = await deductAbsentDaysByEmployment(tx, empIds);
+    const scheduledIds = empIds.filter((id) => deductAbsence.has(id));
+    const legacyIds = empIds.filter((id) => !deductAbsence.has(id));
+    const absence = new Map<string, AbsenceBreakdown>([
+      ...(await absenceBreakdownByEmployment(tx, monthStart, monthEnd, legacyIds, {
+        rules: 'legacy',
+        until: today,
+      })),
+      ...(await absenceBreakdownByEmployment(tx, monthStart, monthEnd, scheduledIds, {
+        rules: 'scheduled',
+        until: today,
+      })),
+    ]);
     const rowsByEmp = new Map<string, typeof rows>();
     for (const r of rows) {
       const arr = rowsByEmp.get(r.employmentId);
@@ -2244,16 +2346,6 @@ export function attendanceMonthSummary(
 
     return emps.map((e) => {
       const myRows = rowsByEmp.get(e.employmentId) ?? [];
-      const recorded = new Set(myRows.map((r) => r.date));
-      // ADR-0068 §4A: the employee's set of effectively-approved leave dates for the month (per-date decisions
-      // respected). A date is on-leave iff it is in this set — no per-request span math here anymore.
-      const myLeaveDates = approvedDates.get(e.employmentId) ?? new Set<string>();
-      const onLeave = (d: string) => myLeaveDates.has(d);
-      const workingDays = daysByCompany.get(e.companyId) ?? DEFAULTS.workingDays;
-      // ADR-0055: a date is a holiday for this employee iff it is in their resolved calendar (business-group
-      // → state → national) — agreeing with the dayType checkIn freezes through the same resolver.
-      const empHolidays = holidaysByEmp.get(e.employmentId) ?? new Set<string>();
-      const isHoliday = (d: string) => empHolidays.has(d);
 
       let present = 0;
       let late = 0;
@@ -2266,7 +2358,13 @@ export function attendanceMonthSummary(
       for (const r of myRows) {
         if (r.status === 'late') late += 1;
         else if (r.status === 'half_day') halfDay += 1;
-        else present += 1;
+        // e2632276 (a) — an explicit `absent` row is NOT a present day. It used to fall into this `else`
+        // and inflate `present` while the same row rendered red as "Absent" on every other screen. Once
+        // the switch is on it is counted by the `scheduled` breakdown instead, so nothing is counted
+        // twice; with the switch OFF the row stays under `present`, exactly as it does in production —
+        // `present` feeds evaluateMonthly's minAttendanceDays, so moving it un-gated would withhold
+        // allowances nobody decided to withhold.
+        else if (!(r.status === 'absent' && deductAbsence.has(e.employmentId))) present += 1;
         workedMinutes += r.workedMinutes ?? 0;
         const ot = r.otMinutes ?? 0;
         if (r.dayType === 'rest_day') otRestDay += ot;
@@ -2276,18 +2374,8 @@ export function attendanceMonthSummary(
         weekMinutes.set(wk, (weekMinutes.get(wk) ?? 0) + (r.workedMinutes ?? 0));
       }
 
-      let absent = 0;
-      let leaveDays = 0;
-      for (let ms = Date.parse(`${monthStart}T00:00:00Z`); ; ms += MS_DAY) {
-        const d = new Date(ms).toISOString().slice(0, 10);
-        if (d > lastCounted) break;
-        if (d < e.hiredOn) continue;
-        if (!workingDays.includes(isoWeekday(d))) continue;
-        if (isHoliday(d)) continue;
-        if (recorded.has(d)) continue;
-        if (onLeave(d)) leaveDays += 1;
-        else absent += 1;
-      }
+      // e2632276 — one definition, shared with payroll (see the note above the call).
+      const { absentDays: absent, leaveDays } = absence.get(e.employmentId) ?? { absentDays: 0, leaveDays: 0 };
 
       const totalOt = otWorkday + otRestDay + otHoliday;
       return {

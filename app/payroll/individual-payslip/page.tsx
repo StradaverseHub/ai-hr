@@ -61,6 +61,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listEmployees, listCompanies } from '@/core/read';
 import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
 import { explainPcb } from '@/core/pcb-explain';
+import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
 import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll-publication';
 import { payslipProvenance } from '@/core/payslip-recompute';
@@ -197,6 +198,10 @@ export default async function IndividualPayslipPage({
 
   const b = row ? deriveHistoryBreakdown(row) : null;
   const eb = row ? payslipEmployerBorne(row.statutory) : null;
+  // e2632276 — split "Other deductions" into its named unpaid-leave / absence lines plus the residual.
+  // Derived from the PAYSLIP'S OWN stamp, never from today's policy: a slip run before this shipped has no
+  // stamp and renders the single lumped row exactly as it always has.
+  const absence = payslipAbsenceLines(row?.statutory, row?.otherDeductions);
   // The PCB working. The relief FALLBACK is only consulted for a payslip calculated before the working
   // was recorded on the slip itself, and `explainPcb` reports which of the two it used so the panel can
   // say so on screen.
@@ -458,9 +463,23 @@ export default async function IndividualPayslipPage({
               {Number(b.st.zakat) > 0 && (
                 <Row label={tSlip('zakat')} value={`${rm(b.st.zakat)} · ${tSlip('zakatOffsetNote')}`} muted />
               )}
-              {Number(row.otherDeductions) > 0 && (
-                <Row label={tSlip('otherDeductions')} value={rm(row.otherDeductions)} />
+              {/* e2632276 — the unpaid-leave and absence halves of the old unnamed lump, each with its own
+                  day count. `residual` is what is left of Other deductions once they come out of it, so
+                  the section still sums to Total deductions; a payslip with no stamp takes the `any:false`
+                  path and prints the single lumped row exactly as before. */}
+              {absence.unpaidLeave && (
+                <Row
+                  label={`${tSlip('unpaidLeaveLine')} · ${absenceDaysLabel(absence.unpaidLeave.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
+                  value={rm(absence.unpaidLeave.amount)}
+                />
               )}
+              {absence.absent && (
+                <Row
+                  label={`${tSlip('absentLine')} · ${absenceDaysLabel(absence.absent.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
+                  value={rm(absence.absent.amount)}
+                />
+              )}
+              {absence.showResidual && <Row label={tSlip('otherDeductions')} value={rm(absence.residual)} />}
               <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
                 <span>{tSlip('totalDeductions')}</span>
                 <span className="tabular-nums">−{rm(b.totalDeductions)}</span>

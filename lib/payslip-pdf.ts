@@ -21,6 +21,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFP
 
 import { formatMoney } from './money';
 import { payslipDisplayEarnings } from '../core/pay-display-category';
+import { absenceDaysLabel, payslipAbsenceLines, type PayslipAbsenceLines } from '../core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '../core/payslip-employer-borne';
 
 const n = (v: unknown) => Number(v ?? 0);
@@ -64,6 +65,10 @@ export type PayslipPdfData = {
   pcb: number;
   cp38: number;
   otherDeductions: number;
+  /** e2632276 — this payslip's OWN record of the two halves of `otherDeductions`, with their day counts.
+   *  Absent (`any:false`) on every payslip issued before it shipped ⇒ the single lumped row is printed
+   *  exactly as before. */
+  absence: PayslipAbsenceLines;
   totalDeductions: number;
   net: number;
   epfEmployer: number;
@@ -141,6 +146,13 @@ export type PayslipPdfLabels = {
   pcb: string;
   cp38: string;
   otherDeductions: string;
+  // e2632276 — the two NAMED absence lines. `daysUnit` is the bare word ("days" / "hari" / ...) appended
+  // to the count as a `sub`; it is composed rather than an ICU plural so no locale can throw for a missing
+  // argument on a document that is generated, not rendered.
+  unpaidLeaveLine: string;
+  absentLine: string;
+  dayUnit: string;
+  daysUnit: string;
   totalDeductions: string;
   netPay: string;
   employerContributions: string;
@@ -235,6 +247,7 @@ export function buildPayslipPdfData(
     pcb: eb.employee.pcb,
     cp38: n(st.cp38),
     otherDeductions: n(p.otherDeductions),
+    absence: payslipAbsenceLines(p.statutory, p.otherDeductions),
     totalDeductions: n(p.totalDeductions),
     net: n(p.net),
     epfEmployer: n(st.epfEmployer),
@@ -460,7 +473,16 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     { label: t.eis, amount: d.eisEmployee },
     { label: t.pcb, amount: d.pcb },
     ...(d.cp38 > 0 ? [{ label: t.cp38, amount: d.cp38 }] : []),
-    ...(d.otherDeductions > 0 ? [{ label: t.otherDeductions, amount: d.otherDeductions }] : []),
+    // e2632276 — the unpaid-leave and absence halves, each named and carrying its day count in the row's
+    // `sub` slot. They come OUT of "Other deductions" (d.absence.residual), they are not printed beside it,
+    // so the box still adds up to the total it prints. No stamp ⇒ residual === otherDeductions ⇒ identical.
+    ...(d.absence.unpaidLeave
+      ? [{ label: t.unpaidLeaveLine, sub: absenceDaysLabel(d.absence.unpaidLeave.days, t.dayUnit, t.daysUnit), amount: d.absence.unpaidLeave.amount }]
+      : []),
+    ...(d.absence.absent
+      ? [{ label: t.absentLine, sub: absenceDaysLabel(d.absence.absent.days, t.dayUnit, t.daysUnit), amount: d.absence.absent.amount }]
+      : []),
+    ...(d.absence.showResidual ? [{ label: t.otherDeductions, amount: d.absence.residual }] : []),
   ];
 
   // The earnings box takes a VARIABLE number of named lines. Cap it and spill the rest onto a second page

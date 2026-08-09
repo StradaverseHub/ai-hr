@@ -2395,6 +2395,13 @@
       "when": 1781862521000,
       "tag": "0421_employment_shift_arrangement",
       "breakpoints": true
+    },
+    {
+      "idx": 422,
+      "version": "7",
+      "when": 1781862522000,
+      "tag": "0422_payroll_policy_deduct_absent_days",
+      "breakpoints": true
     }
   ]
 }
