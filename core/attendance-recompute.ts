@@ -182,10 +182,17 @@ const figuresOf = (r: {
   ot30Minutes: r.ot30Minutes,
 });
 
-/** Field-by-field equality over the figures. `calc_trace` is deliberately NOT compared: it is the working
- *  behind the figures, it carries a version stamp, and a trace-only difference is not a change a reader
- *  would recognise as one. A row whose figures all match is reported unchanged and is still rewritten
- *  (the write is a no-op on those columns and refreshes the trace beside them). */
+/** Field-by-field equality over the figures.
+ *
+ *  `calc_trace` is deliberately NOT compared: it is the WORKING behind the figures, it carries a version
+ *  stamp, and a trace-only difference is not a change any reader would recognise as one. Comparing it
+ *  would report a whole company as "updated" the first time a trace version moves.
+ *
+ *  A row whose figures all match is counted unchanged and NOT WRITTEN AT ALL. That is deliberate: it is
+ *  what makes "run the same range twice and the second run changes nothing" a property of the code rather
+ *  than a claim about it, and it keeps a recompute off rows it has nothing to say about. The documented
+ *  consequence is that an unchanged day does not get a refreshed trace — correct, since the trace it
+ *  already carries explains the same figures. */
 const sameFigures = (a: RecomputeFigures, b: RecomputeFigures): boolean =>
   (Object.keys(a) as (keyof RecomputeFigures)[]).every((k) => a[k] === b[k]);
 
