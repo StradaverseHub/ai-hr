@@ -18,21 +18,23 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-09 (r175 SHIPPED IN FULL — 14 items deployed today)
+## CURRENT STATE — snapshot 2026-08-10 (r176 SHIPPED — ADR-0077 slices 6 and 9)
 
-**`main@fd53ca64` is what runs. Production on 344 migrations. Next free migration number is `0425`**
+**`main@75addd1b` is what runs. Production on 344 migrations. Next free migration number is `0425`**
 (`0423` was ALLOCATED AND DELIBERATELY UNUSED — `1c1b321a` stores its recompute-run history in the
 append-only `domain_event` ledger rather than a new table; gaps are fine). No half-applied migration,
-no pending deploy, nothing in flight. Verified after deploy: **344 migrations**, `0424`'s four
-`attendance_correction` columns + its CHECK + its partial index all present, `0422`'s column comment
-present, **0 payroll policies with `deductAbsentDays` on**, `0421`'s ladder rows intact, service
-`active`, `GET /` 401. Gate: **624 files / 7,884 tests** green across all 3 chunks; `next build` clean;
-shadow 342→344 PASS; render-checked on a dev server across all six locales with zero MISSING_MESSAGE /
-ICU / RSC errors.
+no pending deploy, nothing in flight. **r176 carried NO migration** — the journal is unchanged at
+344 entries, so there was nothing to rehearse and a rollback would be code-only. Verified after
+deploy 2026-08-10 02:42: service `active` (ActiveEnterTimestamp 02:42:19, up from 2026-08-09 22:19),
+`.next` rebuilt, `GET /` 401, Next.js ready in 154ms with no errors in `journalctl`. Gate:
+**627 files green across 6 chunks, every chunk exit=0** (105+105+105+104+104+104); tsc 0 errors;
+`next build` clean.
 
-**FOURTEEN ITEMS SHIPPED TODAY**: r174's eight, then `d3a9383c` CP22 · `e6a144d4` movement export ·
-`0fcb2557` payroll export · `18504ca6` shift effective date · then `23390097` roster grid ·
-`e2632276` absence deduction · `1c1b321a` recompute · `db46d9a2` CP22 month batch · `1e9145d4` Plan OT.
+**⚠️ THE GATE NOW NEEDS `CHUNKS=6`.** The default 3 no longer fits the local volume — see
+"Local Postgres" below. Four gates died on 2026-08-10 before this was understood.
+
+**r176 (2026-08-10) SHIPPED ADR-0077 SLICES 6 AND 9** — full entry in `docs/HANDOFF-HISTORY.md`.
+Slice 6's remaining piece (the deploy-failing flip) still needs the owner; slice 9 is complete.
 
 **The board: `deployed = 634` · `planned = 1` · `open = 1` · `approved = 0` · `contested = 0`.**
 `b00f9e6e` (the overtime question, answer: "Already works") is PLANNED and awaiting the reporter.
@@ -59,7 +61,7 @@ file — indistinguishable from an undeployed release. The dry-run also permanen
 while the box's build writes `.next/types/`. The box's version is correct. Those two lines are noise;
 anything else is a real delta.
 
-### r175, r174, r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
+### r176, r175, r174, r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
 
 One thing outlives those rounds and is deliberately NOT archived with them:
 
@@ -88,12 +90,10 @@ retyped from the archive into Entitlement Templates + Employee Eligibility. The 
 keeps balances still while that is true — if a recalc ever starts posting non-zero deltas against an
 unconfigured type, that guard has broken and it is the first thing to check.
 
-### The board — counted on production 2026-08-09 after r174
+### The board
 
-**`approved = 0` · `contested = 0` · `open = 1`.** All eight items moved approved → building → done →
-deployed this round: seven at `buildRef` `8168e648`, `1fff489c` at `4342a51c`.
-**Re-count rather than trusting this line — it said `approved = 0` on 2026-08-08 and eight items were
-approved the next morning.**
+**Counts live in CURRENT STATE and are not repeated here. Always RE-COUNT** — the line said
+`approved = 0` on 2026-08-08 and eight items were approved the next morning.
 
 **THE ONE OPEN ITEM IS A QUESTION WE RAISED, `b00f9e6e`** — what should Overtime 2.0 / 3.0 actually be?
 The measurement behind it, and why **`scripts/seed-overtime-multipliers.ts` MUST NOT BE RUN**, is under
@@ -424,8 +424,10 @@ grep — an empty result is a parser gap, not proof of no callers.
   path or `pnpm db:start`). Port **5433**.
 - **Misbehaving? Run `./scripts/dev-db-rebuild.sh`** (<1 min). It puts the data dir on an 8GB RAM disk
   (mounted at `<DATA>-ram` with `<DATA>` a symlink, because `initdb` refuses a mount point as PGDATA),
-  sets `min_wal_size = 3GB` so segments RECYCLE rather than unlink, keeps `fsync=off`, and creates the
-  `NOBYPASSRLS` role. Opt out with `AIHR_RAMDISK_GB=0`. **A RAM disk does not survive a reboot.**
+  sets the WAL sizes **conditionally on the volume type** (see the two bullets below), keeps `fsync=off`,
+  and creates the `NOBYPASSRLS` role. Opt out with `AIHR_RAMDISK_GB=0`. **A RAM disk does not survive a
+  reboot** — and if it dies mid-run it can leave a worker DB in `invalid` state, which reads as
+  `cannot connect to invalid database`; drop those (`datconnlimit = -2`) or just rebuild.
 - **NEVER blame the cluster first.** Every earlier version of this section did, and r160 lost hours to
   it. The real bug was `resetDb()`'s TRUNCATE having no `lock_timeout` while TWO pools sat on every
   worker DB; it is fixed in `test/harness.ts` (5s timeout + bounded retry inside ONE transaction).
@@ -434,11 +436,31 @@ grep — an empty result is a parser gap, not proof of no callers.
   Three of the four were a background process — a live Workflow, a stale dev server — still holding the
   cluster while the gate ran. **Kill the dev server in the same command that finishes a render check.**
 - **The suite generates ~10GB of WAL per full run, more than this machine retires in real time**, so
-  **always use `./scripts/gate-chunked.sh`**, never a bare `npx vitest run`: it runs 3 chunks with a
-  cluster rebuild between each, covers BOTH vitest projects, and asserts vitest COUNTED as many files as
+  **always use `CHUNKS=6 bash scripts/gate-chunked.sh`**, never a bare `pnpm vitest run`: it rebuilds
+  the cluster between chunks, covers BOTH vitest projects, and asserts vitest COUNTED as many files as
   it was asked to run (a file whose worker fails to spawn is not counted and reads as green). The real
   cure is in the harness — `CREATE DATABASE … TEMPLATE` instead of a ~100-table TRUNCATE per file — and
   is worth doing deliberately, not at the end of a release.
+- **`CHUNKS=6`, NOT the default 3 — measured 2026-08-10.** A 209-file chunk reached 5.1GB of WAL against
+  the 8GB volume and was still climbing; at 105 files per chunk the volume sits near 12% and checkpoints
+  retire cleanly. 627 files went green in 6 chunks.
+- **NO WAL SETTING SUBSTITUTES FOR CHUNKING, so do not go tuning instead.** `pg_wal` settles at roughly
+  *write rate x checkpoint duration*. `max_wal_size` decides when a checkpoint STARTS — it does NOT
+  throttle writers — and `checkpoint_timeout` has a hard 30s floor (`15 s is outside the valid range …
+  (30 .. 86400)`). At the ~130MB/s this suite generates, the arithmetic floor is ~4GB and it ran to 7GB.
+  Three settings were tried on the RAM disk (min 3GB/max 1GB, min 1GB/max 2GB, min 192MB/max 512MB) and
+  **all three filled it**. Bounding the RUN is the only lever.
+- **`min_wal_size`/`max_wal_size` now differ BY VOLUME, and the reasons are opposite.** `dev-db-rebuild.sh`
+  picks: ON DISK `min 3GB / max 4GB` (unlinks were the ~8s AV-scanned bottleneck, so a big pool makes
+  Postgres RECYCLE by rename instead); IN RAM `min 192MB / max 512MB` (unlinks are free, so the pool buys
+  nothing and every byte is charged against a volume that cannot grow). The old config had `min 3GB`
+  under `max 1GB` — a floor above the ceiling, which Postgres accepts silently because pacing reads
+  `max` and retention reads `min`.
+- **THE FIRST COMMAND ON ANY RED GATE IS A CAUSE GREP, not reading test names.** On 2026-08-10 the
+  failure list was read three times (2,766 failures / 344 files, zero assertion errors) before anyone
+  grepped for the actual cause, which was `could not extend file … No space left on device` (SQLSTATE
+  53100) — the volume had filled and killed the cluster mid-run. Run:
+  `grep -oE "(PostgresError|AssertionError)[^\"]{0,80}" <log> | sort | uniq -c | sort -rn | head`
 - **Apex One** real-time scanning of the data directory was excluded by the owner 2026-08-04; keep it.
 
 ### Running and reading test gates
@@ -727,10 +749,10 @@ method or carry-forward is WRONG.**
    |---|---|
    | 0–4 | **DONE** (invitation privesc fix · schema · `isModuleEnabled` (`a38ed02f`, 50 sites) · gate classification · nav/page gating) |
    | 5 | **DONE r97–r100** except the admin setup notification (no natural key on `notification`) |
-   | 6 | **steps 1–5 done** (r102/r103/r110/r111/r115). Remaining: sweep reports for one-jurisdiction assumptions · per-country subtotals + mixed-currency refusal · the deploy-failing flip (**confirm first**) |
+   | 6 | **DONE r176 (2026-08-10), except the deploy-failing flip.** The jurisdiction sweep and the mixed-currency refusal both shipped: `core/report-registry.ts` narrows the currency-mix check to rows that actually CONTRIBUTE a money value (a row with no figure can no longer trigger a refusal), and `core/reporting.ts` gained `eaEmployerCountry()` so `employeeEaStatements` resolves each form's pack from its OWN employer's country via a `Map<companyId, country>` rather than the tenant default — in a multi-country group, foreign-entity forms were being built against the wrong pack. Pinned by `test/report-summary-mixed-currency.test.ts` and `test/ea-per-employer-pack.test.ts`. **Still open: the deploy-failing flip** (unclassifiable company: warning → failed deploy) — needs explicit confirmation, see the blocker list |
    | 7 | **WRITTEN, NEVER PROVISIONED.** `core/platform-usage.ts` (148 lines), `test/platform-plane.test.ts` (203), migration `0351` and the `ai_hr_platform` role definition in `deploy/bootstrap-db.sql` all exist. **But `PLATFORM_DATABASE_URL` is ABSENT from production's `.env.production` (re-verified 2026-08-09)**, so `platformPlaneConfigured()` is false and `pnpm platform:usage` exits 2 on the box. Create the role from `bootstrap-db.sql` and set the URL — cheapest remaining slice |
    | 8 | **DONE (r121 `901352c5`) — this row used to say "decide whether that gate should be removable at all", and that decision HAS been taken: not once history exists.** `chainArmingDecision` is wired into `db/client.ts:13` and REFUSES to disarm a tenant with chained history; `test/audit-hash-chain.test.ts:134` used to assert the hole and now asserts the refusal. Preflight `scripts/check-audit-chain-gate.ts`; `app/admin/privacy/page.tsx:53` records why there is no banner. **The hazard it closed, worth keeping:** events appended while the gate is off carry `chain_seq IS NULL`, so they are ABSENT from the chain rather than breaking it — re-arming links onto the last chained event, every `prev_hash` matches, and `verifyTenantChain()` returns valid over a log with an unprotected hole |
-   | 9 | **CLOSURE AND REACTIVATION ARE BOTH BUILT — the old "Remaining: CLOSURE · REACTIVATION" here was stale.** `core/tenant-lifecycle.ts` carries `closureDecision` (dual control + its own retention check), `suspendedDaysWithin`, `shiftExpiryForSuspension` and `replayPlan`, all pinned by `test/tenant-lifecycle.test.ts`; schema in `0350`. `scripts/reactivate-tenant.ts` (145 lines) closes the window, records the event and PRINTS the replay plan — report-only until `--apply`, deliberately not firing sweeps at a customer's live payroll. **The one real gap: `closureDecision` has ZERO callers** — decision logic and schema with no operator entry point |
+   | 9 | **CLOSURE AND REACTIVATION ARE BOTH BUILT — the old "Remaining: CLOSURE · REACTIVATION" here was stale.** `core/tenant-lifecycle.ts` carries `closureDecision` (dual control + its own retention check), `suspendedDaysWithin`, `shiftExpiryForSuspension` and `replayPlan`, all pinned by `test/tenant-lifecycle.test.ts`; schema in `0350`. `scripts/reactivate-tenant.ts` (145 lines) closes the window, records the event and PRINTS the replay plan — report-only until `--apply`, deliberately not firing sweeps at a customer's live payroll. **THAT GAP IS CLOSED — r176 (2026-08-10).** `scripts/close-tenant.ts` is `closureDecision`'s first caller. It carries a `--today` guard: without one, an arbitrary date silently defeats the retention hold the decision exists to enforce, so the script refuses a `--today` that is not the real MYT day unless explicitly overridden. Pinned by `test/tenant-closure-runner.test.ts`. Report-only until `--apply`, matching `reactivate-tenant.ts` |
    | 10 | **SCHEDULED 2026-08-09 — the bleed is STOPPED.** `capture-usage` runs daily at 01:00 (crontab, ahead of the leave sweeps); first scheduled-era run wrote 9 rows / 0 failures across 9 companies in 1 tenant. Env contract is **`MIGRATION_DATABASE_URL`, NOT the platform pool** — slice 7 is not a prerequisite, which is why this could ship ahead of it. **2026-08-03 → 2026-08-08 are permanently unbillable** — before this, `usage_snapshot` held 8 rows all dated 2026-08-02. The read model (`platformUsageSummary`, `pnpm platform:usage`) is done; the DASHBOARD is still unbuilt, deliberately — `/platform` needs its own auth boundary (`platform_user` ≠ `app_user`, ADR-0077 D5) and cannot reuse the tenant session |
    Slice 9's enforcement is inert in production today; `apply-dunning` is report-only and unscheduled.
    **An older line here said "both tenants `active`" — 2026-08-09's `capture-usage` run reported

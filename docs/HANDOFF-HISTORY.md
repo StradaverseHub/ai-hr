@@ -4,6 +4,45 @@ Archive of SHIPPED round entries, newest first. The living handoff is `../HANDOF
 current state and the entry for any round still in flight; when a round ships, its entry moves to the
 top of this file.
 
+## r176 — ADR-0077 slices 6 and 9 (shipped 2026-08-10, main@75addd1b, 344 migrations, NO migration)
+
+**Slice 6 — the jurisdiction sweep and the mixed-currency refusal.**
+- `core/report-registry.ts`: the currency-mix check now considers only rows that CONTRIBUTE a money
+  value. It previously read the currency of every row in the set, so a row carrying no figure at all
+  could push a summary into "mixed currency" and refuse to total. Narrowed to
+  `moneyCols = setIds.filter(type === 'currency')`, then `contributing = rows.filter(hasValue)`.
+- `core/reporting.ts`: new `eaEmployerCountry()`. `employeeEaStatements` built every EA form against the
+  TENANT's country; in a multi-country group the forms for a foreign entity were produced against the
+  wrong statutory pack. Each form now resolves its pack from its own employer via a
+  `Map<companyId, country>`.
+- Pinned by `test/report-summary-mixed-currency.test.ts` and `test/ea-per-employer-pack.test.ts`.
+- **NOT shipped, still needs the owner:** the deploy-failing flip (unclassifiable company: warning →
+  failed deploy). It changes whether a deploy is allowed to proceed, so it wants an explicit decision.
+
+**Slice 9 — `closureDecision` finally has a caller.** `scripts/close-tenant.ts`. The decision function,
+its dual control and its retention check had existed since 0350 with ZERO callers — logic and schema
+with no operator entry point. **Decision: the script validates `--today`.** `closureDecision` takes the
+current date as a parameter, so an operator passing an arbitrary `--today` could step straight past the
+retention hold that the decision exists to enforce — the guard exists because the parameter is the hole.
+Report-only until `--apply`, matching `reactivate-tenant.ts`. Pinned by
+`test/tenant-closure-runner.test.ts`.
+
+**Carried in the same release:**
+- `test/partial-leave-cancellation.test.ts` — a TIME BOMB, untouched since r79, that went off mid-session.
+  Three tests hardcoded a 10–12 Aug 2026 leave window; on 2026-08-10 the cancellation gate
+  (`d <= today`) correctly refused the very dates they cancel. **Decision: pin the clock, do not move the
+  window.** Deriving the fixtures from `todayInKualaLumpur()` was tried first and took it from 3 failures
+  to 16 — the file carries ~100 assertions against those literal dates. Passing `today: '2026-08-01'` at
+  the three unpinned call sites moves one variable instead of a hundred, and matches what every other
+  clock-sensitive test in the file already did.
+- `scripts/dev-db-rebuild.sh` — WAL sizing, dev-only. **Four gates died before the cause was found**;
+  the durable lessons are in HANDOFF.md → Environment, not repeated here. Short version: `min_wal_size`
+  was set ABOVE `max_wal_size` (Postgres accepts it silently — pacing reads max, retention reads min),
+  the RAM disk and the SSD need OPPOSITE tuning, and no setting substitutes for `CHUNKS=6`.
+
+**Gate:** 627 files green across 6 chunks, every chunk exit=0; tsc 0; `next build` clean. **Deploy
+verified** 02:42:19 — service `active`, `.next` rebuilt, `GET /` 401, ready in 154ms, clean journal.
+
 ## r175 — nine more items across three waves (shipped 2026-08-09, main@fd53ca64, 344 migrations)
 
 After r174's eight, the board refilled twice in one day: `d3a9383c` CP22 · `e6a144d4` movement export ·
