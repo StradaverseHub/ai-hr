@@ -1,0 +1,503 @@
+<meta charset="utf-8">
+<title>b00f9e6e — The 2× and 3× overtime rates already exist: here is where they live</title>
+<!--
+  Mockup for board item b00f9e6e ("Overtime 1.5 reads as RM 1.50/hour — what should Overtime 2.0 and 3.0
+  be?"), plan revision as pushed 2026-08-09. VERDICT: Already works.
+
+  WHAT IT ARGUES: the reporter asked us to CREATE "Overtime 2.0" and "Overtime 3.0". They already exist —
+  as settings, on two screens they already have. So the mockup's job is not to draw something new; it is
+  to point at where the answer already lives. Panels 1 and 2 are pictures of TODAY, unchanged. Only
+  panel 3 shows a change, and the only change is a status pill going from Active to Inactive.
+
+  EVERY LABEL IS THE PRODUCT'S OWN STRING, copied from messages/en.json:
+    panel 1 — admin.attendancePolicy.otRatesTitle / otRatesIntro / otWageCeiling /
+              otRestDayExcessMultiplier / otHolidayExcessMultiplier / otWageCeilingLegalNote /
+              otMultipliersNote / otEffectiveFrom / otVersion / otNotes / otPublish / otCancel
+              (layout from app/admin/attendance-policy/page.tsx L205-243 + components/statutory-component-form.tsx)
+    panel 2 — payrollPolicy.wizard.steps.* / wizard.stepOf / config.otMultiplier / config.otMaxHours /
+              config.otMaxAmount / config.otDayWorkday / otDayRestDay / otDayHoliday / otExceedLabel /
+              otExceedCap / otExceedComponent / otExceedComponentNone / config.otHint
+              (layout from app/admin/payroll-policy/policy-wizard.tsx L228-255 and L434-470)
+    panel 3 — payComponents.title / searchPlaceholder / statusActive / statusInactive / statusAll /
+              colCode / colLabel / colName / colKind / colInputType / colStatus / inputType_per_hour /
+              edit / deactivate / activate / delete / archiveTitle / archiveDescription /
+              components.confirmSubmit.cancel, and payComponents.rateHourLabel ("Rate per hour (RM)")
+              from app/admin/pay-components/pay-rule-editor.tsx L328-331
+
+  THE FIGURES ARE THE TENANT'S OWN, FROM THE PLAN, NOT INVENTED: 2× and 3× (the active defaults),
+  RM 4,000 (the s.60A ceiling), 1.5 (the workday floor), OT1_5 / "Overtime 1.5" / RM 1.50 per hour,
+  18 pay items, 40 employees, 22 completed payroll runs, 67 payslips.
+
+  A GREY BAR means "a real column/field this sketch does not draw, whose contents we did not check and
+  which nothing here changes". Used rather than inventing a Label or a Category for OT1_5, and rather
+  than inventing this tenant's overtime caps. There is a legend saying so.
+
+  DELIBERATELY NOT DRAWN:
+    - NO PAYSLIP, AND NO OVERTIME AMOUNT ANYWHERE. The plan's hardest promise is "no payslip, past or
+      future, changes by a cent". A drawn ringgit figure would imply a figure moved. The only ringgit
+      amounts on the page are the two the plan names as configuration: the RM 4,000 ceiling and the
+      RM 1.50 that is the defect.
+    - No "Overtime 2.0" / "Overtime 3.0" pay item rows. The plan says we will NOT create them; drawing
+      them would contradict the thing being approved.
+    - The Formula Builder alternative (basic ÷ working days ÷ working hours × multiplier × hours). The
+      plan makes it CONDITIONAL on the reporter rejecting, and on two divisors we do not have. A picture
+      cannot hedge, so it stays in words.
+    - The seed tool refusing to copy a deactivated item (work item 2 and 3 of the plan). It has no
+      screen — it is a background safeguard — so it is stated in words, not drawn.
+    - The overtime report export. It is real today but nothing about it changes, and its control is a
+      button on the attendance month view, not a screen; named in words in the last panel.
+    - Any employee name. Nothing here is per-employee.
+
+  Tokens copied from app/globals.css so this is a picture of OUR app.
+  Everything inline: scripts/mockup/render.ts blocks external requests and fails loudly.
+-->
+<style>
+  :root {
+    --background:#f5f6fa; --foreground:#1a1a22; --card:#ffffff;
+    --primary:#4f46e5; --muted:#f0f1f7; --muted-foreground:#63636f;
+    --border:#e7e8f1; --rule:#d9dae6; --input:#cfd1de;
+    --amber-bg:#fffbeb; --amber-br:#fcd34d; --amber-fg:#78350f;
+    --warn-bg:#fff7ed; --warn-br:#fed7aa; --warn-fg:#7c2d12;
+    --good-bg:#f0fdf4; --good-br:#bbf7d0; --good-fg:#14532d;
+    --emerald:#047857;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; padding:26px 26px 30px; background:var(--background); color:var(--foreground);
+    font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  .wrap { max-width:1188px; margin:0 auto; }
+  h1.hd { font-size:17px; margin:0 0 5px; letter-spacing:-.01em; }
+  p.lede { margin:0 0 20px; font-size:12.5px; color:var(--muted-foreground); max-width:112ch; }
+  p.lede b { color:var(--foreground); font-weight:600; }
+
+  .card { background:var(--card); border:1px solid var(--border); border-radius:15px;
+          padding:17px 18px 18px; margin-bottom:18px; }
+  h2 { font-size:13.5px; margin:0 0 3px; display:flex; align-items:center; gap:8px; }
+  .num { display:inline-flex; width:20px; height:20px; align-items:center; justify-content:center;
+         border-radius:6px; background:var(--primary); color:#fff; font-size:11px; font-weight:700; flex:none; }
+  p.sub { font-size:12px; color:var(--muted-foreground); margin:0 0 12px; }
+  p.sub b { color:var(--foreground); font-weight:600; }
+
+  .where { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--muted-foreground);
+           background:var(--muted); border-radius:999px; padding:3px 11px; margin:0 0 10px; }
+  .where b { color:var(--foreground); font-weight:600; }
+
+  .tag { display:inline-block; border-radius:999px; padding:3px 10px; font-size:11px; font-weight:600; }
+  .tag.same { background:var(--good-bg); color:var(--good-fg); border:1px solid var(--good-br); }
+  .tag.now  { background:var(--muted); color:var(--muted-foreground); }
+  .tag.new  { background:color-mix(in srgb,var(--primary) 12%,white); color:var(--primary); }
+  p.caption { font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+              color:var(--muted-foreground); margin:0 0 8px; }
+
+  /* ── a redraw of a real product card ── */
+  .screen { background:#eef0f7; border:1px solid var(--rule); border-radius:13px; padding:13px; }
+  .pc { background:#fff; border:1px solid var(--border); border-radius:12px; padding:15px 16px; }
+  .pc h3 { margin:0; font-size:13px; font-weight:600; }
+  .pc .intro { margin:5px 0 0; font-size:11.5px; color:var(--muted-foreground); }
+
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:0 32px; margin-top:11px; }
+  .stat { display:flex; align-items:baseline; justify-content:space-between; gap:14px; padding:6px 0; }
+  .stat .k { font-size:12.5px; color:var(--muted-foreground); }
+  .stat .v { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; font-weight:500;
+             font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .stat.spot { background:color-mix(in srgb,var(--primary) 6%,white); border-radius:8px;
+               padding:6px 9px; margin:0 -9px; box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--primary) 22%,white); }
+  .stat.spot .v { color:var(--primary); font-weight:700; }
+
+  .amber { margin:11px 0 0; border:1px solid var(--amber-br); background:var(--amber-bg); color:var(--amber-fg);
+           border-radius:9px; padding:8px 11px; font-size:11.5px; }
+  .fine { margin:9px 0 0; font-size:11.5px; color:var(--muted-foreground); }
+  .fine b { color:var(--foreground); font-weight:600; }
+
+  /* ── form furniture ── */
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:11px; margin-top:13px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:11px; }
+  .f { display:flex; flex-direction:column; gap:4px; }
+  .f > label { font-size:11px; color:var(--muted-foreground); }
+  .ctl { display:flex; align-items:center; justify-content:space-between; gap:8px; background:#fff;
+         border:1px solid var(--input); border-radius:8px; padding:7px 11px; font-size:12.5px;
+         min-height:33px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .ctl.spot { border-color:var(--primary); box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 13%,transparent); }
+  .ctl .dim { color:var(--muted-foreground); }
+  .checks { display:flex; flex-wrap:wrap; gap:16px; margin-top:11px; font-size:12.5px; }
+  .checks span { display:inline-flex; align-items:center; gap:7px; }
+  .bx { width:14px; height:14px; border:1px solid var(--input); border-radius:4px; background:#fff;
+        display:inline-flex; align-items:center; justify-content:center; flex:none; }
+  .bx.on { background:var(--primary); border-color:var(--primary); }
+  .btn { display:inline-flex; align-items:center; background:var(--primary); color:#fff; border-radius:8px;
+         padding:7px 14px; font-size:12.5px; font-weight:600; white-space:nowrap; }
+  .btn.ghost { background:#fff; color:var(--foreground); border:1px solid var(--input); font-weight:500; }
+  .btn.danger { background:#dc2626; }
+  .btns { display:flex; gap:8px; margin-top:13px; }
+
+  /* ── wizard step rail ── */
+  .rail { display:flex; align-items:center; gap:7px; border-bottom:1px solid var(--border);
+          padding:0 0 11px; margin-bottom:13px; font-size:11.5px; overflow:hidden; }
+  .rail .s { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; color:var(--muted-foreground); }
+  .rail .s.cur { color:var(--foreground); font-weight:600; }
+  .rail .n { width:20px; height:20px; border-radius:999px; background:var(--muted); color:var(--muted-foreground);
+             display:inline-flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:600; flex:none; }
+  .rail .s.cur .n { background:var(--primary); color:#fff; }
+  .rail .s.done .n { background:#10b981; color:#fff; }
+  .rail .arw { color:#b9bacb; }
+  .rail .of { margin-left:auto; color:var(--muted-foreground); white-space:nowrap; }
+
+  /* ── the pay-item table ── */
+  .toolbar { display:flex; align-items:center; gap:9px; margin-bottom:10px; }
+  .search { flex:0 0 232px; }
+  .tabs { display:inline-flex; gap:3px; border:1px solid var(--border); border-radius:9px; padding:3px;
+          background:#fff; font-size:11.5px; font-weight:500; }
+  .tabs span { border-radius:6px; padding:4px 10px; color:var(--muted-foreground); }
+  .tabs span.on { background:var(--primary); color:#fff; }
+  .scroller { border:1px solid var(--border); border-radius:11px; overflow:hidden; background:#fff; }
+  table { border-collapse:separate; border-spacing:0; width:100%; font-size:12.5px; }
+  th, td { padding:8px 12px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; }
+  tbody tr:last-child td { border-bottom:0; }
+  th { font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted-foreground);
+       font-weight:600; background:#f7f7fc; }
+  td.code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+  tr.spot td { background:color-mix(in srgb,var(--primary) 6%,white); }
+  .lnk { color:var(--primary); font-weight:500; }
+  .pill { display:inline-block; border-radius:999px; padding:2px 9px; font-size:10.5px; font-weight:600; }
+  .pill.act { background:color-mix(in srgb,#10b981 13%,white); color:var(--emerald); }
+  .pill.ina { background:var(--muted); color:var(--muted-foreground); }
+  .acts { display:flex; justify-content:flex-end; gap:11px; font-size:11px; font-weight:500; }
+  .acts .e { color:var(--primary); }
+  .acts .d { color:var(--muted-foreground); border:1px solid var(--input); border-radius:6px; padding:1px 8px; }
+  .acts .x { color:#dc2626; }
+  .ph { display:inline-block; height:11px; border-radius:4px; background:#e9eaf3; vertical-align:-1px; }
+
+  /* ── the confirm dialog ── */
+  .dialog { border:1px solid var(--border); border-radius:11px; background:#fff; padding:16px;
+            box-shadow:0 12px 28px rgba(20,20,40,.13); max-width:400px; }
+  .dialog h4 { margin:0; font-size:13.5px; font-weight:600; }
+  .dialog p { margin:5px 0 0; font-size:12px; color:var(--muted-foreground); }
+  .dialog .row { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+  .stage { background:#eef0f7; border:1px solid var(--rule); border-radius:13px; padding:16px;
+           display:flex; justify-content:center; }
+
+  /* ── callouts / layout helpers ── */
+  .flag { border-radius:10px; padding:10px 12px; font-size:12px; margin-top:12px; line-height:1.55; }
+  .flag.good { border:1px solid var(--good-br); background:var(--good-bg); color:var(--good-fg); }
+  .flag.warn { border:1px solid var(--warn-br); background:var(--warn-bg); color:var(--warn-fg); }
+  .flag b { font-weight:700; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .side { display:grid; grid-template-columns:1.55fr 1fr; gap:18px; align-items:start; }
+  .facts { display:flex; flex-wrap:wrap; gap:7px 26px; border:1px solid var(--border); background:#fafbff;
+           border-radius:11px; padding:10px 13px; font-size:12px; margin-top:12px; }
+  .facts .k { color:var(--muted-foreground); }
+  .facts b { font-variant-numeric:tabular-nums; }
+  .legend { margin:12px 0 0; font-size:11.5px; color:var(--muted-foreground); border-top:1px dashed var(--border);
+            padding-top:10px; line-height:1.55; }
+  .legend b { color:var(--foreground); font-weight:600; }
+  .three { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+  .box { border:1px solid var(--border); border-radius:11px; padding:12px 13px; font-size:12px; line-height:1.55; }
+  .box b.t { display:block; margin-bottom:4px; }
+  .box.no { border-color:var(--warn-br); background:var(--warn-bg); color:var(--warn-fg); }
+  .inset { border:1px solid var(--border); border-radius:11px; background:#fff; padding:13px; }
+  .inset .h { font-size:9.5px; text-transform:uppercase; letter-spacing:.07em; font-weight:700;
+              color:var(--muted-foreground); margin:0 0 9px; }
+</style>
+
+<div class="wrap">
+
+<h1 class="hd">Overtime 2.0 and Overtime 3.0 — you already have them. They are settings, not pay items.</h1>
+<p class="lede">Sketch for board item b00f9e6e. <b>Panels 1 and 2 are pictures of screens you have today,
+  unchanged</b> — they are here to show you where the two-times and three-times rates already live and who
+  can change them. <b>Panel 3 is the only change being proposed</b>: one pay item switched off. Wording,
+  spacing and colours will differ from the real screens.</p>
+
+<!-- ══════════════════ 1 · ATTENDANCE POLICY → OVERTIME RATES ══════════════════ -->
+<div class="card">
+  <h2><span class="num">1</span>The 2× and 3× you asked us to create — already here, already yours to change</h2>
+  <p class="sub">This is the <b>Overtime rates</b> card on your Attendance Policy screen. Nothing on it
+    changes. It is drawn so you can find it.</p>
+  <p class="where">Attendance Policy <b>→</b> Overtime rates <span class="tag same">Today — unchanged</span></p>
+
+  <div class="screen">
+    <div class="pc">
+      <h3>Overtime rates</h3>
+      <p class="intro">Overtime rates (the entitlement wage ceiling and the excess-hours multipliers) are
+        managed here, alongside working hours and shifts. Payroll keeps using the same values; only the
+        editing screen moved out of Payroll statutory settings.</p>
+
+      <div class="stats">
+        <div class="stat">
+          <span class="k">OT entitlement wage ceiling (RM/month)</span>
+          <span class="v">RM 4,000</span>
+        </div>
+        <div class="stat spot">
+          <span class="k">Rest-day OT excess rate (× hourly)</span>
+          <span class="v">2×</span>
+        </div>
+        <div class="stat spot">
+          <span class="k">Public-holiday OT excess rate (× hourly)</span>
+          <span class="v">3×</span>
+        </div>
+      </div>
+
+      <p class="amber">The RM 4,000 wage ceiling is the Employment Act s.60A overtime-eligibility limit —
+        a legal threshold, not a free operational rate. Change it only if the law changes.</p>
+      <p class="fine">The 1.5× workday rate and the base-day pay (½/1-day rest-day, 2 days for a public
+        holiday) are fixed by the Employment Act. The rest-day and public-holiday excess-hours rates
+        default to the legal 2× / 3× and can be adjusted here.</p>
+
+      <div class="grid2">
+        <div class="f"><label>Effective from</label><div class="ctl"><span class="dim">dd/mm/yyyy</span></div></div>
+        <div class="f"><label>Version</label><div class="ctl"><span class="dim">e.g. socso-2026.06</span></div></div>
+        <div class="f"><label>Notes</label><div class="ctl"><span class="dim"></span></div></div>
+        <div class="f"><label>OT entitlement wage ceiling (RM/month)</label><div class="ctl"><span>4000</span></div></div>
+        <div class="f"><label>Rest-day OT excess rate (× hourly)</label><div class="ctl spot"><span>2</span></div></div>
+        <div class="f"><label>Public-holiday OT excess rate (× hourly)</label><div class="ctl spot"><span>3</span></div></div>
+      </div>
+      <div class="btns"><span class="btn">Publish OT rates</span><span class="btn ghost">Cancel</span></div>
+    </div>
+  </div>
+
+  <div class="flag good"><b>These two boxes are your “Overtime 2.0” and “Overtime 3.0”.</b> On a rest day,
+    hours beyond a normal day’s hours are paid at <b>two times</b> the person’s own hourly rate; on a public
+    holiday, <b>three times</b>. The hourly rate is worked out from each person’s own monthly wage, so a
+    manager and a general worker are never paid the same amount — which is exactly what a flat
+    ringgit-per-hour pay item could never do. All 22 of your completed payroll runs and the 67 payslips they
+    produced were worked out this way.</div>
+</div>
+
+<!-- ══════════════════ 2 · PAYROLL POLICY → OVERTIME STEP ══════════════════ -->
+<div class="card">
+  <h2><span class="num">2</span>The working-day rate — 1.5 is the floor the law sets, not a ceiling</h2>
+  <p class="sub">This is the <b>Overtime</b> step of your Payroll Policy. Nothing on it changes either.</p>
+  <p class="where">Payroll Policy <b>→</b> Step 6, Overtime <span class="tag same">Today — unchanged</span></p>
+
+  <div class="screen">
+    <div class="pc">
+      <div class="rail">
+        <span class="s done"><span class="n">1</span>Policy information</span><span class="arw">→</span>
+        <span class="s done"><span class="n">2</span>Cut-off window</span><span class="arw">→</span>
+        <span class="s done"><span class="n">3</span>Salary proration</span><span class="arw">→</span>
+        <span class="s done"><span class="n">4</span>Salary configuration</span><span class="arw">→</span>
+        <span class="s done"><span class="n">5</span>Negative net pay</span><span class="arw">→</span>
+        <span class="s cur"><span class="n">6</span>Overtime</span><span class="arw">→</span>
+        <span class="s"><span class="n">7</span>Leave calculation</span>
+        <span class="of">Step 6 of 9</span>
+      </div>
+
+      <div class="grid3">
+        <div class="f">
+          <label>Ordinary-rate multiplier</label>
+          <div class="ctl spot"><span>1.5</span></div>
+        </div>
+        <div class="f">
+          <label>Max overtime hours / month</label>
+          <div class="ctl"><span class="ph" style="width:52px"></span></div>
+        </div>
+        <div class="f">
+          <label>Max overtime amount / month (RM)</label>
+          <div class="ctl"><span class="ph" style="width:52px"></span></div>
+        </div>
+      </div>
+
+      <div class="checks">
+        <span><i class="bx on"></i>Working days</span>
+        <span><i class="bx on"></i>Rest days</span>
+        <span><i class="bx on"></i>Public holidays</span>
+      </div>
+
+      <div class="grid2" style="grid-template-columns:1fr 1fr">
+        <div class="f">
+          <label>When overtime exceeds the maximum</label>
+          <div class="ctl"><span>Cap it (default)</span><span class="dim">▾</span></div>
+        </div>
+        <div class="f">
+          <label>Pay item for the excess</label>
+          <div class="ctl"><span class="dim">Select a pay item</span><span class="dim">▾</span></div>
+        </div>
+      </div>
+      <p class="fine">The multiplier is floored at the statutory 1.5×. Convert redirects any overtime above
+        the cap onto the chosen pay item so it is still paid.</p>
+    </div>
+  </div>
+
+  <div class="side" style="margin-top:14px">
+    <div class="flag good" style="margin-top:0"><b>“Floored at 1.5×” means 1.5 is the smallest you may
+      enter, not the only figure you may enter.</b> Type 2 in that box and save, and every working-day
+      overtime hour is paid at two times each person’s own hourly rate from then on. The law stops you going
+      <em>below</em> 1.5; it does not stop you going above. You do not need us for this and you do not need
+      a pay item for it.</div>
+    <div class="inset">
+      <p class="h">If your firm pays more than the law requires</p>
+      <div class="f" style="max-width:230px">
+        <label>Ordinary-rate multiplier</label>
+        <div class="ctl spot"><span>2</span></div>
+      </div>
+      <p class="fine"><b>We are not changing this, and this plan does not set it.</b> It is drawn only to
+        show that the box accepts a higher number. Today it reads 1.5.</p>
+    </div>
+  </div>
+
+  <p class="legend"><span class="ph" style="width:34px"></span> is a real field on this screen that this
+    sketch does not draw — your overtime caps. We did not check what you have in them and nothing here
+    changes them. The three day-type ticks and the two boxes underneath are drawn at their standard
+    settings for the same reason: they are on this step, they are yours, and this plan does not touch
+    them.<br>
+    <b>No payslip is drawn on this page, on purpose.</b> This plan changes no figure: overtime keeps being
+    worked out exactly as it is today, from each person’s own salary. A ringgit amount drawn here would
+    suggest something moved, and nothing does.</p>
+</div>
+
+<!-- ══════════════════ 3 · PAY ITEMS → SWITCH OFF OVERTIME 1.5 ══════════════════ -->
+<div class="card">
+  <h2><span class="num">3</span>The one thing that does change — Overtime 1.5, switched off, not deleted</h2>
+  <p class="sub">Your <b>Pay Items</b> list. The row stays exactly where it is; only its status changes.</p>
+  <p class="where">Pay Items <b>→</b> OT1_5, Overtime 1.5 <span class="tag new">The only change in this plan</span></p>
+
+  <div class="facts">
+    <span><span class="k">Attached to</span> <b>0 of your 40 employees</b></span>
+    <span><span class="k">Paid out on</span> <b>0 payslips, ever</b></span>
+    <span><span class="k">The only one of your 18 pay items priced by the hour</span></span>
+    <span><span class="k">Its rate</span> <b>RM 1.50 per hour</b>, the same for everyone</span>
+  </div>
+  <p class="fine">Those four are facts we checked in your data before proposing this — they are not new
+    columns appearing on the screen.</p>
+
+  <div class="pair" style="margin-top:14px">
+
+    <!-- ─────────── TODAY ─────────── -->
+    <div>
+      <p class="caption"><span class="tag now">Today</span></p>
+      <div class="toolbar">
+        <div class="search"><div class="ctl"><span class="dim">Search pay code, label or description…</span></div></div>
+        <div class="tabs"><span class="on">Active</span><span>Inactive</span><span>All</span></div>
+      </div>
+      <div class="scroller">
+        <table>
+          <thead><tr>
+            <th>Pay Code</th><th>Label</th><th>Description</th><th>Category</th>
+            <th>Input Type</th><th>Status</th><th></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td class="code"><span class="ph" style="width:44px"></span></td>
+              <td><span class="ph" style="width:52px"></span></td>
+              <td><span class="ph" style="width:96px"></span></td>
+              <td><span class="ph" style="width:52px"></span></td>
+              <td><span class="ph" style="width:60px"></span></td>
+              <td><span class="pill act">Active</span></td>
+              <td></td>
+            </tr>
+            <tr class="spot">
+              <td class="code">OT1_5</td>
+              <td><span class="ph" style="width:52px"></span></td>
+              <td style="font-weight:600">Overtime 1.5</td>
+              <td><span class="ph" style="width:52px"></span></td>
+              <td><span class="lnk">Per hour</span></td>
+              <td><span class="pill act">Active</span></td>
+              <td><div class="acts"><span class="e">Edit</span><span class="d">Deactivate</span><span class="x">Delete</span></div></td>
+            </tr>
+            <tr>
+              <td class="code"><span class="ph" style="width:44px"></span></td>
+              <td><span class="ph" style="width:52px"></span></td>
+              <td><span class="ph" style="width:96px"></span></td>
+              <td><span class="ph" style="width:52px"></span></td>
+              <td><span class="ph" style="width:60px"></span></td>
+              <td><span class="pill act">Active</span></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="inset" style="margin-top:12px">
+        <p class="h">Open it and this is the box the 1.5 sits in</p>
+        <div class="f" style="max-width:230px">
+          <label>Rate per hour (RM)</label>
+          <div class="ctl" style="border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.10)"><span>1.50</span></div>
+        </div>
+        <p class="fine">The box is already labelled in ringgit. <b>1.5 was typed here meaning “one and a
+          half times”</b> — so the item pays RM 1.50 an hour, the same to a manager and a general worker.</p>
+      </div>
+    </div>
+
+    <!-- ─────────── AFTER ─────────── -->
+    <div>
+      <p class="caption"><span class="tag new">After this change</span></p>
+      <div class="toolbar">
+        <div class="search"><div class="ctl"><span class="dim">Search pay code, label or description…</span></div></div>
+        <div class="tabs"><span>Active</span><span class="on">Inactive</span><span>All</span></div>
+      </div>
+      <div class="scroller">
+        <table>
+          <thead><tr>
+            <th>Pay Code</th><th>Label</th><th>Description</th><th>Category</th>
+            <th>Input Type</th><th>Status</th><th></th>
+          </tr></thead>
+          <tbody>
+            <tr class="spot">
+              <td class="code">OT1_5</td>
+              <td><span class="ph" style="width:52px"></span></td>
+              <td style="font-weight:600">Overtime 1.5</td>
+              <td><span class="ph" style="width:52px"></span></td>
+              <td><span class="lnk">Per hour</span></td>
+              <td><span class="pill ina">Inactive</span></td>
+              <td><div class="acts"><span class="e">Edit</span><span class="e">Activate</span><span class="x">Delete</span></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stage" style="margin-top:12px">
+        <div class="dialog">
+          <h4>Deactivate pay code?</h4>
+          <p>Deactivate OT1_5? It will no longer be available to add — you can reactivate it later.</p>
+          <div class="row"><span class="btn ghost">Cancel</span><span class="btn danger">Deactivate</span></div>
+        </div>
+      </div>
+
+      <div class="flag good"><b>Nothing is deleted.</b> The row stays in your list under the
+        <b>Inactive</b> tab, with everything it holds. The <b>Activate</b> link on that same row puts it
+        straight back — one click, no rebuilding, no lost settings. What switching it off does is close the
+        two doors: it can no longer be attached to an employee, and it can no longer be picked on a one-off
+        entry.</div>
+    </div>
+  </div>
+
+  <p class="legend"><span class="ph" style="width:34px"></span> is a real column this sketch does not draw
+    — your Label and Category for this item, and your other 17 pay items, which are untouched.<br>
+    <b>One more thing changes, and it has no screen.</b> The tool we built to copy Overtime 1.5 into
+    Overtime 2.0 and Overtime 3.0 will be taught to refuse a switched-off item, so nobody can run it by
+    mistake later and revive the RM 1.50 figure. There is nothing to look at, which is why it is written
+    here rather than drawn.</p>
+</div>
+
+<!-- ══════════════════ 4 · NOT DRAWN, AND WHERE THE REST LIVES ══════════════════ -->
+<div class="card">
+  <h2><span class="num">4</span>Deliberately not drawn — and where to find the rest</h2>
+  <div class="three">
+    <div class="box no">
+      <b class="t">No payslip, and no overtime amount anywhere on this page.</b>
+      This plan changes no figure by a cent — past or future. Any ringgit amount drawn beside an employee
+      would suggest one moved. The only two amounts here are settings: the RM 4,000 legal ceiling, and the
+      RM 1.50 that is the mistake.
+    </div>
+    <div class="box no">
+      <b class="t">No “Overtime 2.0” and no “Overtime 3.0” rows.</b>
+      We are not creating them as pay items. Built as flat ringgit amounts they would pay a manager and a
+      general worker the same — the thing you told us you do not want. The two-times and three-times rates
+      you meant are panel 1.
+    </div>
+    <div class="box">
+      <b class="t">A salary-following overtime item is possible, but not drawn.</b>
+      If you want a standing overtime item for people above the RM 4,000 ceiling that follows each of their
+      own salaries, the Formula Builder can express it — basic salary ÷ your working days ÷ your working
+      hours × the multiplier × the hours claimed. We would need the two divisors your firm uses, so it is
+      not part of this plan. Reject and say so, and we build it.
+    </div>
+  </div>
+  <p class="legend" style="border-top:0;padding-top:12px"><b>Where the rest of it lives.</b> The
+    <b>workings behind any month’s overtime</b> — per person, their normal hours, their overtime hours split
+    into normal day, rest day and public holiday, the rate used for each and the ringgit that came out —
+    download as a spreadsheet or a printable file from your <b>attendance month view</b>. It is there today;
+    nothing in this plan changes it, which is why it is named rather than drawn.</p>
+</div>
+
+</div>

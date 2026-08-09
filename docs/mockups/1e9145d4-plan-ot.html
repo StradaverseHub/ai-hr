@@ -1,0 +1,503 @@
+<meta charset="utf-8">
+<title>1e9145d4 — Plan OT: the new menu row, the list, and the Apply OT Plan form</title>
+<!--
+  Mockup for 1e9145d4 (Plan OT / Apply OT Plan), drawn strictly against the plan text.
+
+  BEFORE is the reporter's OWN screenshot, transcribed: the left rail (AI HR logo, My Leave,
+  My Attendance highlighted with its chevron, Claims, Feedback) and the MY ATTENDANCE flyout with
+  exactly three rows — Clock in/out (selected, lavender pill), Records, Attendance Request. Icons
+  match packs/attendance/index.ts MY_ATTENDANCE_NAV: Clock, Clock, FilePen. The new row takes
+  Hourglass — neither Clock nor FilePen, per the plan's collapsed-rail note.
+
+  Field labels on the Apply OT Plan form are the live strings from app/attendance/requests/page.tsx
+  + messages/en.json (me.dateLabel "Date", me.otHoursLabel "Overtime hours", me.reasonRequired
+  "Reason"). Status pills use the existing me.leaveStatus vocabulary plus the new 'cancelled'.
+
+  Live figures (40 employees, 9 companies, 269 attendance days, 315 rostered days) are the
+  reporter's own, from the plan. Employee-facing rows, dates, times, the approver's name and the
+  month-to-date OT total are worked EXAMPLES and are labelled as such on the picture.
+
+  DELIBERATELY NOT DRAWN — a picture cannot hedge, and the plan declines these three by name:
+    * No Draft state. No "Save as draft" button, and Draft is absent from the status vocabulary
+      on the list. The plan leaves it out on purpose.
+    * No Cost Centre / Project Code field on the form. The plan leaves it out on purpose.
+    * No escalation to a department head (no second approval level, no threshold rule, no
+      second name in the Approver row). The plan leaves it out on purpose.
+  Also not drawn, because the plan does not promise them: an approval SLA / reminder-to-approver,
+  a "Request changes" approver action, a minimum notice period, a reminder on the OT date, a
+  time-window overlap check (the plan promises one-plan-per-DATE), and the approver's own inbox
+  screen (it gains two markers on an existing card — not redrawn here).
+
+  Tokens from app/globals.css. Everything inline, icons are inline SVG — render.ts blocks
+  external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#6b7280;
+        --border:#e5e7eb;--badbg:#fef2f2;--goodbg:#f0fdf4;--lav:#eef0fd}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:17px;margin:0 0 3px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 14px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 11px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .stat{display:grid;grid-template-columns:repeat(4,1fr);gap:11px}
+  .st{border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--muted)}
+  .st b{display:block;font-size:20px;line-height:1.25;font-variant-numeric:tabular-nums}
+  .st span{font-size:11px;color:var(--mf)}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .note b{color:var(--fg)}
+  .cap{font-size:11px;color:var(--mf);margin-top:9px;font-style:italic}
+  .tn{font-variant-numeric:tabular-nums}
+  .ic{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;
+      stroke-linecap:round;stroke-linejoin:round;display:block}
+
+  /* before / after panels */
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+  .panel{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:#fff}
+  .panel.bad{border-color:#fca5a5}
+  .panel.good{border-color:#86efac}
+  .phead{padding:8px 12px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+  .phead.bad{background:var(--badbg);color:#991b1b}
+  .phead.good{background:var(--goodbg);color:#166534}
+  .pbody{padding:13px}
+
+  /* the sidebar + flyout, traced from the reporter's screenshot */
+  .navwrap{display:flex;gap:9px;background:#fbfbfe;padding:12px;border-radius:10px;
+           border:1px solid var(--border)}
+  .rail{width:196px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 8px;
+        box-shadow:0 1px 2px rgba(16,18,45,.05)}
+  .brand{display:flex;align-items:center;gap:9px;padding:4px 6px 12px}
+  .logo{width:26px;height:26px;border-radius:8px;background:var(--primary);color:#fff;font-size:11px;
+        font-weight:700;display:flex;align-items:center;justify-content:center}
+  .brand b{font-size:14px}
+  .nrow{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:9px;font-size:12.5px;
+        color:#3f3f4a;margin-bottom:2px}
+  .nrow.on{background:var(--lav);color:var(--primary);font-weight:600}
+  .nrow .chev{margin-left:auto;color:var(--primary)}
+  .fly{width:232px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 8px;
+       box-shadow:0 6px 18px rgba(16,18,45,.09)}
+  .flyh{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:#9aa0ac;font-weight:600;
+        padding:3px 9px 9px}
+  .newpill{display:inline-block;margin-left:6px;background:var(--primary);color:#fff;border-radius:5px;
+           padding:1px 5px;font-size:8.5px;font-weight:700;letter-spacing:.05em;vertical-align:1px}
+  .nrow.fresh{background:#f7f7fe;box-shadow:inset 0 0 0 1px #c7c5f7;color:var(--fg);font-weight:600}
+  .arrowlbl{font-size:10.5px;color:var(--primary);font-weight:600;padding:6px 9px 0}
+  .topbar{font-size:10.5px;color:#9aa0ac;padding:2px 0 9px}
+
+  /* a drawn screen */
+  .shot{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;
+       border-bottom:1px solid var(--border)}
+  .back{color:var(--primary);font-weight:600;font-size:11.5px;display:block;margin-bottom:2px}
+  .ttl{font-weight:700;font-size:14.5px}
+  .tsub{font-size:11px;color:var(--mf);margin-top:2px}
+  .pad{padding:13px 14px}
+  .btn{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:6px 13px;font-size:12px;
+       font-weight:600;white-space:nowrap}
+  .btn.p{background:var(--primary);color:#fff}
+  .btn.sec{background:#fff;border:1px solid var(--border);color:var(--fg);font-weight:500}
+  .btn.spot{box-shadow:0 0 0 3px rgba(79,70,229,.18)}
+  .btn.warnout{border:1px solid #e5e7eb;background:#fff;color:#9a3412;font-weight:600}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted);white-space:nowrap}
+  td{padding:8px 9px;border-top:1px solid var(--border);vertical-align:middle}
+  .r{text-align:right}
+  .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:10.5px;font-weight:600;
+        white-space:nowrap}
+  .pill.pend{background:#fef3c7;color:#92400e}
+  .pill.appr{background:#dcfce7;color:#166534}
+  .pill.rej{background:#fee2e2;color:#991b1b}
+  .pill.canc{background:#eceef2;color:#4b5563}
+  .pill.done{background:#dbeafe;color:#1d4ed8}
+  .lnk{color:var(--primary);font-weight:600;font-size:12px}
+  .lnk.off{color:#b6b8c2;font-weight:500}
+  .small{font-size:10.5px;color:var(--mf)}
+
+  /* form */
+  .fgrid{display:grid;grid-template-columns:1.12fr .88fr;gap:16px}
+  .f{margin-bottom:11px}
+  .f label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+           font-weight:600;margin-bottom:4px}
+  .in{border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12.5px;background:#fff;
+      min-height:32px;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:7px}
+  .in.ph{color:#a8abb6}
+  .in.ro{background:#f7f8fb;color:#3f3f4a}
+  .in.focus{border-color:#a5a0f2;box-shadow:0 0 0 3px rgba(79,70,229,.14)}
+  .in .cal{margin-left:auto;color:#a8abb6}
+  .req{color:#b91c1c;font-weight:700}
+  .hint{font-size:10.5px;color:var(--mf);margin-top:4px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .calc{border:1px dashed #c7c5f7;background:#f9f9fe;border-radius:8px;padding:7px 10px;font-size:12.5px;
+        display:flex;align-items:center;gap:9px}
+  .calc b{font-size:15px;color:var(--primary);font-variant-numeric:tabular-nums}
+  .opts{border:1px solid var(--border);border-radius:9px;margin-top:5px;overflow:hidden;
+        box-shadow:0 6px 14px rgba(16,18,45,.08)}
+  .opt{padding:6px 10px;font-size:12.5px;border-top:1px solid #f1f2f6}
+  .opt:first-child{border-top:none}
+  .opt.sel{background:var(--lav);color:var(--primary);font-weight:600}
+
+  .msg{border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:10px}
+  .msg .h{font-weight:700;display:flex;align-items:center;gap:7px;margin-bottom:3px}
+  .msg.info{border:1px solid #bfdbfe;background:#eff6ff;color:#1e3a8a}
+  .msg.warn{border:1px solid #fcd34d;background:#fffbeb;color:#78350f}
+  .msg.rest{border:1px solid #fdba74;background:#fff7ed;color:#7c2d12}
+  .msg.ph{border:1px solid #f0abfc;background:#fdf4ff;color:#701a75}
+  .msg.stop{border:1px solid #fca5a5;background:var(--badbg);color:#991b1b}
+  .msg.ok{border:1px solid #86efac;background:var(--goodbg);color:#14532d}
+  .msg b.f{display:block;font-weight:700}
+
+  .three{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:4px}
+  .wstate{border:1px solid var(--border);border-radius:11px;padding:11px 12px;background:#fff}
+  .wstate .wh{font-size:11.5px;font-weight:700;margin-bottom:5px;display:flex;align-items:center;gap:7px}
+  .wstate .wb{font-size:11.5px;color:var(--mf)}
+  .wstate .wb b{color:var(--fg)}
+
+  ul.words{margin:6px 0 0;padding-left:18px;font-size:12.5px}
+  ul.words li{margin-bottom:8px}
+  .hole{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:11px 13px;font-size:11.5px;
+        color:#7c2d12;margin-top:13px}
+  .hole b{color:#7c2d12}
+  .bignote{border:1px solid #86efac;background:var(--goodbg);border-radius:11px;padding:12px 14px;
+           font-size:13px;color:#14532d;font-weight:600;margin-top:12px}
+  .bignote span{display:block;font-weight:400;font-size:11.5px;margin-top:4px;color:#166534}
+</style>
+
+<div class="card">
+  <h1>Plan OT — overtime agreed before it is worked</h1>
+  <p class="sub">Sketch for request 1e9145d4. Wording, spacing and colours will differ from the finished screen.
+    The menu below is your own screenshot, row for row. The four figures are read from your live system; every
+    date, time, name and hours figure further down is a worked <b>example</b>, not a record of yours.</p>
+  <div class="stat">
+    <div class="st"><b>40</b><span>employees this lands on</span></div>
+    <div class="st"><b>9</b><span>companies</span></div>
+    <div class="st"><b>269</b><span>attendance days recorded</span></div>
+    <div class="st"><b>315</b><span>rostered days recorded</span></div>
+  </div>
+  <p class="note"><b>What is broken today, and cannot be seen in a screenshot.</b> An Overtime Request form
+    already exists, tucked inside the third row, Attendance Request. It takes a date, hours and a reason and it
+    goes to your superior. But it opens on <b>yesterday</b>, and a manager who tries to approve one dated in the
+    future hits an error and cannot — the system refuses to attach overtime to a day nobody has worked yet. So
+    pre-approval is advertised, half built, and in practice impossible. This is the item that makes it real.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">1</span>The menu — one new row, and the other three untouched</h2>
+  <p class="q">“under My Attendance, add a new nav item alongside Clock in/out, Records, Attendance Request”</p>
+  <div class="two">
+
+    <div class="panel bad">
+      <div class="phead bad">NOW — your screenshot, three rows</div>
+      <div class="pbody">
+        <div class="topbar">&nbsp;&nbsp;&nbsp;&nbsp;… min · hr_admin &nbsp;⌄</div>
+        <div class="navwrap">
+          <div class="rail">
+            <div class="brand"><span class="logo">HR</span><b>AI HR</b></div>
+            <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>My Leave</div>
+            <div class="nrow on"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>My Attendance
+              <svg class="ic chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></div>
+            <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 7v10M14.5 9.6c0-1-1.1-1.6-2.5-1.6s-2.5.6-2.5 1.6S10 11.1 12 11.6s2.5 1 2.5 2-1.1 1.5-2.5 1.5-2.5-.6-2.5-1.6"/></svg>Claims</div>
+            <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h7"/></svg>Feedback</div>
+          </div>
+          <div class="fly">
+            <div class="flyh">My Attendance</div>
+            <div class="nrow on"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Clock in/out</div>
+            <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Records</div>
+            <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/><path d="M14 3v5h5"/><path d="M19.5 12.5l2 2L17 19h-2v-2z"/></svg>Attendance Request</div>
+            <div class="arrowlbl" style="color:#b91c1c">✕ &nbsp;no Plan OT</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel good">
+      <div class="phead good">AFTER — a fourth row, exactly where you put it</div>
+      <div class="pbody">
+        <div class="topbar">&nbsp;&nbsp;&nbsp;&nbsp;… min · hr_admin &nbsp;⌄</div>
+        <div class="navwrap">
+          <div class="rail">
+            <div class="brand"><span class="logo">HR</span><b>AI HR</b></div>
+            <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>My Leave</div>
+            <div class="nrow on"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>My Attendance
+              <svg class="ic chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></div>
+            <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 7v10M14.5 9.6c0-1-1.1-1.6-2.5-1.6s-2.5.6-2.5 1.6S10 11.1 12 11.6s2.5 1 2.5 2-1.1 1.5-2.5 1.5-2.5-.6-2.5-1.6"/></svg>Claims</div>
+            <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h7"/></svg>Feedback</div>
+          </div>
+          <div class="fly">
+            <div class="flyh">My Attendance</div>
+            <div class="nrow on"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Clock in/out</div>
+            <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Records</div>
+            <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/><path d="M14 3v5h5"/><path d="M19.5 12.5l2 2L17 19h-2v-2z"/></svg>Attendance Request</div>
+            <div class="nrow fresh"><svg class="ic" viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3v4a5 5 0 0 0 5 5 5 5 0 0 0 5-5V3M7 21v-4a5 5 0 0 1 5-5 5 5 0 0 1 5 5v4"/></svg>Plan OT<span class="newpill">NEW</span></div>
+            <div class="arrowlbl">↑ the only new row on this menu</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <p class="cap">Four rows, not five. <b>Apply OT Plan is a button on the Plan OT page, not a menu row of its own</b> —
+    the list is what you land on, and the form opens from it. Its own icon is an hourglass, not a fourth clock: when
+    the menu is collapsed to icons only, a row sharing its neighbour's glyph cannot be told apart. Every one of the
+    four rows stays visible to every employee, exactly as the three do today.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Plan OT — your own plans, newest first</h2>
+  <p class="q">Today this list is buried inside another screen, cut off at the five most recent, and mixed in
+    with clock-time corrections.</p>
+  <div class="shot">
+    <div class="bar">
+      <div><span class="ttl">Plan OT</span><div class="tsub">Overtime you have asked for, and where each one has got to.</div></div>
+      <span class="btn p spot"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Apply OT Plan</span>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="width:13%">OT date</th>
+        <th style="width:13%">Planned time</th>
+        <th style="width:8%">Hours</th>
+        <th style="width:30%">Reason</th>
+        <th style="width:15%">Goes to</th>
+        <th style="width:12%">Status</th>
+        <th style="width:9%" class="r">&nbsp;</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="tn">Sun 16 Aug 2026</td><td class="tn">09:00 – 15:00</td><td class="tn">6.0</td>
+          <td><b>Other</b> — Cut-over rehearsal for the new server</td>
+          <td>Siti Rahmah</td>
+          <td><span class="pill pend">Pending</span></td>
+          <td class="r"><span class="lnk">Withdraw</span></td>
+        </tr>
+        <tr>
+          <td class="tn">Fri 14 Aug 2026</td><td class="tn">18:00 – 21:30</td><td class="tn">3.5</td>
+          <td><b>Project deadline</b> — Client demo build</td>
+          <td>Siti Rahmah</td>
+          <td><span class="pill appr">Approved</span><div class="small">not worked yet</div></td>
+          <td class="r"><span class="lnk">Withdraw</span></td>
+        </tr>
+        <tr>
+          <td class="tn">Wed 05 Aug 2026</td><td class="tn">18:00 – 20:30</td><td class="tn">2.5</td>
+          <td><b>System maintenance</b> — Month-end patching window</td>
+          <td>Siti Rahmah</td>
+          <td><span class="pill appr">Approved</span><div class="small">counted on the day, 5 Aug</div></td>
+          <td class="r"><span class="lnk off">Withdraw</span></td>
+        </tr>
+        <tr>
+          <td class="tn">Fri 31 Jul 2026</td><td class="tn">18:00 – 22:00</td><td class="tn">4.0</td>
+          <td><b>Client request</b> — Site handover documents</td>
+          <td>Siti Rahmah</td>
+          <td><span class="pill rej">Rejected</span></td>
+          <td class="r">&nbsp;</td>
+        </tr>
+        <tr>
+          <td class="tn">Fri 24 Jul 2026</td><td class="tn">—</td><td class="tn">1.5</td>
+          <td><b>Month-end closing</b> — Ledger reconciliation</td>
+          <td>Siti Rahmah</td>
+          <td><span class="pill canc">Withdrawn</span></td>
+          <td class="r">&nbsp;</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="cap">Four statuses and no more — <b>Pending, Approved, Rejected, Withdrawn</b> — and an approved plan
+    says so on its row once the day has been worked and the hours have landed on it. Overtime only, paged rather
+    than cut off at the five most recent, and no clock-time corrections mixed in. The last row has no planned times
+    because it was filed through today's Overtime Request form, which never asked for them; older entries keep the
+    hours they were filed with. Every row on this table is an example — the dates, times, reasons and the approver's
+    name are invented to show one of each state, not read from your records.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Apply OT Plan — the form, and the two things it tells you before you submit</h2>
+  <p class="q">It opens on <b>tomorrow</b>. Today's form opens on yesterday, which is the wrong end of the problem.</p>
+  <div class="shot">
+    <div class="bar">
+      <div><span class="back">← Back to Plan OT</span><span class="ttl">Apply OT Plan</span></div>
+      <span class="small">Today is Sun 9 Aug 2026</span>
+    </div>
+    <div class="pad">
+      <div class="fgrid">
+        <div>
+          <div class="f">
+            <label>Date</label>
+            <div class="in">Mon 10 Aug 2026
+              <svg class="ic cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg></div>
+            <div class="hint">Opens on <b>tomorrow</b>. A past date is still accepted, and behaves exactly as it does
+              today — claiming overtime after you have worked it is not taken away.</div>
+          </div>
+          <div class="row2">
+            <div class="f"><label>Planned start</label><div class="in focus">18:00</div></div>
+            <div class="f"><label>Planned end</label><div class="in focus">21:30</div></div>
+          </div>
+          <div class="f">
+            <label>Overtime hours</label>
+            <div class="calc"><b>3.5</b><span class="small">worked out from the two times above, as you type</span></div>
+          </div>
+          <div class="f">
+            <label>Reason category</label>
+            <div class="in focus">Other <span class="cal">⌄</span></div>
+            <div class="opts">
+              <div class="opt">Project deadline</div>
+              <div class="opt">System maintenance</div>
+              <div class="opt">Month-end closing</div>
+              <div class="opt">Client request</div>
+              <div class="opt sel">Other</div>
+            </div>
+          </div>
+          <div class="f">
+            <label>Reason <span class="req">— required</span></label>
+            <div class="in">Cut-over rehearsal for the new server</div>
+            <div class="hint">Free text stays required when you choose <b>Other</b>, exactly as it is today.</div>
+          </div>
+          <div class="f">
+            <label>Goes to</label>
+            <div class="in ro">Siti Rahmah · Finance Manager</div>
+            <div class="hint">Filled in for you from your reporting line, so you know whom to chase. You cannot
+              change it here.</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="msg info">
+            <div class="h"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>The kind of day you have picked</div>
+            Monday 10 August 2026 is an <b>ordinary working day</b> for you.
+          </div>
+          <div class="msg warn">
+            <div class="h"><svg class="ic" viewBox="0 0 24 24"><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Over the monthly limit</div>
+            These 3.5 hours would take you to <b>105.5 overtime hours in August</b>. The Employment Act allows
+            <b>104 a month</b>.
+          </div>
+          <div class="bignote">Both of these warn you. Neither of them stops you.
+            <span>Submit stays available, so a genuine month-end can still be filed. Your superior sees the kind of
+              day on their side too, and a marker when a plan is a long one.</span></div>
+          <p class="hint" style="margin-top:11px">The 105.5 figure counts what you have already had approved this
+            month, including plans approved for days not yet worked. It is an example figure on this sketch.</p>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px;
+                  border-top:1px solid var(--border);padding-top:12px">
+        <span class="small">Nothing is saved until you submit. Your superior is told the moment it arrives, and you
+          are told when it is approved or rejected — today nothing is sent at all.</span>
+        <span style="display:flex;gap:9px"><span class="btn sec">Cancel</span><span class="btn p spot">Submit plan</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="three" style="margin-top:14px">
+    <div class="wstate">
+      <div class="wh"><span class="pill done">Ordinary</span></div>
+      <div class="wb">“Monday 10 August 2026 is an <b>ordinary working day</b> for you.”</div>
+    </div>
+    <div class="wstate" style="border-color:#fdba74;background:#fff7ed">
+      <div class="wh"><span class="pill" style="background:#ffedd5;color:#7c2d12">Rest day</span></div>
+      <div class="wb">“Sunday 16 August 2026 is a <b>rest day</b> for you.”</div>
+    </div>
+    <div class="wstate" style="border-color:#f0abfc;background:#fdf4ff">
+      <div class="wh"><span class="pill" style="background:#fae8ff;color:#701a75">Public holiday</span></div>
+      <div class="wb">“Monday 31 August 2026 is a <b>public holiday</b> for your company.”</div>
+    </div>
+  </div>
+  <p class="cap">The same line, on the three kinds of day. It comes from the holiday and rest-day calendar the
+    system already keeps — that part is live today and this item does not change it. The line names the day; it does
+    not price it. The pay rate for a rest day or a public holiday is worked out by payroll exactly as it is now.</p>
+
+  <div class="msg stop" style="margin-top:13px">
+    <div class="h"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>And if you already have a plan for that day</div>
+    “You already have an approved overtime plan for Fri 14 Aug 2026.” <b>This one does stop you</b> — two plans for
+    one date cannot both stand, so a second cannot be filed. Withdraw the first if it is wrong.
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">4</span>Withdraw — you can take a plan back, right up to the day</h2>
+  <p class="q">Today nothing can be taken back at all, whether it is waiting or already approved.</p>
+  <div class="three">
+    <div class="wstate">
+      <div class="wh"><span class="pill pend">Pending</span> Sun 16 Aug 2026</div>
+      <div class="wb" style="margin-bottom:8px">Still waiting on your superior.</div>
+      <span class="btn warnout">Withdraw</span>
+      <div class="wb" style="margin-top:7px"><b>Yes.</b> It disappears from their queue.</div>
+    </div>
+    <div class="wstate">
+      <div class="wh"><span class="pill appr">Approved</span> Fri 14 Aug 2026</div>
+      <div class="wb" style="margin-bottom:8px">Approved, but the day has not been worked.</div>
+      <span class="btn warnout">Withdraw</span>
+      <div class="wb" style="margin-top:7px"><b>Yes.</b> Approved is not too late — any time before the overtime date.</div>
+    </div>
+    <div class="wstate" style="background:#fafafc">
+      <div class="wh"><span class="pill appr">Approved · counted</span> Wed 05 Aug 2026</div>
+      <div class="wb" style="margin-bottom:8px">The day has been worked and the hours are on it.</div>
+      <span class="btn warnout" style="opacity:.4">Withdraw</span>
+      <div class="wb" style="margin-top:7px"><b>No.</b> The hours are already in what payroll reads. That is a
+        correction, not a withdrawal.</div>
+    </div>
+  </div>
+  <p class="cap">Withdrawing marks the plan <b>Withdrawn</b> and leaves it on your list — nothing is deleted, so the
+    trail of what was asked for and taken back stays readable.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">5</span>Overtime is filed in one place, not two</h2>
+  <p class="q">Attendance Request keeps its clock-time corrections and its travel requests. The overtime form moves
+    out and leaves a signpost.</p>
+  <div class="two">
+    <div class="panel bad">
+      <div class="phead bad">NOW — Attendance Request holds three forms</div>
+      <div class="pbody">
+        <div style="border:1px solid var(--border);border-radius:9px;padding:9px 11px;margin-bottom:8px;font-size:12.5px;font-weight:600">Attendance Request<div class="small" style="font-weight:400">Date · Check-in · Check-out · Reason</div></div>
+        <div style="border:1px solid #fca5a5;border-radius:9px;padding:9px 11px;margin-bottom:8px;font-size:12.5px;font-weight:600;background:var(--badbg)">Overtime Request<div class="small" style="font-weight:400;color:#991b1b">Date (opens on yesterday) · Overtime hours · Reason. Its own note promises you may use it before your shift — but a future date cannot be approved.</div></div>
+        <div style="border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:12.5px;font-weight:600">Travel Request<div class="small" style="font-weight:400">From · To · Reason</div></div>
+      </div>
+    </div>
+    <div class="panel good">
+      <div class="phead good">AFTER — two forms and a link across</div>
+      <div class="pbody">
+        <div style="border:1px solid var(--border);border-radius:9px;padding:9px 11px;margin-bottom:8px;font-size:12.5px;font-weight:600">Attendance Request<div class="small" style="font-weight:400">Date · Check-in · Check-out · Reason &nbsp;— unchanged</div></div>
+        <div style="border:1px solid #86efac;border-radius:9px;padding:9px 11px;margin-bottom:8px;font-size:12.5px;background:var(--goodbg)">
+          <b>Overtime</b> <span class="small" style="color:#166534">— moved to Plan OT.</span>
+          <div style="margin-top:7px"><span class="btn sec spot">Go to Plan OT →</span></div>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:12.5px;font-weight:600">Travel Request<div class="small" style="font-weight:400">From · To · Reason &nbsp;— unchanged</div></div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">Nobody loses a route they use today: the link is on the screen the form used to be on. Overtime asked
+    for before the day and overtime claimed after it both live on Plan OT, so the two lists cannot drift apart.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">6</span>What this picture deliberately does <u>not</u> promise</h2>
+  <p class="sub">You listed these. The plan turns them down or leaves them out, so they are not drawn — a picture
+    that showed them would be promising them.</p>
+  <ul class="words">
+    <li><b>No Draft state.</b> There is no “Save as draft” button on the form and no Draft on the list — the four
+      statuses drawn above are all of them. A draft nobody submits is invisible to the approver and gets forgotten.</li>
+    <li><b>No Cost Centre / Project Code field.</b> The form has the fields drawn and no others. A cost code would
+      collect figures that no report reads today.</li>
+    <li><b>No escalation to a department head.</b> One name in “Goes to”, one approval, whatever the hours and
+      whatever kind of day it is. Overtime has no second approval level to escalate into. Instead, rest-day,
+      public-holiday and long plans are flagged to your superior so they are impossible to miss.</li>
+    <li><b>No approval deadline, reminder or nudge.</b> Three messages are promised and drawn: your superior when a
+      plan arrives, and you when it is approved or rejected. No reminder to a slow approver, and no reminder to you
+      on the overtime date itself.</li>
+    <li><b>No “Request changes” button for the approver.</b> Approve or reject, as everywhere else in the system. A
+      rejection comes back with their remark, and you can file again.</li>
+    <li><b>No minimum notice period.</b> Tomorrow is where the form opens, not a rule about how far ahead you must be.</li>
+    <li><b>One plan per date, not per time window.</b> The refusal drawn above triggers on the <i>date</i>. Because
+      only one plan can stand for a day, overlapping hours within a day cannot arise — but there is no clash check
+      between two time ranges, because there can never be two.</li>
+    <li><b>The approver's own screen is not redrawn.</b> Overtime already has its own section in their approvals
+      inbox. It gains the kind of day and a marker on long plans; no new screen is built for them.</li>
+  </ul>
+  <div class="hole"><b>On the data in this sketch.</b> The menu in panel 1 is traced from your own screenshot. The
+    four figures at the top — 40 employees, 9 companies, 269 attendance days, 315 rostered days — are read from your
+    live system. Everything else is a worked example: the dates, the times, the reasons, the 105.5-hour total, and
+    the approver's name. No employee of yours has these plans; they are drawn to show one of each state.</div>
+</div>

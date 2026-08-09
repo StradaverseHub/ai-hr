@@ -1,0 +1,506 @@
+<meta charset="utf-8">
+<title>db46d9a2 — CP22: pick a month, get that month's joiners in one file</title>
+<!--
+  Mockup for db46d9a2 ("Enhance the CP22 statutory form"), plan revision 1.
+
+  WHAT IS REAL HERE
+  · The screen: Payroll › Statutory Forms (app/payroll/statutory-forms/page.tsx). The filter bar
+    (Company / Payroll year / Payroll month / Show, lines 136-170), the "Select statutory body" pill
+    row, the Income Tax (LHDN) shelf with its four rows, and the "Compliance worklist · CP22 / CP22A"
+    card. Every heading, hint and button label on the BEFORE side is the live string from
+    messages/en.json → payroll.statutoryForms and payroll.cp22 — including "Download blank CP22" and
+    "Open worklist", which is exactly what the reporter's own screenshot (image1.png) shows.
+  · The 60-day window on the worklist is the live rule: core/reporting.ts:405, hireFloor = today - 60,
+    ceiling = today. That, and nothing else, is why an arbitrary month is unreachable today.
+  · "2 employees missing identifiers needed to file:" is the existing string
+    payroll.statutoryForms.readinessTitle, reused rather than reinvented.
+  · Company: ISEDECOR BINA SDN BHD, read from production for this tenant on 2026-08-07.
+    Today is 9 Aug 2026.
+
+  WHAT IS ILLUSTRATIVE, AND SAID SO ON THE PAGE
+  · Joiner names are grey bars — this sketch does not put invented people in front of the reporter.
+  · The three hire dates (1st, mid-month, last day of July 2026) are illustrative; they are chosen to
+    show that both edges of the month are included.
+  · The readiness band is drawn with EXAMPLE gaps (and carries an "example" chip) so its shape can be
+    seen. On a month where everything is on record, that band does not appear at all.
+
+  WHAT IS DELIBERATELY NOT DRAWN (the plan hedges or refuses it, and a picture cannot hedge)
+  · The in-page PDF preview pane (their requirement 5). Not being built — declined in the plan text
+    with a reject-and-say-so escape. The downloaded file is therefore drawn OUTSIDE the app frame,
+    in a PDF-reader window, with a line saying there is no viewer inside our screen.
+  · The label "Download For Submission" from their reference. The plan explicitly refuses it.
+  · 38 pages. Their reference shows 38 for July 2026; this tenant holds 40 employment records across
+    9 companies, so a month is likely a handful. Three rows, and the scale note in the caption.
+  · CP22 [Pin. 1/2021]. We ship the 1/2020 page they sent us; the artwork is not swapped on a guess.
+  · A "Filter" button, a "Tax Reference" input, and required-field validation gating the download.
+    The plan drives the list from the pickers that already exist, fills the employer number from the
+    company, and treats the branch box as optional — so none of those may appear in the picture.
+  · CP22A. Not in this pass.
+  · Any change to the 60-day worklist: it is drawn identically on both sides.
+
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--warn:#92400e;--warnbd:#fde68a;--warnbg:#fffbeb;
+        --good:#166534;--goodbd:#bbf7d0;--goodbg:#f0fdf4;--paper:#fcfcfe;--paperbd:#d7d9e4}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:15px;margin:0 0 2px}
+  .sub{font-size:12px;color:var(--mf);margin:0 0 16px}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .ph{display:flex;align-items:baseline;gap:10px;margin:0 0 12px}
+  .ph h2{font-size:13.5px;margin:0}
+  .ph .note{font-size:11.5px;color:var(--mf);margin-left:auto;text-align:right}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;white-space:nowrap}
+  .tag.now{background:#fee2e2;color:#991b1b}
+  .tag.new{background:#dcfce7;color:#166534}
+  .chip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:9.5px;font-weight:700;
+        background:#eceef4;color:#5b5b6b;letter-spacing:.02em}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .screen{border:1px solid var(--border);border-radius:11px;background:var(--bg);padding:11px}
+  .crumb{font-size:10.5px;color:var(--mf);margin-bottom:4px}
+  .ttl{font-size:13px;font-weight:700;margin:0 0 1px}
+  .pdesc{font-size:10.5px;color:var(--mf);margin:0 0 9px}
+
+  .bodycard{background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:9px;overflow:hidden}
+  .bodycard.ghost{opacity:.72}
+  .filters{display:flex;gap:9px;align-items:flex-end;padding:9px 11px;flex-wrap:wrap}
+  .f label{display:block;font-size:9.5px;color:var(--mf);margin-bottom:3px}
+  .inp{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:4px 8px;
+       font-size:11px;min-width:132px;display:flex;justify-content:space-between;gap:7px;align-items:center;color:var(--fg)}
+  .inp i{color:#9698ab;font-style:normal;font-size:9px}
+  .inp.sm{min-width:74px}
+  .inp.ph{color:#9698ab;font-style:italic}
+  .btn{border:1px solid var(--border);background:var(--card);border-radius:7px;padding:4px 9px;
+       font-size:10.5px;font-weight:600;display:inline-block;white-space:nowrap}
+  .btn.pri{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.gen{background:color-mix(in srgb,var(--primary) 10%,white);
+           border-color:color-mix(in srgb,var(--primary) 32%,white);color:var(--primary)}
+
+  .pills{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin:0 0 9px}
+  .pills .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf)}
+  .pill2{border:1px solid var(--border);background:var(--card);border-radius:999px;padding:2px 9px;
+         font-size:10px;color:var(--mf)}
+  .pill2.on{background:color-mix(in srgb,var(--primary) 10%,white);border-color:var(--primary);
+            color:var(--primary);font-weight:700}
+
+  .bodyhd{display:flex;align-items:center;gap:8px;padding:8px 11px;background:var(--muted)}
+  .badge{height:21px;padding:0 6px;border-radius:7px;background:color-mix(in srgb,var(--primary) 12%,white);
+         color:var(--primary);font-size:9.5px;font-weight:800;display:flex;align-items:center}
+  .bodyhd .n{font-size:11.5px;font-weight:700}
+  .cnt{background:#e6e7f0;color:var(--mf);border-radius:999px;padding:0 7px;font-size:10px;font-weight:600}
+  .hint{font-size:10px;color:var(--mf);padding:7px 11px 0;margin:0}
+  .frow{display:flex;align-items:center;gap:9px;padding:7px 11px;border-top:1px solid var(--border)}
+  .frow .fn{font-size:11.5px;font-weight:600}
+  .frow .fm{font-size:9.5px;color:var(--mf);display:block;font-weight:400;margin-top:1px;max-width:300px}
+  .frow .sp{margin-left:auto;display:flex;gap:7px;align-items:center;flex-shrink:0}
+  .lnk{color:var(--primary);font-weight:600;font-size:10.5px;white-space:nowrap}
+  .due{font-size:10px;color:var(--mf);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  .cardhd{display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .cardhd .t{font-size:11.5px;font-weight:650}
+  .cardhd .sp{margin-left:auto;display:flex;gap:7px;align-items:flex-end;flex-shrink:0}
+
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:5px 8px;background:var(--muted);white-space:nowrap}
+  td{padding:6px 8px;border-top:1px solid var(--border);white-space:nowrap}
+  td.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px}
+  .bar{height:9px;border-radius:4px;background:#dfe1ec;display:inline-block;vertical-align:middle}
+  .pill{display:inline-block;border-radius:999px;padding:1px 8px;font-size:9.5px;font-weight:600}
+  .pill.over{background:#fee2e2;color:#991b1b}
+  .pill.soon{background:#fef3c7;color:#92400e}
+  .pill.up{background:var(--muted);color:var(--mf)}
+  .none{color:var(--mf);font-size:10px}
+
+  .anno{font-size:10.5px;color:var(--warn);background:var(--warnbg);border:1px solid var(--warnbd);
+        border-radius:8px;padding:7px 9px;margin-top:8px;line-height:1.45}
+  .anno.ok{color:var(--good);background:var(--goodbg);border-color:var(--goodbd)}
+  .flag{border:1px dashed #f0a63a;border-radius:9px;padding:2px;margin-bottom:9px;background:#fffdf6}
+  .flag.ok{border-color:#5fc07f;background:#f6fdf8}
+  .flag .cap{font-size:9px;font-weight:700;letter-spacing:.03em;color:#a05a13;padding:2px 8px 0}
+  .flag.ok .cap{color:#177a3d}
+  .flag > .bodycard{margin-bottom:5px}
+
+  /* the new card */
+  .newcard{border:1px solid var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 9%,white)}
+  .honest{display:flex;gap:8px;align-items:flex-start;font-size:10px;line-height:1.45;color:#3f3f4c;
+          background:#f7f8ff;border-top:1px solid #dfe1f7;border-bottom:1px solid #dfe1f7;padding:7px 11px}
+  .honest b{color:#312e81}
+  .honest .mark{flex:0 0 auto;font-weight:800;color:var(--primary);font-size:11px;line-height:1.3}
+  .ready{display:flex;gap:7px;align-items:flex-start;font-size:10px;line-height:1.5;color:var(--warn);
+         background:var(--warnbg);border-bottom:1px solid var(--warnbd);padding:7px 11px}
+  .ready .who{display:block;margin-top:2px}
+  .ready .who span.bar{background:#e8dcc4}
+  .micro{font-size:9px;color:var(--mf);margin-top:3px;display:block}
+  .empty{border:1px dashed var(--border);border-radius:9px;margin:10px 11px;padding:16px 12px;text-align:center;
+         font-size:11px;color:var(--mf);background:var(--bg)}
+  .empty b{color:var(--fg);display:block;margin-bottom:3px;font-size:11.5px}
+
+  .kicker{font-size:11px;color:var(--mf);margin:9px 0 0;line-height:1.55}
+  .kicker b{color:var(--fg)}
+
+  /* panel 3 */
+  .three{display:grid;grid-template-columns:1fr 1fr 1.06fr;gap:14px;align-items:start}
+  .colh{font-size:12px;font-weight:700;margin:0 0 7px}
+  .colh .sm{font-weight:400;color:var(--mf);font-size:10.5px}
+
+  .reader{border:1px solid var(--paperbd);border-radius:10px;overflow:hidden;background:#e9eaf1}
+  .readerbar{display:flex;align-items:center;gap:6px;padding:6px 9px;background:#e2e3ec;
+             border-bottom:1px solid var(--paperbd)}
+  .dot{width:8px;height:8px;border-radius:50%;background:#c2c4d1}
+  .readerbar .fname{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9.5px;color:#4a4a58}
+  .readerbar .app{margin-left:auto;font-size:9px;color:#6f6f80}
+  .pages{padding:9px;display:grid;gap:8px}
+  .page{background:#fff;border:1px solid var(--paperbd);border-radius:6px;padding:8px}
+  .pagetop{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  .pagetop .pno{font-size:8.5px;font-weight:800;color:#fff;background:#8d8fa3;border-radius:4px;padding:1px 5px}
+  .pagetop .ttl2{font-size:9px;font-weight:700;letter-spacing:.01em}
+  .pagetop .who{margin-left:auto;font-size:9px;color:var(--mf);display:flex;align-items:center;gap:5px}
+  .pline{display:grid;grid-template-columns:96px 1fr;gap:6px;align-items:center;margin-bottom:4px}
+  .pline:last-child{margin-bottom:0}
+  .plbl{font-size:8.5px;color:#6b6b7a;line-height:1.25}
+  .pbox{border:1px solid #c3c8f7;background:#eef0fe;color:#3f37c9;border-radius:4px;
+        font-size:8.5px;padding:3px 6px;min-height:20px;display:flex;align-items:center}
+  .pbox.typed{border-color:#c9ccd8;background:#fcfcfe;color:#6b6b7a;font-style:italic}
+
+  .sbox{border:1px solid var(--border);border-radius:10px;padding:10px 11px;margin-bottom:10px;background:#fff}
+  .sbox:last-child{margin-bottom:0}
+  .sbox h3{font-size:11.5px;margin:0 0 5px}
+  .sbox p{font-size:10.5px;margin:0 0 6px;line-height:1.5;color:#3f3f4c}
+  .sbox p:last-child{margin-bottom:0}
+  .sbox.warn{background:var(--warnbg);border-color:var(--warnbd)}
+  .sbox.warn h3{color:var(--warn)}
+  .sbox.warn p{color:#7c4a12}
+  .sbox ul{margin:0;padding-left:15px}
+  .sbox li{font-size:10.5px;line-height:1.5;margin-bottom:4px;color:#3f3f4c}
+  .sbox li:last-child{margin-bottom:0}
+  .strike{text-decoration:line-through;color:#a3a3b0}
+</style>
+
+<h1>CP22 — pick a month at the top, get that month’s joiners, and all of their pages in one file</h1>
+<p class="sub">Sketch for request db46d9a2 · Payroll › Statutory Forms › Income Tax (LHDN) ·
+  ISEDECOR BINA SDN BHD · drawn against today, 9 Aug 2026. Wording, spacing and colours will differ
+  from the built screen.</p>
+
+<!-- ══════════════ PANEL 1 — before / after ══════════════ -->
+<div class="panel">
+  <div class="ph"><h2>The company and month pickers are already on this screen. Today they do not reach the CP22 list.</h2>
+    <span class="note">Same page, same scroll position, both sides</span></div>
+
+  <div class="two">
+
+    <!-- ─────────── TODAY ─────────── -->
+    <div>
+      <div class="ph" style="margin-bottom:8px"><span class="tag now">TODAY</span>
+        <h2 style="font-size:12.5px">The CP22 list is always “the last 60 days”, whatever you pick above</h2></div>
+
+      <div class="screen">
+        <div class="crumb">Payroll</div>
+        <div class="ttl">Statutory Forms</div>
+        <p class="pdesc">Every Malaysian statutory submission, grouped by the authority you file it with.</p>
+
+        <div class="flag">
+          <div class="cap">ALREADY HERE — AND CONNECTED TO EVERYTHING EXCEPT CP22</div>
+          <div class="bodycard">
+            <div class="filters">
+              <div class="f"><label>Company</label><div class="inp">ISEDECOR BINA SDN BHD <i>▾</i></div></div>
+              <div class="f"><label>Payroll year</label><div class="inp sm">2026 <i>▾</i></div></div>
+              <div class="f"><label>Payroll month</label><div class="inp sm">July <i>▾</i></div></div>
+              <span class="btn">Show</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pills"><span class="lbl">Select statutory body</span>
+          <span class="pill2">All</span><span class="pill2">EPF (KWSP)</span>
+          <span class="pill2">SOCSO / EIS (PERKESO)</span>
+          <span class="pill2 on">Income Tax (LHDN)</span><span class="pill2">Other statutory</span></div>
+
+        <div class="bodycard">
+          <div class="bodyhd"><span class="badge">LHDN</span><span class="n">Income Tax (LHDN)</span><span class="cnt">4</span></div>
+          <p class="hint">Monthly tax deduction, the annual return, and the joiner and leaver notices.</p>
+          <div class="frow" style="border-top:0;margin-top:6px"><span class="fn">CP39 — MTD / PCB (LHDN)
+              <span class="fm">Monthly · e-PCB / e-Data PCB / e-CP39 · 2026-07</span></span>
+            <span class="sp"><span class="due">Due 2026-08-15</span><span class="pill soon">Due soon</span><span class="lnk">Open form</span></span></div>
+          <div class="frow"><span class="fn">Form E / CP8D — annual (LHDN)
+              <span class="fm">Annual · e-Filing (Form E) · 2026</span></span>
+            <span class="sp"><span class="pill up">No deadline set</span><span class="lnk">Open form</span></span></div>
+          <div class="frow"><span class="fn">EA form (per employee)
+              <span class="fm">Annual · Each employee’s annual statement of remuneration, opened from the year’s employee list.</span></span>
+            <span class="sp"><span class="lnk">Open form</span></span></div>
+          <div class="frow"><span class="fn">CP22 / CP22A notices
+              <span class="fm">When it happens · New joiner and cessation notifications to LHDN, driven by your hire and termination dates.</span></span>
+            <span class="sp"><span class="btn">Download blank CP22</span><span class="lnk">Open worklist</span></span></div>
+        </div>
+
+        <div class="bodycard">
+          <div class="cardhd"><span class="t">Compliance worklist · CP22 / CP22A</span><span class="cnt">3</span></div>
+          <p class="hint">New-hire (CP22) and cessation (CP22A) notifications due to LHDN for ISEDECOR BINA
+            SDN BHD. File in MyTax; this surfaces what’s outstanding.</p>
+          <table style="margin-top:7px">
+            <thead><tr><th>Employee</th><th>Form</th><th>Reason</th><th>Event date</th><th>Notify by</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><span class="bar" style="width:80px"></span></td><td>CP22</td><td style="color:var(--mf)">New hire</td>
+                  <td class="mono">2026-07-02</td><td class="mono">2026-08-01</td><td><span class="pill over">Overdue</span></td>
+                  <td><span class="btn gen">Download CP22</span></td></tr>
+              <tr><td><span class="bar" style="width:64px"></span></td><td>CP22</td><td style="color:var(--mf)">New hire</td>
+                  <td class="mono">2026-07-15</td><td class="mono">2026-08-14</td><td><span class="pill soon">Due soon</span></td>
+                  <td><span class="btn gen">Download CP22</span></td></tr>
+              <tr><td><span class="bar" style="width:92px"></span></td><td>CP22A</td><td style="color:var(--mf)">Cessation</td>
+                  <td class="mono">2026-09-30</td><td class="mono">2026-08-31</td><td><span class="pill up">Upcoming</span></td>
+                  <td><span class="none">—</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="anno"><b>Three things are true today.</b>
+          The list is fixed to <b>hires in the last 60 days</b> — 10 June to today — so changing
+          <b>Payroll month</b> above does not change one row of it, and there is no way to ask it for
+          March 2026 or any month further back. It is a <b>mixture of months</b>, not a month.
+          And the document comes out <b>one person at a time</b>: one row, one click, one file.
+          For an older hire, all we offer is the blank form you complete by hand.</div>
+      </div>
+    </div>
+
+    <!-- ─────────── PROPOSED ─────────── -->
+    <div>
+      <div class="ph" style="margin-bottom:8px"><span class="tag new">PROPOSED</span>
+        <h2 style="font-size:12.5px">One new card, driven by the pickers that are already there</h2></div>
+
+      <div class="screen">
+        <div class="crumb">Payroll</div>
+        <div class="ttl">Statutory Forms</div>
+        <p class="pdesc">Every Malaysian statutory submission, grouped by the authority you file it with.</p>
+
+        <div class="flag ok">
+          <div class="cap">UNCHANGED — AND NOW IT DRIVES THE NEW CARD BELOW</div>
+          <div class="bodycard">
+            <div class="filters">
+              <div class="f"><label>Company</label><div class="inp">ISEDECOR BINA SDN BHD <i>▾</i></div></div>
+              <div class="f"><label>Payroll year</label><div class="inp sm">2026 <i>▾</i></div></div>
+              <div class="f"><label>Payroll month</label><div class="inp sm">July <i>▾</i></div></div>
+              <span class="btn">Show</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pills"><span class="lbl">Select statutory body</span>
+          <span class="pill2">All</span><span class="pill2">EPF (KWSP)</span>
+          <span class="pill2">SOCSO / EIS (PERKESO)</span>
+          <span class="pill2 on">Income Tax (LHDN)</span><span class="pill2">Other statutory</span></div>
+
+        <div class="bodycard">
+          <div class="bodyhd"><span class="badge">LHDN</span><span class="n">Income Tax (LHDN)</span><span class="cnt">4</span></div>
+          <p class="hint">Monthly tax deduction, the annual return, and the joiner and leaver notices.</p>
+          <div class="frow" style="border-top:0;margin-top:6px"><span class="fn">CP39 — MTD / PCB (LHDN)
+              <span class="fm">Monthly · e-PCB / e-Data PCB / e-CP39 · 2026-07</span></span>
+            <span class="sp"><span class="due">Due 2026-08-15</span><span class="pill soon">Due soon</span><span class="lnk">Open form</span></span></div>
+          <div class="frow"><span class="fn">Form E / CP8D — annual (LHDN)
+              <span class="fm">Annual · e-Filing (Form E) · 2026</span></span>
+            <span class="sp"><span class="pill up">No deadline set</span><span class="lnk">Open form</span></span></div>
+          <div class="frow"><span class="fn">EA form (per employee)
+              <span class="fm">Annual · Each employee’s annual statement of remuneration, opened from the year’s employee list.</span></span>
+            <span class="sp"><span class="lnk">Open form</span></span></div>
+          <div class="frow"><span class="fn">CP22 / CP22A notices
+              <span class="fm">When it happens · New joiner and cessation notifications to LHDN, driven by your hire and termination dates.</span></span>
+            <span class="sp"><span class="btn">Download blank CP22</span><span class="lnk">Open worklist</span></span></div>
+        </div>
+
+        <!-- ── THE NEW CARD ── -->
+        <div class="bodycard newcard">
+          <div class="cardhd">
+            <span class="t">New joiners in July 2026</span><span class="cnt">3</span>
+            <span class="sp">
+              <div class="f"><label>Submit to — LHDN branch</label>
+                <div class="inp ph" style="min-width:186px">type the branch you file with</div></div>
+              <span class="btn pri" style="padding:6px 11px">Download all as one file</span>
+            </span>
+          </div>
+
+          <div class="honest"><span class="mark">!</span>
+            <span><b>What you download is not the filing.</b> Since 1 September 2024 a CP22 must go through
+              the <b>e-CP22 service on MyTax</b> — posted and hand-delivered forms are no longer accepted.
+              This file is two things: everything you need to key into MyTax, gathered and checked in one
+              place, and your own signed internal record.</span></div>
+
+          <div class="ready"><span class="mark" style="font-weight:800">⚠</span>
+            <span><b>2 employees missing identifiers needed to file:</b> <span class="chip">example</span>
+              <span class="who"><span class="bar" style="width:70px"></span> — no income tax number</span>
+              <span class="who"><span class="bar" style="width:88px"></span> — no identity card or passport number</span>
+              <span class="micro">The same line names the company’s LHDN employer number when that is the one
+                missing. When nothing is missing, this band does not appear at all.</span></span></div>
+
+          <p class="hint" style="padding-top:7px">Read from the hire date on each person’s profile. This is the
+            month you chose above — it is a hire month, not a payroll period. The branch you type lands on
+            every page in the file.</p>
+
+          <table style="margin-top:7px">
+            <thead><tr><th>Employee</th><th>Hire date</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><span class="bar" style="width:80px"></span></td><td class="mono">2026-07-01</td>
+                  <td style="text-align:right"><span class="btn gen">Download CP22</span></td></tr>
+              <tr><td><span class="bar" style="width:64px"></span></td><td class="mono">2026-07-15</td>
+                  <td style="text-align:right"><span class="btn gen">Download CP22</span></td></tr>
+              <tr><td><span class="bar" style="width:102px"></span></td><td class="mono">2026-07-31</td>
+                  <td style="text-align:right"><span class="btn gen">Download CP22</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="bodycard ghost">
+          <div class="cardhd"><span class="t">Compliance worklist · CP22 / CP22A</span><span class="cnt">3</span>
+            <span class="sp"><span class="chip">unchanged</span></span></div>
+          <p class="hint">New-hire (CP22) and cessation (CP22A) notifications due to LHDN for ISEDECOR BINA
+            SDN BHD. File in MyTax; this surfaces what’s outstanding.</p>
+          <table style="margin-top:7px">
+            <thead><tr><th>Employee</th><th>Form</th><th>Reason</th><th>Event date</th><th>Notify by</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><span class="bar" style="width:80px"></span></td><td>CP22</td><td style="color:var(--mf)">New hire</td>
+                  <td class="mono">2026-07-02</td><td class="mono">2026-08-01</td><td><span class="pill over">Overdue</span></td>
+                  <td><span class="btn gen">Download CP22</span></td></tr>
+              <tr><td><span class="bar" style="width:64px"></span></td><td>CP22</td><td style="color:var(--mf)">New hire</td>
+                  <td class="mono">2026-07-15</td><td class="mono">2026-08-14</td><td><span class="pill soon">Due soon</span></td>
+                  <td><span class="btn gen">Download CP22</span></td></tr>
+              <tr><td><span class="bar" style="width:92px"></span></td><td>CP22A</td><td style="color:var(--mf)">Cessation</td>
+                  <td class="mono">2026-09-30</td><td class="mono">2026-08-31</td><td><span class="pill up">Upcoming</span></td>
+                  <td><span class="none">—</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="anno ok"><b>One new card, and nothing else on the page moves.</b>
+          No new pickers — the <b>Company</b> and <b>Payroll month</b> at the top now also drive this list, so
+          <b>any month works</b>: July 2026, March 2026, or a month two years back. The card is headed with the
+          month itself so it cannot be read as a payroll period.
+          The <b>60-day worklist below stays exactly as it is</b> — that one is your deadline alarm, what is
+          outstanding right now. This one is a month, and reaches any of them.</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="kicker"><b>What is illustrative here, and what is not.</b>
+    Names are grey bars on purpose — this sketch will not put invented people in front of you; the live
+    card shows your actual joiners. The three hire dates are illustrative, chosen as the <b>1st, the middle
+    and the last day</b> of July to show that both edges of the month are included. The two gaps in the amber
+    band are an example of its shape, not a claim about your records.
+    Everything else — the pickers, the shelf, the worklist, its columns and the 60-day rule behind it —
+    is exactly what the screen does today.
+    <b>On scale:</b> your reference shows 38 pages for July 2026. This system currently holds 40 employment
+    records across 9 companies, so a month here will likely be a handful of people, not 38 — the card behaves
+    the same at either size and grows with your data. Three rows are drawn because three is honest.</p>
+</div>
+
+<!-- ══════════════ PANEL 2 — the empty month, the file, and the hedges ══════════════ -->
+<div class="panel">
+  <div class="ph"><span class="tag new">THE REST OF IT</span>
+    <h2>A month with nobody in it, the file you get, and the three things this sketch will not promise</h2></div>
+
+  <div class="three">
+
+    <!-- ── empty state ── -->
+    <div>
+      <p class="colh">A month with no joiners <span class="sm">— pick March 2026</span></p>
+      <div class="screen">
+        <div class="bodycard newcard">
+          <div class="cardhd"><span class="t">New joiners in March 2026</span><span class="cnt">0</span></div>
+          <div class="empty"><b>Nobody started in March 2026.</b>
+            No one at ISEDECOR BINA SDN BHD has a hire date in this month, so there is nothing to download.
+            Pick another month above.</div>
+        </div>
+        <div class="anno ok" style="margin-top:0">
+          <b>No download button at all</b>, rather than a button that hands you an empty file — and no branch
+          box either, because there is nothing to stamp it on. The card still says which month you asked for,
+          so you know the answer came back rather than the screen failing.</div>
+      </div>
+    </div>
+
+    <!-- ── the file ── -->
+    <div>
+      <p class="colh">The file itself <span class="sm">— opened on your own machine</span></p>
+      <div class="reader">
+        <div class="readerbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="fname">cp22-isedecor-bina-sdn-bhd-2026-07.pdf</span>
+          <span class="app">your PDF reader</span></div>
+        <div class="pages">
+          <div class="page">
+            <div class="pagetop"><span class="pno">PAGE 1</span><span class="ttl2">CP22 [Pin. 1/2020]</span>
+              <span class="who"><span class="bar" style="width:44px"></span>· 01/07/2026</span></div>
+            <div class="pline"><span class="plbl">Kepada / To — LHDN branch</span>
+              <span class="pbox">the branch you typed</span></div>
+            <div class="pline"><span class="plbl">Employer’s no. (E)</span>
+              <span class="pbox">from the company you picked</span></div>
+            <div class="pline"><span class="plbl">Commencement date</span>
+              <span class="pbox">from this person’s profile</span></div>
+          </div>
+          <div class="page">
+            <div class="pagetop"><span class="pno">PAGE 2</span><span class="ttl2">CP22 [Pin. 1/2020]</span>
+              <span class="who"><span class="bar" style="width:36px"></span>· 15/07/2026</span></div>
+            <div class="pline"><span class="plbl">Kepada / To — LHDN branch</span>
+              <span class="pbox">the same branch you typed</span></div>
+            <div class="pline"><span class="plbl">Spouse’s income tax no.</span>
+              <span class="pbox typed">empty — you type it, as today</span></div>
+          </div>
+          <div class="page">
+            <div class="pagetop"><span class="pno">PAGE 3</span><span class="ttl2">CP22 [Pin. 1/2020]</span>
+              <span class="who"><span class="bar" style="width:52px"></span>· 31/07/2026</span></div>
+            <div class="pline"><span class="plbl">Kepada / To — LHDN branch</span>
+              <span class="pbox">the same branch you typed</span></div>
+            <div class="pline"><span class="plbl">Employer’s signature</span>
+              <span class="pbox typed">empty — you sign it, as today</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="kicker" style="margin-top:8px"><b>One page per joiner, in the order the list shows them</b>, on
+        LHDN’s own artwork. Every box stays typeable — including the filled ones — exactly as today’s
+        single-person form does, and typing on one page never changes another. The branch you typed once
+        appears on all of them instead of being left blank on all of them.</p>
+    </div>
+
+    <!-- ── the hedges, in words ── -->
+    <div>
+      <p class="colh">Said in words, because a picture cannot hedge</p>
+
+      <div class="sbox warn">
+        <h3>A correction we owe you</h3>
+        <p>When we planned the CP22 form we wrote that filing one becomes “downloading it, typing up to seven
+          remaining boxes, and signing”. <b>That is no longer a route LHDN accepts.</b> Since 1 September 2024
+          the notification must go through <b>e-CP22 on the MyTax portal</b>; posted and hand-delivered forms
+          are not accepted, and a missed notification carries RM200 to RM20,000 or up to six months’
+          imprisonment.</p>
+        <p>So we are deliberately <b>not</b> using your reference’s label
+          <span class="strike">Download For Submission</span> anywhere on this screen. The button says what it
+          does — it downloads a file — and the line beside it says what the file is for.</p>
+      </div>
+
+      <div class="sbox">
+        <h3>The revision we ship on</h3>
+        <p>Your reference shows <b>CP22 [Pin. 1/2021]</b>. The copy you sent us earlier — the one we bundled
+          and shipped, and the one drawn here — is <b>[Pin. 1/2020]</b>. We could not establish which revision
+          LHDN publishes today and <b>we will not quietly swap the artwork of a statutory form on a guess</b>.
+          This work needs nothing from you to go ahead; send us the 1/2021 page whenever you have it and we
+          switch it in a short follow-up, with no other change.</p>
+      </div>
+
+      <div class="sbox">
+        <h3>Not drawn, because it is not being built</h3>
+        <ul>
+          <li><b>No preview pane inside our screen.</b> Your reference has a <b>View</b> button that shows the
+            forms in the page; that viewer is not in this work. The file we hand you is already unlocked and
+            typeable, so the copy you open on your own machine is the preview. If having it inside our screen
+            matters to you, reject this plan and say so.</li>
+          <li><b>CP22A, the leaver notice, is not in this pass.</b> It follows the same shape and is the
+            natural next piece.</li>
+          <li><b>A whole month, not a free date range.</b> A month is what you described, so a month is what
+            we will build. If you would rather have any date to any date, reject this plan and say so.</li>
+          <li><b>No new required fields.</b> The branch box is optional and the tax reference is not something
+            you pick — we hold one employer number per company and fill it from the company you selected. If
+            it is missing, the amber band tells you before you download.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
