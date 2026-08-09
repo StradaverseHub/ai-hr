@@ -1653,11 +1653,7 @@ export async function rosterMonthView(
 ): Promise<RosterMonthView> {
   const { from, to } = monthRange(p.month);
   const dates = monthDates(p.month);
-  const [employeeRows, shiftRows, roster] = await Promise.all([
-    listEmployees(ctx, [p.companyId]),
-    listShiftsForTenant(ctx),
-    rosterForRange(ctx, { from, to }),
-  ]);
+  const [employeeRows, shiftRows] = await Promise.all([listEmployees(ctx, [p.companyId]), listShiftsForTenant(ctx)]);
 
   const allEmployees: RosterMonthEmployee[] = employeeRows
     .filter((e) => !e.terminatedOn)
@@ -1680,10 +1676,17 @@ export async function rosterMonthView(
       (needle === '' || e.name.toLowerCase().includes(needle) || (e.code ?? '').toLowerCase().includes(needle)),
   );
 
-  const visible = new Set(employees.map((e) => e.employmentId));
+  // The roster read is narrowed to the employees actually on screen. A filtered month must not drag the
+  // whole company's rows across just to throw them away, and an empty result must not fall through to
+  // rosterForRange's "no employmentIds ⇒ everyone" branch.
+  const visible = employees.map((e) => e.employmentId);
+  const [roster, usualRows] = await Promise.all([
+    visible.length > 0 ? rosterForRange(ctx, { employmentIds: visible, from, to }) : Promise.resolve([]),
+    usualShiftsFor(ctx, visible),
+  ]);
+
   const cells: Record<string, AssignedCell> = {};
   for (const r of roster) {
-    if (!visible.has(r.employmentId)) continue;
     cells[cellKey(r.employmentId, r.shiftDate)] = r.isRestDay
       ? { kind: 'rest' }
       : r.shiftId
@@ -1693,7 +1696,7 @@ export async function rosterMonthView(
 
   const usual: Record<string, UsualShift> = {};
   const usualNames: Record<string, { code: string | null; name: string }> = {};
-  for (const u of await usualShiftsFor(ctx, [...visible])) {
+  for (const u of usualRows) {
     usual[u.employmentId] = { shiftId: u.shiftId, pattern: u.pattern };
     usualNames[u.shiftId] = { code: u.code, name: u.name };
   }
