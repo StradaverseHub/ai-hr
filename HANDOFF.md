@@ -18,41 +18,50 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-09 (r174 SHIPPED IN FULL — all 8 approved items deployed)
+## CURRENT STATE — snapshot 2026-08-09 (r175a CP22 SHIPPED · SIX ITEMS NEWLY APPROVED AND UNBUILT)
 
-**`main@4342a51c` is what runs. Production on 341 migrations. Next free migration number is `0421`.**
-`0416` leave-ledger reset archive · `0417` shift general fields · `0418` `shift_ot_window` ·
-`0419` clocking-location radius + location link · `0420` `location.branch`. No half-applied migration,
-no pending deploy, nothing in flight. Verified after deploy: **341 migrations, watermark
-1781862520000**, `leave_ledger_reset_archive` + `shift_ot_window` present, 5/5 new `shift` columns,
-`clocking_location.radius_m` + `location_id` present, `location.branch` present,
-`employment_geofence_radius_required` CHECK dropped, service `active`, `GET /` 401. Gate:
-**607 files / 7,541 tests** green across all 3 chunks; `next build` clean; shadow 339→341 PASS.
-Render-checked on a dev server across **all six locales** — zero MISSING_MESSAGE, ICU, RSC or
-duplicate-key errors.
+**`main@2449b0f6` is what runs. Production on 341 migrations. Next free migration number is `0421`.**
+r175a (`d3a9383c`, CP22) added NO migration — 341 before and after. Verified after deploy: service
+`active`, `GET /` 401, both CP22 routes present on the box, and the bundled LHDN template's sha256
+`5b516429e896…` identical to the reporter's own upload. Gate: **610 files / 7,543 tests** green across
+all 3 chunks; `next build` clean; render-checked on a dev server in all six locales with zero
+MISSING_MESSAGE / ICU / RSC errors, and the produced PDF opened and read.
 
-**THE BOARD IS EMPTY OF APPROVED WORK: `approved = 0`, `contested = 0`, `open = 1`** (`b00f9e6e`, the
-Overtime 2.0/3.0 question we raised). Re-count rather than trusting this line — it said `approved = 0`
-on 2026-08-08 and eight items were approved the next morning.
+⚠️ **THE BUILD QUEUE IS NOT EMPTY: `approved = 6`, all unbuilt.** The reporter approved six plans while
+CP22 was building. In board order they are `e6a144d4` (Download Excel on the Movement tab · Quick),
+`0fcb2557` (Export to Excel on Payroll Transaction History · Moderate), `18504ca6` (effective date on
+Shift arrangement · Large), `1c1b321a` (Recompute Attendance · Large), `23390097` (monthly Roster grid ·
+Large), `e2632276` (name the absence deduction · Large). Plans, mockups and measured facts for all six
+are on the board at revision 1.
+
+**TWO OF THOSE SIX ARE COUPLED AND MUST NOT BE BUILT INDEPENDENTLY.** `18504ca6` and `1c1b321a` were
+planned in the same batch and BOTH first promised the same re-processing screen; `18504ca6` was stood
+down and its plan now says so on its face. `1c1b321a` OWNS the recompute screen and its writer;
+`18504ca6` owns making `scheduleFor` date-aware. They meet in `core/attendance.ts`. Build `18504ca6`
+first or build them together — if only `1c1b321a` ships, a recompute of an older day resolves the shift
+as the employment's CURRENT one, which is right for a corrected shift and WRONG for a moved employee.
+
+**`e2632276` IS NOT A PAY CODE.** The deduction the reporter asked for ALREADY RUNS (basic ÷ divisor ×
+unpaid days, taken BEFORE EPF/SOCSO/EIS/PCB, which is the correct treatment); it is invisible because it
+is folded into an unnamed "Other deductions" figure. A pay code would deduct a SECOND time and would be
+taken AFTER the statutory contributions. The approved plan names the existing lines and adds absent
+days; it does not create the pay code the reporter had already saved on screen.
 
 **2026-08-09, OUTSIDE any release: `capture-usage` was added to the production crontab** (daily 01:00)
-and run once by hand — 9 rows, 0 failures. Pre-change crontab saved at
-`/home/ubuntu/crontab.backup-2026-08-09`. Detail in the ADR-0077 table, slice 10.
+and run once by hand — 9 rows, 0 failures. Pre-change crontab at `/home/ubuntu/crontab.backup-2026-08-09`.
 
-**`scripts/reset-medical-hospitalization-ledger.ts` IS DEPLOYED BUT HAS NEVER RUN, ANYWHERE.** It is
-report-only without `--apply`, hardcoded to tenant `11111111-…` and the SICK/HOSPITALIZATION type ids,
-and it REFUSES on any of: debits, request-sourced rows, approved requests, `toil_accrual` references,
-encashment snapshots, or a row count ≠ 147. `deploy.sh` does NOT invoke it (verified: it runs only
-`seed-catalogs`, `backfill-plan-history`, `backfill-country-modules`). Run report-only first, read the
-census, then `--apply`. **The archive→verify→delete sequence has never been exercised end to end** —
-only the individual SQL shapes are covered by tests. This is the last unfinished part of `c8052ae3`:
-the reporter was promised both leave types would read 0.00, and until this runs they do not.
+**`scripts/reset-medical-hospitalization-ledger.ts` IS DEPLOYED BUT HAS NEVER RUN.** Report-only without
+`--apply`; `deploy.sh` does NOT invoke it (verified). The report-only census was run 2026-08-09 and
+matches the approved plan exactly — 147 ledger rows, 22 recalc-audit rows, and all four safety
+conditions (debits, request-sourced rows, approved requests, encashment snapshots) at ZERO. **This is
+the last unfinished part of `c8052ae3`:** the reporter was promised Medical and Hospitalization read
+0.00, and until this runs they do not. The archive→verify→delete sequence has never executed end to end.
 
-⚠️ **`HANDOFF.md` IS ITSELF RSYNCED TO THE BOX, so editing it makes the dry-run report exactly one
-changed file — which looks identical to an undeployed release.** The dry-run also permanently reports
-`next-env.d.ts`: it is **gitignored and Next-generated**, and local `pnpm dev` writes the
-`.next/dev/types/` variant while the box's build writes `.next/types/`. The box's version is correct —
-do not "fix" it. Those two lines are noise; anything else is a real delta.
+⚠️ **`HANDOFF.md` IS ITSELF RSYNCED TO THE BOX**, so editing it makes the dry-run report one changed
+file — which looks identical to an undeployed release. The dry-run also permanently reports
+`next-env.d.ts`: gitignored and Next-generated, local `pnpm dev` writes the `.next/dev/types/` variant
+while the box's build writes `.next/types/`. The box's version is correct. Those two lines are noise;
+anything else is a real delta.
 
 ### r174, r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
 
@@ -650,6 +659,27 @@ grep — an empty result is a parser gap, not proof of no callers.
   would leak. The mutation check is what caught it: **with the guard reverted, the whole test file still
   passed**, because it was pinning RLS rather than the new guard. A green refusal test proves the
   behaviour is refused — NOT that your code is what refuses it.
+- **A GREEN SUITE, A 200, AND ONE OF TWO PDF RENDERERS ALL CALLED A PAGE CORRECT WHILE IT WAS WRONG
+  (r175a).** The CP22 renderer silently DROPPED any line past the third in a multi-row block: a
+  four-line Malaysian address filed to LHDN without its state, and box (b) short an allowance,
+  understating declared remuneration. No warning, no ellipsis — the box looks full. 81 tests were green
+  because every fixture used three address lines, while **the form is ruled for four**. Two lessons:
+  **(1) test the row count the artefact actually prints, not the one that happens to fit**; and
+  **(2) WHEN TWO RENDERERS DISAGREE, THAT DISAGREEMENT IS THE INSTRUMENT.** Poppler regenerates a field's
+  appearance when `NeedAppearances` is set and drew the line whole; MuPDF and macOS Preview draw the
+  embedded stream and showed the damage. Rasterise in BOTH (`mutool` and `pdftoppm` are available) — a
+  fix that satisfies one is not a fix. The clip is the rect inset by 1pt, so a block sized "top of row 1
+  to bottom of row R" also slices the Rth row's descenders; extend the rect DOWNWARD, which moves no
+  text because `baseline_n = rectTop − 1 − n × pitch`.
+
+- **STOPPING AN AGENT CAN LOSE UNCOMMITTED WORK THAT IS BETTER THAN ITS LAST COMMIT (r175a).** A fix
+  agent was stopped to free the cluster for the gate; it had already committed a working fix, and had
+  THREE further modified files uncommitted — the 900dpi measurement showing the last row's descenders
+  were still being clipped. Merging the branch as-committed would have shipped the weaker fix silently,
+  because the committed state passed its own tests. **Before merging a branch whose agent you stopped,
+  run `git status` in its worktree and read the diff.** If it is coherent (tsc + its own tests), commit
+  it — do not discard it as scratch.
+
 - **`rejects.toThrow()` passes on the WRONG throw** — a fixture failing NOT NULL before reaching the
   constraint under test reads as a pass. Assert the constraint NAME or match the real Postgres error
   via `.cause` (Drizzle wraps as "Failed query: …").

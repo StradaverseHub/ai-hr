@@ -4,6 +4,48 @@ Archive of SHIPPED round entries, newest first. The living handoff is `../HANDOF
 current state and the entry for any round still in flight; when a round ships, its entry moves to the
 top of this file.
 
+## r175a — d3a9383c, the CP22 fillable form (shipped 2026-08-09, main@2449b0f6, 341 migrations, none of its own)
+
+The first item of a new cycle: seven open items were planned and pushed with mockups, the reporter
+approved CP22 within minutes, and it was built, gated and deployed the same day. No migration — the
+operator's typed answers live in their downloaded file, not our database.
+
+**WHAT SHIPS.** Each new-hire row on the LHDN compliance worklist gains a Download CP22 button; the
+shelf row says "Open worklist" (via its own action key, so no other row's wording moved) and offers a
+blank fillable copy. What downloads is LHDN's official Pin. 1/2020 page, unaltered — sha256
+`5b516429e896…`, byte-identical to the reporter's own upload and verified again on the box after
+deploy — with 33 AcroForm boxes overlaid: 26 pre-filled, 7 empty, all 33 editable, never flattened.
+
+**THE COORDINATE MAP IS DATA, NOT A GUESS.** Derived by reducing the template's 947 thin filled `re`
+operators to 80 horizontal and 150 vertical lines and reading the enclosing DRAWN CELL for each entry
+area — so the comb rows land ON the printed character cells rather than near them. The derivation
+script was a throwaway; `lib/cp22-fields.ts` is the reviewed artefact, and its test pins every rect
+inside the MediaBox with zero overlap, which turns the visual QA into an assertion.
+
+**THE COUNT IS 33 AND THE DIFFERENCE IS ONE FIELD.** Counting by eye gives 32; the employee telephone
+is TWO combed fields flanking a printed dash, because one field spanning the pair would cover the dash.
+
+**Decisions.**
+
+- **Never invent a value on a statutory form.** The 7 unfillable boxes render empty and editable. The
+  plan specifically warned that `employeeDependent.companyName` is the SPOUSE's employer and must not
+  feed "previous employer in Malaysia"; the verifier confirmed those columns appear in the diff only in
+  comments and in a fixture asserting they are NOT used.
+- **A fourth allowance is FOLDED into the last ruled row** (`Phone - RM 50.00; Meal - RM 75.00`) rather
+  than dropped. The reporter's mockup showed one allowance per row, so this is a presentational
+  compromise they have not seen — it loses nothing, and it was called out in the round note.
+- **A non-Latin legal name degrades to `?`.** Helvetica is WinAnsi and `updateFieldAppearances` throws
+  outside it, so the guard narrows rather than fails the render — same posture as `lib/ea-pdf.ts` and
+  ADR-0036. The box stays editable. Unlike an EA this form is filed externally, so embedding a Unicode
+  font is the follow-up worth doing.
+- **The bundled PDF is a new kind of asset** (public/ held five svgs). It is reachable at
+  `/forms/cp22-pin-1-2020.pdf`, and middleware's matcher was checked: the SHARE_PASSWORD gate covers it.
+
+**THE DEFECT THAT NEARLY SHIPPED, and how it was caught — full trap in HANDOFF.md.** Multi-row blocks
+silently dropped any line past the third, and sliced the descenders off the third. Both were found by
+RENDERING, in two engines that disagree, after 81 green tests said otherwise. The fix fits the value to
+the block's row count and extends each rect downward for descender headroom.
+
 ## r174 round 2 — 1fff489c locations, solo against the settled tree (shipped 2026-08-09, main@4342a51c, 341 migrations)
 
 `1fff489c` Locations / clocking geofencing / branch-based assignment, both phases, migrations `0419`
