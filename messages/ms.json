@@ -5854,7 +5854,7 @@
       "otNone": "Tiada",
       "otRulesHint": "Menentukan kerja lebih masa hari bekerja syif ini: nyahtanda untuk melumpuhkan OT, atau tetapkan minimum sebelum OT dikira dan had harian. Kadar berkanun (1.5×/2×/3× dan siling RM4,000) kekal di Kadar lebih masa di atas.",
       "deleteShift": "Padam",
-      "deleteShiftHint": "Padam syif yang tidak digunakan secara kekal. Syif yang dirujuk oleh roster atau syif lalai pekerja perlu diarkibkan sebaliknya.",
+      "deleteShiftHint": "Padam secara kekal syif yang tiada apa-apa menggunakannya. Syif yang digunakan oleh roster, sebagai syif semasa pekerja, atau di mana-mana dalam sejarah syif pekerja — termasuk yang lalu — perlu diarkibkan sebaliknya.",
       "ruleFieldLabel": "Tetapan Kelewatan, Balik Awal & Kerja Lebih Masa",
       "ruleFieldStandardDefault": "Standard (lalai)",
       "ruleDefaultSuffix": "(Standard)",

@@ -5854,7 +5854,7 @@
       "otNone": "无",
       "otRulesHint": "设定此班次工作日的加班方式：取消勾选可停用加班，或设定计入加班前的最低时长及每日上限。法定倍率（1.5×/2×/3× 及 RM4,000 上限）仍在上方的加班费率中设定。",
       "deleteShift": "删除",
-      "deleteShiftHint": "永久删除未使用的班次。被排班或员工默认班次引用的班次须改为归档。",
+      "deleteShiftHint": "永久删除无人使用的班次。被排班引用、作为员工当前班次，或出现在员工班次历史（含过往）中的班次，须改为归档。",
       "ruleFieldLabel": "迟到、早退与加班设置",
       "ruleFieldStandardDefault": "标准（默认）",
       "ruleDefaultSuffix": "（标准）",

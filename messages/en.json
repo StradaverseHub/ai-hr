@@ -5854,7 +5854,7 @@
       "otNone": "None",
       "otRulesHint": "Shapes this shift's workday overtime: untick to disable OT, or set a minimum before OT counts and a daily cap. Statutory rates (1.5×/2×/3× and the RM4,000 ceiling) stay in Overtime rates above.",
       "deleteShift": "Delete",
-      "deleteShiftHint": "Permanently delete an unused shift. A shift referenced by rosters or an employee's default must be archived instead.",
+      "deleteShiftHint": "Permanently delete a shift nothing uses. A shift used by a roster, as an employee's current shift, or anywhere in an employee's shift history — past included — must be archived instead.",
       "ruleFieldLabel": "Lateness, Early Out & Overtime Settings",
       "ruleFieldStandardDefault": "Standard (default)",
       "ruleDefaultSuffix": "(Standard)",

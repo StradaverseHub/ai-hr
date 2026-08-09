@@ -28,7 +28,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { attendanceForEmploymentRange, checkIn, checkOut } from '../core/attendance';
-import { assignDefaultShift, createShift } from '../core/roster';
+import { assignDefaultShift, createShift, deleteShift, listShiftsForTenant, ShiftInUseError } from '../core/roster';
 import {
   assignEmployeeShiftDated,
   InvalidEffectiveDateError,
@@ -540,5 +540,66 @@ describe('the Shift history list under the card', () => {
         effectiveFrom: EFFECTIVE,
       }),
     ).rejects.toThrow();
+  });
+});
+
+/**
+ * THE DELETE GUARD MUST KNOW ABOUT THE LADDER (verifier blocker on 18504ca6).
+ *
+ * employment_shift_arrangement.shift_id REFERENCES shift(id) with no ON DELETE — a hard RESTRICT. core/roster.ts
+ * deleteShift only ever checked roster_assignment.shift_id and employment.default_shift_id, and BOTH stop
+ * naming the old shift the moment HR dates a change: the cache moves to the new shift and there need be no
+ * roster row at all. The old shift then LOOKS unreferenced, the delete reaches Postgres, and HR gets a raw
+ * `Failed query: delete from "shift" where "shift"."id" = $1` banner — deleteShiftAction puts the thrown
+ * message straight into ?error=. Without the third check these tests fail with exactly that string.
+ */
+describe('deleting a shift after a DATED change — the ladder is a third reference', () => {
+  const codes = async () => (await listShiftsForTenant(adminCtx(b))).map((s) => s.code).sort();
+
+  it("refuses to delete the shift HR moved the employee OFF, even though nothing else references it", async () => {
+    const a = adminCtx(b);
+    const oldS = await oldShift();
+    const newS = await newShift();
+    await assignEmployeeShiftDated(a, { employmentId: empId, shiftType: 'fixed', shiftId: oldS.id, effectiveFrom: HIRED });
+    await assignEmployeeShiftDated(a, { employmentId: empId, shiftType: 'fixed', shiftId: newS.id, effectiveFrom: EFFECTIVE });
+
+    // The exact state the verifier measured: the cache names the NEW shift and there are no roster rows, so
+    // deleteShift's two original checks both see nothing. Only the closed ladder period still holds the FK.
+    expect((await cache(empId)).ds).toBe(newS.id);
+    const [ra] = await owner.db
+      .select({ id: schema.rosterAssignment.id })
+      .from(schema.rosterAssignment)
+      .where(eq(schema.rosterAssignment.shiftId, oldS.id));
+    expect(ra).toBeUndefined();
+
+    await expect(deleteShift(a, { shiftId: oldS.id })).rejects.toBeInstanceOf(ShiftInUseError);
+    expect(await codes()).toEqual(['NEW', 'OLD']); // nothing was deleted
+  });
+
+  // The rule the migration comment promises and the reason this check does NOT filter superseded_at: a row
+  // replaced by a second save for the same date is invisible to every RESOLVER, but it still holds the FK.
+  it('a SUPERSEDED period blocks the delete too — the FK does not care that the row was replaced', async () => {
+    const a = adminCtx(b);
+    const oldS = await oldShift();
+    const newS = await newShift();
+    // Save twice for the SAME date: the OLD period is superseded, so the ladder's only LIVE row names NEW.
+    await assignEmployeeShiftDated(a, { employmentId: empId, shiftType: 'fixed', shiftId: oldS.id, effectiveFrom: EFFECTIVE });
+    await assignEmployeeShiftDated(a, { employmentId: empId, shiftType: 'fixed', shiftId: newS.id, effectiveFrom: EFFECTIVE });
+    expect((await ladder(empId)).map((r) => r.shiftId)).toEqual([newS.id]);
+
+    await expect(deleteShift(a, { shiftId: oldS.id })).rejects.toBeInstanceOf(ShiftInUseError);
+    expect(await codes()).toEqual(['NEW', 'OLD']);
+  });
+
+  // The guard must stay narrow: a template created in error and never put on anybody's ladder is still
+  // hard-deletable, which is the whole point of Delete existing beside Archive.
+  it('still hard-deletes a shift no ladder period has ever named', async () => {
+    const a = adminCtx(b);
+    const oldS = await oldShift();
+    const spare = await newShift();
+    await assignEmployeeShiftDated(a, { employmentId: empId, shiftType: 'fixed', shiftId: oldS.id, effectiveFrom: HIRED });
+
+    await deleteShift(a, { shiftId: spare.id });
+    expect(await codes()).toEqual(['OLD']);
   });
 });
