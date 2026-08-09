@@ -33,13 +33,14 @@
  *    Boxes 23/24 (spouse) and 31/32 (the signatory) fill only when the record is there, and are blank
  *    otherwise — never the company name, never a stand-in.
  *
- * 4. EVERY LINE OF A MULTI-ROW BLOCK IS DRAWN. pdf-lib lays a multiline field out downwards from the top of
- *    the widget rect and CLIPS to it: a line past the bottom is not drawn at all and nothing says so, and
- *    the line sitting on the floor is sliced at the baseline. A four-entry address and a four-allowance
- *    payroll are both ordinary here, and both lost a line — understating an address and, worse, the
- *    remuneration declared to LHDN. `fitMultilineValue` below folds and, only if it must, shrinks the
- *    value so it cannot be laid out past the block's last row. It is checked by RENDERING: a green suite,
- *    a 200 and even one of the two PDF renderers all reported this page as correct while it was wrong.
+ * 4. EVERY LINE OF A MULTI-ROW BLOCK IS DRAWN. pdf-lib lays a multiline field out downwards from the top
+ *    of the widget rect and the appearance is clipped to it, so a line past the bottom is not drawn at all
+ *    and the line sitting on the floor loses everything below its baseline — in both cases with nothing in
+ *    any log. A four-entry address and a four-allowance payroll are both ordinary here, and both lost a
+ *    line: an address short of its state, and box (b) short of an allowance, understating the remuneration
+ *    declared to LHDN. `fitMultilineValue` below folds and, only if it must, shrinks the value so it
+ *    cannot be laid out past the block's last row. It is checked by RENDERING: a green suite, a 200 and
+ *    even one of the two PDF renderers all reported this page as correct while it was wrong.
  */
 import { PDFBool, PDFDocument, PDFName, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
 import { CP22_DEFAULT_FONT_SIZE, CP22_FIELDS, type Cp22Field } from './cp22-fields';
@@ -229,15 +230,18 @@ const TRANSPARENT = { backgroundColor: undefined, borderColor: undefined, border
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // FITTING A VALUE TO A MULTI-ROW BLOCK — the guard against silent loss on a statutory form.
 //
-// pdf-lib lays a multiline field out from the TOP of the widget rect downwards and clips to the rect,
-// and it does BOTH WITHOUT COMPLAINT: a line whose baseline falls under the rect is simply never drawn,
-// and a line sitting on the rect's floor is sliced at the baseline. Two ordinary Malaysian shapes hit it
-// — a four-entry address (line1/line2/line3/"postcode city, state"), and a payroll with four recurring
-// allowances against a three-row box — and the page looks complete in both cases. One renderer even hides
-// it: Poppler honours NeedAppearances and re-lays the text out itself, so it drew the sliced line whole
-// while MuPDF and Preview showed the damage. So the fit is computed HERE, up front, from the same font
-// metrics pdf-lib will use, and it is the /DA size and the /V text that carry it — which means a viewer
-// that regenerates the appearance reaches the same layout instead of a different one.
+// pdf-lib lays a multiline field out from the TOP of the widget rect downwards and clips to the rect, and
+// it does BOTH WITHOUT COMPLAINT: a line whose baseline falls under the rect is simply never drawn, and a
+// line sitting on the rect's floor loses everything below its baseline. Two ordinary Malaysian shapes hit
+// it — a four-entry address (line1/line2/line3/"postcode city, state"), and a payroll with four recurring
+// allowances against a three-row box — and the page looks complete in both cases.
+//
+// THE TWO RENDERERS DISAGREE, WHICH IS HOW IT WAS FOUND AND WHY THE FIX GOES WHERE IT DOES. Probed with a
+// marker stream: MuPDF draws the EMBEDDED appearance (so it showed the damage), while Poppler regenerates
+// from /V and /DA because NeedAppearances is set, lays the lines out slightly higher, and drew the same
+// four-line address whole. "It looks fine in one renderer" is therefore not evidence. So the fit is
+// computed HERE, up front, from the same font metrics pdf-lib uses, and it is carried by the /DA size and
+// the /V text — the two things BOTH kinds of renderer read — rather than by the stream alone.
 //
 // The ceiling is `rows`, not "whatever the height allows": the block is a set of PRINTED ruled rows and a
 // line laid between two rules is struck through by one. The order is FOLD, then SHRINK, because shrinking

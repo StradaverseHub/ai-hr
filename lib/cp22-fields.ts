@@ -26,17 +26,21 @@
  * own typing, 1) are sized to fit their content instead.
  *
  * AND WHY EVERY MULTILINE RECT NOW RUNS BELOW ITS LAST ROW (`rows`, and the headroom under it).
- * SILENT DATA LOSS ON A STATUTORY FORM, found by rendering rather than by any green test. Sizing a block
- * to "top of row 1 → bottom of row R" leaves the R-th baseline ON the rect's floor, and pdf-lib clips a
- * text widget's appearance to `rect inset by 1pt`:
- *   - the R-th line is drawn with its bottom ~1.3pt inside the clip — every descender on it vanishes and
- *     the glyphs are sliced at the baseline (a FOUR-line address is the shape LHDN rules this box for);
- *   - the R+1-th line is laid out entirely below the rect and is NEVER DRAWN — no warning, no ellipsis,
- *     the box just looks full. "Selangor Darul Ehsan" absent from a legal declaration; an allowance line
- *     absent from the remuneration declared to LHDN.
+ * SILENT DATA LOSS ON A STATUTORY FORM, found by rendering the page rather than by any green test.
+ *
+ * pdf-lib lays a multiline field out DOWNWARDS from the top of the widget rect — baseline_n =
+ * rectTop − 1 − n × pitch — and the appearance it writes is a Form XObject whose /BBox is that rect, with
+ * a further clip path 1pt inside it. Anything under the floor is gone, and nothing says so. Sizing a
+ * block to "top of row 1 → bottom of row R" puts the R-th baseline ON the floor, so:
+ *   - the R-th row loses everything below its baseline. Measured at 900dpi on a four-line address (the
+ *     shape LHDN rules this box for): the "Selangor" band was 8.56pt deep, identical to the rows with no
+ *     descenders, against 10.80pt once the rect had room — the whole descender of the "g" cut away.
+ *   - the R+1-th line lands entirely below the rect and is NEVER DRAWN. No warning, no ellipsis, the box
+ *     just looks full: "Selangor Darul Ehsan" absent from a legal declaration, an allowance line absent
+ *     from the remuneration declared to LHDN.
  * So each rect keeps its TOP EDGE (which is what fixes where baseline 1 lands, and therefore every
- * baseline) and is extended DOWNWARD until the R-th line's descender clears the clip floor with ~0.5pt to
- * spare. Extending downward moves no text: baseline_n = rectTop − 1 − n × pitch, and rectTop is unchanged.
+ * baseline) and is extended DOWNWARD until the R-th row's descenders clear even the inner clip, with
+ * ~0.5pt to spare. Extending downward moves no text at all: rectTop is unchanged, so every baseline is.
  * `rows` records how many lines the block can then hold, and lib/cp22-pdf.ts fits the value to that count
  * (see `fitMultilineValue`) so no line can ever be laid out past the last row. test/cp22-fields.test.ts
  * asserts rect-vs-`rows` for EVERY multiline block, so a new block cannot be added without the headroom.
