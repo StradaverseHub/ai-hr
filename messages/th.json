@@ -2248,6 +2248,7 @@
       "otherDeductions": "รายการหักอื่นๆ",
       "unpaidLeaveLine": "ลาไม่รับค่าจ้าง",
       "absentLine": "ขาดงาน",
+      "dayUnit": "วัน",
       "daysUnit": "วัน",
       "totalDeductions": "รวมรายการหัก",
       "netPay": "รายได้สุทธิ",

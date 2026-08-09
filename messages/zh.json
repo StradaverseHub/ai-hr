@@ -2248,6 +2248,7 @@
       "otherDeductions": "其他扣除",
       "unpaidLeaveLine": "无薪假",
       "absentLine": "缺勤",
+      "dayUnit": "天",
       "daysUnit": "天",
       "totalDeductions": "扣除合计",
       "netPay": "实发工资",

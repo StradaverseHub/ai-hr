@@ -2248,6 +2248,7 @@
       "otherDeductions": "Potongan lain",
       "unpaidLeaveLine": "Cuti tanpa gaji",
       "absentLine": "Tidak hadir",
+      "dayUnit": "hari",
       "daysUnit": "hari",
       "totalDeductions": "Jumlah potongan",
       "netPay": "Gaji bersih",

@@ -25,7 +25,7 @@
  *   Fri 2026-05-01 · Sat 05-02 · Sun 05-03 · Mon 05-04 … Fri 05-08 · Mon 05-18 · Mon 05-25 · Sun 05-31
  */
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import * as schema from '../db/schema';
@@ -312,13 +312,21 @@ describe('e2632276 — absence and unpaid leave are disjoint', () => {
     expect((await absentDays(a, [e])).get(e)).toBe(19);
   });
 
-  it('a HALF-DAY leave date is not a full-day leave date, so the day is judged on its attendance record', async () => {
+  it('an approved HALF-DAY leave date is never an absence — with a record on the day OR without one', async () => {
     const a = await entitledCtx(b);
-    const e = await makeEmp('HalfDay');
-    await addLeave(e, '2026-05-04', '2026-05-04', { paid: false, durationType: 'half_day_am', days: 0.5 });
-    // With a worked record on that day it is NOT an absence — the employee was at work for the other half.
-    await addAttendance(e, '2026-05-04', 'half_day');
-    expect((await absentDays(a, [e])).get(e)).toBe(20);
+    const worked = await makeEmp('HalfWorked');
+    const noRecord = await makeEmp('HalfNoRecord');
+    for (const e of [worked, noRecord]) {
+      await addLeave(e, '2026-05-04', '2026-05-04', { paid: false, durationType: 'half_day_am', days: 0.5 });
+    }
+    await addAttendance(worked, '2026-05-04', 'half_day');
+
+    const m = await absentDays(a, [worked, noRecord]);
+    expect(m.get(worked)).toBe(20); // 21 weekdays − the recorded half day
+    // And WITHOUT a clock-in the day is still not an absence. `approvedLeaveDates` does not return
+    // partial-day dates, so this is the carve-out that stops the same date being charged 0.5 days of
+    // unpaid time off AND a whole day of absence — 1.5 days' pay for half a day off.
+    expect(m.get(noRecord)).toBe(20);
   });
 });
 
@@ -444,6 +452,25 @@ describe('e2632276 — the payroll gate', () => {
     expect(lines.showResidual).toBe(false);
     expect(lines.unpaidLeave!.amount + lines.absent!.amount).toBeCloseTo(Number(ps.otherDeductions), 2);
     expect(Number(ps.netPay)).toBeCloseTo(Number(ps.grossPay) - Number(ps.totalDeductions), 2);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────────
+describe('e2632276 — migration 0422 actually ran', () => {
+  // Trap #5 in this repo's standing orders: a migration whose journal `when` sits below the deployed
+  // watermark is SILENTLY SKIPPED — drizzle does not error. 0422 writes no DDL (the setting is a jsonb
+  // key), so nothing else in the suite would notice its absence. This asserts the one artefact it does
+  // produce, against a database built by replaying the journal.
+  it('stamps the description of payroll_policy.config into the database', async () => {
+    const rows = await owner.db.execute(
+      sql`select col_description('payroll_policy'::regclass, (
+            select ordinal_position from information_schema.columns
+            where table_name = 'payroll_policy' and column_name = 'config'
+          )::int) as comment`,
+    );
+    const comment = (rows as unknown as { comment: string | null }[])[0]?.comment ?? '';
+    expect(comment).toContain('leave.deductAbsentDays');
+    expect(comment).toContain('BEFORE EPF/SOCSO/EIS/PCB');
   });
 });
 

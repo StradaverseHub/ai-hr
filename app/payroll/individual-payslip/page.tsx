@@ -61,7 +61,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listEmployees, listCompanies } from '@/core/read';
 import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
 import { explainPcb } from '@/core/pcb-explain';
-import { payslipAbsenceLines } from '@/core/payslip-absence-lines';
+import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
 import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll-publication';
 import { payslipProvenance } from '@/core/payslip-recompute';
@@ -469,13 +469,13 @@ export default async function IndividualPayslipPage({
                   path and prints the single lumped row exactly as before. */}
               {absence.unpaidLeave && (
                 <Row
-                  label={`${tSlip('unpaidLeaveLine')} · ${absence.unpaidLeave.days} ${tSlip('daysUnit')}`}
+                  label={`${tSlip('unpaidLeaveLine')} · ${absenceDaysLabel(absence.unpaidLeave.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
                   value={rm(absence.unpaidLeave.amount)}
                 />
               )}
               {absence.absent && (
                 <Row
-                  label={`${tSlip('absentLine')} · ${absence.absent.days} ${tSlip('daysUnit')}`}
+                  label={`${tSlip('absentLine')} · ${absenceDaysLabel(absence.absent.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
                   value={rm(absence.absent.amount)}
                 />
               )}

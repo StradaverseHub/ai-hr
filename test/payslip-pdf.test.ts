@@ -41,6 +41,7 @@ const labels: PayslipPdfLabels = {
   // e2632276 — the two named absence lines that come OUT of "Other deductions".
   unpaidLeaveLine: 'Unpaid leave',
   absentLine: 'Absent',
+  dayUnit: 'day',
   daysUnit: 'days',
   totalDeductions: 'Total deductions',
   netPay: 'Net pay',

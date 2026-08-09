@@ -8,7 +8,7 @@ import { payslipProvenance } from '@/core/payslip-recompute';
 // 3c473773 — which box each earning belongs in (read from the payslip's own stamp), and the employer-borne
 // disclosure (read from the payslip's own snapshot). Neither is re-derived from today's settings.
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
-import { payslipAbsenceLines } from '@/core/payslip-absence-lines';
+import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
 
 /** The label key for each employer-borne component, exhaustive over EmployerBorneKey. */
@@ -143,13 +143,13 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
               summing to Total deductions, and is hidden when it nets to zero. */}
           {absence.unpaidLeave && (
             <Row
-              label={`${t('unpaidLeaveLine')} · ${absence.unpaidLeave.days} ${t('daysUnit')}`}
+              label={`${t('unpaidLeaveLine')} · ${absenceDaysLabel(absence.unpaidLeave.days, t('dayUnit'), t('daysUnit'))}`}
               value={rm(absence.unpaidLeave.amount)}
             />
           )}
           {absence.absent && (
             <Row
-              label={`${t('absentLine')} · ${absence.absent.days} ${t('daysUnit')}`}
+              label={`${t('absentLine')} · ${absenceDaysLabel(absence.absent.days, t('dayUnit'), t('daysUnit'))}`}
               value={rm(absence.absent.amount)}
             />
           )}

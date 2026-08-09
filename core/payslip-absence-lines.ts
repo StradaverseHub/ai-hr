@@ -48,6 +48,16 @@ export type PayslipAbsenceLines = {
   any: boolean;
 };
 
+/**
+ * "2 days" / "1 day", composed from two static literals rather than an ICU plural. Every surface that
+ * prints a named absence line uses this, so the day count reads the same on the screen, the employee's
+ * own payslip and the PDF. Deliberately NOT `{days, plural, …}`: a placeholder called without its
+ * argument throws at render behind a 200, and locales whose singular and plural coincide (ms, zh, vi, th)
+ * simply carry the same word twice.
+ */
+export const absenceDaysLabel = (days: number, one: string, many: string): string =>
+  `${days} ${days === 1 ? one : many}`;
+
 const n = (v: unknown): number => {
   const x = Number(v ?? 0);
   return Number.isFinite(x) ? x : 0;

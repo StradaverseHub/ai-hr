@@ -21,7 +21,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFP
 
 import { formatMoney } from './money';
 import { payslipDisplayEarnings } from '../core/pay-display-category';
-import { payslipAbsenceLines, type PayslipAbsenceLines } from '../core/payslip-absence-lines';
+import { absenceDaysLabel, payslipAbsenceLines, type PayslipAbsenceLines } from '../core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '../core/payslip-employer-borne';
 
 const n = (v: unknown) => Number(v ?? 0);
@@ -151,6 +151,7 @@ export type PayslipPdfLabels = {
   // argument on a document that is generated, not rendered.
   unpaidLeaveLine: string;
   absentLine: string;
+  dayUnit: string;
   daysUnit: string;
   totalDeductions: string;
   netPay: string;
@@ -476,10 +477,10 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // `sub` slot. They come OUT of "Other deductions" (d.absence.residual), they are not printed beside it,
     // so the box still adds up to the total it prints. No stamp ⇒ residual === otherDeductions ⇒ identical.
     ...(d.absence.unpaidLeave
-      ? [{ label: t.unpaidLeaveLine, sub: `${d.absence.unpaidLeave.days} ${t.daysUnit}`, amount: d.absence.unpaidLeave.amount }]
+      ? [{ label: t.unpaidLeaveLine, sub: absenceDaysLabel(d.absence.unpaidLeave.days, t.dayUnit, t.daysUnit), amount: d.absence.unpaidLeave.amount }]
       : []),
     ...(d.absence.absent
-      ? [{ label: t.absentLine, sub: `${d.absence.absent.days} ${t.daysUnit}`, amount: d.absence.absent.amount }]
+      ? [{ label: t.absentLine, sub: absenceDaysLabel(d.absence.absent.days, t.dayUnit, t.daysUnit), amount: d.absence.absent.amount }]
       : []),
     ...(d.absence.showResidual ? [{ label: t.otherDeductions, amount: d.absence.residual }] : []),
   ];

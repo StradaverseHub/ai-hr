@@ -14,10 +14,14 @@
  *
  *   • A PUBLIC HOLIDAY never counts — resolved per employee through the unified calendar (business-group →
  *     state → national), the same one leave and check-in use.
- *   • An APPROVED FULL-DAY LEAVE date never counts. Half-day and hourly leave are NOT full-day dates
- *     (`approvedLeaveDates` filters `duration_type='full_day'`), so a half-day leave date is a worked day
- *     as far as this count is concerned, and is only an absence if nothing was recorded on it — which is
- *     the intended reading: the employee was at work for the other half.
+ *   • ANY APPROVED-LEAVE date never counts, and the PARTIAL-day case needs saying out loud.
+ *     `approvedLeaveDates` (ADR-0068 §4A) returns FULL-DAY dates only, so it does not see a half-day or
+ *     hourly request at all. A partial-day absence is nonetheless an ACCOUNTED-FOR day: HR approved it,
+ *     and its unpaid portion is already valued by `unpaidDaysByEmployment` (with its own time-off
+ *     divisor). Counting the same date as a whole day's absence on top would charge 1.5 days for half a
+ *     day off — the exact double-charge this item exists to avoid — so partial-day approved leave is
+ *     excluded here too. It is NOT reported as a `leaveDays` figure: the month roll-up's leave count has
+ *     always meant whole days, and this changes only what is NOT an absence.
  *   • A REST DAY never counts, and THE ROSTER WINS. The exclusion ladder mirrors `scheduleFor` exactly —
  *     rostered shift → rostered rest → default-shift weekly pattern → company working days — because the
  *     old company-pattern-only test charged a day's pay to an employee the employer had personally
@@ -33,10 +37,10 @@
  * full-day leave date, so it is excluded here while `unpaidDaysByEmployment` counts it. The two figures
  * can therefore be added without double-charging a day. Pinned by test rather than left to the reading.
  */
-import { and, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte, ne } from 'drizzle-orm';
 
 import type { Tx } from '../db/client';
-import { attendance, attendancePolicy, employment, rosterAssignment, shift } from '../db/schema';
+import { attendance, attendancePolicy, employment, leaveRequest, rosterAssignment, shift } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { holidayDatesFor } from './holidays';
 // ADR-0080 D9 — leave is a PACK, and this module is spine (attendance and payroll both read it), so the
@@ -106,7 +110,7 @@ export async function absenceBreakdownByEmployment(
   if (emps.length === 0) return out;
   const empIds = emps.map((e) => e.employmentId);
 
-  const [rows, approved, policies, rosterRows, defaultShifts] = await Promise.all([
+  const [rows, approved, partialLeave, policies, rosterRows, defaultShifts] = await Promise.all([
     // Every attendance row in the window — its PRESENCE says the day is accounted for, and an explicit
     // 'absent' status says the opposite of that (an admin marking a no-show, which core/attendance-derive
     // statusOf has always shown in red but the old month count silently filed under `present`).
@@ -127,6 +131,26 @@ export async function absenceBreakdownByEmployment(
     // ADR-0068 §4A — effectively-approved FULL-DAY leave dates (a per-date request's rejected interior date
     // is not on leave, and so IS an absence if nothing was recorded).
     approvedLeaveDates(tx, empIds, periodStart, lastCounted),
+    // The PARTIAL-day approved requests (half-day AM/PM, hourly) the resolver above deliberately filters
+    // out. Read straight off leave_request — per-date approval rows are only ever created for full-day
+    // requests (§4C), so the request's own status is the whole answer here. Spans are expanded by the
+    // caller loop below; a partial request is almost always one day.
+    tx
+      .select({
+        employmentId: leaveRequest.employmentId,
+        startDate: leaveRequest.startDate,
+        endDate: leaveRequest.endDate,
+      })
+      .from(leaveRequest)
+      .where(
+        and(
+          inArray(leaveRequest.employmentId, empIds),
+          eq(leaveRequest.status, 'approved'),
+          ne(leaveRequest.durationType, 'full_day'),
+          lte(leaveRequest.startDate, lastCounted),
+          gte(leaveRequest.endDate, periodStart),
+        ),
+      ),
     tx
       .select({
         companyId: attendancePolicy.companyId,
@@ -179,6 +203,19 @@ export async function absenceBreakdownByEmployment(
     }
   }
 
+  // Partial-day approved leave, expanded to dates. Kept separate from `approved` so the month roll-up's
+  // `leaveDays` figure (whole days) is unchanged — this set only says "not an absence".
+  const partialByEmp = new Map<string, Set<string>>();
+  for (const r of partialLeave) {
+    let set = partialByEmp.get(r.employmentId);
+    if (!set) partialByEmp.set(r.employmentId, (set = new Set()));
+    const lo = r.startDate < periodStart ? periodStart : r.startDate;
+    const hi = r.endDate > lastCounted ? lastCounted : r.endDate;
+    for (let t = Date.parse(`${lo}T00:00:00Z`); t <= Date.parse(`${hi}T00:00:00Z`); t += MS_DAY) {
+      set.add(new Date(t).toISOString().slice(0, 10));
+    }
+  }
+
   const rosterByEmp = new Map<string, Map<string, RosterDay>>();
   for (const rr of rosterRows) {
     let m = rosterByEmp.get(rr.employmentId);
@@ -195,6 +232,7 @@ export async function absenceBreakdownByEmployment(
       endDate: lastCounted,
     });
     const onLeave = approved.get(e.employmentId) ?? new Set<string>();
+    const onPartialLeave = partialByEmp.get(e.employmentId) ?? new Set<string>();
     const recorded = recordedByEmp.get(e.employmentId) ?? new Set<string>();
     const markedAbsent = markedAbsentByEmp.get(e.employmentId) ?? new Set<string>();
     const roster = rosterByEmp.get(e.employmentId);
@@ -225,6 +263,10 @@ export async function absenceBreakdownByEmployment(
         leaveDays += 1;
         continue;
       }
+      // An approved HALF-DAY or HOURLY absence accounts for the day. Its unpaid portion is deducted by
+      // the unpaid-leave path with its own divisor; charging a whole absent day on top would bill 1.5
+      // days for half a day off. Not counted as a leave DAY either — see the header.
+      if (onPartialLeave.has(d)) continue;
       // Counted when the day was explicitly marked Absent, or when nothing was recorded at all.
       if (markedAbsent.has(d) || !recorded.has(d)) absentDays += 1;
     }
