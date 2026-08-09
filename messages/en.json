@@ -3875,7 +3875,14 @@
           "itemsHeading": "Itemised payroll items",
           "itemsNote": "Recorded individually on this payslip. One-off items are already included in the totals above; record-only items (such as benefits in kind) affect neither gross nor net.",
           "detailNotRecorded": "Recorded before this payroll started keeping per-item detail, so the individual items behind these figures were never saved and cannot be shown for this run.",
-          "hrdfNotRegistered": "Not registered"
+          "hrdfNotRegistered": "Not registered",
+          "export": "Export to Excel",
+          "exportCurrent": "This view",
+          "exportCurrentHint": "The company, employee, year, month and payroll cycle you have filtered to above.",
+          "exportAll": "All processed payroll",
+          "exportAllHint": "Every processed payslip you are allowed to see, ignoring the filters above.",
+          "exportTitle": "Payroll Transaction History",
+          "exportDetailNote": "Some runs have no per-item detail saved — bonus, off-cycle and adjustment runs never recorded it, and neither did runs calculated before this payroll began keeping it. On those rows the summary figures and the Allowances total are still exact, and the named item columns are simply blank."
         },
         "exportCsv": "Export CSV",
         "outstanding": {

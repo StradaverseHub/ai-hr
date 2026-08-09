@@ -3875,7 +3875,14 @@
           "itemsHeading": "Các khoản lương chi tiết",
           "itemsNote": "Được ghi riêng trên phiếu lương này. Các khoản một lần đã nằm trong tổng phía trên; các khoản chỉ để ghi nhận (như phúc lợi hiện vật) không ảnh hưởng đến tổng hay thực nhận.",
           "detailNotRecorded": "Được tính trước khi hệ thống bắt đầu lưu chi tiết từng khoản, nên các khoản riêng lẻ đằng sau những con số này chưa từng được lưu và không thể hiển thị cho kỳ này.",
-          "hrdfNotRegistered": "Chưa đăng ký"
+          "hrdfNotRegistered": "Chưa đăng ký",
+          "export": "Xuất ra Excel",
+          "exportCurrent": "Chế độ xem này",
+          "exportCurrentHint": "Công ty, nhân viên, năm, tháng và chu kỳ lương bạn đã lọc ở trên.",
+          "exportAll": "Toàn bộ bảng lương đã xử lý",
+          "exportAllHint": "Mọi phiếu lương đã xử lý mà bạn được phép xem, bỏ qua các bộ lọc ở trên.",
+          "exportTitle": "Lịch sử giao dịch lương",
+          "exportDetailNote": "Một số lần chạy lương không lưu chi tiết theo từng khoản — các lần chạy thưởng, ngoài chu kỳ và điều chỉnh chưa bao giờ ghi lại, và các lần chạy được tính trước khi hệ thống bắt đầu lưu cũng vậy. Ở những dòng đó, các số liệu tổng hợp và tổng Phụ cấp vẫn chính xác, còn các cột khoản mục có tên chỉ đơn giản là để trống."
         },
         "exportCsv": "Xuất CSV",
         "outstanding": {

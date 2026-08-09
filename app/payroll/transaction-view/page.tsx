@@ -280,6 +280,21 @@ export default async function TransactionViewPage({
   };
   const selectedGridEmployee = employees.find((e) => e.employmentId === employmentId);
 
+  // 0fcb2557 — the History tab's Export to Excel. The already scope-guarded filters ride on the "this
+  // view" link; the route re-guards every one of them anyway, so a hand-edited link can never widen the
+  // download past the caller's own companies.
+  const historyExportParams: Record<string, string> = {
+    ...(companyId ? { companyId } : {}),
+    ...(employmentId ? { employmentId } : {}),
+    ...(year != null ? { year: String(year) } : {}),
+    ...(month != null ? { month: String(month) } : {}),
+    ...(cycle ? { cycle } : {}),
+  };
+  const historyExportChoices: { scope: 'current' | 'all'; label: string; hint: string }[] = [
+    { scope: 'current', label: t('view.history.exportCurrent'), hint: t('view.history.exportCurrentHint') },
+    { scope: 'all', label: t('view.history.exportAll'), hint: t('view.history.exportAllHint') },
+  ];
+
   const today = todayInKualaLumpur();
   const nowYear = new Date().getFullYear();
   const years = Array.from({ length: 11 }, (_, i) => nowYear + 1 - i);
@@ -558,7 +573,39 @@ export default async function TransactionViewPage({
           detail inline with no extra round-trip. */}
       {tab === 'history' && (
         <Card className="overflow-hidden">
-          <SectionHeader title={t('view.tabs.history')} count={shownHistoryRows.length} />
+          {/* 0fcb2557 — the header row mirrors the Individual tab's (SectionHeader + a download on the
+              right), because "in the same place the Individual tab already keeps its download" is what the
+              reporter approved. The control is a <details> disclosure rather than a client dropdown so the
+              whole page stays a server component: two plain anchors, no state, no server action. */}
+          <div className="flex items-center justify-between gap-3 pr-4">
+            <SectionHeader title={t('view.tabs.history')} count={shownHistoryRows.length} />
+            <details className="relative shrink-0">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted [&::-webkit-details-marker]:hidden">
+                {t('view.history.export')}
+                <span aria-hidden="true" className="text-[10px]">
+                  ▼
+                </span>
+              </summary>
+              {/* Opens INWARD over the table (end-0, top-full). The Card is overflow-hidden, so a panel
+                  that overflowed its box would be clipped rather than float above the page. */}
+              <div className="absolute end-0 top-full z-20 mt-1 w-80 rounded-md border border-border bg-background p-1 shadow-lg">
+                {historyExportChoices.map((choice) => (
+                  <a
+                    key={choice.scope}
+                    href={`/payroll/transaction-view/history-export?${new URLSearchParams(
+                      // "All processed payroll" carries NO filters — the link says what the file is, so a
+                      // saved or shared one cannot quietly turn back into a filtered download.
+                      choice.scope === 'all' ? { scope: 'all' } : { ...historyExportParams, scope: 'current' },
+                    ).toString()}`}
+                    className="block rounded px-3 py-2 transition-colors hover:bg-muted"
+                  >
+                    <span className="block text-sm font-medium text-foreground">{choice.label}</span>
+                    <span className="block text-xs text-muted-foreground">{choice.hint}</span>
+                  </a>
+                ))}
+              </div>
+            </details>
+          </div>
           {historyTruncated && (
             <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">
               {t('view.history.capped', { cap: HISTORY_ROW_CAP })}

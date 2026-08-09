@@ -3875,7 +3875,14 @@
           "itemsHeading": "Butiran item gaji",
           "itemsNote": "Direkodkan secara berasingan pada slip gaji ini. Item sekali sahaja sudah termasuk dalam jumlah di atas; item rekod sahaja (seperti manfaat berbentuk barangan) tidak menjejaskan kasar mahupun bersih.",
           "detailNotRecorded": "Direkodkan sebelum sistem menyimpan butiran setiap item, jadi item individu di sebalik angka ini tidak pernah disimpan dan tidak boleh dipaparkan untuk larian ini.",
-          "hrdfNotRegistered": "Tidak berdaftar"
+          "hrdfNotRegistered": "Tidak berdaftar",
+          "export": "Eksport ke Excel",
+          "exportCurrent": "Paparan ini",
+          "exportCurrentHint": "Syarikat, pekerja, tahun, bulan dan kitaran gaji yang anda tapis di atas.",
+          "exportAll": "Semua gaji yang telah diproses",
+          "exportAllHint": "Setiap slip gaji diproses yang anda dibenarkan lihat, tanpa mengambil kira tapisan di atas.",
+          "exportTitle": "Sejarah Transaksi Gaji",
+          "exportDetailNote": "Sesetengah larian gaji tidak menyimpan butiran setiap item — larian bonus, luar kitaran dan pelarasan tidak pernah merekodkannya, begitu juga larian yang dikira sebelum sistem gaji ini mula menyimpannya. Pada baris tersebut angka ringkasan dan jumlah Elaun masih tepat, dan lajur item bernama hanyalah kosong."
         },
         "exportCsv": "Eksport CSV",
         "outstanding": {
