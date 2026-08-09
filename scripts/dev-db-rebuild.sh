@@ -51,7 +51,7 @@
 #   AIHR_RAMDISK_GB=0 ./scripts/dev-db-rebuild.sh   rebuild ON DISK (the old behaviour)
 #   AIHR_RAMDISK_GB=8 ./scripts/dev-db-rebuild.sh   a bigger RAM disk
 #
-# SIZING: 8 GB by default on an 18 GB machine. Steady state is min_wal_size (3 GB) of recycled segments
+# SIZING: 8 GB by default on an 18 GB machine. Steady state is min_wal_size (1 GB) of recycled segments
 # plus ~0.4 GB of worker databases, so about 3.5 GB in use and the rest is headroom. Two smaller volumes
 # were tried and FILLED (5 GB, then 8 GB) before the real cause was found — see min_wal_size below; the
 # volume size was never the fix. If Postgres dies with "No space left on device", check that checkpoints
@@ -145,8 +145,30 @@ max_wal_senders = 0
 # So: keep a large pool of segments in rotation. Recycling is a rename — no create, no unlink, and
 # nothing for an on-access scanner to inspect. Expect "0 removed, N recycled" and a WAL directory that
 # sits at a stable size instead of thrashing.
-min_wal_size = 3GB
-max_wal_size = 1GB
+# ⚠️ AND max_wal_size MUST STAY ABOVE min_wal_size. It did not, and that filled the volume.
+#
+# This block used to read min_wal_size = 3GB / max_wal_size = 1GB — a floor ABOVE the ceiling. The two
+# settings drive different machinery, so Postgres does not reject the pair, it just behaves incoherently:
+# checkpoint PACING is computed from max_wal_size, while RemoveOldXlogFiles refuses to drop the pool below
+# min_wal_size. WAL therefore had a 3GB floor it could never shed, while the checkpointer believed it was
+# permanently over a 1GB budget.
+#
+# MEASURED on 2026-08-10, a full-suite gate on the 8GB RAM disk: pg_wal reached 6.9GB (444 segments)
+# against 340MB for all 16 databases combined — WAL was 95% of the volume. Postgres died with
+# "could not extend file: No space left on device" (SQLSTATE 53100) and took the gate with it: 2,766
+# failures across 344 files, none of them real. It had already died the same way once before that run,
+# which is why the cluster was found down at the start of the session.
+#
+# So: keep a recycled pool big enough to avoid the unlink thrash described above, but small enough that
+# pool + one checkpoint interval of writes fits the volume with room to spare. 1GB is 64 segments — 8x
+# the 128MB that caused the original saga, so recycling still dominates — and 2GB of pacing headroom
+# above it keeps the steady state near 3GB on an 8GB disk.
+#
+# VERIFY, don't assume: after a full run, checkpoints in server.log must still say "N recycled" with
+# `removed` at or near 0. If `removed` climbs again, the pool is too small — raise BOTH, keeping
+# max_wal_size above min_wal_size, or drop to AIHR_RAMDISK_GB=0 where there is no ceiling at all.
+min_wal_size = 1GB
+max_wal_size = 2GB
 checkpoint_timeout = 1min
 checkpoint_completion_target = 0.5
 
