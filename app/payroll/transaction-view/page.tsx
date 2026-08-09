@@ -572,9 +572,13 @@ export default async function TransactionViewPage({
           receives the already-fetched, scope-guarded rows (full statutory blob + aggregates) and renders the
           detail inline with no extra round-trip. */}
       {tab === 'history' && (
-        <Card className="overflow-hidden">
-          {/* 0fcb2557 — the header row mirrors the Individual tab's (SectionHeader + a download on the
-              right), because "in the same place the Individual tab already keeps its download" is what the
+        // 0fcb2557 — the clip moved OFF the Card and onto the table below. The Card was `overflow-hidden`
+        // purely to round the table's bottom corners; an absolutely-positioned dropdown inside it would be
+        // clipped by that same rule, and on an empty result set (short card) the second choice would have
+        // been cut off — a control that works only when there is data is worse than no control.
+        <Card>
+          {/* The header row mirrors the Individual tab's (SectionHeader + a download on the right),
+              because "in the same place the Individual tab already keeps its download" is what the
               reporter approved. The control is a <details> disclosure rather than a client dropdown so the
               whole page stays a server component: two plain anchors, no state, no server action. */}
           <div className="flex items-center justify-between gap-3 pr-4">
@@ -586,8 +590,7 @@ export default async function TransactionViewPage({
                   ▼
                 </span>
               </summary>
-              {/* Opens INWARD over the table (end-0, top-full). The Card is overflow-hidden, so a panel
-                  that overflowed its box would be clipped rather than float above the page. */}
+              {/* Opens down and to the LEFT (end-0), so a wide panel never pushes the page sideways. */}
               <div className="absolute end-0 top-full z-20 mt-1 w-80 rounded-md border border-border bg-background p-1 shadow-lg">
                 {historyExportChoices.map((choice) => (
                   <a
@@ -611,7 +614,11 @@ export default async function TransactionViewPage({
               {t('view.history.capped', { cap: HISTORY_ROW_CAP })}
             </p>
           )}
-          <HistoryTable rows={shownHistoryRows} hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds} />
+          {/* The rounding the Card used to do for the whole box, applied to the table alone — matching
+              Card's own `rounded-[1.25rem]` so the bottom corners look exactly as they did. */}
+          <div className="overflow-hidden rounded-b-[1.25rem]">
+            <HistoryTable rows={shownHistoryRows} hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds} />
+          </div>
         </Card>
       )}
 
