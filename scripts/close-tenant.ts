@@ -291,6 +291,16 @@ if (process.argv[1]?.endsWith('close-tenant.ts')) {
   if (retentionUntil !== null && !/^\d{4}-\d{2}-\d{2}$/.test(retentionUntil)) {
     usage(`--retention-until must be YYYY-MM-DD: ${retentionUntil}`);
   }
+  // --today MUST be validated to the same shape, and this is not symmetry for its own sake.
+  // closureDecision compares the two as RAW STRINGS (`retentionHeldUntil > today`), so any --today that
+  // sorts above the retention date turns the retention hold into a no-op while the runner still reports
+  // "past every retention hold" — the operator is told the check passed when it was never applied. It is
+  // the one refusal they cannot re-derive from the printed report, so a malformed value must stop here
+  // rather than be silently coerced.
+  const todayArg = argOf('--today');
+  if (todayArg !== null && !/^\d{4}-\d{2}-\d{2}$/.test(todayArg)) {
+    usage(`--today must be YYYY-MM-DD: ${todayArg}`);
+  }
 
   const now = new Date();
   const requestedAt = parseStamp('--requested-at', now);
@@ -306,7 +316,7 @@ if (process.argv[1]?.endsWith('close-tenant.ts')) {
     requestedAt,
     approvedAt,
     apply: process.argv.includes('--apply'),
-    today: argOf('--today') ?? undefined,
+    today: todayArg ?? undefined,
   };
 
   // OWNER CREDENTIAL ONLY, like every other out-of-band runner: 0313 leaves ai_hr_app with SELECT on
