@@ -39,7 +39,12 @@ import type { Tx } from '../db/client';
 import { attendance, attendancePolicy, employment, rosterAssignment, shift } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { holidayDatesFor } from './holidays';
-import { approvedLeaveDates } from './leave';
+// ADR-0080 D9 — leave is a PACK, and this module is spine (attendance and payroll both read it), so the
+// approved-leave dates come through the pack FACADE rather than reaching into `core/leave` directly. The
+// audited leak list in test/pack-drift-allowlist.json only ever shrinks; a new consumer joins by using
+// the facade, which is what packs/leave/service exists for. `core/holidays` is deliberately NOT a pack
+// boundary (shared spine, see packs/leave/index.ts) and is imported directly.
+import { approvedLeaveDates } from '../packs/leave/service';
 
 const MS_DAY = 86_400_000;
 
