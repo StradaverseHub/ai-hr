@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-10 (r176 SHIPPED — ADR-0077 slices 6 and 9)
+## CURRENT STATE — snapshot 2026-08-10 (r176 SHIPPED · r177 BUILT AND HELD FOR THE OWNER)
 
-**`main@75addd1b` is what runs. Production on 344 migrations. Next free migration number is `0425`**
+**`main@75addd1b` is what RUNS ON PRODUCTION. Production on 344 migrations. Next free migration is `0426`**
 (`0423` was ALLOCATED AND DELIBERATELY UNUSED — `1c1b321a` stores its recompute-run history in the
 append-only `domain_event` ledger rather than a new table; gaps are fine). No half-applied migration,
 no pending deploy, nothing in flight. **r176 carried NO migration** — the journal is unchanged at
@@ -35,6 +35,43 @@ deploy 2026-08-10 02:42: service `active` (ActiveEnterTimestamp 02:42:19, up fro
 
 **r176 (2026-08-10) SHIPPED ADR-0077 SLICES 6 AND 9** — full entry in `docs/HANDOFF-HISTORY.md`.
 Slice 6's remaining piece (the deploy-failing flip) still needs the owner; slice 9 is complete.
+
+### ⚠️ r177 — ADR-0076 IS BUILT, GATED AND **DELIBERATELY NOT DEPLOYED**
+
+**`main@7eff1b87` carries the whole payroll anomaly layer — the ADR-0074 control-tower keystone — and it
+is HELD at the owner's explicit instruction: "build to completion and testing, then build the guide, and
+stop there to wait for my command to deploy."** Do not deploy it without that command. Everything else
+(non-control-tower work) deploys automatically as usual.
+
+**It is ready.** Gate: **630 files across 6 chunks, every chunk exit=0**; tsc 0; `next build` clean;
+**shadow rehearsal PASS, 344 → 345** against a live-shaped schema. Render-checked on a dev server in all
+six locales, empty AND populated, with zero MISSING_MESSAGE / IntlError / RSC errors.
+
+**MIGRATION `0425` IS THE ONLY SCHEMA CHANGE** — three tables (`payroll_anomaly_verdict` / `_finding` /
+`_config`), RLS + GRANTs on all three. Production is still on 344, so the deploy will apply exactly one.
+
+**What it does:** `evaluateBatchAnomalies` reads a processed batch's payslips and writes a verdict per
+employee (auto_clear / review / block) from 11 PURE detectors — 8 needing no history, 3 prior-period ones
+that self-disable on cycle one and are recorded as SKIPPED WITH A REASON. `closeBatch` refuses while
+unresolved `block` verdicts stand. A run-level circuit breaker catches the global mis-key that every
+per-employee detector is blind to. Queue at `/payroll/<batch>/anomalies`; nightly sweep
+`scripts/anomaly-sweep.ts` (`anomaly.sweep`, 02:30, crontab documented in DEPLOY.md).
+
+**THE THREE THINGS TO KNOW BEFORE TOUCHING IT:**
+1. **It is read-only with respect to money.** It never mutates a payslip, a batch total or a statutory
+   figure, and no LLM is involved in any classification. Pinned by a test asserting the payslip rows are
+   byte-identical before and after an evaluation.
+2. **Both guards are ADDITIVE.** A batch with no verdict rows closes exactly as it does today — pinned by
+   its own test. The circuit breaker needed an explicit `anomalyEvaluated()` gate to earn that, because
+   unlike the per-employee guard it is RECOMPUTED and would otherwise fire on batches predating the layer.
+3. **The thresholds are UNTUNED PLACEHOLDERS** (30% / 15%), labelled as such in code and in the guide.
+   ADR-0076 §6 is blunt that only real history or a shadow run gives defensible numbers. **Never quote an
+   auto-clear rate from the synthetic harness** — it proves the detectors work, nothing about thresholds.
+
+**Deliverable for the owner:** an operator guide PDF ("Payroll exception checking — how to use it"),
+written for the person who runs payroll, covering the daily rhythm, the four metrics (and why coverage is
+read first), all 11 checks, the three resolution buttons, threshold tuning, and an explicit section on
+what the layer does NOT do.
 
 **The board: `deployed = 634` · `planned = 1` · `open = 1` · `approved = 0` · `contested = 0`.**
 `b00f9e6e` (the overtime question, answer: "Already works") is PLANNED and awaiting the reporter.
