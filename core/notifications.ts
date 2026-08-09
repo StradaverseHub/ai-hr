@@ -291,6 +291,73 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     category: 'claims',
     render: () => ({ severity: 'warning', title: 'Claim not approved', body: 'Your expense claim was not approved.', linkPath: '/me' }),
   },
+  // ── 1e9145d4 Plan OT — three notices, because today NOTHING is sent about an attendance or overtime
+  // request at all. Overtime agreed before it is worked only works if the approver learns a plan is waiting
+  // while saying no is still cheap, and if the employee learns the answer without going to look.
+  //
+  // These fire for EVERY attendance_correction, not only overtime plans: a clock-time correction is the same
+  // record, goes to the same approver, and has been equally silent. The body distinguishes the two from the
+  // payload (`requestedOtMinutes` is set on an overtime request and null on a clock fix) rather than
+  // splitting the event, because the event is one event. English-only strings, the registry convention —
+  // a notification body is rendered once and STORED, so there is no per-language version of it.
+  'attendance-correction.requested': {
+    kind: 'attendance.requested',
+    category: 'attendance',
+    render: (p) => {
+      const isOt = p?.requestedOtMinutes != null;
+      const hours = isOt ? (Number(p!.requestedOtMinutes) / 60).toFixed(1) : null;
+      const date = typeof p?.date === 'string' ? p.date : '';
+      return {
+        severity: 'action',
+        title: isOt ? 'Overtime plan awaiting approval' : 'Attendance request awaiting approval',
+        body: isOt
+          ? `An overtime plan for ${date} (${hours} hours) is waiting for your approval.`
+          : `An attendance correction for ${date} is waiting for your approval.`,
+        linkPath: '/approvals',
+      };
+    },
+    // THE APPROVER, not the subject — the event's subjectEmploymentId is the person who FILED it, so the
+    // default subject notice would tell the requester what they just did. Same routing as the decide path
+    // (assertCanDecide): the subject's current administrative manager, falling back to the company's HR
+    // admins when they have no line — otherwise a plan filed by someone reporting to nobody is silent.
+    // Both resolvers already exist and are used by the leave escalation fan-out; neither is new ground.
+    recipients: async (tx, ev) => {
+      if (!ev.subjectEmploymentId) return [];
+      let out = await approverEmploymentsForKind(tx, ev.subjectEmploymentId, 'direct_manager');
+      if (out.length === 0) out = await hrAdminsForCompany(tx, ev.subjectEmploymentId);
+      // Never notify the requester about their own request (an employee who is their own manager, or an
+      // HR admin filing for themselves).
+      return [...new Set(out)].filter((id) => id !== ev.subjectEmploymentId);
+    },
+  },
+  // Default recipient (the event's subjectEmploymentId) is exactly right for these two: the subject IS the
+  // employee whose request was decided. No resolver.
+  'attendance-correction.approved': {
+    kind: 'attendance.approved',
+    category: 'attendance',
+    render: (p) => ({
+      severity: 'info',
+      title: 'Overtime plan approved',
+      // `deferred` is set by decideAttendanceCorrection when the plan was agreed AHEAD of its date, which
+      // is the case worth saying out loud: approved is not the same as counted, and the hours appear on the
+      // day once it is worked.
+      body:
+        p?.deferred === true
+          ? `Your overtime plan for ${typeof p.date === 'string' ? p.date : 'the requested date'} was approved. The hours are counted once the day is worked.`
+          : 'Your attendance request was approved.',
+      linkPath: '/attendance/plan-ot',
+    }),
+  },
+  'attendance-correction.rejected': {
+    kind: 'attendance.rejected',
+    category: 'attendance',
+    render: () => ({
+      severity: 'warning',
+      title: 'Overtime plan not approved',
+      body: 'Your attendance request was not approved.',
+      linkPath: '/attendance/plan-ot',
+    }),
+  },
   'profile-change.approved': {
     kind: 'profile.approved',
     category: 'profile',

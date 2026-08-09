@@ -125,6 +125,19 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // FilePen rather than a third Clock: the collapsed rail renders glyphs only, and a row that shares
     // its neighbours' icon is unreachable there.
     { href: '/attendance/requests', labelKey: 'attendanceRequest', icon: FilePen },
+    // 1e9145d4 — Plan OT, the FOURTH self-service row, exactly where the reporter's screenshot puts it:
+    // beside Clock in/out, Records and Attendance Request. Overtime MOVED here off the Attendance Request
+    // screen (which keeps clock-time corrections and travel and carries a link across), so overtime is
+    // filed in one place rather than two that drift apart.
+    //
+    // UNGATED, like its three siblings, and for the same reason: an overtime plan is the caller's OWN
+    // request. A gate here would take the form away from precisely the staff it exists for.
+    //
+    // Hourglass, not a fourth Clock or a second FilePen — the collapsed rail renders glyphs only and a row
+    // sharing a sibling's glyph is unreachable there. It is the same lucide ref the ADMIN node uses for
+    // Time off in lieu, which is a DIFFERENT fly-out with no row in common, so no collapsed rail ever shows
+    // the two side by side. (It is also the right picture: time set aside in advance.)
+    { href: '/attendance/plan-ot', labelKey: 'planOvertime', icon: Hourglass },
   ],
 };
 

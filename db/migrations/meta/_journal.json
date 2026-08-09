@@ -2395,6 +2395,13 @@
       "when": 1781862521000,
       "tag": "0421_employment_shift_arrangement",
       "breakpoints": true
+    },
+    {
+      "idx": 424,
+      "version": "7",
+      "when": 1781862524000,
+      "tag": "0424_plan_ot",
+      "breakpoints": true
     }
   ]
 }

@@ -3222,10 +3222,16 @@ export const holidayGroupHoliday = pgTable(
 export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'absent', 'late', 'half_day']);
 // Day classification drives the OT class (EA 1955: workday 1.5x, rest day 2x, holiday 3x — ADR-0011).
 export const attendanceDayTypeEnum = pgEnum('attendance_day_type', ['workday', 'rest_day', 'holiday']);
+// 1e9145d4 (migration 0424) — `cancelled` is the WITHDRAWN state a Plan OT row lands in when the employee
+// takes it back before the overtime date. SHARED with travel_request, which simply never writes it. Every
+// consumer was audited before the value was added; the audit is in the migration header. The two that
+// matter: the approvals inbox filters status = 'pending' (so a withdrawn plan leaves the queue for free),
+// and me.leaveStatus.cancelled already exists in all six locales (so the label needs no new key).
 export const attendanceCorrectionStatusEnum = pgEnum('attendance_correction_status', [
   'pending',
   'approved',
   'rejected',
+  'cancelled',
 ]);
 
 // ADR-0069 Attendance Request Management: how an APPROVED overtime request's minutes are resolved against the
@@ -3535,6 +3541,19 @@ export const attendanceRuleOtRow = pgTable(
   (t) => [index('attendance_rule_ot_row_rule_idx').on(t.ruleId, t.sortOrder)],
 );
 
+// 1e9145d4 Plan OT — the five reason categories the Apply OT Plan form offers. A text column with a DB
+// CHECK (migration 0424) rather than a pgEnum: widening a CHECK is one statement, whereas an enum value
+// cannot be USED in the transaction that adds it (the 0275 lesson, and the 0294 → 0295 split above).
+// `other` does not mean "no reason" — free-text `reason` is mandatory for every category.
+export const OT_REASON_CATEGORIES = [
+  'project_deadline',
+  'system_maintenance',
+  'month_end_closing',
+  'client_request',
+  'other',
+] as const;
+export type OtReasonCategory = (typeof OT_REASON_CATEGORIES)[number];
+
 // Attendance correction requests (ADR-0011 Phase B): an employee proposes corrected punch
 // times for a day; an admin or their manager approves, which amends the attendance row
 // (re-derived through the time engine). Mirrors the leave request→decide workflow.
@@ -3565,6 +3584,24 @@ export const attendanceCorrection = pgTable(
     requestedOtMinutes: integer('requested_ot_minutes'),
     approvedOtMinutes: integer('approved_ot_minutes'),
     otApprovalMethod: otApprovalCalculationEnum('ot_approval_method'),
+    // 1e9145d4 Plan OT (migration 0424) — overtime AGREED BEFORE IT IS WORKED. All four nullable, so every
+    // existing row and the whole clock-correction path are byte-identical.
+    //  • plannedStartTime / plannedEndTime — the window the employee typed on Apply OT Plan. The form derives
+    //    the hours from them; `requestedOtMinutes` remains the authoritative figure the engine reads, so
+    //    these are display + audit and never a second source of truth for pay. Null on a plain hours-only
+    //    claim (the after-the-fact path that already worked).
+    //  • otReasonCategory — one of the five categories, or NULL for a row filed before this release. text +
+    //    a DB CHECK, not a pgEnum (the 0275 widening lesson). Free-text `reason` stays mandatory regardless.
+    //  • appliedAt — the moment an APPROVED plan's hours LANDED on the attendance day. This is the whole
+    //    point of the item: approving a future-dated plan stamps approvedOtMinutes here and leaves attendance
+    //    alone, and the hours are applied later, when the day is actually worked and there is something real
+    //    to measure them against. NULL = approved but not yet counted. It is also the idempotency guard —
+    //    the application step sets it in the same statement that consumes the plan, so a re-clock-out, a
+    //    re-import or a later correction of the same day cannot bank the same plan twice.
+    plannedStartTime: time('planned_start_time'),
+    plannedEndTime: time('planned_end_time'),
+    otReasonCategory: text('ot_reason_category').$type<OtReasonCategory>(),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
     status: attendanceCorrectionStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
@@ -3578,6 +3615,12 @@ export const attendanceCorrection = pgTable(
     uniqueIndex('attendance_correction_one_pending_uq')
       .on(t.employmentId, t.attendanceDate)
       .where(sql`status = 'pending'`),
+    // 1e9145d4 (migration 0424) — the application step's lookup: "the approved, not-yet-applied OT plan for
+    // this employee on this day", run on every clock-out and every imported day. Partial, so it indexes the
+    // handful of live plans rather than every correction ever decided.
+    index('attendance_correction_unapplied_plan_idx')
+      .on(t.employmentId, t.attendanceDate)
+      .where(sql`status = 'approved' AND applied_at IS NULL AND requested_ot_minutes IS NOT NULL`),
   ],
 );
 
