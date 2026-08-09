@@ -180,7 +180,16 @@ crontab -e
 0 2 1 * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/accrue-earned.ts >> /home/ubuntu/aihr-cron-logs/accrue.log 2>&1
 0 3 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/review-sweep.ts >> /home/ubuntu/aihr-cron-logs/review-sweep.log 2>&1
 0 3 1 4 * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/expire-carry.ts >> /home/ubuntu/aihr-cron-logs/expire-carry.log 2>&1
+0 1 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/capture-usage.ts >> /home/ubuntu/aihr-cron-logs/capture-usage.log 2>&1
+30 2 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/anomaly-sweep.ts >> /home/ubuntu/aihr-cron-logs/anomaly-sweep.log 2>&1
 ```
+
+`capture-usage` runs FIRST, at 01:00, because it meters the day before the other sweeps mutate anything.
+`anomaly-sweep` (ADR-0076) runs at 02:30, after metering and before the 03:00 review sweep; it evaluates
+every PROCESSED payroll run for anomalies so the exceptions queue is already filled when an operator
+opens it. It is **read-only with respect to money** and idempotent — a re-run supersedes its previous
+verdicts rather than duplicating them — so a missed night costs nothing and needs no backfill. Add
+`--dry-run` to see what it would evaluate without writing.
 
 First `mkdir -p /home/ubuntu/aihr-cron-logs`. Keep the logs **outside** `/opt/ai-hr`: `improve:release`
 rsyncs with `--delete` and would wipe anything it doesn't exclude.
@@ -191,7 +200,7 @@ Use the absolute node path — cron's `PATH` does not include `/opt/node20/bin`.
 Verify:
 
 ```bash
-crontab -l                                   # the four lines
+crontab -l                                   # the five lines
 systemctl is-active cron                     # active
 tail -f /home/ubuntu/aihr-cron-logs/review-sweep.log   # after the next 03:00
 ```

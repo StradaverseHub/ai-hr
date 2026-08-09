@@ -450,6 +450,12 @@ export const SCREENS: readonly ScreenEntry[] = [
       // completeness: a guarded page with no matrix column fails the suite rather than silently
       // becoming a screen nobody can grant or revoke.
       '/payroll/[batchId]/reprocess',
+      // ADR-0076 — the payroll exceptions queue. Same requireAdmin guard as the run page it hangs off,
+      // and registered here for the same reason the reprocess screen above is: a guarded page with no
+      // matrix column fails the suite rather than silently becoming a screen nobody can grant or revoke.
+      // (It did fail here first, on the gate immediately after the page was written, which is the guard
+      // working exactly as intended.)
+      '/payroll/[batchId]/anomalies',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.

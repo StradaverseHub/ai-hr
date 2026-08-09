@@ -110,9 +110,10 @@ describe('0280 — job_run recorder', () => {
 
   it('the job registry covers exactly the known sweeps, with i18n keys free of dot separators', () => {
     // Stated ABSOLUTELY and deliberately: adding a sweep must fail here until its i18n strings and its
-    // job_run wiring are done too. r113 added usage.capture and this is what made that visible.
+    // job_run wiring are done too. r113 added usage.capture and this is what made that visible; ADR-0076
+    // added anomaly.sweep and this caught that one too, on the first full gate after it was written.
     expect(JOBS.map((j) => j.key).sort()).toEqual(
-      ['leave.accrue', 'leave.expire-carry', 'review.sweep', 'usage.capture'].sort(),
+      ['anomaly.sweep', 'leave.accrue', 'leave.expire-carry', 'review.sweep', 'usage.capture'].sort(),
     );
     // c459bff9 removed 'leave.expire-aged' — the sweep, its script and the columns it read are gone, so
     // the Scheduled Actions screen must not offer a job that can never run again. Asserted by NAME as well
