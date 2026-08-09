@@ -372,14 +372,21 @@ export function fitMultilineValue(value: string, field: Cp22Field, font: PDFFont
   return last;
 }
 
-function addField(form: ReturnType<PDFDocument['getForm']>, page: PDFPage, f: Cp22Field, value: string, font: PDFFont) {
+function addField(
+  form: ReturnType<PDFDocument['getForm']>,
+  page: PDFPage,
+  f: Cp22Field,
+  value: string,
+  font: PDFFont,
+  namePrefix: string,
+) {
   const opts = { ...f.rect, ...TRANSPARENT, font };
   if (f.type === 'checkbox') {
     // Created but never ticked: only the operator knows whether the correspondence address is a tax agent's.
-    form.createCheckBox(f.name).addToPage(page, opts);
+    form.createCheckBox(namePrefix + f.name).addToPage(page, opts);
     return;
   }
-  const field = form.createTextField(f.name);
+  const field = form.createTextField(namePrefix + f.name);
   // A multi-row block is measured BEFORE its /DA is written, because the fit is what decides the size: a
   // value with more lines than the block has rows, or a line too wide for the box, comes back folded and
   // (only if it must) smaller. Both halves have to reach the file — the size through /DA and the folded
@@ -405,6 +412,43 @@ function addField(form: ReturnType<PDFDocument['getForm']>, page: PDFPage, f: Cp
 }
 
 /**
+ * Lay the 33 widgets over ONE already-drawn CP22 page.
+ *
+ * `namePrefix` is empty for the single-person document — its field names are part of that file's contract
+ * (test/cp22-pdf.test.ts and test/cp22-fields.test.ts address them by name, and so does an operator's PDF
+ * viewer) — and is a per-record prefix in a batch. See `renderCp22Batch` for why the prefix is not optional
+ * there.
+ */
+function buildCp22Page(
+  page: PDFPage,
+  form: ReturnType<PDFDocument['getForm']>,
+  font: PDFFont,
+  values: Record<string, string>,
+  namePrefix: string,
+) {
+  for (const f of CP22_FIELDS) addField(form, page, f, values[f.name] ?? '', font, namePrefix);
+}
+
+/**
+ * The three things that must be true of the FINISHED document, whatever produced it — set once, after every
+ * page and every widget exists. Doing any of them per page would either be wasted work or (for /DR and
+ * NeedAppearances, which live on the one AcroForm dictionary) simply be overwritten.
+ */
+function finishCp22Form(doc: PDFDocument, form: ReturnType<PDFDocument['getForm']>, font: PDFFont) {
+  // (1) of the three — see the file header. Both halves are needed: the appearance streams are what most
+  // viewers draw, and NeedAppearances is what makes the ones that regenerate (and every viewer, after the
+  // operator edits a box) lay the text out themselves instead of showing nothing.
+  form.updateFieldAppearances(font);
+  form.acroForm.dict.set(PDFName.of('NeedAppearances'), PDFBool.True);
+  // pdf-lib does not maintain /DR. Without it a viewer honouring NeedAppearances has to guess which font
+  // the /DA names, so the operator's own typing can come back in a substituted face. One dictionary fixes it.
+  form.acroForm.dict.set(
+    PDFName.of('DR'),
+    doc.context.obj({ Font: doc.context.obj({ [font.name]: font.ref }) }),
+  );
+}
+
+/**
  * Render a fillable CP22 over the bundled template.
  *
  * @param template the bytes of public/forms/cp22-pin-1-2020.pdf (the caller reads the file; this stays pure)
@@ -418,22 +462,82 @@ export async function renderCp22Pdf(template: Uint8Array, data: Cp22PdfData | nu
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const values = data ? cp22FieldValues(data) : {};
 
-  for (const f of CP22_FIELDS) addField(form, page, f, values[f.name] ?? '', font);
-
-  // (1) of the three — see the file header. Both halves are needed: the appearance streams are what most
-  // viewers draw, and NeedAppearances is what makes the ones that regenerate (and every viewer, after the
-  // operator edits a box) lay the text out themselves instead of showing nothing.
-  form.updateFieldAppearances(font);
-  form.acroForm.dict.set(PDFName.of('NeedAppearances'), PDFBool.True);
-  // pdf-lib does not maintain /DR. Without it a viewer honouring NeedAppearances has to guess which font
-  // the /DA names, so the operator's own typing can come back in a substituted face. One dictionary fixes it.
-  form.acroForm.dict.set(
-    PDFName.of('DR'),
-    doc.context.obj({ Font: doc.context.obj({ [font.name]: font.ref }) }),
-  );
+  // UNPREFIXED, and that is part of this file's contract: one person, one page, the names in
+  // lib/cp22-fields.ts exactly as an operator's viewer shows them.
+  buildCp22Page(page, form, font, values, '');
+  finishCp22Form(doc, form, font);
 
   // NEVER form.flatten(): every box, including the 26 filled ones, stays typeable in the downloaded file.
   // `updateFieldAppearances: false` because the call above already did it WITH our embedded font; letting
   // save() redo it would fall back to its own default.
+  return doc.save({ updateFieldAppearances: false });
+}
+
+/** What the operator typed on the screen, stamped onto every page of a batch. */
+export type Cp22BatchOptions = {
+  /**
+   * The LHDN branch they file with — box 1, which has no answer in the schema and is therefore normally an
+   * empty editable box. This is OPERATOR INPUT travelling with the request, not a value this code invented,
+   * which is why stamping it does not breach the never-invent rule. Null/blank leaves box 1 empty, exactly
+   * as the single-person document does.
+   */
+  lhdnBranch?: string | null;
+};
+
+/** The AcroForm name prefix for the n-th page of a batch (0-based). See `renderCp22Batch`. */
+export const cp22BatchPrefix = (index: number): string => `p${index + 1}_`;
+
+/**
+ * One document, one page per joiner, in the order given — every box on every page still editable.
+ *
+ * NOT A LOOP AROUND `renderCp22Pdf`. Three things break if it is written the obvious way, and each of them
+ * produces a file that opens, prints and passes every green check while being wrong:
+ *
+ * 1. ACROFORM FIELD NAMES ARE DOCUMENT-GLOBAL, NOT PER PAGE. Two widgets called `employeeFullName` are ONE
+ *    field with two appearances: type into page 3's name box and page 1's changes too, and pdf-lib's own
+ *    `createTextField` throws on the second. So every page's widgets carry `p<n>_` (`cp22BatchPrefix`) and
+ *    the pages are genuinely independent. The prefix is a NAME change only — the comb, multiline and maxLen
+ *    handling all key off `Cp22Field`, which is untouched.
+ * 2. THE ARTWORK IS EMBEDDED ONCE. `embedPage` turns LHDN's page into a single Form XObject that each page
+ *    draws; `copyPages` per joiner would duplicate all 153 KB of it per person (a 38-page file ≈ 5.8 MB for
+ *    nothing). The page size comes from the embedded page itself rather than any constant, so the batch
+ *    cannot drift from the artwork on disk.
+ * 3. NeedAppearances, /DR and `updateFieldAppearances` HAPPEN ONCE, AFTER ALL PAGES EXIST — see
+ *    `finishCp22Form`. Per page, the AcroForm-level entries would just be rewritten, and the appearance
+ *    pass would run N times over a growing form for no benefit.
+ *
+ * And, as everywhere in this file: NEVER `form.flatten()`.
+ *
+ * @param records one per page, already ordered by the caller (the screen's list order)
+ */
+export async function renderCp22Batch(
+  template: Uint8Array,
+  records: Cp22PdfData[],
+  opts: Cp22BatchOptions = {},
+): Promise<Uint8Array> {
+  // A zero-page PDF is not a valid document and is not a useful answer. The route answers 404 for a month
+  // with no joiners; this throw is what stops any other caller quietly producing a broken file.
+  if (records.length === 0) throw new Error('renderCp22Batch: no records — a month with no joiners has no document');
+
+  const source = await PDFDocument.load(template);
+  const doc = await PDFDocument.create();
+  const templatePage = source.getPages()[0];
+  const { width, height } = templatePage.getSize();
+  const artwork = await doc.embedPage(templatePage);
+  const form = doc.getForm();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const branch = (opts.lhdnBranch ?? '').trim();
+
+  records.forEach((record, i) => {
+    const page = doc.addPage([width, height]);
+    page.drawPage(artwork, { x: 0, y: 0, width, height });
+    const values = cp22FieldValues(record);
+    // Box 1 is `prefilled: false` — it stays empty unless the operator typed a branch, and then it is
+    // THEIR text on every page rather than an empty box on every page.
+    if (branch) values.lhdnBranchAddress = branch;
+    buildCp22Page(page, form, font, values, cp22BatchPrefix(i));
+  });
+
+  finishCp22Form(doc, form, font);
   return doc.save({ updateFieldAppearances: false });
 }
