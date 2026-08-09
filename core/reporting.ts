@@ -282,42 +282,81 @@ export async function recordFileReport(
 }
 
 /**
- * Per-employee EA statement for a tax year, via the employment's jurisdiction pack. RLS scopes
- * visibility: an employee sees only their own (+ reports'); admins see their company scope.
+ * The country of the EMPLOYER an EA form speaks for.
+ *
+ * ADR-0077 slice 6 — `companyId` is the whole point. An EA form is one EMPLOYER's statement of what IT
+ * paid (localization/my/reports.ts: eaStatement), and since Entity Transfer (b7b22514) the employer a
+ * form speaks for is NOT necessarily the company the employment currently sits at. Resolving the
+ * jurisdiction from the employment's CURRENT company and then applying it to a PRIOR employer is the
+ * defect this slice exists to remove: an employee transferred from a Singaporean entity to a Malaysian
+ * one would have had the Singaporean half of their year rendered as a Malaysian C.P.8A.
+ *
+ * Absent `companyId` ⇒ the employment's current company, which is byte-identical to the old behaviour
+ * for everyone who has never transferred, and for every transfer inside one country.
+ *
+ * Returns `undefined` when the employment (or the named company) is not visible to this caller — RLS
+ * does the fencing, and "not visible" must stay distinguishable from "visible, but no country on file"
+ * so an out-of-scope id keeps producing the route's 404 rather than an unlabelled form.
  */
-export async function employeeEaStatement(
+async function eaEmployerCountry(
   ctx: SessionContext,
-  p: { employmentId: string; year: string; companyId?: string },
-): Promise<EaStatement | null> {
-  const country = await withTenant(ctx, async (tx) => {
+  p: { employmentId: string; companyId?: string },
+): Promise<string | null | undefined> {
+  return withTenant(ctx, async (tx) => {
+    if (p.companyId) {
+      const [co] = await tx
+        .select({ country: company.country })
+        .from(company)
+        .where(eq(company.id, p.companyId))
+        .limit(1);
+      return co ? co.country : undefined;
+    }
     const [row] = await tx
       .select({ country: company.country })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);
-    return row?.country ?? null;
+    return row ? row.country : undefined;
   });
+}
+
+/**
+ * Per-employee EA statement for a tax year, via the EMPLOYER'S jurisdiction pack. RLS scopes
+ * visibility: an employee sees only their own (+ reports'); admins see their company scope.
+ *
+ * The pack comes from `p.companyId` when the caller names an employer (the EA screen's employer switcher
+ * and the PDF route's `?company=` both do) — see `eaEmployerCountry`.
+ */
+export async function employeeEaStatement(
+  ctx: SessionContext,
+  p: { employmentId: string; year: string; companyId?: string },
+): Promise<EaStatement | null> {
+  const country = await eaEmployerCountry(ctx, p);
+  if (country === undefined) return null;
   const pack = packFor(country);
   if (!pack) return null;
   return pack.eaStatement(ctx, p);
 }
 
 /** b7b22514 — the employers that owe this employee an EA form for the year, oldest first. Drives the
- *  employer switcher on the EA screen and the PDF route's `company` parameter. */
+ *  employer switcher on the EA screen and the PDF route's `company` parameter.
+ *
+ *  ADR-0077 slice 6, RECORDED RATHER THAN BUILT: the ENUMERATION still runs through the CURRENT
+ *  company's pack, so an employee who has transferred INTO a jurisdiction no pack owns (a D-14
+ *  non-statutory company) gets an empty switcher and loses access to the form their PRIOR, packed
+ *  employer still owes them. The enumeration itself is jurisdiction-neutral — "the companies that paid
+ *  this employment this year, plus the current one" — so the fix is to lift it off the pack, not to
+ *  thread a second country through it. Left alone deliberately: it is a shape only a second pack can
+ *  settle (which employer list belongs to which jurisdiction's form set), and inventing it now would be
+ *  designing against an imagined second country, exactly as `complianceWorklist` argues below. Nothing
+ *  here is wrong for a single-jurisdiction tenant. */
 export async function employeeEaCompanies(
   ctx: SessionContext,
   p: { employmentId: string; year: string },
 ): Promise<{ companyId: string; name: string; isCurrent: boolean }[]> {
-  const country = await withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .select({ country: company.country })
-      .from(employment)
-      .innerJoin(company, eq(company.id, employment.companyId))
-      .where(eq(employment.id, p.employmentId))
-      .limit(1);
-    return row?.country ?? null;
-  });
+  const country = await eaEmployerCountry(ctx, { employmentId: p.employmentId });
+  if (country === undefined) return [];
   const pack = packFor(country);
   if (!pack) return [];
   return pack.eaCompaniesInYear(ctx, p);
@@ -332,25 +371,36 @@ export async function employeeEaCompanies(
  * render "the EA form" have to render all of them or they are handing out an incomplete tax record.
  *
  * Returns exactly one element for everyone who has never transferred.
+ *
+ * ADR-0077 slice 6 — EACH FORM IS BUILT BY ITS OWN EMPLOYER'S PACK. This used to resolve one pack from
+ * the employment's current company and then generate EVERY employer's form with it, which is precisely
+ * the "pack resolved from one company, applied to rows spanning several" defect: a cross-border transfer
+ * produced a Malaysian C.P.8A for a foreign employer, on that employer's letterhead. An employer whose
+ * jurisdiction no pack owns is SKIPPED rather than rendered under someone else's law — a non-statutory
+ * company owes no statutory form, which is the correct empty and not a degraded one (D-14).
+ *
+ * Resolved once per distinct employer country, not per employer: a transfer year has at most a handful
+ * of employers, but the map keeps the shape honest and mirrors `overtimeReport`'s per-country resolve.
  */
 export async function employeeEaStatements(
   ctx: SessionContext,
   p: { employmentId: string; year: string },
 ): Promise<EaStatement[]> {
-  const country = await withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .select({ country: company.country })
-      .from(employment)
-      .innerJoin(company, eq(company.id, employment.companyId))
-      .where(eq(employment.id, p.employmentId))
-      .limit(1);
-    return row?.country ?? null;
+  const companies = await employeeEaCompanies(ctx, p);
+  if (companies.length === 0) return [];
+  const countryByCompany = await withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ id: company.id, country: company.country })
+      .from(company)
+      .where(inArray(company.id, companies.map((c) => c.companyId)));
+    return new Map(rows.map((r) => [r.id, r.country]));
   });
-  const pack = packFor(country);
-  if (!pack) return [];
-  const companies = await pack.eaCompaniesInYear(ctx, p);
   const out: EaStatement[] = [];
   for (const c of companies) {
+    // THIS employer's jurisdiction, not the employment's. A company the read cannot see is absent from
+    // the map and yields `undefined` ⇒ no pack ⇒ skipped, which is the same fail-closed answer RLS gives.
+    const pack = packFor(countryByCompany.get(c.companyId));
+    if (!pack) continue;
     const ea = await pack.eaStatement(ctx, { ...p, companyId: c.companyId });
     if (ea) out.push(ea);
   }
