@@ -374,9 +374,24 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
 
     // The pay-run interlock. Computed for the PREVIEW too, read-only, from exactly the days that would
     // move — so the warning the reporter sees before pressing Apply is the same set Apply then raises.
-    // Only worked/OT movements can change what a run paid; a lateness-only refresh does not.
+    //
+    // DAY TYPE BELONGS IN THIS PREDICATE, and leaving it out was a silent money difference — the exact
+    // failure this interlock exists to prevent. Payroll does not price overtime from minutes alone:
+    // core/payroll.ts selects attendance.dayType ALONGSIDE attendance.otMinutes and monetises by type
+    // (rest day 2x, holiday 3x plus premium), and core/toil.ts reads the same pair. So a day whose type
+    // is re-decided with its minutes unchanged — a rest day that becomes a public holiday, which is
+    // precisely what recomputing after a holiday is recorded does — moves what an already-processed run
+    // paid while raising nothing. MEASURED: rest_day -> holiday with worked 420 and ot 420 both
+    // unchanged moves ot20 420->0 and ot30 0->420, and the run was never flagged.
+    // This is the complete set: every payroll-side reader of an attendance row keys off worked minutes,
+    // OT minutes, or the day type.
     const payAffecting = changedRows
-      .filter((c) => c.before.workedMinutes !== c.after.workedMinutes || c.before.otMinutes !== c.after.otMinutes)
+      .filter(
+        (c) =>
+          c.before.workedMinutes !== c.after.workedMinutes ||
+          c.before.otMinutes !== c.after.otMinutes ||
+          c.before.dayType !== c.after.dayType,
+      )
       .map((c) => ({ employmentId: c.employmentId, date: c.date }));
     const batchWarnings = await batchesCoveringAttendanceDates(tx, {
       companyId: p.companyId,
