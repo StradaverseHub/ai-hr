@@ -38,7 +38,7 @@
  */
 import { and, asc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { recomputeDayFigures, type DayType } from './attendance';
 import { batchesCoveringAttendanceDates, markBatchNeedsRecalc } from './payroll';
