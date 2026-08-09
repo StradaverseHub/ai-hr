@@ -234,7 +234,43 @@ describe('1 · approval works AHEAD of the date (the item)', () => {
     const res = await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
     expect(res.deferred, 'past dates keep the immediate path').toBe(false);
     expect((await attendanceRow(employmentId, PAST)).otMinutes).toBe(180);
-    expect((await correctionRow(correctionId)).appliedAt, 'the immediate path is not a deferred landing').toBeNull();
+    // applied_at means "these hours are on the day", so the immediate path stamps it too. Only a DEFERRED
+    // approval leaves it null. The two assertions below are what that buys.
+    expect((await correctionRow(correctionId)).appliedAt).not.toBeNull();
+  });
+
+  it('an IMMEDIATELY approved OT figure is not double-counted against the monthly ceiling', async () => {
+    // If the immediate path left applied_at null, an already-counted approval would still match
+    // "approved, unapplied" — and its minutes would be added to the attendance row's own.
+    const { a, employmentId } = await hire();
+    await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'requested' });
+    await checkIn(a, { employmentId, date: PAST, time: '09:00' });
+    await checkOut(a, { employmentId, date: PAST, time: '20:00' });
+    const { correctionId } = await filePlan(a, employmentId, PAST, 180, { plannedStartTime: null, plannedEndTime: null });
+    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+
+    const cap = await otMonthToDateMinutes(a, employmentId, PAST);
+    expect(cap.recordedMinutes).toBe(180);
+    expect(cap.plannedMinutes, 'already on the day ⇒ no longer "planned"').toBe(0);
+    expect(cap.totalMinutes).toBe(180);
+  });
+
+  it('an IMMEDIATELY approved OT figure cannot be landed a second time by a later clocking', async () => {
+    const { a, employmentId } = await hire();
+    await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'requested' });
+    await checkIn(a, { employmentId, date: PAST, time: '09:00' });
+    await checkOut(a, { employmentId, date: PAST, time: '20:00' });
+    const { correctionId } = await filePlan(a, employmentId, PAST, 180, { plannedStartTime: null, plannedEndTime: null });
+    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    const stampedAt = (await correctionRow(correctionId)).appliedAt;
+
+    await checkIn(a, { employmentId, date: PAST, time: '21:00' });
+    await checkOut(a, { employmentId, date: PAST, time: '22:00' });
+
+    expect((await correctionRow(correctionId)).appliedAt?.getTime()).toBe(stampedAt?.getTime());
+    // And, as a bonus of the same rule, the approved figure survives the later punch instead of being
+    // silently re-derived away — which is what happened before this change.
+    expect((await attendanceRow(employmentId, PAST)).otMinutes).toBe(180);
   });
 });
 

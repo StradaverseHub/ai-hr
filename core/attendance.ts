@@ -2743,7 +2743,20 @@ export async function decideAttendanceCorrection(
       if (hasOtRequest) {
         await tx
           .update(attendanceCorrection)
-          .set({ approvedOtMinutes, otApprovalMethod })
+          .set({
+            approvedOtMinutes,
+            otApprovalMethod,
+            // 1e9145d4 — applied_at means ONE thing: "these hours are on the attendance day". The IMMEDIATE
+            // path just put them there, so it stamps it too; only a DEFERRED approval leaves it null,
+            // because only a deferred approval has not landed.
+            //
+            // THIS IS NOT COSMETIC. Leave it null on the immediate path and an already-counted approval
+            // still matches "approved, unapplied" — so (a) otMonthToDateMinutes would add its minutes to
+            // the attendance row's own, double-counting them against the 104-hour ceiling, and (b) the
+            // next clock-out of that day would LAND it a second time, re-resolving a figure a human had
+            // already agreed and re-running the replacement-leave accrual. Both are silent.
+            ...(deferred ? {} : { appliedAt: sql`now()` }),
+          })
           .where(eq(attendanceCorrection.id, cor.id));
         eventPayload = {
           ...eventPayload,
