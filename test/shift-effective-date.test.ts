@@ -21,7 +21,9 @@
  * Dates: 2026-07-14 = Tuesday, 2026-07-15 = Wednesday, 2026-07-16 = Thursday — all Mon–Fri working days, all
  * in the past, so checkIn/checkOut accept them. Default company policy: 09:00–18:00, 60m break, Mon–Fri.
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import fs from 'node:fs';
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -36,9 +38,11 @@ import {
   shiftArrangementHistory,
 } from '../core/shift-arrangement';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import type { SessionContext } from '../db/client';
 import {
   adminCtx,
   closeAll,
+  createAppUser,
   latestEventPayload,
   migrateTestDb,
   owner,
@@ -397,6 +401,60 @@ describe('behaviour-neutrality — an employment with NO ladder row', () => {
   });
 });
 
+describe("migration 0421's backfill — the release-is-behaviour-neutral promise", () => {
+  /** The EXACT backfill statement the migration will run in production, lifted out of the .sql file. */
+  const backfillStatement = (): string => {
+    const file = fs.readFileSync(
+      path.resolve(__dirname, '../db/migrations/0421_employment_shift_arrangement.sql'),
+      'utf8',
+    );
+    const stmt = file
+      .split('--> statement-breakpoint')
+      .map((s) => s.trim())
+      .find((s) => s.includes('INSERT INTO "employment_shift_arrangement"'));
+    expect(stmt, '0421 no longer contains its backfill INSERT').toBeTruthy();
+    return stmt as string;
+  };
+
+  it('opens one period per employee WITH a shift, from their start date, and none for those without', async () => {
+    const a = adminCtx(b);
+    const s = await oldShift();
+    const withShift = await makeEmp('2021-03-04');
+    const withoutShift = await makeEmp('2022-05-06');
+    await assignDefaultShift(a, { employmentId: withShift, shiftId: s.id }); // legacy writer: cache only
+
+    await owner.db.execute(sql.raw(backfillStatement()));
+
+    expect(await ladder(withShift)).toEqual([
+      { shiftId: s.id, shiftType: 'fixed', validFrom: '2021-03-04', validTo: null, createdBy: null },
+    ]);
+    // No shift on file ⇒ no period. There is nothing true to record, and b8aa3466's backup-shift backfill
+    // is the admin action that fixes those employments.
+    expect(await ladder(withoutShift)).toEqual([]);
+  });
+
+  it('is idempotent — a re-run adds nothing (a replayed migration cannot double the ladder)', async () => {
+    const a = adminCtx(b);
+    const s = await oldShift();
+    await assignDefaultShift(a, { employmentId: empId, shiftId: s.id });
+    await owner.db.execute(sql.raw(backfillStatement()));
+    await owner.db.execute(sql.raw(backfillStatement()));
+    expect((await ladder(empId)).length).toBe(1);
+  });
+
+  it('leaves the resolved shift EXACTLY where it was — no figure and no screen moves', async () => {
+    const a = adminCtx(b);
+    const s = await oldShift();
+    await assignDefaultShift(a, { employmentId: empId, shiftId: s.id });
+    // The answer BEFORE the ladder exists (the cache path) …
+    const before = await shiftCodeByDate(DAY_BEFORE, DAY_AFTER);
+    await owner.db.execute(sql.raw(backfillStatement()));
+    // … is the answer AFTER it does (the ladder path).
+    expect(await shiftCodeByDate(DAY_BEFORE, DAY_AFTER)).toEqual(before);
+    expect(before).toEqual({ [DAY_BEFORE]: 'OLD', [EFFECTIVE]: 'OLD', [DAY_AFTER]: 'OLD' });
+  });
+});
+
 describe('the Shift history list under the card', () => {
   it('lists effective date, previous shift, new shift, who changed it and when — newest first', async () => {
     const a = adminCtx(b);
@@ -457,5 +515,30 @@ describe('the Shift history list under the card', () => {
 
   it('is empty for an employee whose shift has never been dated', async () => {
     expect(await shiftArrangementHistory(adminCtx(b), empId)).toEqual([]);
+  });
+
+  // RLS mirrors roster_assignment (migration 0075): READ is can_see_employment, so the employee sees their
+  // own shift history; WRITE is can_admin_employment, so only HR can move them. The GRANT is proven by every
+  // other test in this file — they all write through the ai_hr_app role.
+  it('an ordinary employee can READ their own shift history but cannot WRITE one', async () => {
+    const a = adminCtx(b);
+    const s = await oldShift();
+    await assignEmployeeShiftDated(a, { employmentId: empId, shiftType: 'fixed', shiftId: s.id, effectiveFrom: HIRED });
+    const [emp] = await owner.db
+      .select({ personId: schema.employment.personId })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, empId));
+    const userId = await createAppUser(b.tenantId, emp.personId, 'employee');
+    const selfCtx: SessionContext = { tenantId: b.tenantId, userId, personId: emp.personId, roles: ['employee'] };
+
+    expect((await shiftArrangementHistory(selfCtx, empId)).map((r) => r.effectiveFrom)).toEqual([HIRED]);
+    await expect(
+      assignEmployeeShiftDated(selfCtx, {
+        employmentId: empId,
+        shiftType: 'fixed',
+        shiftId: s.id,
+        effectiveFrom: EFFECTIVE,
+      }),
+    ).rejects.toThrow();
   });
 });

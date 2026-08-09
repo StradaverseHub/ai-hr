@@ -28,7 +28,7 @@
  *   · periods can never overlap, because each simply runs until the next begins.
  */
 import { and, asc, desc, eq, isNull } from 'drizzle-orm';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { appUser, employment, employmentShiftArrangement, person, shift } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
