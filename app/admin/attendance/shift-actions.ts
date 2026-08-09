@@ -222,7 +222,8 @@ export async function copyShiftAction(formData: FormData) {
 }
 
 /** R17 3e8350db — hard-delete a shift template (distinct from Archive). The service refuses if the shift is
- *  still referenced (roster rows or an employee default) with a ShiftInUseError, surfaced on the page. */
+ *  still referenced — roster rows, an employee default, or any dated shift-arrangement period (18504ca6,
+ *  live or superseded) — with a ShiftInUseError, whose message is what errTarget puts on the page. */
 export async function deleteShiftAction(formData: FormData) {
   const s = await getSession();
   try {

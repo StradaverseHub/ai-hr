@@ -10,6 +10,7 @@ import { appendEvent, actorOf } from '../db/events';
 import {
   attendance,
   employment,
+  employmentShiftArrangement,
   leaveRequest,
   person,
   rosterAssignment,
@@ -699,7 +700,7 @@ export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Pr
 }
 
 export class ShiftInUseError extends Error {
-  constructor(message = 'This shift is referenced by roster entries or assigned as an employee default — archive it instead of deleting.') {
+  constructor(message = 'This shift is referenced by roster entries, assigned as an employee default, or recorded in employee shift history — archive it instead of deleting.') {
     super(message);
     this.name = 'ShiftInUseError';
   }
@@ -709,9 +710,21 @@ export class ShiftInUseError extends Error {
  * R17 3e8350db — HARD delete a shift template (the reporter's "Delete", distinct from "Archive"). Archive is
  * the soft path that preserves history and frees the name/code; Delete is for a template created in error /
  * never used. To keep attendance + payroll history intact we REFUSE to hard-delete a shift that is still
- * referenced — any roster_assignment (past or future) or any employee's default_shift_id — and steer HR to
- * Archive instead (ShiftInUseError). Only a genuinely-unreferenced row is removed. RLS (migration 0075:
- * is_admin_for(company_id)) gates who may delete which company's shifts; the GRANT includes DELETE.
+ * referenced — any roster_assignment (past or future), any employee's default_shift_id, or any dated period
+ * on the shift-arrangement ladder — and steer HR to Archive instead (ShiftInUseError). Only a
+ * genuinely-unreferenced row is removed. RLS (migration 0075: is_admin_for(company_id)) gates who may delete
+ * which company's shifts; the GRANT includes DELETE.
+ *
+ * 18504ca6 — WHY THE THIRD CHECK EXISTS, AND WHY IT DOES NOT FILTER superseded_at. Migration 0421's
+ * employment_shift_arrangement.shift_id REFERENCES shift(id) with no ON DELETE, i.e. a hard RESTRICT. Once HR
+ * moves someone OFF a shift with an effective date, employment.default_shift_id names the NEW shift and there
+ * may be no roster row, so the OLD shift looks unreferenced to the two checks above — but the closed ladder
+ * period still holds the FK, and the delete would fail in Postgres with a raw `Failed query: delete from
+ * "shift" …` banner on the HR screen. A SUPERSEDED row holds the FK just as hard as a live one, so this check
+ * deliberately looks at EVERY row: the answer HR needs is "archive it", not a database error. The practical
+ * consequence, and it is the correct one: once anybody has ever been moved off a shift, that shift can only
+ * be Archived. db/schema.ts's employment.default_shift_id note ("deleting a shift never errors an FK") is
+ * about the SET NULL on that column and still holds; this guard is what keeps the same promise for the ladder.
  */
 export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
@@ -735,6 +748,15 @@ export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): 
       .where(eq(employment.defaultShiftId, p.shiftId))
       .limit(1);
     if (emp) throw new ShiftInUseError();
+    // 18504ca6 — recorded on ANY dated shift-arrangement period, live OR superseded. A superseded row still
+    // holds employment_shift_arrangement.shift_id's RESTRICT FK, so filtering it out here would hand HR the
+    // raw Postgres delete error this guard exists to prevent.
+    const [arr] = await tx
+      .select({ id: employmentShiftArrangement.id })
+      .from(employmentShiftArrangement)
+      .where(eq(employmentShiftArrangement.shiftId, p.shiftId))
+      .limit(1);
+    if (arr) throw new ShiftInUseError();
     await tx.delete(shift).where(eq(shift.id, p.shiftId));
     // SUBSTRATE: the row is gone but the append log is independent — record the deletion (aggregateId = the
     // now-deleted shift id; the human key lives in the payload).

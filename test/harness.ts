@@ -43,7 +43,12 @@ const ALL_TABLES = [
   // throughout this list: a table only ever cleared as a side effect is a table that stops being cleared
   // the day the cascade path changes. A leaked window would also switch a later test file's shift onto the
   // clock-time OT basis, and the symptom would be an overtime figure that is wrong for no visible reason.
-  'shift', 'shift_ot_window', 'roster_assignment', 'toil_policy', 'toil_accrual', 'location',
+  'shift', 'shift_ot_window', 'roster_assignment',
+  // 18504ca6 — the dated shift-arrangement ladder (migration 0421). Listed EXPLICITLY per the convention
+  // above: a leaked period would answer "which shift was this person on" for a LATER test file's employment
+  // and silently re-measure its attendance against a shift that file never created.
+  'employment_shift_arrangement',
+  'toil_policy', 'toil_accrual', 'location',
   'clocking_location', 'employee_clocking_location',
   // 5249d43f — registered clocking devices: truncate between test files (the global unique token index
   // means a leaked row can't collide, but a surviving device would make a later gate test false-green).

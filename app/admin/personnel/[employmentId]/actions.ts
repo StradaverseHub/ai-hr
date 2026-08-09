@@ -17,7 +17,13 @@ import {
   type MovementKind,
 } from '@/core/movement';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
-import { assignEmployeeShift } from '@/core/roster';
+// 18504ca6 — the Shift arrangement card writes through the DATED ladder now, not the flat in-place update.
+import {
+  assignEmployeeShiftDated,
+  InvalidEffectiveDateError,
+  ShiftBackInsertError,
+  ShiftEffectiveBeforeStartError,
+} from '@/core/shift-arrangement';
 import { setEmployeeClockingLocations, setGeofencing } from '@/packs/attendance/service';
 import { recordLocationSource } from '@/core/location';
 import { FixedTransactionAmountError, FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
@@ -345,20 +351,37 @@ export async function setLocationAction(formData: FormData) {
 }
 
 /** R17 3e8350db — set the employee's shift ARRANGEMENT (the reporter's "Shift Type"): Fixed (a default
- *  shift is required and followed every working day) or Roster (no default shift; scheduled from /roster).
- *  Admin-gated, real actor via the session; assignEmployeeShift enforces the fixed⇒shift-required /
- *  roster⇒shift-cleared invariant so shift_type and default_shift_id never contradict. Localized toast on
- *  success, raw service message via ?error= on failure. */
+ *  shift is required and followed every working day) or Roster (scheduled from /roster, with the backup
+ *  shift covering any unrostered day). Admin-gated, real actor via the session; the writer enforces the
+ *  backup-shift-required / archived-shift / no-working-pattern invariants. Localized toast on success,
+ *  service message via ?error= on failure.
+ *
+ *  18504ca6 — the save is now EFFECTIVE-DATED. It appends a dated period to the shift-arrangement ladder
+ *  instead of overwriting the previous shift, so the system can still say which shift the employee was on
+ *  last month. The three date refusals carry machine-readable typed errors precisely so this action can put
+ *  a LOCALIZED sentence on the screen — core throws in English for the log, the screen speaks the user's
+ *  language. `date` is always passed: an ICU placeholder called without its argument throws at render. */
 export async function setDefaultShiftAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   const rawType = String(formData.get('shiftType') ?? '').trim();
   const shiftType: 'fixed' | 'roster' = rawType === 'fixed' ? 'fixed' : 'roster';
   const rawShift = String(formData.get('shiftId') ?? '').trim();
+  const rawEffective = String(formData.get('effectiveFrom') ?? '').trim();
   try {
-    await assignEmployeeShift(s, { employmentId, shiftType, shiftId: rawShift || null });
+    await assignEmployeeShiftDated(s, {
+      employmentId,
+      shiftType,
+      shiftId: rawShift || null,
+      effectiveFrom: rawEffective || null,
+    });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    const te = await getTranslations('people.detail');
+    let message = (e as Error).message;
+    if (e instanceof ShiftBackInsertError) message = te('shiftBackInsertRefused', { date: e.lastEffectiveFrom });
+    else if (e instanceof ShiftEffectiveBeforeStartError) message = te('shiftEffectiveBeforeStart', { date: e.startDate });
+    else if (e instanceof InvalidEffectiveDateError) message = te('shiftEffectiveDateInvalid');
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   const t = await getTranslations('people.detail');

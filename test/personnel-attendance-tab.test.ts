@@ -101,6 +101,68 @@ describe('Personnel — Attendance Information tab (1fbe9891)', () => {
     expect(PAGE.includes('id="section-clocking-location"')).toBe(true);
   });
 
+  // ── 18504ca6 — the Shift arrangement card gains an Effective date and a Shift history list ──────────
+  //
+  // The reporter's complaint is a SIDE-BY-SIDE one: the Location card asks when, the Shift arrangement card
+  // directly below it does not. So the guard is that both cards keep asking, on the same tab, and that the
+  // shift card's date reaches the server action under the name the action reads.
+  it('the Shift arrangement card asks for an Effective date, like the Location card above it', () => {
+    expect(PAGE.includes('defaultEffectiveFrom={today}')).toBe(true);
+    // The Location card's own effective date is untouched — the symmetry is the point.
+    expect(PAGE.includes("<Field label={t('effectiveDate')}>")).toBe(true);
+    const FIELDS = fs.readFileSync(
+      path.resolve(__dirname, '../components/employee-shift-fields.tsx'),
+      'utf8',
+    );
+    // Same field name the action reads off the FormData, and required so a blank cannot be posted.
+    expect(FIELDS.includes("name=\"effectiveFrom\"")).toBe(true);
+    expect(FIELDS.includes('type="date"')).toBe(true);
+    expect(FIELDS.includes("t('shiftEffectiveDateLabel')")).toBe(true);
+  });
+
+  it('renders the Shift history list under the card, with its five columns', () => {
+    expect(PAGE.includes('shiftArrangementHistory')).toBe(true);
+    expect(PAGE.includes("t('shiftHistoryTitle')")).toBe(true);
+    expect(PAGE.includes("t('shiftHistoryEmpty')")).toBe(true);
+    for (const col of ['Effective', 'Previous', 'New', 'ChangedBy', 'ChangedOn']) {
+      expect(PAGE.includes(`t('shiftHistoryCol${col}')`), `missing column shiftHistoryCol${col}`).toBe(true);
+    }
+  });
+
+  it('the shift-arrangement keys resolve in all six locales (no raw key, no missing ICU argument)', () => {
+    const KEYS = [
+      'shiftEffectiveDateLabel',
+      'shiftEffectiveDateHint',
+      'shiftEffectiveDateInvalid',
+      'shiftEffectiveBeforeStart',
+      'shiftBackInsertRefused',
+      'shiftHistoryTitle',
+      'shiftHistoryEmpty',
+      'shiftHistoryColEffective',
+      'shiftHistoryColPrevious',
+      'shiftHistoryColNew',
+      'shiftHistoryColChangedBy',
+      'shiftHistoryColChangedOn',
+      'shiftHistoryRecordedOnRelease',
+      'requiredField',
+    ];
+    for (const loc of LOCALES) {
+      const msg = JSON.parse(
+        fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'),
+      );
+      const detail = msg?.people?.detail ?? {};
+      for (const k of KEYS) {
+        expect(typeof detail[k], `messages/${loc}.json missing people.detail.${k}`).toBe('string');
+        expect(detail[k].length, `messages/${loc}.json people.detail.${k} is empty`).toBeGreaterThan(0);
+      }
+      // Both refusals carry ONE placeholder, {date}, and the action always passes it. A placeholder that
+      // drifted out of a translation would silently drop the date the admin needs to act on.
+      for (const k of ['shiftBackInsertRefused', 'shiftEffectiveBeforeStart']) {
+        expect(detail[k], `messages/${loc}.json people.detail.${k} lost its {date}`).toContain('{date}');
+      }
+    }
+  });
+
   it('has the tabs.attendance label in all six locales (no raw key at runtime)', () => {
     for (const loc of LOCALES) {
       const msg = JSON.parse(

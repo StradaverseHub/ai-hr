@@ -3886,6 +3886,64 @@ export const rosterAssignment = pgTable(
   ],
 );
 
+/**
+ * 18504ca6 (migration 0421) — THE SHIFT ARRANGEMENT LADDER: which shift a person was on, FROM WHEN.
+ *
+ * Before this table, saving the Shift arrangement card UPDATEd employment.shift_type +
+ * employment.default_shift_id in place, so the previous shift was simply gone — the system could not say
+ * which shift someone was on last month, and a day later corrected or re-imported was re-measured against
+ * TODAY's shift. Each row here is one dated period; a change CLOSES the open row (valid_to = the day before)
+ * and INSERTs the new one, so periods can never overlap and never gap.
+ *
+ * employment.default_shift_id IS NOW A CACHE of the row in force at save time, not the source of truth. The
+ * resolvers (core/shift-arrangement.ts) read this ladder first and fall back to the cache ONLY for an
+ * employment with no row at all — a legacy write, or the b8aa3466 backup-shift backfill, which only touches
+ * employees who have no shift and therefore no row here. That fallback is what keeps every unconverted code
+ * path byte-identical.
+ *
+ * `valid_to` is derived (successor's valid_from − 1 day) and stored for readability; resolution itself picks
+ * the greatest live `valid_from` <= the date being asked about, so a stale valid_to can never open a gap.
+ * A date BEFORE the earliest row resolves to the EARLIEST row — the release promise is that no historical
+ * figure moves, and the earliest row is the shift that date resolves to today.
+ */
+export const employmentShiftArrangement = pgTable(
+  'employment_shift_arrangement',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    /** The reporter's "Shift type", carried per PERIOD so history says which arrangement was in force too. */
+    shiftType: text('shift_type').$type<'fixed' | 'roster'>().notNull(),
+    /** NOT NULL: b8aa3466 made the backup shift mandatory on both arrangements — there is no dated period
+     *  with no shift. */
+    shiftId: uuid('shift_id')
+      .notNull()
+      .references((): AnyPgColumn => shift.id),
+    validFrom: date('valid_from').notNull(),
+    /** Closed to the day BEFORE the successor's valid_from. NULL = the open, current period. */
+    validTo: date('valid_to'),
+    /** Set when a save for the SAME valid_from replaces this entry. Invisible to every resolver afterwards. */
+    supersededAt: timestamp('superseded_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    /** Who moved them. NULL on the rows migration 0421 backfills — nobody made that change; it is the shift
+     *  the employee already had, recorded as applying since their start date. */
+    createdBy: uuid('created_by').references(() => appUser.id),
+  },
+  (t) => [
+    uniqueIndex('employment_shift_arrangement_live_uq')
+      .on(t.tenantId, t.employmentId, t.validFrom)
+      .where(sql`${t.supersededAt} is null`),
+    index('employment_shift_arrangement_emp_idx').on(t.tenantId, t.employmentId, t.validFrom),
+    check('employment_shift_arrangement_type_ck', sql`${t.shiftType} in ('fixed', 'roster')`),
+    check(
+      'employment_shift_arrangement_range_ck',
+      sql`${t.validTo} is null or ${t.validTo} >= ${t.validFrom}`,
+    ),
+  ],
+);
+
 // ── ADR-0033: Leave-in-lieu (TOIL). Gated (TOIL_ENABLED). A contractual replacement-leave engine that turns
 // elected+approved rest-day/holiday/OT work into a REPLACEMENT-type leave credit, mutually exclusive with OT
 // pay. The toil_accrual register is the source of truth for no-double-pay + expiry; each accrual also writes a

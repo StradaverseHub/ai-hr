@@ -121,6 +121,8 @@ import { listAssignablePolicies } from '@/core/payroll-policy';
 import { PAYMENT_METHODS } from '@/core/org';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { listShiftsForTenant } from '@/core/roster';
+// 18504ca6 — the dated Shift arrangement ladder behind the card's new Effective date + Shift history list.
+import { shiftArrangementHistory } from '@/core/shift-arrangement';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
 import { setDefaultShiftAction } from './actions';
 import { listHolidayGroups, listPositions, listBusinessUnits } from '@/core/admin';
@@ -379,6 +381,10 @@ export default async function EmployeePage({
   // filtered to live shifts + the assigned one. New assignments of archived shifts are rejected by the service.
   const libraryShifts = admin && !emp.terminatedOn ? await listShiftsForTenant(s, { includeArchived: true }) : [];
   const assignableShifts = libraryShifts.filter((sh) => !sh.archivedAt || sh.id === emp.defaultShiftId);
+  // 18504ca6 — the dated periods behind the Shift history list, newest first, with the shift CODE and NAME
+  // already resolved. Deliberately NOT taken from the Others-tab Change History: that renders the audit
+  // payload through lib/audit-format.ts describePayload, which prints defaultShiftId as a raw uuid → uuid pair.
+  const shiftHistory = admin ? await shiftArrangementHistory(s, employmentId) : [];
   // ADR-0070 — Clocking Location & Geofencing: THIS employee's company's active clocking sites (the
   // multi-select options) + their current assignment (admin-only, mirrors the payroll-policy card).
   const clockingLocations = admin ? await listClockingLocations(s, [emp.companyId]) : [];
@@ -2090,16 +2096,23 @@ export default async function EmployeePage({
   // ec4cbf63 — Default shift: the shift this person NORMALLY works, set once here instead of painting every
   // date on /roster. The attendance/OT engine uses it on any date WITHOUT a dated roster row (roster row →
   // default shift → company policy), so /roster remains the surface for date-specific exceptions. Admin-only,
-  // mirrors the payroll-policy assignment card; lives in the Employment tab (it describes how the person works).
+  // mirrors the payroll-policy assignment card. (It was relocated OUT of the Employment tab onto the
+  // Attendance tab by 1fbe9891 — the note that used to say otherwise here was stale.)
+  //
+  // 18504ca6 — the card is now EFFECTIVE-DATED, matching the Location card directly above it. Saving adds a
+  // dated period instead of overwriting: the previous shift is kept and closed off the day before, and the
+  // Shift history list underneath says who moved the employee, from what, and from when.
   const defaultShiftCard = admin && !emp.terminatedOn ? (
     <Card id="section-default-shift">
       <SectionHeader title={t('shiftTypeTitle')} />
           <form action={setDefaultShiftAction} className="space-y-3 p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
-            {/* R17 3e8350db — Shift Type (Fixed / Roster) with a conditionally-shown Default shift picker. */}
+            {/* R17 3e8350db — Shift Type (Fixed / Roster) with a conditionally-shown Default shift picker.
+                18504ca6 — plus the required Effective date, on the same row. */}
             <EmployeeShiftFields
               defaultType={emp.shiftType}
               defaultShiftId={emp.defaultShiftId}
+              defaultEffectiveFrom={today}
               shifts={assignableShifts.map((sh) => ({
                 id: sh.id,
                 label: `${sh.code ?? '—'} — ${sh.name} (${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)})`,
@@ -2107,7 +2120,53 @@ export default async function EmployeePage({
             />
             <button className={btnPrimary}>{t('defaultShiftSave')}</button>
           </form>
-          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('shiftTypeHint')}</p>
+          <p className="px-4 pb-3 text-xs text-muted-foreground">{t('shiftTypeHint')}</p>
+          {/* 18504ca6 — Shift history: effective date, previous shift, new shift, who, when. The employee is
+              the profile already open, so there is no name column. LIVE periods only — a second save for the
+              same date REPLACES its entry rather than adding a line. */}
+          <section className="border-t border-border">
+            <div className="px-4 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t('shiftHistoryTitle')}
+            </div>
+            {shiftHistory.length === 0 ? (
+              <p className="px-4 pb-4 pt-2 text-sm text-muted-foreground">{t('shiftHistoryEmpty')}</p>
+            ) : (
+              <div className="overflow-x-auto px-4 pb-4 pt-2">
+                <table className="w-full min-w-[52rem] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColEffective')}</th>
+                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColPrevious')}</th>
+                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColNew')}</th>
+                      <th className="py-2 pr-3 font-medium">{t('shiftHistoryColChangedBy')}</th>
+                      <th className="py-2 font-medium">{t('shiftHistoryColChangedOn')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shiftHistory.map((h) => (
+                      <tr key={h.id} className="border-b border-border/60 align-top">
+                        <td className="py-2 pr-3 whitespace-nowrap text-foreground">{h.effectiveFrom}</td>
+                        <td className="py-2 pr-3 text-muted-foreground">
+                          {h.previousShiftName
+                            ? `${h.previousShiftCode ?? '—'} — ${h.previousShiftName}`
+                            : '—'}
+                        </td>
+                        <td className="py-2 pr-3 text-foreground">
+                          {`${h.shiftCode ?? '—'} — ${h.shiftName}`}
+                        </td>
+                        <td className="py-2 pr-3 text-muted-foreground">{h.changedByName ?? '—'}</td>
+                        <td className="py-2 whitespace-nowrap text-muted-foreground">
+                          {h.recordedOnRelease
+                            ? t('shiftHistoryRecordedOnRelease')
+                            : h.changedAt.slice(0, 10)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
     </Card>
   ) : null;
 

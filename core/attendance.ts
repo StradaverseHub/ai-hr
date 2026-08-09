@@ -33,6 +33,15 @@ import { approvedLeaveDates } from './leave';
 // cf21e554 stage 2 — the shift's own clock-time overtime windows. Pure, DB-free arithmetic in its own
 // module (see its header): this file reads the rows and hands them over, it does not restate the rule.
 import { otMinutesFromWindows, type ShiftOtWindowSpec } from './shift-ot-window';
+// 18504ca6 — the dated shift-arrangement ladder. A deliberate LEAF module (no core/ imports of its own), so
+// this import cannot close a cycle with core/roster.ts. Every "which shift" answer in this file goes through
+// it: pickArrangementOn resolves the period in force on a DATE, and `undefined` means the employment has no
+// ladder row at all, which is the signal to fall back to employment.default_shift_id exactly as before.
+import {
+  arrangementsForEmploymentTx,
+  liveArrangementsTx,
+  pickArrangementOn,
+} from './shift-arrangement-resolve';
 import { maybeAutoAccrueOnApprovalTx } from './toil';
 import {
   assignment,
@@ -617,27 +626,38 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   // working days — deliberate: pattern-less shifts predate Phase 2 and cannot drive scheduling). The shift
   // is honoured even if archived AFTER assignment, exactly like a dated roster row pointing at an archived
   // shift; only NEW assignments of archived shifts are blocked (core/roster.ts assignDefaultShift).
-  const [ds] = await tx
-    .select({
-      shiftId: shift.id,
-      start: shift.startTime,
-      end: shift.endTime,
-      brk: shift.breakMinutes,
-      crosses: shift.crossesMidnight,
-      override: shift.normalMinutesOverride,
-      periods: shift.breakPeriods,
-      pattern: shift.weeklyPattern,
-      lateGrace: shift.lateGraceMinutes,
-      earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
-      otRule: shift.otRule,
-      ruleId: shift.ruleId,
-      rounding: shift.normalHoursRoundingMinutes,
-      halfDayFirstOut: shift.halfDayFirstOut,
-    })
-    .from(employment)
-    .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
-    .where(eq(employment.id, employmentId))
-    .limit(1);
+  //
+  // 18504ca6 — AND IT IS NOW ANSWERED BY DATE. "The employee's default shift" used to mean
+  // employment.default_shift_id, one value with no date, so moving someone onto a new shift silently
+  // re-measured every day that was ever re-derived — a correction, a re-import — against the shift they are
+  // on TODAY. It now means the dated arrangement in force on `date` (employment_shift_arrangement, migration
+  // 0421). A roster row still wins, exactly as before: this branch is only reached when there is none.
+  // No ladder row at all ⇒ the employment.default_shift_id join below, byte-identical to before.
+  const arrangement = pickArrangementOn(await arrangementsForEmploymentTx(tx, employmentId), date);
+  const defaultShiftCols = {
+    shiftId: shift.id,
+    start: shift.startTime,
+    end: shift.endTime,
+    brk: shift.breakMinutes,
+    crosses: shift.crossesMidnight,
+    override: shift.normalMinutesOverride,
+    periods: shift.breakPeriods,
+    pattern: shift.weeklyPattern,
+    lateGrace: shift.lateGraceMinutes,
+    earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
+    otRule: shift.otRule,
+    ruleId: shift.ruleId,
+    rounding: shift.normalHoursRoundingMinutes,
+    halfDayFirstOut: shift.halfDayFirstOut,
+  };
+  const [ds] = arrangement
+    ? await tx.select(defaultShiftCols).from(shift).where(eq(shift.id, arrangement.shiftId)).limit(1)
+    : await tx
+        .select(defaultShiftCols)
+        .from(employment)
+        .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
+        .where(eq(employment.id, employmentId))
+        .limit(1);
   if (ds) {
     if (ds.pattern?.includes(isoWeekday(date))) {
       // Working day of the default shift — mirror the roster-shift branch byte-for-byte, incl. the
@@ -1151,27 +1171,56 @@ export async function payableHoursForCycle(
   // shift's net scheduled minutes — the SAME resolution order scheduleFor applies (roster → default shift →
   // nothing), so batch payable-hours and single-day derivation can't diverge. A rostered rest day still
   // contributes 0 (the roster row wins), and a pattern rest day is not an assigned shift.
-  const [ds] = await tx
-    .select({
-      start: shift.startTime,
-      end: shift.endTime,
-      brk: shift.breakMinutes,
-      crosses: shift.crossesMidnight,
-      pattern: shift.weeklyPattern,
-      rounding: shift.normalHoursRoundingMinutes,
-    })
-    .from(employment)
-    .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
-    .where(eq(employment.id, employmentId))
-    .limit(1);
-  const dsNet = ds ? netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding) : null;
+  //
+  // 18504ca6 — and PER DATE, for the same reason scheduleFor is: a cycle that spans a shift change must clamp
+  // each day against the shift that was in force on THAT day, not the one in force when the payroll ran.
+  // Still batched: one ladder query, one query for the shifts it names.
+  const periods = await arrangementsForEmploymentTx(tx, employmentId);
+  const defShiftCols = {
+    id: shift.id,
+    start: shift.startTime,
+    end: shift.endTime,
+    brk: shift.breakMinutes,
+    crosses: shift.crossesMidnight,
+    pattern: shift.weeklyPattern,
+    rounding: shift.normalHoursRoundingMinutes,
+  };
+  type ClampShift = { net: number; pattern: number[] | null };
+  const clampByShiftId = new Map<string, ClampShift>();
+  const ladderShiftIds = [...new Set(periods.map((p) => p.shiftId))];
+  if (ladderShiftIds.length > 0) {
+    for (const sr of await tx.select(defShiftCols).from(shift).where(inArray(shift.id, ladderShiftIds))) {
+      clampByShiftId.set(sr.id, {
+        net: netScheduledMinutes(sr.start, sr.end, sr.crosses, sr.brk, sr.rounding),
+        pattern: sr.pattern,
+      });
+    }
+  }
+  // No ladder row for this employment ⇒ the cache, exactly as before this item.
+  let cachedClamp: ClampShift | null = null;
+  if (periods.length === 0) {
+    const [ds] = await tx
+      .select(defShiftCols)
+      .from(employment)
+      .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
+      .where(eq(employment.id, employmentId))
+      .limit(1);
+    if (ds) {
+      cachedClamp = { net: netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding), pattern: ds.pattern };
+    }
+  }
+  const clampOn = (d: string): ClampShift | null => {
+    const p = pickArrangementOn(periods, d);
+    return p ? (clampByShiftId.get(p.shiftId) ?? null) : cachedClamp;
+  };
 
   let payableMinutes = 0;
   for (const row of rows) {
+    const ds = clampOn(row.date);
     const scheduled =
       schedByDate.get(row.date) ??
-      (!rosteredDates.has(row.date) && dsNet != null && ds!.pattern?.includes(isoWeekday(row.date))
-        ? dsNet
+      (!rosteredDates.has(row.date) && ds != null && ds.pattern?.includes(isoWeekday(row.date))
+        ? ds.net
         : undefined);
     if (scheduled === undefined) continue; // no assigned shift that day → 0 payable when ON
     payableMinutes += Math.min(row.workedMinutes ?? 0, scheduled);
@@ -1715,7 +1764,42 @@ export function attendanceForDate(
       .where(and(inArray(rosterAssignment.employmentId, empIds.length ? empIds : ['']), eq(rosterAssignment.shiftDate, date)))) {
       rosterByEmp.set(rr.employmentId, rr);
     }
+    // 18504ca6 — THE RETROACTIVE RELABEL THIS CLOSES. This map used to be a plain join on
+    // employment.default_shift_id with NO date predicate, so the moment someone was moved onto a new shift
+    // every PAST day in this table started showing the new shift code beside figures that were never measured
+    // against it. The arrangement in force on `date` answers it now; two batched queries (the ladder, then the
+    // shifts it names) keep the loader's batching promise. An employment with no ladder row falls through to
+    // the same cache join as before.
+    const arrangementsByEmp = await liveArrangementsTx(tx, empIds);
+    const shiftIdForDate = new Map<string, string>();
+    for (const [eid, periods] of arrangementsByEmp) {
+      const p = pickArrangementOn(periods, date);
+      if (p) shiftIdForDate.set(eid, p.shiftId);
+    }
     const defaultShiftByEmp = new Map<string, DefaultShiftRow>();
+    const datedShiftIds = [...new Set(shiftIdForDate.values())];
+    if (datedShiftIds.length > 0) {
+      const byShiftId = new Map<string, DefaultShiftRow>();
+      for (const sr of await tx
+        .select({
+          id: shift.id,
+          code: shift.code,
+          start: shift.startTime,
+          end: shift.endTime,
+          brk: shift.breakMinutes,
+          crosses: shift.crossesMidnight,
+          pattern: shift.weeklyPattern,
+          rounding: shift.normalHoursRoundingMinutes,
+        })
+        .from(shift)
+        .where(inArray(shift.id, datedShiftIds))) {
+        byShiftId.set(sr.id, sr);
+      }
+      for (const [eid, sid] of shiftIdForDate) {
+        const row = byShiftId.get(sid);
+        if (row) defaultShiftByEmp.set(eid, row);
+      }
+    }
     for (const dr of await tx
       .select({
         employmentId: employment.id,
@@ -1730,7 +1814,7 @@ export function attendanceForDate(
       .from(employment)
       .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
       .where(inArray(employment.id, empIds.length ? empIds : ['']))) {
-      defaultShiftByEmp.set(dr.employmentId, dr);
+      if (!defaultShiftByEmp.has(dr.employmentId)) defaultShiftByEmp.set(dr.employmentId, dr);
     }
 
     // ADR-0055: resolve each absent employee's holiday calendar through the unified resolver (business-group
@@ -1903,23 +1987,38 @@ export function attendanceForEmploymentRange(
       .where(and(eq(rosterAssignment.employmentId, employmentId), gte(rosterAssignment.shiftDate, from), lte(rosterAssignment.shiftDate, to)))) {
       rosterByDate.set(rr.shiftDate, rr);
     }
-    let defShift: DefaultShiftRow | undefined;
-    if (emp.defShiftId) {
-      const [dr] = await tx
-        .select({
-          code: shift.code,
-          start: shift.startTime,
-          end: shift.endTime,
-          brk: shift.breakMinutes,
-          crosses: shift.crossesMidnight,
-          pattern: shift.weeklyPattern,
-          rounding: shift.normalHoursRoundingMinutes,
-        })
-        .from(shift)
-        .where(eq(shift.id, emp.defShiftId))
-        .limit(1);
-      defShift = dr;
+    // 18504ca6 — the default shift is resolved PER DATE across the range, not once for the whole of it. The
+    // Individual Records table is the screen the reporter would look at to answer "which shift was I on on
+    // the 13th"; before this it answered with the shift the employee is on today for every row. Two batched
+    // queries (the ladder, then the shifts it names) — the header's batching promise is unchanged. An
+    // employment with no ladder row keeps the single cache lookup this replaced.
+    const rangeShiftCols = {
+      id: shift.id,
+      code: shift.code,
+      start: shift.startTime,
+      end: shift.endTime,
+      brk: shift.breakMinutes,
+      crosses: shift.crossesMidnight,
+      pattern: shift.weeklyPattern,
+      rounding: shift.normalHoursRoundingMinutes,
+    };
+    const periods = await arrangementsForEmploymentTx(tx, employmentId);
+    const shiftById = new Map<string, DefaultShiftRow>();
+    const periodShiftIds = [...new Set(periods.map((p) => p.shiftId))];
+    if (periodShiftIds.length > 0) {
+      for (const sr of await tx.select(rangeShiftCols).from(shift).where(inArray(shift.id, periodShiftIds))) {
+        shiftById.set(sr.id, sr);
+      }
     }
+    let cachedDefShift: DefaultShiftRow | undefined;
+    if (periods.length === 0 && emp.defShiftId) {
+      const [dr] = await tx.select(rangeShiftCols).from(shift).where(eq(shift.id, emp.defShiftId)).limit(1);
+      cachedDefShift = dr;
+    }
+    const defShiftOn = (d: string): DefaultShiftRow | undefined => {
+      const p = pickArrangementOn(periods, d);
+      return p ? shiftById.get(p.shiftId) : cachedDefShift;
+    };
 
     const out: AttendanceRangeRow[] = [];
     let d = from;
@@ -1934,7 +2033,7 @@ export function attendanceForEmploymentRange(
         else if (!isWorkingDay) context = 'rest_day';
       }
       // bbada39c — per-date shift display (code / scheduled minutes / start-end / rostered-rest).
-      const shiftDisplay = resolveShiftDisplay(d, rosterByDate.get(d), defShift, isWorkingDay ? policyScheduledMin : null);
+      const shiftDisplay = resolveShiftDisplay(d, rosterByDate.get(d), defShiftOn(d), isWorkingDay ? policyScheduledMin : null);
       out.push({
         date: d,
         attendanceId: row?.attendanceId ?? null,

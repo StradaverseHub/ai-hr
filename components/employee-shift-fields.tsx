@@ -22,15 +22,23 @@ type ShiftOption = { id: string; label: string };
  * Shift Type now says how the person is normally scheduled, not whether they get a shift at all:
  *   • Fixed  → they work the backup shift every working day; the roster records the exceptions.
  *   • Roster → they are scheduled from /roster, and the backup shift covers any day with no roster row.
+ *
+ * 18504ca6 — THE EFFECTIVE DATE. The Location card directly above this one is effective-dated and this one
+ * was not, so saving here replaced the old shift with no date and no history. The date sits on the SAME row
+ * as Shift type and Backup shift (matching the Location card) and is `required` with no default of its own:
+ * the page passes today's date in the tenant's calendar, exactly as the Location card does.
  */
 export function EmployeeShiftFields({
   defaultType,
   defaultShiftId,
   shifts,
+  defaultEffectiveFrom,
 }: {
   defaultType: 'fixed' | 'roster';
   defaultShiftId: string | null;
   shifts: ShiftOption[];
+  /** Today in the tenant's calendar (todayInKualaLumpur), resolved on the server. */
+  defaultEffectiveFrom: string;
 }) {
   const t = useTranslations('people.detail');
   const [type, setType] = useState<'fixed' | 'roster'>(defaultType);
@@ -59,9 +67,26 @@ export function EmployeeShiftFields({
             ))}
           </select>
         </Field>
+        {/* 18504ca6 — pushed to the end of the row (sm:ml-auto) so it lands where the Location card's own
+            Effective date lands, which is the symmetry the reporter photographed. */}
+        <Field
+          label={t('shiftEffectiveDateLabel')}
+          required
+          requiredAriaLabel={t('requiredField')}
+          className="sm:ml-auto"
+        >
+          <input
+            name="effectiveFrom"
+            type="date"
+            required
+            defaultValue={defaultEffectiveFrom}
+            className={inputCls}
+          />
+        </Field>
       </div>
       <p className="text-xs text-muted-foreground">
-        {type === 'fixed' ? t('backupShiftHintFixed') : t('backupShiftHintRoster')}
+        {type === 'fixed' ? t('backupShiftHintFixed') : t('backupShiftHintRoster')}{' '}
+        {t('shiftEffectiveDateHint')}
       </p>
     </div>
   );
