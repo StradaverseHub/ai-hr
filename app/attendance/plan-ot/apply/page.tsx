@@ -138,7 +138,14 @@ export default async function ApplyOtPlanPage({
             <p className="font-medium">{t('otWarnNotBlockHeading')}</p>
             <p className="mt-1">{t('otWarnNotBlockBody')}</p>
           </div>
-          <p className="text-[11px] text-muted-foreground">{t('otAlreadyApprovedForDate')}</p>
+          {/* NO STANDING "you already have an approved plan" NOTE HERE, deliberately.
+              It used to render unconditionally, with no query behind it, as a first-person statement
+              of fact — so a brand-new employee opening this form for the first time was told they
+              already had a plan and should withdraw it. They had nothing to withdraw.
+              The mockup draws that sentence as a CONDITIONAL refusal panel ("and if you already have a
+              plan for that day"), and the real refusal is already delivered: myRequestOvertime rejects
+              the second plan and the ErrorBanner above prints it with the actual date. The key
+              me.otAlreadyApprovedForDate is kept for that path; it must never be rendered unguarded. */}
         </div>
       </div>
     </div>
