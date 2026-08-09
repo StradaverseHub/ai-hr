@@ -46,7 +46,8 @@ import {
   setModule,
   type Base,
 } from './harness';
-import { hireEmployee } from '../core/org';
+import { hireEmployee, setReportingLine } from '../core/org';
+import { dispatchNotifications } from '../core/notifications';
 import { setCompensation } from '../core/comp';
 import {
   cancelPlannedOvertime,
@@ -142,6 +143,13 @@ const toilPolicyInput = (companyId: string, over: Partial<ToilPolicyInput> = {})
   carryForwardAtYearEnd: false,
   ...over,
 });
+
+/** Notifications minted for one employment, newest first. */
+const notificationsFor = async (employmentId: string) =>
+  owner.db
+    .select({ kind: schema.notification.kind, title: schema.notification.title, body: schema.notification.body })
+    .from(schema.notification)
+    .where(eq(schema.notification.recipientEmploymentId, employmentId));
 
 const replacementBalance = async (employmentId: string): Promise<number> => {
   const [row] = await owner.db
@@ -636,7 +644,79 @@ describe('8 · BULK approve reaches the deferred branch', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-describe('9 · request-time validation of the planned window', () => {
+describe('9 · notifications — the superior on arrival, the subject on the answer', () => {
+  it('tells the SUPERIOR a plan has arrived, and the subject when it is approved', async () => {
+    const mgr = await hire();
+    const sub = await hire();
+    await setReportingLine(adminCtx(b), {
+      subordinateEmploymentId: sub.employmentId,
+      managerEmploymentId: mgr.employmentId,
+      lineType: 'administrative',
+      validFrom: '2024-01-01',
+    });
+    await setModule(b.tenantId, 'notifications', 'active');
+    const a = adminCtx(b);
+
+    const { correctionId } = await filePlan(a, sub.employmentId, FUTURE, 180);
+    await dispatchNotifications(a, {});
+    const onArrival = await notificationsFor(mgr.employmentId);
+    expect(onArrival.map((n) => n.kind)).toContain('attendance.ot-requested');
+    expect(onArrival[0].body).toMatch(/3\.0 hours/);
+    // NOT to the person who filed it.
+    expect((await notificationsFor(sub.employmentId)).map((n) => n.kind)).not.toContain('attendance.ot-requested');
+
+    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await dispatchNotifications(a, {});
+    const answered = await notificationsFor(sub.employmentId);
+    const approved = answered.find((n) => n.kind === 'attendance.ot-approved');
+    expect(approved, 'the subject is told the answer').toBeTruthy();
+    // The deferred wording — approved is not the same as counted, and the notice has to say so.
+    expect(approved!.body).toMatch(/counted once the day is worked/i);
+  });
+
+  it('says nothing about a plain CLOCK correction — scoped to overtime on purpose', async () => {
+    const mgr = await hire();
+    const sub = await hire();
+    await setReportingLine(adminCtx(b), {
+      subordinateEmploymentId: sub.employmentId,
+      managerEmploymentId: mgr.employmentId,
+      lineType: 'administrative',
+      validFrom: '2024-01-01',
+    });
+    await setModule(b.tenantId, 'notifications', 'active');
+    const a = adminCtx(b);
+
+    const { correctionId } = await requestAttendanceCorrection(a, {
+      employmentId: sub.employmentId,
+      date: PAST,
+      checkIn: '09:00',
+      checkOut: '18:00',
+      reason: 'forgot to clock out',
+    });
+    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await dispatchNotifications(a, {});
+
+    // Widening these three notices to clock corrections is a defensible improvement and a one-line change,
+    // but it is a behaviour change on a neighbouring flow that this item did not ask for.
+    expect(await notificationsFor(mgr.employmentId)).toHaveLength(0);
+    expect((await notificationsFor(sub.employmentId)).map((n) => n.kind)).not.toContain('attendance.ot-approved');
+  });
+
+  it('tells the subject when a plan is REJECTED', async () => {
+    const { employmentId } = await hire();
+    await setModule(b.tenantId, 'notifications', 'active');
+    // The context must be built AFTER setModule: adminCtx carries a point-in-time entitlement snapshot,
+    // and dispatchNotifications is a no-op for a context that does not have the module.
+    const a = adminCtx(b);
+    const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
+    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected' });
+    await dispatchNotifications(a, {});
+    expect((await notificationsFor(employmentId)).map((n) => n.kind)).toContain('attendance.ot-rejected');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('10 · request-time validation of the planned window', () => {
   it('refuses an end at or before the start (a typo, not a cross-midnight plan)', async () => {
     const { a, employmentId } = await hire();
     await expect(

@@ -295,24 +295,25 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   // request at all. Overtime agreed before it is worked only works if the approver learns a plan is waiting
   // while saying no is still cheap, and if the employee learns the answer without going to look.
   //
-  // These fire for EVERY attendance_correction, not only overtime plans: a clock-time correction is the same
-  // record, goes to the same approver, and has been equally silent. The body distinguishes the two from the
-  // payload (`requestedOtMinutes` is set on an overtime request and null on a clock fix) rather than
-  // splitting the event, because the event is one event. English-only strings, the registry convention —
-  // a notification body is rendered once and STORED, so there is no per-language version of it.
+  // SCOPED TO OVERTIME, DELIBERATELY. The same three event types are also appended by a clock-time
+  // correction, which shares the record. Widening these notices to cover clock fixes would be a real
+  // improvement — they are equally silent today — but it is a behaviour change on a neighbouring flow that
+  // nobody asked for, so each resolver below returns NO RECIPIENTS for a non-overtime row. Widening later
+  // is deleting one guard clause. The discriminator is `requestedOtMinutes` on the request event and the
+  // explicit `overtime` flag on the decision events (which carry no minutes of their own).
+  //
+  // English-only strings, the registry convention — a notification body is rendered once and STORED, so
+  // there is no per-language version of it.
   'attendance-correction.requested': {
-    kind: 'attendance.requested',
+    kind: 'attendance.ot-requested',
     category: 'attendance',
     render: (p) => {
-      const isOt = p?.requestedOtMinutes != null;
-      const hours = isOt ? (Number(p!.requestedOtMinutes) / 60).toFixed(1) : null;
+      const hours = p?.requestedOtMinutes != null ? (Number(p.requestedOtMinutes) / 60).toFixed(1) : '';
       const date = typeof p?.date === 'string' ? p.date : '';
       return {
         severity: 'action',
-        title: isOt ? 'Overtime plan awaiting approval' : 'Attendance request awaiting approval',
-        body: isOt
-          ? `An overtime plan for ${date} (${hours} hours) is waiting for your approval.`
-          : `An attendance correction for ${date} is waiting for your approval.`,
+        title: 'Overtime plan awaiting approval',
+        body: `An overtime plan for ${date} (${hours} hours) is waiting for your approval.`,
         linkPath: '/approvals',
       };
     },
@@ -321,8 +322,8 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     // (assertCanDecide): the subject's current administrative manager, falling back to the company's HR
     // admins when they have no line — otherwise a plan filed by someone reporting to nobody is silent.
     // Both resolvers already exist and are used by the leave escalation fan-out; neither is new ground.
-    recipients: async (tx, ev) => {
-      if (!ev.subjectEmploymentId) return [];
+    recipients: async (tx, ev, payload) => {
+      if (!ev.subjectEmploymentId || payload?.requestedOtMinutes == null) return [];
       let out = await approverEmploymentsForKind(tx, ev.subjectEmploymentId, 'direct_manager');
       if (out.length === 0) out = await hrAdminsForCompany(tx, ev.subjectEmploymentId);
       // Never notify the requester about their own request (an employee who is their own manager, or an
@@ -330,10 +331,10 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       return [...new Set(out)].filter((id) => id !== ev.subjectEmploymentId);
     },
   },
-  // Default recipient (the event's subjectEmploymentId) is exactly right for these two: the subject IS the
-  // employee whose request was decided. No resolver.
+  // The subject IS the employee whose plan was decided, so these two would take the default recipient —
+  // but the resolver is spelled out anyway to carry the overtime-only scope above.
   'attendance-correction.approved': {
-    kind: 'attendance.approved',
+    kind: 'attendance.ot-approved',
     category: 'attendance',
     render: (p) => ({
       severity: 'info',
@@ -344,19 +345,23 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       body:
         p?.deferred === true
           ? `Your overtime plan for ${typeof p.date === 'string' ? p.date : 'the requested date'} was approved. The hours are counted once the day is worked.`
-          : 'Your attendance request was approved.',
+          : 'Your overtime request was approved.',
       linkPath: '/attendance/plan-ot',
     }),
+    recipients: async (_tx, ev, payload) =>
+      payload?.overtime === true && ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [],
   },
   'attendance-correction.rejected': {
-    kind: 'attendance.rejected',
+    kind: 'attendance.ot-rejected',
     category: 'attendance',
     render: () => ({
       severity: 'warning',
       title: 'Overtime plan not approved',
-      body: 'Your attendance request was not approved.',
+      body: 'Your overtime request was not approved.',
       linkPath: '/attendance/plan-ot',
     }),
+    recipients: async (_tx, ev, payload) =>
+      payload?.overtime === true && ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [],
   },
   'profile-change.approved': {
     kind: 'profile.approved',

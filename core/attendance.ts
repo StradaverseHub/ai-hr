@@ -2817,7 +2817,12 @@ export async function decideAttendanceCorrection(
       payload: {
         decision: p.decision,
         deciderEmploymentId: p.deciderEmploymentId ?? null,
-        // 1e9145d4 — the deferral facts. `deferred` says the hours were NOT written to a day; `date` and
+        // 1e9145d4 — `overtime` tells a consumer which KIND of request was decided. The notification
+        // registry needs it: this one event type covers both an overtime plan and a clock-time correction,
+        // and a notice headed "Overtime plan approved" on somebody's forgotten clock-out would be wrong.
+        // Nothing else in the payload distinguishes them.
+        overtime: cor.requestedOtMinutes != null,
+        // The deferral facts. `deferred` says the hours were NOT written to a day; `date` and
         // `approvedOtMinutes` say which day they are waiting for and how many were agreed. This is the only
         // audit record of a deferred approval, because no attendance row was amended.
         ...(deferredApproval

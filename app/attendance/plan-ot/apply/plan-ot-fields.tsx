@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Field, inputCls } from '@/components/ui';
 
@@ -49,6 +49,14 @@ export function PlanOtFields({
 }) {
   const t = useTranslations('me');
   const router = useRouter();
+  // An EXPLICIT path, never a bare `?date=…`: router.replace takes a route, and Next's own docs warn that
+  // an unsanitised value handed to it is an XSS surface. The value is additionally shape-checked below, so
+  // nothing but YYYY-MM-DD can ever reach the address bar.
+  const pathname = usePathname();
+  // The date box is CONTROLLED BY LOCAL STATE, seeded from the server's choice, not bound straight to the
+  // prop. A date input reports partial values while it is being typed, and a prop-bound input would snap
+  // each keystroke back to the last navigated day — you could never reach a date by typing it.
+  const [dateValue, setDateValue] = useState(date);
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [category, setCategory] = useState('project_deadline');
@@ -76,11 +84,13 @@ export function PlanOtFields({
           type="date"
           name="date"
           required
-          value={date}
+          value={dateValue}
           onChange={(e) => {
             const next = e.target.value;
-            // Empty while the user is mid-edit in some browsers — never navigate to a blank date.
-            if (next) router.replace(`?date=${encodeURIComponent(next)}`, { scroll: false });
+            setDateValue(next);
+            // A date input reports an empty (or partial) value mid-edit in several browsers, so navigate
+            // only on a complete, well-formed day — never on a blank or half-typed one.
+            if (/^\d{4}-\d{2}-\d{2}$/.test(next)) router.replace(`${pathname}?date=${next}`, { scroll: false });
           }}
           className={inputCls}
         />
