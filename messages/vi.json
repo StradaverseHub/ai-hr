@@ -2866,6 +2866,7 @@
       "colEventDate": "Ngày sự kiện",
       "colNotifyBy": "Thông báo trước",
       "openForm": "Mở biểu mẫu",
+      "openWorklist": "Mở danh sách công việc",
       "status_overdue": "Quá hạn",
       "status_due_soon": "Sắp đến hạn",
       "status_upcoming": "Sắp tới",
@@ -2874,6 +2875,7 @@
       "link_ea_hint": "Bản kê thu nhập hằng năm của từng nhân viên, mở từ danh sách nhân viên của năm đó. Biểu mẫu hiển thị theo ngôn ngữ ứng dụng, nên bản tiếng Mã Lai là việc đổi ngôn ngữ chứ không phải một biểu mẫu thứ hai.",
       "link_cp22": "Thông báo CP22 / CP22A",
       "link_cp22_hint": "Thông báo nhân viên mới và chấm dứt hợp đồng gửi LHDN, dựa trên ngày tuyển dụng và ngày nghỉ việc của bạn.",
+      "link_cp22_blank": "Tải CP22 trống",
       "worklistTitle": "Danh sách tuân thủ · CP22 / CP22A",
       "worklistDescription": "Thông báo tuyển mới (CP22) và chấm dứt (CP22A) phải nộp cho LHDN đối với {company}. Nộp trong MyTax; phần này hiển thị những gì còn tồn đọng.",
       "worklistEmpty": "Không có gì đến hạn.",
@@ -2965,6 +2967,13 @@
         "title": "Biểu mẫu EA cho {count} người sử dụng lao động",
         "body": "Nhân viên này được nhiều công ty trả lương trong năm nay, nên mỗi công ty phải cấp một biểu mẫu EA riêng. Chọn một người sử dụng lao động để xem và in biểu mẫu."
       }
+    },
+    "cp22": {
+      "download": "Tải CP22",
+      "downloadTitle": "Mẫu CP22 (Pin. 1/2020) chính thức cho nhân viên mới này, được điền từ hồ sơ của bạn. Mọi ô vẫn có thể chỉnh sửa.",
+      "blankTitle": "Mẫu CP22 (Pin. 1/2020) trống hoàn toàn có thể điền, dành cho thông báo bạn muốn tự hoàn thành.",
+      "columnHeading": "Mẫu CP22",
+      "cp22aNotYet": "Thông báo nghỉ việc CP22A chưa được xây dựng."
     },
     "config": {
       "title": "Cấu hình pháp định",

@@ -2866,6 +2866,7 @@
       "colEventDate": "事件日期",
       "colNotifyBy": "申报截止",
       "openForm": "打开表格",
+      "openWorklist": "打开工作清单",
       "status_overdue": "已逾期",
       "status_due_soon": "即将到期",
       "status_upcoming": "尚未到期",
@@ -2874,6 +2875,7 @@
       "link_ea_hint": "每位员工的年度薪酬报表，从该年度的员工列表打开。表格随应用语言显示，因此马来文版是语言切换，而非另一张表格。",
       "link_cp22": "CP22 / CP22A 通知",
       "link_cp22_hint": "向 LHDN 提交的新入职与离职通知，依据您的入职和离职日期生成。",
+      "link_cp22_blank": "下载空白 CP22",
       "worklistTitle": "合规工作清单 · CP22 / CP22A",
       "worklistDescription": "需向 LHDN 提交的新入职 (CP22) 和离职 (CP22A) 通知，针对 {company}。请在 MyTax 中申报；此处显示尚未办理的事项。",
       "worklistEmpty": "无待办。",
@@ -2965,6 +2967,13 @@
         "title": "{count} 家雇主的 EA 表格",
         "body": "该员工本年度由多家公司支付薪酬，因此每家公司均须出具各自的 EA 表格。请选择雇主以查看并打印其表格。"
       }
+    },
+    "cp22": {
+      "download": "下载 CP22",
+      "downloadTitle": "该新员工的官方 CP22 (Pin. 1/2020) 表格，已根据您的记录填写。所有栏位仍可编辑。",
+      "blankTitle": "完全空白的可填写 CP22 (Pin. 1/2020) 表格，供您自行填写。",
+      "columnHeading": "CP22 表格",
+      "cp22aNotYet": "CP22A 离职通知尚未开发。"
     },
     "config": {
       "title": "法定配置",

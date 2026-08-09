@@ -3148,6 +3148,7 @@
       "colEventDate": "Event date",
       "colNotifyBy": "Notify by",
       "openForm": "Open form",
+      "openWorklist": "Open worklist",
       "status_overdue": "Overdue",
       "status_due_soon": "Due soon",
       "status_upcoming": "Upcoming",
@@ -3156,6 +3157,7 @@
       "link_ea_hint": "Each employee’s annual statement of remuneration, opened from the year’s employee list. It follows your app language, so Bahasa Malaysia is a language switch and not a second form.",
       "link_cp22": "CP22 / CP22A notices",
       "link_cp22_hint": "New joiner and cessation notifications to LHDN, driven by your hire and termination dates.",
+      "link_cp22_blank": "Download blank CP22",
       "worklistTitle": "Compliance worklist · CP22 / CP22A",
       "worklistDescription": "New-hire (CP22) and cessation (CP22A) notifications due to LHDN for {company}. File in MyTax; this surfaces what's outstanding.",
       "worklistEmpty": "Nothing due.",
@@ -3247,6 +3249,13 @@
         "title": "EA forms for {count} employers",
         "body": "This employee was paid by more than one company in this year, so each owes a separate EA form. Choose an employer to view and print its form."
       }
+    },
+    "cp22": {
+      "download": "Download CP22",
+      "downloadTitle": "The official CP22 (Pin. 1/2020) for this joiner, filled from your records. Every box stays editable.",
+      "blankTitle": "A completely blank fillable CP22 (Pin. 1/2020), for a notice you would rather complete by hand.",
+      "columnHeading": "CP22 form",
+      "cp22aNotYet": "The CP22A leaver notice is not built yet."
     },
     "config": {
       "title": "Statutory Configuration",
