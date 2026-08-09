@@ -1716,6 +1716,38 @@ export async function rosterMonthView(
 }
 
 /**
+ * 23390097 BLOCKER — WHO MAY CHANGE THE ROSTER AT ALL, answered in the SERVER before any SQL runs.
+ *
+ * Writing roster_assignment requires app.can_admin_employment → app.is_admin_for, so ROW-LEVEL SECURITY
+ * already refuses a supervisor. WHAT IT REFUSES WITH was the hole: drizzle wraps PostgresError 42501 as
+ * `Failed query: insert into "roster_assignment" … params: <tenant uuid>,<employment uuid>,…`, and the
+ * roster actions copy `(e as Error).message` verbatim into a toast (the three cell actions) or into
+ * `?error=`, which app/roster/page.tsx renders in ErrorBanner (Generate / Copy). The database's own
+ * refusal — SQL text and internal identifiers — was being printed to whoever asked for it.
+ *
+ * HIDING THE BUTTONS IS NOT A GUARD, and cannot be. components/roster-grid.tsx renders a supervisor a
+ * read-only month, but the three cell actions are Server Actions: their ids ship inside that same
+ * supervisor's bundle and they are POST endpoints reachable with or without a button on screen. An
+ * affordance that is merely absent is still callable, so the refusal has to live here.
+ *
+ * Deliberately SEPARATE from canWriteRosterDate below. That predicate answers "is this DATE writable",
+ * is pure over (session, date, today) and is unchanged. This answers the PRIOR question — "may this
+ * session write the roster at all" — which does not depend on a date and must be asked first.
+ */
+export class RosterAdminRequiredError extends Error {
+  constructor() {
+    super('Only an HR administrator can change the roster. Ask an administrator to make this change.');
+    this.name = 'RosterAdminRequiredError';
+  }
+}
+
+/** Throws unless this session may write the roster. Call it FIRST in every roster write action, before
+ *  the date rule and before any database call. */
+export function assertRosterAdmin(ctx: SessionContext): void {
+  if (!isAdmin(ctx)) throw new RosterAdminRequiredError();
+}
+
+/**
  * The past-date rule (requirement 9 of the reporter's list). A date that is TODAY or earlier has usually
  * already been attended — the attendance figures for it were fixed when the day was saved — so only an
  * HR administrator may re-write it, and the UI confirms first.
@@ -1772,6 +1804,8 @@ export async function assignRosterRow(
   p: { employmentId: string; shiftDates: string[]; brush: string },
 ): Promise<{ applied: number }> {
   const dates = [...new Set(p.shiftDates)].filter(isIsoDate).sort();
+  // Both rights, in order: may this session write the roster at all, then may it write these dates.
+  assertRosterAdmin(ctx);
   assertRosterDatesWritable(ctx, dates);
   for (const shiftDate of dates) {
     if (p.brush === 'rest') await setRestDay(ctx, { employmentId: p.employmentId, shiftDate });
