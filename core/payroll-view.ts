@@ -683,6 +683,11 @@ export type PayrollRegisterRow = {
   employeeCode: string | null;
   employeeName: string;
   company: string;
+  /** ADR-0077 slice 6 (D-9): the PAYING company's currency. This read is `companyIds`-plural by design —
+   *  it backs the `payroll_register` custom-report dataset, which spans every company in the operator's
+   *  scope — so twenty-odd money columns arriving without one is how a cross-currency `Total` gets
+   *  printed. Sits beside `company` because it is a fact about the same employer, not about the slip. */
+  currency: string | null;
   department: string | null;
   position: string | null;
   jobGrade: string | null;
@@ -747,6 +752,8 @@ export function listPayrollRegisterAcross(
         employeeCode: employment.employeeCode,
         employeeName: person.fullName,
         company: company.legalName,
+        // ADR-0077 slice 6 (D-9). The `company` join is already here, so this is one column, no new join.
+        currency: company.currency,
         department: department.name,
         position: position.title,
         jobGrade: jobGrade.name,
