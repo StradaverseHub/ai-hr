@@ -1100,9 +1100,11 @@
       "movement": {
         "title": "Lịch sử làm việc",
         "newEvent": "Sự kiện mới",
+        "exportExcel": "Tải xuống Excel",
         "view": "Xem",
         "columns": {
           "eventType": "Loại sự kiện",
+          "eventStatus": "Trạng thái sự kiện",
           "effectiveDate": "Ngày hiệu lực",
           "company": "Công ty",
           "division": "Khối",
@@ -1111,7 +1113,8 @@
           "basic": "Lương cơ bản",
           "endDate": "Ngày kết thúc",
           "remarks": "Ghi chú",
-          "action": "Thao tác"
+          "action": "Thao tác",
+          "correctionReason": "Lý do chỉnh sửa"
         },
         "detail": {
           "eventInformation": "Thông tin sự kiện",

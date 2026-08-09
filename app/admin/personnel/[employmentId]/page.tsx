@@ -80,6 +80,9 @@ import {
 // 95d17761 — the DEFAULT Employment History view drops the correction artefacts. A pure view filter, so
 // it lives beside the screen and never touches the ledger projection above.
 import { partitionMovementRows } from '@/lib/movement-visibility';
+// e6a144d4 — the Employment History event-type caption, shared with the Download Excel route so the file
+// and the screen cannot print different names for the same event.
+import { movementKindLabel as movementKindLabelOf } from '@/lib/movement-kind-label';
 // ae9350f2 — the built-in exit-reason catalogue behind the Termination movement.
 import { TERMINATION_REASONS } from '@/core/termination-reason';
 // 476f23ed — the tenant's configurable movement event-type catalogue.
@@ -2898,39 +2901,13 @@ export default async function EmployeePage({
 
   // Event-type labels via a STATIC key map (never a dynamic t() template) with a humanized fallback for
   // unknown/extensible kinds — nothing can render a raw i18n key in any locale.
-  const movementKindLabel = (kind: string): string => {
-    // 476f23ed — the organisation's own name for this type wins over the shipped translation. Null means
-    // they never renamed it, so the six-locale catalogue below still applies.
-    const configured = movementTypeByCode.get(kind)?.label;
-    if (configured) return configured;
-    switch (kind) {
-      case 'hired': return t('movement.eventType.hired');
-      case 'transfer': return t('movement.eventType.transfer');
-      // b7b22514 — without this case the humanized fallback below would label the row "Entity Transfer" in
-      // English and leave it in English in the other five locales. A shipped kind belongs in the map.
-      case 'entityTransfer': return t('movement.eventType.entityTransfer');
-      case 'promotion': return t('movement.eventType.promotion');
-      case 'demotion': return t('movement.eventType.demotion');
-      case 'increment': return t('movement.eventType.increment');
-      case 'salaryAdjustment': return t('movement.eventType.salaryAdjustment');
-      case 'confirmation': return t('movement.eventType.confirmation');
-      case 'probationExtension': return t('movement.eventType.probationExtension');
-      case 'secondment': return t('movement.eventType.secondment');
-      case 'actingPosition': return t('movement.eventType.actingPosition');
-      case 'resignation': return t('movement.eventType.resignation');
-      case 'termination': return t('movement.eventType.termination');
-      case 'blacklist': return t('movement.eventType.blacklist');
-      case 'blacklistCleared': return t('movement.eventType.blacklistCleared');
-      case 'orgAssignmentChange': return t('movement.eventType.orgAssignmentChange');
-      case 'reportingLineChange': return t('movement.eventType.reportingLineChange');
-      case 'employmentTypeChange': return t('movement.eventType.employmentTypeChange');
-      case 'gradeChange': return t('movement.eventType.gradeChange');
-      // 89ea527b — the two employment-date movements.
-      case 'joinDateChange': return t('movement.eventType.joinDateChange');
-      case 'groupJoinDateCorrection': return t('movement.eventType.groupJoinDateCorrection');
-      default: return kind.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
-    }
-  };
+  //
+  // e6a144d4 — the switch itself now lives in lib/movement-kind-label.ts. The Download Excel route needs
+  // the identical caption (476f23ed tenant override included), and two copies of a twenty-case map is how
+  // a file and the screen it reproduces start calling the same event different things. This closure is all
+  // that stays here: it binds the tenant catalogue and the page's translator.
+  const movementKindLabel = (kind: string): string =>
+    movementKindLabelOf(kind, movementTypeByCode.get(kind)?.label, t);
   const movementEmpTypeLabel = (v: string | null): string | null =>
     v ? t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time') : null;
 
@@ -2941,16 +2918,30 @@ export default async function EmployeePage({
   const employmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
       <SectionHeader title={t('movement.title')} />
-      {canCreateMovement && (
-        <div className="flex justify-end border-b border-border px-4 py-2">
+      {/* e6a144d4 — the action bar is OUTSIDE the canCreateMovement gate; only New Event is inside it.
+          The bar used to disappear wholesale once `emp.terminatedOn` was set, and a terminated employee's
+          employment history is exactly the record HR needs for exit paperwork, group HR and auditors. So a
+          terminated employment now keeps the download and loses only the button that would write. */}
+      <div className="flex flex-wrap items-center justify-end gap-2 border-b border-border px-4 py-2">
+        {/* A plain link straight at the export route — no client component, no form, no approval step:
+            one click and the file downloads (the precedent is the Leave employee-records export link,
+            with the payroll history-grid anchor's styling). It carries no query string: the file is the
+            COMPLETE history and never the filtered view, so there is no view state to hand over. */}
+        <Link
+          href={`/admin/personnel/${employmentId}/movement-export`}
+          className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          {t('movement.exportExcel')}
+        </Link>
+        {canCreateMovement && (
           <Link
             href={`/admin/personnel/${employmentId}?tab=careerMovement&newEvent=1`}
             className={btnPrimary}
           >
             {t('movement.newEvent')}
           </Link>
-        </div>
-      )}
+        )}
+      </div>
       {/* r78c — eight columns no longer fit a narrow viewport, so the table scrolls inside its own
           container rather than squeezing every cell (the Card is overflow-hidden). Same pattern as the
           recalculation-history table above. */}

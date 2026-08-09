@@ -1100,9 +1100,11 @@
       "movement": {
         "title": "ประวัติการจ้างงาน",
         "newEvent": "เหตุการณ์ใหม่",
+        "exportExcel": "ดาวน์โหลด Excel",
         "view": "ดู",
         "columns": {
           "eventType": "ประเภทเหตุการณ์",
+          "eventStatus": "สถานะเหตุการณ์",
           "effectiveDate": "วันที่มีผล",
           "company": "บริษัท",
           "division": "ฝ่าย",
@@ -1111,7 +1113,8 @@
           "basic": "เงินเดือนพื้นฐาน",
           "endDate": "วันที่สิ้นสุด",
           "remarks": "หมายเหตุ",
-          "action": "การดำเนินการ"
+          "action": "การดำเนินการ",
+          "correctionReason": "เหตุผลการแก้ไข"
         },
         "detail": {
           "eventInformation": "ข้อมูลเหตุการณ์",

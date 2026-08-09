@@ -1100,9 +1100,11 @@
       "movement": {
         "title": "Sejarah Pekerjaan",
         "newEvent": "Acara Baharu",
+        "exportExcel": "Muat Turun Excel",
         "view": "Lihat",
         "columns": {
           "eventType": "Jenis Acara",
+          "eventStatus": "Status Acara",
           "effectiveDate": "Tarikh Berkuat Kuasa",
           "company": "Syarikat",
           "division": "Bahagian",
@@ -1111,7 +1113,8 @@
           "basic": "Gaji Pokok",
           "endDate": "Tarikh Tamat",
           "remarks": "Catatan",
-          "action": "Tindakan"
+          "action": "Tindakan",
+          "correctionReason": "Sebab Pembetulan"
         },
         "detail": {
           "eventInformation": "Maklumat Acara",

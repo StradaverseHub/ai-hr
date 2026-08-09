@@ -1100,9 +1100,11 @@
       "movement": {
         "title": "வேலைவாய்ப்பு வரலாறு",
         "newEvent": "புதிய நிகழ்வு",
+        "exportExcel": "Excel பதிவிறக்கம்",
         "view": "பார்க்க",
         "columns": {
           "eventType": "நிகழ்வு வகை",
+          "eventStatus": "நிகழ்வு நிலை",
           "effectiveDate": "அமலாகும் தேதி",
           "company": "நிறுவனம்",
           "division": "பிரிவு",
@@ -1111,7 +1113,8 @@
           "basic": "அடிப்படை",
           "endDate": "முடிவு தேதி",
           "remarks": "குறிப்புகள்",
-          "action": "செயல்"
+          "action": "செயல்",
+          "correctionReason": "திருத்தக் காரணம்"
         },
         "detail": {
           "eventInformation": "நிகழ்வு தகவல்",
