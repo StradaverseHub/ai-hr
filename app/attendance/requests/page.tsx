@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { myEmployment } from '@/core/read';
@@ -5,7 +6,7 @@ import { myAttendanceCorrections } from '@/packs/attendance/service';
 import { myTravelRequests } from '@/core/travel-request';
 import { Button, Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import { myRequestCorrection, myRequestOvertime, myRequestTravel } from '@/app/me/actions';
+import { myRequestCorrection, myRequestTravel } from '@/app/me/actions';
 
 /**
  * My Attendance > Attendance Request (0bb0e303 rev2) — the employee's own attendance/overtime/travel
@@ -69,8 +70,10 @@ export default async function AttendanceRequestsPage({
 
   // Attendance and Overtime requests are the same stored record type, told apart by whether the employee
   // asked for OT minutes — exactly the split the /me card made, kept so each form lists back only its own.
+  // 1e9145d4 — the OT half of this split moved to Plan OT, which lists overtime in full (no five-row cap,
+  // with reasons, planned times and whether the hours have landed). What stays here is what this screen is
+  // still for: clock-time corrections.
   const punchCorrections = corrections.filter((c) => c.requestedOtMinutes == null);
-  const otCorrections = corrections.filter((c) => c.requestedOtMinutes != null);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -123,38 +126,18 @@ export default async function AttendanceRequestsPage({
         )}
       </Card>
 
-      {/* Overtime Request — OT only (planned before the shift, or actual after). Reuses the correction
-          engine with an OT-only intent (requestedOtMinutes, no punch edits) — no new record type. */}
+      {/* 1e9145d4 — THE OVERTIME REQUEST FORM MOVED OUT, to My Attendance > Plan OT, and this signpost is
+          what is left. Mirrors exactly what 0bb0e303 rev2 did to /me when the three forms moved HERE.
+          Overtime asked for BEFORE the day and overtime claimed AFTER it now live in one place, so the two
+          lists cannot drift apart; this screen keeps clock-time corrections and travel requests, which are
+          not overtime and are not decided the same way. Nobody loses the route they use today: the link is
+          on the screen the form used to be on. */}
       <Card className="p-5">
-        <h2 className="text-sm font-semibold">{t('overtimeRequest')}</h2>
-        <form action={myRequestOvertime} className="mt-3 space-y-2.5">
-          <Field label={t('dateLabel')}>
-            <input type="date" name="date" required defaultValue={yesterday} className={inputCls} />
-          </Field>
-          <Field label={t('otHoursLabel')}>
-            <input type="number" name="otHours" min="0" step="0.25" required placeholder={t('otHoursPlaceholder')} className={inputCls} />
-          </Field>
-          <Field label={t('reasonRequired')}>
-            <input name="reason" required placeholder={t('otReasonPlaceholder')} className={inputCls} />
-          </Field>
-          <p className="text-[11px] text-muted-foreground">{t('overtimeRequestHelp')}</p>
-          <Button type="submit" size="sm">
-            {t('requestOvertime')}
-          </Button>
-        </form>
-        {otCorrections.length > 0 && (
-          <ul className="mt-3 space-y-1.5 text-xs">
-            {otCorrections.map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-2">
-                <span className="tabular-nums text-muted-foreground">
-                  {c.attendanceDate}
-                  {c.requestedOtMinutes != null ? ` · ${t('otHoursLabel')} ${(c.requestedOtMinutes / 60).toFixed(1)}h` : ''}
-                </span>
-                <Pill status={c.status} label={t(`leaveStatus.${c.status}`)} />
-              </li>
-            ))}
-          </ul>
-        )}
+        <h2 className="text-sm font-semibold">{t('overtimeMovedHeading')}</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{t('overtimeMovedBody')}</p>
+        <Button asChild size="sm" variant="outline" className="mt-3">
+          <Link href="/attendance/plan-ot">{t('applyOtPlan')} →</Link>
+        </Button>
       </Card>
 
       {/* Travel Request (off-site work window; renamed from "Request Travel"). Same approvals inbox / decide flow. */}

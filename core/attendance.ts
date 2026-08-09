@@ -68,6 +68,9 @@ import {
   shift,
   shiftOtWindow,
   type BreakPeriod,
+  // 1e9145d4 Plan OT — the five reason categories the Apply OT Plan form offers, declared beside the column
+  // they constrain (text + DB CHECK, not a pgEnum — see the note there).
+  type OtReasonCategory,
   type ShiftOtRule,
 } from '../db/schema';
 import { parseAttendanceCsv } from '../lib/attendance-csv';
@@ -1529,6 +1532,22 @@ async function checkOutTx(
     });
     const dayType = sched.dayType;
 
+    // 1e9145d4 — THE DAY HAS NOW MATERIALISED, so an overtime plan approved ahead of it lands here: the
+    // agreed figure is resolved against `derived.otMinutes` (what was really clocked) through the company's
+    // own ot_approval_calculation, and the replacement-leave credit the deferred approval could not mint is
+    // minted. On a SECOND clock-out of the day this instead re-asserts the figure that already landed —
+    // recomputeDayFromPunches above has just overwritten ot_minutes from the punches, which would otherwise
+    // quietly erase what a human approved. Returns null (and changes nothing) when there is no plan, which
+    // is every ordinary day.
+    const plannedOt = await applyApprovedOtPlanTx(tx, ctx, {
+      employmentId: p.employmentId,
+      date: p.date,
+      attendanceId: rec.id,
+      sched,
+      systemOtMinutes: derived.otMinutes,
+    });
+    const otMinutes = plannedOt ?? derived.otMinutes;
+
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'attendance',
@@ -1542,12 +1561,13 @@ async function checkOutTx(
         time: p.time,
         status: derived.status,
         dayType,
-        workedMinutes: derived.workedMinutes,
-        otMinutes: derived.otMinutes,
+        // The figure standing on the row AFTER any approved OT plan landed — not the raw derived one, which
+        // would make the event disagree with the record it describes.
+        otMinutes,
         punch: 'out',
       },
     });
-    return { status: derived.status, dayType, workedMinutes: derived.workedMinutes, otMinutes: derived.otMinutes };
+    return { status: derived.status, dayType, workedMinutes: derived.workedMinutes, otMinutes };
   });
 }
 
@@ -2235,7 +2255,10 @@ export type MonthSummaryRow = {
   over45hWeek: boolean;
 };
 
-const OT_CAP_MINUTES = 104 * 60;
+// 1e9145d4 — EXPORTED (was module-private). The Apply OT Plan form warns, before you submit, when a plan
+// would take you past the statutory monthly ceiling, and it must warn against the SAME number the month
+// summary flags on. One constant, two readers; nothing about the value or its use here changed.
+export const OT_CAP_MINUTES = 104 * 60;
 const WEEK_LIMIT_MINUTES = 45 * 60;
 
 /** Per-employee month roll-up: status counts, hours, OT split by day type, compliance flags. */
@@ -2457,6 +2480,12 @@ export async function requestAttendanceCorrection(
     checkOut?: string | null;
     requestedOtMinutes?: number | null;
     reason?: string;
+    // 1e9145d4 Plan OT — the planned window and the reason category the Apply OT Plan form collects. All
+    // optional: every existing caller (the clock-correction form, the tests, the import paths) omits them
+    // and stores NULL, which is byte-identical to before.
+    plannedStartTime?: string | null;
+    plannedEndTime?: string | null;
+    otReasonCategory?: OtReasonCategory | null;
   },
 ) {
   const checkIn = p.checkIn ?? null;
@@ -2484,7 +2513,35 @@ export async function requestAttendanceCorrection(
     if (!Number.isFinite(ot) || ot < 0) throw new Error('Overtime minutes must be a non-negative whole number.');
     requestedOtMinutes = ot;
   }
+  // 1e9145d4 — the planned window, when the form supplies one. Validated the same way the punch pair is:
+  // an end before or equal to its start is a typo, not a cross-midnight plan (the hours figure the form
+  // shows is derived from these two, so an inverted pair would display a negative). Both-or-neither.
+  const plannedStartTime = p.plannedStartTime || null;
+  const plannedEndTime = p.plannedEndTime || null;
+  if ((plannedStartTime == null) !== (plannedEndTime == null)) {
+    throw new Error('A planned overtime window needs both a start time and an end time.');
+  }
+  if (plannedStartTime && plannedEndTime && toMinutes(plannedEndTime) <= toMinutes(plannedStartTime)) {
+    throw new Error('The planned end time must be after the planned start time.');
+  }
+  const otReasonCategory = p.otReasonCategory ?? null;
+
   return withTenant(ctx, async (tx) => {
+    // 1e9145d4 — ONE APPROVED PLAN PER DATE. attendance_correction_one_pending_uq is partial (WHERE status =
+    // 'pending'), so it stops two WAITING requests for a date but NOT a second request once the first is
+    // approved. That was harmless while approval could only happen after the day was worked. It is not
+    // harmless now: approve plan A, file plan B for the same date, approve B, and there are two approved
+    // unapplied rows while "find the approved, not-yet-applied plan" has no defined answer. Refused here at
+    // the application layer with a message a human can act on, rather than by a second partial unique index
+    // — that index would also have to exclude cancelled AND applied rows, which is more fragile.
+    if (hasOt) {
+      const live = await liveOtPlanTx(tx, p.employmentId, p.date);
+      if (live) {
+        throw new Error(
+          `You already have an approved overtime plan for ${p.date}. Withdraw it first if it is wrong.`,
+        );
+      }
+    }
     const [row] = await tx
       .insert(attendanceCorrection)
       .values({
@@ -2495,6 +2552,9 @@ export async function requestAttendanceCorrection(
         proposedCheckOut: checkOut,
         requestedOtMinutes,
         reason,
+        plannedStartTime,
+        plannedEndTime,
+        otReasonCategory,
       })
       .returning({ id: attendanceCorrection.id });
     await appendEvent(tx, {
@@ -2511,6 +2571,9 @@ export async function requestAttendanceCorrection(
         checkOut,
         requestedOtMinutes,
         reason,
+        plannedStartTime,
+        plannedEndTime,
+        otReasonCategory,
       },
     });
     return { correctionId: row.id };
@@ -2518,10 +2581,17 @@ export async function requestAttendanceCorrection(
 }
 
 /** Decide a correction. Approval upserts the attendance row with the proposed punches,
- *  re-derived through the time engine (so corrected OT flows to payroll). No self-approval. */
+ *  re-derived through the time engine (so corrected OT flows to payroll). No self-approval.
+ *
+ *  1e9145d4 — an OT-only request for a FUTURE date is now APPROVABLE. It used to throw ("No attendance
+ *  record exists for this date to attach overtime to"), which made the pre-approval the Overtime Request
+ *  form has always advertised impossible in practice. Such an approval is DEFERRED: the agreed figure and
+ *  the resolution rule are stamped on the plan and attendance is left alone, and the hours land later,
+ *  when the day is worked (applyApprovedOtPlanTx). Everything else — every clock correction, and every
+ *  OT request dated today or earlier — behaves exactly as it did. `today` is injectable for tests only. */
 export async function decideAttendanceCorrection(
   ctx: SessionContext,
-  p: { correctionId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string },
+  p: { correctionId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string; today?: string },
 ) {
   return withTenant(ctx, async (tx) => {
     const [cor] = await tx
@@ -2534,11 +2604,23 @@ export async function decideAttendanceCorrection(
 
     await assertCanDecide(tx, ctx, cor.employmentId, 'attendance correction', scopeOf('attendance.correction'));
 
+    // 1e9145d4 — true when this approval was HELD ON THE PLAN rather than written to an attendance day.
+    // Surfaced in the decision event's payload and in the return value, so a caller (and an auditor) can
+    // tell "approved and counted" from "approved, waiting for the day".
+    let deferredApproval = false;
+
     if (p.decision === 'approved') {
       const sched = await scheduleFor(tx, cor.employmentId, cor.attendanceDate);
       const dayType = sched.dayType;
       const hasClockCorrection = cor.proposedCheckIn != null;
       const hasOtRequest = cor.requestedOtMinutes != null;
+      // 1e9145d4 — THE DEFERRED CASE, and the whole point of the item. An OT-only plan for a day that has
+      // not happened yet cannot be measured against anything and must not create an attendance row (see the
+      // section header above for why a placeholder row would corrupt the month summary and the payroll
+      // prefill). The discriminator is the DATE, not "is there an attendance row": a past-dated OT request
+      // with no attendance row keeps throwing exactly as it does today, because that is a genuine mistake
+      // (overtime claimed for a day with no recorded work) and holding that line is the regression contract.
+      const deferred = !hasClockCorrection && hasOtRequest && cor.attendanceDate > (p.today ?? todayInKualaLumpur());
 
       // ADR-0069: resolve the APPROVED OT once, up front, so the SAME value is written to attendance.otMinutes,
       // stamped on the correction row, and (crucially) read by maybeAutoAccrueOnApprovalTx below. The auto-accrual
@@ -2553,7 +2635,16 @@ export async function decideAttendanceCorrection(
         // The system-calculated comparison figure: derive live from the punches that WILL be authoritative for the
         // day. For a clock correction that is the proposed punches; for an OT-only request it is the existing
         // approved attendance row's punches (resolved below). Computed live — never stored (ADR-0069).
-        if (hasClockCorrection) {
+        if (deferred) {
+          // Nothing has been clocked, so there is NO comparison figure and resolving one now would be
+          // fiction: under `system_calculated` or `smaller_of` a null system figure reads as zero, and the
+          // plan would be stamped "approved: 0 hours" the moment the manager clicked approve. What is
+          // stamped instead is the figure the approver actually agreed to — the requested one — together
+          // with the rule (`otApprovalMethod`) that will resolve it for real against the clocked hours when
+          // the day is worked. applyApprovedOtPlanTx overwrites approvedOtMinutes with that final figure.
+          systemOtForComparison = null;
+          approvedOtMinutes = Math.max(0, Math.trunc(cor.requestedOtMinutes!));
+        } else if (hasClockCorrection) {
           systemOtForComparison = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut, cor.attendanceDate).otMinutes;
         } else {
           const [existing] = await tx
@@ -2571,16 +2662,34 @@ export async function decideAttendanceCorrection(
               ? deriveAttendance(sched, existing.checkInAt, existing.checkOutAt, cor.attendanceDate).otMinutes
               : null;
         }
-        approvedOtMinutes = resolveApprovedOt(cor.requestedOtMinutes!, systemOtForComparison, otApprovalMethod);
+        // The deferred branch above has already set approvedOtMinutes to the agreed (requested) figure and
+        // deliberately does NOT resolve — there is nothing to resolve against until the day is worked.
+        if (!deferred) {
+          approvedOtMinutes = resolveApprovedOt(cor.requestedOtMinutes!, systemOtForComparison, otApprovalMethod);
+        }
       }
 
-      let amendedId: string;
+      let amendedId: string | null = null;
       let eventPayload: Record<string, unknown>;
 
-      if (hasClockCorrection) {
+      if (deferred) {
+        // NOTHING IS WRITTEN TO ATTENDANCE. The decision is recorded on the plan (the stamp below) and the
+        // hours are applied when the day materialises. Deliberately no `attendance.amended` event either:
+        // no attendance row was amended, and there is no aggregateId to hang one on. The audit for this
+        // moment is the `attendance-correction.approved` event at the foot of this function, whose payload
+        // carries the deferral facts.
+        eventPayload = {
+          correctionId: cor.id,
+          date: cor.attendanceDate,
+          dayType,
+          deferredToDate: cor.attendanceDate,
+        };
+      } else if (hasClockCorrection) {
         const d = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut, cor.attendanceDate);
         // When OT was also requested, the approved (policy-adjusted) OT OVERRIDES the derived figure.
-        const otMinutes = hasOtRequest ? approvedOtMinutes : d.otMinutes;
+        // `let`, not `const`: 1e9145d4 re-asserts a landed OT plan's hours after the upsert below, and the
+        // event payload has to report the figure that actually ended up on the row.
+        let otMinutes = hasOtRequest ? approvedOtMinutes : d.otMinutes;
         // 7c834696: when an approved OT figure OVERRIDES the engine's, the per-rate split has to be taken
         // from the figure actually stored, or the buckets would stop summing to ot_minutes on exactly the
         // days a human intervened. The measured lateness/early-out/short-hours come from the corrected
@@ -2652,6 +2761,21 @@ export async function decideAttendanceCorrection(
           })
           .returning({ id: attendance.id });
         amendedId = amended.id;
+        // 1e9145d4 — an approved clock correction RE-DERIVES the day from the proposed punches, which would
+        // quietly wipe the hours of an OT plan that had already landed on it. Re-assert them (and, if the
+        // correction is what finally gives the day its punches, LAND a plan that was waiting for exactly
+        // that). Skipped when this correction carries its own OT figure: the human who approved it decided
+        // the day's overtime a moment ago and that decision wins.
+        if (!hasOtRequest) {
+          const planned = await applyApprovedOtPlanTx(tx, ctx, {
+            employmentId: cor.employmentId,
+            date: cor.attendanceDate,
+            attendanceId: amended.id,
+            sched,
+            systemOtMinutes: d.otMinutes,
+          });
+          if (planned != null) otMinutes = planned;
+        }
         eventPayload = {
           correctionId: cor.id,
           date: cor.attendanceDate,
@@ -2677,6 +2801,9 @@ export async function decideAttendanceCorrection(
           )
           .limit(1);
         if (!existing) {
+          // 1e9145d4: reachable ONLY for a date that is today or in the past — a future-dated plan took the
+          // deferred branch above and never gets here. So this still means what it has always meant:
+          // overtime is being claimed for a day on which no work was ever recorded.
           throw new Error('No attendance record exists for this date to attach overtime to.');
         }
         await tx
@@ -2704,7 +2831,20 @@ export async function decideAttendanceCorrection(
       if (hasOtRequest) {
         await tx
           .update(attendanceCorrection)
-          .set({ approvedOtMinutes, otApprovalMethod })
+          .set({
+            approvedOtMinutes,
+            otApprovalMethod,
+            // 1e9145d4 — applied_at means ONE thing: "these hours are on the attendance day". The IMMEDIATE
+            // path just put them there, so it stamps it too; only a DEFERRED approval leaves it null,
+            // because only a deferred approval has not landed.
+            //
+            // THIS IS NOT COSMETIC. Leave it null on the immediate path and an already-counted approval
+            // still matches "approved, unapplied" — so (a) otMonthToDateMinutes would add its minutes to
+            // the attendance row's own, double-counting them against the 104-hour ceiling, and (b) the
+            // next clock-out of that day would LAND it a second time, re-resolving a figure a human had
+            // already agreed and re-running the replacement-leave accrual. Both are silent.
+            ...(deferred ? {} : { appliedAt: sql`now()` }),
+          })
           .where(eq(attendanceCorrection.id, cor.id));
         eventPayload = {
           ...eventPayload,
@@ -2715,32 +2855,49 @@ export async function decideAttendanceCorrection(
         };
       }
 
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'attendance',
-        aggregateId: amendedId,
-        eventType: 'attendance.amended',
-        actor: actorOf(ctx),
-        subjectEmploymentId: cor.employmentId,
-        payload: eventPayload,
-      });
+      // 1e9145d4 — only when an attendance row was actually amended. A deferred approval touched none.
+      if (amendedId != null) {
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'attendance',
+          aggregateId: amendedId,
+          eventType: 'attendance.amended',
+          actor: actorOf(ctx),
+          subjectEmploymentId: cor.employmentId,
+          payload: eventPayload,
+        });
+      }
 
-      // RL Control Engine (0113): auto-create the replacement-leave credit when this is the only reviewed
-      // attendance-decision path. The approver above already passed assertCanDecide, so the auto-accrual runs
-      // with requireDecideAuth:false (re-checking would hard-throw). It self-gates on dayType ∈ {rest_day,
-      // holiday}, otMinutes>0, TOIL_ENABLED, and the company's enabled + autoAccrueOnApproval policy; eligibility
-      // refusals are swallowed so auto-accrual NEVER blocks an approval. Skipped silently otherwise. Per ADR-0069
-      // it reads the POLICY-ADJUSTED attendance.otMinutes written above (single source of truth).
-      await maybeAutoAccrueOnApprovalTx(tx, ctx, {
-        employmentId: cor.employmentId,
-        workedDate: cor.attendanceDate,
-        dayType,
-        // 00307068: THIS correction is the employee's request for the credit, so its own creation date is
-        // the credit's Request Date. Passed rather than re-queried inside the accrual because the status
-        // flip to 'approved' happens BELOW this call — a lookup would still see 'pending' and could not
-        // identify the row it was looking for.
-        requestedOn: cor.createdAt.toISOString().slice(0, 10),
-      });
+      // *** 1e9145d4 — THE SILENT REGRESSION GUARD. READ THIS BEFORE TOUCHING THE CONDITION. ***
+      //
+      // For a DEFERRED approval the accrual below MUST NOT run here, and it must not simply be dropped
+      // either. accrueToilTx reads the attendance row for the day and throws ToilNoOvertimeError when there
+      // is none or ot_minutes <= 0 — and that error is SWALLOWED (see the helper) so auto-accrual can never
+      // block an approval. Leave the call where it is and pre-approving a rest-day or public-holiday plan
+      // would silently stop minting the replacement-leave credit that the very same approval mints today:
+      // no error, no log, nothing, until an employee asks where their day went. So for the deferred case
+      // the accrual MOVES to applyApprovedOtPlanTx, which runs it after the hours land on a real day — with
+      // this correction's own created_at still supplied as `requestedOn`, so the credit's Request Date stays
+      // the employee's request date. The immediate path keeps calling it exactly where it always has.
+      if (!deferred) {
+        // RL Control Engine (0113): auto-create the replacement-leave credit when this is the only reviewed
+        // attendance-decision path. The approver above already passed assertCanDecide, so the auto-accrual runs
+        // with requireDecideAuth:false (re-checking would hard-throw). It self-gates on dayType ∈ {rest_day,
+        // holiday}, otMinutes>0, TOIL_ENABLED, and the company's enabled + autoAccrueOnApproval policy; eligibility
+        // refusals are swallowed so auto-accrual NEVER blocks an approval. Skipped silently otherwise. Per ADR-0069
+        // it reads the POLICY-ADJUSTED attendance.otMinutes written above (single source of truth).
+        await maybeAutoAccrueOnApprovalTx(tx, ctx, {
+          employmentId: cor.employmentId,
+          workedDate: cor.attendanceDate,
+          dayType,
+          // 00307068: THIS correction is the employee's request for the credit, so its own creation date is
+          // the credit's Request Date. Passed rather than re-queried inside the accrual because the status
+          // flip to 'approved' happens BELOW this call — a lookup would still see 'pending' and could not
+          // identify the row it was looking for.
+          requestedOn: cor.createdAt.toISOString().slice(0, 10),
+        });
+      }
+      deferredApproval = deferred;
     }
 
     await tx
@@ -2758,9 +2915,23 @@ export async function decideAttendanceCorrection(
       eventType: `attendance-correction.${p.decision}`,
       actor: actorOf(ctx),
       subjectEmploymentId: cor.employmentId,
-      payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null },
+      payload: {
+        decision: p.decision,
+        deciderEmploymentId: p.deciderEmploymentId ?? null,
+        // 1e9145d4 — `overtime` tells a consumer which KIND of request was decided. The notification
+        // registry needs it: this one event type covers both an overtime plan and a clock-time correction,
+        // and a notice headed "Overtime plan approved" on somebody's forgotten clock-out would be wrong.
+        // Nothing else in the payload distinguishes them.
+        overtime: cor.requestedOtMinutes != null,
+        // The deferral facts. `deferred` says the hours were NOT written to a day; `date` and
+        // `approvedOtMinutes` say which day they are waiting for and how many were agreed. This is the only
+        // audit record of a deferred approval, because no attendance row was amended.
+        ...(deferredApproval
+          ? { deferred: true, date: cor.attendanceDate, approvedOtMinutes: cor.requestedOtMinutes }
+          : {}),
+      },
     });
-    return { status: p.decision };
+    return { status: p.decision, deferred: deferredApproval };
   });
 }
 
@@ -2818,6 +2989,455 @@ export function listAttendanceCorrections(
     // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage
     // from the approver-facing list (a no-op for rows the caller sees in their own right).
     return filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+  });
+}
+
+// ═══════════════════ 1e9145d4 · Plan OT — overtime agreed BEFORE it is worked ═══════════════════
+//
+// READ THIS BEFORE CHANGING ANYTHING BELOW. A "plan" is not a new record type: it is the ADR-0069 OT-only
+// attendance_correction (no proposed punches, `requested_ot_minutes` set) that has existed since R45. What
+// this section adds is the ability to APPROVE ONE BEFORE ITS DATE, which decideAttendanceCorrection has
+// always refused ("No attendance record exists for this date to attach overtime to") because there is no
+// attendance row for a day nobody has worked.
+//
+// The fix is to SPLIT APPROVAL FROM APPLICATION:
+//   • APPROVAL of a FUTURE-dated OT-only request stamps the agreed figure + the company's resolution method
+//     on the correction row and touches nothing else. No placeholder attendance row is created — see the
+//     migration 0424 header for why one would corrupt attendanceMonthSummary and the payroll prefill.
+//   • APPLICATION happens when the day materialises: every attendance write path that finalises a day
+//     (clock-out, terminal import, an approved clock correction) calls applyApprovedOtPlanTx, which resolves
+//     the agreed figure against what was ACTUALLY clocked using attendance_policy.ot_approval_calculation —
+//     the same rule the immediate path has always used — and writes ot_minutes + the per-rate split.
+//   • PAST-DATED approvals keep today's immediate behaviour BYTE-IDENTICAL. That is the regression line.
+//
+// THE SILENT REGRESSION THIS DESIGN WOULD OTHERWISE CREATE. decideAttendanceCorrection calls
+// maybeAutoAccrueOnApprovalTx (the 0113 RL Control Engine) to mint the replacement-leave credit that rest-day
+// / public-holiday overtime earns. That helper reads the attendance row and throws ToilNoOvertimeError when
+// there is none — and the caller deliberately SWALLOWS that error so auto-accrual never blocks an approval.
+// So a naive deferred branch would silently stop creating the credit, with no error anywhere, and nobody
+// would notice until an employee asked where their day went. The accrual therefore MOVES to the application
+// step for the deferred case (and only for it), carrying the correction's own created_at as `requestedOn`
+// so the credit's Request Date stays the employee's request date rather than the clock-out date (00307068).
+
+/** The three day classifications a plan can be filed against. Same vocabulary as attendance.day_type. */
+export type PlanOtDayType = 'workday' | 'rest_day' | 'holiday';
+
+/** One row of the Plan OT list. */
+export type OvertimePlanRow = {
+  id: string;
+  attendanceDate: string;
+  plannedStartTime: string | null;
+  plannedEndTime: string | null;
+  requestedOtMinutes: number | null;
+  approvedOtMinutes: number | null;
+  otReasonCategory: OtReasonCategory | null;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  appliedAt: Date | null;
+  createdAt: Date;
+  decidedAt: Date | null;
+};
+
+/** What the Apply OT Plan form needs to warn the employee before they submit. */
+export type OvertimeCapView = {
+  /** OT already RECORDED on attendance rows in the month (the days actually worked). */
+  recordedMinutes: number;
+  /** OT approved on plans for days NOT YET counted — future days, and days not yet clocked out. */
+  plannedMinutes: number;
+  /** recorded + planned: what the month already commits to, before the plan being typed. */
+  totalMinutes: number;
+  /** EA 1955 limitation-of-overtime regs — 104 hours a month. */
+  capMinutes: number;
+};
+
+/**
+ * The day classification for ONE employment on ONE date — rest day, public holiday or an ordinary working
+ * day — resolved through the SAME `scheduleFor` the clocking path uses (roster shift > holiday calendar >
+ * rostered rest day > default shift > company policy), so the form can never name a different kind of day
+ * from the one the engine will freeze onto the attendance row.
+ *
+ * A THIN WRAPPER, deliberately, rather than exporting `scheduleFor` itself: the resolved schedule carries
+ * shift windows, OT rules, grace periods and rate rows that no caller outside this file has any business
+ * reading, and widening the private function is how that surface leaks.
+ */
+export function dayTypeFor(ctx: SessionContext, employmentId: string, date: string): Promise<PlanOtDayType> {
+  return withTenant(ctx, async (tx) => (await scheduleFor(tx, employmentId, date)).dayType);
+}
+
+/**
+ * Month-to-date overtime for ONE employment, INCLUDING approved plans that have not landed yet — the figure
+ * the cap warning is measured against.
+ *
+ * WHY NOT attendanceMonthSummary. That takes a month plus optional companyIds and returns a row PER
+ * EMPLOYEE, resolving each one's holiday calendar with a query apiece. It is a management report; running it
+ * to render one employee's form would be several orders of magnitude too heavy.
+ *
+ * WHY PLANNED MINUTES COUNT. The point of the warning is to catch the ceiling BEFORE the month is worked. A
+ * figure that ignored three approved future plans would tell an employee they had room they had already
+ * committed — which is exactly the situation planning ahead is supposed to prevent.
+ */
+export function otMonthToDateMinutes(
+  ctx: SessionContext,
+  employmentId: string,
+  date: string,
+): Promise<OvertimeCapView> {
+  const monthStart = `${date.slice(0, 7)}-01`;
+  // Last day of the month, by UTC date arithmetic on a known date-only string (the form the codebase keeps
+  // in UTC): day 0 of the NEXT month is the last day of this one.
+  const [y, m] = [Number(date.slice(0, 4)), Number(date.slice(5, 7))];
+  const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  return withTenant(ctx, async (tx) => {
+    const [recorded] = await tx
+      .select({ total: sql<string>`coalesce(sum(${attendance.otMinutes}), 0)` })
+      .from(attendance)
+      .where(
+        and(
+          eq(attendance.employmentId, employmentId),
+          gte(attendance.attendanceDate, monthStart),
+          lte(attendance.attendanceDate, monthEnd),
+        ),
+      );
+    // Approved, not-yet-landed OT plans in the month. `applied_at IS NULL` is what makes these additive
+    // rather than double-counted: once a plan lands, its minutes are ON the attendance row above.
+    const [planned] = await tx
+      .select({ total: sql<string>`coalesce(sum(${attendanceCorrection.requestedOtMinutes}), 0)` })
+      .from(attendanceCorrection)
+      .where(
+        and(
+          eq(attendanceCorrection.employmentId, employmentId),
+          gte(attendanceCorrection.attendanceDate, monthStart),
+          lte(attendanceCorrection.attendanceDate, monthEnd),
+          eq(attendanceCorrection.status, 'approved'),
+          isNull(attendanceCorrection.appliedAt),
+          isNull(attendanceCorrection.proposedCheckIn),
+          sql`${attendanceCorrection.requestedOtMinutes} is not null`,
+        ),
+      );
+    const recordedMinutes = Number(recorded?.total ?? 0);
+    const plannedMinutes = Number(planned?.total ?? 0);
+    return {
+      recordedMinutes,
+      plannedMinutes,
+      totalMinutes: recordedMinutes + plannedMinutes,
+      capMinutes: OT_CAP_MINUTES,
+    };
+  });
+}
+
+/**
+ * The employee's OWN overtime plans, newest first, paged — the Plan OT landing list.
+ *
+ * WHY NOT myAttendanceCorrections. That one defaults to FIVE rows, returns no reason, no category and no
+ * planned times, and mixes clock-time corrections in with overtime. Every one of those is a thing the Plan
+ * OT list has to show, and the five-row cap is the specific complaint the item was raised about. Widening
+ * the shared helper would change what the Attendance Request screen renders as a side effect, so this is a
+ * separate, OT-only read.
+ *
+ * RLS scopes the rows; the employmentId argument narrows to the one employment the caller asked about.
+ */
+export function myOvertimePlans(
+  ctx: SessionContext,
+  employmentId: string,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<OvertimePlanRow[]> {
+  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 25)), 200);
+  const offset = Math.max(0, Math.trunc(opts.offset ?? 0));
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: attendanceCorrection.id,
+        attendanceDate: attendanceCorrection.attendanceDate,
+        plannedStartTime: attendanceCorrection.plannedStartTime,
+        plannedEndTime: attendanceCorrection.plannedEndTime,
+        requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
+        approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
+        otReasonCategory: attendanceCorrection.otReasonCategory,
+        reason: attendanceCorrection.reason,
+        status: attendanceCorrection.status,
+        appliedAt: attendanceCorrection.appliedAt,
+        createdAt: attendanceCorrection.createdAt,
+        decidedAt: attendanceCorrection.decidedAt,
+      })
+      .from(attendanceCorrection)
+      .where(
+        and(
+          eq(attendanceCorrection.employmentId, employmentId),
+          // OT-only: a clock-time correction that happens to carry OT belongs to Attendance Request, and
+          // mixing the two is the other half of the complaint.
+          isNull(attendanceCorrection.proposedCheckIn),
+          sql`${attendanceCorrection.requestedOtMinutes} is not null`,
+        ),
+      )
+      // Newest first BY THE OVERTIME DATE, then by when it was filed — the mockup's ordering. Two plans
+      // filed on one day for different dates read in date order, which is how the list is scanned.
+      .orderBy(desc(attendanceCorrection.attendanceDate), desc(attendanceCorrection.createdAt))
+      .limit(limit)
+      .offset(offset),
+  );
+}
+
+/**
+ * Day types for a LIST of (employment, date) pairs — what the approvals inbox needs to flag a rest-day or
+ * public-holiday overtime plan on the row, so the approver cannot miss it.
+ *
+ * Keyed `${employmentId}|${date}`. Sequential rather than batched on purpose: scheduleFor is
+ * single-employment (roster → holiday calendar → default shift → policy) and the calls share one
+ * transaction connection, exactly as attendanceMonthSummary's holiday resolution does. `limit` is a
+ * deliberate ceiling — this runs on a page render, and an inbox with hundreds of pending overtime rows
+ * should degrade to "no chip on the tail" rather than to a slow page.
+ */
+export function dayTypesForPairs(
+  ctx: SessionContext,
+  pairs: { employmentId: string; date: string }[],
+  limit = 60,
+): Promise<Map<string, PlanOtDayType>> {
+  return withTenant(ctx, async (tx) => {
+    const out = new Map<string, PlanOtDayType>();
+    // De-duplicate first: two plans for one employee-day resolve to the same schedule.
+    const seen = new Set<string>();
+    const unique: { employmentId: string; date: string }[] = [];
+    for (const p of pairs) {
+      const k = `${p.employmentId}|${p.date}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      unique.push(p);
+    }
+    for (const p of unique.slice(0, limit)) {
+      out.set(`${p.employmentId}|${p.date}`, (await scheduleFor(tx, p.employmentId, p.date)).dayType);
+    }
+    return out;
+  });
+}
+
+/** The approved, not-yet-landed OT plan for one (employment, date), if there is one. Tx-level so both the
+ *  request guard and the application step ask the same question the same way. */
+async function liveOtPlanTx(tx: Tx, employmentId: string, date: string) {
+  const [row] = await tx
+    .select()
+    .from(attendanceCorrection)
+    .where(
+      and(
+        eq(attendanceCorrection.employmentId, employmentId),
+        eq(attendanceCorrection.attendanceDate, date),
+        eq(attendanceCorrection.status, 'approved'),
+        isNull(attendanceCorrection.appliedAt),
+        isNull(attendanceCorrection.proposedCheckIn),
+        sql`${attendanceCorrection.requestedOtMinutes} is not null`,
+      ),
+    )
+    .orderBy(desc(attendanceCorrection.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * APPLY an approved OT plan to the attendance day that has just been written. Called from every path that
+ * finalises a day's figures: clock-out, the terminal punch import, and an approved clock correction.
+ *
+ * Two jobs, and they are different:
+ *
+ *  1 · LANDING (applied_at was NULL). Resolve the agreed figure against what was actually clocked, through
+ *      the company's own ot_approval_calculation, write ot_minutes + the per-rate split, stamp applied_at
+ *      and the final approved figure, append the audit event, and run the replacement-leave accrual that the
+ *      deferred approval deliberately did not run. Happens AT MOST ONCE: the applied_at stamp is claimed by
+ *      a conditional UPDATE ... WHERE applied_at IS NULL, so two concurrent writers cannot both land it.
+ *
+ *  2 · RE-ASSERTION (applied_at already set). A day does not stop moving after it lands: a second clock-out
+ *      of the day, a re-import, or an approved clock correction all re-derive ot_minutes from the punches
+ *      and would otherwise QUIETLY WIPE the figure a human approved. So the already-resolved
+ *      approved_ot_minutes is written back. This is NOT a second landing: nothing is re-resolved, no event
+ *      is appended and no second replacement-leave credit is minted.
+ *
+ * Returns the OT minutes now standing on the day, or null when there was no plan to apply.
+ */
+async function applyApprovedOtPlanTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    date: string;
+    attendanceId: string;
+    sched: ResolvedSchedule;
+    /** The figure the engine just derived from the day's real punches — the comparison input. */
+    systemOtMinutes: number | null;
+  },
+): Promise<number | null> {
+  // The plan for this day, landed or not. Cancelled and rejected rows are excluded; a clock correction that
+  // merely carries OT is not a plan (proposed_check_in is set) and is not eligible either.
+  const [plan] = await tx
+    .select()
+    .from(attendanceCorrection)
+    .where(
+      and(
+        eq(attendanceCorrection.employmentId, p.employmentId),
+        eq(attendanceCorrection.attendanceDate, p.date),
+        eq(attendanceCorrection.status, 'approved'),
+        isNull(attendanceCorrection.proposedCheckIn),
+        sql`${attendanceCorrection.requestedOtMinutes} is not null`,
+      ),
+    )
+    .orderBy(desc(attendanceCorrection.createdAt))
+    .limit(1);
+  if (!plan) return null;
+
+  const writeOt = async (otMinutes: number) => {
+    await tx
+      .update(attendance)
+      .set({
+        otMinutes,
+        ...otSplitColumns(splitOtMinutes(otMinutes, p.sched.dayType, p.sched.rule)),
+      })
+      .where(eq(attendance.id, p.attendanceId));
+  };
+
+  // ── 2 · RE-ASSERTION ────────────────────────────────────────────────────────────────────────────────
+  if (plan.appliedAt != null) {
+    if (plan.approvedOtMinutes == null) return null;
+    await writeOt(plan.approvedOtMinutes);
+    return plan.approvedOtMinutes;
+  }
+
+  // ── 1 · LANDING ─────────────────────────────────────────────────────────────────────────────────────
+  // Claim first. The conditional WHERE is the concurrency guard AND the "at most once" guarantee: if
+  // another writer got here first, no row comes back and we do nothing at all (their figure stands).
+  const claimed = await tx
+    .update(attendanceCorrection)
+    .set({ appliedAt: sql`now()` })
+    .where(and(eq(attendanceCorrection.id, plan.id), isNull(attendanceCorrection.appliedAt)))
+    .returning({ id: attendanceCorrection.id });
+  if (claimed.length === 0) return null;
+
+  // The rule that was FROZEN onto the plan when the human approved it, not whatever the company happens to
+  // be set to today — the approver agreed to a figure under a stated rule, and a policy edit between
+  // approval and the worked day must not silently change what they agreed. Falls back to the live setting
+  // for a plan approved before this release (which cannot exist yet, but the column is nullable).
+  const method: OtApprovalMethod =
+    (plan.otApprovalMethod as OtApprovalMethod | null) ?? (await otApprovalCalculationFor(tx, p.employmentId));
+  const otMinutes = resolveApprovedOt(plan.requestedOtMinutes!, p.systemOtMinutes, method);
+  await writeOt(otMinutes);
+  await tx
+    .update(attendanceCorrection)
+    .set({ approvedOtMinutes: otMinutes })
+    .where(eq(attendanceCorrection.id, plan.id));
+
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'attendance',
+    aggregateId: p.attendanceId,
+    eventType: 'attendance.amended',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.employmentId,
+    payload: {
+      correctionId: plan.id,
+      date: p.date,
+      dayType: p.sched.dayType,
+      otMinutes,
+      requestedOtMinutes: plan.requestedOtMinutes,
+      systemCalculatedOtMinutes: p.systemOtMinutes,
+      approvedOtMinutes: otMinutes,
+      otApprovalMethod: method,
+      // The distinguishing mark of a deferred landing in the audit trail: this OT was agreed before the day
+      // was worked, and this is the moment it was counted.
+      otPlanApplied: true,
+    },
+  });
+
+  // The replacement-leave credit the deferred approval could not mint (there was no day to read). Runs HERE,
+  // after ot_minutes and the split are written, so accrueToilTx sees a real row with real overtime on it.
+  // `requestedOn` is the PLAN's own creation date (00307068): the credit's Request Date is when the employee
+  // asked, never when they happened to clock out. Self-gates on rest_day/holiday + policy; refusals are
+  // swallowed inside the helper exactly as they are on the immediate path.
+  await maybeAutoAccrueOnApprovalTx(tx, ctx, {
+    employmentId: p.employmentId,
+    workedDate: p.date,
+    dayType: p.sched.dayType,
+    requestedOn: plan.createdAt.toISOString().slice(0, 10),
+  });
+
+  return otMinutes;
+}
+
+/** Raised when a withdrawal is not allowed — the caller is not the subject, or the plan is in a state that
+ *  cannot be taken back. Typed so the action layer can show the message as-is rather than a stack trace. */
+export class OvertimePlanWithdrawNotAllowedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OvertimePlanWithdrawNotAllowedError';
+  }
+}
+
+/**
+ * WITHDRAW an overtime plan — the employee taking back their own request. Today nothing can be taken back
+ * at all, pending or approved.
+ *
+ * WHO: the subject only. Enforced in code, because RLS makes an employee's own rows writable and a manager
+ * can see their reports' — neither of which should be able to withdraw on somebody's behalf (a manager who
+ * wants a plan gone rejects it, which is a decision and is recorded as one).
+ *
+ * WHEN: while it is still PENDING, or once APPROVED provided the hours have NOT LANDED (applied_at unset)
+ * and the overtime date has not passed. Never once applied — at that point the hours are on the attendance
+ * day and in what payroll reads, so removing them is a correction, not a withdrawal, and it needs the
+ * approval trail a correction carries.
+ */
+export async function cancelPlannedOvertime(
+  ctx: SessionContext,
+  p: { correctionId: string; today?: string },
+): Promise<{ status: 'cancelled' }> {
+  const today = p.today ?? todayInKualaLumpur();
+  return withTenant(ctx, async (tx) => {
+    const [plan] = await tx
+      .select()
+      .from(attendanceCorrection)
+      .where(eq(attendanceCorrection.id, p.correctionId))
+      .limit(1);
+    if (!plan) throw new OvertimePlanWithdrawNotAllowedError('overtime plan not found (or not visible)');
+
+    const [subject] = await tx
+      .select({ personId: employment.personId })
+      .from(employment)
+      .where(eq(employment.id, plan.employmentId))
+      .limit(1);
+    if (!ctx.personId || subject?.personId !== ctx.personId) {
+      throw new OvertimePlanWithdrawNotAllowedError('Only the employee who filed a plan can withdraw it.');
+    }
+
+    if (plan.status === 'cancelled') {
+      throw new OvertimePlanWithdrawNotAllowedError('This plan has already been withdrawn.');
+    }
+    if (plan.status === 'rejected') {
+      throw new OvertimePlanWithdrawNotAllowedError('This plan was not approved, so there is nothing to withdraw.');
+    }
+    if (plan.status === 'approved') {
+      if (plan.appliedAt != null) {
+        throw new OvertimePlanWithdrawNotAllowedError(
+          'These hours have already been counted on the attendance day, so they can no longer be withdrawn.',
+        );
+      }
+      if (plan.attendanceDate < today) {
+        throw new OvertimePlanWithdrawNotAllowedError(
+          'The overtime date has passed, so this plan can no longer be withdrawn.',
+        );
+      }
+    }
+
+    await tx
+      .update(attendanceCorrection)
+      .set({ status: 'cancelled' })
+      .where(eq(attendanceCorrection.id, plan.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-correction',
+      aggregateId: plan.id,
+      eventType: 'attendance-correction.cancelled',
+      actor: actorOf(ctx),
+      subjectEmploymentId: plan.employmentId,
+      payload: {
+        date: plan.attendanceDate,
+        previousStatus: plan.status,
+        requestedOtMinutes: plan.requestedOtMinutes,
+      },
+    });
+    return { status: 'cancelled' as const };
   });
 }
 
@@ -3232,6 +3852,19 @@ export async function importAttendancePunches(
             },
           })
           .returning({ id: attendance.id });
+        // 1e9145d4 — an imported day is a day that has been WORKED, so an overtime plan approved ahead of it
+        // lands here on exactly the same terms as a clock-out: resolved against `d.otMinutes` (the figure
+        // derived from the terminal punches) through the company's ot_approval_calculation, once. On a
+        // RE-IMPORT of a day whose plan already landed this re-asserts the approved figure, which the upsert
+        // above has just overwritten with the raw derived one. Only reached when !dryRun — a preview must
+        // never consume a plan.
+        const plannedOt = await applyApprovedOtPlanTx(tx, ctx, {
+          employmentId: g.employmentId,
+          date: g.day,
+          attendanceId: row.id,
+          sched,
+          systemOtMinutes: d.otMinutes,
+        });
         await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'attendance',
@@ -3239,7 +3872,14 @@ export async function importAttendancePunches(
           eventType: 'attendance.imported',
           actor: actorOf(ctx),
           subjectEmploymentId: g.employmentId,
-          payload: { date: g.day, checkIn, checkOut, source: 'terminal', punchCount: g.punches.length },
+          payload: {
+            date: g.day,
+            checkIn,
+            checkOut,
+            source: 'terminal',
+            punchCount: g.punches.length,
+            ...(plannedOt != null ? { otMinutes: plannedOt, otPlanApplied: true } : {}),
+          },
         });
         imported += 1;
       }

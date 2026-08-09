@@ -291,6 +291,78 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     category: 'claims',
     render: () => ({ severity: 'warning', title: 'Claim not approved', body: 'Your expense claim was not approved.', linkPath: '/me' }),
   },
+  // ── 1e9145d4 Plan OT — three notices, because today NOTHING is sent about an attendance or overtime
+  // request at all. Overtime agreed before it is worked only works if the approver learns a plan is waiting
+  // while saying no is still cheap, and if the employee learns the answer without going to look.
+  //
+  // SCOPED TO OVERTIME, DELIBERATELY. The same three event types are also appended by a clock-time
+  // correction, which shares the record. Widening these notices to cover clock fixes would be a real
+  // improvement — they are equally silent today — but it is a behaviour change on a neighbouring flow that
+  // nobody asked for, so each resolver below returns NO RECIPIENTS for a non-overtime row. Widening later
+  // is deleting one guard clause. The discriminator is `requestedOtMinutes` on the request event and the
+  // explicit `overtime` flag on the decision events (which carry no minutes of their own).
+  //
+  // English-only strings, the registry convention — a notification body is rendered once and STORED, so
+  // there is no per-language version of it.
+  'attendance-correction.requested': {
+    kind: 'attendance.ot-requested',
+    category: 'attendance',
+    render: (p) => {
+      const hours = p?.requestedOtMinutes != null ? (Number(p.requestedOtMinutes) / 60).toFixed(1) : '';
+      const date = typeof p?.date === 'string' ? p.date : '';
+      return {
+        severity: 'action',
+        title: 'Overtime plan awaiting approval',
+        body: `An overtime plan for ${date} (${hours} hours) is waiting for your approval.`,
+        linkPath: '/approvals',
+      };
+    },
+    // THE APPROVER, not the subject — the event's subjectEmploymentId is the person who FILED it, so the
+    // default subject notice would tell the requester what they just did. Same routing as the decide path
+    // (assertCanDecide): the subject's current administrative manager, falling back to the company's HR
+    // admins when they have no line — otherwise a plan filed by someone reporting to nobody is silent.
+    // Both resolvers already exist and are used by the leave escalation fan-out; neither is new ground.
+    recipients: async (tx, ev, payload) => {
+      if (!ev.subjectEmploymentId || payload?.requestedOtMinutes == null) return [];
+      let out = await approverEmploymentsForKind(tx, ev.subjectEmploymentId, 'direct_manager');
+      if (out.length === 0) out = await hrAdminsForCompany(tx, ev.subjectEmploymentId);
+      // Never notify the requester about their own request (an employee who is their own manager, or an
+      // HR admin filing for themselves).
+      return [...new Set(out)].filter((id) => id !== ev.subjectEmploymentId);
+    },
+  },
+  // The subject IS the employee whose plan was decided, so these two would take the default recipient —
+  // but the resolver is spelled out anyway to carry the overtime-only scope above.
+  'attendance-correction.approved': {
+    kind: 'attendance.ot-approved',
+    category: 'attendance',
+    render: (p) => ({
+      severity: 'info',
+      title: 'Overtime plan approved',
+      // `deferred` is set by decideAttendanceCorrection when the plan was agreed AHEAD of its date, which
+      // is the case worth saying out loud: approved is not the same as counted, and the hours appear on the
+      // day once it is worked.
+      body:
+        p?.deferred === true
+          ? `Your overtime plan for ${typeof p.date === 'string' ? p.date : 'the requested date'} was approved. The hours are counted once the day is worked.`
+          : 'Your overtime request was approved.',
+      linkPath: '/attendance/plan-ot',
+    }),
+    recipients: async (_tx, ev, payload) =>
+      payload?.overtime === true && ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [],
+  },
+  'attendance-correction.rejected': {
+    kind: 'attendance.ot-rejected',
+    category: 'attendance',
+    render: () => ({
+      severity: 'warning',
+      title: 'Overtime plan not approved',
+      body: 'Your overtime request was not approved.',
+      linkPath: '/attendance/plan-ot',
+    }),
+    recipients: async (_tx, ev, payload) =>
+      payload?.overtime === true && ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [],
+  },
   'profile-change.approved': {
     kind: 'profile.approved',
     category: 'profile',

@@ -42,13 +42,16 @@ import {
   type LeaveDurationType,
 } from '@/core/leave';
 import {
+  cancelPlannedOvertime,
   checkIn,
   checkOut,
   requestAttendanceCorrection,
   GeolocationRequiredError,
   OutsideGeofenceError,
   DeviceNotRegisteredError,
+  OvertimePlanWithdrawNotAllowedError,
 } from '@/packs/attendance/service';
+import { OT_REASON_CATEGORIES, type OtReasonCategory } from '@/db/schema';
 import { requestTravel } from '@/core/travel-request';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
@@ -407,19 +410,38 @@ export async function myRequestCorrection(formData: FormData) {
   redirect(`${REQUESTS_PAGE}?toast=Attendance+request+submitted`);
 }
 
+// 1e9145d4 — Plan OT is now the ONE home for overtime, planned or claimed after the fact, so these two
+// actions answer to it rather than to the Attendance Request screen the Overtime card moved off.
+const PLAN_OT_PAGE = '/attendance/plan-ot';
+
 // R45 3707cba9 — "Overtime Request": OT-only, reusing the proven correction engine (requestedOtMinutes set,
 // no punch edits — no new schema). Date + overtime hours + mandatory reason. Planned (before the shift) or
 // actual (after) is up to the employee; the approver compares Actual (system) vs Approved on their screen.
+//
+// 1e9145d4 WIDENED IT, it did not fork it: the same action, the same core service, the same approval route.
+// What is new is the planned window (start + end, from which the form shows the hours as you type) and the
+// reason category. Both optional at every layer, so an hours-only submission — the shape that has always
+// worked — is byte-identical. `otHours` is still accepted and still authoritative; when the window is
+// supplied the form posts the derived figure in it, so there is exactly ONE number the engine reads.
 export async function myRequestOvertime(formData: FormData) {
   const { s, employmentId } = await resolveMe();
   const date = String(formData.get('date'));
   const reason = String(formData.get('reason') || '').trim();
   const otHoursRaw = String(formData.get('otHours') || '').trim();
+  const plannedStart = String(formData.get('plannedStart') || '').trim();
+  const plannedEnd = String(formData.get('plannedEnd') || '').trim();
+  const categoryRaw = String(formData.get('otReasonCategory') || '').trim();
+  // Never trust the posted category: an unknown value would be refused by the DB CHECK with a constraint
+  // name in the message. Anything not in the vocabulary is simply dropped (the mandatory free text carries
+  // the meaning regardless).
+  const otReasonCategory = (OT_REASON_CATEGORIES as readonly string[]).includes(categoryRaw)
+    ? (categoryRaw as OtReasonCategory)
+    : null;
   let requestedOtMinutes: number | null = null;
   if (otHoursRaw.length > 0) {
     const hrs = Number(otHoursRaw);
     if (!Number.isFinite(hrs) || hrs < 0) {
-      redirect(`${REQUESTS_PAGE}?error=${encodeURIComponent('Overtime hours must be a non-negative number.')}`);
+      redirect(`${PLAN_OT_PAGE}/apply?error=${encodeURIComponent('Overtime hours must be a non-negative number.')}`);
     }
     requestedOtMinutes = Math.round(hrs * 60);
   }
@@ -429,12 +451,32 @@ export async function myRequestOvertime(formData: FormData) {
       date,
       requestedOtMinutes,
       reason: reason || undefined,
+      plannedStartTime: plannedStart || null,
+      plannedEndTime: plannedEnd || null,
+      otReasonCategory,
     });
   } catch (e) {
-    redirect(`${REQUESTS_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    // Back to the FORM, not the list: a refusal (a duplicate approved plan for the date, a bad time window)
+    // is something the employee has to fix in the fields they just filled in.
+    redirect(`${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}&error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(REQUESTS_PAGE);
-  redirect(`${REQUESTS_PAGE}?toast=Overtime+request+submitted`);
+  revalidatePath(PLAN_OT_PAGE);
+  redirect(`${PLAN_OT_PAGE}?toast=Overtime+plan+submitted`);
+}
+
+/** 1e9145d4 — withdraw an overtime plan. The service enforces subject-only and the allowed states (pending,
+ *  or approved-but-not-yet-counted and not past its date); this just reports the refusal on the page. */
+export async function myWithdrawOvertimePlan(formData: FormData) {
+  const { s } = await resolveMe();
+  try {
+    await cancelPlannedOvertime(s, { correctionId: String(formData.get('correctionId')) });
+  } catch (e) {
+    const msg =
+      e instanceof OvertimePlanWithdrawNotAllowedError ? e.message : 'This plan could not be withdrawn.';
+    redirect(`${PLAN_OT_PAGE}?error=${encodeURIComponent(msg)}`);
+  }
+  revalidatePath(PLAN_OT_PAGE);
+  redirect(`${PLAN_OT_PAGE}?toast=Overtime+plan+withdrawn`);
 }
 
 /** ADR-0069: submit a Travel Request (off-site work window). Same approvals inbox, same decide flow. */

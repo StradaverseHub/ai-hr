@@ -2402,6 +2402,13 @@
       "when": 1781862522000,
       "tag": "0422_payroll_policy_deduct_absent_days",
       "breakpoints": true
+    },
+    {
+      "idx": 424,
+      "version": "7",
+      "when": 1781862524000,
+      "tag": "0424_plan_ot",
+      "breakpoints": true
     }
   ]
 }
