@@ -59,9 +59,9 @@ file — indistinguishable from an undeployed release. The dry-run also permanen
 while the box's build writes `.next/types/`. The box's version is correct. Those two lines are noise;
 anything else is a real delta.
 
-### r174, r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
+### r175, r174, r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
 
-Two things outlive those rounds and are deliberately NOT archived with them:
+One thing outlives those rounds and is deliberately NOT archived with them:
 
 **NOT BUILT ON PURPOSE — Pay Items has no per-row Edit, and adding one naively DOUBLES PAY.**
 `setEmploymentPayComponent` closes the open row at the new `effectiveFrom` and inserts a fresh one, while
@@ -69,13 +69,7 @@ the kernel selects every row overlapping the period — so re-stating an item in
 leaves BOTH rows in the window. The table already renders every column, so a View would be furniture.
 **Safe editing needs a dating change, not a presentation change.**
 
-**TWO CORRECTIONS ARE OWED TO THE REPORTER,** on `18719ded` and `0386b95d`. r170's plans declined them on
-the claim that no tab on the employee profile has search, sorting or page numbers — true of `page.tsx`,
-but NOT of `components/salary-history-table.tsx`, which IS the Basic Salary section of the Payroll tab and
-has had all four, CSV export included, all along. Both are corrected on the board. **Measure the SECTION,
-not the page file.**
-
-### ⚠️ TWO STANDING WARNINGS — a script that must not be run, and a promise not yet kept
+### ⚠️ A SCRIPT THAT IS CORRECT AND MUST NOT BE RUN
 
 - **`scripts/seed-overtime-multipliers.ts` IS DEPLOYED, CORRECT, AND MUST NOT BE RUN** (`2da9937a`, seed
   step withdrawn). Its input is wrong: `OT1_5` holds `{"kind":"per_hour","rate":1.5}`, which
@@ -86,11 +80,6 @@ not the page file.**
   and one flat rate for everyone cannot express that. Asked back as **`b00f9e6e`** rather than guessed;
   if the answer is "follow each person's salary", the Formula Builder already expresses it
   (`basic / 26 / 8 * 2.0 * hours`) and no seed is involved.
-- **`b8aa3466` (Attendance) — partially built, on purpose.** Its plan promised removing the Company work
-  schedule and overtime-rate cards from Attendance Policy once backup-shift coverage hit zero. The builder
-  refused: that card is the tenant's ONLY editor for the statutory OT wage ceiling and the rest-day /
-  holiday multipliers. Everything else in the item shipped. The reporter was promised that removal, so
-  this needs a plan revision telling them why it did not happen — not silence.
 
 ### 6e9a126e RELEASE THREE — the one fact still live (full entry: history → r167)
 
@@ -114,36 +103,29 @@ The measurement behind it, and why **`scripts/seed-overtime-multipliers.ts` MUST
 BEFORE forming any opinion; this session burned a plan revision writing from the prose alone and the
 screenshot showed a different screen entirely.
 
-### Plans must carry a MOCKUP — shipped r165 (procedure: `scripts/mockup/README.md`; findings: history → r165)
+### Plans must carry a MOCKUP — shipped r165
 
-    pnpm mockup docs/mockups/<item>.html /tmp/<item>.png --width 1240
-    echo '{"id":…,"plan":…,"model":…,"mockupPaths":["/tmp/<item>.png"]}' | pnpm improve:push-plan
-
-**ATTACH AFTER PUSHING, never before** — `plan_revision` is stamped SERVER-SIDE, so a mockup attached
-first silently names the outgoing plan and the page's revision filter hides it. `pushPlanWithMockups()`
-enforces the order. Sources live in `docs/mockups/*.html`; a re-plan re-renders rather than redraws.
-
-**A MOCKUP IS A PROMISE, AND A PICTURE CANNOT HEDGE.** Draw only what will be built; keep uncertain parts
-in words. **Use the reporter's OWN data** — real company names, real figures measured from production.
-r170 drew a shared mockup on invented employees and the critic caught it; the half-fix (real names, fake
-amounts) was worse than either, because it looks authoritative and is wrong. Re-render from measured rows.
+**The full procedure and its rules live in `scripts/mockup/README.md`** — read it before drawing one; it
+is kept in step with `.claude/skills/feedback-plan`. The three that cost a round each, in brief: attach
+AFTER pushing (`plan_revision` is stamped server-side, and `pushPlanWithMockups()` enforces the order);
+a mockup is a PROMISE and a picture cannot hedge, so draw only what will be built and keep the uncertain
+parts in words; and use the reporter's OWN measured data — r170 drew invented employees, and the
+half-fix of real names with invented figures was worse, because it looks authoritative and is wrong.
 
 **NOTHING IS `building` OR `approved`-and-unrecorded.** `improve:pull` hides `building`, so a partially
 built item MUST be recorded here — nothing else surfaces it.
 
-### THE DELETE GUARD (r160) — the durable lesson is the count, not the fix (full entry: history → r160)
+### THE DELETE GUARD (r160) — the count was the lesson (full entry: history → r160)
 
-`deleteLeaveType` counted FIVE tables, the `inUse` predicate counted THREE, and the database carries
-TWELVE foreign keys to `leave_type`. Both the plans and this file said ELEVEN — the twelfth arrived with
-release two and no hand-written list caught up. **A list of referrers maintained by hand is wrong the
-moment anyone adds a table**, so there is no list: `core/leave-type-refs.ts` declares each referrer with a
-disposition (`history` refuses, `config` cascades, the self-reference is NULLED on the OTHER type), both
-the button predicate and the delete guard are GENERATED from it, and `test/leave-type-referrers.test.ts`
-fails if the declaration and the live foreign keys disagree either way.
+**A list of referrers maintained by hand is wrong the moment anyone adds a table.** `deleteLeaveType`
+counted five, its `inUse` predicate counted three, and the database carried TWELVE foreign keys — both
+the plans and this file said eleven. So there is no list: `core/leave-type-refs.ts` declares each
+referrer with a disposition (`history` refuses, `config` cascades), both the button predicate and the
+delete guard are GENERATED from it, and `test/leave-type-referrers.test.ts` fails if the declaration and
+the live foreign keys disagree either way. Verified still in place 2026-08-09.
 
-**`inUse` CHANGED MEANING:** it is "this type has HISTORY", not "anything points at it". A type carrying
-only policies and approval rules is correctly deletable. `core/read.ts` ~1770 documents the identical
-hazard for job grades.
+**`inUse` MEANS "this type has HISTORY"**, not "anything points at it" — a type carrying only policies
+and approval rules is correctly deletable. `core/read.ts` documents the identical hazard for job grades.
 
 ### ⚠️ DECISIONS TAKEN THAT THE REPORTER SHOULD SEE
 
@@ -193,13 +175,9 @@ Per-item measurements are in `docs/HANDOFF-HISTORY.md` under their rounds. What 
 
 - **`employment_type` lives on `assignment`, NOT `employment`** — a query against
   `employment.employment_type` errors.
-- **`expireAgedLeave` has forfeited 0 rows / 0 days, ever** (only RL has expiry configured), and
-  deleting `scripts/expire-aged-leave.ts` without first removing its `30 3 * * *` crontab line leaves
-  cron firing at a missing file.
 - **`EMERGENCY_LEAVE_CODE = 'EMERGENCY'` is still hardcoded** while production's type is `EL` — the
   constant is documented as "the code the PACK SEEDS" and the resolver has changed, so **re-verify
   against the tree before reusing the old diagnosis**; its old line numbers have moved.
-- **A company logo EXISTS** (`company_logo`) and r171's payslip PDF now prints it.
 - **"Processed By" on the payroll dashboard is viable** — 43 processed events, 43 with a resolvable
   actor name. A two-join + one-`<td>` change; shipped without it only because an agent could not
   verify from its sandbox.
