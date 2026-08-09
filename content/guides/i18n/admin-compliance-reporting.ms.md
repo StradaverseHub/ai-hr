@@ -94,6 +94,18 @@ Item disusun dengan yang lewat tempoh (overdue) dahulu. Apabila tiada yang belum
 
 > **Penting — ini bersifat nasihat sahaja.** Seperti yang dinyatakan oleh kad itu: *"File in MyTax; this surfaces what's outstanding."* Aplikasi ini **tidak pernah menghantar secara automatik** CP22/CP22A. Gunakan senarai kerja sebagai peringatan anda, kemudian failkan dalam MyTax sendiri. Belum ada "mark as filed" lagi, jadi sesuatu item hanya akan luput daripada tetingkap relevan selepas tarikh akhirnya.
 
+### Memuat turun borang CP22 itu sendiri
+
+Setiap baris **pengambilan baharu** dalam senarai kerja mempunyai butang **Download CP22**, dan baris **CP22 / CP22A notices** pada rak LHDN mempunyai **Download blank CP22** di sebelah **Open worklist**.
+
+Apa yang dimuat turun ialah halaman rasmi LHDN **CP22 (Pin. 1/2020)** tepat seperti yang diterbitkan — susun atur yang sama, perkataan yang sama, Bahasa Malaysia dan Bahasa Inggeris yang sama — dengan ruangan menaip ditambah di atasnya. **26 daripada 33 ruangan tiba dalam keadaan terisi** daripada rekod yang anda sudah simpan: nama syarikat, alamat, nombor E dan telefon; nama pekerja baharu, jawatan, tarikh mula, tempoh dijangka, alamat kediaman dan surat-menyurat, telefon, e-mel, nombor cukai pendapatan, nombor kad pengenalan, nombor pasport, jantina, warganegara, tarikh lahir dan taraf perkahwinan; nama dan nombor kad pengenalan pasangan jika ada dalam rekod; gaji pokok bulanan dan elaun tetap bulanan; serta tarikh hari ini pada blok tandatangan.
+
+**Tujuh ruangan dibiarkan kosong**, kerana maklumat itu tidak disimpan di mana-mana dalam sistem: alamat cawangan LHDN di bahagian atas, tandaan ejen cukai, nombor pasport terdahulu yang pernah didaftarkan dengan LHDNM, nombor cukai pendapatan pasangan, emolumen tidak tetap dan tarikh jumlahnya akan diketahui, majikan terdahulu di Malaysia, dan garis tandatangan itu sendiri.
+
+> **Setiap ruangan kekal boleh ditaip — termasuk 26 yang tiba terisi.** Fail ini tidak dileperkan, jadi anda boleh membetulkan apa-apa sebelum menandatangani dan melengkapkan baki tujuh ruangan itu dalam fail yang dimuat turun. Tiada apa-apa disimpan semula: ini membaca rekod yang anda sedia selenggara dan menyerahkan satu fail kepada anda.
+
+Apa-apa yang tiada dalam rekod akan keluar **kosong dan bukan salah** — tiada nombor cukai, nombor kad pengenalan atau butiran pasangan yang pernah diteka. Nama dan jawatan anda sendiri pada blok tandatangan akan terisi apabila anda mempunyai rekod pekerja sendiri dalam sistem, dan kekal kosong jika tidak. **CP22A belum diliputi**, jadi baris tersebut memaparkan sengkang dan bukan butang. Untuk pemfailan lewat bagi pengambilan yang lebih lama daripada tetingkap 60 hari yang diliputi senarai itu, gunakan salinan kosong.
+
 ## Ringkasan pembayaran bank (muat naik bank manual)
 
 **payment summary** ialah CSV neutral pekerja / bank / akaun / gaji bersih untuk dimuat naik ke bank anda. Ia dijana daripada kelompok gaji yang **telah diproses atau ditutup** (muat turunkannya daripada kelompok itu pada skrin **Payroll** utama, bukan daripada borang Reports). Pentadbir sahaja; eksport itu dilog sebagai peristiwa domain pada kelompok berkenaan.

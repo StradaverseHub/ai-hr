@@ -94,6 +94,18 @@ Items are sorted overdue first. When nothing is pending you'll see **"Nothing du
 
 > **Important — this is advisory only.** As the card states: *"File in MyTax; this surfaces what's outstanding."* The app **never auto-submits** CP22/CP22A. Use the worklist as your reminder, then file in MyTax yourself. There's no "mark as filed" yet, so an item simply ages out of the relevance window after its deadline.
 
+### Downloading the CP22 itself
+
+Each **new hire** row in the worklist carries a **Download CP22** button, and the **CP22 / CP22A notices** row on the LHDN shelf carries **Download blank CP22** beside **Open worklist**.
+
+What downloads is LHDN's official **CP22 (Pin. 1/2020)** page exactly as published — same layout, same wording, same Malay and English — with typing boxes added on top of it. **26 of the 33 boxes arrive filled** from records you already keep: your company name, address, E number and telephone; the joiner's name, job title, start date, expected duration, home and correspondence addresses, telephone, e-mail, income tax number, identity card number, passport number, gender, citizenship, date of birth and marital status; their spouse's name and identity card number where a spouse is on record; their monthly basic pay and fixed monthly allowances; and today's date in the signature block.
+
+**Seven boxes are left empty**, because the information is not held anywhere in the system: the LHDN branch address at the top, the tax-agent tick, any earlier passport registered with LHDNM, the spouse's income tax number, fluctuating payments and when they will be known, the previous employer in Malaysia, and the signature line itself.
+
+> **Every box stays typeable — including the 26 that arrive filled.** The file is not flattened, so you can correct anything before you sign and finish the remaining seven in the downloaded file. Nothing is saved back: this reads records you already maintain and hands you a file.
+
+Anything not on record comes through **blank rather than wrong** — no tax number, identity card number or spouse detail is ever guessed. Your own name and job title in the signature block fill in when you have your own staff record on the system, and stay blank when you do not. **CP22A is not covered yet**, so those rows show a dash instead of a button. For a late filing on a hire older than the 60-day window the list covers, use the blank copy.
+
 ## The bank payment summary (manual bank upload)
 
 The **payment summary** is a neutral employee / bank / account / net-pay CSV for uploading to your bank. It is generated from a **processed or closed** payroll batch (download it from the batch on the main **Payroll** screen, not from the Reports form). Admin-only; the export is logged as a domain event on the batch.

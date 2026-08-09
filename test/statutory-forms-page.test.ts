@@ -315,6 +315,71 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     expect(REPORTS_PAGE).toContain('/payroll/statutory-forms#worklist');
   });
 
+  /**
+   * d3a9383c — the reminder finally hands you the DOCUMENT.
+   *
+   * The row used to say "Open form" and open no form: the href scrolls to the worklist further down this
+   * same page. Both obvious fixes are wrong and are worth naming, because a later tidy-up will reach for
+   * one of them. Rewording `link_cp22` changes the row TITLE ("CP22 / CP22A notices"), and rewording
+   * `openForm` changes the action on EVERY row on the screen — the EA row above included. So the catalog
+   * entry names its own action key, and every other row falls back to the shared label.
+   */
+  it('says "Open worklist" on the CP22 row only, without touching any other row’s wording', () => {
+    const cp22 = MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22')!;
+    expect(cp22.actionLabelKey).toBe('openWorklist');
+    expect(en.payroll.statutoryForms.openWorklist).toBe('Open worklist');
+    // Every other shelf entry declares none, so it renders the shared label exactly as before.
+    for (const l of MY_STATUTORY_LINKS.filter((x) => x.id !== 'my.cp22')) {
+      expect(l.actionLabelKey, `${l.id} must keep the shared action label`).toBeUndefined();
+    }
+    expect(PAGE).toContain("t((l.actionLabelKey ?? 'openForm')");
+    // The row title is untouched — the fix that was NOT applied.
+    expect(en.payroll.statutoryForms.link_cp22).toBe('CP22 / CP22A notices');
+    expect(en.payroll.statutoryForms.openForm).toBe('Open form');
+  });
+
+  it('offers the blank fillable copy from the shelf row, driven by the catalog and not by this screen', () => {
+    const cp22 = MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22')!;
+    expect(cp22.secondaryHref).toBe('/payroll/cp22/blank');
+    expect(cp22.secondaryLabelKey).toBe('link_cp22_blank');
+    expect(en.payroll.statutoryForms.link_cp22_blank).toBe('Download blank CP22');
+    expect(PAGE).toContain('l.secondaryHref');
+    expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/blank/route.ts'))).toBe(true);
+    // No other row grows a second action by accident.
+    for (const l of MY_STATUTORY_LINKS.filter((x) => x.id !== 'my.cp22')) {
+      expect(l.secondaryHref, `${l.id} must have one action`).toBeUndefined();
+    }
+  });
+
+  /**
+   * The download hangs off the worklist ROWS, because the document is per employee. CP22A gets no button:
+   * the leaver notice is a later round, and a button that produced the joiner form for a leaver would be
+   * worse than the dash that sits there now.
+   */
+  it('puts a Download CP22 on every new-hire row, and nothing on the CP22A rows', () => {
+    expect(PAGE).toContain('/payroll/cp22/${w.employmentId}/pdf');
+    expect(PAGE).toContain("w.form === 'CP22'");
+    expect(PAGE).toContain("tCp22('download')");
+    expect(PAGE).toContain("tCp22('cp22aNotYet')");
+    expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/[employmentId]/pdf/route.ts'))).toBe(true);
+  });
+
+  /**
+   * The route is NOT under app/payroll/statutory-forms/, which already carries [formId]: a static `cp22`
+   * sibling there would shadow a form id of 'cp22'. Harmless today (ids are 'my.cp8d' shaped) and still not
+   * a trap worth planting.
+   */
+  it('keeps the CP22 routes out of the [formId] segment they would shadow', () => {
+    expect(fs.existsSync(path.join(ROOT, 'app/payroll/statutory-forms/cp22'))).toBe(false);
+    const route = read('app/payroll/cp22/[employmentId]/pdf/route.ts');
+    // Same guards as the export route beside it: Node runtime, admin + company scope, and a UUID gate.
+    expect(route).toContain("export const runtime = 'nodejs'");
+    expect(route).toContain('scopedAdmin');
+    expect(route).toContain('scopeIds.includes');
+    // A read-only render appends NO domain event — the same deliberate skip the EA and payslip routes make.
+    expect(code('app/payroll/cp22/[employmentId]/pdf/route.ts')).not.toContain('appendEvent');
+  });
+
   // A tour step whose target left the route it names points at nothing, silently.
   it('keep their guided-tour step pointing at the page they actually render on', () => {
     const tours = JSON.parse(read('lib/module-tours.json')) as {

@@ -94,6 +94,18 @@ Các mục được sắp xếp quá hạn (overdue) trước. Khi không có g�
 
 > **Quan trọng — đây chỉ mang tính tư vấn.** Như thẻ nêu rõ: *"File in MyTax; this surfaces what's outstanding."* Ứng dụng **không bao giờ tự động nộp** CP22/CP22A. Hãy dùng danh sách công việc làm lời nhắc của bạn, rồi tự nộp trong MyTax. Hiện chưa có "mark as filed", vì vậy một mục chỉ đơn giản hết hiệu lực khỏi cửa sổ liên quan sau hạn chót của nó.
 
+### Tải chính biểu mẫu CP22
+
+Mỗi dòng **tuyển mới** trong danh sách công việc đều có nút **Download CP22**, và dòng **CP22 / CP22A notices** trên kệ LHDN có **Download blank CP22** bên cạnh **Open worklist**.
+
+Thứ được tải về là trang **CP22 (Pin. 1/2020)** chính thức của LHDN đúng như đã công bố — cùng bố cục, cùng câu chữ, cùng tiếng Mã Lai và tiếng Anh — với các ô nhập liệu được thêm lên trên. **26 trong số 33 ô đã được điền sẵn** từ những hồ sơ bạn vốn đang lưu: tên công ty, địa chỉ, số E và điện thoại; tên nhân viên mới, chức danh, ngày bắt đầu, thời hạn dự kiến, địa chỉ nhà và địa chỉ liên lạc, điện thoại, e-mail, mã số thuế thu nhập, số căn cước, số hộ chiếu, giới tính, quốc tịch, ngày sinh và tình trạng hôn nhân; tên và số căn cước của vợ/chồng nếu có trong hồ sơ; lương cơ bản hằng tháng và các khoản phụ cấp cố định hằng tháng; và ngày hôm nay ở khối chữ ký.
+
+**Bảy ô được để trống**, vì thông tin đó không được lưu ở bất kỳ đâu trong hệ thống: địa chỉ chi nhánh LHDN ở đầu trang, ô đánh dấu đại lý thuế, số hộ chiếu cũ từng đăng ký với LHDNM, mã số thuế của vợ/chồng, các khoản thù lao không cố định và thời điểm biết được số tiền, người sử dụng lao động trước tại Malaysia, và chính dòng chữ ký.
+
+> **Mọi ô đều vẫn nhập được — kể cả 26 ô đã điền sẵn.** Tệp không bị làm phẳng, nên bạn có thể sửa bất kỳ nội dung nào trước khi ký và hoàn tất bảy ô còn lại ngay trong tệp đã tải. Không có gì được lưu ngược lại: nó chỉ đọc các hồ sơ bạn vốn duy trì và trao cho bạn một tệp.
+
+Những gì không có trong hồ sơ sẽ đến **trống chứ không sai** — không bao giờ đoán mã số thuế, số căn cước hay thông tin vợ/chồng. Tên và chức danh của chính bạn ở khối chữ ký sẽ được điền khi bạn có hồ sơ nhân viên của mình trong hệ thống, và để trống nếu không. **CP22A chưa được bao gồm**, nên các dòng đó hiển thị dấu gạch ngang thay vì nút bấm. Với trường hợp nộp muộn cho một nhân viên vào làm sớm hơn cửa sổ 60 ngày mà danh sách bao phủ, hãy dùng bản trống.
+
 ## Bản tóm tắt thanh toán ngân hàng (tải lên ngân hàng thủ công)
 
 **payment summary** là một CSV trung lập gồm nhân viên / ngân hàng / tài khoản / lương thực nhận để tải lên ngân hàng của bạn. Nó được tạo từ một lô bảng lương **đã xử lý hoặc đã đóng** (tải xuống từ lô đó trên màn hình **Payroll** chính, không phải từ biểu mẫu Reports). Chỉ dành cho quản trị viên; bản xuất được ghi nhật ký như một sự kiện miền trên lô.
