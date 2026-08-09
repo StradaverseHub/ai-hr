@@ -121,25 +121,53 @@ async function onLeave(employmentId: string, date: string) {
   return rows.length > 0;
 }
 
-/** Submit + single-step approve a 10–12 Aug ANNUAL leave; returns the (single) approved row id. */
+/**
+ * A FUTURE Mon-Wed / Mon-Fri window, derived rather than hardcoded.
+ *
+ * These fixtures used to say '2026-08-10'..'2026-08-12'. That was a future Monday when the file was
+ * written and became TODAY on 2026-08-10, at which point the cancellation gate
+ * (`if (d <= today) throw LeaveCancellationTooLateError`) started refusing the very dates the tests
+ * cancel — three failures, in a file nothing had touched since r79. This file's own header already
+ * says leave dates must be in the future relative to the real wall-clock day, and the R5 block below
+ * already derives them properly; these two helpers were the exception.
+ *
+ * Anchored on the MYT calendar day for the same reason that block gives: the gate compares against
+ * todayInKualaLumpur(), so a UTC anchor flips past/future between 00:00 and 08:00 MYT.
+ */
+function nextMondayIso(weeksAhead = 1): string {
+  const d = new Date(`${todayInKualaLumpur()}T12:00:00Z`);
+  // 1 = Monday. Always strictly ahead, never today.
+  do {
+    d.setUTCDate(d.getUTCDate() + 1);
+  } while (d.getUTCDay() !== 1);
+  d.setUTCDate(d.getUTCDate() + 7 * (weeksAhead - 1));
+  return d.toISOString().slice(0, 10);
+}
+const plusDaysIso = (iso: string, n: number): string => {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+/** Submit + single-step approve a Mon-Wed ANNUAL leave; returns the (single) approved row id. */
 async function approvedThreeDay() {
   const res = await requestLeave(subjectCtx, {
     employmentId: subject.employmentId,
     leaveTypeId: b.annualLeaveTypeId,
-    startDate: '2026-08-10',
-    endDate: '2026-08-12',
+    startDate: nextMondayIso(),
+    endDate: plusDaysIso(nextMondayIso(), 2),
   });
   await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
   return res.leaveRequestId;
 }
 
-/** Submit + single-step approve a 10–14 Aug (Mon–Fri, 5 working-day) ANNUAL leave; returns the row id. */
+/** Submit + single-step approve a Mon-Fri (5 working-day) ANNUAL leave; returns the row id. */
 async function approvedFiveDay() {
   const res = await requestLeave(subjectCtx, {
     employmentId: subject.employmentId,
     leaveTypeId: b.annualLeaveTypeId,
-    startDate: '2026-08-10',
-    endDate: '2026-08-14',
+    startDate: nextMondayIso(),
+    endDate: plusDaysIso(nextMondayIso(), 4),
   });
   await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
   return res.leaveRequestId;
