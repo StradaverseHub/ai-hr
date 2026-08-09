@@ -103,6 +103,23 @@ export type StatutoryFormLink = {
   cadence: 'monthly' | 'annual' | 'event';
   /** Target route. Placeholders: `{companyId}`, `{year}`. */
   href: string;
+  /**
+   * d3a9383c — the row's action wording, when `openForm` is a lie.
+   *
+   * Every shelf row renders the SHARED `openForm` label, and the CP22 row does not open a form: its href
+   * scrolls to the worklist further down the same page. The two obvious fixes are both wrong. Rewording
+   * `link_cp22` changes the row TITLE ("CP22 / CP22A notices"), and rewording `openForm` changes the action
+   * on every row on the screen. So the row names its own action key and everything else falls back.
+   * Optional ⇒ every existing row is byte-identical.
+   */
+  actionLabelKey?: string;
+  /**
+   * d3a9383c — a SECOND action on the row, when one exists. Today: the blank fillable CP22, for a late
+   * filing or a notice the operator would rather complete by hand. Both optional and read together; a row
+   * with neither renders exactly one action, as every row did before.
+   */
+  secondaryHref?: string;
+  secondaryLabelKey?: string;
 };
 
 export type ReportDef = {
@@ -947,6 +964,8 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
   },
   // CP22 / CP22A are event-driven (a hire, a cessation), not period-driven, so they are a worklist
   // rather than a form you pick a month for. It renders on the Statutory Forms landing page itself.
+  // d3a9383c: the row now says "Open worklist" (which is what the href does) and carries a second action —
+  // the blank fillable CP22. The per-joiner document hangs off the worklist ROWS, not off this shelf entry.
   {
     id: 'my.cp22',
     labelKey: 'link_cp22',
@@ -954,6 +973,9 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     body: 'lhdn',
     cadence: 'event',
     href: '/payroll/statutory-forms?companyId={companyId}#worklist',
+    actionLabelKey: 'openWorklist',
+    secondaryHref: '/payroll/cp22/blank',
+    secondaryLabelKey: 'link_cp22_blank',
   },
 ];
 

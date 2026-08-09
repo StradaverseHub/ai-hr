@@ -78,6 +78,9 @@ export default async function StatutoryFormsPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.statutoryForms');
+  // d3a9383c — the CP22 document's own labels. Its own namespace rather than more keys on this screen's:
+  // they describe a FORM, and CP22A will want the same set when it is built.
+  const tCp22 = await getTranslations('payroll.cp22');
   const locale = await getLocale();
   // Month NAMES, in the viewer's language, from Intl rather than twelve translated keys per locale —
   // the same `Intl.DateTimeFormat(locale, …)` the roster and scheduled-actions screens use. UTC so a
@@ -257,9 +260,24 @@ export default async function StatutoryFormsPage({
                       {t(`cadence_${l.cadence}` as 'cadence_monthly')} · {t(l.hintKey as 'link_ea_hint')}
                     </div>
                   </div>
-                  <Link href={linkHref(l.href)} className="text-primary hover:underline">
-                    {t('openForm')}
-                  </Link>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* d3a9383c — a second action, when the catalog entry declares one (today: the blank
+                        fillable CP22). Rendered from the SAME data as the action beside it. */}
+                    {l.secondaryHref && l.secondaryLabelKey && (
+                      <Link
+                        href={linkHref(l.secondaryHref)}
+                        title={tCp22('blankTitle')}
+                        className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent"
+                      >
+                        {t(l.secondaryLabelKey as 'link_cp22_blank')}
+                      </Link>
+                    )}
+                    {/* The row's OWN action wording when it declares one — the CP22 row scrolls to the
+                        worklist, it does not open a form. Every other row falls back to the shared label. */}
+                    <Link href={linkHref(l.href)} className="text-primary hover:underline">
+                      {t((l.actionLabelKey ?? 'openForm') as 'openForm')}
+                    </Link>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -288,6 +306,11 @@ export default async function StatutoryFormsPage({
                   <th className="px-4 py-2 font-medium">{t('colEventDate')}</th>
                   <th className="px-4 py-2 font-medium">{t('colNotifyBy')}</th>
                   <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                  {/* d3a9383c — the document itself. Headed for screen readers only: the mockup the
+                      reporter approved shows the buttons under no visible heading. */}
+                  <th className="px-4 py-2 font-medium">
+                    <span className="sr-only">{tCp22('columnHeading')}</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -304,6 +327,23 @@ export default async function StatutoryFormsPage({
                       >
                         {t(`status_${w.status}` as 'status_upcoming')}
                       </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {/* CP22 ONLY. The CP22A leaver notice is a later round and this row says so plainly
+                          rather than offering a button that would download the wrong form. */}
+                      {w.form === 'CP22' ? (
+                        <Link
+                          href={`/payroll/cp22/${w.employmentId}/pdf`}
+                          title={tCp22('downloadTitle')}
+                          className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-medium text-primary hover:bg-accent"
+                        >
+                          {tCp22('download')}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground" title={tCp22('cp22aNotYet')}>
+                          —
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

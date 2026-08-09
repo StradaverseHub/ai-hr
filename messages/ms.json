@@ -2866,6 +2866,7 @@
       "colEventDate": "Tarikh peristiwa",
       "colNotifyBy": "Maklum sebelum",
       "openForm": "Buka borang",
+      "openWorklist": "Buka senarai tugas",
       "status_overdue": "Lewat",
       "status_due_soon": "Akan tamat tempoh",
       "status_upcoming": "Akan datang",
@@ -2874,6 +2875,7 @@
       "link_ea_hint": "Penyata saraan tahunan setiap pekerja, dibuka daripada senarai pekerja tahun berkenaan. Ia mengikut bahasa aplikasi, jadi versi Bahasa Malaysia ialah penukaran bahasa dan bukan borang kedua.",
       "link_cp22": "Notis CP22 / CP22A",
       "link_cp22_hint": "Notis pekerja baharu dan pemberhentian kepada LHDN, berdasarkan tarikh pengambilan dan penamatan anda.",
+      "link_cp22_blank": "Muat turun CP22 kosong",
       "worklistTitle": "Senarai tugas pematuhan · CP22 / CP22A",
       "worklistDescription": "Notifikasi pekerja baharu (CP22) dan pemberhentian (CP22A) yang perlu difailkan kepada LHDN untuk {company}. Failkan dalam MyTax; ini menunjukkan apa yang masih tertunggak.",
       "worklistEmpty": "Tiada yang perlu difailkan.",
@@ -2965,6 +2967,13 @@
         "title": "Borang EA bagi {count} majikan",
         "body": "Pekerja ini dibayar oleh lebih daripada satu syarikat pada tahun ini, jadi setiap satu perlu mengeluarkan Borang EA yang berasingan. Pilih majikan untuk melihat dan mencetak borangnya."
       }
+    },
+    "cp22": {
+      "download": "Muat turun CP22",
+      "downloadTitle": "Borang rasmi CP22 (Pin. 1/2020) untuk pekerja baharu ini, diisi daripada rekod anda. Setiap ruangan kekal boleh diubah.",
+      "blankTitle": "Borang CP22 (Pin. 1/2020) kosong yang boleh diisi, untuk pemberitahuan yang anda mahu lengkapkan sendiri.",
+      "columnHeading": "Borang CP22",
+      "cp22aNotYet": "Pemberitahuan pekerja berhenti CP22A belum dibina."
     },
     "config": {
       "title": "Konfigurasi Berkanun",

@@ -16,9 +16,14 @@ import {
   attendancePolicy,
   clockingLocation,
   company,
+  companyStatutoryMy,
   compensation,
   department,
+  employeeDependent,
+  employeeStatutoryMy,
   employment,
+  employmentPayComponent,
+  payComponent,
   performanceGoal,
   performanceReview,
   person,
@@ -37,6 +42,9 @@ import type {
   StatutoryFormLink,
 } from '../localization/country-pack';
 import type { ReportData } from '../lib/report-export';
+// TYPE-ONLY, and that matters: lib/cp22-pdf.ts imports pdf-lib, and `import type` is erased at compile
+// time so this read pulls no PDF machinery into every caller of core/reporting.
+import type { Cp22PdfData } from '../lib/cp22-pdf';
 import { daysInMonth } from './payroll';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -430,6 +438,271 @@ export function complianceWorklist(
     }
     const rank = { overdue: 0, due_soon: 1, upcoming: 2 };
     return items.sort((a, b) => rank[a.status] - rank[b.status] || a.dueBy.localeCompare(b.dueBy));
+  });
+}
+
+// ── CP22 particulars (the new-hire notice itself, d3a9383c) ─────────────────
+/**
+ * Everything the CP22 (Pin. 1/2020) form can be filled from, for one employment.
+ *
+ * SITS BESIDE complianceWorklist DELIBERATELY: that read says WHO needs a CP22 and by when, this one
+ * produces the document for a row of it, and they are gated identically — RLS decides whether the
+ * employment is visible at all (a foreign id simply reads as absent, so this returns null rather than
+ * throwing or leaking existence), and the company's pack decides whether the form applies at all. CP22 is
+ * an LHDN form; a company no pack owns has no CP22 and gets null, exactly as the worklist gets [].
+ *
+ * NOTHING IS INVENTED. Every field is nullable end to end and an absent record travels as null all the way
+ * to an EMPTY, still-editable box on the page (lib/cp22-pdf.ts documents the seven that can never be
+ * filled). In particular: employeeDependent.companyName / employerAddress are the SPOUSE'S employer and are
+ * NOT the form's "previous employer in Malaysia", so they are not read here at all.
+ *
+ * NO DOMAIN EVENT. Rendering a form is a read; downloading it is not filing. Same deliberate skip the EA
+ * and payslip PDF routes make.
+ */
+export type Cp22Particulars = Cp22PdfData & {
+  /** The employing company — the route intersects it with the caller's active company scope. */
+  companyId: string;
+};
+
+/** The un-itemised `compensation.monthly_allowance` lump, labelled the way the artwork labels things. */
+export const CP22_FIXED_ALLOWANCE_LABEL = 'Elaun tetap bulanan / Fixed monthly allowance';
+
+const asMoney = (v: unknown): number => Number(v ?? 0);
+
+/** Address parts → the lines an address block prints, blanks dropped. */
+function addressLines(p: {
+  line1?: string | null;
+  line2?: string | null;
+  line3?: string | null;
+  postcode?: string | null;
+  city?: string | null;
+  state?: string | null;
+}): string[] {
+  const tail = [[p.postcode, p.city].filter(Boolean).join(' '), p.state].filter(Boolean).join(', ');
+  return [p.line1, p.line2, p.line3, tail].map((s) => (s ?? '').trim()).filter(Boolean);
+}
+
+export function cp22Particulars(
+  ctx: SessionContext,
+  p: { employmentId: string; today?: string },
+): Promise<Cp22Particulars | null> {
+  const today = p.today ?? todayInKualaLumpur();
+  return withTenant(ctx, async (tx) => {
+    const [base] = await tx
+      .select({
+        personId: employment.personId,
+        companyId: employment.companyId,
+        hiredOn: employment.hiredOn,
+        contractStartDate: employment.contractStartDate,
+        contractEndDate: employment.contractEndDate,
+        country: company.country,
+        companyName: company.legalName,
+        companyLine1: company.addressLine1,
+        companyLine2: company.addressLine2,
+        companyLine3: company.addressLine3,
+        companyPostcode: company.postcode,
+        companyCity: company.city,
+        companyState: company.state,
+        companyPhone: company.phone,
+        fullName: person.fullName,
+        dateOfBirth: person.dateOfBirth,
+        gender: person.gender,
+        maritalStatus: person.maritalStatus,
+        nationality: person.nationality,
+        primaryEmail: person.primaryEmail,
+        personalEmail: person.personalEmail,
+        phone: person.phone,
+        permLine1: person.permanentAddressLine1,
+        permLine2: person.permanentAddressLine2,
+        permLine3: person.permanentAddressLine3,
+        permPostcode: person.permanentPostcode,
+        permCity: person.permanentCity,
+        permState: person.permanentState,
+        corrLine1: person.correspondenceAddressLine1,
+        corrLine2: person.correspondenceAddressLine2,
+        corrLine3: person.correspondenceAddressLine3,
+        corrPostcode: person.correspondencePostcode,
+        corrCity: person.correspondenceCity,
+        corrState: person.correspondenceState,
+      })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    // RLS-gated: an employment the caller may not see is simply not there. Null → the route's 404.
+    if (!base) return null;
+    if (!packFor(base.country)) return null;
+
+    const [statutory] = await tx
+      .select({ eNumber: companyStatutoryMy.lhdnEmployerNo })
+      .from(companyStatutoryMy)
+      .where(eq(companyStatutoryMy.companyId, base.companyId))
+      .limit(1);
+
+    const [ident] = await tx
+      .select({
+        taxNumber: employeeStatutoryMy.taxNumber,
+        icNumber: employeeStatutoryMy.icNumber,
+        passportNumber: employeeStatutoryMy.passportNumber,
+      })
+      .from(employeeStatutoryMy)
+      .where(eq(employeeStatutoryMy.personId, base.personId))
+      .limit(1);
+
+    // THE TRAP: employmentType lives on ASSIGNMENT, not on employment. A query against
+    // employment.employmentType does not compile, and the reason it is tempting is that hiredOn and the
+    // contract dates DO live on employment.
+    const [current] = await tx
+      .select({ title: position.title, employmentType: assignment.employmentType })
+      .from(assignment)
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .where(
+        and(
+          eq(assignment.employmentId, p.employmentId),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .limit(1);
+
+    const [spouse] = await tx
+      .select({ fullName: employeeDependent.fullName, icOrPassport: employeeDependent.icOrPassport })
+      .from(employeeDependent)
+      .where(
+        and(
+          eq(employeeDependent.personId, base.personId),
+          eq(employeeDependent.relationship, 'spouse'),
+          isNull(employeeDependent.archivedAt),
+        ),
+      )
+      .orderBy(employeeDependent.createdAt)
+      .limit(1);
+
+    // The salary IN FORCE ON THE COMMENCEMENT DATE — a CP22 states the pay the employee starts on, not
+    // today's. When no row covers that date (a salary keyed after the hire), the EARLIEST recorded row is
+    // used: still a real record of what they were hired on, never a figure this code made up.
+    const comps = await tx
+      .select({
+        basicSalary: compensation.basicSalary,
+        monthlyAllowance: compensation.monthlyAllowance,
+        validFrom: compensation.validFrom,
+      })
+      .from(compensation)
+      .where(and(eq(compensation.employmentId, p.employmentId), isNull(compensation.supersededAt)))
+      .orderBy(compensation.validFrom);
+    const comp = [...comps].reverse().find((c) => c.validFrom <= base.hiredOn) ?? comps[0] ?? null;
+
+    // Box (b): the named recurring earnings in force on the commencement date. 'allowance' is the kind the
+    // catalog uses for both cash allowances and allowances-in-kind, which is exactly what the box asks for.
+    const recurring = await tx
+      .select({ label: payComponent.label, name: payComponent.name, amount: employmentPayComponent.amount })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .where(
+        and(
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          eq(payComponent.kind, 'allowance'),
+          isNull(employmentPayComponent.supersededAt),
+          lte(employmentPayComponent.validFrom, base.hiredOn),
+          or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, base.hiredOn)),
+        ),
+      )
+      .orderBy(payComponent.name);
+
+    // The signature block's name and designation, ONLY when the session resolves to a person who holds a
+    // current assignment. SessionContext.personId is documented null for an admin not tied to an employee,
+    // and there is no honest fallback — the company name is NOT a person's name. Blank is the right answer.
+    let signatory: { name: string | null; designation: string | null } = { name: null, designation: null };
+    if (ctx.personId) {
+      const [me] = await tx
+        .select({ name: person.fullName, title: position.title })
+        .from(person)
+        .innerJoin(employment, eq(employment.personId, person.id))
+        .innerJoin(
+          assignment,
+          and(
+            eq(assignment.employmentId, employment.id),
+            isNull(assignment.validTo),
+            isNull(assignment.supersededAt),
+          ),
+        )
+        .leftJoin(position, eq(position.id, assignment.positionId))
+        .where(eq(person.id, ctx.personId))
+        .limit(1);
+      if (me) signatory = { name: me.name, designation: me.title ?? null };
+    }
+
+    const allowances: Cp22Particulars['pay']['allowances'] = [];
+    if (comp && asMoney(comp.monthlyAllowance) > 0) {
+      allowances.push({ label: CP22_FIXED_ALLOWANCE_LABEL, amount: asMoney(comp.monthlyAllowance) });
+    }
+    for (const r of recurring) allowances.push({ label: r.label || r.name, amount: asMoney(r.amount) });
+
+    // Derived, not stored: a contract or internship states its dates, everything else is Permanent. Left
+    // editable in the downloaded file either way — this is the one pre-filled box that is a judgement.
+    const dated = current?.employmentType === 'contract' || current?.employmentType === 'intern';
+    const from = base.contractStartDate ?? base.hiredOn;
+    const expectedDuration = dated
+      ? base.contractEndDate
+        ? `${from} - ${base.contractEndDate}`
+        : 'Contract'
+      : 'Permanent';
+
+    return {
+      companyId: base.companyId,
+      employer: {
+        name: base.companyName,
+        addressLines: addressLines({
+          line1: base.companyLine1,
+          line2: base.companyLine2,
+          line3: base.companyLine3,
+          postcode: base.companyPostcode,
+          city: base.companyCity,
+          state: base.companyState,
+        }),
+        eNumber: statutory?.eNumber ?? null,
+        phone: base.companyPhone ?? null,
+      },
+      employee: {
+        fullName: base.fullName,
+        natureOfEmployment: current?.title ?? null,
+        commencementDate: base.hiredOn,
+        expectedDuration,
+        residentialAddressLines: addressLines({
+          line1: base.permLine1,
+          line2: base.permLine2,
+          line3: base.permLine3,
+          postcode: base.permPostcode,
+          city: base.permCity,
+          state: base.permState,
+        }),
+        correspondenceAddressLines: addressLines({
+          line1: base.corrLine1,
+          line2: base.corrLine2,
+          line3: base.corrLine3,
+          postcode: base.corrPostcode,
+          city: base.corrCity,
+          state: base.corrState,
+        }),
+        phone: base.phone ?? null,
+        email: base.personalEmail || base.primaryEmail || null,
+        incomeTaxNo: ident?.taxNumber ?? null,
+        icNo: ident?.icNumber ?? null,
+        passportNo: ident?.passportNumber ?? null,
+        gender: base.gender ?? null,
+        citizen: base.nationality ?? null,
+        dateOfBirth: base.dateOfBirth ?? null,
+        maritalStatus: base.maritalStatus ?? null,
+      },
+      spouse: spouse ? { fullName: spouse.fullName, icOrPassport: spouse.icOrPassport ?? null } : null,
+      pay: {
+        monthlyFixedRemuneration: comp ? asMoney(comp.basicSalary) : null,
+        allowances,
+      },
+      signatory,
+      today,
+    };
   });
 }
 
