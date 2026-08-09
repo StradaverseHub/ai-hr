@@ -89,9 +89,22 @@ export function payslipAbsenceLines(statutory: unknown, otherDeductions: unknown
     // Pre-feature (or a slip with nothing to name): render exactly as before.
     return { unpaidLeave: null, absent: null, residual: other, showResidual: other > 0, any: false };
   }
-  // Clamped at 0 rather than allowed negative: the stamps are always a subset of `otherDeductions` by
-  // construction, so a negative residual could only come from a corrupted blob, and printing a negative
-  // "Other deductions" would be worse than printing none.
+  // THE STAMPS ARE NOT ALWAYS A SUBSET OF otherDeductions, which an earlier version of this comment
+  // asserted. core/payroll.ts builds otherDeductions as slipUnpaid + extras PLUS
+  // (carryForward.applied - carryForward.added), and a DEFERRED shortfall SUBTRACTS — while the kernel
+  // stamps the full absent/unpaid amounts regardless. So under a negativeNet:'carry_forward' policy the
+  // named amounts can exceed the column they are being carved out of.
+  // MEASURED: basic RM6,000, 21 scheduled days all absent, custom divisor 10 -> statutory.absent
+  // {days:21, amount:12600} against other_deductions 5,999.65. Clamping the residual to 0 printed
+  // "Absent 12,600.00" inside a deductions block totalling 6,000.00 — a payslip that does not add up.
+  //
+  // So: REFUSE TO CARVE OUT MORE THAN WE WERE GIVEN. When the named lines exceed the column, fall back
+  // to the pre-feature single lumped row, which is always internally consistent. Losing the breakdown
+  // on a deferred-shortfall slip is strictly better than printing a document that contradicts itself.
+  const named = r2((unpaidLeave?.amount ?? 0) + (absent?.amount ?? 0));
+  if (named > r2(other) + 0.005) {
+    return { unpaidLeave: null, absent: null, residual: other, showResidual: other > 0, any: false };
+  }
   const residual = Math.max(0, r2(other - (unpaidLeave?.amount ?? 0) - (absent?.amount ?? 0)));
   return { unpaidLeave, absent, residual, showResidual: residual > 0, any: true };
 }
