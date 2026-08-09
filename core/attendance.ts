@@ -3168,3 +3168,105 @@ export async function importAttendancePunches(
     };
   });
 }
+
+// ─────────────── 1c1b321a · Recompute Attendance — the range writer's per-day derivation ───────────────
+//
+// THE THIRD RE-DERIVE PATH. A day's figures are decided once, at check-out, and then kept. Two paths
+// already re-decide them wholesale against a FRESH schedule and write the result: approving a clock-time
+// correction (decideAttendanceCorrection — resolves a fresh sched and writes sched.dayType) and
+// re-uploading a clocking file (importAttendancePunches — same). Recompute is the third, and it follows
+// those two rather than inventing a fourth behaviour: same scheduleFor, same deriveAttendance, same
+// stage1Columns, same "day type is re-decided from the calendar and the roster".
+//
+// The first-clock-in DAY-TYPE FREEZE lives only on checkInTx/checkOutTx and is deliberately not honoured
+// here, exactly as it is not honoured by the two paths above.
+//
+// WHAT THIS FUNCTION DOES NOT DO: it never looks at attendance_punch and it never returns a check_in_at /
+// check_out_at. Recompute rewrites CALCULATED figures only — the reporter's hard requirement — so the
+// stored clock times are inputs to this function and are never among its outputs. That is also what keeps
+// this path clear of recomputeDayFromPunches' first-in/last-out rewrite.
+//
+// Owned by feedback item 1c1b321a. core/attendance-recompute.ts is its only caller.
+
+/** The shift the recompute measured a day against, for the preview's Shift column. Keyed off the SOURCE
+ *  scheduleFor itself reported, so it cannot name a shift the engine did not use: only the two shift
+ *  branches have a shift at all, and the rest/policy branches honestly have none. */
+async function recomputeShiftCode(
+  tx: Tx,
+  employmentId: string,
+  date: string,
+  source: ResolvedSchedule['source'],
+): Promise<string | null> {
+  if (source === 'roster-shift') {
+    const [row] = await tx
+      .select({ code: shift.code })
+      .from(rosterAssignment)
+      .innerJoin(shift, eq(shift.id, rosterAssignment.shiftId))
+      .where(and(eq(rosterAssignment.employmentId, employmentId), eq(rosterAssignment.shiftDate, date)))
+      .limit(1);
+    return row?.code ?? null;
+  }
+  if (source === 'default-shift') {
+    // Same ladder scheduleFor walked one call earlier: the dated arrangement in force on `date`
+    // (18504ca6), else employment.default_shift_id.
+    const arrangement = pickArrangementOn(await arrangementsForEmploymentTx(tx, employmentId), date);
+    const [row] = arrangement
+      ? await tx.select({ code: shift.code }).from(shift).where(eq(shift.id, arrangement.shiftId)).limit(1)
+      : await tx
+          .select({ code: shift.code })
+          .from(employment)
+          .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
+          .where(eq(employment.id, employmentId))
+          .limit(1);
+    return row?.code ?? null;
+  }
+  return null;
+}
+
+/**
+ * Re-derive ONE stored day against the schedule that applies to it TODAY, and hand back both the figures
+ * and the exact column bag to write. Writes nothing itself.
+ *
+ * `approvedOtMinutes` is the ADR-0069 guard: when a human has approved an OT figure for this day, that
+ * number is kept and only its per-rate split is recut (exactly as decideAttendanceCorrection does), so a
+ * recompute can refresh the measured figures beside it without ever overwriting the approved total.
+ *
+ * Idempotent by construction: the result is a pure function of (stored punch times, current schedule,
+ * date), so running it twice over the same range produces the same bag the second time.
+ */
+export async function recomputeDayFigures(
+  tx: Tx,
+  p: {
+    employmentId: string;
+    date: string;
+    checkInAt: string;
+    checkOutAt: string | null;
+    approvedOtMinutes?: number | null;
+  },
+) {
+  const sched = await scheduleFor(tx, p.employmentId, p.date);
+  const d = deriveAttendance(sched, p.checkInAt, p.checkOutAt, p.date);
+  const keepOt = p.approvedOtMinutes != null;
+  const otMinutes = keepOt ? p.approvedOtMinutes! : d.otMinutes;
+  // When the approved figure is kept, the buckets are recut FROM IT so they still sum to ot_minutes —
+  // the same reason decideAttendanceCorrection recuts them. The measured lateness / early-out /
+  // short-hours are unaffected by the override and come from `d`.
+  const stage1 = keepOt
+    ? { ...stage1Columns(d), ...otSplitColumns(splitOtMinutes(otMinutes!, sched.dayType, sched.rule)) }
+    : stage1Columns(d);
+  return {
+    dayType: sched.dayType,
+    source: sched.source,
+    shiftCode: await recomputeShiftCode(tx, p.employmentId, p.date, sched.source),
+    otPreserved: keepOt,
+    /** Exactly the columns a recompute may write: status, day type, the two totals and every stage-1
+     *  figure. `check_in_at` / `check_out_at` are absent by construction — see the header above. */
+    columns: {
+      status: d.status,
+      dayType: sched.dayType,
+      workedMinutes: d.workedMinutes,
+      otMinutes,
+      ...stage1,
+    },
+  };
+}
