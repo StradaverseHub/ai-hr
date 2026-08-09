@@ -12,7 +12,12 @@
  * test below that says so in those terms so a later "simplification" into one field fails here.
  */
 import { describe, expect, it } from 'vitest';
-import { CP22_FIELDS, CP22_MEDIA_BOX, CP22_UNFILLABLE_BOXES } from '../lib/cp22-fields';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
+import { CP22_DEFAULT_FONT_SIZE, CP22_FIELDS, CP22_MEDIA_BOX, CP22_UNFILLABLE_BOXES } from '../lib/cp22-fields';
+import { cp22FittingLineCount } from '../lib/cp22-pdf';
+
+const MULTILINE = CP22_FIELDS.filter((f) => f.type === 'multiline');
+const helvetica = async () => (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
 
 /** The dash PRINTED between the two telephone cell groups, from the template's own content stream. */
 const PRINTED_DASH_X = 100.94;
@@ -63,6 +68,52 @@ describe('CP22 field map — the 33 entry areas', () => {
       }
     }
     expect(clashes, clashes.join(', ')).toEqual([]);
+  });
+
+  /**
+   * THE HEADROOM UNDER A MULTI-ROW BLOCK — a verified silent-data-loss bug turned into an assertion.
+   *
+   * pdf-lib lays a multiline field out downwards from the top of the widget rect and clips the appearance
+   * to that rect inset by 1pt. Size the rect "top of row 1 → bottom of row R" and TWO things happen with
+   * no error anywhere: the R-th line is sliced at the baseline (every descender on it gone) and an R+1-th
+   * line is never drawn at all. Both shipped past tsc, the suite, `next build` and a 200 — a four-line
+   * address is the shape LHDN rules this box for, and one of the two PDF renderers even hid it by
+   * regenerating the appearance itself.
+   *
+   * So `rows` and the rect are pinned AGAINST EACH OTHER here, for every block including the ones only the
+   * operator types into (1 and 29), which no rendered fixture can reach. Fewer whole lines than `rows`
+   * means the block loses a line; more means the rect has grown into the block below.
+   */
+  it('sizes every multi-row block to hold exactly its declared rows, descenders and all', async () => {
+    const font = await helvetica();
+    expect(MULTILINE.length).toBe(6);
+    for (const f of MULTILINE) {
+      expect(f.rows, `${f.name} (box ${f.box}) must declare how many rows the printed block has`)
+        .toBeGreaterThan(0);
+      expect(
+        cp22FittingLineCount(f.rect, f.fontSize ?? CP22_DEFAULT_FONT_SIZE, font),
+        `${f.name} (box ${f.box}) rect holds a different number of WHOLE lines than the ${f.rows} rows it ` +
+          `declares — too few and the last row is sliced or dropped, too many and it reaches into the ` +
+          `block below. Extend the rect DOWNWARDS (see lib/cp22-fields.ts), never upwards.`,
+      ).toBe(f.rows);
+    }
+  });
+
+  /**
+   * …and the top edge is what fixes where EVERY baseline lands (baseline_n = top − 1 − n × pitch), so the
+   * headroom above had to be added below the last row. These are the edges the row alignment was derived
+   * from; a change here moves the text off LHDN's printed rules.
+   */
+  it('hangs every multi-row block from its original top edge', () => {
+    const tops = Object.fromEntries(MULTILINE.map((f) => [f.name, +(f.rect.y + f.rect.height).toFixed(2)]));
+    expect(tops).toEqual({
+      lhdnBranchAddress: 716.7,
+      employerNameAddress: 731.86,
+      residentialAddress: 508.25,
+      correspondenceAddress: 441.74,
+      monthlyAllowances: 216.07,
+      previousEmployerInMalaysia: 116.73,
+    });
   });
 
   /**

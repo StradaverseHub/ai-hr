@@ -22,12 +22,24 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { PDFBool, PDFDict, PDFDocument, PDFName, PDFNumber } from 'pdf-lib';
-import { CP22_FIELDS } from '../lib/cp22-fields';
+import {
+  PDFBool,
+  PDFDict,
+  PDFDocument,
+  PDFName,
+  PDFNumber,
+  PDFRawStream,
+  PDFRef,
+  StandardFonts,
+  decodePDFRawStream,
+} from 'pdf-lib';
+import { CP22_DEFAULT_FONT_SIZE, CP22_FIELDS, type Cp22Field } from '../lib/cp22-fields';
 import {
   cp22FieldValues,
+  cp22FittingLineCount,
   ddmmyyyy,
   dmy,
+  fitMultilineValue,
   renderCp22Pdf,
   splitMyPhone,
   taxNoComb,
@@ -79,6 +91,44 @@ function drawnText(bytes: Uint8Array): string {
         : m[2].replace(/\\([()\\])/g, '$1'),
     )
     .join('\n');
+}
+
+/**
+ * The lines pdf-lib actually DREW into ONE field's appearance, and the baseline it drew each of them at.
+ *
+ * `drawnText` above answers "is this string on the page anywhere". That was not enough: a line can be on
+ * the page and still be sliced in half by the widget's own clip, and a line can be missing while every
+ * OTHER line of the same address is present, so a page full of correct-looking text hides it. This reads
+ * the widget's /AP /N stream — `… x y Tm <hex> Tj` per line, in widget-local coordinates, which is exactly
+ * the space pdf-lib's clip (`padding` 1pt in from the rect) is expressed in.
+ */
+function appearanceLines(doc: PDFDocument, name: string) {
+  const [widget] = doc.getForm().getTextField(name).acroField.getWidgets();
+  const ap = widget.getNormalAppearance();
+  const stream = ap instanceof PDFRef ? doc.context.lookup(ap) : ap;
+  const body = Buffer.from(decodePDFRawStream(stream as PDFRawStream).decode()).toString('latin1');
+  const size = Number(/\/[^\s/]+\s+([\d.]+)\s+Tf/.exec(body)?.[1] ?? 0);
+  const lines = [...body.matchAll(/([\d.-]+)\s+([\d.-]+)\s+Tm\s*<([0-9A-Fa-f\s]*)>\s*Tj/g)].map((m) => ({
+    y: Number(m[2]),
+    text: Buffer.from(m[3].replace(/\s+/g, ''), 'hex').toString('latin1'),
+  }));
+  return { size, lines };
+}
+
+/**
+ * Assert a block's drawn lines are all there AND all whole: pdf-lib clips the appearance to the rect inset
+ * by 1pt, so a baseline less than one descender above that floor is a line sliced at the baseline (which
+ * is what "the box looks full and correct" looked like), and a baseline below it is a line never drawn.
+ */
+function expectInsideTheClip(f: Cp22Field, drawn: { size: number; lines: { y: number; text: string }[] }) {
+  const ascender = drawn.size * 0.718; // Helvetica AFM, /1000
+  const descender = drawn.size * 0.207;
+  for (const line of drawn.lines) {
+    expect(line.y - descender, `${f.name}: "${line.text}" is sliced at the baseline by the widget clip`)
+      .toBeGreaterThanOrEqual(1);
+    expect(line.y + ascender, `${f.name}: "${line.text}" is cut off at the top of the widget`)
+      .toBeLessThanOrEqual(f.rect.height - 1);
+  }
 }
 
 const data: Cp22PdfData = {
@@ -307,6 +357,173 @@ describe('CP22 renderer — the produced file', () => {
       expect(flags & 0b10, 'no widget may be Hidden').toBe(0);
       expect(w.lookupMaybe(PDFName.of('AP'), PDFDict), 'every widget needs an appearance').toBeDefined();
     }
+  });
+});
+
+/**
+ * THE MULTI-ROW BLOCKS — a line of a legal declaration going missing with nothing to show for it.
+ *
+ * Two shapes, both ordinary in Malaysia, both silently wrong before this:
+ *   - a FOUR-entry address (line1 / line2 / line3 / "postcode city, state"), which is the shape LHDN rules
+ *     the box for: drawn, but sliced at the baseline with every descender gone;
+ *   - a FIVE-entry address, and a payroll with four recurring allowances against a three-row box: the last
+ *     line laid out under the widget rect and NEVER DRAWN. "Selangor Darul Ehsan" absent from an address;
+ *     "Meal - RM 75.00" absent from the remuneration declared to LHDN, understating it by RM 900 a year.
+ * Nothing failed. Every fixture in this file used three address lines and one or two allowances — the
+ * shapes that happen to fit — so the suite was green, `next build` was green and the download was a 200.
+ * TWO PDF RENDERERS DISAGREED about it: Poppler honours NeedAppearances and re-lays the text out itself,
+ * so it drew the sliced line whole, while MuPDF and Preview drew the embedded stream and showed the
+ * damage. That disagreement is the tool that found this — so these assertions read the EMBEDDED stream's
+ * own geometry, and the fix goes into /DA and /V, which is what a regenerating viewer reads too.
+ *
+ * Everything below is parameterised on the block's own `rows`, so a block cannot be added without its full
+ * height being covered. The two blocks nothing pre-fills (1 and 29) have no fixture that can reach them;
+ * they are covered by the rect-vs-`rows` assertion in test/cp22-fields.test.ts and by the fit tests here.
+ */
+describe('CP22 multi-row blocks — every line reaches the page', () => {
+  const MULTILINE = CP22_FIELDS.filter((f) => f.type === 'multiline');
+  const helvetica = async () => (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+
+  /** Drives each PRE-FILLED block from the data, so the render checks can be parameterised over the map. */
+  const INPUT: Record<string, (lines: string[]) => Cp22PdfData> = {
+    employerNameAddress: (l) => ({ ...data, employer: { ...data.employer, name: l[0], addressLines: l.slice(1) } }),
+    residentialAddress: (l) => ({ ...data, employee: { ...data.employee, residentialAddressLines: l } }),
+    correspondenceAddress: (l) => ({ ...data, employee: { ...data.employee, correspondenceAddressLines: l } }),
+    monthlyAllowances: (l) => ({
+      ...data,
+      pay: { ...data.pay, allowances: l.map((label, i) => ({ label, amount: 100 + i })) },
+    }),
+  };
+
+  it('drives every pre-fillable multi-row block from a fixture — a new one must be added here', () => {
+    expect(Object.keys(INPUT).sort()).toEqual(
+      MULTILINE.filter((f) => f.prefilled).map((f) => f.name).sort(),
+    );
+  });
+
+  for (const f of MULTILINE.filter((x) => x.prefilled)) {
+    const rows = f.rows!;
+    // A block that is FULL, and a block given one and two lines more than it has rows. All three must come
+    // out complete: the value is folded into the last row or set smaller, never trimmed to what fits.
+    for (const extra of [0, 1, 2]) {
+      it(`${f.name} (box ${f.box}) draws all ${rows + extra} lines of a ${rows}-row block`, async () => {
+        const input = Array.from({ length: rows + extra }, (_, i) => `Baris ${i + 1} Taman Cempaka`);
+        const bytes = await renderCp22Pdf(template(), INPUT[f.name](input));
+        const drawn = appearanceLines(await reload(bytes), f.name);
+
+        expect(drawn.lines.length, `${f.name} must not spill past its ${rows} printed rows`)
+          .toBeLessThanOrEqual(rows);
+        expectInsideTheClip(f, drawn);
+        // …and NOTHING was dropped to achieve that. Every line of the input is still on the page.
+        const onThePage = drawn.lines.map((l) => l.text).join('\n');
+        for (const line of input) {
+          expect(onThePage, `${f.name}: "${line}" never reached the page`).toContain(line);
+        }
+      });
+    }
+  }
+
+  /** The verifier's own reproduction, in the words that went missing. */
+  it('keeps "Selangor" whole on the fourth row of a four-line address — it was sliced at the baseline', async () => {
+    const lines = ['No 8, Jalan Setia 3/4', 'Bandar Setia Alam', '40170 Shah Alam', 'Selangor'];
+    const doc = await reload(await renderCp22Pdf(template(), INPUT.residentialAddress(lines)));
+    const drawn = appearanceLines(doc, 'residentialAddress');
+    expect(drawn.lines.map((l) => l.text)).toEqual(lines);
+    expectInsideTheClip(CP22_FIELDS.find((f) => f.name === 'residentialAddress')!, drawn);
+    // Unchanged from the shape that always worked: still the block's own size, still one line per row.
+    expect(drawn.size).toBe(11.35);
+  });
+
+  it('keeps "Selangor Darul Ehsan" on a five-line address — it was absent from the page', async () => {
+    const lines = [
+      'No 12A, Jalan Bukit Bintang Utama Seksyen 14',
+      'Petaling Jaya',
+      'Taman Sri Muda',
+      '40170 Shah Alam',
+      'Selangor Darul Ehsan',
+    ];
+    const bytes = await renderCp22Pdf(template(), INPUT.residentialAddress(lines));
+    for (const line of lines) expect(drawnText(bytes)).toContain(line);
+    // Folded into the last ruled row rather than shrunk: the block still reads one address line per row.
+    const drawn = appearanceLines(await reload(bytes), 'residentialAddress');
+    expect(drawn.lines.map((l) => l.text)).toEqual([
+      'No 12A, Jalan Bukit Bintang Utama Seksyen 14',
+      'Petaling Jaya',
+      'Taman Sri Muda',
+      '40170 Shah Alam, Selangor Darul Ehsan',
+    ]);
+  });
+
+  it('declares the fourth allowance to LHDN — "Meal - RM 75.00" was absent, understating box (b)', async () => {
+    const bytes = await renderCp22Pdf(template(), {
+      ...data,
+      pay: {
+        monthlyFixedRemuneration: 6500,
+        allowances: [
+          { label: 'Fixed monthly allowance', amount: 100 },
+          { label: 'Travel', amount: 200 },
+          { label: 'Phone', amount: 50 },
+          { label: 'Meal', amount: 75 },
+        ],
+      },
+    });
+    const drawn = appearanceLines(await reload(bytes), 'monthlyAllowances');
+    expect(drawn.lines.map((l) => l.text)).toEqual([
+      'Fixed monthly allowance - RM 100.00',
+      'Travel - RM 200.00',
+      'Phone - RM 50.00; Meal - RM 75.00',
+    ]);
+    expectInsideTheClip(CP22_FIELDS.find((f) => f.name === 'monthlyAllowances')!, drawn);
+    expect(drawnText(bytes)).toContain('Meal - RM 75.00');
+  });
+
+  /** A wrapping first line is the other way to exceed the rows without exceeding the LINES. */
+  it('shrinks rather than drops when a single address line is wider than the box', async () => {
+    const lines = [
+      'No 12A, Jalan Bukit Bintang Utama Seksyen 14 Blok C',
+      'Taman Sri Muda',
+      '40170 Shah Alam',
+      'Selangor Darul Ehsan',
+    ];
+    const bytes = await renderCp22Pdf(template(), INPUT.residentialAddress(lines));
+    const drawn = appearanceLines(await reload(bytes), 'residentialAddress');
+    expect(drawn.lines.map((l) => l.text)).toEqual(lines);
+    expect(drawn.size, 'the block had to come down a size to fit line 1 on one row').toBeLessThan(11.35);
+    expectInsideTheClip(CP22_FIELDS.find((f) => f.name === 'residentialAddress')!, drawn);
+  });
+
+  /**
+   * The fit itself, over EVERY block — including boxes 1 and 29, which only the operator types into and
+   * which therefore no rendered fixture reaches. A viewer regenerating the appearance from /DA and /V does
+   * its own layout, so the size and the folded text are what has to be right, not the stream we wrote.
+   */
+  for (const f of MULTILINE) {
+    it(`${f.name} (box ${f.box}) fits any value to its ${f.rows} rows without losing a line`, async () => {
+      const font = await helvetica();
+      const nominal = f.fontSize ?? CP22_DEFAULT_FONT_SIZE;
+      for (const extra of [0, 1, 2, 5]) {
+        const input = Array.from({ length: f.rows! + extra }, (_, i) => `Baris ${i + 1} Taman Cempaka`);
+        const fit = fitMultilineValue(input.join('\n'), f, font);
+        expect(fit.lines.length, `${f.name} +${extra}: more lines than rows`).toBeLessThanOrEqual(f.rows!);
+        expect(
+          fit.lines.length,
+          `${f.name} +${extra}: more lines than the rect holds at ${fit.fontSize}pt`,
+        ).toBeLessThanOrEqual(cp22FittingLineCount(f.rect, fit.fontSize, font));
+        expect(fit.fontSize).toBeLessThanOrEqual(nominal);
+        // The layout is the value: what /V says is what gets drawn, so a viewer that re-lays it out agrees.
+        expect(fit.lines.join('\n')).toBe(fit.text);
+        for (const line of input) expect(fit.text, `${f.name} +${extra}: lost "${line}"`).toContain(line);
+      }
+      // A value that already fits is left completely alone — this is the everyday case.
+      const short = Array.from({ length: f.rows! }, () => 'Ampang').join('\n');
+      expect(fitMultilineValue(short, f, font)).toMatchObject({ text: short, fontSize: nominal });
+    });
+  }
+
+  it('leaves an empty block empty, at its own size', async () => {
+    const font = await helvetica();
+    const f = CP22_FIELDS.find((x) => x.name === 'residentialAddress')!;
+    expect(fitMultilineValue('', f, font)).toMatchObject({ text: '', fontSize: 11.35 });
   });
 });
 

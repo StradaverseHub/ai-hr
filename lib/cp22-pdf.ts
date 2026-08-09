@@ -7,7 +7,7 @@
  * boxes added ON TOP of it at the coordinates in lib/cp22-fields.ts. The template bytes are never modified;
  * they are loaded, widgets are added, and a COPY is saved.
  *
- * THREE THINGS THIS FILE MUST KEEP DOING, EACH OF WHICH FAILS SILENTLY IF DROPPED:
+ * FOUR THINGS THIS FILE MUST KEEP DOING, EACH OF WHICH FAILS SILENTLY IF DROPPED:
  *
  * 1. APPEARANCE STREAMS. pdf-lib writes them only when asked. Without an embedded font, an explicit
  *    `updateFieldAppearances(font)` and `NeedAppearances = true` on the AcroForm dictionary, the added boxes
@@ -32,6 +32,14 @@
  *      30 the signature itself.
  *    Boxes 23/24 (spouse) and 31/32 (the signatory) fill only when the record is there, and are blank
  *    otherwise — never the company name, never a stand-in.
+ *
+ * 4. EVERY LINE OF A MULTI-ROW BLOCK IS DRAWN. pdf-lib lays a multiline field out downwards from the top of
+ *    the widget rect and CLIPS to it: a line past the bottom is not drawn at all and nothing says so, and
+ *    the line sitting on the floor is sliced at the baseline. A four-entry address and a four-allowance
+ *    payroll are both ordinary here, and both lost a line — understating an address and, worse, the
+ *    remuneration declared to LHDN. `fitMultilineValue` below folds and, only if it must, shrinks the
+ *    value so it cannot be laid out past the block's last row. It is checked by RENDERING: a green suite,
+ *    a 200 and even one of the two PDF renderers all reported this page as correct while it was wrong.
  */
 import { PDFBool, PDFDocument, PDFName, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
 import { CP22_DEFAULT_FONT_SIZE, CP22_FIELDS, type Cp22Field } from './cp22-fields';
@@ -218,6 +226,148 @@ export function cp22FieldValues(d: Cp22PdfData): Record<string, string> {
  *  cell, so both are switched off. Passing the keys explicitly matters — pdf-lib defaults on key ABSENCE. */
 const TRANSPARENT = { backgroundColor: undefined, borderColor: undefined, borderWidth: 0 } as const;
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// FITTING A VALUE TO A MULTI-ROW BLOCK — the guard against silent loss on a statutory form.
+//
+// pdf-lib lays a multiline field out from the TOP of the widget rect downwards and clips to the rect,
+// and it does BOTH WITHOUT COMPLAINT: a line whose baseline falls under the rect is simply never drawn,
+// and a line sitting on the rect's floor is sliced at the baseline. Two ordinary Malaysian shapes hit it
+// — a four-entry address (line1/line2/line3/"postcode city, state"), and a payroll with four recurring
+// allowances against a three-row box — and the page looks complete in both cases. One renderer even hides
+// it: Poppler honours NeedAppearances and re-lays the text out itself, so it drew the sliced line whole
+// while MuPDF and Preview showed the damage. So the fit is computed HERE, up front, from the same font
+// metrics pdf-lib will use, and it is the /DA size and the /V text that carry it — which means a viewer
+// that regenerates the appearance reaches the same layout instead of a different one.
+//
+// The ceiling is `rows`, not "whatever the height allows": the block is a set of PRINTED ruled rows and a
+// line laid between two rules is struck through by one. The order is FOLD, then SHRINK, because shrinking
+// alone cannot help — the overflow is explicit newlines, and no font size turns five lines into four.
+// NOTHING IS EVER DROPPED OR TRUNCATED: an address that will not fit comes out smaller, or with its last
+// two lines joined, and is still complete. That is the right trade on a legal declaration.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** pdf-lib's own text-field inset (appearances.ts: `padding = 1` for a non-combed field), and its clip floor. */
+const WIDGET_PADDING = 1;
+/** pdf-lib's own line pitch: `heightAtSize(size) * 1.2` (layout.ts). */
+const LINE_HEIGHT_FACTOR = 1.2;
+/** pdf-lib's own floor for auto-sizing. Below it we also start breaking over-wide runs. */
+const PDFLIB_MIN_FONT_SIZE = 4;
+/** Small enough that the chosen size is never visibly below the largest that fits. */
+const FONT_SIZE_STEP = 0.05;
+/** How an address folds. A LIST folds with a semicolon — see `Cp22Field.foldWith`. */
+const DEFAULT_FOLD = ', ';
+
+/** pdf-lib's `lineSplit(cleanText(...))` (utils/strings.ts), so the line count here is the one it will use. */
+const layoutLines = (text: string): string[] =>
+  text
+    .replace(/[\t\u0085\u2028\u2029]/g, '    ')
+    .replace(/[\b\u000b]/g, '')
+    .split(/[\n\f\r\u000b]/);
+
+/** pdf-lib's `lastIndexOfWhitespace` — note it never inspects index 0, which is why a leading space stays. */
+function lastWhitespaceIndex(line: string): number | undefined {
+  for (let idx = line.length; idx > 0; idx--) if (/\s/.test(line[idx])) return idx;
+  return undefined;
+}
+
+/**
+ * pdf-lib's `splitOutLines`, replicated exactly — including the STRICT `width < maxWidth` and the fact
+ * that an unbreakable run comes back whole and over-wide rather than being cut.
+ *
+ * `hardBreak` is ours and is off until the size ladder is under pdf-lib's own minimum: it breaks such a
+ * run on a character boundary so the value still cannot run out of the box sideways.
+ */
+function splitOutLine(input: string, maxWidth: number, font: PDFFont, size: number, hardBreak: boolean) {
+  let idx = input.length;
+  while (idx > 0) {
+    const line = input.substring(0, idx);
+    if (font.widthOfTextAtSize(line, size) < maxWidth) {
+      return { line, remainder: input.substring(idx) || undefined };
+    }
+    idx = lastWhitespaceIndex(line) ?? 0;
+  }
+  if (!hardBreak) return { line: input, remainder: undefined };
+  let cut = 1;
+  while (cut < input.length && font.widthOfTextAtSize(input.substring(0, cut + 1), size) < maxWidth) cut++;
+  return { line: input.substring(0, cut), remainder: input.substring(cut) || undefined };
+}
+
+/** The lines pdf-lib will actually draw for `text` in a box `maxWidth` wide at `size`. */
+function wrapLines(text: string, font: PDFFont, size: number, maxWidth: number, hardBreak = false): string[] {
+  const out: string[] = [];
+  for (const logical of layoutLines(text)) {
+    let rest: string | undefined = logical;
+    while (rest !== undefined) {
+      const { line, remainder } = splitOutLine(rest, maxWidth, font, size, hardBreak);
+      out.push(line);
+      // pdf-lib trims only what IT split off, and a remainder that trims to '' still costs a line.
+      rest = remainder === undefined ? undefined : remainder.trim();
+    }
+  }
+  return out;
+}
+
+/**
+ * How many lines of `size` fit inside `rect` with their DESCENDERS clear of pdf-lib's clip floor.
+ *
+ * baseline_n = padding + inner − n × pitch, and the clip starts at `padding`; a line is only whole when
+ * baseline_n − descender is still at or above it. Exported because test/cp22-fields.test.ts asserts this
+ * against every block's declared `rows` — that assertion IS the headroom, and it is what stops a future
+ * block being added one line short.
+ */
+export function cp22FittingLineCount(
+  rect: { height: number },
+  size: number,
+  font: PDFFont,
+): number {
+  const inner = rect.height - WIDGET_PADDING * 2;
+  const pitch = font.heightAtSize(size) * LINE_HEIGHT_FACTOR;
+  const descender = font.heightAtSize(size) - font.heightAtSize(size, { descender: false });
+  return Math.floor((inner - descender) / pitch);
+}
+
+/** Join everything past the last row back INTO the last row. The tail is folded, never dropped. */
+function foldToRows(lines: string[], rows: number, separator: string): string[] {
+  if (lines.length <= rows) return lines;
+  return [...lines.slice(0, rows - 1), lines.slice(rows - 1).join(separator)];
+}
+
+export type Cp22MultilineFit = {
+  /** What goes in /V — folded if the value had more lines than the block has rows. */
+  text: string;
+  /** What goes in /DA, and therefore what both the embedded appearance and a regenerating viewer use. */
+  fontSize: number;
+  /** The lines that will be drawn. Never longer than `rows`, and never missing any of the input. */
+  lines: string[];
+};
+
+/**
+ * Fit `value` to a multiline block: fold its overflow into the last row, then take the largest size at or
+ * below the block's own that lays it out in no more lines than the block has rows, all of them whole.
+ *
+ * The ladder terminates. Below pdf-lib's minimum size the wrap also breaks over-wide runs, so the drawn
+ * line count converges on the folded line count (≤ rows) while the number of lines the box can hold grows
+ * without bound as the size falls — there is always a size that fits, and the loop returns at the first
+ * (largest) one. The 1pt floor is a formality, not a fallback anything real reaches.
+ */
+export function fitMultilineValue(value: string, field: Cp22Field, font: PDFFont): Cp22MultilineFit {
+  const rows = field.rows ?? cp22FittingLineCount(field.rect, field.fontSize ?? CP22_DEFAULT_FONT_SIZE, font);
+  const maxWidth = field.rect.width - WIDGET_PADDING * 2;
+  const maxSize = field.fontSize ?? CP22_DEFAULT_FONT_SIZE;
+  const folded = foldToRows(layoutLines(value), Math.max(rows, 1), field.foldWith ?? DEFAULT_FOLD);
+  const text = folded.join('\n');
+
+  let last: Cp22MultilineFit = { text, fontSize: maxSize, lines: folded };
+  for (let size = maxSize; size >= 1; size = Math.round((size - FONT_SIZE_STEP) * 100) / 100) {
+    const hardBreak = size < PDFLIB_MIN_FONT_SIZE;
+    const lines = wrapLines(text, font, size, maxWidth, hardBreak);
+    // Hard-broken lines are only real if the reader sees them broken there, so they become the value.
+    last = { text: hardBreak ? lines.join('\n') : text, fontSize: size, lines };
+    if (lines.length <= rows && lines.length <= cp22FittingLineCount(field.rect, size, font)) return last;
+  }
+  return last;
+}
+
 function addField(form: ReturnType<PDFDocument['getForm']>, page: PDFPage, f: Cp22Field, value: string, font: PDFFont) {
   const opts = { ...f.rect, ...TRANSPARENT, font };
   if (f.type === 'checkbox') {
@@ -226,11 +376,18 @@ function addField(form: ReturnType<PDFDocument['getForm']>, page: PDFPage, f: Cp
     return;
   }
   const field = form.createTextField(f.name);
+  // A multi-row block is measured BEFORE its /DA is written, because the fit is what decides the size: a
+  // value with more lines than the block has rows, or a line too wide for the box, comes back folded and
+  // (only if it must) smaller. Both halves have to reach the file — the size through /DA and the folded
+  // text through /V — or a viewer regenerating the appearance would lay out something we never checked.
+  const sized = f.type === 'multiline' ? fitMultilineValue(safe(value), f, font) : null;
   // The point size goes in via the /DA string rather than `setFontSize`, which THROWS on a field that has
   // no /DA yet — and a field pdf-lib has only just created has none. `updateFieldAppearances` reads the size
   // back out of this /DA (a missing one means "auto-size to the box", which on an 11.5pt statutory cell is
   // not what anyone wants) and rewrites it with the embedded font's real name.
-  field.acroField.setDefaultAppearance(`/${font.name} ${f.fontSize ?? CP22_DEFAULT_FONT_SIZE} Tf 0 g`);
+  field.acroField.setDefaultAppearance(
+    `/${font.name} ${sized?.fontSize ?? f.fontSize ?? CP22_DEFAULT_FONT_SIZE} Tf 0 g`,
+  );
   if (f.type === 'multiline') field.enableMultiline();
   if (f.type === 'comb' && f.maxLen) {
     // Order matters: pdf-lib refuses to comb a field with no maxLength, and combing is what puts one glyph
@@ -238,7 +395,7 @@ function addField(form: ReturnType<PDFDocument['getForm']>, page: PDFPage, f: Cp
     field.setMaxLength(f.maxLen);
     field.enableCombing();
   }
-  const text = safe(value);
+  const text = sized ? sized.text : safe(value);
   if (text) field.setText(f.maxLen ? text.slice(0, f.maxLen) : text);
   field.addToPage(page, opts);
 }

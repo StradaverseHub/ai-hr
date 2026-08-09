@@ -7,7 +7,7 @@ import { join } from 'node:path';
  *
  * The renderer (lib/cp22-pdf.ts) is pure over the template BYTES so it stays unit-testable with no
  * filesystem; every route reads through here instead of inlining a path, so if the asset ever moves there
- * is one line to change and one test (test/cp22-template.test.ts) that fails first.
+ * is one line to change and one test (test/cp22-pdf.test.ts) that fails first.
  *
  * The file is LHDN's own published CP22 (Pin. 1/2020) page, unaltered — same layout, same wording, same
  * Malay and English. It is never modified: the renderer overlays AcroForm widgets on top of it and saves a
