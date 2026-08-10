@@ -30,25 +30,58 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const BALANCES = '/app/leave/employee-balances/page.tsx';
 const RECORDS = '/app/leave/employee-records/page.tsx';
-const DETAILS = '/app/leave/page.tsx';
+// 388e53c2 REPOINTED THIS, and only this. Employee Details is the same listing with the same width; it
+// simply opens from Team Leave Tracker now instead of from My Absence, because the sidebar lights a row by
+// path prefix and every /leave/* screen was keeping "My Leave" lit while an administrator read somebody
+// else's record. The three assertions this file makes about Employee Details are unchanged in SUBSTANCE —
+// they are made against the file that now holds it.
+const DETAILS = '/app/leave/tracker/page.tsx';
 const NAV = '/components/leave/leave-inquiry-nav.tsx';
+
+/**
+ * app/leave/tracker/page.tsx renders ONE of two surfaces: the inquiry listing for an HR administrator, the
+ * leave calendar for everybody else. Only the first is an inquiry tab, so every width assertion below is
+ * scoped to its branch — otherwise "the three tabs share one cap" would be satisfied, or broken, by a
+ * calendar that was never one of the three.
+ */
+const CALENDAR_BANNER = '  // ── The Leave Calendar';
+const inquiryPart = (rel: string) => {
+  const src = read(rel);
+  if (rel !== DETAILS) return src;
+  const at = src.indexOf(CALENDAR_BANNER);
+  expect(at, 'the tracker page must still have its calendar branch marker').toBeGreaterThan(-1);
+  return src.slice(0, at);
+};
 
 describe('026e16b9 · the three inquiry tabs use the page width, consistently', () => {
   it('all three share ONE container cap, and it is wider than the old max-w-7xl / max-w-6xl', () => {
     // They were 7xl, 7xl and 6xl — three tabs of one screen, three different widths. The shared cap is what
     // stops a wide monitor being half blank, and keeping them equal is what stops the tabs reading as
-    // different screens.
+    // different screens. THAT IS STILL THE CLAIM; 388e53c2 changed which file the third one lives in.
     //
     // Matched against `className="…"` values only, never the whole file: these pages carry prose comments
     // recording the before/after measurement, and a naive substring search finds "max-w-7xl" in the
     // explanation of why it is no longer used.
     const classNames = (src: string) => (src.match(/className="[^"]*"/g) ?? []).join('\n');
     for (const p of [BALANCES, RECORDS, DETAILS]) {
-      const cls = classNames(read(p));
+      const cls = classNames(inquiryPart(p));
       expect(cls.includes('mx-auto max-w-[100rem] space-y-6'), `${p} container`).toBe(true);
       expect(cls.includes('max-w-7xl'), `${p} still capped at 7xl`).toBe(false);
       expect(cls.includes('max-w-6xl'), `${p} still capped at 6xl`).toBe(false);
     }
+  });
+
+  it('the calendar keeps its OWN, narrower cap — it is not an inquiry tab', () => {
+    // The other half of the same claim, and the reason the assertion above is scoped rather than dropped.
+    // A month grid does not want a 100rem line length, and the reporter asked for the entry point to move,
+    // not for the calendar to be restyled. So: 6xl below the branch, 100rem above it, and neither leaks.
+    const src = read(DETAILS);
+    const calendar = src.slice(src.indexOf(CALENDAR_BANNER));
+    const classNames = (s: string) => (s.match(/className="[^"]*"/g) ?? []).join('\n');
+    expect(classNames(calendar).includes('mx-auto max-w-6xl space-y-6'), 'calendar container').toBe(true);
+    expect(classNames(calendar).includes('max-w-[100rem]'), 'the inquiry cap leaked into the calendar').toBe(
+      false,
+    );
   });
 
   it('it stays CAPPED rather than full-bleed — an unbounded table is unreadable the other way', () => {
@@ -62,7 +95,7 @@ describe('026e16b9 · the three inquiry tabs use the page width, consistently', 
     expect(read(NAV).includes('sm:w-44')).toBe(true);
     expect(read(NAV).includes('sm:w-56')).toBe(false);
     for (const p of [BALANCES, RECORDS, DETAILS]) {
-      expect(read(p).includes('flex flex-col gap-4 sm:flex-row'), `${p} rail gap`).toBe(true);
+      expect(inquiryPart(p).includes('flex flex-col gap-4 sm:flex-row'), `${p} rail gap`).toBe(true);
     }
   });
 
@@ -71,7 +104,17 @@ describe('026e16b9 · the three inquiry tabs use the page width, consistently', 
     expect(read(NAV)).toMatch(/sm:flex-col/);
     for (const p of [BALANCES, RECORDS, DETAILS]) {
       // Whatever still cannot fit scrolls the TABLE, never the page.
-      expect(read(p).includes('overflow-x-auto'), `${p} keeps its scroll container`).toBe(true);
+      expect(inquiryPart(p).includes('overflow-x-auto'), `${p} keeps its scroll container`).toBe(true);
+    }
+  });
+
+  it('MY ABSENCE IS NO LONGER ONE OF THE THREE — it kept none of the listing behind', () => {
+    // The failure this replaces the old DETAILS entry with. A half-move that leaves the rail, the table or
+    // the ed* params on /leave gives an administrator two Employee Details screens, one of which relights
+    // "My Leave" — the exact complaint the item was raised about.
+    const leavePage = read('/app/leave/page.tsx');
+    for (const gone of ['<LeaveInquiryNav', 'listEmployeesPage', 'inquiryPageWindow', 'edPage', 'edStatus']) {
+      expect(leavePage.includes(gone), `still on /leave: ${gone}`).toBe(false);
     }
   });
 });
@@ -142,8 +185,8 @@ describe('026e16b9 · presentation only — no rule, figure or config is touched
     // paginateRows() fetches then slices, so a layout that assumed a fixed number of rows would fight it.
     // Nothing here sets a row-count-dependent height or a fixed table height.
     for (const p of [BALANCES, RECORDS, DETAILS]) {
-      expect(read(p)).not.toMatch(/h-\[\d+px\]/);
-      expect(read(p).includes('table-fixed'), `${p} must not fix the table layout`).toBe(false);
+      expect(inquiryPart(p)).not.toMatch(/h-\[\d+px\]/);
+      expect(inquiryPart(p).includes('table-fixed'), `${p} must not fix the table layout`).toBe(false);
     }
   });
 });

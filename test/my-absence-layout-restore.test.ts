@@ -34,13 +34,28 @@ const section = read('components/collapsible-card-section.tsx');
 const historyCmp = read('components/leave/leave-history-cards.tsx');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-/** Where the admin history table begins — everything after it is the admin branch. 8ec63139 removed the
- *  admin's own `{admin && secondaryBreakdownCard()}` card, which used to be this boundary. */
-// afd0a87c — was '{/* Admin request history', the removed table's own comment. The admin branch that
-// survives is the leave-inquiry surface, so slice from its opening guard instead.
-const ADMIN_MARKER = '{admin && (';
+/**
+ * Where the self-service render branch ends.
+ *
+ * This used to be ADMIN_MARKER = '{admin && (' — the opening guard of the HR-admin inquiry surface, which
+ * was the last thing on the page. 388e53c2 MOVED that surface to app/leave/tracker/page.tsx, so there is
+ * no `{admin && (` left to slice at and this file had to be rewritten rather than repointed.
+ *
+ * ITS INTENT IS UNCHANGED and is worth restating, because it is the reason a bare `leavePage.includes()`
+ * is not good enough here: 56a0deb9 split this page by role, and every assertion below is about the
+ * SELF-SERVICE half specifically. A slice that silently became the whole file would pass on markup from
+ * the wrong branch. So the boundary is now the comment that closes the self-service pairing, and the
+ * marker's presence is asserted before anything is sliced with it.
+ */
+const SELF_BRANCH_ENDS = '{/* Feedback 8ec63139:';
 /** The self-service render branch: breakdown + history columns. */
-const selfBranch = () => leavePage.slice(leavePage.indexOf('{!admin && ('), leavePage.indexOf(ADMIN_MARKER));
+const selfBranch = () => {
+  const from = leavePage.indexOf('{!admin && (');
+  const to = leavePage.indexOf(SELF_BRANCH_ENDS);
+  expect(from, 'self-service branch marker').toBeGreaterThan(-1);
+  expect(to, 'self-service branch end marker').toBeGreaterThan(from);
+  return leavePage.slice(from, to);
+};
 /** The RSC entries builder that feeds LeaveHistoryCards (pre-translated data + action/outcome nodes). */
 const entriesBuilder = () =>
   leavePage.slice(leavePage.indexOf('const historyEntries'), leavePage.indexOf('{!admin && ('));
@@ -79,6 +94,27 @@ describe('56a0deb9 §1: the Current Balance card is collapsible, closed by defau
     for (const loc of LOCALES) {
       const msgs = JSON.parse(read(`messages/${loc}.json`)) as Record<string, Record<string, unknown>>;
       expect(msgs.leave.balancesToggle, `${loc} leave.balancesToggle`).toBeTruthy();
+    }
+  });
+
+  it('388e53c2: the short page ships in every locale, and neither string takes ICU arguments', () => {
+    // This page calls getTranslations FIVE times, so i18n-coverage check C skips it entirely — a typo in
+    // either key would otherwise ship green and paint its own key path on the screen. Both are called with
+    // NO arguments, so a stray {brace} throws FORMATTING_ERROR at render, which no gate step catches.
+    for (const loc of LOCALES) {
+      const m = JSON.parse(read(`messages/${loc}.json`)) as Record<string, Record<string, string>>;
+      const notLinked = m.me.notLinked;
+      const moved = m.leave.inquiryMovedToTracker;
+      expect(notLinked, `${loc} me.notLinked`).toBeTruthy();
+      expect(moved, `${loc} leave.inquiryMovedToTracker`).toBeTruthy();
+      expect(m.leave.myAbsenceTitle, `${loc} leave.myAbsenceTitle`).toBeTruthy();
+      for (const [k, v] of [
+        ['me.notLinked', notLinked],
+        ['leave.inquiryMovedToTracker', moved],
+        ['leave.myAbsenceTitle', m.leave.myAbsenceTitle],
+      ] as const) {
+        expect(String(v), `${loc} ${k}: unexpected ICU argument`).not.toMatch(/[{}]/);
+      }
     }
   });
 });
@@ -165,26 +201,48 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     expect(selfBranch().includes("t('requestsEmpty')")).toBe(true);
   });
 
-  it('the admin path is the employee listing now — the full-width table is gone', () => {
-    // INVERTED (afd0a87c). 56a0deb9 split this page by role and gave the admin the org-wide sortable,
-    // paginated request table. The reporter has since asked for that table to be removed outright, with
-    // no relocation, so the admin path is the Employee Details listing and its inquiry nav.
-    const adminPart = leavePage.slice(leavePage.indexOf(ADMIN_MARKER));
-    expect(adminPart).not.toContain("sortableTh('name'");
-    expect(adminPart).not.toContain('<AdminCancelLeaveDialog');
-    expect(adminPart).not.toContain('<Pager');
-    // fc776376's shared <Pager>, the page-state read and the 7-column body all belonged to that table
-    // and go with it. The Employee Details listing has its own numbered pager (inquiryPageWindow).
-    expect(adminPart).not.toContain('pageState(pq, total, history.length)');
-    expect(adminPart).not.toContain('colSpan={7}');
-    // What the admin lands on instead:
-    expect(adminPart).toContain('<LeaveInquiryNav active="details"');
-    expect(adminPart).toContain('inquiryPageWindow(edPage, employeePageCount)');
+  it('the admin path is a heading and one sentence now — this page means your own leave again', () => {
+    // INVERTED TWICE, and the second inversion is 388e53c2's. 56a0deb9 gave the admin the org-wide
+    // sortable request table; afd0a87c removed it and left them the Employee Details listing; the
+    // reporter then asked for that listing to open from Team Leave Tracker instead, because the sidebar
+    // kept "My Leave" lit while they read somebody else's record. So NOTHING admin-facing is left here.
+    for (const gone of [
+      "sortableTh('name'",
+      '<AdminCancelLeaveDialog',
+      '<Pager',
+      'pageState(pq, total, history.length)',
+      'colSpan={7}',
+      // The listing itself, and every fragment of it.
+      '<LeaveInquiryNav',
+      'inquiryPageWindow',
+      'listEmployeesPage',
+      'employeeFilterFields',
+    ]) {
+      expect(leavePage.includes(gone), `still on /leave: ${gone}`).toBe(false);
+    }
+    // What an administrator gets instead: the heading and ONE sentence, pointing at where it went. The
+    // sentence for a viewer with no employee profile is the one /me already shows — reused, not rewritten.
+    expect(leavePage).toContain('if (me == null || admin) {');
+    expect(leavePage).toContain("{me == null ? tMe('notLinked') : t('inquiryMovedToTracker')}");
+    expect(leavePage).toContain("<h1 className=\"text-lg font-semibold\">{t('myAbsenceTitle')}</h1>");
   });
 
-  it('8ec63139: the admin no longer gets their OWN breakdown card above that table', () => {
+  it('AN UNLINKED ORDINARY ACCOUNT GETS THAT PAGE TOO — not empty cards and a dead button', () => {
+    // The half of 388e53c2 that is a bug fix rather than a move. Every read on this page is keyed by
+    // `me.employmentId`, so before this an unlinked employee saw empty balance cards, an empty history and
+    // a live "+ Request Leave" button that could not work. The guard is `me == null` FIRST, so it catches
+    // every viewer and not only administrators, and it is an early return so the reads never run.
+    const guardAt = leavePage.indexOf('if (me == null || admin) {');
+    expect(guardAt, 'the short-page guard').toBeGreaterThan(-1);
+    // …and it comes BEFORE the self-service reads it protects.
+    for (const read of ['leaveBalances(session', 'listLeaveRequests(session', 'listEmployees(session']) {
+      expect(leavePage.indexOf(read), read).toBeGreaterThan(guardAt);
+    }
+  });
+
+  it('8ec63139: the admin no longer gets their OWN breakdown card', () => {
     // The self-service branch still calls it; the admin-side call is gone (it was the third face of My
-    // Balances on a page that is now about employees).
+    // Balances on a page that stopped being about the viewer).
     expect(leavePage.includes('{admin && secondaryBreakdownCard()')).toBe(false);
     expect(selfBranch()).toContain('{secondaryBreakdownCard(');
   });
@@ -212,8 +270,10 @@ describe('657962ec §1: the self-service history renders as compact cards, newes
   });
 
   it('orders cards newest first by leave START date, explicitly (not the read’s createdAt order)', () => {
+    // The `admin ? [] :` arm went with the admin branch (388e53c2) — an administrator never reaches this
+    // line now, the short page returns above it. The ORDERING is the claim, and it is unchanged.
     expect(leavePage).toMatch(
-      /const selfHistory = admin \? \[\] : \[\.\.\.history\]\.sort\(\(a, b\) => b\.startDate\.localeCompare\(a\.startDate\)\)/,
+      /const selfHistory = \[\.\.\.history\]\.sort\(\(a, b\) => b\.startDate\.localeCompare\(a\.startDate\)\)/,
     );
     // The per-date outcome window follows the card order (5 newest by start date).
     expect(leavePage).toMatch(/selfHistory\.slice\(0, 5\)\.map/);

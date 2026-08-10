@@ -22,6 +22,21 @@
  * suite, so the move is asserted statically. The catalogue/layout half of the change — FIXED_ROW_KEYS
  * emptied, the card out of every role catalogue, migration 0404, and saved layouts self-healing — lives in
  * test/dashboard-fixed-row.test.ts.
+ *
+ * ── REWRITTEN BY 388e53c2, DELIBERATELY ──────────────────────────────────────────────────────────────
+ *
+ * This file pinned app/leave/tracker/page.tsx by SOURCE — its imports, its thirteen props, its person-id
+ * expression — so it could not survive that page gaining a second render branch by preserving behaviour
+ * alone. It was rewritten rather than repointed, and the rewrite KEEPS ITS INTENT and sharpens it:
+ *
+ *   · failure mode 2 above (the move quietly removes access) is now the SAME question asked of a role
+ *     branch instead of a nav flag. Every assertion about the calendar is scoped to the NON-ADMIN branch,
+ *     so a future edit that lets the admin surface swallow the calendar for staff fails here;
+ *   · all thirteen props are still asserted BY NAME, in the branch that renders them;
+ *   · the admin branch is asserted as an ADDITION, never as a replacement.
+ *
+ * The wider relocation — the rail's details href, /leave losing the listing, every inbound pointer still
+ * resolving — is guarded in test/leave-inquiry-entry-relocation.test.ts, written for that item.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -90,9 +105,31 @@ describe('the Manage row is ungated — the access the move must not remove', ()
   });
 });
 
+/**
+ * The page renders ONE of two surfaces. `calendarBranch` is everything after the admin branch's closing
+ * `}` — sliced at the `── The Leave Calendar` banner comment, which is the first line of it — so an
+ * assertion made here cannot be satisfied by markup that only an administrator ever sees.
+ */
+const ADMIN_BRANCH_OPENS = '  if (admin) {';
+const CALENDAR_BANNER = '  // ── The Leave Calendar';
+const adminBranch = () =>
+  trackerPage.slice(trackerPage.indexOf(ADMIN_BRANCH_OPENS), trackerPage.indexOf(CALENDAR_BANNER));
+const calendarBranch = () => trackerPage.slice(trackerPage.indexOf(CALENDAR_BANNER));
+
 describe('the calendar is the SAME screen, not a rebuild', () => {
-  it('renders the shared component with the same seven props the dashboard passed it', () => {
+  it('the page really does have the two branches these assertions are scoped to', () => {
+    // If either marker moves, every slice below silently becomes the whole file and the scoping is lost.
+    expect(trackerPage.indexOf(ADMIN_BRANCH_OPENS), 'admin branch marker').toBeGreaterThan(-1);
+    expect(trackerPage.indexOf(CALENDAR_BANNER), 'calendar branch marker').toBeGreaterThan(
+      trackerPage.indexOf(ADMIN_BRANCH_OPENS),
+    );
+  });
+
+  it('renders the shared component with the same thirteen props the dashboard passed it', () => {
     expect(trackerPage).toContain("import { PlannedAbsences } from '@/components/planned-absences'");
+    // SCOPED TO THE NON-ADMIN BRANCH (388e53c2). Everyone who is not an HR administrator keeps this
+    // calendar exactly as it was, and "exactly as it was" is these thirteen props by name.
+    const calendar = calendarBranch();
     for (const prop of [
       'rows={absences}',
       'todayIso={todayIso}',
@@ -108,7 +145,7 @@ describe('the calendar is the SAME screen, not a rebuild', () => {
       'viewerCanApprove={admin || managerRole}',
       'focusPersonId={absFocusPersonId}',
     ]) {
-      expect(trackerPage, `lost prop: ${prop}`).toContain(prop);
+      expect(calendar, `lost prop: ${prop}`).toContain(prop);
     }
   });
 
@@ -119,22 +156,25 @@ describe('the calendar is the SAME screen, not a rebuild', () => {
   });
 
   it('resolves scope and window with the shared helpers, not a second implementation', () => {
+    const calendar = calendarBranch();
     for (const call of [
-      'scopedSession()',
       'reportingLinesFor(',
       'plannedAbsences(',
       'resolveCalendarFetchWindow(',
       'resolveViewPreference(',
       'parseCalendarFocus(',
-      'todayInKualaLumpur()',
     ]) {
+      expect(calendar, `missing ${call}`).toContain(call);
+    }
+    // Session + MYT today are resolved ONCE, above the branch, and both surfaces use them.
+    for (const call of ['scopedSession()', 'todayInKualaLumpur()']) {
       expect(trackerPage, `missing ${call}`).toContain(call);
     }
     // The person scope is the viewer + direct reports, exactly as the dashboard computed it — never the
     // company. An empty array matches nothing in the read, which is the safe direction.
-    expect(trackerPage).toContain('personIds: teamPersonIds');
-    expect(trackerPage).toContain('const hasDirectReports = (reportingLines?.reports.length ?? 0) > 0;');
-    expect(trackerPage).toContain('const showAbsViewSwitch = hasDirectReports;');
+    expect(calendar).toContain('personIds: teamPersonIds');
+    expect(calendar).toContain('const hasDirectReports = (reportingLines?.reports.length ?? 0) > 0;');
+    expect(calendar).toContain('const showAbsViewSwitch = hasDirectReports;');
   });
 
   it('crosses the server/client boundary with serialisable props only (no closures)', () => {
@@ -144,6 +184,91 @@ describe('the calendar is the SAME screen, not a rebuild', () => {
     const jsx = trackerPage.slice(trackerPage.indexOf('<PlannedAbsences'));
     expect(jsx).not.toMatch(/=\{\s*\([^)]*\)\s*=>/);
     expect(jsx).not.toMatch(/=\{\s*function\b/);
+  });
+});
+
+describe('388e53c2 · the HR-admin inquiry surface is an ADDITION to this page, not a replacement', () => {
+  it('an in-page role branch, and it is an EARLY RETURN so the reads are suppressed too', () => {
+    // Copying app/leave/page.tsx's `ess = !admin` discipline: hiding markup while still issuing the read
+    // is the failure mode this asserts against. The admin branch returns, so `plannedAbsences` is
+    // unreachable for an administrator and `listEmployeesPage` unreachable for everybody else.
+    expect(trackerPage).toContain('const admin = isAdmin(s);');
+    expect(trackerPage).toContain(ADMIN_BRANCH_OPENS);
+    expect(adminBranch(), 'the calendar read must not run for an admin').not.toContain('plannedAbsences(');
+    expect(calendarBranch(), 'the listing read must not run for anyone else').not.toContain(
+      'listEmployeesPage(',
+    );
+  });
+
+  it('lands on Employee Details with the rail, and the listing is the one lifted from /leave', () => {
+    const admin = adminBranch();
+    expect(admin).toContain('<LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />');
+    expect(admin).toContain('listEmployeesPage(s, {');
+    // Ten per page, company A→Z then name A→Z, and the numbered pager — 650b6eb8's shape, carried over.
+    expect(trackerPage).toContain('const EMPLOYEE_PAGE = 10;');
+    expect(admin).toContain("sort: 'company',");
+    expect(admin).toContain('limit: EMPLOYEE_PAGE,');
+    expect(admin).toContain('offset: edPage * EMPLOYEE_PAGE,');
+    expect(admin).toContain('inquiryPageWindow(edPage, employeePageCount)');
+    // The DERIVED employment status (9cbf5e0d), never the legacy stored enum.
+    expect(admin).toContain('deriveEmploymentStatus(e, today)');
+    expect(/\be\.status\b/.test(admin), 'legacy row.status is read').toBe(false);
+    // Scope fence first: the listing shows only the companies this session may see.
+    expect(admin).toContain('companyIds: scopeIds,');
+  });
+
+  it('THE SEARCH AND FILTER FORMS POST BACK TO THIS PAGE — the trap in the lift', () => {
+    // The listing's three forms hardcoded `action="/leave"`. Carried over unchanged they would silently
+    // throw an administrator off the screen the moment they pressed Search or applied a filter, and no
+    // type checker sees a string in an action attribute.
+    const admin = adminBranch();
+    expect(admin.match(/action="\/leave\/tracker"/g) ?? [], 'search form + FilterPanel + FilterChips').toHaveLength(
+      3,
+    );
+    expect(admin, 'a form still posting to /leave').not.toMatch(/action="\/leave"/);
+    // The pager builds its own links and must follow the same base path.
+    expect(admin).toContain("return q ? `/leave/tracker?${q}` : '/leave/tracker';");
+  });
+
+  it('the two OTHER inquiry screens keep their addresses — saved and export links stay valid', () => {
+    // The promise made in writing in the approved plan. Only the way IN changed.
+    expect(adminBranch()).toContain(
+      'const employeeHref = (employmentId: string) => `/leave/employee-balances?emp=${employmentId}`;',
+    );
+  });
+
+  it('every string it prints is pinned per locale — this file is multi-namespace, so check C skips it', () => {
+    // i18n-coverage check C only reads single-namespace files, and the admin branch pulls four namespaces
+    // (leave, leave.inquiry, people.list, people.employeeStatus). Without this, a typo'd key ships green
+    // and paints its own path on the screen.
+    for (const loc of LOCALES) {
+      const m = JSON.parse(read(`messages/${loc}.json`)) as Record<string, Record<string, unknown>>;
+      const inquiry = (m.leave as Record<string, Record<string, string>>).inquiry;
+      for (const k of [
+        'employeeDetails',
+        'detailsDescription',
+        'detailsSearchPlaceholder',
+        'colEmployeeName',
+        'colPosition',
+        'openBalances',
+        'pagePrev',
+        'pageNext',
+        'pageAria',
+        'noEmployees',
+        'noEmployeesFiltered',
+      ]) {
+        expect(inquiry?.[k], `${loc} leave.inquiry.${k}`).toBeTruthy();
+      }
+      // The page header calls tInq('detailsDescription') with NO arguments — a {brace} throws
+      // FORMATTING_ERROR at render, which tsc, the suite and `next build` all pass.
+      expect(String(inquiry.detailsDescription), `${loc}: no ICU arguments`).not.toMatch(/[{}]/);
+      const people = m.people as Record<string, Record<string, string>>;
+      expect(people.list.colStatus, `${loc} people.list.colStatus`).toBeTruthy();
+      const filters = (m.leave as Record<string, Record<string, string>>).filters;
+      for (const k of ['employeeId', 'company', 'department', 'search', 'showingOf']) {
+        expect(filters?.[k], `${loc} leave.filters.${k}`).toBeTruthy();
+      }
+    }
   });
 });
 

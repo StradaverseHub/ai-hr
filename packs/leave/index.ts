@@ -141,6 +141,14 @@ import { registerPack, type ModulePack, type NavLinkDescriptor, type NavNodeGrou
 // staff, the same class of regression a324a4b3 hit when the attendance rows moved into a gated group.
 // The page itself is scopedSession + RLS: staff see their own leave, managers additionally get the Team
 // toggle — exactly the split the dashboard card had.
+//
+// 388e53c2 MADE THAT FLAG-FREE ROW MATTER MORE, not less. The screen behind it now branches by role: an
+// HR administrator lands on the leave-inquiry surface (Employee Details) while everyone else keeps the
+// calendar. It is tempting to read "an admin-only surface lives there" as a reason to add `adminOnly`
+// here — DO NOT. The row would then disappear for every plain employee and manager, i.e. exactly the
+// silent access removal the paragraph above exists to prevent, and the branch inside the page already
+// gives each role the right screen. test/leave-pack.test.ts and test/team-leave-tracker.test.ts both
+// assert the absence of these two flags for this reason.
 const LEAVE_NAV_LINKS: NavLinkDescriptor[] = [
   { group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays },
   { group: 'manage', href: '/leave/tracker', labelKey: 'teamLeaveTracker', icon: CalendarRange },

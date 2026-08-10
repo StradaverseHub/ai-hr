@@ -166,7 +166,11 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     for (const own of ['<EditLeaveDialog', '<CancelLeaveDialog', '<CancelDatesDialog']) {
       expect(leavePage.includes(own), own).toBe(true);
     }
-    expect(leavePage).toContain('const selfHistory = admin ? [] :');
+    // The `admin ? [] :` arm went with the admin branch (388e53c2): an administrator no longer reaches
+    // this code at all, because /leave returns the short page before it. The property being pinned is
+    // unchanged and is now pinned at its source — these dialogs render from the viewer's OWN rows.
+    expect(leavePage).toContain('const selfHistory = [...history].sort(');
+    expect(leavePage).toContain('if (me == null || admin) {');
     // The mine() self-ban is unchanged: on /approvals the viewer's OWN row shows a label, never a control.
     expect(approvalsPage).toContain('const mine = (personId: string | null) => s.personId != null && personId === s.personId;');
     expect(approvalsPage).toContain('{mine(r.personId) ? (');
@@ -186,14 +190,19 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     }
   });
 
-  it('the subsection is REMOVED, and the inquiry surface it sat inside is untouched', () => {
-    // The admin landing view — the employee listing and its left-side nav — is what this page is now.
-    expect(leavePage).toContain('{admin && (');
-    expect(leavePage).toContain('<LeaveInquiryNav active="details"');
-    // The retired table's pager goes with it.
+  it('the subsection is REMOVED, and the inquiry surface it sat inside is intact at its new address', () => {
+    // REPOINTED BY 388e53c2, not weakened: the admin landing view — the employee listing and its
+    // left-side nav — moved to the Team Leave Tracker route, so it is asserted there. What this test is
+    // actually about is that the ORG-WIDE REQUEST TABLE stayed removed, and that is checked on both.
+    const trackerPage = read('app/leave/tracker/page.tsx');
+    expect(trackerPage).toContain('if (admin) {');
+    expect(trackerPage).toContain('<LeaveInquiryNav active="details"');
+    // The retired table's pager goes with it, on either page.
     expect(leavePage).not.toContain('<Pager hrefFor={pagerHref}');
+    expect(trackerPage).not.toContain('<Pager hrefFor={pagerHref}');
     // And the removal is recorded where the next reader of the page will meet it, replacing the two
-    // previous "KEPT" justifications rather than leaving them to be re-litigated a third time.
+    // previous "KEPT" justifications rather than leaving them to be re-litigated a third time. The record
+    // stays on /leave, which is where a reader comes looking for the table.
     expect(leavePage).not.toContain('KEPT AGAIN in r80');
     expect(leavePage).toContain('THE ORG-WIDE LEAVE-REQUEST TABLE IS GONE');
   });
