@@ -21,7 +21,6 @@
  */
 import { scopedAdmin } from '@/lib/scope';
 import { listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
-import { payslipProvenance } from '@/core/payslip-recompute';
 import { getCompanyLogo } from '@/core/admin';
 import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
 import { payslipPdfStrings } from '@/lib/payslip-pdf-strings';
@@ -29,9 +28,8 @@ import { payslipPdfStrings } from '@/lib/payslip-pdf-strings';
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const num = (v: unknown) => Number(v ?? 0);
 
-export async function GET(_req: Request, { params }: { params: Promise<{ payslipId: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ payslipId: string }> }) {
   const { payslipId } = await params;
   if (!UUID.test(payslipId)) return new Response('Not found', { status: 404 });
   const { s, scopeIds } = await scopedAdmin();
@@ -49,10 +47,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
   ]);
 
   const strings = await payslipPdfStrings({
-    daysWorked: p.daysWorked != null ? num(p.daysWorked) : null,
+    payPeriod: p.payPeriod,
     payDate: p.payDate,
     ytdYear: year,
-    rulesetVersion: payslipProvenance(p.statutory).rulesetVersion,
     runType: p.runType,
     employmentType: p.employmentType,
     paymentMethod: p.paymentMethod,
@@ -87,11 +84,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
   // Same filename shape as the ESS route, so a reviewer's copy and the employee's copy of one run are
   // recognisably the same document rather than two files that look unrelated.
   const runTag = p.runType === 'regular' && p.runSeq <= 1 ? '' : `-${p.runType}${p.runSeq > 1 ? `-${p.runSeq}` : ''}`;
+  // The SORTABLE period still names the file. The month name is for reading, not for a filename that has
+  // to sort beside eleven others in a download folder.
   const fname = `payslip-${p.payPeriod}${runTag}-${p.employeeCode ?? 'employee'}`.replace(/[^a-zA-Z0-9._-]+/g, '-');
+
+  // f35f758a — "Preview" puts THE REAL FILE on screen. `?inline=1` asks for the same bytes with an inline
+  // disposition so a viewer can frame them; without it the response is unchanged and still downloads.
+  // Same route, same bytes, so what is previewed and what is downloaded cannot disagree — which is the
+  // whole reason Preview replaced a browser print of the web page. The pattern (and `nosniff` beside it)
+  // is app/admin/personnel/[employmentId]/document/[docId]/route.ts; the content type here is a constant
+  // this route produces itself, so there is no untrusted type to gate on.
+  const inline = new URL(req.url).searchParams.get('inline') === '1';
   return new Response(Buffer.from(bytes), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${fname}.pdf"`,
+      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${fname}.pdf"`,
+      'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'private, no-store',
     },
   });
