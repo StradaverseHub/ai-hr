@@ -43,6 +43,7 @@ import {
   NavFlyout,
   NavFlyoutPanel,
   isHrefActive,
+  isNavRowActive,
   isParentActive,
   type FlyoutChild,
 } from '@/components/nav-flyout';
@@ -61,7 +62,13 @@ import { modulePackById } from '@/packs/registry';
 type Item = { href: string; labelKey: string; icon: LucideIcon; tour?: string };
 // A flyout parent node (b3dc0f78, flyout redesign fdc20776): one level of nesting only. Each child
 // carries its own visibility flag so filtering is per-child (vs. whole-group gating).
-type ChildItem = Item & { adminOnly?: boolean; managerUp?: boolean };
+type ChildItem = Item & {
+  adminOnly?: boolean;
+  managerUp?: boolean;
+  // 388e53c2 — highlighting only, never a gate. See NavChildDescriptor in packs/registry.ts.
+  exactHref?: boolean;
+  ownedSubpaths?: string[];
+};
 type CollapsibleGroupItem = {
   collapsible: true;
   labelKey: string;
@@ -393,6 +400,12 @@ export function Sidebar({
     .filter((g) => g.items.length > 0);
 
   const isActive = (href: string) => isHrefActive(pathname, search, href);
+  // 388e53c2 — flat rows go through isNavRowActive so a row can opt out of prefix matching or claim
+  // paths outside its own href. Applied ONLY at the flat-row call site below: the flyout child ranking
+  // and isParentActive are deliberately untouched, because changing them would move Payroll and
+  // Attendance highlighting that nobody asked about.
+  const isRowActive = (r: { href: string; exactHref?: boolean; ownedSubpaths?: string[] }) =>
+    isNavRowActive(pathname, search, r);
   // The open module's node (permission-filtered children), resolved from the visible groups so a
   // stale openKey (e.g. after a role change) simply renders no panel.
   const openNode = openKey
@@ -494,7 +507,7 @@ export function Sidebar({
                     />
                   );
                 }
-                const active = isActive(item.href);
+                const active = isRowActive(item);
                 const Icon = item.icon;
                 const label = t(item.labelKey);
                 // Pending-approval badge (feedback 836118c4). Keyed on the href, like every other

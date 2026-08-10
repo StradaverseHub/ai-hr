@@ -1597,6 +1597,7 @@
   },
   "leave": {
     "myAbsenceTitle": "My Leave",
+    "inquiryMovedToTracker": "Employee Details, Employee Balances and Employee Leave Record now open from Team Leave Tracker; this page shows your own leave only.",
     "title": "Leave",
     "description": "Check your balance, apply for leave, and track your requests.",
     "chipRequested": "Requested",
@@ -1913,7 +1914,8 @@
       "pagePrev": "Previous",
       "pageNext": "Next",
       "pageAria": "Page {page}",
-      "noEmployeesFiltered": "No employees match the filters."
+      "noEmployeesFiltered": "No employees match the filters.",
+      "detailsDescription": "Pick the employee whose leave you want to look up."
     },
     "override": {
       "title": "Before you submit",
@@ -4106,7 +4108,7 @@
           "individual": "Individual",
           "history": "History",
           "outstanding": "Outstanding",
-          "grid": "Grid"
+          "grid": "Transaction Detail"
         },
         "filters": {
           "company": "Company",
@@ -4117,6 +4119,7 @@
           "month": "Month",
           "cycle": "Payroll cycle",
           "apply": "Apply filters",
+          "search": "Search",
           "all": "All",
           "department": "Department",
           "txnStatus": "Transaction status",
@@ -4168,10 +4171,16 @@
           "leftOutByScope": "The run was narrowed and left this employee out"
         },
         "grid": {
-          "title": "Transaction history grid",
-          "pickEmployee": "Select an employee",
-          "pickEmployeeHint": "The grid shows one employee's payroll year — every pay item down the left, every month across the top.",
-          "noEmployee": "Select an employee from the list to see their payroll year.",
+          "title": "Transaction Detail",
+          "pickEmployeeHint": "This screen shows one employee's payroll year — every pay item down the left, every month across the top.",
+          "noEmployee": "Search for an employee above to see their payroll year.",
+          "search": {
+            "placeholder": "Search by Employee ID or name",
+            "ariaLabel": "Search employee",
+            "resultsLabel": "Employee search results",
+            "noMatches": "No matching employee",
+            "clear": "Clear employee"
+          },
           "empty": "No payroll history for this employee in the selected year, months and cycle.",
           "export": "Export to Excel",
           "hideZeroRows": "Hide rows that are all zeroes",
@@ -4553,6 +4562,8 @@
       "pcbUnavailable": "This payroll run did not record the tax working, so the figure cannot be explained here. Runs calculated from now on record it.",
       "pcbYtdNet": "Net remuneration earlier this year",
       "pdfSubtitle": "Payroll payslip",
+      "previewDocument": "Preview",
+      "previewHint": "This is the payslip file itself — the same document the employee downloads. Print it from the viewer's own toolbar.",
       "reliefChildren": "Children",
       "reliefDisabledIndividual": "Disabled individual",
       "reliefDisabledSpouse": "Disabled spouse",
@@ -4561,6 +4572,11 @@
       "reliefSpouse": "Spouse",
       "reliefTotal": "Total reliefs",
       "revision": "Revision {n} — this payslip has been recalculated",
+      "searchAriaLabel": "Search employee",
+      "searchClear": "Clear employee",
+      "searchNoMatches": "No matching employee",
+      "searchPlaceholder": "Search by Employee ID or name",
+      "searchResultsLabel": "Employee search results",
       "state_draft": "Draft",
       "state_published": "Released to employee",
       "state_scheduled": "Scheduled for release",
@@ -4568,6 +4584,7 @@
       "subtitle": "Review, verify, print and download one employee’s payslip before it is released to them. Read-only — nothing here recalculates or changes pay.",
       "title": "Individual Payslip",
       "totalEarnings": "Total earnings",
+      "viewPayslip": "View Payslip",
       "ytdCurrent": "This run",
       "ytdHeading": "Year to date · {year}",
       "ytdItem": "Item",
@@ -5757,7 +5774,7 @@
       "scope": {
         "people": "Everyone can open this; the list is limited to the people you are allowed to see.",
         "leave": "Everyone can open this; you see your own leave, managers and admins see their reports.",
-        "leaveTracker": "Everyone can open this; you see your own leave, managers and admins see their reports.",
+        "leaveTracker": "Everyone can open this; you see your own leave, managers see their reports, and administrators get the employee lookups instead of the calendar.",
         "attendance": "Everyone can open this; you see your own attendance, managers and admins see their reports.",
         "approvals": "Managers and above; what appears follows your actual reporting lines.",
         "roster": "Managers and above; what appears follows your actual reporting lines.",

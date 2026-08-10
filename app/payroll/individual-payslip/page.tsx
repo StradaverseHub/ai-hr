@@ -37,9 +37,6 @@
  *     itself with the numbers that were true when it ran.
  *   - Print and Download PDF are already wired.
  *
- * WHAT WAS GENUINELY MISSING AND IS NOW HERE: the searchable employee panel (the dropdown listed every
- * employee in scope with no search), its collapse, and the company logo.
- *
  * THE LOGO — AND A CORRECTION. The comment that used to sit on the letterhead below stated "There is NO
  * company logo anywhere in this product — no column, no upload, no storage". THAT WAS WRONG, and it was
  * wrong when 169e3c24 shipped this screen without a logo on the strength of it. `company_logo`
@@ -53,10 +50,23 @@
  * invitation call (core/auth.ts `sendInvitation`), which cannot carry an attachment. Adding one is a
  * transport, a credential, a bounce/delivery-audit story and a PDPA decision about mailing net pay — its
  * own piece of work, not a button on this screen.
+ *
+ * ───────────────────────────────────────────────────────────────────────────────────────────────────
+ * r179 (feedback f35f758a) — THE SCREEN HALF. Four changes, none of them to a figure:
+ *
+ *   1. THE EMPLOYEE CONTROL MOVED INTO THE FILTER ROW and the left-hand panel is gone. It is the SHARED
+ *      search field (components/employee-search-field.tsx), built once for this item and 98e69987 because
+ *      both asked for the same affordance in the same words. It posts a hidden `employmentId` exactly as
+ *      the old `<select>` did, so the submitted query string and every guard below are unchanged.
+ *   2. THE FILTER BUTTON READS "View Payslip" — the reader is not applying a filter, they are asking for
+ *      one person's payslip.
+ *   3. THE ONE LONG CARD IS NOW SEPARATE CARDS. Same sections, same order, same figures.
+ *   4. PRINT BECAME PREVIEW. Printing the WEB PAGE produced a document that was not the payslip the
+ *      employee receives; the preview below frames the ACTUAL FILE from the same route the Download
+ *      button uses, so preview and download cannot disagree, and printing is the PDF viewer's own job.
  */
 import Link from 'next/link';
-import { cookies } from 'next/headers';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees, listCompanies } from '@/core/read';
 import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
@@ -68,16 +78,8 @@ import { payslipProvenance } from '@/core/payslip-recompute';
 import { formatMoney } from '@/lib/money';
 import { packFor } from '@/localization/registry';
 import { Button, Card, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import {
-  CollapsibleEmployeePanel,
-  EmployeeScopePanel,
-  type ScopeEmployee,
-} from '@/components/collapsible-employee-panel';
-import { PrintButton } from '@/components/print-button';
+import { EmployeeSearchField, type EmployeeSearchOption } from '@/components/employee-search-field';
 import { deriveHistoryBreakdown } from '../transaction-view/history-breakdown';
-
-/** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
-export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
 
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
@@ -87,6 +89,26 @@ function intParam(v: string | undefined, min: number, max: number): number | und
   if (!v) return undefined;
   const n = Number(v);
   return Number.isInteger(n) && n >= min && n <= max ? n : undefined;
+}
+
+/**
+ * f35f758a — "August 2026", not the stored "2026-08".
+ *
+ * The idiom this repo already uses for a month name on four screens (statutory forms, the roster,
+ * scheduled actions, the EA report): `Intl.DateTimeFormat`, month long, `timeZone: 'UTC'` so a month can
+ * never shift by one in a negative-offset render. No new message keys — twelve month names across six
+ * locales is a translation set to keep in step for something the platform already knows.
+ *
+ * A SCREEN formats in the reader's own language. The downloaded document deliberately does not: its
+ * embedded font is Latin-1 and a Chinese, Thai or Tamil month name would print as question marks
+ * (lib/payslip-pdf-strings.ts says so at the point it pins English).
+ */
+function monthYear(payPeriod: string, locale: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(payPeriod ?? '');
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) return payPeriod ?? '';
+  return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1)),
+  );
 }
 
 /** The label key for each employer-borne component, exhaustive over EmployerBorneKey. */
@@ -112,6 +134,16 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+/** One card in the payslip stack. The screen used to be a single tall card with <section>s inside it. */
+function Block({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Card className="p-6">
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
+      {children}
+    </Card>
+  );
+}
+
 export default async function IndividualPayslipPage({
   searchParams,
 }: {
@@ -128,13 +160,15 @@ export default async function IndividualPayslipPage({
   const t = await getTranslations('payroll.individualPayslip');
   const tSlip = await getTranslations('me.payslip');
   const tTxn = await getTranslations('payroll.transactions');
+  const locale = await getLocale();
   const sp = await searchParams;
 
   const [employees, companies] = await Promise.all([listEmployees(s, scopeIds), listCompanies(s)]);
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
 
   // SCOPE-GUARD every ?param, exactly as Transaction View does: an out-of-scope companyId/employmentId is
-  // treated as "no selection", so URL tampering can only ever narrow, never widen.
+  // treated as "no selection", so URL tampering can only ever narrow, never widen. This guard is UNCHANGED
+  // by r179 — the control that expresses the selection moved, the place it is DECIDED did not.
   const companyId = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : undefined;
   const companyIds = companyId ? [companyId] : scopeIds;
   const employmentId =
@@ -146,30 +180,14 @@ export default async function IndividualPayslipPage({
   const nowYear = new Date().getFullYear();
   const years = Array.from({ length: 11 }, (_, i) => nowYear + 1 - i);
 
-  // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
-  const panelDefaultOpen = (await cookies()).get(PAYSLIP_PANEL_COOKIE)?.value !== '0';
-  // Fed the SAME set the scope guard above accepts, so the panel cannot offer a row the server refuses.
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
+  // Fed the SAME set the scope guard above accepts, so the field cannot offer a row the server refuses.
+  // The second line is what tells two people with the same name apart at a glance.
+  const searchOptions: EmployeeSearchOption[] = employees.map((e) => ({
+    value: e.employmentId,
     name: e.name,
     employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.department,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnit,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
+    secondary: [e.company, e.department].filter(Boolean).join(' · ') || null,
   }));
-  // The period filters ride along when the employee changes — these are the GUARDED values, not the raw
-  // params. `payslipId` deliberately does NOT: it names a run belonging to the person being navigated away
-  // from, and carrying it would ask the next employee's list for someone else's payslip.
-  const panelPreserve: Record<string, string> = {
-    ...(companyId ? { companyId } : {}),
-    ...(year != null ? { year: String(year) } : {}),
-    ...(month != null ? { month: String(month).padStart(2, '0') } : {}),
-    ...(cycle ? { cycle } : {}),
-  };
 
   // A payslip only loads once an EMPLOYEE is chosen — the ticket's flow (period → employee → payslip),
   // and also what keeps this screen from becoming a second, slower copy of History.
@@ -226,6 +244,7 @@ export default async function IndividualPayslipPage({
   // `listCompanies` already returns hasLogo (an EXISTS against company_logo — the bytea itself lives in a
   // side table and is never pulled by this read), and it is already loaded above. No new query.
   const companyHasLogo = row ? companies.some((c) => c.id === row.companyId && c.hasLogo) : false;
+  const pdfHref = row ? `/payroll/individual-payslip/${row.id}/pdf` : '';
 
   return (
     <div className="mx-auto max-w-[100rem] space-y-6 print:max-w-4xl">
@@ -233,33 +252,28 @@ export default async function IndividualPayslipPage({
         <PageHeader title={t('title')} description={t('subtitle')} />
       </div>
 
-      <CollapsibleEmployeePanel
-        defaultOpen={panelDefaultOpen}
-        cookieKey={PAYSLIP_PANEL_COOKIE}
-        panel={
-          /* The employee control (da4af51f). It was a single dropdown listing every employee in scope,
-             which on a large company meant scrolling a long list with no way to search. */
-          <Card className="p-4 print:hidden">
-            <h2 className="text-sm font-semibold">{t('filterEmployee')}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">{t('chooseEmployeeHint')}</p>
-            <div className="mt-3">
-              <EmployeeScopePanel
-                employees={panelEmployees}
-                selectedId={employmentId ?? null}
-                basePath="/payroll/individual-payslip"
-                preserve={panelPreserve}
-              />
-            </div>
-          </Card>
-        }
-      >
-        <div className="space-y-6">
-      {/* ── Period selection (GET form — pure navigation, no mutation) ──
-          The EMPLOYEE has left this form for the panel; it carries the current one as a hidden input so
-          changing the year does not silently deselect the person you were looking at. */}
+      {/* ── Filters (GET form — pure navigation, no mutation) ──
+          r179: the EMPLOYEE is the first field, not a panel down the left. The search box carries the
+          committed choice in a hidden input named employmentId, which is exactly what the old <select>
+          posted — the query string, the scope guard above and every test of it are unchanged.
+          `payslipId` deliberately does NOT ride along: it names a run belonging to whoever was selected
+          before, and carrying it would ask the next employee's list for someone else's payslip. */}
       <Card className="p-4 print:hidden">
         <form method="GET" className="flex flex-wrap items-end gap-3">
-          {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
+          <Field label={t('filterEmployee')} className="w-full sm:w-72">
+            <EmployeeSearchField
+              name="employmentId"
+              employees={searchOptions}
+              value={employmentId ?? null}
+              labels={{
+                placeholder: t('searchPlaceholder'),
+                ariaLabel: t('searchAriaLabel'),
+                resultsLabel: t('searchResultsLabel'),
+                noMatches: t('searchNoMatches'),
+                clear: t('searchClear'),
+              }}
+            />
+          </Field>
           <Field label={t('filterCompany')}>
             <select name="companyId" defaultValue={companyId ?? ''} className={inputCls}>
               <option value="">{tTxn('view.filters.all')}</option>
@@ -293,7 +307,7 @@ export default async function IndividualPayslipPage({
             </select>
           </Field>
           <Button type="submit" variant="secondary">
-            {tTxn('view.filters.apply')}
+            {t('viewPayslip')}
           </Button>
         </form>
       </Card>
@@ -322,7 +336,7 @@ export default async function IndividualPayslipPage({
                   m.id === row?.id ? 'border-primary font-medium text-primary' : 'border-border hover:bg-muted'
                 }`}
               >
-                {m.payPeriod} · {tTxn(`individual.cycle.${m.runType}`)}
+                {monthYear(m.payPeriod, locale)} · {tTxn(`individual.cycle.${m.runType}`)}
                 {m.runSeq > 1 ? ` #${m.runSeq}` : ''}
               </Link>
             ))}
@@ -331,56 +345,64 @@ export default async function IndividualPayslipPage({
       )}
 
       {row && b && eb && pcb && (
-        <Card className="space-y-5 p-6">
-          {/* Letterhead (da4af51f). The logo is the company's OWN uploaded file, served by the existing
+        <>
+          {/* ── Letterhead ──
+              The logo is the company's OWN uploaded file, served by the existing
               /admin/organization/logo/[id] route — the same bytes the Organization screen shows, so the
               payslip cannot display a different mark from the rest of the product. It is rendered only when
               `hasLogo` says one exists (from `listCompanies`, an EXISTS against the side table — never the
               blob), because an <img> pointed at a 404 shows a broken-image icon on a payslip, which is
               worse than a clean text letterhead. No placeholder is invented when there is none. */}
-          <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
-            <div>
-              {companyHasLogo && (
-                /* eslint-disable-next-line @next/next/no-img-element -- a bytea served by our own route,
-                   not a build-time asset; next/image would need a loader for an authenticated endpoint. */
-                <img
-                  src={`/admin/organization/logo/${row.companyId}`}
-                  alt={row.company}
-                  className="mb-2 max-h-14 w-auto max-w-[14rem] object-contain"
-                />
-              )}
-              <h1 className="text-lg font-semibold tracking-tight">{row.company}</h1>
-              {row.companyReg && <p className="text-xs text-muted-foreground">{row.companyReg}</p>}
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t('payPeriodLine', { period: row.payPeriod })}
-                {row.payDate ? ` · ${t('payDateLine', { date: row.payDate })}` : ''}
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PAYROLL_PUBLICATION_PILL[pubState!]}`}>
-                {t(`state_${pubState}`)}
-              </span>
-              {row.version > 1 && (
-                <span className="text-xs text-muted-foreground">{t('revision', { n: row.version })}</span>
-              )}
-              <div className="flex items-center gap-2 print:hidden">
-                <a
-                  href={`/payroll/individual-payslip/${row.id}/pdf`}
-                  download
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
-                >
-                  {tSlip('downloadPdf')}
-                </a>
-                <PrintButton />
+          <Card className="p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                {companyHasLogo && (
+                  /* eslint-disable-next-line @next/next/no-img-element -- a bytea served by our own route,
+                     not a build-time asset; next/image would need a loader for an authenticated endpoint. */
+                  <img
+                    src={`/admin/organization/logo/${row.companyId}`}
+                    alt={row.company}
+                    className="mb-2 max-h-14 w-auto max-w-[14rem] object-contain"
+                  />
+                )}
+                <h1 className="text-lg font-semibold tracking-tight">{row.company}</h1>
+                {row.companyReg && <p className="text-xs text-muted-foreground">{row.companyReg}</p>}
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t('payPeriodLine', { period: monthYear(row.payPeriod, locale) })}
+                  {row.payDate ? ` · ${t('payDateLine', { date: row.payDate })}` : ''}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PAYROLL_PUBLICATION_PILL[pubState!]}`}>
+                  {t(`state_${pubState}`)}
+                </span>
+                {row.version > 1 && (
+                  <span className="text-xs text-muted-foreground">{t('revision', { n: row.version })}</span>
+                )}
+                {/* r179 — Download stays; Print became Preview. Printing the WEB PAGE produced something
+                    that was not the document the employee receives, which is the complaint. Preview jumps
+                    to the viewer at the foot of this screen, which frames the real file. */}
+                <div className="flex items-center gap-2 print:hidden">
+                  <a
+                    href={pdfHref}
+                    download
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+                  >
+                    {tSlip('downloadPdf')}
+                  </a>
+                  <a
+                    href="#payslip-document"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+                  >
+                    {t('previewDocument')}
+                  </a>
+                </div>
               </div>
             </div>
-          </div>
+          </Card>
 
           {/* ── Employee information ── */}
-          <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {t('employeeHeading')}
-            </h2>
+          <Block title={t('employeeHeading')}>
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <Info label={t('fieldEmployeeCode')} value={row.employeeCode} />
               <Info label={t('fieldEmployeeName')} value={row.employeeName} />
@@ -415,160 +437,132 @@ export default async function IndividualPayslipPage({
               <Info label={t('fieldDaysWorked')} value={row.daysWorked ?? '—'} />
               <Info label={t('fieldCycle')} value={tTxn(`individual.cycle.${row.runType}`)} />
             </dl>
-          </section>
+          </Block>
 
-          <div className="grid gap-5 sm:grid-cols-2">
-            {/* ── Earnings ── */}
-            <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {tSlip('earnings')}
-              </h2>
-              <Row label={tSlip('basicSalary')} value={rm(b.basic)} />
-              <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />
-              {b.componentsByBucket.wage.map((l, i) => (
-                <p key={`w${i}`} className="flex justify-between ps-3 text-xs text-muted-foreground">
-                  <span>{l.name}</span>
-                  <span className="tabular-nums">{rm(l.amount)}</span>
-                </p>
-              ))}
-              <Row label={tSlip('overtime')} value={rm(b.overtime)} />
-              {b.otConvertAmount > 0 && (
-                <Row
-                  label={tSlip('otConverted', { item: (b.st.otConvert?.name ?? '') })}
-                  value={rm(b.otConvertAmount)}
-                />
-              )}
-              <Row label={tSlip('bonus')} value={rm(b.bonus)} />
-              {b.claim > 0 && <Row label={tSlip('claim')} value={rm(b.claim)} />}
-              {b.detailNotRecorded && (
-                <p className="pt-1 text-[11px] text-muted-foreground">{tTxn('view.history.detailNotRecorded')}</p>
-              )}
-              <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
-                <span>{tSlip('grossPay')}</span>
-                <span className="tabular-nums">{rm(b.gross)}</span>
-              </div>
-            </section>
-
-            {/* ── Deductions ── */}
-            <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {tSlip('deductionsHeading')}
-              </h2>
-              <Row label={tSlip('epf')} value={rm(eb.employee.epf)} />
-              <Row label={tSlip('socso')} value={rm(eb.employee.socso)} />
-              {Number(b.st.socsoSkbbk) > 0 && <Row label={tSlip('skbbk')} value={rm(eb.employee.skbbk)} />}
-              <Row label={tSlip('eis')} value={rm(eb.employee.eis)} />
-              <Row label={tSlip('pcb')} value={rm(eb.employee.pcb)} />
-              {Number(b.st.cp38) > 0 && <Row label={tSlip('cp38')} value={rm(b.st.cp38)} />}
-              {Number(b.st.zakat) > 0 && (
-                <Row label={tSlip('zakat')} value={`${rm(b.st.zakat)} · ${tSlip('zakatOffsetNote')}`} muted />
-              )}
-              {/* e2632276 — the unpaid-leave and absence halves of the old unnamed lump, each with its own
-                  day count. `residual` is what is left of Other deductions once they come out of it, so
-                  the section still sums to Total deductions; a payslip with no stamp takes the `any:false`
-                  path and prints the single lumped row exactly as before. */}
-              {absence.unpaidLeave && (
-                <Row
-                  label={`${tSlip('unpaidLeaveLine')} · ${absenceDaysLabel(absence.unpaidLeave.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
-                  value={rm(absence.unpaidLeave.amount)}
-                />
-              )}
-              {absence.absent && (
-                <Row
-                  label={`${tSlip('absentLine')} · ${absenceDaysLabel(absence.absent.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
-                  value={rm(absence.absent.amount)}
-                />
-              )}
-              {absence.showResidual && <Row label={tSlip('otherDeductions')} value={rm(absence.residual)} />}
-              <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
-                <span>{tSlip('totalDeductions')}</span>
-                <span className="tabular-nums">−{rm(b.totalDeductions)}</span>
-              </div>
-            </section>
-          </div>
-
-          {/* ── PCB drill-down (169e3c24) ──
-              Every figure here was already recorded on the payslip when it ran (`pcbMeta`) and had never
-              been shown anywhere. Nothing is recomputed: a panel that re-derived the tax could disagree
-              with the figure it claims to explain. Rendered as a native disclosure so it needs no client
-              JavaScript and prints open on request. */}
-          <details className="rounded-lg border border-border p-3">
-            <summary className="cursor-pointer text-sm font-medium">{t('pcbHeading')}</summary>
-            <div className="pt-3">
-              {pcb.kind === 'unavailable' && <p className="text-sm text-muted-foreground">{t('pcbUnavailable')}</p>}
-              {pcb.kind === 'flat' && (
-                <>
-                  <Row
-                    label={pcb.nonResident ? t('pcbFlatNonResident') : t('pcbFlatIncentive')}
-                    value={`${(pcb.rate * 100).toFixed(0)}%`}
-                  />
-                  <Row label={tSlip('pcb')} value={rm(pcb.pcb)} />
-                  <p className="pt-2 text-xs text-muted-foreground">{t('pcbFlatNote')}</p>
-                </>
-              )}
-              {pcb.kind === 'mtd' && (
-                <>
-                  <Row label={t('pcbMonthOfYear')} value={`${pcb.month} / 12`} />
-                  <Row label={t('pcbYtdNet')} value={rm(pcb.ytdNetRemuneration)} />
-                  <Row label={t('pcbEpfThisMonth')} value={rm(pcb.epfThisMonth)} />
-                  <Row label={t('pcbEpfClaimedYtd')} value={rm(pcb.epfClaimedYtd)} />
-                  <Row label={t('pcbPaidYtd')} value={rm(pcb.pcbPaidYtd)} />
-                  <Row label={t('pcbChargeable')} value={rm(pcb.chargeableIncome)} />
-                  {pcb.chargeableIncomeWithAdditional != null && (
-                    <Row label={t('pcbChargeableWithAdditional')} value={rm(pcb.chargeableIncomeWithAdditional)} />
-                  )}
-                  <h3 className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {t('pcbReliefsHeading')}
-                  </h3>
-                  <Row label={t('reliefIndividual')} value={rm(pcb.reliefs.individual)} muted />
-                  <Row label={t('reliefSpouse')} value={rm(pcb.reliefs.spouse)} muted />
-                  <Row label={t('reliefChildren')} value={rm(pcb.reliefs.children)} muted />
-                  <Row label={t('reliefDisabledIndividual')} value={rm(pcb.reliefs.disabledIndividual)} muted />
-                  <Row label={t('reliefDisabledSpouse')} value={rm(pcb.reliefs.disabledSpouse)} muted />
-                  <Row label={t('reliefLp')} value={rm(pcb.reliefs.lp)} muted />
-                  <Row label={t('reliefTotal')} value={rm(pcb.reliefs.total)} />
-                  {Number(pcb.zakat) > 0 && <Row label={tSlip('zakat')} value={rm(pcb.zakat)} muted />}
-                  <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
-                    <span>{tSlip('pcb')}</span>
-                    <span className="tabular-nums">{rm(pcb.pcb)}</span>
-                  </div>
-                  {pcb.pcbAdditional > 0 && (
-                    <p className="pt-1 text-xs text-muted-foreground">
-                      {t('pcbSplit', { normal: rm(pcb.pcbNormal), additional: rm(pcb.pcbAdditional) })}
-                    </p>
-                  )}
-                  {/* WHICH relief position is on screen. A silent fallback would explain a closed month
-                      with a position that did not exist when it was calculated. */}
-                  <p className="pt-2 text-xs text-muted-foreground">
-                    {pcb.reliefSource === 'snapshot' ? t('pcbReliefFromSnapshot') : t('pcbReliefFromCurrent')}
-                  </p>
-                </>
-              )}
+          {/* ── Earnings ── */}
+          <Block title={tSlip('earnings')}>
+            <Row label={tSlip('basicSalary')} value={rm(b.basic)} />
+            <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />
+            {b.componentsByBucket.wage.map((l, i) => (
+              <p key={`w${i}`} className="flex justify-between ps-3 text-xs text-muted-foreground">
+                <span>{l.name}</span>
+                <span className="tabular-nums">{rm(l.amount)}</span>
+              </p>
+            ))}
+            <Row label={tSlip('overtime')} value={rm(b.overtime)} />
+            {b.otConvertAmount > 0 && (
+              <Row
+                label={tSlip('otConverted', { item: (b.st.otConvert?.name ?? '') })}
+                value={rm(b.otConvertAmount)}
+              />
+            )}
+            <Row label={tSlip('bonus')} value={rm(b.bonus)} />
+            {b.claim > 0 && <Row label={tSlip('claim')} value={rm(b.claim)} />}
+            {b.detailNotRecorded && (
+              <p className="pt-1 text-[11px] text-muted-foreground">{tTxn('view.history.detailNotRecorded')}</p>
+            )}
+            <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
+              <span>{tSlip('grossPay')}</span>
+              <span className="tabular-nums">{rm(b.gross)}</span>
             </div>
-          </details>
+          </Block>
 
-          {/* ── Employer-borne statutory contributions (3c473773) ── */}
-          {eb.any && (
-            <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {tSlip('employerBorneHeading')}
-              </h2>
-              {eb.keys.map((k) => (
-                <Row key={k} label={tSlip(EMPLOYER_BORNE_LABEL[k])} value={rm(eb.borne[k])} />
-              ))}
-              <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
-                <span>{tSlip('employerBorneTotal')}</span>
-                <span className="tabular-nums">{rm(eb.total)}</span>
+          {/* ── Deductions, with the PCB drill-down beneath ── */}
+          <Block title={tSlip('deductionsHeading')}>
+            <Row label={tSlip('epf')} value={rm(eb.employee.epf)} />
+            <Row label={tSlip('socso')} value={rm(eb.employee.socso)} />
+            {Number(b.st.socsoSkbbk) > 0 && <Row label={tSlip('skbbk')} value={rm(eb.employee.skbbk)} />}
+            <Row label={tSlip('eis')} value={rm(eb.employee.eis)} />
+            <Row label={tSlip('pcb')} value={rm(eb.employee.pcb)} />
+            {Number(b.st.cp38) > 0 && <Row label={tSlip('cp38')} value={rm(b.st.cp38)} />}
+            {Number(b.st.zakat) > 0 && (
+              <Row label={tSlip('zakat')} value={`${rm(b.st.zakat)} · ${tSlip('zakatOffsetNote')}`} muted />
+            )}
+            {/* e2632276 — the unpaid-leave and absence halves of the old unnamed lump, each with its own
+                day count. `residual` is what is left of Other deductions once they come out of it, so
+                the section still sums to Total deductions; a payslip with no stamp takes the `any:false`
+                path and prints the single lumped row exactly as before. */}
+            {absence.unpaidLeave && (
+              <Row
+                label={`${tSlip('unpaidLeaveLine')} · ${absenceDaysLabel(absence.unpaidLeave.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
+                value={rm(absence.unpaidLeave.amount)}
+              />
+            )}
+            {absence.absent && (
+              <Row
+                label={`${tSlip('absentLine')} · ${absenceDaysLabel(absence.absent.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
+                value={rm(absence.absent.amount)}
+              />
+            )}
+            {absence.showResidual && <Row label={tSlip('otherDeductions')} value={rm(absence.residual)} />}
+            <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
+              <span>{tSlip('totalDeductions')}</span>
+              <span className="tabular-nums">−{rm(b.totalDeductions)}</span>
+            </div>
+
+            {/* ── PCB drill-down (169e3c24) ──
+                Every figure here was already recorded on the payslip when it ran (`pcbMeta`) and had never
+                been shown anywhere. Nothing is recomputed: a panel that re-derived the tax could disagree
+                with the figure it claims to explain. Rendered as a native disclosure so it needs no client
+                JavaScript and prints open on request. */}
+            <details className="mt-4 rounded-lg border border-border p-3">
+              <summary className="cursor-pointer text-sm font-medium">{t('pcbHeading')}</summary>
+              <div className="pt-3">
+                {pcb.kind === 'unavailable' && <p className="text-sm text-muted-foreground">{t('pcbUnavailable')}</p>}
+                {pcb.kind === 'flat' && (
+                  <>
+                    <Row
+                      label={pcb.nonResident ? t('pcbFlatNonResident') : t('pcbFlatIncentive')}
+                      value={`${(pcb.rate * 100).toFixed(0)}%`}
+                    />
+                    <Row label={tSlip('pcb')} value={rm(pcb.pcb)} />
+                    <p className="pt-2 text-xs text-muted-foreground">{t('pcbFlatNote')}</p>
+                  </>
+                )}
+                {pcb.kind === 'mtd' && (
+                  <>
+                    <Row label={t('pcbMonthOfYear')} value={`${pcb.month} / 12`} />
+                    <Row label={t('pcbYtdNet')} value={rm(pcb.ytdNetRemuneration)} />
+                    <Row label={t('pcbEpfThisMonth')} value={rm(pcb.epfThisMonth)} />
+                    <Row label={t('pcbEpfClaimedYtd')} value={rm(pcb.epfClaimedYtd)} />
+                    <Row label={t('pcbPaidYtd')} value={rm(pcb.pcbPaidYtd)} />
+                    <Row label={t('pcbChargeable')} value={rm(pcb.chargeableIncome)} />
+                    {pcb.chargeableIncomeWithAdditional != null && (
+                      <Row label={t('pcbChargeableWithAdditional')} value={rm(pcb.chargeableIncomeWithAdditional)} />
+                    )}
+                    <h3 className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t('pcbReliefsHeading')}
+                    </h3>
+                    <Row label={t('reliefIndividual')} value={rm(pcb.reliefs.individual)} muted />
+                    <Row label={t('reliefSpouse')} value={rm(pcb.reliefs.spouse)} muted />
+                    <Row label={t('reliefChildren')} value={rm(pcb.reliefs.children)} muted />
+                    <Row label={t('reliefDisabledIndividual')} value={rm(pcb.reliefs.disabledIndividual)} muted />
+                    <Row label={t('reliefDisabledSpouse')} value={rm(pcb.reliefs.disabledSpouse)} muted />
+                    <Row label={t('reliefLp')} value={rm(pcb.reliefs.lp)} muted />
+                    <Row label={t('reliefTotal')} value={rm(pcb.reliefs.total)} />
+                    {Number(pcb.zakat) > 0 && <Row label={tSlip('zakat')} value={rm(pcb.zakat)} muted />}
+                    <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
+                      <span>{tSlip('pcb')}</span>
+                      <span className="tabular-nums">{rm(pcb.pcb)}</span>
+                    </div>
+                    {pcb.pcbAdditional > 0 && (
+                      <p className="pt-1 text-xs text-muted-foreground">
+                        {t('pcbSplit', { normal: rm(pcb.pcbNormal), additional: rm(pcb.pcbAdditional) })}
+                      </p>
+                    )}
+                    {/* WHICH relief position is on screen. A silent fallback would explain a closed month
+                        with a position that did not exist when it was calculated. */}
+                    <p className="pt-2 text-xs text-muted-foreground">
+                      {pcb.reliefSource === 'snapshot' ? t('pcbReliefFromSnapshot') : t('pcbReliefFromCurrent')}
+                    </p>
+                  </>
+                )}
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">{tSlip('employerBorneNote')}</p>
-            </section>
-          )}
+            </details>
+          </Block>
 
-          {/* ── Employer contributions ── */}
-          <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {tSlip('employerContributionsHeading')}
-            </h2>
+          {/* ── Employer contributions, with the employer-borne disclosure folded in (3c473773) ── */}
+          <Block title={tSlip('employerContributionsHeading')}>
             <Row label={tSlip('epf')} value={rm(b.employerContributions.epf)} muted />
             <Row label={tSlip('socso')} value={rm(b.employerContributions.socso)} muted />
             <Row label={tSlip('eis')} value={rm(b.employerContributions.eis)} muted />
@@ -578,24 +572,37 @@ export default async function IndividualPayslipPage({
               muted
             />
             <Row label={tSlip('totalEmployerCost')} value={rm(row.employerCost)} muted />
-          </section>
+
+            {eb.any && (
+              <div className="mt-4 border-t border-border pt-3">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {tSlip('employerBorneHeading')}
+                </h3>
+                {eb.keys.map((k) => (
+                  <Row key={k} label={tSlip(EMPLOYER_BORNE_LABEL[k])} value={rm(eb.borne[k])} />
+                ))}
+                <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
+                  <span>{tSlip('employerBorneTotal')}</span>
+                  <span className="tabular-nums">{rm(eb.total)}</span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">{tSlip('employerBorneNote')}</p>
+              </div>
+            )}
+          </Block>
 
           {/* ── Net pay ──
-              5c198931 moved this ABOVE year-to-date so the screen reads in the same order as the
-              downloaded document (letterhead → employee → earnings/deductions → employer → net → YTD).
-              Presentation only: the figure and its source are untouched. */}
-          <div className="flex items-baseline justify-between rounded-lg bg-primary/5 px-4 py-3">
-            <span className="text-sm font-semibold">{tSlip('netPay')}</span>
-            <span className="text-lg font-bold tabular-nums text-primary">{rm(b.net)}</span>
-          </div>
+              The one figure the reader looks for first, so it gets the strongest treatment on the screen
+              exactly as it does on the document. Presentation only: the figure and its source are
+              untouched. */}
+          <Card className="flex items-baseline justify-between bg-primary px-6 py-5 text-primary-foreground">
+            <span className="text-sm font-semibold uppercase tracking-wide">{tSlip('netPay')}</span>
+            <span className="text-2xl font-bold tabular-nums">{rm(b.net)}</span>
+          </Card>
 
           {/* ── Year to date ──
               Summed from the SAME read that lists this employee's months, so the column beside the
               current month can never disagree with the months it is made of. */}
-          <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {t('ytdHeading', { year: row.payPeriod.slice(0, 4) })}
-            </h2>
+          <Block title={t('ytdHeading', { year: row.payPeriod.slice(0, 4) })}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -628,29 +635,57 @@ export default async function IndividualPayslipPage({
             {/* The YTD column is the FULL employee share as computed and filed, which is why it can differ
                 from the deduction lines above when the employer bore part of them. Said, not hidden. */}
             <p className="mt-2 text-xs text-muted-foreground">{t('ytdNote')}</p>
-          </section>
 
-          {b.recordLines.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {tTxn('view.history.itemsHeading')}
-              </h2>
-              {b.recordLines.map((l, i) => (
-                <Row key={`${l.code}-${i}`} label={`${l.code} · ${l.name}`} value={rm(l.amount)} muted />
-              ))}
-              <p className="mt-2 text-xs text-muted-foreground">{tTxn('view.history.itemsNote')}</p>
-            </section>
-          )}
+            {b.recordLines.length > 0 && (
+              <div className="mt-4 border-t border-border pt-3">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {tTxn('view.history.itemsHeading')}
+                </h3>
+                {b.recordLines.map((l, i) => (
+                  <Row key={`${l.code}-${i}`} label={`${l.code} · ${l.name}`} value={rm(l.amount)} muted />
+                ))}
+                <p className="mt-2 text-xs text-muted-foreground">{tTxn('view.history.itemsNote')}</p>
+              </div>
+            )}
+          </Block>
 
+          {/* ── The document itself (r179) ──
+              THE REAL FILE, not a copy of this page. `?inline=1` on the SAME route the Download button
+              uses asks for the same bytes with an inline disposition, so what is previewed and what is
+              downloaded cannot disagree — which the old browser-print of the web page could not promise.
+              There is deliberately NO Print control here: the PDF viewer has its own, and a second one
+              beside it would print the surrounding page again. The viewer shape (an iframe over an inline
+              URL with a Download anchor beneath) is the knowledge-base article page's. */}
+          <Card className="space-y-3 p-6 print:hidden" id="payslip-document">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t('previewDocument')}
+            </h2>
+            <p className="text-xs text-muted-foreground">{t('previewHint')}</p>
+            <iframe
+              src={`${pdfHref}?inline=1`}
+              title={t('previewDocument')}
+              className="h-[70vh] w-full rounded-lg border border-border"
+            />
+            <a
+              href={pdfHref}
+              download
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+            >
+              {tSlip('downloadPdf')}
+            </a>
+          </Card>
+
+          {/* THE PROVENANCE LINE STAYS ON THIS SCREEN (f35f758a). It came off the document and off the
+              employee's own copy, because the reporter reads it as internal. It is kept here, on the
+              HR-facing review screen, because it is the answer to "why did my tax change when my pay did
+              not?" and whoever is checking a figure needs it. That split is the plan's, deliberately. */}
           {prov?.rulesetVersion && (
             <p className="text-xs text-muted-foreground">
               {tSlip('provenanceFooter', { ruleset: prov.rulesetVersion })}
             </p>
           )}
-        </Card>
+        </>
       )}
-        </div>
-      </CollapsibleEmployeePanel>
     </div>
   );
 }

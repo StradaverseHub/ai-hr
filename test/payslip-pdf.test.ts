@@ -12,6 +12,7 @@
  * to add up to the total beside them. That guard has its own test, and it is the important one.
  */
 import zlib from 'node:zlib';
+import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import {
   buildPayslipPdfData,
@@ -47,7 +48,6 @@ const labels: PayslipPdfLabels = {
   netPay: 'Net pay',
   employerContributions: 'Employer contributions',
   totalEmployerCost: 'Total employer cost',
-  proratedNote: 'Prorated for 21 days worked',
   generatedNote: 'This is a system-generated payslip.',
   claim: 'Claim',
   employerBorne: 'Paid by your employer on your behalf',
@@ -80,7 +80,7 @@ const labels: PayslipPdfLabels = {
   ytdToDate: 'Year to date',
   detailNotRecorded: 'This payroll run recorded only the totals.',
   earningsContinued: 'Earnings (continued)',
-  provenanceNote: 'Calculated under statutory rules version 2026.6.',
+  periodLabel: 'June 2026',
 };
 const data: PayslipPdfData = {
   employee: 'Aisyah Rahman',
@@ -115,6 +115,9 @@ const data: PayslipPdfData = {
   currency: 'MYR',
 };
 const head = (b: Uint8Array) => Buffer.from(b.slice(0, 5)).toString('latin1');
+/** How many sheets the renderer actually produced. Read back through pdf-lib rather than grepped: `save()`
+ *  packs the page dictionaries into compressed object streams, so `/Type /Page` is not in the raw bytes. */
+const pageCount = async (b: Uint8Array) => (await PDFDocument.load(b)).getPageCount();
 
 /**
  * The text pdf-lib actually DREW, recovered from the page content streams.
@@ -230,7 +233,6 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
           hrdf: 71.2,
           ytd: { gross: 21360, epf: 2145, socso: 74.25, eis: 29.7, pcb: 1050, net: 18061.05 },
           ytdYear: '2026',
-          rulesetVersion: '2026.6',
         },
         labels,
       ),
@@ -246,7 +248,16 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
     expect(text).toContain('MYR 71.20'); // the HRD Corp levy the download used to leave out
     expect(text).toContain('YEAR TO DATE · 2026');
     expect(text).toContain('MYR 21,360.00'); // the YTD gross
-    expect(text).toContain('Calculated under statutory rules version 2026.6.');
+    // f35f758a — and the two INTERNAL sentences are off it. "Calculated under statutory rules version …"
+    // was put on the document on purpose (97a9b0ab) so "why did my tax change when my pay did not?" had an
+    // answer on the page; the reporter asked for it off the employee's copy, and it now lives on the
+    // HR-facing Individual Payslip screen instead (pinned by test/individual-payslip.test.ts).
+    expect(text).not.toContain('Calculated under statutory rules version');
+    expect(text).not.toContain('Prorated');
+    // The day count itself SURVIVES — as a field in the employment panel, where it reads as information
+    // rather than as a note about the arithmetic. Losing it was never what was asked for.
+    expect(text).toContain('DAYS WORKED');
+    expect(text).toContain('21.00');
   });
 
   it('labels amounts with the COMPANY’s currency, not a hardcoded RM', async () => {
@@ -357,19 +368,113 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
     );
   });
 
-  it('spills a long earnings list onto a second page instead of overprinting the footer', async () => {
-    const many = Array.from({ length: 30 }, (_, i) => ({ code: `A${i}`, name: `Item ${i}`, amount: 10 }));
-    const bytes = await renderPayslipPdf(
-      { ...data, allowance: 300, earningLines: many, detailNotRecorded: false },
-      labels,
+  it('prints every one of a long earnings list, and repeats the heading only on a REAL break', async () => {
+    // REWRITTEN FOR f35f758a. This used to assert BOTH that all 30 rows printed AND that
+    // "EARNINGS (CONTINUED)" appeared — which was only true because the box was capped at 14 rows
+    // regardless of how much page was left under it. Earnings now takes the full width and the flow is
+    // measured, so 30 rows fit where they fall and the continuation heading is what a genuine page break
+    // looks like, not a fixed-cap artefact. Both halves are still asserted; they are just no longer the
+    // same case.
+    const rowsOf = (n: number) => Array.from({ length: n }, (_, i) => ({ code: `A${i}`, name: `Item ${i}`, amount: 10 }));
+
+    const thirty = drawnText(
+      await renderPayslipPdf({ ...data, allowance: 300, earningLines: rowsOf(30), detailNotRecorded: false }, labels),
     );
+    for (const i of [0, 15, 29]) expect(thirty, `Item ${i} must print`).toContain(`Item ${i}`);
+    expect(thirty).toContain('MYR 7,120.00'); // the total still reads the stored gross
+    expect(thirty, 'thirty rows fit under a full-width box — nothing was continued').not.toContain(
+      'EARNINGS (CONTINUED)',
+    );
+
+    // A list long enough to genuinely run off the sheet DOES continue, with the heading repeated and the
+    // last row intact. This is the case the old cap could never distinguish from the one above.
+    const many = rowsOf(70);
+    const bytes = await renderPayslipPdf({ ...data, allowance: 700, earningLines: many, detailNotRecorded: false }, labels);
     const text = drawnText(bytes);
-    expect(text).toContain('EARNINGS (CONTINUED)'); // the box header on page 2
-    expect(text).toContain('Item 29'); // the last line survived rather than being dropped
-    expect(text).toContain('MYR 7,120.00'); // and the total still reads the stored gross
-    // Two pages: a single-page render of the same payslip is materially smaller.
+    expect(text).toContain('EARNINGS (CONTINUED)');
+    expect(text).toContain('Item 69'); // the last line survived rather than being dropped
+    expect(text).toContain('MYR 7,120.00');
+    // Every single row is on the document — the failure mode this file exists to catch is a renderer that
+    // silently drops what does not fit.
+    for (let i = 0; i < 70; i += 1) expect(text, `Item ${i} must print`).toContain(`Item ${i}`);
     const onePage = await renderPayslipPdf({ ...data, earningLines: [], detailNotRecorded: true }, labels);
     expect(bytes.length).toBeGreaterThan(onePage.length);
+  });
+
+  it('a typical payslip is still ONE page once Earnings takes the full width', async () => {
+    // The layout promise the plan made to the reporter: Earnings full width, the short blocks paired,
+    // one sheet. `/Type /Page` (not /Pages) counts leaves in the page tree.
+    const bytes = await renderPayslipPdf(
+      {
+        ...data,
+        payDate: '2026-06-30',
+        cycleLabel: 'Regular',
+        identityNumber: '900101011234',
+        department: 'Finance',
+        position: 'Analyst',
+        jobGrade: 'G5',
+        employmentType: 'Full-time',
+        epfNumber: '12345678',
+        socsoNumber: '900101011234',
+        taxNumber: 'SG1234567890',
+        paymentMethod: 'Bank transfer',
+        bankName: 'Maybank',
+        bankAccountMasked: '••••8901',
+        hrdf: 71.2,
+        allowance: 1430,
+        earningLines: [
+          { code: 'A0027', name: 'HANDPHONE AND COMMUNICATION ALLOWANCE', amount: 300 },
+          { code: 'A0031', name: 'TRAVELLING ALLOWANCE (SITE VISITS)', amount: 450 },
+          { code: 'A0044', name: 'SITE SUPERVISION RESPONSIBILITY ALLOWANCE', amount: 500 },
+          { code: 'A0051', name: 'Meal', amount: 180 },
+        ],
+        detailNotRecorded: false,
+        ytd: { gross: 21360, epf: 2145, socso: 74.25, eis: 29.7, pcb: 1050, net: 18061.05 },
+        ytdYear: '2026',
+      },
+      labels,
+    );
+    expect(await pageCount(bytes), 'a typical payslip must still fit one A4').toBe(1);
+  });
+
+  it('NOTHING on the document ends in dots — long names wrap instead of being clipped', async () => {
+    // THE DEFECT f35f758a WAS RAISED FOR, stated as the assertion. The renderer used to hard-clip with a
+    // `fit()` helper, so a pay item, a job title, a department or an employee name that did not fit was
+    // printed halfway and finished with an ellipsis. `safe()` folds a real '…' to '...', so both forms
+    // are checked.
+    const text = drawnText(
+      await renderPayslipPdf(
+        {
+          ...data,
+          employee: 'Muhammad Nur Firdaus Bin Abdul Rahman Al-Hafiz',
+          company: 'ISEDECOR BINA CONSTRUCTION AND ENGINEERING SERVICES SDN BHD',
+          department: 'Construction Project Management and Site Delivery',
+          position: 'Construction Project Management Specialist',
+          allowance: 1250,
+          earningLines: [
+            { code: 'A0027', name: 'HANDPHONE AND COMMUNICATION ALLOWANCE', amount: 300 },
+            { code: 'A0031', name: 'TRAVELLING ALLOWANCE (SITE VISITS)', amount: 450 },
+            { code: 'A0044', name: 'SITE SUPERVISION RESPONSIBILITY ALLOWANCE', amount: 500 },
+          ],
+          detailNotRecorded: false,
+        },
+        labels,
+      ),
+    );
+    expect(text, 'the clipped-with-an-ellipsis form must be gone').not.toMatch(/\.\.\.|…/);
+    // …and every word of the three measured examples reaches the page, across whatever line it lands on.
+    for (const word of [
+      'HANDPHONE', 'COMMUNICATION', 'ALLOWANCE', 'TRAVELLING', 'SUPERVISION', 'RESPONSIBILITY',
+      'Construction', 'Management', 'Firdaus', 'Al-Hafiz', 'ISEDECOR', 'ENGINEERING',
+    ]) {
+      expect(text, `"${word}" must reach the page in full`).toContain(word);
+    }
+  });
+
+  it('prints the month as a NAME, and keeps the sortable period for the title', async () => {
+    const text = drawnText(await renderPayslipPdf(data, labels));
+    expect(text, 'the letterhead reads August 2026, never 2026-08').toContain('June 2026');
+    expect(text).not.toContain('2026-06');
   });
 });
 

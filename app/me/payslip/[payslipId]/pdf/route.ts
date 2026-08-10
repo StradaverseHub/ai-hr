@@ -9,7 +9,6 @@
 import { getSession } from '@/lib/session';
 import { payslipDetail } from '@/core/payroll';
 import { sumPayslipYtd } from '@/core/payroll-view';
-import { payslipProvenance } from '@/core/payslip-recompute';
 import { myPayslips } from '@/core/read';
 import { getCompanyLogo } from '@/core/admin';
 import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
@@ -18,7 +17,6 @@ import { payslipPdfStrings } from '@/lib/payslip-pdf-strings';
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const num = (v: unknown) => Number(v ?? 0);
 
 export async function GET(_req: Request, { params }: { params: Promise<{ payslipId: string }> }) {
   const { payslipId } = await params;
@@ -39,10 +37,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
   const ytdRows = mine.filter((r) => r.released && r.payPeriod.startsWith(`${year}-`));
 
   const strings = await payslipPdfStrings({
-    daysWorked: p.daysWorked != null ? num(p.daysWorked) : null,
+    payPeriod: p.payPeriod,
     payDate: p.payDate,
     ytdYear: year,
-    rulesetVersion: payslipProvenance(p.statutory).rulesetVersion,
     runType: p.runType,
     employmentType: p.employmentType,
     paymentMethod: p.paymentMethod,

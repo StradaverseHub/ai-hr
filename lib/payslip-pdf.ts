@@ -123,8 +123,6 @@ export type PayslipPdfData = {
   /** The four-digit year the YTD column covers (from the payslip's own pay period). */
   ytdYear?: string | null;
   logo?: PayslipPdfLogo | null;
-  /** 97a9b0ab — the statutory ruleset this payslip was calculated under, for the provenance footer. */
-  rulesetVersion?: string | null;
 };
 
 /** Localized labels (resolved from `me.payslip` + `payroll.individualPayslip` in the routes). */
@@ -157,7 +155,6 @@ export type PayslipPdfLabels = {
   netPay: string;
   employerContributions: string;
   totalEmployerCost: string;
-  proratedNote: string; // already interpolated with the day count by the caller
   generatedNote: string;
   // 3c473773 — the Claim earnings box and the employer-borne disclosure block.
   claim: string;
@@ -193,8 +190,14 @@ export type PayslipPdfLabels = {
   ytdToDate: string;
   detailNotRecorded: string;
   earningsContinued: string;
-  /** Already interpolated with the ruleset version; '' when the payslip does not record one. */
-  provenanceNote: string;
+  /**
+   * f35f758a — the pay period as a MONTH NAME: "August 2026", not the stored "2026-08". Resolved by the
+   * caller (lib/payslip-pdf-strings.ts) and REQUIRED, so tsc keeps both PDF routes printing the same
+   * heading. Deliberately English on the document whatever the reader's locale: the embedded font is
+   * Latin-1, and `safe()` below would fold a Chinese, Thai or Tamil month name to question marks. The
+   * SCREENS show the month in the reader's own language; the file cannot yet.
+   */
+  periodLabel: string;
 };
 
 /**
@@ -326,20 +329,17 @@ const BAND = rgb(0.98, 0.984, 1);
 const WHITE = rgb(1, 1, 1);
 
 const ROW_H = 15;
+/** Leading between the wrapped lines of ONE row's label. A row whose label fits on a single line is
+ *  exactly ROW_H tall, so a payslip with short descriptions is laid out exactly as it was before
+ *  wrapping existed — only a description that used to be CUT changes anything. */
+const LINE_H = 10.5;
 const BOX_HEAD_H = 20;
 const BOX_TOTAL_H = 21;
-/** Rows one earnings/deductions box prints before the rest spills to a second page. Sized so the whole
- *  document — letterhead, employee panel, boxes, employer/net band, YTD and footer — still fits one A4;
- *  a taller budget overprints the footer, which is the failure this cap exists to prevent. */
-const MAX_BOX_ROWS = 14;
-/** …and a floor, so a payslip with four earnings lines still reads as a ruled form rather than two small
- *  boxes stranded at the top of an otherwise empty A4. Matches the attached reference design, whose
- *  earnings box is deliberately taller than its contents. */
-const MIN_BOX_ROWS = 9;
-/** Height the YTD table needs (caption + header + six rows). Below this it moves to the overflow page. */
-const YTD_H = 118;
-/** Height reserved at the foot of page 1 for the prorated / provenance / generated notes. */
-const FOOTER_H = 46;
+/** Height the YTD table needs (caption + column header + six rows). */
+const YTD_H = 124;
+/** Height reserved at the foot of EVERY page for the one "system-generated" line. f35f758a took the
+ *  prorated and provenance sentences off the document, which is why this is 24 and not 46. */
+const FOOTER_H = 24;
 
 type Row = { label: string; sub?: string | null; amount?: number; text?: string; muted?: boolean };
 
@@ -379,88 +379,133 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     page.drawText(safe(s), { x, y, size, font: f, color });
   const atR = (page: PDFPage, s: string, xr: number, y: number, size: number, f: PDFFont = font, color = INK) =>
     page.drawText(safe(s), { x: xr - f.widthOfTextAtSize(safe(s), size), y, size, font: f, color });
-  /** Shorten to fit a column. Truncation is visible ("...") rather than silent overprinting into the
-   *  neighbouring column, which is what an unbounded pay-item name would otherwise do. */
-  const fit = (s: string, f: PDFFont, size: number, maxW: number) => {
-    const v = safe(s ?? '');
-    if (f.widthOfTextAtSize(v, size) <= maxW) return v;
-    let cut = v;
-    while (cut.length > 1 && f.widthOfTextAtSize(`${cut}...`, size) > maxW) cut = cut.slice(0, -1);
-    return `${cut}...`;
-  };
-  /** Break a sentence across a column. Notes are prose and must not be `fit()`-truncated — a note whose
-   *  point is cut off ("…so the individual pay items can...") is worse than no note. */
+  /**
+   * Break a string across a column, measured against the REAL font.
+   *
+   * f35f758a — THE DEFECT THIS DOCUMENT WAS RAISED FOR. There used to be a `fit()` beside this that
+   * hard-clipped anything too wide and appended an ellipsis, and it was applied to pay item names, job
+   * titles, departments, the employee's name and the company's. A payslip that names a pay item only
+   * halfway ("HANDPHONE AND COMMUNICATION AL…") does not say what the employee was paid for, so `fit()`
+   * is gone and every one of those call sites wraps through here instead. Nothing on this document ends
+   * in dots.
+   *
+   * A SINGLE TOKEN wider than the column is broken by CHARACTER. Greedy word wrapping alone would emit it
+   * as one over-wide line that overprints the amount beside it — visually the same failure as clipping,
+   * only silent.
+   */
   const wrap = (s: string, f: PDFFont, size: number, maxW: number): string[] => {
     const lines: string[] = [];
+    /** Emit whole-column slices of an over-long word; returns the remainder that still fits. */
+    const chop = (w: string) => {
+      let rest = w;
+      while (rest.length > 1 && f.widthOfTextAtSize(rest, size) > maxW) {
+        let cut = rest.length;
+        while (cut > 1 && f.widthOfTextAtSize(rest.slice(0, cut), size) > maxW) cut -= 1;
+        lines.push(rest.slice(0, cut));
+        rest = rest.slice(cut);
+      }
+      return rest;
+    };
     let line = '';
     for (const w of safe(s).split(/\s+/).filter(Boolean)) {
       const trial = line ? `${line} ${w}` : w;
       if (line && f.widthOfTextAtSize(trial, size) > maxW) {
         lines.push(line);
-        line = w;
+        line = chop(w);
+      } else if (!line && f.widthOfTextAtSize(w, size) > maxW) {
+        line = chop(w);
       } else line = trial;
     }
     if (line) lines.push(line);
     return lines;
   };
 
+  /** One row of a box, already wrapped and MEASURED — the height it will occupy is known before anything
+   *  is drawn, which is what lets the page flow below decide where a block breaks. */
+  type BoxRowPlan = { lines: string[]; value: string; muted?: boolean; h: number };
+  /** A whole box, measured. `paintBox` draws exactly what `planBox` measured. */
+  type BoxPlan = {
+    w: number;
+    title: string;
+    dot?: 'earn' | 'deduct';
+    rows: BoxRowPlan[];
+    total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
+    noteLines: string[];
+  };
+
+  const planRow = (r: Row, w: number): BoxRowPlan => {
+    const value = r.text ?? money(r.amount);
+    const label = r.sub ? `${r.label} · ${r.sub}` : r.label;
+    // The label gets whatever the amount leaves, measured per row. The floor keeps a pathologically wide
+    // amount from collapsing the label column to nothing and wrapping it one letter per line.
+    const labelW = Math.max(60, w - 28 - font.widthOfTextAtSize(safe(value), 8.5));
+    const lines = wrap(label, font, 8.5, labelW);
+    return { lines, value, muted: r.muted, h: Math.max(ROW_H, 4.5 + lines.length * LINE_H) };
+  };
+
+  const noteHeightOf = (noteLines: string[]) => (noteLines.length > 0 ? noteLines.length * 9 + 7 : 0);
+  const boxHeight = (p: BoxPlan) =>
+    BOX_HEAD_H +
+    p.rows.reduce((s, r) => s + r.h, 0) +
+    (p.total ? BOX_TOTAL_H : 0) +
+    noteHeightOf(p.noteLines);
+
+  const planBox = (o: {
+    w: number; title: string; rows: Row[];
+    dot?: 'earn' | 'deduct'; total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
+    note?: string;
+  }): BoxPlan => ({
+    w: o.w,
+    title: o.title,
+    dot: o.dot,
+    total: o.total,
+    rows: o.rows.map((r) => planRow(r, o.w)),
+    noteLines: o.note ? wrap(o.note, font, 7, o.w - 20) : [],
+  });
+
   /**
-   * One bordered block: a header band, a fixed-height body of rows, and an optional total row. Fixed
-   * height is what makes Earnings and Deductions line up as a pair even when one has three rows and the
-   * other has ten (the mockup's shape).
+   * One bordered block: a header band, a body of rows and an optional total row. The body is now sized to
+   * WHAT IT HOLDS. It used to be padded to a fixed row count so Earnings and Deductions lined up as a
+   * pair, which is what left half of the earnings box empty while a long name beside it ran out of room —
+   * the second half of the same complaint. Earnings takes the full width now and nothing is padded.
    */
-  const drawBox = (
-    page: PDFPage,
-    o: {
-      x: number; y: number; w: number; bodyRows: number; title: string; rows: Row[];
-      dot?: 'earn' | 'deduct'; total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
-      note?: string;
-    },
-  ) => {
-    const bodyH = o.bodyRows * ROW_H;
-    const totalH = o.total ? BOX_TOTAL_H : 0;
-    const noteLines = o.note ? wrap(o.note, font, 7, o.w - 20) : [];
-    const noteH = noteLines.length > 0 ? noteLines.length * 9 + 7 : 0;
-    const h = BOX_HEAD_H + bodyH + totalH + noteH;
-    const top = o.y;
-    page.drawRectangle({ x: o.x, y: top - h, width: o.w, height: h, borderColor: RULE, borderWidth: 0.8 });
+  const paintBox = (pg: PDFPage, x: number, top: number, p: BoxPlan): number => {
+    const bodyH = p.rows.reduce((s, r) => s + r.h, 0);
+    const h = boxHeight(p);
+    pg.drawRectangle({ x, y: top - h, width: p.w, height: h, borderColor: RULE, borderWidth: 0.8 });
     // header band
-    page.drawRectangle({ x: o.x, y: top - BOX_HEAD_H, width: o.w, height: BOX_HEAD_H, color: BAND });
-    page.drawLine({
-      start: { x: o.x, y: top - BOX_HEAD_H }, end: { x: o.x + o.w, y: top - BOX_HEAD_H },
+    pg.drawRectangle({ x, y: top - BOX_HEAD_H, width: p.w, height: BOX_HEAD_H, color: BAND });
+    pg.drawLine({
+      start: { x, y: top - BOX_HEAD_H }, end: { x: x + p.w, y: top - BOX_HEAD_H },
       thickness: 0.8, color: RULE,
     });
-    let tx = o.x + 10;
-    if (o.dot) {
-      page.drawCircle({ x: tx + 3.5, y: top - BOX_HEAD_H / 2, size: 3.5, color: o.dot === 'earn' ? EARN : DEDUCT });
+    let tx = x + 10;
+    if (p.dot) {
+      pg.drawCircle({ x: tx + 3.5, y: top - BOX_HEAD_H / 2, size: 3.5, color: p.dot === 'earn' ? EARN : DEDUCT });
       tx += 12;
     }
-    at(page, o.title.toUpperCase(), tx, top - 13.5, 7.5, bold, INK);
+    at(pg, p.title.toUpperCase(), tx, top - 13.5, 7.5, bold, INK);
 
     let ry = top - BOX_HEAD_H;
-    for (const r of o.rows) {
-      const baseline = ry - 10.5;
+    for (const r of p.rows) {
       const color = r.muted ? MUTED : INK;
-      const label = r.sub ? `${r.label} · ${r.sub}` : r.label;
-      const value = r.text ?? money(r.amount);
-      // The label gets whatever the amount leaves. Measured per row rather than fixed, so a long pay-item
-      // name is only shortened when the figure beside it genuinely needs the space.
-      const labelW = o.w - 28 - font.widthOfTextAtSize(safe(value), 8.5);
-      at(page, fit(label, font, 8.5, labelW), o.x + 10, baseline, 8.5, font, color);
-      atR(page, value, o.x + o.w - 10, baseline, 8.5, font, color);
-      ry -= ROW_H;
-      page.drawLine({ start: { x: o.x + 6, y: ry }, end: { x: o.x + o.w - 6, y: ry }, thickness: 0.5, color: HAIR });
+      // The amount sits on the row's FIRST baseline whatever the label does below it, so a column of
+      // figures still reads as a column when one description above it took two lines.
+      r.lines.forEach((line, i) => at(pg, line, x + 10, ry - 10.5 - i * LINE_H, 8.5, font, color));
+      atR(pg, r.value, x + p.w - 10, ry - 10.5, 8.5, font, color);
+      ry -= r.h;
+      pg.drawLine({ start: { x: x + 6, y: ry }, end: { x: x + p.w - 6, y: ry }, thickness: 0.5, color: HAIR });
     }
 
     let by = top - BOX_HEAD_H - bodyH;
-    if (o.total) {
-      page.drawRectangle({ x: o.x, y: by - BOX_TOTAL_H, width: o.w, height: BOX_TOTAL_H, color: BAND });
-      page.drawLine({ start: { x: o.x, y: by }, end: { x: o.x + o.w, y: by }, thickness: 0.8, color: RULE });
-      at(page, o.total.label.toUpperCase(), o.x + 10, by - 14, 8, bold, INK);
-      atR(page, o.total.value, o.x + o.w - 10, by - 14, 9.5, bold, o.total.color ?? INK);
+    if (p.total) {
+      pg.drawRectangle({ x, y: by - BOX_TOTAL_H, width: p.w, height: BOX_TOTAL_H, color: BAND });
+      pg.drawLine({ start: { x, y: by }, end: { x: x + p.w, y: by }, thickness: 0.8, color: RULE });
+      at(pg, p.total.label.toUpperCase(), x + 10, by - 14, 8, bold, INK);
+      atR(pg, p.total.value, x + p.w - 10, by - 14, 9.5, bold, p.total.color ?? INK);
       by -= BOX_TOTAL_H;
     }
-    noteLines.forEach((line, i) => at(page, line, o.x + 10, by - 10 - i * 9, 7, font, MUTED));
+    p.noteLines.forEach((line, i) => at(pg, line, x + 10, by - 10 - i * 9, 7, font, MUTED));
     return h;
   };
 
@@ -485,104 +530,160 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     ...(d.absence.showResidual ? [{ label: t.otherDeductions, amount: d.absence.residual }] : []),
   ];
 
-  // The earnings box takes a VARIABLE number of named lines. Cap it and spill the rest onto a second page
-  // rather than overprinting the footer — the one part of this layout that needs real care.
-  const bodyRows = Math.min(MAX_BOX_ROWS, Math.max(MIN_BOX_ROWS, earnRows.length, dedRows.length));
-  const spills = earnRows.length > bodyRows;
-  const shownEarn = spills ? earnRows.slice(0, bodyRows - 1) : earnRows;
-  const spilledEarn = spills ? earnRows.slice(bodyRows - 1) : [];
-  if (spills) shownEarn.push({ label: t.earningsContinued, text: `+${spilledEarn.length}`, muted: true });
-
-  // ─── page 1 ───
-  const page = doc.addPage([A4_W, A4_H]);
-  let y = A4_H - M;
-
-  y = drawLetterhead(page, y);
-  y = drawEmployeePanel(page, y);
-
-  // Earnings / Deductions, side by side and equal height.
-  const boxH = drawBox(page, {
-    x: M, y, w: COL_W, bodyRows, title: t.earnings, rows: shownEarn, dot: 'earn',
-    total: { label: t.totalEarnings, value: money(d.gross), color: EARN },
-    note: d.detailNotRecorded ? t.detailNotRecorded : undefined,
-  });
-  drawBox(page, {
-    x: COL2_X, y, w: COL_W, bodyRows, title: t.deductions, rows: dedRows, dot: 'deduct',
-    total: { label: t.totalDeductions, value: money(d.totalDeductions), color: DEDUCT },
-  });
-  y -= boxH + GAP;
-
-  // Employer contributions (left) beside the net-pay banner + payment information (right).
   const employerRows: Row[] = [
     { label: t.epf, amount: d.epfEmployer },
     { label: t.socso, amount: d.socsoEmployer },
     { label: t.eis, amount: d.eisEmployer },
     ...(d.hrdf != null ? [{ label: t.hrdf, amount: d.hrdf }] : []),
   ];
-  const employerH = drawBox(page, {
-    x: M, y, w: COL_W, bodyRows: employerRows.length, title: t.employerContributions, rows: employerRows,
-    total: { label: t.totalEmployerCost, value: money(d.employerCost) },
-    note: t.employerContributionsNote,
-  });
-
-  // Net pay — the one figure the employee looks for first, so it gets the strongest mark on the page.
-  const netH = 46;
-  page.drawRectangle({ x: COL2_X, y: y - netH, width: COL_W, height: netH, color: PRIMARY });
-  at(page, t.netPay.toUpperCase(), COL2_X + 14, y - 28, 9.5, bold, WHITE);
-  atR(page, money(d.net), COL2_X + COL_W - 14, y - 30, 15, bold, WHITE);
-  let rightY = y - netH - 12;
-
   const payRows: Row[] = [
     ...(d.paymentMethod ? [{ label: t.paymentMethod, text: d.paymentMethod }] : []),
     ...(d.bankName ? [{ label: t.bankName, text: d.bankName }] : []),
     ...(d.bankAccountMasked ? [{ label: t.bankAccount, text: d.bankAccountMasked }] : []),
   ];
-  // Printed only when there is something to print. A row of empty labels tells the employee nothing and
-  // reads as a broken document; a missing block reads as "not recorded", which is the truth.
-  if (payRows.length > 0) {
-    rightY -= drawBox(page, {
-      x: COL2_X, y: rightY, w: COL_W, bodyRows: payRows.length, title: t.paymentInformation, rows: payRows,
-    });
-  }
 
-  // The section ends at whichever COLUMN reaches lower — the employer box on the left, or the net banner
-  // plus payment information on the right.
-  y = Math.min(y - employerH, rightY) - GAP;
+  // ─── the page flow ───
+  //
+  // f35f758a replaced a one-shot "cap the earnings box at N rows and put the remainder on page 2" with a
+  // MEASURED flow: every block knows its height before it is drawn, a block that does not clear the
+  // footer starts a new sheet, and the earnings box may itself continue across sheets with its heading
+  // repeated. That is what lets Earnings take the full width (so descriptions have room) while a typical
+  // payslip still finishes on one page.
+  const pages: PDFPage[] = [];
+  let page = doc.addPage([A4_W, A4_H]);
+  pages.push(page);
+  let y = A4_H - M;
+
+  /** Start a continuation sheet, headed so a loose second page still says which payslip it belongs to. */
+  const newPage = () => {
+    page = doc.addPage([A4_W, A4_H]);
+    pages.push(page);
+    y = A4_H - M;
+    const nameLines = wrap(d.company, bold, 12, CONTENT_W - 200);
+    nameLines.forEach((line, i) => at(page, line, M, y - 12 - i * 13, 12, bold));
+    atR(page, `${t.title} · ${t.periodLabel}`, A4_W - M, y - 11, 9, font, MUTED);
+    y -= 20 + (nameLines.length - 1) * 13;
+    page.drawLine({ start: { x: M, y }, end: { x: A4_W - M, y }, thickness: 1.2, color: RULE });
+    y -= GAP;
+  };
+  /** Room for a block `h` tall on this sheet? If not, open the next one. */
+  const ensure = (h: number) => {
+    if (y - h < M + FOOTER_H) newPage();
+  };
+
+  /**
+   * Draw a box that MIGHT NOT FIT, continuing it onto as many sheets as it needs.
+   *
+   * The heading is repeated at the top of every continuation (as `continuedTitle`), and the total row and
+   * the note ride the LAST chunk so a reader never meets a total before the rows it totals. The old
+   * behaviour — an inline "Earnings (continued) +16" row pointing at a second box — is gone: it printed
+   * a row that was not a pay item on a document made of pay items.
+   */
+  const flowBox = (o: {
+    x: number; w: number; title: string; continuedTitle: string; rows: Row[];
+    dot?: 'earn' | 'deduct'; total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
+    note?: string;
+  }) => {
+    const planned = planBox({ w: o.w, title: o.title, rows: o.rows, dot: o.dot, total: o.total, note: o.note });
+    let rows = planned.rows;
+    let title = o.title;
+    let freshPage = false;
+    for (;;) {
+      const avail = y - (M + FOOTER_H);
+      const tailH = (o.total ? BOX_TOTAL_H : 0) + noteHeightOf(planned.noteLines);
+      let taken = 0;
+      let acc = 0;
+      while (taken < rows.length && BOX_HEAD_H + acc + rows[taken].h <= avail) {
+        acc += rows[taken].h;
+        taken += 1;
+      }
+      if (taken === rows.length && BOX_HEAD_H + acc + tailH <= avail) {
+        y -= paintBox(page, o.x, y, { ...planned, title, rows }) + GAP;
+        return;
+      }
+      // Keep one row back so the total is never orphaned at the top of a sheet on its own…
+      if (taken === rows.length) taken -= 1;
+      if (taken === 0) {
+        // …and never emit an empty chunk, which on a sheet too short for one row would loop forever.
+        if (!freshPage) {
+          newPage();
+          freshPage = true;
+          continue;
+        }
+        taken = 1; // one row taller than a whole sheet: overflow it rather than spin
+      }
+      y -= paintBox(page, o.x, y, { ...planned, title, rows: rows.slice(0, taken), total: undefined, noteLines: [] }) + GAP;
+      rows = rows.slice(taken);
+      title = o.continuedTitle;
+      newPage();
+      freshPage = true;
+    }
+  };
+
+  y = drawLetterhead(page, y);
+  y = drawEmployeePanel(page, y);
+
+  // ─── Earnings, FULL WIDTH ───
+  // The pair layout it used to sit in gave a pay item name half the page and then clipped it. Descriptions
+  // are the long text on a payslip; the figures beside them are short. So Earnings gets the width, and the
+  // shorter blocks pair up below.
+  flowBox({
+    x: M, w: CONTENT_W, title: t.earnings, continuedTitle: t.earningsContinued, rows: earnRows, dot: 'earn',
+    total: { label: t.totalEarnings, value: money(d.gross), color: EARN },
+    note: d.detailNotRecorded ? t.detailNotRecorded : undefined,
+  });
+
+  // ─── Deductions beside Employer contributions ───
+  const dedPlan = planBox({
+    w: COL_W, title: t.deductions, rows: dedRows, dot: 'deduct',
+    total: { label: t.totalDeductions, value: money(d.totalDeductions), color: DEDUCT },
+  });
+  const empPlan = planBox({
+    w: COL_W, title: t.employerContributions, rows: employerRows,
+    total: { label: t.totalEmployerCost, value: money(d.employerCost) },
+    note: t.employerContributionsNote,
+  });
+  const pairH = Math.max(boxHeight(dedPlan), boxHeight(empPlan));
+  ensure(pairH);
+  paintBox(page, M, y, dedPlan);
+  paintBox(page, COL2_X, y, empPlan);
+  y -= pairH + GAP;
+
+  // ─── Net pay beside Payment information ───
+  // Net pay is the one figure the employee looks for first, so it keeps the strongest mark on the page.
+  const netH = 46;
+  const payPlan = payRows.length > 0
+    ? planBox({ w: COL_W, title: t.paymentInformation, rows: payRows })
+    : null;
+  // Payment information is printed only when there is something to print. A row of empty labels tells the
+  // employee nothing and reads as a broken document; a missing block reads as "not recorded" — the truth.
+  const netRowH = Math.max(netH, payPlan ? boxHeight(payPlan) : 0);
+  ensure(netRowH);
+  page.drawRectangle({ x: M, y: y - netH, width: COL_W, height: netH, color: PRIMARY });
+  at(page, t.netPay.toUpperCase(), M + 14, y - 28, 9.5, bold, WHITE);
+  atR(page, money(d.net), M + COL_W - 14, y - 30, 15, bold, WHITE);
+  if (payPlan) paintBox(page, COL2_X, y, payPlan);
+  y -= netRowH + GAP;
 
   // ─── employer-borne disclosure (3c473773) ───
   if (d.employerBorne.length > 0) {
-    const borneRows: Row[] = d.employerBorne.map((l) => ({ label: l.label, amount: l.amount }));
-    y -= drawBox(page, {
-      x: M, y, w: CONTENT_W, bodyRows: borneRows.length, title: t.employerBorne, rows: borneRows,
+    const bornePlan = planBox({
+      w: CONTENT_W, title: t.employerBorne,
+      rows: d.employerBorne.map((l) => ({ label: l.label, amount: l.amount })),
       total: { label: t.employerBorneTotal, value: money(d.employerBorneTotal) },
       note: t.employerBorneNote,
-    }) + GAP;
+    });
+    ensure(boxHeight(bornePlan));
+    y -= paintBox(page, M, y, bornePlan) + GAP;
   }
 
   // ─── year to date ───
-  const ytdFitsOnPage1 = y - YTD_H > M + FOOTER_H;
-  if (d.ytd && ytdFitsOnPage1) y -= drawYtd(page, y) + GAP;
-
-  drawFooter(page);
-
-  // ─── page 2, only when something did not fit ───
-  if (spilledEarn.length > 0 || (d.ytd && !ytdFitsOnPage1)) {
-    const p2 = doc.addPage([A4_W, A4_H]);
-    let y2 = A4_H - M;
-    at(p2, d.company, M, y2 - 12, 12, bold);
-    atR(p2, `${t.title} · ${d.payPeriod}`, A4_W - M, y2 - 11, 9, font, MUTED);
-    y2 -= 20;
-    p2.drawLine({ start: { x: M, y: y2 }, end: { x: A4_W - M, y: y2 }, thickness: 1.2, color: RULE });
-    y2 -= GAP;
-    if (spilledEarn.length > 0) {
-      y2 -= drawBox(p2, {
-        x: M, y: y2, w: CONTENT_W, bodyRows: spilledEarn.length, title: t.earningsContinued, rows: spilledEarn,
-        dot: 'earn',
-      }) + GAP;
-    }
-    if (d.ytd && !ytdFitsOnPage1) y2 -= drawYtd(p2, y2) + GAP;
-    drawFooter(p2);
+  if (d.ytd) {
+    ensure(YTD_H);
+    y -= drawYtd(page, y) + GAP;
   }
+
+  for (const pg of pages) drawFooter(pg);
 
   return doc.save();
 
@@ -600,13 +701,20 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       pg.drawImage(logo, { x: M, y: top - drawH, width: drawW, height: drawH });
       textX = M + drawW + 14;
     }
-    at(pg, fit(d.company, bold, 16, A4_W - M - textX - 150), textX, top - 16, 16, bold);
+    // The legal name WRAPS rather than clipping: a company whose registered name is long is not a company
+    // whose payslip may say half of it. 150pt is reserved on the right for the month and payment date.
+    const nameLines = wrap(d.company, bold, 16, A4_W - M - textX - 150);
+    nameLines.forEach((line, i) => at(pg, line, textX, top - 16 - i * 18, 16, bold));
+    const below = top - 16 - (nameLines.length - 1) * 18;
     const sub = [t.documentSubtitle, d.cycleLabel].filter(Boolean).join(' · ');
-    at(pg, sub, textX, top - 29, 9, font, MUTED);
-    if (d.companyReg) at(pg, d.companyReg, textX, top - 41, 8, font, MUTED);
-    atR(pg, d.payPeriod, A4_W - M, top - 16, 13, bold);
+    at(pg, sub, textX, below - 13, 9, font, MUTED);
+    if (d.companyReg) at(pg, d.companyReg, textX, below - 25, 8, font, MUTED);
+    // "August 2026", not "2026-08" (f35f758a). Resolved by the caller; English on the document because the
+    // embedded font is Latin-1 — see PayslipPdfLabels.periodLabel.
+    atR(pg, t.periodLabel, A4_W - M, top - 16, 13, bold);
     if (d.payDate) atR(pg, t.paymentDate, A4_W - M, top - 29, 8.5, font, MUTED);
-    const h = Math.max(logo ? 58 : 0, d.companyReg ? 46 : 34);
+    const textH = (nameLines.length - 1) * 18 + (d.companyReg ? 46 : 34);
+    const h = Math.max(logo ? 58 : 0, textH);
     pg.drawLine({ start: { x: M, y: top - h }, end: { x: A4_W - M, y: top - h }, thickness: 1.6, color: RULE });
     return top - h - GAP;
   }
@@ -616,8 +724,12 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     const rightX = M + leftW + GAP;
     const rightW = CONTENT_W - leftW - GAP;
 
-    at(pg, fit(d.employee, bold, 14, leftW), M, top - 14, 14, bold);
-    if (d.employeeCode) at(pg, `${t.employeeCode}: ${d.employeeCode}`, M, top - 27, 9, font, MUTED);
+    // The employee's own name was clipped by the same `fit()` the pay items were. It wraps now.
+    const nameLines = wrap(d.employee, bold, 14, leftW);
+    nameLines.forEach((line, i) => at(pg, line, M, top - 14 - i * 16, 14, bold));
+    const nameH = 27 + (nameLines.length - 1) * 16;
+    if (d.employeeCode) at(pg, `${t.employeeCode}: ${d.employeeCode}`, M, top - nameH, 9, font, MUTED);
+    const headH = nameH + 7;
 
     const idCells: [string, string][] = [
       ...(d.identityNumber ? ([[d.identityIsPassport ? t.passport : t.ic, d.identityNumber]] as [string, string][]) : []),
@@ -625,7 +737,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       ...(d.epfNumber ? ([[t.epfNumber, d.epfNumber]] as [string, string][]) : []),
       ...(d.socsoNumber ? ([[t.socsoNumber, d.socsoNumber]] as [string, string][]) : []),
     ];
-    const leftH = 34 + drawGrid(pg, idCells, M, top - 34, leftW, 2);
+    const leftH = headH + drawGrid(pg, idCells, M, top - headH, leftW, 2);
 
     const infoCells: [string, string][] = [
       ...(d.department ? ([[t.department, d.department]] as [string, string][]) : []),
@@ -650,18 +762,33 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     return top - h - 8 - GAP;
   }
 
-  /** A label-over-value grid. Returns the height consumed, so the caller can align the panel beside it. */
+  /**
+   * A label-over-value grid. Returns the height consumed, so the caller can align the panel beside it.
+   *
+   * Both halves WRAP (f35f758a). This grid is where "Construction Project Managem…" was printed: a job
+   * title, a department name or a long field label got one 25pt row and whatever did not fit was cut.
+   * Rows are now as tall as their tallest cell.
+   */
   function drawGrid(pg: PDFPage, cells: [string, string][], x: number, top: number, w: number, cols: number): number {
     if (cells.length === 0) return 0;
     const cw = w / cols;
-    const rowH = 25;
-    cells.forEach(([k, v], i) => {
-      const cx = x + (i % cols) * cw;
-      const cy = top - Math.floor(i / cols) * rowH;
-      at(pg, fit(k.toUpperCase(), font, 6.5, cw - 6), cx, cy - 7, 6.5, font, MUTED);
-      at(pg, fit(v, bold, 8.5, cw - 6), cx, cy - 18, 8.5, bold);
-    });
-    return Math.ceil(cells.length / cols) * rowH;
+    const planned = cells.map(([k, v]) => ({
+      k: wrap(k.toUpperCase(), font, 6.5, cw - 6),
+      v: wrap(v, bold, 8.5, cw - 6),
+    }));
+    let used = 0;
+    for (let r = 0; r * cols < planned.length; r += 1) {
+      const rowCells = planned.slice(r * cols, r * cols + cols);
+      const rowH = Math.max(25, ...rowCells.map((c) => c.k.length * 8 + c.v.length * 10.5 + 6.5));
+      rowCells.forEach((c, i) => {
+        const cx = x + i * cw;
+        const cy = top - used;
+        c.k.forEach((line, j) => at(pg, line, cx, cy - 7 - j * 8, 6.5, font, MUTED));
+        c.v.forEach((line, j) => at(pg, line, cx, cy - c.k.length * 8 - 10.5 - j * 10.5, 8.5, bold));
+      });
+      used += rowH;
+    }
+    return used;
   }
 
   function drawYtd(pg: PDFPage, top: number): number {
@@ -694,18 +821,20 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     return top - ry;
   }
 
+  /**
+   * ONE line, and it is the one that says a machine produced this.
+   *
+   * f35f758a took the other two off: "Prorated on N days worked in this period." and "Calculated under
+   * statutory rules version X." Both were internal working notes on a document the employee files. The
+   * day count survives as a FIELD in the employment panel above, where it reads as information rather
+   * than as a note about the calculation, and the ruleset stays on the HR-facing review screen, which is
+   * where "why did my tax change when my pay did not?" gets answered.
+   */
   function drawFooter(pg: PDFPage) {
-    const lines = [
-      [d.daysWorked != null ? t.proratedNote : '', t.provenanceNote].filter(Boolean).join(' · '),
-      t.generatedNote,
-    ].filter(Boolean);
-    let fy = M + 8 + (lines.length - 1) * 11;
+    const fy = M + 8;
     pg.drawLine({ start: { x: M, y: fy + 14 }, end: { x: A4_W - M, y: fy + 14 }, thickness: 0.8, color: RULE });
-    for (const line of lines) {
-      const w = font.widthOfTextAtSize(safe(line), 7.5);
-      at(pg, line, M + (CONTENT_W - w) / 2, fy, 7.5, font, MUTED);
-      fy -= 11;
-    }
+    const w = font.widthOfTextAtSize(safe(t.generatedNote), 7.5);
+    at(pg, t.generatedNote, M + (CONTENT_W - w) / 2, fy, 7.5, font, MUTED);
   }
 }
 

@@ -20,6 +20,30 @@ import { getTranslations } from 'next-intl/server';
 import type { PayslipPdfLabels } from './payslip-pdf';
 import type { EmployerBorneKey } from '../core/payslip-employer-borne';
 
+/**
+ * f35f758a — "August 2026", not "2026-08".
+ *
+ * The stored pay period is a TEXT column in `YYYY-MM`, and the document printed it raw. This is the idiom
+ * four screens in this repo already use for a month name (statutory-forms, the roster, scheduled actions,
+ * the EA report): `Intl.DateTimeFormat`, month long, timeZone UTC — so no month can shift by one in a
+ * negative-offset render — over `Date.UTC(y, m - 1, 1)`. No new message keys: twelve month names per
+ * locale is a translation set to keep in step for something the platform already knows.
+ *
+ * PINNED TO ENGLISH, deliberately and only here. The document embeds Helvetica, which is WinAnsi
+ * (Latin-1), and `safe()` in the renderer folds anything outside it to '?'. A Chinese, Thai or Tamil month
+ * name would print as question marks on a payslip. The SCREENS format the same period with the reader's
+ * own locale; the file cannot until a Unicode font is embedded (the deferred half of ADR-0036).
+ */
+function englishMonthYear(payPeriod: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(payPeriod ?? '');
+  if (!m) return payPeriod ?? ''; // not a period we recognise ⇒ print what was stored, never a guess
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return payPeriod;
+  return new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(Number(m[1]), month - 1, 1)),
+  );
+}
+
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
 const PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash'] as const;
@@ -42,10 +66,10 @@ export type PayslipPdfStrings = {
  * shows up on the page.
  */
 export async function payslipPdfStrings(p: {
-  daysWorked: number | null;
+  /** The stored `YYYY-MM`. Printed as a month name; the sortable form still names the download. */
+  payPeriod: string;
   payDate: string | null;
   ytdYear: string;
-  rulesetVersion: string | null;
   runType: string | null;
   employmentType: string | null;
   paymentMethod: string | null;
@@ -92,9 +116,6 @@ export async function payslipPdfStrings(p: {
       netPay: t('netPay'),
       employerContributions: t('employerContributionsHeading'),
       totalEmployerCost: t('totalEmployerCost'),
-      // Interpolated here, printed verbatim by the renderer: pluralisation is next-intl's job, not the
-      // PDF's. An absent day count prints nothing at all rather than "Prorated on 0 days".
-      proratedNote: p.daysWorked != null ? t('proratedNote', { days: p.daysWorked }) : '',
       generatedNote: t('generatedNote'),
       claim: t('claim'),
       employerBorne: t('employerBorneHeading'),
@@ -127,9 +148,7 @@ export async function payslipPdfStrings(p: {
       ytdToDate: tIp('ytdToDate'),
       detailNotRecorded: tIp('earningsDetailNote'),
       earningsContinued: tIp('earningsContinued'),
-      // 97a9b0ab — the ruleset the run was calculated under. Empty when the payslip does not record one
-      // (every run before the provenance stamp); the footer then simply omits the clause.
-      provenanceNote: p.rulesetVersion ? t('provenanceFooter', { ruleset: p.rulesetVersion }) : '',
+      periodLabel: englishMonthYear(p.payPeriod),
     },
   };
 }

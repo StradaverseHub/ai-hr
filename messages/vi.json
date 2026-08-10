@@ -1597,6 +1597,7 @@
   },
   "leave": {
     "myAbsenceTitle": "Nghỉ phép của tôi",
+    "inquiryMovedToTracker": "Thông tin nhân viên, Số dư phép của nhân viên và Hồ sơ nghỉ phép của nhân viên nay mở từ Theo dõi nghỉ phép của nhóm; trang này chỉ hiển thị phép của bạn.",
     "title": "Nghỉ phép",
     "description": "Kiểm tra số dư phép, xin nghỉ và theo dõi các yêu cầu của bạn.",
     "chipRequested": "Đã yêu cầu",
@@ -1913,7 +1914,8 @@
       "pagePrev": "Trước",
       "pageNext": "Tiếp",
       "pageAria": "Trang {page}",
-      "noEmployeesFiltered": "Không có nhân viên nào khớp với bộ lọc."
+      "noEmployeesFiltered": "Không có nhân viên nào khớp với bộ lọc.",
+      "detailsDescription": "Chọn nhân viên bạn muốn tra cứu phép."
     },
     "override": {
       "title": "Before you submit",
@@ -4106,7 +4108,7 @@
           "individual": "Cá nhân",
           "history": "Lịch sử",
           "outstanding": "Chưa thanh toán",
-          "grid": "Lưới"
+          "grid": "Chi tiết giao dịch"
         },
         "filters": {
           "company": "Công ty",
@@ -4117,6 +4119,7 @@
           "month": "Tháng",
           "cycle": "Chu kỳ lương",
           "apply": "Áp dụng bộ lọc",
+          "search": "Tìm kiếm",
           "all": "Tất cả",
           "department": "Phòng ban",
           "txnStatus": "Trạng thái giao dịch",
@@ -4168,10 +4171,16 @@
           "leftOutByScope": "Kỳ lương đã bị thu hẹp và bỏ sót nhân viên này"
         },
         "grid": {
-          "title": "Lưới lịch sử giao dịch",
-          "pickEmployee": "Chọn nhân viên",
-          "pickEmployeeHint": "Lưới hiển thị một năm lương của một nhân viên — mỗi khoản lương ở bên trái, mỗi tháng ở phía trên.",
-          "noEmployee": "Chọn một nhân viên từ danh sách để xem năm lương của họ.",
+          "title": "Chi tiết giao dịch",
+          "pickEmployeeHint": "Màn hình này hiển thị một năm lương của một nhân viên — mỗi khoản lương ở bên trái, mỗi tháng ở phía trên.",
+          "noEmployee": "Tìm nhân viên ở phía trên để xem năm lương của họ.",
+          "search": {
+            "placeholder": "Tìm theo Mã nhân viên hoặc tên",
+            "ariaLabel": "Tìm nhân viên",
+            "resultsLabel": "Kết quả tìm kiếm nhân viên",
+            "noMatches": "Không có nhân viên phù hợp",
+            "clear": "Xóa nhân viên"
+          },
           "empty": "Không có lịch sử lương cho nhân viên này trong năm, tháng và chu kỳ đã chọn.",
           "export": "Xuất ra Excel",
           "hideZeroRows": "Ẩn các dòng toàn số không",
@@ -4553,6 +4562,8 @@
       "pcbUnavailable": "Lần chạy lương này không ghi lại phần tính thuế nên không thể giải thích con số ở đây. Các lần chạy từ nay sẽ ghi lại.",
       "pcbYtdNet": "Thu nhập ròng trước đó trong năm",
       "pdfSubtitle": "Phiếu lương",
+      "previewDocument": "Xem trước",
+      "previewHint": "Đây chính là tệp phiếu lương — cùng một tài liệu mà nhân viên tải về. In từ thanh công cụ của trình xem.",
       "reliefChildren": "Con",
       "reliefDisabledIndividual": "Người khuyết tật",
       "reliefDisabledSpouse": "Vợ/chồng khuyết tật",
@@ -4561,6 +4572,11 @@
       "reliefSpouse": "Vợ/chồng",
       "reliefTotal": "Tổng giảm trừ",
       "revision": "Bản sửa {n} — phiếu lương này đã được tính lại",
+      "searchAriaLabel": "Tìm nhân viên",
+      "searchClear": "Xóa nhân viên",
+      "searchNoMatches": "Không có nhân viên phù hợp",
+      "searchPlaceholder": "Tìm theo Mã nhân viên hoặc tên",
+      "searchResultsLabel": "Kết quả tìm nhân viên",
       "state_draft": "Nháp",
       "state_published": "Đã phát hành cho nhân viên",
       "state_scheduled": "Đã lên lịch phát hành",
@@ -4568,6 +4584,7 @@
       "subtitle": "Xem lại, kiểm tra, in và tải phiếu lương của một nhân viên trước khi phát hành cho họ. Chỉ đọc — không có gì ở đây tính lại hay thay đổi lương.",
       "title": "Phiếu lương cá nhân",
       "totalEarnings": "Tổng thu nhập",
+      "viewPayslip": "Xem phiếu lương",
       "ytdCurrent": "Lần chạy này",
       "ytdHeading": "Lũy kế từ đầu năm · {year}",
       "ytdItem": "Khoản mục",
@@ -5757,7 +5774,7 @@
       "scope": {
         "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",
         "leave": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
-        "leaveTracker": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
+        "leaveTracker": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý thấy của cấp dưới, còn quản trị viên nhận phần tra cứu nhân viên thay cho lịch.",
         "attendance": "Mọi người đều có thể mở; bạn thấy chấm công của mình, quản lý và quản trị viên thấy của cấp dưới.",
         "approvals": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",

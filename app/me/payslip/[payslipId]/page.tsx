@@ -1,10 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { payslipDetail } from '@/core/payroll';
-// 97a9b0ab — reads the ruleset/pack provenance already present in the payslip's statutory JSONB.
-import { payslipProvenance } from '@/core/payslip-recompute';
 // 3c473773 — which box each earning belongs in (read from the payslip's own stamp), and the employer-borne
 // disclosure (read from the payslip's own snapshot). Neither is re-derived from today's settings.
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
@@ -49,6 +47,26 @@ function Row({ label, value, muted }: { label: string; value: React.ReactNode; m
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * f35f758a — "August 2026", not the stored "2026-08".
+ *
+ * The idiom this repo already uses for a month name on four screens (statutory forms, the roster,
+ * scheduled actions, the EA report): `Intl.DateTimeFormat`, month long, timeZone UTC so a month cannot
+ * shift by one in a negative-offset render. No new message keys — twelve month names × six locales is a
+ * translation set to maintain for something the platform already knows.
+ *
+ * A SCREEN formats in the reader's own language. The downloaded document deliberately does not: its
+ * embedded font is Latin-1 and a Chinese, Thai or Tamil month name would print as question marks
+ * (lib/payslip-pdf-strings.ts).
+ */
+function monthYear(payPeriod: string, locale: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(payPeriod ?? '');
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) return payPeriod ?? '';
+  return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1)),
+  );
+}
+
 export default async function PayslipPage({ params }: { params: Promise<{ payslipId: string }> }) {
   const { payslipId } = await params;
   if (!UUID.test(payslipId)) notFound(); // malformed id → 404, not a DB-error 500
@@ -56,7 +74,6 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
   const p = await payslipDetail(s, payslipId);
   if (!p) notFound();
   const st = (p.statutory ?? {}) as Stat;
-  const prov = payslipProvenance(p.statutory);
   // 3c473773 — the earnings boxes as THIS payslip recorded them. Absent on every payslip issued before the
   // pay items carried a category, in which case these are the stored columns and the page is unchanged.
   const disp = payslipDisplayEarnings(p);
@@ -65,6 +82,7 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
   // THIS payslip's own stamp; a slip issued before this shipped has none and renders exactly as before.
   const absence = payslipAbsenceLines(p.statutory, p.otherDeductions);
   const t = await getTranslations('me.payslip');
+  const locale = await getLocale();
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -87,7 +105,9 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
       <Card className="space-y-5 p-6">
         <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
           <div>
-            <h1 className="text-lg font-semibold tracking-tight">{t('title', { payPeriod: p.payPeriod })}</h1>
+            <h1 className="text-lg font-semibold tracking-tight">
+              {t('title', { payPeriod: monthYear(p.payPeriod, locale) })}
+            </h1>
             <p className="text-sm text-muted-foreground">
               {/* Employee ID left-of-name (feedback 38668d9b) */}
               {p.employeeCode ? `${p.employeeCode} · ` : ''}
@@ -208,21 +228,20 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           </section>
         )}
 
-        {p.daysWorked != null && (
-          <p className="text-xs text-muted-foreground">
-            {t('proratedNote', { days: Number(p.daysWorked) })}
-          </p>
-        )}
-
-        {/* 97a9b0ab — provenance. Both values were already recorded and neither was ever shown:
-            `statutory.version` is the statutory ruleset that produced these figures (stamped on every
-            payslip since 2026.0) and `payslip.version` counts recalculations. Showing them is what lets
-            "why did my tax change when my pay didn't?" get a specific answer instead of reassurance. */}
-        {(prov.rulesetVersion || p.version > 1) && (
-          <p className="text-xs text-muted-foreground">
-            {prov.rulesetVersion && t('provenanceFooter', { ruleset: prov.rulesetVersion })}
-            {p.version > 1 && <> {t('provenanceRevision', { n: p.version })}</>}
-          </p>
+        {/* f35f758a — THE TWO INTERNAL SENTENCES ARE OFF THE EMPLOYEE'S COPY.
+            "Prorated on N days worked in this period." and "Calculated under statutory rules version X."
+            both stood here and both came off the downloaded document too; leaving them on the screen
+            beside a document that no longer carries them is the drift this product keeps being caught by.
+            The day count is not lost — it is a FIELD on the downloaded payslip's employment panel, where
+            it reads as information rather than as a note about the arithmetic.
+            THE RULESET LINE SURVIVES ON THE HR-FACING SCREEN (app/payroll/individual-payslip/page.tsx),
+            which is the split the plan committed to: whoever is checking a figure can still answer
+            "why did my tax change when my pay did not?", and the employee is not shown the working.
+            The message keys are kept — `provenanceFooter` is still resolved by the admin screen. */}
+        {p.version > 1 && (
+          // Not one of the two sentences, and not internal: a recalculated payslip must say it was
+          // recalculated, or the employee cannot tell this copy from the one they filed last month.
+          <p className="text-xs text-muted-foreground">{t('provenanceRevision', { n: p.version })}</p>
         )}
       </Card>
     </div>

@@ -63,10 +63,15 @@ async function main() {
       ].filter(Boolean);
       console.log(`  ✓ ${t.name} (${t.id}): hourly rate ${res.hourlyRate} — ${parts.join('; ')}`);
     } catch (e) {
-      // A tenant with no Overtime 1.5 is not a failure of this sweep — it simply has nothing to model on,
-      // and inventing a rate for it is precisely what this script refuses to do.
-      if (e instanceof OvertimeReferenceUnusableError && e.reason === 'not_found') {
-        console.log(`  – ${t.name} (${t.id}): no ${fromCode} to model on, skipped`);
+      // A tenant with NOTHING TO MODEL ON is not a failure of this sweep — it simply has no usable
+      // reference, and inventing a rate for it is precisely what this script refuses to do. Two shapes
+      // mean that: the code is absent (`not_found`), or it is present but deliberately switched off
+      // (`archived`), whose rate is a retired figure this sweep must not propagate into live items. Both
+      // are a per-tenant skip across a whole-estate sweep; only `not_per_hour` — a reference that IS in
+      // use but cannot be scaled — is worth failing the exit code over.
+      if (e instanceof OvertimeReferenceUnusableError && (e.reason === 'not_found' || e.reason === 'archived')) {
+        const why = e.reason === 'archived' ? `${fromCode} is archived (switched off)` : `no ${fromCode} to model on`;
+        console.log(`  – ${t.name} (${t.id}): ${why}, SKIPPED`);
         continue;
       }
       failures += 1;

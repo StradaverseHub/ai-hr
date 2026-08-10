@@ -1597,6 +1597,7 @@
   },
   "leave": {
     "myAbsenceTitle": "我的休假",
+    "inquiryMovedToTracker": "员工资料、员工假期余额和员工假期记录现在从团队休假追踪进入；本页只显示你自己的假期。",
     "title": "休假",
     "description": "查看您的假期余额、申请休假并跟踪您的请求。",
     "chipRequested": "已申请",
@@ -1913,7 +1914,8 @@
       "pagePrev": "上一頁",
       "pageNext": "下一頁",
       "pageAria": "第 {page} 頁",
-      "noEmployeesFiltered": "沒有符合篩選條件的員工。"
+      "noEmployeesFiltered": "沒有符合篩選條件的員工。",
+      "detailsDescription": "选择你要查看假期的员工。"
     },
     "override": {
       "title": "Before you submit",
@@ -4106,7 +4108,7 @@
           "individual": "个人",
           "history": "历史",
           "outstanding": "未支付",
-          "grid": "表格"
+          "grid": "交易明细"
         },
         "filters": {
           "company": "公司",
@@ -4117,6 +4119,7 @@
           "month": "月份",
           "cycle": "薪资周期",
           "apply": "套用筛选",
+          "search": "搜索",
           "all": "全部",
           "department": "部门",
           "txnStatus": "交易状态",
@@ -4168,10 +4171,16 @@
           "leftOutByScope": "批次范围被缩小，遗漏了这位员工"
         },
         "grid": {
-          "title": "交易历史表格",
-          "pickEmployee": "选择员工",
-          "pickEmployeeHint": "该表格显示一位员工的整年薪资 —— 左侧为每个薪资项目，上方为每个月份。",
-          "noEmployee": "请从列表中选择员工以查看其薪资年度。",
+          "title": "交易明细",
+          "pickEmployeeHint": "本页面显示一位员工的整年薪资 —— 左侧为每个薪资项目，上方为每个月份。",
+          "noEmployee": "请在上方搜索员工以查看其薪资年度。",
+          "search": {
+            "placeholder": "按员工编号或姓名搜索",
+            "ariaLabel": "搜索员工",
+            "resultsLabel": "员工搜索结果",
+            "noMatches": "没有匹配的员工",
+            "clear": "清除员工"
+          },
           "empty": "在所选年份、月份和薪资周期内，该员工没有薪资历史。",
           "export": "导出到 Excel",
           "hideZeroRows": "隐藏全为零的行",
@@ -4553,6 +4562,8 @@
       "pcbUnavailable": "此次薪资计算未记录税务演算过程，因此无法在此说明该金额。今后计算的批次都会记录。",
       "pcbYtdNet": "本年度此前的净薪酬",
       "pdfSubtitle": "薪资单",
+      "previewDocument": "预览",
+      "previewHint": "这是工资单文件本身——与员工下载的文档完全相同。请使用查看器自带的工具栏打印。",
       "reliefChildren": "子女",
       "reliefDisabledIndividual": "残疾本人",
       "reliefDisabledSpouse": "残疾配偶",
@@ -4561,6 +4572,11 @@
       "reliefSpouse": "配偶",
       "reliefTotal": "减免合计",
       "revision": "第 {n} 次修订——此工资单已重新计算",
+      "searchAriaLabel": "搜索员工",
+      "searchClear": "清除员工",
+      "searchNoMatches": "没有匹配的员工",
+      "searchPlaceholder": "按员工编号或姓名搜索",
+      "searchResultsLabel": "员工搜索结果",
       "state_draft": "草稿",
       "state_published": "已发放给员工",
       "state_scheduled": "已排定发放",
@@ -4568,6 +4584,7 @@
       "subtitle": "在工资单发放给员工之前，查看、核对、打印和下载某位员工的工资单。只读——此处不会重新计算或改动任何薪资。",
       "title": "个人工资单",
       "totalEarnings": "收入总额",
+      "viewPayslip": "查看工资单",
       "ytdCurrent": "本批次",
       "ytdHeading": "年初至今 · {year}",
       "ytdItem": "项目",
@@ -5757,7 +5774,7 @@
       "scope": {
         "people": "所有人都可打开；列表仅限于你有权查看的人员。",
         "leave": "所有人都可打开；你查看自己的假期，经理和管理员查看下属的假期。",
-        "leaveTracker": "所有人都可打开；你查看自己的假期，经理和管理员查看下属的假期。",
+        "leaveTracker": "所有人都可打开；你查看自己的假期，经理查看下属的假期，管理员看到的是员工查询而非日历。",
         "attendance": "所有人都可打开；你查看自己的考勤，经理和管理员查看下属的考勤。",
         "approvals": "经理及以上；显示内容取决于你实际的汇报线。",
         "roster": "经理及以上；显示内容取决于你实际的汇报线。",

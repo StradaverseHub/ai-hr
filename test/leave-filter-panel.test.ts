@@ -19,15 +19,26 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-describe('leave filter panel: /leave admin surface', () => {
-  const src = read('app/leave/page.tsx');
+describe('leave filter panel: the HR-admin Employee Details surface', () => {
+  // REPOINTED BY 388e53c2. The listing this block is about did not change — it MOVED, from /leave to the
+  // Team Leave Tracker route, because the sidebar lights a row by path prefix and every /leave/* screen
+  // kept "My Leave" lit while an administrator read somebody else's leave record. So the panel assertions
+  // follow the panel, and /leave is asserted to have kept none of it.
+  const src = read('app/leave/tracker/page.tsx');
+  const leavePage = read('app/leave/page.tsx');
 
   it('still imports FilterPanel + FilterChips — the Employee Details listing uses them', () => {
     expect(src).toMatch(/import\s*\{[^}]*FilterPanel[^}]*\}\s*from\s*'@\/components\/filter-panel'/);
     expect(src).toMatch(/FilterChips/);
-    expect(src.includes('action="/leave"')).toBe(true);
-    // The surviving panel is the employee listing's, not the retired request table's.
     expect(src.includes('fields={employeeFilterFields}')).toBe(true);
+  });
+
+  it('THE PANEL POSTS BACK TO ITS OWN PAGE — a form left on /leave silently leaves the screen', () => {
+    // The trap in the lift, and the one no type checker sees: the search form, the FilterPanel and the
+    // FilterChips row each hardcoded `action="/leave"`. Carried over unchanged, pressing Search or
+    // applying a filter would throw an administrator off the screen they are working on.
+    expect(src.match(/action="\/leave\/tracker"/g) ?? []).toHaveLength(3);
+    expect(src).not.toMatch(/action="\/leave"/);
   });
 
   it('the org-wide read is gone, and the self-service read is NOT', () => {
@@ -37,17 +48,20 @@ describe('leave filter panel: /leave admin surface', () => {
     // listLeaveRequestsPage in a comment explaining where the retired filter vocabularies still live, and
     // a substring check would flag that prose as a regression. Same trap as r134's `tList(` and r135's
     // LEAVE_CONFIG_ROW — a guard that reports correct code as wrong is worse than no guard.
-    expect(src).not.toContain('listLeaveRequestsPage(session');
-    expect(src).not.toMatch(/^\s*listLeaveRequestsPage,\s*$/m);
-    // The employee's own history still loads — this page is still their My Absence home.
-    expect(src.includes('listLeaveRequests(session, scopeIds)')).toBe(true);
-    // And the listing that replaced it as the admin's landing view survives.
-    expect(src.includes('listEmployeesPage(session, {')).toBe(true);
+    expect(leavePage).not.toContain('listLeaveRequestsPage(session');
+    expect(leavePage).not.toMatch(/^\s*listLeaveRequestsPage,\s*$/m);
+    // The employee's own history still loads — /leave is still their My Absence home.
+    expect(leavePage.includes('listLeaveRequests(session, scopeIds)')).toBe(true);
+    // And the listing that replaced it as the admin's landing view survives, at its new address.
+    expect(src.includes('listEmployeesPage(s, {')).toBe(true);
+    expect(leavePage.includes('listEmployeesPage'), 'the listing must not be left behind too').toBe(false);
   });
 
-  it('the surviving Employee Details panel is still admin-gated and still multi-select', () => {
-    expect(src.includes('isAdmin(session)')).toBe(true);
-    expect(src).toMatch(/\{admin && \(/);
+  it('the Employee Details panel is still admin-gated and still multi-select', () => {
+    // The gate moved from a `{admin && (…)}` block to an EARLY RETURN on the same predicate, which is
+    // strictly stronger: it suppresses the READS as well as the markup.
+    expect(src.includes('isAdmin(s)')).toBe(true);
+    expect(src).toMatch(/if \(admin\) \{/);
     expect(src.includes("kind: 'multi'")).toBe(true);
   });
 
@@ -69,18 +83,16 @@ describe('leave filter panel: /leave admin surface', () => {
       'sort?: string',
       'dir?: string',
     ]) {
-      expect(src.includes(param), `${param} should be gone with the request table`).toBe(false);
+      expect(leavePage.includes(param), `${param} should be gone with the request table`).toBe(false);
     }
-    // `emp` SURVIVES on its own — it names the employee under inquiry, threaded between tabs by the nav.
+    // `emp` and the ed* contract SURVIVE — on the page that reads them. Their spelling is unchanged, so
+    // every admin link already saved keeps working against the new base path.
     expect(src.includes('emp?: string | string[]')).toBe(true);
-    // The employee listing keeps its own prefixed contract untouched.
     for (const param of ['edQ?: string', 'edPage?: string', 'edCompany?: string | string[]']) {
       expect(src.includes(param), param).toBe(true);
+      expect(leavePage.includes(param), `${param} still declared on /leave`).toBe(false);
     }
   });
-
-
-
 });
 
 describe('leave filter panel: component supports multi-select additively', () => {

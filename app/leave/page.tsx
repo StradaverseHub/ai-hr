@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -9,28 +8,20 @@ import {
   leaveRequestDateBreakdown,
   leaveRequestsFor,
   myEmployment,
-  listCompanies,
-  listDepartments,
   listEmployees,
-  listEmployeesPage,
   listLeaveTypes,
   listLeaveRequests,
   reportingLinesFor,
   replacementLeaveLedger,
 } from '@/core/read';
-import {
-  deriveEmploymentStatus,
-  EMPLOYMENT_STATUSES,
-  type EmploymentStatus,
-} from '@/core/employment-status';
 import { todayInKualaLumpur } from '@/core/leave';
 import { essViewHasAnyVisibleRow, isReplacementLeaveCode } from '@/core/ess-view';
-import { Avatar, Button, Card, EmployeeCode, PageHeader, StatusBadge, inputCls } from '@/components/ui';
-import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
-// Employee Details (feedback 650b6eb8): the left-side inquiry nav wave 1 built for the two screens this
-// listing feeds, plus the numbered-pager window helper that lives beside the other inquiry selection rules.
-import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
-import { inquiryPageWindow } from '@/lib/leave-inquiry';
+import { Card, PageHeader } from '@/components/ui';
+// 388e53c2 — the Employee Details listing, its left-side rail, its filter panel and the People status
+// vocabulary all LEFT this page with the HR-admin inquiry surface. They live on app/leave/tracker/page.tsx
+// now, which is the Team Leave Tracker row the reporter asked to enter them from. Nothing was deleted:
+// the listing is the same code with its base path repointed. (Naming the moved components literally here
+// would defeat the guards that assert none of them survived on this page — prose is not exempt.)
 // 33bf1a2d: the leave-request table cells this table used to spell out inline, now SHARED with the
 // Approval Items leave table (app/approvals/page.tsx) so the two can no longer drift apart.
 import { LeaveDaysCell, LeaveEmployeeCell, LeaveTypeCell } from '@/components/leave/leave-request-cells';
@@ -76,8 +67,6 @@ import {
 // with ≥1 rejected date, a7cbd895 / /me R17 600be8ac); the DB status stays 'approved'.
 const REQ_STATUS = LEAVE_STATUS_PILL;
 
-// Employee Details listing page size — the reporter asked for exactly ten employees per page (650b6eb8).
-const EMPLOYEE_PAGE = 10;
 // afd0a87c — LEAVE_STATUSES / LEAVE_DURATIONS / PENDING_STAGES were the whitelists for the retired
 // request table's status, Days-column and "Pending with" filters. They narrowed a tampered query value to
 // nothing before it could reach SQL; with no filter left to tamper with, they have no subject. The same
@@ -115,36 +104,61 @@ export default async function LeavePage({
     // does nothing. A saved admin link carrying them still lands on this page — Next ignores unknown
     // search params — it simply arrives unfiltered, which is disclosed in the approved plan.
     //
-    // `emp` SURVIVES on its own: it names the employee under inquiry, is threaded between the inquiry tabs
-    // by the left-side nav, and never belonged to the retired table.
-    emp?: string | string[];
+    // 388e53c2 - `emp` and the `ed*` listing params went to app/leave/tracker/page.tsx WITH the Employee
+    // Details listing that read them. Declaring a param nothing on this page reads would advertise a
+    // filter that silently does nothing. Their PREFIX is unchanged over there, so every admin link
+    // already saved keeps working against its new base path.
     // R37 e5a158d3: as-at date for the (relocated) detailed leave-balance table's entitlement breakdown.
     asOf?: string;
-    // Employee Details listing (feedback 650b6eb8). Its own search / page / narrowings, prefixed `ed`:
-    // this page carries TWO independently filtered listings and the unprefixed q/page/company/dept/status
-    // already belong to the leave-request table below. Renaming those instead would break every saved
-    // admin link and every export URL already in circulation.
-    edQ?: string;
-    edPage?: string;
-    edCompany?: string | string[];
-    edDept?: string | string[];
-    edStatus?: string | string[];
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
   const t = await getTranslations('leave');
   // R37 e5a158d3: the relocated detailed balance table reuses the `me` namespace's as-at-form + table labels.
   const tMe = await getTranslations('me');
-  // Employee Details (650b6eb8) reuses the People vocabulary rather than minting a second one: the same
-  // column heading and, for the badge, the ONE shared Employee Status vocabulary 9cbf5e0d consolidated on.
-  const tPeople = await getTranslations('people.list');
-  const tStatus = await getTranslations('people.employeeStatus');
-  const tInq = await getTranslations('leave.inquiry');
   const admin = isAdmin(session);
   // R5 Build #2 (Fix B): MYT "today" so the "hasn't started yet" cut-off matches the service (Malaysia time),
   // not a UTC clock that would allow/block a day near KL midnight. The default-date on the apply form uses it too.
   const today = todayInKualaLumpur();
   const sp = await searchParams;
+  // R37 e5a158d3: the balance view is the viewer's OWN detailed table (was an all-employee pivot). Resolved
+  // BEFORE anything else because it is what decides whether this page has a subject at all.
+  const me = await myEmployment(session);
+
+  // ── The short page (feedback 388e53c2) ───────────────────────────────────────────────────────────────
+  // TWO viewers get the heading and one sentence instead of the self-service surface, and NONE of the
+  // reads below run for either of them — this is an early return, not a hidden block.
+  //
+  //   * ANY account not linked to an employee profile. That is a fix, not a removal: every read on this
+  //     page is keyed by `me.employmentId`, so an unlinked viewer used to get empty balance cards, an
+  //     empty history and a live "+ Request Leave" button that could not possibly work. The sentence is
+  //     me.notLinked — the one /me has shown for exactly this condition, in all six languages, since long
+  //     before this item. Reused verbatim rather than reworded, so the product says one thing once.
+  //
+  //   * An HR ADMINISTRATOR. Feedback 8ec63139 already took their own balances, their own history and
+  //     Request Leave off this page; 388e53c2 takes the employee lookups off it too, because those are
+  //     the Team Leave Tracker row now. What is left is the heading, so an administrator who DOES have an
+  //     employment record is pointed at where the lookups went rather than shown a blank page.
+  if (me == null || admin) {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <Card className="p-8 text-center">
+          <h1 className="text-lg font-semibold">{t('myAbsenceTitle')}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {me == null ? tMe('notLinked') : t('inquiryMovedToTracker')}
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  // Everything from here down is the SELF-SERVICE page, and `admin` is necessarily false past the return
+  // above. The ess and not-admin guards below are 8ec63139's and are deliberately left standing: they are
+  // the recorded contract for who sees their own figures here, and this item does not reopen it.
+  //
+  // NOTE FOR THE NEXT EDITOR: do not quote those guards' JSX literally in a comment on this file. Several
+  // tests slice this page at the first occurrence of that opening guard, and a quoted copy above the real
+  // one silently inverts the slice — which is how this very comment was first written, and how it failed.
   // Feedback 56a0deb9 — collapsible balance section. SSR-read the persisted choice (cookie absent ⇒ closed,
   // the reporter's default) so the first paint is already correct — no closed-then-restored flash.
   const cookieStore = await cookies();
@@ -157,37 +171,13 @@ export default async function LeavePage({
   const cancellableCandidates = (workingDates: string[] | undefined): string[] =>
     (workingDates ?? []).filter((d) => d > today);
 
-  // ── Advanced Search & Filter params (admin only; feedback 0773bda9) ──────────────────────────────────
-  const arr = (v?: string | string[]): string[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
-  // afd0a87c — the org-wide request table's search/sort/eleven filters are gone with it. `emp` STAYS: it
-  // names the employee under inquiry (inquiryEmploymentId below), which the left-side nav threads between
-  // tabs and which never depended on the retired table.
-  const empIds = arr(sp.emp);
-  // ── Employee Details params (admin only; feedback 650b6eb8) ─────────────────────────────────────────
-  const edQ = sp.edQ?.trim() || undefined;
-  const edPage = Math.max(0, Number(sp.edPage) || 0);
-  const edCompany = arr(sp.edCompany);
-  const edDept = arr(sp.edDept);
-  // Whitelisted against the derived buckets, so an unknown value narrows to nothing rather than reaching SQL.
-  const edStatus = arr(sp.edStatus).filter((s): s is EmploymentStatus =>
-    (EMPLOYMENT_STATUSES as readonly string[]).includes(s),
-  );
-  const hasEmployeeChips = edCompany.length + edDept.length + edStatus.length > 0;
-  const hasEmployeeFilters = admin && (!!edQ || hasEmployeeChips);
-  // The employee currently under inquiry, threaded through the left nav so switching tab keeps them. One
-  // value only: `emp` doubles as the request table's multi-select employee filter, and "which employee am
-  // I looking at" is only meaningful when exactly one is named.
-  const inquiryEmploymentId = empIds.length === 1 ? empIds[0] : undefined;
-
   const locale = await getLocale();
-  const [employees, leaveTypes, me] = await Promise.all([
+  const [employees, leaveTypes] = await Promise.all([
     listEmployees(session, scopeIds),
     // Employee apply-popup enhancement: pass the viewer's locale so listLeaveTypes localizes `name` through
     // pickName. Without it the list is always English, which also makes an alphabetical sort meaningless
     // outside English. Admin master screens deliberately keep passing no locale (they edit the English name).
     listLeaveTypes(session, { locale }),
-    // R37 e5a158d3: the balance view is now the viewer's OWN detailed table (was an all-employee pivot).
-    myEmployment(session),
   ]);
   // Sort ONCE, at the source: all four consumers on this page map off this array (the request-leave dialog
   // options, the two edit-leave dialog lists, and the admin filter-chip options), so one sort makes them
@@ -335,75 +325,31 @@ export default async function LeavePage({
     types: selfBalances.filter((b) => b.placement === 'secondary' && resolveSecondaryGroup(b.code) === group),
   })).filter((g) => g.types.length > 0);
 
-  // History: admins get the paginated, filterable, sortable read (over any population size); a
-  // manager/employee keeps the untouched self-service view (their OWN requests, capped list). Option
-  // sources for the filter panel are loaded only on the admin path.
-  const {
-    rows: history,
-    total,
-    companies,
-    businessUnits,
-    departments,
-    locations,
-    approvers,
-    employeeList,
-  } = admin
-    ? await (async () => {
-        // afd0a87c — the org-wide leave register is GONE, so this branch no longer reads it. rows/total
-        // are returned empty because the non-admin branch below still needs them (the self-service card
-        // and selfHistory read the same destructure). businessUnits / locations / approvers were option
-        // sources for the retired filter panel and have no other consumer on this page; companies and
-        // departments STAY because employeeFilterFields consumes them for the Employee Details listing.
-        const [companies, departments, employeeList] = await Promise.all([
-          listCompanies(session),
-          listDepartments(session, { companyIds: scopeIds }),
-          // Employee Details (650b6eb8): the same access-scoped People read /personnel uses, ordered
-          // company A→Z then name A→Z and paged ten at a time. Terminated staff are NOT excluded — their
-          // leave position is exactly what HR looks up after someone leaves (20c699f8 made the same call).
-          listEmployeesPage(session, {
-            companyIds: scopeIds,
-            q: edQ,
-            filterCompanyIds: edCompany,
-            departmentIds: edDept,
-            employmentStatuses: edStatus,
-            sort: 'company',
-            limit: EMPLOYEE_PAGE,
-            offset: edPage * EMPLOYEE_PAGE,
-          }),
-        ]);
-        return { rows: [], total: 0, companies, businessUnits: [], departments, locations: [], approvers: [], employeeList };
-      })()
-    : await (async () => {
-        const requests = await listLeaveRequests(session, scopeIds);
-        const mine = requests.filter((r) => session.personId != null && r.personId === session.personId);
-        return {
-          rows: mine,
-          total: mine.length,
-          companies: [],
-          businessUnits: [],
-          departments: [],
-          locations: [],
-          approvers: [],
-          employeeList: { rows: [], total: 0 },
-        };
-      })();
-
+  // History: the viewer's OWN requests, and only those.
+  //
+  // This used to be a two-branch destructure of eight names. afd0a87c emptied the admin branch of its
+  // org-wide register, leaving it holding `companies` / `departments` / `employeeList` for the Employee
+  // Details listing alone — and 388e53c2 moved that listing to app/leave/tracker/page.tsx, which reads
+  // them there. So one path is left, and it is the self-service one. (An administrator never reaches this
+  // line at all: the short page returns above.)
+  const history = (await listLeaveRequests(session, scopeIds)).filter(
+    (r) => session.personId != null && r.personId === session.personId,
+  );
+  const total = history.length;
   // Self-service history ordering (feedback 657962ec): cards render newest first BY LEAVE START DATE —
   // explicit here (the read returns createdAt-desc, i.e. most recently APPLIED first, which is not the
-  // same thing). Admin history keeps its own sortable columns and is untouched.
-  const selfHistory = admin ? [] : [...history].sort((a, b) => b.startDate.localeCompare(a.startDate));
+  // same thing).
+  const selfHistory = [...history].sort((a, b) => b.startDate.localeCompare(a.startDate));
 
   // Per-date outcome rows for the viewer's OWN recent requests (My Absence merge · a7cbd895): the same
   // 5-most-recent window the /me Leave tab resolved (R17 600be8ac ask #6), so the employee still sees the
   // date-by-date approved/rejected breakdown after the tab moved here — now inside the detail panel
-  // (657962ec). The window follows the card order (5 newest by start date). Admin history is untouched
-  // (approvers already get per-date detail on /approvals). RLS self-branch admits the subject to their rows.
+  // (657962ec). The window follows the card order (5 newest by start date).
+  // RLS self-branch admits the subject to their rows.
   const dateBreakdownEntries: (readonly [string, Awaited<ReturnType<typeof leaveRequestDateBreakdown>>])[] =
-    admin
-      ? []
-      : await Promise.all(
-          selfHistory.slice(0, 5).map(async (r) => [r.id, await leaveRequestDateBreakdown(session, r.id)] as const),
-        );
+    await Promise.all(
+      selfHistory.slice(0, 5).map(async (r) => [r.id, await leaveRequestDateBreakdown(session, r.id)] as const),
+    );
   const requestDateBreakdowns = new Map(dateBreakdownEntries);
 
   // ── Self-service history cards (feedback 657962ec) ───────────────────────────────────────────────────
@@ -525,87 +471,6 @@ export default async function LeavePage({
         ) : null,
     };
   });
-
-  // ── Filter panel + query-string helpers (admin only; feedback 0773bda9) ──────────────────────────────
-  // The active filter set WITHOUT sort/dir/page — the base for every generated link and the search-form's
-  // hidden inputs. Multi params (type/status) are appended so all selected values survive.
-  // The Employee Details listing's own state (feedback 650b6eb8), carried by every link the REQUEST table
-  // generates so searching, paging or re-sorting the requests below never disturbs the employee list above
-  // it. `keepPage: false` is for the employee listing's OWN controls: changing an employee filter is the one
-  // thing that should send that listing back to page one, exactly as the request table treats `page`.
-  const withEmployeeParams = (p: URLSearchParams, opts: { keepPage?: boolean } = {}) => {
-    if (edQ) p.set('edQ', edQ);
-    for (const id of edCompany) p.append('edCompany', id);
-    for (const id of edDept) p.append('edDept', id);
-    for (const st of edStatus) p.append('edStatus', st);
-    if (opts.keepPage !== false && edPage > 0) p.set('edPage', String(edPage));
-    return p;
-  };
-  // Sort links reset to the first page (drop `page`); toggle asc/desc when re-clicking the active column.
-  // The chosen rows-per-page survives, like every other narrowing on this screen (fc776376).
-  // fc776376 — the shared pager builds its own links through this, because /leave's address carries
-  // REPEATED params (the multi-select filters) that a flat key/value builder would flatten.
-
-  // ── Employee Details listing (feedback 650b6eb8) ─────────────────────────────────────────────────────
-  // The tab an HR admin lands on: who am I looking up. Picking a row hands the employment id to Employee
-  // Balances, which is the screen that actually answers the leave question — this listing does no leave
-  // reads of its own. Its links carry the request table's state for the same reason that table's carry
-  // this one's: one page, two listings, neither may silently reset the other.
-  const employeePageCount = Math.ceil(employeeList.total / EMPLOYEE_PAGE);
-  const edPageHref = (n: number) => {
-    // afd0a87c — was withEmployeeParams(withSort(filterParams())): it carried the request table's search,
-    // sort and eleven filters so paging the employee list never reset the requests below. There is no
-    // request table any more, so it carries only this listing's own state.
-    const p = withEmployeeParams(new URLSearchParams(), { keepPage: false });
-    if (n > 0) p.set('edPage', String(n));
-    const s = p.toString();
-    return s ? `/leave?${s}` : '/leave';
-  };
-  // Opening an employee goes straight to Employee Balances (650b6eb8 §v) — the listing is a picker, not a
-  // destination, so there is no per-employee page here to land on first.
-  const employeeHref = (employmentId: string) => `/leave/employee-balances?emp=${employmentId}`;
-  const employeeFilterFields: FilterField[] = [
-    {
-      kind: 'multi',
-      name: 'edCompany',
-      label: t('filters.company'),
-      ariaLabel: t('filters.company'),
-      options: companies.map((c) => ({ value: c.id, label: c.name })),
-      removeAriaLabel: t('filters.removeFilter', { label: t('filters.company') }),
-    },
-    {
-      kind: 'multi',
-      name: 'edDept',
-      label: t('filters.department'),
-      ariaLabel: t('filters.department'),
-      options: departments.map((d) => ({ value: d.id, label: d.name })),
-      removeAriaLabel: t('filters.removeFilter', { label: t('filters.department') }),
-    },
-    {
-      // The DERIVED Employee Status buckets and the shared people.employeeStatus vocabulary (9cbf5e0d) —
-      // never the legacy stored assignment.status, whose retired values must not reappear on a new screen.
-      kind: 'multi',
-      name: 'edStatus',
-      label: tPeople('colStatus'),
-      ariaLabel: tPeople('colStatus'),
-      options: EMPLOYMENT_STATUSES.map((s) => ({ value: s, label: tStatus(s) })),
-      removeAriaLabel: t('filters.removeFilter', { label: tPeople('colStatus') }),
-    },
-  ];
-  const employeeFilterValues = { edCompany, edDept, edStatus };
-  const employeeFilterLabels = {
-    filter: t('filters.filter'),
-    apply: t('filters.apply'),
-    clearAll: t('filters.clearAll'),
-    activeCount: t('filters.activeCount', {
-      count: [edCompany, edDept, edStatus].filter((v) => v.length > 0).length,
-    }),
-    selectAll: t('filters.selectAll'),
-    deselectAll: t('filters.deselectAll'),
-  };
-  // afd0a87c — this carried the retired request table's params so one listing could not clear the other.
-  // With a single listing on the page, only its own search term needs preserving.
-  const employeeHiddenParams: [string, string][] = [...(edQ ? ([['edQ', edQ]] as [string, string][]) : [])];
 
 
   // The "Other leave" breakdown Card (restored · feedback 56a0deb9): the pre-R54 grouped panels, rebuilt
@@ -840,193 +705,29 @@ export default async function LeavePage({
       {/* Feedback 8ec63139: the HR admin's own full-width "Other leave" breakdown card (56a0deb9) is gone —
           it was the third face of My Balances on a page that is now about employees, not the viewer. The
           self-service pairing above is untouched. */}
-      {/* ── HR-admin leave inquiry (feedback 650b6eb8) ────────────────────────────────────────────────
-          The landing tab: an employee listing you search, narrow and page through, whose rows open the
-          Employee Balances screen. The left-side nav is wave 1's (20c699f8 / 953be4b0) — this is the
-          "details" destination it was already pointing at.
+      {/* ── The HR-admin leave inquiry has MOVED (feedback 388e53c2) ──────────────────────────────────
+          Employee Details — the employee listing you search, narrow and page through, whose rows open
+          Employee Balances — now opens from the Team Leave Tracker row instead of from here. See
+          app/leave/tracker/page.tsx: the listing is the same code with its base path repointed, and the
+          other two inquiry screens keep their addresses untouched.
 
-          afd0a87c — THE ORG-WIDE LEAVE-REQUEST TABLE IS GONE, and this comment is kept as the record of
-          why it survived twice before. It was held in 8ec63139 (the reporter had just asked for a filter on
-          every one of its columns) and again in r80 (reported as a duplicate of Approval Items, which it was
-          not). The reporter has now asked plainly for the removal itself, with no relocation, and said they
-          will redesign Employee Leave Record separately.
+          WHY IT MOVED, since this page is where a reader will come looking for it: the sidebar lights a
+          row by path PREFIX, so every /leave/* screen kept "My Leave" lit while an HR administrator read
+          somebody else's leave record. The reporter's screenshot was of exactly that. Rather than dress
+          the symptom up, the entry point moved to the row that should have been lit all along.
 
-          TWO CAPABILITIES GO WITH IT AND HAVE NO OTHER HOME, both disclosed in the approved plan and
-          accepted: the org-wide register over every status with its eleven filters, and an HR admin editing
-          their OWN pending application (withdraw-and-reapply is the workaround). Its filtered CSV/Excel
-          export route is deleted in the same change rather than left unreachable.
+          afd0a87c — THE ORG-WIDE LEAVE-REQUEST TABLE IS GONE, and this note is kept as the record of why
+          it survived twice before. It was held in 8ec63139 (the reporter had just asked for a filter on
+          every one of its columns) and again in r80 (reported as a duplicate of Approval Items, which it
+          was not). The reporter then asked plainly for the removal itself, with no relocation, and said
+          they will redesign Employee Leave Record separately. Two capabilities went with it and have no
+          other home, both disclosed in that plan and accepted: the org-wide register over every status
+          with its eleven filters, and an HR admin editing their OWN pending application.
 
-          WHAT DOES NOT GO, contrary to what test/leave-records-cancel.test.ts used to assert: withdrawing
-          and giving back dates on your own leave still work from the dashboard calendar —
-          components/planned-absences.tsx gates those on personId === viewerPersonId with no admin
-          exclusion. AdminCancelLeaveDialog over someone else's leave lives on Employee Leave Record and on
-          the calendar. */}
-      {admin && (
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />
-        <div className="min-w-0 flex-1 space-y-6">
-          <Card className="overflow-hidden">
-            <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border px-4 py-3">
-              <div className="text-sm font-medium">
-                {tInq('employeeDetails')}
-                <span className="ml-2 font-normal text-muted-foreground">
-                  {t('filters.showingOf', { shown: employeeList.rows.length, total: employeeList.total })}
-                </span>
-              </div>
-              {/* Search + Filter for THIS listing. The hidden inputs carry the leave-request table's own
-                  state so narrowing employees never blanks the table below (and vice versa). The panel is a
-                  SIBLING of the search form, not a child: it renders its own <form>, and nesting one inside
-                  another is invalid HTML the parser silently unpicks. */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <form method="get" action="/leave" className="flex flex-wrap items-center gap-1.5">
-                  {employeeHiddenParams
-                    .filter(([k]) => k !== 'edQ')
-                    .map(([k, v], i) => (
-                      <input key={`${k}-${i}`} type="hidden" name={k} value={v} />
-                    ))}
-                  <input
-                    name="edQ"
-                    defaultValue={edQ ?? ''}
-                    placeholder={tInq('detailsSearchPlaceholder')}
-                    aria-label={tInq('detailsSearchPlaceholder')}
-                    className={`${inputCls} w-56`}
-                  />
-                  <Button type="submit" size="sm" variant="secondary">
-                    {t('filters.search')}
-                  </Button>
-                </form>
-                <FilterPanel
-                  action="/leave"
-                  fields={employeeFilterFields}
-                  values={employeeFilterValues}
-                  labels={employeeFilterLabels}
-                  hidden={employeeHiddenParams}
-                />
-              </div>
-            </div>
-            {hasEmployeeChips && (
-              <div className="border-b border-border px-4 py-2">
-                <FilterChips
-                  action="/leave"
-                  fields={employeeFilterFields}
-                  values={employeeFilterValues}
-                  labels={employeeFilterLabels}
-                  hidden={employeeHiddenParams}
-                />
-              </div>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                {/* 026e16b9: no `tracking-wide` here — the extra letter-spacing widened every heading
-                    and was measurably part of the inquiry tables' horizontal overflow. */}
-                <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">{t('filters.employeeId')}</th>
-                    <th className="px-3 py-2 font-medium">{tInq('colEmployeeName')}</th>
-                    <th className="px-3 py-2 font-medium">{t('filters.company')}</th>
-                    <th className="px-3 py-2 font-medium">{t('filters.department')}</th>
-                    <th className="px-3 py-2 font-medium">{tInq('colPosition')}</th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">{tPeople('colStatus')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {employeeList.rows.map((e) => (
-                    <tr
-                      key={e.employmentId}
-                      // The employee the other two tabs are showing, when you have arrived back here from one.
-                      aria-current={e.employmentId === inquiryEmploymentId ? 'true' : undefined}
-                      className={e.employmentId === inquiryEmploymentId ? 'bg-muted/60' : 'hover:bg-muted/40'}
-                    >
-                      <td className="whitespace-nowrap px-3 py-2.5">
-                        <EmployeeCode code={e.employeeCode} />
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <Avatar name={e.name} className="size-7 text-[10px]" />
-                          <Link
-                            href={employeeHref(e.employmentId)}
-                            aria-label={tInq('openBalances', { name: e.name })}
-                            className="font-medium text-foreground hover:text-primary"
-                          >
-                            {e.name}
-                          </Link>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{e.company}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{e.department ?? '—'}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{e.position ?? '—'}</td>
-                      <td className="whitespace-nowrap px-3 py-2.5">
-                        {(() => {
-                          // The DERIVED status (9cbf5e0d), as of the page's MYT today — same badge and same
-                          // vocabulary as Personnel, so the two screens cannot tell different stories.
-                          const st = deriveEmploymentStatus(e, today);
-                          return <StatusBadge status={st} label={tStatus(st)} />;
-                        })()}
-                      </td>
-                    </tr>
-                  ))}
-                  {employeeList.rows.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
-                        {hasEmployeeFilters ? tInq('noEmployeesFiltered') : tInq('noEmployees')}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            {/* Numbered page navigation — "1 2 3 Next >" (650b6eb8 §ii). Ellipses stand in for the pages a
-                long list would otherwise print in full; the window helper is unit-tested. */}
-            {employeePageCount > 1 && (
-              <nav
-                aria-label={tInq('employeeDetails')}
-                className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-sm"
-              >
-                {edPage > 0 ? (
-                  <Link href={edPageHref(edPage - 1)} className="text-primary hover:underline">
-                    {tInq('pagePrev')}
-                  </Link>
-                ) : (
-                  <span />
-                )}
-                <span className="flex flex-wrap items-center gap-1">
-                  {inquiryPageWindow(edPage, employeePageCount).map((n, i) =>
-                    n == null ? (
-                      <span key={`gap-${i}`} aria-hidden className="px-1 text-muted-foreground">
-                        …
-                      </span>
-                    ) : (
-                      <Link
-                        key={n}
-                        href={edPageHref(n)}
-                        aria-label={tInq('pageAria', { page: n + 1 })}
-                        aria-current={n === edPage ? 'page' : undefined}
-                        className={`rounded-md px-2 py-1 text-xs tabular-nums ${
-                          n === edPage
-                            ? 'bg-primary font-semibold text-primary-foreground'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        }`}
-                      >
-                        {n + 1}
-                      </Link>
-                    ),
-                  )}
-                </span>
-                {edPage + 1 < employeePageCount ? (
-                  <Link href={edPageHref(edPage + 1)} className="text-primary hover:underline">
-                    {tInq('pageNext')}
-                  </Link>
-                ) : (
-                  <span />
-                )}
-              </nav>
-            )}
-          </Card>
-
-
-        </div>
-      </div>
-      )}
+          WHAT DID NOT GO: withdrawing and giving back dates on your own leave still work from the leave
+          calendar — components/planned-absences.tsx gates those on personId === viewerPersonId with no
+          admin exclusion. AdminCancelLeaveDialog over someone else's leave lives on Employee Leave Record
+          and on that calendar. */}
     </div>
   );
 }

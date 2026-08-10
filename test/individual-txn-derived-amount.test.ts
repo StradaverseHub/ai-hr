@@ -45,6 +45,7 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import {
   OvertimeReferenceUnusableError,
+  archivePayComponent,
   listPayComponents,
   seedOvertimeMultipliers,
   seedPayComponentCatalog,
@@ -544,6 +545,51 @@ describe('2da9937a — the worked overtime examples', () => {
       (e: unknown) => expect((e as OvertimeReferenceUnusableError).reason).toBe('not_per_hour'),
     );
     expect((await listPayComponents(a)).some((c) => c.code === 'OT2_0')).toBe(false);
+  });
+
+  /**
+   * b00f9e6e — an ARCHIVED reference is refused.
+   *
+   * THIS IS NOT A MISLABELLED-ERROR TEST, IT PINS A SILENT WRONG OUTCOME. The reference lookup filtered
+   * tenant + code only, so an archived-but-per_hour item made this function SUCCEED and derive OT2_0 and
+   * OT3_0 scaled off a rate the tenant had deliberately switched off. Nothing warned; the wrong rates
+   * simply appeared in the live catalog. So the assertion is two-part on purpose: it must REJECT, and it
+   * must have WRITTEN NOTHING.
+   *
+   * ARCHIVE LAST — the shared payItem helper calls listPayComponents without includeArchived and then
+   * non-null-asserts, so it throws for an already-archived code. Seed and resolve the id first.
+   */
+  it('refuses an ARCHIVED reference instead of scaling new items off a switched-off rate', async () => {
+    const a = adminCtx(base);
+    const id = await payItem('OT1_5', 'Overtime 1.5', { kind: 'per_hour', rate: HOURLY_1_5 });
+    await archivePayComponent(a, { id, archived: true });
+
+    await seedOvertimeMultipliers(a).then(
+      () => expect.unreachable('expected OvertimeReferenceUnusableError'),
+      (e: unknown) => expect((e as OvertimeReferenceUnusableError).reason).toBe('archived'),
+    );
+    // The half that matters: it did not merely complain, it did not WRITE. Read with includeArchived so a
+    // row that was created and then somehow archived could not hide from this assertion.
+    const cat = await listPayComponents(a, { includeArchived: true });
+    expect(cat.some((c) => c.code === 'OT2_0'), 'OT2_0 must not exist').toBe(false);
+    expect(cat.some((c) => c.code === 'OT3_0'), 'OT3_0 must not exist').toBe(false);
+  });
+
+  /**
+   * THE ORDER OF THE TWO GUARDS IS LOAD-BEARING, and only this case pins it. A switched-off item that ALSO
+   * lacks an hourly rate must report `archived`, because that is the cause an operator can act on. With
+   * the archived check placed below the rule cast it would report `not_per_hour` — true but useless, and
+   * it sends whoever reads the log off to fix the rule of an item that is switched off anyway.
+   */
+  it('reports ARCHIVED, not not_per_hour, when a switched-off reference also has no hourly rate', async () => {
+    const a = adminCtx(base);
+    const id = await payItem('OT1_5', 'Overtime 1.5', null);
+    await archivePayComponent(a, { id, archived: true });
+
+    await seedOvertimeMultipliers(a).then(
+      () => expect.unreachable('expected OvertimeReferenceUnusableError'),
+      (e: unknown) => expect((e as OvertimeReferenceUnusableError).reason).toBe('archived'),
+    );
   });
 });
 

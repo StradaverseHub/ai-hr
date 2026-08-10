@@ -1597,6 +1597,7 @@
   },
   "leave": {
     "myAbsenceTitle": "Cuti Saya",
+    "inquiryMovedToTracker": "Butiran Pekerja, Baki Cuti Pekerja dan Rekod Cuti Pekerja kini dibuka dari Penjejak Cuti Pasukan; halaman ini menunjukkan cuti anda sendiri sahaja.",
     "title": "Cuti",
     "description": "Semak baki cuti anda, mohon cuti, dan jejaki permohonan anda.",
     "chipRequested": "Dimohon",
@@ -1913,7 +1914,8 @@
       "pagePrev": "Sebelumnya",
       "pageNext": "Seterusnya",
       "pageAria": "Halaman {page}",
-      "noEmployeesFiltered": "Tiada pekerja sepadan dengan penapis."
+      "noEmployeesFiltered": "Tiada pekerja sepadan dengan penapis.",
+      "detailsDescription": "Pilih pekerja yang cutinya ingin anda semak."
     },
     "override": {
       "title": "Before you submit",
@@ -4106,7 +4108,7 @@
           "individual": "Individu",
           "history": "Sejarah",
           "outstanding": "Tertunggak",
-          "grid": "Grid"
+          "grid": "Butiran Transaksi"
         },
         "filters": {
           "company": "Syarikat",
@@ -4117,6 +4119,7 @@
           "month": "Bulan",
           "cycle": "Kitaran gaji",
           "apply": "Guna penapis",
+          "search": "Cari",
           "all": "Semua",
           "department": "Jabatan",
           "txnStatus": "Status transaksi",
@@ -4168,10 +4171,16 @@
           "leftOutByScope": "Proses telah disempitkan dan meninggalkan pekerja ini"
         },
         "grid": {
-          "title": "Grid sejarah transaksi",
-          "pickEmployee": "Pilih pekerja",
-          "pickEmployeeHint": "Grid ini menunjukkan setahun gaji seorang pekerja — setiap item gaji di sebelah kiri, setiap bulan di bahagian atas.",
-          "noEmployee": "Pilih pekerja daripada senarai untuk melihat tahun gaji mereka.",
+          "title": "Butiran Transaksi",
+          "pickEmployeeHint": "Skrin ini menunjukkan setahun gaji seorang pekerja — setiap item gaji di sebelah kiri, setiap bulan di bahagian atas.",
+          "noEmployee": "Cari pekerja di bahagian atas untuk melihat tahun gaji mereka.",
+          "search": {
+            "placeholder": "Cari mengikut ID Pekerja atau nama",
+            "ariaLabel": "Cari pekerja",
+            "resultsLabel": "Hasil carian pekerja",
+            "noMatches": "Tiada pekerja sepadan",
+            "clear": "Kosongkan pekerja"
+          },
           "empty": "Tiada sejarah gaji untuk pekerja ini bagi tahun, bulan dan kitaran yang dipilih.",
           "export": "Eksport ke Excel",
           "hideZeroRows": "Sembunyikan baris yang semuanya sifar",
@@ -4553,6 +4562,8 @@
       "pcbUnavailable": "Larian gaji ini tidak merekodkan pengiraan cukai, jadi angka itu tidak dapat dijelaskan di sini. Larian yang dikira mulai sekarang akan merekodkannya.",
       "pcbYtdNet": "Saraan bersih lebih awal tahun ini",
       "pdfSubtitle": "Slip gaji payroll",
+      "previewDocument": "Pratonton",
+      "previewHint": "Ini ialah fail slip gaji itu sendiri — dokumen yang sama dimuat turun oleh pekerja. Cetaknya daripada bar alat pemapar.",
       "reliefChildren": "Anak",
       "reliefDisabledIndividual": "Individu kurang upaya",
       "reliefDisabledSpouse": "Pasangan kurang upaya",
@@ -4561,6 +4572,11 @@
       "reliefSpouse": "Pasangan",
       "reliefTotal": "Jumlah pelepasan",
       "revision": "Semakan {n} — slip gaji ini telah dikira semula",
+      "searchAriaLabel": "Cari pekerja",
+      "searchClear": "Kosongkan pekerja",
+      "searchNoMatches": "Tiada pekerja yang sepadan",
+      "searchPlaceholder": "Cari mengikut ID Pekerja atau nama",
+      "searchResultsLabel": "Hasil carian pekerja",
       "state_draft": "Draf",
       "state_published": "Dikeluarkan kepada pekerja",
       "state_scheduled": "Dijadualkan untuk dikeluarkan",
@@ -4568,6 +4584,7 @@
       "subtitle": "Semak, sahkan, cetak dan muat turun slip gaji seorang pekerja sebelum ia dikeluarkan kepada mereka. Baca sahaja — tiada apa-apa di sini mengira semula atau mengubah gaji.",
       "title": "Slip Gaji Individu",
       "totalEarnings": "Jumlah pendapatan",
+      "viewPayslip": "Lihat Slip Gaji",
       "ytdCurrent": "Larian ini",
       "ytdHeading": "Setakat tahun ini · {year}",
       "ytdItem": "Perkara",
@@ -5757,7 +5774,7 @@
       "scope": {
         "people": "Semua orang boleh membukanya; senarai dihadkan kepada orang yang anda dibenarkan lihat.",
         "leave": "Semua orang boleh membukanya; anda lihat cuti sendiri, pengurus dan pentadbir lihat laporan mereka.",
-        "leaveTracker": "Semua orang boleh membukanya; anda lihat cuti sendiri, pengurus dan pentadbir lihat laporan mereka.",
+        "leaveTracker": "Semua orang boleh membukanya; anda lihat cuti sendiri, pengurus lihat bawahan mereka, dan pentadbir mendapat carian pekerja dan bukan kalendar.",
         "attendance": "Semua orang boleh membukanya; anda lihat kehadiran sendiri, pengurus dan pentadbir lihat laporan mereka.",
         "approvals": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "roster": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
