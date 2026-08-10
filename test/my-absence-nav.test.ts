@@ -38,8 +38,13 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 describe('My Absence: first-level nav rename (label-only, same href)', () => {
   it("nav row is labelKey 'myAbsence' with href '/leave' unchanged (now on the leave pack)", () => {
     // The row literal moved verbatim onto the pack's LEAVE_NAV_LINKS (with its group tag).
+    // 388e53c2 appended `exactHref: true` to this row — HIGHLIGHTING ONLY, never a gate (see the comment
+    // above LEAVE_NAV_LINKS) — so the literal no longer closes at the icon. The match is deliberately
+    // NOT anchored on the closing brace any more: this guard exists to hold the group, the href and the
+    // labelKey, all three of which are unchanged, and row-content parity is test/leave-pack.test.ts.
+    // Anchoring on `}` would fail again for the next legitimate field and teaches people to delete it.
     expect(
-      leavePack.includes("{ group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays }"),
+      leavePack.includes("{ group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays"),
     ).toBe(true);
     // The old top-level `labelKey: 'leave'` is gone (renamed to myAbsence; leaveConfig — the ADMIN
     // config row — is unaffected). Asserted on the labelKey form directly: since rung 6 the sidebar's

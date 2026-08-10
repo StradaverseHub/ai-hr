@@ -54,6 +54,37 @@ export function isHrefActive(pathname: string, search: string, href: string): bo
   return true;
 }
 
+/**
+ * 388e53c2 — the FLAT-ROW active predicate, for the two cases a segment-prefix match gets wrong.
+ *
+ * `isHrefActive` matches a prefix, which is exactly right for a parent row and exactly wrong for
+ * `/leave`: every `/leave/*` screen is a different destination owned by a different row, so the prefix
+ * lit "My Leave" while an administrator was reading somebody else's leave record. That was the
+ * reporter's original complaint, and after the entry point moved it also lit TWO rows on
+ * `/leave/tracker`.
+ *
+ * A row opts out with `exactHref`, and claims paths that are not below its own href with
+ * `ownedSubpaths` — the two leave-inquiry screens kept their `/leave/*` addresses so saved links and
+ * export links stay valid, so the row they are reached from has to claim them explicitly.
+ *
+ * NEITHER FLAG IS A PERMISSION. They decide highlighting only; `adminOnly` / `managerUp` are the gates.
+ *
+ * Exported (rather than living inside the sidebar) so the truth table can be driven through the real
+ * function instead of a copy of it — a copied predicate passes its own test on the day it is written
+ * and then drifts.
+ */
+export function isNavRowActive(
+  pathname: string,
+  search: string,
+  row: { href: string; exactHref?: boolean; ownedSubpaths?: string[] },
+): boolean {
+  const own = row.exactHref
+    ? pathname === row.href.split('?')[0]
+    : isHrefActive(pathname, search, row.href);
+  if (own) return true;
+  return (row.ownedSubpaths ?? []).some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 /** A parent module is active when any child's PATH part matches the pathname — the query is
  *  deliberately ignored so e.g. Reports lights up on /reports whatever category is shown. */
 export const isParentActive = (pathname: string, hrefs: string[]): boolean =>

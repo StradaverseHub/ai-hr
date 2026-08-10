@@ -25,15 +25,22 @@
  *      have today — that promise was made in writing in the approved plan, and saved links plus the export
  *      links already in circulation depend on it.
  *
- * ── WHAT THIS FILE DELIBERATELY DOES NOT ASSERT ──────────────────────────────────────────────────────
+ *   4. THE SIDEBAR LIGHTS THE WRONG ROW — the reporter's ORIGINAL irritation, and the last thing fixed.
+ *      `isHrefActive` matches a segment PREFIX, which is right for a parent row and wrong here: every
+ *      `/leave/*` screen belongs to a different row, so `/leave` lit while an administrator was reading
+ *      somebody else's record, and after the entry point moved TWO rows lit on `/leave/tracker`. The fix
+ *      is two declarative fields (`exactHref`, `ownedSubpaths`) read by `isNavRowActive`. The truth table
+ *      is pinned below, driven through the REAL exported predicate rather than a copy of it — a copied
+ *      predicate passes on the day it is written and then drifts.
  *
- * The sidebar HIGHLIGHT is still wrong on the two sibling screens, and that is the reporter's original
- * irritation. `isHrefActive` (components/nav-flyout.tsx) matches a segment PREFIX, so the `/leave` row
- * lights on `/leave/employee-balances` and `/leave/employee-records` as well. Fixing it needs an
- * exact-match flag on NavChildDescriptor (packs/registry.ts) and an owned-subpaths list consumed by
- * components/sidebar.tsx — two files this workstream does not own, so they were NOT edited and nothing is
- * asserted about them. Deliberately no test here pins the current (wrong) behaviour either: a guard that
- * freezes a bug is worse than no guard. See the round's build report.
+ * ── A NOTE ON WHAT WAS NOT DONE EARLIER, KEPT ON PURPOSE ─────────────────────────────────────────────
+ *
+ * An earlier revision of this file recorded the highlight as knowingly UNFIXED, because two of the three
+ * files were outside that workstream's lane. It deliberately did NOT pin the then-current wrong behaviour:
+ * a guard that freezes a bug is worse than no guard. That was the right call, and it is why the truth
+ * table below could be written as the CORRECT table rather than as a description of what happened to
+ * exist. Neither flag is a permission — `adminOnly` / `managerUp` remain absent from the tracker row, and
+ * adding one to fix highlighting would delete the calendar from every plain employee.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -41,6 +48,7 @@ import { describe, expect, it } from 'vitest';
 import { leavePack } from '../packs/leave';
 import { CARD_META } from '../lib/dashboard-cards';
 import { buildCalendarFocusHref } from '../lib/calendar-focus';
+import { isNavRowActive } from '../components/nav-flyout';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 
 const root = path.resolve(__dirname, '..');
@@ -220,5 +228,60 @@ describe('388e53c2 · My Leave means your own leave again', () => {
     // …and no cancel affordance over SOMEONE ELSE's leave was improvised onto either surface.
     expect(leavePage).not.toContain('<AdminCancelLeaveDialog');
     expect(trackerPage).not.toContain('<AdminCancelLeaveDialog');
+  });
+});
+
+describe('388e53c2 · the sidebar lights exactly one row, and it is the right one', () => {
+  const leaveRow = leavePack.navLinks!.find((l) => l.href === '/leave')!;
+  const trackerRow = leavePack.navLinks!.find((l) => l.href === '/leave/tracker')!;
+
+  it('declares the relationship as DATA on the pack, not as behaviour in the sidebar', () => {
+    // The sidebar owns the predicate; the pack only says which paths belong to which row.
+    expect(leaveRow.exactHref, '/leave must opt out of prefix matching').toBe(true);
+    expect(trackerRow.ownedSubpaths, 'the tracker row must claim the two inquiry screens').toEqual([
+      '/leave/employee-balances',
+      '/leave/employee-records',
+    ]);
+    // Highlighting flags are NOT gates. The tracker row carrying adminOnly would remove the leave
+    // calendar from every plain employee — asserted here as well as in the two sibling guards.
+    expect(trackerRow.adminOnly, 'ownedSubpaths must not have become a gate').toBeUndefined();
+    expect(trackerRow.managerUp, 'ownedSubpaths must not have become a gate').toBeUndefined();
+  });
+
+  // The reporter's screenshot is row 3 of this table: they were on Employee Leave Record and "My Leave"
+  // was lit. Every row is driven through the real exported predicate.
+  const TRUTH: ReadonlyArray<readonly [string, boolean, boolean]> = [
+    // pathname                      My Leave lit   Team Leave Tracker lit
+    ['/leave', true, false],
+    ['/leave/tracker', false, true],
+    ['/leave/employee-balances', false, true],
+    ['/leave/employee-records', false, true],
+  ];
+
+  it.each(TRUTH)('on %s the correct single row is lit', (pathname, myLeaveLit, trackerLit) => {
+    expect(isNavRowActive(pathname, '', leaveRow), `My Leave on ${pathname}`).toBe(myLeaveLit);
+    expect(isNavRowActive(pathname, '', trackerRow), `Team Leave Tracker on ${pathname}`).toBe(
+      trackerLit,
+    );
+    // Never two rows at once, and never none — that is the property the table exists to hold.
+    expect(
+      [myLeaveLit, trackerLit].filter(Boolean).length,
+      `exactly one leave row must light on ${pathname}`,
+    ).toBe(1);
+  });
+
+  it('still lights a genuine child path of the tracker row', () => {
+    // ownedSubpaths matches the path and anything below it, so a future detail screen under one of the
+    // inquiry addresses keeps its entry point lit rather than going dark on arrival.
+    expect(isNavRowActive('/leave/employee-records/EMP-0003', '', trackerRow)).toBe(true);
+  });
+
+  it('leaves the prefix behaviour alone for rows that did not opt out', () => {
+    // The fix must not silently become "exact matching everywhere" — that would darken parent rows all
+    // over the sidebar. A row with neither flag still matches its own subtree.
+    const plain = { href: '/payroll' };
+    expect(isNavRowActive('/payroll/setup', '', plain)).toBe(true);
+    expect(isNavRowActive('/payroll', '', plain)).toBe(true);
+    expect(isNavRowActive('/leave', '', plain)).toBe(false);
   });
 });

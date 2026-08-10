@@ -150,8 +150,20 @@ import { registerPack, type ModulePack, type NavLinkDescriptor, type NavNodeGrou
 // gives each role the right screen. test/leave-pack.test.ts and test/team-leave-tracker.test.ts both
 // assert the absence of these two flags for this reason.
 const LEAVE_NAV_LINKS: NavLinkDescriptor[] = [
-  { group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays },
-  { group: 'manage', href: '/leave/tracker', labelKey: 'teamLeaveTracker', icon: CalendarRange },
+  // 388e53c2 — `exactHref` and `ownedSubpaths` decide HIGHLIGHTING ONLY; neither is a gate, and the
+  // absence of adminOnly / managerUp on the tracker row below is load-bearing (see the paragraph above
+  // this array). Before this, the prefix match lit "My Leave" on every /leave/* screen, so an
+  // administrator reading somebody else's leave record saw their own row highlighted — the reporter's
+  // original complaint. The two inquiry screens keep their /leave/* addresses on purpose, so the row
+  // they are now reached from has to claim them explicitly.
+  { group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays, exactHref: true },
+  {
+    group: 'manage',
+    href: '/leave/tracker',
+    labelKey: 'teamLeaveTracker',
+    icon: CalendarRange,
+    ownedSubpaths: ['/leave/employee-balances', '/leave/employee-records'],
+  },
 ];
 
 /**

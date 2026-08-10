@@ -36,6 +36,24 @@ export type NavChildDescriptor = {
   icon: LucideIcon;
   adminOnly?: boolean;
   managerUp?: boolean;
+  /**
+   * Sidebar highlighting, for the two cases a segment-PREFIX match gets wrong (388e53c2).
+   *
+   * `exactHref` — light this row on its own path ONLY. The /leave row needs it: every /leave/* screen
+   *   is a different destination owned by a different row, so the prefix match lit "My Leave" while
+   *   an administrator was reading somebody else's record. That was the reporter's actual complaint.
+   * `ownedSubpaths` — extra paths that light THIS row. /leave/tracker owns the two leave-inquiry
+   *   screens, which deliberately KEPT their /leave/* addresses so saved links and export links stay
+   *   valid; without this the row they are reached from would go dark on arrival.
+   *
+   * NEITHER IS A PERMISSION. They decide highlighting only — adminOnly / managerUp are the gates, and
+   * adding one of those to a row to fix highlighting would remove the screen from people who should
+   * still see it.
+   *
+   * Data, not behaviour: the sidebar owns the predicate, the pack only declares the relationship.
+   */
+  exactHref?: boolean;
+  ownedSubpaths?: string[];
 };
 
 /** A module's collapsible sidebar node: parent label/icon + its child rows, in render order. */
