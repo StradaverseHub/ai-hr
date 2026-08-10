@@ -1185,7 +1185,12 @@
         "benefit_scheme_override": "Benefit scheme assignment changed",
         "scheme_entitlement_changed": "Scheme entitlement table changed",
         "scheme_updated": "Benefit scheme changed",
-        "grade_group_changed": "Grade group changed"
+        "grade_group_changed": "Grade group changed",
+        "leave_type_rules": "Leave type rules changed",
+        "year_cycle_override": "Leave year cycle changed",
+        "movement_recorded": "Employment change recorded",
+        "movement_applied": "Employment change applied",
+        "company_changed": "Company changed"
       },
       "payMethodGroup": "How This Employee Is Paid",
       "payMode": "Pay Mode",

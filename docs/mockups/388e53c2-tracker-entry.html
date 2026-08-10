@@ -1,0 +1,342 @@
+<meta charset="utf-8">
+<title>388e53c2 — Team Leave Tracker becomes the HR way in</title>
+<!--
+  Mockup for board item 388e53c2 ("Move HR Admin Employee Management Tabs to Team Leave Tracker").
+  VERDICT: Partly there already. SIZE: Moderate.
+
+  WHAT IT ARGUES. This is a NAVIGATION move, not a redesign. The screen in the reporter's own
+  screenshot (Employee Leave Record) is redrawn UNCHANGED in both panels — same employee picker,
+  same search box, same Search / Filter / Export CSV · Excel row, same full-width table, same
+  columns. The ONLY difference between BEFORE and AFTER is which sidebar row is lit.
+
+  EVERY ROW, REFERENCE, DATE AND FIGURE IS THE REPORTER'S OWN, transcribed from their screenshot
+  /private/tmp/.../388e53c2-move-hr-admin.png: Mei Ling · Demo Sdn Bhd · EMP-0003 · 24 total, and
+  the first four rows in their order (#92C9868C, #476952FD, #A00C32C1, #65068392) with their real
+  dates, day counts, paid/unpaid splits, leave codes and statuses. Nothing is invented.
+
+  Labels are the product's own strings from messages/en.json:
+    leave.inquiry.recordsTitle / recordsDescription / employeeDetails / employeeBalances /
+    employeeLeaveRecord / employee / recordsSearchPlaceholder, nav.myAbsence ("My Leave"),
+    nav.teamLeaveTracker ("Team Leave Tracker"), leave.myAbsenceTitle ("My Leave"),
+    me.notLinked (messages/en.json:2292 — the empty-state sentence, quoted verbatim).
+
+  DELIBERATELY NOT DRAWN — a picture cannot hedge:
+    * The leave calendar itself. It is untouched for everyone who is not an HR administrator, so
+      redrawing it would invent a month of somebody's absences. It is a labelled grey block.
+    * Any redesign of the filter row, the columns or the width of the three HR screens. The plan
+      promises they do not change, so they are drawn exactly as photographed.
+    * The Employee Details listing's own rows. The reporter's screenshot does not show it, and
+      inventing employees is the failure a previous round already made.
+    * Any change to Employee Balances / Employee Leave Record web addresses. They keep them.
+
+  A GREY BLOCK means "a real part of the product this sketch does not redraw, because nothing
+  about it changes". There is a legend saying so.
+
+  Tokens from app/globals.css. Everything inline — scripts/mockup/render.ts blocks external
+  requests and fails loudly.
+-->
+<style>
+  :root{
+    --bg:#eef0f6; --fg:#1a1a22; --card:#fff; --primary:#4f46e5; --lav:#eef0fd;
+    --muted:#f4f5f9; --mf:#6b7280; --border:#e5e7eb; --rule:#dfe1ea;
+    --badbg:#fef2f2; --goodbg:#f0fdf4; --red:#c0392b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:#f7f8fb;color:var(--fg);width:1348px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:17px;margin:0 0 4px;letter-spacing:-.01em}
+  p.lede{font-size:12px;color:var(--mf);margin:0 0 16px;max-width:118ch}
+  p.lede b{color:var(--fg);font-weight:600}
+  h2{font-size:13.5px;margin:0 0 3px;display:flex;align-items:center;gap:8px}
+  .num{display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;
+       border-radius:6px;background:var(--primary);color:#fff;font-size:11px;font-weight:700;flex:none}
+  p.sub{font-size:11.5px;color:var(--mf);margin:0 0 11px}
+  p.sub b{color:var(--fg);font-weight:600}
+  p.cap{font-size:11px;color:var(--mf);margin:10px 0 0;font-style:italic}
+  p.cap b{color:var(--fg);font-weight:600;font-style:normal}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px 16px 16px;
+        margin-bottom:15px}
+
+  .phead{display:inline-flex;align-items:center;gap:7px;font-size:10px;font-weight:700;letter-spacing:.06em;
+         text-transform:uppercase;border-radius:999px;padding:3px 11px;margin-bottom:10px}
+  .phead.bad{background:var(--badbg);color:#991b1b;border:1px solid #fca5a5}
+  .phead.good{background:var(--goodbg);color:#166534;border:1px solid #86efac}
+
+  /* ── the app shell, traced from the reporter's screenshot ── */
+  .shell{display:flex;gap:0;background:var(--bg);border:1px solid var(--rule);border-radius:12px;
+         overflow:hidden}
+  .rail{width:190px;flex:none;background:#fff;border-right:1px solid var(--rule);padding:10px 9px 12px}
+  .brand{display:flex;align-items:center;gap:9px;padding:2px 5px 12px}
+  .logo{width:25px;height:25px;border-radius:8px;background:var(--primary);color:#fff;font-size:10.5px;
+        font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+  .brand b{font-size:13.5px}
+  .grp{font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:#a0a4b0;font-weight:700;
+       padding:9px 8px 4px}
+  .nrow{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:8px;font-size:11.5px;
+        color:#3f3f4a;margin-bottom:1px;position:relative}
+  .nrow.on{background:var(--lav);color:var(--primary);font-weight:600}
+  .nrow.on::after{content:"";position:absolute;right:-9px;top:5px;bottom:5px;width:3px;
+                  background:var(--primary);border-radius:2px 0 0 2px}
+  .nrow .chev{margin-left:auto;color:#b6b8c2}
+  .nrow .cnt{margin-left:auto;background:#fde68a;color:#78350f;border-radius:999px;padding:0 6px;
+             font-size:9px;font-weight:700}
+  .more{font-size:11px;color:#b0b3bd;padding:5px 8px}
+  .ic{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;
+      stroke-linecap:round;stroke-linejoin:round;display:block}
+
+  /* red annotation, echoing the reporter's own marks */
+  .mark{outline:2px solid var(--red);outline-offset:2px;border-radius:9px}
+  .rlbl{color:var(--red);font-size:10.5px;font-weight:700;padding:6px 8px 0;line-height:1.35}
+  .glbl{color:#15803d;font-size:10.5px;font-weight:700;padding:6px 8px 0;line-height:1.35}
+
+  /* ── the page area ── */
+  .page{flex:1;min-width:0;padding:14px 12px 16px}
+  .ttl{font-size:15px;font-weight:700;letter-spacing:-.01em}
+  .tsub{font-size:11px;color:var(--mf);margin-top:2px}
+  .body{display:flex;gap:14px;margin-top:12px;align-items:flex-start}
+  .inav{width:158px;flex:none}
+  .inav a{display:block;border-radius:7px;padding:6px 10px;font-size:11px;color:var(--mf);
+          margin-bottom:2px;text-decoration:none;white-space:nowrap}
+  .inav a.on{background:#e9eaf0;color:var(--fg);font-weight:600}
+  .col{flex:1;min-width:0}
+
+  .filters{display:flex;align-items:flex-end;gap:9px;flex-wrap:nowrap;margin-bottom:10px}
+  .f{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .f > label{font-size:10px;color:var(--mf)}
+  .ctl{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;
+       border:1px solid #cfd1de;border-radius:8px;padding:6px 10px;font-size:11.5px;min-height:31px;
+       white-space:nowrap;overflow:hidden}
+  .ctl.ph{color:#9aa0ac}
+  .btn{display:inline-flex;align-items:center;gap:5px;border-radius:8px;padding:6px 12px;font-size:11.5px;
+       font-weight:600;white-space:nowrap;background:#fff;border:1px solid #cfd1de;color:var(--fg);
+       min-height:31px}
+  .exp{font-size:11px;color:var(--mf);border:1px solid var(--border);border-radius:8px;padding:7px 10px;
+       white-space:nowrap;background:#fff}
+  .exp a{color:var(--primary);font-weight:600;text-decoration:none}
+
+  .tcard{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .tbar{display:flex;align-items:baseline;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);
+        font-size:12px;font-weight:600}
+  .tbar span{font-weight:400;color:var(--mf);font-size:11px}
+  table{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}
+  th{text-align:left;font-size:8.5px;line-height:1.25;text-transform:uppercase;letter-spacing:.03em;
+     color:var(--mf);font-weight:700;padding:6px 4px;background:#f6f7fb;white-space:normal;
+     border-bottom:1px solid var(--border);vertical-align:bottom}
+  td{padding:7px 4px;border-bottom:1px solid #f0f1f5;vertical-align:middle;white-space:nowrap;
+     overflow:hidden}
+  tr:last-child td{border-bottom:0}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9.5px;color:var(--mf)}
+  .nm{font-weight:600}
+  .tn{font-variant-numeric:tabular-nums}
+  .split{display:block;font-size:8.5px;color:var(--mf);white-space:normal;line-height:1.3;margin-top:1px}
+  .pill{display:inline-block;border-radius:999px;padding:2px 8px;font-size:9.5px;font-weight:600}
+  .pill.canc{background:#eceef2;color:#4b5563}
+  .pill.appr{background:#dcfce7;color:#166534}
+  .pill.pend{background:#fef3c7;color:#92400e}
+  .xbtn{display:inline-flex;align-items:center;gap:4px;border:1px solid #fecaca;color:#b91c1c;
+        border-radius:999px;padding:2px 8px;font-size:9.5px;font-weight:600;background:#fff}
+  .dash{color:#b6b8c2}
+
+  /* ── insets ── */
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+  .inset{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:var(--bg)}
+  .ihead{padding:7px 12px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+         color:var(--mf);background:#fff;border-bottom:1px solid var(--border)}
+  .ibody{padding:14px}
+  .empty{background:#fff;border:1px solid var(--border);border-radius:12px;padding:26px 22px;text-align:center}
+  .empty p{margin:0;font-size:12px;color:var(--mf);max-width:52ch;margin-inline:auto;line-height:1.6}
+  .grey{background:repeating-linear-gradient(135deg,#e3e5ec 0 9px,#dcdee7 9px 18px);
+        border:1px dashed #b9bcc9;border-radius:10px;height:150px;display:flex;align-items:center;
+        justify-content:center;text-align:center;padding:14px}
+  .grey span{font-size:11px;color:#5b5f6b;font-weight:600;background:rgba(255,255,255,.86);
+             border-radius:7px;padding:7px 11px;line-height:1.45}
+  .legend{font-size:10.5px;color:var(--mf);margin:11px 0 0}
+  .legend i{display:inline-block;width:22px;height:10px;vertical-align:-1px;margin-right:5px;
+            border:1px dashed #b9bcc9;border-radius:3px;
+            background:repeating-linear-gradient(135deg,#e3e5ec 0 5px,#dcdee7 5px 10px)}
+</style>
+
+<h1>388e53c2 — Team Leave Tracker becomes the way in to the three HR sections</h1>
+<p class="lede">A sketch, not the finished screen. <b>The three HR screens themselves do not change</b> — the employee picker,
+  the search box, Search, Filter, Export CSV · Excel, the columns and the full width below are redrawn exactly as they are in
+  your screenshot. The only difference between the two panels is <b>which menu row is lit</b>. Every employee, reference,
+  date and figure here is your own, taken from the screenshot you sent.</p>
+
+<div class="card">
+  <h2><span class="num">1</span>Now — you are reading someone else's leave record, and the menu says My Leave</h2>
+  <p class="sub">Your screenshot, redrawn. The three links sit inside the page; the menu row that is lit is <b>My Leave</b>.</p>
+  <span class="phead bad">Today</span>
+
+  <div class="shell">
+    <div class="rail">
+      <div class="brand"><span class="logo">HR</span><b>AI HR</b></div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>My Profile</div>
+      <div class="nrow on mark"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>My Leave</div>
+      <div class="rlbl">↑ lit, although this is Mei Ling's record, not yours</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>My Attendance<svg class="ic chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 7v10M14.5 9.6c0-1-1.1-1.6-2.5-1.6s-2.5.6-2.5 1.6S10 11.1 12 11.6s2.5 1 2.5 2-1.1 1.5-2.5 1.5-2.5-.6-2.5-1.6"/></svg>Claims</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="15" rx="2"/><path d="M7 9h10M7 13h7"/></svg>Feedback</div>
+      <div class="grp">Manage</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.8 20a6.2 6.2 0 0 1 12.4 0M16.5 5.6a3.2 3.2 0 0 1 0 6M18 20a6.4 6.4 0 0 0-2.2-4.6"/></svg>Personnel</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18M8 14h4"/></svg>Team Leave Tracker</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><path d="M4 6h2l1.5 1.5L11 4M4 12h2l1.5 1.5L11 10M4 18h2l1.5 1.5L11 16M14 6h6M14 12h6M14 18h6"/></svg>Approval Items<span class="cnt">9+</span></div>
+      <div class="more">…</div>
+    </div>
+
+    <div class="page">
+      <div class="ttl">Employee Leave Record</div>
+      <div class="tsub">Every leave request behind a balance, newest request first.</div>
+      <div class="body">
+        <div class="inav">
+          <div class="mark">
+            <a>Employee Details</a>
+            <a>Employee Balances</a>
+            <a class="on">Employee Leave Record</a>
+          </div>
+          <div class="rlbl" style="padding-left:2px">the three sections<br>you want moved</div>
+        </div>
+        <div class="col">
+          <div class="filters">
+            <div class="f" style="width:300px"><label>Employee</label><div class="ctl">Demo Sdn Bhd · Mei Ling (EMP-0003) <span class="dash">⌄</span></div></div>
+            <div class="f" style="width:210px"><label>Search</label><div class="ctl ph">Search employee ID, name or leave code</div></div>
+            <span class="btn">Search</span>
+            <span class="btn"><svg class="ic" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>Filter</span>
+            <span class="exp">Export: <a>CSV</a> · <a>Excel</a></span>
+          </div>
+          <div class="tcard">
+            <div class="tbar">Mei Ling · Demo Sdn Bhd <span>24 total</span></div>
+            <table>
+              <colgroup><col style="width:60px"><col style="width:56px"><col style="width:48px"><col style="width:58px"><col style="width:58px"><col style="width:96px"><col style="width:52px"><col style="width:60px"><col style="width:40px"><col style="width:58px"><col style="width:58px"><col style="width:58px"><col style="width:88px"></colgroup>
+              <thead><tr>
+                <th>Employee ID</th><th>Reference</th><th>Employee</th><th>Start date</th><th>End date</th><th>Days</th>
+                <th>Leave code</th><th>Status</th><th>Reason</th><th>Attachment</th><th>Applied</th><th>Final approval</th><th>Action</th>
+              </tr></thead>
+              <tbody>
+                <tr><td class="mono">EMP-0003</td><td class="mono">#92C9868C</td><td class="nm">Mei Ling</td><td class="tn">2026-09-21</td><td class="tn">2026-10-02</td>
+                    <td class="tn">10.50<span class="split">Annual Leave 5.50 · Unpaid Leave 5.00</span></td><td>ANNUAL</td><td><span class="pill canc">Cancelled</span></td>
+                    <td class="dash">—</td><td class="dash">—</td><td class="tn">2026-08-10</td><td class="dash">—</td><td class="dash">—</td></tr>
+                <tr><td class="mono">EMP-0003</td><td class="mono">#476952FD</td><td class="nm">Mei Ling</td><td class="tn">2026-08-10</td><td class="tn">2026-08-10</td>
+                    <td class="tn">1.00</td><td>EL</td><td><span class="pill appr">Approved</span></td>
+                    <td class="dash">—</td><td class="dash">—</td><td class="tn">2026-08-05</td><td class="tn">2026-08-05</td><td><span class="xbtn">✕ Cancel leave</span></td></tr>
+                <tr><td class="mono">EMP-0003</td><td class="mono">#A00C32C1</td><td class="nm">Mei Ling</td><td class="tn">2026-10-01</td><td class="tn">2026-10-09</td>
+                    <td class="tn">7.50<span class="split">Annual Leave 6.50 · Unpaid Leave 1.00</span></td><td>ANNUAL</td><td><span class="pill canc">Cancelled</span></td>
+                    <td class="dash">—</td><td class="dash">—</td><td class="tn">2026-08-05</td><td class="tn">2026-08-05</td><td class="dash">—</td></tr>
+                <tr><td class="mono">EMP-0003</td><td class="mono">#65068392</td><td class="nm">Mei Ling</td><td class="tn">2026-08-02</td><td class="tn">2026-08-02</td>
+                    <td class="tn">1.00</td><td>UPL</td><td><span class="pill appr">Approved</span></td>
+                    <td class="dash">—</td><td class="dash">—</td><td class="tn">2026-08-02</td><td class="tn">2026-08-02</td><td><span class="xbtn">✕ Cancel leave</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>After — the same screen, reached from Team Leave Tracker, which stays lit</h2>
+  <p class="sub">Nothing inside the page moves. <b>Open Team Leave Tracker as an HR administrator and you land on Employee Details</b>,
+    with Employee Balances and Employee Leave Record one click away in the same list — and the menu stays on Team Leave Tracker
+    the whole time you are in all three.</p>
+  <span class="phead good">After this change</span>
+
+  <div class="shell">
+    <div class="rail">
+      <div class="brand"><span class="logo">HR</span><b>AI HR</b></div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>My Profile</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>My Leave</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>My Attendance<svg class="ic chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 7v10M14.5 9.6c0-1-1.1-1.6-2.5-1.6s-2.5.6-2.5 1.6S10 11.1 12 11.6s2.5 1 2.5 2-1.1 1.5-2.5 1.5-2.5-.6-2.5-1.6"/></svg>Claims</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="15" rx="2"/><path d="M7 9h10M7 13h7"/></svg>Feedback</div>
+      <div class="grp">Manage</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.8 20a6.2 6.2 0 0 1 12.4 0M16.5 5.6a3.2 3.2 0 0 1 0 6M18 20a6.4 6.4 0 0 0-2.2-4.6"/></svg>Personnel</div>
+      <div class="nrow on"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18M8 14h4"/></svg>Team Leave Tracker</div>
+      <div class="glbl">↑ lit on all three sections</div>
+      <div class="nrow"><svg class="ic" viewBox="0 0 24 24"><path d="M4 6h2l1.5 1.5L11 4M4 12h2l1.5 1.5L11 10M4 18h2l1.5 1.5L11 16M14 6h6M14 12h6M14 18h6"/></svg>Approval Items<span class="cnt">9+</span></div>
+      <div class="more">…</div>
+    </div>
+
+    <div class="page">
+      <div class="ttl">Employee Leave Record</div>
+      <div class="tsub">Every leave request behind a balance, newest request first.</div>
+      <div class="body">
+        <div class="inav">
+          <a>Employee Details</a>
+          <a>Employee Balances</a>
+          <a class="on">Employee Leave Record</a>
+          <div class="glbl" style="padding-left:2px">same three, same<br>place on the page</div>
+        </div>
+        <div class="col">
+          <div class="filters">
+            <div class="f" style="width:300px"><label>Employee</label><div class="ctl">Demo Sdn Bhd · Mei Ling (EMP-0003) <span class="dash">⌄</span></div></div>
+            <div class="f" style="width:210px"><label>Search</label><div class="ctl ph">Search employee ID, name or leave code</div></div>
+            <span class="btn">Search</span>
+            <span class="btn"><svg class="ic" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>Filter</span>
+            <span class="exp">Export: <a>CSV</a> · <a>Excel</a></span>
+          </div>
+          <div class="tcard">
+            <div class="tbar">Mei Ling · Demo Sdn Bhd <span>24 total</span></div>
+            <table>
+              <colgroup><col style="width:60px"><col style="width:56px"><col style="width:48px"><col style="width:58px"><col style="width:58px"><col style="width:96px"><col style="width:52px"><col style="width:60px"><col style="width:40px"><col style="width:58px"><col style="width:58px"><col style="width:58px"><col style="width:88px"></colgroup>
+              <thead><tr>
+                <th>Employee ID</th><th>Reference</th><th>Employee</th><th>Start date</th><th>End date</th><th>Days</th>
+                <th>Leave code</th><th>Status</th><th>Reason</th><th>Attachment</th><th>Applied</th><th>Final approval</th><th>Action</th>
+              </tr></thead>
+              <tbody>
+                <tr><td class="mono">EMP-0003</td><td class="mono">#92C9868C</td><td class="nm">Mei Ling</td><td class="tn">2026-09-21</td><td class="tn">2026-10-02</td>
+                    <td class="tn">10.50<span class="split">Annual Leave 5.50 · Unpaid Leave 5.00</span></td><td>ANNUAL</td><td><span class="pill canc">Cancelled</span></td>
+                    <td class="dash">—</td><td class="dash">—</td><td class="tn">2026-08-10</td><td class="dash">—</td><td class="dash">—</td></tr>
+                <tr><td class="mono">EMP-0003</td><td class="mono">#476952FD</td><td class="nm">Mei Ling</td><td class="tn">2026-08-10</td><td class="tn">2026-08-10</td>
+                    <td class="tn">1.00</td><td>EL</td><td><span class="pill appr">Approved</span></td>
+                    <td class="dash">—</td><td class="dash">—</td><td class="tn">2026-08-05</td><td class="tn">2026-08-05</td><td><span class="xbtn">✕ Cancel leave</span></td></tr>
+                <tr><td class="mono">EMP-0003</td><td class="mono">#A00C32C1</td><td class="nm">Mei Ling</td><td class="tn">2026-10-01</td><td class="tn">2026-10-09</td>
+                    <td class="tn">7.50<span class="split">Annual Leave 6.50 · Unpaid Leave 1.00</span></td><td>ANNUAL</td><td><span class="pill canc">Cancelled</span></td>
+                    <td class="dash">—</td><td class="dash">—</td><td class="tn">2026-08-05</td><td class="tn">2026-08-05</td><td class="dash">—</td></tr>
+                <tr><td class="mono">EMP-0003</td><td class="mono">#65068392</td><td class="nm">Mei Ling</td><td class="tn">2026-08-02</td><td class="tn">2026-08-02</td>
+                    <td class="tn">1.00</td><td>UPL</td><td><span class="pill appr">Approved</span></td>
+                    <td class="dash">—</td><td class="dash">—</td><td class="tn">2026-08-02</td><td class="tn">2026-08-02</td><td><span class="xbtn">✕ Cancel leave</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="cap"><b>Employee Balances and Employee Leave Record keep the exact web addresses they have today</b>, so saved links and
+    export links already in circulation keep working. Only the way in changes.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>The two side effects, drawn</h2>
+  <p class="sub">What My Leave becomes for an HR Admin account, and what everyone else still sees on Team Leave Tracker.</p>
+  <div class="two">
+
+    <div class="inset">
+      <div class="ihead">My Leave — as the HR Admin account in your screenshot</div>
+      <div class="ibody">
+        <div style="font-size:15px;font-weight:700;margin-bottom:12px">My Leave</div>
+        <div class="empty">
+          <p>This account isn’t linked to an employee profile. Use the identity switcher in the top bar to
+             act as an employee (e.g. Aisyah or Daniel).</p>
+        </div>
+        <p class="cap">The heading and one sentence — nothing else. That sentence is <b>already in the product,
+          in all six languages</b>; nothing new has to be written.</p>
+      </div>
+    </div>
+
+    <div class="inset">
+      <div class="ihead">Team Leave Tracker — signed in as anyone who is not an HR administrator</div>
+      <div class="ibody">
+        <div style="font-size:15px;font-weight:700">Team Leave Tracker</div>
+        <div style="font-size:11px;color:var(--mf);margin:2px 0 12px">Who is away and when — your own leave, and your team’s if you have direct reports.</div>
+        <div class="grey"><span>The leave calendar, exactly as it is today.<br>Not redrawn here, because nothing about it changes.</span></div>
+        <p class="cap">Every employee and every manager keeps this, at the same width and look. The three HR
+          sections appear in this place <b>for HR administrators only</b>.</p>
+      </div>
+    </div>
+
+  </div>
+  <p class="legend"><i></i>A grey block is a real part of the product this sketch does not redraw, because nothing about it changes.</p>
+</div>

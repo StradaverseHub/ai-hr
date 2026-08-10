@@ -1,0 +1,324 @@
+<meta charset="utf-8">
+<title>c8052ae3 — the written record of what the Medical / Hospitalization reset removes</title>
+<!--
+  Mockup for c8052ae3, PLAN REVISION 2.
+  EVERY figure and every row below is REAL, read from production on 2026-08-10 (read-only SELECTs):
+
+    Mei Ling (EMP-0003, Demo Sdn Bhd)
+      Medical Leave        : accrual +14.00 2026-01-06 · adjustment -28.00 2026-07-23 (sys:profile_recalc:5162843b-…)
+                             accrual +14.00 2027-01-01 · adjustment -14.00 2027-01-01
+                             accrual +14.00 2028-01-01 · adjustment -14.00 2028-01-01 (sys:carry_forward_cap)   => -14.00
+      Hospitalization Leave: 60.00 / -120.00 / -60.00 / +60.00 / -60.00 / +60.00                                 => -60.00
+      recalc audit         : Hospitalization previous 180.00 → new 60.00 (delta -120.00), employment_info_changed
+                             Medical         previous  42.00 → new 14.00 (delta  -28.00), employment_info_changed
+    Aisyah Rahman (EMP-0001, Demo Sdn Bhd) Hospitalization Leave: the six rows drawn, verbatim.
+    Totals in scope: 147 balance records + 22 recalculation entries = 169.
+
+  The screen drawn is app/admin/leave/entitlements/ledger-archive/page.tsx with the strings from
+  messages/en.json (admin.leaveLedgerArchive). The Note column is drawn exactly as migration 0416's
+  capture function writes it. Tokens from app/globals.css. Everything inline — render.ts blocks
+  external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 13px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+
+  /* ── 1. before / after tiles, as on My Leave ───────────────────────────── */
+  .ba{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:center}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .tiles{display:flex;gap:9px}
+  .tile{flex:1;background:#fff;border:1px solid var(--border);border-radius:11px;padding:10px 12px}
+  .tile .ico{font-size:13px;line-height:1;margin-bottom:5px;opacity:.8}
+  .tile .val{font-size:23px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .tile .cap{font-size:10.5px;color:var(--mf);margin-top:1px}
+  .tile.neg{border-color:var(--bad);box-shadow:0 0 0 2px #fee2e2 inset}
+  .tile.neg .val{color:var(--bad)}
+  .tile.ok{border-color:#86efac}
+  .tile.ok .val{color:var(--good)}
+  .arrow{font-size:22px;color:var(--mf)}
+  .who{font-size:11.5px;color:var(--mf);margin:9px 0 0}
+
+  /* ── 2. the archive screen ─────────────────────────────────────────────── */
+  .screen{border:1px solid var(--border);border-radius:12px;background:var(--bg);padding:16px}
+  .ph h1{font-size:17px;margin:0 0 2px;letter-spacing:-.01em}
+  .ph p{font-size:12px;color:var(--mf);margin:0 0 14px;max-width:78ch}
+  .panel{background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:14px}
+  .panel .pad{padding:14px}
+  .panel p{margin:0 0 7px;font-size:12.5px;color:var(--mf)}
+  .panel p:last-child{margin-bottom:0}
+  .panel p.strong{color:var(--fg);font-weight:600}
+  .bar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;padding:13px 14px;border-bottom:1px solid var(--border)}
+  .fld{display:flex;flex-direction:column;gap:4px}
+  .fld span{font-size:11px;color:var(--mf)}
+  .sel{border:1px solid var(--border);border-radius:8px;padding:6px 26px 6px 10px;font-size:12.5px;background:#fff;
+       min-width:270px;position:relative}
+  .sel:after{content:"\25BE";position:absolute;right:9px;top:6px;color:var(--mf);font-size:10px}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:7px 15px;font-size:12.5px;font-weight:600}
+  .lnk{font-size:12.5px;text-decoration:underline;color:var(--fg)}
+  .lnk.r{margin-left:auto}
+  .counts{padding:9px 14px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--mf)}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:7px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border);vertical-align:top}
+  td.n{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+  td.nowrap{white-space:nowrap}
+  .neg{color:var(--bad)}
+  .sub{display:block;font-size:10.5px;color:var(--mf);font-weight:400}
+  .tiny{font-size:10.5px;color:var(--mf);line-height:1.45}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;word-break:break-all}
+  .skip td{background:#fafaff;color:var(--mf);font-size:11.5px;text-align:center;font-style:italic;padding:8px}
+  .dash{color:var(--mf)}
+  .note{font-size:11.5px;color:var(--mf);margin-top:12px}
+  .note b{color:var(--fg)}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>What Mei Ling sees today, and what she will see afterwards</h2>
+  <p class="q">&ldquo;it is still showing negative&rdquo;</p>
+
+  <div class="ba">
+    <div class="box bad">
+      <span class="tag bad">TODAY &mdash; your live figures</span>
+      <div class="tiles">
+        <div class="tile neg"><div class="val">&minus;14.00</div><div class="cap">Medical Leave</div></div>
+        <div class="tile neg"><div class="val">&minus;60.00</div><div class="cap">Hospitalization Leave</div></div>
+      </div>
+      <p class="who">Mei Ling &middot; EMP-0003 &middot; Demo Sdn Bhd &mdash; one of eight employee records below zero
+        on one or both of these two leave types</p>
+    </div>
+
+    <div class="arrow">&rarr;</div>
+
+    <div class="box good">
+      <span class="tag good">AFTER THE CLEAN-UP</span>
+      <div class="tiles">
+        <div class="tile ok"><div class="val">0.00</div><div class="cap">Medical Leave</div></div>
+        <div class="tile ok"><div class="val">0.00</div><div class="cap">Hospitalization Leave</div></div>
+      </div>
+      <p class="who">Every employee, both leave types, nothing queued behind the scenes. Annual Leave and every other type untouched.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>The written record &mdash; taken before anything is removed</h2>
+  <p class="q">&ldquo;Keep a record of what was removed for audit purposes&rdquo; &mdash; reached from the Entitlements screen, and downloadable as a spreadsheet</p>
+
+  <div class="screen">
+    <div class="ph">
+      <h1>Medical &amp; Hospitalisation balance record</h1>
+      <p>A read-only record of every Medical Leave and Hospitalisation Leave balance record removed by the
+        one-off reset, kept so the old figures are never lost.</p>
+    </div>
+
+    <div class="panel"><div class="pad">
+      <p>This is the written record taken immediately before the Medical Leave and Hospitalisation Leave
+        reset removed anything. Each row shows who held the record, which leave type it belonged to, how
+        many days it was worth, the date it took effect and why it was there.</p>
+      <p class="strong">This is a record to read from, not an undo button. The rows listed here were removed
+        and putting them back means entering them again.</p>
+      <p>It feeds nothing and changes no number. No balance, no entitlement and no leave record is affected
+        by anything on this page.</p>
+      <p>No leave anybody applied for or was approved for was removed. Nothing on either leave type had ever
+        been taken, so no leave history is affected.</p>
+    </div></div>
+
+    <div class="panel">
+      <div class="bar">
+        <label class="fld"><span>Record taken</span>
+          <span class="sel">c8052ae3 reset &middot; 169 records</span></label>
+        <span class="btn">Show</span>
+        <span class="lnk">Download as CSV</span>
+        <span class="lnk r">Back to Entitlements</span>
+      </div>
+
+      <div class="counts">147 balance records and 22 recalculation history entries in this record.</div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:9%">Record type</th>
+            <th style="width:13%">Employee</th>
+            <th style="width:12%">Leave type</th>
+            <th style="width:8%">Entry type</th>
+            <th style="width:7%">Days</th>
+            <th style="width:9%">Effective on</th>
+            <th style="width:24%">Reason</th>
+            <th style="width:18%">Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Aisyah Rahman<span class="sub">EMP-0001</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Hospitalization Leave<span class="sub">HOSPITALIZATION</span></td>
+            <td class="nowrap">accrual</td>
+            <td class="n">60.00</td>
+            <td class="nowrap">2026-01-06</td>
+            <td class="tiny"><span class="dash">&mdash;</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny"></td>
+          </tr>
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Aisyah Rahman<span class="sub">EMP-0001</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Hospitalization Leave<span class="sub">HOSPITALIZATION</span></td>
+            <td class="nowrap">adjustment</td>
+            <td class="n neg">-120.00</td>
+            <td class="nowrap">2026-07-23</td>
+            <td class="tiny"><span class="mono">sys:profile_recalc:c72fc99f-d6f5-4d0f-b924-19f00e77187a</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny"></td>
+          </tr>
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Aisyah Rahman<span class="sub">EMP-0001</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Hospitalization Leave<span class="sub">HOSPITALIZATION</span></td>
+            <td class="nowrap">adjustment</td>
+            <td class="n neg">-60.00</td>
+            <td class="nowrap">2027-01-01</td>
+            <td class="tiny"><span class="dash">&mdash;</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny"></td>
+          </tr>
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Aisyah Rahman<span class="sub">EMP-0001</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Hospitalization Leave<span class="sub">HOSPITALIZATION</span></td>
+            <td class="nowrap">accrual</td>
+            <td class="n">60.00</td>
+            <td class="nowrap">2027-01-01</td>
+            <td class="tiny"><span class="dash">&mdash;</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny"></td>
+          </tr>
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Aisyah Rahman<span class="sub">EMP-0001</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Hospitalization Leave<span class="sub">HOSPITALIZATION</span></td>
+            <td class="nowrap">adjustment</td>
+            <td class="n neg">-60.00</td>
+            <td class="nowrap">2028-01-01</td>
+            <td class="tiny"><span class="mono">sys:carry_forward_cap</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny">Future-dated grant: this row was queued to land by itself in a later leave year.</td>
+          </tr>
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Aisyah Rahman<span class="sub">EMP-0001</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Hospitalization Leave<span class="sub">HOSPITALIZATION</span></td>
+            <td class="nowrap">accrual</td>
+            <td class="n">60.00</td>
+            <td class="nowrap">2028-01-01</td>
+            <td class="tiny"><span class="dash">&mdash;</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny">Future-dated grant: this row was queued to land by itself in a later leave year.</td>
+          </tr>
+
+          <tr class="skip"><td colspan="8">&hellip; 135 further balance records, one employee and leave type at a time &hellip;</td></tr>
+
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Mei Ling<span class="sub">EMP-0003</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Medical Leave<span class="sub">SICK</span></td>
+            <td class="nowrap">accrual</td>
+            <td class="n">14.00</td>
+            <td class="nowrap">2026-01-06</td>
+            <td class="tiny"><span class="dash">&mdash;</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny"></td>
+          </tr>
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Mei Ling<span class="sub">EMP-0003</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Medical Leave<span class="sub">SICK</span></td>
+            <td class="nowrap">adjustment</td>
+            <td class="n neg">-28.00</td>
+            <td class="nowrap">2026-07-23</td>
+            <td class="tiny"><span class="mono">sys:profile_recalc:5162843b-ef49-438d-aeba-eaf1bfe3f1b1</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny"></td>
+          </tr>
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Mei Ling<span class="sub">EMP-0003</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Medical Leave<span class="sub">SICK</span></td>
+            <td class="nowrap">accrual</td>
+            <td class="n">14.00</td>
+            <td class="nowrap">2027-01-01</td>
+            <td class="tiny"><span class="dash">&mdash;</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny"></td>
+          </tr>
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Mei Ling<span class="sub">EMP-0003</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Medical Leave<span class="sub">SICK</span></td>
+            <td class="nowrap">adjustment</td>
+            <td class="n neg">-14.00</td>
+            <td class="nowrap">2027-01-01</td>
+            <td class="tiny"><span class="dash">&mdash;</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny"></td>
+          </tr>
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Mei Ling<span class="sub">EMP-0003</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Medical Leave<span class="sub">SICK</span></td>
+            <td class="nowrap">accrual</td>
+            <td class="n">14.00</td>
+            <td class="nowrap">2028-01-01</td>
+            <td class="tiny"><span class="dash">&mdash;</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny">Future-dated grant: this row was queued to land by itself in a later leave year.</td>
+          </tr>
+          <tr>
+            <td class="nowrap">Balance record</td>
+            <td>Mei Ling<span class="sub">EMP-0003</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Medical Leave<span class="sub">SICK</span></td>
+            <td class="nowrap">adjustment</td>
+            <td class="n neg">-14.00</td>
+            <td class="nowrap">2028-01-01</td>
+            <td class="tiny"><span class="mono">sys:carry_forward_cap</span><span class="sub">not sourced from a leave request</span></td>
+            <td class="tiny">Future-dated grant: this row was queued to land by itself in a later leave year.</td>
+          </tr>
+
+          <tr class="skip"><td colspan="8">&hellip; the remaining balance records, then the recalculation history &hellip;</td></tr>
+
+          <tr>
+            <td class="nowrap">Recalculation history</td>
+            <td>Mei Ling<span class="sub">EMP-0003</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Hospitalization Leave<span class="sub">HOSPITALIZATION</span></td>
+            <td class="nowrap"><span class="dash">&mdash;</span></td>
+            <td class="n neg">-120.00</td>
+            <td class="nowrap">2026-07-23</td>
+            <td class="tiny">employment_info_changed<span class="sub">previous 180.00 &rarr; new 60.00 (delta -120.00)</span></td>
+            <td class="tiny">Describes a leave_ledger row removed by the same correction.</td>
+          </tr>
+          <tr>
+            <td class="nowrap">Recalculation history</td>
+            <td>Mei Ling<span class="sub">EMP-0003</span><span class="sub">Demo Sdn Bhd</span></td>
+            <td>Medical Leave<span class="sub">SICK</span></td>
+            <td class="nowrap"><span class="dash">&mdash;</span></td>
+            <td class="n neg">-28.00</td>
+            <td class="nowrap">2026-07-23</td>
+            <td class="tiny">employment_info_changed<span class="sub">previous 42.00 &rarr; new 14.00 (delta -28.00)</span></td>
+            <td class="tiny">Describes a leave_ledger row removed by the same correction.</td>
+          </tr>
+
+          <tr class="skip"><td colspan="8">&hellip; 20 further recalculation history entries &hellip;</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="note"><b>Every removed record keeps its own date</b> &mdash; including the ones that were queued
+    to appear on their own on 1 January 2027 and 1 January 2028, and the older grants going back to 2025,
+    2023, 2019 and 2016. The rows above are real records from your system, shown exactly as they will be
+    written into this record. The same 169 rows come down as a spreadsheet from &ldquo;Download as
+    CSV&rdquo;.</p>
+</div>

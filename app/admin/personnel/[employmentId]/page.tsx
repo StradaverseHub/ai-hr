@@ -2332,11 +2332,20 @@ export default async function EmployeePage({
   // employment type / hire date / confirmation) moves the resolved entitlement, the engine posts a
   // compensating adjustment and records it here: previous → new entitlement, the reason (which field
   // moved), and the effective date. Admin-only, shown under the Leave tab beneath the balance card.
-  const recalcReasonLabel = (reason: string): string => {
-    const key = `recalcReason.${reason}`;
-    const label = t(key);
-    return label === key ? reason : label;
-  };
+  // The `reason` column is free text written by whatever triggered the recalc, so this is a COMPUTED key
+  // and i18n-coverage check C cannot see it — it only matches literal t('a.b') calls.
+  //
+  // The fallback here used to be `t(key) === key ? reason : label`, which NEVER FIRED: next-intl returns
+  // the FULLY-QUALIFIED path on a miss (people.detail.recalcReason.x) while `key` is relative, so the
+  // comparison could not match and the raw path was painted on screen. Measured on production 2026-08-10:
+  // 50 of 72 audit rows rendered a key path to the user (leave_type_rules 29, year_cycle_override 11,
+  // movement_recorded 9, movement_applied 1).
+  //
+  // `t.has` is the house idiom for a computed key — app/admin/scheduled-actions/page.tsx does the same.
+  // Degrading to the raw reason is deliberate: reasons are added by new code paths faster than labels, and
+  // an unlabelled reason must read as a plain word, never as a key path.
+  const recalcReasonLabel = (reason: string): string =>
+    t.has(`recalcReason.${reason}`) ? t(`recalcReason.${reason}`) : reason;
   const recalcHistoryCard = admin ? (
     <Card id="section-entitlement-recalc">
       <SectionHeader title={t('recalcHistoryTitle')} count={recalcAudit.length} />

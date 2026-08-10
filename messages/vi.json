@@ -1185,7 +1185,12 @@
         "benefit_scheme_override": "Thay đổi phân bổ chế độ phúc lợi",
         "scheme_entitlement_changed": "Thay đổi bảng quyền lợi của chế độ",
         "scheme_updated": "Thay đổi chế độ phúc lợi",
-        "grade_group_changed": "Thay đổi nhóm cấp bậc"
+        "grade_group_changed": "Thay đổi nhóm cấp bậc",
+        "leave_type_rules": "Thay đổi quy tắc loại nghỉ phép",
+        "year_cycle_override": "Thay đổi chu kỳ năm nghỉ phép",
+        "movement_recorded": "Đã ghi nhận thay đổi lao động",
+        "movement_applied": "Đã áp dụng thay đổi lao động",
+        "company_changed": "Thay đổi công ty"
       },
       "payMethodGroup": "Nhân viên này được trả lương như thế nào",
       "payMode": "Hình thức tính lương",

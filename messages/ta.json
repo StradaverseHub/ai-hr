@@ -1185,7 +1185,12 @@
         "benefit_scheme_override": "நலத்திட்ட ஒதுக்கீடு மாற்றப்பட்டது",
         "scheme_entitlement_changed": "திட்ட உரிமை அட்டவணை மாற்றப்பட்டது",
         "scheme_updated": "நலத்திட்டம் மாற்றப்பட்டது",
-        "grade_group_changed": "தரக் குழு மாற்றப்பட்டது"
+        "grade_group_changed": "தரக் குழு மாற்றப்பட்டது",
+        "leave_type_rules": "விடுப்பு வகை விதிகள் மாற்றப்பட்டன",
+        "year_cycle_override": "விடுப்பு ஆண்டு சுழற்சி மாற்றப்பட்டது",
+        "movement_recorded": "பணி மாற்றம் பதிவு செய்யப்பட்டது",
+        "movement_applied": "பணி மாற்றம் பயன்படுத்தப்பட்டது",
+        "company_changed": "நிறுவனம் மாற்றப்பட்டது"
       },
       "payMethodGroup": "இந்த ஊழியருக்கு எவ்வாறு ஊதியம் வழங்கப்படுகிறது",
       "payMode": "ஊதிய முறை",

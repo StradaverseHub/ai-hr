@@ -1185,7 +1185,12 @@
         "benefit_scheme_override": "Tugasan skim manfaat ditukar",
         "scheme_entitlement_changed": "Jadual kelayakan skim ditukar",
         "scheme_updated": "Skim manfaat ditukar",
-        "grade_group_changed": "Kumpulan gred ditukar"
+        "grade_group_changed": "Kumpulan gred ditukar",
+        "leave_type_rules": "Peraturan jenis cuti ditukar",
+        "year_cycle_override": "Kitaran tahun cuti ditukar",
+        "movement_recorded": "Perubahan pekerjaan direkodkan",
+        "movement_applied": "Perubahan pekerjaan dilaksanakan",
+        "company_changed": "Syarikat ditukar"
       },
       "payMethodGroup": "Cara Pekerja Ini Dibayar",
       "payMode": "Mod Bayaran",

@@ -1,0 +1,634 @@
+<meta charset="utf-8">
+<title>42afb2d2 — Roster: what a supervisor sees, and what an HR Administrator sees</title>
+<!--
+  Mockup for board item 42afb2d2 ("Roster: supervisors cannot change future dates, and the approved plan
+  said they could"), plan revision 1. VERDICT: Already works.
+
+  WHAT IT ARGUES. The approved plan for 23390097 promised that a supervisor could change dates from
+  tomorrow onwards. That half was never built. What is live instead is a deliberate split: a supervisor
+  READS the month, an HR Administrator CHANGES it. The reporter is being asked to approve leaving it that
+  way, so the mockup's only job is to show them both sides of the split on the SAME month, so they can
+  judge whether view-only is what they want. Nothing here is a proposal; both panels are pictures of
+  TODAY.
+
+  MEASURED ON PRODUCTION, 2026-08-10, READ-ONLY — everything in the two panels is the reporter's own data:
+    - ISEDECOR BINA SDN BHD: 14 active employments, employee numbers A0001–A0014, people named
+      TEST0001–TEST0014 (that is what is stored).
+    - Departments ANDALAN / TECHNICAL / CONTRACT / HEALTH SAFETY ENVIRONMENT & QUALITY (and AYANNA, not
+      drawn). Occupations SAFETY & HEALTH OFFICER, SITE SUPERVISOR, QAQC ENGINEER, M&E COORDINATOR,
+      SENIOR QAQC OFFICER, ASSISTANT CONTRACT MANAGER — all theirs.
+    - The roster itself: every one of those 14 people is rostered AM03 on every date 01/08–14/08/2026.
+      AM03 is 09:00–18:00. So every drawn cell is a real stored row, not a guess.
+    - 9 live shifts tenant-wide. The legend order (SemiFlex01 07:00–20:00, AM01 08:00–17:00, MB28
+      08:00–17:00, AM02 08:30–17:30, AM03 09:00–18:00, then four more) is the screen's real order
+      (start time, then name) and AM03's ROSE cell colour is the colour its position in that order gives
+      it (components/roster-grid.tsx SHIFT_COLORS index 4).
+    - 01/08/2026 is a Saturday, so 08/08 and 09/08 are the shaded weekend columns and 10/08 is today.
+    - Every label is the product's own English string from messages/en.json (roster.*): Employee No /
+      Employee Name / Department / Occupation / Edit / Legend / RD / OFF / Clear / "{n} selected" /
+      "Apply to selected, whole month" / "A supervisor views the roster; an HR Administrator changes it."
+      / "Grey = the employee's usual shift filling a date nothing was rostered on." / Upload Shift Roster
+      / Download Template / Export / Query / – ALL – / Generate roster / Copy roster / This month, and
+      the confirmation wording roster.pastConfirm.
+
+  DELIBERATELY THE SAME IN BOTH PANELS, AND SAID SO ON THE PAGE:
+    - The six people. Who appears in a supervisor's list is already decided by who they are responsible
+      for, and this decision does not change it — so the two panels carry identical rows and the ONLY
+      difference on show is the controls. (Measured aside, printed on the page: no reporting lines are in
+      force at ISEDECOR BINA SDN BHD today and no department has a head set, so there is no real
+      supervisor-to-team list on this data that could be drawn truthfully.)
+
+  DELIBERATELY NOT DRAWN:
+    - The company picker and Switch button. Whether it appears depends on how many companies a login's
+      scope covers, and we did not measure that for a supervisor login. Naming it and not drawing it is
+      honest; drawing it either way would not be.
+    - The rows inside "This week's exceptions" (app/roster/page.tsx:403, gated only on there being any).
+      The card renders for everybody and only reports, but it DOES follow the grid for a supervisor, so the
+      left panel no longer claims nothing follows the grid.
+    - The Edit panel itself (one person's month), the Upload preview, and the Audit trail rows.
+
+  DRAWN BECAUSE IT IS THE ONE BLEMISH: the "Shift schedules are managed in Attendance Policy" hint card and
+  its "Manage shift schedules" link (app/roster/page.tsx:258-264). It is UNGATED, so both logins get it,
+  but /admin/attendance is requireAdmin (app/admin/attendance/page.tsx:57) — for a supervisor it is a link
+  that opens nothing. Drawn identically in both panels because that is the truth, called out in the control
+  table in card 2, and named in the plan's GOOD TO KNOW as a separate item. It is why neither the plan nor
+  the green box says "nobody is offered a button that will be refused" any more.
+    - Six date columns of a 31-date month, so both logins fit side by side. The real screen scrolls
+      sideways to 31/08.
+    - The alternative — widening the right so a supervisor can change their own team's future dates. A
+      picture cannot hedge, and the plan makes it conditional on the reporter rejecting. It stays in
+      words, in the last card.
+
+  Tokens copied from app/globals.css so this is a picture of OUR app.
+  Everything inline: scripts/mockup/render.ts blocks external requests and fails loudly.
+-->
+<style>
+  :root{
+    --background:#f5f6fa; --foreground:#1a1a22; --card:#ffffff;
+    --primary:#4f46e5; --muted:#f0f1f7; --muted-foreground:#63636f;
+    --border:#e7e8f1; --rule:#d9dae6; --input:#cfd1de; --ghost:#9a9bab;
+    --wk:#fffbeb;
+    --good-bg:#f0fdf4; --good-br:#bbf7d0; --good-fg:#14532d;
+    --warn-bg:#fff7ed; --warn-br:#fed7aa; --warn-fg:#7c2d12;
+    --amber-bg:#fffbeb; --amber-br:#fcd34d; --amber-fg:#78350f;
+    --rose-bg:#ffe4e6; --rose-fg:#9f1239;
+    --ind-bg:#e0e7ff; --ind-fg:#3730a3;
+    --eme-bg:#d1fae5; --eme-fg:#065f46;
+    --amb-bg:#fef3c7; --amb-fg:#92400e;
+    --sky-bg:#e0f2fe; --sky-fg:#075985;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:20px 20px 26px;background:var(--background);color:var(--foreground);
+       font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+  .wrap{max-width:1200px;margin:0 auto}
+  h1.hd{font-size:17px;margin:0 0 5px;letter-spacing:-.01em}
+  p.lede{margin:0 0 14px;font-size:12.5px;color:var(--muted-foreground);max-width:118ch}
+  p.lede b{color:var(--foreground);font-weight:600}
+
+  .sketch{border:1px dashed #c7c8d8;background:#fdfdff;border-radius:12px;padding:9px 13px;margin-bottom:16px}
+  .sketch b.k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--primary)}
+  .sketch p{margin:3px 0 0;font-size:11.5px;color:var(--muted-foreground)}
+  .sketch p b{color:var(--foreground);font-weight:600}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:15px;padding:16px 18px 18px;margin-bottom:16px}
+  h2{font-size:13.5px;margin:0 0 3px;display:flex;align-items:center;gap:8px}
+  .num{display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;flex:none}
+  p.sub{font-size:12px;color:var(--muted-foreground);margin:0 0 12px}
+  p.sub b{color:var(--foreground);font-weight:600}
+
+  /* ── the two logins ───────────────────────────────────────────── */
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .panel{border:1px solid var(--rule);border-radius:13px;padding:12px;background:#eef0f7}
+  .ptag{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+  .who{font-size:12px;font-weight:700}
+  .who span{font-weight:500;color:var(--muted-foreground)}
+  .pill{border-radius:999px;padding:2px 9px;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+  .pill.read{background:var(--muted);color:var(--muted-foreground);border:1px solid var(--rule)}
+  .pill.write{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary);
+              border:1px solid color-mix(in srgb,var(--primary) 30%,white)}
+  .pc{background:#fff;border:1px solid var(--border);border-radius:11px;padding:11px}
+
+  .toprow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .coname{font-size:11.5px;font-weight:600}
+  .acts{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+  .gbtn{border:1px solid var(--input);border-radius:7px;padding:3px 8px;font-size:10px;background:#fff;white-space:nowrap}
+  .gbtn.hi{border-color:color-mix(in srgb,var(--primary) 40%,white);
+           background:color-mix(in srgb,var(--primary) 7%,white);color:var(--primary);font-weight:600}
+  .btnp{background:var(--primary);color:#fff;border-radius:7px;padding:3px 10px;font-size:10px;font-weight:600}
+
+  .filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px;border:1px solid var(--border);
+           border-radius:9px;padding:8px;background:#fbfbfe;margin-bottom:8px}
+  .fld{font-size:8.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-foreground);
+       font-weight:700;margin-bottom:2px;white-space:nowrap}
+  .inp{background:#fff;border:1px solid var(--input);border-radius:6px;padding:3px 6px;font-size:10px;
+       white-space:nowrap;color:var(--foreground)}
+  .mnav{display:flex;align-items:center;gap:4px;margin-left:auto;font-size:10px;color:var(--muted-foreground)}
+
+  .sect{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;margin:0 0 7px}
+  .sect .cnt{background:var(--muted);color:var(--muted-foreground);border-radius:999px;padding:1px 7px;
+             font-size:9.5px;font-weight:700}
+
+  .legend{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:7px}
+  .lgl{font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);font-weight:700;margin-right:2px}
+  .chip{border-radius:999px;padding:2px 7px;font-size:9px;font-weight:700;border:1px solid transparent;white-space:nowrap}
+  .chip .h{font-weight:500;opacity:.8}
+  .c-ind{background:var(--ind-bg);color:var(--ind-fg)}
+  .c-eme{background:var(--eme-bg);color:var(--eme-fg)}
+  .c-amb{background:var(--amb-bg);color:var(--amb-fg)}
+  .c-sky{background:var(--sky-bg);color:var(--sky-fg)}
+  .c-rose{background:var(--rose-bg);color:var(--rose-fg)}
+  .c-mut{background:var(--muted);color:var(--muted-foreground);border-color:var(--border)}
+  .c-out{background:#fff;color:var(--muted-foreground);border-color:var(--border);font-weight:500}
+  .c-dash{background:#fff;color:var(--ghost);border-color:var(--input);border-style:dashed;font-weight:500}
+  .brushring{box-shadow:0 0 0 2px #fff,0 0 0 3.5px rgba(26,26,34,.42)}
+
+  .bar{display:flex;align-items:center;gap:6px;font-size:9.5px;color:var(--muted-foreground);margin-bottom:7px}
+  .bar .ghosthint{margin-left:auto;text-align:right}
+  .viewonly{border:1px solid var(--border);background:#f4f5fb;border-radius:6px;padding:3px 8px;
+            font-size:9.5px;font-weight:700;color:var(--foreground)}
+  /* Zero rows ticked, so the real button is present but greyed — drawn that way rather than live. */
+  .applybtn{border:1px solid var(--input);border-radius:6px;padding:3px 8px;font-size:9.5px;font-weight:600;
+            color:var(--foreground);background:#fff;opacity:.45}
+
+  table.g{border-collapse:separate;border-spacing:0;table-layout:fixed}
+  table.g th,table.g td{border-bottom:1px solid var(--border);padding:2px 3px}
+  table.g thead th{background:#f4f5fb;color:var(--muted-foreground);font-size:7.5px;font-weight:700;
+                   text-transform:uppercase;letter-spacing:.02em;text-align:left;padding:4px 7px 4px 3px;
+                   vertical-align:bottom;line-height:1.25}
+  table.g thead th.d{text-align:center;text-transform:none;letter-spacing:0;padding:4px 1px}
+  th.d .dd{display:block;font-size:8.5px;color:var(--foreground);font-weight:700;font-variant-numeric:tabular-nums}
+  th.d .dw{display:block;font-size:7.5px;color:var(--muted-foreground);font-weight:600}
+  th.d .tdy{display:block;font-size:6.5px;color:var(--primary);font-weight:700;letter-spacing:.03em}
+  .wk{background:var(--wk)}
+  thead th.wk{background:#fdf5dd}
+  .pin{border-right:1px solid var(--rule)}
+  td.eno{font-size:8.5px;color:var(--muted-foreground);font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.enm{font-size:8.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  td.edp,td.eoc{font-size:7.5px;color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  td.ck{text-align:center}
+  .box{display:inline-block;width:9px;height:9px;border:1px solid var(--input);border-radius:2px;background:#fff;vertical-align:-1px}
+  td.eed{text-align:center}
+  .editlnk{font-size:8px;color:var(--primary);font-weight:700}
+  td.c{text-align:center;padding:1.5px 1px}
+  .cc{display:block;border-radius:4px;padding:2px 0;font-size:8px;font-weight:700;letter-spacing:-.1px;
+      white-space:nowrap;overflow:hidden}
+  .cc.rose{background:var(--rose-bg);color:var(--rose-fg)}
+  .cc.btn{border:1px solid rgba(26,26,34,.14)}
+  .cc.txt{border:1px solid transparent}
+  td.cont{text-align:center;color:var(--ghost);font-size:9px}
+  thead th.cont{text-align:center;color:var(--muted-foreground)}
+  .gfoot{font-size:9px;color:var(--muted-foreground);margin:6px 0 0}
+
+  /* The shift-settings hint card. Ungated on the live screen: BOTH logins get it, and its link goes to an
+     administrators-only screen. Drawn identically in both panels because that is what is there. */
+  .hintline{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;
+            border:1px solid var(--border);border-radius:9px;padding:6px 9px;margin:9px 0 0;background:#fff;
+            font-size:9px;color:var(--muted-foreground)}
+  .hintline .lnk{color:var(--primary);font-weight:600;white-space:nowrap}
+
+  .after{margin-top:9px;display:flex;gap:7px}
+  .tool{flex:1;border:1px solid var(--input);border-radius:9px;padding:7px 9px;background:#fff;font-size:9.5px}
+  .tool b{display:block;font-size:10px;margin-bottom:1px}
+  .tool span{color:var(--muted-foreground)}
+  .toolnone{flex:1;border:1px dashed var(--input);border-radius:9px;padding:7px 9px;background:#fbfbfe;
+            font-size:9.5px;color:var(--muted-foreground)}
+  .toolnone b{display:block;font-size:10px;margin-bottom:1px;color:var(--foreground)}
+
+  .dlg{margin-top:9px;border:1px solid var(--amber-br);background:var(--amber-bg);border-radius:9px;padding:8px 10px}
+  .dlg .t{font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--amber-fg);font-weight:700;margin-bottom:4px}
+  .dlg .m{font-size:10px;color:var(--amber-fg)}
+  .dlg .b{display:flex;gap:6px;justify-content:flex-end;margin-top:6px}
+  .dlg .b span{border:1px solid var(--amber-br);background:#fff;border-radius:6px;padding:2px 9px;font-size:9.5px}
+  .dlg .b span.ok{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
+  .quiet{margin-top:9px;border:1px dashed var(--input);border-radius:9px;padding:8px 10px;background:#fbfbfe;
+         font-size:10px;color:var(--muted-foreground)}
+  .quiet b{color:var(--foreground)}
+
+  /* ── the difference table ─────────────────────────────────────── */
+  table.diff{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+  table.diff th{text-align:left;font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+                color:var(--muted-foreground);font-weight:700;padding:0 8px 6px;border-bottom:1px solid var(--rule)}
+  table.diff th.w{text-align:center;width:150px}
+  table.diff td{padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+  table.diff td.w{text-align:center;font-size:11.5px}
+  table.diff tr:last-child td{border-bottom:none}
+  .yes{color:var(--good-fg);font-weight:700}
+  .no{color:var(--muted-foreground)}
+  .note{font-size:11px;color:var(--muted-foreground);display:block}
+
+  ul.tight{margin:6px 0 0;padding-left:17px}
+  ul.tight li{margin-bottom:5px;font-size:12px}
+  ul.tight li b{font-weight:600}
+  .flag{border:1px solid var(--warn-br);background:var(--warn-bg);border-radius:10px;padding:10px 12px;
+        font-size:12px;color:var(--warn-fg);margin-top:12px}
+  .okbox{border:1px solid var(--good-br);background:var(--good-bg);border-radius:10px;padding:10px 12px;
+         font-size:12px;color:var(--good-fg);margin-top:12px}
+</style>
+
+<div class="wrap">
+  <h1 class="hd">Roster — what a supervisor sees, and what an HR Administrator sees, on the same month</h1>
+  <p class="lede">Both pictures below are <b>today</b>, not a proposal. They are your own August 2026 roster for
+    <b>ISEDECOR BINA SDN BHD</b>: the same six people, the same six dates, the same AM03 shift that is actually
+    stored against every one of them. The only thing that differs is <b>which controls appear</b>.</p>
+
+  <div class="sketch">
+    <b class="k">Sketch — layout only</b>
+    <p>Wording, spacing and colours will differ from the live screen. Employee numbers, names, departments,
+      occupations, the AM03 shift and its 09:00–18:00 hours, the nine shift codes in the legend and every
+      button name are <b>yours, read from your live system on 10 August 2026</b>. Six of the month's 31 date
+      columns are drawn so both logins fit side by side; the real screen scrolls sideways to 31/08.</p>
+  </div>
+
+  <!-- ─────────────────────────── 1 ─────────────────────────── -->
+  <div class="card">
+    <h2><span class="num">1</span>The same roster, two logins</h2>
+    <p class="sub">Same rows in both panels <b>on purpose</b>: who appears in a supervisor's list is already
+      decided by who they are responsible for, and nothing being decided here changes that. So the only
+      difference on show is the one you are being asked about — who may change a day.</p>
+
+    <div class="pair">
+
+      <!-- ── SUPERVISOR ── -->
+      <div class="panel">
+        <div class="ptag">
+          <span class="who">A supervisor <span>· signed in today</span></span>
+          <span class="pill read">Views the month</span>
+        </div>
+        <div class="pc">
+          <div class="toprow">
+            <span class="coname">ISEDECOR BINA SDN BHD</span>
+            <span class="acts"><span class="gbtn">Export</span></span>
+          </div>
+
+          <div class="filters">
+            <div><div class="fld">Business Group</div><div class="inp">– ALL – &#9662;</div></div>
+            <div><div class="fld">Department</div><div class="inp">– ALL – &#9662;</div></div>
+            <div><div class="fld">Employee</div><div class="inp">Name or employee no.</div></div>
+            <div><div class="fld">Month</div><div class="inp">2026-08</div></div>
+            <div><div class="fld">&nbsp;</div><span class="btnp">Query</span></div>
+            <span class="mnav">&#8249; August 2026 &#8250; <span class="gbtn">This month</span></span>
+          </div>
+
+          <div class="hintline">
+            <span>Shift schedules are managed in Attendance Policy; a person's usual shift is set on their
+              profile as their Default shift. Use the roster for date-specific exceptions.</span>
+            <span class="lnk">Manage shift schedules &#8594;</span>
+          </div>
+
+          <div class="sect">Monthly roster <span class="cnt">14</span></div>
+
+          <div class="legend">
+            <span class="lgl">Legend</span>
+            <span class="chip c-ind">SemiFlex01 <span class="h">07:00–20:00</span></span>
+            <span class="chip c-eme">AM01 <span class="h">08:00–17:00</span></span>
+            <span class="chip c-amb">MB28 <span class="h">08:00–17:00</span></span>
+            <span class="chip c-sky">AM02 <span class="h">08:30–17:30</span></span>
+            <span class="chip c-rose">AM03 <span class="h">09:00–18:00</span></span>
+            <span class="chip c-out">+ 4 more</span>
+            <span class="chip c-mut">RD <span class="h">rest day</span></span>
+            <span class="chip c-out">Clear</span>
+            <span class="chip c-dash">OFF</span>
+          </div>
+
+          <div class="bar">
+            <span class="viewonly">A supervisor views the roster; an HR Administrator changes it.</span>
+            <span class="ghosthint">Grey = the employee's usual shift.</span>
+          </div>
+
+          <table class="g" style="width:488px">
+            <colgroup>
+              <col style="width:52px"><col style="width:60px"><col style="width:62px"><col style="width:66px">
+              <col style="width:38px"><col style="width:38px"><col style="width:38px">
+              <col style="width:38px"><col style="width:38px"><col style="width:38px">
+              <col style="width:20px">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Employee No</th><th>Employee Name</th><th>Department</th><th class="pin">Occupation</th>
+                <th class="d wk"><span class="dd">08/08</span><span class="dw">Sat</span></th>
+                <th class="d wk"><span class="dd">09/08</span><span class="dw">Sun</span></th>
+                <th class="d"><span class="dd">10/08</span><span class="dw">Mon</span><span class="tdy">TODAY</span></th>
+                <th class="d"><span class="dd">11/08</span><span class="dw">Tue</span></th>
+                <th class="d"><span class="dd">12/08</span><span class="dw">Wed</span></th>
+                <th class="d"><span class="dd">13/08</span><span class="dw">Thu</span></th>
+                <th class="cont">&#8943;</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="eno">A0001</td><td class="enm">TEST0001</td><td class="edp">ANDALAN</td>
+                <td class="eoc pin">SAFETY &amp; HEALTH OFFICER</td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+              <tr>
+                <td class="eno">A0002</td><td class="enm">TEST0002</td><td class="edp">ANDALAN</td>
+                <td class="eoc pin">SITE SUPERVISOR</td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+              <tr>
+                <td class="eno">A0003</td><td class="enm">TEST0003</td><td class="edp">ANDALAN</td>
+                <td class="eoc pin">QAQC ENGINEER</td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+              <tr>
+                <td class="eno">A0006</td><td class="enm">TEST0006</td><td class="edp">TECHNICAL</td>
+                <td class="eoc pin">M&amp;E COORDINATOR</td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+              <tr>
+                <td class="eno">A0009</td><td class="enm">TEST0009</td><td class="edp">HEALTH SAFETY ENVIRONMENT &amp; QUALITY</td>
+                <td class="eoc pin">SENIOR QAQC OFFICER</td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+              <tr>
+                <td class="eno">A0012</td><td class="enm">TEST0012</td><td class="edp">CONTRACT</td>
+                <td class="eoc pin">ASSISTANT CONTRACT MANAGER</td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c wk"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="c"><span class="cc rose txt">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="gfoot">6 of 14 people and 6 of 31 dates drawn &nbsp;·&nbsp; the days are <b>text</b>, not
+            buttons — there is nothing here to click and be refused by.</p>
+
+          <div class="quiet"><b>After the grid.</b> Generate roster and Copy roster are not on the screen at
+            all for a supervisor, and neither is Upload Shift Roster or Download Template. "This week's
+            exceptions" is there for both logins; it only reports.</div>
+        </div>
+      </div>
+
+      <!-- ── HR ADMINISTRATOR ── -->
+      <div class="panel">
+        <div class="ptag">
+          <span class="who">An HR Administrator <span>· signed in today</span></span>
+          <span class="pill write">Changes the month</span>
+        </div>
+        <div class="pc">
+          <div class="toprow">
+            <span class="coname">ISEDECOR BINA SDN BHD</span>
+            <span class="acts">
+              <span class="gbtn hi">Upload Shift Roster</span>
+              <span class="gbtn hi">Download Template</span>
+              <span class="gbtn">Export</span>
+            </span>
+          </div>
+
+          <div class="filters">
+            <div><div class="fld">Business Group</div><div class="inp">– ALL – &#9662;</div></div>
+            <div><div class="fld">Department</div><div class="inp">– ALL – &#9662;</div></div>
+            <div><div class="fld">Employee</div><div class="inp">Name or employee no.</div></div>
+            <div><div class="fld">Month</div><div class="inp">2026-08</div></div>
+            <div><div class="fld">&nbsp;</div><span class="btnp">Query</span></div>
+            <span class="mnav">&#8249; August 2026 &#8250; <span class="gbtn">This month</span></span>
+          </div>
+
+          <div class="hintline">
+            <span>Shift schedules are managed in Attendance Policy; a person's usual shift is set on their
+              profile as their Default shift. Use the roster for date-specific exceptions.</span>
+            <span class="lnk">Manage shift schedules &#8594;</span>
+          </div>
+
+          <div class="sect">Monthly roster <span class="cnt">14</span></div>
+
+          <div class="legend">
+            <span class="lgl">Legend</span>
+            <span class="chip c-ind brushring">SemiFlex01 <span class="h">07:00–20:00</span></span>
+            <span class="chip c-eme">AM01 <span class="h">08:00–17:00</span></span>
+            <span class="chip c-amb">MB28 <span class="h">08:00–17:00</span></span>
+            <span class="chip c-sky">AM02 <span class="h">08:30–17:30</span></span>
+            <span class="chip c-rose">AM03 <span class="h">09:00–18:00</span></span>
+            <span class="chip c-out">+ 4 more</span>
+            <span class="chip c-mut">RD <span class="h">rest day</span></span>
+            <span class="chip c-out">Clear</span>
+            <span class="chip c-dash">OFF</span>
+          </div>
+
+          <div class="bar">
+            <span>0 selected</span>
+            <span class="applybtn">Apply to selected, whole month</span>
+            <span class="ghosthint">Grey = the employee's usual shift.</span>
+          </div>
+
+          <table class="g" style="width:540px">
+            <colgroup>
+              <col style="width:20px"><col style="width:52px"><col style="width:60px"><col style="width:62px">
+              <col style="width:66px"><col style="width:32px">
+              <col style="width:38px"><col style="width:38px"><col style="width:38px">
+              <col style="width:38px"><col style="width:38px"><col style="width:38px">
+              <col style="width:20px">
+            </colgroup>
+            <thead>
+              <tr>
+                <th><span class="box"></span></th>
+                <th>Employee No</th><th>Employee Name</th><th>Department</th><th>Occupation</th>
+                <th class="pin">Edit</th>
+                <th class="d wk"><span class="dd">08/08</span><span class="dw">Sat</span></th>
+                <th class="d wk"><span class="dd">09/08</span><span class="dw">Sun</span></th>
+                <th class="d"><span class="dd">10/08</span><span class="dw">Mon</span><span class="tdy">TODAY</span></th>
+                <th class="d"><span class="dd">11/08</span><span class="dw">Tue</span></th>
+                <th class="d"><span class="dd">12/08</span><span class="dw">Wed</span></th>
+                <th class="d"><span class="dd">13/08</span><span class="dw">Thu</span></th>
+                <th class="cont">&#8943;</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="ck"><span class="box"></span></td>
+                <td class="eno">A0001</td><td class="enm">TEST0001</td><td class="edp">ANDALAN</td>
+                <td class="eoc">SAFETY &amp; HEALTH OFFICER</td>
+                <td class="eed pin"><span class="editlnk">Edit</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+              <tr>
+                <td class="ck"><span class="box"></span></td>
+                <td class="eno">A0002</td><td class="enm">TEST0002</td><td class="edp">ANDALAN</td>
+                <td class="eoc">SITE SUPERVISOR</td>
+                <td class="eed pin"><span class="editlnk">Edit</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+              <tr>
+                <td class="ck"><span class="box"></span></td>
+                <td class="eno">A0003</td><td class="enm">TEST0003</td><td class="edp">ANDALAN</td>
+                <td class="eoc">QAQC ENGINEER</td>
+                <td class="eed pin"><span class="editlnk">Edit</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+              <tr>
+                <td class="ck"><span class="box"></span></td>
+                <td class="eno">A0006</td><td class="enm">TEST0006</td><td class="edp">TECHNICAL</td>
+                <td class="eoc">M&amp;E COORDINATOR</td>
+                <td class="eed pin"><span class="editlnk">Edit</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+              <tr>
+                <td class="ck"><span class="box"></span></td>
+                <td class="eno">A0009</td><td class="enm">TEST0009</td><td class="edp">HEALTH SAFETY ENVIRONMENT &amp; QUALITY</td>
+                <td class="eoc">SENIOR QAQC OFFICER</td>
+                <td class="eed pin"><span class="editlnk">Edit</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+              <tr>
+                <td class="ck"><span class="box"></span></td>
+                <td class="eno">A0012</td><td class="enm">TEST0012</td><td class="edp">CONTRACT</td>
+                <td class="eoc">ASSISTANT CONTRACT MANAGER</td>
+                <td class="eed pin"><span class="editlnk">Edit</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c wk"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="c"><span class="cc rose btn">AM03</span></td>
+                <td class="cont">&#8943;</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="gfoot">Same six people, same six dates. Every day is a <b>button</b>: pick a code from the
+            legend, click a day. Tick rows and set the whole month at once, or open one person's month with
+            <b>Edit</b>.</p>
+
+          <div class="dlg">
+            <div class="t">Changing 10/08 — today</div>
+            <div class="m">1 date is today or earlier and may already have been attended. Change anyway?</div>
+            <div class="b"><span>Cancel</span><span class="ok">OK</span></div>
+          </div>
+
+          <div class="after">
+            <div class="tool"><b>Generate roster</b><span>Fill a date range from a shift's weekly pattern.</span></div>
+            <div class="tool"><b>Copy roster</b><span>Copy an earlier period forward onto these dates.</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="okbox"><b>No supervisor is offered a way to change a day that would then be refused.</b> The
+      right to change a roster day is not decided on the screen — it is settled deeper, where the roster is
+      stored, and setting a day there has only ever been allowed to an HR Administrator or a System
+      Administrator. We re-checked that on your live system on 10 August 2026: a supervisor's attempt to set
+      <b>tomorrow</b> is refused underneath the screen, not merely hidden from them. That is why the left-hand
+      month is plain text rather than greyed-out buttons.</div>
+  </div>
+
+  <!-- ─────────────────────────── 2 ─────────────────────────── -->
+  <div class="card">
+    <h2><span class="num">2</span>Every control on the Roster screen, and who gets it</h2>
+    <p class="sub">Taken from the screen's own rules, not from memory. This is the whole list — there is
+      nothing on Roster that a supervisor half-gets.</p>
+
+    <table class="diff">
+      <thead>
+        <tr><th>On the Roster screen</th><th class="w">Supervisor</th><th class="w">HR Administrator</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Open Roster and see the whole month, one column per date</td><td class="w yes">Yes</td><td class="w yes">Yes</td></tr>
+        <tr><td>Business Group, Department, Employee and Month filters, and Query</td><td class="w yes">Yes</td><td class="w yes">Yes</td></tr>
+        <tr><td>Previous / next month and This month</td><td class="w yes">Yes</td><td class="w yes">Yes</td></tr>
+        <tr><td>Export the month as it is on screen<span class="note">The only download a supervisor gets.</span></td><td class="w yes">Yes</td><td class="w yes">Yes</td></tr>
+        <tr><td>The legend of shift codes<span class="note">A key for a supervisor; for an administrator the same chips are what you paint with.</span></td><td class="w yes">Yes, as a key</td><td class="w yes">Yes, and it paints</td></tr>
+        <tr><td>Click a day to set a shift, a rest day, or clear it</td><td class="w no">No</td><td class="w yes">Yes</td></tr>
+        <tr><td>Tick rows and Apply to selected, whole month</td><td class="w no">No</td><td class="w yes">Yes</td></tr>
+        <tr><td>Edit — one person's whole month in one go</td><td class="w no">No</td><td class="w yes">Yes</td></tr>
+        <tr><td>Upload Shift Roster and Download Template</td><td class="w no">No</td><td class="w yes">Yes</td></tr>
+        <tr><td>Generate roster and Copy roster</td><td class="w no">No</td><td class="w yes">Yes</td></tr>
+        <tr><td>Asked to confirm before changing a day today or earlier</td><td class="w no">Nothing to confirm</td><td class="w yes">Yes</td></tr>
+        <tr><td>See "This week's exceptions" under the grid<span class="note">It reports late starts, no-shows, short hours and rest days worked. It changes nothing.</span></td><td class="w yes">Yes</td><td class="w yes">Yes</td></tr>
+        <tr><td>The "Manage shift schedules" link under the filters<span class="note">The one blemish, named in the plan: the link is shown to both, but the screen behind it is administrators-only.</span></td><td class="w no">Shown, opens nothing</td><td class="w yes">Yes</td></tr>
+        <tr><td>Read the Audit trail of who changed which day<span class="note">A separate screen under Attendance, and it is administrators-only.</span></td><td class="w no">No</td><td class="w yes">Yes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─────────────────────────── 3 ─────────────────────────── -->
+  <div class="card">
+    <h2><span class="num">3</span>What this sketch does not show</h2>
+    <ul class="tight">
+      <li><b>The alternative.</b> If you would rather a supervisor could change their own team's future dates,
+        that is a real change to who may change the roster, and the plan asks you to reject and say so. A
+        picture cannot show a choice, so it stays in the words — along with the two things we would need to
+        agree first: which supervisors, and what should happen to a day that has already been attended.</li>
+      <li><b>Who appears in each list.</b> Both panels above deliberately carry the same six people. On your
+        data today no reporting lines are in force at ISEDECOR BINA SDN BHD and no department has a head
+        recorded, so there is no real supervisor-to-team list we could have drawn honestly.</li>
+      <li><b>The company picker</b> at the top left, which appears when your login covers more than one
+        company. It is the same for both and we did not measure it for a supervisor login, so it is named
+        rather than drawn.</li>
+      <li><b>The Edit panel itself</b>, the Upload preview, the Audit trail rows, and the rows inside "This
+        week's exceptions". All real; none of them changes with this decision.</li>
+      <li><b>Twenty-five of the month's thirty-one dates</b>, and eight of the fourteen people. Everything drawn
+        is stored; nothing drawn is invented.</li>
+    </ul>
+
+    <div class="flag"><b>One line of the plan you approved was not delivered.</b> It said dates from tomorrow
+      onwards could be changed by a supervisor as well as by an HR Administrator. The first half — today or
+      earlier is an HR Administrator's, after a confirmation — is live and is drawn above. The second half was
+      not built, because the right to change a roster day sits deeper than the screen and setting a day there
+      has only ever been allowed to an administrator. The plan recommends leaving it that way; approving is
+      how you say yes.</div>
+  </div>
+</div>

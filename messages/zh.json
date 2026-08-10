@@ -1185,7 +1185,12 @@
         "benefit_scheme_override": "福利方案指派变更",
         "scheme_entitlement_changed": "方案假期额度表变更",
         "scheme_updated": "福利方案变更",
-        "grade_group_changed": "职级组变更"
+        "grade_group_changed": "职级组变更",
+        "leave_type_rules": "假期类型规则变更",
+        "year_cycle_override": "假期年度周期变更",
+        "movement_recorded": "雇佣变更已记录",
+        "movement_applied": "雇佣变更已生效",
+        "company_changed": "公司变更"
       },
       "payMethodGroup": "该员工的支付方式",
       "payMode": "计薪方式",

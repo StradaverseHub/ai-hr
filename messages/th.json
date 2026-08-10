@@ -1185,7 +1185,12 @@
         "benefit_scheme_override": "เปลี่ยนการกำหนดโครงการสวัสดิการ",
         "scheme_entitlement_changed": "เปลี่ยนตารางสิทธิ์ของโครงการ",
         "scheme_updated": "เปลี่ยนโครงการสวัสดิการ",
-        "grade_group_changed": "เปลี่ยนกลุ่มระดับ"
+        "grade_group_changed": "เปลี่ยนกลุ่มระดับ",
+        "leave_type_rules": "เปลี่ยนกฎของประเภทการลา",
+        "year_cycle_override": "เปลี่ยนรอบปีการลา",
+        "movement_recorded": "บันทึกการเปลี่ยนแปลงการจ้างงาน",
+        "movement_applied": "ใช้การเปลี่ยนแปลงการจ้างงานแล้ว",
+        "company_changed": "เปลี่ยนบริษัท"
       },
       "payMethodGroup": "พนักงานคนนี้รับเงินอย่างไร",
       "payMode": "รูปแบบการจ่าย",
