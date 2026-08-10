@@ -1,0 +1,327 @@
+<meta charset="utf-8">
+<title>009c8a37 — Hide employee list moves onto the detail header row</title>
+<!--
+  Mockup for 009c8a37 ("Payroll Module – Employee List Hide/Show UIUX Enhancement"), plan revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · NOW = the screen as it stands today (components/collapsible-employee-panel.tsx:83-94). The toggle is
+    the FIRST CHILD OF THE LEFT COLUMN, above the employee-list card. That pushes the left card down by
+    roughly the height of the button plus its gap, so the two card tops do not line up. That
+    mis-registration is exactly what the reporter's screenshot outlines in red.
+  · The NOW block also draws the collapsed state as it really is today: a narrow vertical strip carrying a
+    rotated "Employees" caption plus a left-pointing arrow, still holding a column of width from the
+    detail area.
+  · AFTER = what we will build. The toggle leaves the left column entirely and becomes the right-hand end
+    of ONE shared header row at the top of the detail column, present in BOTH states. That is the
+    reporter's own wireframe, in their own words: "Employee Detail    [Hide Employee List]".
+  · The screen drawn is Fixed Transaction. Everything structural is real: the page title and subtitle, the
+    employee panel's real filter labels (Company / Business unit / Department / Status / Search employee,
+    placeholder "Employee ID or name") from messages/en.json employeePanel.*, the real control captions
+    "Hide employee list" / "Show employee list", the real header row content (employee code + name, then
+    company · department · position), the real "Fixed Transaction" section header with its count, and the
+    real versioning note line under it.
+  · The primary action drawn on the header row is the Fixed Transaction toolbar's own Add control. It
+    keeps its place; the Hide/Show control is drawn to its RIGHT, quiet-styled, so the control lands in the
+    same pixel on every screen regardless of what that screen's primary action is called.
+  · The collapsed vertical strip is drawn STRUCK OUT in the AFTER blocks because it is being removed —
+    once the control is in the header there is no second copy of it, and that is what finally returns the
+    last of the width.
+  · PERSONAL DATA IS ILLUSTRATIVE. The employee names, employee IDs and every ringgit figure below are
+    made up for this sketch. No real employee record or real pay figure appears here. The COLUMN NAMES,
+    control captions, filter labels and pay-item codes are real.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+
+  /* page chrome */
+  .ph{font-size:15px;font-weight:700;margin:0}
+  .phs{font-size:11px;color:var(--mf);margin:1px 0 12px}
+
+  /* two-column shell */
+  .split{display:grid;grid-template-columns:290px minmax(0,1fr);gap:16px;align-items:start}
+  .split > *{min-width:0}
+  .splitc{display:grid;grid-template-columns:38px minmax(0,1fr);gap:16px;align-items:start}
+  .splitc > *{min-width:0}
+  .onecol{display:block}
+
+  .pnl{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff}
+  .pnl h3{font-size:12px;font-weight:600;margin:0 0 9px}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);font-weight:600;margin-bottom:3px}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:11.5px;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ghost{color:#9a9ba8}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px}
+  .one{margin-bottom:7px}
+  ul{list-style:none;margin:9px 0 0;padding:0;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+  li{padding:6px 9px;border-bottom:1px solid var(--border);font-size:11.5px}
+  li:last-child{border-bottom:0}
+  li.on{background:color-mix(in srgb,var(--primary) 9%,white);box-shadow:inset 3px 0 0 var(--primary)}
+  .who{font-weight:600}
+  .code{color:var(--mf);font-size:10.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* the control, in both homes */
+  .toggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;
+          padding:5px 10px;font-size:10.5px;color:var(--mf);background:#fff;white-space:nowrap}
+  .toggle-block{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;
+                padding:5px 10px;font-size:10.5px;color:var(--mf);background:#fff;margin-bottom:8px}
+  .rail{border:1px solid var(--border);border-radius:8px;padding:9px 3px;font-size:10.5px;color:var(--mf);
+        text-align:center;height:150px;writing-mode:vertical-rl;background:#fff;margin:0 auto;width:38px}
+  .rail.gone{opacity:.34;position:relative}
+  .rail.gone::after{content:"";position:absolute;left:-2px;right:-2px;top:50%;height:2px;background:var(--bad)}
+
+  /* detail column */
+  .detail{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff}
+  .hdr{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;border-bottom:1px solid var(--border);
+       padding:9px 12px}
+  .hdr .id{min-width:0;flex:1}
+  .hdr .id .n{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hdr .id .m{font-size:10.5px;color:var(--mf);margin-top:1px;white-space:nowrap;overflow:hidden;
+              text-overflow:ellipsis}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;font-size:11px;font-weight:600;
+       display:inline-block;white-space:nowrap}
+  .sect{display:flex;align-items:baseline;gap:7px;padding:8px 12px;border-bottom:1px solid var(--border);
+        background:var(--muted)}
+  .sect b{font-size:12px}
+  .sect span{font-size:10.5px;color:var(--mf)}
+  .note{font-size:10.5px;color:var(--mf);padding:6px 12px;border-bottom:1px solid var(--border);
+        background:#fafaff}
+  table{border-collapse:separate;border-spacing:0;font-size:11px;width:100%;table-layout:fixed}
+  th,td{padding:5px 12px;border-bottom:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;
+        white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  th{font-size:9px;text-transform:uppercase;letter-spacing:.03em;color:var(--mf);font-weight:600;
+     text-align:left;background:#fff}
+  th.n,td.n{text-align:right}
+  td.n{font-variant-numeric:tabular-nums}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px}
+
+  /* annotation */
+  .mark{position:relative}
+  .callout{display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--bad);margin:9px 0 0;
+           line-height:1.45}
+  .callout i{font-style:normal;font-weight:700}
+  .ok{color:var(--good)}
+  .gap{border-top:2px dashed var(--bad);margin:0 0 0 0}
+  .offsetbox{outline:2px solid var(--bad);outline-offset:3px;border-radius:12px}
+  .arrow{text-align:center;font-size:20px;color:var(--primary);margin:-6px 0 12px;font-weight:700}
+  .cut{font-size:11px;color:var(--mf);margin:10px 0 0;line-height:1.5}
+  .cut b{color:var(--fg)}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px}
+  .box{border:1px solid var(--border);border-radius:10px;padding:10px}
+  .box .k{font-weight:600;font-size:11.5px}
+  .box .v{font-size:11px;color:var(--mf);margin-top:3px;line-height:1.45}
+  .disclaimer{font-size:11px;color:var(--mf);border:1px dashed var(--border);border-radius:10px;
+              padding:9px 11px;margin:0 0 18px;line-height:1.5;background:#fff}
+</style>
+
+<p class="disclaimer">
+  Sketch for the Hide / Show Employee List layout. Wording, spacing and colours will differ slightly in the
+  built screen. <b>The employee names, employee IDs and all ringgit amounts below are made up for this
+  sketch</b> &mdash; no real employee or real pay figure appears here. Column names, control captions and
+  filter labels are the real ones.
+</p>
+
+<!-- ══════════════════ NOW ══════════════════ -->
+<div class="card">
+  <h2>Now<span class="chip now">today, on every payroll screen with an employee list</span></h2>
+  <p class="sub">The Hide employee list control sits in its own row at the top of the LEFT column. Because it
+    is inside that column, it pushes the employee list down &mdash; so the employee card and the detail card
+    no longer start on the same line, and a band of empty space opens up on the right.</p>
+
+  <p class="ph">Fixed Transaction</p>
+  <p class="phs">Recurring pay items that repeat every payroll run.</p>
+
+  <div class="split">
+    <div class="mark offsetbox">
+      <div class="toggle-block">&#9776; Hide employee list</div>
+      <div class="pnl">
+        <h3>Employee</h3>
+        <div class="one"><div class="lbl">Company</div><div class="inp">All companies &#9662;</div></div>
+        <div class="two">
+          <div><div class="lbl">Business unit</div><div class="inp">All &#9662;</div></div>
+          <div><div class="lbl">Department</div><div class="inp">All &#9662;</div></div>
+        </div>
+        <div class="one"><div class="lbl">Search employee</div>
+          <div class="inp"><span class="ghost">Employee ID or name</span></div></div>
+        <ul>
+          <li class="on"><span class="who">Employee A (sample)</span><br><span class="code">EMP-0001</span></li>
+          <li><span class="who">Employee B (sample)</span><br><span class="code">EMP-0002</span></li>
+          <li><span class="who">Employee C (sample)</span><br><span class="code">EMP-0003</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div>
+      <div class="detail">
+        <div class="hdr">
+          <div class="id">
+            <div class="n">EMP-0001 &middot; Employee A (sample)</div>
+            <div class="m">Sample Sdn Bhd &middot; Finance &middot; Executive</div>
+          </div>
+          <span class="btn">Add fixed item</span>
+        </div>
+        <div class="sect"><b>Fixed Transaction</b><span>3</span></div>
+        <div class="note">Editing a recurring item closes the current value from the chosen date and starts a
+          new one, so the history stays intact.</div>
+        <table>
+          <colgroup><col style="width:110px"><col><col style="width:120px"><col style="width:120px"></colgroup>
+          <thead><tr><th>Code</th><th>Pay item</th><th>Cycle</th><th class="n">Amount (RM)</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">BASIC</td><td>Basic salary</td><td>Every run</td><td class="n">0,000.00</td></tr>
+            <tr><td class="mono">ALW-TRV</td><td>Travel allowance</td><td>Every run</td><td class="n">000.00</td></tr>
+            <tr><td class="mono">DED-PRK</td><td>Car park deduction</td><td>Every run</td><td class="n">00.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="callout"><i>&#9650;</i> The detail card starts here, roughly forty pixels ABOVE the employee
+        card next to it &mdash; the mis-alignment marked in red on your screenshot.</p>
+    </div>
+  </div>
+
+  <p class="cut"><b>And when you hide the list today:</b> the control turns into a narrow vertical strip with
+    a sideways caption, which still holds back a column of space, so the detail never quite reaches the full
+    width.</p>
+
+  <div class="splitc" style="margin-top:10px">
+    <div class="rail">&#9664; Employees</div>
+    <div class="detail">
+      <div class="hdr">
+        <div class="id">
+          <div class="n">EMP-0001 &middot; Employee A (sample)</div>
+          <div class="m">Sample Sdn Bhd &middot; Finance &middot; Executive</div>
+        </div>
+        <span class="btn">Add fixed item</span>
+      </div>
+      <div class="sect"><b>Fixed Transaction</b><span>3</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="arrow">&#8595;</div>
+
+<!-- ══════════════════ AFTER — list visible ══════════════════ -->
+<div class="card">
+  <h2>After &mdash; employee list visible<span class="chip new">what we will build</span></h2>
+  <p class="sub">The control moves out of the left column and onto the right-hand end of the detail header
+    row, exactly as you drew it. Nothing is stacked above the employee list any more, so both cards start on
+    the same line.</p>
+
+  <p class="ph">Fixed Transaction</p>
+  <p class="phs">Recurring pay items that repeat every payroll run.</p>
+
+  <div class="split">
+    <div class="pnl">
+      <h3>Employee</h3>
+      <div class="one"><div class="lbl">Company</div><div class="inp">All companies &#9662;</div></div>
+      <div class="two">
+        <div><div class="lbl">Business unit</div><div class="inp">All &#9662;</div></div>
+        <div><div class="lbl">Department</div><div class="inp">All &#9662;</div></div>
+      </div>
+      <div class="one"><div class="lbl">Search employee</div>
+        <div class="inp"><span class="ghost">Employee ID or name</span></div></div>
+      <ul>
+        <li class="on"><span class="who">Employee A (sample)</span><br><span class="code">EMP-0001</span></li>
+        <li><span class="who">Employee B (sample)</span><br><span class="code">EMP-0002</span></li>
+        <li><span class="who">Employee C (sample)</span><br><span class="code">EMP-0003</span></li>
+      </ul>
+    </div>
+
+    <div class="detail">
+      <div class="hdr">
+        <div class="id">
+          <div class="n">EMP-0001 &middot; Employee A (sample)</div>
+          <div class="m">Sample Sdn Bhd &middot; Finance &middot; Executive</div>
+        </div>
+        <span class="btn">Add fixed item</span>
+        <span class="toggle">&#9776; Hide employee list</span>
+      </div>
+      <div class="sect"><b>Fixed Transaction</b><span>3</span></div>
+      <div class="note">Editing a recurring item closes the current value from the chosen date and starts a
+        new one, so the history stays intact.</div>
+      <table>
+        <colgroup><col style="width:110px"><col><col style="width:120px"><col style="width:120px"></colgroup>
+        <thead><tr><th>Code</th><th>Pay item</th><th>Cycle</th><th class="n">Amount (RM)</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">BASIC</td><td>Basic salary</td><td>Every run</td><td class="n">0,000.00</td></tr>
+          <tr><td class="mono">ALW-TRV</td><td>Travel allowance</td><td>Every run</td><td class="n">000.00</td></tr>
+          <tr><td class="mono">DED-PRK</td><td>Car park deduction</td><td>Every run</td><td class="n">00.00</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="callout ok"><i>&#10003;</i> Both cards start on the same line. The control is on the same
+    horizontal line as the employee detail header, at the far right, and no longer has a row of its own.</p>
+</div>
+
+<div class="arrow">&#8595;</div>
+
+<!-- ══════════════════ AFTER — list hidden ══════════════════ -->
+<div class="card">
+  <h2>After &mdash; employee list hidden<span class="chip new">what we will build</span></h2>
+  <p class="sub">Hiding the list gives the whole width to the detail. The narrow sideways strip goes away
+    completely &mdash; the control is already on screen, in the same place it was a moment ago, now reading
+    Show employee list.</p>
+
+  <p class="ph">Fixed Transaction</p>
+  <p class="phs">Recurring pay items that repeat every payroll run.</p>
+
+  <div class="onecol">
+    <div class="detail">
+      <div class="hdr">
+        <div class="id">
+          <div class="n">EMP-0001 &middot; Employee A (sample)</div>
+          <div class="m">Sample Sdn Bhd &middot; Finance &middot; Executive</div>
+        </div>
+        <span class="btn">Add fixed item</span>
+        <span class="toggle">&#9776; Show employee list</span>
+      </div>
+      <div class="sect"><b>Fixed Transaction</b><span>3</span></div>
+      <div class="note">Editing a recurring item closes the current value from the chosen date and starts a
+        new one, so the history stays intact.</div>
+      <table>
+        <colgroup><col style="width:130px"><col><col style="width:160px"><col style="width:160px"></colgroup>
+        <thead><tr><th>Code</th><th>Pay item</th><th>Cycle</th><th class="n">Amount (RM)</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">BASIC</td><td>Basic salary</td><td>Every run</td><td class="n">0,000.00</td></tr>
+          <tr><td class="mono">ALW-TRV</td><td>Travel allowance</td><td>Every run</td><td class="n">000.00</td></tr>
+          <tr><td class="mono">DED-PRK</td><td>Car park deduction</td><td>Every run</td><td class="n">00.00</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="callout ok"><i>&#10003;</i> Edge to edge &mdash; nothing is held back on the left any more. The
+    chosen employee stays chosen when you bring the list back.</p>
+
+  <div class="grid3">
+    <div class="box"><div class="k">The sideways strip goes away</div>
+      <div class="v">It was a second copy of the same control. With the control on the header row there is
+        nothing left for it to do, and removing it is what returns the last of the width.</div></div>
+    <div class="box"><div class="k">The same on every screen</div>
+      <div class="v">Fixed Transaction, Individual Transaction, TP1 Relief, Zakat and Loans all get this one
+        layout, so the control is in the same spot wherever you meet it.</div></div>
+    <div class="box"><div class="k">On a phone or tablet</div>
+      <div class="v">The two columns stack, so the control stays directly above the employee list where you
+        already reach for it, rather than below the whole list.</div></div>
+  </div>
+</div>
+
+<p class="cut" style="max-width:900px">
+  <b>Not drawn, on purpose.</b> With nobody picked yet, the header row still appears &mdash; it shows the
+  screen name on the left and the Hide / Show control on the right, so the control never disappears on you.
+  Individual Payslip is not drawn either: it has no employee list on it at the moment, and putting one back
+  is a separate request of yours still waiting for your decision.
+</p>

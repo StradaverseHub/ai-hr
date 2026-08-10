@@ -1,0 +1,439 @@
+<meta charset="utf-8">
+<title>4157a498 — Excel upload for Import payroll history</title>
+<!--
+  Mockup for 4157a498 (Monthly Payroll History Import from the PAY_IMP Excel template), plan revision 1.
+
+  ALL EMPLOYEE NUMBERS, COMPANY CODES AND AMOUNTS ARE ILLUSTRATIVE. A1001 / 202501 / ME / BASIC /
+  ABCDE / 5000.00 / Override 1 are the reporter's OWN worked example from the ticket text, not a real
+  employee. No real employee name, salary or payslip figure appears anywhere in this file, by design.
+
+  REAL STRUCTURE (verified, not invented):
+   - The seven column headings and their order are the reporter's, verbatim from the ticket:
+     Employee No, Payroll Period, Payroll Cycle, DOE Code, Company Code, Amount, Override?
+   - The error table's seven columns are the reporter's, verbatim, and Row 5 / A1001 / 202501 / BASIC /
+     Invalid Employee No / "Employee does not exist in Employee Master" / Failed is their own example row.
+   - The summary counters are the reporter's list, verbatim.
+   - The "today" panel is the live screen: a Target company select, a CSV data textarea with the real
+     placeholder, Validate, Load sample, Download template, and the real "Employees resolve by email
+     within ..." hint (messages/en.json payroll.historyImport.*).
+   - The earning/deduction codes on the Codes sheet are the codes actually configured on the live
+     system (BASIC, A0027 HANDPHONE ALLOWANCE, A0040 MEAL ALLOWANCE, A0080 TRAVEL ALLOWANCE, OVERTIME,
+     OT1_5, BONUS, COMMISSION, D0030 MONTHLY PARKING, UPL, ABSENT ...).
+   - The statutory codes (EEEPF, EESOCSO, EEEIS, PCB, CP38, ZAKAT, EREPF, ERSOCSO, EREIS, HRDF) follow
+     the reporter's own EEEPF naming; they are the names the import will accept, and aliases can be
+     added. Drawn as a promise we can keep, because it is a lookup list.
+
+  DELIBERATELY NOT DRAWN:
+   - No "overwrite this month" control anywhere. The plan does not promise one, so the picture must not
+     show one. The occupied-month case is drawn as a flagged row that imports nothing.
+   - No real employee names beside amounts, and no second fully-populated employee. A1002 is shown
+     truncated rather than filled with invented figures for a plausible-looking person.
+   - Updated / overridden is drawn as 0 on purpose — that is what this build will always report.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;
+        --grid:#d8dae6;--hl:#eef0ff;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .tag.amb{background:#fef3c7;color:#92400e}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px;font-size:12px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .box.amb{border-color:#fcd34d;background:#fffbeb}
+
+  /* ---------- product chrome ---------- */
+  .screen{background:#fff;border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .scrpad{padding:14px 16px}
+  .fgrid{display:grid;grid-template-columns:260px 1fr;gap:16px}
+  .f label{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;
+           color:var(--mf);font-weight:700;margin-bottom:4px}
+  .inp{border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;background:#fff;
+       display:flex;justify-content:space-between;gap:6px;color:var(--fg)}
+  .inp i{color:#9698ab;font-style:normal}
+  .ta{border:1px solid var(--border);border-radius:8px;background:#fff;height:112px;padding:9px 11px;
+      font:11px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:#9698ab}
+  .btnrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:14px}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:7px 15px;font-size:12px;font-weight:600}
+  .btn.gh{background:#fff;color:var(--fg);border:1px solid var(--border)}
+  .btn.off{background:#e6e7f0;color:#a0a1b2}
+  .hint{margin-left:auto;font-size:11px;color:var(--mf)}
+  .ghostslot{border:1.5px dashed #f0a8a8;border-radius:8px;padding:5px 12px;font-size:10.5px;
+             color:#b91c1c;font-weight:600;background:#fff5f5}
+  .sechead{display:flex;align-items:center;justify-content:space-between;gap:12px;
+           padding:10px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600}
+  .sechead .cnt{color:var(--mf);font-weight:400}
+  .pillrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .pill{font-size:10.5px;padding:3px 10px;border-radius:999px;background:var(--muted);color:var(--mf)}
+  .pill.ok{background:#dcfce7;color:#166534;font-weight:700}
+  .pill.warn{background:#fef3c7;color:#92400e;font-weight:700}
+  .pill.err{background:#fee2e2;color:#991b1b;font-weight:700}
+
+  /* drop zone */
+  .drop{border:2px dashed #b9bcd8;border-radius:12px;background:#fafaff;padding:18px;text-align:center}
+  .drop b{display:block;font-size:13px;margin-bottom:3px}
+  .drop span{font-size:11.5px;color:var(--mf)}
+  .filechip{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--border);background:#fff;
+            border-radius:9px;padding:7px 12px;margin-top:11px;font-size:12px}
+  .filechip .xi{width:20px;height:20px;border-radius:5px;background:#107c41;color:#fff;font-size:9px;
+                font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+  .filechip u{text-decoration:none;color:var(--mf);font-size:11px}
+
+  /* ---------- tables ---------- */
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:7px 8px;background:#fafafd;border-bottom:1px solid var(--border);vertical-align:bottom}
+  td{padding:7px 8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;vertical-align:top}
+  .r{text-align:right}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
+  .rowfail{background:#fef4f4}
+  .rowwarn{background:#fffbef}
+  .st{display:inline-block;padding:1px 9px;border-radius:999px;font-size:9.5px;font-weight:700}
+  .st.f{background:#fee2e2;color:#991b1b}
+  .st.n{background:#fef3c7;color:#92400e}
+  .st.o{background:#dcfce7;color:#166534}
+
+  /* ---------- spreadsheet strip ---------- */
+  .xl{border:1px solid var(--grid);border-radius:8px;overflow:hidden;background:#fff}
+  .xtab{display:flex;gap:4px;padding:5px 7px;background:#f4f5f9;border-top:1px solid var(--grid)}
+  .xtab i{font-style:normal;font-size:10px;padding:3px 12px;border-radius:5px 5px 0 0;background:#fff;
+          border:1px solid var(--grid);border-bottom:none;font-weight:700}
+  .xtab u{text-decoration:none;font-size:10px;color:var(--mf);padding:3px 10px;border-radius:5px 5px 0 0;
+          background:#e9ebf3;border:1px solid var(--grid);border-bottom:none}
+  .xt{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}
+  .xt td,.xt th{border:1px solid var(--grid);padding:4px 6px;white-space:nowrap;overflow:hidden;
+                text-overflow:ellipsis;font-variant-numeric:tabular-nums;vertical-align:middle}
+  .xt th{background:#eceef6;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;
+         color:#3b3d4d;white-space:normal;line-height:1.2;text-align:left}
+  .xt th.rr{text-align:right}
+  .xt .g{width:26px;background:#eceef6;color:#7b7d8e;text-align:center;font-weight:700;font-size:8.5px}
+  .xt .rr{text-align:right}
+  .xt .txt{color:#3b3d4d}
+  .xt .dim{color:#8a8c9d;font-style:italic}
+  .xt .grp{background:#f7f8fd}
+  .xcap{font-size:10.5px;color:var(--mf);margin:0 0 6px;font-weight:600;text-transform:uppercase;
+        letter-spacing:.05em}
+
+  /* summary tiles */
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .tile{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#fbfbfe}
+  .tile b{display:block;font-size:18px;font-variant-numeric:tabular-nums;line-height:1.2}
+  .tile span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+             font-weight:700;margin-top:2px}
+  .tile.ok b{color:var(--good)} .tile.err b{color:var(--bad)} .tile.warn b{color:var(--amber)}
+  .ack{display:flex;align-items:flex-start;gap:9px;border:1px solid #fcd34d;background:#fffbeb;
+       border-radius:10px;padding:11px 13px;font-size:12px;color:#78350f;margin-top:12px}
+  .ck{width:15px;height:15px;border-radius:4px;border:1.5px solid #b45309;background:#b45309;color:#fff;
+      font-size:10px;line-height:12px;text-align:center;flex:none;margin-top:1px;font-weight:700}
+</style>
+
+<!-- ───────────────── context ───────────────── -->
+<div class="card" style="padding:14px 16px 12px;margin-bottom:14px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+    <div><b style="font-size:14px">Import payroll history</b>
+      <span style="display:block;font-size:11px;color:var(--mf)">Payroll &rsaquo; Transactions &rsaquo; Import payroll history</span></div>
+    <div style="text-align:right">
+      <span style="font-size:10.5px;color:var(--mf);font-style:italic;display:block">Sketch — wording, spacing and colours will differ</span>
+      <span style="font-size:10.5px;color:#b45309;font-weight:700;display:block;margin-top:2px">Every employee number, company code and amount below is illustrative — no real employee appears here</span>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── 1. TODAY ───────────────── -->
+<div class="card">
+  <h2><span class="num">1</span>Today — the whole flow is here, but there is nowhere to put a file</h2>
+  <p class="q">Download a template, check, review errors, confirm, summary — all of that already works. You just have to paste.</p>
+  <span class="tag bad">NOW — copy the rows out of Excel and paste them into a box</span>
+
+  <div class="screen">
+    <div class="scrpad">
+      <div class="fgrid">
+        <div class="f"><label>Target company</label><div class="inp">Demo Sdn Bhd <i>&#9662;</i></div></div>
+        <div class="f"><label>CSV data</label>
+          <div class="ta">Paste CSV with a header row — email,period,basic_salary,gross_pay,epf_employee,…</div>
+        </div>
+      </div>
+      <div class="btnrow">
+        <span class="btn off">Validate</span>
+        <span class="btn gh">Load sample</span>
+        <span class="btn gh">Download template</span>
+        <span class="ghostslot">nothing here — no upload, no drag and drop</span>
+        <span class="hint">Employees resolve by email within Demo Sdn Bhd.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="two" style="margin-top:12px">
+    <div class="box">
+      <b>Most of the steps you described already work.</b> The check-before-you-commit step is real —
+      nothing at all is written until you press the import button — and errors already come back row by row,
+      with the good rows still importable and the bad ones listed.
+    </div>
+    <div class="box bad">
+      <b>Three things do not.</b> There is no file upload. The template that downloads is a plain comma file,
+      not Excel. And it expects one very wide row per employee per month rather than your seven columns with
+      one line per figure.
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── 2. THE TEMPLATE ───────────────── -->
+<div class="card">
+  <h2><span class="num">2</span>Download Template — your workbook, your seven columns, in your order</h2>
+  <p class="q">Payroll Result Import (PAY_IMP).xlsx — column names and sequence exactly as you specified.</p>
+  <span class="tag good">AFTER — a real Excel workbook with three sheets</span>
+
+  <p class="xcap">Sheet 2 of 3 — Sample: one employee, one month, every figure on its own line</p>
+  <div class="xl">
+    <table class="xt">
+      <colgroup>
+        <col style="width:26px"><col style="width:120px"><col style="width:120px"><col style="width:110px">
+        <col style="width:150px"><col style="width:120px"><col style="width:110px"><col style="width:90px">
+        <col>
+      </colgroup>
+      <tr>
+        <th class="g">&nbsp;</th><th>Employee No</th><th>Payroll Period</th><th>Payroll Cycle</th>
+        <th>DOE Code</th><th>Company Code</th><th class="rr">Amount</th><th>Override?</th>
+        <th style="background:#f7f8fd;border-left:2px solid var(--primary);color:var(--primary)">what this line is (not a column — shown here to explain)</th>
+      </tr>
+      <tr><td class="g">2</td><td class="txt">A1001</td><td>202501</td><td class="txt">ME</td><td class="txt">BASIC</td><td class="txt">ABCDE</td><td class="rr">5000.00</td><td class="rr">1</td><td class="dim">basic salary</td></tr>
+      <tr><td class="g">3</td><td class="txt">A1001</td><td>202501</td><td class="txt">ME</td><td class="txt">EEEPF</td><td class="txt">ABCDE</td><td class="rr">550.00</td><td class="rr">1</td><td class="dim">employee EPF deducted</td></tr>
+      <tr><td class="g">4</td><td class="txt">A1001</td><td>202501</td><td class="txt">ME</td><td class="txt">EESOCSO</td><td class="txt">ABCDE</td><td class="rr">24.75</td><td class="rr">1</td><td class="dim">employee SOCSO deducted</td></tr>
+      <tr><td class="g">5</td><td class="txt">A1001</td><td>202501</td><td class="txt">ME</td><td class="txt">EEEIS</td><td class="txt">ABCDE</td><td class="rr">9.90</td><td class="rr">1</td><td class="dim">employee EIS deducted</td></tr>
+      <tr><td class="g">6</td><td class="txt">A1001</td><td>202501</td><td class="txt">ME</td><td class="txt">PCB</td><td class="txt">ABCDE</td><td class="rr">180.00</td><td class="rr">1</td><td class="dim">monthly tax deducted</td></tr>
+      <tr class="grp"><td class="g">7</td><td class="txt">A1001</td><td>202501</td><td class="txt">ME</td><td class="txt">EREPF</td><td class="txt">ABCDE</td><td class="rr">650.00</td><td class="rr">1</td><td class="dim">employer EPF paid</td></tr>
+      <tr class="grp"><td class="g">8</td><td class="txt">A1001</td><td>202501</td><td class="txt">ME</td><td class="txt">ERSOCSO</td><td class="txt">ABCDE</td><td class="rr">86.65</td><td class="rr">1</td><td class="dim">employer SOCSO paid</td></tr>
+      <tr class="grp"><td class="g">9</td><td class="txt">A1001</td><td>202501</td><td class="txt">ME</td><td class="txt">EREIS</td><td class="txt">ABCDE</td><td class="rr">9.90</td><td class="rr">1</td><td class="dim">employer EIS paid</td></tr>
+      <tr class="grp"><td class="g">10</td><td class="txt">A1001</td><td>202501</td><td class="txt">ME</td><td class="txt">HRDF</td><td class="txt">ABCDE</td><td class="rr">50.00</td><td class="rr">1</td><td class="dim">employer training levy</td></tr>
+      <tr><td class="g">11</td><td class="txt">A1002</td><td>202501</td><td class="txt">ME</td><td class="txt">BASIC</td><td class="txt">ABCDE</td><td class="rr">&hellip;</td><td class="rr">1</td><td class="dim">the next employee's month, same shape</td></tr>
+    </table>
+    <div class="xtab"><u>Template</u><i>Sample</i><u>Codes</u></div>
+  </div>
+  <p class="note">Rows 2 and 3 are your own worked example — A1001, 202501, ME, BASIC, ABCDE, 5000.00, Override 1.
+    The other lines show what a complete month looks like: <b>a month is only complete when every figure that
+    was actually paid or deducted has a line of its own.</b> All amounts here are illustrative.</p>
+
+  <p class="xcap" style="margin-top:16px">Sheet 3 of 3 — Codes: what the DOE Code column will accept</p>
+  <div class="two">
+    <div class="xl">
+      <table class="xt">
+        <colgroup><col style="width:26px"><col style="width:150px"><col><col style="width:120px"></colgroup>
+        <tr><th class="g">&nbsp;</th><th>DOE Code</th><th>Description</th><th>Type</th></tr>
+        <tr><td class="g">2</td><td class="txt">BASIC</td><td>Basic salary</td><td class="dim">Earning</td></tr>
+        <tr><td class="g">3</td><td class="txt">A0027</td><td>HANDPHONE ALLOWANCE</td><td class="dim">Earning</td></tr>
+        <tr><td class="g">4</td><td class="txt">A0040</td><td>MEAL ALLOWANCE</td><td class="dim">Earning</td></tr>
+        <tr><td class="g">5</td><td class="txt">A0080</td><td>TRAVEL ALLOWANCE</td><td class="dim">Earning</td></tr>
+        <tr><td class="g">6</td><td class="txt">OVERTIME</td><td>Overtime</td><td class="dim">Earning</td></tr>
+        <tr><td class="g">7</td><td class="txt">BONUS</td><td>Bonus</td><td class="dim">Earning</td></tr>
+        <tr><td class="g">8</td><td class="txt">COMMISSION</td><td>Commission</td><td class="dim">Earning</td></tr>
+        <tr><td class="g">9</td><td class="txt">D0030</td><td>MONTHLY PARKING</td><td class="dim">Deduction</td></tr>
+        <tr><td class="g">10</td><td class="txt">UPL</td><td>UNPAID LEAVE</td><td class="dim">Deduction</td></tr>
+        <tr><td class="g">11</td><td class="dim" colspan="3">…and every other earning and deduction code already set up for your companies</td></tr>
+      </table>
+      <div class="xtab"><u>Template</u><u>Sample</u><i>Codes</i></div>
+    </div>
+    <div class="xl">
+      <table class="xt">
+        <colgroup><col style="width:26px"><col style="width:150px"><col><col style="width:120px"></colgroup>
+        <tr><th class="g">&nbsp;</th><th>DOE Code</th><th>Description</th><th>Type</th></tr>
+        <tr><td class="g">12</td><td class="txt">EEEPF</td><td>Employee EPF</td><td class="dim">Statutory — employee</td></tr>
+        <tr><td class="g">13</td><td class="txt">EESOCSO</td><td>Employee SOCSO</td><td class="dim">Statutory — employee</td></tr>
+        <tr><td class="g">14</td><td class="txt">EEEIS</td><td>Employee EIS</td><td class="dim">Statutory — employee</td></tr>
+        <tr><td class="g">15</td><td class="txt">PCB</td><td>Monthly tax deduction</td><td class="dim">Statutory — employee</td></tr>
+        <tr><td class="g">16</td><td class="txt">CP38</td><td>CP38 instalment</td><td class="dim">Statutory — employee</td></tr>
+        <tr><td class="g">17</td><td class="txt">ZAKAT</td><td>Zakat</td><td class="dim">Statutory — employee</td></tr>
+        <tr><td class="g">18</td><td class="txt">EREPF</td><td>Employer EPF</td><td class="dim">Statutory — employer</td></tr>
+        <tr><td class="g">19</td><td class="txt">ERSOCSO</td><td>Employer SOCSO</td><td class="dim">Statutory — employer</td></tr>
+        <tr><td class="g">20</td><td class="txt">EREIS</td><td>Employer EIS</td><td class="dim">Statutory — employer</td></tr>
+        <tr><td class="g">21</td><td class="txt">HRDF</td><td>Employer training levy</td><td class="dim">Statutory — employer</td></tr>
+      </table>
+      <div class="xtab"><u>Template</u><u>Sample</u><i>Codes</i></div>
+    </div>
+  </div>
+  <p class="note">The earning and deduction codes on the left are the ones already set up on your system.
+    The statutory codes on the right follow your own EEEPF example. <b>If your old system calls them
+    something else, tell us and we will accept those names too</b> — it is a list, not a rewrite.</p>
+</div>
+
+<!-- ───────────────── 3. UPLOAD + VALIDATE ───────────────── -->
+<div class="card">
+  <h2><span class="num">3</span>Upload Excel &rarr; Validate — the file goes on the screen, and nothing is saved yet</h2>
+  <p class="q">Drag the file on, or choose it. Accepts .xlsx, .xls and comma files. The paste box stays for a one-line fix.</p>
+  <span class="tag good">AFTER — the missing step, added</span>
+
+  <div class="screen">
+    <div class="scrpad">
+      <div class="fgrid">
+        <div class="f"><label>Target company</label><div class="inp">Demo Sdn Bhd <i>&#9662;</i></div></div>
+        <div class="f"><label>Payroll history file</label>
+          <div class="drop">
+            <b>Drop your Excel file here</b>
+            <span>or choose a file — .xlsx, .xls or a comma file</span>
+            <div class="filechip"><span class="xi">X</span>
+              <span>Payroll Result Import (PAY_IMP).xlsx</span>
+              <u>1,000 lines &middot; 108 employee-months &middot; remove</u></div>
+          </div>
+        </div>
+      </div>
+      <div class="btnrow">
+        <span class="btn">Validate</span>
+        <span class="btn gh">Download template</span>
+        <span class="btn gh">Paste instead</span>
+        <span class="hint">Employees match on Employee No within Demo Sdn Bhd.</span>
+      </div>
+    </div>
+  </div>
+  <p class="note"><b>Validate writes nothing.</b> It reads the file, gathers each employee's lines back into
+    that employee's month, and tells you what it found. Your payroll is untouched until you confirm.</p>
+</div>
+
+<!-- ───────────────── 4. REVIEW ERRORS ───────────────── -->
+<div class="card">
+  <h2><span class="num">4</span>Review Errors — the exact table you specified, downloadable as Excel</h2>
+  <p class="q">Excel Row No. &middot; Employee No. &middot; Payroll Period &middot; DOE Code &middot; Error Type &middot; Error Description &middot; Import Status</p>
+  <span class="tag amb">AFTER — correct the file and upload it again</span>
+
+  <div class="screen">
+    <div class="sechead">
+      <span>Validation result <span class="cnt">&mdash; 1,000 lines checked</span></span>
+      <span class="btn gh">Download errors (Excel)</span>
+    </div>
+    <div style="padding:10px 14px 0">
+      <div class="pillrow">
+        <span class="pill ok">950 ready to import</span>
+        <span class="pill err">20 failed</span>
+        <span class="pill err">12 duplicates</span>
+        <span class="pill warn">18 already have payroll — needs your attention</span>
+        <span class="pill">108 employee-months in the file</span>
+      </div>
+    </div>
+    <table style="margin-top:10px">
+      <thead>
+        <tr><th style="width:80px">Excel Row No.</th><th style="width:100px">Employee No.</th>
+          <th style="width:100px">Payroll Period</th><th style="width:90px">DOE Code</th>
+          <th style="width:170px">Error Type</th><th>Error Description</th><th style="width:110px">Import Status</th></tr>
+      </thead>
+      <tbody>
+        <tr class="rowfail"><td class="r">5</td><td class="mono">A1001</td><td class="mono">202501</td><td class="mono">BASIC</td>
+          <td>Invalid Employee No</td><td>Employee does not exist in Employee Master</td><td><span class="st f">Failed</span></td></tr>
+        <tr class="rowfail"><td class="r">18</td><td class="mono">A1002</td><td class="mono">2025-02</td><td class="mono">BASIC</td>
+          <td>Invalid Payroll Period</td><td>Payroll Period must be YYYYMM, for example 202502</td><td><span class="st f">Failed</span></td></tr>
+        <tr class="rowfail"><td class="r">24</td><td class="mono">A1003</td><td class="mono">202501</td><td class="mono">EPF_EE</td>
+          <td>Invalid DOE Code</td><td>DOE Code is not in the code list — see the Codes sheet of the template</td><td><span class="st f">Failed</span></td></tr>
+        <tr class="rowfail"><td class="r">31</td><td class="mono">A1004</td><td class="mono">202501</td><td class="mono">BASIC</td>
+          <td>Invalid Company Code</td><td>Employee A1004 did not belong to company ABCDE in January 2025</td><td><span class="st f">Failed</span></td></tr>
+        <tr class="rowfail"><td class="r">46</td><td class="mono">A1005</td><td class="mono">202501</td><td class="mono">OVERTIME</td>
+          <td>Invalid Amount</td><td>Amount contains characters that are not a number: RM 1,200.00</td><td><span class="st f">Failed</span></td></tr>
+        <tr class="rowfail"><td class="r">52</td><td class="mono">A1006</td><td class="mono">202501</td><td class="mono">BASIC</td>
+          <td>Duplicate record</td><td>The same employee, period, cycle, code and company already appears on row 51</td><td><span class="st f">Failed</span></td></tr>
+        <tr class="rowfail"><td class="r">63</td><td class="mono">A1007</td><td class="mono">202503</td><td class="mono">&mdash;</td>
+          <td>Incomplete month</td><td>March 2025 has earnings but no EPF, SOCSO, EIS or tax lines — add them, or add a line with 0.00 if there genuinely were none</td><td><span class="st f">Failed</span></td></tr>
+        <tr class="rowwarn"><td class="r">88</td><td class="mono">A1008</td><td class="mono">202506</td><td class="mono">BASIC</td>
+          <td>Existing record</td><td>June 2025 already has payroll in this system — not overwritten, nothing imported for this month</td><td><span class="st n">Needs action</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="three" style="margin-top:12px">
+    <div class="box bad">
+      <b>A row that fails imports nothing.</b> If any line of an employee's month fails, that whole
+      employee-month is held back rather than going in half-complete — a month missing one of its
+      deductions would quietly understate that person's year-end statement.
+    </div>
+    <div class="box">
+      <b>The rest still goes in.</b> The 950 good lines are not blocked by the 20 bad ones. Fix the failures,
+      upload the corrected file, and only the missing months are added.
+    </div>
+    <div class="box amb">
+      <b>The last row is the important one.</b> A month that already has payroll here is reported back to
+      you and left exactly as it is. It is never written over. Why, and what we would build instead, is in
+      the plan.
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── 5. CONFIRM + SUMMARY ───────────────── -->
+<div class="card">
+  <h2><span class="num">5</span>Confirm Import &rarr; Import Summary</h2>
+  <p class="q">The last reversible moment, and then the counts you asked for.</p>
+
+  <div class="two">
+    <div>
+      <div class="screen">
+        <div class="sechead"><span>Confirm import <span class="cnt">&mdash; 950 lines, 96 employee-months</span></span></div>
+        <div class="scrpad">
+          <div class="ack"><span class="ck">&#10003;</span>
+            <span><b>I understand this cannot be undone.</b> Once a month is loaded it is locked outright &mdash;
+              editing or removing it afterwards is not something the screens can do.</span></div>
+          <div class="btnrow"><span class="btn">Import 950 lines</span><span class="btn gh">Back to errors</span></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="screen">
+        <div class="sechead"><span>Payroll History Import Summary</span><span class="cnt">Demo Sdn Bhd</span></div>
+        <div class="scrpad">
+          <div class="tiles">
+            <div class="tile"><b>1,000</b><span>Total uploaded</span></div>
+            <div class="tile ok"><b>950</b><span>Valid</span></div>
+            <div class="tile err"><b>50</b><span>Invalid</span></div>
+            <div class="tile ok"><b>950</b><span>Imported</span></div>
+          </div>
+          <div class="tiles" style="margin-top:10px">
+            <div class="tile"><b>0</b><span>Updated / overridden</span></div>
+            <div class="tile err"><b>12</b><span>Duplicates</span></div>
+            <div class="tile warn"><b>18</b><span>Existing month</span></div>
+            <div class="tile err"><b>20</b><span>Failed</span></div>
+          </div>
+          <div class="btnrow"><span class="btn gh">Download result (Excel)</span>
+            <span class="btn gh">Go to Payroll History</span><span class="btn gh">Import another file</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note"><b>Updated / overridden will always read 0 in this build</b>, because nothing is ever written
+    over. The counter stays on the summary so the figure is visible rather than hidden. All counts here are
+    illustrative.</p>
+</div>
+
+<!-- ───────────────── 6. left in words ───────────────── -->
+<div class="card" style="background:#fff7ed;border-color:#fed7aa">
+  <h2 style="color:#7c2d12">Four things we have deliberately left in words rather than drawn</h2>
+  <div class="two" style="margin-top:10px">
+    <div class="box" style="border-color:#fed7aa;background:#fff">
+      <b>There is no overwrite button in this sketch, on purpose.</b> These figures do not sit beside your
+      payroll — for those months they become it, and they are added into the monthly EPF, SOCSO, EIS and tax
+      submissions and into each employee's year-end statement. Loading a month that already has payroll would
+      add to what is there, not take its place. And a loaded month is locked, so there is no way back.
+    </div>
+    <div class="box" style="border-color:#fed7aa;background:#fff">
+      <b>The settings behind two of the columns.</b> A company code field already exists on the company screen
+      (Company Label) &mdash; today most companies have it blank, so it just needs filling in. There is no short
+      code on a payroll cycle yet, which is where ME goes, so we add one. Fill both in once and those two columns
+      are genuinely validated rather than accepted on trust.
+    </div>
+    <div class="box" style="border-color:#fed7aa;background:#fff">
+      <b>Nothing is ever calculated for you.</b> Whatever amount your file states is the amount that is stored.
+      We do not work out EPF, SOCSO, EIS or tax for a month you are loading — those were paid by your old system
+      and the point of loading them is to keep what actually happened. That is also why a month with no
+      contribution lines at all is stopped rather than guessed at.
+    </div>
+    <div class="box" style="border-color:#fed7aa;background:#fff">
+      <b>No real employee appears above.</b> A1001 to A1008, ABCDE and every amount are illustrative — several
+      of them are your own worked example from the request. We have not put invented figures next to the names
+      of real colleagues.
+    </div>
+  </div>
+</div>

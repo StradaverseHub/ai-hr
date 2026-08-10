@@ -1,0 +1,474 @@
+<meta charset="utf-8">
+<title>587ee719 — Statutory Forms: every named form listed, every one with an honest status</title>
+<!--
+  Sketch for 587ee719 (Statutory Forms UIUX and Form Selection Enhancement), plan revision 1.
+
+  ALL NAMES, FIGURES AND DATES BELOW ARE ILLUSTRATIVE EXAMPLES, NOT REAL EMPLOYEE OR PAYROLL DATA.
+  "ABC Sdn Bhd" is the reporter's own example company name from the request.
+
+  What IS real: the five category tabs (already on the screen today), the form names in the reporter's
+  own order, and the readiness of each one — CP22 is the only form produced on official government
+  artwork; EPF / SOCSO+EIS / CP39 / Form E-CP8D / EA produce complete figures in our own layout; the
+  CP39 and PERKESO upload files exist but have never been accepted by a live portal; the other thirteen
+  named forms have never been built.
+
+  Tokens follow app/globals.css and docs/mockups/6babf4f6-statutory-forms.html.
+  Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:15px;margin:0 0 2px}
+  .sub{font-size:12px;color:var(--mf);margin:0 0 6px}
+  .illus{font-size:11.5px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
+         padding:6px 10px;margin:0 0 18px;display:inline-block}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .ph{display:flex;align-items:baseline;gap:10px;margin:0 0 12px}
+  .ph h2{font-size:13.5px;margin:0}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700}
+  .tag.now{background:#fee2e2;color:#991b1b}
+  .tag.new{background:#dcfce7;color:#166534}
+  .ph .note{font-size:11.5px;color:var(--mf);margin-left:auto}
+
+  /* ── app chrome ─────────────────────────────────────────── */
+  .screen{border:1px solid var(--border);border-radius:11px;background:var(--bg);padding:12px;overflow:hidden}
+  .crumb{font-size:11px;color:var(--mf);margin-bottom:6px}
+  .ttl{font-size:14.5px;font-weight:700;margin:0 0 2px}
+  .desc{font-size:11.5px;color:var(--mf);margin:0 0 11px}
+  .cardish{background:var(--card);border:1px solid var(--border);border-radius:11px;margin-bottom:11px;overflow:hidden}
+  .filters{display:flex;gap:10px;align-items:flex-end;padding:11px 12px;flex-wrap:wrap}
+  .f label{display:block;font-size:10.5px;color:var(--mf);margin-bottom:3px}
+  .inp{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:5px 9px;font-size:12px;min-width:150px}
+  .inp.sm{min-width:92px}
+  .inp.ph2{color:#9a9aa6}
+  .btn{display:inline-block;border:1px solid var(--border);background:var(--card);border-radius:7px;
+       padding:5px 11px;font-size:11.5px;font-weight:600;white-space:nowrap}
+  .btn.pri{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.gen{background:color-mix(in srgb,var(--primary) 10%,white);border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--primary)}
+  .btn.file{background:#fffbeb;border-color:#fcd34d;color:#92400e}
+  .lnk{color:var(--primary);font-weight:600;font-size:12px}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 12px;background:var(--muted)}
+  td{padding:7px 12px;border-top:1px solid var(--border)}
+  .r{text-align:right}
+  .fm{font-size:11px;color:var(--mf)}
+
+  /* ── tabs + shelves ─────────────────────────────────────── */
+  .bodytabs{display:flex;gap:7px;margin-bottom:11px;flex-wrap:wrap;align-items:center}
+  .btab{border:1px solid var(--border);background:var(--card);border-radius:999px;padding:4px 12px;font-size:11.5px;font-weight:600;color:var(--mf)}
+  .btab.on{background:var(--primary);border-color:var(--primary);color:#fff}
+  .tabslbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-right:2px}
+  .bodycard{background:var(--card);border:1px solid var(--border);border-radius:11px;margin-bottom:11px;overflow:hidden}
+  .bodyhd{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--muted)}
+  .badge{min-width:30px;height:26px;padding:0 6px;border-radius:8px;background:color-mix(in srgb,var(--primary) 12%,white);
+         color:var(--primary);font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center}
+  .bodyhd .n{font-size:12.5px;font-weight:700}
+  .bodyhd .ch{font-size:11px;color:var(--mf)}
+  .cnt{background:var(--card);color:var(--mf);border:1px solid var(--border);border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:600}
+  .cards{padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px}
+
+  /* ── the form card ──────────────────────────────────────── */
+  .fcard{border:1px solid var(--border);border-radius:10px;background:var(--card);padding:10px 12px;
+         display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}
+  .fcard.nb{background:var(--bg);border-style:dashed}
+  .fcard .fn{font-size:12.5px;font-weight:700}
+  .fcard.nb .fn{color:#7b7b87}
+  .fcard .fd{font-size:11.5px;color:var(--mf);margin-top:1px}
+  .meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center}
+  .chip{border:1px solid var(--border);background:var(--muted);color:var(--mf);border-radius:6px;
+        padding:1px 7px;font-size:10.5px;font-weight:600}
+  .chip.k{background:var(--card)}
+  .right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .st{border-radius:999px;padding:2px 9px;font-size:10px;font-weight:800;letter-spacing:.03em;white-space:nowrap}
+  .st.off{background:var(--goodbg);color:var(--good);border:1px solid #bbf7d0}
+  .st.fig{background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe}
+  .st.dft{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+  .st.nb{background:var(--muted);color:#7b7b87;border:1px solid var(--border)}
+  .noact{font-size:10.5px;color:#8a8a96;font-style:italic;white-space:nowrap}
+  .due{font-size:11px;color:var(--mf);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  /* ── legend ─────────────────────────────────────────────── */
+  .legend{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:10px 12px;margin-bottom:11px}
+  .legend .lt{font-size:11px;font-weight:700;margin-bottom:7px}
+  .lrow{display:flex;gap:9px;align-items:flex-start;font-size:11.5px;color:var(--mf);margin-bottom:5px}
+  .lrow .st{margin-top:1px;flex:0 0 auto}
+  .lrow b{color:var(--fg);font-weight:650}
+
+  /* ── generate step ──────────────────────────────────────── */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);
+         border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:11px}
+  .stat{background:var(--card);padding:10px 12px}
+  .stat .k{font-size:10.5px;color:var(--mf)}
+  .stat .v{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:1px}
+  .stat .v.sm{font-size:12.5px;font-weight:650}
+  .band{border-radius:9px;padding:8px 11px;font-size:11.5px;margin-bottom:11px}
+  .band.info{background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3}
+  .band.red{background:var(--badbg);border:1px solid #fecaca;color:#991b1b}
+  .band ul{margin:5px 0 0;padding-left:17px}
+  .band li{margin-bottom:1px}
+  .outrow{display:flex;gap:7px;align-items:center;padding:10px 12px;border-top:1px solid var(--border);flex-wrap:wrap}
+  .outrow .lbl{font-size:11px;color:var(--mf);margin-right:2px}
+  .kicker{font-size:11.5px;color:var(--mf);margin:9px 0 0}
+  .kicker b{color:var(--fg)}
+  .foot{font-size:11px;color:var(--mf);margin-top:4px}
+</style>
+
+<h1>Statutory Forms — every form you named is listed, and every one says plainly what it can actually give you</h1>
+<p class="sub">Sketch for request 587ee719. The five category tabs already exist today; this adds the full form list, the four status labels, and cards instead of rows.</p>
+<p class="illus">All employee names, amounts and dates on this sketch are illustrative examples — not real payroll data. “ABC Sdn Bhd” is the example company name from your own request.</p>
+
+<!-- ══════════════ PANEL 1 — NOW ══════════════ -->
+<div class="panel">
+  <div class="ph"><span class="tag now">NOW</span><h2>The tabs are already there — but only six forms are listed, and nothing says what each one really produces</h2>
+    <span class="note">Income Tax (LHDN) selected</span></div>
+
+  <div class="screen">
+    <div class="crumb">Payroll</div>
+    <div class="ttl">Statutory Forms</div>
+    <p class="desc">Every Malaysian statutory submission in one place — where each is filed, by when, and the figures from your payroll.</p>
+
+    <div class="cardish">
+      <div class="filters">
+        <div class="f"><label>Company</label><div class="inp">ABC Sdn Bhd</div></div>
+        <div class="f"><label>Payroll year</label><div class="inp sm">2026</div></div>
+        <div class="f"><label>Payroll month</label><div class="inp sm">August</div></div>
+        <span class="btn">Show</span>
+      </div>
+    </div>
+
+    <div class="bodytabs">
+      <span class="tabslbl">Select statutory body</span>
+      <span class="btab">All</span>
+      <span class="btab">EPF (KWSP)</span>
+      <span class="btab">SOCSO / EIS (PERKESO)</span>
+      <span class="btab on">Income Tax (LHDN)</span>
+      <span class="btab">Other statutory</span>
+    </div>
+
+    <div class="cardish">
+      <div class="bodyhd"><span class="badge">LHDN</span><span class="n">Income Tax (LHDN)</span>
+        <span class="cnt" style="margin-left:auto">4</span></div>
+      <table>
+        <tbody>
+          <tr><td>CP39 — MTD / PCB (LHDN)<div class="fm">Monthly · e-PCB / e-Data PCB / e-CP39 · 2026-08</div></td>
+              <td class="r"><span class="due">Due by 2026-09-15</span> &nbsp; <span class="lnk">Open form</span></td></tr>
+          <tr><td>Form E / CP8D — annual (LHDN)<div class="fm">Annual · e-Filing (Form E) · 2026</div></td>
+              <td class="r"><span class="due">No deadline set</span> &nbsp; <span class="lnk">Open form</span></td></tr>
+          <tr><td>EA form (per employee)<div class="fm">Annual · each employee’s annual statement of remuneration</div></td>
+              <td class="r"><span class="lnk">Open form</span></td></tr>
+          <tr><td>CP22 / CP22A notices<div class="fm">When someone joins or leaves</div></td>
+              <td class="r"><span class="btn" style="font-size:11px">Blank CP22</span> &nbsp; <span class="lnk">Open worklist</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="kicker">Four rows where you named thirteen. <b>TP1, TP3, both PCB 2(II) versions, CP21, CP22A and CP39A are not on this screen because they have never been built</b> — and nothing here tells you that. Nothing tells you either that CP22 is the only one of these produced on LHDN’s own printed form, while the rest hand you the figures in our layout.</p>
+</div>
+
+<!-- ══════════════ PANEL 2 — AFTER, EPF + PERKESO ══════════════ -->
+<div class="panel">
+  <div class="ph"><span class="tag new">AFTER · step 1</span><h2>Every form you named gets a card — and a status that the button has to match</h2>
+    <span class="note">EPF (KWSP) and SOCSO / EIS (PERKESO) shelves</span></div>
+
+  <div class="screen">
+    <div class="crumb">Payroll</div>
+    <div class="ttl">Statutory Forms</div>
+    <p class="desc">Choose the statutory body, then the form. Figures come from the payroll already calculated for the month you pick.</p>
+
+    <div class="cardish">
+      <div class="filters">
+        <div class="f"><label>Company</label><div class="inp">ABC Sdn Bhd</div></div>
+        <div class="f"><label>Payroll year</label><div class="inp sm">2026</div></div>
+        <div class="f"><label>Payroll month</label><div class="inp sm">August</div></div>
+        <div class="f"><label>Search form</label><div class="inp ph2">Search by form name…</div></div>
+        <span class="btn">Show</span>
+      </div>
+    </div>
+
+    <div class="bodytabs">
+      <span class="tabslbl">Select statutory body</span>
+      <span class="btab on">All</span>
+      <span class="btab">EPF (KWSP)</span>
+      <span class="btab">SOCSO / EIS (PERKESO)</span>
+      <span class="btab">Income Tax (LHDN)</span>
+      <span class="btab">Other statutory</span>
+    </div>
+
+    <div class="legend">
+      <div class="lt">What the status on each form means</div>
+      <div class="lrow"><span class="st off">OFFICIAL FORM</span><span>The government’s own printed form, filled in from your payroll. <b>Today: CP22 only.</b></span></div>
+      <div class="lrow"><span class="st fig">FIGURES ONLY</span><span>Every number the form needs, complete and ready to download or print — <b>laid out our way, not on the agency’s document.</b></span></div>
+      <div class="lrow"><span class="st dft">UPLOAD FILE · DRAFT</span><span>Built to the file layout the agency publishes for portal uploads, but <b>never yet accepted by that portal</b>, so it stays marked draft.</span></div>
+      <div class="lrow"><span class="st nb">NOT BUILT YET</span><span>Named here so you can see the whole list — but <b>there is no button, because there is nothing behind it yet.</b></span></div>
+    </div>
+
+    <div class="bodycard">
+      <div class="bodyhd"><span class="badge">EPF</span>
+        <span><span class="n">EPF (KWSP)</span> &nbsp;<span class="ch">Filed through i-Akaun (Employer)</span></span>
+        <span class="cnt" style="margin-left:auto">3 forms · 1 ready</span></div>
+      <div class="cards">
+
+        <div class="fcard">
+          <div>
+            <div class="fn">EPF contributions listing</div>
+            <div class="fd">Every employee’s wages, employee share and employer share for the month.</div>
+            <div class="meta"><span class="chip k">EPF (KWSP)</span><span class="chip">PDF</span><span class="chip">Excel</span><span class="chip">CSV</span><span class="chip">Print</span><span class="chip">Month · August 2026</span></div>
+          </div>
+          <div class="right"><span class="st fig">FIGURES ONLY</span><span class="due">Due by 15 Sep 2026</span><span class="btn gen">Generate</span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div>
+            <div class="fn">Borang A</div>
+            <div class="fd">EPF monthly contribution submission form. Not built — the EPF contributions listing above is not Borang A and is not shown as it.</div>
+            <div class="meta"><span class="chip k">EPF (KWSP)</span><span class="chip">Month</span></div>
+          </div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div>
+            <div class="fn">Borang BBCB</div>
+            <div class="fd">Not built — and the name on its own has not let us identify which EPF form this is, so we will confirm that with you before building it.</div>
+            <div class="meta"><span class="chip k">EPF (KWSP)</span><span class="chip">Month</span></div>
+          </div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="bodycard">
+      <div class="bodyhd"><span class="badge">PKS</span>
+        <span><span class="n">SOCSO / EIS (PERKESO)</span> &nbsp;<span class="ch">Filed through PERKESO ASSIST</span></span>
+        <span class="cnt" style="margin-left:auto">5 forms · 1 ready</span></div>
+      <div class="cards">
+
+        <div class="fcard">
+          <div>
+            <div class="fn">SOCSO + EIS contributions</div>
+            <div class="fd">One combined monthly return — SOCSO and EIS go up together through ASSIST.</div>
+            <div class="meta"><span class="chip k">PERKESO</span><span class="chip">PDF</span><span class="chip">Excel</span><span class="chip">CSV</span><span class="chip">Print</span><span class="chip">Month · August 2026</span></div>
+          </div>
+          <div class="right"><span class="st fig">FIGURES ONLY</span><span class="due">Due by 15 Sep 2026</span>
+            <span><span class="btn file">Upload file · draft</span> <span class="btn gen">Generate</span></span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div><div class="fn">Borang 8A</div><div class="fd">Not built.</div>
+            <div class="meta"><span class="chip k">PERKESO</span><span class="chip">Month</span></div></div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div><div class="fn">Borang 8B</div><div class="fd">Not built.</div>
+            <div class="meta"><span class="chip k">PERKESO</span><span class="chip">Month</span></div></div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div><div class="fn">SIP Forms</div><div class="fd">Not built.</div>
+            <div class="meta"><span class="chip k">PERKESO</span><span class="chip">Month</span></div></div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div><div class="fn">Employee Registration Forms</div><div class="fd">Not built.</div>
+            <div class="meta"><span class="chip k">PERKESO</span><span class="chip">When someone joins</span></div></div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <p class="desc" style="margin:0 0 2px">Income Tax (LHDN) — 13 forms — and Other statutory continue below on the same page.</p>
+  </div>
+
+  <p class="kicker">Your request drew <b>Borang A with a Generate button</b>. There is nothing behind that button — what we hold today is a contributions listing, which is not Borang A. So Borang A keeps its name and its place on the shelf, and gets a status instead of a button. <b>The alternative — putting our spreadsheet behind a button labelled “Borang A” — is the one outcome this design refuses.</b></p>
+</div>
+
+<!-- ══════════════ PANEL 3 — AFTER, LHDN ══════════════ -->
+<div class="panel">
+  <div class="ph"><span class="tag new">AFTER · step 1</span><h2>Income Tax (LHDN) — all thirteen you listed, in your order</h2>
+    <span class="note">Six can produce something today; seven cannot</span></div>
+
+  <div class="screen">
+    <div class="bodytabs">
+      <span class="tabslbl">Select statutory body</span>
+      <span class="btab">All</span>
+      <span class="btab">EPF (KWSP)</span>
+      <span class="btab">SOCSO / EIS (PERKESO)</span>
+      <span class="btab on">Income Tax (LHDN)</span>
+      <span class="btab">Other statutory</span>
+    </div>
+
+    <div class="bodycard">
+      <div class="bodyhd"><span class="badge">LHDN</span>
+        <span><span class="n">Income Tax (LHDN)</span> &nbsp;<span class="ch">Filed through e-PCB / e-CP39 and e-Filing</span></span>
+        <span class="cnt" style="margin-left:auto">13 forms · 6 ready</span></div>
+      <div class="cards">
+
+        <div class="fcard nb">
+          <div><div class="fn">TP1</div><div class="fd">Employee’s declaration of reliefs. The declaration itself is already captured elsewhere in payroll and feeds the monthly tax deduction — the printable TP1 form is not built.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">Year</span></div></div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div><div class="fn">TP3</div><div class="fd">Previous-employer figures for a mid-year joiner. The figures are already captured on the employee’s payroll tab — the printable TP3 form is not built.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">Year</span></div></div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+        <div class="fcard">
+          <div><div class="fn">C.P.8A (EA) — English</div>
+            <div class="fd">Each employee’s annual statement of remuneration, in English. Our own A4 layout, not LHDN’s printed EA form.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">PDF</span><span class="chip">Print</span><span class="chip">Year · 2026</span><span class="chip">One per employee</span></div></div>
+          <div class="right"><span class="st fig">FIGURES ONLY</span><span class="btn gen">Open employee list</span></div>
+        </div>
+
+        <div class="fcard">
+          <div><div class="fn">C.P.8A (EA) — Bahasa Malaysia</div>
+            <div class="fd">The same statement, always in Bahasa Malaysia — it no longer follows whatever language the screen happens to be set to.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">PDF</span><span class="chip">Print</span><span class="chip">Year · 2026</span><span class="chip">One per employee</span></div></div>
+          <div class="right"><span class="st fig">FIGURES ONLY</span><span class="btn gen">Open employee list</span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div><div class="fn">PCB 2(II) — English</div><div class="fd">Employer’s statement of tax deducted. Not built.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">Year</span></div></div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div><div class="fn">PCB 2(II) — Bahasa Malaysia</div><div class="fd">Not built.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">Year</span></div></div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+        <div class="fcard">
+          <div><div class="fn">Borang E</div>
+            <div class="fd">Annual employer return. We produce the headcounts and the per-employee schedule — not LHDN’s printed Form E, and bonus in kind, living accommodation, share options, exempt allowances and zakat are not yet included.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">PDF</span><span class="chip">Excel</span><span class="chip">CSV</span><span class="chip">Print</span><span class="chip">Year · 2026</span></div></div>
+          <div class="right"><span class="st fig">FIGURES ONLY</span><span class="due">No deadline set</span><span class="btn gen">Generate</span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div><div class="fn">CP21 — employee leaving Malaysia</div><div class="fd">Not built.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">When someone leaves</span></div></div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+        <div class="fcard">
+          <div><div class="fn">CP22 — notification of new employee</div>
+            <div class="fd">Produced on LHDN’s own published CP22 page (Pin. 1/2020), filled in from the joiner’s record. Seven boxes are left blank on purpose because we do not hold that information.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">Official PDF</span><span class="chip">Print</span><span class="chip">When someone joins</span></div></div>
+          <div class="right"><span class="st off">OFFICIAL FORM</span><span class="due">3 outstanding</span>
+            <span><span class="btn">Blank form</span> <span class="btn gen">Open worklist</span></span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div><div class="fn">CP22A — tax clearance on cessation</div><div class="fd">Leavers needing a CP22A are already flagged on the CP22 / CP22A worklist further down this screen, but the notice itself is not built.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">When someone leaves</span></div></div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+        <div class="fcard">
+          <div><div class="fn">CP39 — monthly tax deduction (MTD / PCB)</div>
+            <div class="fd">Every employee’s monthly tax deduction for the month, plus the e-Data PCB upload file.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">PDF</span><span class="chip">Excel</span><span class="chip">CSV</span><span class="chip">Print</span><span class="chip">Month · August 2026</span></div></div>
+          <div class="right"><span class="st fig">FIGURES ONLY</span><span class="due">Due by 15 Sep 2026</span>
+            <span><span class="btn file">Upload file · draft</span> <span class="btn gen">Generate</span></span></div>
+        </div>
+
+        <div class="fcard nb">
+          <div><div class="fn">CP39A — tax deduction on arrears</div><div class="fd">Not built.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">Month</span></div></div>
+          <div class="right"><span class="st nb">NOT BUILT YET</span><span class="noact">No action available</span></div>
+        </div>
+
+        <div class="fcard">
+          <div><div class="fn">CP8D (Excel)</div>
+            <div class="fd">The per-employee annual schedule as a spreadsheet. Our column layout, not LHDN’s CP8D template.</div>
+            <div class="meta"><span class="chip k">LHDN</span><span class="chip">Excel</span><span class="chip">CSV</span><span class="chip">PDF</span><span class="chip">Year · 2026</span></div></div>
+          <div class="right"><span class="st fig">FIGURES ONLY</span><span class="btn gen">Generate</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <p class="desc" style="margin:0 0 2px">The Other statutory tab stays empty and says so — no statutory form is filed with any other body today.</p>
+  </div>
+
+  <p class="kicker">Six of the thirteen can produce something today; <b>only CP22 comes out on the government’s own form.</b> Every other card says so on its face, so no one hands an officer a document believing it is the official one. Each “not built yet” card is a slot waiting for its own build — checked against the official format one form at a time, exactly as your request describes.</p>
+</div>
+
+<!-- ══════════════ PANEL 4 — AFTER, generate step ══════════════ -->
+<div class="panel">
+  <div class="ph"><span class="tag new">AFTER · step 2</span><h2>The generate screen — mostly already built; it gains the same status line the card carried</h2>
+    <span class="note">Company, year and month, then the figures</span></div>
+
+  <div class="screen">
+    <div class="crumb">Payroll · Statutory Forms</div>
+    <div class="ttl">CP39 — monthly tax deduction (MTD / PCB)</div>
+    <p class="desc">Filed with LHDN through e-PCB / e-Data PCB / e-CP39.</p>
+
+    <div class="cardish">
+      <div class="filters">
+        <div class="f"><label>Company</label><div class="inp">ABC Sdn Bhd</div></div>
+        <div class="f"><label>Payroll year</label><div class="inp sm">2026</div></div>
+        <div class="f"><label>Payroll month</label><div class="inp sm">August</div></div>
+        <span class="btn">Show</span>
+      </div>
+    </div>
+
+    <div class="band info"><b>FIGURES ONLY.</b> This gives you every employee’s tax deduction for the month, complete and ready to download or print — in our layout, not on LHDN’s printed CP39. The e-Data PCB upload file is available too, and stays marked draft until it has been accepted by the portal.</div>
+
+    <div class="stats">
+      <div class="stat"><div class="k">Period</div><div class="v">August 2026</div></div>
+      <div class="stat"><div class="k">Employees</div><div class="v">12</div></div>
+      <div class="stat"><div class="k">Filed with</div><div class="v sm">LHDN</div><div class="k">e-PCB / e-Data PCB / e-CP39</div></div>
+      <div class="stat"><div class="k">Due by</div><div class="v sm">15 Sep 2026</div><div class="k">Upcoming</div></div>
+    </div>
+
+    <div class="band red"><b>2 employees are missing information needed for this submission</b>
+      <ul>
+        <li>Employee A (example) — Tax no</li>
+        <li>Employee B (example) — Tax no</li>
+      </ul>
+      The figures below still show, but the upload file stays unavailable until every person has a number.
+    </div>
+
+    <div class="cardish">
+      <table>
+        <thead><tr><th>Employee</th><th>Tax no</th><th>IC</th><th class="r">MTD / PCB</th></tr></thead>
+        <tbody>
+          <tr><td>Employee C (example)</td><td>IG 00000000010</td><td>000101-01-0001</td><td class="r">185.00</td></tr>
+          <tr><td>Employee D (example)</td><td>IG 00000000020</td><td>000101-01-0002</td><td class="r">412.00</td></tr>
+          <tr><td>Employee E (example)</td><td>IG 00000000030</td><td>000101-01-0003</td><td class="r">0.00</td></tr>
+          <tr><td class="fm" colspan="4">… 9 more employees</td></tr>
+        </tbody>
+      </table>
+      <div class="outrow">
+        <span class="lbl">Output</span>
+        <span class="btn">Download PDF</span>
+        <span class="btn">Download Excel</span>
+        <span class="btn">Download CSV</span>
+        <span class="btn">Print</span>
+        <span class="btn file">e-Data PCB file · draft</span>
+        <span class="btn pri" style="margin-left:auto">Record generation</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="kicker">Choosing company, year and month, seeing the figures, the person-by-person list of anyone missing a number, and downloading as PDF, Excel, CSV or print — <b>all of that already works today</b>. What is added here is the status line at the top, so the generate screen says the same thing the card said.</p>
+  <p class="foot">One thing from the request is deliberately not here: a Payroll Cycle picker. A month’s statutory return is one filing covering every payroll run in that month, and this screen already adds them all together — a cycle picker would let someone file part of a month by accident.</p>
+</div>
+
+<p class="foot">Sketch only — wording, spacing and colours will differ in the built screen. All names, amounts and dates shown are illustrative examples, not real payroll data.</p>

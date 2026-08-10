@@ -277,9 +277,24 @@ unconfigured type, that guard has broken and it is the first thing to check.
 **Counts live in CURRENT STATE and are not repeated here. Always RE-COUNT** — the line said
 `approved = 0` on 2026-08-08 and eight items were approved the next morning.
 
-**THE ONE OPEN ITEM IS A QUESTION WE RAISED, `42afb2d2`** (the roster supervisor permission) — it needs an
-ANSWER from the reporter, not a plan, and `improve:push-plan` must never be pointed at it. The old line
-here named `b00f9e6e` as the one open item; that is stale — it is PLANNED at revision 2.
+**AS OF 2026-08-10 END OF DAY THERE ARE ZERO OPEN AND ZERO CONTESTED ITEMS.** Counts on the box:
+`deployed = 632` · `planned = 15` · `approved = 3` · `cancelled = 14`. **Every live item has a plan
+awaiting the reporter**, including revisions for the two payroll screens they contested after r179 and an
+answer to the attendance calculation question. **The constraint is no longer our planning throughput — it
+is their approval throughput, fifteen deep. Look at that queue before planning anything new.**
+
+**THE ONLY BUILDABLE WORK IS THE THREE APPROVED ITEMS**, and two of them are the same job:
+`c8052ae3` needs no build at all (operator run; backup and rehearsal done, `--apply` outstanding), while
+`fbcf706d` and `7076f8af` — joined by the now-planned `510f4bd1` — are ONE workflow, reprocessing an open
+payroll period. Each of their plans says it must be decided once rather than three times. Build them
+together or not at all.
+
+⚠️ **A RAISED ITEM NEEDS A PLAN, NOT AN ANSWER — this file said the opposite and it cost a day.** An item
+created by `improve:raise` lands `open` with `plan_revision = 0`, and **an item with no plan has no approve
+or reject button**, so its recommendation sits in the description where the reporter can do nothing with it.
+The old line here said `42afb2d2` "needs an ANSWER from the reporter, not a plan, and `improve:push-plan`
+must never be pointed at it". That is backwards and is why it sat. Giving a raised question a PLAN is how
+they answer it: approve means leave it, reject-with-reason means do the other thing.
 
 **THE REPORTER COMMUNICATES IN PICTURES — 143 of 151 attachments are images.** Read an item's attachment
 BEFORE forming any opinion; this session burned a plan revision writing from the prose alone and the
