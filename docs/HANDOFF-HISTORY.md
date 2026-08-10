@@ -1,3 +1,117 @@
+## r177 + r179 + r180 — SHIPPED 2026-08-10 (deployed together, main@34cc8137)
+
+r177 was held for a week and released on the owner's command alongside r179. `0425` applied 344 -> 345
+after a shadow rehearsal PASS. r179 carried four approved board items plus a shared employee search field
+and the sidebar highlight fix. r180 followed with two defect fixes (see the HANDOFF entry for r180).
+
+The two sections below are the in-flight entries as they stood while the work was held, kept verbatim
+because their DECISIONS are the part that cannot be reconstructed from the diff.
+
+### ⚠️ r177 — ADR-0076 IS BUILT, GATED AND **DELIBERATELY NOT DEPLOYED**
+
+**`main@7eff1b87` carries the whole payroll anomaly layer — the ADR-0074 control-tower keystone — and it
+is HELD at the owner's explicit instruction: "build to completion and testing, then build the guide, and
+stop there to wait for my command to deploy."** Do not deploy it without that command. Everything else
+(non-control-tower work) deploys automatically as usual.
+
+**It is ready.** Gate: **630 files across 6 chunks, every chunk exit=0**; tsc 0; `next build` clean;
+**shadow rehearsal PASS, 344 → 345** against a live-shaped schema. Render-checked on a dev server in all
+six locales, empty AND populated, with zero MISSING_MESSAGE / IntlError / RSC errors.
+
+**MIGRATION `0425` IS THE ONLY SCHEMA CHANGE** — three tables (`payroll_anomaly_verdict` / `_finding` /
+`_config`), RLS + GRANTs on all three. Production is still on 344, so the deploy will apply exactly one.
+
+**What it does:** `evaluateBatchAnomalies` reads a processed batch's payslips and writes a verdict per
+employee (auto_clear / review / block) from 11 PURE detectors — 8 needing no history, 3 prior-period ones
+that self-disable on cycle one and are recorded as SKIPPED WITH A REASON. `closeBatch` refuses while
+unresolved `block` verdicts stand. A run-level circuit breaker catches the global mis-key that every
+per-employee detector is blind to. Queue at `/payroll/<batch>/anomalies`; nightly sweep
+`scripts/anomaly-sweep.ts` (`anomaly.sweep`, 02:30, crontab documented in DEPLOY.md).
+
+**THE THREE THINGS TO KNOW BEFORE TOUCHING IT:**
+1. **It is read-only with respect to money.** It never mutates a payslip, a batch total or a statutory
+   figure, and no LLM is involved in any classification. Pinned by a test asserting the payslip rows are
+   byte-identical before and after an evaluation.
+2. **Both guards are ADDITIVE.** A batch with no verdict rows closes exactly as it does today — pinned by
+   its own test. The circuit breaker needed an explicit `anomalyEvaluated()` gate to earn that, because
+   unlike the per-employee guard it is RECOMPUTED and would otherwise fire on batches predating the layer.
+3. **The thresholds are UNTUNED PLACEHOLDERS** (30% / 15%), labelled as such in code and in the guide.
+   ADR-0076 §6 is blunt that only real history or a shadow run gives defensible numbers. **Never quote an
+   auto-clear rate from the synthetic harness** — it proves the detectors work, nothing about thresholds.
+
+**Deliverable for the owner:** an operator guide PDF ("Payroll exception checking — how to use it"),
+written for the person who runs payroll, covering the daily rhythm, the four metrics (and why coverage is
+read first), all 11 checks, the three resolution buttons, threshold tuning, and an explicit section on
+what the layer does NOT do.
+
+**The board, RE-COUNTED ON THE BOX after r179: `deployed = 633` · `cancelled = 14` · `approved = 5` ·
+`planned = 1` · `open = 1` · `contested = 0`.** The reporter approved FIVE of r178's six plans within
+hours. **Four of the five are BUILT — see r179 below; the fifth (`c8052ae3`) needs no build, it needs an
+operator run.** `planned = 1` is `42afb2d2` (the roster question, finally answerable — see below).
+`open = 1` is **`2ec1e3d2`**, which WE raised: the Roster screen shows every viewer a "Manage shift
+schedules" link to an administrators-only screen, and the `42afb2d2` plan promised in writing that we would
+raise it separately. Re-count rather than trusting this line.
+
+### ⚠️ r179 (2026-08-10) — FOUR APPROVED ITEMS BUILT AND GATED, **DELIBERATELY NOT MERGED TO `main`**
+
+**`build/r179-integration@c63d5064`** carries all four items the reporter approved after r178's plans:
+`b00f9e6e` (overtime seeder guard) · `388e53c2` (leave nav move) · `98e69987` (Transaction Detail) ·
+`f35f758a` (Individual Payslip screen + document), plus a shared employee search field and the sidebar
+highlight fix. **NO MIGRATION — `0426` is still free.**
+
+**IT IS LEFT ON ITS BRANCH ON PURPOSE.** `main` today is exactly `production + r177`, a single clean delta
+the dry-run rsync can confirm at a glance. Merging r179 would make that two releases while deploy is
+blocked, and buys nothing. **A branch is also MORE discoverable than a silent main merge** — the
+unshipped-round check (`git for-each-ref refs/heads/build`) finds it, which is precisely the check r159
+proved does NOT find merged-but-undeployed work. Merge it when r177 is released, not before.
+
+**Gate: 633 files across 6 chunks, every chunk exit=0, 8,046 tests** (106+106+106+105+105+105 — counted
+files equal files asked, peak disk 30–48%); `tsc` 0; `next build` clean, all r179 routes present and `ƒ`.
+
+**RENDER-CHECKED FOR REAL** (four identities, ten renders, dev-server log read): zero MISSING_MESSAGE,
+IntlError or FORMATTING_ERROR. **The access-critical branch is verified by RENDER, not by test alone:** on
+`/leave/tracker` an hr_admin gets the Employee Details listing (`name="edQ"` present, calendar absent) and
+a manager and a plain employee both still get the calendar (`edQ` absent, calendar present). On `/leave`,
+an unlinked admin gets no balance card while an employee and a manager do.
+**METHOD NOTE, because the obvious check is a lie here:** grepping rendered HTML for a LABEL proves
+nothing — Next embeds the whole i18n catalogue in every payload (a ~563KB floor on these pages), so
+"Employee Details" appears on a plain employee's page whether or not it rendered. Discriminate on FORM
+CONTROL NAMES and payload deltas, which cannot appear from the catalogue.
+
+**What the agents found that the plans did not:**
+- **`b00f9e6e` was mutation-tested, and the obvious test does not pin what matters.** An archived
+  *per_hour* reference reaches the archived throw from either side of the ordering, so the natural test
+  stays green if the throw is moved. Only an archived reference that ALSO lacks an hourly rate
+  distinguishes the two placements; that case exists now. Also confirmed by mutation that the pre-fix
+  behaviour is a SILENT SUCCESS (it creates OT2_0/OT3_0 scaled off a switched-off rate), not a mislabelled
+  error.
+- **`f35f758a`: fixing the truncation with greedy word-wrapping ALONE would have shipped the same bug
+  silently.** A single token wider than its column emits as one over-wide line that overprints the amount.
+  Character-level breaking was added, and the result was rasterised in BOTH `mutool` and `pdftoppm` across
+  three fixtures (43 deliberately over-long pay item names, long employee/department/company names) —
+  the r175a two-renderer rule, applied.
+- **The round brief's own guard premise was wrong on `98e69987`**, and the agent caught it:
+  `test/employee-scope-panel-guard.test.ts` had NO transaction-view case to rewrite. Five were ADDED and
+  then PROVED to bite by restoring the pre-change page from a `cp` backup (3 of 5 fail against it).
+- **`388e53c2`'s sidebar highlight — the reporter's ORIGINAL complaint — could not be fixed from inside the
+  leave lane and was correctly held back with a written spec rather than reached for.** It is now landed
+  solo: `exactHref` / `ownedSubpaths` on `NavChildDescriptor`, read by an EXPORTED `isNavRowActive` so the
+  truth table drives the real predicate rather than a copy that would pass on day one and drift.
+  Mutation-verified. The held-back agent deliberately did NOT pin the wrong behaviour — which is why the
+  table could be written as the CORRECT one.
+
+**Two environment traps this round, both cheap and both cost time:**
+1. **A FRESH WORKTREE HAS `node_modules` BUT NO `.env.local`** (it is gitignored), and `global-setup` loads
+   it from cwd. The failure is actively misleading: vitest prints `No test files found, exiting with code 1`
+   with the real cause (`TEST_MIGRATION_DATABASE_URL must be set`) buried below. Copy `mainwt/.env.local`
+   into every new worktree at creation.
+2. **A RAM-DISK CLUSTER DOES NOT SURVIVE A REBOOT** — the symlink dangles and `psql` reports the server is
+   not running. That is not a wedge; run `./scripts/dev-db-rebuild.sh`. Also: a between-chunk rebuild makes
+   the cluster briefly unreachable, so a liveness probe during `gate-chunked.sh` can read as "server down"
+   when the gate is perfectly healthy. Read the per-chunk log, not the socket.
+
+---
+
 # Handoff round history — ai-hr
 
 Archive of SHIPPED round entries, newest first. The living handoff is `../HANDOFF.md` — it holds the

@@ -18,25 +18,16 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-10 (r176 SHIPPED · r177 AND r179 BUILT AND HELD · r178 PLANS-ONLY)
+## CURRENT STATE — snapshot 2026-08-10 (r177 + r179 + r180 ALL SHIPPED · r178 was plans-only)
 
-**`main@75addd1b` is what RUNS ON PRODUCTION. Production on 344 migrations. Next free migration is `0426`**
-(`0423` was ALLOCATED AND DELIBERATELY UNUSED — `1c1b321a` stores its recompute-run history in the
-append-only `domain_event` ledger rather than a new table; gaps are fine). **`0425` IS ALLOCATED AND HELD**
-— it is r177's, it sits on `main`, and it is NOT applied on production (journal 345 entries, `when`
-1781862525000, against production's watermark 1781862524000). No half-applied migration.
+**`main@34cc8137` IS WHAT RUNS ON PRODUCTION, and there is NO pending deploy** — verified by a
+zero-change `rsync -azi --delete --dry-run` after the last deploy (not by `deploy.sh` succeeding, which is
+not proof). **Production is on 345 migrations. Next free migration is `0426`** (`0423` was allocated and
+deliberately unused; gaps are fine).
 
-⚠️ **THERE *IS* A PENDING DEPLOY, AND IT IS DELIBERATE — `main` IS AHEAD OF PRODUCTION BY r177.** An older
-version of this line said "no pending deploy, nothing in flight"; that is the exact wording that made r159
-possible, so it does not appear here again. Re-verified 2026-08-10 by dry-run rsync: the delta is EXACTLY
-r177's file set (`core/payroll-anomaly*.ts`, `app/payroll/[batchId]/anomalies/`, `0425`, the sweep script,
-the operator guide) plus the three known noise lines (`HANDOFF.md`, `next-env.d.ts`, `tsconfig.tsbuildinfo`).
-Nothing else is undeployed. **r176 carried NO migration** — the journal is unchanged at
-344 entries, so there was nothing to rehearse and a rollback would be code-only. Verified after
-deploy 2026-08-10 02:42: service `active` (ActiveEnterTimestamp 02:42:19, up from 2026-08-09 22:19),
-`.next` rebuilt, `GET /` 401, Next.js ready in 154ms with no errors in `journalctl`. Gate:
-**627 files green across 6 chunks, every chunk exit=0** (105+105+105+104+104+104); tsc 0 errors;
-`next build` clean.
+**r177 IS NO LONGER HELD — it shipped 2026-08-10 with r179, on the owner's command.** `0425` applied
+(344 -> 345) after a shadow rehearsal PASS against a live-shaped schema; the three `payroll_anomaly*` tables
+exist on production. Everything this file used to say about r177 being held is history.
 
 **⚠️ THE GATE NOW NEEDS `CHUNKS=6`.** The default 3 no longer fits the local volume — see
 "Local Postgres" below. Four gates died on 2026-08-10 before this was understood.
@@ -44,50 +35,24 @@ deploy 2026-08-10 02:42: service `active` (ActiveEnterTimestamp 02:42:19, up fro
 **r176 (2026-08-10) SHIPPED ADR-0077 SLICES 6 AND 9** — full entry in `docs/HANDOFF-HISTORY.md`.
 Slice 6's remaining piece (the deploy-failing flip) still needs the owner; slice 9 is complete.
 
-### ⚠️ r177 — ADR-0076 IS BUILT, GATED AND **DELIBERATELY NOT DEPLOYED**
+### r177 · r179 · r180 — ALL SHIPPED 2026-08-10. Full entries in `docs/HANDOFF-HISTORY.md`.
 
-**`main@7eff1b87` carries the whole payroll anomaly layer — the ADR-0074 control-tower keystone — and it
-is HELD at the owner's explicit instruction: "build to completion and testing, then build the guide, and
-stop there to wait for my command to deploy."** Do not deploy it without that command. Everything else
-(non-control-tower work) deploys automatically as usual.
+**What is now live that was not this morning:** the ADR-0076 payroll anomaly layer (r177, migration `0425`,
+three tables); `b00f9e6e` the overtime seeder guard; `388e53c2` Team Leave Tracker as the way in to the
+three HR leave sections, including the sidebar-highlight fix that was the reporter's original complaint;
+`98e69987` Transaction Detail; `f35f758a` the Individual Payslip screen and document. Gate on `main`:
+**634 files across 6 chunks, every chunk exit=0, 8,050 tests**; tsc 0; `next build` clean; four-identity
+render check with zero MISSING_MESSAGE.
 
-**It is ready.** Gate: **630 files across 6 chunks, every chunk exit=0**; tsc 0; `next build` clean;
-**shadow rehearsal PASS, 344 → 345** against a live-shaped schema. Render-checked on a dev server in all
-six locales, empty AND populated, with zero MISSING_MESSAGE / IntlError / RSC errors.
-
-**MIGRATION `0425` IS THE ONLY SCHEMA CHANGE** — three tables (`payroll_anomaly_verdict` / `_finding` /
-`_config`), RLS + GRANTs on all three. Production is still on 344, so the deploy will apply exactly one.
-
-**What it does:** `evaluateBatchAnomalies` reads a processed batch's payslips and writes a verdict per
-employee (auto_clear / review / block) from 11 PURE detectors — 8 needing no history, 3 prior-period ones
-that self-disable on cycle one and are recorded as SKIPPED WITH A REASON. `closeBatch` refuses while
-unresolved `block` verdicts stand. A run-level circuit breaker catches the global mis-key that every
-per-employee detector is blind to. Queue at `/payroll/<batch>/anomalies`; nightly sweep
-`scripts/anomaly-sweep.ts` (`anomaly.sweep`, 02:30, crontab documented in DEPLOY.md).
-
-**THE THREE THINGS TO KNOW BEFORE TOUCHING IT:**
-1. **It is read-only with respect to money.** It never mutates a payslip, a batch total or a statutory
-   figure, and no LLM is involved in any classification. Pinned by a test asserting the payslip rows are
-   byte-identical before and after an evaluation.
-2. **Both guards are ADDITIVE.** A batch with no verdict rows closes exactly as it does today — pinned by
-   its own test. The circuit breaker needed an explicit `anomalyEvaluated()` gate to earn that, because
-   unlike the per-employee guard it is RECOMPUTED and would otherwise fire on batches predating the layer.
-3. **The thresholds are UNTUNED PLACEHOLDERS** (30% / 15%), labelled as such in code and in the guide.
-   ADR-0076 §6 is blunt that only real history or a shadow run gives defensible numbers. **Never quote an
-   auto-clear rate from the synthetic harness** — it proves the detectors work, nothing about thresholds.
-
-**Deliverable for the owner:** an operator guide PDF ("Payroll exception checking — how to use it"),
-written for the person who runs payroll, covering the daily rhythm, the four metrics (and why coverage is
-read first), all 11 checks, the three resolution buttons, threshold tuning, and an explicit section on
-what the layer does NOT do.
-
-**The board, RE-COUNTED ON THE BOX after r179: `deployed = 633` · `cancelled = 14` · `approved = 5` ·
-`planned = 1` · `open = 1` · `contested = 0`.** The reporter approved FIVE of r178's six plans within
-hours. **Four of the five are BUILT — see r179 below; the fifth (`c8052ae3`) needs no build, it needs an
-operator run.** `planned = 1` is `42afb2d2` (the roster question, finally answerable — see below).
-`open = 1` is **`2ec1e3d2`**, which WE raised: the Roster screen shows every viewer a "Manage shift
-schedules" link to an administrators-only screen, and the `42afb2d2` plan promised in writing that we would
-raise it separately. Re-count rather than trusting this line.
+⚠️ **TWO OF THOSE ITEMS CAME STRAIGHT BACK AS `contested`, AND THE REASON IS WORTH KEEPING.** `98e69987`
+and `f35f758a` both removed the left-hand employee panel in favour of a top search field. The approved plan
+EXPLICITLY warned that the reporter had previously asked for that panel to EXIST on the neighbouring payroll
+screens (`f3ae3245`, `ec845c7d`, both deployed), said both could not be true, and offered "if you would
+rather every payroll screen moved to a top row, reject this and say so". They approved it, saw it live, and
+changed their mind. **The lesson is not that the warning failed — it is that a warning in prose does not
+substitute for seeing it.** A mockup showed the new layout; nothing showed them what they were LOSING.
+`f35f758a` additionally now wants preview in a NEW TAB, Earnings beside Deductions, a new Non-Payable
+Amount section, and the bank account UNMASKED.
 
 ### `42afb2d2` IS NOW ANSWERABLE — and the reason it sat for a day is worth keeping
 
@@ -168,63 +133,68 @@ file — indistinguishable from an undeployed release. The dry-run also permanen
 while the box's build writes `.next/types/`. The box's version is correct. Those two lines are noise;
 anything else is a real delta.
 
-### ⚠️ r179 (2026-08-10) — FOUR APPROVED ITEMS BUILT AND GATED, **DELIBERATELY NOT MERGED TO `main`**
+### ⚠️ r180 (2026-08-10) — TWO DEFECT FIXES, BOTH DEPLOYED. One of them was paying people twice.
 
-**`build/r179-integration@c63d5064`** carries all four items the reporter approved after r178's plans:
-`b00f9e6e` (overtime seeder guard) · `388e53c2` (leave nav move) · `98e69987` (Transaction Detail) ·
-`f35f758a` (Individual Payslip screen + document), plus a shared employee search field and the sidebar
-highlight fix. **NO MIGRATION — `0426` is still free.**
+**1. RECURRING PAY ITEMS HAVE BEEN PAYING TWICE, AND IT REACHED ISSUED PAYSLIPS.** Found while planning
+board item `2f889bae`, then verified independently on production.
 
-**IT IS LEFT ON ITS BRANCH ON PURPOSE.** `main` today is exactly `production + r177`, a single clean delta
-the dry-run rsync can confirm at a glance. Merging r179 would make that two releases while deploy is
-blocked, and buys nothing. **A branch is also MORE discoverable than a silent main merge** — the
-unshipped-round check (`git for-each-ref refs/heads/build`) finds it, which is precisely the check r159
-proved does NOT find merged-but-undeployed work. Merge it when r177 is released, not before.
+`setEmploymentPayComponent` closed the prior row ON the new start date, and its comment claimed "so there
+is no double-count". **`validTo` is INCLUSIVE for pay components** — the kernel selects
+`validFrom <= periodEnd AND (validTo IS NULL OR validTo >= periodStart)` and pays each returned row its
+FULL amount — so both rows sat in the month containing the change.
 
-**Gate: 633 files across 6 chunks, every chunk exit=0, 8,046 tests** (106+106+106+105+105+105 — counted
-files equal files asked, peak disk 30–48%); `tsc` 0; `next build` clean, all r179 routes present and `ƒ`.
+MEASURED ON PRODUCTION, not inferred: **four employments carry overlapping live rows**, two of them real
+customer records (Eee Lee Yong / Fiamma, TEST0002 / ISEDECOR). **Aisyah Rahman's 2026-04, 2026-05 and
+2026-07 payslips each read allowance 140.00 where a single row gives 120.00** — RM20 per month on three
+issued slips. One row is structurally impossible (`valid_from 2026-01-31`, `valid_to 2026-01-06`); Postgres'
+own `daterange` refuses to construct it, which is how it surfaced.
 
-**RENDER-CHECKED FOR REAL** (four identities, ten renders, dev-server log read): zero MISSING_MESSAGE,
-IntlError or FORMATTING_ERROR. **The access-critical branch is verified by RENDER, not by test alone:** on
-`/leave/tracker` an hr_admin gets the Employee Details listing (`name="edQ"` present, calendar absent) and
-a manager and a plain employee both still get the calendar (`edQ` absent, calendar present). On `/leave`,
-an unlinked admin gets no balance card while an employee and a manager do.
-**METHOD NOTE, because the obvious check is a lie here:** grepping rendered HTML for a LABEL proves
-nothing — Next embeds the whole i18n catalogue in every payload (a ~563KB floor on these pages), so
-"Employee Details" appears on a plain employee's page whether or not it rendered. Discriminate on FORM
-CONTROL NAMES and payload deltas, which cannot appear from the catalogue.
+**THE ROOT CAUSE IS A SEMANTIC MISMATCH BETWEEN TWO TABLES THAT SHARE A WRITER SHAPE.** `core/comp.ts` does
+the IDENTICAL close-at-`effectiveFrom`, and compensation is safe — because its kernel reads a single open
+row and its `compensation_no_overlap` EXCLUDE constraint uses a HALF-OPEN daterange, i.e. `valid_to` is
+EXCLUSIVE there. Same writer, opposite boundary semantics, opposite safety. **Do not "align" one to the
+other without moving the reader that goes with it** — this is recorded at the call site.
 
-**What the agents found that the plans did not:**
-- **`b00f9e6e` was mutation-tested, and the obvious test does not pin what matters.** An archived
-  *per_hour* reference reaches the archived throw from either side of the ordering, so the natural test
-  stays green if the throw is moved. Only an archived reference that ALSO lacks an hourly rate
-  distinguishes the two placements; that case exists now. Also confirmed by mutation that the pre-fix
-  behaviour is a SILENT SUCCESS (it creates OT2_0/OT3_0 scaled off a switched-off rate), not a mislabelled
-  error.
-- **`f35f758a`: fixing the truncation with greedy word-wrapping ALONE would have shipped the same bug
-  silently.** A single token wider than its column emits as one over-wide line that overprints the amount.
-  Character-level breaking was added, and the result was rasterised in BOTH `mutool` and `pdftoppm` across
-  three fixtures (43 deliberately over-long pay item names, long employee/department/company names) —
-  the r175a two-renderer rule, applied.
-- **The round brief's own guard premise was wrong on `98e69987`**, and the agent caught it:
-  `test/employee-scope-panel-guard.test.ts` had NO transaction-view case to rewrite. Five were ADDED and
-  then PROVED to bite by restoring the pre-change page from a `cp` backup (3 of 5 fail against it).
-- **`388e53c2`'s sidebar highlight — the reporter's ORIGINAL complaint — could not be fixed from inside the
-  leave lane and was correctly held back with a written spec rather than reached for.** It is now landed
-  solo: `exactHref` / `ownedSubpaths` on `NavChildDescriptor`, read by an EXPORTED `isNavRowActive` so the
-  truth table drives the real predicate rather than a copy that would pass on day one and drift.
-  Mutation-verified. The held-back agent deliberately did NOT pin the wrong behaviour — which is why the
-  table could be written as the CORRECT one.
+**WHAT SHIPPED:** the prior row is closed the DAY BEFORE the new start; a restatement from the row's own
+start date SUPERSEDES it rather than inverting the window; a backwards restatement is refused. Chosen over
+flipping the kernel's `gte` to `gt`, which would silently change what every EXISTING end-dated row pays in
+its final month.
 
-**Two environment traps this round, both cheap and both cost time:**
-1. **A FRESH WORKTREE HAS `node_modules` BUT NO `.env.local`** (it is gitignored), and `global-setup` loads
-   it from cwd. The failure is actively misleading: vitest prints `No test files found, exiting with code 1`
-   with the real cause (`TEST_MIGRATION_DATABASE_URL must be set`) buried below. Copy `mainwt/.env.local`
-   into every new worktree at creation.
-2. **A RAM-DISK CLUSTER DOES NOT SURVIVE A REBOOT** — the symlink dangles and `psql` reports the server is
-   not running. That is not a wedge; run `./scripts/dev-db-rebuild.sh`. Also: a between-chunk rebuild makes
-   the cluster briefly unreachable, so a liveness probe during `gate-chunked.sh` can read as "server down"
-   when the gate is perfectly healthy. Read the per-chunk log, not the socket.
+⚠️ **THE FIX IS NECESSARY BUT NOT SUFFICIENT, AND THE SUITE SAYS SO.** A MID-MONTH restatement STILL pays
+twice: the two windows are adjacent (`…-05-09` and `05-10-…`) but both overlap the month, and the kernel
+pays full amount for any overlap. The first regression test written returned **1554 = 777 + 777**. It is
+recorded as `it.fails` in `test/fixed-transaction.test.ts` — the same idiom this repo uses for the known
+width no-op — so the gate goes RED when someone fixes it. **Fixing it is a DESIGN DECISION**: prorate a
+partial window, take latest-row-wins per period, or refuse a mid-period restatement. Each changes what
+correctly-dated rows pay today, so it belongs to the reporter, not to a patch.
+
+**THREE EXISTING ASSERTIONS PINNED THE BUG** while calling it "no double-count"; they are corrected. The new
+boundary test asserts the MONEY through a real payslip — the pre-existing "no double-count" test only ever
+checked row shape and never generated a payslip, which is exactly how this shipped.
+
+**NOT DONE, DELIBERATELY:** the data repair of the four employments and the overlap EXCLUDE constraint. Both
+change customer records and sit in `2f889bae`'s pushed plan awaiting approval. The constraint CANNOT be
+applied before the repair. **The uniqueness key is an open question** — the pending constraint is keyed on
+employment + component, while board item `2aed39d4` asks for employee + pay item + PAYROLL CYCLE.
+
+**THE REPORTER HAS INDEPENDENTLY REPORTED THE SAME DEFECT as `2aed39d4`** ("the system can create duplicated
+Start Date / End Date / Payroll Cycle records ... incorrect payroll calculations"). They arrived from the UI,
+we arrived from the data. Do not plan the work twice.
+
+**CORRECTED MEASUREMENT:** the paid-item removal guard depends on payslips storing WHICH component produced
+a line. This file used to cite 7 of 50 payslips (~14%). Re-measured 2026-08-10: **19 of 83 carry
+`componentLines`**, and of the 24 live non-BASIC items a processed payslip covers, only 12 carry line
+evidence — so the guard still refuses about half of what it should.
+
+**2. THE PERSONNEL RECALC-REASON LABELS.** `people.detail.recalcReason.*` is a COMPUTED key, invisible to
+i18n coverage check C. The page had a fallback that COULD NEVER FIRE: it compared the translated value
+against the RELATIVE key while next-intl returns the FULLY-QUALIFIED path on a miss. Measured live:
+**50 of 72 audit rows rendered a raw key path at the user**. Fixed with `t.has` (the house idiom —
+`app/admin/scheduled-actions/page.tsx` does the same), so an unlabelled reason degrades to the raw word;
+five missing labels added in all six catalogues. **It PREDATED r179** — the block is byte-identical at
+`d51c8f4d`. `test/recalc-reason-labels.test.ts` pins both halves, strips comments before source assertions
+(its own explanation quotes the broken expression), and deliberately does NOT claim to enumerate every
+emitted reason: six catalogued reasons appear nowhere in source, so any static list is provably incomplete.
 
 ### r178 (2026-08-10) — FIVE PLANS PUSHED, ZERO CODE. Nothing to deploy, nothing to gate.
 
