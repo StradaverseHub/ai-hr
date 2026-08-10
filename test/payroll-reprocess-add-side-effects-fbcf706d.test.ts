@@ -28,7 +28,13 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createClaimType, decideClaim, prefillClaimsForBatch, submitClaim } from '../core/claims';
 import { createLoan, prefillLoansForBatch } from '../core/loans';
-import { createBatch, generatePayslips, reprocessSelectedEmployees, updateBatchScope } from '../core/payroll';
+import {
+  createBatch,
+  generatePayslips,
+  listPayslipLessEligible,
+  reprocessSelectedEmployees,
+  updateBatchScope,
+} from '../core/payroll';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -395,6 +401,63 @@ describe('fbcf706d — the side effects of adding an employee to a processed pay
 
     expect(await slipOf(batchId, late.employmentId)).toBeNull();
     expect((await batchRow(batchId)).employeeCount).toBe(1);
+  });
+
+  // ─────────────────────────── the read the screen is built on ───────────────────────────
+
+  it('lists exactly the people eligible for the month with no payslip on the run', async () => {
+    const onRun = await paid('ReadOnRun', 3000);
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+
+    // Three shapes that must be told apart: eligible and waiting, eligible but not payable yet, and
+    // not part of this month at all.
+    const waiting = await paid('ReadWaiting', 4000, '2026-02-01');
+    const notReady = await hire('ReadNotReady', '2026-02-01'); // hired, but no salary on record
+    await paid('ReadFuture', 5000, '2026-09-01'); // hired after the period ended
+
+    const rows = await listPayslipLessEligible(a, { batchId });
+    const ids = rows.map((r) => r.employmentId);
+    expect(ids).toContain(waiting.employmentId);
+    expect(ids).toContain(notReady.employmentId);
+    expect(ids, 'somebody already paid is not "missing" from the run').not.toContain(onRun.employmentId);
+    expect(rows).toHaveLength(2);
+
+    const waitingRow = rows.find((r) => r.employmentId === waiting.employmentId)!;
+    expect(waitingRow.blockers).toEqual([]);
+    expect(waitingRow.outsideScope).toBe(false);
+    expect(waitingRow.hiredOn).toBe('2026-02-01');
+
+    // The readiness columns are preProcessChecksTx's own verdict, scoped to these people — so what the
+    // screen says will happen is what the engine will actually do.
+    const notReadyRow = rows.find((r) => r.employmentId === notReady.employmentId)!;
+    expect(notReadyRow.blockers).toContain('missingCompensation');
+    await expect(
+      reprocessSelectedEmployees(a, { batchId, employmentIds: [notReady.employmentId] }),
+    ).rejects.toThrow(/no current salary record/);
+  });
+
+  it('reports the run’s chosen list rather than filtering by it', async () => {
+    const chosen = await paid('ReadChosen', 3000);
+    const outside = await paid('ReadOutside', 4000);
+    const { batchId } = await createBatch(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      scope: { employmentIds: [chosen.employmentId] },
+    });
+    await generatePayslips(a, { batchId });
+
+    // Filtering them out would hide the person the operator came looking for; including them silently
+    // would widen a deliberately narrow run by accident. So they are listed, and flagged.
+    const rows = await listPayslipLessEligible(a, { batchId });
+    expect(rows.map((r) => r.employmentId)).toEqual([outside.employmentId]);
+    expect(rows[0]!.outsideScope).toBe(true);
+  });
+
+  it('says nothing about a draft run — a run with no payslips is not a run missing anybody', async () => {
+    await paid('ReadDraft', 3000);
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    expect(await listPayslipLessEligible(a, { batchId })).toEqual([]);
   });
 
   // ─────────────────────────── one-off transactions ───────────────────────────
