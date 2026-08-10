@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-10 (r176 SHIPPED · r177 BUILT AND HELD · r178 PLANS-ONLY, NO CODE)
+## CURRENT STATE — snapshot 2026-08-10 (r176 SHIPPED · r177 AND r179 BUILT AND HELD · r178 PLANS-ONLY)
 
 **`main@75addd1b` is what RUNS ON PRODUCTION. Production on 344 migrations. Next free migration is `0426`**
 (`0423` was ALLOCATED AND DELIBERATELY UNUSED — `1c1b321a` stores its recompute-run history in the
@@ -81,12 +81,33 @@ written for the person who runs payroll, covering the daily rhythm, the four met
 read first), all 11 checks, the three resolution buttons, threshold tuning, and an explicit section on
 what the layer does NOT do.
 
-**The board, RE-COUNTED ON THE BOX after r178's pushes: `deployed = 633` · `cancelled = 14` ·
-`planned = 5` · `open = 1` · `approved = 0` · `contested = 0`.** (The old line here said
-`deployed = 634 · planned = 1 · open = 1` and was wrong in every number.) All five PLANNED items are
-r178's, each carrying a mockup at its current revision, all awaiting the reporter: `b00f9e6e` and
-`c8052ae3` at revision 2, `388e53c2` / `98e69987` / `f35f758a` at revision 1. `42afb2d2` is the only OPEN
-item and is ours — see below. Re-count rather than trusting this line.
+**The board, RE-COUNTED ON THE BOX after r179: `deployed = 633` · `cancelled = 14` · `approved = 5` ·
+`planned = 1` · `open = 1` · `contested = 0`.** The reporter approved FIVE of r178's six plans within
+hours. **Four of the five are BUILT — see r179 below; the fifth (`c8052ae3`) needs no build, it needs an
+operator run.** `planned = 1` is `42afb2d2` (the roster question, finally answerable — see below).
+`open = 1` is **`2ec1e3d2`**, which WE raised: the Roster screen shows every viewer a "Manage shift
+schedules" link to an administrators-only screen, and the `42afb2d2` plan promised in writing that we would
+raise it separately. Re-count rather than trusting this line.
+
+### `42afb2d2` IS NOW ANSWERABLE — and the reason it sat for a day is worth keeping
+
+**An item raised with `improve:raise` lands as `open` with `plan_revision = 0`, and an item with NO PLAN
+has no approve or reject button.** `42afb2d2` carried its recommendation and its alternative inside its
+DESCRIPTION fields, where the reporter could do nothing with them. An earlier note here said it "needs an
+ANSWER, not a plan" — that is backwards, and it is why it sat. **Giving a raised question a PLAN is how the
+reporter answers it**: approve = leave it as it stands, reject-with-reason = do the other thing. r178
+pushed that plan; it is now `planned`. Apply the same reading to `2ec1e3d2`.
+
+⚠️ **VERIFIED THIS ROUND, AND THE ITEM'S OWN TEXT OVERSTATED IT: the roster refusal is real for
+INSERT/UPDATE and NOT enforced by the database for DELETE.** `roster_assignment_rls` is a `FOR ALL` policy,
+so `WITH CHECK` (`can_admin_employment`) governs INSERT and the new row of UPDATE, while DELETE is governed
+by `USING` alone (`can_see_employment`) — which a supervisor, and the employee themselves, both pass. Only
+the application guard `assertRosterAdmin` stops `clearRoster`. The INSERT/UPDATE half WAS measured on
+production (a rolled-back transaction raised `42501` on a tomorrow-dated row for a real direct report); the
+DELETE half rests on the policy text plus documented PostgreSQL semantics, because the classifier blocked
+firing even a rolled-back DELETE. **No live exposure — the app guard covers it — but "the database decides
+who may change the roster" is only true for two of the three verbs, and any widening must split the policy
+or the two answers stay different.**
 
 ⚠️ **WE OWE THE REPORTER AN ANSWER WE HAVE ALREADY ASKED FOR: `42afb2d2`.** `23390097`'s approved plan
 promised "from 10/08 onwards a supervisor can change them too". That was never achievable — writing
@@ -103,6 +124,27 @@ safety conditions (debits, request-sourced rows, approved requests, encashment s
 ZERO. **This is the last unfinished part of `c8052ae3`:** the reporter was promised Medical and
 Hospitalization read 0.00, and until this runs they do not — which is exactly why they CONTESTED it. The
 archive→verify→delete sequence has never executed end to end.
+
+⚠️ **`c8052ae3` IS APPROVED AND HALF-EXECUTED — THE BACKUP AND THE REHEARSAL ARE DONE, `--apply` IS NOT.**
+On 2026-08-10 the reporter approved revision 2, and the operator run was taken as far as it can go without
+destroying data:
+- **Backups on the box, VERIFIED** — `/home/ubuntu/c8052ae3-affected-tables-2026-08-10-1238.dump` (all
+  three affected tables WITH data, confirmed by `pg_restore -l`) and
+  `c8052ae3-full-except-forcerls-2026-08-10-1238.dump`. **A plain full `pg_dump` FAILS with exit 1** on
+  `ai_provider_config`: three tables carry FORCE RLS (`ai_provider_config`, `platform_user`,
+  `leave_adjustment_batch`) and even the owner cannot read them, so pg_dump refuses — it still leaves a
+  truncated file that LOOKS like a backup. Exclude their DATA (`--exclude-table-data`) or dump by table.
+- **Rehearsal exit=0 and EXACT** — HOSPITALIZATION 77 rows/25 employees/300.00 days; SICK 70/23/6.00;
+  147 ledger; 22 recalc-audit; all four must-be-zero guards at 0; "Nothing was written".
+- **`--apply` WAS BLOCKED BY THE PERMISSION CLASSIFIER and was NOT worked around.** It needs a human or an
+  allow rule. Command: `cd /opt/ai-hr && PATH=/opt/node20/bin:$PATH node --env-file=.env.production
+  --import tsx scripts/reset-medical-hospitalization-ledger.ts --apply`.
+- **Afterwards: verify in SQL, then RENDER the archive screen** — its populated branch has never rendered
+  outside tests and cannot until the rows move.
+- **A counting trap worth keeping:** `leave_entitlement_recalc_audit` holds 72 rows for the tenant but only
+  **22 in scope** (16 HOSPITALIZATION + 6 SICK); the other 50 belong to a third leave type. And do not
+  filter shell output with a case-insensitive `LC_` pattern — it matches `reca`**`lc_`**`audit` and silently
+  deletes every line naming that table, which made a present table look absent for several minutes.
 
 **The calculation half of `c8052ae3` IS done and IS live** — `c4139b4d` is an ancestor of `main` and
 production's `core/leave.ts` is byte-identical (md5 `3c64d99…` both sides); the current-year bound is
@@ -125,6 +167,64 @@ file — indistinguishable from an undeployed release. The dry-run also permanen
 `next-env.d.ts`: gitignored and Next-generated, local `pnpm dev` writes the `.next/dev/types/` variant
 while the box's build writes `.next/types/`. The box's version is correct. Those two lines are noise;
 anything else is a real delta.
+
+### ⚠️ r179 (2026-08-10) — FOUR APPROVED ITEMS BUILT AND GATED, **DELIBERATELY NOT MERGED TO `main`**
+
+**`build/r179-integration@c63d5064`** carries all four items the reporter approved after r178's plans:
+`b00f9e6e` (overtime seeder guard) · `388e53c2` (leave nav move) · `98e69987` (Transaction Detail) ·
+`f35f758a` (Individual Payslip screen + document), plus a shared employee search field and the sidebar
+highlight fix. **NO MIGRATION — `0426` is still free.**
+
+**IT IS LEFT ON ITS BRANCH ON PURPOSE.** `main` today is exactly `production + r177`, a single clean delta
+the dry-run rsync can confirm at a glance. Merging r179 would make that two releases while deploy is
+blocked, and buys nothing. **A branch is also MORE discoverable than a silent main merge** — the
+unshipped-round check (`git for-each-ref refs/heads/build`) finds it, which is precisely the check r159
+proved does NOT find merged-but-undeployed work. Merge it when r177 is released, not before.
+
+**Gate: 633 files across 6 chunks, every chunk exit=0, 8,046 tests** (106+106+106+105+105+105 — counted
+files equal files asked, peak disk 30–48%); `tsc` 0; `next build` clean, all r179 routes present and `ƒ`.
+
+**RENDER-CHECKED FOR REAL** (four identities, ten renders, dev-server log read): zero MISSING_MESSAGE,
+IntlError or FORMATTING_ERROR. **The access-critical branch is verified by RENDER, not by test alone:** on
+`/leave/tracker` an hr_admin gets the Employee Details listing (`name="edQ"` present, calendar absent) and
+a manager and a plain employee both still get the calendar (`edQ` absent, calendar present). On `/leave`,
+an unlinked admin gets no balance card while an employee and a manager do.
+**METHOD NOTE, because the obvious check is a lie here:** grepping rendered HTML for a LABEL proves
+nothing — Next embeds the whole i18n catalogue in every payload (a ~563KB floor on these pages), so
+"Employee Details" appears on a plain employee's page whether or not it rendered. Discriminate on FORM
+CONTROL NAMES and payload deltas, which cannot appear from the catalogue.
+
+**What the agents found that the plans did not:**
+- **`b00f9e6e` was mutation-tested, and the obvious test does not pin what matters.** An archived
+  *per_hour* reference reaches the archived throw from either side of the ordering, so the natural test
+  stays green if the throw is moved. Only an archived reference that ALSO lacks an hourly rate
+  distinguishes the two placements; that case exists now. Also confirmed by mutation that the pre-fix
+  behaviour is a SILENT SUCCESS (it creates OT2_0/OT3_0 scaled off a switched-off rate), not a mislabelled
+  error.
+- **`f35f758a`: fixing the truncation with greedy word-wrapping ALONE would have shipped the same bug
+  silently.** A single token wider than its column emits as one over-wide line that overprints the amount.
+  Character-level breaking was added, and the result was rasterised in BOTH `mutool` and `pdftoppm` across
+  three fixtures (43 deliberately over-long pay item names, long employee/department/company names) —
+  the r175a two-renderer rule, applied.
+- **The round brief's own guard premise was wrong on `98e69987`**, and the agent caught it:
+  `test/employee-scope-panel-guard.test.ts` had NO transaction-view case to rewrite. Five were ADDED and
+  then PROVED to bite by restoring the pre-change page from a `cp` backup (3 of 5 fail against it).
+- **`388e53c2`'s sidebar highlight — the reporter's ORIGINAL complaint — could not be fixed from inside the
+  leave lane and was correctly held back with a written spec rather than reached for.** It is now landed
+  solo: `exactHref` / `ownedSubpaths` on `NavChildDescriptor`, read by an EXPORTED `isNavRowActive` so the
+  truth table drives the real predicate rather than a copy that would pass on day one and drift.
+  Mutation-verified. The held-back agent deliberately did NOT pin the wrong behaviour — which is why the
+  table could be written as the CORRECT one.
+
+**Two environment traps this round, both cheap and both cost time:**
+1. **A FRESH WORKTREE HAS `node_modules` BUT NO `.env.local`** (it is gitignored), and `global-setup` loads
+   it from cwd. The failure is actively misleading: vitest prints `No test files found, exiting with code 1`
+   with the real cause (`TEST_MIGRATION_DATABASE_URL must be set`) buried below. Copy `mainwt/.env.local`
+   into every new worktree at creation.
+2. **A RAM-DISK CLUSTER DOES NOT SURVIVE A REBOOT** — the symlink dangles and `psql` reports the server is
+   not running. That is not a wedge; run `./scripts/dev-db-rebuild.sh`. Also: a between-chunk rebuild makes
+   the cluster briefly unreachable, so a liveness probe during `gate-chunked.sh` can read as "server down"
+   when the gate is perfectly healthy. Read the per-chunk log, not the socket.
 
 ### r178 (2026-08-10) — FIVE PLANS PUSHED, ZERO CODE. Nothing to deploy, nothing to gate.
 
