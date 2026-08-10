@@ -256,6 +256,18 @@ export class ReprocessAddBlockedError extends Error {
  * on this batch must account for the allowance its payslip is about to pay, to the cent. Anything else
  * is a state this path cannot settle safely, so the whole add is refused and nothing is written.
  */
+export class ReprocessAddLoanUnreconciledError extends Error {
+  constructor(public readonly rows: { employmentId: string; deducted: number }[]) {
+    super(
+      `Cannot add ${rows.length} employee${rows.length === 1 ? '' : 's'} to this payroll run: their payslip would deduct ` +
+        rows.map((r) => `a loan instalment of ${r.deducted.toFixed(2)}`).join('; ') +
+        ' with no instalment held on this run to settle, so the money would come off their pay without coming off their loan balance. ' +
+        'Clear the stale loan deduction on this run first. Nothing was changed.',
+    );
+    this.name = 'ReprocessAddLoanUnreconciledError';
+  }
+}
+
 export class ReprocessAddClaimUnreconciledError extends Error {
   constructor(public readonly rows: { employmentId: string; allowance: number; reserved: number }[]) {
     super(
@@ -4372,6 +4384,29 @@ export async function generatePayslips(
         const addedLoanCents = new Map(
           [...appliedLoanCentsByEmp.entries()].filter(([employmentId]) => addedNow.has(employmentId)),
         );
+        // …but a deduction with nothing to settle is refused rather than taken. `payroll_input.loan_deduction`
+        // survives the events that consume the reservation behind it (a scope narrow after prefill leaves the
+        // input row while the reservation is spent), so an add can find itself about to take an instalment off
+        // someone's pay with no reservation left to apply it against — the exact "deducted but never came off
+        // the balance" outcome this item exists to prevent. See ReprocessAddLoanUnreconciledError.
+        const loanAddedIds = addedNowIds.filter((id) => (appliedLoanCentsByEmp.get(id) ?? 0) > 0);
+        if (loanAddedIds.length > 0) {
+          const reservedRows = await tx
+            .select({ employmentId: loanRepayment.employmentId })
+            .from(loanRepayment)
+            .where(
+              and(
+                eq(loanRepayment.reservedBatchId, p.batchId),
+                eq(loanRepayment.status, 'reserved'),
+                inArray(loanRepayment.employmentId, loanAddedIds),
+              ),
+            );
+          const backed = new Set(reservedRows.map((r) => r.employmentId));
+          const unbacked = loanAddedIds
+            .filter((id) => !backed.has(id))
+            .map((id) => ({ employmentId: id, deducted: round2((appliedLoanCentsByEmp.get(id) ?? 0) / 100) }));
+          if (unbacked.length > 0) throw new ReprocessAddLoanUnreconciledError(unbacked);
+        }
         await applyLoansForBatch(tx, ctx, p.batchId, addedLoanCents, addedNowIds);
       }
 
