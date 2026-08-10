@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies, listEmployees } from '@/core/read';
@@ -13,7 +12,7 @@ import {
 } from '@/core/payroll-view';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
-import { CollapsibleEmployeePanel, EmployeeScopePanel, type ScopeEmployee } from '@/components/collapsible-employee-panel';
+import { EmployeeSearchField, type EmployeeSearchOption } from '@/components/employee-search-field';
 import { employeeLabel } from '@/lib/employee-code';
 import { packFor } from '@/localization/registry';
 import { IndividualTxnTable } from './individual-table';
@@ -73,8 +72,12 @@ const TABS = ['fixed', 'individual', 'history', 'grid', 'outstanding'] as const;
  */
 const HISTORY_ROW_CAP = 200;
 
-/** 080de5cf — one cookie per screen, the convention f3ae3245 set for Fixed Transaction. */
-const GRID_PANEL_COOKIE = 'txnview_grid_panel';
+/**
+ * 98e69987 — the id the Transaction Detail tab's employee search box carries, so the caption above it can
+ * be a real `<label htmlFor>`. A literal rather than a `useId()`: this is a server component, and the two
+ * halves have to agree on one string that is stable across renders.
+ */
+const DETAIL_EMPLOYEE_FIELD_ID = 'txnview-detail-employee';
 
 type Tab = (typeof TABS)[number];
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
@@ -245,32 +248,23 @@ export default async function TransactionViewPage({
     bonus: t('individual.cycle.bonus'),
     adjustment: t('individual.cycle.adjustment'),
   };
-  // The searchable employee panel every keying screen already uses (r168a) — the reporter asked for "the
-  // same searchable employee selector as the Fixed and Individual Transaction modules", and this is it.
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
+  /**
+   * 98e69987 — the rows the Transaction Detail tab's employee search box narrows.
+   *
+   * THIS IS THE SAME SCOPE-FENCED READ THE REMOVED SIDE PANEL WAS FED: `listEmployees(s, scopeIds)`, run
+   * once at the top of this render. Losing the rail lost its Business Unit / Department / Status
+   * narrowers, and the approved plan's answer is that the search already reaches everyone the caller may
+   * see — so the SET must not shrink and, far more importantly, must not widen. Narrowing happens in the
+   * browser over this list and nowhere else; the id it posts is re-guarded above (`employmentId`) before
+   * any read uses it, so the list is never what grants access.
+   */
+  const searchEmployees: EmployeeSearchOption[] = employees.map((e) => ({
+    value: e.employmentId,
     name: e.name,
     employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.department,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnit,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
+    // Plain string, never a node — everything crossing to this client island is serialisable data.
+    secondary: [e.company, e.department].filter(Boolean).join(' · ') || null,
   }));
-  // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
-  const gridPanelDefaultOpen = (await cookies()).get(GRID_PANEL_COOKIE)?.value !== '0';
-  // The panel carries the grid's own filters across an employee switch. `months` rides as ONE comma-joined
-  // value because `preserve` is a flat string map — `cleanMonths` accepts that form as well as the
-  // checkboxes' repeated params, so both routes into this screen mean the same thing.
-  const gridPanelPreserve: Record<string, string> = {
-    tab: 'grid',
-    year: String(gridYear),
-    months: gridMonths.join(','),
-    ...(cycle ? { cycle } : {}),
-    ...(companyId ? { companyId } : {}),
-  };
   const gridExportParams: Record<string, string> = {
     ...(companyId ? { companyId } : {}),
     ...(employmentId ? { employmentId } : {}),
@@ -324,6 +318,42 @@ export default async function TransactionViewPage({
       </select>
     </Field>
   );
+  /**
+   * 98e69987 — the Transaction Detail tab's employee control, and the ONLY one that tab renders.
+   *
+   * It replaces both the long unsearchable dropdown above (the thing the reporter asked us to get rid of)
+   * and the removed left-hand rail. EmployeeSearchField posts through a hidden input carrying the same
+   * field name the dropdown posted, so it drops straight into this GET form: the submitted query string,
+   * and every saved link, are unchanged.
+   *
+   * A hand-built caption instead of `Field`, because `Field` renders a `<label>` AROUND its children and
+   * this control's result rows are buttons — a click on one would be re-dispatched to the text box. The
+   * component takes an `id` for exactly this, so the caption is a real `<label htmlFor>` beside it.
+   *
+   * Every label is resolved HERE, as a literal `t()`, and handed over pre-translated: the island takes no
+   * namespace of its own, and the keys stay visible to the coverage guard on the page that owns them.
+   */
+  const detailEmployeeSearch = (
+    <div className="flex w-full flex-col gap-1.5 sm:w-72">
+      <label htmlFor={DETAIL_EMPLOYEE_FIELD_ID} className="text-xs font-medium text-muted-foreground">
+        {t('view.filters.employee')}
+      </label>
+      <EmployeeSearchField
+        id={DETAIL_EMPLOYEE_FIELD_ID}
+        name="employmentId"
+        employees={searchEmployees}
+        value={employmentId ?? null}
+        className="w-full"
+        labels={{
+          placeholder: t('view.grid.search.placeholder'),
+          ariaLabel: t('view.grid.search.ariaLabel'),
+          resultsLabel: t('view.grid.search.resultsLabel'),
+          noMatches: t('view.grid.search.noMatches'),
+          clear: t('view.grid.search.clear'),
+        }}
+      />
+    </div>
+  );
   const yearMonthSelects = (
     <>
       <Field label={t('view.filters.year')}>
@@ -357,8 +387,10 @@ export default async function TransactionViewPage({
     <div className={tab === 'grid' ? pageWideCls : 'mx-auto max-w-6xl space-y-6'}>
       <PageHeader title={t('view.title')} description={t('view.subtitle')} />
 
-      {/* Sub-tab strip (Fixed | Individual | History | Grid | Outstanding). Switching tabs resets the filters
-          on purpose — each view has its own filter set. */}
+      {/* Sub-tab strip (Fixed | Individual | History | Transaction Detail | Outstanding). Switching tabs
+          resets the filters on purpose — each view has its own filter set. The captions come off the
+          catalogs by the tab TOKEN, so 98e69987's rename was a value edit in six locales and every saved
+          ?tab= link still resolves. */}
       <div className="flex gap-1 border-b border-border">
         {TABS.map((k) => (
           <Link
@@ -378,15 +410,20 @@ export default async function TransactionViewPage({
       <p className="text-xs text-muted-foreground">{t('view.readOnly')}</p>
 
       {/* ── Filters (GET form — pure navigation, no mutation) ──
-          The Grid tab is excluded: its employee comes from the shared searchable panel rather than a
-          dropdown, and its own year / months / cycle row lives inside the panel's workspace. Rendering
-          both would put two employee controls that disagree on one screen. */}
-      {tab !== 'grid' && (
+          98e69987: this bar used to be gated OFF for the Transaction Detail tab, which ran its own second
+          form inside the side panel's workspace. The gate existed for a real reason — two employee
+          controls that disagree on one screen — and merging the two forms is what retires it, not
+          ignoring it. There is exactly ONE employee control per tab now: the searchable field on
+          Transaction Detail, the long dropdown everywhere else, chosen below and never both. The rest of
+          the merge is that Transaction Detail brings its own Year (no "All": twelve columns are one
+          calendar year), the twelve month tick boxes and Cycle into this row, behind this row's single
+          submit. */}
       <Card className="p-4">
         <form method="GET" className="flex flex-wrap items-end gap-3">
           <input type="hidden" name="tab" value={tab} />
+          {tab === 'grid' && detailEmployeeSearch}
           {companySelect}
-          {employeeSelect}
+          {tab !== 'grid' && employeeSelect}
           {tab === 'fixed' && (
             <>
               <Field label={t('view.filters.payItem')}>
@@ -408,7 +445,45 @@ export default async function TransactionViewPage({
               </Field>
             </>
           )}
-          {tab !== 'fixed' && yearMonthSelects}
+          {tab !== 'fixed' && tab !== 'grid' && yearMonthSelects}
+          {tab === 'grid' && (
+            <>
+              {/* Transaction Detail's own Year: no "All" option, because the tab IS twelve columns of one
+                  calendar year — an absent year falls back to this one (see gridYear) rather than to an
+                  unbounded read across every year the employee has ever been paid. */}
+              <Field label={t('view.filters.year')}>
+                <select name="year" defaultValue={String(gridYear)} className={inputCls}>
+                  {years.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <fieldset className="min-w-0">
+                <legend className="mb-1 text-xs font-medium text-muted-foreground">
+                  {t('view.filters.months')}
+                </legend>
+                {/* Twelve checkboxes rather than a native multi-select: they post the same repeated
+                    `months` params without ctrl-clicking, and every choice is visible at a glance —
+                    which is the point of a filter you change on every reconciliation. */}
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {MONTHS.map((m, i) => (
+                    <label key={m} className="flex items-center gap-1.5 text-sm">
+                      <input
+                        type="checkbox"
+                        name="months"
+                        value={String(i + 1)}
+                        defaultChecked={gridMonths.includes(i + 1)}
+                        className="h-4 w-4 rounded border-border"
+                      />
+                      {monthLabels[i]}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </>
+          )}
           {tab === 'individual' && (
             <>
               <Field label={t('view.filters.payItem')}>
@@ -459,7 +534,7 @@ export default async function TransactionViewPage({
               </Field>
             </>
           )}
-          {tab === 'history' && (
+          {(tab === 'history' || tab === 'grid') && (
             <Field label={t('view.filters.cycle')}>
               <select name="cycle" defaultValue={cycle ?? ''} className={inputCls}>
                 <option value="">{t('view.filters.all')}</option>
@@ -471,12 +546,15 @@ export default async function TransactionViewPage({
               </select>
             </Field>
           )}
+          {/* 98e69987 asked for the person and the period to be set together "behind one Search button", so
+              the Transaction Detail tab names this submit for what the reader is doing. The other four
+              tabs keep the caption they have always had — one tab's wording is not a reason to relabel
+              four screens nobody complained about. */}
           <Button type="submit" variant="secondary">
-            {t('view.filters.apply')}
+            {tab === 'grid' ? t('view.filters.search') : t('view.filters.apply')}
           </Button>
         </form>
       </Card>
-      )}
 
       {/* ── 1. Fixed Transaction View ── */}
       {tab === 'fixed' && (
@@ -622,118 +700,52 @@ export default async function TransactionViewPage({
         </Card>
       )}
 
-      {/* ── 4. Transaction History GRID (feedback 080de5cf) ──
+      {/* ── 4. TRANSACTION DETAIL (feedback 080de5cf; renamed and widened by 98e69987) ──
           The same processed payslips as the tab beside it, turned on their side: pay item down the left,
           month across the top, annual total on the right — the shape the reporter reconciles in. The
-          payslip-by-payslip view is NOT replaced; it answers a different question. */}
-      {tab === 'grid' && (
-        <CollapsibleEmployeePanel
-          defaultOpen={gridPanelDefaultOpen}
-          cookieKey={GRID_PANEL_COOKIE}
-          panel={
-            <Card className="p-4">
-              <h2 className="text-sm font-semibold">{t('view.grid.pickEmployee')}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">{t('view.grid.pickEmployeeHint')}</p>
-              <div className="mt-3">
-                <EmployeeScopePanel
-                  employees={panelEmployees}
-                  selectedId={employmentId ?? null}
-                  basePath="/payroll/transaction-view"
-                  preserve={gridPanelPreserve}
-                />
-              </div>
-            </Card>
-          }
-        >
-          <div className="space-y-4">
-            {/* Year / months / cycle — a plain GET form, so the whole screen stays a server component and
-                the address bar is the state. `tab` and `employmentId` ride as hidden fields: a submit must
-                not silently drop the employee the panel chose. */}
-            <Card className="p-4">
-              <form method="GET" className="flex flex-wrap items-end gap-4">
-                <input type="hidden" name="tab" value="grid" />
-                {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
-                {companyId && <input type="hidden" name="companyId" value={companyId} />}
-                <Field label={t('view.filters.year')}>
-                  <select name="year" defaultValue={String(gridYear)} className={inputCls}>
-                    {years.map((y) => (
-                      <option key={y} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <fieldset className="min-w-0">
-                  <legend className="mb-1 text-xs font-medium text-muted-foreground">
-                    {t('view.filters.months')}
-                  </legend>
-                  {/* Twelve checkboxes rather than a native multi-select: they post the same repeated
-                      `months` params without ctrl-clicking, and every choice is visible at a glance —
-                      which is the point of a filter you change on every reconciliation. */}
-                  <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    {MONTHS.map((m, i) => (
-                      <label key={m} className="flex items-center gap-1.5 text-sm">
-                        <input
-                          type="checkbox"
-                          name="months"
-                          value={String(i + 1)}
-                          defaultChecked={gridMonths.includes(i + 1)}
-                          className="h-4 w-4 rounded border-border"
-                        />
-                        {monthLabels[i]}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-                <Field label={t('view.filters.cycle')}>
-                  <select name="cycle" defaultValue={cycle ?? ''} className={inputCls}>
-                    <option value="">{t('view.filters.all')}</option>
-                    {CYCLES.map((c) => (
-                      <option key={c} value={c}>
-                        {t(`individual.cycle.${c}`)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Button type="submit" variant="secondary">
-                  {t('view.filters.apply')}
-                </Button>
-              </form>
-            </Card>
+          payslip-by-payslip view is NOT replaced; it answers a different question.
 
-            <Card className="p-4">
-              {selectedGridEmployee ? (
-                <>
-                  <div className="mb-3 flex flex-wrap items-baseline gap-2">
-                    {/* Employee ID left-of-name (feedback 38668d9b) */}
-                    <EmployeeName
-                      code={selectedGridEmployee.employeeCode}
-                      name={selectedGridEmployee.name}
-                      className="text-sm font-semibold text-foreground"
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {selectedGridEmployee.company} · {gridYear}
-                    </span>
-                  </div>
-                  <HistoryGrid
-                    rows={grid?.rows ?? []}
-                    months={grid?.months ?? gridMonths}
-                    monthLabels={monthLabels}
-                    cycleLabels={cycleLabels}
-                    exportParams={gridExportParams}
-                    payslipCount={grid?.payslipCount ?? 0}
-                    detailNotRecorded={grid?.detailNotRecorded ?? false}
+          98e69987 removed the permanent left-hand employee rail that used to wrap this whole block, which
+          is what gives the figures the full width. Its Business Unit / Department / Status narrowers went
+          with it, deliberately: the search field in the filter row above already reaches everyone the
+          caller may see, so there is nothing to narrow down first. The tab's ?tab=grid token is UNCHANGED
+          — the rename is a caption, and saved links keep working. */}
+      {tab === 'grid' && (
+        <Card>
+          <SectionHeader title={t('view.tabs.grid')} />
+          <p className="px-4 pb-2 pt-2 text-xs text-muted-foreground">{t('view.grid.pickEmployeeHint')}</p>
+          <div className="p-4 pt-2">
+            {selectedGridEmployee ? (
+              <>
+                <div className="mb-3 flex flex-wrap items-baseline gap-2">
+                  {/* Employee ID left-of-name (feedback 38668d9b) */}
+                  <EmployeeName
+                    code={selectedGridEmployee.employeeCode}
+                    name={selectedGridEmployee.name}
+                    className="text-sm font-semibold text-foreground"
                   />
-                </>
-              ) : (
-                // No employee, no grid — and said in words rather than shown as an empty table, because the
-                // grid is one person's year by definition and a blank one reads as "no data" instead of
-                // "choose someone".
-                <p className="py-8 text-center text-sm text-muted-foreground">{t('view.grid.noEmployee')}</p>
-              )}
-            </Card>
+                  <span className="text-xs text-muted-foreground">
+                    {selectedGridEmployee.company} · {gridYear}
+                  </span>
+                </div>
+                <HistoryGrid
+                  rows={grid?.rows ?? []}
+                  months={grid?.months ?? gridMonths}
+                  monthLabels={monthLabels}
+                  cycleLabels={cycleLabels}
+                  exportParams={gridExportParams}
+                  payslipCount={grid?.payslipCount ?? 0}
+                  detailNotRecorded={grid?.detailNotRecorded ?? false}
+                />
+              </>
+            ) : (
+              // No employee, no figures — and said in words rather than shown as an empty table, because
+              // this tab is one person's year by definition and a blank one reads as "no data" instead of
+              // "choose someone".
+              <p className="py-8 text-center text-sm text-muted-foreground">{t('view.grid.noEmployee')}</p>
+            )}
           </div>
-        </CollapsibleEmployeePanel>
+        </Card>
       )}
 
       {/* ── 5. Outstanding transactions (feedback d0d2c9d1) ──

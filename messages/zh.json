@@ -4108,7 +4108,7 @@
           "individual": "个人",
           "history": "历史",
           "outstanding": "未支付",
-          "grid": "表格"
+          "grid": "交易明细"
         },
         "filters": {
           "company": "公司",
@@ -4119,6 +4119,7 @@
           "month": "月份",
           "cycle": "薪资周期",
           "apply": "套用筛选",
+          "search": "搜索",
           "all": "全部",
           "department": "部门",
           "txnStatus": "交易状态",
@@ -4170,10 +4171,16 @@
           "leftOutByScope": "批次范围被缩小，遗漏了这位员工"
         },
         "grid": {
-          "title": "交易历史表格",
-          "pickEmployee": "选择员工",
-          "pickEmployeeHint": "该表格显示一位员工的整年薪资 —— 左侧为每个薪资项目，上方为每个月份。",
-          "noEmployee": "请从列表中选择员工以查看其薪资年度。",
+          "title": "交易明细",
+          "pickEmployeeHint": "本页面显示一位员工的整年薪资 —— 左侧为每个薪资项目，上方为每个月份。",
+          "noEmployee": "请在上方搜索员工以查看其薪资年度。",
+          "search": {
+            "placeholder": "按员工编号或姓名搜索",
+            "ariaLabel": "搜索员工",
+            "resultsLabel": "员工搜索结果",
+            "noMatches": "没有匹配的员工",
+            "clear": "清除员工"
+          },
           "empty": "在所选年份、月份和薪资周期内，该员工没有薪资历史。",
           "export": "导出到 Excel",
           "hideZeroRows": "隐藏全为零的行",

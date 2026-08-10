@@ -4108,7 +4108,7 @@
           "individual": "Cá nhân",
           "history": "Lịch sử",
           "outstanding": "Chưa thanh toán",
-          "grid": "Lưới"
+          "grid": "Chi tiết giao dịch"
         },
         "filters": {
           "company": "Công ty",
@@ -4119,6 +4119,7 @@
           "month": "Tháng",
           "cycle": "Chu kỳ lương",
           "apply": "Áp dụng bộ lọc",
+          "search": "Tìm kiếm",
           "all": "Tất cả",
           "department": "Phòng ban",
           "txnStatus": "Trạng thái giao dịch",
@@ -4170,10 +4171,16 @@
           "leftOutByScope": "Kỳ lương đã bị thu hẹp và bỏ sót nhân viên này"
         },
         "grid": {
-          "title": "Lưới lịch sử giao dịch",
-          "pickEmployee": "Chọn nhân viên",
-          "pickEmployeeHint": "Lưới hiển thị một năm lương của một nhân viên — mỗi khoản lương ở bên trái, mỗi tháng ở phía trên.",
-          "noEmployee": "Chọn một nhân viên từ danh sách để xem năm lương của họ.",
+          "title": "Chi tiết giao dịch",
+          "pickEmployeeHint": "Màn hình này hiển thị một năm lương của một nhân viên — mỗi khoản lương ở bên trái, mỗi tháng ở phía trên.",
+          "noEmployee": "Tìm nhân viên ở phía trên để xem năm lương của họ.",
+          "search": {
+            "placeholder": "Tìm theo Mã nhân viên hoặc tên",
+            "ariaLabel": "Tìm nhân viên",
+            "resultsLabel": "Kết quả tìm kiếm nhân viên",
+            "noMatches": "Không có nhân viên phù hợp",
+            "clear": "Xóa nhân viên"
+          },
           "empty": "Không có lịch sử lương cho nhân viên này trong năm, tháng và chu kỳ đã chọn.",
           "export": "Xuất ra Excel",
           "hideZeroRows": "Ẩn các dòng toàn số không",

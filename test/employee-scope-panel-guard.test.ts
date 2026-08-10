@@ -39,7 +39,12 @@ vi.mock('@/lib/authz', () => ({ requireAdmin: vi.fn(async () => scope.s) }));
 // The collapse state is read from a cookie; no request context here, so report "absent" ⇒ expanded.
 vi.mock('next/headers', () => ({ cookies: vi.fn(async () => ({ get: () => undefined })) }));
 // getTranslations → identity, so assertions read as keys without the full next-intl runtime config.
-vi.mock('next-intl/server', () => ({ getTranslations: vi.fn(async () => (k: string) => k) }));
+// `getLocale` is exported too because Transaction Detail (below) formats its month captions on the SERVER;
+// additive, so the Zakat / Individual Payslip / Loans cases above are unaffected.
+vi.mock('next-intl/server', () => ({
+  getTranslations: vi.fn(async () => (k: string) => k),
+  getLocale: vi.fn(async () => 'en'),
+}));
 
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -49,6 +54,10 @@ import ZakatTransactionPage from '../app/payroll/transactions/zakat/page';
 import IndividualPayslipPage from '../app/payroll/individual-payslip/page';
 import LoansPage from '../app/admin/loans/page';
 import { LoanList } from '../components/loan-list';
+import { CollapsibleEmployeePanel } from '../components/collapsible-employee-panel';
+import { EmployeeSearchField } from '../components/employee-search-field';
+import TransactionViewPage from '../app/payroll/transaction-view/page';
+import { HistoryGrid } from '../app/payroll/transaction-view/history-grid';
 
 /** Depth-first walk of a rendered React element tree collecting every node whose `type` identity matches.
  *  Copied from organization-companies-unscoped.test.ts — the established way to inspect what a SERVER
@@ -68,6 +77,12 @@ function findByType(node: unknown, type: unknown, acc: any[] = []): any[] {
     if (v !== undefined) findByType(v, type, acc);
   }
   return acc;
+}
+
+/** Every host element of `tag` in a tree carrying the given form-field name — i.e. the controls that post. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function controlsNamed(tree: unknown, tag: string, name: string): any[] {
+  return findByType(tree, tag).filter((el) => el.props?.name === name);
 }
 
 /** The single `selectedId` the screen handed the shared panel — i.e. the guard's verdict. */
@@ -253,5 +268,133 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
       foreign.employmentId,
     );
     expect(terminated.employmentId).toBeTruthy();
+  });
+
+  // ───────────── Transaction View › Transaction Detail (98e69987) ─────────────
+  //
+  // THIS SCREEN WENT THE OTHER WAY, AND THAT IS WHY ITS CASES LIVE HERE RATHER THAN SOMEWHERE ELSE.
+  //
+  // r168a's question is "does the selection still get DECIDED on the server?", and it is the same question
+  // whether the selection is expressed by a rail, a dropdown or a search box. 98e69987 REMOVED this tab's
+  // permanent left-hand rail — the reporter's complaint was that it ate a fifth of the width and pushed the
+  // last months off the edge — and moved the choice to the shared searchable field in the filter row. So
+  // the file that pins where the panel went is also the right place to pin where it went AWAY, and to state
+  // the two things that removal put at risk:
+  //
+  //   1. THE FENCE. The rail's Business Unit / Department / Status narrowers went with it, so the search
+  //      now reaches every employee in one list. The approved plan says that is fine BECAUSE the list is
+  //      the scope-fenced read — which is only true while it stays that read. A widened source here would
+  //      offer a cross-company employee as a clickable row, and the page's own coercion is invisible.
+  //   2. ONE EMPLOYEE CONTROL. The filter bar above was deliberately gated OFF for this tab, with a comment
+  //      saying two employee controls that disagree would end up on one screen. Un-gating it is the whole
+  //      change, so the assertion the old gate stood for has to survive as an assertion: after the merge
+  //      there is exactly one control, in one form, behind one submit.
+  //
+  // Rendered twice with a legitimate and a foreign id, like every case above, and the verdict read off what
+  // the screen HANDS the control rather than out of its source text.
+
+  it('Transaction Detail: the rail is gone and exactly ONE employee control replaced it, inside the filter form', async () => {
+    const tree = await TransactionViewPage({
+      searchParams: Promise.resolve({ tab: 'grid', employmentId: mine.employmentId }),
+    });
+
+    expect(
+      findByType(tree, CollapsibleEmployeePanel),
+      'the permanent rail must be gone — that is what gives the figures the full width',
+    ).toHaveLength(0);
+    expect(findByType(tree, EmployeeScopePanel)).toHaveLength(0);
+
+    const fields = findByType(tree, EmployeeSearchField);
+    expect(fields, 'the tab must render exactly one searchable employee field').toHaveLength(1);
+    expect(
+      controlsNamed(tree, 'select', 'employmentId'),
+      'the long unsearchable dropdown must not render beside the search field',
+    ).toHaveLength(0);
+
+    // ONE bar, ONE submit. The tab used to run a second GET form of its own inside the rail's workspace;
+    // the merge is only honest if that one is gone rather than hidden.
+    const forms = findByType(tree, 'form');
+    expect(forms, 'the tab’s own second filter form must be gone, not merely moved').toHaveLength(1);
+    expect(forms[0].props.method).toBe('GET');
+    expect(
+      findByType(forms[0], EmployeeSearchField),
+      'the employee choice must post together with the period, behind the one submit',
+    ).toHaveLength(1);
+
+    // …and everything the plan promised on that same row, in that same form.
+    expect(controlsNamed(forms[0], 'select', 'companyId')).toHaveLength(1);
+    expect(controlsNamed(forms[0], 'select', 'year')).toHaveLength(1);
+    expect(controlsNamed(forms[0], 'select', 'cycle')).toHaveLength(1);
+    expect(controlsNamed(forms[0], 'input', 'months'), 'the twelve month tick boxes').toHaveLength(12);
+  });
+
+  it('Transaction Detail: an out-of-scope ?employmentId= selects NOTHING, and the search reaches only the scoped list', async () => {
+    const ok = await TransactionViewPage({
+      searchParams: Promise.resolve({ tab: 'grid', employmentId: mine.employmentId }),
+    });
+    expect(findByType(ok, EmployeeSearchField)[0].props.value).toBe(mine.employmentId);
+
+    const tampered = await TransactionViewPage({
+      searchParams: Promise.resolve({ tab: 'grid', employmentId: foreign.employmentId }),
+    });
+    const field = findByType(tampered, EmployeeSearchField)[0];
+    expect(field.props.value, 'a company outside scope must coerce to no selection').toBeNull();
+
+    // The rail's narrowers are gone; the fence behind them must not be.
+    const offered: string[] = field.props.employees.map((e: { value: string }) => e.value);
+    expect(offered).toContain(mine.employmentId);
+    expect(offered, 'losing the rail must not have widened what the search can reach').not.toContain(
+      foreign.employmentId,
+    );
+  });
+
+  it('Transaction Detail: the URL token and the export params are exactly what they were', async () => {
+    // The reporter was promised that saved links keep working, so the RENAME had to be a caption change
+    // only. The tab is still addressed by the same token, and the Excel download still carries the same
+    // five filters — an export that quietly stopped carrying the employee would produce a file for the
+    // wrong person while the screen looked right.
+    const tree = await TransactionViewPage({
+      searchParams: Promise.resolve({
+        tab: 'grid',
+        employmentId: mine.employmentId,
+        year: '2026',
+        months: ['1', '2'],
+        cycle: 'regular',
+        companyId: base.companyId,
+      }),
+    });
+
+    const tabField = controlsNamed(tree, 'input', 'tab');
+    expect(tabField).toHaveLength(1);
+    expect(tabField[0].props.value, 'the saved-link token must stay `grid`').toBe('grid');
+
+    const grids = findByType(tree, HistoryGrid);
+    expect(grids).toHaveLength(1);
+    expect(grids[0].props.exportParams).toEqual({
+      companyId: base.companyId,
+      employmentId: mine.employmentId,
+      year: '2026',
+      months: '1,2',
+      cycle: 'regular',
+    });
+  });
+
+  it('Transaction Detail: with nobody chosen it says so instead of drawing an empty year', async () => {
+    const tree = await TransactionViewPage({ searchParams: Promise.resolve({ tab: 'grid' }) });
+    expect(findByType(tree, EmployeeSearchField)[0].props.value).toBeNull();
+    expect(findByType(tree, HistoryGrid), 'no employee, no figures').toHaveLength(0);
+  });
+
+  it('the other four tabs are untouched — the redesign is one tab wide', async () => {
+    // 98e69987's own plan flags that the reporter previously asked for the OPPOSITE on two other screens.
+    // This change is scoped to one tab, and the four beside it must still offer the control they always had.
+    for (const tab of ['fixed', 'individual', 'history', 'outstanding']) {
+      const tree = await TransactionViewPage({ searchParams: Promise.resolve({ tab }) });
+      expect(
+        findByType(tree, EmployeeSearchField),
+        `${tab} must not have grown a second employee control`,
+      ).toHaveLength(0);
+      expect(controlsNamed(tree, 'select', 'employmentId'), `${tab} lost its employee filter`).toHaveLength(1);
+    }
   });
 });

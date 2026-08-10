@@ -4108,7 +4108,7 @@
           "individual": "Individu",
           "history": "Sejarah",
           "outstanding": "Tertunggak",
-          "grid": "Grid"
+          "grid": "Butiran Transaksi"
         },
         "filters": {
           "company": "Syarikat",
@@ -4119,6 +4119,7 @@
           "month": "Bulan",
           "cycle": "Kitaran gaji",
           "apply": "Guna penapis",
+          "search": "Cari",
           "all": "Semua",
           "department": "Jabatan",
           "txnStatus": "Status transaksi",
@@ -4170,10 +4171,16 @@
           "leftOutByScope": "Proses telah disempitkan dan meninggalkan pekerja ini"
         },
         "grid": {
-          "title": "Grid sejarah transaksi",
-          "pickEmployee": "Pilih pekerja",
-          "pickEmployeeHint": "Grid ini menunjukkan setahun gaji seorang pekerja — setiap item gaji di sebelah kiri, setiap bulan di bahagian atas.",
-          "noEmployee": "Pilih pekerja daripada senarai untuk melihat tahun gaji mereka.",
+          "title": "Butiran Transaksi",
+          "pickEmployeeHint": "Skrin ini menunjukkan setahun gaji seorang pekerja — setiap item gaji di sebelah kiri, setiap bulan di bahagian atas.",
+          "noEmployee": "Cari pekerja di bahagian atas untuk melihat tahun gaji mereka.",
+          "search": {
+            "placeholder": "Cari mengikut ID Pekerja atau nama",
+            "ariaLabel": "Cari pekerja",
+            "resultsLabel": "Hasil carian pekerja",
+            "noMatches": "Tiada pekerja sepadan",
+            "clear": "Kosongkan pekerja"
+          },
           "empty": "Tiada sejarah gaji untuk pekerja ini bagi tahun, bulan dan kitaran yang dipilih.",
           "export": "Eksport ke Excel",
           "hideZeroRows": "Sembunyikan baris yang semuanya sifar",
