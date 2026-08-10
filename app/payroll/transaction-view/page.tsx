@@ -103,8 +103,9 @@ export default async function TransactionViewPage({
     status?: string;
     year?: string;
     month?: string;
-    /** 080de5cf (Grid tab only) — repeated params from the month checkboxes, or one comma-joined value
-     *  when the employee panel carries the selection across a switch. `cleanMonths` accepts both. */
+    /** 080de5cf (Transaction Detail tab only) — repeated params from the month tick boxes, or one
+     *  comma-joined value, which is the form the Excel export link carries. `cleanMonths` accepts both,
+     *  so a hand-written ?months=1,2,3 means what the tick boxes mean. */
     months?: string | string[];
     cycle?: string;
     // Individual-tab History filters (feedback 7b2d4228)
@@ -380,10 +381,11 @@ export default async function TransactionViewPage({
   );
 
   return (
-    // 080de5cf — the Grid tab is twelve month columns plus a frozen block, and the reporter's whole point
-    // is that the screen "does not fully utilise the available screen width". So that ONE tab drops the
-    // 6xl reading measure; every other tab keeps it, because a 6-column table stretched across a 32-inch
-    // monitor is worse, not better.
+    // 080de5cf — Transaction Detail is twelve month columns plus a frozen block, and the reporter's whole
+    // point is that the screen "does not fully utilise the available screen width". So that ONE tab drops
+    // the 6xl reading measure; every other tab keeps it, because a 6-column table stretched across a
+    // 32-inch monitor is worse, not better. 98e69987 finished the job by removing the employee rail that
+    // was still eating a fifth of that width.
     <div className={tab === 'grid' ? pageWideCls : 'mx-auto max-w-6xl space-y-6'}>
       <PageHeader title={t('view.title')} description={t('view.subtitle')} />
 
