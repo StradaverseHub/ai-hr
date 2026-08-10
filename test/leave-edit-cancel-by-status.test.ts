@@ -214,7 +214,7 @@ describe('cancelOwnLeave — pending withdraw', () => {
     expect((await rowOf(id)).status).toBe('approved');
 
     // The give-back path (manager-approved) is still open for the approved leave — subject can request it.
-    const gb = await requestLeaveCancellation(subjectCtx, { leaveRequestId: id, cancelDates: ['2026-08-11'] });
+    const gb = await requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: id, cancelDates: ['2026-08-11'] });
     expect(gb.cancellationRequestId).toBeTruthy();
   });
 

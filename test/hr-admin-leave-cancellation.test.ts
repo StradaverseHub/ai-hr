@@ -193,6 +193,7 @@ describe('adminCancelLeave — happy path', () => {
     expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(15); // 20 − 5
 
     const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      today: '2026-08-01',
       leaveRequestId: res.leaveRequestId,
       cancelDates: ['2026-08-12'],
     });
@@ -411,6 +412,7 @@ describe('adminCancelLeave — supersede open give-back', () => {
   it('flips a pending employee cancellation request to rejected (HR as decider) with a supersede flag', async () => {
     const reqId = await approvedThreeDay();
     const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      today: '2026-08-01',
       leaveRequestId: reqId,
       cancelDates: ['2026-08-11'],
     });

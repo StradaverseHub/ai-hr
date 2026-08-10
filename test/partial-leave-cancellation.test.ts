@@ -215,6 +215,7 @@ describe('Partial Leave Cancellation — happy path', () => {
     const annBefore = balBefore.find((x) => x.leaveTypeId === b.annualLeaveTypeId)!;
 
     const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      today: '2026-08-01',
       leaveRequestId: reqId,
       cancelDates: ['2026-08-11'],
     });
@@ -268,6 +269,7 @@ describe('Partial Leave Cancellation — happy path', () => {
     expect(await onLeave(subject.employmentId, '2026-08-11')).toBe(true);
 
     const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      today: '2026-08-01',
       leaveRequestId: res.leaveRequestId,
       cancelDates: ['2026-08-11'],
     });
@@ -298,6 +300,7 @@ describe('Partial Leave Cancellation — reject + cancel-all', () => {
     const before = Number(balBefore.find((x) => x.leaveTypeId === b.annualLeaveTypeId)!.balance);
 
     const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      today: '2026-08-01',
       leaveRequestId: reqId,
       cancelDates: ['2026-08-11'],
     });
@@ -354,7 +357,7 @@ describe('Partial Leave Cancellation — gates', () => {
       endDate: '2026-08-12',
     });
     await expect(
-      requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
+      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
     ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
   });
 
@@ -373,7 +376,7 @@ describe('Partial Leave Cancellation — gates', () => {
     });
     await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
     await expect(
-      requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-10'] }),
+      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-10'] }),
     ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
   });
 
@@ -391,7 +394,7 @@ describe('Partial Leave Cancellation — gates', () => {
     });
     await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
     await expect(
-      requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
+      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
     ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
   });
 
@@ -416,7 +419,7 @@ describe('Partial Leave Cancellation — gates', () => {
     await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: '2026-08-12', decision: 'approved' });
     // Cancelling the REJECTED interior date is invalid (not in the approved/cancel-eligible set).
     await expect(
-      requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
+      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
     ).rejects.toBeInstanceOf(LeaveCancellationDateInvalidError);
     // Cancelling an APPROVED date succeeds.
     const ok = await requestLeaveCancellation(subjectCtx, {
@@ -510,14 +513,14 @@ describe('Partial Leave Cancellation — gates', () => {
       employerCost: '5600.00',
     });
     await expect(
-      requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-11'] }),
+      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: reqId, cancelDates: ['2026-08-11'] }),
     ).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
   });
 
   it('cannot cancel a date outside the span', async () => {
     const reqId = await approvedThreeDay();
     await expect(
-      requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-20'] }),
+      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: reqId, cancelDates: ['2026-08-20'] }),
     ).rejects.toBeInstanceOf(LeaveCancellationDateInvalidError);
   });
 });
@@ -525,10 +528,10 @@ describe('Partial Leave Cancellation — gates', () => {
 describe('Partial Leave Cancellation — concurrency', () => {
   it('a second pending request overlapping the first is rejected (no double-restore)', async () => {
     const reqId = await approvedThreeDay();
-    await requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-11'] });
+    await requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: reqId, cancelDates: ['2026-08-11'] });
     // A second request that also targets 11 Aug must be rejected while the first is still pending.
     await expect(
-      requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-11', '2026-08-12'] }),
+      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: reqId, cancelDates: ['2026-08-11', '2026-08-12'] }),
     ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
   });
 });
@@ -538,13 +541,14 @@ describe('Partial Leave Cancellation — authz / RLS', () => {
     const reqId = await approvedThreeDay();
     // Manager (who can SEE the leave via RLS) must NOT be able to insert a cancellation — subject-only.
     await expect(
-      requestLeaveCancellation(mgrCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-11'] }),
+      requestLeaveCancellation(mgrCtx, { today: '2026-08-01', leaveRequestId: reqId, cancelDates: ['2026-08-11'] }),
     ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
   });
 
   it('a non-manager peer cannot decide; self-approval is banned; the manager can', async () => {
     const reqId = await approvedThreeDay();
     const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      today: '2026-08-01',
       leaveRequestId: reqId,
       cancelDates: ['2026-08-11'],
     });
@@ -567,6 +571,7 @@ describe('Partial Leave Cancellation — authz / RLS', () => {
   it('the subject CAN read their own cancellation request under RLS (positive grant check)', async () => {
     const reqId = await approvedThreeDay();
     const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      today: '2026-08-01',
       leaveRequestId: reqId,
       cancelDates: ['2026-08-11'],
     });
@@ -592,6 +597,7 @@ describe('Partial Leave Cancellation — carry-forward window consistency', () =
     const carryBefore = before?.carryForwardRemaining ?? 0;
 
     const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      today: '2026-08-01',
       leaveRequestId: reqId,
       cancelDates: ['2026-08-11'],
     });
@@ -612,7 +618,7 @@ describe('R5 Build #2 — iterative (second+) cancellation', () => {
     const balStart = await leaveBalances(subjectCtx, subject.employmentId);
     const annStart = Number(balStart.find((x) => x.leaveTypeId === b.annualLeaveTypeId)!.balance);
 
-    const c1 = await requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-12'] });
+    const c1 = await requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: reqId, cancelDates: ['2026-08-12'] });
     await decideLeaveCancellation(mgrCtx, { cancellationRequestId: c1.cancellationRequestId, decision: 'approved' });
 
     // The original row now belongs to a cancellation-split group: 10–11 approved, 12 cancelled, 13–14 approved.
@@ -630,6 +636,7 @@ describe('R5 Build #2 — iterative (second+) cancellation', () => {
     // SECOND give-back on the SURVIVOR (Thu–Fri 13–14) — this is the previously-BLOCKED path.
     const survivor = await approvedRowCovering(orig1.parentGroupId!, '2026-08-13');
     const c2 = await requestLeaveCancellation(subjectCtx, {
+      today: '2026-08-01',
       leaveRequestId: survivor.id,
       cancelDates: ['2026-08-13'],
     });
@@ -687,7 +694,7 @@ describe('R5 Build #2 — iterative (second+) cancellation', () => {
     });
     // The group has NO 'cancelled' sibling → NOT a cancellation split → still rejected.
     await expect(
-      requestLeaveCancellation(subjectCtx, { leaveRequestId: child.id, cancelDates: ['2026-08-18'] }),
+      requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: child.id, cancelDates: ['2026-08-18'] }),
     ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
   });
 });
@@ -820,7 +827,7 @@ describe('R5 Build #2 — discoverable entry point (read-layer projection)', () 
 
     // Give back the middle day, then the survivor rows must read as cancellation-split survivors so the page
     // keeps showing the "Cancel dates" button on them (iterative-cancellation discoverability).
-    const c = await requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-11'] });
+    const c = await requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: reqId, cancelDates: ['2026-08-11'] });
     await decideLeaveCancellation(mgrCtx, { cancellationRequestId: c.cancellationRequestId, decision: 'approved' });
     const after = await listLeaveRequests(subjectCtx, [b.companyId]);
     const survivors = after.filter((r) => r.status === 'approved' && r.employmentId === subject.employmentId);
