@@ -25,7 +25,11 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
-import { ReprocessForm, type ReprocessCandidate } from '../app/payroll/[batchId]/reprocess/reprocess-form';
+import {
+  ReprocessForm,
+  type ReprocessAddCandidate,
+  type ReprocessCandidate,
+} from '../app/payroll/[batchId]/reprocess/reprocess-form';
 
 // The server action, stubbed. It is a 'use server' module that reaches Postgres on import; what this file
 // is about is the screen in front of it, and the action's own behaviour is proved against a real database
@@ -164,5 +168,95 @@ describe('e440991b — what the form posts', () => {
     expect(screen.getByText('No employees on this run.')).toBeInTheDocument();
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
     expect(submit()).toBeDisabled();
+  });
+});
+
+/**
+ * fbcf706d — THE NEW / PENDING GROUP, proved by rendering for the same reason as everything above it:
+ * `MISSING_MESSAGE` passes tsc, the suite and `next build`, and these rows carry the highest density of
+ * new copy on the screen. The assertions below are on rendered TEXT resolved from the real en.json.
+ */
+const add = (over: Partial<ReprocessAddCandidate> & { employmentId: string }): ReprocessAddCandidate => ({
+  employeeCode: 'A0001',
+  name: 'Siti Aminah',
+  hiredOn: '2026-01-06',
+  outsideScope: false,
+  blockers: [],
+  warnings: [],
+  ...over,
+});
+
+describe('fbcf706d — people eligible for the month with no payslip on the run', () => {
+  it('is not rendered at all when nobody is waiting — the screen is exactly what it was', () => {
+    const { container } = form({ newCandidates: [] });
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(3);
+    expect(screen.queryByText(/New \/ Pending/)).not.toBeInTheDocument();
+  });
+
+  it('lists them above the people already paid, ready-ticked, with the reason on the row', () => {
+    const { container } = form({ newCandidates: [add({ employmentId: 'n1' })] });
+    const tables = [...container.querySelectorAll('table')];
+    // ORDER IS THE POINT: the finding goes above the list you already knew about.
+    expect(tables[0]!.textContent).toContain('Siti Aminah');
+    expect(tables[1]!.textContent).toContain('John Tan');
+    expect(tables[0]!.textContent).toContain('New / Pending');
+    expect(tables[0]!.textContent).toContain('Eligible for this month and has no payslip on this run.');
+    expect(tables[0]!.textContent).toContain('2026-01-06');
+    // Being on this list is itself the finding, so paying them is one press.
+    const box = screen.getAllByRole('checkbox')[0] as HTMLInputElement;
+    expect(box.checked, 'the waiting employee arrived unticked').toBe(true);
+    expect(box.value).toBe('n1');
+    expect(screen.getByText('1 of 4 selected')).toBeInTheDocument();
+  });
+
+  it('somebody the run’s chosen list does not cover arrives UNTICKED, and the row says why', () => {
+    form({ newCandidates: [add({ employmentId: 'n1', outsideScope: true })] });
+    expect((screen.getAllByRole('checkbox')[0] as HTMLInputElement).checked).toBe(false);
+    expect(
+      screen.getByText(/This run was set up for a chosen list of people and this person is not on it/),
+    ).toBeInTheDocument();
+  });
+
+  it('somebody whose record cannot be paid yet is named and CANNOT be ticked', () => {
+    form({ newCandidates: [add({ employmentId: 'n1', blockers: ['missingCompensation'], warnings: ['missingBank'] })] });
+    const box = screen.getAllByRole('checkbox')[0] as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    expect(box.disabled, 'a blocked employee could still be submitted').toBe(true);
+    expect(screen.getByText(/Cannot be paid yet — no salary record/)).toBeInTheDocument();
+  });
+
+  it('a warning-only gap is stated but never prevents the add', () => {
+    form({ newCandidates: [add({ employmentId: 'n1', warnings: ['missingStatutory', 'missingBank'] })] });
+    const box = screen.getAllByRole('checkbox')[0] as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    expect(box.disabled).toBe(false);
+    expect(screen.getByText(/Also missing: statutory details, bank details/)).toBeInTheDocument();
+  });
+
+  it('the review restates the addition separately from the recalculation', async () => {
+    const user = userEvent.setup();
+    form({ newCandidates: [add({ employmentId: 'n1' })] });
+    await user.click(screen.getAllByRole('checkbox')[1]!); // John Tan, already paid
+    const review = screen.getByText(/Before you submit/).closest('div') as HTMLElement;
+    expect(review.textContent).toContain('2 of 4 employee(s)');
+    // "The other N payslips are not touched" counts PAYSLIPS — an addition has none to leave alone.
+    expect(review.textContent).toContain('The other 2 payslip(s) are not touched');
+    expect(review.textContent).toContain('1 of them are being added to this run for the first time');
+  });
+
+  it('posts the additions alongside the recalculations, in one id list', () => {
+    const { container } = form({ newCandidates: [add({ employmentId: 'n1' })], preselectedIds: ['e3'] });
+    const data = new FormData(container.querySelector('form') as HTMLFormElement);
+    expect(data.getAll('employmentIds').sort()).toEqual(['e3', 'n1']);
+  });
+
+  it('both groups carry the same Status and Reason columns', () => {
+    const { container } = form({ newCandidates: [add({ employmentId: 'n1' })] });
+    for (const table of [...container.querySelectorAll('table')]) {
+      const head = table.querySelector('thead')!.textContent!;
+      expect(head).toContain('Status');
+      expect(head).toContain('Reason');
+    }
+    expect(container.querySelectorAll('table')[1]!.textContent).toContain('Already paid on this run');
   });
 });

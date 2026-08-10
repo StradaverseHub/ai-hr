@@ -1,13 +1,13 @@
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, getReprocessJob, listBatches, reprocessEligibility } from '@/core/payroll';
+import { batchDetail, getReprocessJob, listBatches, listPayslipLessEligible, reprocessEligibility } from '@/core/payroll';
 import { listRecomputeDisclosure } from '@/core/payroll-view';
 import type { StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
-import { ReprocessForm, type ReprocessCandidate } from './reprocess-form';
+import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } from './reprocess-form';
 
 /**
  * e440991b — REPROCESS SELECTED EMPLOYEES, a screen of its own.
@@ -148,6 +148,21 @@ export default async function ReprocessPage({
     reprocessedTimes: Math.max(0, (sl.version ?? 1) - 1),
   }));
 
+  // fbcf706d — everyone eligible for this month with NO payslip on this run. Until now nothing on any
+  // screen said these people existed, and the only way to pay them was Reset, which throws away the
+  // month's processing and its record and re-runs the whole company. The read resolves the SAME period
+  // window the engine computes and calls the same readiness checks, so what is listed here is what
+  // pressing the button will actually do. Plain serialisable data — no closures cross to the client.
+  const newCandidates: ReprocessAddCandidate[] = (await listPayslipLessEligible(s, { batchId })).map((r) => ({
+    employmentId: r.employmentId,
+    employeeCode: r.employeeCode,
+    name: r.name,
+    hiredOn: r.hiredOn,
+    outsideScope: r.outsideScope,
+    blockers: r.blockers,
+    warnings: r.warnings,
+  }));
+
   // 97a9b0ab — every recomputation this run has had, each diffed against the calculation it replaced
   // with the cause named. It reads `payroll_employee_result_history`, NOT domain events, so the Audit
   // Trail does not carry it: this page is now its ONLY reader, which is why point 4 MOVED it here
@@ -158,7 +173,13 @@ export default async function ReprocessPage({
   // id belonging to another batch is ignored rather than rendered under this run's heading.
   const job = sp.job && UUID_RE.test(sp.job) ? await getReprocessJob(s, sp.job) : null;
   const thisJob = job && job.batchId === batchId ? job : null;
-  const jobResult = (thisJob?.result ?? null) as { reprocessed?: number; headcount?: number } | null;
+  const jobResult = (thisJob?.result ?? null) as {
+    reprocessed?: number;
+    headcount?: number;
+    /** fbcf706d — how many of the above JOINED the run rather than being recalculated on it. */
+    added?: number;
+    recalculated?: number;
+  } | null;
   // The history rows THIS job wrote: its own employments, written at or after it was enqueued. The
   // recompute runs inline between enqueue and completion, so that window holds exactly this job's rows
   // and the card below can show the EARLIER ones as what they are — the record of past reprocessing.
@@ -207,7 +228,10 @@ export default async function ReprocessPage({
             {t('reprocessResultTitle', {
               n: jobResult?.reprocessed ?? thisJob.employmentIds.length,
               total: jobResult?.headcount ?? slips.length,
-            })}{' '}
+            })}
+            {/* fbcf706d — "N of M recalculated" is not what happened when some of the N had never been
+                on the run. The split is stated rather than folded into the recalculation count. */}
+            {(jobResult?.added ?? 0) > 0 && ` · ${t('reprocessResultAddedCount', { n: jobResult!.added! })}`}{' '}
             · {thisJob.updatedAt.toISOString().slice(0, 16).replace('T', ' ')}
           </div>
           <div className="overflow-x-auto">
@@ -224,6 +248,10 @@ export default async function ReprocessPage({
               <tbody className="divide-y divide-border">
                 {jobRows.map((r) => {
                   const moved = movedLabels(r);
+                  // fbcf706d — an ADD has no previous calculation, so every figure on it "moved" from
+                  // zero and the diff would read as a pay rise from nothing. It is rendered as the event
+                  // it actually is; `action` is what the engine recorded, not something re-derived here.
+                  const isAdd = r.action === 'add';
                   return (
                     <tr key={r.id}>
                       <td className="px-3 py-2">
@@ -237,24 +265,28 @@ export default async function ReprocessPage({
                           calculation — a results screen that re-derived the figures could disagree with
                           the payslip it claims to describe. */}
                       <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
-                        {money(r.diff.netBefore)}
+                        {isAdd ? '—' : money(r.diff.netBefore)}
                       </td>
                       <td
                         className={`whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums ${
-                          r.diff.netChanged ? 'text-emerald-700 dark:text-emerald-400' : ''
+                          isAdd || r.diff.netChanged ? 'text-emerald-700 dark:text-emerald-400' : ''
                         }`}
                       >
                         {money(r.diff.netAfter)}
                       </td>
                       <td className="px-3 py-2 text-xs">
-                        {moved.length === 0
-                          ? t('reprocessNothingMoved')
-                          : r.diff.netChanged
-                            ? moved.join(', ')
-                            : `${moved.join(', ')} — ${t('reprocessPayUnchanged')}`}
+                        {isAdd
+                          ? t('reprocessResultAdded')
+                          : moved.length === 0
+                            ? t('reprocessNothingMoved')
+                            : r.diff.netChanged
+                              ? moved.join(', ')
+                              : `${moved.join(', ')} — ${t('reprocessPayUnchanged')}`}
                       </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {r.priorMonths.length > 0
+                        {isAdd
+                          ? t('reprocessWhyAdded')
+                          : r.priorMonths.length > 0
                           ? t('reprocessWhyPriorMonths', { periods: r.priorMonths.join(', ') })
                           : r.diff.rulesetChanged
                             ? t('reprocessWhyRuleset', {
@@ -289,10 +321,16 @@ export default async function ReprocessPage({
                 Reset-and-regenerate is the path that does, and saying so here is the only place the
                 operator can act on it. */}
             {t('reprocessHint')} {t('reprocessDoesNotCollect')}
+            {/* fbcf706d — the sentence above is still true of a CORRECTION and stops being true of an
+                ADDITION, whose first payslip collects the one-offs already waiting for that person
+                exactly as the original processing would have. Saying only the first half would now be
+                a false reassurance, so the second half is stated whenever the group is on screen. */}
+            {newCandidates.length > 0 && ` ${t('reprocessNewCollects')}`}
           </p>
           <ReprocessForm
             batchId={batchId}
             employees={candidates}
+            newCandidates={newCandidates}
             preselectedIds={preselectedIds}
             currency={currency}
           />
@@ -309,13 +347,19 @@ export default async function ReprocessPage({
           <ul className="divide-y divide-border">
             {earlier.map((r) => {
               const d = r.diff;
+              // fbcf706d — same rule as the results panel above: an entry with no previous calculation
+              // is an ADDITION, and "revision ? → 1, gross 0.00 → 4,000.00" describes something that
+              // never happened. Older entries all carry action 'reprocess', so they read as before.
+              const isAdd = r.action === 'add';
               return (
                 <li key={r.id} className="space-y-2 px-4 py-3 text-sm">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-medium">{r.employeeName}</span>
                     {r.employeeCode && <EmployeeCode code={r.employeeCode} />}
                     <span className="text-xs text-muted-foreground">
-                      {t('disclosureRevision', { before: d.versionBefore ?? '?', after: d.versionAfter ?? '?' })}
+                      {isAdd
+                        ? t('reprocessResultAdded')
+                        : t('disclosureRevision', { before: d.versionBefore ?? '?', after: d.versionAfter ?? '?' })}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {r.at.toISOString().slice(0, 16).replace('T', ' ')}
@@ -329,11 +373,19 @@ export default async function ReprocessPage({
                       gross only, so a correction that moved take-home pay by tax alone read as "no
                       change". */}
                   <p className="text-xs text-muted-foreground">
-                    {t('reprocessColNetBefore')} {money(d.netBefore)} → {t('reprocessColNetAfter')}{' '}
-                    <span className="font-medium text-foreground">{money(d.netAfter)}</span>
+                    {isAdd ? (
+                      <>
+                        {t('colNet')} <span className="font-medium text-foreground">{money(d.netAfter)}</span>
+                      </>
+                    ) : (
+                      <>
+                        {t('reprocessColNetBefore')} {money(d.netBefore)} → {t('reprocessColNetAfter')}{' '}
+                        <span className="font-medium text-foreground">{money(d.netAfter)}</span>
+                      </>
+                    )}
                   </p>
 
-                  {d.moved.length === 0 ? (
+                  {isAdd ? null : d.moved.length === 0 ? (
                     <p className="text-xs text-muted-foreground">{t('disclosureNoMove')}</p>
                   ) : (
                     <>
