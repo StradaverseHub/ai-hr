@@ -435,17 +435,33 @@ export async function prefillLoansForBatch(
  * `appliedLoanCentsByEmp` — per-employment ACTUAL loan cents recovered this cycle (Σ clamped slipLoan). The
  * reserved repayments of an employment are applied in order against this budget; the unfunded remainder of
  * any reservation re-schedules and the loan stays active (C2/H1/H3 fix — never a silent write-off).
+ *
+ * `onlyEmploymentIds` (fbcf706d) — OPTIONAL narrowing to a named set of employments. Omitted ⇒ every
+ * reservation on the batch, which is what a full draft→processed generation means and is byte-identical to
+ * the pre-fbcf706d behaviour. It is passed ONLY by the selective-reprocess path when it ADDS someone who
+ * had no payslip on this run: that person's instalment has just been deducted for the first time, so their
+ * ledger must advance, while everyone else's was already advanced at the original processing and must not
+ * move again. An empty array means "nobody" and is honoured as such (never widened to "all") — a caller
+ * that computed an empty set wants no ledger movement at all.
  */
 export async function applyLoansForBatch(
   tx: Tx,
   ctx: SessionContext,
   batchId: string,
   appliedLoanCentsByEmp: Map<string, number>,
+  onlyEmploymentIds?: string[],
 ): Promise<void> {
+  if (onlyEmploymentIds && onlyEmploymentIds.length === 0) return;
   const reserved = await tx
     .select()
     .from(loanRepayment)
-    .where(and(eq(loanRepayment.reservedBatchId, batchId), eq(loanRepayment.status, 'reserved')));
+    .where(
+      and(
+        eq(loanRepayment.reservedBatchId, batchId),
+        eq(loanRepayment.status, 'reserved'),
+        onlyEmploymentIds ? inArray(loanRepayment.employmentId, onlyEmploymentIds) : undefined,
+      ),
+    );
   // A mutable per-employment running budget (copy of the actual-applied cents) consumed in reservation order.
   const remaining = new Map<string, number>(appliedLoanCentsByEmp);
   for (const rep of reserved) {

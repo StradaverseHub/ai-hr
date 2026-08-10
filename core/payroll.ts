@@ -203,6 +203,70 @@ export class PreProcessBlockedError extends Error {
   }
 }
 
+/**
+ * fbcf706d — a posted reprocess id that is NEITHER on this run NOR eligible to join it.
+ *
+ * Until now the selective path only intersected the posted ids with the COMPANY, so a company-mate who
+ * had never been part of the run was accepted and then silently dropped by the period/scope filters —
+ * the operator saw "N reprocessed" for a person nothing had happened to. Now every posted id must be
+ * one of two things (a payslip on this run, or period-eligible with none) and anything else is named.
+ */
+export class ReprocessNotOnBatchError extends Error {
+  constructor(public readonly rows: { employmentId: string; name: string; employeeCode: string | null }[]) {
+    const who = rows.map((r) => (r.employeeCode ? `${r.employeeCode} ${r.name}` : r.name)).join(', ');
+    super(
+      `${who} ${rows.length === 1 ? 'is' : 'are'} not on this payroll run and cannot be added to it: ` +
+        'the employment is not active in this pay period (hired after it ended, or terminated before it began).',
+    );
+    this.name = 'ReprocessNotOnBatchError';
+  }
+}
+
+/**
+ * fbcf706d — someone being ADDED to a processed run is not ready to be paid.
+ *
+ * An add is a FIRST processing for that person, so it gets the same readiness gate a draft→processed run
+ * applies — but run over the added employments ONLY, so a correction to somebody already paid is never
+ * blocked by an unrelated gap elsewhere on the run. Before this, an added employment with no open salary
+ * record was dropped by the earnings inner join and the run refused with "None of the selected employees
+ * are active in this period.", which named nobody and was not true.
+ */
+export class ReprocessAddBlockedError extends Error {
+  constructor(public readonly rows: { employmentId: string; name: string; employeeCode: string | null; gap: string }[]) {
+    const who = rows.map((r) => `${r.employeeCode ? `${r.employeeCode} ` : ''}${r.name} (${r.gap})`).join('; ');
+    super(
+      `Cannot add ${rows.length} employee${rows.length === 1 ? '' : 's'} to this payroll run — ` +
+        `their Personnel record is not ready: ${who}. Nothing was changed.`,
+    );
+    this.name = 'ReprocessAddBlockedError';
+  }
+}
+
+/**
+ * fbcf706d — an ADD whose payslip would pay a claim allowance that no claim on this run accounts for.
+ *
+ * THE DOUBLE PAYMENT THIS EXISTS TO STOP. `payroll_input.claim_allowance` is written by the claims
+ * prefill and by nothing else, and the prefill reserves the claim onto the batch at the same moment.
+ * When a full generation then writes no payslip for that employment, it REQUEUES the claim (the link is
+ * cleared, the status stays approved) but leaves the prefilled `claim_allowance` row behind. Adding that
+ * employment to the processed run later would pay the allowance a second time — once here, out of a
+ * payslip that settles nothing, and once again on whichever run picks the requeued claim up.
+ *
+ * Detecting it is exact rather than heuristic: for an employment being added, the claims still reserved
+ * on this batch must account for the allowance its payslip is about to pay, to the cent. Anything else
+ * is a state this path cannot settle safely, so the whole add is refused and nothing is written.
+ */
+export class ReprocessAddClaimUnreconciledError extends Error {
+  constructor(public readonly rows: { employmentId: string; allowance: number; reserved: number }[]) {
+    super(
+      `Cannot add ${rows.length} employee${rows.length === 1 ? '' : 's'} to this payroll run: their payslip would pay ` +
+        rows.map((r) => `a claim allowance of ${r.allowance.toFixed(2)} against ${r.reserved.toFixed(2)} of claims still held on this run`).join('; ') +
+        '. Settle or re-approve the claim first — paying it here would leave it payable again on the next run. Nothing was changed.',
+    );
+    this.name = 'ReprocessAddClaimUnreconciledError';
+  }
+}
+
 /** A typed pay component that v1 cannot compute correctly (a non-payable/BIK or PCB-only taxable
  *  earning) reached payroll generation. Fail-closed rather than silently under-tax (ADR-0025 §5). */
 export class UnsupportedPayComponentError extends Error {
@@ -2296,6 +2360,88 @@ export async function generatePayslips(
         : undefined;
     const scopeConstrained = scopeDeptIds.length > 0 || scopeExplicitIds.length > 0;
 
+    // ── fbcf706d — WHAT, EXACTLY, IS IN THIS SUBSET? ───────────────────────────────────────────────
+    //
+    // The selective path used to know only that a posted employment belonged to the COMPANY. It never
+    // asked whether the id was on this RUN, so a company-mate who had never been part of it was accepted
+    // and then silently removed by the filters below — reported back as "reprocessed" with nothing done.
+    // Now that the screen also offers people who are eligible for the month but have NO payslip here, the
+    // same posted list carries two different kinds of work, and they must be told apart before anything
+    // is computed. Each posted id is classified once, against two facts that cannot drift:
+    //
+    //   EXISTING — a payslip for it already exists on this batch. It was therefore in scope when that
+    //              payslip was written, so this is a recalculation: version bumps, ledgers stay put.
+    //   ADDED    — no payslip here, but the employment is period-active on this company (hired on/before
+    //              the period end, not terminated before the period start). This is a FIRST processing
+    //              for that person on this run: readiness is gated, and the money-side effects a first
+    //              processing performs are performed. The batch SCOPE is deliberately not part of this
+    //              test — an explicit add widens a scoped run on purpose (see the widening below).
+    //
+    // Anything that is neither is refused BY NAME. Note the window here is exactly the one the earnings
+    // query below applies (lte hiredOn periodEnd / terminatedOn null-or-≥ periodStart), read off the
+    // same columns, so a row can never be classified ADDED and then dropped as ineligible.
+    const NO_ROWS_UUID = '00000000-0000-0000-0000-000000000000';
+    const postedSubsetIds = subset ? [...new Set(subset.employmentIds.filter(Boolean))] : [];
+    let addedEmploymentIds: string[] = [];
+    let existingEmploymentIds: string[] = [];
+    if (subset) {
+      const idFilter = postedSubsetIds.length ? postedSubsetIds : [NO_ROWS_UUID];
+      const slipRows = await tx
+        .select({ employmentId: payslip.employmentId })
+        .from(payslip)
+        .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, idFilter)));
+      const hasSlip = new Set(slipRows.map((r) => r.employmentId));
+      const eligibleRows = await tx
+        .select({ id: employment.id, name: person.fullName, employeeCode: employment.employeeCode })
+        .from(employment)
+        .innerJoin(person, eq(person.id, employment.personId))
+        .where(
+          and(
+            eq(employment.companyId, batch.companyId),
+            lte(employment.hiredOn, periodEnd),
+            or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+            inArray(employment.id, idFilter),
+          ),
+        );
+      const eligible = new Map(eligibleRows.map((r) => [r.id, r]));
+      existingEmploymentIds = postedSubsetIds.filter((id) => hasSlip.has(id));
+      addedEmploymentIds = postedSubsetIds.filter((id) => !hasSlip.has(id) && eligible.has(id));
+      const neither = postedSubsetIds.filter((id) => !hasSlip.has(id) && !eligible.has(id));
+      if (neither.length > 0) {
+        // Name them. The ids reached here through the company intersection, so a person row exists; the
+        // fallback covers an id whose employment row vanished between the two statements.
+        const named = await tx
+          .select({ id: employment.id, name: person.fullName, employeeCode: employment.employeeCode })
+          .from(employment)
+          .innerJoin(person, eq(person.id, employment.personId))
+          .where(inArray(employment.id, neither));
+        throw new ReprocessNotOnBatchError(
+          neither.map((id) => {
+            const row = named.find((n) => n.id === id);
+            return { employmentId: id, name: row?.name ?? id, employeeCode: row?.employeeCode ?? null };
+          }),
+        );
+      }
+
+      // READINESS, for the added employments only. preProcessChecksTx is SCOPED to exactly these
+      // employments rather than re-implemented, so what blocks an add is verbatim what blocks a first
+      // processing — and a pre-existing gap belonging to somebody else on the run still cannot block a
+      // correction (which is why the whole-run gate above stays skipped for a subset).
+      if (addedEmploymentIds.length > 0) {
+        const addChecks = await preProcessChecksTx(
+          tx,
+          { companyId: batch.companyId, payPeriod: batch.payPeriod, scope: { employmentIds: addedEmploymentIds } },
+          isModuleEnabled(ctx, 'typed_pay_components'),
+        );
+        const blockedRows = [
+          ...addChecks.missingCompensation.map((r) => ({ ...r, gap: 'no current salary record' })),
+          ...(addChecks.zeroBasic ?? []).map((r) => ({ ...r, gap: 'a salary record that would pay nothing' })),
+          ...(addChecks.unpayablePayMode ?? []).map((r) => ({ ...r, gap: 'a pay structure this system cannot calculate' })),
+        ];
+        if (blockedRows.length > 0) throw new ReprocessAddBlockedError(blockedRows);
+      }
+    }
+
     // f1564110 Phase 2 — attach-on-generate (amends ADR-0056). One-off individual transactions keyed in
     // BEFORE this run existed (batch_id NULL, matching company + pay month) are stamped onto this batch now,
     // inside the same transaction, so the ledger they belong to is the run that pays the month. REGULAR run
@@ -2305,7 +2451,14 @@ export async function generatePayslips(
     // Scope-constrained runs collect only in-scope employees' rows; the rest stay unattached for a later
     // (re)generation or a widened scope. Kernel consumption of the attached rows is Phase 3 (flag-gated);
     // attaching here is the substrate that makes that fold — and the payslip-side audit trail — possible.
-    if (!subset && batch.runType === 'regular') {
+    //
+    // fbcf706d amends the "full generation only" rule in ONE direction: an ADDED employment is having its
+    // first payslip on this run written now, so a one-off already waiting for it (period-keyed, no batch)
+    // belongs to this run exactly as it would have at the original processing. The narrowing to the added
+    // ids is what keeps that true — an employment being RECALCULATED still collects nothing, because its
+    // ledger was attached when it was first paid and re-attaching would pay a later month's row here.
+    const attachForAdded = subset !== null && addedEmploymentIds.length > 0;
+    if ((!subset || attachForAdded) && batch.runType === 'regular') {
       const attachedTxns = await tx
         .update(payrollIndividualTxn)
         .set({ batchId: p.batchId })
@@ -2314,12 +2467,14 @@ export async function generatePayslips(
             isNull(payrollIndividualTxn.batchId),
             eq(payrollIndividualTxn.companyId, batch.companyId),
             eq(payrollIndividualTxn.payPeriod, batch.payPeriod),
-            scopeConstrained
-              ? inArray(
-                  payrollIndividualTxn.employmentId,
-                  scopeEmploymentIds.length ? scopeEmploymentIds : ['00000000-0000-0000-0000-000000000000'],
-                )
-              : undefined,
+            subset
+              ? inArray(payrollIndividualTxn.employmentId, addedEmploymentIds)
+              : scopeConstrained
+                ? inArray(
+                    payrollIndividualTxn.employmentId,
+                    scopeEmploymentIds.length ? scopeEmploymentIds : ['00000000-0000-0000-0000-000000000000'],
+                  )
+                : undefined,
           ),
         )
         .returning({
@@ -2423,7 +2578,13 @@ export async function generatePayslips(
           eq(employment.companyId, batch.companyId),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
-          scopeFilter,
+          // fbcf706d — the batch scope narrows a FULL generation only. On a subset every posted id has
+          // already been classified above as EXISTING (a payslip on this run, so it was in scope when that
+          // payslip was written) or ADDED (an explicit, deliberate widening of a chosen-list run — see the
+          // scope widening in the subset write block). AND-ing the scope filter on top of that classified
+          // set could only delete a row the classification has already authorised, which is precisely the
+          // silent no-op this item exists to remove: on a scoped run an addition computed nothing at all.
+          subset ? undefined : scopeFilter,
           // Selective reprocess (9bc442bc): narrow the recompute to exactly the picked employees, intersected
           // with the company set above so a stale/cross-company id can never widen the run.
           subset
@@ -4129,28 +4290,164 @@ export async function generatePayslips(
     });
 
     // ── Selective reprocess (9bc442bc, reporter #8): delta-update batch totals/GL, keep status
-    //    processed + headcount unchanged, record OCC + before/after per-employee history + status
-    //    history, and DO NOT re-run loan/claim side-effects (already applied at original processing). ──
+    //    processed, record OCC + before/after per-employee history + status history, and DO NOT re-run
+    //    the loan/claim side-effects for anyone already paid (applied at the original processing).
+    //
+    //    fbcf706d splits that last rule in two. It holds, unchanged, for a RECALCULATION — the ledgers
+    //    moved when that payslip was first written. It never held for an ADDITION: that payslip is being
+    //    written for the first time, so its money side-effects have never run, and skipping them is how a
+    //    claim stays payable after being paid and a loan instalment is deducted without leaving the
+    //    balance. Every side-effect below is therefore narrowed to the ADDED employments and to them
+    //    alone; nothing on this branch can touch a row belonging to somebody already on the run. ──
     if (subset) {
+      const computedIds = new Set(emps.map((e) => e.employmentId));
+      // The additions that actually produced a payslip, and the recalculations. Intersected with `emps`
+      // so a classified-ADDED id the earnings query still dropped can never claim a side-effect.
+      const addedNow = new Set(addedEmploymentIds.filter((id) => computedIds.has(id)));
+      const addedNowIds = [...addedNow];
+      const recalculatedCount = emps.length - addedNow.size;
+
       const stored = (batch.totals ?? {}) as Record<string, number>;
       const deltaTotals = { ...totals };
       (Object.keys(deltaTotals) as (keyof typeof deltaTotals)[]).forEach((k) => {
         deltaTotals[k] = round2((Number(stored[k]) || 0) + totals[k] - oldTotals[k]);
       });
-      await tx.update(payrollBatch).set({ totals: deltaTotals }).where(eq(payrollBatch.id, p.batchId));
+      // HEADCOUNT. `payroll_batch.employee_count` had exactly one writer — the full generation — so a run
+      // that gained a person reported its pre-addition number for ever, on the Payroll Process list and on
+      // this screen's own result panel. It is RECOUNTED off the payslips rather than incremented by the
+      // number of additions, so the stored figure is a fact about the run and not a running total that a
+      // failed job could leave one out.
+      const [{ n: payslipCount } = { n: 0 }] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(payslip)
+        .where(eq(payslip.batchId, p.batchId));
+      await tx
+        .update(payrollBatch)
+        .set({ totals: deltaTotals, employeeCount: Number(payslipCount) })
+        .where(eq(payrollBatch.id, p.batchId));
+
+      const actor = subset.actorId ? { type: 'user' as const, id: subset.actorId } : actorOf(ctx);
+
+      // ── SCOPE (fbcf706d work item 5). Some runs are deliberately set up for a chosen list of people.
+      //    Adding someone to such a run is a deliberate widening of that list, and it has to be RECORDED:
+      //    the scope drives every later prefill and re-generation, so an addition that computed a payslip
+      //    without widening would silently vanish the next time the run was regenerated. Written here, in
+      //    the same transaction as the payslip, and never through updateBatchScope — that one is
+      //    draft-only and also deletes payslips outside the new scope, which on a processed run would be
+      //    a data-loss bug. A whole-company run has no list to widen and is left exactly as it was.
+      if (scopeConstrained && addedNowIds.length > 0) {
+        const alreadyInScope = new Set(scopeEmploymentIds);
+        const widenedWith = addedNowIds.filter((id) => !alreadyInScope.has(id));
+        if (widenedWith.length > 0) {
+          const prevScope = (batch.scope ?? null) as BatchScope | null;
+          const nextScope: BatchScope = {
+            ...(prevScope?.departmentIds?.length ? { departmentIds: prevScope.departmentIds } : {}),
+            employmentIds: [...new Set([...(prevScope?.employmentIds ?? []), ...widenedWith])],
+          };
+          await tx.update(payrollBatch).set({ scope: nextScope }).where(eq(payrollBatch.id, p.batchId));
+          await appendEvent(tx, {
+            tenantId: ctx.tenantId,
+            aggregateType: 'payroll-batch',
+            aggregateId: p.batchId,
+            eventType: 'payroll-batch.scope-widened',
+            actor,
+            payload: {
+              batchId: p.batchId,
+              companyId: batch.companyId,
+              payPeriod: batch.payPeriod,
+              addedEmploymentIds: widenedWith,
+              reason: subset.reason ?? null,
+              before: prevScope,
+              after: nextScope,
+            },
+          });
+        }
+      }
+
+      // ── LOAN LEDGER, for the added employments only. `applyLoansForBatch` is already idempotent by
+      //    status (it reads reservations that are still 'reserved' and leaves them 'applied'), and the
+      //    narrowing means a recalculation cannot reach a reservation at all — so an instalment can
+      //    advance the balance exactly once no matter how often the run is reprocessed afterwards.
+      if (addedNowIds.length > 0) {
+        const addedLoanCents = new Map(
+          [...appliedLoanCentsByEmp.entries()].filter(([employmentId]) => addedNow.has(employmentId)),
+        );
+        await applyLoansForBatch(tx, ctx, p.batchId, addedLoanCents, addedNowIds);
+      }
+
+      // ── CLAIMS, for the added employments only, and MARK-PAID ONLY.
+      //
+      //    THE REQUEUE ARM IS DELIBERATELY NOT HERE. On a full generation, "reserved on this batch but
+      //    got no payslip" means the claim was never disbursed, so unlinking it puts it back in the queue.
+      //    On a subset that inference is false: everybody outside the subset also "got no payslip in this
+      //    run", and unlinking their claims would strip claims off people the operator never selected —
+      //    which is how the same claim gets paid a second time on the next run. A subset therefore only
+      //    ever marks paid, and never unlinks.
+      //
+      //    AND IT MARKS PAID ONLY WHAT THE PAYSLIP ACTUALLY PAID. A claim reaches a payslip through
+      //    `payroll_input.claim_allowance`, which is written by the draft-only claims prefill. An
+      //    employment added after processing normally has no such row, so its payslip disburses nothing —
+      //    marking its claim paid there would settle a claim the employee never received. The full
+      //    generation can assume "payslip ⇒ disbursed" because prefill and generation are one workflow;
+      //    an add is not, so the disbursement is checked rather than assumed.
+      const claimAddedIds = addedNowIds.filter((id) => (claimAllowanceByEmp.get(id) ?? 0) > 0);
+      if (claimAddedIds.length > 0) {
+        const addedClaims = await tx
+          .select({ id: claimRequest.id, employmentId: claimRequest.employmentId, amount: claimRequest.amount })
+          .from(claimRequest)
+          .where(
+            and(
+              eq(claimRequest.payrollBatchId, p.batchId),
+              eq(claimRequest.status, 'approved'),
+              inArray(claimRequest.employmentId, claimAddedIds),
+            ),
+          );
+        // …AND WHAT IT PAYS MUST BE ACCOUNTED FOR. See ReprocessAddClaimUnreconciledError: an allowance
+        // with no matching held claim is a claim that was requeued and will be paid again elsewhere.
+        const unreconciled = claimAddedIds
+          .map((id) => ({
+            employmentId: id,
+            allowance: round2(claimAllowanceByEmp.get(id) ?? 0),
+            reserved: round2(
+              addedClaims.filter((c) => c.employmentId === id).reduce((s, c) => s + Number(c.amount), 0),
+            ),
+          }))
+          .filter((r) => r.allowance !== r.reserved);
+        if (unreconciled.length > 0) throw new ReprocessAddClaimUnreconciledError(unreconciled);
+        if (addedClaims.length > 0) {
+          const paidNow = await tx
+            .update(claimRequest)
+            .set({ status: 'paid', paidAt: new Date(), payoutRef: `payroll:${batch.payPeriod}` })
+            .where(inArray(claimRequest.id, addedClaims.map((c) => c.id)))
+            .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId });
+          for (const c of paidNow) {
+            await appendEvent(tx, {
+              tenantId: ctx.tenantId,
+              aggregateType: 'claim-request',
+              aggregateId: c.id,
+              eventType: 'claim-request.paid',
+              actor,
+              subjectEmploymentId: c.employmentId,
+              payload: { via: 'payroll', batchId: p.batchId, added: true },
+            });
+          }
+        }
+      }
 
       // Per-employee before/after result snapshots (dedicated audit table — reporter req.).
       const newSlips = await tx
         .select()
         .from(payslip)
         .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, emps.map((e) => e.employmentId))));
-      const actor = subset.actorId ? { type: 'user' as const, id: subset.actorId } : actorOf(ctx);
       for (const sl of newSlips) {
         await tx.insert(payrollEmployeeResultHistory).values({
           tenantId: ctx.tenantId,
           batchId: p.batchId,
           employmentId: sl.employmentId,
-          action: 'reprocess',
+          // fbcf706d — an ADD is recorded as what it is. `action` is free text and `version_before` is
+          // nullable, so this needs no migration; the null pair is exactly what "there was nothing here
+          // before" means, and it is what stops the disclosure rendering a phantom rise from 0.00.
+          action: addedNow.has(sl.employmentId) ? 'add' : 'reprocess',
           actorType: actor.type,
           actorId: actor.id ?? null,
           reason: subset.reason ?? null,
@@ -4174,8 +4471,13 @@ export async function generatePayslips(
         actorType: actor.type,
         actorId: actor.id ?? null,
         reason: subset.reason ?? null,
-        before: { totals: stored },
-        after: { totals: deltaTotals, reprocessedEmploymentIds: emps.map((e) => e.employmentId) },
+        before: { totals: stored, employeeCount: batch.employeeCount },
+        after: {
+          totals: deltaTotals,
+          employeeCount: Number(payslipCount),
+          reprocessedEmploymentIds: emps.map((e) => e.employmentId),
+          addedEmploymentIds: addedNowIds,
+        },
       });
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
@@ -4187,8 +4489,16 @@ export async function generatePayslips(
           batchId: p.batchId,
           companyId: batch.companyId,
           payPeriod: batch.payPeriod,
+          // `reprocessedCount` keeps its established meaning — every employment this job wrote — so the
+          // existing readers are unmoved. The split beside it is fbcf706d's: how many were corrected and
+          // how many joined the run, which is what the result panel and the audit trail have to say.
           reprocessedCount: emps.length,
-          headcount: batch.employeeCount,
+          recalculatedCount,
+          addedCount: addedNow.size,
+          addedEmploymentIds: addedNowIds,
+          // The headcount AFTER the addition — recounted above. It used to be `batch.employeeCount`, i.e.
+          // the figure from before this job ran, which is what made the result panel under-report.
+          headcount: Number(payslipCount),
           reason: subset.reason ?? null,
           employmentIds: emps.map((e) => e.employmentId),
         },
@@ -4197,7 +4507,13 @@ export async function generatePayslips(
       // is cleared FOR THEM ONLY. A reprocess that covers some of the waiting employees leaves the rest
       // marked, which is the whole point: Close stays refused until every stale employee is dealt with.
       await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
-      return { reprocessed: emps.length, headcount: batch.employeeCount, totals: deltaTotals };
+      return {
+        reprocessed: emps.length,
+        recalculated: recalculatedCount,
+        added: addedNow.size,
+        headcount: Number(payslipCount),
+        totals: deltaTotals,
+      };
     }
 
     await tx
@@ -5433,6 +5749,133 @@ export function preProcessAdvisory(ctx: SessionContext, batchId: string): Promis
       .limit(1);
     if (!batch) return { missingCompensation: [], missingStatutory: [], missingBank: [] };
     return preProcessChecksTx(tx, batch, isModuleEnabled(ctx, 'typed_pay_components'));
+  });
+}
+
+/* ───────── fbcf706d — eligible for this month, no payslip on this run ───────── */
+
+/**
+ * One person who SHOULD be able to be paid on this run and is not on it.
+ *
+ * Carries the `PreProcessCheckRow` identity plus everything the Reprocess screen has to say about them
+ * in a single pass: when the employment was hired, when its record reached the system (the two are
+ * different questions and the second is usually the answer to "why is this person only appearing now"),
+ * whether the run's own chosen-list scope covers them, and the readiness gaps a first processing would
+ * raise — so an added hire who is also missing a bank account renders once, not twice.
+ */
+export type PayslipLessEligibleRow = PreProcessCheckRow & {
+  hiredOn: string;
+  /** When the employment record itself was created — a hire back-dated to 2016 can still be new HERE. */
+  recordCreatedAt: Date;
+  /** The run is scoped to a chosen list and this person is NOT on it, so adding them widens that list. */
+  outsideScope: boolean;
+  /** Readiness BLOCKERS (no salary record / would pay nothing / uncalculable pay structure). */
+  blockers: string[];
+  /** Readiness WARNINGS (no statutory profile / no bank details). Never prevent the add. */
+  warnings: string[];
+};
+
+/**
+ * WHO IS ELIGIBLE FOR THIS MONTH AND HAS NO PAYSLIP ON THIS RUN (fbcf706d work item 1).
+ *
+ * The gap this closes: when a person is added to a company after that month's run has been processed,
+ * nothing on any screen says so, and the only way to pay them has been Reset — which throws away the
+ * whole month's processing and its record and re-runs the entire company.
+ *
+ * WHY IT IS BUILT AS A SIBLING OF `preProcessChecksTx` RATHER THAN A NEW QUERY. The list is only useful
+ * if pressing the button actually pays the person, so this read has to mean exactly what the engine
+ * computes. It therefore reuses the SAME period window as the earnings query (hired on/before the period
+ * end, not terminated before the period start) and, for the readiness columns, calls `preProcessChecksTx`
+ * itself — scoped to precisely these employments — rather than restating any of its rules. A row appears
+ * here if and only if the engine would compute a payslip for it, or would refuse for a reason named on
+ * the row.
+ *
+ * SCOPE IS REPORTED, NOT APPLIED. Ten of twenty-one processed runs on production are set up for a chosen
+ * list of people. Filtering those people out would hide exactly the person the operator is looking for;
+ * silently including them would widen a deliberately narrow run by accident. So they are listed with
+ * `outsideScope` set, the screen leaves them unticked, and ticking one is the deliberate widening the
+ * engine then records (`payroll-batch.scope-widened`).
+ *
+ * Read-only — no event (CLAUDE.md derived-read rule).
+ */
+export function listPayslipLessEligible(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<PayslipLessEligibleRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        scope: payrollBatch.scope,
+        status: payrollBatch.status,
+      })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    // A draft has no payslips at all, so "everyone eligible with no payslip" would be the whole company —
+    // a true answer to a question nobody asked. This read exists for a run that has already been processed.
+    if (!batch || batch.status !== 'processed') return [];
+
+    const [y, m] = batch.payPeriod.split('-').map(Number);
+    const periodStart = `${batch.payPeriod}-01`;
+    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(y, m)).padStart(2, '0')}`;
+
+    const rows = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        employeeCode: employment.employeeCode,
+        hiredOn: employment.hiredOn,
+        recordCreatedAt: employment.createdAt,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          eq(employment.companyId, batch.companyId),
+          lte(employment.hiredOn, periodEnd),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+          // NOT EXISTS a payslip for this employment on this batch. Correlated rather than a NOT IN over a
+          // fetched id list: the id list is unbounded in company size and a NULL in it would swallow the row.
+          sql`not exists (select 1 from ${payslip} where ${payslip.batchId} = ${p.batchId} and ${payslip.employmentId} = ${employment.id})`,
+        ),
+      )
+      .orderBy(desc(employment.createdAt), person.fullName);
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((r) => r.employmentId);
+    const checks = await preProcessChecksTx(
+      tx,
+      { companyId: batch.companyId, payPeriod: batch.payPeriod, scope: { employmentIds: ids } },
+      isModuleEnabled(ctx, 'typed_pay_components'),
+    );
+    const flagsOf = (list: PreProcessCheckRow[] | undefined, label: string) =>
+      (list ?? []).map((r) => [r.employmentId, label] as const);
+    const blockerBy = new Map<string, string[]>();
+    const warningBy = new Map<string, string[]>();
+    const push = (map: Map<string, string[]>, pairs: readonly (readonly [string, string])[]) => {
+      for (const [id, label] of pairs) map.set(id, [...(map.get(id) ?? []), label]);
+    };
+    push(blockerBy, flagsOf(checks.missingCompensation, 'missingCompensation'));
+    push(blockerBy, flagsOf(checks.zeroBasic, 'zeroBasic'));
+    push(blockerBy, flagsOf(checks.unpayablePayMode, 'unpayablePayMode'));
+    push(warningBy, flagsOf(checks.missingStatutory, 'missingStatutory'));
+    push(warningBy, flagsOf(checks.missingBank, 'missingBank'));
+
+    const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, (batch.scope ?? null) as BatchScope | null);
+    const inScope = scopeIds ? new Set(scopeIds) : null;
+
+    return rows.map((r) => ({
+      employmentId: r.employmentId,
+      name: r.name,
+      employeeCode: r.employeeCode,
+      hiredOn: r.hiredOn,
+      recordCreatedAt: r.recordCreatedAt,
+      outsideScope: inScope ? !inScope.has(r.employmentId) : false,
+      blockers: blockerBy.get(r.employmentId) ?? [],
+      warnings: warningBy.get(r.employmentId) ?? [],
+    }));
   });
 }
 

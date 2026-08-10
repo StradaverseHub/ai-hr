@@ -147,7 +147,7 @@ describe('fbcf706d — the selective-reprocess path against an employment with N
     expect(Number(totalsAfter.net) - Number(totalsBefore.net ?? 0)).toBeCloseTo(Number(addedSlip!.netPay), 2);
   });
 
-  it('but WITHOUT an open compensation row it is dropped by the inner join, and the refusal is untruthful', async () => {
+  it('but WITHOUT an open compensation row it is refused BY NAME, and nothing on the run moves', async () => {
     const paid = await hire('Paid Two', 'paidtwo@acme.test', '900101011234', '2026-01-01');
     await setCompensation(a, {
       employmentId: paid.employmentId,
@@ -159,12 +159,18 @@ describe('fbcf706d — the selective-reprocess path against an employment with N
     await generatePayslips(a, { batchId: b.batchId });
 
     // Period-eligible in every respect the operator can see — hired, not terminated, on this company —
-    // but with no salary on record, so the earnings inner join at core/payroll.ts:2412-2419 drops them.
+    // but with no salary on record, so the earnings inner join would drop them.
+    //
+    // BEFORE fbcf706d this produced "None of the selected employees are active in this period.", which
+    // named nobody and was not true: the employee IS active in the period, they have no salary record.
+    // The add path now runs the SAME readiness gate a first processing runs, over the added employments
+    // only, so the refusal says who and why. This assertion was rewritten rather than deleted — it is the
+    // exact failure the item exists to replace, and it must keep failing, just truthfully.
     const noPay = await hire('No Salary', 'nosalary@acme.test', '900101013333', '2026-02-01');
 
     await expect(
       reprocessSelectedEmployees(a, { batchId: b.batchId, employmentIds: [noPay.employmentId] }),
-    ).rejects.toThrow(/None of the selected employees are active in this period/);
+    ).rejects.toThrow(/No Salary \(no current salary record\)/);
 
     // It fails CLOSED: no payslip was written for them and the run is unchanged.
     expect(await slipOf(b.batchId, noPay.employmentId)).toBeNull();
