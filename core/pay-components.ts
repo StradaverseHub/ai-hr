@@ -22,6 +22,9 @@ import {
 import { countryPacks } from '../localization/registry';
 import type { PayComponentSeed, PcbExemptionTable, PcbRemunerationType } from '../localization/country-pack';
 import { parseCsvRecords } from '../lib/csv';
+// 2f889bae — date-only arithmetic, UTC by design (the repo rule: only "what date is this INSTANT" goes
+// through the tenant timezone). core/roster.ts already imports from this module, so no new pack edge.
+import { addDaysIso } from '../lib/roster-month';
 import {
   payRuleDependencies as payRuleDependenciesOf,
   payRuleDerivesAmount,
@@ -1225,7 +1228,7 @@ export function setEmploymentPayComponent(
     // legitimate zero-allowance seed rows only (allowZeroAmount).
     if (!p.allowZeroAmount && !(p.amount > 0)) throw new FixedTransactionAmountError();
     const [cur] = await tx
-      .select({ id: employmentPayComponent.id })
+      .select({ id: employmentPayComponent.id, validFrom: employmentPayComponent.validFrom })
       .from(employmentPayComponent)
       .where(
         and(
@@ -1237,9 +1240,39 @@ export function setEmploymentPayComponent(
       )
       .limit(1);
     if (cur) {
-      // Close the prior OPEN row at the new effectiveFrom. This truncates a window that ran past the new
-      // start (the supersession case the panel flagged) so there is no double-count.
-      await tx.update(employmentPayComponent).set({ validTo: p.effectiveFrom }).where(eq(employmentPayComponent.id, cur.id));
+      // 2f889bae — CLOSE THE PRIOR ROW THE DAY BEFORE THE NEW ONE STARTS, NOT ON IT.
+      //
+      // This used to set validTo = effectiveFrom and the comment claimed "so there is no double-count".
+      // That was false, and it had already overpaid on issued payslips. `validTo` is INCLUSIVE for pay
+      // components — the kernel selects validFrom <= periodEnd AND (validTo IS NULL OR validTo >=
+      // periodStart) and pays each returned row its FULL amount for the period — so closing ON the new
+      // start date leaves BOTH rows inside the month that contains it, and the item pays twice.
+      //
+      // WHY NOT FIX THE KERNEL INSTEAD: flipping that gte to gt would silently change what every EXISTING
+      // end-dated row pays in its final month. This changes only new writes.
+      //
+      // WHY compensation GETS AWAY WITH THE SAME LINE (core/comp.ts): its kernel reads a single open row
+      // and its compensation_no_overlap EXCLUDE constraint uses a HALF-OPEN daterange, so valid_to is
+      // exclusive there. Same writer shape, opposite boundary semantics — do not "align" one to the other
+      // without changing the reader that goes with it.
+      if (p.effectiveFrom < cur.validFrom) {
+        // Closing at effectiveFrom-1 would write an end date before the row's own start. Previously this
+        // wrote an inverted row silently; production still carries one from before this guard.
+        throw new FixedTransactionDateError();
+      }
+      if (p.effectiveFrom === cur.validFrom) {
+        // The prior row would cover zero days. Supersede it rather than closing it into an inverted
+        // window — a restatement from the row's own start date replaces it outright.
+        await tx
+          .update(employmentPayComponent)
+          .set({ supersededAt: sql`now()` })
+          .where(eq(employmentPayComponent.id, cur.id));
+      } else {
+        await tx
+          .update(employmentPayComponent)
+          .set({ validTo: addDaysIso(p.effectiveFrom, -1) })
+          .where(eq(employmentPayComponent.id, cur.id));
+      }
     }
     const [row] = await tx
       .insert(employmentPayComponent)

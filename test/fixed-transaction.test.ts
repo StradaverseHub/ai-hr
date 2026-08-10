@@ -213,6 +213,90 @@ describe('1.2.1 Fixed Transaction', () => {
     return Number((await payslipOf(batchId)).allowance);
   }
 
+  // ───────────────────── 2f889bae: the regression that pays money, not row shape ─────────────────────
+  // THE TEST THAT WOULD HAVE CAUGHT IT. The pre-existing "no double-count" cases assert the ROW SHAPE after
+  // a supersession and never generate a payslip, so they stayed green while the defect paid twice on real
+  // payslips. This one restates an item INSIDE the month being paid and reads the money.
+  //
+  // Before the fix the prior row was closed ON the new start date; validTo is INCLUSIVE, so both rows sat
+  // in May and the kernel paid each its FULL amount — 777 + 777. Four employments on production carried
+  // overlapping rows this way and three issued payslips overpaid.
+  it('restating an item at a MONTH BOUNDARY pays it once — the production case', async () => {
+    // This is the shape that actually overpaid on production: a prior row ending ON the new start date
+    // (2026-01-01 -> 2026-08-01 alongside 2026-08-01 -> open). Closing the day before moves the old row
+    // out of the paid month entirely.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'BoundaryRestate', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    const basicId = await codeId(a, 'BASIC');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 1000, effectiveFrom: '2026-01-01' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-01-01', prorateOverride: false });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-05-01', prorateOverride: false });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
+    // 777, not 1554. Asserted as a number so a failure prints the doubled figure.
+    expect(Number((await payslipOf(batchId)).allowance)).toBeCloseTo(777, 2);
+  });
+
+  // ⚠️ STILL BROKEN, DELIBERATELY RECORDED — restating an item MID-MONTH still pays it twice.
+  //
+  // Closing the prior row the day before the new start is necessary but NOT sufficient. For a restatement
+  // inside the month being paid, the two windows are adjacent (…-05-09 and 05-10-…) and BOTH overlap May,
+  // and the kernel pays each row its FULL amount for any overlap (core/payroll.ts documents that rule
+  // explicitly). So the item pays 777 + 777.
+  //
+  // Fixing it is a DESIGN DECISION, not a patch: either prorate a partial window by days, or take the
+  // latest row per code per period, or refuse a restatement that lands mid-period. Each changes what
+  // existing correctly-dated rows pay, so it belongs with board item 2f889bae and its owner, not here.
+  //
+  // Recorded with it.fails on purpose (the same idiom this repo uses for the known width no-op): the gate
+  // goes RED the moment someone fixes it, which is the prompt to delete this block and assert 777.
+  it.fails('KNOWN: restating an item mid-month still pays it twice', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'MidMonthRestate', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    const basicId = await codeId(a, 'BASIC');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 1000, effectiveFrom: '2026-01-01' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-01-01', prorateOverride: false });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-05-10', prorateOverride: false });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
+    expect(Number((await payslipOf(batchId)).allowance)).toBeCloseTo(777, 2);
+  });
+
+  it('restating an item from its OWN start date supersedes it rather than inverting the window', async () => {
+    // Closing at effectiveFrom-1 would write an end date before the row's own start. Production still
+    // carries one such row from before this guard existed.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'SameDayRestate', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id: first } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-03-01' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 250, effectiveFrom: '2026-03-01' });
+    const firstRow = await rowOf(first);
+    expect(firstRow.supersededAt, 'a zero-day row must be superseded, never closed into an inverted window').not.toBeNull();
+    expect(firstRow.validTo).toBeNull();
+  });
+
+  it('refuses a restatement dated BEFORE the row it would close', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'BackwardRestate', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-03-01' });
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 250, effectiveFrom: '2026-02-01' }),
+    ).rejects.toBeInstanceOf(FixedTransactionDateError);
+  });
+
   it('window boundaries: validTo == periodStart is INCLUDED (inclusive gte)', async () => {
     expect(await appliedInMay('2026-01-01', '2026-05-01')).toBeCloseTo(777, 2);
   });
@@ -265,12 +349,15 @@ describe('1.2.1 Fixed Transaction', () => {
 
     // 1) An OPEN item (validTo null).
     const { id: open } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: '2026-01-01' });
-    // 2) A new value effective mid-stream — the existing OPEN row is closed at the new effectiveFrom.
+    // 2) A new value effective mid-stream — the existing OPEN row is closed the DAY BEFORE the new start.
     const { id: next } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 600, effectiveFrom: '2026-04-01' });
 
     const openRow = await rowOf(open);
     const nextRow = await rowOf(next);
-    expect(openRow.validTo).toBe('2026-04-01'); // truncated at the new start — no overlap
+    // 2f889bae — this used to assert '2026-04-01' and called it "no overlap". It WAS an overlap: validTo is
+    // INCLUSIVE for pay components, so both rows sat in April and the item paid twice. That is not
+    // hypothetical — it reached issued payslips before this was fixed.
+    expect(openRow.validTo).toBe('2026-03-31'); // closed the day before the new start — no overlap
     expect(nextRow.validFrom).toBe('2026-04-01');
     expect(nextRow.validTo).toBeNull();
   });
@@ -301,12 +388,13 @@ describe('1.2.1 Fixed Transaction', () => {
     const housing = list.filter((r) => r.code === 'HOUSING');
     const cola = list.filter((r) => r.code === 'COLA');
 
-    // Both ALLOWANCE rows surface: the ended one (validTo = 2026-03-01) and the open one (validTo null).
+    // Both ALLOWANCE rows surface: the ended one (validTo = 2026-02-28, the day before the new start —
+    // see 2f889bae) and the open one (validTo null).
     expect(allow).toHaveLength(2);
     const allowOpen = allow.find((r) => r.validTo == null)!;
     const allowEnded = allow.find((r) => r.validTo != null)!;
     expect(Number(allowOpen.amount)).toBeCloseTo(200, 2);
-    expect(allowEnded.validTo).toBe('2026-03-01');
+    expect(allowEnded.validTo).toBe('2026-02-28');
     // The ended HOUSING row IS returned, with its end-date + remarks intact for the "ended" badge.
     expect(housing).toHaveLength(1);
     expect(housing[0].validTo).toBe('2026-02-28');
@@ -504,7 +592,8 @@ describe('1.2.1 Fixed Transaction', () => {
     expect(edited).not.toBe(original);
     const orig = await rowOf(original);
     const now = await rowOf(edited);
-    expect(orig.validTo).toBe('2026-04-01'); // prior window truncated at the new start — no overlap/double-count
+    // 2f889bae — was '2026-04-01', which overlapped the new row for the whole of April and double-paid.
+    expect(orig.validTo).toBe('2026-03-31'); // closed the day before the new start — no overlap
     expect(orig.supersededAt).toBeNull();
     expect(Number(now.amount)).toBeCloseTo(600, 2);
     expect(now.validFrom).toBe('2026-04-01');

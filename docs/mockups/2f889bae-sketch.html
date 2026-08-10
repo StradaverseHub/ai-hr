@@ -1,0 +1,331 @@
+<meta charset="utf-8">
+<title>2f889bae — Pay items: the duplicate, and the way in to Edit / Stop / Remove</title>
+<!--
+  Mockup for 2f889bae (Personnel > Payroll tab > Pay items — add Edit and Delete), plan revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · Every figure and date on this page was SELECTed from production on 2026-08-10. Nothing is invented.
+    - Employee A0002 (Demo Group, the only real tenant) carries three live A0027 HANDPHONE ALLOWANCE rows:
+      100.00 2025-07-01 to 2026-04-01, 100.00 2025-07-01 to 2027-03-01, 100.00 2027-04-01 to 2027-12-31.
+    - Payslip A0002 / 2026-01, batch status processed: basic_salary 5400.00, allowance 200.00,
+      gross_pay 5600.00, and statutory.componentLines lists A0027 HANDPHONE ALLOWANCE TWICE at 100 each
+      (plus ABSENT 174.19 as a deduction, drawn as-is).
+    - Employee 100814 / 2026-07, processed: allowance 290.32, componentLines lists ALLOWANCE Fixed
+      allowance twice at 145.16. Quoted as a figure only; no table is drawn for it.
+  · The BEFORE table's eight columns are the screen's REAL ones (Component, Currency, Amount, Start, End,
+    Prorate, Remarks, Status) resolved from messages/en.json people.detail.*. There is no Actions column
+    today and none is drawn in BEFORE.
+  · The AFTER adds ONE column carrying ONE link, whose label is the product's existing "View / Edit"
+    (payroll.transactions.fixed.viewEdit) — the same link the Fixed transaction list already renders.
+    No inline edit control, no inline delete button, no confirm dialog is drawn, because none is planned.
+  · The corrected 2026-01 line is drawn as allowance 100.00 / gross 5500.00. That is 5400.00 + 100.00 from
+    the stored lines themselves, not a re-run of payroll. Net pay is deliberately NOT restated — we have no
+    measured corrected net and inventing one on a payroll screen is the exact failure this file prevents.
+  · The item page in section 4 is the page that ALREADY EXISTS (Payroll > Transactions > Fixed > a row).
+    Its labels are the real ones. The only things drawn as new are the suggested start date and the red
+    warning line; Stop and Remove are drawn as they already are and labelled "already works today".
+  · 2026-10-01 is used as the suggested start date because the latest processed pay period on production
+    is 2026-09. It is an illustration of the rule, not a fixed date.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--earn:#15803d;--ded:#b91c1c;--warn:#b45309;--warnbg:#fffbeb;--warnbd:#fcd34d;
+        --bad:#b91c1c;--badbg:#fef2f2;--badbd:#fecaca;--okbg:#f0fdf4;--okbd:#bbf7d0}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .hurt{background:var(--badbg);color:var(--bad)}
+
+  /* page chrome */
+  .ph{font-size:15px;font-weight:700;margin:0}
+  .phs{font-size:11px;color:var(--mf);margin:1px 0 10px}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:10px}
+  .tab{padding:6px 11px;font-size:12px;color:var(--mf);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab.on{color:var(--primary);font-weight:600;border-bottom-color:var(--primary)}
+
+  /* section header, matching the app's Card + SectionHeader */
+  .panel{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .sh{display:flex;align-items:center;gap:7px;padding:9px 12px;font-size:12.5px;font-weight:600}
+  .sh .ct{background:var(--muted);color:var(--mf);border-radius:999px;padding:1px 7px;font-size:10.5px;font-weight:600}
+  .bar{display:flex;justify-content:flex-end;gap:8px;padding:8px 12px;border-top:1px solid var(--border)}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:6px 14px;font-size:11.5px;font-weight:600;
+       display:inline-block}
+  .btn.sec{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+  .tw{padding:0 12px 12px}
+
+  table{border-collapse:separate;border-spacing:0;font-size:11.5px;width:100%;table-layout:fixed}
+  th,td{padding:6px 8px 6px 0;border-bottom:1px solid var(--border);vertical-align:top}
+  th{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;
+     text-align:left;line-height:1.2}
+  tr:last-child td{border-bottom:0}
+  th.n,td.n{text-align:right;padding-right:12px}
+  td.n{font-variant-numeric:tabular-nums;font-weight:600}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
+  .nm{color:var(--mf)}
+  .num{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .badge{display:inline-block;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:600}
+  .b-act{background:var(--okbg);color:#15803d;border:1px solid var(--okbd)}
+  .b-end{background:var(--muted);color:var(--mf);border:1px solid var(--border)}
+  .lnk{color:var(--primary);font-weight:600;font-size:11px}
+  tr.dupe td{background:var(--badbg)}
+  .legend{font-size:10.5px;color:var(--bad);margin:0 0 9px;padding:0 12px;line-height:1.45}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;background:var(--badbg);
+            border:1px solid var(--badbd);vertical-align:-1px;margin-right:4px}
+  .hint{font-size:10.5px;color:var(--mf);padding:0 12px 11px;margin:0;line-height:1.45}
+
+  .note{border-radius:10px;padding:10px 12px;font-size:11.5px;line-height:1.5;margin:0 0 12px}
+  .note.bad{background:var(--badbg);border:1px solid var(--badbd);color:#7f1d1d}
+  .note.warn{background:var(--warnbg);border:1px solid var(--warnbd);color:#78350f}
+  .note.info{background:color-mix(in srgb,var(--primary) 7%,white);
+             border:1px solid color-mix(in srgb,var(--primary) 28%,white);color:#312e81}
+  .note b{font-weight:700}
+  .cut{font-size:11px;color:var(--mf);margin:9px 0 0;line-height:1.5}
+  .arrow{text-align:center;font-size:20px;color:var(--primary);margin:-6px 0 12px;font-weight:700}
+
+  /* payslip comparison */
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .slip{border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .slip .top{padding:8px 11px;font-size:11.5px;font-weight:600;border-bottom:1px solid var(--border)}
+  .slip.isbad .top{background:var(--badbg);color:#7f1d1d}
+  .slip.isok .top{background:var(--okbg);color:#14532d}
+  .ln{display:flex;justify-content:space-between;gap:10px;padding:5px 11px;font-size:11.5px;
+      border-bottom:1px solid var(--border)}
+  .ln:last-child{border-bottom:0}
+  .ln .r{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .ln.dup{background:var(--badbg);color:#7f1d1d;font-weight:600}
+  .ln.tot{background:#fafaff;font-weight:700}
+  .ln .sm{color:var(--mf);font-weight:400;font-size:10.5px}
+
+  /* form mock */
+  .form{display:grid;grid-template-columns:1fr 1fr;gap:11px;padding:12px}
+  .fld .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);font-weight:600;
+            margin-bottom:3px}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:11.5px;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .inp.chg{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 10%,transparent)}
+  .inp.r{text-align:right}
+  .wide{grid-column:1 / -1}
+  .newtag{display:inline-block;background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary);
+          border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:6px;vertical-align:1px}
+  .oktag{display:inline-block;background:var(--okbg);color:#15803d;border:1px solid var(--okbd);
+         border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:6px;vertical-align:1px}
+  .stack{display:grid;gap:12px}
+</style>
+
+<!-- ══════════════════ 1. TODAY ══════════════════ -->
+<div class="card">
+  <h2>Today<span class="chip now">what you see now</span></h2>
+  <p class="sub">An employee, Payroll tab, the Pay items list. Read only — no way to change or remove a line.
+    These are employee A0002's real records as they stand right now.</p>
+
+  <p class="ph">A0002 &middot; Demo Group</p>
+  <p class="phs">Employee record</p>
+  <div class="tabs">
+    <span class="tab">Profile</span><span class="tab">Employment</span><span class="tab on">Payroll</span>
+    <span class="tab">Leave</span><span class="tab">Attendance</span><span class="tab">Documents</span>
+  </div>
+
+  <div class="panel">
+    <div class="sh">Pay items <span class="ct">3</span></div>
+    <div class="bar"><span class="btn">Add pay item</span></div>
+    <div class="tw">
+      <table>
+        <colgroup><col style="width:23%"><col style="width:8%"><col style="width:11%"><col style="width:12%">
+          <col style="width:12%"><col style="width:8%"><col style="width:14%"><col style="width:12%"></colgroup>
+        <thead><tr>
+          <th>Component</th><th>Currency</th><th class="n">Amount</th><th>Start</th><th>End</th>
+          <th>Prorate</th><th>Remarks</th><th>Status</th>
+        </tr></thead>
+        <tbody>
+          <tr class="dupe">
+            <td><span class="mono">A0027</span> <span class="nm">HANDPHONE ALLOWANCE</span></td>
+            <td class="mono">MYR</td><td class="n">100.00</td>
+            <td class="num">2025-07-01</td><td class="num">2026-04-01</td>
+            <td>Yes</td><td class="nm">&mdash;</td>
+            <td><span class="badge b-end">Ended</span></td>
+          </tr>
+          <tr class="dupe">
+            <td><span class="mono">A0027</span> <span class="nm">HANDPHONE ALLOWANCE</span></td>
+            <td class="mono">MYR</td><td class="n">100.00</td>
+            <td class="num">2025-07-01</td><td class="num">2027-03-01</td>
+            <td>Yes</td><td class="nm">&mdash;</td>
+            <td><span class="badge b-act">Active</span></td>
+          </tr>
+          <tr>
+            <td><span class="mono">A0027</span> <span class="nm">HANDPHONE ALLOWANCE</span></td>
+            <td class="mono">MYR</td><td class="n">100.00</td>
+            <td class="num">2027-04-01</td><td class="num">2027-12-31</td>
+            <td>Yes</td><td class="nm">&mdash;</td>
+            <td><span class="badge b-act">Active</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">Recurring pay items for this employee. Applied to payroll once typed components are enabled.</p>
+    <p class="legend"><i></i>Tinted here only to point them out. The real screen shows no such warning —
+      and we are not adding one.</p>
+  </div>
+
+  <p class="cut">The first two lines are the same 100.00 phone allowance covering the same months —
+    2025-07 through 2026-04. One is labelled Ended, so nothing on this screen suggests anything is wrong.
+    Both were still paying.</p>
+</div>
+
+<!-- ══════════════════ 2. WHAT IT COST ══════════════════ -->
+<div class="card">
+  <h2>What that already cost<span class="chip hurt">on a completed pay run</span></h2>
+  <p class="sub">Employee A0002, January 2026, pay run completed. The allowance was paid twice, in full.</p>
+
+  <div class="two">
+    <div class="slip isbad">
+      <div class="top">January 2026 &mdash; as it was paid</div>
+      <div class="ln"><span>Basic salary</span><span class="r">5,400.00</span></div>
+      <div class="ln dup"><span>A0027 HANDPHONE ALLOWANCE</span><span class="r">100.00</span></div>
+      <div class="ln dup"><span>A0027 HANDPHONE ALLOWANCE <span class="sm">&mdash; the same allowance, again</span></span><span class="r">100.00</span></div>
+      <div class="ln"><span>ABSENT <span class="sm">deduction</span></span><span class="r">174.19</span></div>
+      <div class="ln tot"><span>Allowances paid</span><span class="r">200.00</span></div>
+      <div class="ln tot"><span>Gross pay</span><span class="r">5,600.00</span></div>
+    </div>
+    <div class="slip isok">
+      <div class="top">January 2026 &mdash; what it should have been</div>
+      <div class="ln"><span>Basic salary</span><span class="r">5,400.00</span></div>
+      <div class="ln"><span>A0027 HANDPHONE ALLOWANCE</span><span class="r">100.00</span></div>
+      <div class="ln"><span class="sm">no second line</span><span class="r sm">&mdash;</span></div>
+      <div class="ln"><span>ABSENT <span class="sm">deduction</span></span><span class="r">174.19</span></div>
+      <div class="ln tot"><span>Allowances paid</span><span class="r">100.00</span></div>
+      <div class="ln tot"><span>Gross pay</span><span class="r">5,500.00</span></div>
+    </div>
+  </div>
+
+  <p class="note bad" style="margin-top:13px"><b>This is not a warning about what could happen — it has happened.</b>
+    Two completed pay runs on your system show an allowance paid twice: A0002 in January 2026 above, and
+    employee 100814 in July 2026, where a 145.16 allowance appears twice and 290.32 was paid.
+    Four employees are carrying duplicate allowance records right now.</p>
+  <p class="cut">We are showing the allowance and gross lines only. We are not restating net pay here,
+    because that would mean re-running the payroll for a month you have already closed, and we will not
+    quietly do that to a pay record that has already been issued.</p>
+</div>
+
+<div class="arrow">&#8595;</div>
+
+<!-- ══════════════════ 3. PROPOSED — THE LIST ══════════════════ -->
+<div class="card">
+  <h2>Proposed<span class="chip new">what we will build</span></h2>
+  <p class="sub">The duplicate cleared, and one new column with one link on every row.</p>
+
+  <p class="ph">A0002 &middot; Demo Group</p>
+  <p class="phs">Employee record</p>
+  <div class="tabs">
+    <span class="tab">Profile</span><span class="tab">Employment</span><span class="tab on">Payroll</span>
+    <span class="tab">Leave</span><span class="tab">Attendance</span><span class="tab">Documents</span>
+  </div>
+
+  <div class="panel">
+    <div class="sh">Pay items <span class="ct">2</span></div>
+    <div class="bar"><span class="btn">Add pay item</span></div>
+    <div class="tw">
+      <table>
+        <colgroup><col style="width:21%"><col style="width:7%"><col style="width:10%"><col style="width:11%">
+          <col style="width:11%"><col style="width:7%"><col style="width:12%"><col style="width:10%">
+          <col style="width:11%"></colgroup>
+        <thead><tr>
+          <th>Component</th><th>Currency</th><th class="n">Amount</th><th>Start</th><th>End</th>
+          <th>Prorate</th><th>Remarks</th><th>Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="mono">A0027</span> <span class="nm">HANDPHONE ALLOWANCE</span></td>
+            <td class="mono">MYR</td><td class="n">100.00</td>
+            <td class="num">2025-07-01</td><td class="num">2027-03-01</td>
+            <td>Yes</td><td class="nm">&mdash;</td>
+            <td><span class="badge b-act">Active</span></td>
+            <td><span class="lnk">View / Edit</span></td>
+          </tr>
+          <tr>
+            <td><span class="mono">A0027</span> <span class="nm">HANDPHONE ALLOWANCE</span></td>
+            <td class="mono">MYR</td><td class="n">100.00</td>
+            <td class="num">2027-04-01</td><td class="num">2027-12-31</td>
+            <td>Yes</td><td class="nm">&mdash;</td>
+            <td><span class="badge b-act">Active</span></td>
+            <td><span class="lnk">View / Edit</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">Recurring pay items for this employee. Applied to payroll once typed components are enabled.</p>
+  </div>
+
+  <p class="cut">One line where there were two — the duplicate that was doubling 2025-07 through 2026-04 is gone.
+    Every row now carries View / Edit, which opens that allowance's own page. Same wording, same columns,
+    same figures otherwise.</p>
+</div>
+
+<div class="arrow">&#8595;</div>
+
+<!-- ══════════════════ 4. THE PAGE THE LINK OPENS ══════════════════ -->
+<div class="card">
+  <h2>The page that link opens<span class="chip now">already works today</span></h2>
+  <p class="sub">This page already exists — Payroll, then Transactions, then Fixed, then click a row.
+    Edit, Stop and Remove all live here. The employee screen simply had no way through to it.
+    Only the two items marked NEW below are being added.</p>
+
+  <p class="ph">Fixed Transaction</p>
+  <p class="phs">A0002 &middot; A0027 HANDPHONE ALLOWANCE &middot; MYR 100.00 &middot;
+    2025-07-01 to 2027-03-01 &middot; <span class="badge b-act">Active</span></p>
+
+  <p class="note warn"><b>Changing this item does not overwrite it.</b><br>
+    Saving closes the current value from the effective date you choose and starts a new one, so the history
+    stays intact and nobody is paid twice for the same period. That means each change adds a line to the list.</p>
+
+  <div class="stack">
+    <div class="panel">
+      <div class="sh">Edit</div>
+      <div class="form">
+        <div class="fld"><div class="lbl">Amount</div><div class="inp r">100.00</div></div>
+        <div class="fld"><div class="lbl">Payroll cycle</div><div class="inp">Regular &#9662;</div></div>
+        <div class="fld"><div class="lbl">Start date <span class="newtag">NEW</span></div>
+          <div class="inp chg">2026-10-01</div></div>
+        <div class="fld"><div class="lbl">End date</div><div class="inp">2027-03-01</div></div>
+        <div class="fld wide"><div class="lbl">Remarks</div><div class="inp">&nbsp;</div></div>
+        <div class="wide">
+          <p class="note info" style="margin:0">A change starts from the first pay period you have not run yet
+            &mdash; October 2026. Set it inside a month you have already paid and this page will tell you so
+            before it saves.</p>
+        </div>
+        <div class="wide"><span class="btn">Save</span> <span class="btn sec">Cancel</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="sh">Stop <span class="oktag">ALREADY WORKS</span></div>
+      <div class="form">
+        <div class="fld"><div class="lbl">Last date to pay</div><div class="inp">2026-08-10</div></div>
+        <div class="fld" style="display:flex;align-items:flex-end"><span class="btn sec">Stop from date</span></div>
+        <div class="wide"><p class="hint" style="padding:0">The item keeps paying up to this date, then stops in
+          later payroll runs.</p></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="sh">Remove <span class="oktag">ALREADY WORKS</span> <span class="newtag">STRICTER</span></div>
+      <div class="form">
+        <div class="wide"><p class="hint" style="padding:0">Removing an item hides it and excludes it from all
+          future payroll. If it has already been paid on a completed pay run it cannot be removed &mdash; end it
+          from a date instead, which stops future payments while leaving what was already paid untouched.</p></div>
+        <div class="wide"><span class="btn sec">Remove</span></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="cut">The only changes here are the start date the Edit form suggests, the warning under it, and a
+    stricter Remove that refuses whenever a completed pay run covers the item's dates &mdash; not only when we
+    happen to have kept the detailed lines for that run.</p>
+</div>

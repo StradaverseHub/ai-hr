@@ -1,0 +1,366 @@
+<meta charset="utf-8">
+<title>7076f8af — Reset Payroll goes into the Payroll Process flow</title>
+<!--
+  Mockup for 7076f8af (Reset Payroll screen and Payroll Process flow redesign), plan revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · Every figure in "What we checked" is a real production measurement taken read-only on 2026-08-10:
+    27 payroll-batch.reset events (latest 2026-08-10), 21 payroll-batch.input-set (latest 2026-08-05),
+    3 payroll-batch-component.set ever with 0 payroll_batch_component rows live (latest 2026-07-06),
+    52 payroll-batch.selective-reprocessed (latest 2026-08-10), 48 payroll-batch.processed.
+  · The BEFORE list is the real card inventory of app/payroll/[batchId]/page.tsx in draft state, in
+    render order, with the real card titles from messages/en.json.
+  · The confirmation dialog, Step 1, Step 2's seven filters, Step 3's checks and the Payroll Result
+    screen ALREADY EXIST — each is labelled "already built" so the picture cannot imply new work.
+  · The run drawn is a REAL one: Demo Sdn Bhd, 2026-07, Monthly, payment date 2026-07-31, six
+    employees. The six people, their codes, their derived Employee Status and their net pay are the
+    tenant's own data (payslip + employment tables, read 2026-08-10). No invented employees.
+  · The Payroll policy column reads blank for all six because none of this company's employees has a
+    payroll policy assigned today — drawn as it would really render, with the caption saying so.
+  · The prefill / transfer buttons carry their real product labels verbatim, because they are being
+    MOVED unchanged, not redesigned.
+  · The Payroll Result figures are drawn for a clean six-employee run to show the shape of a screen
+    that already exists; no arithmetic is invented on any payslip.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--goodbg:#f0fdf4;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1280px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 3px}
+  h2{font-size:14px;margin:0 0 4px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .stat{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:11px}
+  .st{border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--muted)}
+  .st b{display:block;font-size:21px;line-height:1.25;font-variant-numeric:tabular-nums}
+  .st span{font-size:11px;color:var(--mf)}
+  .note{font-size:11.5px;color:var(--mf);margin-top:9px}
+  .cap{font-size:11px;color:var(--mf);margin-top:9px;font-style:italic}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:12px;background:#fff}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:9px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .flow{list-style:none;margin:0;padding:0;font-size:12.5px}
+  .flow li{padding:5px 0 5px 20px;position:relative}
+  .flow li:before{content:"";position:absolute;left:5px;top:12px;width:5px;height:5px;border-radius:50%;
+                  background:#b6b8c8}
+  .flow li.hit:before{background:#dc2626}
+  .flow li.ok:before{background:#16a34a}
+  .flow li b{font-weight:700}
+  .flow li i{font-style:normal;color:var(--mf);font-size:11px}
+  .stackline{font-size:12.5px;padding:4px 0 4px 0;color:var(--mf)}
+  .stackline b{color:var(--fg)}
+  .shot{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;
+       border-bottom:1px solid var(--border)}
+  .ttl{font-weight:700;font-size:14px}
+  .ttl span{font-weight:400;color:var(--mf);font-size:11px;margin-left:7px}
+  .pad{padding:13px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 13%,white);color:var(--primary)}
+  .built{background:#dcfce7;color:#166534}
+  .proc{background:#dbeafe;color:#1d4ed8}
+  .res{background:#fee2e2;color:#991b1b}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:6px 14px;
+       font-size:12px;font-weight:600}
+  .btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+  .btn.sec{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500;padding:5px 11px;font-size:11.5px}
+  .btn.hot{box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 22%,transparent)}
+  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+  .sm{border:1px solid var(--border);border-radius:9px;padding:8px 10px}
+  .sm span{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600}
+  .sm b{font-size:12.5px;font-variant-numeric:tabular-nums}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);font-weight:600;margin-bottom:3px}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:12px;color:#9a9ba8}
+  .inp.on{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 10%,transparent);color:var(--fg)}
+  .filters{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:10px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border);vertical-align:middle}
+  .r{text-align:right}
+  .tn{font-variant-numeric:tabular-nums}
+  .cb{display:inline-block;width:13px;height:13px;border:1.5px solid #b6b8c8;border-radius:3.5px;
+      vertical-align:-2px;margin-right:8px;background:#fff}
+  .cb.on{background:var(--primary);border-color:var(--primary);position:relative}
+  .cb.on:after{content:"";position:absolute;left:3.6px;top:.9px;width:4px;height:8px;border:solid #fff;
+      border-width:0 2px 2px 0;transform:rotate(43deg)}
+  .picked{background:color-mix(in srgb,var(--primary) 6%,white)}
+  .dash{color:#c9cad6}
+  .foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px}
+  .move{border:1px dashed color-mix(in srgb,var(--primary) 45%,white);border-radius:10px;padding:11px 12px;
+        background:color-mix(in srgb,var(--primary) 5%,white);margin-top:11px}
+  .move b{font-size:12px}
+  .btns{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+  .ok{border:1px solid #86efac;background:var(--goodbg);border-radius:10px;padding:9px 12px;font-size:12px;
+      color:#14532d;margin-bottom:10px}
+  .warnline{border:1px solid #fcd34d;background:#fffbeb;border-radius:10px;padding:9px 12px;font-size:11.5px;
+       color:#78350f;margin-top:10px}
+  .dlg{border:1px solid var(--border);border-radius:12px;padding:13px;max-width:430px;
+       box-shadow:0 8px 22px rgba(20,20,40,.08)}
+  .dlg h3{font-size:13px;margin:0 0 5px}
+  .dlg p{font-size:11.5px;color:var(--mf);margin:0 0 9px;line-height:1.45}
+  .arrow{text-align:center;font-size:17px;color:var(--primary);font-weight:700;margin:6px 0}
+  .map{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .mp{border:1px solid var(--border);border-radius:10px;padding:10px 11px}
+  .mp .k{font-weight:600;font-size:12px}
+  .mp .v{font-size:11px;color:var(--mf);margin-top:3px;line-height:1.4}
+  .kbd{display:inline-block;border:1px solid var(--border);border-radius:6px;padding:2px 7px;font-size:11px;
+       background:#fff}
+</style>
+
+<div class="card">
+  <h1>Reset Payroll should carry on with the payroll process — not open a screen of other things</h1>
+  <p class="sub">Sketch for your request 7076f8af. Wording, spacing and colours will differ in the built screen.</p>
+  <div class="stat">
+    <div class="st"><b>27</b><span>times Reset Payroll has been used on your system — the latest today</span></div>
+    <div class="st"><b>21</b><span>manual overtime / bonus / relief edits keyed on a run — latest 5 Aug 2026</span></div>
+    <div class="st"><b>3</b><span>pay-component file imports ever, and no imported lines live today</span></div>
+    <div class="st"><b>52</b><span>reprocess runs for selected employees already completed — latest today</span></div>
+  </div>
+  <p class="note">One more thing worth knowing before you read the rest: resetting a run <b>clears that
+    run's calculated payslips</b>. So the Payslips list on the screen you land on is empty at the exact
+    moment you arrive — there is nothing on it to look at.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">1</span>What Reset Payroll does today, and what it will do</h2>
+  <p class="sub">Same button, same confirmation, different destination.</p>
+  <div class="two">
+    <div class="box bad">
+      <span class="tag bad">TODAY</span>
+      <div class="stackline">Payroll Process &nbsp;&rarr;&nbsp; a processed run &nbsp;&rarr;&nbsp; <b>Reset Payroll</b> &nbsp;&rarr;&nbsp; confirm</div>
+      <div class="arrow">&darr;</div>
+      <div class="stackline" style="margin-bottom:4px">You land on one long screen carrying, top to bottom:</div>
+      <ul class="flow">
+        <li class="hit"><b>Generate payslips</b> <i>— the button in the header</i></li>
+        <li>Draft summary — period, cycle, payment date, headcount</li>
+        <li>Configuration readiness and pre-processing checks</li>
+        <li>Pending transactions &nbsp;&middot;&nbsp; Leavers this period</li>
+        <li class="hit"><b>Payroll inputs</b> <i>— plus seven buttons that pull approved amounts into the run</i></li>
+        <li class="hit"><b>Import pay components (CSV)</b></li>
+        <li class="hit"><b>Payslips</b> <i>— empty, because the reset just cleared them</i></li>
+      </ul>
+      <p class="note">Four of these are the ones you asked to have removed. The screen also calls itself
+        "Step 3 of 3", which is part of why it feels like a stray page.</p>
+    </div>
+
+    <div class="box good">
+      <span class="tag good">AFTER</span>
+      <div class="stackline">Payroll Process &nbsp;&rarr;&nbsp; a processed run &nbsp;&rarr;&nbsp; <b>Reset Payroll</b> &nbsp;&rarr;&nbsp; confirm</div>
+      <div class="arrow">&darr;</div>
+      <div class="stackline" style="margin-bottom:4px">You continue straight into the payroll process:</div>
+      <ul class="flow">
+        <li class="ok"><b>Step 1 — Payroll Information</b> <i>company, month, cycle, payment date</i></li>
+        <li class="ok"><b>Step 2 — Employee Selection</b> <i>search, filter, pick one, several or all</i></li>
+        <li class="ok"><b>Step 3 — Review</b> <i>the checks, and anything you need to adjust first</i></li>
+        <li class="ok"><b>Process Payroll</b> <i>the button that used to read "Generate payslips"</i></li>
+        <li class="ok"><b>Payroll Processing Result</b> <i>succeeded, failed, and the reason</i></li>
+      </ul>
+      <p class="note">The long screen leaves your path entirely. You still reach a run's payslips the
+        normal way — by opening the run from the Payroll Process list.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>The confirmation you asked for is already there</h2>
+  <p class="sub">This dialog exists on your system today, on both the run list and the run screen. It is unchanged.</p>
+  <div class="dlg">
+    <h3>Reset Payroll Process <span class="chip built">already built</span></h3>
+    <p>Are you sure you want to reset this payroll process? All payroll calculation results for this
+      payroll run will be cleared, and the process will return to Draft status. This action should only be
+      performed by authorized users.</p>
+    <div class="lbl">Reason</div>
+    <div class="inp" style="margin-bottom:10px">Why is this run being reset?</div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <span class="btn ghost">Cancel</span><span class="btn">Reset Payroll</span>
+    </div>
+  </div>
+  <p class="cap">Only what happens after you press Reset Payroll changes.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Step 1 — Payroll Information</h2>
+  <p class="sub">Read-only: it is the run you just reset. This step already exists today.</p>
+  <div class="shot">
+    <div class="bar">
+      <div class="ttl">Payroll Process <span>Step 1 of 3 &middot; Payroll Period</span></div>
+      <span class="chip built">already built</span>
+    </div>
+    <div class="pad">
+      <div class="summary">
+        <div class="sm"><span>Company</span><b>Demo Sdn Bhd</b></div>
+        <div class="sm"><span>Payroll month</span><b>2026-07</b></div>
+        <div class="sm"><span>Payroll cycle</span><b>Monthly</b></div>
+        <div class="sm"><span>Payment date</span><b>2026-07-31</b></div>
+      </div>
+      <p class="note">Company, month and cycle are fixed for a run that already exists — only the employee
+        selection can change from here.</p>
+    </div>
+  </div>
+  <p class="cap">Real values from one of your own runs: Demo Sdn Bhd, July 2026, six employees.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">4</span>Step 2 — Employee Selection</h2>
+  <p class="sub">The picker already exists with these filters. The search box and the Payroll policy column are the new parts.</p>
+  <div class="shot">
+    <div class="bar">
+      <div class="ttl">Payroll Process <span>Step 2 of 3 &middot; Employee Selection</span></div>
+      <div><span class="chip built">picker already built</span> &nbsp; <span class="chip new">search is new</span></div>
+    </div>
+    <div class="pad">
+      <div class="filters">
+        <div>
+          <div class="lbl">Search employee ID or name <span style="color:var(--primary)">&middot; new</span></div>
+          <div class="inp on" style="color:#9a9ba8">Type an employee ID or name</div>
+        </div>
+        <div><div class="lbl">Employee Status</div><div class="inp">All</div></div>
+        <div><div class="lbl">Department</div><div class="inp">All</div></div>
+        <div><div class="lbl">Business Unit</div><div class="inp">All</div></div>
+      </div>
+      <p class="note" style="margin:0 0 9px">Position, Job Grade, Employment Type and Cost Centre filters
+        stay exactly where they are — shown collapsed here only to keep this sketch short.</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:36%">Employee</th>
+            <th>Employee ID</th>
+            <th>Employee Status</th>
+            <th>Payroll policy</th>
+            <th>Joined</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="picked"><td><span class="cb on"></span>Aisyah Rahman</td><td class="tn">EMP-0001</td>
+            <td><span class="chip proc">Active</span></td><td class="dash">&mdash;</td><td class="tn">2026-01-06</td></tr>
+          <tr class="picked"><td><span class="cb on"></span>Daniel Tan</td><td class="tn">EMP-0002</td>
+            <td><span class="chip proc">Active</span></td><td class="dash">&mdash;</td><td class="tn">2026-01-06</td></tr>
+          <tr><td><span class="cb"></span>Mei Ling</td><td class="tn">EMP-0003</td>
+            <td><span class="chip proc">Active</span></td><td class="dash">&mdash;</td><td class="tn">2026-01-06</td></tr>
+          <tr class="picked"><td><span class="cb on"></span>Arjun Kumar</td><td class="tn">EMP-0004</td>
+            <td><span class="chip proc">Active</span></td><td class="dash">&mdash;</td><td class="tn">2026-01-06</td></tr>
+          <tr class="picked"><td><span class="cb on"></span>Nurul Huda</td><td class="tn">EMP-0006</td>
+            <td><span class="chip res">Resigned</span></td><td class="dash">&mdash;</td><td class="tn">2026-06-04</td></tr>
+          <tr><td><span class="cb"></span>Wei Jie Lim</td><td class="tn">EMP-0007</td>
+            <td><span class="chip proc">Active</span></td><td class="dash">&mdash;</td><td class="tn">2026-05-22</td></tr>
+        </tbody>
+      </table>
+
+      <div class="foot">
+        <div style="font-size:12px"><b>4 of 6 selected</b> &nbsp;&middot;&nbsp;
+          <span style="color:var(--primary);font-weight:600">Select all</span> &nbsp;
+          <span style="color:var(--primary);font-weight:600">Clear</span></div>
+        <div style="display:flex;gap:8px"><span class="btn ghost">Back</span><span class="btn">Continue</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">These are your six real Demo Sdn Bhd employees for July 2026, with their real employee IDs,
+    real joining dates, and the status the system derives from their records. The Payroll policy column reads
+    blank because none of these employees has a payroll policy set today — it fills in as soon as you assign
+    one. No pay figures are shown here on purpose: resetting a run clears its calculated pay, so there is
+    nothing truthful to print in this list at this point in the flow.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">5</span>Step 3 — Review, and the one thing we are moving rather than removing</h2>
+  <p class="sub">The readiness checks already run here. The adjustments panel is what comes across from the old screen.</p>
+  <div class="shot">
+    <div class="bar">
+      <div class="ttl">Payroll Process <span>Step 3 of 3 &middot; Review</span></div>
+      <div><span class="chip built">checks already built</span> &nbsp; <span class="chip new">adjustments moved here</span></div>
+    </div>
+    <div class="pad">
+      <div class="ok"><b>Ready to process.</b> &nbsp; 4 employees selected &middot; every one has a current
+        salary record &middot; a Monthly cycle exists for this company &middot; no blocking issues found.</div>
+
+      <div class="move">
+        <b>Adjust before processing</b> &nbsp; <span class="chip new">moved off the old screen</span>
+        <p class="note" style="margin-top:4px">Bring approved amounts into this run, or key an amount by
+          hand. Closed by default — open it only when something needs correcting.</p>
+        <div class="btns">
+          <span class="btn sec">Prefill overtime</span>
+          <span class="btn sec">Prefill claims</span>
+          <span class="btn sec">Prefill loan deductions</span>
+          <span class="btn sec">Prefill shift differential</span>
+          <span class="btn sec">Prefill fixed zakat</span>
+          <span class="btn sec">Prefill TP1 relief</span>
+          <span class="btn sec">Transfer allowance</span>
+        </div>
+        <p class="note" style="margin-top:8px">Below these sits the same per-employee grid you have today
+          for keying overtime, bonus, tax relief and zakat by hand.</p>
+      </div>
+
+      <div class="warnline">These seven buttons are the only route in the entire system by which approved
+        overtime, approved claims, loan instalments, shift differential, zakat and declared tax relief
+        reach a payslip. That is why they move with the flow instead of being deleted.</div>
+
+      <div class="foot">
+        <div style="font-size:12px;color:var(--mf)">Demo Sdn Bhd &middot; 2026-07 &middot; Monthly &middot; 4 of 6 employees</div>
+        <div style="display:flex;gap:8px"><span class="btn ghost">Back</span><span class="btn hot">Process Payroll</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">"Process Payroll" is the renamed "Generate payslips" button. The panel keeps the product's
+    existing button wording so nothing you already know changes name twice.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">6</span>Payroll Processing Result — where the flow ends</h2>
+  <p class="sub">This screen already exists for a fresh run. After this change a reset run ends here too, instead of on the old screen.</p>
+  <div class="shot">
+    <div class="bar">
+      <div class="ttl">Payroll Processing Result</div>
+      <span class="chip built">already built</span>
+    </div>
+    <div class="pad">
+      <div class="summary" style="grid-template-columns:repeat(5,1fr)">
+        <div class="sm"><span>Overall status</span><b>Succeeded</b></div>
+        <div class="sm"><span>Companies processed</span><b>1</b></div>
+        <div class="sm"><span>Employees selected</span><b>4</b></div>
+        <div class="sm"><span>Successfully processed</span><b>4</b></div>
+        <div class="sm"><span>Failed to process</span><b>0</b></div>
+      </div>
+      <table style="margin-top:11px">
+        <thead><tr><th>Company</th><th>Outcome</th><th class="r">Selected</th><th class="r">Succeeded</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td>Demo Sdn Bhd</td><td><span class="chip built">Succeeded</span></td>
+            <td class="r tn">4</td><td class="r tn">4</td><td class="dash">&mdash;</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Anyone who could not be processed is listed underneath with the reason — a missing
+        salary record, for example.</p>
+    </div>
+  </div>
+  <p class="cap">Drawn for a clean four-employee run to show the shape of the screen. The counts move with
+    whatever you actually select.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">7</span>Where each function ends up</h2>
+  <div class="map">
+    <div class="mp"><div class="k">Payroll Process</div>
+      <div class="v">Payroll &gt; Payroll Process — the run list, Reset, Reprocess, and the three-step flow.</div></div>
+    <div class="mp"><div class="k">Adjustments before a run</div>
+      <div class="v">On Step 3 of the flow, and reachable from Payroll &gt; Transactions. Nothing removed.</div></div>
+    <div class="mp"><div class="k">Import pay components (CSV)</div>
+      <div class="v">Payroll &gt; Transactions — where you asked for it. Off the run screen entirely.</div></div>
+    <div class="mp"><div class="k">Payslips for a run</div>
+      <div class="v">Open the run from the Payroll Process list, as you do today. Out of the reset path.</div></div>
+    <div class="mp"><div class="k">One employee's payslip</div>
+      <div class="v">Payroll &gt; Individual Payslip, unchanged.</div></div>
+    <div class="mp"><div class="k">Reprocess a few employees</div>
+      <div class="v">Already on your run list today, next to Reset — 52 such runs completed so far.</div></div>
+  </div>
+</div>

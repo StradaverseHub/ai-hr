@@ -1,0 +1,306 @@
+<meta charset="utf-8">
+<title>fbcf706d — Reprocess: the new joiner appears on the run</title>
+<!--
+  Mockup for fbcf706d (Payroll Process - Reprocess Payroll Enhancement).
+  Drawn strictly against the plan text. Everything the plan hedges is left in WORDS in the last card
+  and is deliberately NOT drawn: automatic "Changed" flagging for salary / pay-item edits (point 9 of
+  the request, explicitly out of scope), the scoped-run rule (listed but not ticked), and the
+  hold-back-by-name refusal for an added person with no salary on record — on the reporter's own data
+  every one of the seventeen HAS a salary, so drawing a refusal would be inventing a person.
+  No net pay is drawn for a not-yet-processed person: the run has not calculated them, so the picture
+  shows an em dash, not a number we made up.
+
+  REAL, MEASURED DATA (production, read-only, 2026-08-10):
+    batch 3b62dc57 — ISEDECOR BINA SDN BHD, 2026-08, regular, no scope, processed 2026-07-28 14:24,
+      employee_count 5, totals gross 28,900 / net 23,296.70, payment date 2026-08-31
+    the 5 payslips on it: 100180 ISMAIL, T100009 TEST0001, T100502 TEST0003, T100507 TEST0004,
+      T100777 TEST0005 — gross/net/version exactly as stored
+    the 17 period-eligible employments with NO payslip on that run: codes A0001-A0014 (all created
+      2026-08-05), IDB-240009, TMPL0001, TMPL0002 — hire dates as stored
+    tenant-wide: 47 completed reprocess jobs, 21 processed batches, 0 closed, 11 batches carrying at
+      least one eligible-but-absent employment
+  Column vocabulary and wording taken from the live screen:
+    app/payroll/[batchId]/reprocess/page.tsx + reprocess-form.tsx, keys payroll.batch.reprocess* in
+    messages/en.json (Already reprocessed, {n} of {total} selected, Select all, Clear, Reason
+    (optional), Reprocess {n} employee(s), the review-step wording).
+  Money format from lib/money.ts — the ISO code is a PREFIX ("MYR 5,600.00"), never a localised symbol.
+  Tokens from app/globals.css; everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--goodbg:#f0fdf4;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px}
+  h2{font-size:14px;margin:0 0 4px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 9px;background:var(--muted)}
+  td{padding:7px 9px;border-top:1px solid var(--border);vertical-align:middle}
+  .r{text-align:right}
+  .tn{font-variant-numeric:tabular-nums}
+  .stat{display:grid;grid-template-columns:repeat(5,1fr);gap:11px}
+  .st{border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--muted)}
+  .st b{display:block;font-size:21px;line-height:1.25;font-variant-numeric:tabular-nums}
+  .st span{font-size:11px;color:var(--mf)}
+  .st.hot{border-color:color-mix(in srgb,var(--primary) 40%,white);background:color-mix(in srgb,var(--primary) 8%,white)}
+  .st.hot b{color:var(--primary)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:9px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .box{border:1px solid var(--border);border-radius:11px;padding:12px;background:#fff;margin-bottom:14px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  /* a drawn screen */
+  .shot{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;
+       border-bottom:1px solid var(--border)}
+  .ttl{font-weight:700;font-size:14px}
+  .back{color:var(--primary);font-weight:600;font-size:12px;display:block;margin-bottom:3px}
+  .pad{padding:13px}
+  .strip{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:11px 13px;
+         border-bottom:1px solid var(--border);background:#fcfcfe}
+  .strip .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600}
+  .strip .v{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px}
+  .cb{display:inline-block;width:12px;height:12px;border:1.5px solid #b7b8c6;border-radius:3px;
+      vertical-align:-2px;margin-right:7px;background:#fff}
+  .cb.on{background:var(--primary);border-color:var(--primary);position:relative}
+  .cb.on:after{content:"";position:absolute;left:3.4px;top:.6px;width:3.4px;height:7px;border:solid #fff;
+               border-width:0 1.8px 1.8px 0;transform:rotate(42deg)}
+  .code{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+        background:var(--muted);border:1px solid var(--border);border-radius:5px;padding:0 5px;
+        color:var(--mf);margin-right:6px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap}
+  .proc{background:#e8eaf2;color:#4a4b58}
+  .new{background:color-mix(in srgb,var(--primary) 14%,white);color:var(--primary)}
+  .grp{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 10px;font-size:11.5px;
+       border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--muted)}
+  .grp b{font-size:12.5px}
+  .grp.newgrp{background:color-mix(in srgb,var(--primary) 8%,white);
+              border-color:color-mix(in srgb,var(--primary) 30%,white)}
+  .lnk{color:var(--primary);font-weight:600}
+  tr.picked{background:color-mix(in srgb,var(--primary) 5%,white)}
+  .dash{color:#a1a1ac}
+  .more{font-size:11.5px;color:var(--mf);padding:7px 9px;border-top:1px solid var(--border);background:#fbfbfe}
+  .review{border:1px dashed color-mix(in srgb,var(--primary) 45%,white);border-radius:10px;
+          background:color-mix(in srgb,var(--primary) 5%,white);padding:10px 12px;margin-top:12px}
+  .review p{margin:0 0 5px;font-size:12.5px}
+  .review .small{font-size:11.5px;color:var(--mf);margin:0}
+  ul.will{margin:6px 0 6px;padding-left:17px;font-size:12px}
+  ul.will li{margin-bottom:3px}
+  .ta{border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:#a1a1ac;
+      background:#fff;margin-top:11px;min-height:38px}
+  .lab{font-size:11px;font-weight:600;margin-top:11px;display:block}
+  .acts{display:flex;justify-content:flex-end;gap:9px;margin-top:11px}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:6px 13px;
+       font-size:12px;font-weight:600}
+  .btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+  .note{font-size:11.5px;color:var(--mf);margin:9px 0 0}
+  .note b{color:var(--fg)}
+  .warn{border:1px solid #fcd34d;background:#fffbeb;border-radius:10px;padding:10px 12px;font-size:12px;
+        color:#78350f;margin-top:11px}
+  .warn b{color:#78350f}
+  ul.words{margin:6px 0 0;padding-left:18px;font-size:12.5px}
+  ul.words li{margin-bottom:7px}
+</style>
+
+<div class="card">
+  <h1>Reprocess Payroll — the new joiner turns up on the run by themselves</h1>
+  <p class="sub">Sketch only — wording, spacing and colours will differ from the finished screen. The company, the run,
+    the five payslips on it and the seventeen people missing from it were read from the live system on 10 August — from
+    the demo group, which is where every pay run on the system currently sits. No pay is shown for anyone the run has
+    not calculated yet.</p>
+  <div class="stat">
+    <div class="st"><b>47</b><span>reprocessing runs already done</span></div>
+    <div class="st"><b>21 of 21</b><span>pay runs processed, none closed</span></div>
+    <div class="st hot"><b>17</b><span>people eligible for August with no payslip on this run</span></div>
+    <div class="st"><b>5</b><span>resets followed by a re-process within ten minutes, across two runs</span></div>
+    <div class="st hot"><b>0</b><span>of those seventeen visible anywhere today</span></div>
+  </div>
+  <p class="note">Reprocessing someone already paid works today and has been run close to fifty times. What no screen shows is the person
+    who was added <b>after</b> the run was processed — so the only way to pay them is Reset, which throws the month away
+    and starts it again.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">1</span>The Reprocess screen today — five people, and no sign of the other seventeen</h2>
+  <p class="sub">ISEDECOR BINA SDN BHD, August 2026, processed on 28 July and still open.</p>
+  <div class="box bad" style="padding:0;overflow:hidden">
+    <div style="padding:10px 12px 0"><span class="tag bad">NOW</span></div>
+    <div class="shot" style="border:0;border-radius:0">
+      <div class="bar">
+        <div><span class="back">&larr; Back to Payroll Process</span><span class="ttl">Reprocess selected employees</span></div>
+        <span class="chip proc">Processed &middot; not closed</span>
+      </div>
+      <div class="strip">
+        <div><div class="k">Period</div><div class="v">2026-08</div></div>
+        <div><div class="k">Cycle</div><div class="v">Regular</div></div>
+        <div><div class="k">Company</div><div class="v" style="font-size:11.5px">ISEDECOR BINA SDN BHD</div></div>
+        <div><div class="k">Payment date</div><div class="v">31 Aug 2026</div></div>
+        <div><div class="k">Employees</div><div class="v">5</div></div>
+        <div><div class="k">Total net</div><div class="v">MYR 23,296.70</div></div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:38%">Employee &nbsp; <span style="text-transform:none;letter-spacing:0;color:var(--fg)">0 of 5 selected</span>
+              &nbsp; <span class="lnk" style="text-transform:none;letter-spacing:0">Select all</span>
+              &nbsp; <span class="lnk" style="text-transform:none;letter-spacing:0">Clear</span></th>
+            <th style="width:18%">Already reprocessed</th>
+            <th class="r">Gross</th>
+            <th class="r">Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="cb"></span><span class="code">100180</span>ISMAIL</td><td class="dash">—</td><td class="r tn">MYR 5,600.00</td><td class="r tn">MYR 3,265.15</td></tr>
+          <tr><td><span class="cb"></span><span class="code">T100009</span>TEST0001</td><td>2 time(s)</td><td class="r tn">MYR 9,100.00</td><td class="r tn">MYR 7,748.95</td></tr>
+          <tr><td><span class="cb"></span><span class="code">T100502</span>TEST0003</td><td>2 time(s)</td><td class="r tn">MYR 6,100.00</td><td class="r tn">MYR 5,216.15</td></tr>
+          <tr><td><span class="cb"></span><span class="code">T100507</span>TEST0004</td><td>2 time(s)</td><td class="r tn">MYR 5,100.00</td><td class="r tn">MYR 4,417.10</td></tr>
+          <tr><td><span class="cb"></span><span class="code">T100777</span>TEST0005</td><td>2 time(s)</td><td class="r tn">MYR 3,000.00</td><td class="r tn">MYR 2,649.35</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="note"><b>A0001 to A0014 are not on this list.</b> Fourteen people were added to this company on 5 August,
+    three more were already there, and all seventeen are eligible for the August period. The screen cannot show them,
+    the run does not count them, and nothing warns you before you close the month.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>The same screen, after — New / Pending on top, already ticked</h2>
+  <p class="sub">Nothing is calculated until you press the button at the bottom.</p>
+  <div class="box good" style="padding:0;overflow:hidden">
+    <div style="padding:10px 12px 0"><span class="tag good">AFTER</span></div>
+    <div class="shot" style="border:0;border-radius:0">
+      <div class="bar">
+        <div><span class="back">&larr; Back to Payroll Process</span><span class="ttl">Reprocess selected employees</span></div>
+        <span class="chip proc">Processed &middot; not closed</span>
+      </div>
+      <div class="strip">
+        <div><div class="k">Period</div><div class="v">2026-08</div></div>
+        <div><div class="k">Cycle</div><div class="v">Regular</div></div>
+        <div><div class="k">Company</div><div class="v" style="font-size:11.5px">ISEDECOR BINA SDN BHD</div></div>
+        <div><div class="k">Payment date</div><div class="v">31 Aug 2026</div></div>
+        <div><div class="k">Employees</div><div class="v">5</div></div>
+        <div><div class="k">Total net</div><div class="v">MYR 23,296.70</div></div>
+      </div>
+
+      <div class="grp newgrp">
+        <b>New / Pending — 17</b>
+        <span>eligible for August 2026, no payslip on this run</span>
+        <span class="lnk">Select all</span><span class="lnk">Clear</span>
+        <span style="margin-left:auto"><b>17 of 22 selected</b></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:26%">Employee</th>
+            <th style="width:13%">Status</th>
+            <th style="width:29%">Reason</th>
+            <th style="width:12%">Joined</th>
+            <th class="r">Gross</th>
+            <th class="r">Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="picked"><td><span class="cb on"></span><span class="code">A0002</span>TEST0002</td>
+            <td><span class="chip new">New / Pending</span></td>
+            <td>Added 5 Aug, after this run was processed</td><td>1 Jul 2025</td>
+            <td class="r dash">—</td><td class="r dash">—</td></tr>
+          <tr class="picked"><td><span class="cb on"></span><span class="code">A0006</span>TEST0006</td>
+            <td><span class="chip new">New / Pending</span></td>
+            <td>Added 5 Aug, after this run was processed</td><td>2 May 2019</td>
+            <td class="r dash">—</td><td class="r dash">—</td></tr>
+          <tr class="picked"><td><span class="cb on"></span><span class="code">A0007</span>TEST0007</td>
+            <td><span class="chip new">New / Pending</span></td>
+            <td>Added 5 Aug, after this run was processed</td><td>2 Sep 2024</td>
+            <td class="r dash">—</td><td class="r dash">—</td></tr>
+          <tr class="picked"><td><span class="cb on"></span><span class="code">A0010</span>TEST0010</td>
+            <td><span class="chip new">New / Pending</span></td>
+            <td>Added 5 Aug, after this run was processed</td><td>1 Nov 2024</td>
+            <td class="r dash">—</td><td class="r dash">—</td></tr>
+          <tr class="picked"><td><span class="cb on"></span><span class="code">A0014</span>TEST0014</td>
+            <td><span class="chip new">New / Pending</span></td>
+            <td>Added 5 Aug, after this run was processed</td><td>4 Oct 2016</td>
+            <td class="r dash">—</td><td class="r dash">—</td></tr>
+        </tbody>
+      </table>
+      <div class="more">+ 12 more eligible for August with no payslip on this run — all ticked.
+        Gross and net stay blank until the run calculates them.</div>
+
+      <div class="grp">
+        <b>Already processed — 5</b>
+        <span>their payslips are not touched unless you tick them</span>
+        <span class="lnk">Select all</span><span class="lnk">Clear</span>
+      </div>
+      <table>
+        <tbody>
+          <tr><td style="width:26%"><span class="cb"></span><span class="code">100180</span>ISMAIL</td>
+            <td style="width:13%"><span class="chip proc">Processed</span></td>
+            <td style="width:29%" class="dash">—</td><td style="width:12%">1 Jul 2025</td>
+            <td class="r tn">MYR 5,600.00</td><td class="r tn">MYR 3,265.15</td></tr>
+          <tr><td><span class="cb"></span><span class="code">T100009</span>TEST0001</td>
+            <td><span class="chip proc">Processed</span></td>
+            <td style="color:var(--mf)">Already reprocessed 2 time(s)</td><td>1 May 2026</td>
+            <td class="r tn">MYR 9,100.00</td><td class="r tn">MYR 7,748.95</td></tr>
+          <tr><td><span class="cb"></span><span class="code">T100502</span>TEST0003</td>
+            <td><span class="chip proc">Processed</span></td>
+            <td style="color:var(--mf)">Already reprocessed 2 time(s)</td><td>1 Oct 2025</td>
+            <td class="r tn">MYR 6,100.00</td><td class="r tn">MYR 5,216.15</td></tr>
+          <tr><td><span class="cb"></span><span class="code">T100507</span>TEST0004</td>
+            <td><span class="chip proc">Processed</span></td>
+            <td style="color:var(--mf)">Already reprocessed 2 time(s)</td><td>2 Oct 2025</td>
+            <td class="r tn">MYR 5,100.00</td><td class="r tn">MYR 4,417.10</td></tr>
+          <tr><td><span class="cb"></span><span class="code">T100777</span>TEST0005</td>
+            <td><span class="chip proc">Processed</span></td>
+            <td style="color:var(--mf)">Already reprocessed 2 time(s)</td><td>1 May 2026</td>
+            <td class="r tn">MYR 3,000.00</td><td class="r tn">MYR 2,649.35</td></tr>
+        </tbody>
+      </table>
+
+      <div class="pad" style="padding-top:0">
+        <div class="review">
+          <p><b>Before you submit — you are about to add 17 people to this run and reprocess 0 of the 5 already paid.</b></p>
+          <p class="small">The 5 payslips already on the run are not touched. The run's totals move by the added people's
+            figures only.</p>
+          <ul class="will">
+            <li>Each added person is checked first — no salary on record, missing statutory or bank details. Anyone not
+              ready is named here and held back; the rest go through.</li>
+            <li>The run's employee count goes from 5 to 22.</li>
+            <li>Any loan repayment taken on an added person's payslip comes off their loan balance.</li>
+            <li>Any claim paid on an added person's payslip is marked paid, so no later run can pay it twice.</li>
+            <li>One-off payments already waiting for an added person are picked up onto this run.</li>
+          </ul>
+        </div>
+        <span class="lab">Reason (optional)</span>
+        <div class="ta">Why are these employees being reprocessed? (recorded in the audit trail)</div>
+        <div class="acts"><span class="btn ghost">Cancel</span><span class="btn">Add 17 and reprocess</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="note"><b>No new screen and no new button.</b> This is the Reprocess page you already have, with one group
+    added above the people it already lists. Reset stays exactly where it is, with its warning, for the month that
+    genuinely has to be thrown away.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Deliberately not drawn — these stay in words</h2>
+  <ul class="words">
+    <li><b>Automatic "Changed" flagging is not in this round.</b> The run already flags someone when their one-off
+      transactions or their attendance change, and ticks them for you. A salary or pay-item edit is not flagged — you
+      tick that person yourself. Drawing a "Changed — pay item changed" row would be promising something this work does
+      not build.</li>
+    <li><b>Runs set up for a chosen list of people.</b> Ten of your twenty-one open runs are limited to a named group.
+      On those, newly eligible people are still listed but arrive <b>unticked</b>, with a line saying the run was set up
+      for a chosen list — ticking someone widens that list on purpose. The picture above is an unlimited run, where
+      everyone arrives ticked.</li>
+    <li><b>Someone who is not ready.</b> The plan promises an added person with no salary on record is named and held
+      back rather than silently dropped. Every one of your seventeen has a salary on record, so drawing that refusal
+      would mean inventing an employee — it is described here instead.</li>
+  </ul>
+</div>
