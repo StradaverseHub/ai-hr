@@ -986,10 +986,13 @@ export const OVERTIME_MULTIPLIER_SEEDS: readonly OvertimeMultiplierSeed[] = [
 ];
 
 /** Thrown when the reference overtime item cannot be used as the model for the new ones. `not_found` = no
- *  such code in this tenant's catalog; `not_per_hour` = it exists but does not carry a per-hour rate, so
- *  there is no hourly figure to scale and GUESSING one would seed a wrong rate into payroll. */
+ *  such code in this tenant's catalog; `archived` = the code exists but has been deliberately switched
+ *  off, so its rate is a RETIRED figure nobody has stood behind since — scaling live items off it would
+ *  propagate a rate the tenant has already withdrawn; `not_per_hour` = it exists but does not carry a
+ *  per-hour rate, so there is no hourly figure to scale and GUESSING one would seed a wrong rate into
+ *  payroll. */
 export class OvertimeReferenceUnusableError extends Error {
-  constructor(public readonly reason: 'not_found' | 'not_per_hour') {
+  constructor(public readonly reason: 'not_found' | 'archived' | 'not_per_hour') {
     super(`The reference overtime pay item is unusable (${reason}).`);
     this.name = 'OvertimeReferenceUnusableError';
   }
@@ -1036,6 +1039,13 @@ export function seedOvertimeMultipliers(
       .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, fromCode)))
       .limit(1);
     if (!ref) throw new OvertimeReferenceUnusableError('not_found');
+    // AN ARCHIVED REFERENCE IS REFUSED, AND THIS CHECK MUST STAY ABOVE THE not_per_hour ONE. The lookup
+    // above filters tenant + code only, so before this guard an archived-but-per_hour reference SUCCEEDED
+    // and seeded OT2_0 / OT3_0 scaled off a rate the tenant had deliberately switched off — a silent wrong
+    // outcome, not merely a mislabelled error. Ordering is load-bearing for the other half: placed after
+    // the cast, an archived item carrying a fixed or absent rule would report `not_per_hour` and the real
+    // cause (it is switched off) would be lost to whoever reads the message.
+    if (ref.archivedAt != null) throw new OvertimeReferenceUnusableError('archived');
     const refRule = ref.rule as PayRule | null;
     if (refRule == null || refRule.kind !== 'per_hour') throw new OvertimeReferenceUnusableError('not_per_hour');
     // Four decimals, not two: the plain hourly rate is an INTERMEDIATE (RM 16.50 at 1.5× is RM 11.00 here,
