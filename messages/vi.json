@@ -3396,7 +3396,7 @@
       "paymentSummaryTitle": "Tải xuống tệp CSV gồm nhân viên, ngân hàng, tài khoản và lương thực lãnh để tải lên ngân hàng thủ công.",
       "transactionDetail": "Chi tiết giao dịch",
       "transactionDetailTitle": "Tải xuống thu nhập, các khoản khấu trừ, đóng góp của người sử dụng lao động và tổng cộng của từng nhân viên trong kỳ này dưới dạng tệp Excel.",
-      "generatePayslips": "Tạo phiếu lương",
+      "generatePayslips": "Xử lý bảng lương",
       "closeBatch": "Đóng đợt",
       "disclaimer": "<strong>Số liệu nháp.</strong> Các khoản theo luật được tính từ các quy tắc Malaysia đã xác minh có hiệu lực tại thời điểm cuối kỳ. Hãy kiểm tra mọi phiếu lương trước khi đóng — sau khi đóng, đợt sẽ không thể thay đổi. Các tệp ngân hàng (<mono>CP39 / KWSP / PERKESO</mono>) được tạo riêng.",
       "leaversTitle": "Nhân viên nghỉ việc trong kỳ này",
@@ -3481,7 +3481,6 @@
       "prefillTp1": "Điền sẵn miễn trừ TP1",
       "prefillLoans": "Điền sẵn khấu trừ khoản vay",
       "loanSummary": "{count} kỳ trả góp · RM {amount}",
-      "step3Title": "Bước 3/3 — Xem lại & xử lý",
       "summaryPeriod": "Kỳ",
       "summaryCycle": "Chu kỳ",
       "summaryPaymentDate": "Ngày thanh toán",
@@ -3716,7 +3715,13 @@
         "loansCta": "Mở khoản vay",
         "importHistoryTitle": "Nhập lịch sử bảng lương",
         "importHistoryDesc": "Nhập hàng loạt hồ sơ lương trước đây phục vụ di chuyển dữ liệu.",
-        "importHistoryCta": "Mở nhập dữ liệu"
+        "importHistoryCta": "Mở nhập dữ liệu",
+        "adjustmentsTitle": "Dữ liệu nhập bảng lương",
+        "adjustmentsDesc": "Làm thêm giờ, thưởng, giảm trừ TP1 và zakat trên đợt chạy nháp, cùng các cầu nối đưa khoản hoàn ứng đã duyệt, làm thêm giờ theo chấm công, kỳ trả góp khoản vay, chênh lệch ca và phụ cấp vào đợt chạy.",
+        "adjustmentsCta": "Mở dữ liệu nhập bảng lương",
+        "componentImportTitle": "Nhập thành phần lương (CSV)",
+        "componentImportDesc": "Thêm hàng loạt phụ cấp, khoản trừ, làm thêm giờ hoặc thưởng một lần vào đợt chạy nháp từ tệp CSV, có xem trước trước khi ghi.",
+        "componentImportCta": "Mở nhập liệu"
       },
       "fixed": {
         "title": "Giao dịch cố định",
@@ -4250,6 +4255,22 @@
             "net": "Lương thực lãnh"
           }
         }
+      },
+      "draftPicker": {
+        "title": "Các đợt chạy bảng lương nháp",
+        "choose": "Chọn",
+        "selected": "Đã chọn",
+        "noneTitle": "Không có đợt chạy bảng lương nháp",
+        "noneBody": "Các chức năng này áp dụng cho đợt chạy chưa được tính. Hãy bắt đầu một quy trình bảng lương, hoặc đặt lại một đợt đã xử lý, rồi nó sẽ xuất hiện ở đây.",
+        "openRuns": "Mở các đợt chạy bảng lương"
+      },
+      "adjustments": {
+        "title": "Dữ liệu nhập bảng lương",
+        "subtitle": "Chọn một đợt chạy bảng lương nháp, sau đó đưa các khoản đã duyệt vào hoặc nhập làm thêm giờ, thưởng, giảm trừ TP1 và zakat cho từng nhân viên."
+      },
+      "componentImport": {
+        "title": "Nhập thành phần lương (CSV)",
+        "subtitle": "Chọn một đợt chạy bảng lương nháp, dán tệp CSV, xem trước đối chiếu, rồi xác nhận."
       }
     },
     "setup": {
@@ -4360,7 +4381,6 @@
       "multiCycleOffNote": "Chỉ có sẵn đợt Hàng tháng. Các chu kỳ bổ sung (Thưởng, Ngoài chu kỳ, Tạm ứng lương, Giữa tháng) đã bị tắt cho租户 này.",
       "existingRunsTitle": "Các đợt hiện có cho kỳ này",
       "resumeDraft": "Tiếp tục bản nháp",
-      "confirmSelectionAndProcess": "Xác nhận lựa chọn & tiếp tục",
       "draftNotFoundOrNoAccess": "Không tìm thấy bản nháp này hoặc bạn không có quyền truy cập.",
       "regularExistsNote": "Đợt Hàng tháng cho {period} đã tồn tại. Tiếp tục bản nháp hiện có, hoặc chọn chu kỳ khác.",
       "consolidationNote": "Dữ liệu chấm công, nghỉ phép, yêu cầu bồi hoàn và khoản vay được tổng hợp ở bước xem lại, sau khi đợt được tạo.",
@@ -4396,7 +4416,7 @@
       "payrollCycleMissingForCompany": "{company} không có chu kỳ trả lương đang hoạt động cho lần chạy này — hãy thiết lập trước khi xử lý.",
       "payrollCycleMissingForCompanyType": "Không có chu kỳ {runType} đang hoạt động cho {company} — hãy thiết lập trong cài đặt Chu kỳ trả lương.",
       "resultTitle": "Kết quả Xử lý Lương",
-      "resultSubtitle": "Tóm tắt và trạng thái của đợt chạy lương nhiều công ty.",
+      "resultSubtitle": "Tóm tắt và trạng thái của đợt chạy bảng lương.",
       "resultExpired": "Kết quả này không còn khả dụng — bắt đầu một đợt chạy lương mới để xem kết quả mới.",
       "resultBackToProcess": "Quay lại Quy trình Lương",
       "overallStatusLabel": "Trạng thái tổng thể",
@@ -4459,7 +4479,13 @@
       },
       "unattachedScopeTitle": "{n} nhân viên bị loại khỏi kỳ lương này đang có giao dịch chờ",
       "unattachedScopeWarning": "Thu hẹp kỳ lương xuống một số nhân viên đồng nghĩa giao dịch của những người còn lại trong tháng này sẽ không được thu thập. Chúng vẫn tồn đọng cho đến khi một kỳ lương đầy đủ của tháng được tính. Bạn có thể tiếp tục — đây là cảnh báo, không phải rào chặn.",
-      "unattachedScopeEmployee": "{name} — {n} mục, {amount}"
+      "unattachedScopeEmployee": "{name} — {n} mục, {amount}",
+      "searchLabel": "Tìm nhân viên",
+      "searchPlaceholder": "Mã nhân viên hoặc tên",
+      "payrollPolicyColumn": "Chính sách bảng lương",
+      "payrollPolicyNone": "Chưa gán chính sách bảng lương",
+      "adjustmentsTitle": "Điều chỉnh trước khi xử lý (tùy chọn)",
+      "adjustmentsHint": "Làm thêm giờ, thưởng, giảm trừ thuế và zakat cho đợt chạy này, cùng các cầu nối đưa vào khoản hoàn ứng đã duyệt, làm thêm giờ theo chấm công, kỳ trả góp khoản vay, chênh lệch ca và phụ cấp. Áp dụng một mục sẽ lưu vào đợt chạy và tải lại bước này."
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",

@@ -3396,7 +3396,7 @@
       "paymentSummaryTitle": "Muat turun CSV pekerja, bank, akaun dan gaji bersih untuk muat naik bank secara manual.",
       "transactionDetail": "Butiran Transaksi",
       "transactionDetailTitle": "Muat turun pendapatan, potongan, caruman majikan dan jumlah setiap pekerja bagi larian ini sebagai fail Excel.",
-      "generatePayslips": "Jana slip gaji",
+      "generatePayslips": "Proses Gaji",
       "closeBatch": "Tutup kelompok",
       "disclaimer": "<strong>Angka draf.</strong> Amaun berkanun dikira daripada peraturan Malaysia yang disahkan dan berkuat kuasa pada akhir tempoh. Semak setiap slip gaji sebelum menutup — setelah ditutup, kelompok ini tidak boleh diubah. Fail bank (<mono>CP39 / KWSP / PERKESO</mono>) dijana secara berasingan.",
       "leaversTitle": "Pekerja berhenti tempoh ini",
@@ -3481,7 +3481,6 @@
       "prefillTp1": "Praisi pelepasan TP1",
       "prefillLoans": "Praisi potongan pinjaman",
       "loanSummary": "{count} ansuran pinjaman · RM {amount}",
-      "step3Title": "Langkah 3 daripada 3 — Semak & proses",
       "summaryPeriod": "Tempoh",
       "summaryCycle": "Kitaran",
       "summaryPaymentDate": "Tarikh bayaran",
@@ -3716,7 +3715,13 @@
         "loansCta": "Buka pinjaman",
         "importHistoryTitle": "Import sejarah gaji",
         "importHistoryDesc": "Import pukal rekod gaji terdahulu untuk migrasi data.",
-        "importHistoryCta": "Buka import"
+        "importHistoryCta": "Buka import",
+        "adjustmentsTitle": "Input Gaji",
+        "adjustmentsDesc": "Kerja lebih masa, bonus, pelepasan TP1 dan zakat pada larian draf, serta jambatan yang membawa tuntutan diluluskan, kerja lebih masa kehadiran, ansuran pinjaman, perbezaan syif dan elaun ke dalamnya.",
+        "adjustmentsCta": "Buka input gaji",
+        "componentImportTitle": "Import Komponen Gaji (CSV)",
+        "componentImportDesc": "Tambah secara pukal elaun, potongan, kerja lebih masa atau bonus sekali sahaja ke larian draf daripada fail CSV, dipratonton sebelum apa-apa ditulis.",
+        "componentImportCta": "Buka import"
       },
       "fixed": {
         "title": "Transaksi Tetap",
@@ -4250,6 +4255,22 @@
             "net": "Gaji bersih"
           }
         }
+      },
+      "draftPicker": {
+        "title": "Larian gaji draf",
+        "choose": "Pilih",
+        "selected": "Dipilih",
+        "noneTitle": "Tiada larian gaji draf",
+        "noneBody": "Fungsi ini terpakai kepada larian yang belum dikira. Mulakan proses gaji, atau tetapkan semula larian yang telah diproses, dan ia akan muncul di sini.",
+        "openRuns": "Buka larian gaji"
+      },
+      "adjustments": {
+        "title": "Input Gaji",
+        "subtitle": "Pilih larian gaji draf, kemudian bawa jumlah yang diluluskan ke dalamnya atau kunci masuk kerja lebih masa, bonus, pelepasan TP1 dan zakat bagi setiap pekerja."
+      },
+      "componentImport": {
+        "title": "Import Komponen Gaji (CSV)",
+        "subtitle": "Pilih larian gaji draf, tampal CSV, pratonton penyesuaian, kemudian sahkan."
       }
     },
     "setup": {
@@ -4360,7 +4381,6 @@
       "multiCycleOffNote": "Hanya larian Bulanan tersedia. Kitaran tambahan (Bonus, Luar kitaran, Gaji Pendahuluan, Pertengahan Bulan) dimatikan untuk penyewa ini.",
       "existingRunsTitle": "Larian sedia ada untuk tempoh ini",
       "resumeDraft": "Sambung draf",
-      "confirmSelectionAndProcess": "Sahkan pilihan & teruskan",
       "draftNotFoundOrNoAccess": "Draf ini tidak ditemui atau anda tidak mempunyai akses kepadanya.",
       "regularExistsNote": "Larian Bulanan untuk {period} sudah wujud. Sambung draf sedia ada, atau pilih kitaran lain.",
       "consolidationNote": "Data kehadiran, cuti, tuntutan dan pinjaman disatukan pada langkah semakan, selepas larian dicipta.",
@@ -4396,7 +4416,7 @@
       "payrollCycleMissingForCompany": "{company} tiada kitaran gaji aktif untuk proses ini — sediakan satu sebelum memproses.",
       "payrollCycleMissingForCompanyType": "Tiada kitaran {runType} aktif untuk {company} — sediakan satu dalam tetapan Kitaran Gaji.",
       "resultTitle": "Keputusan Pemprosesan Gaji",
-      "resultSubtitle": "Ringkasan dan status larian gaji pelbagai syarikat.",
+      "resultSubtitle": "Ringkasan dan status larian gaji.",
       "resultExpired": "Keputusan ini tidak lagi tersedia — mulakan larian gaji baharu untuk melihat keputusan terkini.",
       "resultBackToProcess": "Kembali ke Proses Gaji",
       "overallStatusLabel": "Status keseluruhan",
@@ -4459,7 +4479,13 @@
       },
       "unattachedScopeTitle": "{n} pekerja yang tercicir daripada proses ini mempunyai transaksi menunggu",
       "unattachedScopeWarning": "Menyempitkan proses kepada sebahagian pekerja bermakna transaksi pekerja lain bagi bulan ini tidak dikutip. Ia kekal tertunggak sehingga proses penuh bagi bulan itu dikira. Anda boleh teruskan — ini amaran, bukan sekatan.",
-      "unattachedScopeEmployee": "{name} — {n} entri, {amount}"
+      "unattachedScopeEmployee": "{name} — {n} entri, {amount}",
+      "searchLabel": "Cari pekerja",
+      "searchPlaceholder": "ID pekerja atau nama",
+      "payrollPolicyColumn": "Dasar Gaji",
+      "payrollPolicyNone": "Tiada dasar gaji ditetapkan",
+      "adjustmentsTitle": "Pelarasan sebelum pemprosesan (pilihan)",
+      "adjustmentsHint": "Kerja lebih masa, bonus, pelepasan cukai dan zakat untuk larian ini, serta jambatan yang membawa masuk tuntutan diluluskan, kerja lebih masa kehadiran, ansuran pinjaman, perbezaan syif dan elaun. Menggunakan salah satunya menyimpannya pada larian dan memuat semula langkah ini."
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",

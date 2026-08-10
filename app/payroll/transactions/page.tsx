@@ -76,6 +76,33 @@ export default async function PayrollTransactionsPage() {
           </Link>
         </Card>
 
+        {/* 7076f8af — the two cards the run screen gave up. The reporter asked for "Import Pay Components
+            (CSV)" to live here by name, and for everything you may need to correct before a run is
+            calculated to stop being a fixture of the screen a Reset lands on. The adjustment panel's
+            primary home is the run flow's Review step; this is its second door. Neither is a new
+            capability: both drive the same server actions against the same draft batch. */}
+        <Card className="flex flex-col p-5">
+          <h2 className="text-base font-semibold">{t('hub.adjustmentsTitle')}</h2>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.adjustmentsDesc')}</p>
+          <Link
+            href="/payroll/transactions/adjustments"
+            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t('hub.adjustmentsCta')}
+          </Link>
+        </Card>
+
+        <Card className="flex flex-col p-5">
+          <h2 className="text-base font-semibold">{t('hub.componentImportTitle')}</h2>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.componentImportDesc')}</p>
+          <Link
+            href="/payroll/transactions/import-components"
+            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t('hub.componentImportCta')}
+          </Link>
+        </Card>
+
         <Card className="flex flex-col p-5">
           <h2 className="text-base font-semibold">{t('hub.loansTitle')}</h2>
           <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.loansDesc')}</p>

@@ -32,7 +32,18 @@ export type OtRow = {
 const fmt = (n: number) =>
   `RM ${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export function OtInputRow({ batchId, row }: { batchId: string; row: OtRow }) {
+export function OtInputRow({
+  batchId,
+  row,
+  returnTo,
+}: {
+  batchId: string;
+  row: OtRow;
+  /** 7076f8af — the screen this row is rendered on. The grid is no longer only on the run screen, so the
+   *  save action returns where it was pressed instead of always to `/payroll/<batchId>`. Omitted ⇒ the
+   *  action's own fallback, which is that run screen: unchanged behaviour for any caller that ignores it. */
+  returnTo?: string;
+}) {
   const t = useTranslations('payroll.batch');
   const isAttendance = row.otSource === 'attendance';
 
@@ -48,6 +59,7 @@ export function OtInputRow({ batchId, row }: { batchId: string; row: OtRow }) {
       }}
     >
       <input type="hidden" name="batchId" value={batchId} />
+      {returnTo && <input type="hidden" name="returnTo" value={returnTo} />}
       <input type="hidden" name="employmentId" value={row.employmentId} />
       <fieldset className="flex flex-col gap-1">
         <span className="text-[10px] uppercase text-muted-foreground" title={t('fieldOtHint')}>

@@ -4,10 +4,18 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
 import { scopedAdmin } from '@/lib/scope';
-import { createAdditionalRun, createBatch, preProcessAdvisoryForSelection, updateBatchScope, type PreProcessAdvisory } from '@/core/payroll';
+import { batchDetail, createAdditionalRun, createBatch, generatePayslips, preProcessAdvisoryForSelection, updateBatchScope, type PreProcessAdvisory } from '@/core/payroll';
 import { getActivePayrollCycle } from '@/core/payroll-cycle';
-import { listEmployees, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
-import { companiesMissingCycle, encodeRunGroupResult, runMultiCompanyPayroll, type IntendedRunType } from '@/core/payroll-run-group';
+import { allowedCompanies, listEmployees, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
+import {
+  companiesMissingCycle,
+  encodeRunGroupResult,
+  reasonForError,
+  runMultiCompanyPayroll,
+  summarize,
+  type CompanyOutcome,
+  type IntendedRunType,
+} from '@/core/payroll-run-group';
 import { unattachedHoldersOutsideSelection, type UnattachedHolderRow } from '@/core/payroll-view';
 
 /** Step 2 population (plan §2) — fetched by the client once company(ies) + period are chosen. Accepts one
@@ -168,12 +176,28 @@ export async function createRunAction(formData: FormData) {
 }
 
 /**
- * Payroll Process wizard — RESUME a draft batch. Called from Step 2's confirm button in resume mode: it
- * re-sets the existing draft's employee-selection scope (never re-creates the batch) then hands off to the
- * SAME Transaction Key-In screen (?from=process) a fresh run reaches. The scope is only posted when the
- * admin actually narrowed the set (any filter use or manual deselect — the client posts employmentIds only
- * then, mirroring createRunAction's touched rule); an untouched selection leaves the whole-company default.
- * The cross-company intersection + orphan cleanup live in updateBatchScope (the service).
+ * Payroll Process wizard — RESUME a draft batch, and now RUN it. Called from Step 3's terminal button in
+ * resume mode: it re-sets the existing draft's employee-selection scope (never re-creates the batch), then
+ * calculates the run and lands on the SAME result page a fresh multi-company run lands on. The scope is
+ * only posted when the admin actually narrowed the set (any filter use or manual deselect — the client
+ * posts employmentIds only then, mirroring createRunAction's touched rule); an untouched selection leaves
+ * the whole-company default. The cross-company intersection + orphan cleanup live in updateBatchScope.
+ *
+ * 7076f8af — THE RESUME PATH IS TERMINAL NOW. It used to end by handing the operator back to
+ * `/payroll/<id>?from=process`, the long run screen, which is why repointing Reset alone would not have
+ * satisfied the reporter: reset would have sent them into the flow and the flow would have delivered them
+ * straight back out to the screen they were trying to leave. A resumed run therefore reports its outcome
+ * the way every other run does — succeeded / failed, with a reason.
+ *
+ * The single-company outcome is wrapped in the EXISTING `RunGroupResult` shape rather than a second result
+ * format, so `/payroll/process/result` renders it with no change of its own: one row, the same counts, the
+ * same friendly reason vocabulary. `summarize` derives the header figures, so this cannot disagree with the
+ * multi-company run about what "partial" or "failed" means.
+ *
+ * The try/catch around the generation is deliberate and mirrors runMultiCompanyPayroll's HAZARD 2: a
+ * generation that throws (most often PreProcessBlockedError — somebody in scope has no salary record) must
+ * render as a REASON ROW on the result page, not as a thrown error page. Note redirect() signals by
+ * THROWING, so every redirect here is placed outside the try that could swallow it.
  */
 export async function resumeRunAction(formData: FormData) {
   const s = await getSession();
@@ -190,9 +214,53 @@ export async function resumeRunAction(formData: FormData) {
   } catch (e) {
     redirect(`/payroll/process?resume=${batchId}&error=${encodeURIComponent((e as Error).message)}`);
   }
+
+  // Re-read the batch AFTER the scope write: the persisted scope is the authority on who this run covers
+  // (updateBatchScope intersects out cross-company ids and normalises an empty selection back to
+  // whole-company), so the "selected" count on the result page is the run's own figure, never the client's.
+  const data = await batchDetail(s, batchId);
+  if (!data) {
+    redirect(`/payroll/process?error=${encodeURIComponent('That payroll run is no longer available.')}`);
+  }
+  const batch = data.batch;
+  const persistedScope = (batch.scope ?? null) as { employmentIds?: string[] } | null;
+  const companyName =
+    (await allowedCompanies(s)).find((c) => c.id === batch.companyId)?.name ?? batch.companyId;
+  const employeesSelected = persistedScope?.employmentIds?.length
+    ? persistedScope.employmentIds.length
+    : (await listEmployees(s, [batch.companyId])).length;
+
+  const startedAt = new Date().toISOString();
+  let outcome: CompanyOutcome;
+  try {
+    const gen = await generatePayslips(s, { batchId });
+    // Full draft→processed generation (never the reprocessSubset path), so `payslips` is present; the
+    // fallback satisfies the union return type, exactly as in runMultiCompanyPayroll.
+    const payslips = 'payslips' in gen && typeof gen.payslips === 'number' ? gen.payslips : 0;
+    outcome = {
+      companyId: batch.companyId,
+      companyName,
+      status: 'succeeded',
+      batchId,
+      employeesSelected,
+      employeesSucceeded: payslips,
+    };
+  } catch (e) {
+    outcome = {
+      companyId: batch.companyId,
+      companyName,
+      status: 'failed',
+      batchId,
+      employeesSelected,
+      employeesSucceeded: 0,
+      reason: reasonForError((e as Error).message),
+    };
+  }
+  const result = summarize(batch.payPeriod, startedAt, new Date().toISOString(), [outcome]);
+
   revalidatePath('/payroll');
   revalidatePath(`/payroll/${batchId}`);
-  redirect(`/payroll/${batchId}?from=process`);
+  redirect(`/payroll/process/result?r=${encodeRunGroupResult(result)}`);
 }
 
 /**

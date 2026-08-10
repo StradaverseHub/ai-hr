@@ -5,15 +5,12 @@ import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory } from '@/core/payroll';
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
-import { loanSummaryForBatch } from '@/core/loans';
-import { listAllowancePolicies, auditEvents } from '@/core/read';
-import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { auditEvents } from '@/core/read';
+import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, prefillTp1Action, resetAction, transferAllowancesAction, unlockAction } from '../actions';
-import { ComponentImport } from './component-import';
-import { OtInputRow } from './ot-input-row';
+import { closeAction, generateAction, resetAction, unlockAction } from '../actions';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
 import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
@@ -49,9 +46,6 @@ export default async function BatchPage({
     hw?: string;
     page?: string;
     size?: string;
-    // The draft-run inputs table pages independently of the payslips table below it.
-    iPage?: string;
-    iSize?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -89,7 +83,6 @@ export default async function BatchPage({
   // fc776376 — both per-employee tables on this run are genuine lists that grow with headcount. The
   // payslip BREAKDOWN (one payslip's own lines) is deliberately not paged: it is one record, not a list.
   const slipPage = paginateRows(slips, parsePageQuery(sp));
-  const inputPage = paginateRows(inputs, parsePageQuery({ page: sp.iPage, size: sp.iSize }));
   // Pre-processing checks (feedback f1564110, Phase 1): validate employee master data BEFORE the run
   // is calculated. Blockers (no salary record) disable Generate outright; warnings (no statutory
   // profile / no bank details) swap Generate for a ConfirmSubmit that posts ackWarnings=1.
@@ -149,16 +142,10 @@ export default async function BatchPage({
     warning: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
     blocker: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   };
-  // 1.2.8 (ADR-0060): loan deductions are RESERVED onto a regular draft run only; show the running summary.
+  // 1.2.8 (ADR-0060): loan deductions are RESERVED onto a regular draft run only. The running summary and
+  // the reservation button travel with the adjustment panel (7076f8af); `isRegular` stays — the unattached
+  // -transaction indicators below are gated on it.
   const isRegular = batch.runType === 'regular';
-  const loanSummary = batch.status === 'draft' && isRegular ? await loanSummaryForBatch(s, batchId) : { loans: 0, total: 0 };
-  // Attendance Allowance (ADR-0072): active policies in this batch's company available to transfer.
-  const allowancePolicies =
-    batch.status === 'draft'
-      ? await listAllowancePolicies(s, { companyIds: [batch.companyId] }).then((rows) =>
-          rows.filter((r) => r.status === 'active'),
-        )
-      : [];
   const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
   const periodDays = new Date(pYear, pMonth, 0).getDate(); // calendar days in the pay period
   /**
@@ -183,8 +170,6 @@ export default async function BatchPage({
       month: String(pMonth),
       cycle: batch.runType,
     }).toString()}`;
-  // Bulk component import (1D) is only meaningful when the kernel reads typed components.
-  const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
   // Payroll Reset (feedback a03b2d9b) — ships dark behind a flag; the page is already requireAdmin-
   // gated, and resetAction + resetProcessedBatch re-assert admin (a payroll_partner never sees this).
   const resetOn = settingEnabledOrDefault(s, 'payroll.reset_enabled');
@@ -208,11 +193,14 @@ export default async function BatchPage({
   const hrdfRegistered =
     ((await packFor('MY')?.companyStatutory.get(s, batch.companyId))?.hrdfStatus ?? 'not_registered') !==
     'not_registered';
-  // Payroll Process wizard: this draft is presented as "Step 3 of 3" when it arrived straight from the
-  // wizard's terminal create action. A compact one-shot holiday-warning code list rides the query string
-  // ('country|state|year|loaded|required' ';'-joined) — the domain event appended in createBatch is the
-  // durable record; this is only shown for this one render right after creation.
-  const fromWizard = from === 'process' && batch.status === 'draft';
+  // 7076f8af — THIS SCREEN NO LONGER CALLS ITSELF A WIZARD STEP. It used to prefix its subtitle with
+  // "Step 3 of 3 — Review & process" whenever it was reached with ?from=process, which meant the product
+  // counted to three twice: the run flow's own rail already reads "3 of 3" on its Review step, and then
+  // the screen it handed you to said "3 of 3" again about something else. The run flow is terminal now
+  // (it ends on the result page, not here), so there is no third step to be. The `from` param survives
+  // only as a pager passthrough. A compact one-shot holiday-warning code list still rides the query
+  // string ('country|state|year|loaded|required' ';'-joined) — the domain event appended in createBatch
+  // is the durable record; this is only shown for this one render right after creation.
   const holidayWarnings = hw
     ? hw.split(';').map((code) => {
         const [country, state, year, loaded, required] = code.split('|');
@@ -259,7 +247,6 @@ export default async function BatchPage({
         title={batch.payPeriod}
         description={
           <>
-            {fromWizard ? `${t('step3Title')} · ` : ''}
             {t('subtitle')} · <span>{PUBLICATION_LABEL[pubState]}</span>
           </>
         }
@@ -876,177 +863,12 @@ export default async function BatchPage({
         </Card>
       )}
 
-      {batch.status === 'draft' && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('inputsTitle')} count={inputs.length} />
-          <p className="px-4 pt-3 text-xs text-muted-foreground">
-            {t('inputsHint')}
-          </p>
-          <div className="mx-4 mt-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
-            <div className="mb-1.5 text-xs font-semibold text-foreground">{t('consolidateTitle')}</div>
-            <p className="text-xs text-muted-foreground">
-              {t.rich('prefillHint', {
-                strong: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
-              })}
-            </p>
-            {isScoped && <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{t('scopedCaption')}</p>}
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <form action={prefillOvertimeAction}>
-                <input type="hidden" name="batchId" value={batch.id} />
-                <Button type="submit" size="sm" variant="secondary">
-                  {t('prefillOt')}
-                </Button>
-              </form>
-              <form action={prefillClaimsAction}>
-                <input type="hidden" name="batchId" value={batch.id} />
-                <Button type="submit" size="sm" variant="secondary">
-                  {t('prefillClaims')}
-                </Button>
-              </form>
-              {/* 1.2.8 Loan deductions — reserve onto a regular draft run only (ADR-0060). */}
-              {isRegular && (
-                <form action={prefillLoansAction} className="flex items-center gap-2">
-                  <input type="hidden" name="batchId" value={batch.id} />
-                  <Button type="submit" size="sm" variant="secondary">
-                    {t('prefillLoans')}
-                  </Button>
-                  {loanSummary.loans > 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      {t('loanSummary', {
-                        count: loanSummary.loans,
-                        amount: loanSummary.total.toLocaleString('en-MY', { minimumFractionDigits: 2 }),
-                      })}
-                    </span>
-                  )}
-                </form>
-              )}
-              <form action={prefillShiftDifferentialAction}>
-                <input type="hidden" name="batchId" value={batch.id} />
-                <Button type="submit" size="sm" variant="secondary">
-                  {t('prefillShiftDiff')}
-                </Button>
-              </form>
-              <form action={prefillFixedZakatAction}>
-                <input type="hidden" name="batchId" value={batch.id} />
-                <Button type="submit" size="sm" variant="secondary">
-                  {t('prefillFixedZakat')}
-                </Button>
-              </form>
-              {/* a1d82340 rev 3 — TP1 self-relief. `prefillTp1Action` has existed since the TP1 screen
-                  shipped and was rendered by NO screen: five of the six prefill actions had a button
-                  here and this one did not. An employee could submit their TP1 relief, HR could see it
-                  on the relief screen, and it could never reach a payslip, because the only bridge from
-                  tp1_relief to payroll_input.tp1_deduction is this action. Regular runs only, like the
-                  loan reservation above: an additional/off-cycle run pays its bonus and does not carry
-                  the month's declared reliefs. */}
-              {isRegular && (
-                <form action={prefillTp1Action}>
-                  <input type="hidden" name="batchId" value={batch.id} />
-                  <Button type="submit" size="sm" variant="secondary">
-                    {t('prefillTp1')}
-                  </Button>
-                </form>
-              )}
-              {/* Attendance Allowance (ADR-0072) — pick an active policy and transfer its qualified
-                  allowances onto this draft. Gated by TYPED_PAY_COMPONENTS_ENABLED. */}
-              {allowancePolicies.length > 0 && (
-                <form action={transferAllowancesAction} className="flex items-center gap-2">
-                  <input type="hidden" name="batchId" value={batch.id} />
-                  <select name="policyId" className={inputCls} defaultValue={allowancePolicies[0]?.id}>
-                    {allowancePolicies.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} — RM {Number(p.amount).toFixed(2)}
-                      </option>
-                    ))}
-                  </select>
-                  <Button type="submit" size="sm" variant="secondary">
-                    {t('transferAllowance')}
-                  </Button>
-                </form>
-              )}
-            </div>
-            {allowancePolicies.length > 0 && !typedComponentsOn && (
-              <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{t('allowanceGateWarning')}</p>
-            )}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2 font-medium">{t('colCode')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('colBasic')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('colOtBonusTp1Zakat')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('colUnpaidDays')}</th>
-                  {/* e2632276 — the absent-day count, so it can be checked BEFORE the run is processed.
-                      This grid is draft-only, which is why it never appears on a processed batch. */}
-                  <th className="px-4 py-2 text-right font-medium">{t('colAbsentDays')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {inputPage.rows.map((r) => (
-                  <tr key={r.employmentId}>
-                    <td className="px-4 py-2.5">
-                      <EmployeeCode code={r.employeeCode} />
-                    </td>
-                    <td className="px-4 py-2.5 font-medium">{r.name}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(r.basic)}</td>
-                    <td className="px-4 py-2.5">
-                      {/* Fix-5: manual OT (RM you enter) with the s.60I(1A) ORP/hourly basis surfaced, a
-                          >RM4,000 eligibility note, and a clobber warning before overwriting an
-                          attendance-prefilled row. See ot-input-row.tsx. */}
-                      <OtInputRow
-                        batchId={batch.id}
-                        row={{
-                          employmentId: r.employmentId,
-                          otBreakdown: r.otBreakdown,
-                          otSource: r.otSource,
-                          orp: r.orp,
-                          hourly: r.hourly,
-                          otEligible: r.otEligible,
-                          otWageCeiling: r.otWageCeiling,
-                          bonusAmount: r.bonusAmount,
-                          tp1Deduction: r.tp1Deduction,
-                          zakat: r.zakat,
-                        }}
-                      />
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
-                      {r.unpaidDays > 0 ? r.unpaidDays : '—'}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
-                      {r.absentDays > 0 ? r.absentDays : '—'}
-                    </td>
-                  </tr>
-                ))}
-                {inputPage.rows.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                      {t('noActiveEmployees')}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <Pager
-            basePath={`/payroll/${batchId}`}
-            params={{ from, hw, page: sp.page, size: sp.size }}
-            paramNames={{ page: 'iPage', size: 'iSize' }}
-            state={inputPage.state}
-          />
-        </Card>
-      )}
-
-      {batch.status === 'draft' && typedComponentsOn && (
-        <Card>
-          <SectionHeader title={t('componentImport.title')} />
-          <div className="px-4 pb-4">
-            <p className="mb-3 text-xs text-muted-foreground">{t('componentImport.description')}</p>
-            <ComponentImport batchId={batch.id} />
-          </div>
-        </Card>
-      )}
+      {/* 7076f8af — TWO CARDS LEFT THIS SCREEN HERE, and neither was deleted.
+          The draft adjustment panel (Payroll inputs: the seven consolidation bridges + the per-employee
+          input grid) now renders on the run flow's Review step and on a screen under Transactions —
+          app/payroll/adjustments-panel.tsx, same actions, same batchId contract. The pay-component CSV
+          import moved to Transactions only. A reset no longer lands anyone here, so leaving them would
+          have left two copies of the same functions in two places. */}
 
       {batch.status !== 'draft' &&
         (() => {
@@ -1170,7 +992,7 @@ export default async function BatchPage({
         </div>
         <Pager
           basePath={`/payroll/${batchId}`}
-          params={{ from, hw, iPage: sp.iPage, iSize: sp.iSize }}
+          params={{ from, hw }}
           state={slipPage.state}
         />
         {slipPage.rows.length > 0 && (

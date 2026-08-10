@@ -3069,7 +3069,7 @@
       "paymentSummaryTitle": "Download a CSV of employee, bank, account and net pay for manual bank upload.",
       "transactionDetail": "Transaction Detail",
       "transactionDetailTitle": "Download every employee’s earnings, deductions, employer contributions and totals for this run as an Excel file.",
-      "generatePayslips": "Generate payslips",
+      "generatePayslips": "Process Payroll",
       "closeBatch": "Close batch",
       "disclaimer": "<strong>Draft figures.</strong> Statutory amounts are computed from the verified Malaysian rules in effect at period end. Review every payslip before closing — once closed, the batch is immutable. Bank files (<mono>CP39 / KWSP / PERKESO</mono>) are generated separately.",
       "leaversTitle": "Leavers this period",
@@ -3157,7 +3157,6 @@
       "prefillTp1": "Prefill TP1 relief",
       "prefillLoans": "Prefill loan deductions",
       "loanSummary": "{count} loan instalment(s) · RM {amount}",
-      "step3Title": "Step 3 of 3 — Review & process",
       "summaryPeriod": "Period",
       "summaryCycle": "Cycle",
       "summaryPaymentDate": "Payment date",
@@ -3716,7 +3715,13 @@
         "loansCta": "Open loans",
         "importHistoryTitle": "Import payroll history",
         "importHistoryDesc": "Bulk import of historical payroll records for data migration.",
-        "importHistoryCta": "Open import"
+        "importHistoryCta": "Open import",
+        "adjustmentsTitle": "Payroll Inputs",
+        "adjustmentsDesc": "Overtime, bonus, TP1 relief and zakat on a draft run, and the bridges that carry approved claims, attendance overtime, loan instalments, shift differential and allowances into it.",
+        "adjustmentsCta": "Open payroll inputs",
+        "componentImportTitle": "Import Pay Components (CSV)",
+        "componentImportDesc": "Bulk-add one-off allowances, deductions, overtime or bonuses to a draft run from a CSV file, previewed before anything is written.",
+        "componentImportCta": "Open import"
       },
       "fixed": {
         "title": "Fixed Transaction",
@@ -4250,6 +4255,22 @@
             "net": "Net pay"
           }
         }
+      },
+      "draftPicker": {
+        "title": "Draft payroll runs",
+        "choose": "Choose",
+        "selected": "Selected",
+        "noneTitle": "No draft payroll run",
+        "noneBody": "These functions apply to a run that has not been calculated yet. Start a payroll process, or reset a processed run, and it will appear here.",
+        "openRuns": "Open payroll runs"
+      },
+      "adjustments": {
+        "title": "Payroll Inputs",
+        "subtitle": "Choose a draft payroll run, then bring approved amounts into it or key overtime, bonus, TP1 relief and zakat per employee."
+      },
+      "componentImport": {
+        "title": "Import Pay Components (CSV)",
+        "subtitle": "Choose a draft payroll run, paste the CSV, preview the reconciliation, then commit."
       }
     },
     "setup": {
@@ -4360,7 +4381,6 @@
       "multiCycleOffNote": "Only Monthly runs are available. Additional cycles (Bonus, Off-cycle, Advance Salary, Mid-Month) are switched off for this tenant.",
       "existingRunsTitle": "Existing runs for this period",
       "resumeDraft": "Resume draft",
-      "confirmSelectionAndProcess": "Confirm selection & continue",
       "draftNotFoundOrNoAccess": "This draft could not be found or you don’t have access to it.",
       "regularExistsNote": "A Monthly run already exists for {period}. Resume the existing draft, or pick a different cycle.",
       "consolidationNote": "Attendance, leave, claims and loan data are consolidated on the review step, after the run is created.",
@@ -4396,7 +4416,7 @@
       "payrollCycleMissingForCompany": "{company} has no active payroll cycle for this run — set one up before processing.",
       "payrollCycleMissingForCompanyType": "No active {runType} cycle for {company} — set one up in Payroll Cycle settings.",
       "resultTitle": "Payroll Processing Result",
-      "resultSubtitle": "Summary and status of the multi-company payroll run.",
+      "resultSubtitle": "Summary and status of the payroll run.",
       "resultExpired": "This result is no longer available — start a new payroll run to see fresh results.",
       "resultBackToProcess": "Back to Payroll Process",
       "overallStatusLabel": "Overall status",
@@ -4459,7 +4479,13 @@
       },
       "unattachedScopeTitle": "{n} employee(s) left out of this run have transactions waiting",
       "unattachedScopeWarning": "Narrowing a run to some employees means the others' transactions for this month are not collected. They stay outstanding until a full run for the month is calculated. You can continue — this is a warning, not a block.",
-      "unattachedScopeEmployee": "{name} — {n} entry/entries, {amount}"
+      "unattachedScopeEmployee": "{name} — {n} entry/entries, {amount}",
+      "searchLabel": "Search employee",
+      "searchPlaceholder": "Employee ID or name",
+      "payrollPolicyColumn": "Payroll Policy",
+      "payrollPolicyNone": "No payroll policy assigned",
+      "adjustmentsTitle": "Adjustments before processing (optional)",
+      "adjustmentsHint": "Overtime, bonus, tax relief and zakat for this run, and the bridges that bring in approved claims, attendance overtime, loan instalments, shift differential and allowances. Applying one saves it to the run and reloads this step."
     },
     "guide": {
       "title": "Payroll Workflow Guide",

@@ -38,6 +38,15 @@ import '@/packs/claims/payroll';
 import { payrollInputContributorById } from '@/packs/contracts';
 import { prefillLoansForBatch } from '@/core/loans';
 import { transferAllowancesToBatch } from '@/core/attendance-allowance';
+// 7076f8af — the draft-adjustment panel is no longer a fixture of the run screen (it is rendered on the
+// Payroll Process wizard's Review step and on a screen under Transactions), so the eight actions it drives
+// return to the screen they were pressed on. The destination is whitelisted, never echoed raw. See
+// lib/return-to.ts.
+import { adjustmentReturnTo, withQueryParam } from '@/lib/return-to';
+// resumeHref is the ONE declaration of "where does a draft run resume?" (app/payroll/process/
+// selection-logic.ts). resetAction sends the operator there instead of hard-coding the wizard path, so the
+// two can never drift apart.
+import { resumeHref } from './process/selection-logic';
 
 // Note: run creation (regular + additional) moved to app/payroll/process/actions.ts (createRunAction) as
 // part of the Payroll Process wizard — creation is now the wizard's TERMINAL action. createBatch /
@@ -95,6 +104,7 @@ export async function generateAction(formData: FormData) {
 export async function setPayrollInputAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  const back = adjustmentReturnTo(formData.get('returnTo'), batchId);
   try {
     // Fix-5 (#4/#28): OT is keyed as four MANUAL RM amounts the admin computes against the s.60/60D
     // structure (normal-day / rest-day / public-holiday OT + a flat bucket) — these are NOT rates the
@@ -117,21 +127,22 @@ export async function setPayrollInputAction(formData: FormData) {
       zakat: Number(formData.get('zakat')) || 0,
     });
   } catch (e) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(back, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}`);
-  redirect(`/payroll/${batchId}?toast=Saved`);
+  redirect(withQueryParam(back, 'toast', 'Saved'));
 }
 
 export async function prefillOvertimeAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  const back = adjustmentReturnTo(formData.get('returnTo'), batchId);
   let applied = 0;
   let ineligible = 0;
   try {
     ({ applied, ineligible } = await prefillOvertimeFromAttendance(s, { batchId }));
   } catch (e) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(back, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -140,12 +151,13 @@ export async function prefillOvertimeAction(formData: FormData) {
       : `OT prefilled for ${applied} employee${applied === 1 ? '' : 's'}${
           ineligible ? ` (${ineligible} above RM4,000 — not statutorily entitled)` : ''
         }`;
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+  redirect(withQueryParam(back, 'toast', note));
 }
 
 export async function prefillShiftDifferentialAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  const back = adjustmentReturnTo(formData.get('returnTo'), batchId);
   let applied = 0;
   let gated = false;
   try {
@@ -153,7 +165,7 @@ export async function prefillShiftDifferentialAction(formData: FormData) {
     applied = r.applied;
     gated = 'gated' in r && r.gated === true;
   } catch (e) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(back, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note = gated
@@ -161,12 +173,13 @@ export async function prefillShiftDifferentialAction(formData: FormData) {
     : applied === 0
       ? 'No shift differentials found for this period'
       : `Shift differential prefilled for ${applied} employee${applied === 1 ? '' : 's'}`;
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+  redirect(withQueryParam(back, 'toast', note));
 }
 
 export async function prefillClaimsAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  const back = adjustmentReturnTo(formData.get('returnTo'), batchId);
   let applied = 0;
   let claims = 0;
   let total = 0;
@@ -176,7 +189,7 @@ export async function prefillClaimsAction(formData: FormData) {
     // what claims calls `claims` — the toast copy below is unchanged.
     ({ applied, sourceCount: claims, total } = await payrollInputContributorById('claims')!.contribute(s, { batchId }));
   } catch (e) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(back, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -185,7 +198,7 @@ export async function prefillClaimsAction(formData: FormData) {
       : `Queued ${claims} claim${claims === 1 ? '' : 's'} (RM ${total.toLocaleString('en-MY', {
           minimumFractionDigits: 2,
         })}) onto ${applied} payslip${applied === 1 ? '' : 's'}`;
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+  redirect(withQueryParam(back, 'toast', note));
 }
 
 // 1.2.8 Loan deductions (ADR-0060) — RESERVE the next instalment of each active loan onto a REGULAR DRAFT
@@ -193,12 +206,13 @@ export async function prefillClaimsAction(formData: FormData) {
 export async function prefillLoansAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  const back = adjustmentReturnTo(formData.get('returnTo'), batchId);
   let loans = 0;
   let total = 0;
   try {
     ({ loans, total } = await prefillLoansForBatch(s, { batchId }));
   } catch (e) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(back, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -207,18 +221,19 @@ export async function prefillLoansAction(formData: FormData) {
       : `Reserved ${loans} loan instalment${loans === 1 ? '' : 's'} (RM ${total.toLocaleString('en-MY', {
           minimumFractionDigits: 2,
         })})`;
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+  redirect(withQueryParam(back, 'toast', note));
 }
 
 export async function prefillTp1Action(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  const back = adjustmentReturnTo(formData.get('returnTo'), batchId);
   let applied = 0;
   let skipped = 0;
   try {
     ({ applied, skipped } = await prefillTp1FromSelfRelief(s, { batchId }));
   } catch (e) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(back, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -227,7 +242,7 @@ export async function prefillTp1Action(formData: FormData) {
       : `TP1 self-relief fed onto ${applied} payslip${applied === 1 ? '' : 's'}${
           skipped ? ` (${skipped} left as a manual override)` : ''
         }`;
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+  redirect(withQueryParam(back, 'toast', note));
 }
 
 // 1.2.4 Zakat — prefill the FIXED-zakat amount onto in-scope employees' batch rows (visibility/edit
@@ -235,18 +250,19 @@ export async function prefillTp1Action(formData: FormData) {
 export async function prefillFixedZakatAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  const back = adjustmentReturnTo(formData.get('returnTo'), batchId);
   let applied = 0;
   try {
     ({ applied } = await prefillFixedZakat(s, { batchId }));
   } catch (e) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(back, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
     applied === 0
       ? 'No active fixed-zakat elections for this batch'
       : `Fixed zakat prefilled for ${applied} employee${applied === 1 ? '' : 's'}`;
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+  redirect(withQueryParam(back, 'toast', note));
 }
 
 // Attendance Allowance (ADR-0072) — transfer a Monthly policy's qualified allowances onto this draft
@@ -255,8 +271,9 @@ export async function prefillFixedZakatAction(formData: FormData) {
 export async function transferAllowancesAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  const back = adjustmentReturnTo(formData.get('returnTo'), batchId);
   const policyId = String(formData.get('policyId') ?? '');
-  if (!policyId) redirect(`/payroll/${batchId}?error=${encodeURIComponent('Select an attendance-allowance policy first')}`);
+  if (!policyId) redirect(withQueryParam(back, 'error', 'Select an attendance-allowance policy first'));
   let applied = 0;
   let ineligible = 0;
   let reversed = 0;
@@ -264,7 +281,7 @@ export async function transferAllowancesAction(formData: FormData) {
   try {
     ({ applied, ineligible, reversed, gated } = await transferAllowancesToBatch(s, { batchId, policyId }));
   } catch (e) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(back, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note = gated
@@ -272,7 +289,7 @@ export async function transferAllowancesAction(formData: FormData) {
     : `Attendance allowance transferred to ${applied} employee${applied === 1 ? '' : 's'}` +
       (ineligible ? ` (${ineligible} did not qualify)` : '') +
       (reversed ? `; removed ${reversed} previously-transferred row${reversed === 1 ? '' : 's'} that no longer qualify` : '');
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+  redirect(withQueryParam(back, 'toast', note));
 }
 
 /**
@@ -311,6 +328,15 @@ export async function deleteDraftBatchAction(formData: FormData) {
  * permanently immutable), reverses the loan/claim side-effects and appends the audited
  * payroll-batch.reset event with the session's real actor. Toast/error copy localised here
  * (ToastFromQuery renders the raw query string — same convention as deleteDraftBatchAction).
+ *
+ * 7076f8af — WHERE IT LANDS IS THE WHOLE DEFECT. A successful reset used to drop the operator back on
+ * `/payroll/<id>`, a long draft screen carrying functions they never asked for and a payslip list that is
+ * EMPTY at that exact moment (resetProcessedBatch deletes the run's payslips). The reset now hands off to
+ * the guided run flow the reporter described, which is where the work actually continues: choose the
+ * people, review, process. The destination comes from `resumeHref`, the one declaration of "where does a
+ * draft resume?", so a future change to that route cannot leave this action pointing at a dead path.
+ * A FAILED reset still returns to the run screen — the run is still processed, and that is where the
+ * refusal makes sense.
  */
 export async function resetAction(formData: FormData) {
   const s = await getSession();
@@ -332,7 +358,10 @@ export async function resetAction(formData: FormData) {
   }
   revalidatePath(`/payroll/${batchId}`);
   revalidatePath('/payroll');
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(t('resetDone'))}`);
+  revalidatePath('/payroll/process');
+  // The run is a DRAFT again by the time this line runs, so resumeHref answers with the wizard resume
+  // link. The toast rides along and is rendered by the layout's ToastFromQuery, exactly as before.
+  redirect(withQueryParam(resumeHref(batchId, 'draft'), 'toast', t('resetDone')));
 }
 
 /**

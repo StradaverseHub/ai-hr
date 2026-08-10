@@ -3396,7 +3396,7 @@
       "paymentSummaryTitle": "下载包含员工、银行、账号和实发工资的 CSV，用于手动银行上传。",
       "transactionDetail": "交易明细",
       "transactionDetailTitle": "将本次薪资运行中每位员工的收入、扣除、雇主缴纳与合计下载为 Excel 文件。",
-      "generatePayslips": "生成工资单",
+      "generatePayslips": "处理薪资",
       "closeBatch": "关闭批次",
       "disclaimer": "<strong>草稿数据。</strong>法定金额依据期末生效的已核实马来西亚规则计算。关闭前请核对每一份工资单 — 一旦关闭，批次即不可更改。银行文件（<mono>CP39 / KWSP / PERKESO</mono>）将单独生成。",
       "leaversTitle": "本周期离职人员",
@@ -3481,7 +3481,6 @@
       "prefillTp1": "预填 TP1 减免",
       "prefillLoans": "预填贷款扣款",
       "loanSummary": "{count} 笔贷款分期 · RM {amount}",
-      "step3Title": "第 3 步，共 3 步 — 审核并处理",
       "summaryPeriod": "周期",
       "summaryCycle": "类型",
       "summaryPaymentDate": "付款日期",
@@ -3716,7 +3715,13 @@
         "loansCta": "打开贷款",
         "importHistoryTitle": "导入薪资历史",
         "importHistoryDesc": "批量导入历史薪资记录，用于数据迁移。",
-        "importHistoryCta": "打开导入"
+        "importHistoryCta": "打开导入",
+        "adjustmentsTitle": "薪资输入",
+        "adjustmentsDesc": "草稿运行上的加班、奖金、TP1 减免和天课，以及将已批准的报销、考勤加班、贷款分期、班次差额和津贴带入其中的通道。",
+        "adjustmentsCta": "打开薪资输入",
+        "componentImportTitle": "导入薪资组成项（CSV）",
+        "componentImportDesc": "从 CSV 文件批量添加一次性津贴、扣款、加班或奖金到草稿运行，写入前先预览。",
+        "componentImportCta": "打开导入"
       },
       "fixed": {
         "title": "固定交易",
@@ -4250,6 +4255,22 @@
             "net": "实发工资"
           }
         }
+      },
+      "draftPicker": {
+        "title": "草稿薪资运行",
+        "choose": "选择",
+        "selected": "已选择",
+        "noneTitle": "没有草稿薪资运行",
+        "noneBody": "这些功能适用于尚未计算的运行。开始一次薪资处理，或重置一个已处理的运行，它就会出现在这里。",
+        "openRuns": "打开薪资运行"
+      },
+      "adjustments": {
+        "title": "薪资输入",
+        "subtitle": "选择一个草稿薪资运行，然后将已批准的金额带入，或按员工录入加班、奖金、TP1 减免和天课。"
+      },
+      "componentImport": {
+        "title": "导入薪资组成项（CSV）",
+        "subtitle": "选择一个草稿薪资运行，粘贴 CSV，预览核对结果，然后提交。"
       }
     },
     "setup": {
@@ -4360,7 +4381,6 @@
       "multiCycleOffNote": "仅提供月度运行。此租户已关闭其他周期（奖金、非周期性、预支薪金、月中）。",
       "existingRunsTitle": "该周期的现有运行",
       "resumeDraft": "继续草稿",
-      "confirmSelectionAndProcess": "确认所选员工并继续",
       "draftNotFoundOrNoAccess": "找不到此草稿，或您没有访问权限。",
       "regularExistsNote": "{period} 的月度运行已存在。请继续现有草稿，或选择其他周期。",
       "consolidationNote": "考勤、休假、报销和贷款数据将在创建运行后的审核步骤中汇总。",
@@ -4396,7 +4416,7 @@
       "payrollCycleMissingForCompany": "{company} 没有用于本次运行的活动薪资周期，请在处理前进行设置。",
       "payrollCycleMissingForCompanyType": "{company} 没有活动的 {runType} 周期，请在薪资周期设置中进行设置。",
       "resultTitle": "薪资处理结果",
-      "resultSubtitle": "多公司薪资运行的摘要与状态。",
+      "resultSubtitle": "本次薪资运行的摘要与状态。",
       "resultExpired": "此结果已不可用——请开始新的薪资运行以查看最新结果。",
       "resultBackToProcess": "返回薪资处理",
       "overallStatusLabel": "总体状态",
@@ -4459,7 +4479,13 @@
       },
       "unattachedScopeTitle": "本次批次遗漏的 {n} 位员工有待处理的交易",
       "unattachedScopeWarning": "将批次缩小到部分员工，意味着其他人本月的交易不会被收集。它们会一直未支付，直到该月份的完整批次被计算。您可以继续 — 这是提醒，不是阻止。",
-      "unattachedScopeEmployee": "{name} — {n} 条，{amount}"
+      "unattachedScopeEmployee": "{name} — {n} 条，{amount}",
+      "searchLabel": "搜索员工",
+      "searchPlaceholder": "员工编号或姓名",
+      "payrollPolicyColumn": "薪资政策",
+      "payrollPolicyNone": "未分配薪资政策",
+      "adjustmentsTitle": "处理前的调整（可选）",
+      "adjustmentsHint": "本次运行的加班、奖金、税务减免和天课，以及将已批准的报销、考勤加班、贷款分期、班次差额和津贴带入的通道。应用其中任一项会保存到本次运行并重新加载此步骤。"
     },
     "guide": {
       "title": "薪资工作流程指南",

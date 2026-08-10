@@ -511,6 +511,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.
       '/payroll/transaction-view',
       '/payroll/transactions',
+      // 7076f8af: the two functions that came OFF the run screen. `adjustments` renders the draft run's
+      // consolidation bridges + input grid (its primary home is the run flow's Review step, which is not a
+      // route of its own); `import-components` is the pay-component CSV import. Both are requireAdmin, the
+      // same guard as the hub they hang off, and neither is a nav row — they are reached from the hub's
+      // cards, so the exact-set guard on PAYROLL_ADMIN_NAV is untouched.
+      '/payroll/transactions/adjustments',
+      '/payroll/transactions/import-components',
       '/payroll/transactions/fixed',
       // f3ae3245: the dedicated View/Edit page for ONE recurring fixed item, replacing the form that
       // unfolded inside a table cell. Same scopedAdmin guard as its list — it is the same data, one row

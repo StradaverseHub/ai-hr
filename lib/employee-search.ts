@@ -60,3 +60,26 @@ export function matchEmployees<T extends EmployeeSearchRow>(
   scored.sort((a, b) => a.rank - b.rank || a.i - b.i);
   return scored.slice(0, cap).map((s) => s.e);
 }
+
+/**
+ * The same "partial Employee ID or partial name" rule as a PREDICATE, for the callers that FILTER a list
+ * in place instead of offering a jump list.
+ *
+ * `matchEmployees` above ranks and CAPS (it answers "which eight rows should the switcher offer?"). The
+ * Payroll Process wizard's Step-2 picker needs the opposite shape: keep every row that matches, in the
+ * caller's own order, so the search can be AND-combined with the seven existing dropdowns and the
+ * checkbox list stays stable while you type. Sharing the folding rule is the point — "emp0008" must find
+ * "EMP-0008" in the picker for exactly the same reason it does in the switcher.
+ *
+ * An empty/whitespace query matches EVERYTHING (a filter that is not set narrows nothing), which is the
+ * opposite of `matchEmployees`, where an empty query offers nothing to jump to.
+ */
+export function matchesEmployeeSearch(row: EmployeeSearchRow, query: string): boolean {
+  const raw = query.trim().toLowerCase();
+  if (!raw) return true;
+  const folded = fold(query);
+  const name = row.name.toLowerCase();
+  const code = (row.employeeCode ?? '').toLowerCase();
+  const codeFolded = fold(row.employeeCode ?? '');
+  return name.includes(raw) || code.includes(raw) || (!!folded && !!codeFolded && codeFolded.includes(folded));
+}

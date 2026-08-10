@@ -5,6 +5,10 @@ import { useTranslations } from 'next-intl';
 import { EmployeeCode, Field, inputCls } from '@/components/ui';
 import { materializeToggle } from '../selection-logic';
 import { EMPLOYMENT_STATUSES } from '@/core/employment-status';
+// 7076f8af — the SAME partial-ID/partial-name rule the Personnel switcher and the two payroll report
+// screens use (lib/employee-search.ts), as a predicate rather than a ranked jump list, so "emp0008" finds
+// "EMP-0008" here for the same reason it does there. Dependency-free, so a client island may import it.
+import { matchesEmployeeSearch } from '@/lib/employee-search';
 
 export type Master = { id: string; name: string; companyId: string };
 
@@ -27,6 +31,8 @@ export type PayrollRunEmployeeRow = {
   hiredOn: string;
   terminatedOn: string | null;
   hasCurrentCompensation: boolean;
+  /** 7076f8af — the employee's assigned Payroll Policy name; null for most employments today. */
+  payrollPolicyName: string | null;
 };
 
 /** Step 2 (3d) — filter bar (AND-combined) + individual picker with select-all/clear + live headcount.
@@ -76,6 +82,11 @@ export function StepSelection({
   const [employmentType, setEmploymentType] = useState('');
   const [costCenterId, setCostCenterId] = useState('');
   const [status, setStatus] = useState('');
+  // 7076f8af — free-text search over Employee ID and name. It is an EIGHTH FILTER, not a separate mode:
+  // AND-combined with the seven dropdowns below, marked through the same markFilterTouch, and toggling a
+  // row while it is active goes through the same materializeToggle. That is what stops a search from
+  // clobbering an edited selection — typing narrows what you SEE, never who is in the run.
+  const [search, setSearch] = useState('');
 
   const filtered = useMemo(
     () =>
@@ -87,12 +98,22 @@ export function StepSelection({
           (!gradeId || e.gradeId === gradeId) &&
           (!employmentType || e.employmentType === employmentType) &&
           (!costCenterId || e.costCenterId === costCenterId) &&
-          (!status || e.status === status),
+          (!status || e.status === status) &&
+          matchesEmployeeSearch(e, search),
       ),
-    [employees, businessUnitId, departmentId, positionId, gradeId, employmentType, costCenterId, status],
+    [employees, businessUnitId, departmentId, positionId, gradeId, employmentType, costCenterId, status, search],
   );
 
-  const anyFilterActive = !!(businessUnitId || departmentId || positionId || gradeId || employmentType || costCenterId || status);
+  const anyFilterActive = !!(
+    businessUnitId ||
+    departmentId ||
+    positionId ||
+    gradeId ||
+    employmentType ||
+    costCenterId ||
+    status ||
+    search.trim()
+  );
 
   // A status filter that would exclude a mid-period leaver — visible warning per plan §"missing-edges".
   const excludedLeavers = useMemo(
@@ -148,6 +169,21 @@ export function StepSelection({
 
   return (
     <div className="space-y-4">
+      {/* The search box sits ABOVE the seven dropdowns because it is the affordance the reporter asked
+          for by name ("search box for employee ID or name") and the one people reach for first. */}
+      <Field label={t('searchLabel')}>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            markFilterTouch();
+          }}
+          placeholder={t('searchPlaceholder')}
+          className={inputCls}
+        />
+      </Field>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Field label={t('filterBusinessUnit')}>
           <select value={businessUnitId} onChange={(e) => { setBusinessUnitId(e.target.value); markFilterTouch(); }} className={inputCls}>
@@ -235,6 +271,13 @@ export function StepSelection({
           <p className="text-xs text-muted-foreground">{t('noEmployees')}</p>
         ) : (
           <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto rounded-lg border border-border p-2">
+            {/* 7076f8af — the Payroll Policy column's heading. It names what the right-hand value in every
+                row below is, so a row reading "—" is legible as "none assigned" rather than as a gap. */}
+            <div className="flex items-center gap-1.5 border-b border-border pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+              <span className="size-4" aria-hidden="true" />
+              <span>{t('employeesLabel')}</span>
+              <span className="ml-auto">{t('payrollPolicyColumn')}</span>
+            </div>
             {filtered.map((e) => (
               <label key={e.employmentId} className="flex items-center gap-1.5 text-sm">
                 <input
@@ -251,6 +294,14 @@ export function StepSelection({
                 {e.terminatedOn && (
                   <span className="text-xs text-amber-600 dark:text-amber-400">({t('leaverTag')})</span>
                 )}
+                {/* An em dash, never an empty cell: two of forty employments carry a policy today, so blank
+                    would be the majority state and would read as "failed to load" rather than "none". */}
+                <span
+                  className="ml-auto shrink-0 text-xs text-muted-foreground"
+                  title={e.payrollPolicyName ?? t('payrollPolicyNone')}
+                >
+                  {e.payrollPolicyName ?? '—'}
+                </span>
               </label>
             ))}
           </div>

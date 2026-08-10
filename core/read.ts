@@ -468,6 +468,14 @@ export type PayrollRunEmployeeRow = {
   /** True when the employment has a current (validTo/supersededAt null) compensation row — a comp-less
    *  hire is silently dropped by generatePayslips' inner join, so the wizard warns before that happens. */
   hasCurrentCompensation: boolean;
+  /** 7076f8af — the employee's assigned Payroll Policy name, or null when none is assigned.
+   *
+   *  The reporter asked for Payroll Policy on Step 1, as a property of the RUN. It is not one: the policy
+   *  is held per employment (employment.payroll_policy_id), and on the live tenant exactly two of forty
+   *  employments carry one — so a Step-1 line would have been blank for the whole run almost always. It
+   *  belongs beside each person instead, which is where it is actually decided. NULL is the normal case
+   *  and the picker renders it as an em dash, not as an empty cell. */
+  payrollPolicyName: string | null;
 };
 
 /**
@@ -523,6 +531,10 @@ export function listEmployeesForPayrollRun(
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
         hasCurrentCompensation: sql<boolean>`${compensation.id} is not null`,
+        // 7076f8af — the assigned Payroll Policy, shown per person in the wizard's Step-2 picker. A LEFT
+        // join on a nullable FK: it adds a column and can never add or drop a row, so the set this query
+        // returns (which must keep equalling what generation would pick up) is unchanged.
+        payrollPolicyName: payrollPolicy.name,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -530,6 +542,7 @@ export function listEmployeesForPayrollRun(
       .leftJoin(assignment, currentAssignment)
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(compensation, currentComp)
+      .leftJoin(payrollPolicy, eq(payrollPolicy.id, employment.payrollPolicyId))
       .where(
         and(
           inArray(employment.companyId, ids),

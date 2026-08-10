@@ -79,6 +79,7 @@ export function Wizard({
   thisMonth,
   multiCycle,
   resumeBatch,
+  adjustmentsPanel,
 }: {
   companies: Company[];
   departments: (Master & { businessUnitId: string | null })[];
@@ -98,6 +99,14 @@ export function Wizard({
    *  review (feedback 4f00d8f0), then Step 2 (Employee Selection) with the selection pre-seeded from the
    *  persisted scope. */
   resumeBatch?: ResumeBatch;
+  /** 7076f8af — the draft's adjustment panel, RENDERED ON THE SERVER and handed down as a node.
+   *
+   *  It is a React node, never a function: a server component reaches a client one only by being passed as
+   *  a prop or child (this file is `'use client'`, so anything it imported would be bundled and its server
+   *  reads would not run). Passing a CLOSURE across this boundary is the failure that shipped to
+   *  production once — it type-checks, renders in dev and breaks under a real build. Only the resumed
+   *  draft has one; a fresh run has no batch to adjust yet, so the page passes null. */
+  adjustmentsPanel?: React.ReactNode;
 }) {
   const t = useTranslations('payroll.process');
   // The rail's phase titles are the GUIDE's, deliberately: reusing `payroll.guide.phase{n}Title` is what
@@ -361,6 +370,20 @@ export function Wizard({
             onStatusChange={setValidation}
           />
         )}
+        {step === 2 && adjustmentsPanel && (
+          // 7076f8af — the draft-run adjustment panel, on the Review step. This is the reporter's own
+          // ask ("everything you may need to correct before a run is calculated ... on the Review step"),
+          // and it is where the panel has to be if it is not to be a separate screen: it is the last
+          // moment before the figures are computed. COLLAPSED by default so the Review step still opens
+          // as a readiness check rather than a data-entry form.
+          <details className="mt-4 rounded-lg border border-border">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium">{t('adjustmentsTitle')}</summary>
+            <div className="space-y-3 border-t border-border p-4">
+              <p className="text-xs text-muted-foreground">{t('adjustmentsHint')}</p>
+              {adjustmentsPanel}
+            </div>
+          </details>
+        )}
       </div>
 
       <div className="flex items-center justify-between border-t border-border px-4 py-3">
@@ -378,8 +401,11 @@ export function Wizard({
         ) : (
           // Process is the terminal action, now gated on the Validation step: disabled while the checks run
           // and whenever there are hard blockers (missing salary record / missing BASIC component).
+          // 7076f8af — ONE LABEL FOR BOTH MODES. A resumed run used to read "Confirm selection & continue",
+          // which was accurate then (it saved the scope and handed you to another screen) and is a lie now:
+          // the resume path calculates the run and ends on the result page, exactly as a fresh run does.
           <Button type="button" onClick={submit} disabled={!canProcess} data-tour="payroll-create-submit">
-            {isPending ? t('creating') : isResume ? t('confirmSelectionAndProcess') : t('processPayroll')}
+            {isPending ? t('creating') : t('processPayroll')}
           </Button>
         )}
       </div>

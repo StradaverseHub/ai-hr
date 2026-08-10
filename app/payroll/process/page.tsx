@@ -8,6 +8,9 @@ import { listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listPayrollConfigs } from '@/core/payroll-config';
 import { listPayrollCycles } from '@/core/payroll-cycle';
 import { Wizard, type ResumeBatch } from './wizard';
+// 7076f8af — the draft adjustment panel, rendered HERE (on the server) and handed to the client wizard as
+// a node. See app/payroll/adjustments-panel.tsx for why the panel moved and why it was not deleted.
+import { PayrollAdjustmentsPanel } from '../adjustments-panel';
 import type { CycleOption } from './steps/step-period';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
@@ -32,10 +35,16 @@ function cycleFromRunType(runType: string): ResumeBatch['cycle'] {
  * runs, then hands off to the client wizard. The employee payload for Step 2 is fetched by the client once
  * a company is chosen (listEmployeesForPayrollRun via a server action), not eagerly here.
  */
-export default async function PayrollProcessPage({ searchParams }: { searchParams: Promise<{ error?: string; resume?: string }> }) {
+export default async function PayrollProcessPage({
+  searchParams,
+}: {
+  // iPage/iSize page the adjustment panel's input grid on the Review step, using the same prefixed pair
+  // the run screen used, so paging it can never be confused with a future listing on this page.
+  searchParams: Promise<{ error?: string; resume?: string; iPage?: string; iSize?: string }>;
+}) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.process');
-  const { error, resume } = await searchParams;
+  const { error, resume, iPage, iSize } = await searchParams;
   const multiCycle = isModuleEnabledOrFalse(s, 'multi_cycle_payroll');
   const thisMonth = new Date().toISOString().slice(0, 7);
 
@@ -124,6 +133,15 @@ export default async function PayrollProcessPage({ searchParams }: { searchParam
           thisMonth={thisMonth}
           multiCycle={multiCycle}
           resumeBatch={resumeBatch}
+          adjustmentsPanel={
+            resumeBatch ? (
+              <PayrollAdjustmentsPanel
+                batchId={resumeBatch.id}
+                returnTo={`/payroll/process?resume=${resumeBatch.id}`}
+                pager={{ basePath: '/payroll/process', params: { resume: resumeBatch.id }, page: iPage, size: iSize }}
+              />
+            ) : null
+          }
         />
       )}
     </div>
