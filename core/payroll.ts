@@ -2395,7 +2395,6 @@ export async function generatePayslips(
     const NO_ROWS_UUID = '00000000-0000-0000-0000-000000000000';
     const postedSubsetIds = subset ? [...new Set(subset.employmentIds.filter(Boolean))] : [];
     let addedEmploymentIds: string[] = [];
-    let existingEmploymentIds: string[] = [];
     if (subset) {
       const idFilter = postedSubsetIds.length ? postedSubsetIds : [NO_ROWS_UUID];
       const slipRows = await tx
@@ -2416,7 +2415,8 @@ export async function generatePayslips(
           ),
         );
       const eligible = new Map(eligibleRows.map((r) => [r.id, r]));
-      existingEmploymentIds = postedSubsetIds.filter((id) => hasSlip.has(id));
+      // (The EXISTING half needs no list of its own: it is `hasSlip`, and the recalculated count below
+      // is taken from what the earnings query actually computed rather than from what was posted.)
       addedEmploymentIds = postedSubsetIds.filter((id) => !hasSlip.has(id) && eligible.has(id));
       const neither = postedSubsetIds.filter((id) => !hasSlip.has(id) && !eligible.has(id));
       if (neither.length > 0) {

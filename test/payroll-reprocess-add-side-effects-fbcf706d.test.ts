@@ -204,7 +204,7 @@ describe('fbcf706d — the side effects of adding an employee to a processed pay
   });
 
   it('leaves a whole-company run unscoped — there is no chosen list to widen', async () => {
-    const onRun = await paid('Whole', 3000);
+    await paid('Whole', 3000);
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId });
     const late = await paid('WholeLate', 4000, '2026-02-01');
