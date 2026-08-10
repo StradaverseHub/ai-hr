@@ -178,12 +178,16 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
 
   it('2. editing your OWN pending request is the one real loss for an admin', () => {
     // EditLeaveDialog SURVIVES in source and still works for an ordinary employee — it is built from
-    // `selfHistory`, which is the viewer's own rows. What an ADMIN loses is reaching it: selfHistory is
-    // `admin ? [] : …`, so an admin renders no self-service rows and therefore no edit control, and
-    // Employee Leave Records cannot stand in because an admin there is never the subject. Withdraw-and-
-    // reapply is the workaround; disclosed in the approved plan.
+    // `selfHistory`, which is the viewer's own rows. What an ADMIN loses is REACHING it, and 388e53c2
+    // made that more explicit rather than changing it: the arm used to be `selfHistory = admin ? [] : …`,
+    // and it is now an early return at the top of the page, so an administrator renders none of the
+    // self-service surface at all. Employee Leave Records cannot stand in because an admin there is never
+    // the subject. Withdraw-and-reapply is the workaround; disclosed in the approved plan.
     expect(leavePage).toContain('<EditLeaveDialog');
-    expect(leavePage).toContain('const selfHistory = admin ? [] :');
+    expect(leavePage).toContain('if (me == null || admin) {');
+    expect(leavePage).toContain('const selfHistory = [...history].sort(');
+    // The early return really does precede the dialog it fences off.
+    expect(leavePage.indexOf('if (me == null || admin) {')).toBeLessThan(leavePage.indexOf('<EditLeaveDialog'));
     expect(recordsPage.includes('<EditLeaveDialog')).toBe(false);
     // The service is untouched — nothing about the ability was deleted, only the surface that reached it.
     expect(read('core/leave.ts')).toContain('export async function editLeaveRequest');

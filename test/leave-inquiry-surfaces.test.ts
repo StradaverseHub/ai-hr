@@ -26,6 +26,11 @@ const leavePage = read('app/leave/page.tsx');
 const balancesPage = read('app/leave/employee-balances/page.tsx');
 const recordsPage = read('app/leave/employee-records/page.tsx');
 const panel = read('components/filter-panel.tsx');
+// 388e53c2 — Employee Details moved to the Team Leave Tracker route. The listing is the same code; only
+// the file holding it and its forms' base path changed, so the assertions below moved with it rather than
+// being dropped. Sliced to the ADMIN branch, because that page also renders the leave calendar.
+const trackerPage = read('app/leave/tracker/page.tsx');
+const trackerAdminBranch = trackerPage.slice(0, trackerPage.indexOf('  // ── The Leave Calendar'));
 
 describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
   it('gates every own-leave surface behind `ess` (= !admin), reads included', () => {
@@ -70,9 +75,12 @@ describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
     for (const param of ['businessUnitIds:', 'locationIds:', 'durationTypes:']) {
       expect(leavePage.includes(param), param).toBe(false);
     }
-    // The Employee Details listing keeps its OWN filters — company, department and employment status.
+    // The Employee Details listing keeps its OWN filters — company, department and employment status —
+    // on the page it moved to (388e53c2). Asserted THERE, and asserted absent here, because a listing
+    // left behind on /leave is the half-move that relights "My Leave" all over again.
     for (const name of ["name: 'edCompany'", "name: 'edDept'", "name: 'edStatus'"]) {
-      expect(leavePage.includes(name), name).toBe(true);
+      expect(trackerAdminBranch.includes(name), name).toBe(true);
+      expect(leavePage.includes(name), `${name} still on /leave`).toBe(false);
     }
   });
 
@@ -251,58 +259,68 @@ describe('650b6eb8: Employee Details — the tab an HR admin lands on', () => {
   const nav = read('components/leave/leave-inquiry-nav.tsx');
 
   it('mounts the left-side nav on the admin landing page, opening on Employee Details', () => {
-    expect(leavePage).toContain("import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav'");
-    expect(leavePage).toContain('<LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />');
-    // Three destinations, and the details one is this page — so "My Leave" IS the Employee Details tab.
-    expect(nav).toContain("{ key: 'details', href: withEmp('/leave')");
+    // REPOINTED BY 388e53c2, not weakened. The landing page is /leave/tracker now — the menu row an HR
+    // administrator should have been on all along — and "details" is still the tab it opens on.
+    expect(trackerPage).toContain("import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav'");
+    expect(trackerAdminBranch).toContain('<LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />');
+    expect(nav).toContain("{ key: 'details', href: withEmp('/leave/tracker')");
+    // THE OTHER TWO ARE UNCHANGED, and that is a promise made in writing: saved links and the export links
+    // already in circulation point at these two addresses.
     expect(nav).toContain("{ key: 'balances', href: withEmp('/leave/employee-balances')");
     expect(nav).toContain("{ key: 'records', href: withEmp('/leave/employee-records')");
+    // …and My Absence kept none of it — one Employee Details screen, not two.
+    expect(leavePage).not.toContain('LeaveInquiryNav');
   });
 
   it('renders the six requested columns', () => {
+    // `t` was the `leave` namespace on the old host page; on the tracker it is `leaveTracker`, so the
+    // leave-namespace calls are spelled `tLeave` there. Same six columns, same two vocabularies.
     for (const col of [
-      "t('filters.employeeId')",
+      "tLeave('filters.employeeId')",
       "tInq('colEmployeeName')",
-      "t('filters.company')",
-      "t('filters.department')",
+      "tLeave('filters.company')",
+      "tLeave('filters.department')",
       "tInq('colPosition')",
       "tPeople('colStatus')",
     ]) {
-      expect(leavePage.includes(col), col).toBe(true);
+      expect(trackerAdminBranch.includes(col), col).toBe(true);
     }
-    expect(leavePage).toContain('colSpan={6}');
+    expect(trackerAdminBranch).toContain('colSpan={6}');
   });
 
   it('reads the access-scoped People page, ten at a time, company A→Z then name A→Z', () => {
-    expect(leavePage).toContain('listEmployeesPage(session, {');
-    expect(leavePage).toContain('const EMPLOYEE_PAGE = 10;');
-    expect(leavePage).toContain("sort: 'company',");
-    expect(leavePage).toContain('limit: EMPLOYEE_PAGE,');
-    expect(leavePage).toContain('offset: edPage * EMPLOYEE_PAGE,');
+    expect(trackerAdminBranch).toContain('listEmployeesPage(s, {');
+    expect(trackerPage).toContain('const EMPLOYEE_PAGE = 10;');
+    expect(trackerAdminBranch).toContain("sort: 'company',");
+    expect(trackerAdminBranch).toContain('limit: EMPLOYEE_PAGE,');
+    expect(trackerAdminBranch).toContain('offset: edPage * EMPLOYEE_PAGE,');
     // Scope fence first: the listing shows only the companies this session may see.
-    expect(leavePage).toContain('companyIds: scopeIds,');
+    expect(trackerAdminBranch).toContain('companyIds: scopeIds,');
+    // Terminated staff are NOT filtered out — their leave position is exactly what HR looks up after
+    // someone leaves, and the sibling screen makes the same call.
+    expect(trackerAdminBranch, 'terminated staff must stay in the listing').not.toMatch(/terminatedOn/);
   });
 
   it('shows the DERIVED Employee Status, in the shared vocabulary — never the legacy stored enum', () => {
-    expect(leavePage).toContain('deriveEmploymentStatus(e, today)');
-    expect(leavePage).toContain("const tStatus = await getTranslations('people.employeeStatus');");
-    expect(leavePage).toContain('options: EMPLOYMENT_STATUSES.map((s) => ({ value: s, label: tStatus(s) }))');
+    expect(trackerAdminBranch).toContain('deriveEmploymentStatus(e, today)');
+    expect(trackerAdminBranch).toContain("const tStatus = await getTranslations('people.employeeStatus');");
+    expect(trackerAdminBranch).toContain('options: EMPLOYMENT_STATUSES.map((v) => ({ value: v, label: tStatus(v) }))');
     // `status` on the row IS the legacy stored enum (EmployeeListRow keeps it for other callers) — this
     // screen must never read it, or the retired On Leave / Offboarding values come back on a new surface.
-    expect(/\be\.status\b/.test(leavePage), 'legacy row.status is read').toBe(false);
+    expect(/\be\.status\b/.test(trackerAdminBranch), 'legacy row.status is read').toBe(false);
   });
 
   it('search + a multi-select Company / Department / Status filter with bulk controls', () => {
-    expect(leavePage).toContain("tInq('detailsSearchPlaceholder')");
+    expect(trackerAdminBranch).toContain("tInq('detailsSearchPlaceholder')");
     for (const name of ["name: 'edCompany'", "name: 'edDept'", "name: 'edStatus'"]) {
-      expect(leavePage.includes(name), name).toBe(true);
+      expect(trackerAdminBranch.includes(name), name).toBe(true);
     }
-    expect(leavePage).toContain("selectAll: t('filters.selectAll')");
-    expect(leavePage).toContain("deselectAll: t('filters.deselectAll')");
+    expect(trackerAdminBranch).toContain("selectAll: tLeave('filters.selectAll')");
+    expect(trackerAdminBranch).toContain("deselectAll: tLeave('filters.deselectAll')");
   });
 
   it('clicking an employee opens Employee Balances for that employee', () => {
-    expect(leavePage).toContain('const employeeHref = (employmentId: string) => `/leave/employee-balances?emp=${employmentId}`;');
+    expect(trackerAdminBranch).toContain('const employeeHref = (employmentId: string) => `/leave/employee-balances?emp=${employmentId}`;');
   });
 
   it('one listing remains, and it still carries its own state', () => {
@@ -310,12 +328,17 @@ describe('650b6eb8: Employee Details — the tab an HR admin lands on', () => {
     // other's params or filtering employees would silently blank the leave requests. afd0a87c removed the
     // request table, so the invariant it protected no longer has two sides — and requestHiddenParams must
     // be gone, not merely unused, or the next author will wire a control to an empty carrier.
-    expect(leavePage).toContain('hidden={employeeHiddenParams}');
-    expect(leavePage.includes('requestHiddenParams')).toBe(false);
+    expect(trackerAdminBranch).toContain('hidden={employeeHiddenParams}');
+    expect(trackerPage.includes('requestHiddenParams')).toBe(false);
     expect(panel).toContain('hidden?: readonly (readonly [string, string])[];');
-    // The employee listing's params stay prefixed: renaming them would break saved admin links.
+    // The employee listing's params stay prefixed AND keep their exact spelling: 388e53c2 changed the
+    // base path they hang off, so renaming them on top of that would break every saved admin link twice.
     for (const param of ['edQ?: string', 'edPage?: string', 'edCompany?: string | string[]']) {
-      expect(leavePage.includes(param), param).toBe(true);
+      expect(trackerPage.includes(param), param).toBe(true);
+    }
+    // …and they are gone from the page they left, or the two screens read each other's query strings.
+    for (const param of ['edQ?: string', 'edPage?: string', 'edCompany?: string | string[]']) {
+      expect(leavePage.includes(param), `${param} still declared on /leave`).toBe(false);
     }
   });
 
@@ -328,13 +351,13 @@ describe('650b6eb8: Employee Details — the tab an HR admin lands on', () => {
     expect(leavePage).not.toContain('listLeaveRequestsPage(session, {');
     expect(leavePage).not.toContain("t('requestsTitle')");
     expect(leavePage).not.toContain('/leave/export?');
-    // The employee listing this page is now ABOUT must survive it.
-    expect(leavePage).toContain('listEmployeesPage(session, {');
+    // The employee listing that replaced it must survive — at its new address (388e53c2).
+    expect(trackerAdminBranch).toContain('listEmployeesPage(s, {');
   });
 
   it('numbers the pages — 1 2 3 Next >, with the far ends always one click away', () => {
-    expect(leavePage).toContain('inquiryPageWindow(edPage, employeePageCount)');
-    expect(leavePage).toContain("tInq('pageNext')");
+    expect(trackerAdminBranch).toContain('inquiryPageWindow(edPage, employeePageCount)');
+    expect(trackerAdminBranch).toContain("tInq('pageNext')");
     // Short list: every page, no gaps.
     expect(inquiryPageWindow(0, 3)).toEqual([0, 1, 2]);
     expect(inquiryPageWindow(0, 1)).toEqual([0]);
@@ -354,6 +377,8 @@ describe('650b6eb8: Employee Details — the tab an HR admin lands on', () => {
     const keys = [
       'detailsSearchPlaceholder', 'colEmployeeName', 'colPosition', 'openBalances',
       'pagePrev', 'pageNext', 'pageAria', 'noEmployeesFiltered',
+      // 388e53c2 — the header sentence under "Employee Details" on its new host page.
+      'detailsDescription',
     ];
     for (const loc of LOCALES) {
       const inquiry = (msgs(loc) as unknown as { leave: { inquiry: Record<string, string> } }).leave.inquiry;

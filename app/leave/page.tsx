@@ -17,10 +17,11 @@ import {
 import { todayInKualaLumpur } from '@/core/leave';
 import { essViewHasAnyVisibleRow, isReplacementLeaveCode } from '@/core/ess-view';
 import { Card, PageHeader } from '@/components/ui';
-// 388e53c2 — the Employee Details listing, the left-side inquiry rail, the FilterPanel/FilterChips pair
-// and the People status vocabulary all LEFT this page with the HR-admin inquiry surface. They now live on
-// app/leave/tracker/page.tsx, which is the Team Leave Tracker row the reporter asked to enter them from.
-// Nothing was deleted: the listing is the same code with its base path repointed.
+// 388e53c2 — the Employee Details listing, its left-side rail, its filter panel and the People status
+// vocabulary all LEFT this page with the HR-admin inquiry surface. They live on app/leave/tracker/page.tsx
+// now, which is the Team Leave Tracker row the reporter asked to enter them from. Nothing was deleted:
+// the listing is the same code with its base path repointed. (Naming the moved components literally here
+// would defeat the guards that assert none of them survived on this page — prose is not exempt.)
 // 33bf1a2d: the leave-request table cells this table used to spell out inline, now SHARED with the
 // Approval Items leave table (app/approvals/page.tsx) so the two can no longer drift apart.
 import { LeaveDaysCell, LeaveEmployeeCell, LeaveTypeCell } from '@/components/leave/leave-request-cells';
@@ -152,9 +153,12 @@ export default async function LeavePage({
   }
 
   // Everything from here down is the SELF-SERVICE page, and `admin` is necessarily false past the return
-  // above. The `ess = !admin` / `{!admin && (` guards below are 8ec63139's and are deliberately left
-  // standing: they are the recorded contract for who sees their own figures here, and this item does not
-  // reopen that decision.
+  // above. The ess and not-admin guards below are 8ec63139's and are deliberately left standing: they are
+  // the recorded contract for who sees their own figures here, and this item does not reopen it.
+  //
+  // NOTE FOR THE NEXT EDITOR: do not quote those guards' JSX literally in a comment on this file. Several
+  // tests slice this page at the first occurrence of that opening guard, and a quoted copy above the real
+  // one silently inverts the slice — which is how this very comment was first written, and how it failed.
   // Feedback 56a0deb9 — collapsible balance section. SSR-read the persisted choice (cookie absent ⇒ closed,
   // the reporter's default) so the first paint is already correct — no closed-then-restored flash.
   const cookieStore = await cookies();
