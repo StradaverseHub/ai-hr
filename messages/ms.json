@@ -4486,7 +4486,7 @@
       "payrollPolicyColumn": "Dasar Gaji",
       "payrollPolicyNone": "Tiada dasar gaji ditetapkan",
       "adjustmentsTitle": "Pelarasan sebelum pemprosesan (pilihan)",
-      "adjustmentsHint": "Kerja lebih masa, bonus, pelepasan cukai dan zakat untuk larian ini, serta jambatan yang membawa masuk tuntutan diluluskan, kerja lebih masa kehadiran, ansuran pinjaman, perbezaan syif dan elaun. Menggunakan salah satunya menyimpannya pada larian dan memuat semula langkah ini."
+      "adjustmentsHint": "Kerja lebih masa, bonus, pelepasan cukai dan zakat untuk larian ini, serta jambatan yang membawa masuk tuntutan diluluskan, kerja lebih masa kehadiran, ansuran pinjaman, perbezaan syif dan elaun. Ini dikenakan pada pilihan pekerja yang TELAH DISIMPAN untuk larian ini, dan menggunakannya akan memuat semula aliran ini dari Langkah 1 — jadi sebarang perubahan pada Langkah 2 yang belum diproses akan hilang."
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",

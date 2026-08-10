@@ -4486,7 +4486,7 @@
       "payrollPolicyColumn": "Payroll Policy",
       "payrollPolicyNone": "No payroll policy assigned",
       "adjustmentsTitle": "Adjustments before processing (optional)",
-      "adjustmentsHint": "Overtime, bonus, tax relief and zakat for this run, and the bridges that bring in approved claims, attendance overtime, loan instalments, shift differential and allowances. Applying one saves it to the run and reloads this step."
+      "adjustmentsHint": "Overtime, bonus, tax relief and zakat for this run, and the bridges that bring in approved claims, attendance overtime, loan instalments, shift differential and allowances. These apply to the run’s SAVED employee selection, and applying one reloads this flow from Step 1 — so any change you have made on Step 2 but not yet processed is lost."
     },
     "guide": {
       "title": "Payroll Workflow Guide",

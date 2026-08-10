@@ -213,6 +213,73 @@ describe('7076f8af — Step 2 gains a search box and a Payroll Policy column', (
   });
 });
 
+/**
+ * Every key this round added, resolved by hand.
+ *
+ * test/i18n-coverage.test.ts check C only scans files that use a SINGLE namespace, and three of this
+ * round's screens use two (step-selection.tsx, wizard.tsx, import-components/page.tsx). A key that is
+ * missing there is invisible to every automated gate: MISSING_MESSAGE passes tsc, the suite and
+ * `next build`, and only appears when a human opens the page. So the keys are listed here explicitly.
+ * Check A then guarantees each one exists in all six catalogues.
+ *
+ * None of them carries an ICU brace, deliberately — a message with `{…}` read through a bare `t()`
+ * THROWS at render rather than degrading, and every one of these is read through a bare `t()`.
+ */
+describe('7076f8af — the new copy resolves', () => {
+  const NEW_KEYS = [
+    ['payroll.process', 'searchLabel'],
+    ['payroll.process', 'searchPlaceholder'],
+    ['payroll.process', 'payrollPolicyColumn'],
+    ['payroll.process', 'payrollPolicyNone'],
+    ['payroll.process', 'adjustmentsTitle'],
+    ['payroll.process', 'adjustmentsHint'],
+    ['payroll.process', 'reason.PRE_PROCESS_BLOCKED'],
+    ['payroll.transactions', 'hub.adjustmentsTitle'],
+    ['payroll.transactions', 'hub.adjustmentsDesc'],
+    ['payroll.transactions', 'hub.adjustmentsCta'],
+    ['payroll.transactions', 'hub.componentImportTitle'],
+    ['payroll.transactions', 'hub.componentImportDesc'],
+    ['payroll.transactions', 'hub.componentImportCta'],
+    ['payroll.transactions', 'adjustments.title'],
+    ['payroll.transactions', 'adjustments.subtitle'],
+    ['payroll.transactions', 'componentImport.title'],
+    ['payroll.transactions', 'componentImport.subtitle'],
+    ['payroll.transactions', 'draftPicker.title'],
+    ['payroll.transactions', 'draftPicker.choose'],
+    ['payroll.transactions', 'draftPicker.selected'],
+    ['payroll.transactions', 'draftPicker.noneTitle'],
+    ['payroll.transactions', 'draftPicker.noneBody'],
+    ['payroll.transactions', 'draftPicker.openRuns'],
+  ] as const;
+
+  const at = (dotted: string): unknown =>
+    dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), en);
+
+  it.each(NEW_KEYS)('%s.%s resolves in every catalogue and formats without arguments', (ns, key) => {
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const dict = JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8'));
+      const value = `${ns}.${key}`
+        .split('.')
+        .reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), dict);
+      expect(typeof value, `${loc} missing ${ns}.${key}`).toBe('string');
+      expect((value as string).length, `${loc} blank ${ns}.${key}`).toBeGreaterThan(0);
+      // A bare t() on a message with an ICU placeholder throws at render — none of these takes arguments.
+      expect(value as string, `${loc} ${ns}.${key} carries an ICU placeholder`).not.toMatch(/\{/);
+    }
+    expect(at(`${ns}.${key}`)).toBeTruthy();
+  });
+
+  it('the retired keys are gone from every catalogue, not merely unused', () => {
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const dict = JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8'));
+      // "Step 3 of 3 — Review & process": the run flow is terminal, so there is no third step to be.
+      expect(dict.payroll.batch.step3Title).toBeUndefined();
+      // "Confirm selection & continue": the resumed run's button now processes, and says so.
+      expect(dict.payroll.process.confirmSelectionAndProcess).toBeUndefined();
+    }
+  });
+});
+
 describe('7076f8af — guards', () => {
   it('5. both new routes are registered in lib/permissions.ts (reverse completeness)', () => {
     expect(REGISTERED_ROUTES.has('/payroll/transactions/adjustments')).toBe(true);

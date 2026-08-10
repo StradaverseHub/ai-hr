@@ -4486,7 +4486,7 @@
       "payrollPolicyColumn": "Chính sách bảng lương",
       "payrollPolicyNone": "Chưa gán chính sách bảng lương",
       "adjustmentsTitle": "Điều chỉnh trước khi xử lý (tùy chọn)",
-      "adjustmentsHint": "Làm thêm giờ, thưởng, giảm trừ thuế và zakat cho đợt chạy này, cùng các cầu nối đưa vào khoản hoàn ứng đã duyệt, làm thêm giờ theo chấm công, kỳ trả góp khoản vay, chênh lệch ca và phụ cấp. Áp dụng một mục sẽ lưu vào đợt chạy và tải lại bước này."
+      "adjustmentsHint": "Làm thêm giờ, thưởng, giảm trừ thuế và zakat cho đợt chạy này, cùng các cầu nối đưa vào khoản hoàn ứng đã duyệt, làm thêm giờ theo chấm công, kỳ trả góp khoản vay, chênh lệch ca và phụ cấp. Chúng áp dụng cho danh sách nhân viên ĐÃ LƯU của đợt chạy, và khi áp dụng một mục thì luồng này sẽ tải lại từ Bước 1 — nên thay đổi ở Bước 2 chưa được xử lý sẽ mất."
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",
