@@ -272,6 +272,114 @@ describe('5c198931 — one document, printed by both routes', () => {
   });
 });
 
+describe('f35f758a — the screen: one search field, cards, and a preview of the REAL file', () => {
+  const PAGE = 'app/payroll/individual-payslip/page.tsx';
+  const ROUTE = 'app/payroll/individual-payslip/[payslipId]/pdf/route.ts';
+  const ESS_PAGE = 'app/me/payslip/[payslipId]/page.tsx';
+  /** Comments stripped, for the same reason the logo guard strips them: this file's own prose explains
+   *  what was REMOVED, and a naive substring check would fail on the explanation. */
+  const code = (rel: string) => read(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  it('the employee control is the SHARED search field, inside the filter form, posting employmentId', () => {
+    // THREE THINGS, not one — a source guard after an extraction has to prove all of them or it proves
+    // nothing: the field exists in the shared component, the page renders that component, and it renders
+    // it in the mode that actually posts (a hidden input named employmentId inside the GET form).
+    const shared = read('components/employee-search-field.tsx');
+    expect(shared, 'the committed selection posts through a hidden input named by the caller').toMatch(
+      /<input\s+type="hidden"\s+name=\{name\}/,
+    );
+
+    const page = code(PAGE);
+    expect(page, 'the screen must use the shared field, not a second control of its own').toContain(
+      'EmployeeSearchField',
+    );
+    expect(page).toMatch(/name="employmentId"/);
+    // The field sits INSIDE the GET form, which is what makes its hidden input ride the submit. Sliced
+    // between the form open and close rather than searched page-wide.
+    const formStart = page.indexOf('<form method="GET"');
+    const formEnd = page.indexOf('</form>', formStart);
+    expect(formStart, 'the filter form must still be a GET form').toBeGreaterThan(-1);
+    expect(formEnd, 'the form slice must not invert — an inverted slice is an empty string that passes')
+      .toBeGreaterThan(formStart);
+    const form = page.slice(formStart, formEnd);
+    expect(form).toContain('EmployeeSearchField');
+    expect(form).toContain('viewPayslip'); // the button that runs the filter
+  });
+
+  it('the left-hand panel is gone from this screen, cookie and all', () => {
+    const page = code(PAGE);
+    expect(page).not.toContain('CollapsibleEmployeePanel');
+    expect(page).not.toContain('EmployeeScopePanel');
+    expect(page, 'the panel was this page’s only cookie reader').not.toContain('PAYSLIP_PANEL_COOKIE');
+    // The scope guard the panel sat behind STAYS. Losing it while removing the panel is the regression
+    // test/employee-scope-panel-guard.test.ts proves behaviourally; this is the cheap source half.
+    expect(page).toMatch(/employees\.some\(\(e\) => e\.employmentId === sp\.employmentId\)/);
+  });
+
+  it('Preview frames the SAME route the Download button uses, inline', () => {
+    const page = code(PAGE);
+    expect(page, 'the preview must be the real file, not a print of the web page').toMatch(/<iframe/);
+    expect(page).toContain('?inline=1');
+    expect(page, 'the browser-print control is gone').not.toContain('PrintButton');
+
+    const route = read(ROUTE);
+    expect(route).toMatch(/inline[\s\S]*attachment|attachment[\s\S]*inline/);
+    expect(route, 'a served document must not be sniffed into another type').toContain(
+      "'X-Content-Type-Options': 'nosniff'",
+    );
+    // Nothing pinned Content-Disposition before f35f758a, so a later edit could have made the download
+    // inline (or the preview an attachment) with no test noticing.
+    expect(route).toMatch(/Content-Disposition['"]\]?:\s*`\$\{inline \? 'inline' : 'attachment'\}/);
+    expect(route, 'the sortable period still names the file').toMatch(/payslip-\$\{p\.payPeriod\}/);
+  });
+
+  it('the month prints as a NAME on both screens, through the repo’s Intl idiom', () => {
+    for (const f of [PAGE, ESS_PAGE]) {
+      const src = code(f);
+      expect(src, `${f} must format the period as a month name`).toMatch(
+        /new Intl\.DateTimeFormat\([^)]*month: 'long'[^)]*timeZone: 'UTC'/,
+      );
+      expect(src, `${f} must not print the raw stored period`).toContain('monthYear(');
+    }
+    // And the DOCUMENT pins English, because its embedded font is Latin-1 (a Thai or Tamil month name
+    // would print as question marks). The screens do not.
+    expect(read('lib/payslip-pdf-strings.ts')).toMatch(/new Intl\.DateTimeFormat\('en',/);
+  });
+
+  it('the two internal sentences are off the document and off the EMPLOYEE screen, and stay on the HR one', () => {
+    const lib = read('lib/payslip-pdf.ts');
+    expect(lib, 'the renderer no longer has a prorated note to print').not.toContain('proratedNote');
+    expect(lib).not.toContain('provenanceNote');
+    // The renderer must also no longer be able to CLIP anything: `fit()` is what printed the ellipses.
+    expect(lib, 'the hard-clipping helper is gone; long text wraps').not.toMatch(/const fit = \(/);
+
+    const ess = code(ESS_PAGE);
+    expect(ess, 'the employee’s copy no longer carries the prorated sentence').not.toContain('proratedNote');
+    expect(ess, 'nor the ruleset sentence').not.toContain('provenanceFooter');
+
+    // …and the HR-facing screen KEEPS it. That split is the plan's promise to the reporter: whoever is
+    // checking a figure can still answer "why did my tax change when my pay did not?".
+    expect(code(PAGE), 'the reviewer keeps the provenance line').toContain('provenanceFooter');
+  });
+
+  it('every new caption exists in all six catalogs', () => {
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const blk = (JSON.parse(read(`messages/${loc}.json`)) as {
+        payroll: { individualPayslip: Record<string, string> };
+      }).payroll.individualPayslip;
+      for (const k of [
+        'viewPayslip', 'previewDocument', 'previewHint',
+        'searchPlaceholder', 'searchAriaLabel', 'searchResultsLabel', 'searchNoMatches', 'searchClear',
+      ]) {
+        expect(blk[k], `payroll.individualPayslip.${k} in ${loc}`).toBeTruthy();
+        // A caption containing {braces} is ICU interpolation, and the page resolves these with a bare
+        // t(...) — which would THROW at render and paint the key path on screen.
+        expect(blk[k], `payroll.individualPayslip.${k} in ${loc} must take no ICU argument`).not.toMatch(/[{}]/);
+      }
+    }
+  });
+});
+
 // ───────────────────────────── Behavioural: the admin read ─────────────────────────────
 
 let base: Base;
