@@ -9,9 +9,13 @@ import { getTranslations } from 'next-intl/server';
  * `LeaveTabs` strip because the reporter asked for an internal LEFT-side nav, and because a balance row
  * drills into the record page — a hierarchy the flat tab strip would flatten.
  *
- * Employee Details points at `/leave`, the HR-admin landing page, which item 650b6eb8 turned into the
- * paginated employee listing an admin picks from. It stayed on that route rather than moving to one of its
- * own because "My Leave" is the menu entry the reporter wants to LAND on Employee Details.
+ * Employee Details points at `/leave/tracker` — the Team Leave Tracker row, which is where feedback
+ * 388e53c2 moved the HR administrator's way in. It used to point at `/leave`, and that was the whole
+ * complaint: the sidebar kept "My Leave" lit while an administrator read somebody else's leave record.
+ *
+ * THE OTHER TWO HREFS ARE DELIBERATELY UNCHANGED. Employee Balances and Employee Leave Record keep the
+ * exact addresses they have always had, so saved links and the export links already in circulation stay
+ * valid — 388e53c2 moved the ENTRY POINT and nothing else.
  *
  * `emp` is threaded through every link so switching tab keeps the employee you are looking at — losing the
  * selection on each hop is the thing that makes an inquiry screen unusable.
@@ -31,7 +35,7 @@ export async function LeaveInquiryNav({
   const t = await getTranslations('leave.inquiry');
   const withEmp = (href: string) => (employmentId ? `${href}${href.includes('?') ? '&' : '?'}emp=${employmentId}` : href);
   const tabs = [
-    { key: 'details', href: withEmp('/leave'), label: t('employeeDetails') },
+    { key: 'details', href: withEmp('/leave/tracker'), label: t('employeeDetails') },
     { key: 'balances', href: withEmp('/leave/employee-balances'), label: t('employeeBalances') },
     { key: 'records', href: withEmp('/leave/employee-records'), label: t('employeeLeaveRecord') },
   ] as const;

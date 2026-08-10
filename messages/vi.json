@@ -1597,6 +1597,7 @@
   },
   "leave": {
     "myAbsenceTitle": "Nghỉ phép của tôi",
+    "inquiryMovedToTracker": "Thông tin nhân viên, Số dư phép của nhân viên và Hồ sơ nghỉ phép của nhân viên nay mở từ Theo dõi nghỉ phép của nhóm; trang này chỉ hiển thị phép của bạn.",
     "title": "Nghỉ phép",
     "description": "Kiểm tra số dư phép, xin nghỉ và theo dõi các yêu cầu của bạn.",
     "chipRequested": "Đã yêu cầu",
@@ -1913,7 +1914,8 @@
       "pagePrev": "Trước",
       "pageNext": "Tiếp",
       "pageAria": "Trang {page}",
-      "noEmployeesFiltered": "Không có nhân viên nào khớp với bộ lọc."
+      "noEmployeesFiltered": "Không có nhân viên nào khớp với bộ lọc.",
+      "detailsDescription": "Chọn nhân viên bạn muốn tra cứu phép."
     },
     "override": {
       "title": "Before you submit",
@@ -5757,7 +5759,7 @@
       "scope": {
         "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",
         "leave": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
-        "leaveTracker": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
+        "leaveTracker": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý thấy của cấp dưới, còn quản trị viên nhận phần tra cứu nhân viên thay cho lịch.",
         "attendance": "Mọi người đều có thể mở; bạn thấy chấm công của mình, quản lý và quản trị viên thấy của cấp dưới.",
         "approvals": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",

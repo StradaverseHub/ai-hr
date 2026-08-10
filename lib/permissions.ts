@@ -116,6 +116,13 @@ export const SCREENS: readonly ScreenEntry[] = [
     // a00c4f64 — the Leave Calendar's own screen, off the Dashboard. scopedSession, NOT manager-gated:
     // every employee saw this calendar on their dashboard, and the sidebar row is ungated for the same
     // reason. The data is the viewer's own person + direct reports, which is what the scope note says.
+    //
+    // 388e53c2 widened what this ONE screen key covers without changing its guard: an HR administrator
+    // opening the row now gets the leave-inquiry surface (Employee Details) instead of the calendar, via
+    // an in-page role branch. The guard stays `scopedSession` deliberately — a scopedAdmin guard here
+    // would take the calendar away from every plain employee, which is the regression the ungated nav row
+    // exists to prevent. The two inquiry screens below keep their own scopedAdmin columns, so revoking
+    // this one still leaves an administrator without the lookups.
     screenKey: 'leaveTracker',
     href: '/leave/tracker',
     labelKey: 'nav.teamLeaveTracker',
@@ -127,7 +134,8 @@ export const SCREENS: readonly ScreenEntry[] = [
   // without a matrix column an administrator could reach them but Security & Permissions could neither
   // grant nor revoke them: the reverse-completeness guard in test/function-access.test.ts is what caught
   // it. Labels live under admin.users.screen.* rather than nav.* because neither screen is a sidebar row —
-  // both are reached from My Absence.
+  // both are reached from the leave-inquiry rail, whose first tab moved from My Absence to Team Leave
+  // Tracker in 388e53c2. Their own hrefs are UNCHANGED by that move, so these two rows are untouched.
   {
     screenKey: 'leaveEmployeeBalances',
     href: '/leave/employee-balances',

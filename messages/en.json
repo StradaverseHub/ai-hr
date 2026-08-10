@@ -1597,6 +1597,7 @@
   },
   "leave": {
     "myAbsenceTitle": "My Leave",
+    "inquiryMovedToTracker": "Employee Details, Employee Balances and Employee Leave Record now open from Team Leave Tracker; this page shows your own leave only.",
     "title": "Leave",
     "description": "Check your balance, apply for leave, and track your requests.",
     "chipRequested": "Requested",
@@ -1913,7 +1914,8 @@
       "pagePrev": "Previous",
       "pageNext": "Next",
       "pageAria": "Page {page}",
-      "noEmployeesFiltered": "No employees match the filters."
+      "noEmployeesFiltered": "No employees match the filters.",
+      "detailsDescription": "Pick the employee whose leave you want to look up."
     },
     "override": {
       "title": "Before you submit",
@@ -5757,7 +5759,7 @@
       "scope": {
         "people": "Everyone can open this; the list is limited to the people you are allowed to see.",
         "leave": "Everyone can open this; you see your own leave, managers and admins see their reports.",
-        "leaveTracker": "Everyone can open this; you see your own leave, managers and admins see their reports.",
+        "leaveTracker": "Everyone can open this; you see your own leave, managers see their reports, and administrators get the employee lookups instead of the calendar.",
         "attendance": "Everyone can open this; you see your own attendance, managers and admins see their reports.",
         "approvals": "Managers and above; what appears follows your actual reporting lines.",
         "roster": "Managers and above; what appears follows your actual reporting lines.",

@@ -1597,6 +1597,7 @@
   },
   "leave": {
     "myAbsenceTitle": "我的休假",
+    "inquiryMovedToTracker": "员工资料、员工假期余额和员工假期记录现在从团队休假追踪进入；本页只显示你自己的假期。",
     "title": "休假",
     "description": "查看您的假期余额、申请休假并跟踪您的请求。",
     "chipRequested": "已申请",
@@ -1913,7 +1914,8 @@
       "pagePrev": "上一頁",
       "pageNext": "下一頁",
       "pageAria": "第 {page} 頁",
-      "noEmployeesFiltered": "沒有符合篩選條件的員工。"
+      "noEmployeesFiltered": "沒有符合篩選條件的員工。",
+      "detailsDescription": "选择你要查看假期的员工。"
     },
     "override": {
       "title": "Before you submit",
@@ -5757,7 +5759,7 @@
       "scope": {
         "people": "所有人都可打开；列表仅限于你有权查看的人员。",
         "leave": "所有人都可打开；你查看自己的假期，经理和管理员查看下属的假期。",
-        "leaveTracker": "所有人都可打开；你查看自己的假期，经理和管理员查看下属的假期。",
+        "leaveTracker": "所有人都可打开；你查看自己的假期，经理查看下属的假期，管理员看到的是员工查询而非日历。",
         "attendance": "所有人都可打开；你查看自己的考勤，经理和管理员查看下属的考勤。",
         "approvals": "经理及以上；显示内容取决于你实际的汇报线。",
         "roster": "经理及以上；显示内容取决于你实际的汇报线。",
