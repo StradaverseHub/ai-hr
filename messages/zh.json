@@ -4452,6 +4452,7 @@
         "NO_PAYROLL_CONFIG": "缺少薪资配置",
         "NOT_AUTHORIZED": "您无权访问此公司",
         "INVALID_CYCLE": "此公司没有有效的薪资周期",
+        "PRE_PROCESS_BLOCKED": "范围内的员工没有当前薪资记录",
         "SYSTEM_VALIDATION_ERROR": "系统验证错误",
         "MISSING_SALARY": "缺少薪资信息"
       },

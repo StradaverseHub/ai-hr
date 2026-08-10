@@ -4452,6 +4452,7 @@
         "NO_PAYROLL_CONFIG": "Konfigurasi gaji tiada",
         "NOT_AUTHORIZED": "Anda tiada akses kepada syarikat ini",
         "INVALID_CYCLE": "Tiada kitaran gaji sah untuk syarikat ini",
+        "PRE_PROCESS_BLOCKED": "Pekerja dalam skop tiada rekod gaji semasa",
         "SYSTEM_VALIDATION_ERROR": "Ralat pengesahan sistem",
         "MISSING_SALARY": "Maklumat gaji tiada"
       },

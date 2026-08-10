@@ -4452,6 +4452,7 @@
         "NO_PAYROLL_CONFIG": "Payroll configuration missing",
         "NOT_AUTHORIZED": "You do not have access to this company",
         "INVALID_CYCLE": "No valid payroll cycle for this company",
+        "PRE_PROCESS_BLOCKED": "Employees in scope have no current salary record",
         "SYSTEM_VALIDATION_ERROR": "System validation error",
         "MISSING_SALARY": "Missing salary information"
       },

@@ -4452,6 +4452,7 @@
         "NO_PAYROLL_CONFIG": "Thiếu cấu hình lương",
         "NOT_AUTHORIZED": "Bạn không có quyền truy cập công ty này",
         "INVALID_CYCLE": "Không có chu kỳ lương hợp lệ cho công ty này",
+        "PRE_PROCESS_BLOCKED": "Nhân viên trong phạm vi chưa có hồ sơ lương hiện hành",
         "SYSTEM_VALIDATION_ERROR": "Lỗi xác thực hệ thống",
         "MISSING_SALARY": "Thiếu thông tin lương"
       },

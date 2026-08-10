@@ -36,6 +36,9 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { hireEmployee } from '../core/org';
 import { resumeHref, materializeToggle } from '../app/payroll/process/selection-logic';
+// 7076f8af — the reset destination is composed from these two, and the Step-2 search is this predicate.
+import { adjustmentReturnTo, withQueryParam } from '../lib/return-to';
+import { matchesEmployeeSearch } from '../lib/employee-search';
 import {
   adminCtx,
   closeAll,
@@ -114,6 +117,74 @@ describe('Payroll draft-resume — pure UI logic', () => {
     const set = new Set(['a', 'c']); // b previously deselected
     const next = materializeToggle('b', set, ids, true, false);
     expect([...next].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  /**
+   * 7076f8af a3 — WHERE A RESET LANDS. The reported defect was one line: a successful reset redirected to
+   * `/payroll/<id>`, the long draft screen, whose payslip list is empty at that exact moment because
+   * resetProcessedBatch deletes the run's payslips. It now composes its destination from `resumeHref` —
+   * the SAME rule the list rows and the resume link use — so the three can never disagree about where a
+   * draft is resumed. Pinned as the composed string because that string is what the browser follows.
+   */
+  it('a3. the reset destination is the wizard resume link, with the toast appended (not the run screen)', () => {
+    const dest = withQueryParam(resumeHref('b1', 'draft'), 'toast', 'Payroll reset');
+    expect(dest).toBe('/payroll/process?resume=b1&toast=Payroll%20reset');
+    // The old destination, pinned negatively: whatever else changes, it must not go back to the run screen.
+    expect(dest.startsWith('/payroll/b1')).toBe(false);
+  });
+
+  /**
+   * 7076f8af a4 — the panel's actions may only be sent back to a screen that RENDERS the panel. The value
+   * arrives in a FormData, so it is whitelisted rather than sanitised; anything else falls back to the run
+   * screen, which is the behaviour every one of those actions had before this round.
+   */
+  it('a4. adjustmentReturnTo accepts only the screens that render the panel, and falls back to the run', () => {
+    expect(adjustmentReturnTo('/payroll/process?resume=b1', 'b1')).toBe('/payroll/process?resume=b1');
+    expect(adjustmentReturnTo('/payroll/transactions/adjustments?batchId=b1', 'b1')).toBe(
+      '/payroll/transactions/adjustments?batchId=b1',
+    );
+    // Absent / empty ⇒ the run screen (unchanged behaviour for any caller that posts nothing).
+    expect(adjustmentReturnTo(undefined, 'b1')).toBe('/payroll/b1');
+    expect(adjustmentReturnTo('', 'b1')).toBe('/payroll/b1');
+    // Off-site, protocol-relative and unlisted internal paths are all rejected the same way.
+    expect(adjustmentReturnTo('https://evil.example/payroll/process', 'b1')).toBe('/payroll/b1');
+    expect(adjustmentReturnTo('//evil.example', 'b1')).toBe('/payroll/b1');
+    expect(adjustmentReturnTo('/admin/users', 'b1')).toBe('/payroll/b1');
+    // A posted toast/error is dropped so the caller's own one cannot be doubled or spoofed.
+    expect(adjustmentReturnTo('/payroll/process?resume=b1&toast=Everything%20is%20fine', 'b1')).toBe(
+      '/payroll/process?resume=b1',
+    );
+  });
+
+  /**
+   * 7076f8af h — STEP 2's SEARCH BOX. It is an eighth FILTER over the same list, sharing the folding rule
+   * with the Personnel switcher (lib/employee-search.ts) so "emp0008" finds "EMP-0008" here too. The
+   * AND-combination with the seven dropdowns and the "never clobbers an edited selection" property are
+   * structural (the component passes the predicate into the same `filtered` memo and routes typing through
+   * markFilterTouch/materializeToggle); what is pinned here is the rule itself.
+   */
+  it('h. matchesEmployeeSearch: partial name, partial code, separator-folded code, and empty ⇒ everyone', () => {
+    const aisyah = { name: 'Aisyah Rahman', employeeCode: 'EMP-0001' };
+    const daniel = { name: 'Daniel Tan', employeeCode: 'EMP-0002' };
+    const noCode = { name: 'Mei Ling', employeeCode: null };
+
+    // Empty / whitespace is "filter not set": it narrows nothing, the opposite of the jump-list rule.
+    expect(matchesEmployeeSearch(aisyah, '')).toBe(true);
+    expect(matchesEmployeeSearch(aisyah, '   ')).toBe(true);
+
+    // Partial name, case-insensitive, anywhere in the name.
+    expect(matchesEmployeeSearch(aisyah, 'rahm')).toBe(true);
+    expect(matchesEmployeeSearch(aisyah, 'AISYAH')).toBe(true);
+    expect(matchesEmployeeSearch(daniel, 'rahm')).toBe(false);
+
+    // Partial Employee ID, with and without the separator the operator will not type.
+    expect(matchesEmployeeSearch(aisyah, 'EMP-000')).toBe(true);
+    expect(matchesEmployeeSearch(aisyah, 'emp0001')).toBe(true);
+    expect(matchesEmployeeSearch(daniel, 'emp0001')).toBe(false);
+
+    // A row with no Employee ID is still searchable by name and is simply not a code match.
+    expect(matchesEmployeeSearch(noCode, 'mei')).toBe(true);
+    expect(matchesEmployeeSearch(noCode, 'emp')).toBe(false);
   });
 });
 

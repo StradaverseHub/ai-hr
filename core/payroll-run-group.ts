@@ -33,6 +33,12 @@ export type RunGroupReasonCode =
   | 'NO_PAYROLL_CONFIG'
   | 'NOT_AUTHORIZED'
   | 'INVALID_CYCLE'
+  // 7076f8af — the pre-processing BLOCKER, named. It was already reachable here (generatePayslips throws
+  // PreProcessBlockedError before it writes anything), but it landed in SYSTEM_VALIDATION_ERROR, which
+  // tells an operator nothing they can act on. It matters more now that a RESUMED run reports through
+  // this same result page: "somebody in scope has no current salary record" is the failure that path
+  // will actually produce, and it is one the operator can fix in a minute.
+  | 'PRE_PROCESS_BLOCKED'
   | 'SYSTEM_VALIDATION_ERROR';
 
 /** The four fixed behavioural run types a cycle maps to (mirrors payrollRunTypeEnum / PayrollCycleRunType). */
@@ -75,6 +81,9 @@ export type RunGroupResult = {
 export function reasonForError(message: string): RunGroupReasonCode {
   if (message.includes('A payroll process already exists for this period')) return 'PERIOD_ALREADY_PROCESSED';
   if (/No localization pack/i.test(message)) return 'NO_PAYROLL_CONFIG';
+  // PreProcessBlockedError's own message (core/payroll.ts) — matched on its stable phrasing rather than by
+  // instanceof, because this function is pure and takes only the message the caller already caught.
+  if (/^Payroll cannot be processed: \d+ employees? in scope /.test(message)) return 'PRE_PROCESS_BLOCKED';
   return 'SYSTEM_VALIDATION_ERROR';
 }
 
