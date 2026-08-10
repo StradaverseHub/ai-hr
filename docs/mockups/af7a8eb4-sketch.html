@@ -1,0 +1,888 @@
+<meta charset="utf-8">
+<title>af7a8eb4 — Attendance: full width, and the Add New form moves onto its own page</title>
+<!--
+  Mockup for af7a8eb4 (Attendance Module - Screen Layout & Add New Page Enhancement), plan revision 1.
+
+  HONESTY NOTES - a mockup is a promise, so read these before changing anything here:
+  · Every shift drawn is a REAL active shift in the reporter's own tenant on production, read 2026-08-10:
+    AM01, AM02, AM03, AM1 (Morning Shift 1), AM2 (Morning Shift 2), MB28 (WITH 0.5 OT HOUR ADJ -
+    MORNING FULL (0800 - 1700)), SemiFlex01 (Semi Flexi Shift 01), Test (Half Day), Test-2 (Half Day #2).
+    Nine active rows; two further shifts are archived and hidden behind "Show deactivated", exactly as
+    today. Times, break minutes, break windows and weekly patterns are the stored values.
+  · Both calculation rules are real: Standard (the tenant default, active, with its stored description)
+    and A02 (active, no description).
+  · The nine company names under the rule list are the nine active companies in this tenant. Three of them
+    have a saved schedule (Chin Hin Construction Engineering 09:00-18:00 / 60 min break / late after 09:15 /
+    half-day before 13:00, Mon-Fri full and Sat half; Demo Group Holdings Bhd the same; Demo Sdn Bhd late
+    after 09:05); the other six show the engine defaults and carry the "Using defaults" badge, which is why
+    Chin Hin Property Group is drawn that way. Overtime approval is "Use the system-calculated hours" on
+    every saved row. The backup-shift count (29) and the two registered devices (Edge on Windows, EMP-0002
+    Daniel Tan; Chrome on Windows, EMP-0004 Arjun Kumar, both Demo Sdn Bhd, registered 2026-07-23, never
+    used) are the live figures.
+  · Every caption, column header, section heading, button label and hint line is the product's REAL
+    English string from messages/en.json (admin.attendancePolicy, admin.attendanceRule, roster.*).
+  · WIDTH IS DRAWN TO SCALE for a 1920-wide window: the sidebar rail, the 1640px content area and the
+    896px column both screens are capped at today are all reduced by the same factor. The striped bands
+    are the empty margin that cap produces - about 745px of it. That figure is arithmetic from the
+    source constants, not a browser measurement.
+  · TODAY panels show the screens as they stand on production: the shift list with the whole add-a-shift
+    form permanently open beneath it, and the rule list followed by the schedule block. The add-form
+    fields are drawn side by side, which is the conservative depiction - the plan does not claim
+    anything about how they currently wrap.
+  · PROPOSED panels draw ONLY what the plan commits to: the same content at full width, the form moved
+    onto its own page, and the schedule block moved onto its own page. No new field, no new column, no
+    renamed heading, nothing removed. The one label change is the top-right button reading "+ Add New"
+    on both screens, which the plan states.
+  · The New shift page and the moved Company work schedule page are drawn NARROW on purpose - the plan
+    says form pages keep a comfortable reading width and only the list screens gain the extra width.
+  · Grey italic text outside a panel is annotation, not UI. Nothing drawn as annotation is being built.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--input:#dcdde9;--amber:#fcd34d;--amberbg:#fffbeb;--amberfg:#78350f;
+        --ok:#15803d;--okbg:#dcfce7;--rose:#e11d48}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:17px;margin:0 0 4px}
+  .lede{font-size:12px;color:var(--mf);margin:0 0 18px;max-width:900px;line-height:1.5}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px;line-height:1.45;max-width:940px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .note{font-size:11px;color:var(--mf);font-style:italic;margin:9px 0 0}
+
+  /* ── the simulated 1920-wide browser window, drawn to scale ─────────────────────────── */
+  .win{width:1180px;border:1px solid var(--input);border-radius:12px;background:#eef0f6;overflow:hidden}
+  .wtop{height:20px;background:#e3e6ef;border-bottom:1px solid var(--input);display:flex;align-items:center;
+        gap:4px;padding:0 8px}
+  .wtop i{width:6px;height:6px;border-radius:999px;background:#c3c7d6;display:inline-block}
+  .wbody{display:grid;grid-template-columns:140px 1008px;gap:12px;padding:10px}
+  .rail{background:#fff;border:1px solid var(--border);border-radius:9px;padding:8px 7px;font-size:10px;
+        color:var(--mf);align-self:start}
+  .rail .brand{font-size:10.5px;font-weight:700;color:var(--fg);margin-bottom:7px}
+  .rail .grp{font-size:8.5px;text-transform:uppercase;letter-spacing:.06em;color:#a3a5b4;margin:7px 0 3px}
+  .rail .row{padding:3px 5px;border-radius:6px;margin-bottom:1px;white-space:nowrap;overflow:hidden;
+             text-overflow:ellipsis}
+  .rail .row.par{color:var(--fg);font-weight:600}
+  .rail .row.kid{padding-left:13px}
+  .rail .row.on{background:color-mix(in srgb,var(--primary) 10%,white);color:var(--primary);font-weight:600}
+
+  .stagenarrow{display:grid;grid-template-columns:1fr 551px 1fr;gap:0}
+  .stagewide{display:grid;grid-template-columns:1fr;gap:0}
+  .stageform{display:grid;grid-template-columns:1fr 472px 1fr;gap:0}
+  .gutter{background:repeating-linear-gradient(135deg,#e4e7f0 0 6px,#eef0f6 6px 12px);
+          border-radius:8px;margin:0 6px;position:relative}
+  .gutter span{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-90deg);
+               font-size:9px;color:#8e91a3;white-space:nowrap;letter-spacing:.04em}
+  .col{min-width:0}
+
+  /* ── page chrome inside the window ──────────────────────────────────────────────────── */
+  .ph{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:9px}
+  .ph h3{font-size:13px;margin:0 0 2px;font-weight:700}
+  .ph p{font-size:9.5px;color:var(--mf);margin:0;line-height:1.4}
+  .btn{background:var(--primary);color:#fff;border-radius:7px;padding:5px 12px;font-size:10.5px;
+       font-weight:600;display:inline-block;white-space:nowrap}
+  .btn.sec{background:#fff;color:var(--fg);border:1px solid var(--input);font-weight:500}
+  .back{font-size:10px;color:var(--primary);font-weight:600;margin:0 0 5px}
+  .pcard{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:9px}
+  .pchead{border-bottom:1px solid var(--border);padding:7px 10px}
+  .pchead h4{font-size:11px;margin:0;font-weight:600}
+  .pchead p{font-size:9px;color:var(--mf);margin:1px 0 0;line-height:1.4}
+  .cnt{display:inline-block;margin-left:6px;background:var(--muted);color:var(--mf);border-radius:999px;
+       padding:0 6px;font-size:9px;font-weight:600}
+  .pcbody{padding:8px 10px}
+  .rt{text-align:right}
+  .lnk{font-size:9.5px;color:var(--primary);font-weight:600}
+  .foot{font-size:9px;color:var(--mf);margin:5px 2px 0;line-height:1.45}
+
+  /* ── tables ─────────────────────────────────────────────────────────────────────────── */
+  table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+  th{background:var(--muted);color:var(--mf);font-size:8px;text-transform:uppercase;letter-spacing:.03em;
+     font-weight:600;text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);
+     white-space:normal;line-height:1.2;vertical-align:bottom}
+  td{padding:4px 6px;border-bottom:1px solid var(--border);font-size:9.5px;vertical-align:top;
+     overflow:hidden;text-overflow:ellipsis}
+  tr:last-child td{border-bottom:0}
+  .num{font-variant-numeric:tabular-nums}
+  .tag{display:inline-block;background:var(--muted);color:var(--mf);border-radius:4px;padding:0 4px;
+       font-size:8.5px;font-weight:600}
+  .day{display:inline-block;background:color-mix(in srgb,var(--primary) 10%,white);color:var(--primary);
+       border-radius:4px;padding:0 3px;font-size:8.5px;font-weight:600;margin:0 1px 1px 0}
+  .acts{white-space:nowrap;font-size:9px;color:var(--primary);font-weight:600}
+  .acts .d{color:var(--rose)}
+  .acts span{margin-right:5px}
+  .clipfade{position:relative;overflow:hidden}
+  .clipfade::after{content:"";position:absolute;top:0;right:0;bottom:0;width:26px;pointer-events:none;
+                   background:linear-gradient(to right,rgba(255,255,255,0),#fff 80%)}
+  .dsel{border:1px solid var(--input);border-radius:7px;padding:3px 5px;display:inline-flex;
+        flex-direction:column;align-items:center;gap:2px}
+  .dsel b{font-size:8.5px;font-weight:600;color:var(--fg)}
+  .dsel span{border:1px solid var(--input);border-radius:4px;padding:1px 5px;font-size:8.5px;color:var(--mf);
+             white-space:nowrap}
+  .mut{color:var(--mf)}
+
+  /* ── form bits ──────────────────────────────────────────────────────────────────────── */
+  .lbl{font-size:8.5px;font-weight:600;color:var(--mf);margin-bottom:2px;display:block;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .inp{background:#fff;border:1px solid var(--input);border-radius:6px;padding:4px 7px;font-size:9.5px;
+       color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .inp.ph2{color:#9a9ba8}
+  .sel{display:flex;align-items:center;justify-content:space-between;gap:5px}
+  .sel i{font-style:normal;color:var(--mf);font-size:8px}
+  .fwrap{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end}
+  .fwrap > div{min-width:0}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .g4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px}
+  .leg{font-size:10px;font-weight:600;margin:11px 0 4px;padding-top:9px;border-top:1px solid var(--border)}
+  .leg span{font-weight:400;color:var(--mf);font-size:9px}
+  .chkrow{display:flex;flex-wrap:wrap;gap:4px}
+  .dchip{border:1px solid var(--input);border-radius:6px;padding:3px 8px;font-size:9.5px;color:var(--mf)}
+  .dchip.on{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 10%,white);
+            color:var(--primary);font-weight:600}
+  .ck{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;color:var(--mf)}
+  .ck i{width:9px;height:9px;border-radius:2px;border:1px solid var(--input);background:#fff;display:inline-block}
+  .ck i.on{background:var(--primary);border-color:var(--primary)}
+  .amber{border:1px solid var(--amber);background:var(--amberbg);color:var(--amberfg);border-radius:7px;
+         padding:5px 8px;font-size:9px;line-height:1.45}
+  .stack{display:grid;gap:6px}
+  .hintline{font-size:8.5px;color:var(--mf);margin:4px 0 0;line-height:1.45}
+  .otgrid th{font-size:7.5px}
+  .otgrid td{font-size:9px}
+</style>
+
+<h1>Attendance: use the whole window, and open Add New on its own page</h1>
+<p class="lede">
+  Sketch for request af7a8eb4. Wording, spacing and colours will differ in the built screens. Every shift,
+  rule and company name shown is real data from your own account, read on 10 August 2026. Widths are drawn
+  to scale for a 1920-wide window.
+</p>
+
+<!-- ══════════════════════════════ 1 · SHIFT SETTINGS — TODAY ══════════════════════════ -->
+<div class="card">
+  <h2>1. Shift settings <span class="chip now">TODAY</span></h2>
+  <p class="sub">
+    The list is capped at a narrow middle column, and the whole add-a-shift form is permanently open below
+    your nine shifts.
+  </p>
+
+  <div class="win">
+    <div class="wtop"><i></i><i></i><i></i></div>
+    <div class="wbody">
+      <div class="rail">
+        <div class="brand">AI-HR</div>
+        <div class="grp">Administration</div>
+        <div class="row">Leave config</div>
+        <div class="row par">Attendance</div>
+        <div class="row kid">Holidays</div>
+        <div class="row kid on">Shift settings</div>
+        <div class="row kid">Attendance policy</div>
+        <div class="row kid">Attendance allowance</div>
+        <div class="row kid">Clocking location</div>
+        <div class="row kid">Time off in lieu</div>
+        <div class="row">Claims config</div>
+      </div>
+
+      <div class="stagenarrow">
+        <div class="gutter"><span>empty margin</span></div>
+        <div class="col">
+          <div class="ph">
+            <div>
+              <h3>Shift settings</h3>
+              <p>A centralized library of shift templates shared across your whole organisation. Create a
+                 shift once and assign it to any employee through their profile or Roster Management.</p>
+            </div>
+            <div class="btn">Add shift</div>
+          </div>
+
+          <div class="pcard">
+            <div class="pchead"><h4>Shift schedules <span class="cnt">9</span></h4></div>
+            <div class="pcbody">
+              <div class="rt" style="margin-bottom:5px"><span class="lnk">Show deactivated</span></div>
+              <div class="clipfade">
+                <table style="table-layout:auto;width:auto;min-width:100%">
+                  <thead><tr>
+                    <th>Shift code</th><th>Shift name</th><th>Type</th><th>Time in</th><th>Time out</th>
+                    <th>Break time</th><th>Working days</th><th></th>
+                  </tr></thead>
+                  <tbody>
+                    <tr><td>AM01</td><td>AM01</td><td><span class="tag">Normal</span></td>
+                      <td class="num">08:00</td><td class="num">17:00</td><td class="num">60 min</td>
+                      <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                      <td class="acts"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                    <tr><td>AM02</td><td>AM02</td><td><span class="tag">Normal</span></td>
+                      <td class="num">08:30</td><td class="num">17:30</td><td class="num">60 min</td>
+                      <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                      <td class="acts"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                    <tr><td>AM03</td><td>AM03</td><td><span class="tag">Normal</span></td>
+                      <td class="num">09:00</td><td class="num">18:00</td><td class="num">60 min</td>
+                      <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                      <td class="acts"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                    <tr><td>AM1</td><td>Morning Shift 1</td><td><span class="tag">Normal</span></td>
+                      <td class="num">09:00</td><td class="num">18:00</td>
+                      <td class="num">1. 12:00–13:00 <span class="mut">(60m)</span></td>
+                      <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                      <td class="acts"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                    <tr><td>AM2</td><td>Morning Shift 2</td><td><span class="tag">Normal</span></td>
+                      <td class="num">09:00</td><td class="num">17:00</td>
+                      <td class="num">1. 12:00–13:00 <span class="mut">(60m)</span></td>
+                      <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span><span class="day">Sat</span></td>
+                      <td class="acts"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                    <tr><td>MB28</td><td>WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700)</td>
+                      <td><span class="tag">Normal</span></td>
+                      <td class="num">08:00</td><td class="num">17:00</td>
+                      <td class="num">1. 12:00–13:00 <span class="mut">(60m)</span></td>
+                      <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                      <td class="acts"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                    <tr><td>SemiFlex01</td><td>Semi Flexi Shift 01</td><td><span class="tag">Semi Flexi</span></td>
+                      <td class="num">07:00</td><td class="num">20:00</td><td class="num">60 min</td>
+                      <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                      <td class="acts"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                    <tr><td>Test</td><td>Half Day</td><td><span class="tag">Normal</span></td>
+                      <td class="num">09:00</td><td class="num">12:00</td><td class="num">60 min</td>
+                      <td><span class="day">Sat</span></td>
+                      <td class="acts"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                    <tr><td>Test-2</td><td>Half Day #2</td><td><span class="tag">Normal</span></td>
+                      <td class="num">09:00</td><td class="num">12:00</td><td class="num">60 min</td>
+                      <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span><span class="day">Sat</span></td>
+                      <td class="acts"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- the add-a-shift form, permanently open under the list -->
+              <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px">
+                <div class="fwrap">
+                  <div style="width:150px"><div class="inp ph2">Shift name</div></div>
+                  <div style="width:80px"><div class="inp ph2">Code</div></div>
+                  <div style="width:130px"><span class="lbl">Shift type</span>
+                    <div class="inp sel">Normal <i>▾</i></div></div>
+                </div>
+                <div style="margin-top:6px"><span class="lbl">Description</span><div class="inp">&nbsp;</div></div>
+                <div class="fwrap" style="margin-top:6px">
+                  <div style="width:74px"><span class="lbl">Start</span><div class="inp num">09:00</div></div>
+                  <div style="width:74px"><span class="lbl">End</span><div class="inp num">18:00</div></div>
+                  <div style="width:78px"><span class="lbl">Break (min)</span><div class="inp num">60</div></div>
+                  <div style="width:82px"><span class="lbl">&nbsp;</span><div class="inp ph2">+ Add break</div></div>
+                  <div style="width:190px"><span class="lbl">Normal hours</span>
+                    <div class="inp">8h 0m <span class="mut">(auto-calculated)</span></div></div>
+                </div>
+                <div style="margin-top:6px;width:250px"><span class="lbl">Lateness, Early Out &amp; Overtime Settings</span>
+                  <div class="inp sel">Standard (default) <i>▾</i></div></div>
+
+                <div class="leg">General</div>
+                <div class="fwrap">
+                  <div style="width:150px"><span class="lbl">Normal-hours rounding (min)</span><div class="inp">&nbsp;</div></div>
+                  <div style="width:150px"><span class="lbl">1st half-day clock-out</span><div class="inp ph2">--:--</div></div>
+                </div>
+
+                <div class="leg">Recorded for reference <span>(saved and shown, but does not change any figure yet)</span></div>
+                <div class="fwrap">
+                  <div style="width:110px"><span class="lbl">Earliest clock-in</span><div class="inp ph2">--:--</div></div>
+                  <div style="width:110px"><span class="lbl">Latest clock-out</span><div class="inp ph2">--:--</div></div>
+                  <div style="width:70px"><span class="lbl">&nbsp;</span><span class="ck"><i></i> Next day</span></div>
+                  <div style="width:120px"><span class="lbl">2nd half-day clock-in</span><div class="inp ph2">--:--</div></div>
+                  <div style="width:110px"><span class="lbl">Day type</span><div class="inp sel">Not set <i>▾</i></div></div>
+                  <div style="width:110px"><span class="lbl">Category</span><div class="inp">&nbsp;</div></div>
+                  <div style="width:120px"><span class="lbl">Full-day leave (min)</span><div class="inp">&nbsp;</div></div>
+                  <div style="width:130px"><span class="lbl">Full-day overtime (min)</span><div class="inp">&nbsp;</div></div>
+                </div>
+
+                <div class="leg">Overtime schedule</div>
+                <table class="otgrid" style="table-layout:auto">
+                  <thead><tr><th>No.</th><th>Name</th><th>Start time</th><th>End time</th><th>Next day</th>
+                    <th>Min (min)</th><th>Max (min)</th><th>Adjust after (min)</th><th>Adjust by (min)</th></tr></thead>
+                </table>
+                <p class="hintline">+ Add overtime window</p>
+
+                <div class="leg">Shift premium (pay) <span>(paid by payroll for working this shift)</span></div>
+                <div class="fwrap">
+                  <div style="width:150px"><div class="inp sel">No differential <i>▾</i></div></div>
+                  <div style="width:110px"><div class="inp ph2">Value (RM/%)</div></div>
+                </div>
+
+                <div class="leg">Working days (Mon–Sun) <span>(Working / Rest)</span></div>
+                <div class="chkrow">
+                  <span class="dchip on">Mon</span><span class="dchip on">Tue</span><span class="dchip on">Wed</span>
+                  <span class="dchip on">Thu</span><span class="dchip on">Fri</span><span class="dchip">Sat</span>
+                  <span class="dchip">Sun</span>
+                </div>
+                <div style="margin-top:8px"><span class="btn">Add shift</span></div>
+                <p class="hintline">A shift ending at or before its start crosses midnight. The schedule drives attendance OT.</p>
+                <p class="hintline">A paid break is not deducted from the shift's hours; an unpaid one is.</p>
+                <p class="hintline">Semi-Flexi: employees may start any time within the window.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="gutter"><span>empty margin</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="note">
+    The two striped bands are the space the current width cap leaves unused — about 745 px of a 1920-wide
+    window, close to half the usable area.
+  </p>
+</div>
+
+<!-- ══════════════════════════════ 2 · SHIFT SETTINGS — PROPOSED ═══════════════════════ -->
+<div class="card">
+  <h2>2. Shift settings <span class="chip new">PROPOSED</span></h2>
+  <p class="sub">
+    The same nine shifts, across the whole window, with the columns given room. Nothing below the list.
+    The top-right button reads "+ Add New" and opens a page of its own.
+  </p>
+
+  <div class="win">
+    <div class="wtop"><i></i><i></i><i></i></div>
+    <div class="wbody">
+      <div class="rail">
+        <div class="brand">AI-HR</div>
+        <div class="grp">Administration</div>
+        <div class="row">Leave config</div>
+        <div class="row par">Attendance</div>
+        <div class="row kid">Holidays</div>
+        <div class="row kid on">Shift settings</div>
+        <div class="row kid">Attendance policy</div>
+        <div class="row kid">Attendance allowance</div>
+        <div class="row kid">Clocking location</div>
+        <div class="row kid">Time off in lieu</div>
+        <div class="row">Claims config</div>
+      </div>
+
+      <div class="stagewide">
+        <div class="col">
+          <div class="ph">
+            <div>
+              <h3>Shift settings</h3>
+              <p>A centralized library of shift templates shared across your whole organisation. Create a
+                 shift once and assign it to any employee through their profile or Roster Management.</p>
+            </div>
+            <div class="btn">+ Add New</div>
+          </div>
+
+          <div class="pcard">
+            <div class="pchead"><h4>Shift schedules <span class="cnt">9</span></h4></div>
+            <div class="pcbody">
+              <div class="rt" style="margin-bottom:5px"><span class="lnk">Show deactivated</span></div>
+              <table>
+                <colgroup><col style="width:92px"><col><col style="width:74px">
+                  <col style="width:64px"><col style="width:64px"><col style="width:134px">
+                  <col style="width:142px"><col style="width:178px"></colgroup>
+                <thead><tr>
+                  <th>Shift code</th><th>Shift name</th><th>Type</th><th>Time in</th><th>Time out</th>
+                  <th>Break time</th><th>Working days</th><th></th>
+                </tr></thead>
+                <tbody>
+                  <tr><td>AM01</td><td>AM01</td><td><span class="tag">Normal</span></td>
+                    <td class="num">08:00</td><td class="num">17:00</td><td class="num">60 min</td>
+                    <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                    <td class="acts rt"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                  <tr><td>AM02</td><td>AM02</td><td><span class="tag">Normal</span></td>
+                    <td class="num">08:30</td><td class="num">17:30</td><td class="num">60 min</td>
+                    <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                    <td class="acts rt"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                  <tr><td>AM03</td><td>AM03</td><td><span class="tag">Normal</span></td>
+                    <td class="num">09:00</td><td class="num">18:00</td><td class="num">60 min</td>
+                    <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                    <td class="acts rt"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                  <tr><td>AM1</td><td>Morning Shift 1</td><td><span class="tag">Normal</span></td>
+                    <td class="num">09:00</td><td class="num">18:00</td>
+                    <td class="num">1. 12:00–13:00 <span class="mut">(60m)</span></td>
+                    <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                    <td class="acts rt"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                  <tr><td>AM2</td><td>Morning Shift 2</td><td><span class="tag">Normal</span></td>
+                    <td class="num">09:00</td><td class="num">17:00</td>
+                    <td class="num">1. 12:00–13:00 <span class="mut">(60m)</span></td>
+                    <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span><span class="day">Sat</span></td>
+                    <td class="acts rt"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                  <tr><td>MB28</td><td>WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700)</td>
+                    <td><span class="tag">Normal</span></td>
+                    <td class="num">08:00</td><td class="num">17:00</td>
+                    <td class="num">1. 12:00–13:00 <span class="mut">(60m)</span></td>
+                    <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                    <td class="acts rt"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                  <tr><td>SemiFlex01</td><td>Semi Flexi Shift 01</td><td><span class="tag">Semi Flexi</span></td>
+                    <td class="num">07:00</td><td class="num">20:00</td><td class="num">60 min</td>
+                    <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span></td>
+                    <td class="acts rt"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                  <tr><td>Test</td><td>Half Day</td><td><span class="tag">Normal</span></td>
+                    <td class="num">09:00</td><td class="num">12:00</td><td class="num">60 min</td>
+                    <td><span class="day">Sat</span></td>
+                    <td class="acts rt"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                  <tr><td>Test-2</td><td>Half Day #2</td><td><span class="tag">Normal</span></td>
+                    <td class="num">09:00</td><td class="num">12:00</td><td class="num">60 min</td>
+                    <td><span class="day">Mon</span><span class="day">Tue</span><span class="day">Wed</span><span class="day">Thu</span><span class="day">Fri</span><span class="day">Sat</span></td>
+                    <td class="acts rt"><span>Edit</span><span>Copy</span><span class="d">Archive</span><span class="d">Delete</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p class="foot">
+            A person's usual shift is set as their Default shift on their profile; the Roster screen is for
+            date-specific exceptions.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════ 3 · NEW SHIFT PAGE ══════════════════════════════════ -->
+<div class="card">
+  <h2>3. New shift — a page of its own <span class="chip new">PROPOSED</span></h2>
+  <p class="sub">
+    What "+ Add New" opens. Edit on any row opens the same page for that shift, titled "Edit shift". The
+    boxes sit in tidy columns, two or three across. The page stays a comfortable reading width rather than
+    stretching edge to edge — the same width the New rule page already uses.
+  </p>
+
+  <div class="win">
+    <div class="wtop"><i></i><i></i><i></i></div>
+    <div class="wbody">
+      <div class="rail">
+        <div class="brand">AI-HR</div>
+        <div class="grp">Administration</div>
+        <div class="row">Leave config</div>
+        <div class="row par">Attendance</div>
+        <div class="row kid">Holidays</div>
+        <div class="row kid on">Shift settings</div>
+        <div class="row kid">Attendance policy</div>
+        <div class="row kid">Attendance allowance</div>
+        <div class="row kid">Clocking location</div>
+        <div class="row kid">Time off in lieu</div>
+        <div class="row">Claims config</div>
+      </div>
+
+      <div class="stageform">
+        <div class="gutter"></div>
+        <div class="col">
+          <p class="back">&larr; Back to shift settings</p>
+          <div class="ph">
+            <div>
+              <h3>New shift</h3>
+              <p>Create a shift template and assign it to employees from their profile or the roster.</p>
+            </div>
+          </div>
+
+          <div class="pcard"><div class="pcbody">
+            <div class="g3">
+              <div><span class="lbl">Shift name</span><div class="inp ph2">&nbsp;</div></div>
+              <div><span class="lbl">Code</span><div class="inp ph2">&nbsp;</div></div>
+              <div><span class="lbl">Shift type</span><div class="inp sel">Normal <i>▾</i></div></div>
+            </div>
+            <div style="margin-top:8px"><span class="lbl">Description</span><div class="inp ph2">&nbsp;</div></div>
+            <div class="g3" style="margin-top:8px">
+              <div><span class="lbl">Start</span><div class="inp num">09:00</div></div>
+              <div><span class="lbl">End</span><div class="inp num">18:00</div></div>
+              <div><span class="lbl">Break (min)</span><div class="inp num">60</div></div>
+            </div>
+            <div class="g2" style="margin-top:8px">
+              <div><span class="lbl">Normal hours</span><div class="inp">8h 0m <span class="mut">(auto-calculated)</span></div></div>
+              <div><span class="lbl">Override (minutes)</span><div class="inp ph2">&nbsp;</div></div>
+            </div>
+            <p class="hintline">+ Add break</p>
+            <div style="margin-top:8px"><span class="lbl">Lateness, Early Out &amp; Overtime Settings</span>
+              <div class="inp sel">Standard (default) <i>▾</i></div></div>
+          </div></div>
+
+          <div class="pcard"><div class="pcbody">
+            <div style="font-size:10px;font-weight:600;margin-bottom:6px">General</div>
+            <div class="g2">
+              <div><span class="lbl">Normal-hours rounding (min)</span><div class="inp ph2">&nbsp;</div></div>
+              <div><span class="lbl">1st half-day clock-out</span><div class="inp ph2">--:--</div></div>
+            </div>
+            <p class="hintline">Normal hours are rounded DOWN to a multiple of this many minutes. Leave blank for no rounding.</p>
+          </div></div>
+
+          <div class="pcard"><div class="pcbody">
+            <div style="font-size:10px;font-weight:600;margin-bottom:2px">Recorded for reference</div>
+            <p class="hintline" style="margin:0 0 6px">saved and shown, but does not change any figure yet</p>
+            <div class="g3">
+              <div><span class="lbl">Earliest clock-in</span><div class="inp ph2">--:--</div></div>
+              <div><span class="lbl">Latest clock-out</span><div class="inp ph2">--:--</div></div>
+              <div><span class="lbl">2nd half-day clock-in</span><div class="inp ph2">--:--</div></div>
+            </div>
+            <div style="margin-top:6px"><span class="ck"><i></i> Next day</span></div>
+            <div class="g2" style="margin-top:8px">
+              <div><span class="lbl">Day type</span><div class="inp sel">Not set <i>▾</i></div></div>
+              <div><span class="lbl">Category</span><div class="inp ph2">&nbsp;</div></div>
+            </div>
+            <div class="g2" style="margin-top:8px">
+              <div><span class="lbl">Full-day leave (min)</span><div class="inp ph2">&nbsp;</div></div>
+              <div><span class="lbl">Full-day overtime (min)</span><div class="inp ph2">&nbsp;</div></div>
+            </div>
+          </div></div>
+
+          <div class="pcard"><div class="pcbody">
+            <div style="font-size:10px;font-weight:600;margin-bottom:6px">Overtime schedule</div>
+            <table class="otgrid" style="table-layout:auto">
+              <thead><tr><th>No.</th><th>Name</th><th>Start<br>time</th><th>End<br>time</th><th>Next<br>day</th>
+                <th>Min<br>(min)</th><th>Max<br>(min)</th><th>Adjust<br>after</th><th>Adjust<br>by</th></tr></thead>
+            </table>
+            <p class="hintline">+ Add overtime window</p>
+          </div></div>
+
+          <div class="pcard"><div class="pcbody">
+            <div style="font-size:10px;font-weight:600;margin-bottom:2px">Shift premium (pay)</div>
+            <p class="hintline" style="margin:0 0 6px">paid by payroll for working this shift — not an attendance calculation</p>
+            <div class="g2">
+              <div><span class="lbl">Differential</span><div class="inp sel">No differential <i>▾</i></div></div>
+              <div><span class="lbl">Value (RM/%)</span><div class="inp ph2">&nbsp;</div></div>
+            </div>
+          </div></div>
+
+          <div class="pcard"><div class="pcbody">
+            <div style="font-size:10px;font-weight:600;margin-bottom:2px">Working days (Mon–Sun)</div>
+            <p class="hintline" style="margin:0 0 6px">Working / Rest</p>
+            <div class="chkrow">
+              <span class="dchip on">Mon</span><span class="dchip on">Tue</span><span class="dchip on">Wed</span>
+              <span class="dchip on">Thu</span><span class="dchip on">Fri</span><span class="dchip">Sat</span>
+              <span class="dchip">Sun</span>
+            </div>
+          </div></div>
+
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="btn">Add shift</span><span class="lnk">Cancel</span>
+          </div>
+        </div>
+        <div class="gutter"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════════ 4 · LATENESS, EARLY OUT & OVERTIME SETTINGS — TODAY ══════════════════ -->
+<div class="card">
+  <h2>4. Lateness, Early Out &amp; Overtime Settings <span class="chip now">TODAY</span></h2>
+  <p class="sub">
+    "+ Add New" already opens its own page — that part works today. The problem is everything that follows
+    the two-row rule list: the backup-shift notice, the overtime rates, a working-hours form for each of
+    your nine companies, and the registered-devices table.
+  </p>
+
+  <div class="win">
+    <div class="wtop"><i></i><i></i><i></i></div>
+    <div class="wbody">
+      <div class="rail">
+        <div class="brand">AI-HR</div>
+        <div class="grp">Administration</div>
+        <div class="row">Leave config</div>
+        <div class="row par">Attendance</div>
+        <div class="row kid">Holidays</div>
+        <div class="row kid">Shift settings</div>
+        <div class="row kid on">Attendance policy</div>
+        <div class="row kid">Attendance allowance</div>
+        <div class="row kid">Clocking location</div>
+        <div class="row kid">Time off in lieu</div>
+        <div class="row">Claims config</div>
+      </div>
+
+      <div class="stagenarrow">
+        <div class="gutter"><span>empty margin</span></div>
+        <div class="col">
+          <div class="ph">
+            <div>
+              <h3>Lateness, Early Out &amp; Overtime Settings</h3>
+              <p>A reusable library of attendance calculation rules.</p>
+            </div>
+            <div class="btn">+ Add New</div>
+          </div>
+
+          <div class="pcard">
+            <div class="pchead"><h4>Calculation rules</h4>
+              <p>Each rule bundles Lateness, Early Out and Overtime settings.</p></div>
+            <table>
+              <colgroup><col style="width:90px"><col><col style="width:62px"><col style="width:52px"><col style="width:78px"></colgroup>
+              <thead><tr><th>Rule Name</th><th>Description</th><th>Default</th><th>Status</th><th class="rt">Action</th></tr></thead>
+              <tbody>
+                <tr><td>Standard</td>
+                  <td class="mut">Default attendance calculation rule (converted from the company attendance policy).</td>
+                  <td><span class="tag">Standard</span></td><td style="color:var(--ok)">Active</td>
+                  <td class="acts rt"><span>Edit</span></td></tr>
+                <tr><td>A02</td><td class="mut">—</td><td class="mut">—</td>
+                  <td style="color:var(--ok)">Active</td>
+                  <td class="acts rt"><span>Edit</span><span class="d">Delete</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="border-top:1px solid var(--border);padding-top:7px;margin-bottom:7px">
+            <div style="font-size:11px;font-weight:600">Company work schedule &amp; overtime rates</div>
+            <p class="hintline">The working hours below apply only on a day where the employee has no shift assigned.</p>
+          </div>
+
+          <div class="pcard"><div class="pcbody">
+            <h4 style="font-size:11px;margin:0 0 3px">Backup shift coverage</h4>
+            <div class="amber">29 active employees have no backup shift. Their unrostered days are
+              calculated from the company work schedule below.</div>
+          </div></div>
+
+          <div class="pcard"><div class="pcbody">
+            <h4 style="font-size:11px;margin:0 0 4px">Overtime rates</h4>
+            <div class="g3">
+              <div><span class="lbl">OT entitlement wage ceiling (RM/month)</span><div class="inp num">4,000.00</div></div>
+              <div><span class="lbl">Rest-day OT excess rate</span><div class="inp num">2×</div></div>
+              <div><span class="lbl">Public-holiday OT excess rate</span><div class="inp num">3×</div></div>
+            </div>
+            <div class="amber" style="margin-top:6px">The RM 4,000 wage ceiling is the Employment Act s.60A
+              overtime-eligibility limit — a legal threshold, not a free operational rate.</div>
+          </div></div>
+
+          <div class="pcard">
+            <div class="pchead" style="display:flex;justify-content:space-between;align-items:center">
+              <h4>Chin Hin Construction Engineering</h4><span class="hintline">Net scheduled 8h 0m</span></div>
+            <div class="pcbody">
+              <div class="g3">
+                <div><span class="lbl">Work start</span><div class="inp num">09:00</div></div>
+                <div><span class="lbl">Work end</span><div class="inp num">18:00</div></div>
+                <div><span class="lbl">Break (minutes)</span><div class="inp num">60</div></div>
+                <div><span class="lbl">Late after</span><div class="inp num">09:15</div></div>
+                <div><span class="lbl">Half-day before</span><div class="inp num">13:00</div></div>
+              </div>
+              <div style="font-size:9.5px;font-weight:600;margin:8px 0 4px">Working days</div>
+              <div class="chkrow">
+                <span class="dsel"><b>Mon</b><span>Full &#9662;</span></span>
+                <span class="dsel"><b>Tue</b><span>Full &#9662;</span></span>
+                <span class="dsel"><b>Wed</b><span>Full &#9662;</span></span>
+                <span class="dsel"><b>Thu</b><span>Full &#9662;</span></span>
+                <span class="dsel"><b>Fri</b><span>Full &#9662;</span></span>
+                <span class="dsel"><b>Sat</b><span>Half &#9662;</span></span>
+                <span class="dsel"><b>Sun</b><span>Rest &#9662;</span></span>
+              </div>
+              <div style="font-size:9.5px;font-weight:600;margin:8px 0 4px">Overtime approval</div>
+              <div class="inp sel" style="width:230px">Use the system-calculated hours <i>▾</i></div>
+              <div style="font-size:9.5px;font-weight:600;margin:8px 0 4px">Registered devices</div>
+              <span class="ck"><i></i> Require a registered device for web clocking</span>
+              <div style="margin-top:8px"><span class="btn">Save policy</span></div>
+            </div>
+          </div>
+
+          <div class="pcard"><div class="pchead" style="display:flex;justify-content:space-between;align-items:center">
+            <h4>Chin Hin Property Group</h4><span class="tag" style="background:#fef3c7;color:#92400e">Using defaults</span></div>
+            <div class="pcbody"><div class="g3">
+              <div><span class="lbl">Work start</span><div class="inp num">09:00</div></div>
+              <div><span class="lbl">Work end</span><div class="inp num">18:00</div></div>
+              <div><span class="lbl">Break (minutes)</span><div class="inp num">60</div></div>
+            </div><p class="hintline">…the rest of this company's form</p></div>
+          </div>
+
+          <div class="pcard"><div class="pchead" style="display:flex;justify-content:space-between;align-items:center">
+            <h4>Demo Group Holdings Bhd</h4><span class="hintline">Net scheduled 8h 0m</span></div>
+            <div class="pcbody"><div class="g3">
+              <div><span class="lbl">Work start</span><div class="inp num">09:00</div></div>
+              <div><span class="lbl">Work end</span><div class="inp num">18:00</div></div>
+              <div><span class="lbl">Break (minutes)</span><div class="inp num">60</div></div>
+            </div><p class="hintline">…the rest of this company's form</p></div>
+          </div>
+
+          <p class="note" style="text-align:center">
+            …and six more company forms — Demo Sdn Bhd, Fiamma (Chin Hin Property), ISEDECOR BINA SDN BHD,
+            Signature Group of Companies, SpaceX Sdn Bhd, XYZ BINA SDN BHD
+          </p>
+
+          <div class="pcard" style="margin-top:9px">
+            <div class="pchead"><h4>Registered clocking devices</h4>
+              <p>Devices employees registered for web clocking.</p></div>
+            <table style="table-layout:auto">
+              <thead><tr><th>Employee</th><th>Device</th><th>Company</th><th>Registered</th><th>Last used</th><th class="rt">Action</th></tr></thead>
+              <tbody>
+                <tr><td>Daniel Tan <span class="mut">EMP-0002</span></td><td class="mut">Edge on Windows</td>
+                  <td class="mut">Demo Sdn Bhd</td><td class="num mut">2026-07-23</td><td class="mut">—</td>
+                  <td class="acts rt"><span class="d">Revoke</span></td></tr>
+                <tr><td>Arjun Kumar <span class="mut">EMP-0004</span></td><td class="mut">Chrome on Windows</td>
+                  <td class="mut">Demo Sdn Bhd</td><td class="num mut">2026-07-23</td><td class="mut">—</td>
+                  <td class="acts rt"><span class="d">Revoke</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="gutter"><span>empty margin</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════════ 5 · LATENESS, EARLY OUT & OVERTIME SETTINGS — PROPOSED ═══════════════ -->
+<div class="card">
+  <h2>5. Lateness, Early Out &amp; Overtime Settings <span class="chip new">PROPOSED</span></h2>
+  <p class="sub">
+    The rule list, at full width, and nothing else. The working hours, overtime rates, backup-shift notice
+    and registered devices move together onto their own page, reached by the button beside "+ Add New".
+  </p>
+
+  <div class="win">
+    <div class="wtop"><i></i><i></i><i></i></div>
+    <div class="wbody">
+      <div class="rail">
+        <div class="brand">AI-HR</div>
+        <div class="grp">Administration</div>
+        <div class="row">Leave config</div>
+        <div class="row par">Attendance</div>
+        <div class="row kid">Holidays</div>
+        <div class="row kid">Shift settings</div>
+        <div class="row kid on">Attendance policy</div>
+        <div class="row kid">Attendance allowance</div>
+        <div class="row kid">Clocking location</div>
+        <div class="row kid">Time off in lieu</div>
+        <div class="row">Claims config</div>
+      </div>
+
+      <div class="stagewide">
+        <div class="col">
+          <div class="ph">
+            <div>
+              <h3>Lateness, Early Out &amp; Overtime Settings</h3>
+              <p>A reusable library of attendance calculation rules. Assign a rule to a shift, or let shifts
+                 fall back to the Standard rule.</p>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="btn sec">Company work schedule &amp; overtime rates</span>
+              <span class="btn">+ Add New</span>
+            </div>
+          </div>
+
+          <div class="pcard">
+            <div class="pchead"><h4>Calculation rules</h4>
+              <p>Each rule bundles Lateness, Early Out and Overtime settings. Rules are shared across every
+                 company — the shift picks the rule, and the Standard rule applies when a shift chooses none.</p></div>
+            <table>
+              <colgroup><col style="width:170px"><col><col style="width:90px"><col style="width:90px"><col style="width:130px"></colgroup>
+              <thead><tr><th>Rule Name</th><th>Description</th><th>Default</th><th>Status</th><th class="rt">Action</th></tr></thead>
+              <tbody>
+                <tr><td>Standard</td>
+                  <td class="mut">Default attendance calculation rule (converted from the company attendance policy).</td>
+                  <td><span class="tag">Standard</span></td><td style="color:var(--ok)">Active</td>
+                  <td class="acts rt"><span>Edit</span></td></tr>
+                <tr><td>A02</td><td class="mut">—</td><td class="mut">—</td>
+                  <td style="color:var(--ok)">Active</td>
+                  <td class="acts rt"><span>Edit</span><span class="d">Delete</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════════ 6 · COMPANY WORK SCHEDULE & OVERTIME RATES — NEW PAGE ════════════════ -->
+<div class="card">
+  <h2>6. Company work schedule &amp; overtime rates — a page of its own <span class="chip new">PROPOSED</span></h2>
+  <p class="sub">
+    Everything that used to sit under the rule list, moved here unchanged and in the same order. Nothing is
+    removed and no value changes — these working hours are still what decides a day on which an employee has
+    no shift assigned.
+  </p>
+
+  <div class="win">
+    <div class="wtop"><i></i><i></i><i></i></div>
+    <div class="wbody">
+      <div class="rail">
+        <div class="brand">AI-HR</div>
+        <div class="grp">Administration</div>
+        <div class="row">Leave config</div>
+        <div class="row par">Attendance</div>
+        <div class="row kid">Holidays</div>
+        <div class="row kid">Shift settings</div>
+        <div class="row kid on">Attendance policy</div>
+        <div class="row kid">Attendance allowance</div>
+        <div class="row kid">Clocking location</div>
+        <div class="row kid">Time off in lieu</div>
+        <div class="row">Claims config</div>
+      </div>
+
+      <div class="stagenarrow">
+        <div class="gutter"></div>
+        <div class="col">
+          <p class="back">&larr; Back to Lateness, Early Out &amp; Overtime Settings</p>
+          <div class="ph">
+            <div>
+              <h3>Company work schedule &amp; overtime rates</h3>
+              <p>The working hours below apply only on a day where the employee has no shift assigned; on any
+                 day with a shift, that shift decides. The overtime rates apply to your whole organisation.</p>
+            </div>
+          </div>
+
+          <div class="pcard"><div class="pcbody">
+            <h4 style="font-size:11px;margin:0 0 4px">Backup shift coverage</h4>
+            <div class="amber">29 active employees have no backup shift. Their unrostered days are
+              calculated from the company work schedule below.</div>
+          </div></div>
+
+          <div class="pcard"><div class="pcbody">
+            <h4 style="font-size:11px;margin:0 0 5px">Overtime rates</h4>
+            <div class="g3">
+              <div><span class="lbl">OT entitlement wage ceiling (RM/month)</span><div class="inp num">4,000.00</div></div>
+              <div><span class="lbl">Rest-day OT excess rate (× hourly)</span><div class="inp num">2×</div></div>
+              <div><span class="lbl">Public-holiday OT excess rate (× hourly)</span><div class="inp num">3×</div></div>
+            </div>
+            <div class="amber" style="margin-top:6px">The RM 4,000 wage ceiling is the Employment Act s.60A
+              overtime-eligibility limit — a legal threshold, not a free operational rate. Change it only if
+              the law changes.</div>
+          </div></div>
+
+          <div class="pcard">
+            <div class="pchead" style="display:flex;justify-content:space-between;align-items:center">
+              <h4>Chin Hin Construction Engineering</h4><span class="hintline">Net scheduled 8h 0m</span></div>
+            <div class="pcbody">
+              <div class="g3">
+                <div><span class="lbl">Work start</span><div class="inp num">09:00</div></div>
+                <div><span class="lbl">Work end</span><div class="inp num">18:00</div></div>
+                <div><span class="lbl">Break (minutes)</span><div class="inp num">60</div></div>
+                <div><span class="lbl">Late after</span><div class="inp num">09:15</div></div>
+                <div><span class="lbl">Half-day before</span><div class="inp num">13:00</div></div>
+              </div>
+              <div style="font-size:9.5px;font-weight:600;margin:9px 0 4px">Working days</div>
+              <div class="chkrow">
+                <span class="dsel"><b>Mon</b><span>Full &#9662;</span></span>
+                <span class="dsel"><b>Tue</b><span>Full &#9662;</span></span>
+                <span class="dsel"><b>Wed</b><span>Full &#9662;</span></span>
+                <span class="dsel"><b>Thu</b><span>Full &#9662;</span></span>
+                <span class="dsel"><b>Fri</b><span>Full &#9662;</span></span>
+                <span class="dsel"><b>Sat</b><span>Half &#9662;</span></span>
+                <span class="dsel"><b>Sun</b><span>Rest &#9662;</span></span>
+              </div>
+              <div style="font-size:9.5px;font-weight:600;margin:9px 0 4px">Overtime approval</div>
+              <div class="inp sel" style="width:280px">Use the system-calculated hours <i>▾</i></div>
+              <div style="font-size:9.5px;font-weight:600;margin:9px 0 4px">Registered devices</div>
+              <span class="ck"><i></i> Require a registered device for web clocking</span>
+              <div style="margin-top:9px"><span class="btn">Save policy</span></div>
+            </div>
+          </div>
+
+          <p class="note" style="text-align:center">
+            …then the same form for each of your other eight companies, exactly as today
+          </p>
+
+          <div class="pcard" style="margin-top:9px">
+            <div class="pchead"><h4>Registered clocking devices</h4>
+              <p>Devices employees registered for web clocking. Revoking a device blocks clocking from it
+                 until the employee registers it again.</p></div>
+            <table style="table-layout:auto">
+              <thead><tr><th>Employee</th><th>Device</th><th>Company</th><th>Registered</th><th>Last used</th><th class="rt">Action</th></tr></thead>
+              <tbody>
+                <tr><td>Daniel Tan <span class="mut">EMP-0002</span></td><td class="mut">Edge on Windows</td>
+                  <td class="mut">Demo Sdn Bhd</td><td class="num mut">2026-07-23</td><td class="mut">—</td>
+                  <td class="acts rt"><span class="d">Revoke</span></td></tr>
+                <tr><td>Arjun Kumar <span class="mut">EMP-0004</span></td><td class="mut">Chrome on Windows</td>
+                  <td class="mut">Demo Sdn Bhd</td><td class="num mut">2026-07-23</td><td class="mut">—</td>
+                  <td class="acts rt"><span class="d">Revoke</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="gutter"></div>
+      </div>
+    </div>
+  </div>
+  <p class="note">
+    This page keeps today's comfortable width. It is a settings form, not a list — only the two list
+    screens gain the extra width.
+  </p>
+</div>

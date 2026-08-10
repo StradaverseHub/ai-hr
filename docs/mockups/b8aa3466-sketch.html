@@ -1,0 +1,516 @@
+<meta charset="utf-8">
+<title>b8aa3466 — Shift settings: name every box, and show only the ones the shift type needs</title>
+<!--
+  Mockup for b8aa3466 (Attendance Module Enhancement Request), plan revision 4.
+
+  HONESTY NOTES - a mockup is a promise, so read these before changing anything here:
+  · DATA. Every value drawn is a REAL row in the reporter's own tenant on production, read 2026-08-10
+    (SELECT only):
+      MB28  "WITH 0.5 OT HOUR ADJ - MORNING FULL (0800 - 1700)", type normal, 08:00-17:00, break 60 min,
+            one break window 12:00-13:00 (not paid), half_day_first_out 12:00, early_in 07:00,
+            late_out 22:00, weekly_pattern {1,2,3,4,5}, one OT window "OT AFTER WORK" 17:00-23:59 min 30,
+            normal_minutes_override NULL, description/category/day_type/rounding all NULL.
+      SemiFlex01 "Semi Flexi Shift 01", type semi_flexi, 07:00-20:00, break 60 min, NO break windows,
+            normal_minutes_override NULL, half_day_first_out NULL, early_in NULL, late_out NULL,
+            weekly_pattern {1,2,3,4,5}.
+      Test "Half Day" and Test-2 "Half Day #2" are two further ACTIVE shifts, both 09:00-12:00 - the
+            reporter's existing workaround for a per-weekday half day.
+  · THE 12h00 FIGURE is arithmetic from SemiFlex01's stored row: 07:00-20:00 is 780 minutes, minus the
+    60-minute break = 720 = 12h00, which is what netScheduledMinutes returns when the override is NULL.
+    No derived attendance row was observed on production; the number is the calculation, not a reading.
+  · TODAY panels show the form as it stands in app/admin/attendance/page.tsx and shift-time-fields.tsx.
+    Boxes drawn with a dashed outline and no caption are the TEN controls that today carry only an
+    aria-label or a placeholder, so nothing is printed beside them on screen.
+  · PROPOSED panels draw ONLY what the plan commits to. Full Flexi is drawn GREYED OUT in the shift-type
+    list because it is disabled today and stays disabled after this item - it is a separate request.
+  · The four-way day dropdown is drawn twice: MB28 exactly as the backfill leaves it (Mon-Fri Full,
+    Sat and Sun Rest - today's meaning preserved), and the reporter's OWN example week from their
+    message, captioned as an example of what can then be set.
+  · Grey italic text outside a panel is annotation, not UI. Nothing drawn as annotation is being built.
+  · Labels in the PROPOSED panels use the reporter's own wording (time in, time out, total normal
+    working hours, daily cut-off, half-day cut-off). Existing labels that are not changing keep the
+    product's real English string from messages/en.json.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--input:#dcdde9;--amber:#fcd34d;--amberbg:#fffbeb;--amberfg:#78350f;
+        --ok:#15803d;--okbg:#dcfce7;--rose:#e11d48;--rosebg:#fff1f2}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1280px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:18px;margin:0 0 5px}
+  .lede{font-size:12px;color:var(--mf);margin:0 0 18px;max-width:1000px;line-height:1.55}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.5;max-width:1050px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .note{font-size:11px;color:var(--mf);font-style:italic;margin:10px 2px 0;line-height:1.5}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+
+  /* page surface inside a panel */
+  .pane{background:#fbfbfe;border:1px solid var(--border);border-radius:10px;padding:12px}
+  .paneh{font-size:11px;font-weight:700;margin:0 0 2px}
+  .panes{font-size:10px;color:var(--mf);margin:0 0 10px;line-height:1.45}
+  .pcard{background:#fff;border:1px solid var(--border);border-radius:9px;padding:10px;margin-bottom:8px}
+  .lbl{font-size:9px;font-weight:600;color:var(--mf);margin-bottom:2px;display:block;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lbl b{color:var(--primary);font-weight:700}
+  .inp{background:#fff;border:1px solid var(--input);border-radius:6px;padding:4px 7px;font-size:10px;
+       color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:22px}
+  .inp.ph2{color:#9a9ba8}
+  .inp.ro{background:var(--muted);color:var(--mf)}
+  .nolbl{border-style:dashed;border-color:var(--rose);background:var(--rosebg)}
+  .sel{display:flex;align-items:center;justify-content:space-between;gap:5px}
+  .sel i{font-style:normal;color:var(--mf);font-size:8px}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+  .g4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:7px}
+  .fwrap{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end}
+  .fwrap > div{min-width:0}
+  .leg{font-size:10px;font-weight:700;margin:10px 0 5px;padding-top:8px;border-top:1px solid var(--border)}
+  .leg span{font-weight:400;color:var(--mf);font-size:9px}
+  .leg0{border-top:0;padding-top:0;margin-top:0}
+  .step{display:inline-block;background:var(--primary);color:#fff;border-radius:999px;width:13px;
+        height:13px;line-height:13px;text-align:center;font-size:8.5px;font-weight:700;margin-right:4px;
+        vertical-align:1px}
+  .ck{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--mf)}
+  .ck i{width:10px;height:10px;border-radius:2px;border:1px solid var(--input);background:#fff;
+        display:inline-block;flex:none}
+  .ck i.on{background:var(--primary);border-color:var(--primary)}
+  .dchip{border:1px solid var(--input);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--mf)}
+  .dchip.on{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 10%,white);
+            color:var(--primary);font-weight:600}
+  .chkrow{display:flex;flex-wrap:wrap;gap:4px}
+  .hintline{font-size:9px;color:var(--mf);margin:5px 0 0;line-height:1.5}
+  .btn{background:var(--primary);color:#fff;border-radius:7px;padding:5px 12px;font-size:10.5px;
+       font-weight:600;display:inline-block}
+  .lnk{font-size:10px;color:var(--primary);font-weight:600}
+  .more{border:1px solid var(--input);border-radius:8px;background:#fff;padding:9px 11px;
+        display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+  .more b{font-size:10.5px;font-weight:700;display:block;margin-bottom:2px}
+  .more em{font-style:normal;font-size:10px;color:var(--primary);font-weight:600;white-space:nowrap;flex:none}
+  .more span{font-weight:400;color:var(--mf);font-size:9.5px;line-height:1.5;display:block}
+  table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+  th{background:var(--muted);color:var(--mf);font-size:8.5px;text-transform:uppercase;letter-spacing:.03em;
+     font-weight:600;text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);line-height:1.2}
+  td{padding:4px 6px;border-bottom:1px solid var(--border);font-size:10px;vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  .num{font-variant-numeric:tabular-nums}
+  .otgrid th{font-size:7.5px}
+  .otgrid td{font-size:9px}
+  .amber{border:1px solid var(--amber);background:var(--amberbg);color:var(--amberfg);border-radius:8px;
+         padding:8px 10px;font-size:10.5px;line-height:1.55}
+  .green{border:1px solid #86efac;background:var(--okbg);color:#14532d;border-radius:8px;
+         padding:8px 10px;font-size:10.5px;line-height:1.55}
+  .keyrow{display:flex;gap:16px;align-items:center;font-size:10.5px;color:var(--mf);margin:0 0 14px}
+  .swatch{display:inline-block;width:22px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+  .sw1{border:1px dashed var(--rose);background:var(--rosebg)}
+  .sw2{border:1px solid var(--input);background:#fff}
+  .daygrid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .daygrid .d{text-align:center}
+  .daygrid .d b{display:block;font-size:9.5px;font-weight:700;margin-bottom:3px}
+  .disabled{color:#a9aab6}
+  .menu{border:1px solid var(--input);border-radius:7px;background:#fff;padding:3px;width:150px;
+        box-shadow:0 4px 10px rgba(20,20,40,.07)}
+  .menu div{padding:3px 7px;border-radius:5px;font-size:10px}
+  .menu div.on{background:color-mix(in srgb,var(--primary) 10%,white);color:var(--primary);font-weight:600}
+  .cnt{display:inline-block;margin-left:5px;background:var(--muted);color:var(--mf);border-radius:999px;
+       padding:0 6px;font-size:9px;font-weight:700}
+</style>
+
+<h1>Shift settings: name every box, and show only the ones that shift type needs</h1>
+<p class="lede">
+  Sketch for request b8aa3466, revision 4. Wording, spacing and colours will differ in the built screen.
+  Every shift, time, break and weekly pattern shown is real data from your own account, read on
+  10 August 2026.
+</p>
+
+<div class="keyrow">
+  <span><span class="swatch sw1"></span>a box that today has no label printed beside it</span>
+  <span><span class="swatch sw2"></span>a box that today has a label</span>
+</div>
+
+<!-- ═══════════════ 1 · THE FORM TODAY vs A NORMAL SHIFT ═══════════════ -->
+<div class="card">
+  <h2>1. Setting up a Normal shift <span class="chip now">TODAY</span> <span class="chip new">PROPOSED</span></h2>
+  <p class="sub">
+    On the left, every box on the shift form as it stands, filled in with your MB28 shift. Twenty-three
+    boxes, a seven-day tick row and a nine-column overtime table. Ten of the boxes print no label at all,
+    including the first four you type into. On the right, the same shift after the change: eight labelled
+    things, in the order you listed them, and everything else folded away — not deleted.
+  </p>
+
+  <div class="two">
+
+    <!-- ───────────── TODAY ───────────── -->
+    <div class="pane">
+      <p class="paneh">Shift settings — the add / edit form today <span class="cnt">23 boxes</span></p>
+      <p class="panes">Shown with MB28 loaded for editing.</p>
+
+      <div class="pcard">
+        <div class="fwrap">
+          <div style="width:150px"><div class="inp nolbl">WITH 0.5 OT HOUR ADJ - MORNI…</div></div>
+          <div style="width:74px"><div class="inp nolbl">MB28</div></div>
+          <div style="width:120px"><span class="lbl">Shift type</span><div class="inp sel">Normal <i>▾</i></div></div>
+        </div>
+        <div style="margin-top:6px"><span class="lbl">Description</span><div class="inp ph2">&nbsp;</div></div>
+        <div class="fwrap" style="margin-top:6px">
+          <div style="width:66px"><div class="inp nolbl num">08:00</div></div>
+          <div style="width:66px"><div class="inp nolbl num">17:00</div></div>
+          <div style="width:150px"><span class="lbl">Normal hours</span>
+            <div class="inp ro">8h 0m (auto-calculated)</div></div>
+          <div style="width:110px"><div class="inp nolbl ph2">Override (minutes)</div></div>
+        </div>
+        <div style="margin-top:6px">
+          <table>
+            <thead><tr><th style="width:26px">No.</th><th>Break start</th><th>Break end</th><th style="width:52px">Dur.</th><th style="width:52px">Paid</th><th style="width:22px"></th></tr></thead>
+            <tbody><tr><td class="num">1</td>
+              <td><div class="inp nolbl num">12:00</div></td>
+              <td><div class="inp nolbl num">13:00</div></td>
+              <td class="num">60m</td>
+              <td><span class="ck"><i></i></span></td><td class="disabled">×</td></tr></tbody>
+          </table>
+          <p class="hintline">+ Add break</p>
+        </div>
+        <div style="margin-top:6px"><span class="lbl">Lateness, Early Out &amp; Overtime Settings</span>
+          <div class="inp sel">Standard (default) <i>▾</i></div></div>
+
+        <div class="leg">General</div>
+        <div class="g2">
+          <div><span class="lbl">Normal-hours rounding (min)</span><div class="inp ph2">&nbsp;</div></div>
+          <div><span class="lbl">1st half-day clock-out</span><div class="inp num">12:00</div></div>
+        </div>
+
+        <div class="leg">Recorded for reference <span>(saved and shown, but does not change any figure yet)</span></div>
+        <div class="g3">
+          <div><span class="lbl">Earliest clock-in</span><div class="inp num">07:00</div></div>
+          <div><span class="lbl">Latest clock-out</span><div class="inp num">22:00</div></div>
+          <div><span class="lbl">2nd half-day clock-in</span><div class="inp ph2">--:--</div></div>
+        </div>
+        <div style="margin-top:5px"><span class="ck"><i></i> Next day</span></div>
+        <div class="g4" style="margin-top:6px">
+          <div><span class="lbl">Day type</span><div class="inp sel">Not set <i>▾</i></div></div>
+          <div><span class="lbl">Category</span><div class="inp ph2">&nbsp;</div></div>
+          <div><span class="lbl">Full-day leave (min)</span><div class="inp ph2">&nbsp;</div></div>
+          <div><span class="lbl">Full-day OT (min)</span><div class="inp ph2">&nbsp;</div></div>
+        </div>
+
+        <div class="leg">Overtime schedule</div>
+        <table class="otgrid" style="table-layout:auto">
+          <thead><tr><th>No.</th><th>Name</th><th>Start<br>time</th><th>End<br>time</th><th>Next<br>day</th>
+            <th>Min<br>(min)</th><th>Max<br>(min)</th><th>Adjust<br>after</th><th>Adjust<br>by</th></tr></thead>
+          <tbody><tr><td class="num">1</td><td>OT AFTER WORK</td><td class="num">17:00</td><td class="num">23:59</td>
+            <td><span class="ck"><i></i></span></td><td class="num">30</td><td></td><td></td><td></td></tr></tbody>
+        </table>
+        <p class="hintline">+ Add overtime window</p>
+
+        <div class="leg">Shift premium (pay) <span>(paid by payroll for working this shift)</span></div>
+        <div class="fwrap">
+          <div style="width:150px"><div class="inp nolbl sel">No differential <i>▾</i></div></div>
+          <div style="width:110px"><div class="inp nolbl ph2">Value (RM/%)</div></div>
+        </div>
+
+        <div class="leg">Working days (Mon–Sun) <span>(Working / Rest)</span></div>
+        <div class="chkrow">
+          <span class="dchip on">Mon</span><span class="dchip on">Tue</span><span class="dchip on">Wed</span>
+          <span class="dchip on">Thu</span><span class="dchip on">Fri</span><span class="dchip">Sat</span>
+          <span class="dchip">Sun</span>
+        </div>
+        <div style="margin-top:9px"><span class="btn">Save shift</span></div>
+        <p class="hintline">A shift ending at or before its start crosses midnight. The schedule drives attendance OT.</p>
+        <p class="hintline">A paid break is not deducted from the shift's hours; an unpaid one is.</p>
+        <p class="hintline">Semi-Flexi: employees may start any time within the window.</p>
+      </div>
+    </div>
+
+    <!-- ───────────── PROPOSED ───────────── -->
+    <div class="pane">
+      <p class="paneh">Edit shift — Normal <span class="cnt">8 things</span></p>
+      <p class="panes">The same MB28 shift. Every box is labelled, and the order is the one you wrote.</p>
+
+      <div class="pcard">
+        <div class="g3">
+          <div><span class="lbl">Shift name</span><div class="inp">WITH 0.5 OT HOUR ADJ - MOR…</div></div>
+          <div><span class="lbl">Code</span><div class="inp">MB28</div></div>
+          <div><span class="lbl">Shift type</span><div class="inp sel">Normal <i>▾</i></div></div>
+        </div>
+
+        <div class="leg">Working times</div>
+        <div class="g3">
+          <div><span class="lbl"><span class="step">1</span>Time in</span><div class="inp num">08:00</div></div>
+          <div><span class="lbl"><span class="step">2</span>Time out</span><div class="inp num">17:00</div></div>
+          <div><span class="lbl"><span class="step">3</span>Total normal working hours</span>
+            <div class="inp num">8 h 00 m</div></div>
+        </div>
+        <p class="hintline">Worked out from your times and breaks. Change it if a normal day on this shift is
+          a different length.</p>
+
+        <div class="leg"><span class="step">4</span>Breaks</div>
+        <table>
+          <thead><tr><th style="width:24px">No.</th><th>From</th><th>To</th><th style="width:46px">Length</th>
+            <th style="width:58px">Paid</th><th style="width:62px">Fixed</th><th style="width:20px"></th></tr></thead>
+          <tbody><tr><td class="num">1</td>
+            <td><div class="inp num">12:00</div></td>
+            <td><div class="inp num">13:00</div></td>
+            <td class="num">1h 00m</td>
+            <td><span class="ck"><i></i></span></td>
+            <td><span class="ck"><i class="on"></i></span></td>
+            <td class="disabled">×</td></tr></tbody>
+        </table>
+        <p class="hintline">+ Add break &nbsp;·&nbsp; Fixed means the break is taken at that clock time. Untick it
+          and the employee takes the break whenever they like.</p>
+
+        <div class="leg"><span class="step">5</span>Daily cut-off</div>
+        <div class="fwrap">
+          <div><span class="ck"><i class="on"></i> Use a daily cut-off</span></div>
+          <div style="width:96px"><span class="lbl">Cut off at</span><div class="inp num">02:00</div></div>
+        </div>
+        <p class="hintline">Any clocking after this time counts towards the next day. Leave it off and the
+          system keeps deciding that on its own, as it does today.</p>
+
+        <div class="leg"><span class="step">6</span>Half-day cut-off</div>
+        <div style="width:120px"><div class="inp num">12:00</div></div>
+        <p class="hintline">Clock out before this time and the day is treated as a half day.</p>
+
+        <div class="leg"><span class="step">7</span>Lateness, Early Out &amp; Overtime Settings</div>
+        <div class="inp sel">Standard (default) <i>▾</i></div>
+
+        <div class="leg"><span class="step">8</span>Working days (Mon–Sun)</div>
+        <div class="daygrid">
+          <div class="d"><b>Mon</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Tue</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Wed</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Thu</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Fri</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Sat</b><div class="inp sel">Rest <i>▾</i></div></div>
+          <div class="d"><b>Sun</b><div class="inp sel">Rest <i>▾</i></div></div>
+        </div>
+      </div>
+
+      <div class="more">
+        <div>
+          <b>More settings</b>
+          <span>description, category, day type, earliest clock-in, latest clock-out, 2nd half-day clock-in,
+          full-day leave, full-day overtime, normal-hours rounding, the overtime schedule and the shift
+          premium — all still saved, all still editable</span>
+        </div>
+        <em>Open</em>
+      </div>
+
+      <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
+        <span class="btn">Save shift</span><span class="lnk">Cancel</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    MB28's own values are drawn on both sides — 08:00 to 17:00, a 12:00–13:00 break, a half-day cut-off of
+    12:00, an earliest clock-in of 07:00, a latest clock-out of 22:00 and the OT AFTER WORK window. None of
+    them is thrown away; the ones you did not list move into More settings. Two things on the right are
+    drawn switched on to show what they look like rather than because MB28 holds them: the daily cut-off
+    (which does not exist on any shift yet) and the Fixed tick on the 12:00–13:00 break.
+  </p>
+</div>
+
+<!-- ═══════════════ 2 · SEMI FLEXI ═══════════════ -->
+<div class="card">
+  <h2>2. Semi Flexi, and the figure it is missing <span class="chip now">TODAY</span> <span class="chip new">PROPOSED</span></h2>
+  <p class="sub">
+    Your Semi Flexi Shift 01 is saved as 07:00 to 20:00 with a 1 hour break and no normal working hours
+    figure. So the system currently reads a normal day on it as twelve hours.
+  </p>
+
+  <div class="two">
+    <div class="pane">
+      <p class="paneh">Semi Flexi Shift 01 — today</p>
+      <p class="panes">The same form as a Normal shift. Nothing asks for the normal working hours.</p>
+      <div class="pcard">
+        <div class="fwrap">
+          <div style="width:150px"><div class="inp nolbl">Semi Flexi Shift 01</div></div>
+          <div style="width:88px"><div class="inp nolbl">SemiFlex01</div></div>
+          <div style="width:120px"><span class="lbl">Shift type</span><div class="inp sel">Semi Flexi <i>▾</i></div></div>
+        </div>
+        <div class="fwrap" style="margin-top:7px">
+          <div style="width:66px"><div class="inp nolbl num">07:00</div></div>
+          <div style="width:66px"><div class="inp nolbl num">20:00</div></div>
+          <div style="width:70px"><div class="inp nolbl num">60</div></div>
+          <div style="width:160px"><span class="lbl">Normal hours</span>
+            <div class="inp ro">12h 0m (auto-calculated)</div></div>
+          <div style="width:110px"><div class="inp nolbl ph2">Override (minutes)</div></div>
+        </div>
+        <p class="hintline">Left blank, as it is on your saved shift.</p>
+      </div>
+
+      <div class="amber">
+        <b>What that costs you today.</b> 07:00 to 20:00 is 13 hours. Take off the 1 hour break and the
+        system treats 12 hours as a normal day on this shift. An employee who clocks 07:00 to 17:00 —
+        10 hours, 9 after the break — earns <b>no overtime at all</b>.
+      </div>
+
+      <div class="pcard" style="margin-top:10px">
+        <p class="paneh" style="margin-bottom:4px">And the shift type itself changes almost nothing today</p>
+        <p class="hintline" style="margin-top:0">Apart from marking its breaks flexible, choosing Semi Flexi
+          makes no difference to how the day is worked out — it is calculated exactly as a Normal shift
+          would be. Asking for the working hours figure is what gives Semi Flexi a meaning of its own.</p>
+      </div>
+    </div>
+
+    <div class="pane">
+      <p class="paneh">Semi Flexi Shift 01 — proposed</p>
+      <p class="panes">Earliest time in, latest time out, and the working hours figure made compulsory.</p>
+      <div class="pcard">
+        <div class="g3">
+          <div><span class="lbl">Shift name</span><div class="inp">Semi Flexi Shift 01</div></div>
+          <div><span class="lbl">Code</span><div class="inp">SemiFlex01</div></div>
+          <div><span class="lbl">Shift type</span><div class="inp sel">Semi Flexi <i>▾</i></div></div>
+        </div>
+        <div class="leg">Working times</div>
+        <div class="g3">
+          <div><span class="lbl"><span class="step">1</span>Earliest time in</span><div class="inp num">07:00</div></div>
+          <div><span class="lbl"><span class="step">2</span>Latest time out</span><div class="inp num">20:00</div></div>
+          <div><span class="lbl"><span class="step">3</span>Total normal working hours <b>*</b></span>
+            <div class="inp num">8 h 00 m</div></div>
+        </div>
+        <p class="hintline">Required on a Semi Flexi shift. Overtime starts once this many hours of work
+          have been done, breaks not counted.</p>
+
+        <div class="leg"><span class="step">4</span>Breaks</div>
+        <table>
+          <thead><tr><th style="width:24px">No.</th><th>From</th><th>To</th><th style="width:46px">Length</th>
+            <th style="width:58px">Paid</th><th style="width:62px">Fixed</th><th style="width:20px"></th></tr></thead>
+          <tbody><tr><td class="num">1</td>
+            <td><div class="inp num">12:00</div></td>
+            <td><div class="inp num">13:00</div></td>
+            <td class="num">1h 00m</td>
+            <td><span class="ck"><i></i></span></td>
+            <td><span class="ck"><i></i></span></td>
+            <td class="disabled">×</td></tr></tbody>
+        </table>
+        <p class="hintline">Your saved shift carries a 60 minute break with no window. Adding the window is
+          what lets you mark it Fixed or leave it flexible.</p>
+
+        <div class="leg"><span class="step">6</span>Half-day cut-off</div>
+        <div class="inp ro">Worked out for you — half of 8h 00m is 4h 00m of work, breaks not counted</div>
+
+        <p class="hintline" style="margin-top:8px"><span class="step">5</span>Daily cut-off,
+          <span class="step">7</span>Lateness Early Out &amp; Overtime Settings and
+          <span class="step">8</span>Working days are the same as on a Normal shift.</p>
+      </div>
+
+      <div class="green">
+        <b>After.</b> The same 07:00 to 17:00 day is 9 hours of work against an 8 hour normal day, so
+        <b>1 hour of overtime</b>. Days already recorded are not worked out again.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ 3 · WORKING DAYS ═══════════════ -->
+<div class="card">
+  <h2>3. Working days: seven dropdowns on one row <span class="chip now">TODAY</span> <span class="chip new">PROPOSED</span></h2>
+  <p class="sub">
+    Today the row is seven ticks with two meanings — ticked is a working day, unticked is a rest day. That
+    is why you have two extra shifts called Half Day and Half Day 2, both 09:00 to 12:00, standing in for
+    something the row cannot say.
+  </p>
+
+  <div class="two">
+    <div class="pane">
+      <p class="paneh">Today</p>
+      <p class="panes">Working days (Mon–Sun) — Working / Rest</p>
+      <div class="pcard">
+        <div class="chkrow">
+          <span class="dchip on">Mon</span><span class="dchip on">Tue</span><span class="dchip on">Wed</span>
+          <span class="dchip on">Thu</span><span class="dchip on">Fri</span><span class="dchip">Sat</span>
+          <span class="dchip">Sun</span>
+        </div>
+        <p class="hintline">MB28 as saved: Monday to Friday working, Saturday and Sunday rest.</p>
+      </div>
+      <div class="pcard">
+        <p class="paneh" style="margin-bottom:6px">The workaround this forces</p>
+        <table>
+          <thead><tr><th>Code</th><th>Name</th><th>Start</th><th>End</th><th>Days</th></tr></thead>
+          <tbody>
+            <tr><td>Test</td><td>Half Day</td><td class="num">09:00</td><td class="num">12:00</td><td>Sat</td></tr>
+            <tr><td>Test-2</td><td>Half Day #2</td><td class="num">09:00</td><td class="num">12:00</td><td>Mon–Sat</td></tr>
+          </tbody>
+        </table>
+        <p class="hintline">Two whole extra shifts in your list, doing the job of one dropdown value.</p>
+      </div>
+    </div>
+
+    <div class="pane">
+      <p class="paneh">Proposed</p>
+      <p class="panes">Working days (Mon–Sun) — one row, a dropdown for each day.</p>
+      <div class="pcard">
+        <div class="daygrid">
+          <div class="d"><b>Mon</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Tue</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Wed</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Thu</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Fri</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Sat</b><div class="inp sel">Rest <i>▾</i></div></div>
+          <div class="d"><b>Sun</b><div class="inp sel">Rest <i>▾</i></div></div>
+        </div>
+        <p class="hintline">MB28 the first time you open it: exactly what it says today. Every ticked day
+          becomes Full, every unticked day becomes Rest.</p>
+        <p class="hintline" style="margin-top:9px">The four choices in every one of those seven dropdowns:</p>
+        <div style="margin-top:4px"><div class="menu">
+          <div class="on">Full</div><div>Half</div><div>Rest</div><div>Off</div>
+        </div></div>
+      </div>
+
+      <div class="pcard">
+        <p class="paneh" style="margin-bottom:6px">The week from your message, set on one shift</p>
+        <div class="daygrid">
+          <div class="d"><b>Mon</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Tue</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Wed</b><div class="inp sel">Half <i>▾</i></div></div>
+          <div class="d"><b>Thu</b><div class="inp sel">Rest <i>▾</i></div></div>
+          <div class="d"><b>Fri</b><div class="inp sel">Full <i>▾</i></div></div>
+          <div class="d"><b>Sat</b><div class="inp sel">Off <i>▾</i></div></div>
+          <div class="d"><b>Sun</b><div class="inp sel">Rest <i>▾</i></div></div>
+        </div>
+      </div>
+
+      <div class="amber">
+        <b>What the four choices mean for pay.</b><br>
+        Full — an ordinary working day.<br>
+        Half — a working day with half the normal hours, so overtime starts after half a day.<br>
+        Rest — the statutory rest day. Working it pays half a day's wage for up to half a normal day, a
+        full day's wage beyond that, and twice the hourly rate past a normal day.<br>
+        Off — a non-working day that is not the rest day. Working it pays overtime at one and a half times
+        the hourly rate.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ 4 · SHIFT TYPE ═══════════════ -->
+<div class="card">
+  <h2>4. The shift type list <span class="chip new">PROPOSED</span></h2>
+  <p class="sub">
+    Normal and Semi Flexi each get their own set of boxes. Full Flexi stays greyed out and unpickable,
+    exactly as it is today — it needs the system to work out which day a clock-in belongs to without any
+    time in or time out, and that is the same decision that produces overtime. It gets its own request
+    straight after this one.
+  </p>
+  <div class="pane" style="max-width:420px">
+    <div class="pcard" style="margin:0">
+      <span class="lbl">Shift type</span>
+      <div class="menu" style="width:100%">
+        <div class="on">Normal</div>
+        <div>Semi Flexi</div>
+        <div class="disabled">Full Flexi &nbsp;— not available yet</div>
+      </div>
+    </div>
+  </div>
+  <p class="note">
+    Full Flexi is drawn greyed out because it cannot be selected today either. Nothing in this sketch
+    turns it on.
+  </p>
+</div>

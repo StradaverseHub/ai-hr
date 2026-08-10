@@ -1,0 +1,658 @@
+<meta charset="utf-8">
+<title>e7eb5d83 — Claims: Add new, the form under the claim type, Per block, and mileage off the limits screen</title>
+<!--
+  Mockup for e7eb5d83 (Configurable Claim Management Module), plan revision 4 — the five points the
+  reporter sent back on 2026-08-10.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · Every claim type, sub-type, limit figure, grade name and mileage band drawn below was SELECTed from
+    the reporter's own tenant on production, 2026-08-10:
+      - claim types (4): Medical MEDICAL 001, Mileage MILEAGE 001, Mobile MOBILE 001, Optical OPTICAL 001.
+      - sub-types (7): OUTPATIENT MEDICAL CLAIM / INPATIENT MEDICAL CLAIM under Medical; RM1.00/km and
+        RM0.60/km under Mileage; Handphone under Mobile; CONTACT LENSES and Glasses under Optical.
+      - company-wide limits: Medical cap 150.00 annual 1000.00 · Mileage cap 100.00 annual 100.00 ·
+        Mobile cap 180.00 annual 180.00 · Optical annual 500.00 — all effective 2026-06-30. NOT ONE of
+        the five stored limit rows sets a lifetime limit, a monthly limit or a claims-per-year cap, which
+        is why those cells are drawn empty.
+      - the mileage bands 0–100 km at RM1.0000, 100–300 km at RM0.8000, 300 km and above at RM0.6000,
+        effective 2026-08-10, on GRADE 12 (PERMANENT) — the only grade with a rate table today.
+      - the grade rail and the grade pills list live grades in the order the Claim Limits screen already
+        lists them (by rank, then name — GRADE H (C-RETIREE) 0, Executive 1, ... GRADE 21 (C-RETIREE) 10,
+        GRADE H (PERMANENT) 11, GRADE 12 (PERMANENT) 12). The tenant has 55 live grades; the rail is drawn
+        SCROLLED to the selected one and says so in the annotation beneath it.
+  · The ONLY invented figures on the page are in the Per block cells and the Per block editor group:
+    RM 2,000.00 every 2 years, and RM 300.00 every 6 months. Both are the reporter's OWN examples from
+    the request (body check-up, dental), typed onto their real claim types to show the new column.
+    They are labelled as an example wherever they appear.
+  · Field captions and table headings are the product's REAL strings (messages/en.json admin.claims):
+    Claim types, New claim type, Per-claim cap (RM), Monthly limit, Annual budget (RM), Lifetime limit,
+    Claims / year, Effective from, Calculation, Rate per km (RM), Always on every form, Extra fields,
+    Built in, Distance band, Vehicle type, Job grades, All grades (company-wide). "Annual limit (RM)"
+    and the whole Per block group are the new wording this plan introduces.
+  · TODAY panels are drawn from the shipped screens: the New claim type form really does sit open at the
+    bottom of Claim Types with no Add-new button anywhere; Claim Forms really is its own tab; the limits
+    table really carries Annual budget and Lifetime limit and the editor really carries Calculation with
+    a Mileage option; Mileage Rates really opens with a row of claim-type pills above the grade pills.
+  · PROPOSED draws ONLY what the plan commits to. In particular there is NO Entitled tick and NO third
+    "sub claim" level anywhere on this page, because neither is in this plan.
+  · Grey text outside a panel is annotation, not UI.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f1f2f7;--mf:#63636f;
+        --border:#e7e8f1;--input:#dcdde9;--okbg:#f0fdf4;--okbd:#bbf7d0;--ok:#15803d;
+        --warnbg:#fffbeb;--warnbd:#fcd34d;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .ph1{font-size:16px;font-weight:700;margin:0}
+  .phs{font-size:11.5px;color:var(--mf);margin:2px 0 16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.5}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .stack{display:block}
+  .panel{border:1px solid var(--border);border-radius:12px;background:#fff;overflow:hidden}
+  .plab{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mf);
+        margin:0 0 6px}
+  .plab.aft{color:var(--primary)}
+
+  /* tab strip, as the app draws it */
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);padding:0 4px;background:#fff}
+  .tab{padding:7px 10px;font-size:11.5px;color:var(--mf);border-bottom:2px solid transparent;white-space:nowrap}
+  .tab.on{color:var(--primary);font-weight:600;border-bottom-color:var(--primary)}
+  .tab.gone{color:#c9433f;text-decoration:line-through;opacity:.8}
+
+  .sh{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12.5px;font-weight:600;
+      border-bottom:1px solid var(--border);background:#fff}
+  .cnt{font-size:10.5px;font-weight:600;color:var(--mf);background:var(--muted);border-radius:999px;padding:1px 7px}
+  .sh .sp{margin-left:auto}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:4px 10px;
+       font-size:11px;font-weight:600}
+  .btn.sec{background:#fff;color:var(--fg);border:1px solid var(--input);font-weight:500}
+  .body{padding:12px}
+
+  .row{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--border)}
+  .row:first-child{border-top:none}
+  .row .nm{font-size:12px;font-weight:600}
+  .row .cd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--mf)}
+  .bdg{background:var(--muted);color:var(--mf);border-radius:5px;padding:1px 6px;font-size:9.5px}
+  .car{color:var(--mf);font-size:11px;width:11px;display:inline-block}
+
+  .lbl{font-size:10px;font-weight:600;color:var(--mf);margin-bottom:4px;display:block}
+  .inp{background:#fff;border:1px solid var(--input);border-radius:8px;padding:5px 8px;font-size:11px;
+       color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .inp.ph{color:#9a9aa8}
+  .inp.sel{display:flex;justify-content:space-between;gap:6px}
+  .inp.hl{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 10%,transparent)}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+  .g1{display:grid;grid-template-columns:1fr;gap:9px}
+  .mt9{margin-top:9px}
+  .bx{width:13px;height:13px;border-radius:4px;border:1px solid var(--input);background:#fff;flex:0 0 auto;
+      display:inline-grid;place-items:center;vertical-align:-2px}
+  .bx.on{background:var(--primary);border-color:var(--primary)}
+  .bx svg{width:9px;height:9px;stroke:#fff;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  .ck{font-size:11px;display:inline-flex;align-items:center;gap:6px;margin-right:14px}
+
+  table{width:100%;border-collapse:collapse}
+  th{background:#f7f7fb;text-align:left;font-size:9.5px;font-weight:600;letter-spacing:.04em;
+     text-transform:uppercase;color:var(--mf);padding:7px 9px;border-bottom:1px solid var(--border);
+     vertical-align:bottom}
+  td{padding:8px 9px;font-size:11px;border-top:1px solid var(--border);vertical-align:top}
+  td.num{font-variant-numeric:tabular-nums}
+  .tname{font-weight:600;font-size:11.5px}
+  .tcode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:var(--mf)}
+  .subrow td{border-top:1px solid #f1f1f7;padding-top:0;padding-bottom:9px}
+  .subs{color:var(--mf);font-size:10.5px;line-height:1.7;padding-left:14px}
+  .subs .c{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .hint{color:var(--mf);font-size:10px;margin-top:3px}
+  .dash{color:#b7b7c4}
+  .colgone th,.colgone td{background:#fdf2f2}
+  .colnew{background:color-mix(in srgb,var(--primary) 6%,white)}
+  th.colnew{background:color-mix(in srgb,var(--primary) 11%,white);color:var(--primary)}
+
+  .arrow{text-align:center;font-size:19px;color:var(--primary);font-weight:700;margin:11px 0 9px}
+  .tag{display:inline-block;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:5px;
+       vertical-align:1px}
+  .tnew{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .tgone{background:#fdeaea;color:#b3261e}
+  .tren{background:#fff3e0;color:var(--amber)}
+  .tsame{background:var(--okbg);color:var(--ok);border:1px solid var(--okbd)}
+
+  .note{border-radius:10px;padding:10px 12px;font-size:11.5px;line-height:1.55;margin-top:12px}
+  .note.info{background:color-mix(in srgb,var(--primary) 7%,white);
+             border:1px solid color-mix(in srgb,var(--primary) 26%,white);color:#312e81}
+  .note.warn{background:var(--warnbg);border:1px solid var(--warnbd);color:#78350f}
+  .note b{font-weight:700}
+  .note ul{margin:6px 0 0;padding-left:16px}
+  .note li{margin-bottom:4px}
+  .ann{font-size:11px;color:var(--mf);line-height:1.55;margin:8px 0 0}
+  .ann b{color:var(--fg)}
+
+  .rail{display:grid;grid-template-columns:200px 1fr;gap:14px;align-items:start}
+  .nav{padding:7px}
+  .nv{display:block;padding:5px 9px;border-radius:6px;font-size:11px;color:var(--mf)}
+  .nv.on{background:color-mix(in srgb,var(--primary) 10%,white);color:var(--primary);font-weight:600}
+  .pill{display:inline-block;border:1px solid var(--input);border-radius:999px;padding:3px 10px;
+        font-size:10.5px;color:var(--mf);margin:0 5px 5px 0}
+  .pill.on{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 10%,white);
+           color:var(--primary);font-weight:600}
+  .pillrow{margin-bottom:9px}
+  .pillrow .cap{font-size:10px;font-weight:600;color:var(--mf);margin-bottom:5px}
+  .strike{position:relative;opacity:.55}
+  .strike:after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:#c9433f}
+</style>
+
+<p class="ph1">HR Admin &rsaquo; Claims &mdash; the five things you sent back</p>
+<p class="phs">Sketch for approval. Wording, spacing and colours will differ slightly from the finished
+  screens. Every claim type, sub-type, limit figure, grade and mileage rate drawn here is your own live
+  data as at 10 August 2026 &mdash; the only invented numbers are the Per block examples, which are the two
+  you gave us (body check-up RM2,000 every 2 years, dental RM300 every 6 months).</p>
+
+<!-- ══════════ 1. ADD NEW ══════════ -->
+<div class="card">
+  <h2>1. The New claim type form becomes an Add new button<span class="chip new">changes</span></h2>
+  <p class="sub">Today the form sits open at the bottom of the list whether you want it or not. It moves
+    behind a button at the top right, and only appears when you press it.</p>
+
+  <div class="two">
+    <div>
+      <p class="plab">Today</p>
+      <div class="panel">
+        <div class="tabs">
+          <div class="tab on">Claim Types</div><div class="tab">Claim Limits</div>
+          <div class="tab">Mileage Rates</div><div class="tab">Claim Forms</div>
+          <div class="tab">Reimbursements</div>
+        </div>
+        <div class="sh">Claim types <span class="cnt">4</span></div>
+        <div class="row"><span class="car">&#8250;</span><span class="nm">Medical</span><span class="cd">MEDICAL 001</span><span class="bdg">Non-taxable</span><span class="bdg">Receipt</span><span class="bdg">2 items</span></div>
+        <div class="row"><span class="car">&#8250;</span><span class="nm">Mileage</span><span class="cd">MILEAGE 001</span><span class="bdg">Non-taxable</span><span class="bdg">Receipt</span><span class="bdg">2 items</span></div>
+        <div class="row"><span class="car">&#8250;</span><span class="nm">Mobile</span><span class="cd">MOBILE 001</span><span class="bdg">Non-taxable</span><span class="bdg">Receipt</span><span class="bdg">1 item</span></div>
+        <div class="row"><span class="car">&#8250;</span><span class="nm">Optical</span><span class="cd">OPTICAL 001</span><span class="bdg">Non-taxable</span><span class="bdg">Receipt</span><span class="bdg">2 items</span></div>
+      </div>
+      <div class="panel" style="margin-top:10px">
+        <div class="sh">New claim type <span class="tag tgone">ALWAYS OPEN</span></div>
+        <div class="body">
+          <div class="g2">
+            <div><span class="lbl">Code</span><div class="inp ph">MEDICAL</div></div>
+            <div><span class="lbl">Name</span><div class="inp ph">Medical</div></div>
+          </div>
+          <div class="g1 mt9"><div><span class="lbl">Description</span><div class="inp ph">&nbsp;</div></div></div>
+          <div class="g2 mt9">
+            <div><span class="lbl">Max receipt age (days)</span><div class="inp ph">45 (default)</div></div>
+            <div style="align-self:end;padding-bottom:3px">
+              <span class="ck"><span class="bx"></span>Taxable by default</span>
+            </div>
+          </div>
+          <div class="mt9" style="display:flex;align-items:center">
+            <span class="ck"><span class="bx on"><svg viewBox="0 0 10 10"><path d="M2 5.2 4 7.2 8 3"/></svg></span>Requires receipt</span>
+            <span class="btn" style="margin-left:auto">Create</span>
+          </div>
+        </div>
+      </div>
+      <p class="ann">You scroll past this every time you come to look at a claim type.</p>
+    </div>
+
+    <div>
+      <p class="plab aft">Proposed</p>
+      <div class="panel">
+        <div class="tabs">
+          <div class="tab on">Claim Types</div><div class="tab">Claim Limits</div>
+          <div class="tab">Mileage Rates</div>
+          <div class="tab gone">Claim Forms</div>
+          <div class="tab">Reimbursements</div>
+        </div>
+        <div class="sh">Claim types <span class="cnt">4</span>
+          <span class="sp"></span><span class="btn">+ Add new</span></div>
+        <div class="row"><span class="car">&#8250;</span><span class="nm">Medical</span><span class="cd">MEDICAL 001</span><span class="bdg">Non-taxable</span><span class="bdg">Receipt</span><span class="bdg">2 items</span></div>
+        <div class="row"><span class="car">&#8250;</span><span class="nm">Mileage</span><span class="cd">MILEAGE 001</span><span class="bdg">Non-taxable</span><span class="bdg">Receipt</span><span class="bdg">2 items</span></div>
+        <div class="row"><span class="car">&#8250;</span><span class="nm">Mobile</span><span class="cd">MOBILE 001</span><span class="bdg">Non-taxable</span><span class="bdg">Receipt</span><span class="bdg">1 item</span></div>
+        <div class="row"><span class="car">&#8250;</span><span class="nm">Optical</span><span class="cd">OPTICAL 001</span><span class="bdg">Non-taxable</span><span class="bdg">Receipt</span><span class="bdg">2 items</span></div>
+      </div>
+      <p class="ann"><b>Nothing below the list.</b> The page ends here. Claim Forms is gone from the tabs
+        too &mdash; the form now lives inside the claim type, which is point 2 below.</p>
+
+      <p class="plab aft" style="margin-top:12px">Proposed &mdash; after pressing Add new</p>
+      <div class="panel">
+        <div class="sh">New claim type <span class="tag tnew">OPENS ON DEMAND</span>
+          <span class="sp"></span><span class="btn sec">Close</span></div>
+        <div class="body">
+          <div class="g2">
+            <div><span class="lbl">Code</span><div class="inp hl ph">MEDICAL</div></div>
+            <div><span class="lbl">Name</span><div class="inp ph">Medical</div></div>
+          </div>
+          <div class="g1 mt9"><div><span class="lbl">Description</span><div class="inp ph">&nbsp;</div></div></div>
+          <div class="g2 mt9">
+            <div><span class="lbl">Max receipt age (days)</span><div class="inp ph">45 (default)</div></div>
+            <div style="align-self:end;padding-bottom:3px">
+              <span class="ck"><span class="bx"></span>Taxable by default</span>
+            </div>
+          </div>
+          <div class="mt9" style="display:flex;align-items:center">
+            <span class="ck"><span class="bx on"><svg viewBox="0 0 10 10"><path d="M2 5.2 4 7.2 8 3"/></svg></span>Requires receipt</span>
+            <span class="btn" style="margin-left:auto">Create</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 2. FORM UNDER THE CLAIM TYPE ══════════ -->
+<div class="card">
+  <h2>2. Opening a claim type now shows its claim form<span class="chip new">changes</span></h2>
+  <p class="sub">Same panel you already open by clicking a claim type. Everything that is there today stays
+    where it is; the claim form is added underneath, showing exactly what the employee will be asked.</p>
+
+  <div class="two">
+    <div>
+      <p class="plab">Today &mdash; Medical, opened</p>
+      <div class="panel">
+        <div class="row" style="background:#fafaff"><span class="car">&#8964;</span><span class="nm">Medical</span><span class="cd">MEDICAL 001</span><span class="bdg">Non-taxable</span><span class="bdg">Receipt</span><span class="bdg">2 items</span></div>
+        <div class="body" style="background:#fafafd">
+          <div class="panel" style="padding:10px">
+            <div class="g2">
+              <div><span class="lbl">Name</span><div class="inp">Medical</div></div>
+              <div><span class="lbl">Max receipt age (days)</span><div class="inp ph">45 (default)</div></div>
+            </div>
+            <div class="g1 mt9"><div><span class="lbl">Description</span><div class="inp ph">&nbsp;</div></div></div>
+            <div class="mt9" style="display:flex;align-items:center">
+              <span class="ck"><span class="bx"></span>Taxable by default</span>
+              <span class="ck"><span class="bx on"><svg viewBox="0 0 10 10"><path d="M2 5.2 4 7.2 8 3"/></svg></span>Requires receipt</span>
+              <span class="btn" style="margin-left:auto">Save</span>
+            </div>
+          </div>
+          <div class="panel" style="padding:10px;margin-top:9px">
+            <p style="font-size:11px;font-weight:700;margin:0 0 7px">Claim items</p>
+            <div style="font-size:11px;color:var(--mf);line-height:1.9">
+              <span class="tcode">MEDICAL 002</span> &nbsp; OUTPATIENT MEDICAL CLAIM<br>
+              <span class="tcode">MEDICAL 003</span> &nbsp; INPATIENT MEDICAL CLAIM
+            </div>
+            <div class="g3 mt9">
+              <div><span class="lbl">Item code</span><div class="inp ph">MILEAGE</div></div>
+              <div><span class="lbl">Item name</span><div class="inp ph">Mileage</div></div>
+              <div style="align-self:end"><span class="btn sec">Add item</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="ann">To see or change what the Medical claim form asks for, you leave this screen and go to
+        the Claim Forms tab, then pick Medical again there.</p>
+    </div>
+
+    <div>
+      <p class="plab aft">Proposed &mdash; Medical, opened</p>
+      <div class="panel">
+        <div class="row" style="background:#fafaff"><span class="car">&#8964;</span><span class="nm">Medical</span><span class="cd">MEDICAL 001</span><span class="bdg">Non-taxable</span><span class="bdg">Receipt</span><span class="bdg">2 items</span></div>
+        <div class="body" style="background:#fafafd">
+          <div class="panel" style="padding:10px">
+            <div class="g2">
+              <div><span class="lbl">Name</span><div class="inp">Medical</div></div>
+              <div><span class="lbl">Max receipt age (days)</span><div class="inp ph">45 (default)</div></div>
+            </div>
+            <div class="g1 mt9"><div><span class="lbl">Description</span><div class="inp ph">&nbsp;</div></div></div>
+            <div class="mt9" style="display:flex;align-items:center">
+              <span class="ck"><span class="bx"></span>Taxable by default</span>
+              <span class="ck"><span class="bx on"><svg viewBox="0 0 10 10"><path d="M2 5.2 4 7.2 8 3"/></svg></span>Requires receipt</span>
+              <span class="btn" style="margin-left:auto">Save</span>
+            </div>
+          </div>
+          <div class="panel" style="padding:10px;margin-top:9px">
+            <p style="font-size:11px;font-weight:700;margin:0 0 7px">Claim items <span class="tag tsame">UNCHANGED</span></p>
+            <div style="font-size:11px;color:var(--mf);line-height:1.9">
+              <span class="tcode">MEDICAL 002</span> &nbsp; OUTPATIENT MEDICAL CLAIM<br>
+              <span class="tcode">MEDICAL 003</span> &nbsp; INPATIENT MEDICAL CLAIM
+            </div>
+            <div class="g3 mt9">
+              <div><span class="lbl">Item code</span><div class="inp ph">MILEAGE</div></div>
+              <div><span class="lbl">Item name</span><div class="inp ph">Mileage</div></div>
+              <div style="align-self:end"><span class="btn sec">Add item</span></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:9px">
+            <div class="sh" style="padding:8px 10px;font-size:11.5px">Claim form <span class="tag tnew">MOVED HERE</span></div>
+            <div style="padding:9px 10px">
+              <p style="font-size:10px;font-weight:700;color:var(--mf);margin:0 0 6px">ALWAYS ON EVERY FORM</p>
+              <div style="font-size:11px;line-height:2">
+                Amount <span class="bdg">Money</span> <span class="bdg">Built in</span><br>
+                Date incurred <span class="bdg">Date</span> <span class="bdg">Built in</span><br>
+                Description <span class="bdg">Text</span> <span class="bdg">Built in</span><br>
+                Receipt <span class="bdg">File</span> <span class="bdg">Built in</span>
+              </div>
+              <p style="font-size:10px;font-weight:700;color:var(--mf);margin:11px 0 6px">EXTRA FIELDS</p>
+              <p style="font-size:11px;color:var(--mf);margin:0">No extra fields. This claim type asks only
+                for the four above.</p>
+              <div class="g3 mt9">
+                <div><span class="lbl">Field label</span><div class="inp ph">e.g. Clinic name</div></div>
+                <div><span class="lbl">Field type</span><div class="inp sel"><span>Text</span><span class="dash">&#9662;</span></div></div>
+                <div style="align-self:end"><span class="btn sec">Add field</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="ann"><b>One place per claim type.</b> Open it, set what it asks for, done. The Claim Forms
+        tab is removed, so there is no second copy to keep in step.</p>
+    </div>
+  </div>
+
+  <div class="note info">
+    <b>The Mileage claim type gets one extra tick here.</b> This is what takes mileage off the Claim Limits
+    screen in point 4 &mdash; the claim type itself says it is the mileage one.
+    <div class="panel" style="margin-top:9px;background:#fff">
+      <div class="row" style="background:#fafaff"><span class="car">&#8964;</span><span class="nm">Mileage</span><span class="cd">MILEAGE 001</span><span class="bdg">Non-taxable</span><span class="bdg">Receipt</span><span class="bdg">2 items</span></div>
+      <div class="body">
+        <span class="ck"><span class="bx"></span>Taxable by default</span>
+        <span class="ck"><span class="bx on"><svg viewBox="0 0 10 10"><path d="M2 5.2 4 7.2 8 3"/></svg></span>Requires receipt</span>
+        <span class="ck"><span class="bx on"><svg viewBox="0 0 10 10"><path d="M2 5.2 4 7.2 8 3"/></svg></span>This is the mileage claim
+          <span class="tag tnew">NEW</span></span>
+        <p class="hint" style="margin-top:7px">Claims of this type are priced from the Mileage Rates table.
+          Only one claim type can be the mileage claim. Your Mileage type is ticked for you, so nothing
+          changes on the day this arrives.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 3. CLAIM LIMITS TABLE ══════════ -->
+<div class="card">
+  <h2>3. Claim Limits &mdash; Annual limit, and Per block in place of Lifetime limit<span class="chip new">changes</span></h2>
+  <p class="sub">Your live company-wide limits, drawn exactly as they are stored today. The grade list down
+    the left stays as it is. Two columns change: Annual budget is renamed Annual limit, and Lifetime limit
+    &mdash; which none of your limits use &mdash; is replaced by Per block.</p>
+
+  <p class="plab">Today</p>
+  <div class="panel">
+    <div class="sh">All grades (company-wide) <span class="cnt">4</span></div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:26%">Claim Type</th>
+          <th>Per-claim cap (RM)</th>
+          <th>Monthly limit</th>
+          <th>Annual budget (RM)</th>
+          <th class="colgone">Lifetime limit</th>
+          <th>Claims / year</th>
+          <th>Effective from</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="tname">Medical</div><div class="tcode">MEDICAL 001</div></td>
+          <td class="num">RM 150.00</td><td class="num dash">&mdash;</td><td class="num">RM 1,000.00</td>
+          <td class="num dash colgone">&mdash;</td><td class="num dash">&mdash;</td><td class="num">2026-06-30</td>
+        </tr>
+        <tr class="subrow"><td colspan="7"><div class="subs">&#8627; OUTPATIENT MEDICAL CLAIM <span class="c">(MEDICAL 002)</span><br>&#8627; INPATIENT MEDICAL CLAIM <span class="c">(MEDICAL 003)</span><div class="hint">Sub-types share their claim type&rsquo;s limit.</div></div></td></tr>
+        <tr>
+          <td><div class="tname">Mileage</div><div class="tcode">MILEAGE 001</div></td>
+          <td class="num">RM 100.00</td><td class="num dash">&mdash;</td><td class="num">RM 100.00</td>
+          <td class="num dash colgone">&mdash;</td><td class="num dash">&mdash;</td><td class="num">2026-06-30</td>
+        </tr>
+        <tr class="subrow"><td colspan="7"><div class="subs">&#8627; RM1.00/km <span class="c">(1-500KM)</span><br>&#8627; RM0.60/km <span class="c">(501-1000KM)</span></div></td></tr>
+        <tr>
+          <td><div class="tname">Mobile</div><div class="tcode">MOBILE 001</div></td>
+          <td class="num">RM 180.00</td><td class="num dash">&mdash;</td><td class="num">RM 180.00</td>
+          <td class="num dash colgone">&mdash;</td><td class="num dash">&mdash;</td><td class="num">2026-06-30</td>
+        </tr>
+        <tr class="subrow"><td colspan="7"><div class="subs">&#8627; Handphone <span class="c">(MOBILE)</span></div></td></tr>
+        <tr>
+          <td><div class="tname">Optical</div><div class="tcode">OPTICAL 001</div></td>
+          <td class="num dash">&mdash;</td><td class="num dash">&mdash;</td><td class="num">RM 500.00</td>
+          <td class="num dash colgone">&mdash;</td><td class="num dash">&mdash;</td><td class="num">2026-06-30</td>
+        </tr>
+        <tr class="subrow"><td colspan="7"><div class="subs">&#8627; CONTACT LENSES <span class="c">(CONTACT LENSES)</span><br>&#8627; Glasses <span class="c">(GLASSES 001)</span></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="ann">Lifetime limit is empty on every one of your limits, and always has been.</p>
+
+  <div class="arrow">&#8595;</div>
+
+  <p class="plab aft">Proposed</p>
+  <div class="panel">
+    <div class="sh">All grades (company-wide) <span class="cnt">4</span></div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:24%">Claim Type</th>
+          <th>Per-claim cap (RM)</th>
+          <th>Monthly limit</th>
+          <th>Annual limit (RM)</th>
+          <th class="colnew" style="width:21%">Per block</th>
+          <th>Claims / year</th>
+          <th>Effective from</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="tname">Medical</div><div class="tcode">MEDICAL 001</div></td>
+          <td class="num">RM 150.00</td><td class="num dash">&mdash;</td><td class="num">RM 1,000.00</td>
+          <td class="num colnew">RM 2,000.00<br><span style="font-size:10px;color:var(--mf)">every 2 years<br>from 1 Jan 2026</span></td>
+          <td class="num dash">&mdash;</td><td class="num">2026-06-30</td>
+        </tr>
+        <tr class="subrow"><td colspan="7"><div class="subs">&#8627; OUTPATIENT MEDICAL CLAIM <span class="c">(MEDICAL 002)</span><br>&#8627; INPATIENT MEDICAL CLAIM <span class="c">(MEDICAL 003)</span><div class="hint">Sub-types share their claim type&rsquo;s limit.</div></div></td></tr>
+        <tr>
+          <td><div class="tname">Mileage</div><div class="tcode">MILEAGE 001</div></td>
+          <td class="num">RM 100.00</td><td class="num dash">&mdash;</td><td class="num">RM 100.00</td>
+          <td class="num dash colnew">&mdash;</td><td class="num dash">&mdash;</td><td class="num">2026-06-30</td>
+        </tr>
+        <tr class="subrow"><td colspan="7"><div class="subs">&#8627; RM1.00/km <span class="c">(1-500KM)</span><br>&#8627; RM0.60/km <span class="c">(501-1000KM)</span></div></td></tr>
+        <tr>
+          <td><div class="tname">Mobile</div><div class="tcode">MOBILE 001</div></td>
+          <td class="num">RM 180.00</td><td class="num dash">&mdash;</td><td class="num">RM 180.00</td>
+          <td class="num dash colnew">&mdash;</td><td class="num dash">&mdash;</td><td class="num">2026-06-30</td>
+        </tr>
+        <tr class="subrow"><td colspan="7"><div class="subs">&#8627; Handphone <span class="c">(MOBILE)</span></div></td></tr>
+        <tr>
+          <td><div class="tname">Optical</div><div class="tcode">OPTICAL 001</div></td>
+          <td class="num dash">&mdash;</td><td class="num dash">&mdash;</td><td class="num">RM 500.00</td>
+          <td class="num colnew">RM 300.00<br><span style="font-size:10px;color:var(--mf)">every 6 months<br>from 1 Jan 2026</span></td>
+          <td class="num dash">&mdash;</td><td class="num">2026-06-30</td>
+        </tr>
+        <tr class="subrow"><td colspan="7"><div class="subs">&#8627; CONTACT LENSES <span class="c">(CONTACT LENSES)</span><br>&#8627; Glasses <span class="c">(GLASSES 001)</span></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="ann"><b>The two Per block figures are your own examples typed in</b> &mdash; RM2,000 every 2 years
+    and RM300 every 6 months &mdash; so you can see the column filled. Your stored limits are untouched;
+    every other cell above is exactly what you have today.</p>
+</div>
+
+<!-- ══════════ 4. THE EDITOR ══════════ -->
+<div class="card">
+  <h2>4. Setting a limit &mdash; where Per block is typed, and where mileage stops being asked<span class="chip new">changes</span></h2>
+  <p class="sub">This is the form under the table. Per block is laid out the way your screenshot has it: a
+    tick, the word Every, a number, Month(s) or Year(s), and the amount &mdash; plus the date the counting
+    starts from.</p>
+
+  <div class="two">
+    <div>
+      <p class="plab">Today</p>
+      <div class="panel">
+        <div class="sh">Set a claim limit</div>
+        <div class="body">
+          <div class="g2">
+            <div><span class="lbl">Job Grade</span><div class="inp sel"><span>All grades (default)</span><span class="dash">&#9662;</span></div></div>
+            <div><span class="lbl">Claim Type</span><div class="inp sel"><span>Medical (MEDICAL 001)</span><span class="dash">&#9662;</span></div></div>
+          </div>
+          <div class="mt9"><span class="ck"><span class="bx"></span>Unlimited (no limits for this grade)</span></div>
+          <div class="g2 mt9">
+            <div><span class="lbl">Per-claim cap (RM)</span><div class="inp">150.00</div></div>
+            <div><span class="lbl">Monthly limit</span><div class="inp ph">Unlimited</div></div>
+            <div><span class="lbl">Annual budget (RM) <span class="tag tren">RENAMED</span></span><div class="inp">1000.00</div></div>
+            <div><span class="lbl">Lifetime limit <span class="tag tgone">REMOVED</span></span><div class="inp ph">Unlimited</div></div>
+            <div><span class="lbl">Claims / year</span><div class="inp ph">Unlimited</div></div>
+            <div><span class="lbl">Effective from</span><div class="inp">10/08/2026</div></div>
+            <div><span class="lbl">Calculation <span class="tag tgone">LEAVES THIS SCREEN</span></span><div class="inp sel"><span>Mileage (per km)</span><span class="dash">&#9662;</span></div></div>
+            <div><span class="lbl">Rate per km (RM) <span class="tag tgone">LEAVES THIS SCREEN</span></span><div class="inp">0.70</div></div>
+          </div>
+          <div class="mt9" style="display:flex;align-items:center">
+            <span style="font-size:10.5px;color:var(--mf)">Approval required: Yes</span>
+            <span class="btn" style="margin-left:auto">Save limit</span>
+          </div>
+        </div>
+      </div>
+      <p class="ann">The Calculation box here is the only thing that makes a claim a mileage claim today,
+        which is why it moves onto the claim type before it disappears from here &mdash; nothing stops being
+        priced.</p>
+    </div>
+
+    <div>
+      <p class="plab aft">Proposed</p>
+      <div class="panel">
+        <div class="sh">Set a claim limit</div>
+        <div class="body">
+          <div class="g2">
+            <div><span class="lbl">Job Grade</span><div class="inp sel"><span>All grades (default)</span><span class="dash">&#9662;</span></div></div>
+            <div><span class="lbl">Claim Type</span><div class="inp sel"><span>Medical (MEDICAL 001)</span><span class="dash">&#9662;</span></div></div>
+          </div>
+          <div class="mt9"><span class="ck"><span class="bx"></span>Unlimited (no limits for this grade)</span></div>
+          <div class="g2 mt9">
+            <div><span class="lbl">Per-claim cap (RM)</span><div class="inp">150.00</div></div>
+            <div><span class="lbl">Monthly limit</span><div class="inp ph">Unlimited</div></div>
+            <div><span class="lbl">Annual limit (RM) <span class="tag tren">RENAMED</span></span><div class="inp">1000.00</div></div>
+            <div><span class="lbl">Claims / year</span><div class="inp ph">Unlimited</div></div>
+          </div>
+
+          <div class="panel colnew" style="margin-top:11px;padding:10px;border-color:color-mix(in srgb,var(--primary) 32%,white)">
+            <div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:8px">
+              <span class="bx on" style="margin-right:6px"><svg viewBox="0 0 10 10"><path d="M2 5.2 4 7.2 8 3"/></svg></span>Per block
+              <span class="tag tnew">NEW</span>
+            </div>
+            <div style="display:grid;grid-template-columns:auto 62px 108px auto 108px;gap:8px;align-items:end">
+              <div style="font-size:11px;padding-bottom:6px">Every</div>
+              <div><div class="inp hl" style="text-align:center">2</div></div>
+              <div><div class="inp sel"><span>Year(s)</span><span class="dash">&#9662;</span></div></div>
+              <div style="font-size:11px;padding-bottom:6px">Limit</div>
+              <div><div class="inp hl">2000.00</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:auto 138px;gap:8px;align-items:end;margin-top:9px">
+              <div style="font-size:11px;padding-bottom:6px">Counting from</div>
+              <div><div class="inp">01/01/2026</div></div>
+            </div>
+            <p class="hint" style="margin-top:8px">1 Jan 2026 to 31 Dec 2027 is one RM2,000 pot, then
+              1 Jan 2028 to 31 Dec 2029 is the next. Everyone is on the same cycle. Leave the tick off and
+              nothing changes.</p>
+          </div>
+
+          <div class="g2 mt9">
+            <div><span class="lbl">Effective from</span><div class="inp">10/08/2026</div></div>
+          </div>
+          <div class="mt9" style="display:flex;align-items:center">
+            <span style="font-size:10.5px;color:var(--mf)">Approval required: Yes</span>
+            <span class="btn" style="margin-left:auto">Save limit</span>
+          </div>
+        </div>
+      </div>
+      <p class="ann"><b>No Lifetime limit, no Calculation, no Rate per km.</b> The per-claim, monthly, annual
+        and per-block boxes work side by side: fill in the ones your policy uses and leave the rest blank.</p>
+    </div>
+  </div>
+
+  <div class="note info">
+    <b>What the employee sees.</b> The claim screen already shows an employee their Annual limit and what is
+    left of it. A per-block limit shows up the same way &mdash; Remaining until 31 Dec 2027 &mdash; and a
+    claim that would go over it is refused when they submit it, exactly as the yearly one is today.
+  </div>
+</div>
+
+<!-- ══════════ 5. MILEAGE RATES ══════════ -->
+<div class="card">
+  <h2>5. Mileage Rates &mdash; no claim type row, and job grades as a list<span class="chip new">changes</span></h2>
+  <p class="sub">Your real rate table, on GRADE 12 (PERMANENT) &mdash; the one grade that has one. The row of
+    claim types at the top goes away, because the mileage claim type is the one you ticked. The grades
+    become the same list down the left that Claim Limits already uses.</p>
+
+  <p class="plab">Today</p>
+  <div class="panel">
+    <div class="body">
+      <div class="pillrow"><div class="cap">CLAIM TYPE <span class="tag tgone">REMOVED</span></div>
+        <span class="pill">Medical</span><span class="pill on">Mileage</span><span class="pill">Mobile</span><span class="pill">Optical</span>
+      </div>
+      <div class="pillrow"><div class="cap">JOB GRADE <span class="tag tren">BECOMES A LIST</span></div>
+        <span class="pill">All grades (company-wide)</span><span class="pill">GRADE H (C-RETIREE)</span>
+        <span class="pill">Executive</span><span class="pill">GRADE 12 (C-RETIREE)</span>
+        <span class="pill">GRADE 13 (C-RETIREE)</span><span class="pill">GRADE 14 (C-RETIREE)</span>
+        <span class="pill">GRADE 15 (C-RETIREE)</span><span class="pill">GRADE 16 (C-RETIREE)</span>
+        <span class="pill">GRADE 17 (C-RETIREE)</span><span class="pill">GRADE 18 (C-RETIREE)</span>
+        <span class="pill">GRADE 19 (C-RETIREE)</span><span class="pill">GRADE 20 (C-RETIREE)</span>
+        <span class="pill">GRADE 21 (C-RETIREE)</span><span class="pill">GRADE H (PERMANENT)</span>
+        <span class="pill on">GRADE 12 (PERMANENT)</span>
+        <span class="pill" style="border-style:dashed">and 41 more</span>
+      </div>
+      <div class="pillrow" style="margin-bottom:0"><div class="cap">VEHICLE TYPE <span class="tag tsame">STAYS</span></div>
+        <span class="pill on">Any vehicle</span><span class="pill">Car</span><span class="pill">Motorcycle</span>
+        <span class="pill">Van</span><span class="pill">Lorry</span>
+      </div>
+    </div>
+  </div>
+  <p class="ann">Fifty-five grades in one wrapped row is the part that does not scroll well.</p>
+
+  <div class="arrow">&#8595;</div>
+
+  <p class="plab aft">Proposed</p>
+  <div class="rail">
+    <div class="panel">
+      <div class="sh" style="padding:8px 10px;font-size:11.5px">Job grades <span class="cnt">55</span></div>
+      <div class="nav">
+        <span class="nv" style="color:#c2c2ce">GRADE 19 (C-RETIREE)</span>
+        <span class="nv">GRADE 20 (C-RETIREE)</span>
+        <span class="nv">GRADE 21 (C-RETIREE)</span>
+        <span class="nv">GRADE H (PERMANENT)</span>
+        <span class="nv on">GRADE 12 (PERMANENT)</span>
+        <span class="nv">GRADE 13 (PERMANENT)</span>
+        <span class="nv">GRADE 14 (PERMANENT)</span>
+        <span class="nv">GRADE 15 (PERMANENT)</span>
+        <span class="nv" style="color:#c2c2ce">GRADE 16 (PERMANENT)</span>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <div class="body" style="padding:10px 12px">
+          <div class="pillrow" style="margin-bottom:0"><div class="cap">VEHICLE TYPE</div>
+            <span class="pill on">Any vehicle</span><span class="pill">Car</span><span class="pill">Motorcycle</span>
+            <span class="pill">Van</span><span class="pill">Lorry</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:10px">
+        <div class="sh">Mileage &middot; GRADE 12 (PERMANENT) <span class="cnt">3</span></div>
+        <table>
+          <thead><tr><th style="width:40%">Distance band</th><th>Rate per km (RM)</th><th>Effective from</th></tr></thead>
+          <tbody>
+            <tr><td>0&ndash;100 km</td><td class="num">1.0000</td><td class="num">2026-08-10</td></tr>
+            <tr><td>100&ndash;300 km</td><td class="num">0.8000</td><td class="num">2026-08-10</td></tr>
+            <tr><td>300 km and above</td><td class="num">0.6000</td><td class="num">2026-08-10</td></tr>
+          </tbody>
+        </table>
+        <p class="hint" style="padding:8px 10px 10px;margin:0">Rates are marginal: 700 km against these bands
+          pays 100&times;1.00 + 200&times;0.80 + 400&times;0.60. Changing a rate never changes a claim already
+          submitted.</p>
+      </div>
+    </div>
+  </div>
+  <p class="ann">The grade list is drawn scrolled down to GRADE 12 (PERMANENT), the one grade that has a rate
+    table today. All grades (company-wide) sits at the top of the same list, above what is shown.</p>
+</div>
+
+<!-- ══════════ NOT IN THIS PLAN ══════════ -->
+<div class="card">
+  <h2>Two things in your screenshot that are deliberately not drawn above</h2>
+  <div class="note warn">
+    <ul style="margin-top:0">
+      <li><b>The Entitled tick.</b> On this system, a claim type with no limit set means unlimited, not
+        blocked. An Entitled tick would flip that meaning for every claim type that has no limit today, so
+        it needs its own round rather than being slipped in with these five points.</li>
+      <li><b>The third level (group, then claim, then sub claim).</b> This system has two levels &mdash; a
+        claim type and its items &mdash; and the limit is held at the claim type, with items sharing it.
+        Adding a third level, and a separate limit at each level, is a bigger change than the five you sent
+        back.</li>
+    </ul>
+  </div>
+</div>

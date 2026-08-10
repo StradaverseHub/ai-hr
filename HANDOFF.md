@@ -323,14 +323,35 @@ and approval rules is correctly deletable. `core/read.ts` documents the identica
 
 ### ⚠️ TWO OWNER DECISIONS OPEN ON ATTENDANCE — free to make NOW, expensive later
 
-1. **THE OT ROUNDING RULE IS AMBIGUOUS IN THE APPROVED PLAN.** It gives two mutually exclusive
-   examples: "0:01–0:59 at round-to 60 → 60" implies round UP; "121 at round-to 30 → 120" implies
-   NEAREST. Nearest is what ships, unchanged from before. Production has exactly ONE rounding band —
-   rule `A01`, 61–119 minutes, round-to 60 — so today 61–89 rounds DOWN to 60 while 90–119 already
-   rounds up. **It costs nobody anything yet**: `A01` is not the tenant default and no shift selects
-   it, so it decides ZERO days. The moment someone assigns `A01` to a shift it becomes an hour of
-   overtime pay per occurrence. `test/attendance-stage1-calc.test.ts` pins today's behaviour against
-   `A01`'s real geometry, so choosing round-up will fail a test that names the exact minutes that move.
+1. ⚠️ **THE OT ROUNDING RULE IS NOW COSTING REAL MONEY — THIS ENTRY USED TO SAY IT COST NOTHING.**
+   The old text said "Production has exactly ONE rounding band — rule `A01` … it costs nobody anything
+   yet: `A01` is not the tenant default and no shift selects it, so it decides ZERO days." **That was
+   overtaken on 2026-08-05, when `A02` was created WITH a rounding band (60–119 minutes, round-to 60)
+   and shifts began using it.** The hazard arrived by a different route than the one being watched.
+
+   **MEASURED ON PRODUCTION 2026-08-10, and the arithmetic is visible in the data:** rounding to the
+   NEAREST 60 sends anything from 90 minutes upward to 120 — **past the band's own 119-minute ceiling**
+   — so a day inside the band is paid MORE than was worked. Two real days:
+
+       Eee Lee Yong             2026-08-05  out 19:30   ot_minutes 120   worked  90
+       NURUL ALIAH BINTI ACHIN  2026-08-05  out 19:40   ot_minutes 120   worked 100
+
+   Every other overtime day on production matches its raw minutes exactly. So this is 30 + 20 minutes
+   of overtime nobody worked, and it also creates a cliff: 1h29 pays one hour, 1h30 pays two, 2h00
+   pays two — an extra half hour earns nothing.
+
+   **NOT YET FIXED.** A plan is on the board under `7c834696` (which the reporter raised as a QUESTION —
+   "why is the lateness and early out calculation wrong, show me A02" — and the answer is that lateness
+   and early-out are RIGHT and overtime is not). The fix reduces two employees' recorded overtime, so it
+   goes through approval rather than shipping as a bug fix.
+   `test/attendance-stage1-calc.test.ts` pins today's behaviour against `A01`'s geometry; changing the
+   rounding will fail a test that names the exact minutes that move — update it, do not loosen it.
+
+   **A02's OTHER SETTINGS, verified, because they read as bugs and are not:** grace is 5 minutes on
+   arrival and **0 on departure**, and `include_grace_in_lateness` is TRUE — so a 09:06 arrival counts
+   6 minutes late, not 1, because once the grace is spent it stops counting in the employee's favour at
+   all. `apply_deductions` is FALSE, so no lateness or early-out deduction has ever been taken from
+   anyone's pay, on any day.
 2. **"Overtime beyond the final band shall not be counted"** would cut `ot_minutes` DOWNWARD and
    retroactively. Not built — those minutes keep the final band's rate. Truncation needs its own opt-in.
 

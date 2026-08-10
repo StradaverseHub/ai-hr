@@ -1,0 +1,428 @@
+<meta charset="utf-8">
+<title>2aed39d4 — Fixed Transaction: the duplicate, the warning, the refusal</title>
+<!--
+  Mockup for 2aed39d4 (Payroll > Transactions > Fixed Transaction — effective-date and record control),
+  plan revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · Every figure, date and code on this page was SELECTed from production on 2026-08-10 (~17:00, MYT).
+    Nothing is invented, and no employee appears who does not already hold these rows.
+    - Employment e78d69d2, employee_code X000001, company SpaceX Sdn Bhd. person.first_name and
+      last_name are BOTH EMPTY on production, so the mockup prints the code alone — exactly what the
+      screen's EmployeeName renders. No name is invented. department is not drawn for the same reason.
+    - Its four live employment_pay_component rows, ordered as the list sorts them (code, then start):
+        A0027 HANDPHONE ALLOWANCE 100.00 2026-07-01..2026-07-01 regular  (created 08-04 11:15:02)
+        A0027 HANDPHONE ALLOWANCE 150.00 2026-07-01..2026-07-01 regular  (created 08-10 16:04:09)
+        A0027 HANDPHONE ALLOWANCE 150.00 2026-07-01..2026-07-01 regular  (created 08-10 16:06:15)
+        A0080 TRAVEL ALLOWANCE    400.00 2026-07-01..open       regular  (created 08-04 11:15:19)
+      The item was raised at 16:25:17, nineteen minutes after the second duplicate.
+    - Payslip for e78d69d2 / 2026-07, batch status processed, created 2026-08-07 09:09:
+        basic_salary 5000.00, allowance 630.00, gross_pay 5632.00, net_pay 5632.00, and
+        statutory.componentLines = A0027 100, A0080 400, SHIFT 50, CLAIM 80, OT1_5 2 (bonus bucket).
+      630.00 = 100 + 400 + 50 + 80. 5632.00 = 5000 + 630 + 2.
+    - The "if July is re-run" column is ARITHMETIC OVER THOSE STORED LINES, not a payroll re-run: all
+      three A0027 rows sit inside 2026-07 and core/payroll.ts pays each live row its FULL amount for the
+      period, so A0027 = 100 + 150 + 150 = 400, allowance = 400 + 400 + 50 + 80 = 930, gross = 5932.
+      It is LABELLED as a projection on the card itself. Net pay is NOT restated in either column beyond
+      the stored figure, because we have no measured corrected net and inventing one on a payroll screen
+      is the exact failure this file exists to prevent.
+    - Statutory deductions are zero on this slip (net_pay = gross_pay), which is why no deduction block
+      is drawn.
+  · Column headers, badges and button labels are the screen's REAL ones, resolved from messages/en.json
+    payroll.transactions.fixed.* and payroll.transactions.individual.cycle.*: Pay item, Amount, Payroll
+    cycle, Start date, End date, Status, Actions, View / Edit, Active, Ended, Add New Fixed Transaction,
+    Export, Refresh, Add fixed transaction, Remarks, Cancel, Add. "Regular" is the label for run_type
+    'regular' — the reporter's example says "Monthly", which is not a cycle this product has.
+  · Dates are printed ISO (2026-07-01) because that is literally what app/payroll/transactions/fixed/
+    fixed-list.tsx prints today. The plan prose uses the reporter's DD/MM/YYYY; the screen does not.
+  · The BEFORE list is the live screen: seven columns, one View / Edit link per row, the versioning note
+    strip above the table. There is no Delete button on a row today and none is drawn as new.
+  · Drawn as NEW, and nothing else is: (a) the "already has this pay item" block inside the Add dialog
+    with its amber overlap line, (b) the red refusal banner, (c) the Delete-while-processed rule. The red
+    tint on the three clashing BEFORE rows is an EXPLANATORY DEVICE — the real screen does not tint them,
+    and the mockup says so on the card.
+  · The cleaned list keeps the MOST RECENTLY WRITTEN row of each clashing group (150.00, written
+    16:06:15) and supersedes the rest, which is the repair rule the plan states. Its status renders
+    "Ended" because valid_to 2026-07-01 is in the past relative to 2026-08-10 — that is what the screen
+    would show, so it is drawn that way rather than flattered.
+  · The Delete-rule block draws three payroll statuses. All 22 payroll_batch rows on production are
+    'processed' and none carries closed_at, so the middle row is the one that bites today; Draft and
+    Closed are drawn from payroll_status = draft | processed | closed (db/schema.ts:4809).
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--warn:#b45309;--warnbg:#fffbeb;--warnbd:#fcd34d;
+        --bad:#b91c1c;--badbg:#fef2f2;--badbd:#fecaca;--okbg:#f0fdf4;--okbd:#bbf7d0;--ok:#15803d}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .hurt{background:var(--badbg);color:var(--bad)}
+
+  /* page chrome */
+  .ph{font-size:15px;font-weight:700;margin:0}
+  .phs{font-size:11px;color:var(--mf);margin:1px 0 10px}
+  .crumb{font-size:10.5px;color:var(--mf);margin:0 0 3px}
+
+  /* panel = the app's Card */
+  .panel{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff}
+  .emphead{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px;
+           padding:10px 12px;border-bottom:1px solid var(--border)}
+  .empname{font-size:12.5px;font-weight:600}
+  .empsub{font-size:10.5px;color:var(--mf);margin-top:1px}
+  .tools{display:flex;gap:7px;align-items:center}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:600;
+       display:inline-block;white-space:nowrap}
+  .btn.sec{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+  .btn.off{background:#fff;color:#a9aab6;border:1px solid var(--border);font-weight:500}
+  .sh{display:flex;align-items:center;gap:7px;padding:9px 12px;font-size:12.5px;font-weight:600;
+      border-bottom:1px solid var(--border)}
+  .sh .ct{background:var(--muted);color:var(--mf);border-radius:999px;padding:1px 7px;font-size:10.5px;font-weight:600}
+  .vnote{background:#fafaff;border-bottom:1px solid var(--border);padding:7px 12px;font-size:10.5px;color:var(--mf);
+         line-height:1.45}
+  .srch{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px}
+  .srchbox{border:1px solid var(--border);border-radius:8px;padding:5px 9px;font-size:11px;color:#a9aab6;width:260px}
+  .cnt{font-size:10.5px;color:var(--mf)}
+
+  table{border-collapse:separate;border-spacing:0;font-size:11.5px;width:100%;table-layout:fixed}
+  th,td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:middle;text-align:left}
+  thead th{background:var(--muted);font-size:9.5px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);
+           font-weight:600;line-height:1.2;border-top:1px solid var(--border)}
+  tbody tr:last-child td{border-bottom:0}
+  th.n,td.n{text-align:right}
+  th.r,td.r{text-align:right}
+  td.n{font-variant-numeric:tabular-nums;font-weight:600}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
+  .nm{color:var(--mf)}
+  .num{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .badge{display:inline-block;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:600}
+  .b-act{background:var(--okbg);color:var(--ok);border:1px solid var(--okbd)}
+  .b-end{background:var(--muted);color:var(--mf);border:1px solid var(--border)}
+  .lnk{display:inline-block;border:1px solid var(--border);border-radius:7px;padding:2px 8px;font-size:10.5px;
+       color:var(--mf)}
+  tr.dupe td{background:var(--badbg)}
+  .legend{font-size:10.5px;color:var(--bad);margin:9px 0 0;line-height:1.45}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;background:var(--badbg);
+            border:1px solid var(--badbd);vertical-align:-1px;margin-right:5px}
+
+  .note{border-radius:10px;padding:10px 12px;font-size:11.5px;line-height:1.5;margin:0 0 12px}
+  .note.bad{background:var(--badbg);border:1px solid var(--badbd);color:#7f1d1d}
+  .note.warn{background:var(--warnbg);border:1px solid var(--warnbd);color:#78350f}
+  .note.info{background:color-mix(in srgb,var(--primary) 7%,white);
+             border:1px solid color-mix(in srgb,var(--primary) 28%,white);color:#312e81}
+  .note b{font-weight:700}
+  .cut{font-size:11px;color:var(--mf);margin:10px 0 0;line-height:1.5}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .slip{border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .slip .top{padding:8px 11px;font-size:11.5px;font-weight:600;border-bottom:1px solid var(--border)}
+  .slip .top small{display:block;font-weight:400;font-size:10px;margin-top:1px;opacity:.85}
+  .slip.isbad .top{background:var(--badbg);color:#7f1d1d}
+  .slip.isok .top{background:var(--okbg);color:#14532d}
+  .ln{display:flex;justify-content:space-between;gap:10px;padding:5px 11px;font-size:11.5px;
+      border-bottom:1px solid var(--border)}
+  .ln:last-child{border-bottom:0}
+  .ln .r{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .ln.dup{background:var(--badbg);color:#7f1d1d;font-weight:600}
+  .ln.tot{background:#fafaff;font-weight:700}
+  .ln .sm{color:var(--mf);font-weight:400;font-size:10.5px}
+
+  /* modal */
+  .modalwrap{background:#dcdde8;border-radius:12px;padding:22px;display:flex;justify-content:center}
+  .modal{width:520px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;
+         box-shadow:0 10px 30px rgba(20,20,40,.14)}
+  .modal h3{font-size:13.5px;margin:0 0 2px}
+  .modal p.mi{font-size:10.5px;color:var(--mf);margin:0 0 11px;line-height:1.45}
+  .form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .fld .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;
+            margin-bottom:3px}
+  .fld .lbl em{font-style:normal;color:#c026d3}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:11.5px;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .inp.pick{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 10%,transparent)}
+  .inp.clash{border-color:#d97706;box-shadow:0 0 0 3px rgba(217,119,6,.13)}
+  .inp .ghost{color:#a9aab6}
+  .wide{grid-column:1 / -1}
+  .modalbar{display:flex;justify-content:flex-end;gap:8px;margin-top:13px}
+  .exist{grid-column:1 / -1;border:1px solid var(--warnbd);background:var(--warnbg);border-radius:9px;padding:9px 10px}
+  .exist .et{font-size:10.5px;font-weight:700;color:#78350f;margin-bottom:5px}
+  .exist .er{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:#78350f;
+             background:#fff;border:1px solid var(--warnbd);border-radius:7px;padding:5px 8px}
+  .exist .er .l{font-variant-numeric:tabular-nums}
+  .exist .ex{font-size:10.5px;color:#78350f;margin-top:6px;line-height:1.45}
+
+  .newtag{display:inline-block;background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary);
+          border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:6px;vertical-align:1px}
+  .yes{color:var(--ok);font-weight:700}
+  .no{color:var(--bad);font-weight:700}
+  .stack{display:grid;gap:0}
+</style>
+
+<div class="card">
+  <p class="crumb">Payroll &rsaquo; Transactions &rsaquo; Fixed Transaction</p>
+  <p class="ph">Fixed Transaction<span class="chip now">the screen today</span></p>
+  <p class="phs">Recurring fixed pay items for one employee, effective-dated.</p>
+  <p class="sub">
+    This is X000001&rsquo;s list exactly as it stands on 10 August 2026. Three Handphone Allowance lines,
+    all running 2026-07-01 to 2026-07-01. Two of them were written this afternoon, two minutes apart,
+    by opening a record that had already ended and pressing Save.
+  </p>
+
+  <div class="panel">
+    <div class="emphead">
+      <div>
+        <div class="empname">X000001</div>
+        <div class="empsub">SpaceX Sdn Bhd</div>
+      </div>
+      <div class="tools">
+        <span class="btn">Add New Fixed Transaction</span>
+        <span class="btn off">Export</span>
+        <span class="btn sec">Refresh</span>
+      </div>
+    </div>
+    <div class="sh">Fixed Transaction <span class="ct">4</span></div>
+    <div class="vnote">
+      A change adds a line: editing an item closes its current value from the chosen date and starts a new
+      one, so the history stays intact.
+    </div>
+    <div class="srch">
+      <div class="srchbox">Search pay item, amount, date or remarks</div>
+      <div class="cnt">4 shown</div>
+    </div>
+    <table>
+      <colgroup>
+        <col style="width:27%"><col style="width:12%"><col style="width:12%"><col style="width:13%">
+        <col style="width:13%"><col style="width:11%"><col style="width:12%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Pay item</th><th class="n">Amount</th><th>Payroll cycle</th><th>Start date</th>
+          <th>End date</th><th>Status</th><th class="r">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="dupe">
+          <td><span class="mono">A0027</span> <span class="nm">HANDPHONE ALLOWANCE</span></td>
+          <td class="n">MYR&nbsp;100.00</td><td>Regular</td><td class="num">2026-07-01</td>
+          <td class="num">2026-07-01</td><td><span class="badge b-end">Ended</span></td>
+          <td class="r"><span class="lnk">View / Edit</span></td>
+        </tr>
+        <tr class="dupe">
+          <td><span class="mono">A0027</span> <span class="nm">HANDPHONE ALLOWANCE</span></td>
+          <td class="n">MYR&nbsp;150.00</td><td>Regular</td><td class="num">2026-07-01</td>
+          <td class="num">2026-07-01</td><td><span class="badge b-end">Ended</span></td>
+          <td class="r"><span class="lnk">View / Edit</span></td>
+        </tr>
+        <tr class="dupe">
+          <td><span class="mono">A0027</span> <span class="nm">HANDPHONE ALLOWANCE</span></td>
+          <td class="n">MYR&nbsp;150.00</td><td>Regular</td><td class="num">2026-07-01</td>
+          <td class="num">2026-07-01</td><td><span class="badge b-end">Ended</span></td>
+          <td class="r"><span class="lnk">View / Edit</span></td>
+        </tr>
+        <tr>
+          <td><span class="mono">A0080</span> <span class="nm">TRAVEL ALLOWANCE</span></td>
+          <td class="n">MYR&nbsp;400.00</td><td>Regular</td><td class="num">2026-07-01</td>
+          <td class="num">&mdash;</td><td><span class="badge b-act">Active</span></td>
+          <td class="r"><span class="lnk">View / Edit</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="legend"><i></i>The red tint marks the three lines that cover the same day. It is drawn here to
+    explain the problem &mdash; the real screen does not tint anything, which is part of why this was easy
+    to miss.</p>
+</div>
+
+<div class="card">
+  <h2>What July would pay if it were run again today</h2>
+  <p class="sub">
+    July&rsquo;s payslip was produced on 7 August, before the two extra lines existed, so what has been
+    issued is still correct. The figures on the left are the ones stored on that payslip. The figures on
+    the right add up the same stored lines with all three Handphone Allowance records live &mdash; each one
+    pays its full amount for any month it touches. It is a projection, not a payroll run.
+  </p>
+  <div class="two">
+    <div class="slip isok">
+      <div class="top">July 2026 &mdash; as issued<small>Produced 7 August 2026 &middot; Processed</small></div>
+      <div class="ln"><span>Basic salary</span><span class="r">5,000.00</span></div>
+      <div class="ln"><span><span class="mono">A0027</span> Handphone allowance</span><span class="r">100.00</span></div>
+      <div class="ln"><span><span class="mono">A0080</span> Travel allowance</span><span class="r">400.00</span></div>
+      <div class="ln"><span><span class="mono">SHIFT</span> Shift allowance</span><span class="r">50.00</span></div>
+      <div class="ln"><span><span class="mono">CLAIM</span> Taxable claim allowance</span><span class="r">80.00</span></div>
+      <div class="ln"><span><span class="mono">OT1_5</span> Overtime 1.5</span><span class="r">2.00</span></div>
+      <div class="ln tot"><span>Gross pay</span><span class="r">5,632.00</span></div>
+    </div>
+    <div class="slip isbad">
+      <div class="top">July 2026 &mdash; if it is run again as things stand<small>Projection from the stored lines</small></div>
+      <div class="ln"><span>Basic salary</span><span class="r">5,000.00</span></div>
+      <div class="ln dup"><span><span class="mono">A0027</span> Handphone allowance <span class="sm">&times; 3 records: 100.00 + 150.00 + 150.00</span></span><span class="r">400.00</span></div>
+      <div class="ln"><span><span class="mono">A0080</span> Travel allowance</span><span class="r">400.00</span></div>
+      <div class="ln"><span><span class="mono">SHIFT</span> Shift allowance</span><span class="r">50.00</span></div>
+      <div class="ln"><span><span class="mono">CLAIM</span> Taxable claim allowance</span><span class="r">80.00</span></div>
+      <div class="ln"><span><span class="mono">OT1_5</span> Overtime 1.5</span><span class="r">2.00</span></div>
+      <div class="ln tot"><span>Gross pay</span><span class="r">5,932.00</span></div>
+    </div>
+  </div>
+  <p class="cut">
+    Four other employees carry the same kind of clash on other pay items &mdash; ten pairs of records in all,
+    across five employees and three pay items, counted on 10 August.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Adding a pay item the employee already has<span class="chip new">what we will build</span></h2>
+  <p class="sub">
+    The moment you choose a pay item, the box lists what that employee already has for it, and says plainly
+    when your dates run into one of them. Nothing else in this dialog changes. It is drawn here as it would
+    look after the clean-up shown below, so one Handphone Allowance record remains rather than three.
+  </p>
+  <div class="modalwrap">
+    <div class="modal">
+      <h3>Add fixed transaction</h3>
+      <p class="mi">Add a fixed amount for a pay item over a date range. It applies to payroll runs whose
+        period falls in that range.</p>
+      <div class="form">
+        <div class="fld">
+          <div class="lbl">Pay item <em>*</em></div>
+          <div class="inp pick">A0027 &mdash; HANDPHONE ALLOWANCE</div>
+        </div>
+        <div class="fld">
+          <div class="lbl">Payroll cycle <em>*</em></div>
+          <div class="inp">Regular</div>
+        </div>
+
+        <div class="exist">
+          <div class="et">X000001 already has this pay item<span class="newtag">NEW</span></div>
+          <div class="er">
+            <span>MYR&nbsp;150.00 &middot; Regular &middot; Ended</span>
+            <span class="l">2026-07-01 &nbsp;to&nbsp; 2026-07-01</span>
+          </div>
+          <div class="ex">Your dates cover 2026-07-01, which this record already covers. End that record
+            first, or start the new one after it.</div>
+        </div>
+
+        <div class="fld">
+          <div class="lbl">Amount <em>*</em></div>
+          <div class="inp" style="text-align:right">150.00</div>
+        </div>
+        <div class="fld">
+          <div class="lbl">Start date <em>*</em></div>
+          <div class="inp clash">2026-07-01</div>
+        </div>
+        <div class="fld">
+          <div class="lbl">End date</div>
+          <div class="inp clash">2026-07-01</div>
+        </div>
+        <div class="fld">
+          <div class="lbl">Remarks</div>
+          <div class="inp"><span class="ghost">&nbsp;</span></div>
+        </div>
+      </div>
+      <div class="modalbar">
+        <span class="btn sec">Cancel</span>
+        <span class="btn">Add</span>
+      </div>
+    </div>
+  </div>
+  <p class="cut">
+    If you press Add anyway, the save is refused rather than quietly adding a fourth line &mdash; that is the
+    banner below.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Refused, and cleaned up<span class="chip new">what we will build</span></h2>
+  <p class="sub">
+    The banner is what you see when the dates still clash on save. The list beneath it is X000001&rsquo;s
+    after we clear the records that already clash: the most recent line of each group is kept, the rest move
+    into history. It shows as Ended because 2026-07-01 has passed &mdash; that is honest, not flattering.
+  </p>
+
+  <div class="note bad">
+    <b>Duplicate fixed transaction.</b> X000001 already has HANDPHONE ALLOWANCE covering 2026-07-01 to
+    2026-07-01. Review that record before creating a new transaction.
+  </div>
+
+  <div class="panel">
+    <div class="emphead">
+      <div>
+        <div class="empname">X000001</div>
+        <div class="empsub">SpaceX Sdn Bhd</div>
+      </div>
+      <div class="tools">
+        <span class="btn">Add New Fixed Transaction</span>
+        <span class="btn off">Export</span>
+        <span class="btn sec">Refresh</span>
+      </div>
+    </div>
+    <div class="sh">Fixed Transaction <span class="ct">2</span></div>
+    <table>
+      <colgroup>
+        <col style="width:27%"><col style="width:12%"><col style="width:12%"><col style="width:13%">
+        <col style="width:13%"><col style="width:11%"><col style="width:12%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Pay item</th><th class="n">Amount</th><th>Payroll cycle</th><th>Start date</th>
+          <th>End date</th><th>Status</th><th class="r">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="mono">A0027</span> <span class="nm">HANDPHONE ALLOWANCE</span></td>
+          <td class="n">MYR&nbsp;150.00</td><td>Regular</td><td class="num">2026-07-01</td>
+          <td class="num">2026-07-01</td><td><span class="badge b-end">Ended</span></td>
+          <td class="r"><span class="lnk">View / Edit</span></td>
+        </tr>
+        <tr>
+          <td><span class="mono">A0080</span> <span class="nm">TRAVEL ALLOWANCE</span></td>
+          <td class="n">MYR&nbsp;400.00</td><td>Regular</td><td class="num">2026-07-01</td>
+          <td class="num">&mdash;</td><td><span class="badge b-act">Active</span></td>
+          <td class="r"><span class="lnk">View / Edit</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="cut">
+    The payslip already issued for July is left exactly as it is. Clearing these records changes what a
+    future run pays, not what any payslip already says.
+  </p>
+</div>
+
+<div class="card">
+  <h2>When a record can still be deleted<span class="chip new">what we will build</span></h2>
+  <p class="sub">
+    Today a record is refused as soon as any completed run has paid it, which is every run on your system
+    &mdash; all twenty-two are processed and none is closed. So the three lines above cannot be deleted at
+    all. That is what changes.
+  </p>
+  <table style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+    <colgroup><col style="width:34%"><col style="width:11%"><col style="width:11%"><col style="width:12%"><col style="width:32%"></colgroup>
+    <thead>
+      <tr><th>Pay run covering the record</th><th>View</th><th>Edit</th><th>Delete</th><th>&nbsp;</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Not run yet</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td>
+        <td class="nm">No change &mdash; this already works.</td>
+      </tr>
+      <tr>
+        <td><b>Processed, not yet closed</b></td><td class="yes">Yes</td><td class="yes">Yes</td>
+        <td class="yes">Yes<span class="newtag">NEW</span></td>
+        <td class="nm">Refused today. Fix the record, then run that month again.</td>
+      </tr>
+      <tr>
+        <td>Closed</td><td class="yes">Yes</td><td class="no">No<span class="newtag">NEW</span></td>
+        <td class="no">No</td>
+        <td class="nm">A closed month is locked until it is reopened.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>

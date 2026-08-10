@@ -1,0 +1,359 @@
+<meta charset="utf-8">
+<title>74d00fd2 — Employee eligibility: Select all, Deselect all, search, and a count you can see</title>
+<!--
+  Mockup for 74d00fd2 (HR Admin > Leave Config > Entitlement > Employee eligibility — Select All /
+  Deselect All + multi-selection + "7 selected"), plan revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · Every list on this page was SELECTed from the reporter's own tenant on production, 2026-08-10.
+    - The nine company names are company.legal_name where archived_at is null (9 rows, exactly as drawn).
+    - Nationality has 197 ACTIVE options in this tenant. Typing "ind" matches exactly two of them,
+      Indian and Indonesian — verified with the same case-insensitive match the picker filters on.
+    - The seven nationalities named as already picked (Malaysian, Singaporean, Indonesian, Thai,
+      Vietnamese, Filipino, Nepalese) are all real active options in this tenant. Seven is the
+      reporter's own example ("7 selected").
+    - There are 18 departments; the department picker is drawn closed, so no department names appear.
+  · The field captions (Company, Business Unit, Division, Department, Nationality, Hired on or after /
+    on or before, Years of service — at least / at most, Confirmation status) and the section headings
+    (Company Information, Employee Information, Service Information) are the product's REAL strings
+    from messages/en.json.
+  · TODAY is drawn from the shipped component: the closed control always reads "Add…", the popover is a
+    plain checklist with no bulk buttons and no search box, and picked values appear as removable chips
+    beneath the control (collapsing to "{n} selected" past four).
+  · PROPOSED draws ONLY what the plan commits to: two buttons and a search box at the top of the
+    popover, and the count moved onto the closed control. No new field, no new section, no change to
+    the checklist rows, and nothing about how a rule is matched or how leave is calculated.
+  · Grey text OUTSIDE the popover boxes is annotation, not UI. Nothing drawn as annotation is being
+    built — in particular there is no "2 of 197 shown" counter inside the list.
+  · Section 4 draws the four Service Information boxes EXACTLY as they are today, unchanged, because
+    they are dates and numbers and cannot take a list of values. Nothing there is marked NEW.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--input:#dcdde9;--okbg:#f0fdf4;--okbd:#bbf7d0;--ok:#15803d;
+        --warnbg:#fffbeb;--warnbd:#fcd34d}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .panel{border:1px solid var(--border);border-radius:12px;background:#fff}
+  .sh{display:flex;align-items:center;gap:7px;padding:9px 12px;font-size:12.5px;font-weight:600;
+      border-bottom:1px solid var(--border)}
+  .body{padding:12px}
+
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:11px}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:11px;align-items:start}
+  .g4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:11px}
+  .lbl{font-size:10.5px;font-weight:600;color:var(--mf);margin-bottom:4px;display:block}
+  .inp{background:#fff;border:1px solid var(--input);border-radius:8px;padding:6px 9px;font-size:11.5px;
+       color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .inp.ph{color:var(--mf)}
+  .trig{display:flex;align-items:center;justify-content:space-between;gap:6px}
+  .trig .cv{color:var(--primary);font-weight:600}
+  .cx{color:var(--mf);font-size:10px}
+  .hl{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 10%,transparent)}
+
+  /* collapsible section, as the app draws <details><summary> */
+  .sect{border:1px solid var(--border);border-radius:9px}
+  .sect > .st{padding:7px 11px;font-size:12px;font-weight:600}
+  .sect > .sb{border-top:1px solid var(--border);padding:11px}
+
+  /* the open popover, drawn in place under its own trigger */
+  .vign{margin-top:14px;border-top:1px dashed var(--border);padding-top:12px}
+  .vt{font-size:11px;font-weight:600;color:var(--mf);margin:0 0 9px}
+  .vg{display:grid;grid-template-columns:224px 1fr;gap:14px;align-items:start}
+  .pop{width:224px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:6px;
+       box-shadow:0 10px 26px rgba(20,20,45,.14);margin-top:4px}
+  .bulk{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);
+        padding:1px 6px 6px;margin-bottom:5px;font-size:11px}
+  .bulk .a{color:var(--primary);font-weight:600}
+  .bulk .b{color:var(--mf);font-weight:600}
+  .srch{width:100%;border:1px solid var(--input);border-radius:7px;padding:4px 7px;font-size:11px;
+        color:var(--mf);margin-bottom:5px;background:#fff}
+  .srch.typed{color:var(--fg);border-color:var(--primary)}
+  .rows{overflow:hidden}
+  .row{display:flex;align-items:center;gap:9px;padding:5px 7px;border-radius:7px;font-size:11.5px}
+  .row.on{background:color-mix(in srgb,var(--primary) 5%,white)}
+  .bx{width:14px;height:14px;border-radius:4px;border:1px solid var(--input);background:#fff;flex:0 0 auto;
+      display:grid;place-items:center}
+  .bx.on{background:var(--primary);border-color:var(--primary)}
+  .bx svg{width:10px;height:10px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .fade{height:14px;background:linear-gradient(to bottom,rgba(255,255,255,0),#fff);margin-top:-14px;
+        position:relative}
+
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .cchip{display:inline-flex;align-items:center;gap:5px;background:color-mix(in srgb,var(--primary) 10%,white);
+         color:var(--primary);border-radius:999px;padding:2px 7px 2px 9px;font-size:10.5px;font-weight:600}
+  .cchip s{text-decoration:none;opacity:.65;font-weight:700}
+
+  .cnt{margin-top:6px;font-size:10.5px;font-weight:600;color:var(--primary)}
+  .ann{font-size:11px;color:var(--mf);line-height:1.55;margin:2px 0 0}
+  .ann b{color:var(--fg)}
+  .ann li{margin-bottom:5px}
+  ul.ann{padding-left:15px;margin:2px 0 0}
+  .newtag{display:inline-block;background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary);
+          border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:5px;vertical-align:1px}
+  .oktag{display:inline-block;background:var(--okbg);color:var(--ok);border:1px solid var(--okbd);
+         border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:5px;vertical-align:1px}
+  .cut{font-size:11px;color:var(--mf);margin:11px 0 0;line-height:1.5}
+  .note{border-radius:10px;padding:10px 12px;font-size:11.5px;line-height:1.5;margin:12px 0 0}
+  .note.info{background:color-mix(in srgb,var(--primary) 7%,white);
+             border:1px solid color-mix(in srgb,var(--primary) 26%,white);color:#312e81}
+  .note.warn{background:var(--warnbg);border:1px solid var(--warnbd);color:#78350f}
+  .note b{font-weight:700}
+  .note ul{margin:7px 0 0;padding-left:16px}
+  .note li{margin-bottom:4px}
+  .arrow{text-align:center;font-size:20px;color:var(--primary);margin:-2px 0 12px;font-weight:700}
+  .ph1{font-size:15px;font-weight:700;margin:0}
+  .phs{font-size:11px;color:var(--mf);margin:1px 0 12px}
+</style>
+
+<p class="ph1">HR Admin &rsaquo; Leave Config &rsaquo; Entitlement &rsaquo; Employee eligibility</p>
+<p class="phs">Sketch &mdash; the same picker, before and after. Wording, spacing and colour will differ slightly in the built screen. Grey text beside a list is a note to you, not something that appears on screen.</p>
+
+<div class="two">
+
+  <!-- ══════════════ TODAY ══════════════ -->
+  <div class="card" style="margin-bottom:0">
+    <h2>Today<span class="chip now">what you see now</span></h2>
+    <p class="sub">Ticking several values already works, and your picks are kept when you close and reopen the
+      list. What is missing: no Select all, no Deselect all, no search, and the closed box always says
+      &ldquo;Add&hellip;&rdquo; however many you have picked.</p>
+
+    <div class="panel">
+      <div class="sh">New eligibility rule</div>
+      <div class="body">
+        <div class="g3">
+          <div><span class="lbl">Rule name</span><div class="inp">Group office &mdash; 18 days</div></div>
+          <div><span class="lbl">Entitlement table</span><div class="inp">Standard annual leave</div></div>
+          <div><span class="lbl">Effective from</span><div class="inp">2026-01-01</div></div>
+        </div>
+
+        <div class="sect">
+          <div class="st">&#9662; Company Information</div>
+          <div class="sb">
+            <div class="g2">
+              <div>
+                <span class="lbl">Company</span>
+                <div class="inp trig"><span style="color:var(--mf)">Add&hellip;</span><span class="cx">&#9662;</span></div>
+                <div class="chips">
+                  <span class="cchip">Chin Hin Construction Engineering <s>&times;</s></span>
+                  <span class="cchip">Chin Hin Property Group <s>&times;</s></span>
+                  <span class="cchip">Fiamma (Chin Hin Property) <s>&times;</s></span>
+                </div>
+              </div>
+              <div>
+                <span class="lbl">Business Unit</span>
+                <div class="inp trig"><span style="color:var(--mf)">Add&hellip;</span><span class="cx">&#9662;</span></div>
+                <span class="lbl" style="margin-top:11px">Division</span>
+                <div class="inp trig"><span style="color:var(--mf)">Add&hellip;</span><span class="cx">&#9662;</span></div>
+                <span class="lbl" style="margin-top:11px">Department</span>
+                <div class="inp trig"><span style="color:var(--mf)">Add&hellip;</span><span class="cx">&#9662;</span></div>
+                <div class="cnt">6 selected</div>
+              </div>
+            </div>
+            <p class="ann" style="margin-top:9px">Three companies and six departments are picked here. A count
+              already appears &mdash; under Department, and only because more than four are picked. Both boxes
+              still read &ldquo;Add&hellip;&rdquo;.</p>
+          </div>
+        </div>
+
+        <div class="vign">
+          <p class="vt">The Company list, opened</p>
+          <div class="vg">
+            <div>
+              <div class="inp trig"><span style="color:var(--mf)">Add&hellip;</span><span class="cx">&#9652;</span></div>
+              <div class="pop">
+                <div class="rows">
+                  <div class="row on"><span class="bx on"><svg viewBox="0 0 12 12"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span>Chin Hin Construction Engineering</div>
+                  <div class="row on"><span class="bx on"><svg viewBox="0 0 12 12"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span>Chin Hin Property Group</div>
+                  <div class="row"><span class="bx"></span>Demo Group Holdings Bhd</div>
+                  <div class="row"><span class="bx"></span>Demo Sdn Bhd</div>
+                  <div class="row on"><span class="bx on"><svg viewBox="0 0 12 12"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span>Fiamma (Chin Hin Property)</div>
+                  <div class="row"><span class="bx"></span>ISEDECOR BINA SDN BHD</div>
+                  <div class="row"><span class="bx"></span>Signature Group of Companies</div>
+                </div>
+                <div class="fade"></div>
+              </div>
+            </div>
+            <ul class="ann">
+              <li>Nothing above the list. To pick every company you tick nine boxes, and to start over you
+                untick all nine.</li>
+              <li>Nowhere to type. Two more companies sit below the edge here; Nationality has 197 values and
+                you scroll all of them.</li>
+              <li>The count that does exist sits under the box, and only once more than four values are
+                picked. The box itself never says anything.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ PROPOSED ══════════════ -->
+  <div class="card" style="margin-bottom:0">
+    <h2>Proposed<span class="chip new">what we will build</span></h2>
+    <p class="sub">The same picker, the same values, the same ticks. Two buttons and a search box are added at
+      the top of every list, and the closed box now tells you how many you picked.</p>
+
+    <div class="panel">
+      <div class="sh">New eligibility rule</div>
+      <div class="body">
+        <div class="g3">
+          <div><span class="lbl">Rule name</span><div class="inp">Group office &mdash; 18 days</div></div>
+          <div><span class="lbl">Entitlement table</span><div class="inp">Standard annual leave</div></div>
+          <div><span class="lbl">Effective from</span><div class="inp">2026-01-01</div></div>
+        </div>
+
+        <div class="sect">
+          <div class="st">&#9662; Company Information</div>
+          <div class="sb">
+            <div class="g2">
+              <div>
+                <span class="lbl">Company</span>
+                <div class="inp trig hl"><span class="cv">3 selected</span><span class="cx">&#9662;</span></div>
+                <div class="chips">
+                  <span class="cchip">Chin Hin Construction Engineering <s>&times;</s></span>
+                  <span class="cchip">Chin Hin Property Group <s>&times;</s></span>
+                  <span class="cchip">Fiamma (Chin Hin Property) <s>&times;</s></span>
+                </div>
+              </div>
+              <div>
+                <span class="lbl">Business Unit</span>
+                <div class="inp trig"><span style="color:var(--mf)">Add&hellip;</span><span class="cx">&#9662;</span></div>
+                <span class="lbl" style="margin-top:11px">Division</span>
+                <div class="inp trig"><span style="color:var(--mf)">Add&hellip;</span><span class="cx">&#9662;</span></div>
+                <span class="lbl" style="margin-top:11px">Department</span>
+                <div class="inp trig hl"><span class="cv">6 selected</span><span class="cx">&#9662;</span></div>
+              </div>
+            </div>
+            <p class="ann" style="margin-top:9px">The same three companies and six departments. Every box that
+              holds something now says so on the box itself, at any number, not only past four.</p>
+          </div>
+        </div>
+
+        <div class="vign">
+          <p class="vt">The Company list, opened</p>
+          <div class="vg">
+            <div>
+              <div class="inp trig hl"><span class="cv">3 selected</span><span class="cx">&#9652;</span></div>
+              <div class="pop">
+                <div class="bulk"><span class="a">Select all</span><span class="b">Deselect all</span>
+                  <span class="newtag" style="margin-left:auto">NEW</span></div>
+                <div class="srch">Search&hellip;</div>
+                <div class="rows">
+                  <div class="row on"><span class="bx on"><svg viewBox="0 0 12 12"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span>Chin Hin Construction Engineering</div>
+                  <div class="row on"><span class="bx on"><svg viewBox="0 0 12 12"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span>Chin Hin Property Group</div>
+                  <div class="row"><span class="bx"></span>Demo Group Holdings Bhd</div>
+                  <div class="row"><span class="bx"></span>Demo Sdn Bhd</div>
+                  <div class="row on"><span class="bx on"><svg viewBox="0 0 12 12"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span>Fiamma (Chin Hin Property)</div>
+                </div>
+                <div class="fade"></div>
+              </div>
+            </div>
+            <ul class="ann">
+              <li><b>Select all</b> ticks every company in one click. <b>Deselect all</b> clears them.<span class="newtag">NEW</span></li>
+              <li>A <b>search box</b> so a long list can be narrowed by typing instead of scrolled.<span class="newtag">NEW</span></li>
+              <li>The closed box reads <b>3 selected</b>.<span class="newtag">NEW</span> A field you have not
+                touched still says &ldquo;Add&hellip;&rdquo;, so a filled field and an empty one can be told apart
+                at a glance.</li>
+              <li>Up to four picks the values stay listed underneath with their own remove buttons, exactly as
+                today. Past four, the count on the box is the summary.</li>
+              <li>The rows, the ticks and the values themselves are untouched.<span class="oktag">UNCHANGED</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="arrow" style="margin-top:18px">&#8595;</div>
+
+<!-- ══════════════ THE LONG LISTS ══════════════ -->
+<div class="card">
+  <h2>The long lists<span class="chip new">what we will build</span></h2>
+  <p class="sub">Nationality carries 197 values in your system. Typing narrows the list, and the two buttons act
+    on the values you are looking at &mdash; never on the ones hidden by what you typed.</p>
+
+  <div class="two">
+    <div>
+      <div class="sect">
+        <div class="st">&#9662; Employee Information</div>
+        <div class="sb">
+          <div style="max-width:250px">
+            <span class="lbl">Nationality</span>
+            <div class="inp trig hl"><span class="cv">7 selected</span><span class="cx">&#9652;</span></div>
+            <div class="pop">
+              <div class="bulk"><span class="a">Select all</span><span class="b">Deselect all</span></div>
+              <div class="srch typed">ind</div>
+              <div class="rows">
+                <div class="row"><span class="bx"></span>Indian</div>
+                <div class="row on"><span class="bx on"><svg viewBox="0 0 12 12"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span>Indonesian</div>
+              </div>
+            </div>
+            <p class="ann" style="margin-top:8px">Only two of the 197 nationalities contain
+              &ldquo;ind&rdquo;, so those are the two rows on show. The other five you picked &mdash; Malaysian,
+              Singaporean, Thai, Vietnamese, Filipino, Nepalese &mdash; are still picked, just not listed
+              while you are typing.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="note info" style="margin-top:0">
+        <b>What the two buttons do here.</b>
+        <ul>
+          <li>Nothing typed &mdash; Select all ticks all 197, Deselect all clears all 197.</li>
+          <li>&ldquo;ind&rdquo; typed, as drawn &mdash; Select all adds Indian and Indonesian to what you already
+            have. Deselect all removes only Indonesian, and the six others you picked stay picked.</li>
+          <li>Either way the closed box keeps a running count, so &ldquo;7 selected&rdquo; is visible without
+            opening anything.</li>
+        </ul>
+      </div>
+      <div class="note warn">
+        <b>One thing to watch.</b> Ticking every value on a field is not the same as leaving that field blank.
+        A rule with all 197 nationalities ticked still counts as a rule that restricts by nationality, so it
+        will beat a rule that sets no restrictions at all when both could apply to the same person. If you mean
+        &ldquo;everybody&rdquo;, leave the field untouched. The box will read &ldquo;All selected&rdquo; whenever
+        every value on a field is ticked, so this is easy to spot before you save.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ WHAT DOES NOT CHANGE ══════════════ -->
+<div class="card">
+  <h2>Four boxes that stay exactly as they are<span class="chip now">no change</span></h2>
+  <p class="sub">Under Service Information, four of the eligibility boxes are a date or a number rather than a
+    list you tick. There is nothing to select all of, so they keep working the way they do now.</p>
+
+  <div class="sect">
+    <div class="st">&#9662; Service Information</div>
+    <div class="sb">
+      <div class="g4">
+        <div><span class="lbl">Hired on or after <span class="oktag">UNCHANGED</span></span><div class="inp ph">dd/mm/yyyy</div></div>
+        <div><span class="lbl">Hired on or before <span class="oktag">UNCHANGED</span></span><div class="inp ph">dd/mm/yyyy</div></div>
+        <div><span class="lbl">Years of service &mdash; at least <span class="oktag">UNCHANGED</span></span><div class="inp ph">&nbsp;</div></div>
+        <div><span class="lbl">Years of service &mdash; at most <span class="oktag">UNCHANGED</span></span><div class="inp ph">&nbsp;</div></div>
+      </div>
+      <div style="max-width:250px;margin-top:11px">
+        <span class="lbl">Confirmation status <span class="newtag">GETS THE BUTTONS</span></span>
+        <div class="inp trig"><span style="color:var(--mf)">Add&hellip;</span><span class="cx">&#9662;</span></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="cut">Every other eligibility field on this screen &mdash; 22 of them, from Company through to
+    Confirmation status &mdash; gets Select all, Deselect all, the search box and the count.</p>
+</div>

@@ -1,0 +1,519 @@
+<meta charset="utf-8">
+<title>98e69987 — Transaction Detail: putting the employee list back</title>
+<!--
+  Mockup for 98e69987, plan revision 2 (the REVISION after the reporter contested what shipped in r179).
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · NOW = the screen as it stands on production today (r179 / commit a6672cfd): no left-hand list, one
+    merged filter row across the top carrying Employee / Company / Year / Months / Payroll cycle behind a
+    single Search button, table at full width.
+  · AFTER = the screen exactly as it was before r179, which is what the reporter asked to have back. It is
+    recoverable verbatim (git show 331a148b^:app/payroll/transaction-view/page.tsx), so every element drawn
+    here is an element that existed and worked: the panel heading "Select an employee", its own search box
+    (label "Search employee", placeholder "Employee ID or name"), its Company / Business Unit / Department /
+    Employee status narrowers, the Reset button, and the tab's own Year / twelve month tick boxes /
+    Payroll cycle form with an "Apply filters" submit.
+  · The tab keeps the name Transaction Detail in BOTH states. The reporter did not contest the rename, and
+    it is also the Excel sheet name — so it is drawn unchanged on purpose.
+  · The collapsed state in the third block is real, not aspiration: CollapsibleEmployeePanel renders a
+    narrow vertical strip when hidden and remembers the choice per screen. It is drawn because it is the
+    honest answer to "the list costs me width".
+  · Column headers are the screen's REAL ones (Payment item code / Payment item description / Pay cycle /
+    twelve months / Total). Row captions and display codes are the real ones the pivot prints.
+  · Every figure is carried over unchanged from the earlier mockups for this same screen (080de5cf and
+    98e69987 revision 1), whose numbers were measured from the reporter's own reference. No Gross / Total
+    deductions / Net pay row is drawn, because we have no measured figure for one.
+  · The only employees named are the three the sample tenant already carries and that earlier mockups for
+    this reporter already used (EMP-0001 Siti Rahmah, EMP-0002 Daniel Tan, EMP-0005 Ahmad Faizal).
+  · All three tables are byte-identical in structure and figures — only the space they are given differs.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--earn:#15803d;--ded:#b91c1c}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+
+  /* page chrome */
+  .ph{font-size:15px;font-weight:700;margin:0}
+  .phs{font-size:11px;color:var(--mf);margin:1px 0 10px}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:8px}
+  .tab{padding:6px 11px;font-size:12px;color:var(--mf);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab.on{color:var(--primary);font-weight:600;border-bottom-color:var(--primary)}
+  .ro{font-size:10.5px;color:var(--mf);margin:0 0 11px}
+
+  /* panels + filter bar */
+  .split{display:grid;grid-template-columns:224px minmax(0,1fr);gap:16px;align-items:start}
+  .split > *{min-width:0}
+  .splitc{display:grid;grid-template-columns:34px minmax(0,1fr);gap:16px;align-items:start}
+  .splitc > *{min-width:0}
+  /* The collapsed strip still costs ~50px, so this block's table is drawn a touch narrower rather than
+     letting the Total column fall off the edge — the caption under it promises the Total is visible. */
+  .splitc table{width:1140px}
+  .pnl{border:1px solid var(--border);border-radius:12px;padding:11px}
+  .pnl h3{font-size:12px;margin:0 0 2px}
+  .pnl p{font-size:10.5px;color:var(--mf);margin:0 0 8px;line-height:1.35}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);font-weight:600;margin-bottom:3px}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:12px;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .inp.pick{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 10%,transparent)}
+  .ghost{color:#9a9ba8}
+  .stack{display:grid;gap:6px;margin-bottom:8px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+  ul{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+  li{padding:6px 9px;border-bottom:1px solid var(--border);font-size:11.5px}
+  li:last-child{border-bottom:0}
+  li.on{background:color-mix(in srgb,var(--primary) 9%,white);box-shadow:inset 3px 0 0 var(--primary)}
+  .who{font-weight:600}
+  .code{color:var(--mf);font-size:10.5px}
+  .toggle{border:1px solid var(--border);border-radius:8px;padding:5px 9px;font-size:10.5px;color:var(--mf);
+          margin-bottom:7px}
+  .rail{border:1px solid var(--border);border-radius:8px;padding:9px 4px;font-size:10.5px;color:var(--mf);
+        text-align:center;height:150px;writing-mode:vertical-rl}
+
+  .fbar{border:1px solid var(--border);border-radius:12px;padding:11px 12px;margin-bottom:11px}
+  .fbar2{display:grid;grid-template-columns:290px minmax(0,1fr);gap:18px;align-items:start}
+  .frow{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:6px 18px;font-size:12px;font-weight:600;
+       display:inline-block}
+  .btn.sec{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500;padding:6px 13px}
+  .months{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:5px}
+  .mk{font-size:11px;display:flex;align-items:center;gap:4px}
+  .mk i{width:11px;height:11px;border-radius:3px;background:var(--primary);display:inline-block}
+
+  /* typeahead — drawn INLINE, never floating over other content */
+  .menu{margin-top:4px;border:1px solid var(--border);border-radius:9px;overflow:hidden;
+        box-shadow:0 4px 12px rgba(20,20,40,.07)}
+  .menu div{padding:5px 9px;font-size:11.5px;border-bottom:1px solid var(--border)}
+  .menu div:last-child{border-bottom:0}
+  .menu div.hl{background:color-mix(in srgb,var(--primary) 9%,white);box-shadow:inset 3px 0 0 var(--primary)}
+  .menu b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
+  .hint{font-size:10.5px;color:var(--mf);margin:5px 0 0}
+
+  /* table */
+  .who2{font-size:12px;font-weight:600;margin:0 0 8px}
+  .who2 span{font-weight:400;color:var(--mf);font-size:11px}
+  .sect{font-size:13px;font-weight:700;margin:0 0 2px}
+  .switches{display:flex;gap:15px;align-items:center;margin-bottom:8px;font-size:11.5px}
+  .sw{display:flex;gap:6px;align-items:center}
+  .sw i{width:12px;height:12px;border-radius:3px;background:var(--primary);display:inline-block}
+  .sw i.off{background:#fff;border:1px solid var(--border)}
+  .clip{position:relative;border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .clip::after{content:"";position:absolute;top:0;right:0;bottom:0;width:52px;pointer-events:none;
+               background:linear-gradient(to right,rgba(255,255,255,0),#fff 82%)}
+  .full{border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  table{border-collapse:separate;border-spacing:0;font-size:11px;table-layout:fixed;width:1184px}
+  th,td{padding:4px 6px;border-bottom:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;
+        white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  th{font-size:9px;text-transform:uppercase;letter-spacing:.03em;color:var(--mf);font-weight:600;
+     background:var(--muted);text-align:left;white-space:normal;line-height:1.2;vertical-align:bottom}
+  th.n,td.n{text-align:right}
+  td.n{font-variant-numeric:tabular-nums}
+  .grp td{background:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.05em;
+          font-weight:700;color:var(--mf);padding:3px 6px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px}
+  .earn{color:var(--earn)}.ded{color:var(--ded)}
+  .zero{color:#c9cad6}
+  .tot{background:#fafaff;font-weight:700}
+  .cut{font-size:11px;color:var(--mf);margin:8px 0 0;line-height:1.45}
+  .arrow{text-align:center;font-size:20px;color:var(--primary);margin:-6px 0 12px;font-weight:700}
+
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .box{border:1px solid var(--border);border-radius:10px;padding:10px}
+  .box .k{font-weight:600;font-size:12px}
+  .box .v{font-size:11px;color:var(--mf);margin-top:3px;line-height:1.4}
+</style>
+
+<!-- ══════════════════ NOW (what we shipped, and are changing back) ══════════════════ -->
+<div class="card">
+  <h2>Now<span class="chip now">what we shipped this week</span></h2>
+  <p class="sub">The employee list was removed and the person moved into one filter row across the top. This is
+    the part you asked us to change back.</p>
+
+  <p class="ph">Transaction View</p>
+  <p class="phs">Centralized read-only inquiry of payroll transactions.</p>
+  <div class="tabs">
+    <span class="tab">Fixed</span><span class="tab">Individual</span><span class="tab">History</span>
+    <span class="tab on">Transaction Detail</span><span class="tab">Outstanding</span>
+  </div>
+  <p class="ro">Inquiry only — records cannot be created or changed here.</p>
+
+  <div class="fbar">
+    <div class="fbar2">
+      <div>
+        <div class="lbl">Employee</div>
+        <div class="inp pick">&#128269; <span class="ghost">Search by Employee ID or name</span></div>
+        <div class="menu">
+          <div class="hl"><b>EMP-0002</b> Daniel Tan · Demo Sdn Bhd</div>
+          <div><b>EMP-0001</b> Siti Rahmah · Demo Sdn Bhd</div>
+          <div><b>EMP-0005</b> Ahmad Faizal · Demo Sdn Bhd</div>
+        </div>
+        <p class="hint">The only way to choose a person on this tab today.</p>
+      </div>
+      <div>
+        <div class="frow">
+          <div style="width:200px"><div class="lbl">Company</div><div class="inp">Demo Sdn Bhd &#9662;</div></div>
+          <div style="width:110px"><div class="lbl">Year</div><div class="inp">2026 &#9662;</div></div>
+          <div style="width:170px"><div class="lbl">Payroll cycle</div><div class="inp">All &#9662;</div></div>
+          <div><span class="btn">Search</span></div>
+        </div>
+        <div class="lbl" style="margin-top:11px">Months</div>
+        <div class="months">
+          <span class="mk"><i></i>Jan</span><span class="mk"><i></i>Feb</span><span class="mk"><i></i>Mar</span>
+          <span class="mk"><i></i>Apr</span><span class="mk"><i></i>May</span><span class="mk"><i></i>Jun</span>
+          <span class="mk"><i></i>Jul</span><span class="mk"><i></i>Aug</span><span class="mk"><i></i>Sep</span>
+          <span class="mk"><i></i>Oct</span><span class="mk"><i></i>Nov</span><span class="mk"><i></i>Dec</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="sect">Transaction Detail</p>
+  <p class="who2">EMP-0002 Daniel Tan <span>· Demo Sdn Bhd · 2026</span></p>
+  <div class="switches">
+    <span class="sw"><i></i> Hide rows that are all zeroes</span>
+    <span class="sw"><i class="off"></i> Hide system codes</span>
+    <span style="margin-left:auto"><span class="btn sec">Export to Excel</span></span>
+  </div>
+
+  <div class="full">
+    <table>
+      <colgroup><col style="width:76px"><col style="width:200px"><col style="width:72px">
+        <col span="12" style="width:62px"><col style="width:92px"></colgroup>
+      <thead><tr>
+        <th>Payment item code</th><th>Payment item description</th><th>Pay cycle</th>
+        <th class="n">Jan</th><th class="n">Feb</th><th class="n">Mar</th><th class="n">Apr</th>
+        <th class="n">May</th><th class="n">Jun</th><th class="n">Jul</th><th class="n">Aug</th>
+        <th class="n">Sep</th><th class="n">Oct</th><th class="n">Nov</th><th class="n">Dec</th>
+        <th class="n">Total</th>
+      </tr></thead>
+      <tbody>
+        <tr class="grp"><td colspan="16">Earnings</td></tr>
+        <tr><td class="mono">BASIC</td><td>Basic salary</td><td>Regular</td>
+          <td class="n earn">12,000.00</td><td class="n earn">12,300.00</td><td class="n earn">12,300.00</td>
+          <td class="n earn">12,300.00</td><td class="n earn">12,300.00</td><td class="n earn">12,300.00</td>
+          <td class="n earn">12,300.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">85,800.00</td></tr>
+        <tr><td class="mono">ALLOW</td><td>Allowances</td><td>Regular</td>
+          <td class="n earn">500.00</td><td class="n earn">500.00</td><td class="n earn">500.00</td>
+          <td class="n earn">500.00</td><td class="n earn">500.00</td><td class="n earn">500.00</td>
+          <td class="n earn">500.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">3,500.00</td></tr>
+        <tr><td class="mono">A0027</td><td>Handphone Allowance</td><td>Regular</td>
+          <td class="n earn">100.00</td><td class="n earn">100.00</td><td class="n earn">100.00</td>
+          <td class="n earn">100.00</td><td class="n earn">100.00</td><td class="n earn">100.00</td>
+          <td class="n earn">100.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">700.00</td></tr>
+        <tr><td class="mono">A0080</td><td>Travel Allowance</td><td>Regular</td>
+          <td class="n earn">400.00</td><td class="n earn">400.00</td><td class="n earn">400.00</td>
+          <td class="n earn">400.00</td><td class="n earn">400.00</td><td class="n earn">400.00</td>
+          <td class="n earn">400.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">2,800.00</td></tr>
+        <tr><td class="mono">BONUS</td><td>Bonus</td><td>Bonus</td>
+          <td class="n zero">0.00</td><td class="n earn">10,171.67</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">10,171.67</td></tr>
+        <tr class="grp"><td colspan="16">Deductions</td></tr>
+        <tr><td class="mono">EPF_EE</td><td>EPF / KWSP (employee)</td><td>Regular</td>
+          <td class="n ded">1,958.00</td><td class="n ded">1,817.00</td><td class="n ded">1,485.00</td>
+          <td class="n ded">1,518.00</td><td class="n ded">1,452.00</td><td class="n ded">1,485.00</td>
+          <td class="n ded">1,276.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">10,991.00</td></tr>
+        <tr><td class="mono">EPF_EE</td><td>EPF / KWSP (employee)</td><td>Bonus</td>
+          <td class="n zero">0.00</td><td class="n ded">1,114.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">1,114.00</td></tr>
+        <tr><td class="mono">ZAKAT</td><td>Zakat (already offset in PCB)</td><td>Regular</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n ded">168.78</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n ded">86.04</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">254.82</td></tr>
+        <tr class="grp"><td colspan="16">Employer contributions</td></tr>
+        <tr><td class="mono">EPF_ER</td><td>EPF / KWSP (employer)</td><td>Regular</td>
+          <td class="n">2,136.00</td><td class="n">1,983.00</td><td class="n">1,620.00</td>
+          <td class="n">1,656.00</td><td class="n">1,584.00</td><td class="n">1,620.00</td>
+          <td class="n">1,392.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+          <td class="n tot">11,991.00</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="cut">No employee list on the left, and no way to browse by company, business unit, department or
+    employee status — you can only type a name or an ID.</p>
+</div>
+
+<div class="arrow">&#8595;</div>
+
+<!-- ══════════════════ AFTER (the list back) ══════════════════ -->
+<div class="card">
+  <h2>After this change<span class="chip new">the list comes back</span></h2>
+  <p class="sub">The employee list returns on the left, exactly as it was, with its own search box and its
+    Company / Business unit / Department / Employee status choices. The tab keeps the name Transaction Detail.</p>
+
+  <p class="ph">Transaction View</p>
+  <p class="phs">Centralized read-only inquiry of payroll transactions.</p>
+  <div class="tabs">
+    <span class="tab">Fixed</span><span class="tab">Individual</span><span class="tab">History</span>
+    <span class="tab on">Transaction Detail</span><span class="tab">Outstanding</span>
+  </div>
+  <p class="ro">Inquiry only — records cannot be created or changed here.</p>
+
+  <div class="split">
+    <div>
+      <div class="toggle">&#9776; Hide employees</div>
+      <div class="pnl">
+        <h3>Select an employee</h3>
+        <p>This screen shows one employee's payroll year — every pay item down the left, every month across
+          the top.</p>
+        <div class="two">
+          <div><div class="lbl">Company</div><div class="inp">All &#9662;</div></div>
+          <div><div class="lbl">Business unit</div><div class="inp">All &#9662;</div></div>
+        </div>
+        <div class="two">
+          <div><div class="lbl">Department</div><div class="inp">All &#9662;</div></div>
+          <div><div class="lbl">Status</div><div class="inp">Active &#9662;</div></div>
+        </div>
+        <div class="frow" style="margin-bottom:8px">
+          <div style="flex:1"><div class="lbl">Search employee</div>
+            <div class="inp ghost">Employee ID or name</div></div>
+          <div><span class="btn sec">Reset</span></div>
+        </div>
+        <ul>
+          <li class="on"><div class="who">Daniel Tan</div><div class="code">EMP-0002 · Demo Sdn Bhd</div></li>
+          <li><div class="who">Siti Rahmah</div><div class="code">EMP-0001 · Demo Sdn Bhd</div></li>
+          <li><div class="who">Ahmad Faizal</div><div class="code">EMP-0005 · Demo Sdn Bhd</div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div>
+      <div class="fbar">
+        <div class="frow">
+          <div style="width:120px"><div class="lbl">Year</div><div class="inp">2026 &#9662;</div></div>
+          <div style="width:170px"><div class="lbl">Payroll cycle</div><div class="inp">All &#9662;</div></div>
+          <div><span class="btn sec">Apply filters</span></div>
+        </div>
+        <div class="lbl" style="margin-top:9px">Months</div>
+        <div class="months">
+          <span class="mk"><i></i>Jan</span><span class="mk"><i></i>Feb</span><span class="mk"><i></i>Mar</span>
+          <span class="mk"><i></i>Apr</span><span class="mk"><i></i>May</span><span class="mk"><i></i>Jun</span>
+          <span class="mk"><i></i>Jul</span><span class="mk"><i></i>Aug</span><span class="mk"><i></i>Sep</span>
+          <span class="mk"><i></i>Oct</span><span class="mk"><i></i>Nov</span><span class="mk"><i></i>Dec</span>
+        </div>
+      </div>
+
+      <p class="who2">EMP-0002 Daniel Tan <span>· Demo Sdn Bhd · 2026</span></p>
+      <div class="switches">
+        <span class="sw"><i></i> Hide rows that are all zeroes</span>
+        <span class="sw"><i class="off"></i> Hide system codes</span>
+        <span style="margin-left:auto"><span class="btn sec">Export to Excel</span></span>
+      </div>
+
+      <div class="clip">
+        <table>
+          <colgroup><col style="width:76px"><col style="width:200px"><col style="width:72px">
+            <col span="12" style="width:62px"><col style="width:92px"></colgroup>
+          <thead><tr>
+            <th>Payment item code</th><th>Payment item description</th><th>Pay cycle</th>
+            <th class="n">Jan</th><th class="n">Feb</th><th class="n">Mar</th><th class="n">Apr</th>
+            <th class="n">May</th><th class="n">Jun</th><th class="n">Jul</th><th class="n">Aug</th>
+            <th class="n">Sep</th><th class="n">Oct</th><th class="n">Nov</th><th class="n">Dec</th>
+            <th class="n">Total</th>
+          </tr></thead>
+          <tbody>
+            <tr class="grp"><td colspan="16">Earnings</td></tr>
+            <tr><td class="mono">BASIC</td><td>Basic salary</td><td>Regular</td>
+              <td class="n earn">12,000.00</td><td class="n earn">12,300.00</td><td class="n earn">12,300.00</td>
+              <td class="n earn">12,300.00</td><td class="n earn">12,300.00</td><td class="n earn">12,300.00</td>
+              <td class="n earn">12,300.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">85,800.00</td></tr>
+            <tr><td class="mono">ALLOW</td><td>Allowances</td><td>Regular</td>
+              <td class="n earn">500.00</td><td class="n earn">500.00</td><td class="n earn">500.00</td>
+              <td class="n earn">500.00</td><td class="n earn">500.00</td><td class="n earn">500.00</td>
+              <td class="n earn">500.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">3,500.00</td></tr>
+            <tr><td class="mono">A0027</td><td>Handphone Allowance</td><td>Regular</td>
+              <td class="n earn">100.00</td><td class="n earn">100.00</td><td class="n earn">100.00</td>
+              <td class="n earn">100.00</td><td class="n earn">100.00</td><td class="n earn">100.00</td>
+              <td class="n earn">100.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">700.00</td></tr>
+            <tr><td class="mono">A0080</td><td>Travel Allowance</td><td>Regular</td>
+              <td class="n earn">400.00</td><td class="n earn">400.00</td><td class="n earn">400.00</td>
+              <td class="n earn">400.00</td><td class="n earn">400.00</td><td class="n earn">400.00</td>
+              <td class="n earn">400.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">2,800.00</td></tr>
+            <tr><td class="mono">BONUS</td><td>Bonus</td><td>Bonus</td>
+              <td class="n zero">0.00</td><td class="n earn">10,171.67</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">10,171.67</td></tr>
+            <tr class="grp"><td colspan="16">Deductions</td></tr>
+            <tr><td class="mono">EPF_EE</td><td>EPF / KWSP (employee)</td><td>Regular</td>
+              <td class="n ded">1,958.00</td><td class="n ded">1,817.00</td><td class="n ded">1,485.00</td>
+              <td class="n ded">1,518.00</td><td class="n ded">1,452.00</td><td class="n ded">1,485.00</td>
+              <td class="n ded">1,276.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">10,991.00</td></tr>
+            <tr><td class="mono">EPF_EE</td><td>EPF / KWSP (employee)</td><td>Bonus</td>
+              <td class="n zero">0.00</td><td class="n ded">1,114.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">1,114.00</td></tr>
+            <tr><td class="mono">ZAKAT</td><td>Zakat (already offset in PCB)</td><td>Regular</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n ded">168.78</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n ded">86.04</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">254.82</td></tr>
+            <tr class="grp"><td colspan="16">Employer contributions</td></tr>
+            <tr><td class="mono">EPF_ER</td><td>EPF / KWSP (employer)</td><td>Regular</td>
+              <td class="n">2,136.00</td><td class="n">1,983.00</td><td class="n">1,620.00</td>
+              <td class="n">1,656.00</td><td class="n">1,584.00</td><td class="n">1,620.00</td>
+              <td class="n">1,392.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">11,991.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cut">Same columns, same rows, same figures. With the list open the later months and the Total sit
+        past the right-hand edge again, so you scroll the table sideways to reach them — the code, description
+        and pay-cycle columns stay put while you do.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ AFTER, list hidden ══════════════════ -->
+<div class="card">
+  <h2>And when you want the width back<span class="chip new">one click, and it remembers</span></h2>
+  <p class="sub">Hide employees folds the list into a narrow strip and hands the space back to the figures. The
+    screen remembers your choice, so it opens the way you left it next time.</p>
+
+  <div class="splitc">
+    <div class="rail">&#9664; Employees</div>
+    <div>
+      <p class="who2">EMP-0002 Daniel Tan <span>· Demo Sdn Bhd · 2026</span></p>
+      <div class="switches">
+        <span class="sw"><i></i> Hide rows that are all zeroes</span>
+        <span class="sw"><i class="off"></i> Hide system codes</span>
+        <span style="margin-left:auto"><span class="btn sec">Export to Excel</span></span>
+      </div>
+      <div class="full">
+        <table>
+          <colgroup><col style="width:72px"><col style="width:164px"><col style="width:68px">
+            <col span="12" style="width:62px"><col style="width:92px"></colgroup>
+          <thead><tr>
+            <th>Payment item code</th><th>Payment item description</th><th>Pay cycle</th>
+            <th class="n">Jan</th><th class="n">Feb</th><th class="n">Mar</th><th class="n">Apr</th>
+            <th class="n">May</th><th class="n">Jun</th><th class="n">Jul</th><th class="n">Aug</th>
+            <th class="n">Sep</th><th class="n">Oct</th><th class="n">Nov</th><th class="n">Dec</th>
+            <th class="n">Total</th>
+          </tr></thead>
+          <tbody>
+            <tr class="grp"><td colspan="16">Earnings</td></tr>
+            <tr><td class="mono">BASIC</td><td>Basic salary</td><td>Regular</td>
+              <td class="n earn">12,000.00</td><td class="n earn">12,300.00</td><td class="n earn">12,300.00</td>
+              <td class="n earn">12,300.00</td><td class="n earn">12,300.00</td><td class="n earn">12,300.00</td>
+              <td class="n earn">12,300.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">85,800.00</td></tr>
+            <tr><td class="mono">ALLOW</td><td>Allowances</td><td>Regular</td>
+              <td class="n earn">500.00</td><td class="n earn">500.00</td><td class="n earn">500.00</td>
+              <td class="n earn">500.00</td><td class="n earn">500.00</td><td class="n earn">500.00</td>
+              <td class="n earn">500.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">3,500.00</td></tr>
+            <tr><td class="mono">A0027</td><td>Handphone Allowance</td><td>Regular</td>
+              <td class="n earn">100.00</td><td class="n earn">100.00</td><td class="n earn">100.00</td>
+              <td class="n earn">100.00</td><td class="n earn">100.00</td><td class="n earn">100.00</td>
+              <td class="n earn">100.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">700.00</td></tr>
+            <tr><td class="mono">A0080</td><td>Travel Allowance</td><td>Regular</td>
+              <td class="n earn">400.00</td><td class="n earn">400.00</td><td class="n earn">400.00</td>
+              <td class="n earn">400.00</td><td class="n earn">400.00</td><td class="n earn">400.00</td>
+              <td class="n earn">400.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">2,800.00</td></tr>
+            <tr><td class="mono">BONUS</td><td>Bonus</td><td>Bonus</td>
+              <td class="n zero">0.00</td><td class="n earn">10,171.67</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">10,171.67</td></tr>
+            <tr class="grp"><td colspan="16">Deductions</td></tr>
+            <tr><td class="mono">EPF_EE</td><td>EPF / KWSP (employee)</td><td>Regular</td>
+              <td class="n ded">1,958.00</td><td class="n ded">1,817.00</td><td class="n ded">1,485.00</td>
+              <td class="n ded">1,518.00</td><td class="n ded">1,452.00</td><td class="n ded">1,485.00</td>
+              <td class="n ded">1,276.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">10,991.00</td></tr>
+            <tr><td class="mono">EPF_EE</td><td>EPF / KWSP (employee)</td><td>Bonus</td>
+              <td class="n zero">0.00</td><td class="n ded">1,114.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">1,114.00</td></tr>
+            <tr><td class="mono">ZAKAT</td><td>Zakat (already offset in PCB)</td><td>Regular</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n ded">168.78</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n ded">86.04</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">254.82</td></tr>
+            <tr class="grp"><td colspan="16">Employer contributions</td></tr>
+            <tr><td class="mono">EPF_ER</td><td>EPF / KWSP (employer)</td><td>Regular</td>
+              <td class="n">2,136.00</td><td class="n">1,983.00</td><td class="n">1,620.00</td>
+              <td class="n">1,656.00</td><td class="n">1,584.00</td><td class="n">1,620.00</td>
+              <td class="n">1,392.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n zero">0.00</td><td class="n zero">0.00</td><td class="n zero">0.00</td>
+              <td class="n tot">11,991.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cut">All twelve months and the Total on the screen at once — the same view you have today,
+        available whenever you want it rather than as the only option.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ WHAT DOES NOT CHANGE ══════════════════ -->
+<div class="card">
+  <h2>What is not changing</h2>
+  <p class="sub">Only the way you pick a person and set the period moves. Nothing else on this tab is touched.</p>
+  <div class="grid4">
+    <div class="box"><div class="k">The name stays</div>
+      <div class="v">The tab is still called Transaction Detail, and that is still the name on the Excel sheet.
+        Links you have saved to this tab keep working.</div></div>
+    <div class="box"><div class="k">The month tick boxes stay</div>
+      <div class="v">All twelve stay, and they move back above the figures with Year and Payroll cycle.</div></div>
+    <div class="box"><div class="k">Every figure stays</div>
+      <div class="v">Same rows, same columns, same totals. We are not touching how anything is calculated.</div></div>
+    <div class="box"><div class="k">Export stays</div>
+      <div class="v">Export to Excel is unchanged, and so are the two switches for hiding zero rows and system
+        codes.</div></div>
+  </div>
+</div>

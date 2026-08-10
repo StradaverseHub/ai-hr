@@ -1,0 +1,587 @@
+<meta charset="utf-8">
+<title>f35f758a — Individual Payslip, revision 2: the list back, Review in a new tab, and the document paired</title>
+<!--
+  Mockup for board item f35f758a, plan revision 2 — the REVISION after the reporter contested what r179
+  shipped on 2026-08-10.
+
+  HONESTY NOTES. A mockup is a promise, so read these before changing anything here.
+
+  · NOW (screen) = the screen as it stands on production today (r179): no left-hand list, the employee
+    search sits as the first field of the top filter row, and the payslip file is framed in an iframe card
+    at the foot of the page. Verified in app/payroll/individual-payslip/page.tsx (filter row 261-313,
+    viewer card 659-676) and on production (/opt/ai-hr has 2 occurrences of EmployeeSearchField).
+  · AFTER (screen) = CollapsibleEmployeePanel + EmployeeScopePanel restored, exactly the control that four
+    other screens still run today (admin/loans, transactions/fixed, transactions/zakat, transactions/tp1).
+    Every caption drawn is the REAL one from the employeePanel namespace in messages/en.json: heading
+    "Employees", "Hide employee list", Company / Business unit / Department / Status, "Search employee",
+    placeholder "Employee ID or name", "Reset", "Selected". Nothing here is invented.
+  · The letterhead button is drawn as "Review" because the plan renames it; "Download PDF" is unchanged.
+    The iframe card is gone in AFTER, which is the point of the picture.
+  · NOW (document) = the r179 renderer: Earnings full width, then Deductions | Employer contributions,
+    then Net pay | Payment information, then Year to date (lib/payslip-pdf.ts 630-684).
+  · AFTER (document) = Earnings | Deductions, then Employer contributions | Payment information, then the
+    NET PAY band full width, then Year to date. That is the plan's committed layout.
+
+  EVERY FIGURE IS REAL, read from production 2026-08-10 (SELECT only) for payslip
+  945d16e9-ee20-4d09-b31e-e205f11d27d6: ISEDECOR BINA SDN BHD, employee TEST0005 / T100777, ANDALAN,
+  STOREKEEPER, GRADE H (C-RETIREE), full-time, 31.00 days, batch 2026-07 regular dated 2026-07-31.
+  Basic 3,000.00 + Commission 300.00 + HANDPHONE ALLOWANCE (A0027) 400.00 = gross 3,700.00.
+  EPF 407.00 / SOCSO 18.25 / EIS 7.30 / PCB 0.00 / other deductions 500.00 = 932.55. Net 2,767.45.
+  Employer EPF 481.00 / SOCSO 63.85 / EIS 7.30 / HRDF 34.00, employer cost 4,286.15. Bank CIMB Bank.
+  Year to date = that employment's two processed 2026 runs (July + August): gross 6,700.00, EPF 737.00,
+  SOCSO 33.00, EIS 13.20, PCB 0.00, net 5,416.80.
+
+  DELIBERATELY NOT DRAWN, because drawing it would promise something we cannot show honestly:
+    · A POPULATED Non-payable section. ZERO of the tenant's 23 pay items carries the Non-payable (BIK)
+      category on production, so no payslip that exists has a non-payable line. The AFTER sheet therefore
+      shows the section as the empty reserved slot it will be until an item is marked, and says so.
+      Inventing a benefit-in-kind line here would be inventing pay data.
+    · The employee's real bank digits and real personal numbers. The account is drawn as twelve masked
+      characters against today's four dots, which is the change; the digits themselves stay out of a file
+      that gets attached to a board. Same convention as docs/mockups/5c198931-payslip-document.html.
+    · A company logo. ISEDECOR BINA SDN BHD has not uploaded one (company_logo: no row), so both sheets
+      print the legal name alone, exactly as the real document does today.
+    · A second sheet. Measured against this payslip's own rows, the AFTER layout is SHORTER than what
+      ships today, so a page break would be a picture of something that will not happen here.
+
+  Tokens copied from app/globals.css and docs/mockups/5c198931-payslip-document.html so this is a picture
+  of OUR app. Everything inline: scripts/mockup/render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root {
+    --background: #f5f6fa; --foreground: #1a1a22; --card: #ffffff;
+    --primary: #4f46e5; --muted: #f0f1f7; --muted-foreground: #63636f;
+    --border: #e7e8f1; --earn: #0f9b8e; --deduct: #e2564d;
+    --paper: #ffffff; --rule: #d9dae6; --hair: #eff0f7; --band: #fafbff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 22px 22px 30px; background: var(--background); color: var(--foreground);
+    width: 1280px;
+    font: 13px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  h1.hd { font-size: 17px; margin: 0 0 5px; letter-spacing: -.01em; }
+  p.lede { margin: 0 0 4px; font-size: 12.5px; color: var(--muted-foreground); }
+  p.lede b { color: var(--foreground); font-weight: 600; }
+
+  section { margin-top: 26px; }
+  h2.sec { font-size: 13.5px; margin: 0 0 3px; }
+  h2.sec span.n { display: inline-block; width: 20px; height: 20px; line-height: 20px; text-align: center;
+                  border-radius: 50%; background: var(--primary); color: #fff; font-size: 11px;
+                  font-weight: 700; margin-right: 8px; vertical-align: 1px; }
+  p.sub { margin: 0 0 12px; font-size: 12px; color: var(--muted-foreground); }
+
+  .tag { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 10.5px; font-weight: 700;
+         letter-spacing: .05em; text-transform: uppercase; }
+  .tag.now { background: var(--muted); color: var(--muted-foreground); }
+  .tag.new { background: #e7e5fb; color: var(--primary); }
+  .caption { font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+             color: var(--muted-foreground); margin: 0 0 8px; }
+  .caption .tag { margin-right: 8px; vertical-align: 1px; }
+  .note { font-size: 11.5px; color: var(--muted-foreground); margin: 9px 0 0; line-height: 1.5; }
+  .note b { color: var(--foreground); font-weight: 600; }
+
+  .pair2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+
+  /* ───────── screen chrome ───────── */
+  .screen { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 13px; }
+  .ph { font-size: 14px; font-weight: 700; margin: 0; }
+  .phs { font-size: 10.5px; color: var(--muted-foreground); margin: 1px 0 10px; }
+  .fbar { border: 1px solid var(--border); border-radius: 10px; padding: 10px 11px; margin-bottom: 11px;
+          background: #fff; }
+  .frow { display: flex; gap: 9px; align-items: flex-end; flex-wrap: wrap; }
+  .lbl { font-size: 9.5px; text-transform: uppercase; letter-spacing: .045em; color: var(--muted-foreground);
+         font-weight: 600; margin-bottom: 3px; }
+  .inp { background: #fff; border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px;
+         font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .inp.pick { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,70,229,.10); }
+  .ghost { color: #9a9ba8; }
+  .btn { background: var(--primary); color: #fff; border-radius: 7px; padding: 5px 14px; font-size: 11.5px;
+         font-weight: 600; display: inline-block; }
+  .btn.sec { background: #fff; color: var(--foreground); border: 1px solid var(--border); font-weight: 500;
+             padding: 5px 11px; }
+  .btn.rev { border-color: var(--primary); color: var(--primary); font-weight: 600; }
+
+  .split { display: grid; grid-template-columns: 174px minmax(0,1fr); gap: 12px; align-items: start; }
+  .split > * { min-width: 0; }
+  .pnl { border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+  .pnl h3 { font-size: 11.5px; margin: 0 0 7px; }
+  .toggle { border: 1px solid var(--border); border-radius: 7px; padding: 4px 8px; font-size: 10px;
+            color: var(--muted-foreground); display: inline-block; margin-bottom: 7px; }
+  .stack { display: grid; gap: 6px; margin-bottom: 7px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  ul.emp { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px;
+           overflow: hidden; }
+  ul.emp li { padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 11px; }
+  ul.emp li:last-child { border-bottom: 0; }
+  ul.emp li.on { background: #eeecfd; box-shadow: inset 3px 0 0 var(--primary); }
+  .who { font-weight: 600; }
+  .code { color: var(--muted-foreground); font-size: 10px; }
+  .selpill { float: right; font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+             color: var(--primary); }
+
+  .cardlite { border: 1px solid var(--border); border-radius: 10px; padding: 10px 11px; margin-bottom: 10px; }
+  .cardlite h4 { margin: 0 0 6px; font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
+                 color: var(--muted-foreground); font-weight: 700; }
+  .lh { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .lh .co { font-size: 13px; font-weight: 700; }
+  .lh .pp { font-size: 10.5px; color: var(--muted-foreground); margin-top: 2px; }
+  .lh .acts { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+  .lh .acts .btn { padding: 4px 9px; font-size: 10.5px; }
+  .kv { display: flex; justify-content: space-between; font-size: 11px; padding: 2.5px 0; }
+  .kv span:last-child { font-variant-numeric: tabular-nums; }
+  .kv.tot { font-weight: 700; border-top: 1px solid var(--rule); margin-top: 3px; padding-top: 4px; }
+  .frame { border: 1px solid var(--border); border-radius: 10px; height: 132px; background:
+           repeating-linear-gradient(135deg, #f7f8fc 0 8px, #f2f3f9 8px 16px);
+           display: flex; align-items: center; justify-content: center; font-size: 11px;
+           color: var(--muted-foreground); text-align: center; padding: 0 14px; }
+  .newtab { border: 1.5px dashed var(--primary); border-radius: 10px; padding: 11px 12px; font-size: 11.5px;
+            color: var(--primary); background: #f6f5ff; }
+  .newtab b { display: block; font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+              margin-bottom: 3px; }
+
+  /* ───────── the paper ───────── */
+  .paper { background: var(--paper); border: 1px solid var(--border); border-radius: 10px;
+           box-shadow: 0 1px 3px rgba(20,20,40,.06); padding: 16px 16px 13px; }
+  .a-head { display: flex; justify-content: space-between; align-items: flex-start;
+            padding-bottom: 9px; border-bottom: 1.6px solid var(--rule); }
+  .a-co { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+  .a-doc { font-size: 10px; color: var(--muted-foreground); margin-top: 2px; }
+  .a-when { text-align: right; }
+  .a-when .m { font-size: 13px; font-weight: 700; }
+  .a-when .d { font-size: 9.5px; color: var(--muted-foreground); margin-top: 2px; }
+
+  .a-emp { display: grid; grid-template-columns: 218px 1fr; gap: 15px; padding: 12px 0 13px; }
+  .a-name { font-size: 14px; font-weight: 700; }
+  .a-eid { font-size: 10px; color: var(--muted-foreground); margin-top: 2px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 12px; margin-top: 9px; }
+  .grid2 .k { font-size: 8.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); }
+  .grid2 .v { font-size: 11px; font-weight: 600; }
+  .pill { background: var(--primary); color: #fff; font-size: 8.5px; font-weight: 700; letter-spacing: .08em;
+          text-transform: uppercase; padding: 4px 9px; border-radius: 5px; display: inline-block; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+  .blk { border: 1px solid var(--rule); border-radius: 7px; overflow: hidden; }
+  .blk h3 { margin: 0; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700;
+            padding: 6px 9px; background: var(--band); border-bottom: 1px solid var(--rule);
+            display: flex; align-items: center; gap: 6px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.e { background: var(--earn); } .dot.d { background: var(--deduct); }
+  .blk .r { display: flex; justify-content: space-between; gap: 10px; font-size: 10.5px; padding: 4.5px 9px;
+            border-bottom: 1px solid var(--hair); }
+  .blk .r:last-child { border-bottom: 0; }
+  .blk .r .amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .blk .r .code { color: var(--muted-foreground); font-size: 9px; }
+  .blk .r.sum { background: var(--band); border-top: 1px solid var(--rule); border-bottom: 0;
+                font-weight: 700; font-size: 11px; padding: 6px 9px; }
+  .blk .r.sum .amt.e { color: var(--earn); } .blk .r.sum .amt.d { color: var(--deduct); }
+  .blk .fnote { font-size: 8.5px; color: var(--muted-foreground); padding: 5px 9px 7px; line-height: 1.45; }
+  .stackrow { margin-top: 13px; }
+
+  .slot { border: 1.5px dashed #b9bbd4; border-radius: 7px; padding: 9px 10px; margin-top: 13px;
+          background: #fbfbff; }
+  .slot .st { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700;
+              color: #6f71a0; }
+  .slot .sd { font-size: 9.5px; color: var(--muted-foreground); margin-top: 3px; line-height: 1.45; }
+
+  .netbar { background: var(--primary); color: #fff; border-radius: 7px; padding: 11px 13px;
+            display: flex; justify-content: space-between; align-items: baseline; margin-top: 13px; }
+  .netbar .l { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+  .netbar .n { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  table.ytd { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 10.5px; }
+  table.ytd caption { caption-side: top; text-align: left; font-size: 9px; letter-spacing: .08em;
+                      text-transform: uppercase; font-weight: 700; color: var(--muted-foreground);
+                      padding-bottom: 5px; }
+  table.ytd th { text-align: right; font-size: 8.5px; text-transform: uppercase; letter-spacing: .05em;
+                 color: var(--muted-foreground); padding: 5px 0; border-bottom: 1px solid var(--rule);
+                 font-weight: 500; }
+  table.ytd th:first-child { text-align: left; }
+  table.ytd td { padding: 4px 0; text-align: right; font-variant-numeric: tabular-nums;
+                 border-bottom: 1px solid var(--hair); }
+  table.ytd td:first-child { text-align: left; }
+  table.ytd tr.last td { font-weight: 700; border-bottom: 0; }
+  .a-foot { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--rule);
+            font-size: 8.5px; color: var(--muted-foreground); text-align: center; }
+  .chg { background: #fff7d6; box-shadow: inset 0 0 0 1px #efd98a; border-radius: 3px; padding: 0 3px; }
+</style>
+
+<h1 class="hd">Individual Payslip — revision 2</h1>
+<p class="lede">Sketch for board item <b>f35f758a</b>, after your review of what went live on 10 August.
+  The employee list comes back, the payslip opens in its own tab, and the document pairs Earnings with
+  Deductions. Real figures throughout: <b>ISEDECOR BINA SDN BHD, TEST0005 (T100777), July 2026</b>.
+  Wording, spacing and colours will differ in the built version.</p>
+
+<!-- ══════════════════ 1 · THE SCREEN ══════════════════ -->
+<section>
+  <h2 class="sec"><span class="n">1</span>The screen — the list comes back, the viewer comes off</h2>
+  <p class="sub">Everything else on the screen stays as it is: the same cards, the same figures, the same
+    Company / Year / Month / Payroll cycle filters and the same View Payslip button.</p>
+
+  <div class="pair2">
+    <!-- NOW -->
+    <div>
+      <p class="caption"><span class="tag now">Now</span>live since 10 August</p>
+      <div class="screen">
+        <p class="ph">Individual Payslip</p>
+        <p class="phs">Review, verify, print and download one employee's payslip before it is released.</p>
+
+        <div class="fbar">
+          <div class="frow">
+            <div style="width:150px">
+              <div class="lbl">Employee</div>
+              <div class="inp pick">TEST0005 · T100777</div>
+            </div>
+            <div style="width:96px"><div class="lbl">Company</div><div class="inp">ISEDECOR…</div></div>
+            <div style="width:62px"><div class="lbl">Year</div><div class="inp">2026</div></div>
+            <div style="width:62px"><div class="lbl">Month</div><div class="inp">07</div></div>
+            <div style="width:82px"><div class="lbl">Payroll cycle</div><div class="inp">Regular</div></div>
+            <div class="btn sec">View Payslip</div>
+          </div>
+        </div>
+
+        <div class="cardlite">
+          <div class="lh">
+            <div>
+              <div class="co">ISEDECOR BINA SDN BHD</div>
+              <div class="pp">Payroll period: July 2026 · Payment date: 2026-07-31</div>
+            </div>
+            <div class="acts">
+              <span class="btn sec">Download PDF</span>
+              <span class="btn sec">Preview</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="cardlite"><h4>Employee information</h4>
+          <div class="kv"><span>Employee name</span><span>TEST0005</span></div>
+          <div class="kv"><span>Department</span><span>ANDALAN</span></div>
+          <div class="kv"><span>Position</span><span>STOREKEEPER</span></div>
+        </div>
+        <div class="cardlite"><h4>Earnings</h4>
+          <div class="kv"><span>Basic salary</span><span>3,000.00</span></div>
+          <div class="kv"><span>Allowances</span><span>700.00</span></div>
+        </div>
+        <div class="cardlite"><h4>Deductions · Employer contributions · Net pay · Year to date</h4>
+          <div class="kv"><span>Total deductions</span><span>932.55</span></div>
+          <div class="kv tot"><span>Net pay</span><span>2,767.45</span></div>
+        </div>
+
+        <div class="cardlite" style="border-color:#efd98a;background:#fffdf3">
+          <h4 style="color:#8a6d1f">Preview — the payslip file, framed on this page</h4>
+          <div class="frame">The payslip document is displayed inside this page,<br>below every other card.</div>
+        </div>
+      </div>
+      <p class="note">The viewer sits at the foot of a long page, and choosing a different person means
+        going back to the top row.</p>
+    </div>
+
+    <!-- AFTER -->
+    <div>
+      <p class="caption"><span class="tag new">After</span>what this plan builds</p>
+      <div class="screen">
+        <p class="ph">Individual Payslip</p>
+        <p class="phs">Review, verify, print and download one employee's payslip before it is released.</p>
+
+        <div class="split">
+          <!-- the restored panel -->
+          <div>
+            <div class="toggle">Hide employee list</div>
+            <div class="pnl">
+              <h3>Employees</h3>
+              <div class="stack">
+                <div><div class="lbl">Company</div><div class="inp">ISEDECOR BINA…</div></div>
+                <div class="two">
+                  <div><div class="lbl">Business unit</div><div class="inp ghost">All</div></div>
+                  <div><div class="lbl">Department</div><div class="inp">ANDALAN</div></div>
+                </div>
+                <div><div class="lbl">Status</div><div class="inp">Active</div></div>
+                <div><div class="lbl">Search employee</div><div class="inp pick">Employee ID or name</div></div>
+                <div><span class="btn sec" style="font-size:10.5px;padding:4px 10px">Reset</span></div>
+              </div>
+              <ul class="emp">
+                <li><span class="who">TEST0001</span> <span class="code">T100009</span></li>
+                <li><span class="who">TEST0002</span> <span class="code">A0002</span></li>
+                <li><span class="who">TEST0004</span> <span class="code">A0004</span></li>
+                <li class="on"><span class="who">TEST0005</span> <span class="code">T100777</span>
+                  <span class="selpill">Selected</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- the workspace -->
+          <div>
+            <div class="fbar">
+              <div class="frow">
+                <div style="width:92px"><div class="lbl">Company</div><div class="inp">ISEDECOR…</div></div>
+                <div style="width:58px"><div class="lbl">Year</div><div class="inp">2026</div></div>
+                <div style="width:58px"><div class="lbl">Month</div><div class="inp">07</div></div>
+                <div style="width:76px"><div class="lbl">Payroll cycle</div><div class="inp">Regular</div></div>
+                <div class="btn sec">View Payslip</div>
+              </div>
+            </div>
+
+            <div class="cardlite">
+              <div class="lh">
+                <div>
+                  <div class="co">ISEDECOR BINA SDN BHD</div>
+                  <div class="pp">Payroll period: July 2026 · Payment date: 2026-07-31</div>
+                </div>
+                <div class="acts">
+                  <span class="btn sec">Download PDF</span>
+                  <span class="btn sec rev">Review ↗</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="cardlite"><h4>Employee information</h4>
+              <div class="kv"><span>Employee name</span><span>TEST0005</span></div>
+              <div class="kv"><span>Department</span><span>ANDALAN</span></div>
+              <div class="kv"><span>Position</span><span>STOREKEEPER</span></div>
+            </div>
+            <div class="cardlite"><h4>Earnings</h4>
+              <div class="kv"><span>Basic salary</span><span>3,000.00</span></div>
+              <div class="kv"><span>Allowances</span><span>700.00</span></div>
+            </div>
+            <div class="cardlite"><h4>Deductions · Employer contributions · Net pay · Year to date</h4>
+              <div class="kv"><span>Total deductions</span><span>932.55</span></div>
+              <div class="kv tot"><span>Net pay</span><span>2,767.45</span></div>
+            </div>
+
+            <div class="newtab">
+              <b>Review opens a new browser tab</b>
+              The payslip file for TEST0005 fills that tab on its own, where it can be read, printed or
+              saved. Nothing is framed inside this page any more.
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="note">The list keeps its own search by <b>employee ID or name</b> and its Company,
+        Business unit, Department and Status filters, and <b>Hide employee list</b> gives the width back
+        when you want it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 2 · THE DOCUMENT ══════════════════ -->
+<section>
+  <h2 class="sec"><span class="n">2</span>The payslip document — Earnings beside Deductions</h2>
+  <p class="sub">Both sheets below are the same payslip, with the same figures. Only the arrangement
+    changes. Personal numbers are masked in this sketch only; the real document prints them from the
+    employee record.</p>
+
+  <div class="pair2">
+    <!-- NOW -->
+    <div>
+      <p class="caption"><span class="tag now">Now</span>one A4 sheet</p>
+      <div class="paper">
+        <div class="a-head">
+          <div>
+            <div class="a-co">ISEDECOR BINA SDN BHD</div>
+            <div class="a-doc">Payroll payslip · Regular</div>
+          </div>
+          <div class="a-when">
+            <div class="m">July 2026</div>
+            <div class="d">Payment date: 2026-07-31</div>
+          </div>
+        </div>
+
+        <div class="a-emp">
+          <div>
+            <div class="a-name">TEST0005</div>
+            <div class="a-eid">Employee ID: T100777</div>
+            <div class="grid2">
+              <div><div class="k">NRIC</div><div class="v">••••••-••-••••</div></div>
+              <div><div class="k">Income tax number</div><div class="v">••••••••</div></div>
+              <div><div class="k">EPF number</div><div class="v">••••••••</div></div>
+              <div><div class="k">SOCSO / EIS number</div><div class="v">••••••••</div></div>
+            </div>
+          </div>
+          <div>
+            <span class="pill">Employment info</span>
+            <div class="grid2">
+              <div><div class="k">Department</div><div class="v">ANDALAN</div></div>
+              <div><div class="k">Position</div><div class="v">STOREKEEPER</div></div>
+              <div><div class="k">Grade</div><div class="v">GRADE H (C-RETIREE)</div></div>
+              <div><div class="k">Employee type</div><div class="v">Full-time</div></div>
+              <div><div class="k">Days worked</div><div class="v">31.00</div></div>
+              <div><div class="k">Currency</div><div class="v">MYR</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Earnings, full width -->
+        <div class="blk">
+          <h3><span class="dot e"></span>Earnings</h3>
+          <div class="r"><span>Basic salary</span><span class="amt">3,000.00</span></div>
+          <div class="r"><span>Commission <span class="code">· COMMISSION</span></span><span class="amt">300.00</span></div>
+          <div class="r"><span>HANDPHONE ALLOWANCE <span class="code">· A0027</span></span><span class="amt">400.00</span></div>
+          <div class="r"><span>Overtime</span><span class="amt">0.00</span></div>
+          <div class="r"><span>Bonus</span><span class="amt">0.00</span></div>
+          <div class="r sum"><span>Total earnings</span><span class="amt e">3,700.00</span></div>
+        </div>
+
+        <div class="cols stackrow">
+          <div class="blk">
+            <h3><span class="dot d"></span>Deductions (your share)</h3>
+            <div class="r"><span>EPF / KWSP</span><span class="amt">407.00</span></div>
+            <div class="r"><span>SOCSO / PERKESO</span><span class="amt">18.25</span></div>
+            <div class="r"><span>EIS / SIP</span><span class="amt">7.30</span></div>
+            <div class="r"><span>PCB / MTD (income tax)</span><span class="amt">0.00</span></div>
+            <div class="r"><span>Other deductions</span><span class="amt">500.00</span></div>
+            <div class="r sum"><span>Total deductions</span><span class="amt d">932.55</span></div>
+          </div>
+          <div class="blk">
+            <h3>Employer contributions (not deducted from you)</h3>
+            <div class="r"><span>EPF / KWSP</span><span class="amt">481.00</span></div>
+            <div class="r"><span>SOCSO / PERKESO</span><span class="amt">63.85</span></div>
+            <div class="r"><span>EIS / SIP</span><span class="amt">7.30</span></div>
+            <div class="r"><span>HRDF</span><span class="amt">34.00</span></div>
+            <div class="r sum"><span>Total employer cost</span><span class="amt">4,286.15</span></div>
+            <div class="fnote">For reference. Paid by the company and not deducted from net pay.</div>
+          </div>
+        </div>
+
+        <div class="cols stackrow">
+          <div class="netbar" style="margin-top:0">
+            <span class="l">Net pay</span><span class="n">2,767.45</span>
+          </div>
+          <div class="blk">
+            <h3>Payment information</h3>
+            <div class="r"><span>Bank name</span><span class="amt">CIMB Bank</span></div>
+            <div class="r"><span>Bank account</span><span class="amt"><span class="chg">••••XXXX</span></span></div>
+            <div class="fnote">Four dots and the last four digits. The X characters stand for those four
+              digits, which stay out of this sketch.</div>
+          </div>
+        </div>
+
+        <table class="ytd">
+          <caption>Year to date · 2026</caption>
+          <tr><th>Item</th><th>This run</th><th>Year to date</th></tr>
+          <tr><td>Gross pay</td><td>3,700.00</td><td>6,700.00</td></tr>
+          <tr><td>EPF / KWSP</td><td>407.00</td><td>737.00</td></tr>
+          <tr><td>SOCSO / PERKESO</td><td>18.25</td><td>33.00</td></tr>
+          <tr><td>EIS / SIP</td><td>7.30</td><td>13.20</td></tr>
+          <tr><td>PCB / MTD (income tax)</td><td>0.00</td><td>0.00</td></tr>
+          <tr class="last"><td>Net pay</td><td>2,767.45</td><td>5,416.80</td></tr>
+        </table>
+
+        <div class="a-foot">This is a system-generated payslip.</div>
+      </div>
+      <p class="note">Earnings runs the full width, so the two sides of the payslip cannot be read
+        against each other. The bank account shows four dots and the last four digits.</p>
+    </div>
+
+    <!-- AFTER -->
+    <div>
+      <p class="caption"><span class="tag new">After</span>still one A4 sheet for this payslip</p>
+      <div class="paper">
+        <div class="a-head">
+          <div>
+            <div class="a-co">ISEDECOR BINA SDN BHD</div>
+            <div class="a-doc">Payroll payslip · Regular</div>
+          </div>
+          <div class="a-when">
+            <div class="m">July 2026</div>
+            <div class="d">Payment date: 2026-07-31</div>
+          </div>
+        </div>
+
+        <div class="a-emp">
+          <div>
+            <div class="a-name">TEST0005</div>
+            <div class="a-eid">Employee ID: T100777</div>
+            <div class="grid2">
+              <div><div class="k">NRIC</div><div class="v">••••••-••-••••</div></div>
+              <div><div class="k">Income tax number</div><div class="v">••••••••</div></div>
+              <div><div class="k">EPF number</div><div class="v">••••••••</div></div>
+              <div><div class="k">SOCSO / EIS number</div><div class="v">••••••••</div></div>
+            </div>
+          </div>
+          <div>
+            <span class="pill">Employment info</span>
+            <div class="grid2">
+              <div><div class="k">Department</div><div class="v">ANDALAN</div></div>
+              <div><div class="k">Position</div><div class="v">STOREKEEPER</div></div>
+              <div><div class="k">Grade</div><div class="v">GRADE H (C-RETIREE)</div></div>
+              <div><div class="k">Employee type</div><div class="v">Full-time</div></div>
+              <div><div class="k">Days worked</div><div class="v">31.00</div></div>
+              <div><div class="k">Currency</div><div class="v">MYR</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Earnings BESIDE Deductions -->
+        <div class="cols">
+          <div class="blk">
+            <h3><span class="dot e"></span>Earnings</h3>
+            <div class="r"><span>Basic salary</span><span class="amt">3,000.00</span></div>
+            <div class="r"><span>Commission <span class="code">· COMMISSION</span></span><span class="amt">300.00</span></div>
+            <div class="r"><span>HANDPHONE ALLOWANCE <span class="code">· A0027</span></span><span class="amt">400.00</span></div>
+            <div class="r"><span>Overtime</span><span class="amt">0.00</span></div>
+            <div class="r"><span>Bonus</span><span class="amt">0.00</span></div>
+            <div class="r sum"><span>Total earnings</span><span class="amt e">3,700.00</span></div>
+          </div>
+          <div class="blk">
+            <h3><span class="dot d"></span>Deductions (your share)</h3>
+            <div class="r"><span>EPF / KWSP</span><span class="amt">407.00</span></div>
+            <div class="r"><span>SOCSO / PERKESO</span><span class="amt">18.25</span></div>
+            <div class="r"><span>EIS / SIP</span><span class="amt">7.30</span></div>
+            <div class="r"><span>PCB / MTD (income tax)</span><span class="amt">0.00</span></div>
+            <div class="r"><span>Other deductions</span><span class="amt">500.00</span></div>
+            <div class="r sum"><span>Total deductions</span><span class="amt d">932.55</span></div>
+          </div>
+        </div>
+
+        <div class="cols stackrow">
+          <div class="blk">
+            <h3>Employer contributions (not deducted from you)</h3>
+            <div class="r"><span>EPF / KWSP</span><span class="amt">481.00</span></div>
+            <div class="r"><span>SOCSO / PERKESO</span><span class="amt">63.85</span></div>
+            <div class="r"><span>EIS / SIP</span><span class="amt">7.30</span></div>
+            <div class="r"><span>HRDF</span><span class="amt">34.00</span></div>
+            <div class="r sum"><span>Total employer cost</span><span class="amt">4,286.15</span></div>
+            <div class="fnote">For reference. Paid by the company and not deducted from net pay.</div>
+          </div>
+          <div class="blk">
+            <h3>Payment information</h3>
+            <div class="r"><span>Bank name</span><span class="amt">CIMB Bank</span></div>
+            <div class="r"><span>Bank account</span><span class="amt"><span class="chg">XXXXXXXXXXXX</span></span></div>
+            <div class="fnote">All twelve digits print here, not the last four. The X characters stand for
+              the digits, which stay out of this sketch because a sketch is a shared file.</div>
+          </div>
+        </div>
+
+        <div class="slot">
+          <div class="st">Non-payable — reserved</div>
+          <div class="sd">Pay items marked <b>Non-payable (BIK)</b> print here in their own section with
+            their own total, marked as non-payable at the moment payroll runs. None of your pay items
+            carries that category today, so this section prints on no payslip yet — including this one,
+            which is drawn exactly as it will come out.</div>
+        </div>
+
+        <div class="netbar">
+          <span class="l">Net pay</span><span class="n">2,767.45</span>
+        </div>
+
+        <table class="ytd">
+          <caption>Year to date · 2026</caption>
+          <tr><th>Item</th><th>This run</th><th>Year to date</th></tr>
+          <tr><td>Gross pay</td><td>3,700.00</td><td>6,700.00</td></tr>
+          <tr><td>EPF / KWSP</td><td>407.00</td><td>737.00</td></tr>
+          <tr><td>SOCSO / PERKESO</td><td>18.25</td><td>33.00</td></tr>
+          <tr><td>EIS / SIP</td><td>7.30</td><td>13.20</td></tr>
+          <tr><td>PCB / MTD (income tax)</td><td>0.00</td><td>0.00</td></tr>
+          <tr class="last"><td>Net pay</td><td>2,767.45</td><td>5,416.80</td></tr>
+        </table>
+
+        <div class="a-foot">This is a system-generated payslip.</div>
+      </div>
+      <p class="note">Earnings and Deductions sit side by side; Employer contributions and Payment
+        information sit below them; Net pay takes the full width. <b>On this payslip the new arrangement
+        works out slightly shorter than what prints today</b> — measured on paper, and to be proved on the
+        real file before it ships. An employee with a long list of named pay
+        items can still run onto a second sheet, with the heading repeated, exactly as can happen now.</p>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,328 @@
+<meta charset="utf-8">
+<title>510f4bd1 — Individual Transaction: a status that tells the truth</title>
+<!--
+  Mockup for 510f4bd1 (Payroll Transactions - Individual Transaction Status Control Enhancement).
+  Drawn strictly against the plan. A mockup is a promise, so read these honesty notes first.
+
+  REAL, MEASURED DATA (production, read-only, 2026-08-10, no writes of any kind):
+    company  7aecc8a0 SpaceX Sdn Bhd, currency MYR, ONE employment on it
+    employee X000001 Irwin Law, Business Development, M&E SUPERVISOR (current assignment)
+    run      600fb1a5 - 2026-08, regular #1, status processed, 1 employee, gross/net MYR 5,984.13,
+             needs_recalc_at 2026-08-10 16:33:57, recalc_employment_ids [e78d69d2] (Irwin Law)
+    txn 1    c89a89f5 earning MYR 584.13, 15.00 hours, remarks "OT1_5 - Overtime 1.5", eff 2026-08-01,
+             created 10:01:53, EDITED 16:30:02
+    txn 2    a9be1404 earning MYR 500.00, unit amount (no quantity), remarks "A0020 - DIRECTOR FEE",
+             eff 2026-08-01, created 16:33:57, never edited
+    payslip  d356a77c Irwin Law, version 2, created 16:30:56 - so the 16:30 edit IS in it and the
+             16:33 addition is NOT. Gross 5,984.13 = 5,400.00 salary + 584.13 overtime; no 500.00.
+    tenant   22 pay runs, all processed, none closed; 36 one-off transactions sit on processed runs;
+             26 recalc-required and 8 recalc-cleared events; 54 reprocess jobs, every one 'completed'.
+  THE AFTER PICTURE IS COMPUTED, NOT INVENTED. Running the plan's rule over all 36 transactions on
+  processed runs today marks exactly ONE - the MYR 500.00 director fee drawn amber below. Every other
+  one of the 36 stays Processed. Nothing here was chosen for effect.
+  DELIBERATELY NOT DRAWN, because there is nothing behind them: Processing, Reprocessed, Failed (all 54
+  reprocess jobs completed - a running or failed one is never observable), and any "Changed" flag for a
+  salary or standing pay-item edit, which this round does not detect. They are stated in words instead.
+  Screen wording, columns and money format are the live ones (Individual Transaction workspace;
+  formatMoney prints the ISO code as a PREFIX, never a localised symbol).
+  Everything inline - render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--amber:#b45309;--amberbg:#fffbeb;--amberbd:#fcd34d;
+        --goodbg:#f0fdf4;--goodbd:#86efac;--badbg:#fef2f2;--badbd:#fca5a5}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1232px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .stat{display:grid;grid-template-columns:repeat(5,1fr);gap:11px}
+  .st{border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--muted)}
+  .st b{display:block;font-size:21px;line-height:1.25;font-variant-numeric:tabular-nums}
+  .st span{font-size:11px;color:var(--mf)}
+  .st.hot{border-color:var(--amberbd);background:var(--amberbg)}
+  .st.hot b{color:var(--amber)}
+  .note{font-size:11.5px;color:var(--mf);margin:10px 0 0}
+  .note b{color:var(--fg)}
+
+  .box{border-radius:12px;padding:0;overflow:hidden;margin-top:2px}
+  .box.bad{border:1px solid var(--badbd);background:var(--badbg)}
+  .box.good{border:1px solid var(--goodbd);background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin:10px 12px 0}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+
+  /* page chrome + the two panels */
+  .shot{background:#fff;margin:9px 12px 12px;border:1px solid var(--border);border-radius:11px;padding:12px}
+  .ph{font-size:15px;font-weight:700;margin:0}
+  .phs{font-size:11px;color:var(--mf);margin:1px 0 10px}
+  .split{display:grid;grid-template-columns:212px minmax(0,1fr);gap:14px;align-items:start}
+  .split > *{min-width:0}
+  .pan{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .pad{padding:11px}
+  .lab{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+       font-weight:600;margin-bottom:3px}
+  .inp{border:1px solid var(--border);border-radius:7px;padding:5px 8px;font-size:11.5px;background:#fff;
+       margin-bottom:8px}
+  .inp.ph2{color:#a1a1ac}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .emp{padding:9px 11px;border-top:1px solid var(--border)}
+  .emp.on{background:color-mix(in srgb,var(--primary) 10%,white)}
+  .emp .n{font-weight:600;font-size:12.5px}
+  .emp .m{font-size:11px;color:var(--mf)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--mf)}
+
+  .hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:11px 13px;
+      border-bottom:1px solid var(--border)}
+  .hd .nm{font-size:12.5px;font-weight:700}
+  .hd .mt{font-size:11px;color:var(--mf);margin-top:1px}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:5px 11px;
+       font-size:11.5px;font-weight:600;white-space:nowrap}
+  .totals{display:flex;flex-wrap:wrap;gap:6px 22px;padding:9px 13px;border-bottom:1px solid var(--border);
+          background:var(--muted);font-size:11.5px;color:var(--mf)}
+  .totals b{font-weight:600;font-variant-numeric:tabular-nums;color:var(--fg)}
+  .totals .paid b{color:#15803d}
+  .totals .pend b{color:var(--amber)}
+  .totals .repro b{color:var(--amber)}
+  .band{padding:9px 13px;border-bottom:1px solid var(--amberbd);background:var(--amberbg);
+        font-size:11.5px;color:#78350f}
+  .band .t{font-weight:700}
+  .band a,.lnk{color:var(--primary);font-weight:600;text-decoration:underline}
+  .srch{display:flex;align-items:center;justify-content:space-between;padding:9px 13px}
+  table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.02em;color:var(--mf);
+     font-weight:600;padding:6px 7px;background:var(--muted);border-top:1px solid var(--border)}
+  td{padding:8px 7px;border-top:1px solid var(--border);vertical-align:middle;white-space:nowrap}
+  .r{text-align:right}
+  .tn{font-variant-numeric:tabular-nums}
+  /* Identical column widths in BEFORE and AFTER, so the two pictures are honestly comparable. */
+  col.c1{width:8%}  col.c2{width:11%} col.c3{width:18%} col.c4{width:9%}
+  col.c5{width:11%} col.c6{width:10%} col.c7{width:17%} col.c8{width:16%}
+  .dash{color:#a1a1ac}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;white-space:nowrap}
+  .ok{background:#dcfce7;color:#166534}
+  .rep{background:#fef3c7;color:#92400e}
+  .act{font-size:10.5px;color:var(--mf);border:1px solid var(--border);border-radius:6px;padding:1px 6px;
+       margin-left:3px;display:inline-block}
+  tr.hot td{background:var(--amberbg)}
+  .exp{font-size:11px;color:var(--mf);padding:0 9px 9px;background:color-mix(in srgb,var(--primary) 4%,white)}
+  .exp .amb{color:#92400e;margin-top:5px;display:block}
+
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-top:4px}
+  .fl{border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:#fff}
+  .fl .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700}
+  .fl .v{font-size:12px;margin-top:5px}
+  .fl .v b{display:block;margin-top:4px}
+  ul.words{margin:6px 0 0;padding-left:18px;font-size:12.5px}
+  ul.words li{margin-bottom:7px}
+</style>
+
+<div class="card">
+  <h1>Individual Transaction — a status that means what it says</h1>
+  <p class="sub">Sketch only — wording, spacing and colours will differ from the finished screen. The company, the employee,
+    the pay run and both transactions below were read from the live system on 10 August, unchanged. No figure here was
+    invented: running the new rule over every one-off transaction on a processed run today flags exactly one of them,
+    and it is the one drawn in amber.</p>
+  <div class="stat">
+    <div class="st"><b>36</b><span>one-off transactions sitting on processed runs today</span></div>
+    <div class="st"><b>36</b><span>of them the screen currently labels Processed</span></div>
+    <div class="st hot"><b>1</b><span>that is genuinely not in the payslip you would print now</span></div>
+    <div class="st"><b>26</b><span>times a run has already been flagged for recalculation</span></div>
+    <div class="st"><b>54 of 54</b><span>recalculations finished successfully — none ever failed</span></div>
+  </div>
+  <p class="note"><b>The detection already works.</b> The run is flagged the moment a transaction is added, changed or
+    removed, it cannot be closed until the affected people are recalculated, and the Reprocess screen already arrives
+    with them ticked. The one place that stays silent is the transaction screen itself — which is the screen you look at
+    when you are keying the transaction.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">1</span>Today — both lines say Processed, and one of them is not</h2>
+  <p class="sub">SpaceX Sdn Bhd, August 2026. The overtime line was edited at 4.30pm and the run was recalculated a minute
+    later. The director fee was added at 4.33pm and has never been calculated.</p>
+  <div class="box bad">
+    <span class="tag bad">NOW</span>
+    <div class="shot">
+      <p class="ph">Individual Transaction</p>
+      <p class="phs">One-off payments and deductions for a single employee.</p>
+      <div class="split">
+        <div class="pan">
+          <div class="pad">
+            <span class="lab">Company</span><div class="inp">SpaceX Sdn Bhd</div>
+            <span class="lab">Department</span><div class="inp">All departments</div>
+            <span class="lab">Employee status</span><div class="inp">All active employees</div>
+            <span class="lab">Payroll period</span><div class="inp">2026-08</div>
+            <span class="lab">Search employee</span><div class="inp ph2">Search by name or employee ID…</div>
+          </div>
+          <div class="emp on">
+            <div class="n"><span class="mono">X000001</span> Irwin Law</div>
+            <div class="m">SpaceX Sdn Bhd · Business Development · Active</div>
+          </div>
+        </div>
+
+        <div class="pan">
+          <div class="hd">
+            <div>
+              <div class="nm"><span class="mono">X000001</span> Irwin Law</div>
+              <div class="mt">SpaceX Sdn Bhd · Business Development · M&amp;E SUPERVISOR</div>
+            </div>
+            <span class="btn">+ Add new transaction</span>
+          </div>
+          <div class="totals">
+            <span>Entered <b>2 transactions · MYR 1,084.13</b></span>
+            <span class="pend">Not yet paid <b>0 transactions · MYR 0.00</b></span>
+            <span class="paid">Paid <b>2 transactions · MYR 1,084.13</b></span>
+            <span>Showing 2026-08 only</span>
+          </div>
+          <div class="srch"><span class="inp ph2" style="margin:0">Search transactions…</span><span style="font-size:11px;color:var(--mf)">2 rows</span></div>
+          <table>
+            <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"></colgroup>
+            <thead>
+              <tr>
+                <th>Month</th><th>Payroll item</th><th>Remarks</th><th>Quantity</th>
+                <th>Effective date</th><th class="r">Amount</th><th>Status</th><th class="r">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="tn">2026-08</td><td>Earning</td><td>OT1_5 — Overtime 1.5</td><td class="tn">15 Hours</td>
+                <td class="tn">2026-08-01</td><td class="r tn">MYR 584.13</td>
+                <td><span class="chip ok">Processed</span></td>
+                <td class="r"><span class="act">View</span><span class="act">Edit</span><span class="act">Delete</span></td>
+              </tr>
+              <tr>
+                <td class="tn">2026-08</td><td>Earning</td><td>A0020 — DIRECTOR FEE</td><td class="dash">—</td>
+                <td class="tn">2026-08-01</td><td class="r tn">MYR 500.00</td>
+                <td><span class="chip ok">Processed</span></td>
+                <td class="r"><span class="act">View</span><span class="act">Edit</span><span class="act">Delete</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note"><b>Irwin Law's August payslip is MYR 5,984.13</b> — his salary plus the MYR 584.13 overtime. The MYR 500.00
+    director fee is not in it, and this screen gives you no way to tell. The run's own page says it needs recalculating and
+    refuses to close the month; nothing of that reaches the screen where the transaction was keyed.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>After — the line that is not in the payslip says so, and the employee carries it</h2>
+  <p class="sub">Same screen, same two transactions, nothing recalculated. Only what you are told changes.</p>
+  <div class="box good">
+    <span class="tag good">AFTER</span>
+    <div class="shot">
+      <p class="ph">Individual Transaction</p>
+      <p class="phs">One-off payments and deductions for a single employee.</p>
+      <div class="split">
+        <div class="pan">
+          <div class="pad">
+            <span class="lab">Company</span><div class="inp">SpaceX Sdn Bhd</div>
+            <span class="lab">Department</span><div class="inp">All departments</div>
+            <span class="lab">Employee status</span><div class="inp">All active employees</div>
+            <span class="lab">Payroll period</span><div class="inp">2026-08</div>
+            <span class="lab">Search employee</span><div class="inp ph2">Search by name or employee ID…</div>
+          </div>
+          <div class="emp on">
+            <div class="n"><span class="mono">X000001</span> Irwin Law</div>
+            <div class="m">SpaceX Sdn Bhd · Business Development · Active</div>
+          </div>
+        </div>
+
+        <div class="pan">
+          <div class="hd">
+            <div>
+              <div class="nm"><span class="mono">X000001</span> Irwin Law</div>
+              <div class="mt">SpaceX Sdn Bhd · Business Development · M&amp;E SUPERVISOR</div>
+            </div>
+            <span class="btn">+ Add new transaction</span>
+          </div>
+          <div class="band">
+            <span class="t">Payroll status: Reprocess required</span> — August 2026, regular run.
+            One transaction has changed since this employee was last calculated, so their payslip, statutory figures and
+            the run's totals are the earlier numbers. <a href="#">Recalculate Irwin Law on this run</a>
+          </div>
+          <div class="totals">
+            <span>Entered <b>2 transactions · MYR 1,084.13</b></span>
+            <span class="pend">Not yet paid <b>0 transactions · MYR 0.00</b></span>
+            <span class="paid">Paid <b>1 transaction · MYR 584.13</b></span>
+            <span class="repro">Needs reprocessing <b>1 transaction · MYR 500.00</b></span>
+            <span>Showing 2026-08 only</span>
+          </div>
+          <div class="srch"><span class="inp ph2" style="margin:0">Search transactions…</span><span style="font-size:11px;color:var(--mf)">2 rows</span></div>
+          <table>
+            <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"></colgroup>
+            <thead>
+              <tr>
+                <th>Month</th><th>Payroll item</th><th>Remarks</th><th>Quantity</th>
+                <th>Effective date</th><th class="r">Amount</th><th>Status</th><th class="r">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="tn">2026-08</td><td>Earning</td><td>OT1_5 — Overtime 1.5</td><td class="tn">15 Hours</td>
+                <td class="tn">2026-08-01</td><td class="r tn">MYR 584.13</td>
+                <td><span class="chip ok">Processed</span></td>
+                <td class="r"><span class="act">View</span><span class="act">Edit</span><span class="act">Delete</span></td>
+              </tr>
+              <tr class="hot">
+                <td class="tn">2026-08</td><td>Earning</td><td>A0020 — DIRECTOR FEE</td><td class="dash">—</td>
+                <td class="tn">2026-08-01</td><td class="r tn">MYR 500.00</td>
+                <td><span class="chip rep">Pending reprocessing</span></td>
+                <td class="r"><span class="act">View</span><span class="act">Edit</span><span class="act">Delete</span></td>
+              </tr>
+              <tr><td colspan="8" class="exp">
+                <span style="display:block;padding-top:8px">Added on 2026-08-10 · Pay cycle Regular · Effective 2026-08-01</span>
+                <span class="amb">This transaction is not in the employee's latest payslip. Recalculate them on the
+                  August 2026 run to include it.</span>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note"><b>No new screen and no new button.</b> Same page, same columns, same actions. The overtime line keeps
+    Processed because it really is in the payslip. Once Irwin Law is recalculated, the amber line returns to Processed
+    and the band at the top disappears on its own.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Your four cases, and what each one shows</h2>
+  <div class="flow">
+    <div class="fl"><div class="k">Nothing changed</div>
+      <div class="v">The line is in the latest payslip.<b>Stays Processed</b></div></div>
+    <div class="fl"><div class="k">Edited after processing</div>
+      <div class="v">That line, and only that line, turns amber.<b>Pending reprocessing</b></div></div>
+    <div class="fl"><div class="k">Added after processing</div>
+      <div class="v">The new line turns amber; the older lines stay as they were.<b>Pending reprocessing</b></div></div>
+    <div class="fl"><div class="k">Deleted after processing</div>
+      <div class="v">No line is left to label, so the employee band carries it.<b>Reprocess required</b></div></div>
+  </div>
+  <p class="note">The same two words appear on the transaction history list and in its download, so the two screens cannot
+    disagree about the same line — and the history list can be filtered down to just the transactions that need
+    reprocessing.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">4</span>Deliberately not drawn — these stay in words</h2>
+  <ul class="words">
+    <li><b>Processing and Failed are not being added.</b> A recalculation finishes while you wait — all fifty-four that
+      have ever run on your system completed, and none failed. Drawing a status nobody could ever see on screen would be
+      promising a screen that does not exist.</li>
+    <li><b>Reprocessed is not a separate status.</b> Once the recalculation has taken the line in, the line is in the
+      latest payslip — which is exactly what Processed means. A second word for the same fact would be one more thing to
+      interpret, not one more thing you know.</li>
+    <li><b>Salary and standing monthly items are not flagged.</b> This round covers one-off transactions only. If you
+      change someone's salary or a fixed allowance, no line turns amber and no band appears — you tick that person on the
+      Reprocess screen yourself, exactly as you do today.</li>
+    <li><b>The band can appear with every line still reading Processed.</b> That happens when the payslip went stale for a
+      reason that is not a transaction — attendance being recalculated, for instance. It is correct: the band is about the
+      employee's payslip, the badges are about their transactions.</li>
+  </ul>
+</div>
