@@ -18,12 +18,20 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-10 (r176 SHIPPED · r177 BUILT AND HELD FOR THE OWNER)
+## CURRENT STATE — snapshot 2026-08-10 (r176 SHIPPED · r177 BUILT AND HELD · r178 PLANS-ONLY, NO CODE)
 
 **`main@75addd1b` is what RUNS ON PRODUCTION. Production on 344 migrations. Next free migration is `0426`**
 (`0423` was ALLOCATED AND DELIBERATELY UNUSED — `1c1b321a` stores its recompute-run history in the
-append-only `domain_event` ledger rather than a new table; gaps are fine). No half-applied migration,
-no pending deploy, nothing in flight. **r176 carried NO migration** — the journal is unchanged at
+append-only `domain_event` ledger rather than a new table; gaps are fine). **`0425` IS ALLOCATED AND HELD**
+— it is r177's, it sits on `main`, and it is NOT applied on production (journal 345 entries, `when`
+1781862525000, against production's watermark 1781862524000). No half-applied migration.
+
+⚠️ **THERE *IS* A PENDING DEPLOY, AND IT IS DELIBERATE — `main` IS AHEAD OF PRODUCTION BY r177.** An older
+version of this line said "no pending deploy, nothing in flight"; that is the exact wording that made r159
+possible, so it does not appear here again. Re-verified 2026-08-10 by dry-run rsync: the delta is EXACTLY
+r177's file set (`core/payroll-anomaly*.ts`, `app/payroll/[batchId]/anomalies/`, `0425`, the sweep script,
+the operator guide) plus the three known noise lines (`HANDOFF.md`, `next-env.d.ts`, `tsconfig.tsbuildinfo`).
+Nothing else is undeployed. **r176 carried NO migration** — the journal is unchanged at
 344 entries, so there was nothing to rehearse and a rollback would be code-only. Verified after
 deploy 2026-08-10 02:42: service `active` (ActiveEnterTimestamp 02:42:19, up from 2026-08-09 22:19),
 `.next` rebuilt, `GET /` 401, Next.js ready in 154ms with no errors in `journalctl`. Gate:
@@ -73,9 +81,12 @@ written for the person who runs payroll, covering the daily rhythm, the four met
 read first), all 11 checks, the three resolution buttons, threshold tuning, and an explicit section on
 what the layer does NOT do.
 
-**The board: `deployed = 634` · `planned = 1` · `open = 1` · `approved = 0` · `contested = 0`.**
-`b00f9e6e` (the overtime question, answer: "Already works") is PLANNED and awaiting the reporter.
-`42afb2d2` is OPEN and is ours — see below. Re-count rather than trusting this line.
+**The board, RE-COUNTED ON THE BOX after r178's pushes: `deployed = 633` · `cancelled = 14` ·
+`planned = 5` · `open = 1` · `approved = 0` · `contested = 0`.** (The old line here said
+`deployed = 634 · planned = 1 · open = 1` and was wrong in every number.) All five PLANNED items are
+r178's, each carrying a mockup at its current revision, all awaiting the reporter: `b00f9e6e` and
+`c8052ae3` at revision 2, `388e53c2` / `98e69987` / `f35f758a` at revision 1. `42afb2d2` is the only OPEN
+item and is ours — see below. Re-count rather than trusting this line.
 
 ⚠️ **WE OWE THE REPORTER AN ANSWER WE HAVE ALREADY ASKED FOR: `42afb2d2`.** `23390097`'s approved plan
 promised "from 10/08 onwards a supervisor can change them too". That was never achievable — writing
@@ -86,17 +97,70 @@ the permission so a supervisor may roster their own reports — is the reporter'
 **Do not "fix" this in code before they answer.**
 
 **`scripts/reset-medical-hospitalization-ledger.ts` IS DEPLOYED AND HAS STILL NEVER RUN.** Report-only
-without `--apply`; `deploy.sh` does not invoke it (verified). The report-only census was run 2026-08-09
-and matched the approved plan exactly — 147 ledger rows, 22 recalc-audit rows, and all four safety
-conditions (debits, request-sourced rows, approved requests, encashment snapshots) at ZERO. **This is
-the last unfinished part of `c8052ae3`:** the reporter was promised Medical and Hospitalization read
-0.00, and until this runs they do not. The archive→verify→delete sequence has never executed end to end.
+without `--apply`; `deploy.sh` does not invoke it (verified). Re-measured 2026-08-10 and UNCHANGED from the
+2026-08-09 census — 147 ledger rows, 22 recalc-audit rows, `leave_ledger_reset_archive` at 0 rows, and all
+safety conditions (debits, request-sourced rows, approved requests, encashment snapshots, toil refs) at
+ZERO. **This is the last unfinished part of `c8052ae3`:** the reporter was promised Medical and
+Hospitalization read 0.00, and until this runs they do not — which is exactly why they CONTESTED it. The
+archive→verify→delete sequence has never executed end to end.
+
+**The calculation half of `c8052ae3` IS done and IS live** — `c4139b4d` is an ancestor of `main` and
+production's `core/leave.ts` is byte-identical (md5 `3c64d99…` both sides); the current-year bound is
+`leaveCycleEnd()` at `core/leave.ts:6328`. Revision 2 of the plan is pushed and awaiting the reporter; on
+approval the whole remaining job is an OPERATOR RUN ON THE BOX (`pg_dump` → rehearsal → `--apply` → SQL
+verify → **render the archive screen**, whose populated branch has never rendered outside tests) and
+**needs NO deploy**.
+
+⚠️ **A KNOWN, ACCEPTED DEFECT IN THAT RUN (owner's decision, r178).** Migration `0416`'s capture function
+annotates future-dated rows with **strictly `>`** `2027-01-01`, so the **30 rows dated exactly 2027-01-01 —
+precisely the grants the reporter complained about — capture with a NULL note**, while the 2028 rows nobody
+reported get labelled. `test/leave-ledger-reset-archive.test.ts` seeds `2028-01-01` and sits on the passing
+side of the boundary, so no test catches it. **It cannot be corrected after the run** (the note is computed
+during the capture INSERT and the source rows are deleted in the same transaction). It is ACCEPTED because
+`effective_on_text` is archived on every row, so the record is complete and only the convenience label is
+missing. **Fix the predicate to `>=` in a later migration** — it is not allocated yet.
 
 ⚠️ **`HANDOFF.md` IS ITSELF RSYNCED TO THE BOX**, so editing it makes the dry-run report one changed
 file — indistinguishable from an undeployed release. The dry-run also permanently reports
 `next-env.d.ts`: gitignored and Next-generated, local `pnpm dev` writes the `.next/dev/types/` variant
 while the box's build writes `.next/types/`. The box's version is correct. Those two lines are noise;
 anything else is a real delta.
+
+### r178 (2026-08-10) — FIVE PLANS PUSHED, ZERO CODE. Nothing to deploy, nothing to gate.
+
+**Deliberately a plans-only round** (owner's decision): r177 stays held, and `release.ts:71` rsyncs the
+WHOLE worktree with `--delete` then runs `db:migrate`, so ANY deploy from `main` ships the anomaly layer
+and applies `0425`. There is no per-file deploy. **The tempting workaround is the dangerous one:**
+branching new work from `75addd1b` and shipping that is the ONE option that can silently break r177 — that
+branch's journal has 344 entries, so a `0426` above `0425`'s `when` moves the watermark past `0425` and its
+three tables are then NEVER created on any later deploy. Deploying from `main` cannot skip `0425`; branching
+from production's ref can.
+
+**Pushed, each with a mockup, all awaiting the reporter:** `b00f9e6e` rev 2 · `c8052ae3` rev 2 ·
+`388e53c2` · `98e69987` · `f35f758a`. No branch, no merge, no migration allocated, graph unchanged.
+
+**Decisions this round, so they are not re-litigated:**
+- **`b00f9e6e`'s approved plan was NOT built and must not be** — its premise died (see the `OT1_5` entry
+  above). Only the defensive seeder guard survives, and it is hygiene, not a deliverable: nothing invokes
+  the script, and a `formula` reference is already refused at `core/pay-components.ts:1040`.
+- **`c8052ae3` needs no build** — the code all shipped; it needs the operator run (see above).
+- **`388e53c2` IS A NAVIGATION MOVE, NOT A REDESIGN.** The reporter's screenshot shows the three screens
+  ALREADY full-width with a top filter row; they drew an arrow from the left nav rail to Team Leave Tracker.
+  Taken literally the ask deletes `/leave/tracker`'s calendar, which is deliberately ungated for EVERY
+  employee and is the target of the manager dashboard card and a Personnel deep link. Planned as: calendar
+  stays for non-admins, three HR sections appear there for admins only, routes unchanged.
+- **`98e69987` / `f35f758a` carry a REPORTER CONTRADICTION, now raised to them.** They previously asked for
+  the left employee panel to EXIST on these screens (`f3ae3245`, `ec845c7d`, both `deployed` — quotes
+  verified on production) and now ask for no permanent side panel. Planned as: change only the screen each
+  item names, leave the neighbours alone.
+- **`f35f758a`'s real defect is NOT what was reported.** Amounts are already right-aligned, currency already
+  consistent, YTD already printed, the logo stack already complete (1 of 14 companies has uploaded one), and
+  the document is TWO columns, never three. What is actually broken is that `fit()`
+  (`lib/payslip-pdf.ts:384-390`) is a hard clip — long text is TRUNCATED WITH "…", not wrapped.
+
+**The trap that cost this round the most, worth keeping:** `employment_pay_component` was the wrong table
+to check for "has anyone been paid from this item" — one-off `payroll_individual_txn` rows are invisible to
+it, and a plan was approved on the strength of that omission.
 
 ### r176, r175, r174, r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
 
@@ -111,14 +175,25 @@ leaves BOTH rows in the window. The table already renders every column, so a Vie
 ### ⚠️ A SCRIPT THAT IS CORRECT AND MUST NOT BE RUN
 
 - **`scripts/seed-overtime-multipliers.ts` IS DEPLOYED, CORRECT, AND MUST NOT BE RUN** (`2da9937a`, seed
-  step withdrawn). Its input is wrong: `OT1_5` holds `{"kind":"per_hour","rate":1.5}`, which
-  `core/pay-rule.ts` resolves as `rate * hours` validated by `inMoney` — i.e. **RM 1.50/hour, not 1.5×**.
-  Someone typed a multiplier into a money field. It is assigned to 0 employments and is the tenant's only
-  `per_hour` item. A pay component is also the wrong mechanism: overtime is ALREADY wage-derived per
+  step withdrawn). A pay component was always the wrong mechanism: overtime is ALREADY wage-derived per
   employee (`localization/my/payroll.ts overtimePay`, multipliers and ceiling configurable per ADR-0019),
-  and one flat rate for everyone cannot express that. Asked back as **`b00f9e6e`** rather than guessed;
-  if the answer is "follow each person's salary", the Formula Builder already expresses it
-  (`basic / 26 / 8 * 2.0 * hours`) and no seed is involved.
+  and one flat rate for everyone cannot express that.
+
+- ⚠️ **THE `OT1_5` DIAGNOSIS THAT USED TO SIT HERE IS NOW WRONG — THE REPORTER FIXED IT THEMSELVES
+  (measured twice on production, r178).** This file used to state that `OT1_5` holds
+  `{"kind":"per_hour","rate":1.5}` and is "the tenant's only `per_hour` item". **Production now has ZERO
+  `per_hour` components.** On 2026-08-10 09:58:36 the reporter changed `OT1_5` to a **`formula`** rule —
+  `(basic + fixed_allowances) / 26 / 8 * 1.5 * hours` — i.e. they took `b00f9e6e`'s "reject and we build
+  it" option by building it. At 10:01:53 they keyed 10 hours, deriving **RM 396.63**, on processed payslip
+  `ced390ae`. **DO NOT ARCHIVE `OT1_5`** — the approved revision-1 plan said to, and doing so now removes a
+  working item and makes its three `payroll_individual_txn` rows uneditable
+  (`core/payroll-individual-txn.ts:239` throws unconditionally).
+  **`employment_pay_component` WAS THE WRONG TABLE TO CHECK**: revision 1's load-bearing sentence "nobody
+  has ever been paid a cent from it" was already false when written — RM 2.00 was keyed 2026-08-04 and paid
+  on processed payslip `c32b0088` on 08-07. **Verification trap:** both amounts are stored in the `bonus`
+  column with `overtime_pay` 0.00, and read as overtime only through `statutory->'displayEarnings'`
+  (`core/pay-display-category.ts:73-84`). Anyone checking `payslip.overtime_pay` will wrongly conclude the
+  reporter's overtime never landed. Revision 2 is pushed and awaiting them.
 
 ### 6e9a126e RELEASE THREE — the one fact still live (full entry: history → r167)
 
@@ -132,9 +207,9 @@ unconfigured type, that guard has broken and it is the first thing to check.
 **Counts live in CURRENT STATE and are not repeated here. Always RE-COUNT** — the line said
 `approved = 0` on 2026-08-08 and eight items were approved the next morning.
 
-**THE ONE OPEN ITEM IS A QUESTION WE RAISED, `b00f9e6e`** — what should Overtime 2.0 / 3.0 actually be?
-The measurement behind it, and why **`scripts/seed-overtime-multipliers.ts` MUST NOT BE RUN**, is under
-`2da9937a` above and is not repeated here.
+**THE ONE OPEN ITEM IS A QUESTION WE RAISED, `42afb2d2`** (the roster supervisor permission) — it needs an
+ANSWER from the reporter, not a plan, and `improve:push-plan` must never be pointed at it. The old line
+here named `b00f9e6e` as the one open item; that is stale — it is PLANNED at revision 2.
 
 **THE REPORTER COMMUNICATES IN PICTURES — 143 of 151 attachments are images.** Read an item's attachment
 BEFORE forming any opinion; this session burned a plan revision writing from the prose alone and the
@@ -807,15 +882,14 @@ method or carry-forward is WRONG.**
 
 ---
 
-**Nothing is in flight.** r173 shipped 2026-08-08 and is verified on production; the only change since is
-the 2026-08-09 crontab line at the top of this file, which touched no code. Both pre-planning checks were
-re-run 2026-08-09 and both were clean: the dry-run rsync reported ZERO changes before this document was
-edited, and every unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed,
-ancestrally unrelated) and **two that the old version of this line did not list, `r163-g-release3` and
-`r163g-picker`**, whose content reached main by another route: their migration `0405` is on main as
-`0410_entitlement_reset_drop_old_layers.sql`, and `main` DELETES ~45,000 lines relative to both, which is
-the tell. On ship, a round's entry moves to the top of `docs/HANDOFF-HISTORY.md`.
-**"Nothing in flight" is a claim about BRANCHES — it is not a claim that `main` has been deployed.
+**NO BRANCH IS IN FLIGHT — but `main` IS ahead of production by r177 (see CURRENT STATE).** The old text
+here said "Nothing is in flight. r173 shipped 2026-08-08 … the only change since is the crontab line",
+which was three rounds stale. Both pre-planning checks were re-run 2026-08-10 (r178). Every unmerged
+`build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed, ancestrally unrelated),
+`r163-g-release3` and `r163g-picker`, whose content reached main by another route: their migration `0405`
+is on main as `0410_entitlement_reset_drop_old_layers.sql`, and `main` DELETES ~45,000 lines relative to
+both, which is the tell. On ship, a round's entry moves to the top of `docs/HANDOFF-HISTORY.md`.
+**"Nothing in flight" is a claim about BRANCHES — it is NEVER a claim that `main` has been deployed.
 Prove that separately with the dry-run rsync above; r159 exists because those two were conflated.**
 
-**Shipped round entries (r66–r173): `docs/HANDOFF-HISTORY.md`.**
+**Shipped round entries (r66–r176): `docs/HANDOFF-HISTORY.md`.**
