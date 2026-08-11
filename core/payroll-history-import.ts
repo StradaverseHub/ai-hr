@@ -642,7 +642,15 @@ async function analyze(
     const cashDeductions = round2(
       t.other_deduction + t.epf_employee + t.socso_employee + t.socso_skbbk + t.eis_employee + t.pcb + t.cp38 + t.zakat,
     );
-    const net = round2(gross - cashDeductions);
+    // ZAKAT HAS TWO ENCODINGS IN THE WILD (audit H#5; ITA 1967 s.6A(3), EA Form C.P.8A Part D):
+    //   (a) separate-cash — the dominant MY encoding: zakat really is deducted and the remitted `pcb` is
+    //       already net of it, so net = gross − (… + pcb + zakat). This is what we compute by default.
+    //   (b) reduce-pcb — zakat folded into the pcb figure and NOT separately deducted from net.
+    // Nothing in the file says which one it is. When the file states a NETPAY line we can find out: if it
+    // matches (b) rather than (a), the file's own arithmetic is (b) and its stated net is what we store.
+    // With no NETPAY line there is nothing to disambiguate and (a) — the dominant encoding — is used.
+    const netCash = round2(gross - cashDeductions);
+    const netZakatInPcb = round2(netCash + t.zakat);
     const employerCost = round2(gross + t.epf_employer + t.socso_employer + t.eis_employer + t.hrdf);
 
     // Completeness — an earning-bearing month with no statutory line at all is stopped rather than
@@ -672,25 +680,51 @@ async function analyze(
         ),
       );
     }
-    if (statedNet.length > 0 && Math.abs(t.net - net) > MONEY_TOL) {
-      monthIssues.push(
-        issue(
-          { ...ref, rowNum: statedNet[0].rowNum, doeCode: statedNet[0].doeCode },
-          'Inconsistent totals',
-          `The NETPAY line says ${t.net.toFixed(2)} but gross ${gross.toFixed(2)} less deductions ${cashDeductions.toFixed(2)} is ${net.toFixed(2)}`,
-        ),
-      );
+    let net = netCash;
+    if (statedNet.length > 0) {
+      if (Math.abs(t.net - netCash) <= MONEY_TOL) {
+        net = t.net;
+      } else if (t.zakat > MONEY_TOL && Math.abs(t.net - netZakatInPcb) <= MONEY_TOL) {
+        // The file uses the reduce-pcb zakat convention. Its own arithmetic wins.
+        net = t.net;
+      } else {
+        monthIssues.push(
+          issue(
+            { ...ref, rowNum: statedNet[0].rowNum, doeCode: statedNet[0].doeCode },
+            'Inconsistent totals',
+            `The NETPAY line says ${t.net.toFixed(2)} but gross ${gross.toFixed(2)} less deductions ${cashDeductions.toFixed(2)} is ${netCash.toFixed(2)}`,
+          ),
+        );
+      }
     }
+    const totalDeductions = round2(gross - net);
 
-    // The EA Part B split, carried over from the wide contract and still needed: a file that codes
-    // everything BASIC lands entirely in basic, and the EA itemisation reads the payslip scalars. Warning
-    // only — we store what their codes say, and the split is correctable post-import via EA-overwrite.
-    if (gross > t.basic + MONEY_TOL && t.allowance + t.overtime + t.bonus <= MONEY_TOL) {
+    // THE EA PART-B SPLIT CHECK, RESHAPED FOR THE LONG FORMAT.
+    //
+    // The wide contract warned when `gross > basic` with no allowance/overtime/bonus split, because gross
+    // and basic were two independent columns and could disagree. Folding makes that check structurally
+    // impossible: gross IS basic + allowance + overtime + bonus, so `gross > basic` with nothing in the
+    // other three cannot happen. Carrying it over verbatim would have left a dead branch and no warning.
+    //
+    // The equivalent risk under the long format is a file that codes everything as BASIC. That lands the
+    // whole month in the payslip's basic scalar, and the EA Part B itemisation reads exactly that scalar,
+    // so the breakdown collapses just as before — but from inside the file the case is INDISTINGUISHABLE
+    // from an employee who genuinely was paid basic pay and nothing else. There is no test that separates
+    // them, and inventing one would be exactly the guessing this importer refuses to do.
+    //
+    // So the check is stated as what it can honestly say: every earning line in this month landed in
+    // basic. It fires on the correctly-stated basic-only month too, and that is accepted, because it is a
+    // WARNING on a migration screen rather than a block, and the sentence it prints is the one a migrator
+    // needs to read once per file. Correctable after import via EA-overwrite of grossSalary / allowances /
+    // bonus (core/ea-override.ts).
+    const earningLines = b.lines.filter((l) => ['basic', 'allowance', 'overtime', 'bonus'].includes(l.destination));
+    const basicLines = earningLines.filter((l) => l.destination === 'basic');
+    if (earningLines.length > 0 && basicLines.length === earningLines.length && t.basic > MONEY_TOL) {
       monthIssues.push(
         issue(
-          ref,
+          { ...ref, doeCode: basicLines.map((l) => l.doeCode).join(', ') },
           'EA breakdown',
-          `⚠ ${b.employeeNo} ${b.period}: gross ${gross.toFixed(2)} exceeds basic ${t.basic.toFixed(2)} with no allowance / overtime / bonus lines — the EA Part B itemisation will land entirely in “basic” (correctable after import via EA-overwrite)`,
+          `${b.employeeNo} ${b.period}: every earning line is coded to basic pay, with no allowance, overtime or bonus line — the EA Part B itemisation will land entirely in “basic”. If any of it was an allowance, code it as one; otherwise nothing to do. Correctable after import via EA-overwrite.`,
           'Warning',
         ),
       );
@@ -770,7 +804,7 @@ async function analyze(
       bonus: t.bonus,
       grossPay: gross,
       otherDeductions: t.other_deduction,
-      totalDeductions: cashDeductions,
+      totalDeductions,
       netPay: net,
       employerCost,
       statutory: {
