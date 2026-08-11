@@ -117,6 +117,13 @@ export type TxnBatch = {
   scope: { departmentIds?: string[]; employmentIds?: string[] } | null;
   /** 49e7e0a2 — the two statuses this ledger may be written on. A `closed` run is never handed here. */
   status: 'draft' | 'processed';
+  /** 510f4bd1 — the run's own recalculation mark (`payroll_batch.needs_recalc_at`), as an ISO instant so
+   *  no Date crosses the server boundary. Null when the run owes nothing. */
+  needsRecalcAt: string | null;
+  /** The employments that run says are stale (`payroll_batch.recalc_employment_ids`). THE AUTHORITATIVE
+   *  employee-level fact: it is what `closeBatch` refuses on and what the Reprocess screen pre-ticks, and
+   *  it is the only signal that survives deleting the last transaction on the run (request case 4). */
+  recalcEmploymentIds: string[] | null;
 };
 
 export type TxnPayItem = {
@@ -162,7 +169,16 @@ type FormState = {
 
 const EMPTY_PANEL: TxnPanel = {
   rows: [],
-  totals: { count: 0, total: '0.00', pendingCount: 0, pendingTotal: '0.00', processedCount: 0, processedTotal: '0.00' },
+  totals: {
+    count: 0,
+    total: '0.00',
+    pendingCount: 0,
+    pendingTotal: '0.00',
+    processedCount: 0,
+    processedTotal: '0.00',
+    reprocessCount: 0,
+    reprocessTotal: '0.00',
+  },
   stranded: [],
 };
 
@@ -289,6 +305,30 @@ export function TxnWorkspace({
   const currencyOf = useMemo(() => new Map(companies.map((c) => [c.id, c.currency])), [companies]);
   const currency = selected ? (currencyOf.get(selected.companyId) ?? null) : null;
   const rm = useCallback((v: string | number) => formatMoney(v, currency), [currency]);
+
+  /**
+   * 510f4bd1 — THE EMPLOYEE-LEVEL FACT, and it is the authoritative one: the processed runs that name this
+   * employment in their own `recalc_employment_ids`. Exactly what `closeBatch` refuses on and what the
+   * Reprocess screen arrives pre-ticked with, so the three surfaces cannot disagree.
+   *
+   * Derived from `batches` (already loaded for the entry form) rather than from the rows on screen, and
+   * that is the whole point: DELETING the last transaction on a run leaves no row to label, and an
+   * attendance-driven recompute never touched a row at all. Both leave the mark, and both survive an
+   * employee switch and a page reload — unlike the transient `recalcBatchId` banner below, which reports
+   * what THIS session just did.
+   */
+  const reprocessRuns = useMemo(
+    () =>
+      selectedId
+        ? batches.filter(
+            (b) =>
+              b.status === 'processed' &&
+              b.needsRecalcAt != null &&
+              (b.recalcEmploymentIds ?? []).includes(selectedId),
+          )
+        : [],
+    [batches, selectedId],
+  );
 
   const inCompany = useMemo(
     () => (companyId ? employees.filter((e) => e.companyId === companyId) : employees),
@@ -802,13 +842,30 @@ export function TxnWorkspace({
     });
   };
 
+  // 510f4bd1 — four states ship, and this is all four. `Processing`, `Reprocessed` and `Failed` (three of
+  // the six the request listed) are deliberately absent, and NOT because the code has no such states: it
+  // does. Reprocessing runs INLINE (reprocessBatchSelective → generatePayslips), so 'running' is only ever
+  // returned to a concurrent duplicate submit and 'failed' is written and then RE-THROWN to the caller.
+  // Neither is a RESTING state a transaction row can be rendered in, and a failed reprocess correctly
+  // leaves the row exactly where it was: Pending reprocessing. `Reprocessed` and `Processed` say the same
+  // thing once the line is back in the payslip.
+  const statusLabel = (r: TxnPanelRow) =>
+    r.status === 'reprocessRequired'
+      ? t('statusReprocessRequired')
+      : r.status === 'processed'
+        ? t('statusProcessed')
+        : r.attached
+          ? t('statusPending')
+          : t('statusAwaitingRun');
   const statusBadge = (r: TxnPanelRow) =>
-    r.status === 'processed' ? (
-      <Badge variant="success">{t('statusProcessed')}</Badge>
+    r.status === 'reprocessRequired' ? (
+      <Badge variant="danger">{statusLabel(r)}</Badge>
+    ) : r.status === 'processed' ? (
+      <Badge variant="success">{statusLabel(r)}</Badge>
     ) : r.attached ? (
-      <Badge variant="info">{t('statusPending')}</Badge>
+      <Badge variant="info">{statusLabel(r)}</Badge>
     ) : (
-      <Badge variant="warning">{t('statusAwaitingRun')}</Badge>
+      <Badge variant="warning">{statusLabel(r)}</Badge>
     );
 
   const arrow = (key: SortKey) => (key === sortKey ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
@@ -943,6 +1000,24 @@ export function TxnWorkspace({
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
                   {selected.company} · {selected.department ?? '—'} · {selected.position ?? '—'}
                 </p>
+                {/* 510f4bd1 — the employee's PAYROLL status, one line, beside their name. It can read
+                    Reprocess required while every transaction below reads Processed: this line is about
+                    their payslip, the badges are about their transactions. The link goes to the run,
+                    where Reprocess arrives with this person already ticked. */}
+                {reprocessRuns.length > 0 && (
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                    <Badge variant="danger">{t('employeeReprocessRequired')}</Badge>
+                    {reprocessRuns.map((b) => (
+                      <Link
+                        key={b.id}
+                        href={`/payroll/${b.id}`}
+                        className="font-medium text-red-700 underline underline-offset-2 dark:text-red-400"
+                      >
+                        {t('employeeReprocessLink', { period: b.payPeriod })}
+                      </Link>
+                    ))}
+                  </p>
+                )}
               </div>
               <Button type="button" size="sm" onClick={startCreate} disabled={form?.mode === 'create'}>
                 {t('addTxn')}
@@ -967,6 +1042,14 @@ export function TxnWorkspace({
                 {t('totalProcessed')}{' '}
                 <span className="font-medium tabular-nums text-emerald-700 dark:text-emerald-400">
                   {t('nTxns', { count: panel.totals.processedCount })} · {rm(panel.totals.processedTotal)}
+                </span>
+              </span>
+              {/* 510f4bd1 — the FOURTH figure, and a third bucket that is mutually exclusive with the other
+                  two: how much of this employee's money is on a processed run but not in their payslip. */}
+              <span className="text-muted-foreground">
+                {t('totalReprocess')}{' '}
+                <span className="font-medium tabular-nums text-red-700 dark:text-red-400">
+                  {t('nTxns', { count: panel.totals.reprocessCount })} · {rm(panel.totals.reprocessTotal)}
                 </span>
               </span>
               {periodFilter && <span className="text-muted-foreground">{t('periodScope', { period: periodFilter })}</span>}
@@ -1272,7 +1355,7 @@ export function TxnWorkspace({
                           <td colSpan={8} className="px-3 pb-3 text-xs text-muted-foreground">
                             <dl className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-4">
                               <Detail label={t('cycleLabel')} value={r.runType ? `${t(`cycle.${r.runType}` as never)}${(r.runSeq ?? 1) > 1 ? ` #${r.runSeq}` : ''}` : t('pendingRun')} />
-                              <Detail label={t('colStatus')} value={r.status === 'processed' ? t('statusProcessed') : r.attached ? t('statusPending') : t('statusAwaitingRun')} />
+                              <Detail label={t('colStatus')} value={statusLabel(r)} />
                               <Detail label={t('createdOn')} value={r.createdOn} />
                               <Detail label={t('createdBy')} value={r.createdBy ?? '—'} />
                               <div className="col-span-2 sm:col-span-4">
@@ -1284,8 +1367,20 @@ export function TxnWorkspace({
                                 A row on a processed run is still editable, and what the operator needs to
                                 know there is the price of editing it, not that they cannot. */}
                             {!r.editable && <p className="mt-2 text-amber-700 dark:text-amber-400">{t('lockedHint')}</p>}
-                            {r.editable && r.recalcOnEdit && (
+                            {/* 510f4bd1 — a THIRD statement, because `paidEditableHint` ("this has already
+                                been paid on a processed run") is simply untrue of a row that is not in the
+                                payslip. Saying it there would be the very confusion the request reports. */}
+                            {r.editable && r.status === 'reprocessRequired' && (
+                              <p className="mt-2 text-red-700 dark:text-red-400">{t('stalePendingHint')}</p>
+                            )}
+                            {r.editable && r.recalcOnEdit && r.status !== 'reprocessRequired' && (
                               <p className="mt-2 text-amber-700 dark:text-amber-400">{t('paidEditableHint')}</p>
+                            )}
+                            {/* The employee is waiting to be recalculated for a reason that is not THIS row
+                                (attendance recompute, or another line that has since been deleted). Said
+                                here rather than in the badge: the badge is about the row, this is not. */}
+                            {r.status !== 'reprocessRequired' && r.batchNeedsRecalcForEmployment && (
+                              <p className="mt-2 text-amber-700 dark:text-amber-400">{t('employeeReprocessHint')}</p>
                             )}
                           </td>
                         </tr>

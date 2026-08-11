@@ -40,6 +40,9 @@ import { resolveBatchScopeFilter, type BatchScope } from './payroll';
 import { payslipDisplayEarnings } from './pay-display-category';
 // 169e3c24 — the PCB drill-down's relief fallback (pure type; the explainer itself lives beside it).
 import type { PcbReliefBreakdown } from './pcb-explain';
+// 510f4bd1 — "is this one-off transaction in the employee's latest payslip?", pure and db-free so this
+// server read and the client-side panel derivation (existing-context.ts) apply ONE rule, not two.
+import { individualTxnReprocessRequired } from './individual-txn-status';
 import { packFor } from '../localization/registry';
 // 97a9b0ab — the PURE re-run diff (no DB, no framework). Kept out of this file so the cause rules
 // are unit-testable without a database, and so the honesty constraint on the ruleset-version cause
@@ -85,9 +88,34 @@ const INDIVIDUAL_TXN_AGGREGATE = 'payroll-individual-txn';
 /** Coerce untrusted filter values to valid enum/whitelist members (a tampered value must not reach pg). */
 const cleanTxnKind = (v: unknown): PayrollTxnKind | undefined =>
   payrollTxnKindEnum.enumValues.includes(v as PayrollTxnKind) ? (v as PayrollTxnKind) : undefined;
-/** 'unattached' (f1564110 Phase 2) = rows with no batch yet (keyed in before the month's run exists). */
-const cleanBatchStatus = (v: unknown): 'draft' | 'processed' | 'closed' | 'unattached' | undefined =>
-  v === 'draft' || v === 'processed' || v === 'closed' || v === 'unattached' ? v : undefined;
+/**
+ * The Individual History screen's TRANSACTION-STATUS filter values.
+ *
+ * ⚠️ THIS IS NO LONGER A STRAIGHT LIST OF BATCH STATUSES, and the difference matters to the next reader.
+ * 'unattached' (f1564110 Phase 2) means rows with no batch yet (keyed in before the month's run exists),
+ * and 'reprocess' (510f4bd1) is a DERIVED status — a row on a PROCESSED run that is not in the payslip
+ * that run last produced for its employee. Neither is a value `payroll_batch.status` can ever hold, so
+ * both are handled before the status predicate is built, never passed to `eq(payrollBatch.status, …)`.
+ *
+ * ⚠️ AND IT FAILS OPEN. An unrecognised value returns `undefined`, which DROPS the filter rather than
+ * narrowing to nothing — so a mis-spelled or renamed value silently shows EVERYTHING instead of showing
+ * an empty grid. That is deliberate (a tampered param must not reach Postgres, where an invalid enum cast
+ * throws) but it means adding a value here without adding it to the callers' own whitelists
+ * (app/payroll/transaction-view/page.tsx, app/payroll/transaction-view/export/route.ts) produces an
+ * unfiltered list, not an error. test/existing-txn-context.test.ts pins the three sets against each other.
+ */
+export type IndividualTxnStatusFilter = 'draft' | 'processed' | 'closed' | 'unattached' | 'reprocess';
+export const INDIVIDUAL_TXN_STATUS_FILTERS = [
+  'unattached',
+  'draft',
+  'processed',
+  'closed',
+  'reprocess',
+] as const satisfies readonly IndividualTxnStatusFilter[];
+const cleanBatchStatus = (v: unknown): IndividualTxnStatusFilter | undefined =>
+  (INDIVIDUAL_TXN_STATUS_FILTERS as readonly string[]).includes(v as string)
+    ? (v as IndividualTxnStatusFilter)
+    : undefined;
 /** A 'YYYY-MM-DD' calendar-date param or undefined (anything malformed is ignored, never cast). */
 const cleanDate = (v: unknown): string | undefined =>
   typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
@@ -217,6 +245,21 @@ export type IndividualTxnViewRow = {
   createdOn: string; // 'YYYY-MM-DD' — payroll_individual_txn.created_at cast to a date
   createdById: string | null; // app_user id of the creator (null for SYSTEM / pre-substrate rows)
   createdBy: string | null; // that user's person full name (null when unresolved)
+  // ── 510f4bd1: the three facts behind "is this in the employee's latest payslip?" ──
+  /** `coalesce(updated_at, created_at)` as a fixed-width UTC instant. The coalesce is load-bearing:
+   *  `updated_at` is NULL on a row that has never been edited (db/schema.ts). */
+  changedAt: string;
+  /** `payslip.created_at` for this (batch, employment) as a fixed-width UTC instant; null when the
+   *  employee has no payslip on the run — i.e. this money was never calculated for them. */
+  payslipCalculatedAt: string | null;
+  /** The run itself says this EMPLOYMENT is stale (`payroll_batch.recalc_employment_ids`). This is the
+   *  authoritative employee-level fact — the one `closeBatch` refuses on and the Reprocess screen
+   *  pre-ticks — and it can be true while every row below reads Processed (an attendance-driven
+   *  recompute, or a delete that left no row to label). It never flips a row's own status. */
+  batchNeedsRecalcForEmployment: boolean;
+  /** DERIVED, never stored: this row is not in the payslip its processed run last produced. One rule,
+   *  applied here and by the workspace panel — see core/individual-txn-status.ts. */
+  reprocessRequired: boolean;
 };
 
 /** The full filter set the Individual Transaction History screen (and its CSV export) applies. All optional
@@ -292,9 +335,23 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
       createdOn: sql<string>`to_char(${payrollIndividualTxn.createdAt}, 'YYYY-MM-DD')`,
       createdById: appUser.id,
       createdBy: creatorPerson.fullName,
+      // 510f4bd1 — both instants formatted identically, FIXED WIDTH and in UTC, so a string comparison in
+      // the pure rule is a chronological one and no Date crosses a serialization boundary.
+      changedAt: sql<string>`to_char(coalesce(${payrollIndividualTxn.updatedAt}, ${payrollIndividualTxn.createdAt}) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')`,
+      payslipCalculatedAt: sql<
+        string | null
+      >`to_char(${payslip.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')`,
+      batchNeedsRecalcForEmployment: sql<boolean>`(${payrollBatch.needsRecalcAt} is not null and coalesce(${payrollBatch.recalcEmploymentIds}, '[]'::jsonb) @> to_jsonb(${payrollIndividualTxn.employmentId}::text))`,
     })
     .from(payrollIndividualTxn)
     .leftJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
+    // 510f4bd1 — the employee's payslip ON THIS RUN, for its `created_at` alone. Cannot multiply rows:
+    // `payslip_batch_employment_uq` is unique on exactly this pair. LEFT, because "no payslip" is itself
+    // one of the two answers the rule needs (and unattached rows have no batch to join through).
+    .leftJoin(
+      payslip,
+      and(eq(payslip.batchId, payrollIndividualTxn.batchId), eq(payslip.employmentId, payrollIndividualTxn.employmentId)),
+    )
     .innerJoin(company, eq(company.id, payrollIndividualTxn.companyId))
     .innerJoin(employment, eq(employment.id, payrollIndividualTxn.employmentId))
     .innerJoin(person, eq(person.id, employment.personId))
@@ -316,18 +373,28 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
         p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
         kind ? eq(payrollIndividualTxn.kind, kind) : undefined,
         deptEmploymentIds ? inArray(payrollIndividualTxn.employmentId, deptEmploymentIds) : undefined,
+        // 'unattached' and 'reprocess' are NOT batch statuses (see cleanBatchStatus). 'reprocess' narrows
+        // in SQL to the runs it can possibly apply to — processed ones — and the row-level half is applied
+        // below through the SAME pure rule the screen uses, so the filter and the badges cannot disagree.
         batchStatus === 'unattached'
           ? isNull(payrollIndividualTxn.batchId)
-          : batchStatus
-            ? eq(payrollBatch.status, batchStatus)
-            : undefined,
+          : batchStatus === 'reprocess'
+            ? eq(payrollBatch.status, 'processed')
+            : batchStatus
+              ? eq(payrollBatch.status, batchStatus)
+              : undefined,
         p.createdBy ? eq(domainEvent.actorId, p.createdBy) : undefined,
         createdFrom ? gte(sql`${payrollIndividualTxn.createdAt}::date`, createdFrom) : undefined,
         createdTo ? lte(sql`${payrollIndividualTxn.createdAt}::date`, createdTo) : undefined,
       ),
     )
     .orderBy(desc(payrollIndividualTxn.payPeriod), asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id));
-  return rows as IndividualTxnViewRow[];
+  // 510f4bd1 — DERIVED once, here, from facts the row already carries. Every consumer (the History grid,
+  // its CSV, the workspace panel) reads this same boolean rather than re-deciding, which is what stops the
+  // two screens saying different things about one line.
+  const derived = rows.map((r) => ({ ...r, reprocessRequired: individualTxnReprocessRequired(r) })) as
+    IndividualTxnViewRow[];
+  return batchStatus === 'reprocess' ? derived.filter((r) => r.reprocessRequired) : derived;
 }
 
 /**
@@ -1133,7 +1200,9 @@ export function exportIndividualTxnsCsv(
       // Unattached rows (f1564110 Phase 2) have no run yet — export a stable 'unattached' marker.
       r.runType ?? '',
       r.runSeq ?? '',
-      r.batchStatus ?? 'unattached',
+      // 510f4bd1 — the SAME value the screen shows. A download that still said `processed` for a line the
+      // grid calls Pending reprocessing would be the confusion the request is about, in a second file.
+      r.reprocessRequired ? 'reprocess' : (r.batchStatus ?? 'unattached'),
       r.txnDate,
       r.employeeName,
       r.employeeCode ?? '',

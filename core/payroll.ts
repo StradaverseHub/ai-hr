@@ -5454,6 +5454,13 @@ export function listBatches(
         // compares two listBatches results to each other rather than to a literal row shape.
         closedAt: payrollBatch.closedAt,
         releasedAt: payrollBatch.releasedAt,
+        // 510f4bd1 — the recalculation mark 49e7e0a2 already writes. Additive for the same reason
+        // closedAt/releasedAt were: all callers filter/map explicit fields. It is what lets the Individual
+        // Transaction workspace say "Reprocess required" for the SELECTED employee with no second query —
+        // and, unlike a per-row derivation, it survives the DELETE of the last transaction on the run,
+        // which is the one case that leaves no row to label (request case 4).
+        needsRecalcAt: payrollBatch.needsRecalcAt,
+        recalcEmploymentIds: payrollBatch.recalcEmploymentIds,
       })
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))

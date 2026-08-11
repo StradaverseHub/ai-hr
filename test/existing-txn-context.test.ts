@@ -16,6 +16,8 @@
  *      months where nothing is wrong yet. The panel must warn about the fault subset only — warning
  *      about the designed pre-run entry flow is how a warning gets ignored.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildTxnPanel,
@@ -23,6 +25,14 @@ import {
   type StrandedInputRow,
   type TxnPanelInputRow,
 } from '../app/payroll/transactions/individual/existing-context';
+import { INDIVIDUAL_TXN_STATUS_FILTERS } from '../core/payroll-view';
+
+// 510f4bd1 — the DEFAULT row is a FRESH one: keyed before its payslip was worked out. Every pre-existing
+// expectation in this file was written when a processed row could only mean "paid", so the default has to
+// keep meaning that; the staleness cases below set the two instants explicitly.
+const CALCULATED = '2026-08-31T09:00:00.000000';
+const BEFORE_CALC = '2026-08-01T08:00:00.000000';
+const AFTER_CALC = '2026-08-31T16:33:57.000000';
 
 const row = (p: Partial<TxnPanelInputRow> & { id: string }): TxnPanelInputRow => ({
   employmentId: 'e1',
@@ -38,6 +48,9 @@ const row = (p: Partial<TxnPanelInputRow> & { id: string }): TxnPanelInputRow =>
   batchStatus: null,
   createdOn: '2026-08-01',
   createdBy: null,
+  changedAt: BEFORE_CALC,
+  payslipCalculatedAt: CALCULATED,
+  batchNeedsRecalcForEmployment: false,
   ...p,
 });
 
@@ -122,6 +135,169 @@ describe('44129979 — the two statuses the ledger actually supports', () => {
   });
 });
 
+/**
+ * 510f4bd1 — THE TRUTH TABLE FOR THE THIRD STATUS.
+ *
+ * `Processed` has to mean exactly one thing: this amount is in the employee's LATEST payslip. Nothing new
+ * is detected to make that true — 49e7e0a2's mark, `closeBatch`'s refusal and the Reprocess screen's
+ * pre-tick already existed; this only reads them. So what these cases pin is the DERIVATION, in both
+ * directions, because both directions are wrong in a way an operator cannot see:
+ *
+ *   - calling a superseded row `Processed` tells them money is in a payslip that it is not;
+ *   - calling a fresh row `Pending reprocessing` sends them to recalculate a run that is already correct.
+ */
+describe('510f4bd1 — Processed means "in the latest payslip", and nothing else does', () => {
+  const facts = (changedAt: string | null, payslipCalculatedAt: string | null) => ({ changedAt, payslipCalculatedAt });
+
+  it('leaves an untouched row on a processed run Processed', () => {
+    // Request case 1: processed, not since changed. The overtime line in the reporter's own August run.
+    expect(txnStatusOf('processed', facts(BEFORE_CALC, CALCULATED))).toBe('processed');
+  });
+
+  it('flags a row EDITED after the run was calculated', () => {
+    // Request case 2: Bonus 500 → 800 on a processed run. `updated_at` is stamped by the edit.
+    expect(txnStatusOf('processed', facts(AFTER_CALC, CALCULATED))).toBe('reprocessRequired');
+  });
+
+  it('flags a row ADDED after the run was calculated — THE ROW THE coalesce EXISTS FOR', () => {
+    // Request case 3, and the one live stale row on production (X000001's director fee, created 16:33:57
+    // against a payslip created 16:30:56). `payroll_individual_txn.updated_at` is NULL on a row that has
+    // never been edited, so `changedAt` is coalesce(updated_at, created_at) — comparing updated_at alone
+    // would call this row fresh, which is the exact defect the request reports.
+    const neverEdited = row({ id: 'added', batchStatus: 'processed', changedAt: AFTER_CALC, payslipCalculatedAt: CALCULATED });
+    expect(neverEdited.changedAt, 'the caller must have coalesced already — this module never sees a null').toBe(AFTER_CALC);
+    expect(buildTxnPanel([neverEdited]).rows[0].status).toBe('reprocessRequired');
+  });
+
+  it('flags a row on a processed run when the employee has NO payslip on it at all', () => {
+    // Never calculated for this person, so it cannot be "in the latest calculation". Null is not the same
+    // as absent: an omitted fact makes no claim (below), a null one is evidence.
+    expect(txnStatusOf('processed', facts(BEFORE_CALC, null))).toBe('reprocessRequired');
+  });
+
+  it('makes NO claim when the payslip fact was not supplied at all', () => {
+    // Every caller supplies it; a bare call (or an older one) must not be upgraded to the worst case.
+    expect(txnStatusOf('processed')).toBe('processed');
+    expect(txnStatusOf('closed')).toBe('processed');
+  });
+
+  it('never flags a draft, unattached or CLOSED run', () => {
+    // Draft recalculates by being generated. Unattached has no run. Closed cannot be written at all —
+    // and `closeBatch` refuses to close a run that is still marked, so closed can only mean settled.
+    expect(txnStatusOf('draft', facts(AFTER_CALC, null))).toBe('pending');
+    expect(txnStatusOf(null, facts(AFTER_CALC, null))).toBe('pending');
+    expect(txnStatusOf('closed', facts(AFTER_CALC, CALCULATED))).toBe('processed');
+    expect(txnStatusOf('closed', facts(AFTER_CALC, null))).toBe('processed');
+  });
+
+  it('does not flag an unrecognised batch status either — the asymmetry is preserved', () => {
+    expect(txnStatusOf('some_future_status', facts(AFTER_CALC, null))).toBe('pending');
+  });
+
+  it('settles back to Processed after a reprocess, with nothing set by hand', () => {
+    // Selective reprocess DELETEs and re-INSERTs the payslip, so `payslip.created_at` moves PAST the row's
+    // change instant. Request case 6, and it is why no status column is needed.
+    const stale = row({ id: 'x', batchStatus: 'processed', changedAt: AFTER_CALC, payslipCalculatedAt: CALCULATED });
+    expect(buildTxnPanel([stale]).rows[0].status).toBe('reprocessRequired');
+    const afterReprocess = { ...stale, payslipCalculatedAt: '2026-08-31T16:34:20.000000' };
+    expect(buildTxnPanel([afterReprocess]).rows[0].status).toBe('processed');
+  });
+
+  it('leaves every row Processed when the mark came from somewhere other than a transaction', () => {
+    // The DELIBERATE, CORRECT disagreement: an attendance-driven recompute (or a DELETE, which leaves no
+    // row to label at all) marks the EMPLOYMENT without touching any row. The employee line reads Reprocess
+    // required; the badges do not, because the badges are about the transactions. Anyone "fixing" this
+    // would be marking lines that are genuinely in the payslip.
+    const panel = buildTxnPanel([
+      row({ id: 'a', batchStatus: 'processed', batchNeedsRecalcForEmployment: true }),
+      row({ id: 'b', batchStatus: 'processed', batchNeedsRecalcForEmployment: true }),
+    ]);
+    expect(panel.rows.map((r) => r.status)).toEqual(['processed', 'processed']);
+    expect(panel.rows.every((r) => r.batchNeedsRecalcForEmployment), 'the employee-level fact rides on').toBe(true);
+    expect(panel.totals.reprocessCount).toBe(0);
+  });
+
+  it('keeps Pending reprocessing a THIRD bucket that still sums to the whole', () => {
+    // buildTxnPanel's loop was `if (pending) … else processed`. Left that way, every stale row would have
+    // been counted as PAID — the strip would have contradicted the badge beside it.
+    const panel = buildTxnPanel([
+      row({ id: 'p', amount: '10.00', batchStatus: 'draft' }),
+      row({ id: 'd', amount: '20.00', batchStatus: 'processed' }),
+      row({ id: 's', amount: '500.00', batchStatus: 'processed', changedAt: AFTER_CALC }),
+      row({ id: 'n', amount: '30.00', batchStatus: 'processed', payslipCalculatedAt: null }),
+    ]);
+    expect(panel.totals).toEqual({
+      count: 4,
+      total: '560.00',
+      pendingCount: 1,
+      pendingTotal: '10.00',
+      processedCount: 1,
+      processedTotal: '20.00',
+      reprocessCount: 2,
+      reprocessTotal: '530.00',
+    });
+    // The three buckets partition the whole — no row counted twice, none dropped.
+    expect(panel.totals.pendingCount + panel.totals.processedCount + panel.totals.reprocessCount).toBe(
+      panel.totals.count,
+    );
+    const cents = (v: string) => Math.round(Number(v) * 100);
+    expect(cents(panel.totals.pendingTotal) + cents(panel.totals.processedTotal) + cents(panel.totals.reprocessTotal)).toBe(
+      cents(panel.totals.total),
+    );
+  });
+
+  it('keeps a stale row EDITABLE — Pending reprocessing is a correction invitation, not a lock', () => {
+    // Request's Payroll Closing Control: on a processed-but-not-closed run edit/add/delete stay allowed.
+    const panel = buildTxnPanel([row({ id: 's', batchStatus: 'processed', changedAt: AFTER_CALC })]);
+    expect(panel.rows[0].editable).toBe(true);
+    expect(panel.rows[0].recalcOnEdit).toBe(true);
+  });
+});
+
+describe('510f4bd1 — the History filter whitelists cannot drift apart, because a mismatch fails OPEN', () => {
+  it('the screen and its CSV export offer exactly the statuses the read accepts', () => {
+    // cleanBatchStatus returns undefined for an unrecognised value, which DROPS the filter rather than
+    // narrowing to nothing: a value offered on screen but missing from the read silently shows EVERY row.
+    // Read off the sources, because the two whitelists are the thing that can drift.
+    const viewSrc = readFileSync(join(__dirname, '..', 'app', 'payroll', 'transaction-view', 'page.tsx'), 'utf8');
+    const exportSrc = readFileSync(
+      join(__dirname, '..', 'app', 'payroll', 'transaction-view', 'export', 'route.ts'),
+      'utf8',
+    );
+    expect(INDIVIDUAL_TXN_STATUS_FILTERS).toContain('reprocess');
+    expect(viewSrc, 'the screen must take its whitelist from the read, not restate it').toContain(
+      'const TXN_STATUSES = INDIVIDUAL_TXN_STATUS_FILTERS',
+    );
+    expect(exportSrc, 'and so must the CSV route, or the download is a different row set').toContain(
+      'const TXN_STATUSES = INDIVIDUAL_TXN_STATUS_FILTERS',
+    );
+  });
+
+  it('every offered filter value has a label in every catalogue', () => {
+    // The select renders `payroll.list.status.<value>`; a value with no key paints the raw key path while
+    // the route still returns 200, which no coverage guard sees.
+    for (const locale of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const messages = JSON.parse(readFileSync(join(__dirname, '..', 'messages', `${locale}.json`), 'utf8'));
+      for (const value of INDIVIDUAL_TXN_STATUS_FILTERS) {
+        expect(messages.payroll.list.status[value], `${locale}: payroll.list.status.${value}`).toBeTruthy();
+      }
+      for (const key of [
+        'statusReprocessRequired',
+        'totalReprocess',
+        'employeeReprocessRequired',
+        'employeeReprocessLink',
+        'stalePendingHint',
+        'employeeReprocessHint',
+      ]) {
+        expect(
+          messages.payroll.transactions.individual[key],
+          `${locale}: payroll.transactions.individual.${key}`,
+        ).toBeTruthy();
+      }
+    }
+  });
+});
+
 describe('44129979 — totals come from exactly the rows on screen', () => {
   it('splits the total into paid and not-yet-paid', () => {
     const panel = buildTxnPanel([
@@ -136,6 +312,8 @@ describe('44129979 — totals come from exactly the rows on screen', () => {
       pendingTotal: '750.50',
       processedCount: 1,
       processedTotal: '1000.00',
+      reprocessCount: 0,
+      reprocessTotal: '0.00',
     });
   });
 
@@ -160,6 +338,8 @@ describe('44129979 — totals come from exactly the rows on screen', () => {
       pendingTotal: '0.00',
       processedCount: 0,
       processedTotal: '0.00',
+      reprocessCount: 0,
+      reprocessTotal: '0.00',
     });
   });
 

@@ -5,6 +5,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
 import {
+  INDIVIDUAL_TXN_STATUS_FILTERS,
   listFixedTransactionsAcross,
   listIndividualTxnCreators,
   listIndividualTxnsAcross,
@@ -79,7 +80,12 @@ const GRID_PANEL_COOKIE = 'txnview_grid_panel';
 type Tab = (typeof TABS)[number];
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
-const TXN_STATUSES = ['unattached', 'draft', 'processed', 'closed'] as const; // 'unattached' = no run yet (f1564110 Phase 2)
+// 'unattached' = no run yet (f1564110 Phase 2); 'reprocess' = DERIVED (510f4bd1) — on a processed run but
+// not in the payslip that run last produced. Neither is a payroll_batch.status value; core/payroll-view.ts
+// handles both before the status predicate is built. This whitelist must stay in step with
+// INDIVIDUAL_TXN_STATUS_FILTERS there: an unknown value DROPS the filter (fails open, showing everything)
+// rather than erroring, so a missing entry here is silent.
+const TXN_STATUSES = INDIVIDUAL_TXN_STATUS_FILTERS;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */

@@ -7,10 +7,14 @@
  */
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
-import { exportIndividualTxnsCsv } from '@/core/payroll-view';
+import { exportIndividualTxnsCsv, INDIVIDUAL_TXN_STATUS_FILTERS } from '@/core/payroll-view';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
 
-const TXN_STATUSES = ['unattached', 'draft', 'processed', 'closed'] as const; // 'unattached' = no run yet (f1564110 Phase 2)
+// Same whitelist the screen applies (510f4bd1 added the derived 'reprocess'), imported rather than
+// restated: the export exists to hand back exactly the rows on screen, and two lists that drift apart
+// would hand back a different set — silently, because an unrecognised value DROPS the filter rather than
+// erroring (core/payroll-view.ts cleanBatchStatus).
+const TXN_STATUSES = INDIVIDUAL_TXN_STATUS_FILTERS;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */

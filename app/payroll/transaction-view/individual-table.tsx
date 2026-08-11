@@ -44,7 +44,10 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
         case 'kind':
           return r.kind;
         case 'batchStatus':
-          return r.batchStatus ?? ''; // unattached rows (no batch yet) sort first/last as a group
+          // Sorts on what the column SHOWS, not on the raw batch status — otherwise a sort by Status
+          // interleaves Processed and Pending reprocessing rows, which is the one grouping this column
+          // now exists to make. Unattached rows (no batch yet) still sort first/last as a group.
+          return r.reprocessRequired ? 'reprocess' : (r.batchStatus ?? '');
         case 'createdBy':
           return (r.createdBy ?? '').toLowerCase();
         case 'createdOn':
@@ -135,8 +138,19 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
               </td>
               <td className="px-4 py-2.5 text-muted-foreground">{r.notes ?? '—'}</td>
               <td className="px-4 py-2.5">
-                <Badge variant={r.batchStatus === 'draft' || r.batchStatus == null ? 'warning' : 'success'}>
-                  {tList(`status.${r.batchStatus ?? 'unattached'}`)}
+                {/* 510f4bd1 — the SAME verdict the Individual Transaction screen shows, read off the row
+                    rather than re-derived here, so the two screens can never say different things about
+                    one line. `reprocessRequired` is a DERIVED field on the read (core/payroll-view.ts). */}
+                <Badge
+                  variant={
+                    r.reprocessRequired
+                      ? 'danger'
+                      : r.batchStatus === 'draft' || r.batchStatus == null
+                        ? 'warning'
+                        : 'success'
+                  }
+                >
+                  {tList(`status.${r.reprocessRequired ? 'reprocess' : (r.batchStatus ?? 'unattached')}`)}
                 </Badge>
               </td>
               <td className="px-4 py-2.5 text-muted-foreground">{r.createdBy ?? '—'}</td>

@@ -99,6 +99,13 @@ export default async function IndividualTransactionPage({
     runSeq: b.runSeq,
     scope: (b as { scope?: TxnBatch['scope'] }).scope ?? null,
     status: b.status === 'processed' ? 'processed' : 'draft',
+    // 510f4bd1 — the recalculation mark, serialised. `needsRecalcAt` is a Date on the row; the workspace is
+    // a client component and only ever asks "is it set?", so it crosses as an ISO string rather than as a
+    // Date that would be re-parsed in the browser's timezone.
+    needsRecalcAt: b.needsRecalcAt ? b.needsRecalcAt.toISOString() : null,
+    recalcEmploymentIds: Array.isArray(b.recalcEmploymentIds)
+      ? b.recalcEmploymentIds.filter((x): x is string => typeof x === 'string')
+      : null,
   }));
 
   const errorKeys = new Set([

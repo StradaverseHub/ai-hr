@@ -180,7 +180,16 @@ export async function fetchEmployeeTxnPanelAction(input: {
 }): Promise<TxnPanel> {
   const empty: TxnPanel = {
     rows: [],
-    totals: { count: 0, total: '0.00', pendingCount: 0, pendingTotal: '0.00', processedCount: 0, processedTotal: '0.00' },
+    totals: {
+      count: 0,
+      total: '0.00',
+      pendingCount: 0,
+      pendingTotal: '0.00',
+      processedCount: 0,
+      processedTotal: '0.00',
+      reprocessCount: 0,
+      reprocessTotal: '0.00',
+    },
     stranded: [],
   };
   const { s, scopeIds } = await scopedAdmin();
