@@ -870,6 +870,25 @@ describe('1.2.1 Fixed Transaction', () => {
     expect((await listEmploymentPayComponents(a, e.employmentId)).filter((r) => r.code === 'ALLOWANCE')).toHaveLength(2);
   });
 
+  it('editing a row to start EARLIER corrects that record — it does not reach backwards through another', async () => {
+    // The backwards refusal is about restating THROUGH a row the admin is not looking at. Pulling the
+    // start date of the record they DO have open back a month is the ticket's Edit function, and it
+    // rewrites nothing: the row is superseded outright, never closed into an inverted window (which is
+    // how production came to carry one).
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'EditStartEarlier', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-07-01', effectiveTo: '2026-07-31' });
+    const { id: moved } = await updateEmploymentPayComponent(a, { employmentId: e.employmentId, id, amount: 100, effectiveFrom: '2026-06-01', effectiveTo: '2026-07-31' });
+    expect((await rowOf(id)).supersededAt).not.toBeNull();
+    expect((await rowOf(moved)).validFrom).toBe('2026-06-01');
+    // No inverted window anywhere.
+    const live = (await listEmploymentPayComponents(a, e.employmentId)).filter((r) => r.code === 'ALLOWANCE');
+    expect(live).toHaveLength(1);
+    for (const r of live) expect(r.validTo == null || r.validTo >= r.validFrom).toBe(true);
+  });
+
   it('an edit is still refused when it runs into a THIRD row that is not the one being edited', async () => {
     // replacesId exempts exactly one row — the one the admin opened. Everything else it collides with is
     // still a refusal, or the edit form would become a way around the rule.

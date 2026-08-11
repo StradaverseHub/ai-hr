@@ -1389,7 +1389,13 @@ export function setEmploymentPayComponent(
       for (const c of clashes) {
         // Closing at effectiveFrom-1 would write an end date before the row's own start. Before the
         // 34cc8137 guard this wrote an inverted row silently; production still carries one.
-        if (p.effectiveFrom < c.validFrom) {
+        //
+        // EXCEPT for the row being edited. Moving THAT row's own start date earlier is a correction of
+        // the record the admin has open — the ticket's Edit function asks for exactly that — and it
+        // rewrites nothing, because the row is superseded outright rather than closed into an inverted
+        // window (pass 2). The refusal is for a restatement that would have to reach BACKWARDS THROUGH A
+        // ROW THE ADMIN IS NOT LOOKING AT, which is a different act with a different blast radius.
+        if (c.id !== p.replacesId && p.effectiveFrom < c.validFrom) {
           throw new FixedTransactionBackwardsError(c.code, c.validFrom, c.validTo);
         }
       }
