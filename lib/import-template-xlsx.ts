@@ -28,6 +28,7 @@
  */
 import { IMPORT_COLUMNS } from './import-schema';
 import { employeeTemplate } from './import-template';
+import { PAYROLL_HISTORY_HEADERS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
 
 /** Words that must not be title-cased letter-by-letter. Everything else is Capitalised. */
 const ACRONYMS: Record<string, string> = { ic: 'IC', epf: 'EPF', socso: 'SOCSO', eis: 'EIS' };
@@ -149,6 +150,44 @@ export const PAYROLL_HISTORY_XLSX_FILENAME = 'payroll-history-import-template.xl
  * an accidental date format would.
  */
 export const PAYROLL_HISTORY_TEXT_COLUMN_INDEXES: readonly number[] = [0, 1, 2, 3, 4, 6];
+
+/** The headings the Codes sheet and its explanatory line carry, supplied translated by the caller. */
+export type ImportCodeSheetHeadings = {
+  title: string;
+  code: string;
+  label: string;
+  destination: string;
+  direction: string;
+  note: string;
+};
+
+/**
+ * Build the reporter's Payroll Result Import workbook.
+ *
+ * ONE function, called by the screen's Download Template button AND by the test that parses the bytes
+ * back — because "the template is a real workbook with the right sheets and headings" is only worth
+ * anything if the artifact HR receives is the artifact that was checked, not a re-implementation of it.
+ *
+ * Three sheets: the blank one to fill in (FIRST, because workbookToCsvText reads the first worksheet on
+ * re-upload), the reporter's worked example, and every code the import accepts.
+ */
+export async function buildPayrollHistoryWorkbook(
+  headings: ImportCodeSheetHeadings,
+  codes: { code: string; label: string; destination: string; direction: string }[],
+): Promise<Uint8Array> {
+  const { buildXlsx } = await import('./spreadsheet');
+  return buildXlsx([...PAYROLL_HISTORY_HEADERS], [], {
+    sheetName: PAYROLL_HISTORY_XLSX_SHEETS.data,
+    textColumns: [...PAYROLL_HISTORY_TEXT_COLUMN_INDEXES],
+    extraSheets: [
+      {
+        name: PAYROLL_HISTORY_XLSX_SHEETS.sample,
+        rows: [[...PAYROLL_HISTORY_HEADERS], ...PAYROLL_HISTORY_SAMPLE_ROWS.map((r) => [...r])],
+      },
+      { name: PAYROLL_HISTORY_XLSX_SHEETS.codes, rows: buildImportCodeRows(headings, codes) },
+    ],
+  });
+}
 
 /**
  * The Codes sheet: every code the import will accept, with what it means and where its money lands.

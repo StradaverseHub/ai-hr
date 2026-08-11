@@ -15,12 +15,7 @@ import {
   type HistoryIssue,
   type ImportCodeEntry,
 } from '@/lib/payroll-history-import-schema';
-import {
-  PAYROLL_HISTORY_TEXT_COLUMN_INDEXES,
-  PAYROLL_HISTORY_XLSX_FILENAME,
-  PAYROLL_HISTORY_XLSX_SHEETS,
-  buildImportCodeRows,
-} from '@/lib/import-template-xlsx';
+import { PAYROLL_HISTORY_XLSX_FILENAME, buildPayrollHistoryWorkbook } from '@/lib/import-template-xlsx';
 import { validateHistoryImportAction, commitHistoryImportAction } from './actions';
 
 // Next server actions default to a ~1 MB body; a 3,000-line import is ~150 KB, so this is generous.
@@ -167,36 +162,22 @@ export function HistoryImport({
   const downloadTemplate = async () => {
     setError(null);
     try {
-      const { buildXlsx } = await import('@/lib/spreadsheet');
-      const bytes = await buildXlsx([...PAYROLL_HISTORY_HEADERS], [], {
-        sheetName: PAYROLL_HISTORY_XLSX_SHEETS.data,
-        textColumns: [...PAYROLL_HISTORY_TEXT_COLUMN_INDEXES],
-        extraSheets: [
-          {
-            name: PAYROLL_HISTORY_XLSX_SHEETS.sample,
-            rows: [[...PAYROLL_HISTORY_HEADERS], ...PAYROLL_HISTORY_SAMPLE_ROWS.map((r) => [...r])],
-          },
-          {
-            name: PAYROLL_HISTORY_XLSX_SHEETS.codes,
-            rows: buildImportCodeRows(
-              {
-                title: t('codeReference'),
-                note: t('codeReferenceHint'),
-                code: t('colCode'),
-                label: t('colCodeLabel'),
-                destination: t('colDestination'),
-                direction: t('colDirection'),
-              },
-              codes.map((c) => ({
-                code: c.code,
-                label: c.label,
-                destination: c.destination,
-                direction: c.direction,
-              })),
-            ),
-          },
-        ],
-      });
+      const bytes = await buildPayrollHistoryWorkbook(
+        {
+          title: t('codeReference'),
+          note: t('codeReferenceHint'),
+          code: t('colCode'),
+          label: t('colCodeLabel'),
+          destination: t('colDestination'),
+          direction: t('colDirection'),
+        },
+        codes.map((c) => ({
+          code: c.code,
+          label: c.label,
+          destination: c.destination,
+          direction: c.direction,
+        })),
+      );
       download(bytes as BlobPart, PAYROLL_HISTORY_XLSX_FILENAME, XLSX_MIME);
     } catch {
       setError(t('fileReadError'));

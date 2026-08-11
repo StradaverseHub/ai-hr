@@ -197,3 +197,126 @@ describe('pay component → import destination', () => {
     expect(payComponentDestination({ code: 'ABSENT', kind: 'deduction', displayCategory: null }).destination).toBe('other_deduction');
   });
 });
+
+/**
+ * THE ARTIFACT ITSELF. Everything above checks the inputs to the workbook; this builds the real bytes
+ * the Download Template button produces and reads them back with SheetJS.
+ *
+ * A template that is "non-empty" proves nothing — the failures that matter are a renamed sheet (the
+ * upload path reads the FIRST worksheet, so the wrong one first means every re-upload reads sample data),
+ * a reordered heading (the reporter said not to), and an identity column left in General format (which
+ * destroys a leading zero in the file before any reader sees it). So each is asserted against the parsed
+ * workbook, not against the code that was supposed to produce it.
+ */
+describe('the generated .xlsx, parsed back', () => {
+  it('has the three sheets, data first, with the reporter’s seven headings in order and text identity columns', async () => {
+    const XLSX = await import('xlsx');
+    const { buildPayrollHistoryWorkbook, PAYROLL_HISTORY_XLSX_SHEETS } = await import('../lib/import-template-xlsx');
+
+    const bytes = await buildPayrollHistoryWorkbook(
+      {
+        title: 'Accepted DOE codes',
+        note: 'A code the system does not recognise stops its line.',
+        code: 'Code',
+        label: 'Meaning',
+        destination: 'Lands on',
+        direction: 'Direction',
+      },
+      STATUTORY_IMPORT_CODES.map((c) => ({
+        code: c.code,
+        label: c.label,
+        destination: c.destination,
+        direction: c.direction,
+      })),
+    );
+    expect(bytes.byteLength).toBeGreaterThan(1000);
+
+    // cellStyles: true — the `@` number format is written into the workbook's STYLE table, not onto the
+    // cell record, so a plain read reports `z` as undefined even though the file is correct. Verified
+    // against SheetJS 0.20.3 directly before trusting it.
+    const wb = XLSX.read(bytes, { type: 'array', cellStyles: true });
+    // Sheet names AND their order — the data sheet must be first, because workbookToCsvText reads
+    // wb.SheetNames[0] on re-upload.
+    expect(wb.SheetNames).toEqual([
+      PAYROLL_HISTORY_XLSX_SHEETS.data,
+      PAYROLL_HISTORY_XLSX_SHEETS.sample,
+      PAYROLL_HISTORY_XLSX_SHEETS.codes,
+    ]);
+
+    // Sheet 1: headings only, in the reporter's order, and no data rows to delete.
+    const data = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[PAYROLL_HISTORY_XLSX_SHEETS.data], {
+      header: 1,
+      raw: true,
+      blankrows: false,
+    });
+    expect(data[0]).toEqual([...PAYROLL_HISTORY_HEADERS]);
+    expect(data.filter((r) => r.some((c) => c != null && String(c).trim() !== ''))).toHaveLength(1);
+
+    // The identity columns really carry the text format, 500 rows deep, and Amount really does not.
+    const ws = wb.Sheets[PAYROLL_HISTORY_XLSX_SHEETS.data] as Record<string, { t?: string; z?: string } | undefined>;
+    for (const col of PAYROLL_HISTORY_TEXT_COLUMN_INDEXES) {
+      for (const row of [1, 250, 500]) {
+        const addr = XLSX.utils.encode_cell({ c: col, r: row });
+        expect(ws[addr]?.z, `${addr} must be text-formatted`).toBe('@');
+        expect(ws[addr]?.t).toBe('s');
+      }
+    }
+    const amountCol = PAYROLL_HISTORY_HEADERS.indexOf('Amount');
+    expect(ws[XLSX.utils.encode_cell({ c: amountCol, r: 1 })]?.z).not.toBe('@');
+
+    // Sheet 2: the reporter's worked example, headings repeated so it can be copied wholesale.
+    const sample = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[PAYROLL_HISTORY_XLSX_SHEETS.sample], {
+      header: 1,
+      raw: true,
+      blankrows: false,
+    });
+    expect(sample[0]).toEqual([...PAYROLL_HISTORY_HEADERS]);
+    expect(sample).toHaveLength(PAYROLL_HISTORY_SAMPLE_ROWS.length + 1);
+    expect(sample[1].map(String)).toEqual([...PAYROLL_HISTORY_SAMPLE_ROWS[0]]);
+
+    // Sheet 3: every code the import accepts.
+    const codes = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[PAYROLL_HISTORY_XLSX_SHEETS.codes], {
+      header: 1,
+      raw: true,
+      blankrows: false,
+    });
+    expect(codes[0]).toEqual(['Accepted DOE codes']);
+    const codeColumn = codes.slice(3).map((r) => r[0]);
+    for (const c of ['EEEPF', 'EESOCSO', 'EEEIS', 'PCB', 'CP38', 'ZAKAT', 'EREPF', 'ERSOCSO', 'EREIS', 'HRDF']) {
+      expect(codeColumn, `Codes sheet must list ${c}`).toContain(c);
+    }
+  });
+
+  it('the Sample sheet’s rows survive a round trip back through the upload path', async () => {
+    const { buildPayrollHistoryWorkbook } = await import('../lib/import-template-xlsx');
+    const { workbookToCsvText } = await import('../lib/spreadsheet');
+    const XLSX = await import('xlsx');
+
+    // Build a workbook whose FIRST sheet carries the sample rows — i.e. exactly what a migrator hands
+    // back after filling the template in — and push it through the real upload reader.
+    const bytes = await buildPayrollHistoryWorkbook(
+      { title: 't', note: 'n', code: 'Code', label: 'Meaning', destination: 'Lands on', direction: 'Direction' },
+      [],
+    );
+    // cellStyles: true — the `@` number format is written into the workbook's STYLE table, not onto the
+    // cell record, so a plain read reports `z` as undefined even though the file is correct. Verified
+    // against SheetJS 0.20.3 directly before trusting it.
+    const wb = XLSX.read(bytes, { type: 'array', cellStyles: true });
+    const filled = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      filled,
+      XLSX.utils.aoa_to_sheet([[...PAYROLL_HISTORY_HEADERS], ...PAYROLL_HISTORY_SAMPLE_ROWS.map((r) => [...r])]),
+      wb.SheetNames[0],
+    );
+    const filledBytes = new Uint8Array(XLSX.write(filled, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
+
+    const csv = await workbookToCsvText(filledBytes);
+    const { headers, records } = parseCsvRecords(csv);
+    expect(headers).toEqual(CONTRACT_KEYS);
+    expect(records).toHaveLength(PAYROLL_HISTORY_SAMPLE_ROWS.length);
+    expect(readHistoryField(records[0], 'employee_no')).toBe(PAYROLL_HISTORY_SAMPLE_ROWS[0][0]);
+    expect(readHistoryField(records[0], 'payroll_period')).toBe(PAYROLL_HISTORY_SAMPLE_ROWS[0][1]);
+    expect(readHistoryField(records[0], 'doe_code')).toBe(PAYROLL_HISTORY_SAMPLE_ROWS[0][3]);
+    expect(readHistoryField(records[0], 'amount')).toBe(PAYROLL_HISTORY_SAMPLE_ROWS[0][5]);
+  });
+});
