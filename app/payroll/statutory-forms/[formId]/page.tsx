@@ -29,8 +29,38 @@ import { recordReportAction } from './actions';
  *
  * THE AGENCY FILE LINKS ARE GATED ON READINESS, exactly as Reports gates them. An e-CP39 or ASSIST file
  * generated while somebody is missing their tax or SOCSO number is a submission that silently omits them.
+ *
+ * 587ee719 — THE FIDELITY BANNER SAYS WHAT THIS SCREEN CAN GIVE YOU, AND NOTHING MORE. It repeats the
+ * status the card on the shelf already carried, so nobody arrives here having forgotten. It describes the
+ * STATUS ONLY: it does not say the form is validated, complete for filing, or accepted anywhere. The
+ * request asked for generation to be BLOCKED when statutory numbers are missing; that is deliberately not
+ * built here, because a hard block needs each form's own required-field list and that arrives with each
+ * form's own build. What exists is unchanged — readiness named per person (components/statutory-report-
+ * panel.tsx) and the readiness gate on the two agency upload files below.
+ *
+ * 587ee719 — `lang` IS ACCEPTED AND CARRIED, NOT RENDERED. The two EA shelf entries (my.ea.en / my.ea.ms)
+ * land on this screen's CP8D employee list, and the language they were chosen for has to survive the trip
+ * to the per-employee statement. It changes nothing about this page's own words: those follow the viewer's
+ * UI locale exactly as before.
  */
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
+const EA_LANGS = ['en', 'ms'] as const;
+type EaLang = (typeof EA_LANGS)[number];
+const FIDELITY_KEY: Record<string, string> = {
+  official: 'fidelity_official',
+  figures: 'fidelity_figures',
+  'draft-file': 'fidelity_draft_file',
+};
+const FIDELITY_HINT_KEY: Record<string, string> = {
+  official: 'fidelity_official_hint',
+  figures: 'fidelity_figures_hint',
+  'draft-file': 'fidelity_draft_file_hint',
+};
+const FIDELITY_CLS: Record<string, string> = {
+  official: 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300',
+  figures: 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300',
+  'draft-file': 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
+};
 
 const STATUS_CLS: Record<string, string> = {
   overdue: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
@@ -60,6 +90,8 @@ export default async function StatutoryFormPage({
     year?: string;
     month?: string;
     periodKey?: string;
+    /** 587ee719 — which language the per-employee EA statements should come out in (en / ms). */
+    lang?: string;
     error?: string;
   }>;
 }) {
@@ -115,6 +147,9 @@ export default async function StatutoryFormPage({
   const due = submissionDueFor(periodKey, def.submission?.dueDayOfNextMonth ?? null, today);
   const periodLabel = annual ? year : `${monthName(month)} ${year}`;
   const ready = result.readiness.length === 0;
+  // ALLOWLISTED, never echoed. An unrecognised value is dropped rather than passed on: `lang` ends up in
+  // a URL the employee-name links point at, and the EA route allowlists it a second time.
+  const eaLang: EaLang | null = EA_LANGS.includes(sp.lang as EaLang) ? (sp.lang as EaLang) : null;
   const backHref = `/payroll/statutory-forms?companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}${
     def.submission ? `&body=${def.submission.body}` : ''
   }`;
@@ -140,6 +175,10 @@ export default async function StatutoryFormPage({
 
       <Card className="overflow-hidden print:hidden">
         <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-4">
+          {/* The chosen EA language survives a re-Show. A GET form submits only its own controls, so
+              without this hidden field picking a different month would silently drop back to the UI
+              locale — the exact "it follows your app language" behaviour this round removed. */}
+          {eaLang && <input type="hidden" name="lang" value={eaLang} />}
           <Field label={t('company')}>
             <select name="companyId" defaultValue={companyId} className={inputCls}>
               {companies.map((c) => (
@@ -203,6 +242,18 @@ export default async function StatutoryFormPage({
         </div>
       </div>
 
+      {/* 587ee719 — the same status the card on the shelf carried, restated where the download buttons
+          are. STATUS ONLY: it names what this screen produces, never that it is validated or ready to
+          file. Absent entirely for a form whose catalog entry declares no fidelity, rather than guessed. */}
+      {def.fidelity && (
+        <div className={`rounded-lg border px-4 py-3 text-xs ${FIDELITY_CLS[def.fidelity]}`}>
+          <span className="font-medium uppercase tracking-wide">
+            {t(FIDELITY_KEY[def.fidelity] as 'fidelity_official')}
+          </span>{' '}
+          <span>{t(FIDELITY_HINT_KEY[def.fidelity] as 'fidelity_official_hint')}</span>
+        </div>
+      )}
+
       {!result.meta.hasBatch ? (
         <Card>
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">
@@ -217,6 +268,11 @@ export default async function StatutoryFormPage({
              The YEAR, never the period: the EA page tests its `year` against /^\d{4}$/ and falls back
              to the server's current year when it does not match. */
           eaYear={year}
+          /* 587ee719 — when this list was opened FROM an EA shelf entry, the employee names hand you that
+             person's EA statement in the chosen language, as a PDF: that PDF is the form the entry names.
+             Null (the ordinary CP8D arrival) leaves the link exactly as it was — the on-screen statement,
+             in the viewer's own language. */
+          eaLang={eaLang}
           strings={{
             heading: t('reportHeader', { label: def.label, period: periodLabel }),
             readinessTitle: t('readinessTitle', { count: result.readiness.length }),

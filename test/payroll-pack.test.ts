@@ -70,6 +70,8 @@ describe('ADR-0080 rung 7: payroll pack registration', () => {
       'payroll_step_up_challenge',
       'payroll_input',
       'pay_component',
+      // 4157a498 (migration 0427) — the payroll-history importer's DOE-code catalog.
+      'payroll_import_code',
       'employment_pay_component',
       'payroll_batch_component',
       'payroll_individual_txn',

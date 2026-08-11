@@ -39,6 +39,8 @@ import {
   getIndividualTxn,
   updateIndividualTxn,
 } from '../core/payroll-individual-txn';
+import { exportIndividualTxnsCsv, listIndividualTxnsAcross } from '../core/payroll-view';
+import { buildTxnPanel } from '../app/payroll/transactions/individual/existing-context';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setSetting, type Base } from './harness';
 
 describe('49e7e0a2 — one-off transactions are editable after processing, and say so', () => {
@@ -277,6 +279,133 @@ describe('49e7e0a2 — one-off transactions are editable after processing, and s
       .from(schema.payrollIndividualTxn)
       .where(eq(schema.payrollIndividualTxn.id, id));
     expect(Number(txn.amount)).toBe(50);
+  });
+
+  // ───────────────────── 510f4bd1 — and now the LISTING says so ─────────────────────
+  //
+  // The mark, the Close refusal and the Reprocess pre-tick above all existed before this round. What did
+  // not was the screen: every row on a processed run read `Processed`, whether or not it was in the payslip
+  // that run last produced. These pin the DERIVED status end to end — through the real query, on real
+  // rows — because the derivation reads two timestamps that only a database can produce.
+
+  it('a row keyed AFTER the run was processed is listed Pending reprocessing — the updated_at IS NULL row', async () => {
+    const { a, employmentId, batchId } = await hireWithBatch();
+    const before = await createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 50 });
+    await generatePayslips(a, { batchId });
+    // Added afterwards and never edited: `payroll_individual_txn.updated_at` stays NULL, which is exactly
+    // why the rule coalesces to created_at. Comparing updated_at alone would call this row fresh.
+    const after = await createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-12', amount: 500 });
+    const [addedRow] = await owner.db
+      .select()
+      .from(schema.payrollIndividualTxn)
+      .where(eq(schema.payrollIndividualTxn.id, after.id));
+    expect(addedRow.updatedAt, 'the coalesce exists for exactly this row').toBeNull();
+
+    const rows = await listIndividualTxnsAcross(a, { companyIds: [base.companyId], employmentId });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(before.id)?.reprocessRequired, 'the untouched row is genuinely in the payslip').toBe(false);
+    expect(byId.get(after.id)?.reprocessRequired, 'the added row has never been calculated').toBe(true);
+
+    // The workspace panel derives the SAME verdict from the SAME read — one rule, not two.
+    const panel = buildTxnPanel(rows);
+    expect(new Map(panel.rows.map((r) => [r.id, r.status]))).toEqual(
+      new Map([
+        [before.id, 'processed'],
+        [after.id, 'reprocessRequired'],
+      ]),
+    );
+    expect(panel.totals.reprocessCount).toBe(1);
+    expect(panel.totals.reprocessTotal).toBe('500.00');
+    expect(panel.totals.processedCount).toBe(1);
+  });
+
+  it('an EDIT after processing flips its row to Pending reprocessing and back after a selective reprocess', async () => {
+    const { a, employmentId, batchId } = await hireWithBatch();
+    const { id } = await createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 500 });
+    await generatePayslips(a, { batchId });
+    const listed = async () => (await listIndividualTxnsAcross(a, { companyIds: [base.companyId], employmentId }))[0];
+
+    expect((await listed()).reprocessRequired, 'nothing has changed yet').toBe(false);
+    expect((await listed()).batchNeedsRecalcForEmployment).toBe(false);
+
+    await updateIndividualTxn(a, { id, amount: 800 });
+    const stale = await listed();
+    expect(stale.reprocessRequired, 'edited after the payslip was worked out').toBe(true);
+    expect(stale.batchNeedsRecalcForEmployment, 'and the run itself agrees at the employee level').toBe(true);
+
+    // Request case 6: after a successful reprocess everything settles back BY ITSELF. Selective reprocess
+    // DELETEs and re-INSERTs the payslip, so its created_at moves past the row's change instant — nothing
+    // is set by hand and no status column is written, because there is none.
+    await generatePayslips(a, { batchId, reprocessSubset: { employmentIds: [employmentId], reason: 'catch up' } });
+    const settled = await listed();
+    expect(settled.reprocessRequired).toBe(false);
+    expect(settled.batchNeedsRecalcForEmployment).toBe(false);
+    expect(buildTxnPanel([settled]).rows[0].status).toBe('processed');
+  });
+
+  it('the History filter and the CSV report the same verdict as the screen', async () => {
+    const { a, employmentId, batchId } = await hireWithBatch();
+    const fresh = await createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 50 });
+    await generatePayslips(a, { batchId });
+    const added = await createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-12', amount: 500 });
+
+    // ?txnStatus=reprocess returns the stale row and ONLY the stale row. The failure this guards is the
+    // opposite one: cleanBatchStatus drops an unrecognised value, so a filter that does not know
+    // 'reprocess' silently returns EVERYTHING rather than erroring.
+    const filtered = await listIndividualTxnsAcross(a, {
+      companyIds: [base.companyId],
+      employmentId,
+      batchStatus: 'reprocess',
+    });
+    expect(filtered.map((r) => r.id)).toEqual([added.id]);
+
+    // …and the FILTER MUST SELECT WHAT THE COLUMN SHOWS. Once the stale row is labelled Pending
+    // reprocessing, ?txnStatus=processed must stop returning it — a screen that lists a row under
+    // Processed while the badge beside it says otherwise is the contradiction this item is about.
+    const asProcessed = await listIndividualTxnsAcross(a, {
+      companyIds: [base.companyId],
+      employmentId,
+      batchStatus: 'processed',
+    });
+    expect(asProcessed.map((r) => r.id)).toEqual([fresh.id]);
+
+    // …and a value the read does not know still fails OPEN, which is why the screen's whitelist has to be
+    // imported rather than restated. Stated here so the behaviour is measured, not assumed.
+    const bogus = await listIndividualTxnsAcross(a, {
+      companyIds: [base.companyId],
+      employmentId,
+      batchStatus: 'not_a_status',
+    });
+    expect(bogus.map((r) => r.id).sort()).toEqual([fresh.id, added.id].sort());
+
+    const csv = await exportIndividualTxnsCsv(a, { companyIds: [base.companyId], employmentId });
+    const lines = csv.content.trim().split('\n');
+    const statusCol = lines[0].split(',').indexOf('Transaction Status');
+    expect(statusCol).toBeGreaterThan(-1);
+    const statuses = lines.slice(1).map((l) => l.split(',')[statusCol]);
+    expect(statuses.sort(), 'the download must not call a stale line processed').toEqual(
+      ['processed', 'reprocess'].sort(),
+    );
+  });
+
+  it('an attendance-style mark leaves the employee flagged while every row stays Processed', async () => {
+    // The DELIBERATE disagreement, measured rather than argued: a mark that came from something other than
+    // a transaction (an attendance recompute, or a DELETE that left no row behind) is an EMPLOYEE-level
+    // fact. Here it is produced by deleting the second row, which marks the run without touching the first.
+    const { a, employmentId, batchId } = await hireWithBatch();
+    const keep = await createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 50 });
+    const drop = await createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-11', amount: 90 });
+    await generatePayslips(a, { batchId });
+    await deleteIndividualTxn(a, { id: drop.id });
+
+    const rows = await listIndividualTxnsAcross(a, { companyIds: [base.companyId], employmentId });
+    expect(rows.map((r) => r.id)).toEqual([keep.id]);
+    expect(rows[0].reprocessRequired, 'the surviving row IS in the payslip — do not mark it').toBe(false);
+    expect(rows[0].batchNeedsRecalcForEmployment, 'but the employee is waiting to be recalculated').toBe(true);
+    expect(buildTxnPanel(rows).rows[0].status).toBe('processed');
+    // The employee-level fact is the batch's, and it is the only one that survives the delete.
+    expect((await batchRow(batchId)).recalcEmploymentIds).toEqual([employmentId]);
+    await expect(closeBatch(a, { batchId })).rejects.toBeInstanceOf(BatchNeedsRecalculationError);
   });
 
   it('an UNATTACHED row is unaffected: no batch, no mark, still freely editable', async () => {

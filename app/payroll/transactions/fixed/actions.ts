@@ -6,8 +6,10 @@ import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import {
   FixedTransactionAmountError,
+  FixedTransactionBackwardsError,
   FixedTransactionDateError,
   FixedTransactionNotFoundError,
+  FixedTransactionOverlapError,
   FixedTransactionPaidError,
   UnsupportedFixedCurrencyError,
   archiveEmploymentPayComponent,
@@ -65,7 +67,7 @@ export async function createFixedTransactionAction(formData: FormData) {
       runType: runType as FixedTransactionCycle,
     });
   } catch (e) {
-    return back(employmentId, `error=${encodeURIComponent(fixedErrorKey(e))}`);
+    return back(employmentId, fixedErrorQs(e));
   }
 
   revalidatePath('/payroll/transactions/fixed');
@@ -80,14 +82,45 @@ function fixedErrorKey(e: unknown): string {
       ? 'currencyUnsupported'
       : e instanceof FixedTransactionAmountError
         ? 'amountError'
-        : // f1123afd — removal refused because the item was paid on a processed payslip. Mapped to a
-          // localised key rather than falling through to `(e as Error).message`, which would put the
-          // service's raw English into the URL and onto the screen.
-          e instanceof FixedTransactionPaidError
-          ? 'paidOnPayslip'
-          : e instanceof FixedTransactionNotFoundError
-            ? 'notFound'
-            : (e as Error).message;
+        : // 2aed39d4 — the save would have covered days a live record for the same pay item already
+          // covers. The clashing row's code and dates ride along in `fixedErrorQs` so the banner can
+          // name it, which is the whole point of refusing here rather than letting Postgres 23P01 out.
+          e instanceof FixedTransactionOverlapError
+          ? 'overlap'
+          : // 2aed39d4 — split out of dateError, which said "End date cannot be before the start date"
+            // and named entirely the wrong field: nothing is wrong with the end date here.
+            e instanceof FixedTransactionBackwardsError
+            ? 'backwards'
+            : // Removal/edit refused because a CLOSED run covers the row's window (2aed39d4 changed this
+              // from "paid on a processed payslip" — see FixedTransactionPaidError). Mapped to a
+              // localised key rather than falling through to `(e as Error).message`, which would put the
+              // service's raw English into the URL and onto the screen.
+              e instanceof FixedTransactionPaidError
+              ? 'paidOnPayslip'
+              : e instanceof FixedTransactionNotFoundError
+                ? 'notFound'
+                : (e as Error).message;
+}
+
+/**
+ * The full `error=…` query fragment for a failed write, including the clashing row's identity when the
+ * error carries one. The banner messages for `overlap` / `backwards` / `paidOnPayslip` take ICU
+ * arguments; a key on its own would render "{code}" literally, so the values travel with the key.
+ *
+ * Only ever built from a TYPED error's own fields (a catalog code and two ISO dates), never from raw
+ * form input, and every value is encoded — the page re-reads them as opaque strings and passes them
+ * straight to next-intl.
+ */
+function fixedErrorQs(e: unknown): string {
+  const key = fixedErrorKey(e);
+  const qs = new URLSearchParams({ error: key });
+  if (e instanceof FixedTransactionOverlapError || e instanceof FixedTransactionBackwardsError) {
+    qs.set('clashCode', e.code);
+    qs.set('clashFrom', e.validFrom);
+    if (e.validTo != null) qs.set('clashTo', e.validTo);
+  }
+  if (e instanceof FixedTransactionPaidError) qs.set('clashPeriod', e.payPeriod);
+  return qs.toString();
 }
 
 /**
@@ -137,7 +170,7 @@ export async function updateFixedTransactionAction(formData: FormData) {
       runType: runType as FixedTransactionCycle,
     });
   } catch (e) {
-    return back(employmentId, `error=${encodeURIComponent(fixedErrorKey(e))}`);
+    return back(employmentId, fixedErrorQs(e));
   }
 
   revalidatePath('/payroll/transactions/fixed');
@@ -162,7 +195,7 @@ export async function endFixedTransactionAction(formData: FormData) {
   try {
     await endEmploymentPayComponent(s, { id, employmentId, effectiveTo });
   } catch (e) {
-    return back(employmentId, `error=${encodeURIComponent(fixedErrorKey(e))}`);
+    return back(employmentId, fixedErrorQs(e));
   }
 
   revalidatePath('/payroll/transactions/fixed');
@@ -190,7 +223,7 @@ export async function archiveFixedTransactionAction(formData: FormData) {
     // the operator to end it from a date instead, and that form is on that page; bouncing them to the
     // list would make them find their way back to the thing they were told to do.
     return redirect(
-      `/payroll/transactions/fixed/${encodeURIComponent(id)}?employmentId=${encodeURIComponent(employmentId)}&error=${encodeURIComponent(fixedErrorKey(e))}`,
+      `/payroll/transactions/fixed/${encodeURIComponent(id)}?employmentId=${encodeURIComponent(employmentId)}&${fixedErrorQs(e)}`,
     );
   }
 

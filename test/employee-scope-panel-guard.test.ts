@@ -97,20 +97,14 @@ function panelSelection(tree: unknown): string | null {
 }
 
 /**
- * The same verdict, read off the SHARED SEARCH FIELD instead of the panel.
- *
- * r179 (f35f758a) moved Individual Payslip's employee control out of a left-hand panel and into the top
- * filter row, as `components/employee-search-field.tsx`. WHAT IS UNDER TEST DID NOT CHANGE: the screen
- * still coerces an `?employmentId=` it does not recognise to "no selection", and that coercion is still
- * invisible — a page that dropped it renders, returns 200 and passes every source grep while quietly
- * reading somebody else's employee. So the assertion is still on what the CONTROL IS HANDED, which is the
- * guard's output rather than its source text; only the control it is read off has moved.
+ * `searchFieldSelection` — the same verdict read off `components/employee-search-field.tsx` — lived here
+ * between r179 and r185 W-A, while Transaction Detail and Individual Payslip expressed their selection in
+ * that control. Both screens went back to the panel at the reporter's request, so every verdict is read
+ * through `panelSelection` above again and the second reader has been removed rather than left as a dead
+ * helper pointing at a control no page mounts. EmployeeSearchField is still IMPORTED, because several
+ * cases now assert it is mounted ZERO times: an assertion that a component is absent is worthless if the
+ * identity it compares against is not the real one.
  */
-function searchFieldSelection(tree: unknown): string | null {
-  const fields = findByType(tree, EmployeeSearchField);
-  expect(fields, 'the screen must render exactly one shared employee search field').toHaveLength(1);
-  return (fields[0].props.value ?? null) as string | null;
-}
 
 describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every screen the panel touched', () => {
   let base: Base;
@@ -228,43 +222,46 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
   // ──────────────────────── Individual Payslip ────────────────────────
 
   it('Individual Payslip: a legitimate employee is selected, a cross-company one is not', async () => {
-    // REWRITTEN, NOT DELETED, FOR r179. The panel is gone from this screen and the control is now the
-    // shared search field in the filter row — so these two cases read `value` off that field instead of
-    // `selectedId` off the panel. The VALUABLE half is untouched: a foreign employmentId must coerce to
-    // no selection. Deleting the cases with the panel would have dropped exactly that.
+    // REWRITTEN TWICE, DELETED NEVER. r179 moved this screen's control from the left-hand panel to the
+    // shared search field, and f35f758a rev 2 moved it back at the reporter's request. Both times the
+    // VALUABLE half was untouched: a foreign employmentId must coerce to no selection, and that coercion
+    // is invisible on a page that drops it. Only where the verdict is read off has moved.
     const ok = await IndividualPayslipPage({
       searchParams: Promise.resolve({ employmentId: mine.employmentId }),
     });
-    expect(searchFieldSelection(ok)).toBe(mine.employmentId);
+    expect(panelSelection(ok)).toBe(mine.employmentId);
 
     const tampered = await IndividualPayslipPage({
       searchParams: Promise.resolve({ employmentId: foreign.employmentId }),
     });
-    expect(searchFieldSelection(tampered), 'a company outside scope must coerce to no selection').toBeNull();
+    expect(panelSelection(tampered), 'a company outside scope must coerce to no selection').toBeNull();
 
-    // The panel really is gone from THIS screen (and still present on the others, which their own cases
-    // above and below assert). A page that kept both controls would post two employmentId values.
-    expect(findByType(ok, EmployeeScopePanel), 'the left-hand panel was removed from this screen').toHaveLength(0);
+    // The top-row search field goes away with the restore. A page that kept both controls would offer two
+    // places to pick a person and one of them would be wrong after the other was used.
+    expect(
+      findByType(ok, EmployeeSearchField),
+      'the search field in the filter row is replaced by the panel, not joined by it',
+    ).toHaveLength(0);
   });
 
   it('Individual Payslip: an out-of-scope companyId is still refused alongside the employee', async () => {
-    // The employee guard is new; the company guard is not. Both must hold, or the screen narrowed one
-    // fence while widening another.
+    // The employee guard and the company guard must BOTH hold, or the screen narrowed one fence while
+    // widening another.
     const tree = await IndividualPayslipPage({
       searchParams: Promise.resolve({ companyId: foreignCompanyId, employmentId: foreign.employmentId }),
     });
-    expect(searchFieldSelection(tree)).toBeNull();
+    expect(panelSelection(tree)).toBeNull();
 
-    // …and the field is fed only what the guard would accept, so it cannot offer a row the server refuses.
+    // …and the panel is fed only what the guard would accept, so it cannot offer a row the server refuses.
     // Every option is fed back through the page to prove it.
-    const offered: string[] = findByType(tree, EmployeeSearchField)[0].props.employees.map(
-      (e: { value: string }) => e.value,
+    const offered: string[] = findByType(tree, EmployeeScopePanel)[0].props.employees.map(
+      (e: { employmentId: string }) => e.employmentId,
     );
     expect(offered).toContain(mine.employmentId);
     expect(offered, 'a cross-company employee must not be offered').not.toContain(foreign.employmentId);
     for (const id of offered) {
       const re = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId: id }) });
-      expect(searchFieldSelection(re), `the field offered ${id} but the guard refused it`).toBe(id);
+      expect(panelSelection(re), `the panel offered ${id} but the guard refused it`).toBe(id);
     }
   });
 
@@ -312,78 +309,84 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
 
   // ───────────── Transaction View › Transaction Detail (98e69987) ─────────────
   //
-  // THIS SCREEN WENT THE OTHER WAY, AND THAT IS WHY ITS CASES LIVE HERE RATHER THAN SOMEWHERE ELSE.
-  //
   // r168a's question is "does the selection still get DECIDED on the server?", and it is the same question
-  // whether the selection is expressed by a rail, a dropdown or a search box. 98e69987 REMOVED this tab's
-  // permanent left-hand rail — the reporter's complaint was that it ate a fifth of the width and pushed the
-  // last months off the edge — and moved the choice to the shared searchable field in the filter row. So
-  // the file that pins where the panel went is also the right place to pin where it went AWAY, and to state
-  // the two things that removal put at risk:
+  // whether the selection is expressed by a rail, a dropdown or a search box. r179 removed this tab's
+  // permanent left-hand rail and moved the choice to the shared searchable field in the filter row; the
+  // reporter then saw that live and asked for the rail back, so 98e69987 rev 2 RESTORES it. These cases
+  // moved with the control both times, because the thing under test never moved — only where the verdict
+  // is read off did.
   //
-  //   1. THE FENCE. The rail's Business Unit / Department / Status narrowers went with it, so the search
-  //      now reaches every employee in one list. The approved plan says that is fine BECAUSE the list is
-  //      the scope-fenced read — which is only true while it stays that read. A widened source here would
-  //      offer a cross-company employee as a clickable row, and the page's own coercion is invisible.
-  //   2. ONE EMPLOYEE CONTROL. The filter bar above was deliberately gated OFF for this tab, with a comment
-  //      saying two employee controls that disagree would end up on one screen. Un-gating it is the whole
-  //      change, so the assertion the old gate stood for has to survive as an assertion: after the merge
-  //      there is exactly one control, in one form, behind one submit.
+  // What the restore puts at risk, and what these cases therefore pin:
+  //
+  //   1. THE FENCE. The rail is fed the same scope-fenced `listEmployees(s, scopeIds)` the search box was.
+  //      A widened source would offer a cross-company employee as a clickable row, and the page's own
+  //      coercion of a foreign `?employmentId=` is invisible — the screen still renders and still 200s.
+  //   2. ONE EMPLOYEE CONTROL. The shared filter bar is gated OFF for this tab again, exactly as it was
+  //      before r179, so the rail is the only place a person is picked. Two controls that disagree on one
+  //      screen is what that gate has always existed to prevent, in either direction.
+  //   3. THE MONTHS CONTRACT. The rail's `preserve` carries `months` as ONE comma-joined string while the
+  //      tick boxes post repeated params. `cleanMonths` accepts both; the export-params case below is what
+  //      catches a partial revert that quietly breaks one of the two forms.
   //
   // Rendered twice with a legitimate and a foreign id, like every case above, and the verdict read off what
   // the screen HANDS the control rather than out of its source text.
 
-  it('Transaction Detail: the rail is gone and exactly ONE employee control replaced it, inside the filter form', async () => {
+  it('Transaction Detail: the rail is back, and it is the ONLY employee control on the tab', async () => {
     const tree = await TransactionViewPage({
       searchParams: Promise.resolve({ tab: 'grid', employmentId: mine.employmentId }),
     });
 
     expect(
       findByType(tree, CollapsibleEmployeePanel),
-      'the permanent rail must be gone — that is what gives the figures the full width',
-    ).toHaveLength(0);
-    expect(findByType(tree, EmployeeScopePanel)).toHaveLength(0);
+      'the collapsible rail must wrap this tab again — the reporter asked for the list back',
+    ).toHaveLength(1);
+    expect(findByType(tree, EmployeeScopePanel), 'and it must carry the shared scope panel').toHaveLength(1);
 
-    const fields = findByType(tree, EmployeeSearchField);
-    expect(fields, 'the tab must render exactly one searchable employee field').toHaveLength(1);
+    expect(
+      findByType(tree, EmployeeSearchField),
+      'the top-row search box goes away with the restore — two employee controls must never coexist here',
+    ).toHaveLength(0);
     expect(
       controlsNamed(tree, 'select', 'employmentId'),
-      'the long unsearchable dropdown must not render beside the search field',
+      'the shared filter bar is gated off this tab, so its long dropdown must not render either',
     ).toHaveLength(0);
 
-    // ONE bar, ONE submit. The tab used to run a second GET form of its own inside the rail's workspace;
-    // the merge is only honest if that one is gone rather than hidden.
+    // ONE form on the tab: the rail's own inner year / months / cycle GET form. The shared bar above is
+    // gated off, and the employee choice is in NO form at all — EmployeeScopePanel navigates by
+    // router.push, which is exactly why it can live outside the period form without disagreeing with it.
     const forms = findByType(tree, 'form');
-    expect(forms, 'the tab’s own second filter form must be gone, not merely moved').toHaveLength(1);
+    expect(forms, 'the tab runs its own period form and nothing else').toHaveLength(1);
     expect(forms[0].props.method).toBe('GET');
     expect(
-      findByType(forms[0], EmployeeSearchField),
-      'the employee choice must post together with the period, behind the one submit',
-    ).toHaveLength(1);
+      findByType(forms[0], EmployeeScopePanel),
+      'the panel navigates rather than posting, so it is not inside the period form',
+    ).toHaveLength(0);
 
-    // …and everything the plan promised on that same row, in that same form.
-    expect(controlsNamed(forms[0], 'select', 'companyId')).toHaveLength(1);
+    // …and the period controls the plan promised, in that one form. `companyId` rides as a HIDDEN input
+    // here (the top row's Company select is gated off this tab), so there is no select to count.
     expect(controlsNamed(forms[0], 'select', 'year')).toHaveLength(1);
     expect(controlsNamed(forms[0], 'select', 'cycle')).toHaveLength(1);
     expect(controlsNamed(forms[0], 'input', 'months'), 'the twelve month tick boxes').toHaveLength(12);
   });
 
-  it('Transaction Detail: an out-of-scope ?employmentId= selects NOTHING, and the search reaches only the scoped list', async () => {
+  it('Transaction Detail: an out-of-scope ?employmentId= selects NOTHING, and the rail reaches only the scoped list', async () => {
     const ok = await TransactionViewPage({
       searchParams: Promise.resolve({ tab: 'grid', employmentId: mine.employmentId }),
     });
-    expect(findByType(ok, EmployeeSearchField)[0].props.value).toBe(mine.employmentId);
+    expect(panelSelection(ok)).toBe(mine.employmentId);
 
     const tampered = await TransactionViewPage({
       searchParams: Promise.resolve({ tab: 'grid', employmentId: foreign.employmentId }),
     });
-    const field = findByType(tampered, EmployeeSearchField)[0];
-    expect(field.props.value, 'a company outside scope must coerce to no selection').toBeNull();
+    expect(panelSelection(tampered), 'a company outside scope must coerce to no selection').toBeNull();
 
-    // The rail's narrowers are gone; the fence behind them must not be.
-    const offered: string[] = field.props.employees.map((e: { value: string }) => e.value);
+    // The rail is fed the same scope-fenced read the search box was; restoring it must not have widened it.
+    // Note the key is `employmentId` on the panel, where the search field called it `value`.
+    const offered: string[] = findByType(tampered, EmployeeScopePanel)[0].props.employees.map(
+      (e: { employmentId: string }) => e.employmentId,
+    );
     expect(offered).toContain(mine.employmentId);
-    expect(offered, 'losing the rail must not have widened what the search can reach').not.toContain(
+    expect(offered, 'restoring the rail must not have widened what it can reach').not.toContain(
       foreign.employmentId,
     );
   });
@@ -421,7 +424,7 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
 
   it('Transaction Detail: with nobody chosen it says so instead of drawing an empty year', async () => {
     const tree = await TransactionViewPage({ searchParams: Promise.resolve({ tab: 'grid' }) });
-    expect(findByType(tree, EmployeeSearchField)[0].props.value).toBeNull();
+    expect(panelSelection(tree)).toBeNull();
     expect(findByType(tree, HistoryGrid), 'no employee, no figures').toHaveLength(0);
   });
 

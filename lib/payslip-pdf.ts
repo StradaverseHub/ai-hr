@@ -108,8 +108,20 @@ export type PayslipPdfData = {
   /** Already resolved to a display label by the caller (the stored value is an enum). */
   paymentMethod?: string | null;
   bankName?: string | null;
-  /** MASKED to the last four digits BY THE READ — the full number never reaches this module. */
-  bankAccountMasked?: string | null;
+  /**
+   * The employee's bank account, IN FULL (f35f758a).
+   *
+   * It used to be `bankAccountMasked`, and both reads that feed this module masked it to the last four
+   * digits before it ever got here. The approved plan overturned that: a pay statement that says the money
+   * went to "••••8901" does not say which account was paid. The reads now return both forms
+   * (core/payroll-view.ts `payslipForReview`, core/payroll.ts `payslipDetail`); the SCREENS keep the masked
+   * one, this document takes the whole number, and the exposure that creates is written down at
+   * `PayslipReviewRow.bankAccountFull` rather than left to be discovered.
+   *
+   * The field was RENAMED rather than repurposed on purpose: a `bankAccountMasked` holding an unmasked
+   * number is a lie every future reader would believe.
+   */
+  bankAccount?: string | null;
   /** HRD Corp levy, employer-only. Stored on every payslip as `statutory.hrdf` (efece4ce) and left off
    *  the old document entirely. */
   hrdf?: number;
@@ -119,6 +131,20 @@ export type PayslipPdfData = {
   /** This run predates the per-item stamp, so the grouped rows are all there is. The document SAYS so —
    *  an itemless earnings box under a non-zero allowance reads as a defect. */
   detailNotRecorded?: boolean;
+  /**
+   * f35f758a — the pay items this run CALCULATED BUT DID NOT PAY (benefits in kind, ADR-0025 §5).
+   *
+   * Derived in `buildPayslipPdfData` from `statutory.recordLines`, and ONLY from lines the KERNEL stamped
+   * `nonPayable: true` at run time (core/payroll.ts `PayslipRecordLine`). Never re-derived from today's
+   * `pay_component` flags: that would answer with today's configuration about a month already paid.
+   *
+   * EMPTY ON EVERY PAYSLIP THAT EXISTS TODAY, for two independent reasons — no payslip written before this
+   * shipped carries the stamp, and the production catalogue has zero non-payable rows (verified
+   * 2026-08-10). Empty ⇒ the box is not drawn ⇒ the document is unchanged. The mixed, unstamped list that
+   * historical payslips carry stays ONE list on the screens that print it; it cannot be split after the
+   * fact, and this document never tries.
+   */
+  nonPayableLines?: PayslipEarningLine[];
   ytd?: PayslipYtdTotals | null;
   /** The four-digit year the YTD column covers (from the payslip's own pay period). */
   ytdYear?: string | null;
@@ -198,6 +224,14 @@ export type PayslipPdfLabels = {
    * SCREENS show the month in the reader's own language; the file cannot yet.
    */
   periodLabel: string;
+  // ─── f35f758a — the Non-payable box. REQUIRED for the same reason every 5c198931 label is: tsc is what
+  // stops one of the two PDF routes quietly printing a block the other one does not. ───
+  /** Heading of the box listing items that were calculated but never paid (benefits in kind). */
+  nonPayable: string;
+  /** Caption on that box's own total row. */
+  nonPayableTotal: string;
+  /** One line under it saying, in the employee's own words, that none of this reached their pay. */
+  nonPayableNote: string;
 };
 
 /**
@@ -264,8 +298,35 @@ export function buildPayslipPdfData(
     hrdf: n(st.hrdf),
     earningLines: allowanceLinesOf(componentLines, st.otConvert),
     detailNotRecorded: componentLines.length === 0,
+    nonPayableLines: nonPayableLinesOf(st.recordLines),
     ...extra,
   };
+}
+
+/** One stored `statutory.recordLines` entry, read structurally (core/payroll.ts `PayslipRecordLine`).
+ *  Imported by SHAPE rather than by type, for the same reason `StoredComponentLine` is: `lib/` pulling in
+ *  the payroll kernel to borrow a four-field record would drag the whole module into every PDF request. */
+type StoredRecordLine = { code?: string | null; name?: string | null; amount?: unknown; nonPayable?: boolean };
+
+/**
+ * The record lines the RUN stamped as non-payable — and nothing else.
+ *
+ * `statutory.recordLines` is a MIXED array (f1564110 phase 3): record-only benefits in kind sit beside
+ * named provenance for one-off transactions that were genuinely paid. The ONLY safe discriminator is the
+ * one the kernel wrote at run time, so this filters on `nonPayable === true` and treats every other value —
+ * false, and the `undefined` that every pre-f35f758a payslip carries — as "not a non-payable line".
+ *
+ * That means a historical payslip yields an EMPTY list and prints no Non-payable box, which is correct:
+ * those slips were never told which of their items were non-payable, and matching the code back to today's
+ * `pay_component` catalogue would print today's answer against last month's pay. Verified on production
+ * 2026-08-10: payslip 945d16e9 carries COMMISSION 300, HANDPHONE ALLOWANCE 400 and SHORT NOTICE −500, all
+ * PAID. Printing those three under "Non-payable" would tell that employee their commission never arrived.
+ */
+function nonPayableLinesOf(raw: unknown): PayslipEarningLine[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as StoredRecordLine[])
+    .filter((l) => l?.nonPayable === true)
+    .map((l) => ({ code: l.code ?? null, name: l.name ?? '', amount: round2(n(l.amount)) }));
 }
 
 /** The shape `statutory.componentLines` is stored in (core/payroll.ts `earningsOf`). */
@@ -464,10 +525,11 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   });
 
   /**
-   * One bordered block: a header band, a body of rows and an optional total row. The body is now sized to
-   * WHAT IT HOLDS. It used to be padded to a fixed row count so Earnings and Deductions lined up as a
-   * pair, which is what left half of the earnings box empty while a long name beside it ran out of room —
-   * the second half of the same complaint. Earnings takes the full width now and nothing is padded.
+   * One bordered block: a header band, a body of rows and an optional total row. The body is sized to WHAT
+   * IT HOLDS. It used to be padded to a fixed row count (MIN_BOX_ROWS / MAX_BOX_ROWS) so Earnings and
+   * Deductions lined up as a pair, which is what left half of the earnings box empty while a long name
+   * beside it ran out of room. Earnings and Deductions are a pair again (f35f758a rev 2), but they are
+   * aligned by `flowPair` drawing both at the same y — never by padding a box past its own contents.
    */
   const paintBox = (pg: PDFPage, x: number, top: number, p: BoxPlan): number => {
     const bodyH = p.rows.reduce((s, r) => s + r.h, 0);
@@ -539,8 +601,15 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   const payRows: Row[] = [
     ...(d.paymentMethod ? [{ label: t.paymentMethod, text: d.paymentMethod }] : []),
     ...(d.bankName ? [{ label: t.bankName, text: d.bankName }] : []),
-    ...(d.bankAccountMasked ? [{ label: t.bankAccount, text: d.bankAccountMasked }] : []),
+    // f35f758a — the WHOLE account number, not the last four. See PayslipPdfData.bankAccount.
+    ...(d.bankAccount ? [{ label: t.bankAccount, text: d.bankAccount }] : []),
   ];
+  const nonPayableRows: Row[] = (d.nonPayableLines ?? []).map((l) => ({
+    label: l.name,
+    sub: l.code,
+    amount: l.amount,
+  }));
+  const nonPayableTotal = round2((d.nonPayableLines ?? []).reduce((s, l) => s + l.amount, 0));
 
   // ─── the page flow ───
   //
@@ -579,32 +648,47 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
    * behaviour — an inline "Earnings (continued) +16" row pointing at a second box — is gone: it printed
    * a row that was not a pay item on a document made of pay items.
    */
-  const flowBox = (o: {
+  type FlowSpec = {
     x: number; w: number; title: string; continuedTitle: string; rows: Row[];
     dot?: 'earn' | 'deduct'; total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
     note?: string;
-  }) => {
+  };
+
+  /**
+   * How much of `rows` fits in `avail`, and whether that chunk is the LAST one — i.e. the one that carries
+   * the total and the note. Measurement only; nothing is drawn. Both `flowBox` and `flowPair` decide where
+   * to break through this single function, so a one-column break and a two-column break cannot disagree.
+   */
+  const chunkFor = (plan: BoxPlan, rows: BoxRowPlan[], avail: number) => {
+    const tailH = (plan.total ? BOX_TOTAL_H : 0) + noteHeightOf(plan.noteLines);
+    let take = 0;
+    let acc = 0;
+    while (take < rows.length && BOX_HEAD_H + acc + rows[take].h <= avail) {
+      acc += rows[take].h;
+      take += 1;
+    }
+    if (take === rows.length && BOX_HEAD_H + acc + tailH <= avail) {
+      return { take, final: true, h: BOX_HEAD_H + acc + tailH };
+    }
+    // Keep one row back so the total is never orphaned at the top of a sheet on its own.
+    if (take === rows.length) take -= 1;
+    return { take, final: false, h: BOX_HEAD_H + rows.slice(0, take).reduce((s, r) => s + r.h, 0) };
+  };
+
+  const flowBox = (o: FlowSpec) => {
     const planned = planBox({ w: o.w, title: o.title, rows: o.rows, dot: o.dot, total: o.total, note: o.note });
     let rows = planned.rows;
     let title = o.title;
     let freshPage = false;
     for (;;) {
-      const avail = y - (M + FOOTER_H);
-      const tailH = (o.total ? BOX_TOTAL_H : 0) + noteHeightOf(planned.noteLines);
-      let taken = 0;
-      let acc = 0;
-      while (taken < rows.length && BOX_HEAD_H + acc + rows[taken].h <= avail) {
-        acc += rows[taken].h;
-        taken += 1;
-      }
-      if (taken === rows.length && BOX_HEAD_H + acc + tailH <= avail) {
+      const c = chunkFor(planned, rows, y - (M + FOOTER_H));
+      if (c.final) {
         y -= paintBox(page, o.x, y, { ...planned, title, rows }) + GAP;
         return;
       }
-      // Keep one row back so the total is never orphaned at the top of a sheet on its own…
-      if (taken === rows.length) taken -= 1;
+      let taken = c.take;
       if (taken === 0) {
-        // …and never emit an empty chunk, which on a sheet too short for one row would loop forever.
+        // Never emit an empty chunk, which on a sheet too short for one row would loop forever.
         if (!freshPage) {
           newPage();
           freshPage = true;
@@ -620,50 +704,135 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     }
   };
 
+  /**
+   * TWO boxes side by side, EITHER of which may run onto further sheets.
+   *
+   * f35f758a rev 2 — the reporter wants Earnings and Deductions read against each other line for line, and
+   * that is only possible with the two at the same y. `flowBox` assumes a block owns the whole flow, so it
+   * cannot be called twice for a pair: the first call would advance `y` past the second's starting point,
+   * and a break in either box would push the other one down a page. The existing short-block pair
+   * (planBox + paintBox + `ensure`) cannot be reused either — it measures once and cannot continue at all,
+   * and Earnings is exactly the box that continues.
+   *
+   * So: chunk BOTH sides against the same available height, paint both at the same y, advance by the
+   * TALLER chunk, and carry on with whichever side still has rows. A side that finished simply stops being
+   * painted, which is why a 70-item Earnings box continues down the left of sheet two with nothing beside
+   * it rather than dragging a second copy of Deductions along.
+   */
+  const flowPair = (specs: readonly [FlowSpec, FlowSpec]) => {
+    const sides = specs.map((spec) => ({
+      spec,
+      plan: planBox({ w: spec.w, title: spec.title, rows: spec.rows, dot: spec.dot, total: spec.total, note: spec.note }),
+      rows: [] as BoxRowPlan[],
+      title: spec.title,
+      done: false,
+    }));
+    for (const s of sides) s.rows = s.plan.rows;
+    let freshPage = false;
+    for (;;) {
+      const avail = y - (M + FOOTER_H);
+      const chunks = sides.map((s) => (s.done ? null : chunkFor(s.plan, s.rows, avail)));
+      // If EITHER side cannot take a single row, the sheet is spent — open the next one and re-measure
+      // both, so the pair never starts split across a page boundary.
+      if (chunks.some((c) => c != null && !c.final && c.take === 0) && !freshPage) {
+        newPage();
+        freshPage = true;
+        continue;
+      }
+      let used = 0;
+      chunks.forEach((c, i) => {
+        if (!c) return;
+        const s = sides[i];
+        const take = !c.final && c.take === 0 ? 1 : c.take; // a row taller than a whole sheet: overflow, don't spin
+        used = Math.max(
+          used,
+          paintBox(page, s.spec.x, y, {
+            ...s.plan,
+            title: s.title,
+            rows: s.rows.slice(0, take),
+            total: c.final ? s.plan.total : undefined,
+            noteLines: c.final ? s.plan.noteLines : [],
+          }),
+        );
+        s.rows = s.rows.slice(take);
+        s.title = s.spec.continuedTitle;
+        s.done = c.final;
+      });
+      y -= used + GAP;
+      if (sides.every((s) => s.done)) return;
+      newPage();
+      freshPage = true;
+    }
+  };
+
   y = drawLetterhead(page, y);
   y = drawEmployeePanel(page, y);
 
-  // ─── Earnings, FULL WIDTH ───
-  // The pair layout it used to sit in gave a pay item name half the page and then clipped it. Descriptions
-  // are the long text on a payslip; the figures beside them are short. So Earnings gets the width, and the
-  // shorter blocks pair up below.
-  flowBox({
-    x: M, w: CONTENT_W, title: t.earnings, continuedTitle: t.earningsContinued, rows: earnRows, dot: 'earn',
-    total: { label: t.totalEarnings, value: money(d.gross), color: EARN },
-    note: d.detailNotRecorded ? t.detailNotRecorded : undefined,
-  });
+  // ─── Earnings BESIDE Deductions ───
+  //
+  // f35f758a rev 2. r179 gave Earnings the full width so that a long pay item name had room to wrap instead
+  // of being clipped — the defect the item was raised for. The reporter then read the result and made the
+  // opposite point: what was earned and what was taken off are two halves of one sum, and stacked one above
+  // the other they cannot be read against each other. Both are right, and both fit: the names still WRAP
+  // (nothing clips at any width — see `wrap`), they simply take two lines in a half-width column, and the
+  // pair now continues across sheets together rather than one of them shoving the other down a page.
+  flowPair([
+    {
+      x: M, w: COL_W, title: t.earnings, continuedTitle: t.earningsContinued, rows: earnRows, dot: 'earn',
+      total: { label: t.totalEarnings, value: money(d.gross), color: EARN },
+      note: d.detailNotRecorded ? t.detailNotRecorded : undefined,
+    },
+    {
+      x: COL2_X, w: COL_W, title: t.deductions, continuedTitle: t.deductions, rows: dedRows, dot: 'deduct',
+      total: { label: t.totalDeductions, value: money(d.totalDeductions), color: DEDUCT },
+    },
+  ]);
 
-  // ─── Deductions beside Employer contributions ───
-  const dedPlan = planBox({
-    w: COL_W, title: t.deductions, rows: dedRows, dot: 'deduct',
-    total: { label: t.totalDeductions, value: money(d.totalDeductions), color: DEDUCT },
-  });
+  // ─── Employer contributions beside Payment information ───
+  //
+  // Both are SHORT and fixed (four statutory rows; three payment fields), so the simple measure-once pair
+  // is still right for them — neither can grow to the length that made Earnings need a continuing flow.
+  // Pairing them is also what buys the space for NET PAY to take the full width below.
   const empPlan = planBox({
     w: COL_W, title: t.employerContributions, rows: employerRows,
     total: { label: t.totalEmployerCost, value: money(d.employerCost) },
     note: t.employerContributionsNote,
   });
-  const pairH = Math.max(boxHeight(dedPlan), boxHeight(empPlan));
-  ensure(pairH);
-  paintBox(page, M, y, dedPlan);
-  paintBox(page, COL2_X, y, empPlan);
-  y -= pairH + GAP;
-
-  // ─── Net pay beside Payment information ───
-  // Net pay is the one figure the employee looks for first, so it keeps the strongest mark on the page.
-  const netH = 46;
+  // Payment information is printed only when there is something to print. A row of empty labels tells the
+  // employee nothing and reads as a broken document; a missing block reads as "not recorded" — the truth.
   const payPlan = payRows.length > 0
     ? planBox({ w: COL_W, title: t.paymentInformation, rows: payRows })
     : null;
-  // Payment information is printed only when there is something to print. A row of empty labels tells the
-  // employee nothing and reads as a broken document; a missing block reads as "not recorded" — the truth.
-  const netRowH = Math.max(netH, payPlan ? boxHeight(payPlan) : 0);
-  ensure(netRowH);
-  page.drawRectangle({ x: M, y: y - netH, width: COL_W, height: netH, color: PRIMARY });
-  at(page, t.netPay.toUpperCase(), M + 14, y - 28, 9.5, bold, WHITE);
-  atR(page, money(d.net), M + COL_W - 14, y - 30, 15, bold, WHITE);
+  const pairH = Math.max(boxHeight(empPlan), payPlan ? boxHeight(payPlan) : 0);
+  ensure(pairH);
+  paintBox(page, M, y, empPlan);
   if (payPlan) paintBox(page, COL2_X, y, payPlan);
-  y -= netRowH + GAP;
+  y -= pairH + GAP;
+
+  // ─── NET PAY, FULL WIDTH ───
+  // The one figure the employee looks for first, and now the only thing on its line — which is both what
+  // the reporter asked for and what pays for itself: half a row of white space either side of a number is
+  // worth less than the ~19pt the pair above just saved.
+  const netH = 46;
+  ensure(netH);
+  page.drawRectangle({ x: M, y: y - netH, width: CONTENT_W, height: netH, color: PRIMARY });
+  at(page, t.netPay.toUpperCase(), M + 14, y - 28, 9.5, bold, WHITE);
+  atR(page, money(d.net), A4_W - M - 14, y - 30, 15, bold, WHITE);
+  y -= netH + GAP;
+
+  // ─── Non-payable (f35f758a) ───
+  //
+  // Items this run CALCULATED BUT DID NOT PAY. It is drawn only when the run stamped at least one line
+  // non-payable, which is true of no payslip that exists today — so on every existing document this block
+  // simply is not there. Full width and flowed, not paired, because a company that starts declaring
+  // benefits in kind can declare a lot of them and the list must be able to continue.
+  if (nonPayableRows.length > 0) {
+    flowBox({
+      x: M, w: CONTENT_W, title: t.nonPayable, continuedTitle: t.nonPayable, rows: nonPayableRows,
+      total: { label: t.nonPayableTotal, value: money(nonPayableTotal) },
+      note: t.nonPayableNote,
+    });
+  }
 
   // ─── employer-borne disclosure (3c473773) ───
   if (d.employerBorne.length > 0) {

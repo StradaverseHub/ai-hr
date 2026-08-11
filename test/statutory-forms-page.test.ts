@@ -11,14 +11,21 @@
  * premise that "the current module contains the required functionality". IT DOES NOT: the pack holds
  * five reports plus the per-employee EA and the CP22/CP22A worklist, and Borang BBCB, PERKESO 8B, SIP 2
  * / 2A, TP3, PCB 2(II), CP21, CP39A and every Other-Statutory report on the reporter's list were never
- * built. So the shelves are driven off the CATALOG and the catalog's five are the five — which is what
- * the last describe block pins, because the tempting way to satisfy a request like this is to draw the
- * rows and leave them dead, and a menu entry that opens nothing reads as broken software.
+ * built. So the shelves are driven off the CATALOG.
+ *
+ * WHAT 587ee719 CHANGES, AND WHY THE LAST DESCRIBE BLOCK WAS REWRITTEN. 6babf4f6 drew the unbuilt forms
+ * NOWHERE, and the block below used to pin that absence. Nine days of using it showed the cost: an
+ * operator opening EPF (KWSP) looking for Borang A saw one unrelated row and could not tell "not built"
+ * from "wrong screen". They are now NAMED, with a status and no action. The pin that matters has moved
+ * rather than gone away, and it is stronger: the guarantee is no longer "these strings appear nowhere",
+ * it is "no unbuilt form can render an action, and no unbuilt form's NAME can end up on a button that
+ * produces something else". That is the "Borang A button emits the EPF spreadsheet" failure, and it is
+ * pinned four ways in `the four pins` below.
  */
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { MY_REPORTS, MY_STATUTORY_LINKS } from '../localization/my/reports';
+import { MY_PLANNED_FORMS, MY_REPORTS, MY_STATUTORY_LINKS } from '../localization/my/reports';
 import { myPack } from '../localization/my';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import { payrollPack } from '../packs/payroll';
@@ -112,7 +119,14 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
 
   it('carries the non-generatable entries as catalog data rather than hardcoded rows', () => {
     expect(myPack.statutoryLinks).toBe(MY_STATUTORY_LINKS);
-    expect(MY_STATUTORY_LINKS.map((l) => l.id).sort()).toEqual(['my.cp22', 'my.ea']);
+    // 587ee719 — the EA split in two (a language apiece) and Borang E joined as an ALIAS onto the CP8D
+    // generator. Still four DOORS and still no second generator behind any of them.
+    expect(MY_STATUTORY_LINKS.map((l) => l.id).sort()).toEqual([
+      'my.borang-e',
+      'my.cp22',
+      'my.ea.en',
+      'my.ea.ms',
+    ]);
     for (const l of MY_STATUTORY_LINKS) {
       expect(l.body, `${l.id} needs a shelf`).toBeTruthy();
       expect(l.href, `${l.id} needs a target`).toMatch(/^\/payroll\//);
@@ -121,11 +135,70 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     expect(PAGE).not.toContain('eaFormLabel');
   });
 
+  // 587ee719 — the planned forms travel the same way: through the pack contract, as data, so the screen
+  // still names no form. If this ever became a literal list inside page.tsx the whole design is gone.
+  it('carries the UNBUILT forms as catalog data too, on the reporter’s own shelves', () => {
+    expect(myPack.plannedForms).toBe(MY_PLANNED_FORMS);
+    expect(MY_PLANNED_FORMS.map((p) => p.id)).toEqual([
+      'epf.borang-a',
+      'epf.borang-bbcb',
+      'perkeso.borang-8a',
+      'perkeso.borang-8b',
+      'perkeso.sip',
+      'perkeso.employee-registration',
+      'lhdn.tp1',
+      'lhdn.tp3',
+      'lhdn.pcb2ii-en',
+      'lhdn.pcb2ii-ms',
+      'lhdn.cp21',
+      'lhdn.cp22a',
+      'lhdn.cp39a',
+    ]);
+    for (const p of MY_PLANNED_FORMS) {
+      expect(PAGE, `the landing page should not name ${p.id}`).not.toContain(`'${p.id}'`);
+    }
+    // Nothing was quietly parked on the Other shelf to avoid choosing one.
+    expect(MY_PLANNED_FORMS.filter((p) => p.body === 'other')).toEqual([]);
+  });
+
+  /**
+   * 587ee719 — the shelf is assembled from THREE collections, so the reporter's order can only survive
+   * if each entry declares its own rank. A duplicate rank inside one shelf is a coin toss between two
+   * cards, which is exactly the kind of thing that looks fine locally and reorders in production.
+   */
+  it('gives every entry on a shelf a distinct position, so the reporter’s order is reproducible', () => {
+    const byShelf = new Map<string, { id: string; order: number | undefined }[]>();
+    const add = (body: string, id: string, order: number | undefined) => {
+      if (!byShelf.has(body)) byShelf.set(body, []);
+      byShelf.get(body)!.push({ id, order });
+    };
+    for (const r of MY_REPORTS) if (r.submission) add(r.submission.body, r.id, r.shelfOrder);
+    for (const l of MY_STATUTORY_LINKS) add(l.body, l.id, l.shelfOrder);
+    for (const p of MY_PLANNED_FORMS) add(p.body, p.id, p.shelfOrder);
+    for (const [body, entries] of byShelf) {
+      const orders = entries.map((e) => e.order);
+      expect(orders.filter((o) => o === undefined), `${body}: every entry needs a shelfOrder`).toEqual([]);
+      expect(new Set(orders).size, `${body}: duplicate shelfOrder in ${JSON.stringify(entries)}`).toBe(
+        entries.length,
+      );
+    }
+    // The reporter listed thirteen Income Tax forms. Thirteen is what the LHDN shelf holds.
+    expect(byShelf.get('lhdn')!.length).toBe(13);
+  });
+
   it('resolves every label the catalog names against en.json', () => {
     const ns = en.payroll.statutoryForms as Record<string, string>;
     for (const l of MY_STATUTORY_LINKS) {
       expect(ns[l.labelKey], `${l.id} labelKey ${l.labelKey}`).toBeTruthy();
       expect(ns[l.hintKey], `${l.id} hintKey ${l.hintKey}`).toBeTruthy();
+      if (l.descriptionKey) expect(ns[l.descriptionKey], `${l.id} descriptionKey`).toBeTruthy();
+    }
+    for (const p of MY_PLANNED_FORMS) {
+      expect(ns[p.labelKey], `${p.id} labelKey ${p.labelKey}`).toBeTruthy();
+      expect(ns[p.hintKey], `${p.id} hintKey ${p.hintKey}`).toBeTruthy();
+    }
+    for (const r of MY_REPORTS) {
+      if (r.descriptionKey) expect(ns[r.descriptionKey], `${r.id} descriptionKey`).toBeTruthy();
     }
     // Dynamic keys the shelves resolve — invisible to test/i18n-coverage.test.ts check C.
     for (const k of ['body_epf', 'body_perkeso', 'body_lhdn', 'body_other']) {
@@ -136,6 +209,40 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     for (const k of ['status_overdue', 'status_due_soon', 'status_upcoming', 'status_unknown']) {
       expect(ns[k], k).toBeTruthy();
     }
+    // 587ee719 — the status chips, the legend beside them and the output chips. All resolved through
+    // lookup maps, so check C cannot see any of them and this is the only guard they have.
+    for (const st of ['official', 'figures', 'draft_file', 'planned']) {
+      expect(ns[`fidelity_${st}`], `fidelity_${st}`).toBeTruthy();
+      expect(ns[`fidelity_${st}_hint`], `fidelity_${st}_hint`).toBeTruthy();
+    }
+    for (const o of ['pdf', 'xlsx', 'csv', 'print', 'file']) expect(ns[`output_${o}`], `output_${o}`).toBeTruthy();
+    for (const k of ['legendTitle', 'noAction', 'chipMonth', 'chipYear', 'shelfReady', 'search', 'searchPlaceholder', 'searchNoMatch', 'searchClear', 'openEmployeeList']) {
+      expect(ns[k], k).toBeTruthy();
+    }
+  });
+
+  /**
+   * A message carrying `{placeholders}` rendered through a plain `t('…')` with no arguments throws
+   * FORMATTING_ERROR at RENDER time and paints the raw key path on screen — while the route still
+   * answers 200 and every static guard stays green. So: only the three keys this screen interpolates
+   * may contain braces, and each is called with arguments.
+   */
+  it('keeps braces out of every key the cards render without arguments', () => {
+    const ns = en.payroll.statutoryForms as Record<string, string>;
+    const INTERPOLATED = new Set(['chipMonth', 'chipYear', 'shelfReady']);
+    const rendered = [
+      ...MY_STATUTORY_LINKS.flatMap((l) => [l.labelKey, l.hintKey, l.descriptionKey]),
+      ...MY_PLANNED_FORMS.flatMap((p) => [p.labelKey, p.hintKey]),
+      ...MY_REPORTS.map((r) => r.descriptionKey),
+      ...['official', 'figures', 'draft_file', 'planned'].flatMap((s) => [`fidelity_${s}`, `fidelity_${s}_hint`]),
+      ...['pdf', 'xlsx', 'csv', 'print', 'file'].map((o) => `output_${o}`),
+      'legendTitle',
+      'noAction',
+      'searchNoMatch',
+    ].filter((k): k is string => Boolean(k) && !INTERPOLATED.has(k as string));
+    const braced = rendered.filter((k) => /[{}]/.test(ns[k] ?? ''));
+    expect(braced, `these are rendered with no arguments and must not contain {placeholders}`).toEqual([]);
+    for (const k of INTERPOLATED) expect(ns[k], k).toMatch(/\{/);
   });
 });
 
@@ -238,6 +345,65 @@ describe('the per-form generation screen', () => {
     expect(FORM_PAGE).toContain('const periodKey = annual ? year : `${year}-${month}`');
     expect(FORM_PAGE).toContain('{!annual && (');
   });
+
+  /**
+   * 587ee719 — the banner restates the STATUS the shelf card carried, and nothing else. The request
+   * asked for generation to be blocked on missing statutory numbers; that is deliberately not built (it
+   * needs each form's own required-field list), so this banner must never imply it has been. The
+   * readiness machinery it must NOT have absorbed is asserted alongside, unchanged.
+   */
+  it('restates the form’s status without claiming it is validated or ready to file', () => {
+    expect(FORM_PAGE).toContain('{def.fidelity && (');
+    expect(FORM_PAGE).toContain('FIDELITY_HINT_KEY[def.fidelity]');
+    const ns = en.payroll.statutoryForms as Record<string, string>;
+    for (const st of ['official', 'figures', 'draft_file']) {
+      expect(ns[`fidelity_${st}_hint`]).not.toMatch(/\bvalidated\b|ready to file|approved by/i);
+    }
+    // The readiness banner and the two gated agency files are untouched by this round.
+    expect(FORM_PAGE).toContain('readinessTitle');
+    expect(FORM_PAGE).toContain('const ready = result.readiness.length === 0');
+  });
+
+  // The EA language has to survive a re-Show, or picking a different month silently drops back to the
+  // viewer's UI locale — the exact behaviour this round removed.
+  it('carries an allowlisted EA language through the period form', () => {
+    expect(FORM_PAGE).toContain("EA_LANGS = ['en', 'ms']");
+    expect(FORM_PAGE).toContain('EA_LANGS.includes(sp.lang as EaLang)');
+    expect(FORM_PAGE).toContain('<input type="hidden" name="lang" value={eaLang} />');
+    expect(FORM_PAGE).toContain('eaLang={eaLang}');
+  });
+});
+
+describe('the shelf cards, and the search above them (587ee719)', () => {
+  /**
+   * Server-side, on the same GET form as company/year/month — for the same reason the body pills are
+   * links and not a client filter: the whole view stays in the address, so it survives a refresh and can
+   * be sent to somebody. A `useState` filter here would quietly undo that.
+   */
+  it('filters on a search param rather than in the browser', () => {
+    expect(PAGE).not.toContain("'use client'");
+    expect(PAGE).not.toContain('useState');
+    expect(PAGE).toContain('name="q"');
+    expect(PAGE).toContain("const q = (sp.q ?? '').trim()");
+    // …and the search rides through the body pills, or choosing a category would silently clear it.
+    expect(PAGE).toContain('&q=${encodeURIComponent(q)}');
+  });
+
+  it('renders the four statuses in a legend, from the same map the chips use', () => {
+    expect(PAGE).toContain("STATUS_ORDER: FormStatus[] = ['official', 'figures', 'draft-file', 'planned']");
+    expect(PAGE).toContain("t('legendTitle')");
+    expect(PAGE).toContain('FIDELITY_KEY[c.status]');
+    expect(PAGE).toContain('FIDELITY_KEY[st]');
+  });
+
+  // The exhaustiveness guard from 6babf4f6 survives the rewrite: adding a body to the union must still
+  // be a COMPILE error here rather than a shelf that silently renders nothing.
+  it('keeps the Record-keyed shelf order through the card rewrite', () => {
+    expect(PAGE).toMatch(/Record<StatutoryBodyKey, true>/);
+    expect(PAGE).toContain('Object.keys(BODY_SHELVES)');
+    expect(PAGE).toContain("t('shelfEmpty')");
+    expect(PAGE).toContain("t('searchNoMatch')");
+  });
 });
 
 describe('the export route', () => {
@@ -328,10 +494,17 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     const cp22 = MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22')!;
     expect(cp22.actionLabelKey).toBe('openWorklist');
     expect(en.payroll.statutoryForms.openWorklist).toBe('Open worklist');
-    // Every other shelf entry declares none, so it renders the shared label exactly as before.
-    for (const l of MY_STATUTORY_LINKS.filter((x) => x.id !== 'my.cp22')) {
-      expect(l.actionLabelKey, `${l.id} must keep the shared action label`).toBeUndefined();
-    }
+    // 587ee719 — each entry still names its OWN action or falls back, which is the mechanism this test
+    // exists to protect. "Open worklist" stays CP22's alone; the two EA entries open an employee list,
+    // which is what their href does; Borang E declares none and renders the shared label.
+    expect(
+      MY_STATUTORY_LINKS.map((l) => [l.id, l.actionLabelKey ?? null]),
+    ).toEqual([
+      ['my.ea.en', 'openEmployeeList'],
+      ['my.ea.ms', 'openEmployeeList'],
+      ['my.borang-e', null],
+      ['my.cp22', 'openWorklist'],
+    ]);
     expect(PAGE).toContain("t((l.actionLabelKey ?? 'openForm')");
     // The row title is untouched — the fix that was NOT applied.
     expect(en.payroll.statutoryForms.link_cp22).toBe('CP22 / CP22A notices');
@@ -391,22 +564,112 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
   });
 });
 
-describe('the forms that were never built are not drawn', () => {
+/**
+ * 587ee719 — THE FOUR PINS.
+ *
+ * Everything else in this file protects a screen. These four protect the ONE claim the request turns on:
+ * that nothing on this shelf hands you a document under a name it does not deserve. They are worth more
+ * than the rest of the suite put together, because each of them fails silently in production — a wrong
+ * document downloads exactly like a right one.
+ */
+describe('the four pins', () => {
+  /** (a) "Official form" is a claim about GOVERNMENT ARTWORK. Exactly one entry may make it. */
+  it('a — exactly one catalog entry claims fidelity "official", and it is my.cp22', () => {
+    const official = [
+      ...MY_REPORTS.filter((r) => r.fidelity === 'official').map((r) => r.id),
+      ...MY_STATUTORY_LINKS.filter((l) => l.fidelity === 'official').map((l) => l.id),
+    ];
+    expect(official).toEqual(['my.cp22']);
+    // …and the claim is true: the artwork and its field map are both on disk.
+    expect(fs.existsSync(path.join(ROOT, 'public/forms/cp22-pin-1-2020.pdf'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'lib/cp22-fields.ts'))).toBe(true);
+    // Every other entry that declares anything declares one of the two honest statuses.
+    for (const e of [...MY_REPORTS, ...MY_STATUTORY_LINKS]) {
+      if (e.fidelity && e.id !== 'my.cp22') {
+        expect(['figures', 'draft-file'], `${e.id}`).toContain(e.fidelity);
+      }
+    }
+  });
+
   /**
-   * The reporter listed roughly thirty forms. Five exist. This test is the ONE that would fail if a
-   * later change "completed" the menu with rows that open nothing — which is the tempting way to
-   * satisfy the request and the wrong one: a dead entry reads as broken software, not as an unbuilt
-   * form. Each of these is a real form with its own official layout and its own rules, so each is a
-   * build of its own, after which it declares a body and appears here without touching the screen.
+   * (b) A planned form cannot render an action, and the TYPE is what guarantees it — not this screen's
+   * discipline, and not a boolean somebody can flip. `PlannedFormDef` has no href and no action key, so
+   * there is nothing for a later edit to wire up without changing the contract first.
+   */
+  it('b — no planned form carries an href or an action key, and the page renders none for them', () => {
+    for (const p of MY_PLANNED_FORMS as unknown as Record<string, unknown>[]) {
+      expect(p.href, `${p.id} must have no href`).toBeUndefined();
+      expect(p.actionLabelKey, `${p.id} must have no action key`).toBeUndefined();
+      expect(p.secondaryHref, `${p.id} must have no second action`).toBeUndefined();
+      expect(p.generate, `${p.id} must not be generatable`).toBeUndefined();
+    }
+    // The screen's own half of it: a card with no action renders the "no action available" sentence,
+    // and a planned entry is the only way `action` can be null.
+    expect(PAGE).toContain("action: null");
+    expect(PAGE).toContain("t('noAction')");
+    // A disabled button is still a button. There must not be one.
+    expect(PAGE).not.toContain('disabled');
+  });
+
+  /**
+   * (c) THE ONE THIS WHOLE ITEM GUARDS AGAINST: a button labelled "Borang A" that emits the EPF
+   * contributions spreadsheet. No unbuilt form's NAME may ever be the name of something generatable.
+   */
+  it('c — no planned form’s label is used as the label of anything that generates', () => {
+    const ns = en.payroll.statutoryForms as Record<string, string>;
+    const plannedNames = MY_PLANNED_FORMS.map((p) => ns[p.labelKey]);
+    const actionableNames = [
+      ...MY_REPORTS.map((r) => r.label),
+      ...MY_STATUTORY_LINKS.map((l) => ns[l.labelKey]),
+    ];
+    for (const name of plannedNames) {
+      expect(name, 'every planned form needs a resolvable name').toBeTruthy();
+      expect(actionableNames, `"${name}" is an UNBUILT form and must not label something that runs`).not.toContain(name);
+    }
+    // Stricter than equality, because the failure mode is a rename that half-lands: the EPF and PERKESO
+    // listings must not have absorbed the unbuilt form's name into their own.
+    for (const name of plannedNames) {
+      for (const actionable of actionableNames) {
+        expect(actionable, `"${actionable}" must not present itself as "${name}"`).not.toContain(name);
+      }
+    }
+  });
+
+  /**
+   * (d) Borang E and CP8D are ONE annual return with two names. Forking the generator so each entry gets
+   * its own is the tempting "completion" of the reporter's list, and it produces two annual returns that
+   * drift apart. The alias resolves to the same report id, and there is exactly one annual LHDN report.
+   */
+  it('d — the Borang E and CP8D entries resolve to the same generator', () => {
+    const borangE = MY_STATUTORY_LINKS.find((l) => l.id === 'my.borang-e')!;
+    const annual = MY_REPORTS.filter((r) => r.submission?.body === 'lhdn' && r.periodKind === 'year');
+    expect(annual.map((r) => r.id)).toEqual(['my.cp8d']);
+    expect(borangE.href).toContain(`/payroll/statutory-forms/${annual[0].id}?`);
+    // Both cards must say so, or two entries read as two documents and somebody waits for the second.
+    expect(borangE.descriptionKey).toBeTruthy();
+    expect(MY_REPORTS.find((r) => r.id === 'my.cp8d')!.descriptionKey).toBeTruthy();
+    const ns = en.payroll.statutoryForms as Record<string, string>;
+    for (const k of [borangE.descriptionKey!, MY_REPORTS.find((r) => r.id === 'my.cp8d')!.descriptionKey!]) {
+      expect(ns[k], `${k} must say the annual return comes out in one step`).toMatch(/one step|both/i);
+    }
+  });
+});
+
+describe('what the shelves say about the forms that are not built', () => {
+  /**
+   * The names still may not appear in the SOURCE of either screen: every one of them arrives through the
+   * catalog and the message catalog, which is what makes the next form a data change rather than a
+   * screen change. (This is what remains of 6babf4f6's "never drawn" test — the mechanism it protected
+   * is unchanged; only the conclusion moved from "absent" to "named without an action".)
    */
   const NEVER_BUILT = [
     'BBCB', 'Borang 8B', 'SIP 2', 'SIP 2A', 'TP3', 'PCB 2(II)', 'CP21', 'CP39A',
     'HRDF Contribution', 'PTPTN Deduction', 'Tabung Haji Deduction', 'Union Fee',
   ];
 
-  it('appear nowhere on the shelves, because none of them exists', () => {
+  it('are named by the catalog, never written into either screen', () => {
     for (const name of NEVER_BUILT) {
-      expect(PAGE, `the page must not draw a row for ${name}`).not.toContain(name);
+      expect(PAGE, `the page must not name ${name} itself`).not.toContain(name);
       expect(FORM_PAGE, `the form screen must not name ${name}`).not.toContain(name);
     }
     const labels = MY_REPORTS.map((r) => r.label).join(' | ');
@@ -418,18 +681,24 @@ describe('the forms that were never built are not drawn', () => {
   it('leaves the Other shelf genuinely empty, with an empty state rather than placeholder rows', () => {
     expect(MY_REPORTS.filter((r) => r.submission?.body === 'other')).toEqual([]);
     expect(MY_STATUTORY_LINKS.filter((l) => l.body === 'other')).toEqual([]);
+    expect(MY_PLANNED_FORMS.filter((p) => p.body === 'other')).toEqual([]);
     expect(PAGE).toContain("t('shelfEmpty')");
   });
 
   /**
-   * messages/ms.json already carries every payroll.ea key, so the EA in Bahasa Malaysia is a LOCALE
-   * SWITCH on the existing screen. Building a second form for it would produce two EA implementations
-   * that drift, for one statutory statement.
+   * 587ee719 — THE EA SPLIT IS A LOCALE, NOT A SECOND RENDERER.
+   *
+   * The previous version of this test pinned the opposite conclusion: one EA entry, because BM was a
+   * language switch on the screen. That was true and it was the wrong answer to the request — an
+   * employer needs both languages in the same year from the same session, and "change your app language"
+   * is not a form. So there are two ENTRIES and still exactly one renderer, one statement read, and one
+   * `payroll.ea` dictionary per locale. The route resolves the namespace for the language it was ASKED
+   * for; the two entries differ only by the `lang` they carry.
    */
-  it('treats the Bahasa Malaysia EA as a locale switch, not a second form', () => {
+  it('splits the EA into two entries without a second EA renderer', () => {
     // Compared as flattened key PATHS: payroll.ea nests (the amendment panel, the multi-employer
     // block), so a shallow key list would call two dictionaries equal while a whole sub-tree was
-    // missing from one of them.
+    // missing from one of them. This is what makes `lang=ms` produce a genuinely Malay document.
     const paths = (o: Record<string, unknown>, p = '', out: string[] = []): string[] => {
       for (const [k, v] of Object.entries(o)) {
         const key = p ? `${p}.${k}` : k;
@@ -440,7 +709,29 @@ describe('the forms that were never built are not drawn', () => {
     };
     const ms = JSON.parse(read('messages/ms.json')) as { payroll: { ea: Record<string, unknown> } };
     expect(paths(ms.payroll.ea).sort()).toEqual(paths(en.payroll.ea).sort());
-    expect(MY_STATUTORY_LINKS.filter((l) => l.id.startsWith('my.ea')).length).toBe(1);
+    // The dictionaries must actually DIFFER, or "two languages" is two identical documents.
+    expect(ms.payroll.ea.title).not.toBe(en.payroll.ea.title);
+
+    const eas = MY_STATUTORY_LINKS.filter((l) => l.id.startsWith('my.ea'));
+    expect(eas.map((l) => l.id)).toEqual(['my.ea.en', 'my.ea.ms']);
+    expect(eas.map((l) => new URL(l.href, 'http://x').searchParams.get('lang'))).toEqual(['en', 'ms']);
+    // Both open the SAME screen — the year's employee list — so there is no second EA route either.
+    expect(new Set(eas.map((l) => l.href.split('?')[0])).size).toBe(1);
+
+    // ONE renderer, and the route resolves the namespace for the language it was asked for rather than
+    // for the viewer. `getTranslations('payroll.ea')` — the bare string form — is the bug this replaced.
+    const EA_ROUTE = read('app/me/ea/[employmentId]/pdf/route.ts');
+    expect(EA_ROUTE).toContain("getTranslations({ locale, namespace: 'payroll.ea' })");
+    expect(EA_ROUTE).not.toContain("getTranslations('payroll.ea')");
+    expect(EA_ROUTE).toContain("EA_LANGS = ['en', 'ms']");
+    expect(fs.readdirSync(path.join(ROOT, 'lib')).filter((f) => /^ea-.*pdf/.test(f))).toEqual(['ea-pdf.ts']);
+
+    // …and the override has somewhere to land. i18n/request.ts used to ignore the requested locale and
+    // read the cookie unconditionally, which would have made `lang=ms` return a 200 in the wrong language.
+    expect(read('i18n/request.ts')).toContain('locale: requested');
+
+    // The shelf hint must no longer state the opposite of what ships.
+    expect(en.payroll.statutoryForms.link_ea_hint).not.toContain('not a second form');
   });
 });
 

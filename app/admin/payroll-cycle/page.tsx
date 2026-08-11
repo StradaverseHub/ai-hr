@@ -75,6 +75,8 @@ export default async function PayrollCyclePage({
                 <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2 font-medium">{t('colName')}</th>
+                    {/* 4157a498 — the short code an import file's "Payroll Cycle" column names. */}
+                    <th className="px-4 py-2 font-medium">{t('colCode')}</th>
                     <th className="px-4 py-2 font-medium">{t('colRunType')}</th>
                     <th className="px-4 py-2 font-medium">{t('colBehaviour')}</th>
                     <th className="px-4 py-2 font-medium">{t('colRemarks')}</th>
@@ -90,6 +92,7 @@ export default async function PayrollCyclePage({
                       <Fragment key={c.id}>
                       <tr className={editing?.id === c.id || copying?.id === c.id ? 'bg-primary/5' : undefined}>
                         <td className="px-4 py-2.5 font-medium">{c.name}</td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{c.code ?? '—'}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">
                           <span title={t(`runTypeHint.${c.runType}`)}>{t(`runType.${c.runType}`)}</span>
                         </td>
@@ -149,7 +152,7 @@ export default async function PayrollCyclePage({
                       </tr>
                       {copying?.id === c.id && otherCompanies.length > 0 && (
                         <tr className="bg-muted/30">
-                          <td colSpan={7} className="px-4 py-4">
+                          <td colSpan={8} className="px-4 py-4">
                             <form action={copyCycleAction} className="space-y-3">
                               <input type="hidden" name="companyId" value={companyId} />
                               <input type="hidden" name="id" value={c.id} />
@@ -183,7 +186,7 @@ export default async function PayrollCyclePage({
                   })}
                   {cycles.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                      <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                         {t('empty')}
                       </td>
                     </tr>
@@ -201,6 +204,15 @@ export default async function PayrollCyclePage({
               {editing && <input type="hidden" name="id" value={editing.id} />}
               <Field label={t('colName')}>
                 <input name="name" required defaultValue={editing?.name ?? ''} placeholder={t('namePlaceholder')} className={inputCls} />
+              </Field>
+              <Field label={t('colCode')}>
+                <input
+                  name="code"
+                  defaultValue={editing?.code ?? ''}
+                  placeholder={t('codePlaceholder')}
+                  maxLength={16}
+                  className={inputCls}
+                />
               </Field>
               <Field label={t('colRunType')}>
                 <select name="runType" defaultValue={editing?.runType ?? 'regular'} className={inputCls}>
@@ -229,6 +241,8 @@ export default async function PayrollCyclePage({
                 </Field>
               </div>
               <p className="text-xs text-muted-foreground sm:col-span-3">{t('runTypeHelp')}</p>
+              {/* 4157a498 — say what the code is FOR, or nobody fills it in and every import file fails. */}
+              <p className="text-xs text-muted-foreground sm:col-span-3">{t('codeHelp')}</p>
               <div className="flex items-center gap-3 sm:col-span-3">
                 <button className={btnPrimary}>{editing ? t('saveChanges') : t('addCycle')}</button>
                 {editing && (

@@ -73,7 +73,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
     taxNumber: p.taxNumber,
     paymentMethod: strings.paymentMethod,
     bankName: p.bankName,
-    bankAccountMasked: p.bankAccountMasked,
+    // f35f758a — the PDF takes the FULL account number; the screens keep the masked one. Both forms
+    // come off the same read (see PayslipReviewRow.bankAccountFull for the exposure this creates).
+    bankAccount: p.bankAccountFull,
     ytd: sumPayslipYtd(ytdRows),
     ytdYear: year,
     logo: logo ? { bytes: new Uint8Array(logo.content), mimeType: logo.mimeType } : null,

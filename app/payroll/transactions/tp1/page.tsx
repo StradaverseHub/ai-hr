@@ -179,6 +179,32 @@ export default async function Tp1DeclarationPage({
       <CollapsibleEmployeePanel
         defaultOpen={panelDefaultOpen}
         cookieKey={TP1_PANEL_COOKIE}
+        // 009c8a37 — the header row: who is selected, the ONE button that opens the declaration, and the
+        // Hide/Show control last, on one horizontal line. Same shape as Fixed / Individual / Zakat / Loans.
+        title={t('tp1.title')}
+        detailHeader={
+          selectedEmp ? (
+            <>
+              <div className="min-w-0 flex-1">
+                <EmployeeName
+                  code={selectedEmp.employeeCode}
+                  name={selectedEmp.name}
+                  className="text-sm font-semibold text-foreground"
+                />
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {selectedEmp.company} · {selectedEmp.department ?? '—'} · {selectedEmp.position ?? '—'}
+                </p>
+              </div>
+              <Button asChild size="sm">
+                <Link href={declarationHref(currentYear)}>
+                  {currentDeclared
+                    ? t('tp1.editButton', { year: String(currentYear) })
+                    : t('tp1.addButton', { year: String(currentYear) })}
+                </Link>
+              </Button>
+            </>
+          ) : undefined
+        }
         panel={
           /* ── The searchable employee panel (shared with Fixed / Individual / Zakat / Loans / Payslip) ── */
           <Card className="p-4">
@@ -200,29 +226,6 @@ export default async function Tp1DeclarationPage({
       >
         {selectedEmp ? (
           <div className="space-y-6">
-            {/* ── The header row: who is selected, and the ONE button that opens the declaration ──
-                Copied from the selectedEmp block of app/payroll/transactions/fixed/page.tsx on purpose —
-                same three facts, same place on the screen, same action on the right of the same row. */}
-            <Card className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <EmployeeName
-                  code={selectedEmp.employeeCode}
-                  name={selectedEmp.name}
-                  className="text-sm font-semibold text-foreground"
-                />
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  {selectedEmp.company} · {selectedEmp.department ?? '—'} · {selectedEmp.position ?? '—'}
-                </p>
-              </div>
-              <Button asChild size="sm">
-                <Link href={declarationHref(currentYear)}>
-                  {currentDeclared
-                    ? t('tp1.editButton', { year: String(currentYear) })
-                    : t('tp1.addButton', { year: String(currentYear) })}
-                </Link>
-              </Button>
-            </Card>
-
             {/* ── Transaction history — ONE ROW PER ASSESSMENT YEAR, never a version chain ── */}
             <Card className="overflow-hidden">
               <SectionHeader title={t('tp1.history.title')} count={declarationRows.length} />

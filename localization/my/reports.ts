@@ -93,6 +93,29 @@ export type ReportSubmission = {
  * FLAT DATA, no closures (ADR-0080 D4 anti-framework, and a server component must never hand a closure
  * to a client one). `href` carries `{companyId}` / `{year}` placeholders the screen substitutes.
  */
+/**
+ * 587ee719 — WHAT A FORM ON THIS SHELF CAN ACTUALLY GIVE YOU, said on the entry itself.
+ *
+ * The request asks for nineteen Malaysian statutory forms to be listed and generated. Six of them can
+ * produce something today and exactly ONE of those comes out on the government's own printed page. A
+ * screen that renders nineteen identical "Generate" buttons would hand an operator our spreadsheet
+ * under the name of a form LHDN would not accept — which is the single failure this whole item guards
+ * against. So every entry declares its fidelity, the card renders it, and the button has to match:
+ *
+ *   `official`   — the agency's own published artwork, filled from payroll. Today: `my.cp22` and
+ *                  NOTHING else (public/forms/cp22-pin-1-2020.pdf, mapped in lib/cp22-fields.ts).
+ *   `figures`    — every number the form needs, complete, in OUR layout rather than the agency's page.
+ *   `draft-file` — built to the layout an agency publishes for portal upload, never yet accepted BY
+ *                  that portal, so it stays marked draft until it has been.
+ *
+ * A fourth status, "not built yet", is deliberately NOT in this union: it belongs to `PlannedFormDef`,
+ * which has no href and no action key at all, so the type itself makes an action impossible.
+ */
+export type FormFidelity = 'official' | 'figures' | 'draft-file';
+
+/** What comes out of a form, for the chips on its card. `file` is the agency upload file (draft). */
+export type FormOutput = 'pdf' | 'xlsx' | 'csv' | 'print' | 'file';
+
 export type StatutoryFormLink = {
   id: string;
   /** i18n key under `payroll.statutoryForms` — the pack names the key, the app owns the words. */
@@ -103,6 +126,19 @@ export type StatutoryFormLink = {
   cadence: 'monthly' | 'annual' | 'event';
   /** Target route. Placeholders: `{companyId}`, `{year}`. */
   href: string;
+  /** 587ee719 — i18n key for the card's fuller description. Optional ⇒ existing entries unchanged. */
+  descriptionKey?: string;
+  /** 587ee719 — what this entry produces, as chips. */
+  outputs?: FormOutput[];
+  /** 587ee719 — see `FormFidelity`. Absent means the card shows no status chip at all. */
+  fidelity?: FormFidelity;
+  /**
+   * 587ee719 — position WITHIN its body shelf, so the reporter's own order survives the fact that a
+   * shelf is assembled from three separate collections (generatable reports, these links, and the
+   * planned forms). Rank, not array position: adding an entry never renumbers the others, and the
+   * screen still names no form. Entries without one sort last, in catalog order.
+   */
+  shelfOrder?: number;
   /**
    * d3a9383c — the row's action wording, when `openForm` is a lie.
    *
@@ -130,7 +166,41 @@ export type ReportDef = {
   periodKind: 'month' | 'year' | 'event';
   /** Absent for reports that are not themselves a submission (e.g. the internal overview). */
   submission?: ReportSubmission;
+  /** 587ee719 — i18n key under `payroll.statutoryForms` for the card's description. */
+  descriptionKey?: string;
+  /** 587ee719 — what this report produces, as chips. */
+  outputs?: FormOutput[];
+  /** 587ee719 — see `FormFidelity`. `official` is `my.cp22`'s and nothing else's. */
+  fidelity?: FormFidelity;
+  /** 587ee719 — position within its body shelf. See `StatutoryFormLink.shelfOrder`. */
+  shelfOrder?: number;
   generate: (ctx: SessionContext, params: ReportParams) => Promise<ReportResult>;
+};
+
+/**
+ * 587ee719 — A FORM THE REPORTER NAMED THAT HAS NEVER BEEN BUILT.
+ *
+ * NO `href`, NO `actionLabelKey`, NO `generate` — and that is the whole point of the type rather than a
+ * flag on `StatutoryFormLink`. A boolean would leave the href sitting there for a later edit to wire up;
+ * this shape makes an action IMPOSSIBLE to render without changing the type, which is a code review, not
+ * an accident. The screen draws these greyed, with a status chip and no action element at all.
+ *
+ * Why draw them at all, when 6babf4f6 argued the opposite? Because 6babf4f6 drew nothing and said so in
+ * a comment nobody reads: an operator looking for Borang A found an empty shelf and could not tell
+ * "not built" from "you are on the wrong screen". Naming them with a status is the honest middle — the
+ * list is complete, and no entry pretends to produce anything. When one is built it becomes a ReportDef
+ * or a StatutoryFormLink, is deleted from here, and appears in the same slot with its status changed.
+ */
+export type PlannedFormDef = {
+  id: string;
+  /** i18n key under `payroll.statutoryForms` — the form's own name, exactly as the reporter wrote it. */
+  labelKey: string;
+  /** i18n key for the one line explaining what it will be, and why it is not here yet. */
+  hintKey: string;
+  body: StatutoryBodyKey;
+  cadence: 'monthly' | 'annual' | 'event';
+  /** Position within its body shelf. See `StatutoryFormLink.shelfOrder`. */
+  shelfOrder?: number;
 };
 
 const num = (v: unknown) => Number(v ?? 0);
@@ -924,59 +994,161 @@ export async function eaStatement(
 export const MY_REPORTS: ReportDef[] = [
   // No `submission`: an internal reconciliation view, not a form anybody files.
   { id: 'my.contributions', label: 'Monthly statutory contributions (overview)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: contributions },
+  // `fidelity: 'figures'` on all four submissions and `official` on none of them: not one of these comes
+  // out on the agency's own page. `outputs` includes `file` for the two that also emit a prescribed
+  // agency upload file — those files carry their own draft chip, because neither has yet been accepted
+  // by the portal it is built for (localization/my/cp39-file.ts, localization/my/socso-eis-file.ts).
   { id: 'my.cp39', label: 'CP39 — MTD / PCB (LHDN)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: cp39,
+    descriptionKey: 'desc_cp39', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print', 'file'], shelfOrder: 11,
     submission: { body: 'lhdn', agency: 'LHDN', channel: 'e-PCB / e-Data PCB / e-CP39', dueDayOfNextMonth: 15 } },
+  // NOT "Borang A", and it never becomes Borang A by being renamed. What this produces is a contributions
+  // listing; Borang A is a KWSP form we have never seen the layout of. It keeps its honest name and Borang
+  // A keeps its place on the shelf as an unbuilt form — see MY_PLANNED_FORMS.
   { id: 'my.epf', label: 'EPF contributions (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: epfReport,
+    descriptionKey: 'desc_epf', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print'], shelfOrder: 1,
     submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
   // SOCSO and EIS go up TOGETHER through ASSIST's combined contribution function — the reporter's words.
   // ONE `perkeso` shelf for the same reason: they are one filing, not two that happen to share a portal.
+  // Same rule as EPF above: this is not "Borang 8A" and is not offered as one.
   { id: 'my.socso-eis', label: 'SOCSO + EIS (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: socsoEis,
+    descriptionKey: 'desc_socso_eis', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print', 'file'], shelfOrder: 1,
     submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
   // dueDayOfNextMonth null: the annual deadline was never stated to us. See ReportSubmission.
+  //
+  // ONE GENERATOR, TWO CATALOG ENTRIES. `cp8d` returns the Form E Part A headcounts (meta.summary, via
+  // formECounts) AND the per-employee CP8D schedule from a single run — so the reporter's item 7 (Borang E)
+  // and item 13 (CP8D Excel) are one output, not two. The Borang E entry in MY_STATUTORY_LINKS is an ALIAS
+  // onto this id; both descriptions say the annual return comes out in one step. Forking this generator to
+  // give Borang E its own would produce two annual returns that drift, and test/statutory-forms-page.test.ts
+  // fails the moment a second annual LHDN report is registered.
   { id: 'my.cp8d', label: 'Form E / CP8D — annual (LHDN)', cadence: 'annual', scope: 'year', periodKind: 'year', generate: cp8d,
+    descriptionKey: 'desc_cp8d', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print'], shelfOrder: 13,
     submission: { body: 'lhdn', agency: 'LHDN', channel: 'e-Filing (Form E)', dueDayOfNextMonth: null } },
 ];
 
 /**
  * The statutory forms that are NOT generatable reports (6babf4f6). See `StatutoryFormLink`.
  *
- * THIS LIST IS THE HONEST LENGTH. The request that prompted the redesign lists roughly thirty forms —
- * Borang BBCB, PERKESO 8B, SIP 2 / 2A, TP3, PCB 2(II), CP21, CP39A, and zakat / HRD Corp / PTPTN /
- * Tabung Haji / co-operative reports. NONE of them exist, and a menu row that opens nothing is worse
- * than an absent one: it reads as broken software rather than as an unbuilt form. Each is a real form
- * with its own official layout and its own rules — a build per form, not a screen layout change. When
- * one is built it declares its `body` and appears on the right shelf without this screen being touched,
- * which is the entire point of driving the page off this catalog.
+ * A DOOR, NOT A GENERATOR. Every entry here opens something that already exists; none of them computes
+ * anything of its own. That is why Borang E can be an ALIAS onto `my.cp8d` (587ee719): the annual return
+ * is one generator, and giving Borang E an entry costs a row in this list rather than a second copy of
+ * the annual arithmetic.
  *
- * The EA form in Bahasa Malaysia is deliberately NOT a second entry: messages/ms.json already carries
- * every `payroll.ea` key, so BM is a locale switch on the same screen.
+ * FORMS THAT DO NOT EXIST AT ALL LIVE IN `MY_PLANNED_FORMS`, not here — the type there carries no href,
+ * so an unbuilt form cannot acquire an action by accident.
  */
 export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
   // The EA statement is per EMPLOYEE, so it has no single company-wide table to open. The year's
   // employee list IS the CP8D screen — every row there links to that person's EA for the year.
+  //
+  // 587ee719 — TWO ENTRIES, ONE RENDERER. The reporter listed "C.P.8A (EA) – English" and
+  // "C.P.8A (EA) – BM" as separate forms, and until this round they were not: app/me/ea/[employmentId]/pdf
+  // resolved `payroll.ea` against the VIEWER's UI locale, so the same entry produced whichever language
+  // the screen happened to be set to. The route now takes a `lang` param (en/ms, defaulting to the
+  // request locale) and these two entries carry it. There is still exactly ONE EA renderer (lib/ea-pdf.ts)
+  // and one EA statement read — the split is a translation locale, not a second implementation.
   {
-    id: 'my.ea',
-    labelKey: 'link_ea',
+    id: 'my.ea.en',
+    labelKey: 'link_ea_en',
     hintKey: 'link_ea_hint',
+    descriptionKey: 'desc_ea_en',
+    body: 'lhdn',
+    cadence: 'annual',
+    href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}&lang=en',
+    actionLabelKey: 'openEmployeeList',
+    fidelity: 'figures',
+    outputs: ['pdf', 'print'],
+    shelfOrder: 3,
+  },
+  {
+    id: 'my.ea.ms',
+    labelKey: 'link_ea_ms',
+    hintKey: 'link_ea_hint',
+    descriptionKey: 'desc_ea_ms',
+    body: 'lhdn',
+    cadence: 'annual',
+    href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}&lang=ms',
+    actionLabelKey: 'openEmployeeList',
+    fidelity: 'figures',
+    outputs: ['pdf', 'print'],
+    shelfOrder: 4,
+  },
+  // 587ee719 — BORANG E IS AN ALIAS, AND MUST STAY ONE. The reporter listed Borang E (item 7) and CP8D
+  // (item 13) as two forms; they are two NAMES for one annual return we already produce in a single step,
+  // so this entry's href resolves to the same `my.cp8d` generator the CP8D card opens. Both cards carry a
+  // description saying so, because two entries that look like two different documents is the one outcome
+  // this must not produce — somebody would sit waiting for a second file that is never coming.
+  {
+    id: 'my.borang-e',
+    labelKey: 'link_borang_e',
+    hintKey: 'link_borang_e_hint',
+    descriptionKey: 'desc_borang_e',
     body: 'lhdn',
     cadence: 'annual',
     href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}',
+    fidelity: 'figures',
+    outputs: ['pdf', 'xlsx', 'csv', 'print'],
+    shelfOrder: 7,
   },
   // CP22 / CP22A are event-driven (a hire, a cessation), not period-driven, so they are a worklist
   // rather than a form you pick a month for. It renders on the Statutory Forms landing page itself.
   // d3a9383c: the row now says "Open worklist" (which is what the href does) and carries a second action —
   // the blank fillable CP22. The per-joiner document hangs off the worklist ROWS, not off this shelf entry.
+  //
+  // 587ee719 — `fidelity: 'official'` HERE AND NOWHERE ELSE. CP22 is the only form in this catalog drawn
+  // on the agency's own published page (public/forms/cp22-pin-1-2020.pdf; 33 areas mapped in
+  // lib/cp22-fields.ts, 26 pre-filled and 7 left blank by design). A second `official` in this catalog is
+  // a test failure, deliberately: it is the claim that costs the most if it is untrue.
   {
     id: 'my.cp22',
     labelKey: 'link_cp22',
     hintKey: 'link_cp22_hint',
+    descriptionKey: 'desc_cp22',
     body: 'lhdn',
     cadence: 'event',
     href: '/payroll/statutory-forms?companyId={companyId}#worklist',
     actionLabelKey: 'openWorklist',
     secondaryHref: '/payroll/cp22/blank',
     secondaryLabelKey: 'link_cp22_blank',
+    fidelity: 'official',
+    outputs: ['pdf', 'print'],
+    shelfOrder: 9,
   },
+];
+
+/**
+ * 587ee719 — THE THIRTEEN FORMS THE REPORTER NAMED THAT HAVE NEVER BEEN BUILT, in the reporter's own
+ * order, on the reporter's own shelves. See `PlannedFormDef` for why these are a separate type.
+ *
+ * WHY THIS EXISTS AT ALL. 6babf4f6 drew none of them and explained why in a source comment — which meant
+ * an operator opening EPF (KWSP) looking for Borang A saw one unrelated row and could not tell "not built
+ * yet" from "wrong screen". Naming each form with a status and no button is the honest answer: the list
+ * is complete, and nothing on it pretends to produce a document.
+ *
+ * WHAT THIS IS NOT. It is not a to-do list the screen can be talked into wiring up. Each of these is a
+ * real government form with its own layout, its own required fields, its own validation and its own
+ * output format — a build apiece, checked against the official artwork one form at a time, which is
+ * exactly the phased approach the request describes. When one is built it leaves this list and joins
+ * MY_REPORTS (or MY_STATUTORY_LINKS) at the SAME `shelfOrder`, and the screen is not touched.
+ *
+ * Borang BBCB is listed exactly as the reporter wrote it. We could not identify which KWSP form it is,
+ * and its hint says so rather than guessing — building against a guess is the mistake this whole item
+ * exists to avoid.
+ */
+export const MY_PLANNED_FORMS: PlannedFormDef[] = [
+  { id: 'epf.borang-a', labelKey: 'planned_epf_borang_a', hintKey: 'planned_epf_borang_a_hint', body: 'epf', cadence: 'monthly', shelfOrder: 2 },
+  { id: 'epf.borang-bbcb', labelKey: 'planned_epf_borang_bbcb', hintKey: 'planned_epf_borang_bbcb_hint', body: 'epf', cadence: 'monthly', shelfOrder: 3 },
+  { id: 'perkeso.borang-8a', labelKey: 'planned_perkeso_borang_8a', hintKey: 'planned_perkeso_borang_8a_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 2 },
+  { id: 'perkeso.borang-8b', labelKey: 'planned_perkeso_borang_8b', hintKey: 'planned_perkeso_borang_8b_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 3 },
+  { id: 'perkeso.sip', labelKey: 'planned_perkeso_sip', hintKey: 'planned_perkeso_sip_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 4 },
+  { id: 'perkeso.employee-registration', labelKey: 'planned_perkeso_employee_registration', hintKey: 'planned_perkeso_employee_registration_hint', body: 'perkeso', cadence: 'event', shelfOrder: 5 },
+  { id: 'lhdn.tp1', labelKey: 'planned_lhdn_tp1', hintKey: 'planned_lhdn_tp1_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 1 },
+  { id: 'lhdn.tp3', labelKey: 'planned_lhdn_tp3', hintKey: 'planned_lhdn_tp3_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 2 },
+  { id: 'lhdn.pcb2ii-en', labelKey: 'planned_lhdn_pcb2ii_en', hintKey: 'planned_lhdn_pcb2ii_en_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 5 },
+  { id: 'lhdn.pcb2ii-ms', labelKey: 'planned_lhdn_pcb2ii_ms', hintKey: 'planned_lhdn_pcb2ii_ms_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 6 },
+  { id: 'lhdn.cp21', labelKey: 'planned_lhdn_cp21', hintKey: 'planned_lhdn_cp21_hint', body: 'lhdn', cadence: 'event', shelfOrder: 8 },
+  { id: 'lhdn.cp22a', labelKey: 'planned_lhdn_cp22a', hintKey: 'planned_lhdn_cp22a_hint', body: 'lhdn', cadence: 'event', shelfOrder: 10 },
+  { id: 'lhdn.cp39a', labelKey: 'planned_lhdn_cp39a', hintKey: 'planned_lhdn_cp39a_hint', body: 'lhdn', cadence: 'monthly', shelfOrder: 12 },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

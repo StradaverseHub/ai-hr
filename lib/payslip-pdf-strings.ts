@@ -149,6 +149,13 @@ export async function payslipPdfStrings(p: {
       detailNotRecorded: tIp('earningsDetailNote'),
       earningsContinued: tIp('earningsContinued'),
       periodLabel: englishMonthYear(p.payPeriod),
+      // f35f758a — the Non-payable box. `nonPayableNote` reuses `me.payslip.recordLinesNote`, which already
+      // says exactly the right thing ("recorded for your reference only — these do not affect your gross or
+      // net pay") and which is only NOW true of everything it labels: the same sentence used to head a
+      // mixed list that included one-off payments the employee really did receive.
+      nonPayable: t('nonPayableHeading'),
+      nonPayableTotal: t('nonPayableTotal'),
+      nonPayableNote: t('recordLinesNote'),
     },
   };
 }

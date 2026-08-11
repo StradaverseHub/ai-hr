@@ -161,3 +161,107 @@ describe('f3ae3245 — what the redesign deliberately did NOT do', () => {
     expect(rowsSrc).toContain('statusActive');
   });
 });
+
+/**
+ * 009c8a37 — THE HIDE/SHOW CONTROL MOVES ONTO THE DETAIL HEADER LINE, on every screen that carries the
+ * employee panel. This file already owns the shell's other structural guard (the no-callback rule above),
+ * so the layout contract lives beside it rather than in a seventh place.
+ *
+ * These are source assertions, and the reason is that the three things that can break are all STRUCTURAL:
+ * which branch a node is rendered in, which grid the collapsed state uses, and whether every consumer
+ * passes the fallback. jsdom would render them; it computes no layout, so it could not tell you that the
+ * collapsed grid still holds 16px back — only that a div exists.
+ */
+describe('009c8a37 — one header line, in both panel states, on every screen with the panel', () => {
+  const SCREENS: readonly [string, string][] = [
+    ['Loans', join(__dirname, '..', 'app', 'admin', 'loans', 'page.tsx')],
+    ['Individual Payslip', join(__dirname, '..', 'app', 'payroll', 'individual-payslip', 'page.tsx')],
+    ['Transaction View', join(__dirname, '..', 'app', 'payroll', 'transaction-view', 'page.tsx')],
+    ['Fixed Transaction', join(FIXED, 'page.tsx')],
+    ['Individual Transaction', join(INDIVIDUAL, 'txn-workspace.tsx')],
+    ['TP1 Relief', join(__dirname, '..', 'app', 'payroll', 'transactions', 'tp1', 'page.tsx')],
+    ['Zakat', join(__dirname, '..', 'app', 'payroll', 'transactions', 'zakat', 'page.tsx')],
+  ];
+
+  /** The shell's JSX, from its `return (` to the end of the component. */
+  const shellBody = panelSrc.slice(panelSrc.indexOf('}) {'), panelSrc.indexOf('/**\n * One employee row'));
+
+  it('the toggle is no longer a sibling of the employee list — it is in the detail header row', () => {
+    // It used to be the FIRST CHILD of the left column, which pushed the list down by its own height
+    // (~38px) while the detail card beside it still started at the container top. That offset IS the
+    // card-top mismatch the reporter marked in red.
+    const panelBranch = shellBody.slice(shellBody.indexOf('{open && '), shellBody.indexOf('<div className="min-w-0 space-y-4">'));
+    expect(panelBranch, 'the expanded branch renders the list and nothing else').not.toContain('<button');
+    expect(panelBranch).toContain('{panel}');
+  });
+
+  it('the collapsed rail is gone AND the collapsed grid drops to a single column', () => {
+    // Deleting the rail is not sufficient on its own: an empty auto column plus gap-4 still held 16px
+    // back from the detail. The rail's lg:w-10 (40px) plus that gap, against the shared max-w-[100rem]
+    // cap, is the "use the full available width" requirement.
+    expect(panelSrc, 'no vertical rail caption').not.toContain('writing-mode:vertical-rl');
+    expect(panelSrc, 'no 40px strip').not.toContain('lg:w-10');
+    expect(panelSrc, 'no empty auto column while collapsed').not.toContain('lg:grid-cols-[auto_');
+    expect(shellBody, 'collapsed is ONE column, with no left cell rendered at all').toContain('lg:grid-cols-1');
+    expect(shellBody).toContain('{open && <div className="min-w-0">{panel}</div>}');
+  });
+
+  it('the prop that fed the rail is gone from the shell AND from both screens that passed it', () => {
+    expect(panelSrc).not.toContain('collapsedTitle');
+    for (const [name, file] of SCREENS) {
+      expect(read(file), `${name} must not pass a prop that no longer exists`).not.toContain('collapsedTitle');
+    }
+  });
+
+  it('renders the header row UNCONDITIONALLY, falling back to the screen name with nobody selected', () => {
+    // ALL SEVEN consumers draw no header at all before a person is picked — which is the state the
+    // reporter photographed. A row that only appears once someone is selected would leave the control
+    // missing on every one of them.
+    const headerRow = shellBody.slice(shellBody.indexOf('<Card'), shellBody.indexOf('{children}'));
+    expect(headerRow).toContain('detailHeader ?? ');
+    expect(headerRow).toContain('{title}');
+    expect(headerRow, 'the row is not wrapped in a selection test').not.toContain('&&');
+  });
+
+  it('every one of the seven consumers passes the no-selection fallback', () => {
+    for (const [name, file] of SCREENS) {
+      const src = read(file);
+      expect(src, `${name} mounts the shell`).toContain('CollapsibleEmployeePanel');
+      expect(src, `${name} must pass title=, or its control vanishes with nobody selected`).toMatch(/\btitle=\{/);
+      expect(src, `${name} must lift its header into detailHeader`).toMatch(/\bdetailHeader=\{/);
+    }
+  });
+
+  it('renders the toggle TWICE — the mobile copy survives collapse', () => {
+    // THE TRAP. Below lg the grid stacks in DOM order, so a toggle living only in the detail header lands
+    // UNDER the whole employee list; and a toggle rendered only "above the panel" DISAPPEARS the moment
+    // you collapse, because the panel branch is not rendered in that state. So there are two copies —
+    // and the mobile one is OUTSIDE the `{open && …}` branch, which is what makes it survive.
+    expect(shellBody.match(/toggleButton\(/g) ?? [], 'exactly two positions').toHaveLength(2);
+    const mobile = shellBody.indexOf('<div className="lg:hidden">{toggleButton(');
+    const panelBranch = shellBody.indexOf('{open && ');
+    expect(mobile, 'the narrow-viewport copy exists').toBeGreaterThan(-1);
+    expect(mobile, 'and it is rendered BEFORE the panel branch, in both states').toBeLessThan(panelBranch);
+    expect(shellBody, 'the wide-viewport copy lives in the header row').toContain("toggleButton('hidden shrink-0 lg:flex')");
+    // One handler, one cookie key, so the two copies cannot disagree about the state.
+    expect((panelSrc.match(/const toggle = \(\) => \{/g) ?? []).length).toBe(1);
+  });
+
+  it('carries print:hidden onto the toggle in BOTH positions', () => {
+    // A real shipped bug: a stray "Hide employee list" line printed above a payslip letterhead. Both
+    // copies come from ONE factory, so the class cannot be on one and not the other — assert that.
+    const factory = panelSrc.slice(panelSrc.indexOf('const toggleButton'), panelSrc.indexOf('return ('));
+    expect(factory).toContain('print:hidden');
+    // …and the header ROW itself is print-hidden on the one screen whose output is a printed payslip.
+    expect(read(join(__dirname, '..', 'app', 'payroll', 'individual-payslip', 'page.tsx'))).toContain(
+      'headerClassName="print:hidden"',
+    );
+  });
+
+  it('says out loud that it reverses the rail decision, so the next reader does not revert it', () => {
+    // The deleted comment argued the rail "keeps the control in the same place on the page rather than
+    // moving it into the workspace header". The answer is that the control is now in the header in BOTH
+    // states, which is strictly more stable — and that has to be written down, not just done.
+    expect(panelSrc).toMatch(/REVERSES A DOCUMENTED DECISION/);
+  });
+});

@@ -81,6 +81,11 @@ const labels: PayslipPdfLabels = {
   detailNotRecorded: 'This payroll run recorded only the totals.',
   earningsContinued: 'Earnings (continued)',
   periodLabel: 'June 2026',
+  // f35f758a — the Non-payable box's three REQUIRED labels. tsc is what stops one PDF route printing a
+  // block the other one does not, and it caught this fixture the moment they were added.
+  nonPayable: 'Non-payable items',
+  nonPayableTotal: 'Total non-payable',
+  nonPayableNote: 'Recorded for your reference only - these do not affect your gross or net pay.',
 };
 const data: PayslipPdfData = {
   employee: 'Aisyah Rahman',
@@ -163,6 +168,57 @@ function drawnText(bytes: Uint8Array): string {
     .join('\n');
 }
 
+/**
+ * The text AND WHERE IT WAS PUT, per page — for assertions about the LAYOUT rather than the contents.
+ *
+ * f35f758a rev 2 pairs Earnings with Deductions and gives NET PAY the full width, and "side by side" is a
+ * claim about coordinates that no amount of string matching can check: a stacked document and a paired one
+ * contain exactly the same words in exactly the same order. pdf-lib writes every run as
+ * `1 0 0 1 X Y Tm` followed by `<hex> Tj`, so the placement is recoverable from the same content streams
+ * `drawnText` already reads. Verified against the real artefact with `pdftotext -bbox` (r185-a).
+ */
+function drawnPlacements(bytes: Uint8Array): { page: number; x: number; y: number; text: string }[] {
+  const buf = Buffer.from(bytes);
+  const out: { page: number; x: number; y: number; text: string }[] = [];
+  let i = 0;
+  let page = 0;
+  for (;;) {
+    const s = buf.indexOf('stream', i);
+    if (s < 0) break;
+    const e = buf.indexOf('endstream', s);
+    if (e < 0) break;
+    let b = s + 6;
+    if (buf[b] === 0x0d) b += 1;
+    if (buf[b] === 0x0a) b += 1;
+    const raw = buf.subarray(b, e);
+    let body: Buffer;
+    try {
+      body = zlib.inflateSync(raw);
+    } catch {
+      body = raw;
+    }
+    const src = body.toString('latin1');
+    // Content streams carrying show-text operators ARE the page streams, in page order.
+    if (/\bTj\b/.test(src)) {
+      page += 1;
+      for (const m of src.matchAll(
+        /1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm[\s\S]{0,80}?(?:<([0-9A-Fa-f\s]*)>|\(((?:\\.|[^\\()])*)\))\s*Tj/g,
+      )) {
+        const text =
+          m[3] != null
+            ? Buffer.from(m[3].replace(/\s+/g, ''), 'hex').toString('latin1')
+            : (m[4] ?? '').replace(/\\([()\\])/g, '$1');
+        out.push({ page, x: Number(m[1]), y: Number(m[2]), text });
+      }
+    }
+    i = e + 9;
+  }
+  return out;
+}
+
+/** Where a piece of drawn text landed, or undefined. First match wins — headings are drawn once. */
+const placed = (p: ReturnType<typeof drawnPlacements>, text: string) => p.find((r) => r.text === text);
+
 // A 1×1 PNG. Real bytes, because embedPng is what we are exercising — a fake buffer would only prove the
 // catch block works.
 const PNG_1x1 = Buffer.from(
@@ -229,7 +285,7 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
           taxNumber: 'SG1234567890',
           paymentMethod: 'Bank transfer',
           bankName: 'Maybank',
-          bankAccountMasked: '••••8901',
+          bankAccount: '157123456789',
           hrdf: 71.2,
           ytd: { gross: 21360, epf: 2145, socso: 74.25, eis: 29.7, pcb: 1050, net: 18061.05 },
           ytdYear: '2026',
@@ -419,7 +475,7 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
         taxNumber: 'SG1234567890',
         paymentMethod: 'Bank transfer',
         bankName: 'Maybank',
-        bankAccountMasked: '••••8901',
+        bankAccount: '157123456789',
         hrdf: 71.2,
         allowance: 1430,
         earningLines: [
@@ -551,5 +607,227 @@ describe('5c198931 — buildPayslipPdfData reads the payslip’s OWN stamp', () 
     expect(d.gross).toBe(5600);
     expect(d.net).toBe(3265.15);
     expect(d.totalDeductions).toBe(2334.85);
+  });
+});
+
+/**
+ * f35f758a rev 2 — THE RELAYOUT, THE NON-PAYABLE BOX AND THE UNMASKED ACCOUNT.
+ *
+ * The reporter read r179's document live and made three points: Earnings running the full width with
+ * Deductions underneath means the two halves of one sum cannot be read against each other; there is no
+ * Non-Payable section; and the bank account prints as four dots and the last four digits.
+ *
+ * EVERY ASSERTION HERE IS READ BACK OFF THE ARTEFACT, coordinates included. A stacked document and a
+ * paired one contain the same words in the same order, so "side by side" can only be checked as a claim
+ * about x and y. These positions were cross-checked against `pdftotext -bbox` and `mutool draw` on the
+ * real files during the build (r185-a): both renderers agreed, and that agreement is the instrument.
+ */
+describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and a Non-payable box', () => {
+  it('draws Earnings and Deductions at the SAME height in DIFFERENT columns', async () => {
+    const p = drawnPlacements(await renderPayslipPdf(data, labels));
+    const earn = placed(p, 'EARNINGS');
+    const ded = placed(p, 'DEDUCTIONS');
+    expect(earn, 'the Earnings box must be drawn').toBeDefined();
+    expect(ded, 'the Deductions box must be drawn').toBeDefined();
+    expect(earn!.page).toBe(ded!.page);
+    // Same baseline, or the two are stacked and the whole point of the change is lost.
+    expect(ded!.y).toBeCloseTo(earn!.y, 1);
+    // …and genuinely in the right-hand column: past the halfway line of a 595.28pt A4.
+    expect(earn!.x).toBeLessThan(297);
+    expect(ded!.x).toBeGreaterThan(297);
+
+    // Their TOTALS line up too, which is the half a reader actually compares.
+    const te = placed(p, 'TOTAL EARNINGS');
+    const td = placed(p, 'TOTAL DEDUCTIONS');
+    expect(td!.y).toBeCloseTo(te!.y, 1);
+    expect(td!.x).toBeGreaterThan(te!.x);
+  });
+
+  it('pairs Employer contributions with Payment information, BELOW the first pair', async () => {
+    const p = drawnPlacements(
+      await renderPayslipPdf(
+        { ...data, paymentMethod: 'Bank transfer', bankName: 'Maybank', bankAccount: '157123456789' },
+        labels,
+      ),
+    );
+    const emp = placed(p, 'EMPLOYER CONTRIBUTIONS');
+    const pay = placed(p, 'PAYMENT INFORMATION');
+    expect(emp!.y).toBeCloseTo(pay!.y, 1);
+    expect(emp!.x).toBeLessThan(297);
+    expect(pay!.x).toBeGreaterThan(297);
+    // Below Earnings/Deductions — PDF y grows UPWARD, so "below" is a smaller y on the same page.
+    const earn = placed(p, 'EARNINGS')!;
+    expect(emp!.page).toBe(earn.page);
+    expect(emp!.y).toBeLessThan(earn.y);
+  });
+
+  it('gives NET PAY the FULL width — its amount reaches the right margin', async () => {
+    const p = drawnPlacements(await renderPayslipPdf(data, labels));
+    const net = placed(p, 'NET PAY')!;
+    expect(net.x).toBeLessThan(297);
+    // The amount is right-aligned to `A4_W - M - 14`; drawn at its own left edge, so what is asserted is
+    // that it starts well past the mid-line — impossible while the band was only COL_W wide.
+    const amount = p.filter((r) => r.text === 'MYR 6,020.35' && Math.abs(r.y - (net.y - 2)) < 6);
+    expect(amount.length, 'the net figure must be drawn on the band').toBeGreaterThan(0);
+    expect(amount[0].x, 'a COL_W band could never place it here').toBeGreaterThan(400);
+  });
+
+  it('prints NO Non-payable box on a payslip whose record lines were all PAID', async () => {
+    // THE HAZARD THIS ITEM WAS MOST AT RISK OF. `statutory.recordLines` is a mixed population: production
+    // payslip 945d16e9 carries COMMISSION 300, HANDPHONE ALLOWANCE 400 and SHORT NOTICE −500, and every
+    // one of them was paid. Filling the new box from that list would tell an employee their commission
+    // never reached them.
+    const d = buildPayslipPdfData(
+      {
+        employee: 'Ismail', employeeCode: 'TEST0005', company: 'Isedecor Bina Sdn Bhd', companyReg: null,
+        payPeriod: '2026-07', basic: '4500.00', allowance: '700.00', overtime: '0', bonus: '0',
+        gross: '5200.00', otherDeductions: '500.00', totalDeductions: '1149.65', net: '4050.35',
+        employerCost: '5881.55', daysWorked: '31',
+        statutory: {
+          epfEmployee: 495, socsoEmployee: 24.75, eisEmployee: 9.9, pcb: 120,
+          recordLines: [
+            { code: 'C0011', name: 'COMMISSION', amount: 300, nonPayable: false },
+            { code: 'A0027', name: 'HANDPHONE ALLOWANCE', amount: 400, nonPayable: false },
+            { code: 'DB018', name: 'SHORT NOTICE', amount: -500, nonPayable: false },
+          ],
+        },
+      },
+      { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
+    );
+    expect(d.nonPayableLines, 'not one of those three was non-payable').toEqual([]);
+    const text = drawnText(await renderPayslipPdf(d, labels));
+    expect(text).not.toContain('NON-PAYABLE ITEMS');
+    expect(text).not.toContain('TOTAL NON-PAYABLE');
+  });
+
+  it('prints ONLY the lines the run stamped non-payable, with their own total', async () => {
+    const d = buildPayslipPdfData(
+      {
+        employee: 'Ismail', employeeCode: 'TEST0005', company: 'Isedecor Bina Sdn Bhd', companyReg: null,
+        payPeriod: '2026-07', basic: '4500.00', allowance: '700.00', overtime: '0', bonus: '0',
+        gross: '5200.00', otherDeductions: '500.00', totalDeductions: '1149.65', net: '4050.35',
+        employerCost: '5881.55', daysWorked: '31',
+        statutory: {
+          epfEmployee: 495, socsoEmployee: 24.75, eisEmployee: 9.9, pcb: 120,
+          recordLines: [
+            { code: 'C0011', name: 'COMMISSION', amount: 300, nonPayable: false },
+            { code: 'BIK01', name: 'COMPANY CAR BENEFIT IN KIND', amount: 850, nonPayable: true },
+            { code: 'BIK02', name: 'ACCOMMODATION BENEFIT IN KIND', amount: 1200, nonPayable: true },
+            { code: 'DB018', name: 'SHORT NOTICE', amount: -500, nonPayable: false },
+          ],
+        },
+      },
+      { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
+    );
+    expect(d.nonPayableLines).toEqual([
+      { code: 'BIK01', name: 'COMPANY CAR BENEFIT IN KIND', amount: 850 },
+      { code: 'BIK02', name: 'ACCOMMODATION BENEFIT IN KIND', amount: 1200 },
+    ]);
+    const text = drawnText(await renderPayslipPdf(d, labels));
+    expect(text).toContain('NON-PAYABLE ITEMS');
+    expect(text).toContain('COMPANY CAR BENEFIT IN KIND · BIK01');
+    expect(text).toContain('ACCOMMODATION BENEFIT IN KIND · BIK02');
+    expect(text).toContain('TOTAL NON-PAYABLE');
+    // No currency was supplied to the builder, so amounts print unlabelled — which is the honest
+    // behaviour this file already pins elsewhere. The FIGURE is what matters here: 850 + 1200.
+    expect(text).toContain('2,050.00');
+    // …and the PAID lines are not dragged in with them.
+    expect(text).not.toContain('SHORT NOTICE');
+  });
+
+  it('treats an UNSTAMPED record line as unknown, never as non-payable', async () => {
+    // Every payslip written before this shipped carries no flag at all. They cannot be split after the
+    // fact — matching the code back to today's pay_component would answer with today's configuration
+    // about a month that has already been paid — so they keep the single list the screens already show
+    // and this document prints no box for them.
+    const d = buildPayslipPdfData(
+      {
+        employee: 'Ismail', employeeCode: 'OLD001', company: 'Isedecor Bina Sdn Bhd', companyReg: null,
+        payPeriod: '2025-11', basic: '4500.00', allowance: '0', overtime: '0', bonus: '0',
+        gross: '4500.00', otherDeductions: '0', totalDeductions: '649.65', net: '3850.35',
+        employerCost: '5085.00', daysWorked: '30',
+        statutory: {
+          recordLines: [
+            { code: 'BIK01', name: 'COMPANY CAR', amount: 850 }, // legacy: no `nonPayable` key at all
+            { code: 'C0011', name: 'COMMISSION', amount: 300 },
+          ],
+        },
+      },
+      { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
+    );
+    expect(d.nonPayableLines).toEqual([]);
+    expect(drawnText(await renderPayslipPdf(d, labels))).not.toContain('NON-PAYABLE ITEMS');
+  });
+
+  it('prints the WHOLE bank account number, not the last four digits', async () => {
+    // The masking now happens in the READ and only for the SCREENS (core/payroll-view.ts
+    // `payslipForReview`, core/payroll.ts `payslipDetail` return both forms). This document takes the
+    // full one, on both routes, the employee's own copy included: it is their account.
+    const text = drawnText(
+      await renderPayslipPdf(
+        { ...data, paymentMethod: 'Bank transfer', bankName: 'Maybank', bankAccount: '157123456789' },
+        labels,
+      ),
+    );
+    expect(text).toContain('157123456789');
+    expect(text, 'the mask must not survive anywhere on the document').not.toContain('····');
+    expect(text).not.toContain('••••');
+  });
+
+  it('a REAL production-shape payslip still fits one A4 after the relayout', async () => {
+    // Re-measured against the module itself rather than against the plan's arithmetic, which came from a
+    // standalone re-implementation of the wrap/layout maths. Cross-checked at build time by rasterising
+    // in BOTH mutool and pdftoppm: one sheet in each.
+    const bytes = await renderPayslipPdf(
+      {
+        ...data,
+        company: 'ISEDECOR BINA CONSTRUCTION AND ENGINEERING SERVICES SDN BHD',
+        payDate: '2026-06-30',
+        cycleLabel: 'Regular',
+        identityNumber: '900101011234',
+        department: 'Construction Project Management and Site Delivery',
+        position: 'Construction Project Management Specialist',
+        jobGrade: 'G7',
+        employmentType: 'Full-time',
+        epfNumber: '12345678',
+        socsoNumber: '900101011234',
+        taxNumber: 'SG1234567890',
+        paymentMethod: 'Bank transfer',
+        bankName: 'Maybank Berhad',
+        bankAccount: '157123456789',
+        hrdf: 71.2,
+        allowance: 700,
+        earningLines: [
+          { code: 'A0027', name: 'HANDPHONE ALLOWANCE', amount: 400 },
+          { code: 'C0011', name: 'COMMISSION', amount: 300 },
+        ],
+        detailNotRecorded: false,
+        ytd: { gross: 21360, epf: 2145, socso: 74.25, eis: 29.7, pcb: 1050, net: 18061.05 },
+        ytdYear: '2026',
+      },
+      labels,
+    );
+    expect(await pageCount(bytes)).toBe(1);
+  });
+
+  it('overflow degrades to a SECOND SHEET with the heading repeated — it never clips', async () => {
+    // The plan's own space budget was measured off a re-implementation, so the honest promise is not
+    // "always one page" but "a miss is cosmetic". This is that promise, asserted: a payslip long enough
+    // to overflow prints every row it was given, across as many sheets as it needs.
+    const rowsOf = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ code: `A${i}`, name: `Long pay item description ${i}`, amount: 10 }));
+    const bytes = await renderPayslipPdf(
+      { ...data, allowance: 450, gross: 7120, earningLines: rowsOf(45), detailNotRecorded: false },
+      labels,
+    );
+    expect(await pageCount(bytes)).toBeGreaterThan(1);
+    const text = drawnText(bytes);
+    expect(text).toContain('EARNINGS (CONTINUED)');
+    for (let i = 0; i < 45; i += 1) {
+      expect(text, `row ${i} must be on the document`).toContain(`Long pay item description ${i}`);
+    }
+    // The pair partner finished on sheet one and was NOT redrawn beside the continuation.
+    const p = drawnPlacements(bytes);
+    expect(p.filter((r) => r.text === 'DEDUCTIONS')).toHaveLength(1);
   });
 });

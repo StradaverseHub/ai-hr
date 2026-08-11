@@ -288,6 +288,27 @@ export class UnsupportedPayComponentError extends Error {
   }
 }
 
+/**
+ * One line of `statutory.recordLines` — the itemised list a payslip carries beside its totals.
+ *
+ * f35f758a ADDED `nonPayable`, AND IT IS THE WHOLE POINT OF NAMING THIS TYPE. The array has been a MIXED
+ * population since f1564110 phase 3: record-only benefits in kind, which never touch cash, sit in the same
+ * list as named provenance for one-off transactions, which were paid. Until now nothing on the line said
+ * which it was, so no reader could split them — and guessing from today's `pay_component` flags would
+ * answer with today's configuration about a month that has already been paid.
+ *
+ * STAMPED AT WRITE TIME, NEW PAYSLIPS ONLY. `nonPayable` is optional because every payslip written before
+ * this shipped has no flag on any line. An unflagged list must be rendered as ONE list, exactly as it is
+ * today — it cannot be separated after the fact and pretending otherwise would print a guess as a fact.
+ */
+export type PayslipRecordLine = {
+  code: string;
+  name: string;
+  amount: number;
+  /** True ⇒ recorded but never paid (a BIK). False ⇒ money that moved. Absent ⇒ written before the stamp. */
+  nonPayable?: boolean;
+};
+
 /** f1564110 Phase 3 — INDIVIDUAL_TXN_PAY_ENABLED's earning/deduction fold RIDES the typed-pay-component
  *  path (the picked component's statutory flags/rounding drive the treatment). With
  *  TYPED_PAY_COMPONENTS_ENABLED off there is no per-component fold to ride, so a batch that carries
@@ -3213,7 +3234,19 @@ export async function generatePayslips(
     const txnUnpaidByEmp = new Map<string, number>();
     // Named payslip provenance for every consumed row (merged into statutory.recordLines below) so the
     // payslip shows the one-off items by name; deductions carry a negative sign.
-    const txnRecordLinesByEmp = new Map<string, { code: string; name: string; amount: number }[]>();
+    //
+    // f35f758a — EVERY LINE CARRIES `nonPayable`, STAMPED AT WRITE TIME. `statutory.recordLines` has been a
+    // MIXED population since f1564110 phase 3: record-only BIKs (which never touch cash) and named
+    // provenance for one-off transactions (which absolutely did reach the employee) land in the same array,
+    // and nothing on the row said which was which. Verified on production 2026-08-10: payslip 945d16e9
+    // carries COMMISSION 300, HANDPHONE ALLOWANCE 400 and SHORT NOTICE −500 — all PAID — and the entire
+    // pay_component catalogue has zero non-payable rows. Printing those three under a "Non-payable" heading
+    // would tell an employee their commission never reached them.
+    //
+    // The flag is stamped HERE, from the row that produced the line, and never re-derived: matching a code
+    // back to today's pay_component would report today's answer about last month's pay. Payslips written
+    // before this shipped carry no flag at all, and every reader must treat an unflagged list as one list.
+    const txnRecordLinesByEmp = new Map<string, PayslipRecordLine[]>();
     if (individualTxnPay) {
       const ledger = await tx
         .select({
@@ -3243,9 +3276,12 @@ export async function generatePayslips(
         .from(payrollIndividualTxn)
         .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
         .where(eq(payrollIndividualTxn.batchId, p.batchId));
+      // `nonPayable: false` is stamped HERE rather than at each call site: every line this helper carries is
+      // provenance for money that MOVED (an overtime payment, a one-off earning, a one-off deduction), and
+      // a future call site that forgot the flag would silently print a paid item as never paid.
       const pushTxnLine = (empId: string, line: { code: string; name: string; amount: number }) => {
         const list = txnRecordLinesByEmp.get(empId) ?? [];
-        list.push(line);
+        list.push({ ...line, nonPayable: false });
         txnRecordLinesByEmp.set(empId, list);
       };
       for (const t of ledger) {
@@ -3399,7 +3435,7 @@ export async function generatePayslips(
     ): {
       basicRaw: number; basicGross: number; allowanceApplied: number; hrdfAllowApplied: number;
       overtime: number; bonus: number; reimburse: number; deduct: number;
-      recordLines: { code: string; name: string; amount: number }[];
+      recordLines: PayslipRecordLine[];
       componentLines: PayComponentLine[];
       lpDeclared: number; exemptionUsed: Record<string, number>;
       // Feedback 3c473773 — the same component money tallied under each item's DECLARED payslip box, plus
@@ -3435,7 +3471,7 @@ export async function generatePayslips(
         };
       }
       let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
-      const recordLines: { code: string; name: string; amount: number }[] = [];
+      const recordLines: PayslipRecordLine[] = [];
       // Feedback 862ed0ad — per-component provenance for the CASH buckets. recordLines already itemises
       // record-only components, which is why one-off items could always be broken down; the PAID recurring
       // ones were summed into wageAllow/ot/bonusAmt/reimburse/deduct with nothing kept, so a summarised
@@ -3559,7 +3595,7 @@ export async function generatePayslips(
             useRoom(c.pcbExemptionCode!, claim);
           }
           if (c.kind === 'deduction') { deduct = round2(deduct + applied); contributes('deduct', applied); continue; }
-          if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied }); continue; }
+          if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true }); continue; }
           reimburse = round2(reimburse + applied);
           contributes('reimburse', applied);
           continue;
@@ -3567,7 +3603,15 @@ export async function generatePayslips(
         if (c.kind === 'deduction') { deduct = round2(deduct + applied); contributes('deduct', applied); continue; }
         // FAIL-CLOSED (ADR-0025 §5): a PCB-taxable non-payable/BIK, or a PCB-only earning (not EPF and not
         // SOCSO), would be SILENTLY under-taxed — v1 does not compute the tax, so reject rather than produce
-        // a wrong payslip. (Write-time guards in core/pay-components.ts now reject the same at entry/import.)
+        // a wrong payslip.
+        //
+        // WHICH WRITE PATHS REJECT IT FIRST, stated exactly — this comment used to claim "write-time guards
+        // in core/pay-components.ts now reject the same at entry/import", and that was WRONG about the pay
+        // item master save, which is the screen an operator actually uses. `isUnsupportedTaxableComponent`
+        // (core/pay-components.ts) is now run by the batch picker, `setPayrollBatchComponent`, the CSV
+        // importer AND the master save (app/admin/pay-components/actions.ts, f35f758a note 8). It is still
+        // NOT run by `setEmploymentPayComponent`, so a bad row that already exists can still be ASSIGNED to
+        // an employee and reach this throw. This guard stays the last line of defence, not a formality.
         // PRECEDENCE: the flag check runs on the resolved value — a rule does not let an unsupported
         // component through (an unsupported-PCB component still throws regardless of what its rule resolves to).
         // Feedback 09b554e9: a DECLARED pcb_remuneration_type makes the code computable (the kernel routes it
@@ -3577,7 +3621,7 @@ export async function generatePayslips(
         }
         // A non-payable, non-taxable component (e.g. a record-only BIK) carries onto the payslip as an
         // INFORMATIONAL record line — it does NOT affect any cash bucket, gross, or net (ADR-0025 §5 / Option A).
-        if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied }); continue; }
+        if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true }); continue; }
         // ── Feedback 09b554e9: declared Normal/Additional remuneration, with per-code annual exemption ──
         // The exempt portion (up to the PCB code's remaining annual headroom; cap -1 = fully exempt,
         // cap 0 = fully taxable) is PAID but stays out of every statutory base (the reimburse bucket);
@@ -5410,6 +5454,13 @@ export function listBatches(
         // compares two listBatches results to each other rather than to a literal row shape.
         closedAt: payrollBatch.closedAt,
         releasedAt: payrollBatch.releasedAt,
+        // 510f4bd1 — the recalculation mark 49e7e0a2 already writes. Additive for the same reason
+        // closedAt/releasedAt were: all callers filter/map explicit fields. It is what lets the Individual
+        // Transaction workspace say "Reprocess required" for the SELECTED employee with no second query —
+        // and, unlike a per-row derivation, it survives the DELETE of the last transaction on the run,
+        // which is the one case that leaves no row to label (request case 4).
+        needsRecalcAt: payrollBatch.needsRecalcAt,
+        recalcEmploymentIds: payrollBatch.recalcEmploymentIds,
       })
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
@@ -6200,13 +6251,21 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
     const released = row.status === 'closed' && (row.releasedAt == null || row.releasedAt.getTime() <= Date.now());
     if (!released) return null;
     const { releasedAt: _r, bankAccountNo, icNumber, passportNumber, ...rest } = row;
-    // 5c198931 — the bank account is masked HERE, exactly as `payslipForReview` masks it:
-    // `employee_statutory_my.bank_account_no` is PDPA-scoped financial data (core/pdpa.ts) and the full
-    // number must never leave the server, not even to the account's own owner's browser.
+    // The bank account is returned in BOTH forms here, exactly as `payslipForReview` returns it.
+    //
+    // f35f758a REPLACED THE COMMENT THAT USED TO SIT HERE. It said `employee_statutory_my.bank_account_no`
+    // is PDPA-scoped financial data (core/pdpa.ts) and that the full number "must never leave the server,
+    // not even to the account's own owner's browser". That was a build-time judgement in 5c198931, never an
+    // ADR, and the approved plan overturns it for the DOCUMENT: this read serves the employee's own payslip,
+    // and their own account number is theirs to read. The masked form stays for screens; the PDF route
+    // takes the full one. Leaving the old comment in place would have left a rule that contradicts the code.
     const acct = (bankAccountNo ?? '').trim();
     return {
       ...rest,
+      /** Last four only — what a SCREEN prints. */
       bankAccountMasked: acct ? (acct.length > 4 ? `••••${acct.slice(-4)}` : acct) : null,
+      /** The whole number — printed on the payslip DOCUMENT, which this read also feeds. */
+      bankAccountFull: acct || null,
       // IC first; a non-Malaysian employee carries a passport instead (icNumber has been nullable since
       // migration 0212). The document labels which one it is showing rather than calling a passport an IC.
       identityNumber: icNumber?.trim() || passportNumber?.trim() || null,

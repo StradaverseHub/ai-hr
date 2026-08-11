@@ -9,13 +9,17 @@
  * so you cannot review one before adding another. So the panel is now ITEMISED, and the totals are
  * derived from exactly the rows on screen rather than from a second read that could disagree with them.
  *
- * TWO STATUSES, BECAUSE TWO IS ALL THAT EXISTS. `payroll_individual_txn` has no status column. What the
- * data supports is: a row whose batch is processed or closed has been paid; a row that is unattached
- * (keyed before the month's run existed) or attached to a draft run has not. The request asked for four
- * (Draft, Pending Payroll, Processed, Cancelled) — there is no draft state (a row exists or it does not)
- * and no cancelled state (removing one deletes it). Inventing the two missing ones would put a claim on
- * screen that no column backs, so `txnStatusOf` returns exactly the two that are derivable, and anything
- * that is not demonstrably paid degrades to `pending` — an unknown batch status is never proof of payment.
+ * THREE STATUSES, AND THE THIRD IS STILL DERIVED — NOTHING IS STORED. `payroll_individual_txn` has no
+ * status column and 510f4bd1 did not add one. What the data supports is: a row whose batch is processed or
+ * closed has been paid; a row that is unattached (keyed before the month's run existed) or attached to a
+ * draft run has not; and — 510f4bd1 — a row on a PROCESSED run that is not in the payslip that run last
+ * produced for its employee has been superseded and needs the run recalculated. ec845c7d's request asked
+ * for four (Draft, Pending Payroll, Processed, Cancelled): there is no draft state (a row exists or it does
+ * not) and no cancelled state (removing one deletes it). 510f4bd1's asked for six; `Processing`, `Failed`
+ * and `Reprocessed` are not built because none of them is a RESTING state a row can be rendered in — see
+ * the note on `reprocessRequired` below. Inventing a status no column backs would put a claim on screen the
+ * data cannot support, so `txnStatusOf` returns exactly the three that are derivable, and anything that is
+ * not demonstrably paid degrades to `pending` — an unknown batch status is never proof of payment.
  *
  * EDITABILITY FOLLOWS THE SERVICE, NOT THE OTHER WAY ROUND. `updateIndividualTxn` / `deleteIndividualTxn`
  * accept a row while it is unattached or on a batch in WRITABLE_BATCH_STATUSES and refuse it otherwise
@@ -46,8 +50,19 @@
  * these inputs cannot produce.
  */
 
-/** The two statuses the ledger actually supports. See the module doc for why there are not four. */
-export type TxnStatus = 'pending' | 'processed';
+// 510f4bd1 — the ONE rule for "is this row in the employee's latest payslip?", shared with the server read
+// that feeds the Transaction View grid and its CSV (core/payroll-view.ts). Pure and db-free, so importing
+// it here does not drag anything across the RSC boundary into the client workspace.
+import { individualTxnReprocessRequired } from '@/core/individual-txn-status';
+
+/**
+ * The three statuses the ledger actually supports. See the module doc for why there are not four, and not
+ * the six 510f4bd1 listed.
+ *
+ * `reprocessRequired` is rendered as "Pending reprocessing" — the reporter's own words, and deliberately
+ * the same vocabulary fbcf706d put on the Reprocess screen, so the two screens describe one condition once.
+ */
+export type TxnStatus = 'pending' | 'processed' | 'reprocessRequired';
 
 /** The fields this module needs from an IndividualTxnViewRow (core/payroll-view.ts). */
 export type TxnPanelInputRow = {
@@ -66,6 +81,16 @@ export type TxnPanelInputRow = {
   /** Audit provenance, already on the listing row — the request's "View" needs it and nothing else does. */
   createdOn: string;
   createdBy: string | null;
+  // ── 510f4bd1 — already on the listing row too; see core/individual-txn-status.ts for what they mean. ──
+  /** `coalesce(txn.updated_at, txn.created_at)`. */
+  changedAt: string;
+  /** `payslip.created_at` for this (batch, employment); null when the employee has no payslip on the run. */
+  payslipCalculatedAt: string | null;
+  /** The RUN's own verdict on this employment — the authoritative employee-level fact. Carried through to
+   *  `TxnPanelRow` so the screen can explain a row that reads Processed under an employee who is waiting
+   *  to be recalculated (an attendance-driven recompute, or a delete that left no row to label). It is
+   *  deliberately NOT an input to `txnStatusOf`: the row badge is about the ROW. */
+  batchNeedsRecalcForEmployment: boolean;
 };
 
 /** The fields this module needs from an UnattachedGroupRow (core/payroll-view.ts). */
@@ -106,6 +131,12 @@ export function txnEditableOf(batchStatus: string | null | undefined): boolean {
   return (WRITABLE_BATCH_STATUSES as readonly string[]).includes(batchStatus);
 }
 
+/**
+ * THREE MUTUALLY EXCLUSIVE BUCKETS THAT STILL SUM TO count/total. Before 510f4bd1 there were two and the
+ * loop below was an if/else on `pending`, so the else branch silently meant "processed"; adding a third
+ * status without splitting that branch would have counted every stale row as paid — the exact claim the
+ * request exists to stop the screen making.
+ */
 export type TxnPanelTotals = {
   count: number;
   /** Fixed-2 ringgit-style strings; the caller formats them through lib/money with the company currency. */
@@ -114,6 +145,9 @@ export type TxnPanelTotals = {
   pendingTotal: string;
   processedCount: number;
   processedTotal: string;
+  /** 510f4bd1 — money that is on a processed run but NOT in the employee's latest payslip. */
+  reprocessCount: number;
+  reprocessTotal: string;
 };
 
 /** One month in which money was entered and the month's regular run has already gone without it. */
@@ -128,14 +162,35 @@ const cents = (v: string | null | undefined) => {
 const fixed2 = (c: number) => (c / 100).toFixed(2);
 
 /**
- * The status of one ledger row, from the owning batch's status alone.
+ * The status of one ledger row.
  *
  * `processed` and `closed` are the two batch states that mean payslips exist, so the row has been paid.
  * NULL (unattached — no run yet) and `draft` mean it has not. Any other value is treated as pending:
  * this is the one place the screen could claim someone has been paid, and a status it does not recognise
  * is not evidence of that.
+ *
+ * 510f4bd1 ADDED THE THIRD ANSWER AND IT TAKES PRECEDENCE OVER `processed`. A row on a processed run that
+ * is not in the payslip that run last produced reads `reprocessRequired`, because `Processed` has to mean
+ * exactly one thing: this amount is in the employee's latest payslip. The comparison itself lives in
+ * core/individual-txn-status.ts so this screen, the Transaction View grid and the CSV all apply one rule.
+ *
+ * `facts` is OPTIONAL and its absence makes NO claim — an omitted `payslipCalculatedAt` is not the same as
+ * a null one (null means "no payslip on the run", which IS evidence of staleness). Callers that have the
+ * facts always pass them; `buildTxnPanel` does.
  */
-export function txnStatusOf(batchStatus: string | null | undefined): TxnStatus {
+export function txnStatusOf(
+  batchStatus: string | null | undefined,
+  facts?: { changedAt?: string | null; payslipCalculatedAt?: string | null },
+): TxnStatus {
+  if (
+    individualTxnReprocessRequired({
+      batchStatus,
+      changedAt: facts?.changedAt,
+      payslipCalculatedAt: facts?.payslipCalculatedAt,
+    })
+  ) {
+    return 'reprocessRequired';
+  }
   return batchStatus === 'processed' || batchStatus === 'closed' ? 'processed' : 'pending';
 }
 
@@ -154,7 +209,10 @@ export function buildTxnPanel(
   stranded: readonly StrandedInputRow[] = [],
 ): TxnPanel {
   const panelRows: TxnPanelRow[] = rows.map((r) => {
-    const status = txnStatusOf(r.batchStatus);
+    const status = txnStatusOf(r.batchStatus, {
+      changedAt: r.changedAt,
+      payslipCalculatedAt: r.payslipCalculatedAt,
+    });
     return {
       ...r,
       status,
@@ -167,14 +225,22 @@ export function buildTxnPanel(
   let totalC = 0;
   let pendingC = 0;
   let processedC = 0;
+  let reprocessC = 0;
   let pendingN = 0;
   let processedN = 0;
+  let reprocessN = 0;
+  // THREE-WAY, not if/else. This was `if (pending) … else processed`, and leaving it that way would have
+  // folded every Pending-reprocessing row into the Paid figure — the screen would then have TOLD the
+  // operator that money is in the payslip while the badge beside it said it is not.
   for (const r of panelRows) {
     const c = cents(r.amount);
     totalC += c;
     if (r.status === 'pending') {
       pendingC += c;
       pendingN += 1;
+    } else if (r.status === 'reprocessRequired') {
+      reprocessC += c;
+      reprocessN += 1;
     } else {
       processedC += c;
       processedN += 1;
@@ -200,6 +266,8 @@ export function buildTxnPanel(
       pendingTotal: fixed2(pendingC),
       processedCount: processedN,
       processedTotal: fixed2(processedC),
+      reprocessCount: reprocessN,
+      reprocessTotal: fixed2(reprocessC),
     },
     stranded: [...byPeriod.entries()]
       .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0)) // newest month first, like the listing

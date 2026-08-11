@@ -24,6 +24,9 @@ import {
   sumPayslipYtd,
 } from '../core/payroll-view';
 import { explainPcb, type PcbReliefBreakdown } from '../core/pcb-explain';
+// f35f758a note 8 — the kernel's own fail-closed predicate, exported so the pay item master save can run
+// the same rule the batch picker and the CSV importer already run.
+import { isUnsupportedTaxableComponent } from '../core/pay-components';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -272,7 +275,7 @@ describe('5c198931 — one document, printed by both routes', () => {
   });
 });
 
-describe('f35f758a — the screen: one search field, cards, and a preview of the REAL file', () => {
+describe('f35f758a rev 2 — the screen: the panel is back, and Review opens the REAL file in its own tab', () => {
   const PAGE = 'app/payroll/individual-payslip/page.tsx';
   const ROUTE = 'app/payroll/individual-payslip/[payslipId]/pdf/route.ts';
   const ESS_PAGE = 'app/me/payslip/[payslipId]/page.tsx';
@@ -280,21 +283,24 @@ describe('f35f758a — the screen: one search field, cards, and a preview of the
    *  what was REMOVED, and a naive substring check would fail on the explanation. */
   const code = (rel: string) => read(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-  it('the employee control is the SHARED search field, inside the filter form, posting employmentId', () => {
-    // THREE THINGS, not one — a source guard after an extraction has to prove all of them or it proves
-    // nothing: the field exists in the shared component, the page renders that component, and it renders
-    // it in the mode that actually posts (a hidden input named employmentId inside the GET form).
-    const shared = read('components/employee-search-field.tsx');
-    expect(shared, 'the committed selection posts through a hidden input named by the caller').toMatch(
-      /<input\s+type="hidden"\s+name=\{name\}/,
-    );
-
+  it('the employee control is the SHARED panel, and the period form carries the selection with it', () => {
+    // REWRITTEN, NOT DELETED. r179 put the control in the filter row as EmployeeSearchField; the reporter
+    // reviewed it live and asked for the list back, so the control is the shared panel again. What the
+    // guard has to prove has not changed: ONE control, the shared one, and a period form that does not
+    // silently deselect the person you are looking at when you change the year.
     const page = code(PAGE);
-    expect(page, 'the screen must use the shared field, not a second control of its own').toContain(
-      'EmployeeSearchField',
+    expect(page, 'the screen must use the shared panel, not a second control of its own').toContain(
+      'EmployeeScopePanel',
     );
-    expect(page).toMatch(/name="employmentId"/);
-    // The field sits INSIDE the GET form, which is what makes its hidden input ride the submit. Sliced
+    expect(page, 'and the collapsible shell that gives the figures the width when it is hidden').toContain(
+      'CollapsibleEmployeePanel',
+    );
+    expect(
+      page,
+      'the top-row search box is REPLACED by the panel, not joined by it — two controls would disagree',
+    ).not.toContain('EmployeeSearchField');
+
+    // The period form must carry the chosen employee as a hidden input, and must be a GET form. Sliced
     // between the form open and close rather than searched page-wide.
     const formStart = page.indexOf('<form method="GET"');
     const formEnd = page.indexOf('</form>', formStart);
@@ -302,24 +308,34 @@ describe('f35f758a — the screen: one search field, cards, and a preview of the
     expect(formEnd, 'the form slice must not invert — an inverted slice is an empty string that passes')
       .toBeGreaterThan(formStart);
     const form = page.slice(formStart, formEnd);
-    expect(form).toContain('EmployeeSearchField');
+    expect(form, 'changing the period must not deselect the employee').toMatch(
+      /<input type="hidden" name="employmentId"/,
+    );
     expect(form).toContain('viewPayslip'); // the button that runs the filter
+    expect(form, 'the panel navigates by router.push; it must not sit inside the form').not.toContain(
+      'EmployeeScopePanel',
+    );
   });
 
-  it('the left-hand panel is gone from this screen, cookie and all', () => {
+  it('the left-hand panel is back on this screen, cookie and all', () => {
     const page = code(PAGE);
-    expect(page).not.toContain('CollapsibleEmployeePanel');
-    expect(page).not.toContain('EmployeeScopePanel');
-    expect(page, 'the panel was this page’s only cookie reader').not.toContain('PAYSLIP_PANEL_COOKIE');
-    // The scope guard the panel sat behind STAYS. Losing it while removing the panel is the regression
-    // test/employee-scope-panel-guard.test.ts proves behaviourally; this is the cheap source half.
+    expect(page, 'the collapse state persists per screen').toContain('PAYSLIP_PANEL_COOKIE');
+    expect(page).toContain("'payslip_panel'");
+    expect(page, 'resolved on the SERVER so first paint is already correct').toMatch(/await cookies\(\)/);
+    // The scope guard the panel sits behind STAYS, and stayed through both moves. Losing it while moving
+    // the control is the regression test/employee-scope-panel-guard.test.ts proves behaviourally; this is
+    // the cheap source half.
     expect(page).toMatch(/employees\.some\(\(e\) => e\.employmentId === sp\.employmentId\)/);
   });
 
-  it('Preview frames the SAME route the Download button uses, inline', () => {
+  it('Review opens the SAME route the Download button uses, inline, in a new tab', () => {
     const page = code(PAGE);
-    expect(page, 'the preview must be the real file, not a print of the web page').toMatch(/<iframe/);
-    expect(page).toContain('?inline=1');
+    expect(page, 'the in-page viewer is gone — the file opens on its own').not.toMatch(/<iframe/);
+    expect(page, 'still the real file from the same route, not a print of the web page').toContain('?inline=1');
+    expect(page, 'a new tab').toMatch(/target="_blank"/);
+    expect(page, 'target=_blank without this hands the new document a live window.opener handle').toMatch(
+      /rel="noopener noreferrer"/,
+    );
     expect(page, 'the browser-print control is gone').not.toContain('PrintButton');
 
     const route = read(ROUTE);
@@ -367,8 +383,12 @@ describe('f35f758a — the screen: one search field, cards, and a preview of the
       const blk = (JSON.parse(read(`messages/${loc}.json`)) as {
         payroll: { individualPayslip: Record<string, string> };
       }).payroll.individualPayslip;
+      // `previewHint` retired with the in-page viewer (rev 2). The five search* captions are KEPT even
+      // though this page no longer mounts EmployeeSearchField: the component and its DOM test are
+      // deliberately retained for the restore work that may bring the field back, and re-adding a deleted
+      // key later is exactly the MISSING_MESSAGE trap that bit the sibling item on this round.
       for (const k of [
-        'viewPayslip', 'previewDocument', 'previewHint',
+        'viewPayslip', 'previewDocument',
         'searchPlaceholder', 'searchAriaLabel', 'searchResultsLabel', 'searchNoMatches', 'searchClear',
       ]) {
         expect(blk[k], `payroll.individualPayslip.${k} in ${loc}`).toBeTruthy();
@@ -377,6 +397,95 @@ describe('f35f758a — the screen: one search field, cards, and a preview of the
         expect(blk[k], `payroll.individualPayslip.${k} in ${loc} must take no ICU argument`).not.toMatch(/[{}]/);
       }
     }
+  });
+
+  it('the itemised list on the EMPLOYEE\u2019s own payslip stops claiming "no cash impact"', () => {
+    // f35f758a. `me.payslip.recordLinesHeading` read "Recorded items (no cash impact)", and
+    // app/me/payslip/[payslipId]/page.tsx prints it. That has been WRONG since f1564110 phase 3 merged
+    // named provenance for PAID one-off transactions into the same array: on production payslip 945d16e9
+    // it headed COMMISSION 300 and HANDPHONE ALLOWANCE 400, both of which reached the employee. It now
+    // carries the admin screen's wording, which is accurate for a mixed list.
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const m = JSON.parse(read(`messages/${loc}.json`)) as {
+        me: { payslip: Record<string, string> };
+        payroll: { transactions: { view: { history: Record<string, string> } } };
+      };
+      expect(m.me.payslip.recordLinesHeading, `me.payslip.recordLinesHeading in ${loc}`).toBe(
+        m.payroll.transactions.view.history.itemsHeading,
+      );
+      // …and the Non-payable box's own captions, which the PDF renderer REQUIRES on both routes.
+      for (const k of ['nonPayableHeading', 'nonPayableTotal', 'recordLinesNote']) {
+        expect(m.me.payslip[k], `me.payslip.${k} in ${loc}`).toBeTruthy();
+      }
+    }
+  });
+});
+
+/**
+ * f35f758a note 8 — THE PAY ITEM COMBINATION THAT SAVED CLEANLY AND THEN STOPPED A PAYROLL RUN.
+ *
+ * `isUnsupportedTaxableComponent` is the kernel's own fail-closed condition: core/payroll.ts `earningsOf`
+ * throws `UnsupportedPayComponentError` on a Non-payable pay code that is also ticked for PCB without a
+ * declared Remuneration Type, because v1 cannot compute the tax on it. It was enforced on the batch
+ * picker, `setPayrollBatchComponent` and the CSV importer — but NOT on the pay item MASTER SAVE, which is
+ * the screen an operator uses to create the code in the first place. So the bad row could be saved,
+ * assigned, and then blew up the whole run for everyone carrying it.
+ */
+describe('f35f758a note 8 — the pay item master save refuses the combination the kernel cannot compute', () => {
+  const bad = {
+    includedInEpf: false, includedInSocsoEis: false, includedInPcb: true,
+    isNonPayable: true, pcbRemunerationType: null,
+  };
+
+  it('the predicate is the KERNEL\u2019s, exported rather than copied', () => {
+    expect(isUnsupportedTaxableComponent(bad), 'Non-payable + PCB with no classification').toBe(true);
+    // A DECLARED remuneration type makes it computable (feedback 09b554e9) — the guard must not fire.
+    expect(isUnsupportedTaxableComponent({ ...bad, pcbRemunerationType: 'normal' })).toBe(false);
+    // PCB-only earnings (neither EPF nor SOCSO) are the other half of the same fail-closed condition.
+    expect(isUnsupportedTaxableComponent({ ...bad, isNonPayable: false })).toBe(true);
+    // …and an ordinary taxable allowance is untouched, or every pay item in the catalogue would be refused.
+    expect(
+      isUnsupportedTaxableComponent({ ...bad, isNonPayable: false, includedInEpf: true, includedInSocsoEis: true }),
+    ).toBe(false);
+    // STATE-BASED, so an already-bad row can be edited back into a good one rather than being trapped.
+    expect(isUnsupportedTaxableComponent({ ...bad, includedInPcb: false })).toBe(false);
+  });
+
+  it('both master-save actions run it, and refuse BEFORE the service is called', () => {
+    const src = read('app/admin/pay-components/actions.ts');
+    expect(src).toContain('isUnsupportedTaxableComponent');
+    // Create and update both. A guard on one of the two is a guard on neither.
+    for (const action of ['createComponentAction', 'updateComponentAction']) {
+      const start = src.indexOf(`export async function ${action}`);
+      expect(start, `${action} must exist`).toBeGreaterThan(-1);
+      const body = src.slice(start, src.indexOf('\nexport ', start + 1));
+      expect(body, `${action} must run the guard`).toContain('unsupportedTaxableMessage');
+      // BEFORE the write, not in the catch: redirect() signals by THROWING, and a redirect inside the try
+      // is caught and re-toasted as the raw NEXT_REDIRECT sentinel (this file's own header records that bug).
+      const guardAt = body.indexOf('unsupportedTaxableMessage(input, t)');
+      const tryAt = body.indexOf('try {');
+      expect(guardAt, `${action}: the guard must run before the try block`).toBeLessThan(tryAt);
+    }
+  });
+
+  it('the refusal is a LOCALISED message in all six catalogs, naming the pay code', () => {
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const pc = (JSON.parse(read(`messages/${loc}.json`)) as { payComponents: Record<string, string> })
+        .payComponents;
+      expect(pc.errorUnsupportedTaxable, `payComponents.errorUnsupportedTaxable in ${loc}`).toBeTruthy();
+      // It is resolved with `{ code }`, so the placeholder has to be there or the operator is told a rule
+      // was broken without being told which pay item broke it.
+      expect(pc.errorUnsupportedTaxable, `${loc} must interpolate the code`).toContain('{code}');
+    }
+  });
+
+  it('the kernel comment no longer claims the entry guards already cover this', () => {
+    // The comment above the throw used to say "write-time guards in core/pay-components.ts now reject the
+    // same at entry/import". It was wrong about the master save, which is the path an operator uses. A
+    // comment that describes a guard that is not there is worse than no comment.
+    const k = read('core/payroll.ts');
+    expect(k).not.toContain('Write-time guards in core/pay-components.ts now reject the same at entry/import');
+    expect(k, 'and it must name the path that is STILL unguarded').toContain('setEmploymentPayComponent');
   });
 });
 
@@ -464,12 +573,37 @@ describe('169e3c24 — the admin review read', () => {
     ).toBeNull();
   });
 
-  it('masks the bank account and never returns the full number', async () => {
+  it('returns the bank account in BOTH forms — masked for the screen, whole for the document', async () => {
+    // REWRITTEN FOR f35f758a rev 2, NOT RELAXED. This case used to assert the full number never left the
+    // read at all. That was a build-time judgement in 5c198931 recorded only as a code comment citing
+    // core/pdpa.ts, never an ADR, and the approved plan overturned it: a payslip that says the money went
+    // to "••••8901" does not say which account was paid.
+    //
+    // The assertion that MATTERS is now which consumer takes which form, so both are pinned here and the
+    // two consumers are pinned in source below. A read that quietly stopped masking would break the
+    // screen's promise; a read that quietly stopped returning the full number would print a masked
+    // account on an official document. Neither can happen silently.
     const a = adminCtx(base);
     const { payslipId } = await hireWithPayslip('Masked', 'masked@acme.test', '900101011403');
     const row = await payslipForReview(a, { companyIds: [base.companyId], payslipId });
-    expect(row!.bankAccountMasked).toBe('••••8901');
-    expect(JSON.stringify(row), 'the full account number must not leave the server').not.toContain('512345678901');
+    expect(row!.bankAccountMasked, 'the SCREEN reads this one').toBe('••••8901');
+    expect(row!.bankAccountFull, 'the DOCUMENT reads this one').toBe('512345678901');
+  });
+
+  it('the screen shows the masked form and the PDF route takes the whole one', () => {
+    // The source half of the case above: the exposure the plan accepted is bounded to the DOCUMENT, and
+    // the only thing keeping it bounded is which field each consumer reads.
+    const page = read('app/payroll/individual-payslip/page.tsx');
+    expect(page, 'the review screen must keep showing only the last four digits').toContain('bankAccountMasked');
+    expect(page, 'and must never render the whole number').not.toContain('bankAccountFull');
+    for (const route of [
+      'app/payroll/individual-payslip/[payslipId]/pdf/route.ts',
+      'app/me/payslip/[payslipId]/pdf/route.ts',
+    ]) {
+      // Both routes, the employee's own copy included: it is one document and their own account number.
+      expect(read(route), `${route} must print the whole account number`).toContain('bankAccountFull');
+      expect(read(route), `${route} must not fall back to the mask`).not.toContain('bankAccountMasked');
+    }
   });
 
   it('reports the IC as the identity, and marks a passport as a passport', async () => {
@@ -596,10 +730,10 @@ describe('5c198931 — the employee’s own payslip is the SAME document as the 
     expect(p!.identityNumber).toBe('900101011502');
     expect(p!.identityIsPassport).toBe(false);
     expect(p!.department).toBeTruthy();
-    // Masked in the READ, exactly as payslipForReview masks it: the full number must not leave the
-    // server even to the account holder's own browser.
-    expect(p!.bankAccountMasked).toBe('••••8901');
-    expect(JSON.stringify(p), 'the full account number must not leave the server').not.toContain('512345678901');
+    // BOTH forms, exactly as payslipForReview returns them (f35f758a rev 2). The employee's own copy is
+    // the same document as the reviewer's, so it carries the same account number — theirs.
+    expect(p!.bankAccountMasked, 'the masked form the screens use').toBe('••••8901');
+    expect(p!.bankAccountFull, 'the whole number the document prints').toBe('512345678901');
   });
 
   it('an employee with NO Malaysian statutory row still gets their payslip', async () => {
