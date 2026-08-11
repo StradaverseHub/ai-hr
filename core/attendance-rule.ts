@@ -69,13 +69,39 @@ export type ResolvedAttendanceRule = {
  * deferred follow-up. This function still owns ONLY rounding + early-OT inclusion, and it still decides
  * `ot_minutes` — the canonical total everything downstream reads.
  *
- * UNRESOLVED, DELIBERATELY UNCHANGED: the request gives two rounding examples that no single rule
- * satisfies. "0:01–0:59 with Round To 60 becomes 60 minutes" requires rounding UP (or at least never down
- * to zero); "121 minutes at Round To 30 becomes 120, and 150 stays 150" is rounding to NEAREST, which is
- * what the code below has always done and what 121→120 confirms. Under nearest, a 20-minute overtime with
- * a Round-To of 60 becomes ZERO — which is the first example's complaint. Changing it would move
- * `ot_minutes`, i.e. money, for every tenant with a rounding band, so it is NOT changed here on a guess:
- * the count of affected rules has been requested from production and the owner picks the rule.
+ * RESOLVED BY 7c834696 rev 3 (2026-08-11) — ROUNDING IS DOWNWARD, and this is the ONE line in the item
+ * that moves money. It was round-to-NEAREST, and nearest is unsound for a BANDED table because nothing
+ * stopped the result exceeding either the band's own upper bound or the minutes actually worked:
+ *
+ *   Production rule "A02" (id 803be8ff…, created as A01 and renamed 2026-08-05) has a band from 60 to 119
+ *   minutes with round-to 60. Under NEAREST, 90 through 119 minutes became 120 — past the band's own
+ *   119-minute ceiling, and more overtime than the employee was at work for. Two real days were inflated:
+ *   2026-08-05 Eee Lee Yong (100814) worked 90 minutes over, stored 120; NURUL ALIAH (100815) worked 100,
+ *   stored 120. Nearest also created a cliff — 1h29 paid one hour, 1h30 paid two, 2h00 paid two — so an
+ *   extra half hour earned nothing.
+ *
+ * FLOOR, not "nearest then clamp". The largest multiple of Round-To that does not exceed the overtime.
+ * Clamping nearest to the raw figure would return 90 for Eee Lee Yong, which is a different rule and not
+ * the one that was approved. Round-UP was refused for the opposite reason: it sends every 60–119 day to
+ * 120 and makes the inflation universal.
+ *
+ * WHAT FLOOR COSTS, stated because it is the reason this needed an owner decision: in ANY band with
+ * rounding on, an overtime SMALLER than the Round-To multiple now floors to ZERO — applyOtRuleRows(40, …)
+ * against a round-to-60 band was 60 and is now 0. That is the request's own first example ("0:01–0:59 with
+ * Round To 60 becomes 60") going the other way, and it is the price of never paying for unworked time. No
+ * production rule is exposed to it: A02's 1–59 band has rounding OFF, and Standard's rounding band starts
+ * at 60. The request's second example (121 at round-to 30 → 120; 150 stays 150) still holds under floor.
+ *
+ * SCOPE, CORRECTED BY 7c834696 STAGE 1: the per-band rate now DOES something — it decides which rate
+ * COLUMN a day's overtime minutes land in (core/attendance-calc.ts splitOtMinutes, called by the engine
+ * right after this). What is still true is that pay uses the tenant-global statutory multipliers
+ * (1.5×/2×/3×) as the compliance cap; feeding custom band multipliers into the payroll kernel remains a
+ * deferred follow-up. This function still owns ONLY rounding + early-OT inclusion, and it still decides
+ * `ot_minutes` — the canonical total everything downstream reads.
+ *
+ * NOT CHANGED HERE, deliberately: the request's "overtime beyond the final band shall not be counted"
+ * would cut `ot_minutes` DOWNWARD and retroactively for anyone with a bounded table. Minutes past the last
+ * band keep that band's rate and are still counted in full. Truncation needs its own opt-in.
  */
 export function applyOtRuleRows(
   workdayOtMinutes: number,
@@ -87,7 +113,8 @@ export function applyOtRuleRows(
   if (!rule || rule.otRows.length === 0 || ot <= 0) return ot;
   const band = rule.otRows.find((r) => ot >= r.fromMinutes && (r.toMinutes <= r.fromMinutes || ot <= r.toMinutes));
   if (band?.rounding && band.roundToMinutes != null && band.roundToMinutes > 0) {
-    ot = Math.round(ot / band.roundToMinutes) * band.roundToMinutes;
+    // FLOOR — see the note above. Never returns more minutes than were worked, and never leaves the band.
+    ot = Math.floor(ot / band.roundToMinutes) * band.roundToMinutes;
   }
   return Math.max(0, ot);
 }

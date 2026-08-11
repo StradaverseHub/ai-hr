@@ -6634,7 +6634,7 @@
       "unitHour": "g",
       "unitMin": "phút",
       "applyEarlyOtLabel": "Áp dụng cho Tăng ca sớm",
-      "applyEarlyOtHint": "Áp dụng chính sách tăng ca này cho tăng ca được duyệt làm trước giờ bắt đầu theo lịch.",
+      "applyEarlyOtHint": "Tính mọi phút chấm công trước giờ bắt đầu theo lịch là tăng ca. Không có bước phê duyệt — khi bật, đến sớm sẽ tự động được tính tăng ca.",
       "otEmptyHint": "Chưa có khoảng tăng ca. Dùng + Thêm dòng để xác định cách tính tăng ca.",
       "statutoryCapNote": "Hệ số tăng ca theo luật (1.5×, 2×, 3×) vẫn là mức tối thiểu hợp pháp và được đặt trong mức tăng ca của công ty. Các quy tắc này định hình và làm tròn tăng ca bên trên đó.",
       "save": "Lưu",

@@ -3458,7 +3458,12 @@ export const attendancePolicy = pgTable(
 //     (attendance.late_deduct_minutes / early_out_deduct_minutes) — gated on `apply_deductions` below,
 //     which ships FALSE, and never for a date before `deductions_effective_from`;
 //   • the OT rows now CATEGORISE, progressively, into the per-rate buckets on the attendance row, instead
-//     of only supplying a rounding step (applyOtRuleRows still owns rounding, unchanged).
+//     of only supplying a rounding step (applyOtRuleRows still owns rounding).
+// 7c834696 rev 3 (2026-08-11) then CHANGED the rounding direction: a band's Round-To now floors, so a
+// rounded overtime can never exceed either the band's own upper bound or the minutes actually worked. It
+// used to round to nearest, which inflated two real production days by 30 and 20 minutes. A non-workday
+// also stopped borrowing the band's WORKDAY multiplier for its rate column — see core/attendance-calc.ts
+// rateForDay.
 // STILL DEFERRED, deliberately: nothing MONETIZES the deduction figures — attendance reports categorised
 // results and payroll decides what they are worth (the request's own split), and no payroll path reads
 // them yet. Per-band custom OT PAY multipliers are likewise still not fed to the payroll kernel; the
@@ -3495,9 +3500,12 @@ export const attendanceRule = pgTable(
     earlyDeductMinutes: integer('early_deduct_minutes').notNull().default(0),
     includeGraceInEarlyOut: boolean('include_grace_in_early_out').notNull().default(false),
     // ── Overtime section ──
-    // "Apply this overtime policy to approved OVERTIME worked before the scheduled start." Honoured by the
-    // pure resolver applyOtRuleRows (unit-tested); the engine currently feeds 0 pre-shift OT minutes (early-OT
-    // punch attribution is a deferred follow-up — documented GAP).
+    // "Count time clocked before the scheduled start as overtime." Honoured by the pure resolver
+    // applyOtRuleRows (unit-tested) and folded in by core/attendance.ts before the per-shift OT shape.
+    // THERE IS NO APPROVAL STEP behind it, despite the label the editor used to carry: with the switch on,
+    // EVERY pre-shift minute becomes overtime. 7c834696 rev 3 corrected the hint in all six catalogues
+    // (admin.attendanceRule.applyEarlyOtHint) rather than pretend an approval gate exists. Gating early OT
+    // on approval is its own item.
     applyToEarlyOt: boolean('apply_to_early_ot').notNull().default(false),
     // ── 7c834696 stage 1 (migration 0394) · the deduction opt-in ──
     // The after-X/deduct-Y pairs above have been editable since 0204 and read by NOTHING, so every rule's

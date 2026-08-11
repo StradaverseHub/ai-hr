@@ -387,8 +387,9 @@ export const shiftSpan = (start: string, end: string, crosses: boolean): number 
  * (shift.normal_hours_rounding_minutes). It rounds the net figure DOWN to a multiple of itself:
  *   • DOWN, not nearest: this figure is a SCHEDULE, and the honest reading of "round my normal hours to the
  *     quarter hour" on a 7h50m shift is 7h45m of normal time, not 8h the employee was never scheduled for.
- *     (The OT band rounding in core/attendance-rule.ts rounds to NEAREST — deliberately different: that one
- *     rounds MEASURED overtime, where nearest is the neutral choice between the two parties.)
+ *     (7c834696 rev 3: the OT band rounding in core/attendance-rule.ts now rounds DOWN too, for the parallel
+ *     reason — nearest could return more overtime than the employee was at work for, and did, on two real
+ *     days. The two roundings are now the same direction and stay separate settings.)
  *   • The parameter is OPTIONAL and null/0/absent is a strict no-op, so every one of the caller sites that
  *     does not pass it — and every shift whose column is NULL, which is all 11 rows on production — returns
  *     byte-identically to before.
