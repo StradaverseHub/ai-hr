@@ -26,12 +26,16 @@ export default async function PayrollHistoryImportPage() {
   // sources the validator resolves against so the template's Codes sheet and the on-screen reference can
   // never disagree with what actually validates. Plain serialisable data across the RSC boundary: the
   // client component receives arrays, never a function.
-  const codes = companies.length ? await listImportCodes(s) : [];
+  // In parallel, not in sequence: listPayrollCycles is per company and a group can have nine of them,
+  // which would otherwise be nine round trips one after another before the page paints.
+  const [codes, cycleLists] = await Promise.all([
+    companies.length ? listImportCodes(s) : Promise.resolve([]),
+    Promise.all(companies.map((c) => listPayrollCycles(s, c.id, { activeOnly: true }))),
+  ]);
   const cyclesByCompany: Record<string, { name: string; code: string | null }[]> = {};
-  for (const c of companies) {
-    const cycles = await listPayrollCycles(s, c.id, { activeOnly: true });
-    cyclesByCompany[c.id] = cycles.map((cy) => ({ name: cy.name, code: cy.code }));
-  }
+  companies.forEach((c, i) => {
+    cyclesByCompany[c.id] = cycleLists[i].map((cy) => ({ name: cy.name, code: cy.code }));
+  });
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
