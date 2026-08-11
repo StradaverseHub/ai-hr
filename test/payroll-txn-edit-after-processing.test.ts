@@ -359,6 +359,16 @@ describe('49e7e0a2 — one-off transactions are editable after processing, and s
     });
     expect(filtered.map((r) => r.id)).toEqual([added.id]);
 
+    // …and the FILTER MUST SELECT WHAT THE COLUMN SHOWS. Once the stale row is labelled Pending
+    // reprocessing, ?txnStatus=processed must stop returning it — a screen that lists a row under
+    // Processed while the badge beside it says otherwise is the contradiction this item is about.
+    const asProcessed = await listIndividualTxnsAcross(a, {
+      companyIds: [base.companyId],
+      employmentId,
+      batchStatus: 'processed',
+    });
+    expect(asProcessed.map((r) => r.id)).toEqual([fresh.id]);
+
     // …and a value the read does not know still fails OPEN, which is why the screen's whitelist has to be
     // imported rather than restated. Stated here so the behaviour is measured, not assumed.
     const bogus = await listIndividualTxnsAcross(a, {

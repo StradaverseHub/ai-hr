@@ -394,7 +394,14 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
   // two screens saying different things about one line.
   const derived = rows.map((r) => ({ ...r, reprocessRequired: individualTxnReprocessRequired(r) })) as
     IndividualTxnViewRow[];
-  return batchStatus === 'reprocess' ? derived.filter((r) => r.reprocessRequired) : derived;
+  // THE STATUS FILTER HAS TO SELECT WHAT THE STATUS COLUMN SHOWS, or the screen contradicts itself. Once
+  // a stale row on a processed run is LABELLED Pending reprocessing, `?txnStatus=processed` must stop
+  // returning it — otherwise filtering to Processed lists rows the grid beside it calls something else.
+  // (Measured on a dev server before this line existed: it did exactly that.) The other three values need
+  // no narrowing — the derived status only ever applies to a `processed` run.
+  if (batchStatus === 'reprocess') return derived.filter((r) => r.reprocessRequired);
+  if (batchStatus === 'processed') return derived.filter((r) => !r.reprocessRequired);
+  return derived;
 }
 
 /**
