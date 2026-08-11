@@ -6021,7 +6021,7 @@
       "budget": "预算",
       "noBudget": "无预算",
       "save": "保存",
-      "annualBudgetLabel": "年度预算（RM）",
+      "annualBudgetLabel": "年度限额（RM）",
       "perClaimCapLabel": "单笔报销上限（RM）",
       "effectiveFromLabel": "生效自",
       "setBudget": "设置预算",
@@ -6125,7 +6125,9 @@
       "fieldKind_date": "日期",
       "fieldKind_select": "下拉选择",
       "fieldKind_boolean": "是 / 否",
-      "fieldKind_file": "文件"
+      "fieldKind_file": "文件",
+      "addNewType": "新增",
+      "hideNewType": "关闭"
     },
     "reimbursements": {
       "back": "报销配置",

@@ -6021,7 +6021,7 @@
       "budget": "Budget",
       "noBudget": "No budget",
       "save": "Save",
-      "annualBudgetLabel": "Annual budget (RM)",
+      "annualBudgetLabel": "Annual limit (RM)",
       "perClaimCapLabel": "Per-claim cap (RM)",
       "effectiveFromLabel": "Effective from",
       "setBudget": "Set budget",
@@ -6125,7 +6125,9 @@
       "fieldKind_date": "Date",
       "fieldKind_select": "Dropdown",
       "fieldKind_boolean": "Yes / No",
-      "fieldKind_file": "File"
+      "fieldKind_file": "File",
+      "addNewType": "Add new",
+      "hideNewType": "Close"
     },
     "reimbursements": {
       "back": "Claims configuration",

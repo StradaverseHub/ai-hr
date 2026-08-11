@@ -63,9 +63,12 @@ export function ClaimLimitEditor({
       <Field label={t('annualBudgetLabel')}>
         <input name="annualBudget" type="number" min="0" step="0.01" disabled={disabled} placeholder={t('unlimited')} className={`${inputCls} w-full disabled:opacity-50`} />
       </Field>
-      <Field label={t('lifetimeLimitLabel')}>
-        <input name="lifetimeLimit" type="number" min="0" step="0.01" disabled={disabled} placeholder={t('unlimited')} className={`${inputCls} w-full disabled:opacity-50`} />
-      </Field>
+      {/* e7eb5d83 point 3b — Lifetime limit is GONE FROM THE SCREEN, not from the database. Not one
+          claim_policy row on production has ever carried a non-null lifetime_limit (re-measured
+          2026-08-10, all 5 rows including superseded versions), so nothing is taken away by hiding it.
+          claim_policy.lifetime_limit, the 'lifetime' LimitScope, enforceClaimLimits' lifetime branch and
+          the approve-time re-check all stay exactly where they are, which is what makes this reversible
+          in one commit. Dropping the column is a later cleanup on its own. */}
       <Field label={t('maxClaimsPerYearLabel')}>
         <input name="maxClaimsPerYear" type="number" min="0" step="1" disabled={disabled} placeholder={t('unlimited')} className={`${inputCls} w-full disabled:opacity-50`} />
       </Field>

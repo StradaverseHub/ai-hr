@@ -95,7 +95,6 @@ export default async function ClaimLimitsPage({
                     <th className="px-4 py-2 font-medium">{t('perClaimCapLabel')}</th>
                     <th className="px-4 py-2 font-medium">{t('monthlyLimitLabel')}</th>
                     <th className="px-4 py-2 font-medium">{t('annualBudgetLabel')}</th>
-                    <th className="px-4 py-2 font-medium">{t('lifetimeLimitLabel')}</th>
                     <th className="px-4 py-2 font-medium">{t('maxClaimsPerYearLabel')}</th>
                     <th className="px-4 py-2 font-medium">{t('effectiveFromLabel')}</th>
                   </tr>
@@ -119,7 +118,7 @@ export default async function ClaimLimitsPage({
                             ) : null}
                           </td>
                           {e == null ? (
-                            <td className="px-4 py-2.5 text-muted-foreground" colSpan={6}>
+                            <td className="px-4 py-2.5 text-muted-foreground" colSpan={5}>
                               {t('unlimitedBadge')}
                             </td>
                           ) : (
@@ -127,7 +126,6 @@ export default async function ClaimLimitsPage({
                               <td className="px-4 py-2.5 tabular-nums">{rm(e.perClaimCap)}</td>
                               <td className="px-4 py-2.5 tabular-nums">{rm(e.monthlyLimit)}</td>
                               <td className="px-4 py-2.5 tabular-nums">{rm(e.annualBudget)}</td>
-                              <td className="px-4 py-2.5 tabular-nums">{rm(e.lifetimeLimit)}</td>
                               <td className="px-4 py-2.5 tabular-nums">{e.maxClaimsPerYear ?? '—'}</td>
                               <td className="px-4 py-2.5 tabular-nums">{e.validFrom}</td>
                             </>
@@ -138,7 +136,7 @@ export default async function ClaimLimitsPage({
                             plainly, rather than shown as rows whose empty cells imply a separate budget. */}
                         {r.items.length > 0 ? (
                           <tr className="border-t border-border/50">
-                            <td className="px-4 pb-2.5 pl-8" colSpan={7}>
+                            <td className="px-4 pb-2.5 pl-8" colSpan={6}>
                               <ul className="space-y-0.5 text-xs text-muted-foreground">
                                 {r.items.map((it) => (
                                   <li key={it.id}>

@@ -6021,7 +6021,7 @@
       "budget": "Bajet",
       "noBudget": "Tiada bajet",
       "save": "Simpan",
-      "annualBudgetLabel": "Bajet tahunan (RM)",
+      "annualBudgetLabel": "Had tahunan (RM)",
       "perClaimCapLabel": "Had setiap tuntutan (RM)",
       "effectiveFromLabel": "Berkuat kuasa dari",
       "setBudget": "Tetapkan bajet",
@@ -6125,7 +6125,9 @@
       "fieldKind_date": "Tarikh",
       "fieldKind_select": "Senarai pilihan",
       "fieldKind_boolean": "Ya / Tidak",
-      "fieldKind_file": "Fail"
+      "fieldKind_file": "Fail",
+      "addNewType": "Tambah baharu",
+      "hideNewType": "Tutup"
     },
     "reimbursements": {
       "back": "Konfigurasi tuntutan",

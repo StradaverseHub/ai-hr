@@ -6021,7 +6021,7 @@
       "budget": "பட்ஜெட்",
       "noBudget": "பட்ஜெட் இல்லை",
       "save": "சேமி",
-      "annualBudgetLabel": "ஆண்டுப் பட்ஜெட் (RM)",
+      "annualBudgetLabel": "ஆண்டு வரம்பு (RM)",
       "perClaimCapLabel": "ஒரு கோரிக்கைக்கான உச்சவரம்பு (RM)",
       "effectiveFromLabel": "செயல்பாட்டில் வருதல்",
       "setBudget": "பட்ஜெட்டை அமை",
@@ -6125,7 +6125,9 @@
       "fieldKind_date": "தேதி",
       "fieldKind_select": "கீழ்-இறக்கம்",
       "fieldKind_boolean": "ஆம் / இல்லை",
-      "fieldKind_file": "கோப்பு"
+      "fieldKind_file": "கோப்பு",
+      "addNewType": "புதிதாகச் சேர்",
+      "hideNewType": "மூடு"
     },
     "reimbursements": {
       "back": "கோரிக்கைகள் கட்டமைப்பு",

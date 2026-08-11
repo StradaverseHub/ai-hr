@@ -6021,7 +6021,7 @@
       "budget": "Ngân sách",
       "noBudget": "Không có ngân sách",
       "save": "Lưu",
-      "annualBudgetLabel": "Ngân sách hàng năm (RM)",
+      "annualBudgetLabel": "Hạn mức hàng năm (RM)",
       "perClaimCapLabel": "Mức trần mỗi khoản chi (RM)",
       "effectiveFromLabel": "Hiệu lực từ",
       "setBudget": "Đặt ngân sách",
@@ -6125,7 +6125,9 @@
       "fieldKind_date": "Ngày",
       "fieldKind_select": "Danh sách chọn",
       "fieldKind_boolean": "Có / Không",
-      "fieldKind_file": "Tệp"
+      "fieldKind_file": "Tệp",
+      "addNewType": "Thêm mới",
+      "hideNewType": "Đóng"
     },
     "reimbursements": {
       "back": "Cấu hình khoản chi",

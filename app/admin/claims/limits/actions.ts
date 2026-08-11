@@ -36,7 +36,9 @@ export async function setClaimPolicyAction(formData: FormData) {
       annualBudget: unlimited ? null : numOrNull(formData.get('annualBudget')),
       perClaimCap: unlimited ? null : numOrNull(formData.get('perClaimCap')),
       monthlyLimit: unlimited ? null : numOrNull(formData.get('monthlyLimit')),
-      lifetimeLimit: unlimited ? null : numOrNull(formData.get('lifetimeLimit')),
+      // e7eb5d83 point 3b — no lifetimeLimit read: the field left this screen. setClaimPolicy still
+      // ACCEPTS it (the column, the scope and the enforcement branch are untouched), so re-adding the
+      // input is the only change needed to bring it back.
       maxClaimsPerYear: unlimited ? null : intOrNull(formData.get('maxClaimsPerYear')),
       effectiveFrom: String(formData.get('effectiveFrom')),
       rateConfig: rateConfigFrom(formData),

@@ -6021,7 +6021,7 @@
       "budget": "งบประมาณ",
       "noBudget": "ไม่มีงบประมาณ",
       "save": "บันทึก",
-      "annualBudgetLabel": "งบประมาณรายปี (RM)",
+      "annualBudgetLabel": "วงเงินต่อปี (RM)",
       "perClaimCapLabel": "เพดานต่อการเบิก (RM)",
       "effectiveFromLabel": "มีผลตั้งแต่",
       "setBudget": "ตั้งงบประมาณ",
@@ -6125,7 +6125,9 @@
       "fieldKind_date": "วันที่",
       "fieldKind_select": "ดรอปดาวน์",
       "fieldKind_boolean": "ใช่ / ไม่ใช่",
-      "fieldKind_file": "ไฟล์"
+      "fieldKind_file": "ไฟล์",
+      "addNewType": "เพิ่มใหม่",
+      "hideNewType": "ปิด"
     },
     "reimbursements": {
       "back": "ตั้งค่า Claims",
