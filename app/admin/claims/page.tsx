@@ -1,15 +1,19 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listClaimTypes } from '@/core/claims';
+import { CLAIM_FIELD_KINDS, listClaimFormFields, listClaimTypes } from '@/core/claims';
 import { Button, Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
 import { ClaimTypePanel } from '@/components/claim-type-panel';
 import { ClaimsTabs } from '@/components/claims-tabs';
 import {
+  archiveClaimFormFieldAction,
   archiveClaimItemAction,
   archiveClaimTypeAction,
+  createClaimFormFieldAction,
   createClaimItemAction,
   createClaimTypeAction,
   deleteClaimTypeAction,
+  moveClaimFormFieldAction,
+  updateClaimFormFieldAction,
   updateClaimItemAction,
   updateClaimTypeAction,
 } from './actions';
@@ -19,6 +23,15 @@ export default async function ClaimsConfigPage({ searchParams }: { searchParams:
   const t = await getTranslations('admin.claims');
   const { error } = await searchParams;
   const types = await listClaimTypes(s);
+  // e7eb5d83 point 2 — one designed-form read per claim type, so the designer can render inside each
+  // panel. Production carries four claim types; this is four small reads on a page that already does one
+  // per type for its items. If a tenant ever grows this list, fold it into listClaimTypes rather than
+  // paginating a config screen.
+  const fieldsByType = new Map(
+    await Promise.all(
+      types.map(async (ct) => [ct.id, await listClaimFormFields(s, { claimTypeId: ct.id })] as const),
+    ),
+  );
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -97,12 +110,18 @@ export default async function ClaimsConfigPage({ searchParams }: { searchParams:
                 requiresReceipt={ct.requiresReceipt}
                 maxReceiptAgeDays={ct.maxReceiptAgeDays}
                 items={ct.items}
+                formFields={fieldsByType.get(ct.id) ?? []}
+                fieldKinds={[...CLAIM_FIELD_KINDS]}
                 updateAction={updateClaimTypeAction}
                 archiveAction={archiveClaimTypeAction}
                 deleteAction={deleteClaimTypeAction}
                 createItemAction={createClaimItemAction}
                 updateItemAction={updateClaimItemAction}
                 archiveItemAction={archiveClaimItemAction}
+                createFieldAction={createClaimFormFieldAction}
+                updateFieldAction={updateClaimFormFieldAction}
+                moveFieldAction={moveClaimFormFieldAction}
+                archiveFieldAction={archiveClaimFormFieldAction}
               />
             ))}
           </ul>
