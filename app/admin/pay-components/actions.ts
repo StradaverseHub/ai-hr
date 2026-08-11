@@ -8,6 +8,7 @@ import {
   archivePayComponent,
   createPayComponent,
   deletePayComponent,
+  isUnsupportedTaxableComponent,
   PayComponentCodeExistsError,
   PayComponentInUseError,
   PayComponentStatutoryConfigError,
@@ -111,6 +112,38 @@ async function messageOf(e: unknown, t: Awaited<ReturnType<typeof getTranslation
   return (e as Error).message;
 }
 
+/**
+ * f35f758a note 8 — THE COMBINATION THAT COULD BE SAVED AND THEN STOPPED A PAYROLL RUN.
+ *
+ * `isUnsupportedTaxableComponent` is the kernel's own fail-closed condition (core/payroll.ts `earningsOf`
+ * throws `UnsupportedPayComponentError` on it), and it was already enforced on the batch picker,
+ * `setPayrollBatchComponent` and the CSV importer — but NOT here, on the screen an operator actually uses
+ * to define a pay item. So Non-payable + "subject to PCB" with no Remuneration Type saved cleanly, was
+ * assignable to an employee, and then blew up the whole payroll run for everybody carrying it, with an
+ * English exception message and nothing pointing at the pay item that caused it.
+ *
+ * Refused HERE instead, with the reason, in the reader's own language. Returns the message rather than
+ * throwing because `redirect()` signals by THROWING (NEXT_REDIRECT) and must be called outside a
+ * try/catch — see the note at the head of this file.
+ *
+ * STATE-BASED, so this never traps a row: a pay item already carrying the bad combination can still be
+ * opened and edited back into a good one, because the check reads what is being SAVED.
+ */
+function unsupportedTaxableMessage(
+  input: PayComponentInput,
+  t: Awaited<ReturnType<typeof getTranslations>>,
+): string | null {
+  return isUnsupportedTaxableComponent({
+    includedInEpf: input.includedInEpf,
+    includedInSocsoEis: input.includedInSocsoEis,
+    includedInPcb: input.includedInPcb,
+    isNonPayable: input.isNonPayable,
+    pcbRemunerationType: input.pcbRemunerationType,
+  })
+    ? t('errorUnsupportedTaxable', { code: input.code })
+    : null;
+}
+
 /** Save & New ⇒ back to a BLANK /new: the toast survives ToastFromQuery only strips toast/error, and the
  *  `fresh` nonce keys the /new page so the whole form — PayRuleEditor island included — remounts blank. */
 const saveAndNewTarget = (toast: string) => `${PAGE}/new?toast=${encodeURIComponent(toast)}&fresh=${Date.now()}`;
@@ -124,9 +157,14 @@ const saveAndNewTarget = (toast: string) => `${PAGE}/new?toast=${encodeURICompon
 export async function createComponentAction(formData: FormData) {
   const s = await getSession();
   const t = await getTranslations('payComponents');
+  const input = componentFields(formData);
   const saveAndNew = formData.get('intent') === 'saveAndNew';
+  // Outside the try/catch on purpose: redirect() throws NEXT_REDIRECT, and a redirect inside the try is
+  // caught below and toasted as the raw sentinel (the bug this file's header note records).
+  const unsupported = unsupportedTaxableMessage(input, t);
+  if (unsupported) redirect(`${PAGE}/new?error=${encodeURIComponent(unsupported)}`);
   try {
-    await createPayComponent(s, componentFields(formData));
+    await createPayComponent(s, input);
     revalidatePath(PAGE);
   } catch (e) {
     redirect(`${PAGE}/new?error=${encodeURIComponent(await messageOf(e, t))}`);
@@ -145,6 +183,9 @@ export async function updateComponentAction(formData: FormData) {
   const t = await getTranslations('payComponents');
   const input = componentFields(formData);
   const saveAndNew = formData.get('intent') === 'saveAndNew';
+  // Same fail-closed guard as create, and outside the try/catch for the same redirect() reason.
+  const unsupported = unsupportedTaxableMessage(input, t);
+  if (unsupported) redirect(`${PAGE}/${encodeURIComponent(input.code)}?error=${encodeURIComponent(unsupported)}`);
   try {
     await upsertPayComponent(s, input);
     revalidatePath(PAGE);

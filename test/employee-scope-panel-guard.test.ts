@@ -97,20 +97,14 @@ function panelSelection(tree: unknown): string | null {
 }
 
 /**
- * The same verdict, read off the SHARED SEARCH FIELD instead of the panel.
- *
- * r179 (f35f758a) moved Individual Payslip's employee control out of a left-hand panel and into the top
- * filter row, as `components/employee-search-field.tsx`. WHAT IS UNDER TEST DID NOT CHANGE: the screen
- * still coerces an `?employmentId=` it does not recognise to "no selection", and that coercion is still
- * invisible — a page that dropped it renders, returns 200 and passes every source grep while quietly
- * reading somebody else's employee. So the assertion is still on what the CONTROL IS HANDED, which is the
- * guard's output rather than its source text; only the control it is read off has moved.
+ * `searchFieldSelection` — the same verdict read off `components/employee-search-field.tsx` — lived here
+ * between r179 and r185 W-A, while Transaction Detail and Individual Payslip expressed their selection in
+ * that control. Both screens went back to the panel at the reporter's request, so every verdict is read
+ * through `panelSelection` above again and the second reader has been removed rather than left as a dead
+ * helper pointing at a control no page mounts. EmployeeSearchField is still IMPORTED, because several
+ * cases now assert it is mounted ZERO times: an assertion that a component is absent is worthless if the
+ * identity it compares against is not the real one.
  */
-function searchFieldSelection(tree: unknown): string | null {
-  const fields = findByType(tree, EmployeeSearchField);
-  expect(fields, 'the screen must render exactly one shared employee search field').toHaveLength(1);
-  return (fields[0].props.value ?? null) as string | null;
-}
 
 describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every screen the panel touched', () => {
   let base: Base;
@@ -228,43 +222,46 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
   // ──────────────────────── Individual Payslip ────────────────────────
 
   it('Individual Payslip: a legitimate employee is selected, a cross-company one is not', async () => {
-    // REWRITTEN, NOT DELETED, FOR r179. The panel is gone from this screen and the control is now the
-    // shared search field in the filter row — so these two cases read `value` off that field instead of
-    // `selectedId` off the panel. The VALUABLE half is untouched: a foreign employmentId must coerce to
-    // no selection. Deleting the cases with the panel would have dropped exactly that.
+    // REWRITTEN TWICE, DELETED NEVER. r179 moved this screen's control from the left-hand panel to the
+    // shared search field, and f35f758a rev 2 moved it back at the reporter's request. Both times the
+    // VALUABLE half was untouched: a foreign employmentId must coerce to no selection, and that coercion
+    // is invisible on a page that drops it. Only where the verdict is read off has moved.
     const ok = await IndividualPayslipPage({
       searchParams: Promise.resolve({ employmentId: mine.employmentId }),
     });
-    expect(searchFieldSelection(ok)).toBe(mine.employmentId);
+    expect(panelSelection(ok)).toBe(mine.employmentId);
 
     const tampered = await IndividualPayslipPage({
       searchParams: Promise.resolve({ employmentId: foreign.employmentId }),
     });
-    expect(searchFieldSelection(tampered), 'a company outside scope must coerce to no selection').toBeNull();
+    expect(panelSelection(tampered), 'a company outside scope must coerce to no selection').toBeNull();
 
-    // The panel really is gone from THIS screen (and still present on the others, which their own cases
-    // above and below assert). A page that kept both controls would post two employmentId values.
-    expect(findByType(ok, EmployeeScopePanel), 'the left-hand panel was removed from this screen').toHaveLength(0);
+    // The top-row search field goes away with the restore. A page that kept both controls would offer two
+    // places to pick a person and one of them would be wrong after the other was used.
+    expect(
+      findByType(ok, EmployeeSearchField),
+      'the search field in the filter row is replaced by the panel, not joined by it',
+    ).toHaveLength(0);
   });
 
   it('Individual Payslip: an out-of-scope companyId is still refused alongside the employee', async () => {
-    // The employee guard is new; the company guard is not. Both must hold, or the screen narrowed one
-    // fence while widening another.
+    // The employee guard and the company guard must BOTH hold, or the screen narrowed one fence while
+    // widening another.
     const tree = await IndividualPayslipPage({
       searchParams: Promise.resolve({ companyId: foreignCompanyId, employmentId: foreign.employmentId }),
     });
-    expect(searchFieldSelection(tree)).toBeNull();
+    expect(panelSelection(tree)).toBeNull();
 
-    // …and the field is fed only what the guard would accept, so it cannot offer a row the server refuses.
+    // …and the panel is fed only what the guard would accept, so it cannot offer a row the server refuses.
     // Every option is fed back through the page to prove it.
-    const offered: string[] = findByType(tree, EmployeeSearchField)[0].props.employees.map(
-      (e: { value: string }) => e.value,
+    const offered: string[] = findByType(tree, EmployeeScopePanel)[0].props.employees.map(
+      (e: { employmentId: string }) => e.employmentId,
     );
     expect(offered).toContain(mine.employmentId);
     expect(offered, 'a cross-company employee must not be offered').not.toContain(foreign.employmentId);
     for (const id of offered) {
       const re = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId: id }) });
-      expect(searchFieldSelection(re), `the field offered ${id} but the guard refused it`).toBe(id);
+      expect(panelSelection(re), `the panel offered ${id} but the guard refused it`).toBe(id);
     }
   });
 

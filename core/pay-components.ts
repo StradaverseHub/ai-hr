@@ -1583,8 +1583,14 @@ export class UnsupportedBatchComponentError extends Error {
 /** The kernel's fail-closed condition (core/payroll.ts earningsOf), evaluated on a catalog row's flags.
  *  Feedback 09b554e9: a pay code carrying a DECLARED pcb_remuneration_type is no longer "unsupported" —
  *  the kernel routes it by the declared classification, so the guard only fires for PCB-ticked codes
- *  LACKING classification (legacy rows keep the legacy fail-closed behaviour). */
-const isUnsupportedTaxableComponent = (c: { includedInEpf: boolean; includedInSocsoEis: boolean; includedInPcb: boolean; isNonPayable: boolean; pcbRemunerationType?: string | null }) =>
+ *  LACKING classification (legacy rows keep the legacy fail-closed behaviour).
+ *
+ *  EXPORTED for f35f758a note 8, so the pay item MASTER SAVE (app/admin/pay-components/actions.ts) runs
+ *  the same predicate the batch picker, `setPayrollBatchComponent` and the CSV importer already run.
+ *  Exported rather than copied deliberately: a second hand-written copy of a fail-closed rule is how the
+ *  entry gate and the kernel start disagreeing about which pay codes are allowed to exist. STATE-BASED —
+ *  it reads the row being saved, so an already-bad row can still be edited back into a good one. */
+export const isUnsupportedTaxableComponent = (c: { includedInEpf: boolean; includedInSocsoEis: boolean; includedInPcb: boolean; isNonPayable: boolean; pcbRemunerationType?: string | null }) =>
   c.includedInPcb && c.pcbRemunerationType == null && (c.isNonPayable || (!c.includedInEpf && !c.includedInSocsoEis));
 
 /** Upsert a one-off component value for an employee on a draft batch (by batch+employment+component). */

@@ -37,6 +37,8 @@ import { EmployeeName, Field, inputCls } from '@/components/ui';
 // thing on any of these screens that is actually printed. Every other chrome element on that page is
 // already print:hidden and the global sheet (app/globals.css) hides only <aside>/<header>, so without
 // this a Save-as-PDF emitted a stray "Hide employee list" line above the letterhead.
+// r179 briefly took that screen off this shell and f35f758a rev 2 put it back at the reporter's
+// request, so the requirement above is LIVE again — it is not a historical note.
 export function CollapsibleEmployeePanel({
   panel,
   children,

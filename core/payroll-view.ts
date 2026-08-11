@@ -860,8 +860,23 @@ export type PayslipReviewRow = ProcessedPayslipViewRow & {
   jobGrade: string | null;
   employmentType: string | null;
   paymentMethod: string | null;
-  /** MASKED to the last four digits. The full number never leaves the server. */
+  /** MASKED to the last four digits — what the REVIEW SCREEN prints. */
   bankAccountMasked: string | null;
+  /**
+   * The FULL account number, for the printed payslip only (f35f758a).
+   *
+   * A COMMENT HERE USED TO SAY THIS NUMBER "must never leave the server". That was never an ADR decision —
+   * it was a build-time judgement in 5c198931, recorded only as a code comment citing `core/pdpa.ts` — and
+   * the approved plan overturns it: a pay statement that tells an employee the money went to "••••8901"
+   * does not tell them which account was paid, which is one of the things a payslip is for.
+   *
+   * THE EXPOSURE, STATED RATHER THAN IMPLIED. This read is fenced only by `scopedAdmin` (lib/scope.ts), so
+   * any admin whose company scope includes the employer can now download a payslip carrying an employee's
+   * full account number, before release. That is new for THIS document and not new for the product: the
+   * same number is already shown unmasked to admins at app/admin/claims/reimbursements/page.tsx and in the
+   * payment summary CSV (core/payroll.ts). The SCREEN deliberately keeps showing only the last four.
+   */
+  bankAccountFull: string | null;
   bankName: string | null;
   /** IC, or the passport number when there is no IC (a non-Malaysian employee). */
   identityNumber: string | null;
@@ -966,8 +981,11 @@ export function payslipForReview(
     const acct = (bankAccountNo ?? '').trim();
     return {
       ...rest,
-      // Last four only, and only when there are more than four digits to hide.
+      // Last four only, and only when there are more than four digits to hide. THE SCREEN reads this one.
       bankAccountMasked: acct ? (acct.length > 4 ? `••••${acct.slice(-4)}` : acct) : null,
+      // f35f758a — and the FULL number beside it, for the PDF only. See `PayslipReviewRow.bankAccountFull`
+      // for what that exposes and why it was a deliberate decision rather than a leak.
+      bankAccountFull: acct || null,
       // IC first; a non-Malaysian employee carries a passport instead (icNumber has been nullable since
       // migration 0212). The screen labels which one it is showing rather than calling a passport an IC.
       identityNumber: icNumber?.trim() || passportNumber?.trim() || null,

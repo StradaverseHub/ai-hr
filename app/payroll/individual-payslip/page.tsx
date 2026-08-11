@@ -52,20 +52,28 @@
  * own piece of work, not a button on this screen.
  *
  * ───────────────────────────────────────────────────────────────────────────────────────────────────
- * r179 (feedback f35f758a) — THE SCREEN HALF. Four changes, none of them to a figure:
+ * r179 (feedback f35f758a) — THE SCREEN HALF, and f35f758a rev 2 which the reporter raised after seeing
+ * it live. What r179 changed, and what survived the second look:
  *
- *   1. THE EMPLOYEE CONTROL MOVED INTO THE FILTER ROW and the left-hand panel is gone. It is the SHARED
- *      search field (components/employee-search-field.tsx), built once for this item and 98e69987 because
- *      both asked for the same affordance in the same words. It posts a hidden `employmentId` exactly as
- *      the old `<select>` did, so the submitted query string and every guard below are unchanged.
+ *   1. THE EMPLOYEE CONTROL. r179 moved it into the filter row as the shared search field and deleted the
+ *      left-hand panel. The reporter asked for the panel back, so it is back — the same
+ *      CollapsibleEmployeePanel / EmployeeScopePanel five other Payroll and Admin screens use, with its
+ *      own search by employee ID or name and its Company / Business unit / Department / Status
+ *      narrowers. It is fed the SAME scope-guarded set either way, so the guard below is untouched by
+ *      both moves: the control that EXPRESSES the selection changed twice, the place it is DECIDED never
+ *      did.
  *   2. THE FILTER BUTTON READS "View Payslip" — the reader is not applying a filter, they are asking for
- *      one person's payslip.
- *   3. THE ONE LONG CARD IS NOW SEPARATE CARDS. Same sections, same order, same figures.
- *   4. PRINT BECAME PREVIEW. Printing the WEB PAGE produced a document that was not the payslip the
- *      employee receives; the preview below frames the ACTUAL FILE from the same route the Download
- *      button uses, so preview and download cannot disagree, and printing is the PDF viewer's own job.
+ *      one person's payslip. KEPT.
+ *   3. THE ONE LONG CARD IS NOW SEPARATE CARDS. Same sections, same order, same figures. KEPT.
+ *   4. PRINT BECAME PREVIEW, AND PREVIEW IS NOW REVIEW IN A NEW TAB. Printing the WEB PAGE produced a
+ *      document that was not the payslip the employee receives, which was the original complaint; r179's
+ *      answer was an iframe at the foot of this screen. The reporter wants the file on its own, so the
+ *      button now opens the SAME route with `?inline=1` in a new tab, where the browser's own PDF viewer
+ *      prints and saves it. Preview and download still cannot disagree — they are one route — and there
+ *      is no second Print control competing with the viewer's.
  */
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees, listCompanies } from '@/core/read';
@@ -78,8 +86,15 @@ import { payslipProvenance } from '@/core/payslip-recompute';
 import { formatMoney } from '@/lib/money';
 import { packFor } from '@/localization/registry';
 import { Button, Card, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { EmployeeSearchField, type EmployeeSearchOption } from '@/components/employee-search-field';
+import {
+  CollapsibleEmployeePanel,
+  EmployeeScopePanel,
+  type ScopeEmployee,
+} from '@/components/collapsible-employee-panel';
 import { deriveHistoryBreakdown } from '../transaction-view/history-breakdown';
+
+/** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
+export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
 
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
@@ -180,14 +195,30 @@ export default async function IndividualPayslipPage({
   const nowYear = new Date().getFullYear();
   const years = Array.from({ length: 11 }, (_, i) => nowYear + 1 - i);
 
-  // Fed the SAME set the scope guard above accepts, so the field cannot offer a row the server refuses.
-  // The second line is what tells two people with the same name apart at a glance.
-  const searchOptions: EmployeeSearchOption[] = employees.map((e) => ({
-    value: e.employmentId,
+  // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
+  const panelDefaultOpen = (await cookies()).get(PAYSLIP_PANEL_COOKIE)?.value !== '0';
+  // Fed the SAME set the scope guard above accepts, so the panel cannot offer a row the server refuses.
+  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
+    employmentId: e.employmentId,
     name: e.name,
     employeeCode: e.employeeCode,
-    secondary: [e.company, e.department].filter(Boolean).join(' · ') || null,
+    company: e.company,
+    companyId: e.companyId,
+    department: e.department,
+    departmentId: e.departmentId,
+    businessUnit: e.businessUnit,
+    businessUnitId: e.businessUnitId,
+    status: e.terminatedOn == null ? 'active' : 'ended',
   }));
+  // The period filters ride along when the employee changes — these are the GUARDED values, not the raw
+  // params. `payslipId` deliberately does NOT: it names a run belonging to the person being navigated away
+  // from, and carrying it would ask the next employee's list for someone else's payslip.
+  const panelPreserve: Record<string, string> = {
+    ...(companyId ? { companyId } : {}),
+    ...(year != null ? { year: String(year) } : {}),
+    ...(month != null ? { month: String(month).padStart(2, '0') } : {}),
+    ...(cycle ? { cycle } : {}),
+  };
 
   // A payslip only loads once an EMPLOYEE is chosen — the ticket's flow (period → employee → payslip),
   // and also what keeps this screen from becoming a second, slower copy of History.
@@ -252,28 +283,36 @@ export default async function IndividualPayslipPage({
         <PageHeader title={t('title')} description={t('subtitle')} />
       </div>
 
-      {/* ── Filters (GET form — pure navigation, no mutation) ──
-          r179: the EMPLOYEE is the first field, not a panel down the left. The search box carries the
-          committed choice in a hidden input named employmentId, which is exactly what the old <select>
-          posted — the query string, the scope guard above and every test of it are unchanged.
-          `payslipId` deliberately does NOT ride along: it names a run belonging to whoever was selected
-          before, and carrying it would ask the next employee's list for someone else's payslip. */}
+      <CollapsibleEmployeePanel
+        defaultOpen={panelDefaultOpen}
+        cookieKey={PAYSLIP_PANEL_COOKIE}
+        panel={
+          /* The employee control (da4af51f, removed by r179 and RESTORED at the reporter's request). It
+             is the shared searchable panel five other Payroll and Admin screens carry, so this screen
+             behaves like the rest of Payroll rather than like a one-off. */
+          <Card className="p-4 print:hidden">
+            <h2 className="text-sm font-semibold">{t('filterEmployee')}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{t('chooseEmployeeHint')}</p>
+            <div className="mt-3">
+              <EmployeeScopePanel
+                employees={panelEmployees}
+                selectedId={employmentId ?? null}
+                basePath="/payroll/individual-payslip"
+                preserve={panelPreserve}
+              />
+            </div>
+          </Card>
+        }
+      >
+        <div className="space-y-6">
+      {/* ── Period selection (GET form — pure navigation, no mutation) ──
+          The EMPLOYEE has left this form for the panel; it carries the current one as a hidden input so
+          changing the year does not silently deselect the person you were looking at. `payslipId`
+          deliberately does NOT ride along: it names a run belonging to whoever was selected before, and
+          carrying it would ask the next employee's list for someone else's payslip. */}
       <Card className="p-4 print:hidden">
         <form method="GET" className="flex flex-wrap items-end gap-3">
-          <Field label={t('filterEmployee')} className="w-full sm:w-72">
-            <EmployeeSearchField
-              name="employmentId"
-              employees={searchOptions}
-              value={employmentId ?? null}
-              labels={{
-                placeholder: t('searchPlaceholder'),
-                ariaLabel: t('searchAriaLabel'),
-                resultsLabel: t('searchResultsLabel'),
-                noMatches: t('searchNoMatches'),
-                clear: t('searchClear'),
-              }}
-            />
-          </Field>
+          {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
           <Field label={t('filterCompany')}>
             <select name="companyId" defaultValue={companyId ?? ''} className={inputCls}>
               <option value="">{tTxn('view.filters.all')}</option>
@@ -379,9 +418,15 @@ export default async function IndividualPayslipPage({
                 {row.version > 1 && (
                   <span className="text-xs text-muted-foreground">{t('revision', { n: row.version })}</span>
                 )}
-                {/* r179 — Download stays; Print became Preview. Printing the WEB PAGE produced something
-                    that was not the document the employee receives, which is the complaint. Preview jumps
-                    to the viewer at the foot of this screen, which frames the real file. */}
+                {/* Download stays; Print became Preview (r179) and Preview became REVIEW IN A NEW TAB
+                    (rev 2). Printing the WEB PAGE produced something that was not the document the
+                    employee receives, which was the complaint; r179's answer framed the real file in an
+                    iframe at the foot of this screen, and the reporter would rather have it on its own.
+                    So this opens the SAME route the Download button uses with `?inline=1`, which the
+                    route already honours with an inline Content-Disposition and nosniff — preview and
+                    download still cannot disagree, and the browser's own PDF viewer supplies Print and
+                    Save. `rel="noopener noreferrer"` because `target="_blank"` otherwise hands the new
+                    document a live `window.opener` handle back to this screen. */}
                 <div className="flex items-center gap-2 print:hidden">
                   <a
                     href={pdfHref}
@@ -391,7 +436,9 @@ export default async function IndividualPayslipPage({
                     {tSlip('downloadPdf')}
                   </a>
                   <a
-                    href="#payslip-document"
+                    href={`${pdfHref}?inline=1`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
                   >
                     {t('previewDocument')}
@@ -649,31 +696,10 @@ export default async function IndividualPayslipPage({
             )}
           </Block>
 
-          {/* ── The document itself (r179) ──
-              THE REAL FILE, not a copy of this page. `?inline=1` on the SAME route the Download button
-              uses asks for the same bytes with an inline disposition, so what is previewed and what is
-              downloaded cannot disagree — which the old browser-print of the web page could not promise.
-              There is deliberately NO Print control here: the PDF viewer has its own, and a second one
-              beside it would print the surrounding page again. The viewer shape (an iframe over an inline
-              URL with a Download anchor beneath) is the knowledge-base article page's. */}
-          <Card className="space-y-3 p-6 print:hidden" id="payslip-document">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {t('previewDocument')}
-            </h2>
-            <p className="text-xs text-muted-foreground">{t('previewHint')}</p>
-            <iframe
-              src={`${pdfHref}?inline=1`}
-              title={t('previewDocument')}
-              className="h-[70vh] w-full rounded-lg border border-border"
-            />
-            <a
-              href={pdfHref}
-              download
-              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
-            >
-              {tSlip('downloadPdf')}
-            </a>
-          </Card>
+          {/* THE IN-PAGE DOCUMENT VIEWER IS GONE (rev 2). r179 framed the real file in an iframe here so
+              preview and download could not disagree; the reporter would rather open it on its own, so
+              the Review button in the letterhead above is now a new-tab link to that same `?inline=1`
+              route. Nothing about which bytes are shown changed — only where they are shown. */}
 
           {/* THE PROVENANCE LINE STAYS ON THIS SCREEN (f35f758a). It came off the document and off the
               employee's own copy, because the reporter reads it as internal. It is kept here, on the
@@ -686,6 +712,8 @@ export default async function IndividualPayslipPage({
           )}
         </>
       )}
+        </div>
+      </CollapsibleEmployeePanel>
     </div>
   );
 }
