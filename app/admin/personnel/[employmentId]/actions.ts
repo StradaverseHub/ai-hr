@@ -26,7 +26,7 @@ import {
 } from '@/core/shift-arrangement';
 import { setEmployeeClockingLocations, setGeofencing } from '@/packs/attendance/service';
 import { recordLocationSource } from '@/core/location';
-import { FixedTransactionAmountError, FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
+import { FixedTransactionAmountError, FixedTransactionBackwardsError, FixedTransactionDateError, FixedTransactionOverlapError, FixedTransactionPaidError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, uploadReviewDocument, type ReviewType } from '@/core/employment-review';
 import {
   addEmployeeDocument,
@@ -269,6 +269,12 @@ export async function setEmploymentComponentAction(formData: FormData) {
   } catch (e) {
     // Surface the typed validation errors as localised inline messages (people.detail.dateError /
     // currencyUnsupported / amountError); any other error falls back to its raw message via the same ?error= banner.
+    //
+    // 2aed39d4 — THIS EDITOR WRITES THE SAME AGGREGATE AS THE FIXED TRANSACTION SCREEN and resolves its
+    // OWN `people.detail.*` messages rather than reusing the `payroll.transactions.fixed.*` keys, so the
+    // new overlap refusals have to be threaded through here too. Miss this and an operator saving a pay
+    // component from the Personnel screen gets the service's raw English ("Pay item "A0027" already has
+    // a record covering …") in the URL and on the page.
     const t = await getTranslations('people.detail');
     const msg =
       e instanceof FixedTransactionDateError
@@ -277,7 +283,13 @@ export async function setEmploymentComponentAction(formData: FormData) {
           ? t('currencyUnsupported')
           : e instanceof FixedTransactionAmountError
             ? t('amountError')
-            : (e as Error).message;
+            : e instanceof FixedTransactionOverlapError
+              ? t('payComponentOverlap', { code: e.code, from: e.validFrom, to: e.validTo ?? t('payComponentOpenEnded') })
+              : e instanceof FixedTransactionBackwardsError
+                ? t('payComponentBackwards', { code: e.code, from: e.validFrom })
+                : e instanceof FixedTransactionPaidError
+                  ? t('payComponentClosedRun', { code: e.code, period: e.payPeriod })
+                  : (e as Error).message;
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(msg)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);

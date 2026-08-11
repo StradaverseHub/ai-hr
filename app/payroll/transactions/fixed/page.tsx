@@ -43,11 +43,20 @@ export const FIXED_PANEL_COOKIE = 'txn_fixed_panel';
 export default async function FixedTransactionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ employmentId?: string; error?: string; toast?: string }>;
+  searchParams: Promise<{
+    employmentId?: string;
+    error?: string;
+    toast?: string;
+    // 2aed39d4 — the clashing record's identity, carried beside the error key so the banner can name it.
+    clashCode?: string;
+    clashFrom?: string;
+    clashTo?: string;
+    clashPeriod?: string;
+  }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
-  const { employmentId, error } = await searchParams;
+  const { employmentId, error, clashCode, clashFrom, clashTo, clashPeriod } = await searchParams;
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const panelDefaultOpen = (await cookies()).get(FIXED_PANEL_COOKIE)?.value !== '0';
@@ -109,10 +118,23 @@ export default async function FixedTransactionPage({
     'required',
     'outOfScope',
     'notFound',
-    // f1123afd — removal refused because the item was paid on a processed payslip.
+    // 2aed39d4 — removal/edit refused because a CLOSED run covers the row's window (was: paid on a
+    // processed payslip; the reporter's point 7 asks for processed-but-open to stay editable).
     'paidOnPayslip',
+    // 2aed39d4 — the two overlap refusals. Both name the clashing record via ICU arguments.
+    'overlap',
+    'backwards',
   ]);
-  const errorMessage = error && errorKeys.has(error) ? t(`fixed.${error}`) : error;
+  // Clash arguments are passed to every key; next-intl ignores the ones a message does not use.
+  const errorMessage =
+    error && errorKeys.has(error)
+      ? t(`fixed.${error}`, {
+          code: clashCode ?? '—',
+          from: clashFrom ?? '—',
+          to: clashTo ?? t('fixed.openEnded'),
+          period: clashPeriod ?? '—',
+        })
+      : error;
 
   return (
     <div className="mx-auto max-w-[100rem] space-y-6">
@@ -172,9 +194,25 @@ export default async function FixedTransactionPage({
               </div>
               <FixedToolbar
                 employmentId={selected!}
-                defaultStart={selectedEmp.hiredOn}
+                // 2aed39d4 — was `selectedEmp.hiredOn`. A hire date GUARANTEES an overlap with any item
+                // the employee already holds (every live row starts on or after it), so the default
+                // value of the Add form was itself a reliable way to produce the refusal this item adds.
+                // Today, resolved server-side in the tenant timezone like the `ended` flag below.
+                defaultStart={today}
                 components={activeComponents.map((c) => ({ id: c.id, code: c.code, name: c.name }))}
                 cycles={FIXED_TRANSACTION_CYCLES}
+                // 2aed39d4 — what the employee ALREADY holds, so the dialog can show it on selection and
+                // turn amber before the save rather than after it. Superseded rows are already excluded
+                // by listEmploymentPayComponents; ENDED rows are deliberately included, because an ended
+                // row still blocks an overlapping window (it is the case this whole item exists for).
+                existing={existing.map((r) => ({
+                  componentId: r.componentId,
+                  code: r.code,
+                  amount: r.amount,
+                  validFrom: r.validFrom,
+                  validTo: r.validTo,
+                  ended: r.validTo != null && r.validTo < today,
+                }))}
               />
             </div>
 

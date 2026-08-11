@@ -40,12 +40,20 @@ export default async function FixedTransactionDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ employmentId?: string; error?: string }>;
+  searchParams: Promise<{
+    employmentId?: string;
+    error?: string;
+    // 2aed39d4 — the clashing record's identity, carried beside the error key so the banner can name it.
+    clashCode?: string;
+    clashFrom?: string;
+    clashTo?: string;
+    clashPeriod?: string;
+  }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
   const { id } = await params;
-  const { employmentId, error } = await searchParams;
+  const { employmentId, error, clashCode, clashFrom, clashTo, clashPeriod } = await searchParams;
 
   // Scope-guard the employment exactly as the list does: RLS isolates tenants, company scope does not
   // travel with it, so an out-of-scope (or absent) employmentId is simply not found.
@@ -68,8 +76,23 @@ export default async function FixedTransactionDetailPage({
     'outOfScope',
     'notFound',
     'paidOnPayslip',
+    // 2aed39d4 — the two overlap refusals. Both take the clashing record's identity as ICU arguments;
+    // a bare key would render "{code}" on screen.
+    'overlap',
+    'backwards',
   ]);
-  const errorMessage = error && errorKeys.has(error) ? t(`fixed.${error}`) : error;
+  // The clash arguments are passed to EVERY key rather than only to the ones that use them: next-intl
+  // ignores unused arguments, and branching here would mean a second place to update when a message
+  // starts naming the record. `—` rather than an empty string so a missing param is visible, not blank.
+  const errorMessage =
+    error && errorKeys.has(error)
+      ? t(`fixed.${error}`, {
+          code: clashCode ?? '—',
+          from: clashFrom ?? '—',
+          to: clashTo ?? t('fixed.openEnded'),
+          period: clashPeriod ?? '—',
+        })
+      : error;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">

@@ -19,6 +19,10 @@ import {
   payslip,
   person,
 } from '../db/schema';
+// 2aed39d4 — the closed-pay-run test reuses the SAME period helpers the Basic Salary card and the
+// Movement correction already refuse on, rather than a fourth definition of "payroll evidence".
+// core/comp.ts does not import this module, so this is not a cycle.
+import { closedPeriodsTx, overlapsClosedPeriod } from './comp';
 import { countryPacks } from '../localization/registry';
 import type { PayComponentSeed, PcbExemptionTable, PcbRemunerationType } from '../localization/country-pack';
 import { parseCsvRecords } from '../lib/csv';
@@ -1176,20 +1180,109 @@ export class FixedTransactionAmountError extends Error {
 }
 
 /**
+ * 2aed39d4 — thrown at WRITE time when the window being written would COVER A DAY that a live row for the
+ * same employment + pay item already covers, and the clash cannot be resolved by versioning.
+ *
+ * WHY THIS IS AN APPLICATION ERROR AND NOT JUST A CONSTRAINT. Migration 0426 adds
+ * `employment_pay_component_no_overlap` (EXCLUDE USING gist, inclusive-inclusive daterange, WHERE
+ * superseded_at IS NULL) as the BACKSTOP. But a raw Postgres 23P01 reaching the screen would be worse
+ * than today's silent duplicate: there is no precedent in this repo for mapping one, and the operator
+ * would see "conflicting key value violates exclusion constraint". So the app refuses FIRST, with the
+ * clashing row's own code and dates in the message, and the constraint exists to catch anything that
+ * ever reaches the table by another route.
+ *
+ * WHAT `run_type` (Payroll Cycle) HAS TO DO WITH IT: NOTHING, DELIBERATELY. The reporting ticket asked
+ * for the key to be employee + pay item + period + Payroll Cycle. It is employee + pay item + period.
+ * The kernel (core/payroll.ts) selects on employment, component and the date window ONLY and pays every
+ * returned row its FULL amount — it never reads run_type — so two rows differing only by cycle both pay,
+ * in every run. Including the cycle in the key would have LEGALISED 2 of the 10 clashes measured on
+ * production. The cost is stated in the approved plan: a Regular and a Bonus line for the same item
+ * cannot be held over the same dates.
+ */
+export class FixedTransactionOverlapError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly validFrom: string,
+    public readonly validTo: string | null,
+  ) {
+    super(
+      `Pay item "${code}" already has a record covering ${validFrom} to ${validTo ?? 'open'} for this employee. End that record first, or choose dates that do not overlap it.`,
+    );
+    this.name = 'FixedTransactionOverlapError';
+  }
+}
+
+/**
+ * 2aed39d4 — thrown when a restatement is dated BEFORE the start of the row it would have to close.
+ *
+ * Split out of FixedTransactionDateError, which it used to share. That class means "the end date is
+ * before the start date", and the UI resolved it through `payroll.transactions.fixed.dateError` — "End
+ * date cannot be before the start date" — which names the wrong field entirely: nothing is wrong with
+ * the end date here, the START date is behind an existing record. Carries the blocking row's code and
+ * dates so the message can name it.
+ */
+export class FixedTransactionBackwardsError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly validFrom: string,
+    public readonly validTo: string | null,
+  ) {
+    super(
+      `Pay item "${code}" already starts on ${validFrom}. A new value must take effect on or after that date — restating it from an earlier date would rewrite history.`,
+    );
+    this.name = 'FixedTransactionBackwardsError';
+  }
+}
+
+/**
  * Effective-dated upsert of a recurring component value for an employee (mirrors setCompensation).
  *
  * 1.2.1 Fixed Transaction extends this with an optional effective END date (written to `validTo` of the new
- * open row), a store-only `currency`, a per-employee `prorateOverride` (null = inherit the catalog flag), and
+ * row), a store-only `currency`, a per-employee `prorateOverride` (null = inherit the catalog flag), and
  * free-text `remarks`. The kernel and `listEmploymentPayComponents` are period-aware (they bound by valid_from
  * /valid_to), so setting `effectiveTo` auto-deactivates the item once the period passes its end — no separate
  * "deactivate" path is needed.
  *
- * Supersession-vs-end-date: the `cur` lookup matches the OPEN row by `isNull(validTo) AND isNull(supersededAt)`.
- * An item that was end-dated (validTo set, supersededAt null) is therefore NOT matched as `cur`, so a later
- * `set` for the same component does NOT find/overwrite it — it inserts a fresh open row and leaves a gap
- * (intended: the old item ended, a new one begins). The one ambiguous case — superseding an item whose validTo
- * is AFTER the new effectiveFrom — is handled by the supersession close below (validTo = effectiveFrom), which
- * truncates the old window correctly (no double-count, no gap-bug). Both are asserted in tests.
+ * ── HOW A CLASH WITH AN EXISTING ROW IS RESOLVED (2aed39d4 rewrote this whole paragraph) ─────────────
+ *
+ * The previous doc block here said the `cur` lookup matched the OPEN row only, that an end-dated row was
+ * therefore left alone "(intended: the old item ended, a new one begins)", and that the one ambiguous
+ * case was "handled by the supersession close below". ALL THREE CLAIMS WERE WRONG BY THE TIME THEY WERE
+ * READ, and the third had never been true:
+ *   • the close is at `effectiveFrom - 1`, not at `effectiveFrom` (34cc8137 fixed that, and the old text
+ *     was left describing the overpaying version);
+ *   • leaving an end-dated row alone is only "intended" when the windows do not TOUCH. When they do, the
+ *     kernel pays BOTH rows in full for every month both cover. That is the defect this item exists to
+ *     close: X000001 carried three HANDPHONE ALLOWANCE rows all running 2026-07-01..2026-07-01, and a
+ *     re-run of July would have paid 400.00 where the issued payslip paid 100.00;
+ *   • the "ambiguous case" it claimed to handle — an end-dated row whose validTo is after the new
+ *     effectiveFrom — was NEVER MATCHED AT ALL, because the lookup required `validTo IS NULL`.
+ *
+ * The lookup is now every LIVE row (supersededAt IS NULL) of the same employment + component whose
+ * INCLUSIVE window touches the new one. `validTo` is INCLUSIVE here — see the long note at the close
+ * below — so "touches" means `validFrom <= newTo` AND `(validTo IS NULL OR validTo >= newFrom)`, which is
+ * exactly the predicate the kernel selects on and exactly the daterange the 0426 constraint indexes.
+ *
+ * Each clashing row is then resolved by ONE of three rules:
+ *   1. it is the row this write is a NEW VERSION OF (`replacesId`, passed only by
+ *      updateEmploymentPayComponent) or it is the OPEN row → version it: supersede if the new value
+ *      starts on its own start date (a zero-day row is never closed into an inverted window), else close
+ *      it the day before the new start. This is the reporter's expected-behaviour point 3 and it is what
+ *      34cc8137 shipped for the open row; it now applies to an ended row being edited as well, which is
+ *      what stops Save on an already-ended record from adding a copy of it.
+ *   2. the new value starts BEFORE that row starts → FixedTransactionBackwardsError. There is no
+ *      truncation that fixes this: closing at `effectiveFrom - 1` would write an end date before the
+ *      row's own start, which is how production came to carry an inverted row.
+ *   3. anything else — i.e. some OTHER live end-dated row that the new window runs into →
+ *      FixedTransactionOverlapError, naming that row. This is the reporter's expected-behaviour point 2
+ *      verbatim ("existing 01/01/2026-31/12/2026, new start 01/06/2026 must not be allowed").
+ *
+ * Refusals are raised BEFORE any write (both passes run over the scan result first), so a rejected save
+ * leaves the table exactly as it found it.
+ *
+ * ── CLOSED PAY RUNS ──
+ * A write whose window touches a month a CLOSED run already paid is refused (FixedTransactionPaidError).
+ * Processed-but-not-closed is deliberately allowed — see archiveEmploymentPayComponent.
  */
 export function setEmploymentPayComponent(
   ctx: SessionContext,
@@ -1208,6 +1301,28 @@ export function setEmploymentPayComponent(
     // Backfill-only opt-out of the amount>0 guard: the compensation backfill legitimately seeds a 0-amount
     // row for a zero-allowance line. ONLY the backfill call sites pass this true; every UI path inherits the guard.
     allowZeroAmount?: boolean;
+    // 2aed39d4 — the id of the row this write is a NEW VERSION OF. Passed ONLY by
+    // updateEmploymentPayComponent, which knows which row the admin opened. That row is versioned
+    // (closed or superseded) instead of being reported as a clash, which is what makes Save on an
+    // already-ended record CHANGE it rather than add a copy of it. Every other live row that the new
+    // window runs into is still refused.
+    replacesId?: string;
+    // 2aed39d4 — backfill-only opt-out of the overlap refusal: SUPERSEDE every live row this write
+    // overlaps instead of refusing. Only backfillEmploymentComponentsFromCompensation passes this. It
+    // re-states BASIC/ALLOWANCE from the compensation record, which is the system of record for both, so
+    // "replace whatever pay-component rows sit in the way" is exactly its documented intent
+    // ("re-running just re-states it") — and it is the only shape that keeps the backfill runnable now
+    // that overlaps are refused. Every UI path inherits the refusal.
+    supersedeOverlaps?: boolean;
+    // 2aed39d4 — backfill-only opt-out of the CLOSED-run refusal. Kept as its own flag rather than folded
+    // into supersedeOverlaps so each opt-out is named for exactly what it waives and both are greppable.
+    // The backfill mirrors compensation from that row's OWN validFrom, which on a long-serving employee
+    // is years back and will cover closed months on any tenant that has ever closed a run — so without
+    // this the housekeeping helper could not run at all. It is not a hole in the rule: the amount it
+    // writes comes from `compensation`, which enforces its own closed-period guard on the way in
+    // (core/comp.ts), so nothing a closed run relied on can be changed THROUGH here that was not already
+    // allowed to change. ONLY the backfill passes it.
+    allowClosedPeriod?: boolean;
   },
   outerTx?: Tx,
 ) {
@@ -1227,19 +1342,67 @@ export function setEmploymentPayComponent(
     // Amount>0 invariant on the aggregate — inherited by every UI write path. The backfill opts out for its
     // legitimate zero-allowance seed rows only (allowZeroAmount).
     if (!p.allowZeroAmount && !(p.amount > 0)) throw new FixedTransactionAmountError();
-    const [cur] = await tx
-      .select({ id: employmentPayComponent.id, validFrom: employmentPayComponent.validFrom })
+    // 2aed39d4 — a change whose window touches a month a CLOSED run already paid is refused. Removal
+    // uses the identical test (archiveEmploymentPayComponent); PROCESSED-but-open is deliberately fine.
+    if (!p.allowClosedPeriod) {
+      await assertNoClosedRunCovers(tx, {
+        employmentId: p.employmentId,
+        componentId: p.componentId,
+        validFrom: p.effectiveFrom,
+        validTo: effectiveTo,
+      });
+    }
+    // 2aed39d4 — EVERY live row of this employment+component whose INCLUSIVE window touches the new one,
+    // not just the open row. The old lookup required `validTo IS NULL`, so a live END-DATED row was
+    // invisible to the writer and a second set inserted a duplicate over the top of it. See the long
+    // note on this function for the three resolution rules.
+    const clashes = await tx
+      .select({
+        id: employmentPayComponent.id,
+        validFrom: employmentPayComponent.validFrom,
+        validTo: employmentPayComponent.validTo,
+        code: payComponent.code,
+      })
       .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
       .where(
         and(
           eq(employmentPayComponent.employmentId, p.employmentId),
           eq(employmentPayComponent.componentId, p.componentId),
-          isNull(employmentPayComponent.validTo),
           isNull(employmentPayComponent.supersededAt),
+          lte(employmentPayComponent.validFrom, effectiveTo ?? '9999-12-31'),
+          or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, p.effectiveFrom)),
         ),
       )
-      .limit(1);
-    if (cur) {
+      .orderBy(employmentPayComponent.validFrom);
+
+    // PASS 1 — REFUSE BEFORE WRITING ANYTHING. Both refusals are raised over the whole scan first, so a
+    // rejected save cannot leave a half-versioned row behind (the old code closed `cur` and only then
+    // discovered the insert was bad).
+    if (!p.supersedeOverlaps) {
+      for (const c of clashes) {
+        // The row being edited and the open row are versionable (pass 2). Any OTHER live end-dated row
+        // the window runs into is the reporter's point 2 and is refused outright.
+        const versionable = c.id === p.replacesId || c.validTo == null;
+        if (!versionable) throw new FixedTransactionOverlapError(c.code, c.validFrom, c.validTo);
+      }
+      for (const c of clashes) {
+        // Closing at effectiveFrom-1 would write an end date before the row's own start. Before the
+        // 34cc8137 guard this wrote an inverted row silently; production still carries one.
+        //
+        // EXCEPT for the row being edited. Moving THAT row's own start date earlier is a correction of
+        // the record the admin has open — the ticket's Edit function asks for exactly that — and it
+        // rewrites nothing, because the row is superseded outright rather than closed into an inverted
+        // window (pass 2). The refusal is for a restatement that would have to reach BACKWARDS THROUGH A
+        // ROW THE ADMIN IS NOT LOOKING AT, which is a different act with a different blast radius.
+        if (c.id !== p.replacesId && p.effectiveFrom < c.validFrom) {
+          throw new FixedTransactionBackwardsError(c.code, c.validFrom, c.validTo);
+        }
+      }
+    }
+
+    // PASS 2 — resolve each clash. Nothing below can throw.
+    for (const c of clashes) {
       // 2f889bae — CLOSE THE PRIOR ROW THE DAY BEFORE THE NEW ONE STARTS, NOT ON IT.
       //
       // This used to set validTo = effectiveFrom and the comment claimed "so there is no double-count".
@@ -1254,24 +1417,20 @@ export function setEmploymentPayComponent(
       // WHY compensation GETS AWAY WITH THE SAME LINE (core/comp.ts): its kernel reads a single open row
       // and its compensation_no_overlap EXCLUDE constraint uses a HALF-OPEN daterange, so valid_to is
       // exclusive there. Same writer shape, opposite boundary semantics — do not "align" one to the other
-      // without changing the reader that goes with it.
-      if (p.effectiveFrom < cur.validFrom) {
-        // Closing at effectiveFrom-1 would write an end date before the row's own start. Previously this
-        // wrote an inverted row silently; production still carries one from before this guard.
-        throw new FixedTransactionDateError();
-      }
-      if (p.effectiveFrom === cur.validFrom) {
-        // The prior row would cover zero days. Supersede it rather than closing it into an inverted
-        // window — a restatement from the row's own start date replaces it outright.
+      // without changing the reader that goes with it. Migration 0426 makes that asymmetry explicit: the
+      // pay-component constraint is the same shape with '[]' bounds instead of '[)'.
+      if (p.effectiveFrom <= c.validFrom) {
+        // Superseded, not closed: the row would cover zero days (a same-start restatement replaces it
+        // outright), or — supersedeOverlaps only — the backfill is re-stating over the top of it.
         await tx
           .update(employmentPayComponent)
           .set({ supersededAt: sql`now()` })
-          .where(eq(employmentPayComponent.id, cur.id));
+          .where(eq(employmentPayComponent.id, c.id));
       } else {
         await tx
           .update(employmentPayComponent)
           .set({ validTo: addDaysIso(p.effectiveFrom, -1) })
-          .where(eq(employmentPayComponent.id, cur.id));
+          .where(eq(employmentPayComponent.id, c.id));
       }
     }
     const [row] = await tx
@@ -1324,12 +1483,21 @@ export class FixedTransactionNotFoundError extends Error {
  * value by VERSIONING (the aggregate is an effective-dated, supersede-on-write log; this is the system's
  * design rule per ticket point #8 "overwrite OR version" — we version to preserve history and avoid
  * double-pay). The edit re-invokes the existing `set` path from a new `effectiveFrom`, which auto-closes the
- * prior OPEN row at that date (no double-count across the supersession close) and inherits every guard
+ * prior row at that date (no double-count across the supersession close) and inherits every guard
  * (FixedTransactionDateError / UnsupportedFixedCurrencyError / FixedTransactionAmountError). The `id`
  * identifies WHICH row the admin is editing; we resolve its `componentId`/`employmentId` from the row itself
  * so a tampered componentId can't retarget the write, then apply the new amount/dates/cycle/remarks as a
  * fresh version. Event: `employment-pay-component.set` is appended by the underlying `set` (the versioned
  * write IS a set); no separate `.updated` event is needed and none is fabricated.
+ *
+ * 2aed39d4 — THE ONE-CLICK DUPLICATE THIS CLOSES. `[id]/page.tsx` renders the Edit form for an ENDED row
+ * too (the `ended` flag only hides the Stop card), with the dates defaulted from the row. Save then went
+ * through a `set` whose prior-row lookup required `validTo IS NULL` — so for an employee with no OPEN row
+ * for that item nothing was found, and Save INSERTED A CLONE with the identical window. That is how
+ * X000001 came to hold three HANDPHONE ALLOWANCE rows all running 2026-07-01..2026-07-01, two of them
+ * written two minutes apart. The row's own id is now passed as `replacesId`, so the `set` treats it as
+ * the row being versioned rather than as an unrelated clash: Save CHANGES the record instead of copying
+ * it, and any OTHER live row the new window runs into is still refused.
  */
 export function updateEmploymentPayComponent(
   ctx: SessionContext,
@@ -1373,6 +1541,9 @@ export function updateEmploymentPayComponent(
         prorateOverride: p.prorateOverride ?? null,
         remarks: p.remarks ?? null,
         runType: p.runType ?? null,
+        // 2aed39d4 — THE row the admin opened. Without this an edit of an ended row reads as a clash
+        // with itself and is either refused or cloned; with it, the row is versioned.
+        replacesId: p.id,
       },
       tx,
     );
@@ -1424,12 +1595,32 @@ export function endEmploymentPayComponent(
 }
 
 /**
- * f1123afd — thrown when a recurring fixed item is removed after it has already been paid on a PROCESSED
- * payslip. The payslip and the statutory submission it fed cannot be amended by removing the item
- * afterwards, so the removal is refused outright, matching how Individual Transaction protects a paid
- * one-off. `payPeriod` is the month the evidence was found in, so the message can be specific.
+ * Thrown when a recurring fixed item is changed or removed in a way that would affect a month a CLOSED
+ * pay run has already paid. `payPeriod` is that closed month, so the message can be specific.
  *
- * The right action in that situation is `endEmploymentPayComponent` — end it from a date, which stops
+ * ── 2aed39d4 REVERSED WHAT THIS MEANS. READ THIS BEFORE RE-TIGHTENING IT. ──
+ *
+ * f1123afd introduced this error to refuse removal as soon as any PROCESSED payslip carried the item.
+ * The reporter's expected-behaviour point 7 asks for the opposite, explicitly and with a worked example:
+ * HR discovers a wrong fixed transaction AFTER payroll has been processed, deletes it, and reprocesses.
+ * Their table is unambiguous — Processed/Not Closed: View Y, Edit Y, Delete Y, Reprocess Y; Closed:
+ * View only, "unless the payroll is reopened/unlocked according to the payroll control". So the test is
+ * now the BATCH STATUS, not the payslip's line evidence.
+ *
+ * WHY THE OLD TEST HAD TO GO RATHER THAN BE KEPT ALONGSIDE. It was never a rule, it was a coin flip.
+ * There is no payslip LINE table; the per-item detail lives in `payslip.statutory.componentLines` /
+ * `recordLines`, which the kernel only started stamping on 2026-08-01 (feedback 862ed0ad). Slips older
+ * than that carry no line list at all, so the guard could not see them and ALLOWED the removal. Roughly
+ * half the live items a processed payslip covered were therefore removable and half were not, with
+ * nothing on screen to say which — X000001's three A0027 rows were all undeletable (the July slip
+ * itemises A0027) while an adjacent employee's identical row was not. "Processed" is now uniformly
+ * allowed and "closed" uniformly refused, which is both the reporter's rule and a rule at all.
+ *
+ * Nothing is closed on production today (22 batches, all `processed`, none carrying `closed_at`,
+ * re-measured 2026-08-11), so this rule has no effect on existing data — which is exactly why it is
+ * covered by tests rather than by observation.
+ *
+ * The right action when a run IS closed is `endEmploymentPayComponent` — end it from a date, which stops
  * future payment and leaves what was already paid intact. The refusal message names it.
  */
 export class FixedTransactionPaidError extends Error {
@@ -1438,74 +1629,72 @@ export class FixedTransactionPaidError extends Error {
     public readonly payPeriod: string,
   ) {
     super(
-      `Pay item "${code}" was paid on a processed payslip for ${payPeriod} and cannot be removed. End it from a date instead.`,
+      `Pay run ${payPeriod} is closed, so pay item "${code}" can no longer be changed or removed for that period. Reopen the run, or end the item from a date instead.`,
     );
     this.name = 'FixedTransactionPaidError';
   }
 }
 
 /**
- * Has this recurring item been paid on a payslip that has already been produced?
+ * 2aed39d4 — is any CLOSED pay run's period inside this row's window? If so the row is frozen for that
+ * period: changing or removing it would alter what a closed run relied on.
  *
- * ⚠️ READ THE LIMITATION BEFORE RELYING ON THIS — it is real, it is stated on purpose, and it was not
- * papered over.
+ * ONE DEFINITION OF "PAYROLL EVIDENCE", NOT A FOURTH. The period helpers are `closedPeriodsTx` and
+ * `overlapsClosedPeriod` from core/comp.ts — the same pair the Basic Salary card uses to decide which
+ * compensation rows are deletable, and the same pair a Movement correction refuses on. Writing a fourth
+ * period helper here is how two rules that are supposed to agree start disagreeing.
  *
- * WHAT THE PAYSLIP ACTUALLY STORES. There is no payslip LINE table. `payslip` holds aggregate columns
- * (basicSalary, allowance, overtimePay, bonus, grossPay, otherDeductions, netPay, employerCost) plus a
- * `statutory` jsonb. The per-item detail lives inside that jsonb, in two arrays the kernel stamps:
- *   • `statutory.componentLines[] = { code, name, amount, buckets[] }` — every component that MOVED CASH
- *     (feedback 862ed0ad, shipped 2026-08-01);
- *   • `statutory.recordLines[]  = { code, name, amount }` — record-only / non-payable components.
- * Both are keyed by the CATALOG CODE. Neither carries `employment_pay_component.id`, so there is no
- * stored link to the specific effective-dated ROW that produced the money — only to the pay item.
+ * ⚠️ THE BOUNDARY CONVERSION IS LOAD-BEARING. `overlapsClosedPeriod(periods, from, to)` treats `to` as
+ * EXCLUSIVE — it was written for `compensation`, whose valid_to is exclusive. `employment_pay_component`
+ * valid_to is INCLUSIVE (the kernel selects `validTo >= periodStart` and pays the row in full for that
+ * month; migration 0426's daterange uses '[]' bounds for the same reason). So the inclusive end date is
+ * converted with `addDaysIso(validTo, 1)` on the way in. Passing validTo straight through would let a
+ * row whose LAST paid month is a closed month slip past the guard.
  *
- * WHAT THIS FUNCTION THEREFORE DOES, AND WHY IT IS NOT A GUESS. It reads the payslip's OWN STORED
- * FIGURES — the code list the run actually stamped — and requires all three of:
- *   1. a payslip for this employment on a batch that is `processed` or `closed`;
- *   2. that batch's stored `payPeriod` inside THIS ROW'S OWN effective window (month-level, exactly the
- *      predicate the kernel selects on: valid_from <= period end AND (valid_to IS NULL OR >= period
- *      start)) — which is what attributes the line to this row rather than a sibling for the same code;
- *   3. this row's component code named in that slip's stored `componentLines` / `recordLines`.
- * Nothing here re-derives ELIGIBILITY from today's catalog configuration — no flags, no rules, no
- * proration are consulted. A payslip is a historical document, and recomputing what it "should" have
- * contained is how history gets rewritten.
+ * WHAT THIS REPLACED, AND WHY THE OLD ONE IS GONE RATHER THAN KEPT: see FixedTransactionPaidError. The
+ * previous test read `payslip.statutory.componentLines` — line evidence the kernel only began stamping
+ * on 2026-08-01 — so it refused on about half the live items a processed payslip covered and allowed the
+ * rest, with nothing on screen to say which. There is still no payslip LINE table and no stored link
+ * from a payslip to the `employment_pay_component.id` that produced the money; the batch's status and
+ * period are the only facts about a run that are recorded for every run, which is why the rule is built
+ * on them.
  *
- * THE GAP, STATED PLAINLY. Payslips generated BEFORE 862ed0ad shipped carry no `componentLines` key at
- * all — the kernel's own comment says the detail "was never stored before, so the runs already completed
- * cannot be itemised retrospectively". For those slips this returns null and the removal is ALLOWED. That
- * is deliberate: refusing on the absence of evidence would block the removal of every recurring item on a
- * system whose payslips predate the stamping, and "this component was probably in that payslip" is not a
- * basis for refusing an admin action. The guard therefore grows teeth with every run generated from here
- * on, and is honest about the ones behind it.
- *
- * Read-only, and cheap: one indexed lookup per removal over one employee's payslips.
+ * Read-only, and cheap: one indexed lookup over one employee's payslips.
  */
-async function paidPayslipEvidence(
+async function closedRunCovering(
   tx: Tx,
-  p: { employmentId: string; code: string; validFrom: string; validTo: string | null },
-): Promise<{ payPeriod: string; batchId: string } | null> {
-  const slips = await tx
-    .select({ payPeriod: payrollBatch.payPeriod, status: payrollBatch.status, batchId: payslip.batchId, statutory: payslip.statutory })
-    .from(payslip)
-    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-    .where(eq(payslip.employmentId, p.employmentId));
-  // The window, month-level, from the ROW'S OWN dates — its identity, not "today's configuration".
-  const fromMonth = p.validFrom.slice(0, 7);
-  const toMonth = p.validTo != null ? p.validTo.slice(0, 7) : null;
-  for (const s of slips) {
-    // 'draft' cannot appear (a draft has no payslips), but the set is stated positively rather than as
-    // "not draft" so an unrecognised status never counts as proof that someone was paid.
-    if (s.status !== 'processed' && s.status !== 'closed') continue;
-    if (s.payPeriod < fromMonth) continue;
-    if (toMonth != null && s.payPeriod > toMonth) continue;
-    const st = (s.statutory ?? {}) as {
-      componentLines?: { code?: unknown }[];
-      recordLines?: { code?: unknown }[];
-    };
-    const lines = [...(st.componentLines ?? []), ...(st.recordLines ?? [])];
-    if (lines.some((l) => l?.code === p.code)) return { payPeriod: s.payPeriod, batchId: s.batchId };
-  }
-  return null;
+  p: { employmentId: string; validFrom: string; validTo: string | null },
+): Promise<string | null> {
+  const closed = await closedPeriodsTx(tx, p.employmentId);
+  if (closed.length === 0) return null;
+  // Inclusive validTo -> exclusive `to`. See the warning above.
+  const exclusiveTo = p.validTo == null ? null : addDaysIso(p.validTo, 1);
+  if (!overlapsClosedPeriod(closed, p.validFrom, exclusiveTo)) return null;
+  // Name the EARLIEST closed period the window covers, so the message is stable rather than dependent on
+  // the order the periods came back in.
+  const hit = closed
+    .filter((period) => overlapsClosedPeriod([period], p.validFrom, exclusiveTo))
+    .sort()[0];
+  return hit ?? null;
+}
+
+/**
+ * 2aed39d4 — the write-side half of the same rule, shared by setEmploymentPayComponent (and therefore by
+ * updateEmploymentPayComponent, which delegates to it). Resolves the pay item's code only when it is
+ * about to throw, so the common path stays one query.
+ */
+async function assertNoClosedRunCovers(
+  tx: Tx,
+  p: { employmentId: string; componentId: string; validFrom: string; validTo: string | null },
+): Promise<void> {
+  const period = await closedRunCovering(tx, p);
+  if (period == null) return;
+  const [c] = await tx
+    .select({ code: payComponent.code })
+    .from(payComponent)
+    .where(eq(payComponent.id, p.componentId))
+    .limit(1);
+  throw new FixedTransactionPaidError(c?.code ?? 'component', period);
 }
 
 /**
@@ -1539,15 +1728,16 @@ export function archiveEmploymentPayComponent(
       )
       .limit(1);
     if (!row) throw new FixedTransactionNotFoundError();
-    // f1123afd — REFUSE when this item has already been paid on a processed payslip. Before this the
-    // only refusal was "the row does not exist"; nothing checked whether the money had gone out.
-    const paid = await paidPayslipEvidence(tx, {
+    // 2aed39d4 — REFUSE only when a CLOSED run covers this row's window. A run that is merely PROCESSED
+    // is deliberately NOT a refusal: the reporter's expected-behaviour point 7 asks for exactly the
+    // sequence "payroll processed -> HR finds the wrong item -> delete -> reprocess", and this used to
+    // refuse it (unevenly — see FixedTransactionPaidError). Refused BEFORE any write.
+    const closedPeriod = await closedRunCovering(tx, {
       employmentId: p.employmentId,
-      code: row.code,
       validFrom: row.validFrom,
       validTo: row.validTo,
     });
-    if (paid) throw new FixedTransactionPaidError(row.code, paid.payPeriod);
+    if (closedPeriod) throw new FixedTransactionPaidError(row.code, closedPeriod);
     await tx
       .update(employmentPayComponent)
       .set({ supersededAt: new Date() })
@@ -1654,12 +1844,25 @@ export function setPayrollBatchComponent(
 
 // ───────────────────── Backfill (legacy → components) ─────────────────────
 
-/** Seed BASIC + ALLOWANCE recurring components from every open compensation row. Idempotent-ish:
- *  setEmploymentPayComponent supersedes the prior open value, so re-running just re-states it.
+/** Seed BASIC + ALLOWANCE recurring components from every open compensation row. Idempotent:
+ *  setEmploymentPayComponent supersedes whatever live rows the compensation window overlaps, so
+ *  re-running just re-states it.
  *  Feedback 64fb5e48 — OPTIONAL housekeeping only: the payroll engine now always pays basic from the
  *  Personnel compensation record, so BASIC component amounts no longer drive pay (a divergent one only
  *  surfaces as the staleBasicComponent warning in the pre-processing checks, and a missing one is not a
- *  gap at all). Kept for tenants that want the BASIC line mirrored into the typed component tables. */
+ *  gap at all). Kept for tenants that want the BASIC line mirrored into the typed component tables.
+ *
+ *  2aed39d4 — WHY THIS PASSES THREE EXPLICIT OPT-OUTS, AND WHY SKIPPING ANY OF THEM BREAKS IT.
+ *  This helper re-states BASIC and ALLOWANCE from each open compensation row at THAT ROW'S OWN
+ *  validFrom, which is routinely years behind whatever the pay-component table now holds. It is not a
+ *  hypothetical: it PRODUCED one of the ten overlaps measured on production (EMP-0001 BASIC 3000.00
+ *  ending 2026-08-01 sitting alongside BASIC 6800.00 starting 2026-08-01), and 34cc8137's
+ *  backwards-restatement guard had already put it one run away from throwing before this item existed.
+ *    • allowZeroAmount   — a zero-allowance compensation line is a legitimate 0-amount row.
+ *    • supersedeOverlaps — re-state over whatever sits in the way instead of refusing. Compensation is
+ *      the system of record for both codes, so replacing the pay-component mirror is the whole point.
+ *    • allowClosedPeriod — the window reaches back over closed months by construction.
+ *  Each is named for exactly what it waives; none of them is inherited by any UI path. */
 export function backfillEmploymentComponentsFromCompensation(ctx: SessionContext) {
   return withTenant(ctx, async (tx) => {
     const basicId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.basic);
@@ -1673,8 +1876,8 @@ export function backfillEmploymentComponentsFromCompensation(ctx: SessionContext
     for (const c of comps) {
       // allowZeroAmount: a compensation line may legitimately have basic 0 or a zero allowance; the backfill
       // must seed those 0-amount rows so the typed path stays byte-identical. Only the backfill opts out.
-      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: basicId, amount: Number(c.basicSalary), effectiveFrom: c.validFrom, allowZeroAmount: true }, tx);
-      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: allowId, amount: Number(c.monthlyAllowance ?? 0), effectiveFrom: c.validFrom, allowZeroAmount: true }, tx);
+      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: basicId, amount: Number(c.basicSalary), effectiveFrom: c.validFrom, allowZeroAmount: true, supersedeOverlaps: true, allowClosedPeriod: true }, tx);
+      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: allowId, amount: Number(c.monthlyAllowance ?? 0), effectiveFrom: c.validFrom, allowZeroAmount: true, supersedeOverlaps: true, allowClosedPeriod: true }, tx);
       count += 1;
     }
     return { employments: count };

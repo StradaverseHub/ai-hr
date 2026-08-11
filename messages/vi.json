@@ -1423,7 +1423,11 @@
       "locationConfirm": "Xác nhận",
       "locationSuggestionNote": "Không có gì được lưu cho đến khi bạn bấm Xác nhận. Địa điểm làm việc ảnh hưởng đến lịch sử lương và tăng ca, nên hệ thống không bao giờ tự đổi giúp bạn.",
       "locationBranchUnmapped": "{branch} chưa được gán địa điểm làm việc. Hãy ánh xạ chi nhánh tới một địa điểm trong Chấm công › Địa điểm chấm công, khi đó nó sẽ được đề xuất ở đây.",
-      "locationNoBranch": "Không có chi nhánh nào được ghi ở thẻ Việc làm, nên không thể đề xuất địa điểm làm việc từ đó."
+      "locationNoBranch": "Không có chi nhánh nào được ghi ở thẻ Việc làm, nên không thể đề xuất địa điểm làm việc từ đó.",
+      "payComponentOverlap": "Nhân viên này đã có thành phần lương {code} bao gồm từ {from} đến {to}. Hãy kết thúc bản ghi đó trước, hoặc chọn khoảng ngày không chồng lấn với nó.",
+      "payComponentBackwards": "Nhân viên này đã có thành phần lương {code} bắt đầu từ {from}. Giá trị mới phải có hiệu lực từ ngày đó trở đi.",
+      "payComponentClosedRun": "Kỳ lương {period} đã chốt, nên thành phần lương {code} không thể thay đổi cho kỳ đó nữa.",
+      "payComponentOpenEnded": "không có ngày kết thúc"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -3801,10 +3805,16 @@
         "detailSubtitle": "Xem hoặc thay đổi khoản lương định kỳ này.",
         "currentAmount": "Số tiền hiện tại",
         "versioningTitle": "Việc thay đổi khoản này không ghi đè lên nó.",
-        "versioningBody": "Việc lưu sẽ khép giá trị hiện tại từ ngày hiệu lực bạn chọn và bắt đầu một giá trị mới, nên lịch sử vẫn nguyên vẹn và không ai bị trả hai lần cho cùng kỳ. Nghĩa là mỗi thay đổi sẽ thêm một dòng vào danh sách.",
-        "versioningNote": "Một thay đổi sẽ thêm một dòng: sửa một khoản sẽ khép giá trị hiện tại từ ngày đã chọn và bắt đầu giá trị mới, nên lịch sử vẫn nguyên vẹn.",
-        "deleteHint": "Xóa một khoản sẽ ẩn nó và loại khỏi mọi kỳ lương sau này. Nếu khoản đó đã được chi trả trên một phiếu lương đã xử lý thì không thể xóa — hãy kết thúc nó từ một ngày, cách này dừng chi trả trong tương lai mà giữ nguyên những gì đã trả.",
-        "paidOnPayslip": "Khoản định kỳ này đã được chi trả trên một phiếu lương đã xử lý nên không thể xóa. Hãy kết thúc nó từ một ngày — cách này dừng chi trả trong tương lai và giữ nguyên phần đã trả."
+        "versioningBody": "Việc lưu sẽ đóng giá trị hiện tại từ ngày hiệu lực bạn chọn và bắt đầu một giá trị mới, nên lịch sử vẫn được giữ nguyên. Hai bản ghi của cùng một khoản lương không bao giờ được bao gồm cùng một ngày: nếu khoảng ngày của bạn chồng lấn với bản ghi đã có, việc lưu sẽ bị từ chối và thông báo sẽ nêu rõ bản ghi đó. Nghĩa là mỗi thay đổi sẽ thêm một dòng vào danh sách.",
+        "versioningNote": "Một thay đổi sẽ thêm một dòng: chỉnh sửa một khoản sẽ đóng giá trị hiện tại từ ngày đã chọn và bắt đầu một giá trị mới, nên lịch sử vẫn được giữ nguyên. Hai bản ghi của cùng một khoản lương không bao giờ được bao gồm cùng một ngày.",
+        "deleteHint": "Xóa một khoản sẽ ẩn nó và loại khỏi mọi kỳ tính lương sau này. Việc này vẫn thực hiện được sau khi kỳ lương đã xử lý, để có thể gỡ khoản sai và xử lý lại kỳ đó. Khi kỳ lương đã chốt thì không thể xóa cho kỳ đó nữa — thay vào đó hãy kết thúc khoản từ một ngày, cách này dừng các khoản chi trả sau này mà không ảnh hưởng đến những gì đã trả.",
+        "paidOnPayslip": "Kỳ lương {period} đã chốt, nên khoản này không thể thay đổi hay xóa cho kỳ đó nữa. Hãy mở lại kỳ lương, hoặc kết thúc khoản từ một ngày — cách này dừng các khoản chi trả sau này và giữ nguyên những gì đã trả.",
+        "overlap": "Nhân viên này đã có bản ghi {code} bao gồm từ {from} đến {to}. Hãy kết thúc bản ghi đó trước, hoặc chọn khoảng ngày không chồng lấn với nó.",
+        "backwards": "Nhân viên này đã có bản ghi {code} bắt đầu từ {from}. Giá trị mới phải có hiệu lực từ ngày đó trở đi.",
+        "openEnded": "không có ngày kết thúc",
+        "existingTitle": "Nhân viên này đã có {count, plural, other {# bản ghi}} cho khoản lương này",
+        "existingClashTag": "chồng lấn với ngày bạn nhập",
+        "existingClash": "Khoảng ngày của bạn chồng lấn với một bản ghi ở trên. Việc lưu sẽ bị từ chối — hãy kết thúc bản ghi đó trước, hoặc thay đổi ngày của bạn."
       },
       "individual": {
         "title": "Giao dịch Riêng lẻ",

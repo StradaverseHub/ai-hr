@@ -1423,7 +1423,11 @@
       "locationConfirm": "Confirm",
       "locationSuggestionNote": "Nothing is saved until you press Confirm. A work location moves payroll and overtime history, so it is never changed for you.",
       "locationBranchUnmapped": "{branch} has not been given a work location yet. Map the branch to a location under Attendance › Clocking location and it will be proposed here.",
-      "locationNoBranch": "No branch is recorded on the Employment tab, so no work location can be proposed from it."
+      "locationNoBranch": "No branch is recorded on the Employment tab, so no work location can be proposed from it.",
+      "payComponentOverlap": "This employee already has a {code} pay component covering {from} to {to}. End that record first, or choose dates that do not overlap it.",
+      "payComponentBackwards": "This employee already has a {code} pay component starting {from}. A new value must take effect on or after that date.",
+      "payComponentClosedRun": "Pay run {period} is closed, so the {code} pay component can no longer be changed for that period.",
+      "payComponentOpenEnded": "no end date"
     },
     "import": {
       "title": "Import employees",
@@ -3801,10 +3805,16 @@
         "detailSubtitle": "View or change this recurring pay item.",
         "currentAmount": "Current amount",
         "versioningTitle": "Changing this item does not overwrite it.",
-        "versioningBody": "Saving closes the current value from the effective date you choose and starts a new one, so the history stays intact and nobody is paid twice for the same period. That means each change adds a line to the list.",
-        "versioningNote": "A change adds a line: editing an item closes its current value from the chosen date and starts a new one, so the history stays intact.",
-        "deleteHint": "Removing an item hides it and excludes it from all future payroll. If it has already been paid on a processed payslip it cannot be removed — end it from a date instead, which stops future payments while leaving what was already paid untouched.",
-        "paidOnPayslip": "This recurring item has already been paid on a processed payslip, so it cannot be removed. End it from a date instead — that stops future payments and leaves what was already paid intact."
+        "versioningBody": "Saving closes the current value from the effective date you choose and starts a new one, so the history stays intact. Two records for the same pay item can never cover the same day: if your dates run into a record that is already there, the save is refused and the message names it. That means each change adds a line to the list.",
+        "versioningNote": "A change adds a line: editing an item closes its current value from the chosen date and starts a new one, so the history stays intact. Two records for the same pay item can never cover the same day.",
+        "deleteHint": "Removing an item hides it and excludes it from all future payroll. This stays possible after a pay run has been processed, so a wrong item can be taken out and the run reprocessed. Once a run is closed it can no longer be removed for that period — end it from a date instead, which stops future payments while leaving what was already paid untouched.",
+        "paidOnPayslip": "Pay run {period} is closed, so this item can no longer be changed or removed for that period. Reopen the run, or end the item from a date instead — that stops future payments and leaves what was already paid intact.",
+        "overlap": "This employee already has a {code} record covering {from} to {to}. End that record first, or choose dates that do not overlap it.",
+        "backwards": "This employee already has a {code} record starting {from}. A new value must take effect on or after that date.",
+        "openEnded": "no end date",
+        "existingTitle": "This employee already has {count, plural, one {# record} other {# records}} for this pay item",
+        "existingClashTag": "overlaps your dates",
+        "existingClash": "Your dates run into a record above. Saving will be refused — end that record first, or change your dates."
       },
       "individual": {
         "title": "Individual Transaction",

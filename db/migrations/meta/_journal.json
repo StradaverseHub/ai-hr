@@ -2416,6 +2416,13 @@
       "when": 1781862525000,
       "tag": "0425_payroll_anomaly",
       "breakpoints": true
+    },
+    {
+      "idx": 426,
+      "version": "7",
+      "when": 1781862526000,
+      "tag": "0426_fixed_transaction_no_overlap",
+      "breakpoints": true
     }
   ]
 }
