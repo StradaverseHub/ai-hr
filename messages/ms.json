@@ -4150,7 +4150,6 @@
           "month": "Bulan",
           "cycle": "Kitaran gaji",
           "apply": "Guna penapis",
-          "search": "Cari",
           "all": "Semua",
           "department": "Jabatan",
           "txnStatus": "Status transaksi",
@@ -4203,15 +4202,9 @@
         },
         "grid": {
           "title": "Butiran Transaksi",
+          "pickEmployee": "Pilih pekerja",
           "pickEmployeeHint": "Skrin ini menunjukkan setahun gaji seorang pekerja — setiap item gaji di sebelah kiri, setiap bulan di bahagian atas.",
-          "noEmployee": "Cari pekerja di bahagian atas untuk melihat tahun gaji mereka.",
-          "search": {
-            "placeholder": "Cari mengikut ID Pekerja atau nama",
-            "ariaLabel": "Cari pekerja",
-            "resultsLabel": "Hasil carian pekerja",
-            "noMatches": "Tiada pekerja sepadan",
-            "clear": "Kosongkan pekerja"
-          },
+          "noEmployee": "Pilih pekerja daripada senarai untuk melihat tahun gaji mereka.",
           "empty": "Tiada sejarah gaji untuk pekerja ini bagi tahun, bulan dan kitaran yang dipilih.",
           "export": "Eksport ke Excel",
           "hideZeroRows": "Sembunyikan baris yang semuanya sifar",

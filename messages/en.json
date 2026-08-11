@@ -4150,7 +4150,6 @@
           "month": "Month",
           "cycle": "Payroll cycle",
           "apply": "Apply filters",
-          "search": "Search",
           "all": "All",
           "department": "Department",
           "txnStatus": "Transaction status",
@@ -4203,15 +4202,9 @@
         },
         "grid": {
           "title": "Transaction Detail",
+          "pickEmployee": "Select an employee",
           "pickEmployeeHint": "This screen shows one employee's payroll year — every pay item down the left, every month across the top.",
-          "noEmployee": "Search for an employee above to see their payroll year.",
-          "search": {
-            "placeholder": "Search by Employee ID or name",
-            "ariaLabel": "Search employee",
-            "resultsLabel": "Employee search results",
-            "noMatches": "No matching employee",
-            "clear": "Clear employee"
-          },
+          "noEmployee": "Select an employee from the list to see their payroll year.",
           "empty": "No payroll history for this employee in the selected year, months and cycle.",
           "export": "Export to Excel",
           "hideZeroRows": "Hide rows that are all zeroes",
