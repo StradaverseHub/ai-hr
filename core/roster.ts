@@ -140,8 +140,20 @@ export type ShiftInput = {
   /** Manual normal-working-minutes figure; when set it is the workday OT threshold (deriveAttendance). */
   normalMinutesOverride?: number | null;
   /** R7 Phase 2 — ISO weekdays (1=Mon…7=Sun) that are WORKING days (rest = complement), mirroring
-   *  attendance_policy.working_days. Null/empty ⇒ no pattern; the shift cannot drive roster generation. */
+   *  attendance_policy.working_days. Null/empty ⇒ no pattern; the shift cannot drive roster generation.
+   *  b8aa3466 — this is the FULL-day list of the four-way row; see halfPattern / offPattern. */
   weeklyPattern?: number[] | null;
+  /** b8aa3466 — the other two day kinds (migration 0429). HALF = a working day with half the normal hours.
+   *  OFF = a non-working day that is NOT the statutory rest day. A weekday in none of the three arrays is
+   *  a Rest day, which is exactly what "not in weekly_pattern" means today. Absent/empty ⇒ '{}', i.e. the
+   *  pre-0429 two-way meaning, byte-identical. Validated pairwise-disjoint here AND by a DB CHECK. */
+  halfPattern?: number[] | null;
+  offPattern?: number[] | null;
+  /** b8aa3466 — the DAILY CUT-OFF (migration 0429). When enabled, core/attendance.ts anchorToShift uses this
+   *  clock time as the attendance-day boundary instead of its hard-coded 12-hour rule. Absent ⇒ off, which
+   *  is byte-identical to today. Enabling without a time is refused (and by a DB CHECK too). */
+  dailyCutoffEnabled?: boolean | null;
+  dailyCutoffTime?: string | null;
   /** R17 3e8350db — per-shift late grace (minutes): lateness is measured from shift-start + this. Null ⇒
    *  inherit the company-policy grace (core/attendance.ts). UNDEFINED ⇒ leave the stored value unchanged
    *  (7c834696 rev 2: the shift form dropped this input in favour of the rule's grace, so saving a shift
@@ -201,6 +213,10 @@ type NormalizedShift = {
   breakPeriods: BreakPeriod[] | null;
   normalMinutesOverride: number | null;
   weeklyPattern: number[] | null;
+  halfPattern: number[];
+  offPattern: number[];
+  dailyCutoffEnabled: boolean;
+  dailyCutoffTime: string | null;
   // UNDEFINED ⇒ omit from the write (preserve stored value); null ⇒ explicitly clear. Same contract as
   // otRule / ruleId below, for the same reason: the field's editor no longer lives on the shift form.
   lateGraceMinutes: number | null | undefined;
@@ -293,13 +309,40 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
 
   // R7 Phase 2 — weekly pattern: validated ISO weekdays, deduped + sorted. Empty ⇒ null (a shift with zero
   // working days is "no pattern", not a 7-day rest week).
-  let weeklyPattern: number[] | null = null;
-  if (p.weeklyPattern && p.weeklyPattern.length > 0) {
-    const days = [...new Set(p.weeklyPattern.map((d) => Math.trunc(d)))].sort((a, b) => a - b);
+  //
+  // b8aa3466 — the row is now FOUR-way (Full / Half / Rest / Off) and this is the FULL list. Half and Off
+  // get an array each; Rest stays the complement, so a shift saved before 0429 — and a caller that never
+  // heard of the new arrays — reads back exactly as it does today. The three lists must be pairwise
+  // disjoint: a Monday cannot be both Full and Off. The DB enforces it too (0429
+  // shift_day_kinds_disjoint); this check exists so HR gets a sentence instead of a Postgres error.
+  const isoDays = (v: number[] | null | undefined, label: string): number[] => {
+    if (!v || v.length === 0) return [];
+    const days = [...new Set(v.map((d) => Math.trunc(d)))].sort((a, b) => a - b);
     if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) {
-      throw new Error('Weekly pattern days must be ISO weekday numbers 1 (Mon) … 7 (Sun)');
+      throw new Error(`${label} must be ISO weekday numbers 1 (Mon) \u2026 7 (Sun)`);
     }
-    weeklyPattern = days;
+    return days;
+  };
+  const fullDays = isoDays(p.weeklyPattern, 'Weekly pattern days');
+  const halfPattern = isoDays(p.halfPattern, 'Half-day weekdays');
+  const offPattern = isoDays(p.offPattern, 'Off-day weekdays');
+  for (const [a, b] of [
+    [fullDays, halfPattern],
+    [fullDays, offPattern],
+    [halfPattern, offPattern],
+  ] as const) {
+    if (a.some((d) => b.includes(d))) throw new Error('Each weekday can only be one of Full, Half, Rest or Off');
+  }
+  // Empty ⇒ null, preserving "no pattern" — a shift with zero FULL days is not a 7-day rest week.
+  const weeklyPattern: number[] | null = fullDays.length > 0 ? fullDays : null;
+
+  // b8aa3466 — the daily cut-off. Enabled with no time is refused rather than stored: the reader could not
+  // honour it, and a pair that can hold nonsense eventually does. (0429 shift_daily_cutoff_time_required
+  // says the same thing at the DB; this is the sentence HR sees.)
+  const dailyCutoffTime = optTime(p.dailyCutoffTime, 'Daily cut-off');
+  const dailyCutoffEnabled = p.dailyCutoffEnabled === true;
+  if (dailyCutoffEnabled && dailyCutoffTime == null) {
+    throw new Error('A daily cut-off needs a time \u2014 set one, or switch the cut-off off');
   }
 
   // R17 3e8350db — per-shift grace windows. Explicit null ⇒ clear (inherit the legacy behaviour); when
@@ -377,6 +420,10 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     breakPeriods,
     normalMinutesOverride,
     weeklyPattern,
+    halfPattern,
+    offPattern,
+    dailyCutoffEnabled,
+    dailyCutoffTime,
     lateGraceMinutes,
     earlyLeaveGraceMinutes,
     otRule,
@@ -399,6 +446,11 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
 /** cf21e554 stage 1 — the General-tab columns, in one place so createShift, updateShift and copyShift
  *  cannot drift apart (the drift that let 7c834696's grace columns be silently cleared by a save). */
 const generalColumns = (n: NormalizedShift) => ({
+  // b8aa3466 — the 0429 columns ride here so createShift, updateShift and copyShift cannot drift apart.
+  halfPattern: n.halfPattern,
+  offPattern: n.offPattern,
+  dailyCutoffEnabled: n.dailyCutoffEnabled,
+  dailyCutoffTime: n.dailyCutoffTime,
   description: n.description,
   dayType: n.dayType,
   category: n.category,
@@ -645,6 +697,12 @@ export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Pr
           breakPeriods: src.breakPeriods,
           normalMinutesOverride: src.normalMinutesOverride,
           weeklyPattern: src.weeklyPattern,
+          // b8aa3466 — the four-way day kinds and the daily cut-off travel with the copy, like every other
+          // column here. A copy that quietly dropped them would turn Half/Off days back into Rest days.
+          halfPattern: src.halfPattern,
+          offPattern: src.offPattern,
+          dailyCutoffEnabled: src.dailyCutoffEnabled,
+          dailyCutoffTime: src.dailyCutoffTime,
           crossesMidnight: src.crossesMidnight,
           lateGraceMinutes: src.lateGraceMinutes,
           earlyLeaveGraceMinutes: src.earlyLeaveGraceMinutes,
