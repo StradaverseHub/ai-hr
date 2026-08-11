@@ -6351,7 +6351,11 @@
       "deactivatedBadge": "Đã ngừng",
       "breakPaidBadge": "Có lương",
       "breakPaidHint": "Giờ nghỉ có lương không bị trừ khỏi giờ của ca; giờ nghỉ không lương thì bị trừ. Giờ nghỉ không đánh dấu là không lương, đúng như trước đây.",
-      "generalMoreTabNote": "Tab “General (More…)” của màn hình tham chiếu chưa từng được chụp lại, nên các trường của nó không có trong bản phát hành này."
+      "generalMoreTabNote": "Tab “General (More…)” của màn hình tham chiếu chưa từng được chụp lại, nên các trường của nó không có trong bản phát hành này.",
+      "shiftFormNewTitle": "Ca làm việc mới",
+      "shiftFormEditTitle": "Sửa ca làm việc",
+      "shiftFormBackToList": "Quay lại danh sách ca",
+      "shiftFormDescription": "Mẫu ca làm việc được dùng chung cho toàn bộ tổ chức. Gán cho nhân viên qua hồ sơ của họ (ca cố định) hoặc Quản lý lịch trực."
     },
     "payrollPermissions": {
       "title": "Quyền tính lương",
@@ -6667,7 +6671,8 @@
       "deductionsFromLabel": "Khấu trừ áp dụng từ",
       "deductionsFromNone": "Không áp dụng",
       "otLadderGapWarning": "Dòng {row} phải bắt đầu ở {expected} phút để nối tiếp dòng {prev} — nhưng nó bắt đầu ở {actual}. Không thể lưu cho đến khi các dòng nối liền nhau.",
-      "otLadderOpenEndedWarning": "Dòng {row} không có giới hạn trên nên không dòng nào có thể theo sau. Hãy nhập giá trị “Đến” hoặc chuyển nó xuống cuối."
+      "otLadderOpenEndedWarning": "Dòng {row} không có giới hạn trên nên không dòng nào có thể theo sau. Hãy nhập giá trị “Đến” hoặc chuyển nó xuống cuối.",
+      "scheduleBackToRules": "Quay lại quy tắc tính"
     },
     "benefitScheme": {
       "groupsTitle": "Nhóm bậc",

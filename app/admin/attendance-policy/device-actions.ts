@@ -10,7 +10,9 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { revokeDevice } from '@/core/attendance-device';
 
-const LIST = '/admin/attendance-policy';
+// af7a8eb4 — the devices table moved onto the Company work schedule page; revoke returns to the screen the
+// operator was on, not to the rule list that no longer renders the table.
+const LIST = '/admin/attendance-policy/schedule';
 
 export async function revokeDeviceAction(fd: FormData) {
   const s = await getSession();

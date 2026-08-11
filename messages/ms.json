@@ -6351,7 +6351,11 @@
       "deactivatedBadge": "Dinyahaktifkan",
       "breakPaidBadge": "Berbayar",
       "breakPaidHint": "Rehat berbayar tidak ditolak daripada jam syif; rehat tidak berbayar ditolak. Rehat tanpa tanda adalah tidak berbayar, sama seperti sebelum ini.",
-      "generalMoreTabNote": "Tab “General (More…)” pada skrin rujukan tidak pernah dirakam, jadi medannya tiada dalam keluaran ini."
+      "generalMoreTabNote": "Tab “General (More…)” pada skrin rujukan tidak pernah dirakam, jadi medannya tiada dalam keluaran ini.",
+      "shiftFormNewTitle": "Syif baharu",
+      "shiftFormEditTitle": "Sunting syif",
+      "shiftFormBackToList": "Kembali ke syif",
+      "shiftFormDescription": "Templat syif dikongsi merentas seluruh organisasi anda. Tetapkan kepada pekerja melalui profil mereka (syif tetap) atau Pengurusan Roster."
     },
     "payrollPermissions": {
       "title": "Kebenaran gaji",
@@ -6667,7 +6671,8 @@
       "deductionsFromLabel": "Potongan berkuat kuasa dari",
       "deductionsFromNone": "Tidak dikenakan",
       "otLadderGapWarning": "Baris {row} mesti bermula pada {expected} minit untuk menyambung baris {prev} — ia bermula pada {actual}. Simpanan disekat sehingga baris bersambung.",
-      "otLadderOpenEndedWarning": "Baris {row} tiada had atas, jadi tiada baris boleh mengikutinya. Beri nilai “Hingga” atau pindahkannya ke hujung."
+      "otLadderOpenEndedWarning": "Baris {row} tiada had atas, jadi tiada baris boleh mengikutinya. Beri nilai “Hingga” atau pindahkannya ke hujung.",
+      "scheduleBackToRules": "Kembali ke peraturan pengiraan"
     },
     "benefitScheme": {
       "groupsTitle": "Kumpulan Gred",

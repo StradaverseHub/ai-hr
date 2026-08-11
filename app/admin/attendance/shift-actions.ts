@@ -147,7 +147,11 @@ function shiftFields(formData: FormData) {
 }
 
 // R33 f21d6eee — Shared shift library: no company anchor anymore. Redirect straight back to the flat list.
-const errTarget = (e: unknown) => `${BASE}?error=${encodeURIComponent((e as Error).message)}`;
+// af7a8eb4 — `at` is the screen the operator was ON when the write failed. The list actions (archive,
+// unarchive, copy, delete) are fired from the list, so they keep BASE; create and update are fired from
+// their own page now, so a validation error has to land back on the form the operator filled in rather
+// than on a list that has forgotten every box they typed. Same idiom as rule-actions.ts.
+const errTarget = (e: unknown, at: string = BASE) => `${at}?error=${encodeURIComponent((e as Error).message)}`;
 
 export async function createShiftAction(formData: FormData) {
   const s = await getSession();
@@ -158,7 +162,7 @@ export async function createShiftAction(formData: FormData) {
     const windows = parseOtWindows(String(formData.get('otWindows') ?? ''));
     if (windows) await replaceShiftOtWindows(s, { shiftId: created.id, windows });
   } catch (e) {
-    redirect(errTarget(e));
+    redirect(errTarget(e, `${BASE}/new`));
   }
   revalidatePath(BASE);
   redirect(BASE);
@@ -172,7 +176,7 @@ export async function updateShiftAction(formData: FormData) {
     const windows = parseOtWindows(String(formData.get('otWindows') ?? ''));
     if (windows) await replaceShiftOtWindows(s, { shiftId, windows });
   } catch (e) {
-    redirect(errTarget(e));
+    redirect(errTarget(e, `${BASE}/${shiftId}`));
   }
   revalidatePath(BASE);
   redirect(BASE);
@@ -218,7 +222,8 @@ export async function copyShiftAction(formData: FormData) {
     redirect(errTarget(e));
   }
   revalidatePath(BASE);
-  redirect(`${BASE}?editShift=${copied.id}#shift-form`);
+  // af7a8eb4 — the copy's own edit PAGE, not the old in-list anchor.
+  redirect(`${BASE}/${copied.id}`);
 }
 
 /** R17 3e8350db — hard-delete a shift template (distinct from Archive). The service refuses if the shift is

@@ -3,7 +3,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listAllowancePolicies, listCompanies, listDepartments } from '@/core/read';
 import { listSupportedBatchComponents } from '@/core/pay-components';
 import { listBusinessUnits } from '@/core/admin';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import {
@@ -39,7 +39,7 @@ export default async function AttendanceAllowancePage({
   const CRITERIA_KEYS = ['minAttendanceDays', 'maxAbsentDays', 'maxLateCount', 'maxTotalLeaveDays'] as const;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('description')} />
       {error && <ErrorBanner message={error} />}
 
@@ -120,7 +120,9 @@ export default async function AttendanceAllowancePage({
           </Card>
 
           {/* Create / edit form */}
-          <Card>
+          {/* af7a8eb4 — capped locally: the LIST above uses the full window, but this two-column form
+              reads worse stretched across it. Same width the whole page carried before. */}
+          <Card className="max-w-5xl">
             <SectionHeader title={editing ? t('form.editTitle') : t('form.createTitle')} />
             <form
               action={editing ? updateAllowancePolicyAction : createAllowancePolicyAction}

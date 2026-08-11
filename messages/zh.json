@@ -6351,7 +6351,11 @@
       "deactivatedBadge": "已停用",
       "breakPaidBadge": "带薪",
       "breakPaidHint": "带薪休息不会从班次工时中扣除，无薪休息则会扣除。未勾选的休息视为无薪，与此前一致。",
-      "generalMoreTabNote": "参考画面的“General (More…)”页签未曾截取，因此其字段不在本次发布范围内。"
+      "generalMoreTabNote": "参考画面的“General (More…)”页签未曾截取，因此其字段不在本次发布范围内。",
+      "shiftFormNewTitle": "新建班次",
+      "shiftFormEditTitle": "编辑班次",
+      "shiftFormBackToList": "返回班次列表",
+      "shiftFormDescription": "班次模板在整个组织内共享。可通过员工档案（固定班次）或排班管理指派给员工。"
     },
     "payrollPermissions": {
       "title": "薪资权限",
@@ -6667,7 +6671,8 @@
       "deductionsFromLabel": "扣减生效日期",
       "deductionsFromNone": "未启用",
       "otLadderGapWarning": "第 {row} 行必须从 {expected} 分钟开始才能接续第 {prev} 行——它从 {actual} 开始。在各行衔接之前无法保存。",
-      "otLadderOpenEndedWarning": "第 {row} 行没有上限，因此其后不能再有任何行。请填写“至”的数值，或将其移到最后。"
+      "otLadderOpenEndedWarning": "第 {row} 行没有上限，因此其后不能再有任何行。请填写“至”的数值，或将其移到最后。",
+      "scheduleBackToRules": "返回计算规则"
     },
     "benefitScheme": {
       "groupsTitle": "职级组",

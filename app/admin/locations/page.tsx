@@ -8,7 +8,7 @@ import { listClockingLocations } from '@/core/clocking-location';
 import { listProfileOptions } from '@/core/profile-options';
 import { listHolidayGroups } from '@/core/admin';
 import { countryPacks } from '@/localization/registry';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import {
   createLocationAction,
@@ -91,7 +91,7 @@ export default async function LocationsPage({
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <ErrorBanner message={error} />
 

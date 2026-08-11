@@ -6351,7 +6351,11 @@
       "deactivatedBadge": "Deactivated",
       "breakPaidBadge": "Paid",
       "breakPaidHint": "A paid break is not deducted from the shift’s hours; an unpaid one is. A break with no tick is unpaid, exactly as before.",
-      "generalMoreTabNote": "The reference screen’s “General (More…)” tab was never captured, so its fields are not in this release."
+      "generalMoreTabNote": "The reference screen’s “General (More…)” tab was never captured, so its fields are not in this release.",
+      "shiftFormNewTitle": "New shift",
+      "shiftFormEditTitle": "Edit shift",
+      "shiftFormBackToList": "Back to shifts",
+      "shiftFormDescription": "A shift template is shared across your whole organisation. Assign it to an employee through their profile (fixed shift) or Roster Management."
     },
     "payrollPermissions": {
       "title": "Payroll permissions",
@@ -6667,7 +6671,8 @@
       "deductionsFromLabel": "Deductions apply from",
       "deductionsFromNone": "Not applied",
       "otLadderGapWarning": "Row {row} must start at {expected} minutes to continue from row {prev} — it starts at {actual}. Saving is blocked until the rows join up.",
-      "otLadderOpenEndedWarning": "Row {row} has no upper limit, so no row can follow it. Give it a “To” value or move it to the end."
+      "otLadderOpenEndedWarning": "Row {row} has no upper limit, so no row can follow it. Give it a “To” value or move it to the end.",
+      "scheduleBackToRules": "Back to calculation rules"
     },
     "benefitScheme": {
       "groupsTitle": "Grade Groups",

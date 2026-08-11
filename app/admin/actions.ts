@@ -134,7 +134,10 @@ const HOLIDAYS = '/admin/holidays';
 const HOLIDAY_GROUPS = '/admin/holidays/groups';
 // R33 f21d6eee — the per-company attendance policy + OT-rates form moved to its own /admin/attendance-policy
 // screen (the /admin/attendance route is now the shared shift library). setAttendancePolicyAction redirects here.
-const ATTENDANCE_POLICY = '/admin/attendance-policy';
+// af7a8eb4 — and moved again, one level down: /admin/attendance-policy is now the calculation-rule LIST and
+// no longer renders these forms at all, so redirecting there would drop the operator on a screen that does
+// not show what they just saved. Only setAttendancePolicyAction reads this constant.
+const ATTENDANCE_POLICY = '/admin/attendance-policy/schedule';
 // 296fc027 split this route in two. /admin/toil keeps the balance LEDGER and the two settlement sweeps
 // (deliberately not entitlement-gated — see core/toil.ts); CONFIGURATION moved to the Leave Config tab
 // below, which is where setToilPolicyAction now redirects. Both routes stay registered in lib/permissions.
