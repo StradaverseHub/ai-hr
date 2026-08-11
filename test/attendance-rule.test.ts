@@ -97,10 +97,10 @@ describe('applyOtRuleRows (pure)', () => {
     expect(applyOtRuleRows(70, 0, ruleWith())).toBe(70);
   });
 
-  it('rounds OT to the matching band round-to value (nearest)', () => {
+  it('rounds OT DOWN to the matching band round-to value (7c834696 rev 3 — never above what was worked)', () => {
     const rule = ruleWith({ otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, phRate: null, rounding: true, roundToMinutes: 30 }] });
-    expect(applyOtRuleRows(70, 0, rule)).toBe(60); // 70 → nearest 30 = 60
-    expect(applyOtRuleRows(80, 0, rule)).toBe(90); // 80 → nearest 30 = 90
+    expect(applyOtRuleRows(70, 0, rule)).toBe(60); // 70 → floor to 30s = 60 (nearest gave 60 too)
+    expect(applyOtRuleRows(80, 0, rule)).toBe(60); // 80 → floor to 30s = 60; nearest USED TO give 90
   });
 
   it('folds early-OT in only when applyToEarlyOt is set', () => {
@@ -207,7 +207,7 @@ describe('OT rows drive workday OT rounding through checkOut', () => {
       applyToEarlyOt: false,
       otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, rounding: true, roundToMinutes: 30 }],
     });
-    // With the rounding rule: 550 worked − 480 normal = 70 OT → nearest 30 = 60.
+    // With the rounding rule: 550 worked − 480 normal = 70 OT → floored to a multiple of 30 = 60.
     const withRule = await createShift(a, workdayShift({ ruleId: rounded.id }));
     const emp = await makeEmp();
     await assignDefaultShift(a, { employmentId: emp, shiftId: withRule.id });

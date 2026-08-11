@@ -125,7 +125,7 @@ describe('6da67ab7 — the rule reaches the employee through the SHIFT, not thro
       const emp = await makeEmp(companyId);
       await assignDefaultShift(a, { employmentId: emp, shiftId: shift.id });
       await checkIn(a, { employmentId: emp, date: WED, time: '09:00:00' });
-      // 70 minutes past the 18:00 shift end → the band rounds to the nearest 30.
+      // 70 minutes past the 18:00 shift end → the band floors it to a multiple of 30.
       const out = await checkOut(a, { employmentId: emp, date: WED, time: '19:10:00' });
       expect(out.otMinutes).toBe(60);
     }
@@ -189,7 +189,7 @@ describe('6da67ab7 — one Standard, one library, no company axis', () => {
     const emp = await makeEmp(second);
     await checkIn(a, { employmentId: emp, date: WED, time: '09:00:00' });
     // Legacy duration math is untouched: 610 span − 60 break = 550 worked, 550 − 480 scheduled = 70 OT.
-    // The tenant Standard's band then rounds that 70 to the nearest 30.
+    // The tenant Standard's band then floors that 70 to a multiple of 30.
     const out = await checkOut(a, { employmentId: emp, date: WED, time: '19:10:00' });
     expect(out).toMatchObject({ workedMinutes: 550, otMinutes: 60 });
   });

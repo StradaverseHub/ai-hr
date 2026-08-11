@@ -6654,7 +6654,7 @@
       "unitHour": "j",
       "unitMin": "min",
       "applyEarlyOtLabel": "Guna untuk Lebih Masa Awal",
-      "applyEarlyOtHint": "Guna dasar lebih masa ini untuk lebih masa yang diluluskan sebelum waktu mula dijadualkan.",
+      "applyEarlyOtHint": "Mengira setiap minit rekod masuk sebelum waktu mula dijadualkan sebagai lebih masa. Tiada langkah kelulusan — apabila dihidupkan, kedatangan awal terus memperoleh lebih masa.",
       "otEmptyHint": "Belum ada jalur lebih masa. Guna + Tambah Baris untuk menentukan cara lebih masa dikira.",
       "statutoryCapNote": "Pengganda lebih masa berkanun (1.5×, 2×, 3×) kekal sebagai minimum undang-undang dan ditetapkan dalam kadar lebih masa syarikat. Peraturan ini membentuk dan membundarkan lebih masa di atasnya.",
       "save": "Simpan",

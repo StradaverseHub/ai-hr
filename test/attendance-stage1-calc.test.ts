@@ -274,18 +274,57 @@ describe('splitOtMinutes — progressive bands', () => {
     expect(otSplitTotal(s)).toBe(90);
   });
 
-  it('a public holiday uses the band PH rate when one is set, and the ordinary rate when it is not', () => {
+  it("a public holiday uses the band's own PH rate when one is set", () => {
     const withPh = rule({ otRows: [band({ fromMinutes: 0, toMinutes: 0, ratePattern: 'variable', rate: 1.5, phRate: 3 })] });
     expect(splitOtMinutes(120, 'holiday', withPh)).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 120 });
     expect(splitOtMinutes(120, 'workday', withPh)).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 120, ot20: 0, ot30: 0 });
-
-    const noPh = rule({ otRows: [band({ fromMinutes: 0, toMinutes: 0, ratePattern: 'variable', rate: 1.5 })] });
-    expect(splitOtMinutes(120, 'holiday', noPh)).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 120, ot20: 0, ot30: 0 });
+    // An OWNER-CONFIGURED PH rate is never overridden, even when it is not the statutory 3×: Standard's
+    // first band really is set to 2.00 on production, and that is the owner's number, not a mistake.
+    const ph2 = rule({ otRows: [band({ fromMinutes: 0, toMinutes: 0, ratePattern: 'variable', rate: 1.5, phRate: 2 })] });
+    expect(splitOtMinutes(120, 'holiday', ph2)).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 120, ot30: 0 });
   });
 
-  it('a rest day uses the working-day rate and starts from the first worked minute (request §9)', () => {
+  /**
+   * 7c834696 rev 3 — THE DAY-TYPE BUCKET REGRESSION, fixed. A band has an ordinary rate and an optional PH
+   * rate; it has no rest-day column at all. So before this fix, adding an OT table silently MOVED which
+   * column a non-workday was reported in: a rest day and an unconfigured public holiday both fell back to
+   * the band's workday multiplier (1.5 on production rule A02) and were reported in OT 1.5, while the very
+   * same day on a rule with no bands lands in OT 2.0 / OT 3.0 (the no-bands leg above).
+   *
+   * Reporting only — pay reads ot_minutes and the statutory multipliers, never a band's rate — but the
+   * first rest day worked under A02 would have been reported at the wrong rate. Production has 8 rest-day
+   * rows (all 2026-06-28, all predating any banded rule) and no public-holiday rows, so nothing is
+   * re-categorised until those days are recomputed, which this round does not do.
+   */
+  it('a NON-workday falls back to the statutory multiplier, not to the band workday rate', () => {
+    const a02 = rule({
+      otRows: [
+        band({ fromMinutes: 1, toMinutes: 59, ratePattern: 'variable', rate: 1.5, phRate: null }),
+        band({ fromMinutes: 60, toMinutes: 119, ratePattern: 'variable', rate: 1.5, phRate: null }),
+      ],
+    });
+    // Rest day → 2.0. Was OT 1.5 before this fix.
+    expect(splitOtMinutes(300, 'rest_day', a02)).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 300, ot30: 0 });
+    // Public holiday with no PH rate on the band → 3.0. Was OT 1.5 before this fix.
+    expect(splitOtMinutes(300, 'holiday', a02)).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 300 });
+    // A workday is untouched — this fix cannot move an ordinary day.
+    expect(splitOtMinutes(59, 'workday', a02)).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 59, ot20: 0, ot30: 0 });
+    // A configured PH rate still wins over the statutory fallback.
     const withPh = rule({ otRows: [band({ fromMinutes: 0, toMinutes: 0, ratePattern: 'variable', rate: 1.5, phRate: 3 })] });
-    expect(splitOtMinutes(300, 'rest_day', withPh)).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 300, ot20: 0, ot30: 0 });
+    expect(splitOtMinutes(300, 'rest_day', withPh)).toEqual({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 300, ot30: 0 });
+    // A BANDED non-workday now agrees with the same day on a rule with no bands at all — which is the
+    // property that was broken, stated as an equality rather than as two hand-written numbers.
+    for (const dayType of ['rest_day', 'holiday'] as DayType[]) {
+      expect(splitOtMinutes(300, dayType, a02), dayType).toEqual(splitOtMinutes(300, dayType, rule()));
+    }
+  });
+
+  it('a FLAT band still reports in the Flat bucket on a rest day or a holiday', () => {
+    // bucketForRate ignores the multiplier for a flat band, so the statutory fallback cannot drag a flat
+    // band out of the Flat column — attendance records the hours and payroll decides what they are worth.
+    const flat = rule({ otRows: [band({ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5 })] });
+    expect(splitOtMinutes(300, 'rest_day', flat)).toEqual({ flat: 300, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 0 });
+    expect(splitOtMinutes(300, 'holiday', flat)).toEqual({ flat: 300, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 0 });
   });
 
   it('bucketForRate / rateForDay pin the mapping the split depends on', () => {
@@ -299,63 +338,139 @@ describe('splitOtMinutes — progressive bands', () => {
     expect(bucketForRate('variable', 2.75)).toBe('flat');
     expect(rateForDay(band({ rate: 1.5, phRate: 3 }), 'holiday')).toBe(3);
     expect(rateForDay(band({ rate: 1.5, phRate: 3 }), 'workday')).toBe(1.5);
-    expect(rateForDay(band({ rate: 1.5, phRate: null }), 'holiday')).toBe(1.5);
+    // 7c834696 rev 3: the statutory fallbacks. `phRate: null` on a holiday WAS 1.5.
+    expect(rateForDay(band({ rate: 1.5, phRate: null }), 'holiday')).toBe(3);
+    expect(rateForDay(band({ rate: 1.5, phRate: null }), 'rest_day')).toBe(2);
+    expect(rateForDay(band({ rate: 1.5, phRate: 3 }), 'rest_day')).toBe(2);
   });
 });
 
 // ─────────────────────────── ROUNDING ───────────────────────────
 
-describe('OT rounding — unchanged, and the request example it does NOT satisfy', () => {
+describe('OT rounding is DOWNWARD — 7c834696 rev 3, and it moves two real days', () => {
   const round = (roundToMinutes: number) =>
     rule({ otRows: [band({ fromMinutes: 0, toMinutes: 0, rounding: true, roundToMinutes })] });
 
-  it("the request's second example holds today: round-to 30 turns 121 into 120 and leaves 150 at 150", () => {
+  it("the request's second example still holds: round-to 30 turns 121 into 120 and leaves 150 at 150", () => {
+    // Unchanged by the switch from nearest to floor — floor(121/30)=4 and floor(150/30)=5 give the same
+    // answers nearest did, which is why this example never distinguished the two rules.
     expect(applyOtRuleRows(121, 0, round(30))).toBe(120);
     expect(applyOtRuleRows(150, 0, round(30))).toBe(150);
   });
 
-  it('CONFLICT, pinned deliberately: round-to 60 sends a short overtime to ZERO, not to 60', () => {
-    // The request's FIRST rounding example says "0:01–0:59 with Round To 60 → 60 minutes", which needs
-    // rounding up. Its SECOND example (121 → 120) needs rounding to nearest. No single rule satisfies both.
-    // Rounding decides ot_minutes, which payroll pays from, so it is NOT changed on a guess — this test
-    // records what the product does today so the change, when the owner picks a rule, cannot be silent.
+  it("WHAT FLOOR COSTS: an overtime shorter than the Round-To multiple is now ZERO, not a full block", () => {
+    // The request's FIRST rounding example ("0:01–0:59 with Round To 60 → 60 minutes") wants rounding UP,
+    // and the approved rule went the other way: rounding must never return more time than was worked.
+    // 20 minutes was already 0 under nearest. 40 minutes WAS 60 and is now 0 — that is the one generic
+    // expectation this change reverses, recorded here rather than deleted.
     expect(applyOtRuleRows(20, 0, round(60))).toBe(0);
-    expect(applyOtRuleRows(40, 0, round(60))).toBe(60);
+    expect(applyOtRuleRows(40, 0, round(60))).toBe(0); // was 60 under round-to-nearest
+    // Exactly one multiple, and one multiple plus a remainder, both keep the whole multiple.
+    expect(applyOtRuleRows(60, 0, round(60))).toBe(60);
+    expect(applyOtRuleRows(119, 0, round(60))).toBe(60);
   });
 
   /**
-   * THE ONE ROUNDING BAND THAT EXISTS ON PRODUCTION, counted 2026-08-05: rule "A01", from 61 minutes to
-   * 119 minutes, round to 60. Written out with its real geometry — not a stand-in — because the generic
-   * case above cannot tell the owner what THEIR data does, and this band is the entire live exposure to
-   * the request's self-contradictory rounding examples.
+   * THE ROUNDING TABLE THAT EXISTS ON PRODUCTION, re-read 2026-08-11: rule "A02"
+   * (id 803be8ff-55dd-4615-8602-fc9f65ef5c05 — created 2026-07-16 as A01 and RENAMED on 2026-08-05, so it
+   * is the same row the older comment here called A01). BOTH rows are written out with their real
+   * geometry, because the first row's rounding being OFF is half of why the defect was invisible:
    *
-   * The band decides ZERO attendance days today (A01 is not the tenant default and no shift selects it),
-   * so this release moves nothing. It becomes live money the moment someone assigns A01 to a shift, and
-   * the difference is an hour of overtime per occurrence:
+   *      from 1  to 59   variable 1.50   rounding OFF
+   *      from 60 to 119  variable 1.50   rounding ON, round to 60
    *
-   *      minutes worked over |  nearest (ships today)  |  round-up (the request's other example)
-   *              61 … 89     |          60             |            120
-   *              90 … 119    |         120             |            120
+   * It is NOT the tenant default (Standard is), but 8 live shifts select it (AM01, AM02, AM03, AM1, AM2,
+   * SemiFlex01, Test, Test-2) as of 2026-08-05 13:42, so it decides real days — the older note here that
+   * said "ZERO attendance days" was already false by the time it was read.
    *
-   * If the owner picks round-up, THIS test is what fails, and its failure names the exact minutes that
-   * change. Do not "fix" it by editing the numbers — change applyOtRuleRows and re-derive the table.
+   * WHAT THIS CHANGE MOVES, in raw minutes worked past the shift end:
+   *
+   *      raw minutes over |  nearest (before)  |  floor (now)
+   *              1 … 59   |     unchanged      |   unchanged   (row 1 has rounding off)
+   *                  60   |         60         |       60
+   *             61 … 89   |         60         |       60
+   *             90 … 119  |        120         |       60      ← the ONLY band that moves
+   *            120 …      |     unchanged      |   unchanged   (past the table; no row matches)
+   *
+   * ON PRODUCTION that band is exactly two attendance days, both 2026-08-05, both on shift AM03
+   * (09:00–18:00, break 60), and both currently STORED at 120:
+   *
+   *      Eee Lee Yong (100814)             09:00 → 19:30   raw  90   stored 120   becomes 60
+   *      NURUL ALIAH BINTI ACHIN (100815)  09:00 → 19:40   raw 100   stored 120   becomes 60
+   *
+   * Every other overtime day on production already matches its raw minutes exactly (verified 2026-08-11
+   * across all 63 days with a clock-out since 2026-08-04, and across all 14 Standard-governed OT days,
+   * whose figures are 60/120/240/480 — all exact multiples of 60, so floor leaves every one of them alone).
+   *
+   * If anyone reverses this to round-up or back to nearest, THIS test is what fails, and its failure names
+   * the exact minutes. Do not "fix" it by editing the numbers — change applyOtRuleRows and re-derive.
    */
-  it("production rule A01's real band (61→119, round-to 60): 61–89 round DOWN to 60 today", () => {
-    const a01 = rule({
-      otRows: [band({ fromMinutes: 61, toMinutes: 119, rounding: true, roundToMinutes: 60 })],
+  it("production rule A02's real two-row table: 60–119 all floor to 60, and 90/100 stop inflating", () => {
+    const a02 = rule({
+      otRows: [
+        band({ fromMinutes: 1, toMinutes: 59, ratePattern: 'variable', rate: 1.5, rounding: false, roundToMinutes: null }),
+        band({ fromMinutes: 60, toMinutes: 119, ratePattern: 'variable', rate: 1.5, rounding: true, roundToMinutes: 60 }),
+      ],
     });
-    expect(applyOtRuleRows(61, 0, a01)).toBe(60);
-    expect(applyOtRuleRows(75, 0, a01)).toBe(60);
-    expect(applyOtRuleRows(89, 0, a01)).toBe(60);
-    // The halfway point tips upward — Math.round(1.5) is 2 — so the band is not uniformly downward.
-    expect(applyOtRuleRows(90, 0, a01)).toBe(120);
-    expect(applyOtRuleRows(119, 0, a01)).toBe(120);
-    // Outside the band nothing rounds at all: the table has no row covering these, and overtime past the
-    // last configured range is still counted in full (see splitOtMinutes' note on non-truncation).
-    expect(applyOtRuleRows(30, 0, a01)).toBe(30);
-    expect(applyOtRuleRows(60, 0, a01)).toBe(60);
-    expect(applyOtRuleRows(120, 0, a01)).toBe(120);
-    expect(applyOtRuleRows(130, 0, a01)).toBe(130);
+    // Row 1 — rounding OFF, so the exact minutes survive. These are Daniel Tan 18:29, 18:56 and Mei Ling
+    // 18:59 on 2026-08-05, which were always right.
+    expect(applyOtRuleRows(1, 0, a02)).toBe(1);
+    expect(applyOtRuleRows(29, 0, a02)).toBe(29);
+    expect(applyOtRuleRows(56, 0, a02)).toBe(56);
+    expect(applyOtRuleRows(59, 0, a02)).toBe(59);
+    // Row 2 — every minute inside the band now pays the band's own hour, and never more.
+    expect(applyOtRuleRows(60, 0, a02)).toBe(60); // Ismail 19:00 — unchanged
+    expect(applyOtRuleRows(61, 0, a02)).toBe(60);
+    expect(applyOtRuleRows(89, 0, a02)).toBe(60); // unchanged: nearest already gave 60
+    expect(applyOtRuleRows(90, 0, a02)).toBe(60); // Eee Lee Yong 19:30 — WAS 120, the +30 that moves
+    expect(applyOtRuleRows(100, 0, a02)).toBe(60); // NURUL ALIAH 19:40 — WAS 120, the +20 that moves
+    expect(applyOtRuleRows(119, 0, a02)).toBe(60); // WAS 120 — the band's ceiling can no longer be passed
+    // The cliff is gone: no day inside the band pays more than a day at the top of it.
+    expect(applyOtRuleRows(89, 0, a02)).toBeLessThanOrEqual(applyOtRuleRows(90, 0, a02));
+    // Past the table nothing rounds at all — no row covers these, and overtime beyond the final range is
+    // still counted in full (see splitOtMinutes' note on non-truncation). Farah / Elon Musk 20:00.
+    expect(applyOtRuleRows(120, 0, a02)).toBe(120);
+    expect(applyOtRuleRows(180, 0, a02)).toBe(180);
+    expect(applyOtRuleRows(240, 0, a02)).toBe(240);
+    // And zero overtime stays zero.
+    expect(applyOtRuleRows(0, 0, a02)).toBe(0);
+  });
+
+  /**
+   * THE OTHER RULE WITH A ROUNDING BAND — "Standard", the tenant default, which governs shift MB28 and any
+   * day with no shift. Its second row is 60→480 round-to 60 (ph_rate 3.00), so floor changes it too: 150
+   * was 180 and is now 120. Re-measured on production 2026-08-11, every Standard-governed day that carries
+   * overtime holds 60, 120, 240 or 480 minutes — exact multiples of 60 — so the expected production diff
+   * from this rule is ZERO rows. The general behaviour is pinned anyway, because "no rows today" is not a
+   * property of the code.
+   */
+  it("the tenant-default Standard rule's 60→480 band floors too — 150 becomes 120, not 180", () => {
+    const standard = rule({
+      isDefault: true,
+      otRows: [
+        band({ fromMinutes: 1, toMinutes: 59, ratePattern: 'variable', rate: 1.5, phRate: 2, rounding: false }),
+        band({ fromMinutes: 60, toMinutes: 480, ratePattern: 'variable', rate: 1.5, phRate: 3, rounding: true, roundToMinutes: 60 }),
+      ],
+    });
+    expect(applyOtRuleRows(150, 0, standard)).toBe(120); // was 180 under nearest
+    expect(applyOtRuleRows(90, 0, standard)).toBe(60); // was 120 under nearest
+    // Every figure actually stored on production against this rule — all unchanged.
+    expect(applyOtRuleRows(60, 0, standard)).toBe(60);
+    expect(applyOtRuleRows(120, 0, standard)).toBe(120);
+    expect(applyOtRuleRows(240, 0, standard)).toBe(240);
+    expect(applyOtRuleRows(480, 0, standard)).toBe(480);
+  });
+
+  it('rounding never returns more minutes than were worked, for any band geometry', () => {
+    // The property the whole fix exists for, asserted directly rather than only through examples.
+    for (const roundTo of [5, 10, 15, 30, 45, 60, 90, 120]) {
+      const r = rule({ otRows: [band({ fromMinutes: 0, toMinutes: 0, rounding: true, roundToMinutes: roundTo })] });
+      for (let ot = 0; ot <= 600; ot += 1) {
+        const out = applyOtRuleRows(ot, 0, r);
+        expect(out, `roundTo=${roundTo} ot=${ot}`).toBeLessThanOrEqual(ot);
+        expect(out % roundTo, `roundTo=${roundTo} ot=${ot}`).toBe(0);
+      }
+    }
   });
 });
 

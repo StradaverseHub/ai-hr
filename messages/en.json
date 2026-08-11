@@ -6654,7 +6654,7 @@
       "unitHour": "h",
       "unitMin": "min",
       "applyEarlyOtLabel": "Apply to Early Overtime",
-      "applyEarlyOtHint": "Apply this overtime policy to approved overtime worked before the scheduled start time.",
+      "applyEarlyOtHint": "Counts every minute clocked before the scheduled start time as overtime. There is no approval step — with this on, an early arrival earns overtime automatically.",
       "otEmptyHint": "No overtime bands yet. Use + Add Row to define how overtime is calculated.",
       "statutoryCapNote": "Statutory overtime multipliers (1.5×, 2×, 3×) remain the legal minimum and are set in the company overtime rates. These rules shape and round overtime on top of that.",
       "save": "Save",
