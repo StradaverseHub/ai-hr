@@ -21,6 +21,13 @@ import type { ReportResult } from '@/localization/country-pack';
  * `eaYear` IS OPTIONAL AND MEANS SOMETHING. When set, an employee name in the table links to that
  * person's EA statement for the year — which is the ONLY route to a per-employee EA, since an EA is one
  * statement per person and never a company-wide table. Omit it and names render as plain text.
+ *
+ * `eaLang` IS OPTIONAL TOO, AND CHANGES WHERE THAT NAME GOES (587ee719). Unset — every arrival before
+ * this round, and every arrival from Reports — the name opens the on-screen EA statement, in the viewer's
+ * own language, exactly as before. Set, the caller came from a shelf entry that names a LANGUAGE ("EA —
+ * Bahasa Malaysia"), and the thing that entry promises is the statement in that language: so the name
+ * hands over the PDF with `lang` on it, which is the only artefact that can honour the promise. Still a
+ * plain href and still no second EA renderer — the route resolves `payroll.ea` for the named locale.
  */
 export type StatutoryReportPanelStrings = {
   /** Card heading, e.g. "EPF contributions (KWSP) — 2026-07". */
@@ -38,12 +45,15 @@ export function StatutoryReportPanel({
   result,
   strings,
   eaYear,
+  eaLang,
   actions,
 }: {
   result: ReportResult;
   strings: StatutoryReportPanelStrings;
   /** Year (YYYY) to link employee names to their EA statement, or null for plain names. */
   eaYear?: string | null;
+  /** 587ee719 — 'en' / 'ms' to hand over the EA PDF pinned to that language; null for the usual screen. */
+  eaLang?: 'en' | 'ms' | null;
   /** Download / print / record controls — owned by the screen, which knows what it can produce. */
   actions?: React.ReactNode;
 }) {
@@ -125,7 +135,11 @@ export function StatutoryReportPanel({
                         rm(row[c.key])
                       ) : c.key === 'name' && row.employmentId && eaYear ? (
                         <Link
-                          href={`/payroll/reports/ea/${row.employmentId}?year=${eaYear}`}
+                          href={
+                            eaLang
+                              ? `/me/ea/${row.employmentId}/pdf?year=${eaYear}&lang=${eaLang}`
+                              : `/payroll/reports/ea/${row.employmentId}?year=${eaYear}`
+                          }
                           className="text-primary hover:underline"
                         >
                           {row.name as string}

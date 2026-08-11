@@ -37,6 +37,7 @@ import { packFor } from '../localization/registry';
 // Rung 5a (ADR-0080 D1): report/EA types come from the pack CONTRACT, never from localization/my.
 import type {
   EaStatement,
+  PlannedFormDef,
   ReportDef,
   ReportResult,
   StatutoryFormLink,
@@ -77,6 +78,13 @@ export async function listReports(ctx: SessionContext, companyId: string) {
     // 6babf4f6 added `submission.body`, the shelf key — it rides through here untouched, so a newly
     // registered form lands in its authority's section with no change to this seam or to the screen.
     submission: r.submission ?? null,
+    // 587ee719 — the card's own metadata, same passthrough treatment as `submission` above: the pack
+    // decides what a form can honestly give you, this seam carries it, and the screen renders it. Null
+    // rather than undefined so a pack that declares none reads the same as one that has not been updated.
+    descriptionKey: r.descriptionKey ?? null,
+    outputs: r.outputs ?? null,
+    fidelity: r.fidelity ?? null,
+    shelfOrder: r.shelfOrder ?? null,
   }));
 }
 
@@ -91,6 +99,22 @@ export async function listStatutoryLinks(
 ): Promise<StatutoryFormLink[]> {
   const country = await companyCountry(ctx, companyId);
   return packFor(country)?.statutoryLinks ?? [];
+}
+
+/**
+ * 587ee719 — the pack's statutory forms that have NOT been built, for the shelf to name with a status.
+ *
+ * Beside `listStatutoryLinks` rather than folded into it, because the two answer different questions and
+ * the descriptors have different SHAPES: a `PlannedFormDef` has no href and no action key, so no caller
+ * can render an action for one however carelessly it is written. Empty for a jurisdiction no pack owns,
+ * exactly like the two seams above.
+ */
+export async function listPlannedForms(
+  ctx: SessionContext,
+  companyId: string,
+): Promise<PlannedFormDef[]> {
+  const country = await companyCountry(ctx, companyId);
+  return packFor(country)?.plannedForms ?? [];
 }
 
 /**

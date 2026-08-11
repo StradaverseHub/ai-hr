@@ -7,7 +7,34 @@
 > remits the **wrong** contribution — is worse than the readable Layer-A report keyed in by hand.
 > Every format here ships **"DRAFT — not for submission"** until an accountant verifies the
 > generated file against the live portal (or against a real sample file). Build per a concrete
-> target, never speculatively. CP39 is built as a DRAFT generator (§1); the rest are not built.
+> target, never speculatively. CP39 (§1) and PERKESO ASSIST (§3) are built as DRAFT generators;
+> the rest are not built.
+
+---
+
+## 0. The fidelity ladder — what the Statutory Forms screen is allowed to claim
+
+*(587ee719, 2026-08-11. This section is the vocabulary the rest of the doc uses.)*
+
+Every entry in the MY catalog (`localization/my/reports.ts`) declares one of three fidelities, and
+the Statutory Forms screen renders it as a chip on the form's card and again as a banner on its
+generate screen. A fourth status, **not built yet**, is not a fidelity at all: it belongs to
+`PlannedFormDef`, a descriptor with **no href and no action key**, so an unbuilt form is
+structurally incapable of rendering a button.
+
+| Fidelity | Means | Today |
+|---|---|---|
+| `official` | Drawn on the **agency's own published artwork**, filled from payroll. | **`my.cp22` and nothing else** — see §5. |
+| `figures` | Every number the form needs, complete, in **our** layout, not the agency's page. | `my.epf`, `my.socso-eis`, `my.cp39`, `my.cp8d`, and both EA entries. |
+| `draft-file` | A prescribed **agency upload file**, built to a published layout, **never yet accepted by that portal**. | The CP39 text file (§1) and the ASSIST file (§3). |
+| *(not built)* | Named on the shelf so the list is complete. No action of any kind. | Thirteen forms — Borang A, Borang BBCB, Borang 8A, Borang 8B, SIP, Employee Registration, TP1, TP3, both PCB 2(II), CP21, CP22A, CP39A. |
+
+**The rule this encodes:** an entry may only claim what has actually been verified. `official`
+requires the agency's artwork on disk and a field map against it; `draft-file` explicitly does
+*not* claim portal acceptance; and no unbuilt form's **name** may ever appear as the label of
+something that generates — a "Borang A" button emitting the EPF contributions spreadsheet is the
+single failure the whole design exists to prevent. All four claims are pinned in
+`test/statutory-forms-page.test.ts` → "the four pins".
 
 ---
 
@@ -122,7 +149,14 @@ the obligation meanwhile. A DRAFT generator can now be built sourced, not guesse
 
 ## 3. SOCSO + EIS — PERKESO ASSIST combined contribution file
 
-**Status:** 🟢 **Record layout SOURCED & testable; 🟡 combined-amount semantic open (needs a sample).**
+**Status:** 🟢 **DRAFT generator BUILT** (`localization/my/socso-eis-file.ts`, download on the
+SOCSO + EIS report, gated on readiness) — record layout sourced from the official spec below;
+**🟡 the combined-amount semantic is still open and still needs a real sample.**
+
+> Corrected 2026-08-11 (587ee719). This section previously read "Record layout SOURCED & testable"
+> and predated the generator shipping. The generator exists, carries the `draft-file` fidelity of
+> §0, and is refused outright while any employee is missing a SOCSO number — but the open semantic
+> below has **not** been resolved, so nothing here has been verified against a live ASSIST upload.
 
 - **Source (primary):** PERKESO official **text-file structure spec** (xlsx),
   <https://www.perkeso.gov.my/images/text_file_format.xlsx> ("Text File Structure (NEW)"),
@@ -156,6 +190,15 @@ the obligation meanwhile. A DRAFT generator can now be built sourced, not guesse
 - Also needs a sample to fix: the **Employment Date** value when there's no join/resign event in
   the month, and the exact **numeric padding** (zero- vs space-fill) of the amount.
 
+## 3b. What §3 does NOT cover: Borang 8A / Borang 8B
+
+The ASSIST **text file** above is not PERKESO's **Borang 8A** (the printed monthly contribution
+form), and the `my.socso-eis` report is not Borang 8A either — it is a contributions listing in our
+own layout. Both Borang 8A and Borang 8B are carried on the shelf as **not built**, under their own
+names, with no action. Renaming the listing would be the cheapest possible way to appear to satisfy
+a request for Borang 8A and the most expensive to be wrong about. The same holds for **Borang A**
+in §2 against `my.epf`.
+
 ## 4. Bank salary-credit (giro) file
 
 **Status:** ⬜ Not built — **bank-specific**, needs a named target bank (Maybank M2E / CIMB
@@ -165,11 +208,48 @@ data this file consumes.
 
 ---
 
+## 5. CP22 — the one OFFICIAL form we render (LHDN, `Pin. 1/2020`)
+
+**Status:** 🟢 **BUILT on the agency's own artwork** — the only `official` entry in the catalog.
+Not a Layer-B *file*: it is the government's published PDF page with our data drawn onto it.
+
+- **Artwork:** `public/forms/cp22-pin-1-2020.pdf` — LHDN's own published CP22 (Pin. 1/2020).
+- **Field map:** `lib/cp22-fields.ts` — **33 mapped entry areas**, of which **26 pre-fill** from the
+  joiner's record and **7 render empty by design** (boxes 1, 11, 18, 25, 28, 29, 30): we hold
+  nothing that belongs in them, and a guessed value on a government form is worse than a gap an
+  operator fills in by hand.
+- **Renderer:** `lib/cp22-pdf.ts` (pdf-lib, Node runtime). Routes:
+  `app/payroll/cp22/[employmentId]/pdf` (one joiner), `app/payroll/cp22/batch` (a hire month),
+  `app/payroll/cp22/blank` (the empty fillable page).
+- **What it is NOT.** Filing still happens through **e-CP22 on MyTax** — since 1 Sep 2024 posted
+  and hand-delivered forms are not accepted. What downloads here is the completed page to key from
+  and to keep as the employer's own record. The screen says exactly that beside the button.
+- **The r175a scar, and why any change here needs a rendered check.** The renderer once silently
+  **dropped every line past the third** in a multi-row block — a four-line Malaysian address filed
+  to LHDN without its state — while 81 tests, `tsc`, `next build` and an HTTP 200 were all green. A
+  layout change to any artefact on this shelf must be verified by counting the rows the **artefact**
+  prints, not the rows that happen to fit on screen.
+
+**Everything else is not on agency artwork.** The EA statement is a from-scratch A4
+(`lib/ea-pdf.ts`) whose own header says it is not a substitute for LHDN's printed EA; the rest are
+data tables through `lib/report-export.ts`. Since 587ee719 the EA renderer takes its labels for an
+explicitly requested locale (`?lang=en|ms`), so English and Bahasa Malaysia are two entries on the
+shelf and still **one** renderer.
+
+---
+
 ## Conclusion (research, Jun 2026)
 
 Empirically, **none of the four Layer-B formats is fully buildable-correct from public sources**:
-CP39's byte layout is gated; KWSP's CSV guide is 403; PERKESO's record layout is sourced but its
-combined-amount semantic needs a sample; bank is vendor-specific. This **confirms ADR-0010 §6D** —
-build per a concrete target with a **real sample file** (or the gated spec), not speculatively. The
-fastest unblock for any one of these is a single real sample from the customer's accountant or
-current payroll vendor; the generator is then built to match and **verified against the sample**.
+CP39's byte layout turned out to be published after all (§1, unblocked Jun 2026); KWSP's CSV guide
+is 403; PERKESO's record layout is sourced but its combined-amount semantic needs a sample; bank is
+vendor-specific. This **confirms ADR-0010 §6D** — build per a concrete target with a **real sample
+file** (or the gated spec), not speculatively. The fastest unblock for any one of these is a single
+real sample from the customer's accountant or current payroll vendor; the generator is then built
+to match and **verified against the sample**.
+
+**Where each stands after 587ee719 (2026-08-11):** CP39 and PERKESO ASSIST are built and carry
+`draft-file` — sourced layouts, unverified against a live upload. EPF Borang A (§2) remains the
+**most tractable** of the unbuilt formats and the one concrete thing needed for it is the
+contribution CSV column spec from the customer's own KWSP employer login. The bank file still needs
+a named target bank.

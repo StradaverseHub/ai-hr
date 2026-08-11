@@ -63,6 +63,9 @@ import type {
   EaField,
   EaOverrideEntry,
   EaStatement,
+  FormFidelity,
+  FormOutput,
+  PlannedFormDef,
   ReportDef,
   ReportResult,
   StatutoryBodyKey,
@@ -79,7 +82,10 @@ export type {
   EaOverrideEntry,
   EaStatement,
   EpfMode,
+  FormFidelity,
+  FormOutput,
   HrdfStatus,
+  PlannedFormDef,
   ReportDef,
   ReportResult,
   PcbExemptionTable,
@@ -433,6 +439,13 @@ export interface CountryPack {
    * appears in its authority's section without the page being edited.
    */
   statutoryLinks: StatutoryFormLink[];
+
+  /**
+   * 587ee719 (D4) — statutory forms this jurisdiction has that we have NOT built. Descriptor-only: the
+   * type carries no href and no action key, so the screen can name them without any risk of one growing
+   * a button that produces a different form's figures. A pack with nothing outstanding declares `[]`.
+   */
+  plannedForms: PlannedFormDef[];
 
   /** EA-statement generator (annual employee statement; MY: Borang EA), for ONE employer.
    *  `companyId` defaults to the employment's current company; b7b22514 (Entity Transfer) means a year
