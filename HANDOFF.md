@@ -20,7 +20,7 @@ any of them):**
 
 ## CURRENT STATE — snapshot 2026-08-10 (r177 + r179 + r180 ALL SHIPPED · r178 was plans-only)
 
-**`main@34cc8137` IS WHAT RUNS ON PRODUCTION, and there is NO pending deploy** — verified by a
+**`main@1d5ceab0` IS WHAT RUNS ON PRODUCTION, and there is NO pending deploy** — verified by a
 zero-change `rsync -azi --delete --dry-run` after the last deploy (not by `deploy.sh` succeeding, which is
 not proof). **Production is on 345 migrations. Next free migration is `0426`** (`0423` was allocated and
 deliberately unused; gaps are fine).
@@ -54,84 +54,82 @@ substitute for seeing it.** A mockup showed the new layout; nothing showed them 
 `f35f758a` additionally now wants preview in a NEW TAB, Earnings beside Deductions, a new Non-Payable
 Amount section, and the bank account UNMASKED.
 
-### `42afb2d2` IS NOW ANSWERABLE — and the reason it sat for a day is worth keeping
+### ⚠️ THE ROSTER WRITE PERMISSION IS NOT SYMMETRIC — DELETE IS NOT GUARDED BY THE DATABASE
 
-**An item raised with `improve:raise` lands as `open` with `plan_revision = 0`, and an item with NO PLAN
-has no approve or reject button.** `42afb2d2` carried its recommendation and its alternative inside its
-DESCRIPTION fields, where the reporter could do nothing with them. An earlier note here said it "needs an
-ANSWER, not a plan" — that is backwards, and it is why it sat. **Giving a raised question a PLAN is how the
-reporter answers it**: approve = leave it as it stands, reject-with-reason = do the other thing. r178
-pushed that plan; it is now `planned`. Apply the same reading to `2ec1e3d2`.
+`roster_assignment_rls` is a `FOR ALL` policy, so `WITH CHECK` (`can_admin_employment`) governs INSERT and
+the new row of UPDATE, while **DELETE is governed by `USING` alone (`can_see_employment`)** — which a
+supervisor, and the employee themselves, both pass. Only the application guard `assertRosterAdmin` stops
+`clearRoster`. The INSERT/UPDATE half WAS measured on production (a rolled-back transaction raised `42501`
+on a tomorrow-dated row for a real direct report); the DELETE half rests on the policy text plus documented
+PostgreSQL semantics, because the classifier blocked firing even a rolled-back DELETE.
+**No live exposure — the app guard covers it — but "the database decides who may change the roster" is only
+true for two of the three verbs, and any widening must split the policy or the two answers stay different.**
+Full narrative: `docs/HANDOFF-HISTORY.md`.
+### r184 (2026-08-11) — THE PAYROLL REPROCESS PAIR, BUILT AND DEPLOYED
 
-⚠️ **VERIFIED THIS ROUND, AND THE ITEM'S OWN TEXT OVERSTATED IT: the roster refusal is real for
-INSERT/UPDATE and NOT enforced by the database for DELETE.** `roster_assignment_rls` is a `FOR ALL` policy,
-so `WITH CHECK` (`can_admin_employment`) governs INSERT and the new row of UPDATE, while DELETE is governed
-by `USING` alone (`can_see_employment`) — which a supervisor, and the employee themselves, both pass. Only
-the application guard `assertRosterAdmin` stops `clearRoster`. The INSERT/UPDATE half WAS measured on
-production (a rolled-back transaction raised `42501` on a tomorrow-dated row for a real direct report); the
-DELETE half rests on the policy text plus documented PostgreSQL semantics, because the classifier blocked
-firing even a rolled-back DELETE. **No live exposure — the app guard covers it — but "the database decides
-who may change the roster" is only true for two of the three verbs, and any widening must split the policy
-or the two answers stay different.**
+`fbcf706d` (add a period-eligible employee to a processed run without resetting it) and `7076f8af` (Reset
+lands back in the run flow; the adjustments panel and CSV import move off the run screen). Built in ONE
+worktree, sequentially, because they overlap `app/payroll/[batchId]/page.tsx`, `app/payroll/actions.ts`,
+`core/payroll.ts` and all six catalogues — the file-overlap rule, not the theme rule.
+Gate **637 files / 6 chunks / every chunk exit=0 / 8,121 tests**; tsc 0; `next build` clean; render-checked
+on a seeded dev server with zero MISSING_MESSAGE; deployed and proved by a zero-change dry-run.
+**NO MIGRATION — `0426` is still free.**
 
-⚠️ **WE OWE THE REPORTER AN ANSWER WE HAVE ALREADY ASKED FOR: `42afb2d2`.** `23390097`'s approved plan
-promised "from 10/08 onwards a supervisor can change them too". That was never achievable — writing
-`roster_assignment` requires an hr_admin/super_admin grant, and a manager session is refused by RLS
-with 42501 (measured). What SHIPPED is the honest version: supervisors get the whole month read-only
-with filters and download, no controls that would fail. The decision — leave it view-only, or widen
-the permission so a supervisor may roster their own reports — is the reporter's, and it is raised.
-**Do not "fix" this in code before they answer.**
+**THE VERIFY-BEFORE-BUILDING GATE IS WHY THIS WORKED, AND IT SHOULD BE COPIED.** The plan's load-bearing
+claim — that the subset path inserts a correct payslip for an employment with no payslip — was derived by
+READING the engine and had never been executed: **0 of 123 production result-history rows had a null
+`version_before`.** The build was gated on proving it first, with an explicit instruction to STOP and
+re-plan if it failed. It held (gross 4000.00 at version 1, batch totals moved by the addition alone, the
+already-paid payslip byte-identical), and measuring it turned three PREDICTED gaps into MEASURED ones:
+`employee_count` stayed 1, the audit row rendered a phantom 0.00→4000 rise, and the no-salary case failed
+closed with a misleading message. A premise that has never executed in production is a hypothesis; test it
+before you build a screen on it.
 
-**`scripts/reset-medical-hospitalization-ledger.ts` IS DEPLOYED AND HAS STILL NEVER RUN.** Report-only
-without `--apply`; `deploy.sh` does not invoke it (verified). Re-measured 2026-08-10 and UNCHANGED from the
-2026-08-09 census — 147 ledger rows, 22 recalc-audit rows, `leave_ledger_reset_archive` at 0 rows, and all
-safety conditions (debits, request-sourced rows, approved requests, encashment snapshots, toil refs) at
-ZERO. **This is the last unfinished part of `c8052ae3`:** the reporter was promised Medical and
-Hospitalization read 0.00, and until this runs they do not — which is exactly why they CONTESTED it. The
-archive→verify→delete sequence has never executed end to end.
+**TWO MONEY GUARDS WERE ADDED BEYOND THE PLAN, AND THAT WAS RIGHT.** Item 5's scope bypass makes two
+previously UNREACHABLE double-payment paths reachable: a claim allowance already written into
+`payroll_input` by the draft-only prefill would be paid from the added payslip AND left payable on the next
+run. Both now fail closed with a truthful message. **The claim mark-paid on a subset is deliberately
+STRICTER than the full path** — the full generation infers "got a payslip therefore was disbursed" because
+prefill and generation are one workflow; an add is not that workflow, so the requeue arm is not present on
+a subset at all. A reviewer will notice the asymmetry; it is deliberate.
 
-⚠️ **`c8052ae3` IS APPROVED AND HALF-EXECUTED — THE BACKUP AND THE REHEARSAL ARE DONE, `--apply` IS NOT.**
-On 2026-08-10 the reporter approved revision 2, and the operator run was taken as far as it can go without
-destroying data:
-- **Backups on the box, VERIFIED** — `/home/ubuntu/c8052ae3-affected-tables-2026-08-10-1238.dump` (all
-  three affected tables WITH data, confirmed by `pg_restore -l`) and
-  `c8052ae3-full-except-forcerls-2026-08-10-1238.dump`. **A plain full `pg_dump` FAILS with exit 1** on
-  `ai_provider_config`: three tables carry FORCE RLS (`ai_provider_config`, `platform_user`,
-  `leave_adjustment_batch`) and even the owner cannot read them, so pg_dump refuses — it still leaves a
-  truncated file that LOOKS like a backup. Exclude their DATA (`--exclude-table-data`) or dump by table.
-- **Rehearsal exit=0 and EXACT** — HOSPITALIZATION 77 rows/25 employees/300.00 days; SICK 70/23/6.00;
-  147 ledger; 22 recalc-audit; all four must-be-zero guards at 0; "Nothing was written".
-- **`--apply` WAS BLOCKED BY THE PERMISSION CLASSIFIER and was NOT worked around.** It needs a human or an
-  allow rule. Command: `cd /opt/ai-hr && PATH=/opt/node20/bin:$PATH node --env-file=.env.production
-  --import tsx scripts/reset-medical-hospitalization-ledger.ts --apply`.
-- **Afterwards: verify in SQL, then RENDER the archive screen** — its populated branch has never rendered
-  outside tests and cannot until the rows move.
-- **A counting trap worth keeping:** `leave_entitlement_recalc_audit` holds 72 rows for the tenant but only
-  **22 in scope** (16 HOSPITALIZATION + 6 SICK); the other 50 belong to a third leave type. And do not
-  filter shell output with a case-insensitive `LC_` pattern — it matches `reca`**`lc_`**`audit` and silently
-  deletes every line naming that table, which made a present table look absent for several minutes.
+**`applyLoansForBatch` gained an OPTIONAL 5th parameter.** Omitted ⇒ byte-identical for the sole existing
+caller. An empty array means "nobody" and returns early rather than widening to "all" — the difference
+between those two readings is a double loan advance.
 
-**The calculation half of `c8052ae3` IS done and IS live** — `c4139b4d` is an ancestor of `main` and
-production's `core/leave.ts` is byte-identical (md5 `3c64d99…` both sides); the current-year bound is
-`leaveCycleEnd()` at `core/leave.ts:6328`. Revision 2 of the plan is pushed and awaiting the reporter; on
-approval the whole remaining job is an OPERATOR RUN ON THE BOX (`pg_dump` → rehearsal → `--apply` → SQL
-verify → **render the archive screen**, whose populated branch has never rendered outside tests) and
-**needs NO deploy**.
+**THE PANEL WAS MOVED, NOT DELETED, and the board point was honoured BY PATH.** It is the only route by
+which approved overtime, claims, loan instalments, shift differential, zakat, TP1 relief and attendance
+allowances reach a payslip. Deleting it would leave approved amounts with no path to anyone's pay, silently.
+`test/tp1-relief-reaches-payroll.test.ts` went red on all six bridges the moment the panel left the run
+screen — it exists because `prefillTp1Action` once shipped bound to no form — and it was MOVED AND
+STRENGTHENED, not relaxed. Seven prefill actions gained a `returnTo` because they hard-redirected to the
+very screen this item removes from the path.
 
-⚠️ **A KNOWN, ACCEPTED DEFECT IN THAT RUN (owner's decision, r178).** Migration `0416`'s capture function
-annotates future-dated rows with **strictly `>`** `2027-01-01`, so the **30 rows dated exactly 2027-01-01 —
-precisely the grants the reporter complained about — capture with a NULL note**, while the 2028 rows nobody
-reported get labelled. `test/leave-ledger-reset-archive.test.ts` seeds `2028-01-01` and sits on the passing
-side of the boundary, so no test catches it. **It cannot be corrected after the run** (the note is computed
-during the capture INSERT and the source rows are deleted in the same transaction). It is ACCEPTED because
-`effective_on_text` is archived on every row, so the record is complete and only the convenience label is
-missing. **Fix the predicate to `>=` in a later migration** — it is not allocated yet.
+### ⚠️ THE FIXTURE TIME BOMB HAS NOW FIRED TWO NIGHTS RUNNING — READ THIS BEFORE "FIXING" IT AGAIN
 
-⚠️ **`HANDOFF.md` IS ITSELF RSYNCED TO THE BOX**, so editing it makes the dry-run report one changed
-file — indistinguishable from an undeployed release. The dry-run also permanently reports
-`next-env.d.ts`: gitignored and Next-generated, local `pnpm dev` writes the `.next/dev/types/` variant
-while the box's build writes `.next/types/`. The box's version is correct. Those two lines are noise;
-anything else is a real delta.
+On 2026-08-10 three leave-cancellation cases went red; on 2026-08-11 it was **11 cases across 3 files**,
+mid-gate, at 00:24 MYT: `LeaveCancellationTooLateError: Leave for 2026-08-11 can no longer be cancelled`.
+The fixtures hardcode a 10–12 Aug 2026 window chosen when that was "well in the future". **Each day more of
+it rots into the past and the product correctly refuses.** The product is right; the tests are wrong.
+
+**THE FIX IS TO PIN THE CLOCK, NOT TO MOVE THE WINDOW.** `edd9707d` tried deriving the window from
+`todayInKualaLumpur()` and went from 3 failures to 16 — roughly 100 assertions are pinned to the literal
+dates. Pinning the clock moves one variable; moving the window moves a hundred. `requestLeaveCancellation`
+takes an injectable `today` for exactly this.
+
+**TWO TRAPS INSIDE THE FIX, both of which bit on 08-11:**
+1. **Some calls pass `today` as a SHORTHAND property**, not `today:`. A substring check for `today:` misses
+   them and writes a DUPLICATE key. tsc catches it — match the property name with a regex.
+2. **DO NOT PIN THE CLOCK-RELATIVE TESTS.** The past/future gate test derives its dates from
+   `todayInKualaLumpur()` precisely so it holds whenever the suite runs. Pinning it made it PASS FOR THE
+   WRONG REASON — it stopped rejecting, and the failure read `AssertionError: promise resolved`. A test
+   that starts passing when you pin its clock is a test you have just broken.
+State after 08-11: **24 pinned, 13 already pinned, 2 deliberately left on the real clock.**
+
+⚠️ **`scripts/gate-chunked.sh` WIPES `ai_hr_dev`.** It rebuilds the cluster between chunks, which drops the
+dev database with it. Both r184 build agents found 0 tenants and 0 payroll batches and could not render-check
+because of it. **Seed AFTER the gate, never before** — and a render check run before a gate proves nothing
+about the tree you are about to ship.
 
 ### ⚠️ r180 (2026-08-10) — TWO DEFECT FIXES, BOTH DEPLOYED. One of them was paying people twice.
 
@@ -196,42 +194,6 @@ five missing labels added in all six catalogues. **It PREDATED r179** — the bl
 (its own explanation quotes the broken expression), and deliberately does NOT claim to enumerate every
 emitted reason: six catalogued reasons appear nowhere in source, so any static list is provably incomplete.
 
-### r178 (2026-08-10) — FIVE PLANS PUSHED, ZERO CODE. Nothing to deploy, nothing to gate.
-
-**Deliberately a plans-only round** (owner's decision): r177 stays held, and `release.ts:71` rsyncs the
-WHOLE worktree with `--delete` then runs `db:migrate`, so ANY deploy from `main` ships the anomaly layer
-and applies `0425`. There is no per-file deploy. **The tempting workaround is the dangerous one:**
-branching new work from `75addd1b` and shipping that is the ONE option that can silently break r177 — that
-branch's journal has 344 entries, so a `0426` above `0425`'s `when` moves the watermark past `0425` and its
-three tables are then NEVER created on any later deploy. Deploying from `main` cannot skip `0425`; branching
-from production's ref can.
-
-**Pushed, each with a mockup, all awaiting the reporter:** `b00f9e6e` rev 2 · `c8052ae3` rev 2 ·
-`388e53c2` · `98e69987` · `f35f758a`. No branch, no merge, no migration allocated, graph unchanged.
-
-**Decisions this round, so they are not re-litigated:**
-- **`b00f9e6e`'s approved plan was NOT built and must not be** — its premise died (see the `OT1_5` entry
-  above). Only the defensive seeder guard survives, and it is hygiene, not a deliverable: nothing invokes
-  the script, and a `formula` reference is already refused at `core/pay-components.ts:1040`.
-- **`c8052ae3` needs no build** — the code all shipped; it needs the operator run (see above).
-- **`388e53c2` IS A NAVIGATION MOVE, NOT A REDESIGN.** The reporter's screenshot shows the three screens
-  ALREADY full-width with a top filter row; they drew an arrow from the left nav rail to Team Leave Tracker.
-  Taken literally the ask deletes `/leave/tracker`'s calendar, which is deliberately ungated for EVERY
-  employee and is the target of the manager dashboard card and a Personnel deep link. Planned as: calendar
-  stays for non-admins, three HR sections appear there for admins only, routes unchanged.
-- **`98e69987` / `f35f758a` carry a REPORTER CONTRADICTION, now raised to them.** They previously asked for
-  the left employee panel to EXIST on these screens (`f3ae3245`, `ec845c7d`, both `deployed` — quotes
-  verified on production) and now ask for no permanent side panel. Planned as: change only the screen each
-  item names, leave the neighbours alone.
-- **`f35f758a`'s real defect is NOT what was reported.** Amounts are already right-aligned, currency already
-  consistent, YTD already printed, the logo stack already complete (1 of 14 companies has uploaded one), and
-  the document is TWO columns, never three. What is actually broken is that `fit()`
-  (`lib/payslip-pdf.ts:384-390`) is a hard clip — long text is TRUNCATED WITH "…", not wrapped.
-
-**The trap that cost this round the most, worth keeping:** `employment_pay_component` was the wrong table
-to check for "has anyone been paid from this item" — one-off `payroll_individual_txn` rows are invisible to
-it, and a plan was approved on the strength of that omission.
-
 ### r176, r175, r174, r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
 
 One thing outlives those rounds and is deliberately NOT archived with them:
@@ -277,8 +239,9 @@ unconfigured type, that guard has broken and it is the first thing to check.
 **Counts live in CURRENT STATE and are not repeated here. Always RE-COUNT** — the line said
 `approved = 0` on 2026-08-08 and eight items were approved the next morning.
 
-**AS OF 2026-08-10 END OF DAY THERE ARE ZERO OPEN AND ZERO CONTESTED ITEMS.** Counts on the box:
-`deployed = 632` · `planned = 15` · `approved = 3` · `cancelled = 14`. **Every live item has a plan
+**AS OF 2026-08-11 THERE ARE ZERO OPEN AND ZERO CONTESTED ITEMS.** Counts on the box:
+`deployed = 634` · `planned = 15` · `approved = 1` · `cancelled = 14`. The one approved item is
+`c8052ae3`, which needs no build — only the operator run. **Every live item has a plan
 awaiting the reporter**, including revisions for the two payroll screens they contested after r179 and an
 answer to the attendance calculation question. **The constraint is no longer our planning throughput — it
 is their approval throughput, fifteen deep. Look at that queue before planning anything new.**
