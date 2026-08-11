@@ -6881,7 +6881,11 @@
       "criteriaEveryone": "ทุกคน",
       "chipAddPlaceholder": "เพิ่ม…",
       "chipRemoveLabel": "นำ {value} ออก",
-      "chipCountLabel": "เลือกแล้ว {count} รายการ"
+      "chipCountLabel": "เลือกแล้ว {count} รายการ",
+      "chipSelectAll": "เลือกทั้งหมด",
+      "chipDeselectAll": "ยกเลิกเลือกทั้งหมด",
+      "chipSearchPlaceholder": "ค้นหา…",
+      "chipAllSelected": "เลือกทั้งหมดแล้ว"
     }
   },
   "topbar": {
