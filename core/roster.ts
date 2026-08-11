@@ -23,7 +23,7 @@ import {
   type ShiftOtRule,
   type ShiftType,
 } from '../db/schema';
-import { isoWeekday, netScheduledMinutes, shiftSpan } from './attendance';
+import { isWorkingDayKind, isoWeekday, netScheduledMinutes, shiftDayKindFor, shiftSpan } from './attendance';
 import { approvedLeaveDates } from './leave';
 import { listEmployees, listEmployeesPage } from './read';
 import { isAdmin } from '../lib/authz';
@@ -77,6 +77,11 @@ function validateShiftType(v: ShiftType | string | null | undefined): ShiftType 
 /** end ≤ start means the shift runs past midnight (e.g. 22:00:00 → 06:00:00). Times are 'HH:MM:SS', whose
  *  lexicographic order is chronological. */
 export const shiftCrossesMidnight = (startTime: string, endTime: string) => endTime <= startTime;
+
+/** b8aa3466 — how many WORKING weekdays a shift has, Full ∪ Half. Used by the two "a backup shift with no
+ *  working pattern makes every day a rest day" guards, which must not reject an all-half-days shift. */
+const workingDayCount = (sh: { pattern: number[] | null; halfPattern?: number[] | null }): number =>
+  new Set([...(sh.pattern ?? []), ...(sh.halfPattern ?? [])]).size;
 
 const asShiftTime = (v: string, label: string): string => {
   if (!/^\d{2}:\d{2}(:\d{2})?$/.test(v)) throw new Error(`${label} must be HH:MM`);
@@ -1130,7 +1135,12 @@ export async function assignEmployeeShift(
       .limit(1);
     if (!emp) throw new Error('Employment not found');
     const [sh] = await tx
-      .select({ id: shift.id, archivedAt: shift.archivedAt, pattern: shift.weeklyPattern })
+      .select({
+        id: shift.id,
+        archivedAt: shift.archivedAt,
+        pattern: shift.weeklyPattern,
+        halfPattern: shift.halfPattern,
+      })
       .from(shift)
       .where(eq(shift.id, shiftId))
       .limit(1);
@@ -1146,7 +1156,9 @@ export async function assignEmployeeShift(
     // and the employee silently books every working day as a rest day — which pays rest-day overtime rates
     // on ordinary work and shows nobody an error. Before this item that shift was merely one option among
     // several; now it is the floor, so the floor has to be walkable.
-    if (!Array.isArray(sh.pattern) || sh.pattern.length === 0) throw new ShiftHasNoWorkingPatternError();
+    // b8aa3466 — "has a working pattern" is now Full ∪ HALF: a shift that is all half days is perfectly
+    // walkable, and refusing it would be a new false rejection. Off and Rest are still not working days.
+    if (workingDayCount(sh) === 0) throw new ShiftHasNoWorkingPatternError();
     await tx
       .update(employment)
       .set({ shiftType: p.shiftType, defaultShiftId: shiftId })
@@ -1496,14 +1508,23 @@ export async function generateRosterFromTemplate(
 
   const [tpl] = await withTenant(ctx, (tx) =>
     tx
-      .select({ companyId: shift.companyId, weeklyPattern: shift.weeklyPattern, archivedAt: shift.archivedAt })
+      .select({
+        companyId: shift.companyId,
+        weeklyPattern: shift.weeklyPattern,
+        // b8aa3466 — the four-way row, so generation and the engine split the month the same way.
+        halfPattern: shift.halfPattern,
+        offPattern: shift.offPattern,
+        archivedAt: shift.archivedAt,
+      })
       .from(shift)
       .where(eq(shift.id, p.shiftId))
       .limit(1),
   );
   if (!tpl) throw new Error('Shift not found (or not visible)');
   if (tpl.archivedAt) throw new Error('Cannot generate a roster from an archived shift');
-  if (!tpl.weeklyPattern || tpl.weeklyPattern.length === 0) {
+  // b8aa3466 — Full ∪ Half. A shift that is all half days has a perfectly usable pattern; refusing it here
+  // would be a new false rejection introduced by the four-way row.
+  if (workingDayCount({ pattern: tpl.weeklyPattern, halfPattern: tpl.halfPattern }) === 0) {
     throw new Error('This shift has no weekly working-day pattern — set one on the shift first');
   }
 
@@ -1526,12 +1547,16 @@ export async function generateRosterFromTemplate(
   }
   if (employmentIds.length === 0) throw new Error('No employees in scope — pick employees or a department with members');
 
-  const pattern = tpl.weeklyPattern;
+  // b8aa3466 — generation reads the FOUR-WAY row through the shared resolver. Full and Half both generate
+  // a shift row (a half day is a working day; its shorter hours are decided by the engine, not by whether a
+  // roster row exists); Rest and Off both generate a rest row, because neither is scheduled work. A
+  // template written before migration 0429 has empty half/off arrays and therefore splits exactly as before.
   const workingDates: string[] = [];
   const restDates: string[] = [];
   for (let ms = fromMs; ms <= toMs; ms += DAY_MS) {
     const iso = new Date(ms).toISOString().slice(0, 10);
-    (pattern.includes(isoWeekday(iso)) ? workingDates : restDates).push(iso);
+    const kind = shiftDayKindFor({ pattern: tpl.weeklyPattern, halfPattern: tpl.halfPattern, offPattern: tpl.offPattern }, iso);
+    (isWorkingDayKind(kind) ? workingDates : restDates).push(iso);
   }
 
   const assigned = await assignShiftBulk(ctx, { employmentIds, shiftDates: workingDates, shiftId: p.shiftId });

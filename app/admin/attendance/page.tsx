@@ -37,6 +37,7 @@ export default async function ShiftSettingsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.attendancePolicy');
   const tr = await getTranslations('admin.attendanceRule');
+  const trr = await getTranslations('roster');
   const { error, showArchived } = await searchParams;
   // cf21e554 — "let a switched-off shift be switched back on" needs somewhere to see it from. Off by
   // default: the list is a working library, not an archive.
@@ -150,14 +151,36 @@ export default async function ShiftSettingsPage({
                           )}
                         </td>
                         <td className="px-4 py-2.5">
-                          {sh.weeklyPattern && sh.weeklyPattern.length > 0 ? (
+                          {/* b8aa3466 — the row is four-way now, so the column has to say which kind each
+                              day is rather than only which days are ticked. Rest days stay unlisted, exactly
+                              as they are today; Half and Off are called out because they are the values the
+                              tick row could never express. */}
+                          {sh.weeklyPattern?.length || sh.halfPattern.length || sh.offPattern.length ? (
                             <span className="flex flex-wrap gap-1">
-                              {ISO_DAYS.filter((d) => sh.weeklyPattern!.includes(d)).map((d) => (
+                              {ISO_DAYS.filter((d) => sh.weeklyPattern?.includes(d)).map((d) => (
                                 <span
-                                  key={d}
+                                  key={`f${d}`}
                                   className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
                                 >
                                   {t(DAY_KEY[d])}
+                                </span>
+                              ))}
+                              {ISO_DAYS.filter((d) => sh.halfPattern.includes(d)).map((d) => (
+                                <span
+                                  key={`h${d}`}
+                                  className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400"
+                                  title={trr('dayKindHalf')}
+                                >
+                                  {t(DAY_KEY[d])} · {trr('dayKindHalf')}
+                                </span>
+                              ))}
+                              {ISO_DAYS.filter((d) => sh.offPattern.includes(d)).map((d) => (
+                                <span
+                                  key={`o${d}`}
+                                  className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+                                  title={trr('dayKindOff')}
+                                >
+                                  {t(DAY_KEY[d])} · {trr('dayKindOff')}
                                 </span>
                               ))}
                             </span>

@@ -1320,9 +1320,13 @@ export async function payableHoursForCycle(
     brk: shift.breakMinutes,
     crosses: shift.crossesMidnight,
     pattern: shift.weeklyPattern,
+    // b8aa3466 — the clamp must read the SAME four-way row scheduleFor does, or the payable-hours ceiling
+    // and the day's own scheduled minutes diverge on a Half day and nobody sees it until a payslip.
+    halfPattern: shift.halfPattern,
+    offPattern: shift.offPattern,
     rounding: shift.normalHoursRoundingMinutes,
   };
-  type ClampShift = { net: number; pattern: number[] | null };
+  type ClampShift = { net: number; pattern: number[] | null; halfPattern: number[]; offPattern: number[] };
   const clampByShiftId = new Map<string, ClampShift>();
   const ladderShiftIds = [...new Set(periods.map((p) => p.shiftId))];
   if (ladderShiftIds.length > 0) {
@@ -1330,6 +1334,8 @@ export async function payableHoursForCycle(
       clampByShiftId.set(sr.id, {
         net: netScheduledMinutes(sr.start, sr.end, sr.crosses, sr.brk, sr.rounding),
         pattern: sr.pattern,
+        halfPattern: sr.halfPattern,
+        offPattern: sr.offPattern,
       });
     }
   }
@@ -1343,7 +1349,12 @@ export async function payableHoursForCycle(
       .where(eq(employment.id, employmentId))
       .limit(1);
     if (ds) {
-      cachedClamp = { net: netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding), pattern: ds.pattern };
+      cachedClamp = {
+        net: netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding),
+        pattern: ds.pattern,
+        halfPattern: ds.halfPattern,
+        offPattern: ds.offPattern,
+      };
     }
   }
   const clampOn = (d: string): ClampShift | null => {
@@ -1354,10 +1365,15 @@ export async function payableHoursForCycle(
   let payableMinutes = 0;
   for (const row of rows) {
     const ds = clampOn(row.date);
+    // b8aa3466 — Full clamps at the shift's net minutes, HALF at half of them, and Rest/Off contribute
+    // nothing (they are not an assigned shift), exactly as a pattern rest day does today.
+    const dsKind = ds == null ? null : shiftDayKindFor(ds, row.date);
     const scheduled =
       schedByDate.get(row.date) ??
-      (!rosteredDates.has(row.date) && ds != null && ds.pattern?.includes(isoWeekday(row.date))
-        ? ds.net
+      (!rosteredDates.has(row.date) && ds != null && dsKind != null && isWorkingDayKind(dsKind)
+        ? dsKind === 'half'
+          ? Math.floor(ds.net / 2)
+          : ds.net
         : undefined);
     if (scheduled === undefined) continue; // no assigned shift that day → 0 payable when ON
     payableMinutes += Math.min(row.workedMinutes ?? 0, scheduled);
@@ -1742,7 +1758,19 @@ const NO_SHIFT: ShiftDisplay = { shiftCode: null, scheduledMinutes: null, shiftS
 // shift that rounds its normal hours would render 7h 50m in the Scheduled column while scheduleFor
 // measured the day against 7h 45m. Null on every legacy row ⇒ byte-identical.
 type RosterDisplayRow = { isRestDay: boolean; code: string | null; start: string | null; end: string | null; brk: number | null; crosses: boolean | null; rounding: number | null };
-type DefaultShiftRow = { code: string | null; start: string; end: string; brk: number; crosses: boolean; pattern: number[] | null; rounding: number | null };
+type DefaultShiftRow = {
+  code: string | null;
+  start: string;
+  end: string;
+  brk: number;
+  crosses: boolean;
+  pattern: number[] | null;
+  // b8aa3466 — the four-way row. Optional so the many places that build a DefaultShiftRow from a narrower
+  // select keep compiling; absent behaves as '{}', which is the pre-0429 two-way meaning.
+  halfPattern?: number[] | null;
+  offPattern?: number[] | null;
+  rounding: number | null;
+};
 
 /**
  * e2632276 — THE ONE SCHEDULING LADDER the Records surfaces read, stated once. It mirrors scheduleFor()'s
@@ -1766,7 +1794,10 @@ function classifyScheduleDay(
   companyWorkingDay: boolean,
 ): ScheduleClass {
   if (roster) return !roster.isRestDay && roster.start && roster.end ? 'roster_shift' : 'roster_rest';
-  if (def) return def.pattern?.includes(isoWeekday(date)) ? 'default_shift' : 'default_rest';
+  // b8aa3466 — Full and Half are both scheduled work; Rest and Off are not. An Off day is still a
+  // "no work scheduled" day for the DISPLAY ladder — the difference between Rest and Off is what working
+  // it PAYS, not whether it was scheduled — so a missing row on either is explained, not an absence.
+  if (def) return isWorkingDayKind(shiftDayKindFor(def, date)) ? 'default_shift' : 'default_rest';
   return companyWorkingDay ? 'policy_work' : 'policy_rest';
 }
 
@@ -2000,6 +2031,8 @@ export function attendanceForDate(
           brk: shift.breakMinutes,
           crosses: shift.crossesMidnight,
           pattern: shift.weeklyPattern,
+          halfPattern: shift.halfPattern,
+          offPattern: shift.offPattern,
           rounding: shift.normalHoursRoundingMinutes,
         })
         .from(shift)
@@ -2020,6 +2053,8 @@ export function attendanceForDate(
         brk: shift.breakMinutes,
         crosses: shift.crossesMidnight,
         pattern: shift.weeklyPattern,
+        halfPattern: shift.halfPattern,
+        offPattern: shift.offPattern,
         rounding: shift.normalHoursRoundingMinutes,
       })
       .from(employment)
@@ -2228,6 +2263,8 @@ export function attendanceForEmploymentRange(
       brk: shift.breakMinutes,
       crosses: shift.crossesMidnight,
       pattern: shift.weeklyPattern,
+      halfPattern: shift.halfPattern,
+      offPattern: shift.offPattern,
       rounding: shift.normalHoursRoundingMinutes,
     };
     const periods = await arrangementsForEmploymentTx(tx, employmentId);

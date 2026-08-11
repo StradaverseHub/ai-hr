@@ -84,6 +84,8 @@ import {
 } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { holidayDatesFor } from './holidays';
+// b8aa3466 — the ONE four-way weekday resolver; absence derivation must read the same schedule the engine does.
+import { isWorkingDayKind, shiftDayKindFor } from './attendance';
 // ADR-0080 D9 — leave is a PACK, and this module is spine (attendance and payroll both read it), so the
 // approved-leave dates come through the pack FACADE rather than reaching into `core/leave` directly. The
 // audited leak list in test/pack-drift-allowlist.json only ever shrinks; a new consumer joins by using
@@ -323,11 +325,19 @@ export async function absenceBreakdownByEmployment(
     // `scheduled` only, for the same reason as the roster.
     scheduled
       ? tx
-          .select({ employmentId: employment.id, pattern: shift.weeklyPattern })
+          .select({
+            employmentId: employment.id,
+            pattern: shift.weeklyPattern,
+            // b8aa3466 — the four-way row, so absence derivation reads the same schedule scheduleFor does.
+            halfPattern: shift.halfPattern,
+            offPattern: shift.offPattern,
+          })
           .from(employment)
           .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
           .where(inArray(employment.id, empIds))
-      : Promise.resolve([] as { employmentId: string; pattern: number[] | null }[]),
+      : Promise.resolve(
+          [] as { employmentId: string; pattern: number[] | null; halfPattern: number[]; offPattern: number[] }[],
+        ),
     // The OPEN assignment's location — the last input the holiday resolver keys on. See holidayKeyOf.
     tx
       .select({ employmentId: assignment.employmentId, locationId: assignment.locationId })
@@ -342,7 +352,11 @@ export async function absenceBreakdownByEmployment(
   ]);
 
   const daysByCompany = new Map(policies.map((p) => [p.companyId, unionDays(p.workingDays, p.halfWorkingDays)]));
-  const patternByEmp = new Map(defaultShifts.map((d) => [d.employmentId, d.pattern]));
+  // b8aa3466 — keep the whole four-way row, not just the Full list, so the scheduled test below can tell a
+  // Half day (a WORKING day, so a missing row on it IS an absence) from an Off day (not scheduled).
+  const patternByEmp = new Map(
+    defaultShifts.map((d) => [d.employmentId, { pattern: d.pattern, halfPattern: d.halfPattern, offPattern: d.offPattern }]),
+  );
 
   // ── The holiday memo ────────────────────────────────────────────────────────────────────────────────
   // `holidayDatesFor` is single-employment and costs 3–4 round trips a call; a company-wide month roll-up
@@ -455,7 +469,7 @@ export async function absenceBreakdownByEmployment(
       const ra = roster?.get(d);
       let isScheduled: boolean;
       if (ra) isScheduled = !ra.isRestDay && ra.hasShift;
-      else if (hasDefaultShift) isScheduled = pattern?.includes(isoWeekdayOf(d)) ?? false;
+      else if (hasDefaultShift) isScheduled = pattern != null && isWorkingDayKind(shiftDayKindFor(pattern, d));
       else isScheduled = companyDays.includes(isoWeekdayOf(d));
       if (!isScheduled) continue;
 

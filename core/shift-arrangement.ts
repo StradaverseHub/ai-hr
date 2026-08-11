@@ -141,7 +141,7 @@ export async function assignEmployeeShiftDated(
     if (!emp) throw new Error('Employment not found');
 
     const [sh] = await tx
-      .select({ id: shift.id, archivedAt: shift.archivedAt, pattern: shift.weeklyPattern })
+      .select({ id: shift.id, archivedAt: shift.archivedAt, pattern: shift.weeklyPattern, halfPattern: shift.halfPattern })
       .from(shift)
       .where(eq(shift.id, shiftId))
       .limit(1);
@@ -150,7 +150,9 @@ export async function assignEmployeeShiftDated(
     // assignable (R33 f21d6eee — no company check, the library is shared), and a shift with no weekly working
     // pattern would make EVERY unrostered day a rest day for this person (b8aa3466).
     if (sh.archivedAt) throw new ArchivedShiftError();
-    if (!Array.isArray(sh.pattern) || sh.pattern.length === 0) throw new ShiftHasNoWorkingPatternError();
+    // b8aa3466 — "has a working pattern" is Full ∪ HALF now: an all-half-days shift is walkable, and the
+    // guard exists to stop an UNWALKABLE backup shift making every day a rest day, not to stop half days.
+    if (new Set([...(sh.pattern ?? []), ...(sh.halfPattern ?? [])]).size === 0) throw new ShiftHasNoWorkingPatternError();
 
     const rows = await arrangementsForEmploymentTx(tx, p.employmentId);
     const last: ArrangementPeriod | undefined = rows[rows.length - 1];
