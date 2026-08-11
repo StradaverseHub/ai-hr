@@ -3805,7 +3805,32 @@ export const shift = pgTable(
     // R7 Multi-Shift Phase 2: ISO weekday numbers (1=Mon … 7=Sun) that are WORKING days for this shift —
     // rest = complement — mirroring attendance_policy.working_days. NULL ⇒ no pattern; the shift cannot
     // drive generateRosterFromTemplate and behaves exactly as before.
+    //
+    // b8aa3466 (migration 0429) — this is now the FULL-day list of a four-way row. See halfPattern /
+    // offPattern below; a weekday in none of the three is still a Rest day, exactly as before.
     weeklyPattern: integer('weekly_pattern').array(),
+    // b8aa3466 (migration 0429) — the other two day kinds, copying the shape attendance_policy already uses
+    // for the same problem (working_days + half_working_days, migration 0142) rather than inventing an
+    // encoding. Disjoint from weekly_pattern and from each other by a DB CHECK.
+    //   Half = a working day with HALF the normal hours, so overtime starts after half a day.
+    //   Off  = a non-working day that is NOT the statutory rest day (s.60A(3)(a): 1.5× hourly), as opposed
+    //          to Rest (s.60(3)(b)-(c): half/full day ORP plus 2× on the excess).
+    // Both default '{}', so every row written before 0429 reads back as Full-where-ticked / Rest-otherwise —
+    // which is exactly what it means today. No backfill statement exists or is needed.
+    halfPattern: integer('half_pattern')
+      .array()
+      .notNull()
+      .default(sql`'{}'::integer[]`),
+    offPattern: integer('off_pattern')
+      .array()
+      .notNull()
+      .default(sql`'{}'::integer[]`),
+    // b8aa3466 (migration 0429) — the DAILY CUT-OFF. OFF (default) ⇒ core/attendance.ts anchorToShift keeps
+    // its hard-coded 12-hour rule byte-identically. ON ⇒ that boundary becomes this clock time: a punch
+    // before it belongs to the shift-day that opened on the previous calendar day. CHECK in 0429 forbids
+    // enabled-with-no-time, which the reader could not honour.
+    dailyCutoffEnabled: boolean('daily_cutoff_enabled').notNull().default(false),
+    dailyCutoffTime: time('daily_cutoff_time'),
     crossesMidnight: boolean('crosses_midnight').notNull().default(false),
     // R17 3e8350db — per-shift grace windows (minutes). NULL ⇒ inherit the company-policy behaviour
     // (core/attendance.ts scheduleFor): late = policy grace applied to the shift start, early-leave = the

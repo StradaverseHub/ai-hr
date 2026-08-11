@@ -2437,6 +2437,13 @@
       "when": 1781862528000,
       "tag": "0428_claim_block_limit_and_mileage_type",
       "breakpoints": true
+    },
+    {
+      "idx": 429,
+      "version": "7",
+      "when": 1781862529000,
+      "tag": "0429_shift_cutoff_and_day_kinds",
+      "breakpoints": true
     }
   ]
 }
