@@ -415,9 +415,42 @@ type PunchWindow = { inAbs: number; outAbs: number; startAbs: number; endAbs: nu
 
 /** Place a time-of-day on the shift's timeline. A punch more than 12h BEFORE the shift start belongs to the
  *  next calendar day: on a 22:00→06:00 shift a 00:30 arrival is 2.5h LATE, not 21.5h early. Anything inside
- *  12h is read as an early arrival, which keeps a 21:30 punch on that same shift a 30-minute early start. */
-const anchorToShift = (minutes: number, shiftStartAbs: number): number =>
-  minutes < shiftStartAbs - MINS_PER_DAY / 2 ? minutes + MINS_PER_DAY : minutes;
+ *  12h is read as an early arrival, which keeps a 21:30 punch on that same shift a 30-minute early start.
+ *
+ *  b8aa3466 — THE DAILY CUT-OFF replaces that 12-hour guess when the shift sets one. The 12h rule is a
+ *  boundary nobody can see or change; a cut-off makes it the operator's own clock time. With a cut-off of
+ *  02:00, a punch before 02:00 belongs to the shift-day that opened on the previous calendar day and a punch
+ *  after it belongs to the new one — which is what "any clocking after this time counts towards the next
+ *  day" means on the form.
+ *
+ *  `cutoffAbs` NULL (every shift today, and every shift that leaves the box off) ⇒ the original expression,
+ *  byte for byte. */
+const anchorToShift = (minutes: number, shiftStartAbs: number, cutoffAbs?: number | null): number => {
+  if (cutoffAbs != null) return minutes < cutoffAbs ? minutes + MINS_PER_DAY : minutes;
+  return minutes < shiftStartAbs - MINS_PER_DAY / 2 ? minutes + MINS_PER_DAY : minutes;
+};
+
+/** b8aa3466 — the four-way weekly row, resolved for one ISO weekday.
+ *
+ *  Full = in weekly_pattern · Half = in half_pattern · Off = in off_pattern · Rest = in none of them.
+ *
+ *  Rest stays the COMPLEMENT, which is what "not ticked" has always meant, so a shift written before
+ *  migration 0429 — and any caller that passes only `pattern` — resolves exactly as it does today. The
+ *  three arrays are pairwise disjoint (validated in core/roster.ts AND by the 0429 CHECK), so the order of
+ *  these tests cannot change an answer. */
+export type ShiftDayKind = 'full' | 'half' | 'rest' | 'off';
+export const shiftDayKindFor = (
+  sh: { pattern: number[] | null; halfPattern?: number[] | null; offPattern?: number[] | null },
+  date: string,
+): ShiftDayKind => {
+  const d = isoWeekday(date);
+  if (sh.pattern?.includes(d)) return 'full';
+  if (sh.halfPattern?.includes(d)) return 'half';
+  if (sh.offPattern?.includes(d)) return 'off';
+  return 'rest';
+};
+/** Half and Full are both WORKING days; Rest and Off are not. */
+export const isWorkingDayKind = (k: ShiftDayKind): boolean => k === 'full' || k === 'half';
 
 /** Minutes of the punch that fell inside the shift's declared UNPAID break WINDOWS. Null when the shift
  *  carries no windows — a break scalar alone gives nothing to test the clocking against, so those shifts
@@ -431,13 +464,21 @@ const anchorToShift = (minutes: number, shiftStartAbs: number): number =>
  *  10:30–10:45 tea break and an unpaid 13:00–14:00 lunch ⇒ break_minutes 60; a 09:00→12:00 clocking spans
  *  only the PAID window, and min(15, 60) took 15 minutes off a day that owed nothing. The full-day case
  *  hid it because the cap happened to equal the unpaid total. */
-const spannedBreakMinutes = (periods: BreakPeriod[] | null, breakMinutes: number, w: PunchWindow): number | null => {
+const spannedBreakMinutes = (
+  periods: BreakPeriod[] | null,
+  breakMinutes: number,
+  w: PunchWindow,
+  cutoffAbs?: number | null,
+): number | null => {
   if (!periods || periods.length === 0) return null;
   const overlap = periods
     .filter((bp) => bp.paid !== true)
     .reduce((acc, bp) => {
-      const bs = anchorToShift(toMinutes(bp.start), w.startAbs);
-      const be = anchorToShift(toMinutes(bp.end), w.startAbs);
+      // b8aa3466 — the SAME placement rule the punch used. If the punch and the break windows were anchored
+      // by different rules they would sit on different timelines and the overlap arithmetic below would be
+      // comparing minutes that never met.
+      const bs = anchorToShift(toMinutes(bp.start), w.startAbs, cutoffAbs);
+      const be = anchorToShift(toMinutes(bp.end), w.startAbs, cutoffAbs);
       return acc + Math.max(0, Math.min(w.outAbs, be) - Math.max(w.inAbs, bs));
     }, 0);
   return Math.min(overlap, breakMinutes);
@@ -458,6 +499,9 @@ type ResolvedSchedule = {
   shiftStart: string | null;
   shiftEnd: string | null;
   breakPeriods: BreakPeriod[] | null;
+  // b8aa3466 — the resolved shift's DAILY CUT-OFF as minutes from midnight, or NULL when the shift leaves
+  // it off (every shift today). NULL ⇒ anchorToShift keeps its hard-coded 12-hour rule byte-identically.
+  dailyCutoffMinutes: number | null;
   // R7 Multi-Shift Phase 1: the shift's manual normal-hours override. When set it is the shift's normal
   // working minutes — the workday OT threshold in deriveAttendance — instead of scheduledMinutes. Only a
   // rostered shift can carry one; the policy branch is always null (byte-identical legacy behaviour).
@@ -492,6 +536,35 @@ type ResolvedSchedule = {
   // clamp (payableHoursForCycle), which resolves roster/default-shift itself.
   source: 'policy' | 'roster-shift' | 'roster-rest' | 'default-shift' | 'default-shift-rest';
 };
+
+/**
+ * b8aa3466 item 8 — THE HALF-DAY CUT-OFF, as one resolver both shift branches call, so they cannot drift.
+ *
+ * Normal (and every legacy shift): unchanged, in this exact precedence — the shift's own
+ * half_day_first_out, else the early-out grace subtracted from the shift end, else the shift midpoint.
+ * Nothing already saved moves.
+ *
+ * Semi Flexi with no explicit value: DERIVED as half the shift's required normal minutes of WORK, breaks
+ * not counted, measured from the earliest time in — which is what the form shows the operator and what the
+ * plan promises. It is converted to a CLOCK TIME here so deriveAttendance keeps comparing times; adding a
+ * duration branch to that comparison is exactly the change this deliberately avoids.
+ */
+function halfDayCutoff(p: {
+  type: string | null;
+  explicit: string | null;
+  start: string;
+  end: string;
+  crosses: boolean;
+  normalMinutes: number;
+  earlyGrace: number | null;
+}): string {
+  if (p.explicit != null) return p.explicit;
+  if (p.type === 'semi_flexi' && p.normalMinutes > 0) {
+    return fmtTime((toMinutes(p.start) + Math.floor(p.normalMinutes / 2)) % MINS_PER_DAY);
+  }
+  if (p.earlyGrace != null) return subGrace(p.end, p.earlyGrace);
+  return fmtTime((toMinutes(p.start) + Math.floor(shiftSpan(p.start, p.end, p.crosses) / 2)) % MINS_PER_DAY);
+}
 
 /** Resolve the schedule for one employee+date: rostered shift > holiday (calendar) > rostered rest-day >
  *  DEFAULT shift (employment.default_shift_id, ec4cbf63 — its weekly_pattern decides working vs rest) >
@@ -552,6 +625,10 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       // cf21e554 stage 1 — the two General boxes that MOVE a figure (see db/schema.ts).
       rounding: shift.normalHoursRoundingMinutes,
       halfDayFirstOut: shift.halfDayFirstOut,
+      // b8aa3466 — the daily cut-off (migration 0429).
+      cutoffOn: shift.dailyCutoffEnabled,
+      cutoffAt: shift.dailyCutoffTime,
+      shiftType: shift.type,
     })
     .from(rosterAssignment)
     .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -567,6 +644,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     shiftStart: null,
     shiftEnd: null,
     breakPeriods: null,
+    // The company-policy branch has no shift, so there is no cut-off to carry either: anchorToShift keeps
+    // its 12-hour rule, exactly as it does today.
+    dailyCutoffMinutes: null,
     normalMinutesOverride: null,
     otRule: null,
     // The company-policy branch has no shift, so there is nothing to carry OT windows.
@@ -604,17 +684,21 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       // replacement for attendance_policy.half_day_before, which is one value for the whole company; a
       // shift that leaves it blank keeps exactly the threshold it has today (grace-derived, else the shift
       // midpoint), so nothing already saved moves.
-      halfDayBefore:
-        ra.halfDayFirstOut != null
-          ? ra.halfDayFirstOut
-          : earlyGrace != null
-            ? subGrace(ra.end, earlyGrace)
-            : fmtTime((toMinutes(ra.start) + Math.floor(shiftSpan(ra.start, ra.end, ra.crosses!) / 2)) % MINS_PER_DAY),
+      halfDayBefore: halfDayCutoff({
+        type: ra.shiftType,
+        explicit: ra.halfDayFirstOut,
+        start: ra.start,
+        end: ra.end,
+        crosses: ra.crosses!,
+        normalMinutes: ra.override ?? sched,
+        earlyGrace,
+      }),
       scheduledMinutes: sched,
       breakMinutes: ra.brk!,
       shiftStart: ra.start,
       shiftEnd: ra.end,
       breakPeriods: ra.periods ?? null,
+      dailyCutoffMinutes: ra.cutoffOn && ra.cutoffAt ? toMinutes(ra.cutoffAt) : null,
       normalMinutesOverride: ra.override ?? null,
       otRule: ra.otRule ?? null,
       otWindows,
@@ -662,6 +746,12 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     ruleId: shift.ruleId,
     rounding: shift.normalHoursRoundingMinutes,
     halfDayFirstOut: shift.halfDayFirstOut,
+    // b8aa3466 — the four-way weekly row and the daily cut-off (migration 0429).
+    halfPattern: shift.halfPattern,
+    offPattern: shift.offPattern,
+    cutoffOn: shift.dailyCutoffEnabled,
+    cutoffAt: shift.dailyCutoffTime,
+    shiftType: shift.type,
   };
   const [ds] = arrangement
     ? await tx.select(defaultShiftCols).from(shift).where(eq(shift.id, arrangement.shiftId)).limit(1)
@@ -672,11 +762,23 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
         .where(eq(employment.id, employmentId))
         .limit(1);
   if (ds) {
-    if (ds.pattern?.includes(isoWeekday(date))) {
+    // b8aa3466 — FOUR-WAY. Full and Half are both WORKING days of the default shift; Rest and Off are not.
+    // A shift written before migration 0429 has empty half/off arrays, so this resolves Full-where-ticked
+    // and Rest-otherwise — byte-identically to the two-way test it replaces.
+    const kind = shiftDayKindFor(ds, date);
+    if (isWorkingDayKind(kind)) {
       // Working day of the default shift — mirror the roster-shift branch byte-for-byte, incl. the
       // holiday day-type overlay (the default shift's hours still define the schedule on a holiday), the
       // R17 per-shift grace override, and the 88e94371 rule grace fallback.
-      const sched = netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding);
+      //
+      // A HALF day is an ordinary working day with HALF the normal hours, so overtime starts after half a
+      // day. Halving the threshold is the whole of it: the shift's clock times, breaks, grace, rule and OT
+      // windows are unchanged, and a Full day halves nothing.
+      const full = netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding);
+      const sched = kind === 'half' ? Math.floor(full / 2) : full;
+      // The manual normal-hours figure is halved with it — otherwise a Semi-Flexi shift's required 8h would
+      // still be the threshold on a half day, and the half day would pay no overtime until hour 8.
+      const override = ds.override == null ? null : kind === 'half' ? Math.floor(ds.override / 2) : ds.override;
       const rule = await ruleFor(ds.ruleId);
       const otWindows = await otWindowsFor(ds.shiftId);
       const lateGrace = ds.lateGrace ?? rule?.lateGracePeriodMinutes ?? grace;
@@ -686,18 +788,22 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
         lateAfter: addGrace(ds.start, lateGrace),
         // cf21e554 — same per-shift half-day override as the roster branch above; the two branches mirror
         // each other byte-for-byte on purpose.
-        halfDayBefore:
-          ds.halfDayFirstOut != null
-            ? ds.halfDayFirstOut
-            : earlyGrace != null
-              ? subGrace(ds.end, earlyGrace)
-              : fmtTime((toMinutes(ds.start) + Math.floor(shiftSpan(ds.start, ds.end, ds.crosses) / 2)) % MINS_PER_DAY),
+        halfDayBefore: halfDayCutoff({
+          type: ds.shiftType,
+          explicit: ds.halfDayFirstOut,
+          start: ds.start,
+          end: ds.end,
+          crosses: ds.crosses,
+          normalMinutes: override ?? sched,
+          earlyGrace,
+        }),
         scheduledMinutes: sched,
         breakMinutes: ds.brk,
         shiftStart: ds.start,
         shiftEnd: ds.end,
         breakPeriods: ds.periods ?? null,
-        normalMinutesOverride: ds.override ?? null,
+        dailyCutoffMinutes: ds.cutoffOn && ds.cutoffAt ? toMinutes(ds.cutoffAt) : null,
+        normalMinutesOverride: override,
         otRule: ds.otRule ?? null,
         otWindows,
         rule,
@@ -712,6 +818,24 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     // The default shift's own rest day wins over the flat company working-days list (matching how a
     // rostered rest day wins) — but a calendar holiday still classifies at the holiday premium.
     if (isHoliday) return policyBranch('holiday');
+
+    // b8aa3466 — an OFF DAY is not the statutory rest day, and it must not be paid like one. EA s.60A(3)(a)
+    // says work on a non-rest, non-holiday day off is ordinary OVERTIME at 1.5x the hourly rate; s.60(3)
+    // rest-day pay (half/full day ORP plus 2x on the excess) is a different and much larger number.
+    //
+    // The cheapest correct way to say "every minute is workday overtime" is a WORKDAY with a normal day of
+    // ZERO minutes: deriveAttendance's threshold is `normalMinutesOverride ?? scheduledMinutes`, so worked
+    // minus zero is the whole clocking, classified 'workday', which localization/my/payroll.ts already
+    // monetises at exactly 1.5x hourly. Both parts are load-bearing — leaving the override in place would
+    // put the shift's normal hours back as the threshold and pay nothing until hour 8.
+    //
+    // Deliberately NOT a fourth DayType. 'off_day' would mean widening the shared attendance_day_type
+    // Postgres enum (also used by plan_ot), PlanOtDayType, TraceDayType, OtDay and the payroll OT policy
+    // allowlist — a second money-bearing change across core/payroll.ts and localization/, for a value the
+    // statute already pays on the leg that exists. The day is REPORTED as a workday; it is PAID correctly.
+    if (kind === 'off') {
+      return { ...policyBranch('workday'), scheduledMinutes: 0, normalMinutesOverride: null, source: 'default-shift-rest' };
+    }
     return { ...policyBranch('rest_day'), source: 'default-shift-rest' };
   }
 
@@ -763,7 +887,7 @@ function deriveAttendance(
   // 7c834696 — the schedule's own timeline, resolved on every branch. anchorToShift is the SAME placement
   // rule the OT window uses, so a 00:30 arrival on a 22:00 shift reads as 2.5h late rather than 21.5h early.
   const schedStartAbs = s.scheduledStart != null ? toMinutes(s.scheduledStart) : null;
-  const inAbsSched = schedStartAbs != null ? anchorToShift(toMinutes(checkInAt), schedStartAbs) : null;
+  const inAbsSched = schedStartAbs != null ? anchorToShift(toMinutes(checkInAt), schedStartAbs, s.dailyCutoffMinutes) : null;
   // The gate on the only downward-capable figures in this change. FALSE for every rule at release, and
   // FALSE for any date before the rule's switch-on date, forever.
   const deductible = deductionsApplyOn(s.rule, attendanceDate);
@@ -866,7 +990,7 @@ function deriveAttendance(
     s.shiftStart && s.shiftEnd
       ? (() => {
           const startAbs = toMinutes(s.shiftStart);
-          const inAbs = anchorToShift(toMinutes(checkInAt), startAbs);
+          const inAbs = anchorToShift(toMinutes(checkInAt), startAbs, s.dailyCutoffMinutes);
           // The punch LENGTH stays spanMinutes (the established, tested contract); only its placement is new.
           return {
             inAbs,
@@ -878,7 +1002,7 @@ function deriveAttendance(
       : null;
   // b7b886e2 — the break comes out only when the clocking actually SPANNED a declared break window, as the
   // reporter specified. Without windows there is nothing to test against, so the legacy 6h cliff stands.
-  const spannedBreak = w ? spannedBreakMinutes(s.breakPeriods, s.breakMinutes, w) : null;
+  const spannedBreak = w ? spannedBreakMinutes(s.breakPeriods, s.breakMinutes, w, s.dailyCutoffMinutes) : null;
   const workedMinutes = spannedBreak != null ? Math.max(0, span - spannedBreak) : workedFromSpan(span, s.breakMinutes);
   // b7b886e2 — workday OT is the time worked BEYOND the shift's time-out, not the amount by which the day's
   // TOTAL overshot the scheduled duration. The old duration comparison ignored where the minutes fell, so a
