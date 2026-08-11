@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { Button, Field, btnPrimary, inputCls } from '@/components/ui';
-import type { CriteriaSection } from '@/core/org-criteria-form';
+import type { CriteriaOption, CriteriaSection } from '@/core/org-criteria-form';
 
 /**
  * 6e9a126e RELEASE TWO — EMPLOYEE ELIGIBILITY (the reporter's Step 2): who gets which entitlement table.
@@ -90,6 +90,28 @@ export function EligibilityRuleForm({
       setCount(await countAction({ criteria, asOf: validFrom || today }));
     });
 
+  /**
+   * 74d00fd2 — WHAT WAS STORED STAYS OFFERABLE. `ChipMultiSelect` drops any `defaultSelected` value absent
+   * from its `options`, and `buildOrgCriteriaSections` offers ACTIVE catalogue rows only. So reopening a
+   * saved rule after a nationality (or division, section, team…) was deactivated would silently drop that
+   * value from the picker, and a plain Save would then WIDEN the rule — no error, no warning, more people.
+   * Union whatever this rule already stores back onto the offered list, the same remedy
+   * components/leave-type-panel.tsx applies to the Condition-step criteria (#165baee5); a value with no
+   * display label left renders as its raw stored string, which is still recognisable and still removable.
+   *
+   * Read from `initial`, NOT from live `criteria`: the option list must be stable for the life of the form.
+   * Deriving it from the live selection would make a retired value un-re-selectable the moment it is
+   * unticked, and would move the "every option is picked" line under the operator's feet mid-edit.
+   */
+  const storedFor = (name: string): string[] => {
+    const v = initial?.criteria?.[name];
+    return Array.isArray(v) ? v : [];
+  };
+  const withStored = (options: CriteriaOption[], stored: string[]): CriteriaOption[] => [
+    ...options,
+    ...stored.filter((v) => !options.some((o) => o.value === v)).map((v) => ({ value: v, label: v })),
+  ];
+
   const unrestricted = Object.keys(criteria).length === 0;
 
   return (
@@ -135,15 +157,33 @@ export function EligibilityRuleForm({
           <div className="grid gap-3 border-t border-border p-3 sm:grid-cols-2">
             {section.fields.map((f) =>
               f.kind === 'multi' ? (
+                /* 74d00fd2 — the bulk affordances, which are OPT-IN props of the shared control and are
+                   passed HERE, at this call site, so no other screen's picker changes. Search + Select all
+                   + Deselect all are the same three the Leave Adjustments and Generate Entitlement builders
+                   already pass (this is the same criteria builder); `triggerSummaryFor` is this screen's
+                   own, because 26 collapsed <details> sections of pickers all reading "Add…" is unreadable
+                   — the count belongs where it can be seen without opening anything.
+                   ⚠️ Deselect all clears only what the SEARCH BOX is currently showing. Typing "ind" and
+                   pressing it unticks Indonesian and leaves the other six picks alone. That is deliberate
+                   and stated in the approved plan. */
                 <ChipMultiSelect
                   key={f.name}
                   name={f.name}
                   label={f.label}
-                  options={f.options ?? []}
+                  options={withStored(f.options ?? [], storedFor(f.name))}
                   defaultSelected={Array.isArray(criteria[f.name]) ? (criteria[f.name] as string[]) : []}
                   addPlaceholder={t('chipAddPlaceholder')}
                   removeLabelFor={(label) => t('chipRemoveLabel', { value: label })}
-                  countLabelFor={(n) => t('chipCountLabel', { count: n })}
+                  searchPlaceholder={t('chipSearchPlaceholder')}
+                  selectAllLabel={t('chipSelectAll')}
+                  clearAllLabel={t('chipDeselectAll')}
+                  /* Both sentences the strip below used to print, now on the control and at ANY count —
+                     the old count line only appeared past four, which is exactly the range where the chips
+                     were already legible. `countLabelFor` is deliberately NOT passed alongside: it would be
+                     dead, since supplying this suppresses the below-control lines. */
+                  triggerSummaryFor={(n, allSelected) =>
+                    allSelected ? t('chipAllSelected') : t('chipCountLabel', { count: n })
+                  }
                   onSelectionChange={(values) => setMulti(f.name, values)}
                 />
               ) : (

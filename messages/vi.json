@@ -6901,7 +6901,11 @@
       "criteriaEveryone": "Tất cả mọi người",
       "chipAddPlaceholder": "Thêm…",
       "chipRemoveLabel": "Gỡ {value}",
-      "chipCountLabel": "Đã chọn {count}"
+      "chipCountLabel": "Đã chọn {count}",
+      "chipSelectAll": "Chọn tất cả",
+      "chipDeselectAll": "Bỏ chọn tất cả",
+      "chipSearchPlaceholder": "Tìm kiếm…",
+      "chipAllSelected": "Đã chọn tất cả"
     }
   },
   "topbar": {

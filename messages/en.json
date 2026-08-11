@@ -6901,7 +6901,11 @@
       "criteriaEveryone": "Everyone",
       "chipAddPlaceholder": "Add…",
       "chipRemoveLabel": "Remove {value}",
-      "chipCountLabel": "{count} selected"
+      "chipCountLabel": "{count} selected",
+      "chipSelectAll": "Select all",
+      "chipDeselectAll": "Deselect all",
+      "chipSearchPlaceholder": "Search…",
+      "chipAllSelected": "All selected"
     }
   },
   "topbar": {

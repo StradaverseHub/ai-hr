@@ -6901,7 +6901,11 @@
       "criteriaEveryone": "Semua orang",
       "chipAddPlaceholder": "Tambah…",
       "chipRemoveLabel": "Buang {value}",
-      "chipCountLabel": "{count} dipilih"
+      "chipCountLabel": "{count} dipilih",
+      "chipSelectAll": "Pilih semua",
+      "chipDeselectAll": "Nyahpilih semua",
+      "chipSearchPlaceholder": "Cari…",
+      "chipAllSelected": "Semua dipilih"
     }
   },
   "topbar": {

@@ -6901,7 +6901,11 @@
       "criteriaEveryone": "所有人",
       "chipAddPlaceholder": "添加…",
       "chipRemoveLabel": "移除{value}",
-      "chipCountLabel": "已选 {count} 项"
+      "chipCountLabel": "已选 {count} 项",
+      "chipSelectAll": "全选",
+      "chipDeselectAll": "取消全选",
+      "chipSearchPlaceholder": "搜索…",
+      "chipAllSelected": "已全选"
     }
   },
   "topbar": {
