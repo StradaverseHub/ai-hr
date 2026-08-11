@@ -418,8 +418,16 @@ async function analyze(
 
   const issues: HistoryIssue[] = [];
   const lines: ParsedLine[] = [];
-  /** Lines that failed on their own, keyed by month, so the month can be held whole. */
-  const failedByMonth = new Map<string, number>();
+  /**
+   * Lines that failed on their own, keyed by month, so the month can be held WHOLE — and so a month
+   * every one of whose lines failed still appears in the preview. Without the identity kept here, such a
+   * month would produce no bucket and therefore no row in the months table, and the screen would show
+   * "nothing to import" beside a page of errors. The reporter has to see the month that was held.
+   */
+  const failedByMonth = new Map<
+    string,
+    { employeeNo: string; rawPeriod: string; period: string; cycles: string[]; companyCodes: string[]; rowNums: number[] }
+  >();
   const seenKeys = new Set<string>();
   let duplicates = 0;
   let blankLines = 0;
@@ -549,7 +557,18 @@ async function analyze(
 
     const monthKey = `${up(employeeNo)}|${period ?? rawPeriod}`;
     if (issues.length > before || !entry || amount == null || !employmentId || !period) {
-      failedByMonth.set(monthKey, (failedByMonth.get(monthKey) ?? 0) + 1);
+      const held = failedByMonth.get(monthKey) ?? {
+        employeeNo,
+        rawPeriod,
+        period: period ?? rawPeriod,
+        cycles: [],
+        companyCodes: [],
+        rowNums: [],
+      };
+      if (cycle && !held.cycles.includes(cycle)) held.cycles.push(cycle);
+      if (companyCode && !held.companyCodes.includes(companyCode)) held.companyCodes.push(companyCode);
+      held.rowNums.push(rowNum);
+      failedByMonth.set(monthKey, held);
       return;
     }
 
@@ -759,7 +778,7 @@ async function analyze(
       }
     }
 
-    const lineFailures = failedByMonth.get(b.key) ?? 0;
+    const lineFailures = failedByMonth.get(b.key)?.rowNums.length ?? 0;
     const hardErrors = monthIssues.filter((i) => i.status === 'Failed').length;
     const ok = hardErrors === 0 && lineFailures === 0 && !existing;
 
@@ -824,6 +843,29 @@ async function analyze(
       },
     });
   }
+
+  // A month EVERY line of which failed produced no bucket above, so it has no summary yet. Emit one, or
+  // the screen would show an empty months table beside a page of errors and the migrator would have no
+  // idea which employee-months were held.
+  for (const [key, held] of failedByMonth) {
+    if (buckets.has(key)) continue;
+    monthSummaries.push({
+      key,
+      employeeNo: held.employeeNo,
+      period: held.period,
+      cycle: held.cycles.join(', '),
+      companyCode: held.companyCodes.join(', '),
+      rowNums: held.rowNums,
+      lineCount: 0,
+      ok: false,
+      existing: false,
+      gross: 0,
+      net: 0,
+      errorCount: held.rowNums.length,
+      warningCount: 0,
+    });
+  }
+  monthSummaries.sort((x, y) => (x.rowNums[0] ?? 0) - (y.rowNums[0] ?? 0));
 
   const total = records.length - blankLines;
   const valid = months.reduce((n, m) => n + m.month.lineCount, 0);

@@ -457,7 +457,10 @@ describe('import payroll history — the long (seven-column) contract', () => {
     expect(warn[0].status).toBe('Warning');
     // A warning NEVER blocks — the month is still importable, which is the whole point.
     expect(allBasic.months[0].ok).toBe(true);
-    expect(allBasic.months[0].warningCount).toBe(1);
+    // Two warnings, both non-blocking: the EA breakdown above and CP39 readiness (this fixture has no
+    // tax number on file). Counting them proves warnings are counted separately from errors.
+    expect(allBasic.months[0].warningCount).toBe(2);
+    expect(allBasic.months[0].errorCount).toBe(0);
 
     // With a genuine allowance line the warning is absent. That is what the long format buys.
     const withSplit = await validatePayrollHistoryImport(a, {
@@ -472,7 +475,9 @@ describe('import payroll history — the long (seven-column) contract', () => {
     const a = adminCtx(b);
     await hire(a, 'A1001');
     const records = file(
-      line('A1001', '202401', 'BASIC', '5,000.00'), // thousands separators are tolerated
+      // Thousands separators are tolerated in the cell — quoted here because a bare comma would
+      // otherwise split the CSV row, which is a property of CSV and not of this importer.
+      ['A1001', '202401', 'ME', 'BASIC', 'ACME', '"5,000.00"', '1'].join(','),
       line('A1001', '202401', 'ALLOWANCE', '3O0.00'), // letter O, not a zero
       line('A1001', '202401', 'EEEPF', '583.00', { override: '2' }),
       ',202401,ME,PCB,ACME,150.00,1', // blank Employee No
