@@ -39,7 +39,7 @@ import {
   validateStatutoryRuleset,
 } from './statutory-config';
 import { getCompanyStatutoryMY, listCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
-import { eaCompaniesInYear, eaStatement, MY_REPORTS, MY_STATUTORY_LINKS } from './reports';
+import { eaCompaniesInYear, eaStatement, MY_PLANNED_FORMS, MY_REPORTS, MY_STATUTORY_LINKS } from './reports';
 import type { CountryPack } from '../country-pack';
 
 // ADR-0080 D1: the pack implements the registry-owned CountryPack contract (previously the
@@ -173,6 +173,10 @@ export const myPack: CountryPack = {
   // and the CP22/CP22A worklist). The Statutory Forms screen renders these from the catalog instead of
   // hardcoding them, which is what it used to do for EA.
   statutoryLinks: MY_STATUTORY_LINKS,
+  // 587ee719 (D4) — the forms this jurisdiction has that we have not built. Named on the shelf with a
+  // status and NO action, so the list an operator sees is complete without anything on it pretending to
+  // produce a document.
+  plannedForms: MY_PLANNED_FORMS,
   eaStatement,
   eaCompaniesInYear,
 };
