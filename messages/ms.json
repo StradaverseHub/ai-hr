@@ -6127,7 +6127,19 @@
       "fieldKind_boolean": "Ya / Tidak",
       "fieldKind_file": "Fail",
       "addNewType": "Tambah baharu",
-      "hideNewType": "Tutup"
+      "hideNewType": "Tutup",
+      "blockLimitLabel": "Setiap blok",
+      "blockEnableLabel": "Had setiap blok",
+      "blockEveryLabel": "Setiap",
+      "blockUnitLabel": "Tempoh",
+      "blockUnit_month": "Bulan",
+      "blockUnit_year": "Tahun",
+      "blockLimitAmountLabel": "Had (RM)",
+      "blockStartLabel": "Dikira dari",
+      "blockEveryMonths": "Setiap {n} bulan",
+      "blockEveryYears": "Setiap {n} tahun",
+      "blockFrom": "dari {date}",
+      "blockHint": "Had yang tempohnya ialah bilangan bulan atau tahun yang tetap — RM2,000 setiap 2 tahun, RM300 setiap 6 bulan. Tarikh mula dikira adalah untuk seluruh syarikat: semua pekerja mengikut kitaran yang sama. Biarkan sebagaimana adanya dan peraturan sedia ada akan mengekalkan tarikh mula asalnya."
     },
     "reimbursements": {
       "back": "Konfigurasi tuntutan",
@@ -7335,7 +7347,9 @@
     "deleteDraftConfirmTitle": "Padam draf ini?",
     "deleteDraftConfirmDescription": "Draf dan sebarang resit yang dilampirkan akan dibuang. Tindakan ini tidak boleh dibatalkan.",
     "deleteDraftConfirmLabel": "Padam draf",
-    "reservedPending": "Ditempah (menunggu kelulusan)"
+    "reservedPending": "Ditempah (menunggu kelulusan)",
+    "blockLimit": "Had bagi tempoh ini",
+    "blockRemaining": "Baki sehingga {date}"
   },
   "analytics": {
     "title": "Analitik HR",

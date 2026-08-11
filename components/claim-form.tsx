@@ -23,6 +23,11 @@ export type ClaimBalance = {
   perClaimCap: number | null;
   claimsUsedThisYear: number;
   maxClaimsPerYear: number | null;
+  /** e7eb5d83 rev 4 — the per-block pot ("RM2,000 every 2 years"). All null ⇒ no per-block rule today. */
+  blockLimit: number | null;
+  remainingThisBlock: number | null;
+  /** Inclusive last day of the block containing today — the date "Remaining until …" names. */
+  blockEndsOn: string | null;
 };
 
 /** An existing draft being edited (?draft=<id>) — every value the form should open with. */
@@ -101,7 +106,11 @@ export function ClaimForm({
   const minDate = selected?.minDate ?? todayUtc;
   const hasLimit =
     !!bal &&
-    (bal.annualLimit != null || bal.monthlyLimit != null || bal.perClaimCap != null || bal.maxClaimsPerYear != null);
+    (bal.annualLimit != null ||
+      bal.monthlyLimit != null ||
+      bal.perClaimCap != null ||
+      bal.maxClaimsPerYear != null ||
+      bal.blockLimit != null);
   const afterYear = bal?.remainingThisYear == null ? null : bal.remainingThisYear - currentAmount;
   const afterMonth = bal?.remainingThisMonth == null ? null : bal.remainingThisMonth - currentAmount;
 
@@ -157,6 +166,15 @@ export function ClaimForm({
                   {afterYear != null && (
                     <div className="flex justify-between"><span className="text-muted-foreground">{t('balanceAfter')}</span><span className={`tabular-nums font-medium ${afterYear < 0 ? 'text-destructive' : 'text-foreground'}`}>{rm(afterYear)}</span></div>
                   )}
+                </>
+              )}
+              {/* PER BLOCK (e7eb5d83 rev 4). The DATE is the point: "RM800 left" is unusable advice on a
+                  two-year window if the employee cannot tell whether that is for this month or until
+                  2027. The server's refusal names the same day, so the screen and the refusal agree. */}
+              {bal.blockLimit != null && bal.blockEndsOn != null && (
+                <>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{t('blockLimit')}</span><span className="tabular-nums">{rm(bal.blockLimit)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{t('blockRemaining', { date: bal.blockEndsOn })}</span><span className="tabular-nums">{rm(bal.remainingThisBlock ?? 0)}</span></div>
                 </>
               )}
               {bal.monthlyLimit != null && afterMonth != null && (

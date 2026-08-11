@@ -6127,7 +6127,19 @@
       "fieldKind_boolean": "ஆம் / இல்லை",
       "fieldKind_file": "கோப்பு",
       "addNewType": "புதிதாகச் சேர்",
-      "hideNewType": "மூடு"
+      "hideNewType": "மூடு",
+      "blockLimitLabel": "ஒரு காலகட்டத்திற்கு",
+      "blockEnableLabel": "காலகட்ட வரம்பு",
+      "blockEveryLabel": "ஒவ்வொரு",
+      "blockUnitLabel": "காலஅளவு",
+      "blockUnit_month": "மாதம்(கள்)",
+      "blockUnit_year": "ஆண்டு(கள்)",
+      "blockLimitAmountLabel": "வரம்பு (RM)",
+      "blockStartLabel": "இதிலிருந்து கணக்கிடு",
+      "blockEveryMonths": "ஒவ்வொரு {n} மாதத்திற்கும்",
+      "blockEveryYears": "ஒவ்வொரு {n} ஆண்டுக்கும்",
+      "blockFrom": "{date} முதல்",
+      "blockHint": "நிலையான மாதங்கள் அல்லது ஆண்டுகளைக் காலகட்டமாகக் கொண்ட வரம்பு — 2 ஆண்டுகளுக்கு RM2,000, 6 மாதங்களுக்கு RM300. தொடக்க நாள் நிறுவனம் முழுவதற்கும் பொதுவானது: அனைத்து ஊழியர்களும் ஒரே சுழற்சியில் இருப்பர். இதை மாற்றாமல் விட்டால், ஏற்கெனவே உள்ள விதி அதன் பழைய தொடக்க நாளையே தக்கவைக்கும்."
     },
     "reimbursements": {
       "back": "கோரிக்கைகள் கட்டமைப்பு",
@@ -7335,7 +7347,9 @@
     "deleteDraftConfirmTitle": "இந்த வரைவை நீக்கவா?",
     "deleteDraftConfirmDescription": "வரைவும் அதனுடன் இணைக்கப்பட்ட ரசீதும் நீக்கப்படும். இதைத் திரும்பப் பெற முடியாது.",
     "deleteDraftConfirmLabel": "வரைவை நீக்கு",
-    "reservedPending": "ஒதுக்கப்பட்டது (ஒப்புதலுக்குக் காத்திருக்கிறது)"
+    "reservedPending": "ஒதுக்கப்பட்டது (ஒப்புதலுக்குக் காத்திருக்கிறது)",
+    "blockLimit": "இந்தக் காலகட்டத்திற்கான வரம்பு",
+    "blockRemaining": "{date} வரை மீதம்"
   },
   "analytics": {
     "title": "HR பகுப்பாய்வு",

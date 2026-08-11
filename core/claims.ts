@@ -54,6 +54,21 @@ const rmMsg = (n: number): string => `RM ${n.toLocaleString('en-MY', { minimumFr
 
 export type ClaimItemRow = { id: string; code: string; name: string };
 
+/** The unit a per-block limit's length counts in. (e7eb5d83 rev 4) */
+export const CLAIM_BLOCK_UNITS = ['month', 'year'] as const;
+export type ClaimBlockUnit = (typeof CLAIM_BLOCK_UNITS)[number];
+
+/**
+ * A per-block rule, all four parts or none (claim_policy_block_ck mirrors this in the DB).
+ * `startOn` is a POLICY-LEVEL anchor: one company-wide cycle, not the employee's hire date.
+ */
+export type ClaimBlockRule = {
+  length: number;
+  unit: ClaimBlockUnit;
+  limit: number;
+  startOn: string;
+};
+
 export type ClaimPolicyRow = {
   annualBudget: number | null;
   perClaimCap: number | null;
@@ -63,6 +78,8 @@ export type ClaimPolicyRow = {
   /** Which grade this resolved row is scoped to (null = the all-grades default). (ccbd0508) */
   gradeId: string | null;
   rateConfig: ClaimRateConfig | null;
+  /** e7eb5d83 rev 4 — "RM2,000 every 2 years". null = no per-block rule (every row before 0428). */
+  block: ClaimBlockRule | null;
   validFrom: string;
 };
 
@@ -79,6 +96,76 @@ export type ClaimTypeRow = {
   items: ClaimItemRow[];
 };
 
+/**
+ * Fold the four block_* columns into one nullable rule, or null.
+ *
+ * ALL FOUR OR NONE — a half-filled rule is not a weaker rule, it is an unanswerable one (a length with no
+ * anchor cannot say which window a claim is in). claim_policy_block_ck enforces it in the DB and
+ * setClaimPolicy refuses it with a readable message; this reader treats anything partial as "no rule"
+ * rather than inventing the missing part, so a row that somehow slipped past both cannot silently start
+ * blocking claims against a window nobody configured.
+ */
+const toBlockRule = (row: {
+  blockLength: number | null;
+  blockUnit: string | null;
+  blockLimit: string | null;
+  blockStartOn: string | null;
+}): ClaimBlockRule | null => {
+  const limit = num(row.blockLimit);
+  if (row.blockLength == null || row.blockUnit == null || limit == null || row.blockStartOn == null) return null;
+  if (!(CLAIM_BLOCK_UNITS as readonly string[]).includes(row.blockUnit)) return null;
+  return { length: row.blockLength, unit: row.blockUnit as ClaimBlockUnit, limit, startOn: row.blockStartOn };
+};
+
+/**
+ * Add whole months to a YYYY-MM-DD, CLAMPING the day to the target month's last day.
+ * 2026-01-31 + 1 month is 2026-02-28, not 2026-03-03. Pure string arithmetic in the proleptic Gregorian
+ * calendar — no Date, no timezone, so it cannot drift at a UTC+8 midnight the way a `new Date(s)` would.
+ */
+export function addMonthsClamped(yyyyMmDd: string, months: number): string {
+  const [y, m, d] = yyyyMmDd.split('-').map(Number);
+  const total = y * 12 + (m - 1) + months;
+  const ny = Math.floor(total / 12);
+  const nm = total - ny * 12; // 0-based, always 0..11 (floor division keeps this non-negative)
+  const lastDay = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+  const nd = Math.min(d, lastDay);
+  return `${String(ny).padStart(4, '0')}-${String(nm + 1).padStart(2, '0')}-${String(nd).padStart(2, '0')}`;
+}
+
+/** The half-open window [startOn, endOnExclusive) a per-block claim falls in, plus its inclusive last day. */
+export type ClaimBlockWindow = { startOn: string; endOnExclusive: string; endOn: string; index: number };
+
+/**
+ * WHICH BLOCK a claim incurred on `incurredOn` belongs to — or null when it is BEFORE the anchor.
+ *
+ * The windows are half-open: [start, end). That is the whole reason the boundary day is unambiguous —
+ * 1 Jan 2028 on a 2-year block anchored at 1 Jan 2026 opens the SECOND pot, it does not close the first.
+ * A closed-interval version of this would double-count every anchor anniversary.
+ *
+ * A claim BEFORE the anchor falls in no block and returns null. The caller (priceAndCheckClaimTx /
+ * decideClaim) skips the per-block check ONLY — the annual, monthly and per-claim checks still apply, so
+ * an old receipt is not a hole in the limits, it is merely outside a rule that did not exist yet.
+ *
+ * `k` is found by stepping rather than by dividing, so it agrees with addMonthsClamped exactly. Dividing
+ * months and then clamping separately disagrees at month-end anchors (31 Jan + 1 month + 1 month is
+ * 31 Mar by this function but 28 Mar if you clamp twice), and a window boundary that moves by three days
+ * depending on how it was derived is a limit nobody can reconcile.
+ */
+export function claimBlockWindow(rule: ClaimBlockRule, incurredOn: string): ClaimBlockWindow | null {
+  if (incurredOn < rule.startOn) return null;
+  const m = rule.unit === 'year' ? rule.length * 12 : rule.length;
+  if (!(m > 0)) return null;
+  // Seed from plain month arithmetic (cheap, never more than one step out), then settle by stepping.
+  const [sy, sm] = rule.startOn.split('-').map(Number);
+  const [iy, im] = incurredOn.split('-').map(Number);
+  let k = Math.max(0, Math.floor((iy * 12 + (im - 1) - (sy * 12 + (sm - 1))) / m));
+  while (k > 0 && addMonthsClamped(rule.startOn, k * m) > incurredOn) k -= 1;
+  while (addMonthsClamped(rule.startOn, (k + 1) * m) <= incurredOn) k += 1;
+  const startOn = addMonthsClamped(rule.startOn, k * m);
+  const endOnExclusive = addMonthsClamped(rule.startOn, (k + 1) * m);
+  return { startOn, endOnExclusive, endOn: dateMinusDays(endOnExclusive, 1), index: k };
+}
+
 type RawPolicy = typeof claimPolicy.$inferSelect;
 const toPolicyRow = (row: RawPolicy): ClaimPolicyRow => ({
   annualBudget: num(row.annualBudget),
@@ -88,6 +175,7 @@ const toPolicyRow = (row: RawPolicy): ClaimPolicyRow => ({
   maxClaimsPerYear: row.maxClaimsPerYear ?? null,
   gradeId: row.gradeId ?? null,
   rateConfig: row.rateConfig ?? null,
+  block: toBlockRule(row),
   validFrom: row.validFrom,
 });
 
@@ -180,6 +268,8 @@ export type ClaimLimitRow = {
   lifetimeLimit: number | null;
   maxClaimsPerYear: number | null;
   rateConfig: ClaimRateConfig | null;
+  /** e7eb5d83 rev 4 — the per-block rule, or null. */
+  block: ClaimBlockRule | null;
   validFrom: string;
 };
 
@@ -205,6 +295,10 @@ export async function listClaimLimits(ctx: SessionContext, p?: { asOf?: string }
         lifetimeLimit: claimPolicy.lifetimeLimit,
         maxClaimsPerYear: claimPolicy.maxClaimsPerYear,
         rateConfig: claimPolicy.rateConfig,
+        blockLength: claimPolicy.blockLength,
+        blockUnit: claimPolicy.blockUnit,
+        blockLimit: claimPolicy.blockLimit,
+        blockStartOn: claimPolicy.blockStartOn,
         validFrom: claimPolicy.validFrom,
       })
       .from(claimPolicy)
@@ -238,6 +332,7 @@ export async function listClaimLimits(ctx: SessionContext, p?: { asOf?: string }
         lifetimeLimit: num(r.lifetimeLimit),
         maxClaimsPerYear: r.maxClaimsPerYear ?? null,
         rateConfig: r.rateConfig ?? null,
+        block: toBlockRule(r),
         validFrom: r.validFrom,
       });
     }
@@ -266,6 +361,7 @@ export type ClaimLimitValues = {
   lifetimeLimit: number | null;
   maxClaimsPerYear: number | null;
   rateConfig: ClaimRateConfig | null;
+  block: ClaimBlockRule | null;
   validFrom: string;
 };
 
@@ -292,6 +388,7 @@ const toLimitValues = (r: ClaimLimitRow): ClaimLimitValues => ({
   lifetimeLimit: r.lifetimeLimit,
   maxClaimsPerYear: r.maxClaimsPerYear,
   rateConfig: r.rateConfig,
+  block: r.block,
   validFrom: r.validFrom,
 });
 
@@ -360,6 +457,16 @@ export type ClaimBalanceRow = {
   usedLifetime: number;
   claimsUsedThisYear: number;
   maxClaimsPerYear: number | null;
+  /**
+   * PER BLOCK (e7eb5d83 rev 4). All four null/0 ⇒ no per-block rule applies to this employee today.
+   * `blockEndsOn` is the INCLUSIVE last day of the block that contains today — the date the screen shows
+   * as "Remaining until 31 Dec 2027". Null when a rule exists but today is before its anchor, which is
+   * the same case the submit check skips.
+   */
+  blockLimit: number | null;
+  usedThisBlock: number;
+  remainingThisBlock: number | null;
+  blockEndsOn: string | null;
 };
 
 
@@ -584,6 +691,18 @@ export async function setClaimPolicy(
     monthlyLimit?: number | null;
     lifetimeLimit?: number | null;
     maxClaimsPerYear?: number | null;
+    /**
+     * PER BLOCK (e7eb5d83 rev 4). Give length + unit + limit to set a rule; omit all three to clear it.
+     *
+     * blockStartOn is OPTIONAL and that is the important part: when a rule is being set and no anchor is
+     * given, the anchor is INHERITED from the version this insert closes, falling back to 1 January of
+     * effectiveFrom's year only when there is nothing to inherit. An admin who edits the per-claim cap
+     * next month and re-posts the same block rule must not silently restart everybody's two-year window.
+     */
+    blockLength?: number | null;
+    blockUnit?: string | null;
+    blockLimit?: number | null;
+    blockStartOn?: string | null;
   },
 ): Promise<{ id: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveFrom)) throw new Error('effectiveFrom must be YYYY-MM-DD');
@@ -597,7 +716,44 @@ export async function setClaimPolicy(
   }
   if (p.rateConfig != null) assertValidRateConfig(p.rateConfig);
   const gradeId = p.gradeId ?? null;
+
+  // ── Per block: validate the rule as a WHOLE, before anything is written ──
+  // "All four or none" is checked here with a readable message; claim_policy_block_ck is the backstop for
+  // anything that reaches the table another way. A rule with a limit but no length has no window to hold
+  // that limit, and a length with no limit holds nothing — neither is a weaker rule, both are unanswerable.
+  const wantsBlock = p.blockLength != null || p.blockUnit != null || p.blockLimit != null;
+  if (wantsBlock) {
+    if (p.blockLength == null || !Number.isInteger(p.blockLength) || p.blockLength <= 0) {
+      throw new Error('Per-block length must be a whole number of months or years greater than zero');
+    }
+    if (p.blockUnit == null || !(CLAIM_BLOCK_UNITS as readonly string[]).includes(p.blockUnit)) {
+      throw new Error("Per-block unit must be 'month' or 'year'");
+    }
+    if (p.blockLimit == null || p.blockLimit < 0) throw new Error('Per-block limit must be ≥ 0');
+    if (p.blockStartOn != null && !/^\d{4}-\d{2}-\d{2}$/.test(p.blockStartOn)) {
+      throw new Error('Per-block start date must be YYYY-MM-DD');
+    }
+  }
+
   return withTenant(ctx, async (tx) => {
+    // The version this insert is about to close, read BEFORE closing it — the only place the previous
+    // anchor still exists. Carrying block_start_on forward from here is what stops an unrelated edit
+    // (a new per-claim cap, a rate change) from restarting every employee's block.
+    const [prevOpen] = await tx
+      .select({ blockStartOn: claimPolicy.blockStartOn })
+      .from(claimPolicy)
+      .where(
+        and(
+          eq(claimPolicy.claimTypeId, p.claimTypeId),
+          isNull(claimPolicy.validTo),
+          gradeId == null ? isNull(claimPolicy.gradeId) : eq(claimPolicy.gradeId, gradeId),
+        ),
+      )
+      .limit(1);
+    const blockStartOn = wantsBlock
+      ? (p.blockStartOn ?? prevOpen?.blockStartOn ?? `${p.effectiveFrom.slice(0, 4)}-01-01`)
+      : null;
+
     // Close the currently-open policy version for THIS (type, grade) only (half-open validity) — a
     // null-safe grade compare so changing the Executive-Medical limit never closes the Manager-Medical row.
     await tx
@@ -622,6 +778,10 @@ export async function setClaimPolicy(
         lifetimeLimit: p.lifetimeLimit == null ? null : p.lifetimeLimit.toFixed(2),
         maxClaimsPerYear,
         rateConfig: p.rateConfig ?? null,
+        blockLength: wantsBlock ? p.blockLength : null,
+        blockUnit: wantsBlock ? p.blockUnit : null,
+        blockLimit: wantsBlock && p.blockLimit != null ? p.blockLimit.toFixed(2) : null,
+        blockStartOn,
         validFrom: p.effectiveFrom,
       })
       .returning({ id: claimPolicy.id });
@@ -642,6 +802,10 @@ export async function setClaimPolicy(
         maxClaimsPerYear,
         effectiveFrom: p.effectiveFrom,
         rateConfig: p.rateConfig ?? null,
+        blockLength: wantsBlock ? p.blockLength : null,
+        blockUnit: wantsBlock ? p.blockUnit : null,
+        blockLimit: wantsBlock ? p.blockLimit : null,
+        blockStartOn,
       },
     });
     return { id: row.id };
@@ -1238,6 +1402,13 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
         const reservedThisYear = await claimedInScope(tx, employmentId, t.id, 'year', asOf, ['pending']);
         const usedLifetime = policy?.lifetimeLimit != null ? await claimedInScope(tx, employmentId, t.id, 'lifetime', asOf, usedStatuses) : 0;
         const claimsUsedThisYear = await claimCountInScope(tx, employmentId, t.id, 'year', asOf, usedStatuses);
+        // The block containing TODAY — the one an employee filing now is spending out of. Read only when
+        // a rule exists, so nothing about this read changes for the tenants (all of them, today) that
+        // have no per-block limit configured.
+        const blockWindow = policy?.block != null ? claimBlockWindow(policy.block, asOf) : null;
+        const usedThisBlock = blockWindow
+          ? await claimedInScope(tx, employmentId, t.id, 'block', asOf, usedStatuses, undefined, blockWindow)
+          : 0;
         const balance: ClaimBalanceRow = {
           claimTypeId: t.id,
           typeCode: t.code,
@@ -1254,6 +1425,11 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
           usedLifetime,
           claimsUsedThisYear,
           maxClaimsPerYear: policy?.maxClaimsPerYear ?? null,
+          blockLimit: blockWindow ? (policy?.block?.limit ?? null) : null,
+          usedThisBlock,
+          remainingThisBlock:
+            blockWindow && policy?.block != null ? Math.max(0, policy.block.limit - usedThisBlock) : null,
+          blockEndsOn: blockWindow ? blockWindow.endOn : null,
         };
         return {
           id: t.id,
@@ -1352,17 +1528,30 @@ async function lockClaimLimit(tx: Tx, tenantId: string, employmentId: string, cl
 }
 
 /** Period scope for a limit check, resolved off the claim's incurred_on date (YYYY-MM-DD):
- *   'year'     → same calendar year   ·   'month' → same calendar month   ·   'lifetime' → all-time. */
-type LimitScope = 'year' | 'month' | 'lifetime';
+ *   'year'     → same calendar year   ·   'month' → same calendar month   ·   'lifetime' → all-time
+ *   'block'    → the half-open per-block window that CONTAINS incurred_on (e7eb5d83 rev 4). */
+type LimitScope = 'year' | 'month' | 'lifetime' | 'block';
 
-const scopeCond = (scope: LimitScope, incurredOn: string) => {
+/**
+ * 'block' needs the window, and the window is derived from the POLICY (claimBlockWindow), not from the
+ * claim alone — so it is passed in rather than recomputed here. Everything downstream of scopeCond is
+ * scope-agnostic and comes free: the derived reservation over RESERVING_STATUSES, the advisory-lock
+ * serialization, release-on-reject (there is no stored counter to keep in step) and the approve re-check.
+ */
+const scopeCond = (scope: LimitScope, incurredOn: string, block?: ClaimBlockWindow) => {
   if (scope === 'year') return sql`extract(year from ${claimRequest.incurredOn}) = ${yearOf(incurredOn)}`;
   if (scope === 'month') return sql`to_char(${claimRequest.incurredOn}, 'YYYY-MM') = ${incurredOn.slice(0, 7)}`;
+  if (scope === 'block') {
+    // Callers must resolve the window first; a missing one would otherwise silently widen the check to
+    // every claim ever filed, which is the opposite of what a per-block limit means.
+    if (!block) throw new ClaimError('Per-block limit window could not be resolved');
+    return sql`${claimRequest.incurredOn} >= ${block.startOn} and ${claimRequest.incurredOn} < ${block.endOnExclusive}`;
+  }
   return sql`true`; // lifetime — no period filter
 };
 
 /** Sum of a claim type's amounts for an employment within a period scope (by incurred_on), over the given
- *  statuses — used for budget/monthly/lifetime enforcement. */
+ *  statuses — used for budget/monthly/lifetime/per-block enforcement. */
 async function claimedInScope(
   tx: Tx,
   employmentId: string,
@@ -1371,11 +1560,12 @@ async function claimedInScope(
   incurredOn: string,
   statuses: ClaimStatus[],
   excludeId?: string,
+  block?: ClaimBlockWindow,
 ): Promise<number> {
   const conds = [
     eq(claimRequest.employmentId, employmentId),
     eq(claimRequest.claimTypeId, claimTypeId),
-    scopeCond(scope, incurredOn),
+    scopeCond(scope, incurredOn, block),
     inArray(claimRequest.status, statuses),
   ];
   if (excludeId) conds.push(sql`${claimRequest.id} <> ${excludeId}`);
@@ -1403,6 +1593,9 @@ async function claimCountInScope(
   const [row] = await tx.select({ n: sql<number>`count(*)::int` }).from(claimRequest).where(and(...conds));
   return Number(row?.n ?? 0);
 }
+
+/** Human date for a limit message — the day the current block's pot runs to, inclusive. */
+const blockEndMsg = (w: ClaimBlockWindow): string => w.endOn;
 
 
 /** Submit a claim (employee, for their own employment — RLS enforces). Resolves the per-type rate config,
@@ -1559,6 +1752,27 @@ async function priceAndCheckClaimTx(
         `This claim (${rmMsg(amount)}) would exceed the lifetime limit of ${rmMsg(policy.lifetimeLimit)} for this ` +
           `claim type. You have ${rmMsg(remaining)} remaining for this claim type.`,
       );
+    }
+  }
+  // PER BLOCK (e7eb5d83 rev 4) — "RM2,000 every 2 years". Same derived-reservation sum as every check
+  // above, over a different window. A claim incurred BEFORE the anchor falls in no block and skips THIS
+  // check only; the per-claim, monthly and annual checks have already run on it.
+  //
+  // The message names the DATE the pot runs to, not just the amount: "you have RM800 left" is unusable
+  // advice on a two-year window if the employee cannot tell whether that is for this month or until 2027.
+  if (policy?.block != null) {
+    const window = claimBlockWindow(policy.block, p.incurredOn);
+    if (window) {
+      const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'block', p.incurredOn, committed, excludeId, window);
+      if (used + amount > policy.block.limit) {
+        const remaining = Math.max(0, policy.block.limit - used);
+        throw new ClaimError(
+          `This claim (${rmMsg(amount)}) would bring your total for this claim type to ${rmMsg(used + amount)} ` +
+            `for the period ${window.startOn} to ${blockEndMsg(window)}, which exceeds the limit of ` +
+            `${rmMsg(policy.block.limit)} for that period. You have ${rmMsg(remaining)} remaining until ` +
+            `${blockEndMsg(window)}.`,
+        );
+      }
     }
   }
   if (policy?.maxClaimsPerYear != null) {
@@ -1723,6 +1937,21 @@ export async function decideClaim(
         const others = await claimedInScope(tx, claim.employmentId, claim.claimTypeId, 'lifetime', claim.incurredOn, settled, claim.id);
         if (others + amount > policy.lifetimeLimit) {
           throw new ClaimError(`Approving this would exceed the lifetime limit (${rmMsg(policy.lifetimeLimit)})`);
+        }
+      }
+      // PER BLOCK (e7eb5d83 rev 4) — the approve-time twin of the submit check, against SETTLED_STATUSES
+      // so a pile of pending claims cannot block each other's approval. Same window derivation, so an
+      // approval cannot push a block over its limit even though the submit that filed it was inside.
+      if (policy?.block != null) {
+        const window = claimBlockWindow(policy.block, claim.incurredOn);
+        if (window) {
+          const others = await claimedInScope(tx, claim.employmentId, claim.claimTypeId, 'block', claim.incurredOn, settled, claim.id, window);
+          if (others + amount > policy.block.limit) {
+            throw new ClaimError(
+              `Approving this would exceed the limit of ${rmMsg(policy.block.limit)} for the period ` +
+                `${window.startOn} to ${blockEndMsg(window)}`,
+            );
+          }
         }
       }
       if (policy?.maxClaimsPerYear != null) {

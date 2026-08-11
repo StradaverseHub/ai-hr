@@ -6344,6 +6344,20 @@ export const claimType = pgTable(
     requiresReceipt: boolean('requires_receipt').notNull().default(true),
     /** Per-type receipt-backdate window (days). NULL ⇒ the global RECEIPT_BACKDATE_DAYS default. (ccbd0508) */
     maxReceiptAgeDays: integer('max_receipt_age_days'),
+    /**
+     * THE mileage claim type (e7eb5d83 rev 4, point 4 — 0428). The reporter's own spec: "one special
+     * Claim Type can be designated as Mileage Claim".
+     *
+     * What this replaces: "a claim is a mileage claim iff its resolved claim_policy carries
+     * rate_config = {kind:'mileage_flat'}". That put the answer on an effective-dated, PER-GRADE row, so
+     * whether the employee saw a distance box or an amount box depended on which grade's limit resolved —
+     * and the banded Mileage Rates table (claim_mileage_rate), which is where a rate per km actually lives
+     * now, could only be reached through a legacy scalar that the limits screen still had to ask for.
+     *
+     * It is a property of the TYPE, not of a limit, so it lives here. At most one live type per tenant
+     * carries it (partial unique index below).
+     */
+    isMileage: boolean('is_mileage').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -6351,6 +6365,11 @@ export const claimType = pgTable(
     index('claim_type_tenant_idx').on(t.tenantId),
     // One live code per tenant (archived rows may share a code that was re-created).
     uniqueIndex('claim_type_tenant_code_uq').on(t.tenantId, t.code).where(sql`archived_at IS NULL`),
+    // At most ONE live mileage claim type per tenant. Enforced in the DB, not only in setIsMileage:
+    // "which type is the mileage one" is read by the employee form, the submit pricing path and the
+    // Mileage Rates screen, and two answers would mean three readers disagreeing about what an
+    // employee is filing. Archived rows are excluded so a retired mileage type does not block a new one.
+    uniqueIndex('claim_type_tenant_mileage_uq').on(t.tenantId).where(sql`is_mileage AND archived_at IS NULL`),
   ],
 );
 
@@ -6605,6 +6624,31 @@ export const claimPolicy = pgTable(
     lifetimeLimit: numeric('lifetime_limit', { precision: 12, scale: 2 }),
     /** NULL = no count cap. Max number of claims of this type per calendar year. (ccbd0508) */
     maxClaimsPerYear: integer('max_claims_per_year'),
+    /**
+     * ─────────── PER BLOCK: "RM2,000 every 2 years", "RM300 every 6 months" (e7eb5d83 rev 4, 0428) ───────────
+     *
+     * The one thing in the reporter's five points that genuinely did not exist. The vocabulary was per
+     * claim / per calendar month / per calendar year / lifetime / a count per year — there was nowhere to
+     * write a limit whose period is N months or N years long.
+     *
+     * ALL FOUR TOGETHER OR ALL FOUR NULL (claim_policy_block_ck). All-null is today's behaviour, which is
+     * why every existing row is already correct and 0428 needs no backfill.
+     *
+     * blockStartOn is a POLICY-LEVEL FIXED DATE — the anchor every employee's block is measured from — and
+     * emphatically NOT the employee's hire date and not their first claim. Anchoring per employee means no
+     * one can ever answer "when does my pot refill", and it is not what the reporter's screenshot shows.
+     * It defaults to 1 January of the effectiveFrom year when an admin first ticks Per block, and
+     * setClaimPolicy CARRIES IT FORWARD across the close+insert versioning: editing next month's per-claim
+     * cap must not silently restart everybody's two-year window.
+     *
+     * A claim incurred BEFORE blockStartOn falls in no block and skips the per-block check only; the
+     * annual, monthly and per-claim checks still apply to it.
+     */
+    blockLength: integer('block_length'),
+    /** 'month' | 'year' — the unit blockLength counts. DB-checked (claim_policy_block_unit_ck). */
+    blockUnit: text('block_unit'),
+    blockLimit: numeric('block_limit', { precision: 12, scale: 2 }),
+    blockStartOn: date('block_start_on'),
     /**
      * Per-type rate/calculation config (discriminated union; nullable/absent ⇒ default 'receipt').
      *   { kind: 'receipt' }                                — amount entered by the employee (current behaviour).

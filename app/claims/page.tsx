@@ -101,6 +101,9 @@ export default async function ClaimsPage({
       perClaimCap: ct.balance.perClaimCap,
       claimsUsedThisYear: ct.balance.claimsUsedThisYear,
       maxClaimsPerYear: ct.balance.maxClaimsPerYear,
+      blockLimit: ct.balance.blockLimit,
+      remainingThisBlock: ct.balance.remainingThisBlock,
+      blockEndsOn: ct.balance.blockEndsOn,
     },
   }));
 

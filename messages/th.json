@@ -6127,7 +6127,19 @@
       "fieldKind_boolean": "ใช่ / ไม่ใช่",
       "fieldKind_file": "ไฟล์",
       "addNewType": "เพิ่มใหม่",
-      "hideNewType": "ปิด"
+      "hideNewType": "ปิด",
+      "blockLimitLabel": "ต่อรอบ",
+      "blockEnableLabel": "วงเงินต่อรอบ",
+      "blockEveryLabel": "ทุก ๆ",
+      "blockUnitLabel": "หน่วยรอบ",
+      "blockUnit_month": "เดือน",
+      "blockUnit_year": "ปี",
+      "blockLimitAmountLabel": "วงเงิน (RM)",
+      "blockStartLabel": "เริ่มนับจาก",
+      "blockEveryMonths": "ทุก ๆ {n} เดือน",
+      "blockEveryYears": "ทุก ๆ {n} ปี",
+      "blockFrom": "ตั้งแต่ {date}",
+      "blockHint": "วงเงินที่มีรอบเป็นจำนวนเดือนหรือปีที่กำหนดไว้ — RM2,000 ทุก 2 ปี, RM300 ทุก 6 เดือน วันที่เริ่มนับใช้ร่วมกันทั้งบริษัท พนักงานทุกคนอยู่ในรอบเดียวกัน หากปล่อยไว้ตามเดิม กฎที่มีอยู่จะคงวันที่เริ่มนับเดิมไว้"
     },
     "reimbursements": {
       "back": "ตั้งค่า Claims",
@@ -7335,7 +7347,9 @@
     "deleteDraftConfirmTitle": "ลบฉบับร่างนี้?",
     "deleteDraftConfirmDescription": "ฉบับร่างและใบเสร็จที่แนบไว้จะถูกลบ ไม่สามารถย้อนกลับได้",
     "deleteDraftConfirmLabel": "ลบฉบับร่าง",
-    "reservedPending": "กันวงเงินไว้ (รออนุมัติ)"
+    "reservedPending": "กันวงเงินไว้ (รออนุมัติ)",
+    "blockLimit": "วงเงินของรอบนี้",
+    "blockRemaining": "คงเหลือถึง {date}"
   },
   "analytics": {
     "title": "การวิเคราะห์ HR",

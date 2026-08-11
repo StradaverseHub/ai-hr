@@ -6127,7 +6127,19 @@
       "fieldKind_boolean": "是 / 否",
       "fieldKind_file": "文件",
       "addNewType": "新增",
-      "hideNewType": "关闭"
+      "hideNewType": "关闭",
+      "blockLimitLabel": "每个周期",
+      "blockEnableLabel": "周期限额",
+      "blockEveryLabel": "每",
+      "blockUnitLabel": "周期单位",
+      "blockUnit_month": "个月",
+      "blockUnit_year": "年",
+      "blockLimitAmountLabel": "限额（RM）",
+      "blockStartLabel": "起算日",
+      "blockEveryMonths": "每 {n} 个月",
+      "blockEveryYears": "每 {n} 年",
+      "blockFrom": "自 {date} 起",
+      "blockHint": "周期为固定月数或年数的限额 —— 每 2 年 RM2,000、每 6 个月 RM300。起算日为全公司统一：所有员工使用同一周期。保持原样，已有规则会沿用原来的起算日。"
     },
     "reimbursements": {
       "back": "报销配置",
@@ -7335,7 +7347,9 @@
     "deleteDraftConfirmTitle": "删除此草稿？",
     "deleteDraftConfirmDescription": "草稿及其附带的收据都会被删除，且无法恢复。",
     "deleteDraftConfirmLabel": "删除草稿",
-    "reservedPending": "已预留（待审批）"
+    "reservedPending": "已预留（待审批）",
+    "blockLimit": "本周期限额",
+    "blockRemaining": "至 {date} 的余额"
   },
   "analytics": {
     "title": "人力分析",

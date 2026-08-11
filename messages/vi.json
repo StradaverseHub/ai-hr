@@ -6127,7 +6127,19 @@
       "fieldKind_boolean": "Có / Không",
       "fieldKind_file": "Tệp",
       "addNewType": "Thêm mới",
-      "hideNewType": "Đóng"
+      "hideNewType": "Đóng",
+      "blockLimitLabel": "Theo chu kỳ",
+      "blockEnableLabel": "Hạn mức theo chu kỳ",
+      "blockEveryLabel": "Mỗi",
+      "blockUnitLabel": "Đơn vị chu kỳ",
+      "blockUnit_month": "Tháng",
+      "blockUnit_year": "Năm",
+      "blockLimitAmountLabel": "Hạn mức (RM)",
+      "blockStartLabel": "Tính từ",
+      "blockEveryMonths": "Mỗi {n} tháng",
+      "blockEveryYears": "Mỗi {n} năm",
+      "blockFrom": "từ {date}",
+      "blockHint": "Hạn mức có chu kỳ là một số tháng hoặc số năm cố định — RM2.000 mỗi 2 năm, RM300 mỗi 6 tháng. Ngày bắt đầu tính áp dụng cho toàn công ty: mọi nhân viên đều theo cùng một chu kỳ. Để nguyên và quy tắc hiện có sẽ giữ nguyên ngày bắt đầu cũ."
     },
     "reimbursements": {
       "back": "Cấu hình khoản chi",
@@ -7335,7 +7347,9 @@
     "deleteDraftConfirmTitle": "Xóa bản nháp này?",
     "deleteDraftConfirmDescription": "Bản nháp và mọi hóa đơn đính kèm sẽ bị xóa. Không thể hoàn tác.",
     "deleteDraftConfirmLabel": "Xóa bản nháp",
-    "reservedPending": "Đã giữ chỗ (chờ duyệt)"
+    "reservedPending": "Đã giữ chỗ (chờ duyệt)",
+    "blockLimit": "Hạn mức cho chu kỳ này",
+    "blockRemaining": "Còn lại đến {date}"
   },
   "analytics": {
     "title": "Phân tích nhân sự",
