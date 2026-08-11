@@ -6139,7 +6139,13 @@
       "blockEveryMonths": "每 {n} 个月",
       "blockEveryYears": "每 {n} 年",
       "blockFrom": "自 {date} 起",
-      "blockHint": "周期为固定月数或年数的限额 —— 每 2 年 RM2,000、每 6 个月 RM300。起算日为全公司统一：所有员工使用同一周期。保持原样，已有规则会沿用原来的起算日。"
+      "blockHint": "周期为固定月数或年数的限额 —— 每 2 年 RM2,000、每 6 个月 RM300。起算日为全公司统一：所有员工使用同一周期。保持原样，已有规则会沿用原来的起算日。",
+      "isMileageLabel": "此为里程报销类型",
+      "isMileageHint": "只能有一个报销类型作为里程报销。勾选后，员工填写的是里程而非金额，里程费率页也据此知道费率区间属于哪个报销类型。",
+      "mileageBadge": "里程",
+      "noMileageType": "尚未勾选任何报销类型作为里程报销，因此没有可设置的费率。",
+      "noMileageTypeLink": "前往报销类型并勾选一个",
+      "mileageTypeChangeLink": "在报销类型中更改"
     },
     "reimbursements": {
       "back": "报销配置",
@@ -7349,7 +7355,8 @@
     "deleteDraftConfirmLabel": "删除草稿",
     "reservedPending": "已预留（待审批）",
     "blockLimit": "本周期限额",
-    "blockRemaining": "至 {date} 的余额"
+    "blockRemaining": "至 {date} 的余额",
+    "mileagePricedOnSubmit": "金额将在提交时根据里程费率表计算。"
   },
   "analytics": {
     "title": "人力分析",

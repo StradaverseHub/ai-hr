@@ -23,11 +23,13 @@ import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import {
   archiveClaimFormField,
+  archiveClaimType,
   assertValidMileageBands,
   BUILT_IN_FIELD_KEYS,
   createClaimFormField,
   createClaimItem,
   createClaimType,
+  getMileageClaimType,
   listClaimFormFields,
   listClaimLimitsForGrade,
   listMileageRateTables,
@@ -37,6 +39,7 @@ import {
   setClaimPolicy,
   setMileageRateTable,
   submitClaim,
+  updateClaimType,
   validateClaimFieldValues,
   type ClaimFormFieldRowOut,
 } from '../core/claims';
@@ -238,9 +241,21 @@ describe('e7eb5d83 — configurable claim management', () => {
 
   it('the mileage page validates every URL parameter against what the session can see', () => {
     const src = read('app/admin/claims/mileage/page.tsx');
-    expect(src).toMatch(/types\.find\(\(ct\) => ct\.id === rawTypeId\)/);
+    // e7eb5d83 rev 4 point 5 — ?claimTypeId= is gone entirely: the screen resolves its claim type from
+    // claim_type.is_mileage instead of accepting one from the URL, so the parameter that used to need a
+    // guard no longer exists. The remaining two keep the same guard the limits screen uses.
+    expect(src).not.toMatch(/rawTypeId/);
+    expect(src).toMatch(/getMileageClaimType/);
     expect(src).toMatch(/activeGrades\.some\(\(g\) => g\.id === rawGradeId\)/);
     expect(src).toMatch(/MILEAGE_VEHICLE_CLASSES as readonly string\[\]\)\.includes\(rawClass/);
+  });
+
+  it('the mileage page renders an EMPTY STATE rather than falling back to the first claim type', () => {
+    // The dangerous version of this screen picks types[0] when nothing is marked, and the admin saves
+    // distance bands onto Medical. Pinned as source because the failure is silent: the save succeeds.
+    const src = read('app/admin/claims/mileage/page.tsx');
+    expect(src).not.toMatch(/\?\? types\[0\]/); // the fallback EXPRESSION, not the prose that explains it
+    expect(src).toMatch(/noMileageType/);
   });
 
   // ── 2. Form designer ─────────────────────────────────────────────────────
@@ -400,7 +415,7 @@ describe('e7eb5d83 — configurable claim management', () => {
       employmentType: 'full_time',
       hiredOn: '2026-01-01',
     });
-    const { id } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: false });
+    const { id } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: false, isMileage: true });
     const on = todayInKualaLumpur();
     // The claim type must be a mileage type for the banded table to apply at all.
     await setClaimPolicy(a, {
@@ -446,7 +461,7 @@ describe('e7eb5d83 — configurable claim management', () => {
       employmentType: 'full_time',
       hiredOn: '2026-01-01',
     });
-    const { id } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: false });
+    const { id } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: false, isMileage: true });
     await setClaimPolicy(a, {
       claimTypeId: id,
       annualBudget: null,
@@ -477,7 +492,7 @@ describe('e7eb5d83 — configurable claim management', () => {
       hiredOn: '2026-01-01',
     });
     await owner.db.update(schema.employment).set({ gradeId: exec }).where(eq(schema.employment.id, E.employmentId));
-    const { id } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: false });
+    const { id } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: false, isMileage: true });
     await setClaimPolicy(a, {
       claimTypeId: id,
       annualBudget: null,
@@ -498,5 +513,156 @@ describe('e7eb5d83 — configurable claim management', () => {
     const [row] = await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id, claim.id));
     expect(Number(row.amount)).toBe(100); // 100 × 1.00 — the Executive table, not the company-wide 0.50
     expect(row.mileageRateApplied).toMatchObject({ source: 'grade', gradeId: exec });
+  });
+  // ── 4. THE MILEAGE CLAIM TYPE (e7eb5d83 rev 4, points 4 + 5) ─────────────────────────────────────
+  //
+  // What used to make a claim a mileage claim: its resolved claim_policy carrying
+  // rate_config = {kind:'mileage_flat'}. That answer lived on an effective-dated, PER-GRADE row, so two
+  // employees on the SAME claim type could be shown different forms, and the Mileage Rates screen had to
+  // keep asking which claim type it was configuring — a question with a wrong answer available every time.
+  // It is a tick on the claim type now.
+
+  it('at most ONE live claim type per tenant is the mileage claim, and the refusal NAMES the other', async () => {
+    const a = adminCtx(base);
+    await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false, isMileage: true });
+    const second = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: false, isMileage: true }).catch((e) => e);
+    // Not a raw unique-violation an admin cannot act on — the message says which one to untick.
+    expect((second as Error).message).toMatch(/"Mileage" is already the mileage claim type/);
+
+    // The same guard on the UPDATE path: ticking a second type from its own panel is refused too.
+    const other = await createClaimType(a, { code: 'MEDICAL', name: 'Medical', defaultTaxable: false, requiresReceipt: false });
+    const promoted = await updateClaimType(a, {
+      id: other.id,
+      name: 'Medical',
+      defaultTaxable: false,
+      requiresReceipt: false,
+      isMileage: true,
+    }).catch((e) => e);
+    expect((promoted as Error).message).toMatch(/already the mileage claim type/);
+  });
+
+  it('unticking one type frees the flag for another (and archiving does too)', async () => {
+    const a = adminCtx(base);
+    const first = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false, isMileage: true });
+    await updateClaimType(a, { id: first.id, name: 'Mileage', defaultTaxable: false, requiresReceipt: false, isMileage: false });
+    const second = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: false, isMileage: true });
+    expect((await getMileageClaimType(a))?.id).toBe(second.id);
+
+    // The partial unique index excludes archived rows, so retiring a mileage type does not permanently
+    // burn the flag for the tenant.
+    await archiveClaimType(a, second.id);
+    expect(await getMileageClaimType(a)).toBeNull();
+    const third = await createClaimType(a, { code: 'MILEAGE2', name: 'Mileage 2', defaultTaxable: false, requiresReceipt: false, isMileage: true });
+    expect((await getMileageClaimType(a))?.id).toBe(third.id);
+  });
+
+  it('THE TICK, NOT rate_config, prices a mileage claim — banded table, no legacy flat scalar at all', async () => {
+    const a = adminCtx(base);
+    const E = await hireEmployee(a, {
+      person: { fullName: 'Tick Driver', primaryEmail: 'tickdriver@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const { id } = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false, isMileage: true });
+    // A plain RECEIPT policy: before this round that combination made the claim NOT a mileage claim and
+    // the banded table would never have been consulted.
+    await setClaimPolicy(a, { claimTypeId: id, annualBudget: null, perClaimCap: null, effectiveFrom: '2026-01-01', rateConfig: { kind: 'receipt' } });
+    await setMileageRateTable(a, { claimTypeId: id, effectiveFrom: '2026-01-01', bands: [{ fromKm: 0, toKm: null, ratePerKm: 0.8 }] });
+
+    const claim = await submitClaim(a, {
+      employmentId: E.employmentId,
+      claimTypeId: id,
+      amount: 0,
+      quantityKm: 50,
+      incurredOn: todayInKualaLumpur(),
+    });
+    const [row] = await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id, claim.id));
+    expect(Number(row.amount)).toBe(40); // 50 × 0.80, from the band table
+    expect(row.mileageRateApplied).toMatchObject({ source: 'company' });
+  });
+
+  it('a type that LOSES the tick goes back to asking for an amount, legacy rate_config or not', async () => {
+    const a = adminCtx(base);
+    const E = await hireEmployee(a, {
+      person: { fullName: 'Ex Driver', primaryEmail: 'exdriver@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const { id } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: false });
+    // The legacy scalar is still sitting on the policy, untouched by the tick coming off.
+    await setClaimPolicy(a, {
+      claimTypeId: id,
+      annualBudget: null,
+      perClaimCap: null,
+      effectiveFrom: '2026-01-01',
+      rateConfig: { kind: 'mileage_flat', ratePerKm: 0.3 },
+    });
+    // It must be IGNORED rather than demanded: refusing every claim for want of a distance nobody is
+    // asked for would be the loud version of this bug, and the silent version is worse.
+    const claim = await submitClaim(a, {
+      employmentId: E.employmentId,
+      claimTypeId: id,
+      amount: 25,
+      incurredOn: todayInKualaLumpur(),
+    });
+    const [row] = await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id, claim.id));
+    expect(Number(row.amount)).toBe(25);
+    expect(row.quantityKm).toBeNull();
+  });
+
+  it('marked as mileage with NO rate anywhere refuses with something an employee can act on', async () => {
+    const a = adminCtx(base);
+    const E = await hireEmployee(a, {
+      person: { fullName: 'Rateless', primaryEmail: 'rateless@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const { id } = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false, isMileage: true });
+    const err = await submitClaim(a, {
+      employmentId: E.employmentId,
+      claimTypeId: id,
+      amount: 0,
+      quantityKm: 50,
+      incurredOn: todayInKualaLumpur(),
+    }).catch((e) => e);
+    // NOT "Amount must be greater than zero" — that points at a box the mileage form does not show.
+    expect((err as Error).message).toMatch(/No mileage rate has been set up/);
+  });
+
+  it('the limit editor no longer offers Mileage, and STILL offers Fixed allowance', () => {
+    const src = read('components/claim-limit-editor.tsx');
+    // One production policy is fixed_allowance (MOBILE 001, RM180) — removing the whole dropdown would
+    // have broken it, which is why only the mileage option went.
+    expect(src).not.toMatch(/<option value="mileage_flat"/);
+    expect(src).not.toMatch(/name="ratePerKm"/);
+    expect(src).toMatch(/<option value="fixed_allowance"/);
+  });
+
+  it('the claim FORM designer lives in the claim-type panel, and the Claim Forms tab is gone', () => {
+    const panel = read('components/claim-type-panel.tsx');
+    expect(panel).toMatch(/builtInAmount/);
+    expect(panel).toMatch(/createFieldAction/);
+    // No Remove control on a built-in: the four are rendered with a badge, not a button. (The REAL
+    // guarantee is BUILT_IN_FIELD_KEYS in the service, asserted above against a forged POST.)
+    expect(panel).toMatch(/builtInBadge/);
+    const tabs = read('components/claims-tabs.tsx');
+    expect(tabs).not.toMatch(/'forms'/);
+    // The route survives for bookmarks — as a guarded permanent redirect, which lib/permissions.ts and
+    // test/function-access.test.ts both still require to exist on disk.
+    const forms = read('app/admin/claims/forms/page.tsx');
+    expect(forms).toMatch(/permanentRedirect\('\/admin\/claims'\)/);
+    expect(forms).toMatch(/requireAdmin/);
+  });
+
+  it('the Claim Types list opens its create form from a disclosure, not permanently', () => {
+    const src = read('app/admin/claims/page.tsx');
+    expect(src).toMatch(/<details className="group" open=\{error != null\}>/);
+    expect(src).toMatch(/addNewType/);
   });
 });

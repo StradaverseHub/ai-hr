@@ -6139,7 +6139,13 @@
       "blockEveryMonths": "Setiap {n} bulan",
       "blockEveryYears": "Setiap {n} tahun",
       "blockFrom": "dari {date}",
-      "blockHint": "Had yang tempohnya ialah bilangan bulan atau tahun yang tetap — RM2,000 setiap 2 tahun, RM300 setiap 6 bulan. Tarikh mula dikira adalah untuk seluruh syarikat: semua pekerja mengikut kitaran yang sama. Biarkan sebagaimana adanya dan peraturan sedia ada akan mengekalkan tarikh mula asalnya."
+      "blockHint": "Had yang tempohnya ialah bilangan bulan atau tahun yang tetap — RM2,000 setiap 2 tahun, RM300 setiap 6 bulan. Tarikh mula dikira adalah untuk seluruh syarikat: semua pekerja mengikut kitaran yang sama. Biarkan sebagaimana adanya dan peraturan sedia ada akan mengekalkan tarikh mula asalnya.",
+      "isMileageLabel": "Ini ialah tuntutan perbatuan",
+      "isMileageHint": "Hanya satu jenis tuntutan boleh menjadi tuntutan perbatuan. Menandakannya memberi pekerja ruangan jarak dan bukan ruangan jumlah, serta memberitahu Kadar Perbatuan jenis tuntutan mana yang memiliki jalur jaraknya.",
+      "mileageBadge": "Perbatuan",
+      "noMileageType": "Tiada jenis tuntutan ditandakan sebagai tuntutan perbatuan lagi, jadi tiada kadar untuk ditetapkan.",
+      "noMileageTypeLink": "Pergi ke Jenis Tuntutan dan tandakan satu",
+      "mileageTypeChangeLink": "Tukar di Jenis Tuntutan"
     },
     "reimbursements": {
       "back": "Konfigurasi tuntutan",
@@ -7349,7 +7355,8 @@
     "deleteDraftConfirmLabel": "Padam draf",
     "reservedPending": "Ditempah (menunggu kelulusan)",
     "blockLimit": "Had bagi tempoh ini",
-    "blockRemaining": "Baki sehingga {date}"
+    "blockRemaining": "Baki sehingga {date}",
+    "mileagePricedOnSubmit": "Jumlah akan dikira daripada jadual kadar perbatuan apabila anda menghantar."
   },
   "analytics": {
     "title": "Analitik HR",

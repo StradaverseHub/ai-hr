@@ -38,6 +38,7 @@ export async function createClaimTypeAction(formData: FormData) {
       defaultTaxable: formData.get('defaultTaxable') === 'on',
       requiresReceipt: formData.get('requiresReceipt') === 'on',
       maxReceiptAgeDays: numOrNull(formData.get('maxReceiptAgeDays')),
+      isMileage: formData.get('isMileage') === 'on',
     });
   } catch (e) {
     fail(e);
@@ -56,6 +57,9 @@ export async function updateClaimTypeAction(formData: FormData) {
       defaultTaxable: formData.get('defaultTaxable') === 'on',
       requiresReceipt: formData.get('requiresReceipt') === 'on',
       maxReceiptAgeDays: numOrNull(formData.get('maxReceiptAgeDays')),
+      // Always a boolean, never undefined: the panel's edit form always carries the checkbox, so an
+      // UNTICK must arrive as false. Passing undefined would make "take the mileage flag off" a no-op.
+      isMileage: formData.get('isMileage') === 'on',
     });
   } catch (e) {
     fail(e);

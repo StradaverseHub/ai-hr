@@ -7,10 +7,16 @@ import { setMileageRateTable, type MileageBand } from '@/core/claims';
 
 const BASE = '/admin/claims/mileage';
 
-/** Round-trip the screen's selection so an error or a save never bounces the admin to a different grade or
- *  claim type than the one they were editing — the same reason the limits action carries ?gradeId=. */
-const backTo = (claimTypeId: string, gradeId: string | null, vehicleClass: string, extra: string): string => {
-  const q = new URLSearchParams({ claimTypeId, vehicleClass });
+/**
+ * Round-trip the screen's selection so an error or a save never bounces the admin to a different grade
+ * than the one they were editing — the same reason the limits action carries ?gradeId=.
+ *
+ * e7eb5d83 rev 4 point 5 — no claimTypeId in the URL any more: the screen resolves its claim type from
+ * claim_type.is_mileage rather than asking. The POST still CARRIES one (claim_mileage_rate.claim_type_id
+ * is NOT NULL and the service writes it), it is simply no longer a selection to preserve.
+ */
+const backTo = (gradeId: string | null, vehicleClass: string, extra: string): string => {
+  const q = new URLSearchParams({ vehicleClass });
   if (gradeId) q.set('gradeId', gradeId);
   return `${BASE}?${q.toString()}&${extra}`;
 };
@@ -47,8 +53,8 @@ export async function setMileageRateTableAction(formData: FormData) {
   try {
     await setMileageRateTable(s, { claimTypeId, gradeId, vehicleClass, effectiveFrom, bands });
   } catch (e) {
-    redirect(backTo(claimTypeId, gradeId, vehicleClass, `error=${encodeURIComponent((e as Error).message)}`));
+    redirect(backTo(gradeId, vehicleClass, `error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(BASE);
-  redirect(backTo(claimTypeId, gradeId, vehicleClass, `toast=${encodeURIComponent('Mileage rates saved')}`));
+  redirect(backTo(gradeId, vehicleClass, `toast=${encodeURIComponent('Mileage rates saved')}`));
 }

@@ -6139,7 +6139,13 @@
       "blockEveryMonths": "Mỗi {n} tháng",
       "blockEveryYears": "Mỗi {n} năm",
       "blockFrom": "từ {date}",
-      "blockHint": "Hạn mức có chu kỳ là một số tháng hoặc số năm cố định — RM2.000 mỗi 2 năm, RM300 mỗi 6 tháng. Ngày bắt đầu tính áp dụng cho toàn công ty: mọi nhân viên đều theo cùng một chu kỳ. Để nguyên và quy tắc hiện có sẽ giữ nguyên ngày bắt đầu cũ."
+      "blockHint": "Hạn mức có chu kỳ là một số tháng hoặc số năm cố định — RM2.000 mỗi 2 năm, RM300 mỗi 6 tháng. Ngày bắt đầu tính áp dụng cho toàn công ty: mọi nhân viên đều theo cùng một chu kỳ. Để nguyên và quy tắc hiện có sẽ giữ nguyên ngày bắt đầu cũ.",
+      "isMileageLabel": "Đây là khoản chi theo quãng đường",
+      "isMileageHint": "Chỉ một loại khoản chi được là khoản chi theo quãng đường. Khi đánh dấu, nhân viên sẽ nhập quãng đường thay vì số tiền, và trang Đơn giá quãng đường sẽ biết các bậc quãng đường thuộc loại khoản chi nào.",
+      "mileageBadge": "Quãng đường",
+      "noMileageType": "Chưa có loại khoản chi nào được đánh dấu là khoản chi theo quãng đường, nên chưa có đơn giá để thiết lập.",
+      "noMileageTypeLink": "Sang Loại khoản chi và đánh dấu một loại",
+      "mileageTypeChangeLink": "Thay đổi ở Loại khoản chi"
     },
     "reimbursements": {
       "back": "Cấu hình khoản chi",
@@ -7349,7 +7355,8 @@
     "deleteDraftConfirmLabel": "Xóa bản nháp",
     "reservedPending": "Đã giữ chỗ (chờ duyệt)",
     "blockLimit": "Hạn mức cho chu kỳ này",
-    "blockRemaining": "Còn lại đến {date}"
+    "blockRemaining": "Còn lại đến {date}",
+    "mileagePricedOnSubmit": "Số tiền sẽ được tính từ bảng đơn giá quãng đường khi bạn gửi."
   },
   "analytics": {
     "title": "Phân tích nhân sự",

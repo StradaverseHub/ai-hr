@@ -91,6 +91,12 @@ export type ClaimTypeRow = {
   defaultTaxable: boolean;
   requiresReceipt: boolean;
   maxReceiptAgeDays: number | null;
+  /**
+   * e7eb5d83 rev 4 point 4 — THE mileage claim type. At most one live type per tenant carries it
+   * (claim_type_tenant_mileage_uq). This, and not the policy's rate_config, is what makes a claim a
+   * mileage claim now.
+   */
+  isMileage: boolean;
   archivedAt: string | null;
   policy: ClaimPolicyRow | null;
   items: ClaimItemRow[];
@@ -238,6 +244,7 @@ export async function listClaimTypes(ctx: SessionContext, p?: { asOf?: string })
         defaultTaxable: t.defaultTaxable,
         requiresReceipt: t.requiresReceipt,
         maxReceiptAgeDays: t.maxReceiptAgeDays ?? null,
+        isMileage: t.isMileage,
         archivedAt: t.archivedAt ? t.archivedAt.toISOString() : null,
         // The admin Claim Types tab resolves the null-grade default only; per-grade limits live on the
         // Claim Limits tab (listClaimLimits) and the employee form resolves for the claimant's own grade.
@@ -477,6 +484,28 @@ const receiptAgeOrNull = (v: number | null | undefined): number | null => {
   return v;
 };
 
+/**
+ * Refuse a SECOND live mileage claim type, naming the one that already holds the flag.
+ *
+ * claim_type_tenant_mileage_uq would refuse it anyway, but as a raw unique-violation an admin cannot act
+ * on ("duplicate key value violates unique constraint …"). The alternative — silently MOVING the flag —
+ * is worse: it changes what a different claim type asks its employees for, on a screen that never
+ * mentioned that type. So: refuse, and say which one to untick.
+ */
+async function assertSingleMileageType(tx: Tx, excludeId: string | null): Promise<void> {
+  const rows = await tx
+    .select({ id: claimType.id, name: claimType.name })
+    .from(claimType)
+    .where(and(eq(claimType.isMileage, true), isNull(claimType.archivedAt)));
+  const other = rows.find((r) => r.id !== excludeId);
+  if (other) {
+    throw new Error(
+      `"${other.name}" is already the mileage claim type. Only one claim type can be the mileage claim — ` +
+        `untick it there first.`,
+    );
+  }
+}
+
 export async function createClaimType(
   ctx: SessionContext,
   p: {
@@ -486,6 +515,8 @@ export async function createClaimType(
     requiresReceipt: boolean;
     description?: string | null;
     maxReceiptAgeDays?: number | null;
+    /** e7eb5d83 rev 4 — mark this type as THE mileage claim (at most one live one per tenant). */
+    isMileage?: boolean;
   },
 ): Promise<{ id: string }> {
   const code = p.code.trim().toUpperCase();
@@ -493,7 +524,9 @@ export async function createClaimType(
   if (!p.name.trim()) throw new Error('Claim type name is required');
   const description = p.description?.trim() || null;
   const maxReceiptAgeDays = receiptAgeOrNull(p.maxReceiptAgeDays);
+  const isMileage = p.isMileage ?? false;
   return withTenant(ctx, async (tx) => {
+    if (isMileage) await assertSingleMileageType(tx, null);
     const [row] = await tx
       .insert(claimType)
       .values({
@@ -504,6 +537,7 @@ export async function createClaimType(
         defaultTaxable: p.defaultTaxable,
         requiresReceipt: p.requiresReceipt,
         maxReceiptAgeDays,
+        isMileage,
       })
       .returning({ id: claimType.id });
     await appendEvent(tx, {
@@ -512,7 +546,7 @@ export async function createClaimType(
       aggregateId: row.id,
       eventType: 'claim-type.created',
       actor: actorOf(ctx),
-      payload: { code, name: p.name.trim(), description, defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt, maxReceiptAgeDays },
+      payload: { code, name: p.name.trim(), description, defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt, maxReceiptAgeDays, isMileage },
     });
     return { id: row.id };
   });
@@ -527,14 +561,24 @@ export async function updateClaimType(
     requiresReceipt: boolean;
     description?: string | null;
     maxReceiptAgeDays?: number | null;
+    /** e7eb5d83 rev 4 — absent leaves the flag alone; a boolean sets it (and refuses a second one). */
+    isMileage?: boolean;
   },
 ): Promise<void> {
   const description = p.description?.trim() || null;
   const maxReceiptAgeDays = receiptAgeOrNull(p.maxReceiptAgeDays);
   await withTenant(ctx, async (tx) => {
+    if (p.isMileage === true) await assertSingleMileageType(tx, p.id);
     const [row] = await tx
       .update(claimType)
-      .set({ name: p.name.trim(), description, defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt, maxReceiptAgeDays })
+      .set({
+        name: p.name.trim(),
+        description,
+        defaultTaxable: p.defaultTaxable,
+        requiresReceipt: p.requiresReceipt,
+        maxReceiptAgeDays,
+        ...(p.isMileage === undefined ? {} : { isMileage: p.isMileage }),
+      })
       .where(eq(claimType.id, p.id))
       .returning({ id: claimType.id });
     if (!row) return;
@@ -544,9 +588,21 @@ export async function updateClaimType(
       aggregateId: p.id,
       eventType: 'claim-type.updated',
       actor: actorOf(ctx),
-      payload: { name: p.name.trim(), description, defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt, maxReceiptAgeDays },
+      payload: { name: p.name.trim(), description, defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt, maxReceiptAgeDays, isMileage: p.isMileage ?? null },
     });
   });
+}
+
+/**
+ * THE mileage claim type for this tenant, or null when none is marked.
+ *
+ * The Mileage Rates screen used to ask the admin which claim type it was configuring, from a pill row of
+ * every type — a question with a wrong answer available on every visit. It reads this instead, so the
+ * question is asked once, on the claim type itself.
+ */
+export async function getMileageClaimType(ctx: SessionContext): Promise<ClaimTypeRow | null> {
+  const types = await listClaimTypes(ctx);
+  return types.find((t) => t.isMileage) ?? null;
 }
 
 /**
@@ -1367,6 +1423,8 @@ export type EmployeeClaimType = {
   name: string;
   requiresReceipt: boolean;
   rateConfig: ClaimRateConfig | null;
+  /** e7eb5d83 rev 4 — THE mileage type: the form shows a distance box for this one and nothing else. */
+  isMileage: boolean;
   /** Per-type receipt-backdate window in days (the per-type override, or the global default). */
   maxReceiptAgeDays: number;
   items: ClaimItemRow[];
@@ -1437,6 +1495,7 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
           name: t.name,
           requiresReceipt: t.requiresReceipt,
           rateConfig: policy?.rateConfig ?? null,
+          isMileage: t.isMileage,
           maxReceiptAgeDays: t.maxReceiptAgeDays ?? RECEIPT_BACKDATE_DAYS,
           items,
           formFields: await activeFormFieldsFor(tx, t.id),
@@ -1690,7 +1749,13 @@ async function priceAndCheckClaimTx(
   // ⚠️ RESOLVED AT SUBMIT AND STAMPED ON THE ROW (step 7 below writes it). The amount was always stored, so
   // nothing recomputes; the stamp is what makes the stored figure EXPLAINABLE after the table is edited. A
   // later rate-table change closes the old version and opens a new one — it never touches this claim.
-  const isMileage = policy?.rateConfig?.kind === 'mileage_flat';
+  //
+  // e7eb5d83 rev 4 point 4 — WHAT MAKES A CLAIM A MILEAGE CLAIM IS THE CLAIM TYPE'S OWN TICK, not the
+  // resolved policy's rate_config. The old test (`policy?.rateConfig?.kind === 'mileage_flat'`) read an
+  // effective-dated, PER-GRADE row: whether the employee got a distance box depended on which grade's
+  // limit resolved for them, and the flat scalar it keyed off had to keep being asked for on the limits
+  // screen even though claim_mileage_rate is where a rate per km actually lives.
+  const isMileage = ct.isMileage;
   const quantityKm = isMileage ? (p.quantityKm ?? null) : null;
   const vehicleClass = p.vehicleClass ?? 'any';
   let mileageStamp: ClaimMileageStamp | null = null;
@@ -1709,11 +1774,24 @@ async function priceAndCheckClaimTx(
         tableValidFrom: table.validFrom,
         bands: priced.breakdown,
       };
+    } else if (policy?.rateConfig?.kind === 'mileage_flat') {
+      // BACK-COMPAT, unconditional: a tenant whose mileage type still carries the legacy flat scalar and
+      // has never built a band table prices exactly as it did before 0428.
+      amount = computeClaimAmount(policy.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.amount });
     } else {
-      amount = computeClaimAmount(policy?.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.amount });
+      // Marked as the mileage type with neither a band table nor a legacy flat rate. Falling through to
+      // the receipt branch would take the form's amount — which is a hidden 0 on a mileage form — and
+      // refuse with "Amount must be greater than zero", pointing the employee at a box they cannot see.
+      throw new ClaimError(
+        'No mileage rate has been set up for this claim type yet. Ask an admin to add distance bands under Claims → Mileage Rates.',
+      );
     }
   } else {
-    amount = computeClaimAmount(policy?.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.amount });
+    // NOT the mileage type. A legacy mileage_flat rate_config left on the policy is IGNORED rather than
+    // demanded: the tick is the only thing that makes a claim a mileage claim, so a type that lost it
+    // must go back to asking for an amount, not start refusing every claim for want of a distance.
+    const rc = policy?.rateConfig?.kind === 'mileage_flat' ? null : policy?.rateConfig;
+    amount = computeClaimAmount(rc, { quantityKm: p.quantityKm, enteredAmount: p.amount });
   }
   if (!(amount > 0)) throw new ClaimError('Amount must be greater than zero');
   if (policy?.perClaimCap != null && amount > policy.perClaimCap) {
@@ -2123,8 +2201,16 @@ export async function saveClaimDraft(
     }
     const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, p.employmentId)).limit(1);
     const policy = await getActiveClaimPolicy(tx, p.claimTypeId, p.incurredOn, emp?.gradeId ?? null);
-    const quantityKm = policy?.rateConfig?.kind === 'mileage_flat' ? (p.quantityKm ?? null) : null;
-    const amount = provisionalAmount(policy?.rateConfig ?? null, { quantityKm: p.quantityKm, enteredAmount: p.amount });
+    // e7eb5d83 rev 4 — the claim TYPE's tick decides whether a distance is meaningful here, exactly as it
+    // does at submit. A draft whose km were dropped because the policy no longer carried a mileage_flat
+    // scalar would silently lose the employee's typed distance.
+    const quantityKm = ct.isMileage ? (p.quantityKm ?? null) : null;
+    const draftRate = ct.isMileage
+      ? policy?.rateConfig ?? null
+      : policy?.rateConfig?.kind === 'mileage_flat'
+        ? null
+        : policy?.rateConfig ?? null;
+    const amount = provisionalAmount(draftRate, { quantityKm: p.quantityKm, enteredAmount: p.amount });
     const values = {
       claimTypeId: p.claimTypeId,
       claimItemId,

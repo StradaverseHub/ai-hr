@@ -88,6 +88,10 @@ export default async function ClaimsConfigPage({ searchParams }: { searchParams:
                   <input type="checkbox" name="requiresReceipt" defaultChecked className="size-4" />
                   {t('requiresReceiptLabel')}
                 </label>
+                <label className="flex h-9 items-center gap-2 text-sm">
+                  <input type="checkbox" name="isMileage" className="size-4" />
+                  {t('isMileageLabel')}
+                </label>
                 <Button type="submit" className="ml-auto">{t('create')}</Button>
               </div>
             </form>
@@ -109,6 +113,7 @@ export default async function ClaimsConfigPage({ searchParams }: { searchParams:
                 defaultTaxable={ct.defaultTaxable}
                 requiresReceipt={ct.requiresReceipt}
                 maxReceiptAgeDays={ct.maxReceiptAgeDays}
+                isMileage={ct.isMileage}
                 items={ct.items}
                 formFields={fieldsByType.get(ct.id) ?? []}
                 fieldKinds={[...CLAIM_FIELD_KINDS]}

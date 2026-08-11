@@ -183,7 +183,9 @@ describe('ADR-0021 — claim lifecycle', () => {
   it('mileage_flat: 520 km at RM0.60 stores RM312.00 and preview == stored == km × rate', async () => {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Driver');
-    const { id: typeId } = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false, maxReceiptAgeDays: 36500 });
+    // e7eb5d83 rev 4 — isMileage is what makes this a mileage claim now; the flat rate_config is only
+    // the legacy back-compat rate the submit path falls back to when no band table exists.
+    const { id: typeId } = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false, maxReceiptAgeDays: 36500, isMileage: true });
     await setClaimPolicy(a, {
       claimTypeId: typeId,
       annualBudget: null,

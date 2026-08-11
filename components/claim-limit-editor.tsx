@@ -5,7 +5,17 @@ import { useTranslations } from 'next-intl';
 import { Button, Field, inputCls } from './ui';
 import { setClaimPolicyAction } from '@/app/admin/claims/limits/actions';
 
-type RateKind = 'receipt' | 'mileage_flat' | 'fixed_allowance';
+/**
+ * e7eb5d83 rev 4 point 4 — 'mileage_flat' IS GONE FROM THIS DROPDOWN. Which claim type is the mileage
+ * claim is now a tick on the claim type itself, and the rate per km lives on Claims → Mileage Rates as a
+ * banded, vehicle-classed, effective-dated table. Asking "how is this priced per kilometre?" on a screen
+ * about LIMITS was the duplication the reporter objected to.
+ *
+ * 'fixed_allowance' STAYS: one production policy uses it (MOBILE 001, RM180) and removing the dropdown
+ * outright would break it. The union no longer carries mileage_flat, so a future edit cannot quietly
+ * re-add the option without also re-adding the type.
+ */
+type RateKind = 'receipt' | 'fixed_allowance';
 
 /**
  * Claim Limit editor (ccbd0508) — set/update the entitlement rule for one (Job Grade × Claim Type). Saving
@@ -145,15 +155,9 @@ export function ClaimLimitEditor({
       <Field label={t('rateKindLabel')}>
         <select name="rateKind" value={rateKind} onChange={(e) => setRateKind(e.target.value as RateKind)} className={`${inputCls} w-full`}>
           <option value="receipt">{t('rateReceipt')}</option>
-          <option value="mileage_flat">{t('rateMileageFlat')}</option>
           <option value="fixed_allowance">{t('rateFixed')}</option>
         </select>
       </Field>
-      {rateKind === 'mileage_flat' && (
-        <Field label={t('ratePerKmLabel')}>
-          <input name="ratePerKm" type="number" min="0" step="0.01" className={`${inputCls} w-full`} />
-        </Field>
-      )}
       {rateKind === 'fixed_allowance' && (
         <Field label={t('fixedAmountLabel')}>
           <input name="fixedAmount" type="number" min="0" step="0.01" className={`${inputCls} w-full`} />

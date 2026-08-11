@@ -6139,7 +6139,13 @@
       "blockEveryMonths": "Every {n} month(s)",
       "blockEveryYears": "Every {n} year(s)",
       "blockFrom": "from {date}",
-      "blockHint": "A limit whose period is a fixed number of months or years — RM2,000 every 2 years, RM300 every 6 months. Counting from is company-wide: every employee is on the same cycle. Leave it as it is and an existing rule keeps the start date it already had."
+      "blockHint": "A limit whose period is a fixed number of months or years — RM2,000 every 2 years, RM300 every 6 months. Counting from is company-wide: every employee is on the same cycle. Leave it as it is and an existing rule keeps the start date it already had.",
+      "isMileageLabel": "This is the mileage claim",
+      "isMileageHint": "Only one claim type can be the mileage claim. Ticking it gives staff a distance box instead of an amount box, and tells Mileage Rates which claim type its distance bands belong to.",
+      "mileageBadge": "Mileage",
+      "noMileageType": "No claim type is marked as the mileage claim yet, so there is nothing to set rates for.",
+      "noMileageTypeLink": "Go to Claim Types and tick one",
+      "mileageTypeChangeLink": "Change on Claim Types"
     },
     "reimbursements": {
       "back": "Claims configuration",
@@ -7349,7 +7355,8 @@
     "deleteDraftConfirmLabel": "Delete draft",
     "reservedPending": "Reserved (awaiting approval)",
     "blockLimit": "Limit for this period",
-    "blockRemaining": "Remaining until {date}"
+    "blockRemaining": "Remaining until {date}",
+    "mileagePricedOnSubmit": "The amount is worked out from the mileage rate table when you submit."
   },
   "analytics": {
     "title": "HR analytics",

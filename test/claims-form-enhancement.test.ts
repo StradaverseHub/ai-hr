@@ -101,7 +101,7 @@ describe('Claim form enhancement — items, rate config, receipt window, MIME', 
   it('mileage_flat: amount is km × rate; cap check is against the computed amount', async () => {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Driver');
-    const { id: typeId } = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false });
+    const { id: typeId } = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false, isMileage: true });
     await setClaimPolicy(a, { claimTypeId: typeId, annualBudget: null, perClaimCap: 50, effectiveFrom: '2026-01-01', rateConfig: { kind: 'mileage_flat', ratePerKm: 0.7 } });
 
     // 100 km × 0.70 = RM70 → exceeds the RM50 cap (raw "amount" 0 would otherwise pass) → rejected.
@@ -145,7 +145,7 @@ describe('Claim form enhancement — items, rate config, receipt window, MIME', 
   it('the submitted event payload carries claimItemId but NOT quantityKm/amount', async () => {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Driver');
-    const { id: typeId } = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false });
+    const { id: typeId } = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false, isMileage: true });
     const { id: itemId } = await createClaimItem(a, { claimTypeId: typeId, code: 'KM', name: 'Distance' });
     await setClaimPolicy(a, { claimTypeId: typeId, annualBudget: null, perClaimCap: null, effectiveFrom: '2026-01-01', rateConfig: { kind: 'mileage_flat', ratePerKm: 0.7 } });
     const { id } = await submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, claimItemId: itemId, amount: 0, quantityKm: 100, incurredOn: within() });

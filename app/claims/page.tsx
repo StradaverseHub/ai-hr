@@ -88,6 +88,7 @@ export default async function ClaimsPage({
     name: ct.name,
     requiresReceipt: ct.requiresReceipt,
     rateConfig: ct.rateConfig,
+    isMileage: ct.isMileage,
     items: ct.items,
     // Per-type receipt window ⇒ the earliest date the picker allows for THIS type.
     minDate: new Date(new Date(`${today}T00:00:00Z`).getTime() - ct.maxReceiptAgeDays * dayMs).toISOString().slice(0, 10),

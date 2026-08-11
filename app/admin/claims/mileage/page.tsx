@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
-import { listClaimTypes, listMileageRateTables, MILEAGE_VEHICLE_CLASSES } from '@/core/claims';
+import { getMileageClaimType, listMileageRateTables, MILEAGE_VEHICLE_CLASSES } from '@/core/claims';
 import { listJobGrades } from '@/core/read';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ClaimsTabs } from '@/components/claims-tabs';
@@ -25,24 +25,36 @@ const BLANK_ROWS = 3;
  * you do not set falls back to the company-wide table. One rule to learn rather than two, and in the engine
  * it is literally claim_policy's rule reused (resolveMileageRateBands), not a second copy of it.
  *
- * Everything selectable lives in the URL (?claimTypeId= / ?gradeId= / ?vehicleClass=): this is a server
- * component, so client-held selection would mean either a function prop across the RSC boundary or a second
- * fetch. Each parameter is validated against what THIS admin's session can actually see and coerced to a
- * safe default otherwise — a forged id selects nothing rather than 500ing or reaching another tenant.
+ * e7eb5d83 rev 4 point 5 — THE CLAIM-TYPE PILL ROW IS GONE. This screen no longer asks which claim type
+ * it is configuring: it reads the one claim type marked as the mileage claim (claim_type.is_mileage),
+ * which is the reporter's own "one special Claim Type can be designated as Mileage Claim". The old row
+ * offered a wrong answer on every visit — bands saved against Medical would have priced nothing. When no
+ * type is marked the screen says so and points at the tick, rather than silently falling back to types[0]
+ * and writing a rate table onto whichever claim type happened to sort first.
+ *
+ * The grade PILLS became the same left rail Claim Limits uses, including its ?gradeId= selection and its
+ * scope guard — 55 grades as a wrapped row of buttons was the complaint.
+ *
+ * Everything selectable lives in the URL (?gradeId= / ?vehicleClass=): this is a server component, so
+ * client-held selection would mean either a function prop across the RSC boundary or a second fetch. Each
+ * parameter is validated against what THIS admin's session can actually see and coerced to a safe default
+ * otherwise — a forged, archived or other-tenant id resolves to company-wide rather than being queried.
  */
 export default async function ClaimMileagePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; claimTypeId?: string; gradeId?: string; vehicleClass?: string }>;
+  searchParams: Promise<{ error?: string; gradeId?: string; vehicleClass?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.claims');
-  const { error, claimTypeId: rawTypeId, gradeId: rawGradeId, vehicleClass: rawClass } = await searchParams;
-  const [types, grades] = await Promise.all([listClaimTypes(s), listJobGrades(s)]);
+  const { error, gradeId: rawGradeId, vehicleClass: rawClass } = await searchParams;
+  const [selectedType, grades] = await Promise.all([getMileageClaimType(s), listJobGrades(s)]);
   const activeGrades = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
 
-  // THE SCOPE GUARDS. Each parameter is only honoured if it names something this session can already see.
-  const selectedType = types.find((ct) => ct.id === rawTypeId) ?? types[0] ?? null;
+  // THE SCOPE GUARD, byte-for-byte the limits screen's: anything that is not one of THIS tenant's live
+  // grades resolves to null = company-wide. listJobGrades is already tenant-scoped by RLS, so validating
+  // against that list is the guard — a forged id can never select a grade the admin cannot see, and it
+  // cannot 500 either.
   const selectedGradeId = activeGrades.some((g) => g.id === rawGradeId) ? (rawGradeId as string) : null;
   const selectedGrade = activeGrades.find((g) => g.id === selectedGradeId) ?? null;
   const vehicleClass = (MILEAGE_VEHICLE_CLASSES as readonly string[]).includes(rawClass ?? '')
@@ -58,9 +70,8 @@ export default async function ClaimMileagePage({
   // the company-wide numbers makes "save" look like a no-op when it actually creates a grade override.
   const editorBands = editing && !editing.inherited ? editing.bands : [];
 
-  const href = (p: { claimTypeId?: string; gradeId?: string | null; vehicleClass?: string }): string => {
+  const href = (p: { gradeId?: string | null; vehicleClass?: string }): string => {
     const q = new URLSearchParams();
-    q.set('claimTypeId', p.claimTypeId ?? selectedType?.id ?? '');
     const g = p.gradeId === undefined ? selectedGradeId : p.gradeId;
     if (g) q.set('gradeId', g);
     q.set('vehicleClass', p.vehicleClass ?? vehicleClass);
@@ -70,43 +81,54 @@ export default async function ClaimMileagePage({
     `rounded-full border px-3 py-1 text-xs transition-colors ${
       on ? 'border-primary bg-primary/10 font-medium text-primary' : 'border-border text-muted-foreground hover:text-foreground'
     }`;
+  // The Claim Limits left rail, reused verbatim so the two grade-scoped screens read the same way.
+  const tabCls = (on: boolean) =>
+    `block truncate rounded px-3 py-1.5 text-left text-sm transition-colors ${
+      on ? 'bg-primary/10 font-medium text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+    }`;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader title={t('mileageTitle')} description={t('mileageSubtitle')} />
       <ClaimsTabs active="mileage" />
       <ErrorBanner message={error} />
 
       {selectedType == null ? (
+        // No claim type is marked as the mileage claim. Deliberately an EMPTY STATE rather than a
+        // fallback to the first claim type: bands saved against the wrong type price nothing, silently.
         <Card className="p-4">
-          <p className="text-sm text-muted-foreground">{t('empty')}</p>
+          <p className="text-sm text-muted-foreground">{t('noMileageType')}</p>
+          <Link href="/admin/claims" className="mt-2 inline-block text-sm text-primary underline-offset-2 hover:underline">
+            {t('noMileageTypeLink')}
+          </Link>
         </Card>
       ) : (
-        <>
-          <Card className="space-y-3 p-4">
-            <div>
-              <div className="mb-1.5 text-xs font-medium text-muted-foreground">{t('claimTypeLabel')}</div>
-              <div className="flex flex-wrap gap-1.5">
-                {types.map((ct) => (
-                  <Link key={ct.id} href={href({ claimTypeId: ct.id })} className={pillCls(ct.id === selectedType.id)}>
-                    {ct.name}
-                  </Link>
-                ))}
-              </div>
-            </div>
-            <div>
-              {/* The grade selector the reporter asked for, sitting ABOVE the table exactly as the plan says. */}
-              <div className="mb-1.5 text-xs font-medium text-muted-foreground">{t('gradeLabel')}</div>
-              <div className="flex flex-wrap gap-1.5">
-                <Link href={href({ gradeId: null })} className={pillCls(selectedGradeId == null)}>
-                  {t('companyWide')}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,15rem)_1fr]">
+          <Card className="overflow-hidden">
+            <SectionHeader title={t('gradesTitle')} count={activeGrades.length} />
+            <nav className="max-h-[28rem] space-y-0.5 overflow-y-auto p-2">
+              <Link href={href({ gradeId: null })} className={tabCls(selectedGradeId == null)}>
+                {t('companyWide')}
+              </Link>
+              {activeGrades.map((g) => (
+                <Link key={g.id} href={href({ gradeId: g.id })} className={tabCls(selectedGradeId === g.id)}>
+                  {g.name}
                 </Link>
-                {activeGrades.map((g) => (
-                  <Link key={g.id} href={href({ gradeId: g.id })} className={pillCls(selectedGradeId === g.id)}>
-                    {g.name}
-                  </Link>
-                ))}
-              </div>
+              ))}
+            </nav>
+          </Card>
+
+          <div className="space-y-4">
+          <Card className="space-y-3 p-4">
+            {/* Which claim type this screen configures is no longer a question — it is the one ticked as
+                the mileage claim. Stated, not asked, so the admin can still see which type they are on. */}
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-xs font-medium text-muted-foreground">{t('claimTypeLabel')}</span>
+              <span className="font-medium">{selectedType.name}</span>
+              <span className="font-mono text-xs text-muted-foreground">{selectedType.code}</span>
+              <Link href="/admin/claims" className="ml-auto text-xs text-primary underline-offset-2 hover:underline">
+                {t('mileageTypeChangeLink')}
+              </Link>
             </div>
             <div>
               <div className="mb-1.5 text-xs font-medium text-muted-foreground">{t('vehicleClassLabel')}</div>
@@ -210,7 +232,8 @@ export default async function ClaimMileagePage({
               <p className="text-xs text-muted-foreground">{t('mileageStampHint')}</p>
             </form>
           </Card>
-        </>
+          </div>
+        </div>
       )}
     </div>
   );

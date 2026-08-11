@@ -48,6 +48,7 @@ export function ClaimTypePanel({
   defaultTaxable,
   requiresReceipt,
   maxReceiptAgeDays,
+  isMileage,
   items,
   formFields,
   fieldKinds,
@@ -69,6 +70,8 @@ export function ClaimTypePanel({
   defaultTaxable: boolean;
   requiresReceipt: boolean;
   maxReceiptAgeDays: number | null;
+  /** e7eb5d83 rev 4 — is THIS the tenant's mileage claim type? At most one live type may be. */
+  isMileage: boolean;
   items: { id: string; code: string; name: string }[];
   /** The custom fields designed for THIS claim type, in form order. */
   formFields: ClaimTypeFormField[];
@@ -111,6 +114,7 @@ export function ClaimTypePanel({
           <span className="truncate text-sm font-medium text-foreground">{name}</span>
           <span className="font-mono text-xs text-muted-foreground">{code}</span>
           <span className={defaultTaxable ? badge.amber : badge.muted}>{defaultTaxable ? t('taxable') : t('nonTaxable')}</span>
+          {isMileage && <span className={badge.amber}>{t('mileageBadge')}</span>}
           {requiresReceipt && <span className={badge.muted}>{t('receipt')}</span>}
           {items.length > 0 && <span className={badge.muted}>{t('itemCount', { count: items.length })}</span>}
         </button>
@@ -140,8 +144,17 @@ export function ClaimTypePanel({
                 <input type="checkbox" name="requiresReceipt" defaultChecked={requiresReceipt} className="size-4" />
                 {t('requiresReceiptLabel')}
               </label>
+              {/* e7eb5d83 rev 4 point 4 — the reporter's own "one special Claim Type can be designated as
+                  Mileage Claim". Ticking it is what gives the employee a distance box and what tells
+                  Claims → Mileage Rates which type its bands belong to. Only one live type may hold it;
+                  the service refuses a second and names the one that already does. */}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="isMileage" defaultChecked={isMileage} className="size-4" />
+                {t('isMileageLabel')}
+              </label>
               <Button type="submit" size="sm" className="ml-auto">{t('save')}</Button>
             </div>
+            <p className="text-xs text-muted-foreground sm:col-span-2">{t('isMileageHint')}</p>
           </form>
 
           {/* dependent Claim Items sub-list */}
