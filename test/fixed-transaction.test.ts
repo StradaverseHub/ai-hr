@@ -29,19 +29,21 @@
  * so the pre-test state this file starts from is already "off" — and `resetDb()` truncates
  * `tenant_module` between tests, so a grant cannot leak into the next one.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips } from '../core/payroll';
+import { closeBatch, createBatch, generatePayslips } from '../core/payroll';
 import {
   FixedTransactionAmountError,
+  FixedTransactionBackwardsError,
   FixedTransactionDateError,
   FixedTransactionNotFoundError,
-  UnsupportedFixedCurrencyError,
+  FixedTransactionOverlapError,
+  FixedTransactionPaidError,
   archiveEmploymentPayComponent,
   backfillEmploymentComponentsFromCompensation,
   endEmploymentPayComponent,
@@ -50,7 +52,11 @@ import {
   seedPayComponentCatalog,
   setEmploymentPayComponent,
   updateEmploymentPayComponent,
+  UnsupportedFixedCurrencyError,
 } from '../core/pay-components';
+// 2aed39d4 — the data repair is rehearsed in this file, in the production sequence (repair, then
+// constraint), because neither half is provable on its own.
+import { runRepair } from '../scripts/repair-fixed-transaction-overlaps';
 import {
   adminCtx,
   closeAll,
@@ -292,9 +298,15 @@ describe('1.2.1 Fixed Transaction', () => {
     const e = await hire(a, base, 'BackwardRestate', '2026-01-01');
     const allowId = await codeId(a, 'ALLOWANCE');
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-03-01' });
-    await expect(
-      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 250, effectiveFrom: '2026-02-01' }),
-    ).rejects.toBeInstanceOf(FixedTransactionDateError);
+    // 2aed39d4 — was FixedTransactionDateError, which the UI resolved through
+    // `payroll.transactions.fixed.dateError`: "End date cannot be before the start date". Nothing is
+    // wrong with the end date here — the START date is behind an existing record — so this refusal now
+    // has its own type and its own message, and names the row that blocks it.
+    const err = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 250, effectiveFrom: '2026-02-01',
+    }).catch((x) => x);
+    expect(err).toBeInstanceOf(FixedTransactionBackwardsError);
+    expect(err).toMatchObject({ code: 'ALLOWANCE', validFrom: '2026-03-01' });
   });
 
   it('window boundaries: validTo == periodStart is INCLUDED (inclusive gte)', async () => {
@@ -320,6 +332,11 @@ describe('1.2.1 Fixed Transaction', () => {
 
   // ───────────────────── supersession vs end-date ─────────────────────
 
+  // 2aed39d4 — THIS TEST IS STILL CORRECT AND WAS DELIBERATELY NOT REVERSED. The approved plan's step 5
+  // said to reverse the assertion here, but the two windows below do NOT touch (2026-01-01..2026-03-31
+  // and 2026-06-01..open), so there is no overlap and the gap genuinely is intended: the old item ended
+  // in March, a new one begins in June. What changed is the OVERLAPPING sibling of this case — an ended
+  // row the new window runs into — which is now refused, and is covered in the 2aed39d4 block below.
   it('end-dating an item then setting the same component again inserts a fresh open row WITHOUT overwriting the ended one (gap is intended)', async () => {
     const a = adminCtx(base);
     await seedPayComponentCatalog(a);
@@ -719,5 +736,379 @@ describe('1.2.1 Fixed Transaction', () => {
     await expect(
       endEmploymentPayComponent(a, { id: '00000000-0000-0000-0000-000000000000', employmentId: e.employmentId, effectiveTo: '2026-05-01' }),
     ).rejects.toBeInstanceOf(FixedTransactionNotFoundError);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════════════════════
+  // 2aed39d4 — TWO RECORDS FOR THE SAME PAY ITEM MAY NEVER COVER THE SAME DAY
+  //
+  // Every case below asserts MONEY where money is the point, through the same seed-then-read-the-payslip
+  // harness the rest of this file uses. Row-shape assertions are exactly what let the previous version of
+  // this defect ship: the pre-existing "no double-count" cases checked validTo after a supersession and
+  // never generated a payslip, so they stayed green while real payslips overpaid.
+  // ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+  /** The X000001 shape, seeded BEHIND the service (which now refuses it) so the fixtures can be built. */
+  async function insertRaw(p: {
+    employmentId: string; componentId: string; amount: number; validFrom: string; validTo: string | null;
+    runType?: 'regular' | 'off_cycle' | 'bonus' | 'adjustment' | null;
+  }) {
+    const [row] = await owner.db
+      .insert(schema.employmentPayComponent)
+      .values({
+        tenantId: base.tenantId,
+        employmentId: p.employmentId,
+        componentId: p.componentId,
+        amount: String(p.amount),
+        validFrom: p.validFrom,
+        validTo: p.validTo,
+        prorateOverride: false,
+        runType: p.runType ?? null,
+      })
+      .returning({ id: schema.employmentPayComponent.id });
+    return row.id;
+  }
+
+  it('a create whose window runs into a live END-DATED row is refused, and the item still pays once', async () => {
+    // The reporter's expected-behaviour point 2, verbatim: an existing 2026-01-01..2026-12-31 record,
+    // and a new one starting 2026-06-01. Before this it inserted silently and BOTH rows paid in full.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'OverlapRefuse', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    const basicId = await codeId(a, 'BASIC');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 1000, effectiveFrom: '2026-01-01' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-01-01', effectiveTo: '2026-12-31', prorateOverride: false });
+
+    const err = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-06-01', prorateOverride: false,
+    }).catch((x) => x);
+    expect(err).toBeInstanceOf(FixedTransactionOverlapError);
+    // NAMED: the banner has to be able to say which record and which dates.
+    expect(err).toMatchObject({ code: 'ALLOWANCE', validFrom: '2026-01-01', validTo: '2026-12-31' });
+
+    // Refused BEFORE any write — one live row, not two, and May pays 777 once.
+    const live = (await listEmploymentPayComponents(a, e.employmentId)).filter((r) => r.code === 'ALLOWANCE');
+    expect(live).toHaveLength(1);
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
+    expect(Number((await payslipOf(batchId)).allowance)).toBeCloseTo(777, 2);
+  });
+
+  it('two rows differing ONLY by Payroll Cycle are refused — the cycle is deliberately NOT in the key', async () => {
+    // The reporting ticket asked for employee + pay item + period + Payroll Cycle. The kernel never reads
+    // run_type, so two rows differing only by cycle BOTH pay in full — which is why the cycle is out of
+    // the key. Two of the ten clashes measured on production are exactly this shape.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'CycleOverlap', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-01-01', effectiveTo: '2026-06-30', runType: 'regular' });
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-01-01', effectiveTo: '2026-06-30', runType: 'bonus' }),
+    ).rejects.toBeInstanceOf(FixedTransactionOverlapError);
+  });
+
+  it('two DIFFERENT pay items with identical windows stay legal', async () => {
+    // The key is employment + component. An employee holding a phone allowance and a travel allowance
+    // over the same dates is ordinary, and must not be caught by any of this.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'TwoItems', '2026-01-01');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'ALLOWANCE'), amount: 100, effectiveFrom: '2026-07-01', effectiveTo: '2026-07-01' });
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'HOUSING'), amount: 400, effectiveFrom: '2026-07-01', effectiveTo: '2026-07-01' }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+  });
+
+  it('EDITING AN ENDED ROW CHANGES IT INSTEAD OF CLONING IT — the X000001 one-click duplicate', async () => {
+    // X000001 pressed Save on an already-ended HANDPHONE ALLOWANCE row and got a COPY of it, twice, two
+    // minutes apart, because the prior-row lookup required validTo IS NULL and the employee had no open
+    // row. Asserted in money: a re-run of the covered month must pay the item ONCE.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'EndedEditClone', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'BASIC'), amount: 1000, effectiveFrom: '2026-01-01' });
+    const allowId = await codeId(a, 'ALLOWANCE');
+    // An ENDED row entirely inside May — the shape the [id] page renders an Edit form for.
+    const { id: ended } = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-05-01', effectiveTo: '2026-05-01', prorateOverride: false,
+    });
+    // Save with the dates unchanged and a new amount — exactly what the form posts.
+    const { id: edited } = await updateEmploymentPayComponent(a, {
+      employmentId: e.employmentId, id: ended, amount: 150, effectiveFrom: '2026-05-01', effectiveTo: '2026-05-01', prorateOverride: false,
+    });
+    expect(edited).not.toBe(ended);
+    // The row that was edited is SUPERSEDED, not left live beside its copy.
+    expect((await rowOf(ended)).supersededAt).not.toBeNull();
+    expect((await listEmploymentPayComponents(a, e.employmentId)).filter((r) => r.code === 'ALLOWANCE')).toHaveLength(1);
+    // And the money: 150 once, not 250 and not 100.
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
+    expect(Number((await payslipOf(batchId)).allowance)).toBeCloseTo(150, 2);
+  });
+
+  it('editing an ended row from a LATER date versions it: the old window is truncated, both rows survive', async () => {
+    // The reporter's expected-behaviour point 3 applied to an END-DATED row: 100 from January to
+    // December, changed to 150 from July, must become 100 Jan–Jun and 150 Jul–Dec.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'EndedEditLater', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id: original } = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-01-01', effectiveTo: '2026-12-31',
+    });
+    const { id: next } = await updateEmploymentPayComponent(a, {
+      employmentId: e.employmentId, id: original, amount: 150, effectiveFrom: '2026-07-01', effectiveTo: '2026-12-31',
+    });
+    expect((await rowOf(original)).validTo).toBe('2026-06-30');
+    expect((await rowOf(original)).supersededAt).toBeNull();
+    expect((await rowOf(next)).validFrom).toBe('2026-07-01');
+    expect((await listEmploymentPayComponents(a, e.employmentId)).filter((r) => r.code === 'ALLOWANCE')).toHaveLength(2);
+  });
+
+  it('an edit is still refused when it runs into a THIRD row that is not the one being edited', async () => {
+    // replacesId exempts exactly one row — the one the admin opened. Everything else it collides with is
+    // still a refusal, or the edit form would become a way around the rule.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'EditThirdRow', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id: first } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-01-01', effectiveTo: '2026-03-31' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 200, effectiveFrom: '2026-06-01', effectiveTo: '2026-09-30' });
+    // Stretch the FIRST row's end date over the second one.
+    await expect(
+      updateEmploymentPayComponent(a, { employmentId: e.employmentId, id: first, amount: 100, effectiveFrom: '2026-01-01', effectiveTo: '2026-07-31' }),
+    ).rejects.toBeInstanceOf(FixedTransactionOverlapError);
+  });
+
+  // ───────────────────── the constraint (migration 0426) is the backstop ─────────────────────
+
+  it('the 0426 EXCLUDE constraint rejects an overlapping row inserted BEHIND the service', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'ConstraintBackstop', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await insertRaw({ employmentId: e.employmentId, componentId: allowId, amount: 100, validFrom: '2026-07-01', validTo: '2026-07-01' });
+    // ⚠️ NOT `.rejects.toThrow()` — that passes on ANY throw, including a NOT NULL failure in the fixture
+    // that never reaches the constraint under test. The constraint is asserted BY NAME.
+    const err = await insertRaw({ employmentId: e.employmentId, componentId: allowId, amount: 150, validFrom: '2026-07-01', validTo: '2026-07-01' }).catch((x) => x);
+    expect(err).toBeInstanceOf(Error);
+    const text = `${(err as Error).message} ${(err as { cause?: Error }).cause?.message ?? ''}`;
+    expect(text).toContain('employment_pay_component_no_overlap');
+  });
+
+  it('the constraint is INCLUSIVE-INCLUSIVE: abutting rows are legal, rows meeting ON a day are not', async () => {
+    // This is the single line not to copy from compensation_no_overlap / employee_cp38_no_overlap, both
+    // of which are HALF-OPEN. valid_to is INCLUSIVE here, so [..,07-01] and [07-01,..] DO collide — and
+    // that pair is exactly what reached issued payslips before 34cc8137.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'ConstraintBounds', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const housingId = await codeId(a, 'HOUSING');
+    // Legal: closed the day before.
+    await insertRaw({ employmentId: e.employmentId, componentId: allowId, amount: 100, validFrom: '2026-01-01', validTo: '2026-06-30' });
+    await expect(insertRaw({ employmentId: e.employmentId, componentId: allowId, amount: 150, validFrom: '2026-07-01', validTo: null })).resolves.toEqual(expect.any(String));
+    // Illegal: closed ON the new start date.
+    await insertRaw({ employmentId: e.employmentId, componentId: housingId, amount: 100, validFrom: '2026-01-01', validTo: '2026-07-01' });
+    const err = await insertRaw({ employmentId: e.employmentId, componentId: housingId, amount: 150, validFrom: '2026-07-01', validTo: null }).catch((x) => x);
+    expect(`${(err as Error).message} ${(err as { cause?: Error }).cause?.message ?? ''}`).toContain('employment_pay_component_no_overlap');
+  });
+
+  // ───────────────────── removal / edit by PAY RUN STATUS (expected behaviour point 7) ─────────────────────
+
+  it('REMOVAL IS ALLOWED while the covering run is processed — and refused once it is CLOSED', async () => {
+    // The reporter's point 7, and a deliberate REVERSAL of what f1123afd shipped. Their worked example is
+    // "payroll processed -> HR finds the wrong item -> delete -> reprocess", which used to be refused.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'RemoveByStatus', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'BASIC'), amount: 1000, effectiveFrom: '2026-01-01' });
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id: keep } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-01-01', prorateOverride: false });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
+    // The payslip really does itemise it — so this is NOT passing because the evidence is absent.
+    const st = (await payslipOf(batchId)).statutory as { componentLines?: { code: string }[] };
+    expect(st.componentLines?.map((l) => l.code)).toContain('ALLOWANCE');
+    // PROCESSED, not closed: removal goes through.
+    await expect(archiveEmploymentPayComponent(a, { id: keep, employmentId: e.employmentId })).resolves.toMatchObject({ id: keep });
+
+    // Now close the run and try again with a second item covering the same month.
+    const { id: second } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: '2026-01-01', prorateOverride: false });
+    await closeBatch(a, { batchId });
+    const err = await archiveEmploymentPayComponent(a, { id: second, employmentId: e.employmentId }).catch((x) => x);
+    expect(err).toBeInstanceOf(FixedTransactionPaidError);
+    expect(err).toMatchObject({ code: 'ALLOWANCE', payPeriod: '2026-05' });
+    // Refused BEFORE any write.
+    expect((await rowOf(second)).supersededAt).toBeNull();
+  });
+
+  it('a row whose window does NOT reach the closed month is still removable', async () => {
+    // The refusal is about the row's own window, not "this employee has a closed run".
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'RemoveOutsideClosed', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'BASIC'), amount: 1000, effectiveFrom: '2026-01-01' });
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
+    await closeBatch(a, { batchId });
+    const { id: later } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'ALLOWANCE'), amount: 700, effectiveFrom: '2026-09-01' });
+    await expect(archiveEmploymentPayComponent(a, { id: later, employmentId: e.employmentId })).resolves.toMatchObject({ id: later });
+  });
+
+  it('the closed-month boundary is INCLUSIVE: a row ending ON the last day of a closed month is frozen', async () => {
+    // overlapsClosedPeriod treats its `to` as EXCLUSIVE (it was written for compensation). valid_to is
+    // INCLUSIVE here, so it is converted with +1 day on the way in. Without that conversion a row whose
+    // LAST PAID month is the closed one slips straight past the guard — which is the whole bug class.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'ClosedBoundary', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'BASIC'), amount: 1000, effectiveFrom: '2026-01-01' });
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-01-01', effectiveTo: '2026-05-01', prorateOverride: false });
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
+    await closeBatch(a, { batchId });
+    // validTo 2026-05-01 is INSIDE closed 2026-05 — frozen.
+    await expect(archiveEmploymentPayComponent(a, { id, employmentId: e.employmentId })).rejects.toBeInstanceOf(FixedTransactionPaidError);
+  });
+
+  it('a WRITE into a closed month is refused too, not just a removal', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'WriteIntoClosed', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'BASIC'), amount: 1000, effectiveFrom: '2026-01-01' });
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
+    await closeBatch(a, { batchId });
+    const allowId = await codeId(a, 'ALLOWANCE');
+    // Starts inside the closed month.
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-05-10' }),
+    ).rejects.toBeInstanceOf(FixedTransactionPaidError);
+    // Starts after it — fine.
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-06-01' }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+  });
+
+  // ───────────────────── the backfill must not start throwing (step 8) ─────────────────────
+
+  it('the compensation backfill still runs clean OVER an existing overlapping row, and leaves no overlap', async () => {
+    // backfillEmploymentComponentsFromCompensation re-states BASIC/ALLOWANCE from each open compensation
+    // row at THAT ROW'S OWN validFrom, which is routinely behind whatever the component table holds — it
+    // PRODUCED one of the ten overlaps measured on production, and 34cc8137's backwards guard had already
+    // put it one run away from throwing. It opts out explicitly (supersedeOverlaps + allowClosedPeriod).
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'BackfillOverRow', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 3000, monthlyAllowance: 250, effectiveFrom: '2026-01-01' });
+    const basicId = await codeId(a, 'BASIC');
+    // A LATER, still-live BASIC row — the backfill's 2026-01-01 restatement runs backwards into it.
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 6800, effectiveFrom: '2026-08-01' });
+
+    await expect(backfillEmploymentComponentsFromCompensation(a)).resolves.toBeDefined();
+
+    // And the result is overlap-free — which the 0426 constraint would have enforced anyway, so a failure
+    // here would have surfaced as a raw 23P01 out of a housekeeping script.
+    const live = (await listEmploymentPayComponents(a, e.employmentId)).filter((r) => r.code === 'BASIC');
+    for (let i = 0; i < live.length; i += 1) {
+      for (let j = i + 1; j < live.length; j += 1) {
+        const [x, y] = [live[i], live[j]];
+        expect(x.validFrom <= (y.validTo ?? '9999-12-31') && y.validFrom <= (x.validTo ?? '9999-12-31')).toBe(false);
+      }
+    }
+  });
+
+  it('the backfill is idempotent: running it twice changes nothing and throws nothing', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'BackfillTwice', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 3000, monthlyAllowance: 250, effectiveFrom: '2026-01-01' });
+    await backfillEmploymentComponentsFromCompensation(a);
+    await expect(backfillEmploymentComponentsFromCompensation(a)).resolves.toBeDefined();
+    const live = await listEmploymentPayComponents(a, e.employmentId);
+    expect(live.filter((r) => r.code === 'BASIC')).toHaveLength(1);
+    expect(live.filter((r) => r.code === 'ALLOWANCE')).toHaveLength(1);
+  });
+
+  // ───────────────────── the data repair, rehearsed in the production sequence ─────────────────────
+
+  it('the repair script clears the production shapes, and 0426 cannot be applied until it has', async () => {
+    // REPAIR FIRST, CONSTRAINT SECOND — rehearsed here in that order, against a real cluster, because it
+    // is the order the release has to run in and neither half is provable on its own.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'RepairRehearsal', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const housingId = await codeId(a, 'HOUSING');
+    const url = process.env.TEST_MIGRATION_DATABASE_URL!;
+    const addConstraint = () =>
+      owner.db.execute(sql`ALTER TABLE employment_pay_component ADD CONSTRAINT employment_pay_component_no_overlap
+        EXCLUDE USING gist (employment_id WITH =, component_id WITH =,
+          daterange(valid_from, COALESCE(valid_to, DATE '9999-12-31'), '[]') WITH &&) WHERE (superseded_at IS NULL)`);
+
+    await owner.db.execute(sql`ALTER TABLE employment_pay_component DROP CONSTRAINT employment_pay_component_no_overlap`);
+    try {
+      // (a) X000001's three rows, all 2026-07-01..2026-07-01, newest last.
+      const oldest = await insertRaw({ employmentId: e.employmentId, componentId: allowId, amount: 100, validFrom: '2026-07-01', validTo: '2026-07-01', runType: 'regular' });
+      const middle = await insertRaw({ employmentId: e.employmentId, componentId: allowId, amount: 150, validFrom: '2026-07-01', validTo: '2026-07-01', runType: 'regular' });
+      const newest = await insertRaw({ employmentId: e.employmentId, componentId: allowId, amount: 150, validFrom: '2026-07-01', validTo: '2026-07-01', runType: 'regular' });
+      // (b) the INVERTED row — production carries exactly one (EMP-0001 ALLOWANCE 200.00).
+      const invertedId = await insertRaw({ employmentId: e.employmentId, componentId: housingId, amount: 200, validFrom: '2026-01-31', validTo: '2026-01-06' });
+
+      // THE INVERTED ROW ABORTS THE ALTER WITH A RANGE ERROR, NOT A CONFLICT ERROR. Proving which failure
+      // comes first is the point: someone reading only "conflicting key value" would repair the overlaps,
+      // re-run, and hit a second wall they had no warning of.
+      const first = await addConstraint().catch((x) => x);
+      expect(`${(first as Error).message} ${(first as { cause?: Error }).cause?.message ?? ''}`).toContain(
+        'range lower bound must be less than or equal to range upper bound',
+      );
+
+      // Report-only: writes nothing.
+      const dry = await runRepair(url, { apply: false });
+      expect(dry.inverted).toHaveLength(1);
+      expect(dry.overlaps).toHaveLength(2); // three mutually-overlapping rows -> keep 1, clear 2
+      expect(dry.residual).toHaveLength(0);
+      expect((await rowOf(oldest)).supersededAt).toBeNull();
+
+      // Apply.
+      const wet = await runRepair(url, { apply: true, tag: 'r185b-rehearsal' });
+      expect(wet.inverted.map((x) => x.row.id)).toEqual([invertedId]);
+      // NEWEST WRITTEN WINS — the plan's "keeping the most recent line of each group".
+      expect(new Set(wet.overlaps.map((x) => x.row.id))).toEqual(new Set([oldest, middle]));
+      expect((await rowOf(newest)).supersededAt).toBeNull();
+      expect((await rowOf(oldest)).supersededAt).not.toBeNull();
+      expect((await rowOf(middle)).supersededAt).not.toBeNull();
+      expect((await rowOf(invertedId)).supersededAt).not.toBeNull();
+
+      // NOW the constraint applies — which is the actual release gate.
+      await expect(addConstraint()).resolves.toBeDefined();
+
+      // Re-running finds nothing.
+      const again = await runRepair(url, { apply: false });
+      expect(again.inverted).toHaveLength(0);
+      expect(again.overlaps).toHaveLength(0);
+    } finally {
+      // Never leave the worker DB without the constraint — every later test in this file depends on it.
+      const has = await owner.db.execute(
+        sql`SELECT 1 FROM pg_constraint WHERE conname = 'employment_pay_component_no_overlap'`,
+      );
+      if (has.length === 0) await addConstraint();
+    }
   });
 });

@@ -101,10 +101,19 @@ const label = (r: LiveRow) =>
   `${r.validFrom}..${iso(r.validTo).padEnd(10)} cycle=${(r.runType ?? '-').padEnd(10)} ` +
   `written ${r.createdAt.toISOString()} id=${r.id}`;
 
+/**
+ * ⚠️ DOES NOT CLOSE THE CONNECTION. `createDb` MEMOISES ITS POOL PER CONNECTION STRING (db/client.ts —
+ * `pgPools`), so a `client.end()` in here does not close "the connection this function opened", it closes
+ * the one every other holder of the same URL is using. The rehearsal test in
+ * test/fixed-transaction.test.ts imports this function and shares the harness's owner pool; an end() here
+ * killed it mid-run and produced a CONNECTION_ENDED that looked nothing like the real cause. The CLI
+ * entry point at the bottom of this file owns the teardown, because it is the only caller that owns the
+ * process.
+ */
 export async function runRepair(url: string, opts: { apply: boolean; tag?: string }): Promise<RepairReport> {
   const owner = createDb(url);
   const tag = opts.tag ?? `2aed39d4-${new Date().toISOString().slice(0, 10)}`;
-  try {
+  {
     // Owner connection: RLS is bypassed on purpose, because the repair spans every tenant. The scan and
     // the writes read the SAME snapshot ordering (created_at, then id) so a re-run is deterministic.
     const rows: LiveRow[] = await owner.db
@@ -198,8 +207,6 @@ export async function runRepair(url: string, opts: { apply: boolean; tag?: strin
     }
 
     return { apply: opts.apply, tag, liveRows: rows.length, inverted: invertedActions, overlaps: overlapActions, residual };
-  } finally {
-    await owner.client.end();
   }
 }
 
@@ -214,7 +221,12 @@ if (process.argv[1]?.endsWith('repair-fixed-transaction-overlaps.ts')) {
     console.error('repair-fixed-transaction-overlaps requires MIGRATION_DATABASE_URL (owner role).');
     process.exit(1);
   }
+  const closeAfter = async <T,>(r: T): Promise<T> => {
+    await createDb(url).client.end();
+    return r;
+  };
   runRepair(url, { apply: process.argv.includes('--apply'), tag: argOf('--tag') ?? undefined })
+    .then(closeAfter)
     .then((r) => {
       console.log(`\n2aed39d4 fixed-transaction overlap repair — mode=${r.apply ? 'APPLY' : 'REPORT ONLY'}, tag '${r.tag}'`);
       console.log(`live employment_pay_component rows: ${r.liveRows}\n`);
