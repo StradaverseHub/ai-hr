@@ -12,6 +12,7 @@ import {
   seedPayrollCycleCatalog,
   setPayrollCycleActive,
   upsertPayrollCycle,
+  PayrollCycleDuplicateCodeError,
   PayrollCycleDuplicateNameError,
   PayrollCycleInUseError,
   PayrollCycleRegularConflictError,
@@ -27,6 +28,7 @@ const dest = (companyId: string, kind: 'toast' | 'error', value: string) =>
 async function localise(e: unknown): Promise<string> {
   const t = await getTranslations('payrollCycleConfig');
   if (e instanceof PayrollCycleDuplicateNameError) return t('errors.duplicateName');
+  if (e instanceof PayrollCycleDuplicateCodeError) return t('errors.duplicateCode');
   if (e instanceof PayrollCycleRegularConflictError) return t('errors.regularConflict');
   if (e instanceof PayrollCycleInUseError) return t('errors.inUse', { refs: e.refs });
   return (e as Error).message;
@@ -64,6 +66,7 @@ export async function upsertCycleAction(formData: FormData) {
       id,
       companyId,
       name: String(formData.get('name') ?? ''),
+      code: String(formData.get('code') ?? '') || null,
       runType: String(formData.get('runType') ?? 'regular'),
       remarks: String(formData.get('remarks') ?? '') || null,
       description: String(formData.get('description') ?? '') || null,

@@ -27,7 +27,7 @@
  */
 import { toCsv } from './csv';
 import { IMPORT_COLUMNS } from './import-schema';
-import { PAYROLL_HISTORY_COLUMNS } from './payroll-history-import-schema';
+import { PAYROLL_HISTORY_COLUMNS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
 import { LEAVE_IMPORT_COLUMNS } from './leave-import-schema';
 
 export type TemplateSpec = {
@@ -187,12 +187,17 @@ export const payrollComponentTemplate: TemplateSpec = {
 };
 
 /**
- * Payroll history (1.2.5) — columns DERIVED from the enforced contract (required first, then optional),
- * the same desync lock as the employee template. Two sample rows for a *prior* year (so a copy-down
- * download lands in an empty month) with internally-consistent figures:
- *   net  = gross − (epf_employee + socso_employee + socso_skbbk + eis_employee + pcb + other_deductions)
- *   cost = gross + epf_employer + socso_employer + eis_employer
- * Resolution is by email; employee_code is an optional secondary disambiguator.
+ * Payroll history (4157a498) — columns DERIVED from the enforced contract (required first, then
+ * optional), the same desync lock as the employee template.
+ *
+ * THE CONTRACT IS LONG, NOT WIDE: seven columns, one line per figure, and an employee-month is however
+ * many lines it takes. The sample below is the reporter's own worked example (A1001 / 202501 / ME /
+ * BASIC / ABCDE / 5000.00 / 1) completed into a month that would actually pass validation — basic pay
+ * plus every statutory figure, because a month with earnings and no contribution or tax lines is stopped
+ * rather than guessed at. A figure that genuinely was zero is written as 0.00, which is accepted.
+ *
+ * The .xlsx form of this template (the one the screen hands out) is built from the SAME contract in
+ * lib/import-template-xlsx.ts, with the reporter's human headings; this CSV form is the fallback.
  */
 export const payrollHistoryTemplate: TemplateSpec = {
   id: 'payroll-history',
@@ -201,59 +206,7 @@ export const payrollHistoryTemplate: TemplateSpec = {
     ...PAYROLL_HISTORY_COLUMNS.required.map((key) => ({ key, required: true })),
     ...PAYROLL_HISTORY_COLUMNS.optional.map((key) => ({ key, required: false })),
   ],
-  // Order matches columns above (required ∪ optional).
-  sampleRows: [
-    [
-      'aisyah@demo.test', // email
-      '2024-06', // period (prior year — an empty month for a fresh install)
-      '5000', // basic_salary
-      '5300', // gross_pay (basic + allowance)
-      '583.00', // epf_employee (11%)
-      '689.00', // epf_employer (13%)
-      '24.75', // socso_employee
-      '86.65', // socso_employer
-      '9.90', // eis_employee
-      '9.90', // eis_employer
-      '150.00', // pcb
-      '4532.35', // net_pay = 5300 − (583 + 24.75 + 9.90 + 150)
-      'E1001', // employee_code (secondary)
-      '300', // allowance
-      '0', // overtime_pay
-      '0', // bonus
-      '0', // socso_skbbk
-      '0', // lp
-      '0', // zakat
-      '0', // cp38 (LHDN/court instalment, distinct from MTD)
-      '', // cp38_ref (LHDN reference for the CP38 instalment)
-      '0', // other_deductions
-      '6085.55', // employer_cost = 5300 + 689 + 86.65 + 9.90
-      '767.65', // total_deductions
-    ],
-    [
-      'meiling@demo.test', // email
-      '2024-06', // period
-      '4200', // basic_salary
-      '4200', // gross_pay
-      '462.00', // epf_employee (11%)
-      '546.00', // epf_employer (13%)
-      '19.75', // socso_employee
-      '69.15', // socso_employer
-      '8.40', // eis_employee
-      '8.40', // eis_employer
-      '60.00', // pcb
-      '3649.85', // net_pay = 4200 − (462 + 19.75 + 8.40 + 60)
-      'E1002', // employee_code
-      '0', // allowance
-      '0', // overtime_pay
-      '0', // bonus
-      '0', // socso_skbbk
-      '0', // lp
-      '0', // zakat
-      '0', // cp38 (LHDN/court instalment, distinct from MTD)
-      '', // cp38_ref (LHDN reference for the CP38 instalment)
-      '0', // other_deductions
-      '4823.55', // employer_cost = 4200 + 546 + 69.15 + 8.40
-      '550.15', // total_deductions
-    ],
-  ],
+  // Order matches columns above: Employee No, Payroll Period, Payroll Cycle, DOE Code, Company Code,
+  // Amount, Override?. The reporter's worked example, completed into a month that passes validation.
+  sampleRows: PAYROLL_HISTORY_SAMPLE_ROWS.map((r) => [...r]),
 };

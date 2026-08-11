@@ -28,6 +28,16 @@ export class PayrollCycleDuplicateNameError extends Error {
   }
 }
 
+/** Thrown when a cycle CODE duplicates a live code in the same company (case-insensitive). 4157a498:
+ *  the code is what an import file's "Payroll Cycle" column resolves against, so two live cycles sharing
+ *  one code would make the file ambiguous — the importer refuses an ambiguous code rather than guessing. */
+export class PayrollCycleDuplicateCodeError extends Error {
+  constructor() {
+    super('payroll-cycle-duplicate-code');
+    this.name = 'PayrollCycleDuplicateCodeError';
+  }
+}
+
 /** Thrown when a create/update would leave a company with more than one ACTIVE cycle mapped to
  *  runType='regular'. Without this the SECOND regular-mapped cycle used in a run would fail with a raw,
  *  unlocalised Postgres constraint-violation (payroll_batch_one_regular_uq) — this makes it friendly. */
@@ -60,6 +70,13 @@ const cleanRunType = (v: string | undefined): PayrollCycleRunType => {
   return v as PayrollCycleRunType;
 };
 
+/** 4157a498 — the short import code. Whitespace-collapsed and upper-cased so "me" and "ME" are the same
+ *  code (the DB index is on lower(code), and the importer compares case-insensitively). Blank ⇒ null. */
+const cleanCode = (v: string | null | undefined): string | null => {
+  const s = (v ?? '').replace(/\s+/g, '').trim().toUpperCase();
+  return s === '' ? null : s;
+};
+
 const cleanRemarks = (v: string | null | undefined): string | null => {
   const s = (v ?? '').replace(/\s+/g, ' ').trim();
   return s === '' ? null : s;
@@ -71,6 +88,14 @@ const cleanDescription = (v: string | null | undefined): string | null => {
   const s = (v ?? '').replace(/[ \t]+/g, ' ').replace(/\r\n/g, '\n').trim();
   return s === '' ? null : s;
 };
+
+/** Which of the two live partial-unique indexes tripped — the NAME or the 4157a498 CODE. Drizzle wraps
+ *  the driver error, so the constraint name is looked for in the whole chain's stringification rather
+ *  than on a single `.constraint` property that may live several `.cause` hops down. */
+const uniqueError = (e: unknown): Error =>
+  /payroll_cycle_company_code_uq/.test(String((e as { message?: string })?.message ?? '') + String(e))
+    ? new PayrollCycleDuplicateCodeError()
+    : new PayrollCycleDuplicateNameError();
 
 const isUniqueViolation = (e: unknown): boolean => {
   let cur = e as { code?: string; cause?: unknown } | null | undefined;
@@ -87,13 +112,16 @@ const isUniqueViolation = (e: unknown): boolean => {
  * preserves the dropdown on upgrade (no one loses an option). `remarks` matches the label the legacy
  * actions.ts ternary carried for the two presets so the delete-guard traces existing history correctly.
  */
-export const DEFAULT_PAYROLL_CYCLES: { name: string; runType: PayrollCycleRunType; remarks: string | null }[] = [
-  { name: 'Monthly', runType: 'regular', remarks: null },
-  { name: 'Bonus', runType: 'bonus', remarks: null },
-  { name: 'Off-cycle', runType: 'off_cycle', remarks: null },
-  { name: 'Adjustment', runType: 'adjustment', remarks: null },
-  { name: 'Advance Salary', runType: 'off_cycle', remarks: 'Advance Salary' },
-  { name: 'Mid-Month', runType: 'off_cycle', remarks: 'Mid-Month' },
+export const DEFAULT_PAYROLL_CYCLES: { name: string; code: string; runType: PayrollCycleRunType; remarks: string | null }[] = [
+  // 4157a498 — each default now carries a short CODE as well. "ME" for the monthly cycle is the reporter's
+  // own example from the Payroll Result Import template; the rest follow the same two-letter shape. A code
+  // is a LABEL: the kernel still gates every rule on run_type, and an admin may rename any of them.
+  { name: 'Monthly', code: 'ME', runType: 'regular', remarks: null },
+  { name: 'Bonus', code: 'BO', runType: 'bonus', remarks: null },
+  { name: 'Off-cycle', code: 'OC', runType: 'off_cycle', remarks: null },
+  { name: 'Adjustment', code: 'AD', runType: 'adjustment', remarks: null },
+  { name: 'Advance Salary', code: 'AS', runType: 'off_cycle', remarks: 'Advance Salary' },
+  { name: 'Mid-Month', code: 'MM', runType: 'off_cycle', remarks: 'Mid-Month' },
 ];
 
 /**
@@ -129,6 +157,7 @@ export function seedPayrollCycleCatalog(ctx: SessionContext, companyId: string, 
         tenantId: ctx.tenantId,
         companyId,
         name: c.name,
+        code: c.code,
         runType: c.runType,
         remarks: c.remarks,
         sortOrder: i,
@@ -152,6 +181,8 @@ export type PayrollCycleRow = {
   id: string;
   companyId: string;
   name: string;
+  /** 4157a498 — the short code an import file's "Payroll Cycle" column may name. Null on legacy rows. */
+  code: string | null;
   runType: PayrollCycleRunType;
   remarks: string | null;
   description: string | null;
@@ -177,6 +208,7 @@ export function listPayrollCycles(
         id: r.id,
         companyId: r.companyId,
         name: r.name,
+        code: r.code,
         runType: r.runType as PayrollCycleRunType,
         remarks: r.remarks,
         description: r.description,
@@ -200,6 +232,7 @@ export function getActivePayrollCycle(ctx: SessionContext, id: string, companyId
       id: row.id,
       companyId: row.companyId,
       name: row.name,
+      code: row.code,
       runType: row.runType as PayrollCycleRunType,
       remarks: row.remarks,
       description: row.description,
@@ -227,6 +260,7 @@ export type UpsertPayrollCycleInput = {
   id?: string;
   companyId: string;
   name: string;
+  code?: string | null;
   runType: string;
   remarks?: string | null;
   description?: string | null;
@@ -241,6 +275,7 @@ export type UpsertPayrollCycleInput = {
  */
 export async function upsertPayrollCycle(ctx: SessionContext, p: UpsertPayrollCycleInput) {
   const name = cleanName(p.name);
+  const code = cleanCode(p.code);
   const runType = cleanRunType(p.runType);
   const remarks = cleanRemarks(p.remarks);
   const description = cleanDescription(p.description);
@@ -254,10 +289,12 @@ export async function upsertPayrollCycle(ctx: SessionContext, p: UpsertPayrollCy
       }
       await tx
         .update(payrollCycle)
-        .set({ name, runType, remarks, description, sortOrder })
+        .set({ name, code, runType, remarks, description, sortOrder })
         .where(eq(payrollCycle.id, p.id))
         .catch((e) => {
-          if (isUniqueViolation(e)) throw new PayrollCycleDuplicateNameError();
+          // Two partial-unique indexes can now fire: the live NAME and the live CODE. Distinguish them so
+          // the admin is told which field collided instead of a generic "duplicate".
+          if (isUniqueViolation(e)) throw uniqueError(e);
           throw e;
         });
       await appendEvent(tx, {
@@ -268,9 +305,9 @@ export async function upsertPayrollCycle(ctx: SessionContext, p: UpsertPayrollCy
         actor: actorOf(ctx),
         payload: {
           before: before
-            ? { name: before.name, runType: before.runType, remarks: before.remarks, description: before.description, sortOrder: before.sortOrder }
+            ? { name: before.name, code: before.code, runType: before.runType, remarks: before.remarks, description: before.description, sortOrder: before.sortOrder }
             : null,
-          after: { name, runType, remarks, description, sortOrder },
+          after: { name, code, runType, remarks, description, sortOrder },
         },
       });
       return { id: p.id };
@@ -281,10 +318,10 @@ export async function upsertPayrollCycle(ctx: SessionContext, p: UpsertPayrollCy
     }
     const [row] = await tx
       .insert(payrollCycle)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, name, runType, remarks, description, sortOrder })
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, name, code, runType, remarks, description, sortOrder })
       .returning({ id: payrollCycle.id })
       .catch((e) => {
-        if (isUniqueViolation(e)) throw new PayrollCycleDuplicateNameError();
+        if (isUniqueViolation(e)) throw uniqueError(e);
         throw e;
       });
     await appendEvent(tx, {
@@ -293,7 +330,7 @@ export async function upsertPayrollCycle(ctx: SessionContext, p: UpsertPayrollCy
       aggregateId: row.id,
       eventType: 'payroll-cycle.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, name, runType, remarks, description, sortOrder },
+      payload: { companyId: p.companyId, name, code, runType, remarks, description, sortOrder },
     });
     return { id: row.id };
   });
@@ -313,7 +350,7 @@ export async function setPayrollCycleActive(ctx: SessionContext, p: { id: string
       .set({ archivedAt: p.active ? null : sql`now()` })
       .where(eq(payrollCycle.id, p.id))
       .catch((e) => {
-        if (isUniqueViolation(e)) throw new PayrollCycleDuplicateNameError();
+        if (isUniqueViolation(e)) throw uniqueError(e);
         throw e;
       });
     await appendEvent(tx, {
@@ -419,6 +456,9 @@ export async function copyPayrollCycleToCompanies(
             tenantId: ctx.tenantId,
             companyId,
             name: source.name,
+            // 4157a498 — the code travels with the definition. A target that already has a LIVE cycle with
+            // this code trips payroll_cycle_company_code_uq, which is caught below as a duplicate skip.
+            code: source.code,
             runType: source.runType,
             remarks: source.remarks,
             description: source.description,
@@ -443,6 +483,7 @@ export async function copyPayrollCycleToCompanies(
         payload: {
           companyId,
           name: source.name,
+          code: source.code,
           runType: source.runType,
           remarks: source.remarks,
           description: source.description,

@@ -62,6 +62,31 @@ export const PAYROLL_HISTORY_HEADER_ALIASES: Readonly<Record<string, readonly st
   'override?': ['override?', 'override', 'overwrite?', 'overwrite'],
 };
 
+/**
+ * The reporter's own worked example — A1001 / 202501 / ME / BASIC / ABCDE / 5000.00 / 1 — COMPLETED into
+ * a month that would actually pass validation.
+ *
+ * Their sample shows BASIC and EEEPF only. A month with earnings but no contribution or tax lines at all
+ * is stopped rather than guessed at, so the sample carries every figure: the employee's EPF, SOCSO, EIS
+ * and tax, and the employer's EPF, SOCSO, EIS and training levy. The zero-value lines are the point —
+ * "this really was zero" is a statement the file has to make, and 0.00 is accepted.
+ *
+ * Shared by the CSV template (lib/import-template.ts) and the .xlsx Sample sheet so the two cannot drift.
+ * Figures are illustrative; the amounts are the reporter's 5,000 basic with plausible MY statutory rates.
+ */
+export const PAYROLL_HISTORY_SAMPLE_ROWS: readonly (readonly string[])[] = [
+  ['A1001', '202501', 'ME', 'BASIC', 'ABCDE', '5000.00', '1'],
+  ['A1001', '202501', 'ME', 'ALLOWANCE', 'ABCDE', '300.00', '1'],
+  ['A1001', '202501', 'ME', 'EEEPF', 'ABCDE', '583.00', '1'],
+  ['A1001', '202501', 'ME', 'EESOCSO', 'ABCDE', '24.75', '1'],
+  ['A1001', '202501', 'ME', 'EEEIS', 'ABCDE', '9.90', '1'],
+  ['A1001', '202501', 'ME', 'PCB', 'ABCDE', '150.00', '1'],
+  ['A1001', '202501', 'ME', 'EREPF', 'ABCDE', '689.00', '1'],
+  ['A1001', '202501', 'ME', 'ERSOCSO', 'ABCDE', '86.65', '1'],
+  ['A1001', '202501', 'ME', 'EREIS', 'ABCDE', '9.90', '1'],
+  ['A1001', '202501', 'ME', 'HRDF', 'ABCDE', '53.00', '1'],
+];
+
 /** Pull one contract field out of a parsed record, honouring the alias list. Trimmed; '' when absent. */
 export function readHistoryField(rec: PayrollHistoryRecord, key: string): string {
   for (const alias of PAYROLL_HISTORY_HEADER_ALIASES[key] ?? [key]) {
@@ -221,10 +246,19 @@ export function payComponentDestination(c: {
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * The Error Type column's vocabulary. The first eleven are the reporter's list; `Inconsistent totals` is
- * the twelfth and covers only one case — the file supplies a GROSS or NETPAY line that disagrees with the
- * sum of its own lines. That is not any of their eleven and silently preferring one figure over the other
- * would be exactly the invented arithmetic this importer refuses to do.
+ * The Error Type column's vocabulary. The first eleven are the reporter's list, verbatim. Three more
+ * exist and each earns its place:
+ *
+ *   • `Inconsistent totals` — the file supplies a GROSS or NETPAY line that disagrees with the sum of its
+ *     own lines. Not any of their eleven, and silently preferring one figure over the other would be
+ *     exactly the invented arithmetic this importer refuses to do.
+ *   • `EA breakdown` (WARNING ONLY) — the month's gross exceeds its basic with no allowance / overtime /
+ *     bonus lines, so the EA Part B itemisation will land entirely in "basic".
+ *   • `CP39 readiness` (WARNING ONLY) — tax was deducted but the employee has no tax number on file, so
+ *     that month's CP39 e-Data file cannot be produced until it is filled in.
+ *
+ * The last two are never `Failed`: 21 of the 33 live statutory records have no tax number, and blocking
+ * on either would stop most of a migration for something that is correctable afterwards.
  */
 export const HISTORY_ERROR_TYPES = [
   'Invalid Employee No',
@@ -239,6 +273,8 @@ export const HISTORY_ERROR_TYPES = [
   'Incomplete month',
   'Existing record',
   'Inconsistent totals',
+  'EA breakdown',
+  'CP39 readiness',
 ] as const;
 export type HistoryErrorType = (typeof HISTORY_ERROR_TYPES)[number];
 
