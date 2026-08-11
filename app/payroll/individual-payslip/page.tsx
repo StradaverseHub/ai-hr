@@ -85,7 +85,7 @@ import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { formatMoney } from '@/lib/money';
 import { packFor } from '@/localization/registry';
-import { Button, Card, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
@@ -210,6 +210,9 @@ export default async function IndividualPayslipPage({
     businessUnitId: e.businessUnitId,
     status: e.terminatedOn == null ? 'active' : 'ended',
   }));
+  // 009c8a37 — who the header row names. Read off the SAME already-fenced list the scope guard accepted,
+  // so it can never name somebody the page refused.
+  const selectedEmp = employmentId ? (employees.find((e) => e.employmentId === employmentId) ?? null) : null;
   // The period filters ride along when the employee changes — these are the GUARDED values, not the raw
   // params. `payslipId` deliberately does NOT: it names a run belonging to the person being navigated away
   // from, and carrying it would ask the next employee's list for someone else's payslip.
@@ -286,6 +289,24 @@ export default async function IndividualPayslipPage({
       <CollapsibleEmployeePanel
         defaultOpen={panelDefaultOpen}
         cookieKey={PAYSLIP_PANEL_COOKIE}
+        // 009c8a37 — the header row, on the same horizontal line as the Hide/Show control. `print:hidden`
+        // because on THIS screen the output is a printed payslip: the letterhead below carries the
+        // employee, and this row is chrome that must not land above it. Same reason the toggle itself has
+        // carried that class since r168 (a stray "Hide employee list" line once printed there).
+        headerClassName="print:hidden"
+        title={t('title')}
+        detailHeader={
+          selectedEmp ? (
+            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
+              <EmployeeName
+                code={selectedEmp.employeeCode}
+                name={selectedEmp.name}
+                className="text-sm font-semibold text-foreground"
+              />
+              <span className="text-xs text-muted-foreground">{selectedEmp.company}</span>
+            </div>
+          ) : undefined
+        }
         panel={
           /* The employee control (da4af51f, removed by r179 and RESTORED at the reporter's request). It
              is the shared searchable panel five other Payroll and Admin screens carry, so this screen

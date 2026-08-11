@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { EmployeeName, Field, inputCls } from '@/components/ui';
+import { Card, EmployeeName, Field, inputCls } from '@/components/ui';
 
 /**
  * The employee panel + workspace two-column shell, with the panel collapsible — 49e7e0a2 (Individual
@@ -38,7 +38,8 @@ import { EmployeeName, Field, inputCls } from '@/components/ui';
 // already print:hidden and the global sheet (app/globals.css) hides only <aside>/<header>, so without
 // this a Save-as-PDF emitted a stray "Hide employee list" line above the letterhead.
 // r179 briefly took that screen off this shell and f35f758a rev 2 put it back at the reporter's
-// request, so the requirement above is LIVE again — it is not a historical note.
+// request, so the requirement above is LIVE again — it is not a historical note. 009c8a37 gives the
+// control TWO positions, and the class is on both of them.
 export function CollapsibleEmployeePanel({
   panel,
   children,
@@ -46,7 +47,9 @@ export function CollapsibleEmployeePanel({
   cookieKey,
   hideLabel,
   showLabel,
-  collapsedTitle,
+  title,
+  detailHeader,
+  headerClassName,
 }: {
   /** The employee list (left). Rendered only while expanded. */
   panel: ReactNode;
@@ -58,16 +61,28 @@ export function CollapsibleEmployeePanel({
   cookieKey: string;
   /** Pre-translated label for the control while the panel is OPEN (e.g. "Hide employee list"). */
   hideLabel?: string;
-  /** Pre-translated label for the control while the panel is COLLAPSED (e.g. "Employees"). */
+  /** Pre-translated label for the control while the panel is COLLAPSED (e.g. "Show employee list"). */
   showLabel?: string;
-  /** Pre-translated vertical caption on the collapsed rail, so the strip is self-explaining. */
-  collapsedTitle?: string;
+  /** 009c8a37 — the screen's own name, shown in the header row while NOBODY is selected. Every consumer
+   *  draws no header at all in that state, which is exactly the screenshot the reporter sent: a control
+   *  floating above a "choose someone" message. Without this fallback the control would simply vanish. */
+  title?: string;
+  /**
+   * 009c8a37 — what sits on the LEFT of the header row: who is selected, and that screen's ONE primary
+   * action. Give the identity `min-w-0 flex-1` so the action and the toggle sit together on the right.
+   *
+   * A ReactNode, NEVER a callback — see the note above. Six of the seven consumers are server components.
+   */
+  detailHeader?: ReactNode;
+  /** Extra classes for the header row itself. Plain data, and it exists for exactly one caller: the
+   *  Individual Payslip screen passes `print:hidden`, because that screen's output IS a printed payslip
+   *  and this row is chrome above its letterhead. */
+  headerClassName?: string;
 }) {
   const t = useTranslations('employeePanel');
   const [open, setOpen] = useState(defaultOpen);
   const hide = hideLabel ?? t('hideEmployees');
   const show = showLabel ?? t('showEmployees');
-  const railTitle = collapsedTitle ?? t('heading');
 
   const toggle = () => {
     const next = !open;
@@ -75,42 +90,68 @@ export function CollapsibleEmployeePanel({
     document.cookie = `${cookieKey}=${next ? '1' : '0'}; path=/; max-age=31536000; samesite=lax`;
   };
 
+  /**
+   * ONE control, TWO positions, one handler and one cookie key — so the two copies cannot disagree.
+   *
+   * BELOW `lg` THE GRID STACKS IN DOM ORDER, AND THAT IS THE TRAP. A toggle living only in the detail
+   * header lands UNDER the entire employee list on a phone; a toggle rendered only "above the panel"
+   * DISAPPEARS the moment you collapse, because the panel branch is not rendered in that state. So the
+   * `lg:hidden` copy is the first child of the shell and is rendered in BOTH states, and the
+   * `hidden lg:flex` copy lives in the header row.
+   */
+  const toggleButton = (extra: string) => (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-expanded={open}
+      title={open ? hide : show}
+      className={`items-center justify-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground print:hidden ${extra}`}
+    >
+      <span aria-hidden>{open ? '☰' : '◀'}</span>
+      {open ? hide : show}
+    </button>
+  );
+
   return (
+    /**
+     * 009c8a37 REVERSES A DOCUMENTED DECISION ON PURPOSE — say so, or the next reader reverts it.
+     *
+     * This shell used to keep a narrow COLLAPSED RAIL in the left column, and the comment there argued it
+     * "keeps the control in the same place on the page rather than moving it into the workspace header, so
+     * expanding is where collapsing left it". The rail is gone and the control is now in the header row in
+     * BOTH states, which answers that concern rather than ignoring it: the control never moves at all, so
+     * expanding is still exactly where collapsing left it — and it no longer pushes the employee list down
+     * by its own height, which is the misalignment the reporter marked in red.
+     *
+     * DELETING THE RAIL WAS NOT ENOUGH ON ITS OWN. While collapsed the grid drops to a SINGLE COLUMN and
+     * the left cell is not rendered at all. An empty auto column plus `gap-4` still held 16px back from
+     * the detail (40px of rail + 16px of gap against the shared `max-w-[100rem]` cap), which is the "use
+     * the full available width" requirement.
+     */
     <div
       className={`grid gap-4 lg:items-start ${
-        open ? 'lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]' : 'lg:grid-cols-[auto_minmax(0,1fr)]'
+        open ? 'lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]' : 'lg:grid-cols-1'
       }`}
     >
-      {open ? (
-        <div className="min-w-0 space-y-2">
-          <button
-            type="button"
-            onClick={toggle}
-            aria-expanded="true"
-            className="flex w-full items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground print:hidden"
-          >
-            <span aria-hidden>☰</span>
-            {hide}
-          </button>
-          {panel}
-        </div>
-      ) : (
-        // The collapsed rail keeps the control in the same place on the page rather than moving it into
-        // the workspace header, so expanding is where collapsing left it.
-        <div className="lg:w-10">
-          <button
-            type="button"
-            onClick={toggle}
-            aria-expanded="false"
-            title={show}
-            className="flex w-full items-center justify-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:h-40 lg:flex-col print:hidden"
-          >
-            <span aria-hidden>◀</span>
-            <span className="lg:[writing-mode:vertical-rl]">{railTitle}</span>
-          </button>
-        </div>
-      )}
-      <div className="min-w-0">{children}</div>
+      {/* The narrow-viewport copy. FIRST child so it is above the employee list when the grid stacks, and
+          rendered in both states so collapsing on a phone cannot strand the operator. */}
+      <div className="lg:hidden">{toggleButton('flex w-full')}</div>
+
+      {open && <div className="min-w-0">{panel}</div>}
+
+      <div className="min-w-0 space-y-4">
+        {/* THE HEADER ROW, RENDERED UNCONDITIONALLY. Every consumer drew no header at all with nobody
+            selected, so a row that only appeared once someone was picked would leave the control missing
+            on all seven — in exactly the state the reporter photographed. Each screen's own no-selection
+            body still renders below this. */}
+        <Card
+          className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${headerClassName ?? ''}`}
+        >
+          {detailHeader ?? <h2 className="min-w-0 flex-1 text-sm font-semibold text-foreground">{title}</h2>}
+          {toggleButton('hidden shrink-0 lg:flex')}
+        </Card>
+        {children}
+      </div>
     </div>
   );
 }

@@ -884,7 +884,47 @@ export function TxnWorkspace({
       cookieKey={panelCookieKey}
       hideLabel={t('hideEmployees')}
       showLabel={t('showEmployees')}
-      collapsedTitle={t('employeesPanel')}
+      // 009c8a37 — the header row: who is selected, the ONE button, and the Hide/Show control last, on one
+      // horizontal line. Before this the identity sat inside the big Card below while the control had a
+      // row of its own in the left column, which is the misalignment the reporter marked in red.
+      title={t('title')}
+      detailHeader={
+        selected ? (
+          <>
+            <div className="min-w-0 flex-1">
+              <EmployeeName
+                code={selected.employeeCode}
+                name={selected.name}
+                className="text-sm font-semibold text-foreground"
+              />
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {selected.company} · {selected.department ?? '—'} · {selected.position ?? '—'}
+              </p>
+              {/* 510f4bd1 — the employee's PAYROLL status, one line, beside their name. It can read
+                  Reprocess required while every transaction below reads Processed: this line is about
+                  their payslip, the badges are about their transactions. The link goes to the run,
+                  where Reprocess arrives with this person already ticked. */}
+              {reprocessRuns.length > 0 && (
+                <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                  <Badge variant="danger">{t('employeeReprocessRequired')}</Badge>
+                  {reprocessRuns.map((b) => (
+                    <Link
+                      key={b.id}
+                      href={`/payroll/${b.id}`}
+                      className="font-medium text-red-700 underline underline-offset-2 dark:text-red-400"
+                    >
+                      {t('employeeReprocessLink', { period: b.payPeriod })}
+                    </Link>
+                  ))}
+                </span>
+              )}
+            </div>
+            <Button type="button" size="sm" onClick={startCreate} disabled={form?.mode === 'create'}>
+              {t('addTxn')}
+            </Button>
+          </>
+        ) : undefined
+      }
       panel={
         /* ────────────────── LEFT PANEL — employees ────────────────── */
         <Card className="overflow-hidden">
@@ -990,40 +1030,8 @@ export function TxnWorkspace({
 
         {selected && (
           <>
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
-              <div className="min-w-0">
-                <EmployeeName
-                  code={selected.employeeCode}
-                  name={selected.name}
-                  className="text-sm font-semibold text-foreground"
-                />
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  {selected.company} · {selected.department ?? '—'} · {selected.position ?? '—'}
-                </p>
-                {/* 510f4bd1 — the employee's PAYROLL status, one line, beside their name. It can read
-                    Reprocess required while every transaction below reads Processed: this line is about
-                    their payslip, the badges are about their transactions. The link goes to the run,
-                    where Reprocess arrives with this person already ticked. */}
-                {reprocessRuns.length > 0 && (
-                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                    <Badge variant="danger">{t('employeeReprocessRequired')}</Badge>
-                    {reprocessRuns.map((b) => (
-                      <Link
-                        key={b.id}
-                        href={`/payroll/${b.id}`}
-                        className="font-medium text-red-700 underline underline-offset-2 dark:text-red-400"
-                      >
-                        {t('employeeReprocessLink', { period: b.payPeriod })}
-                      </Link>
-                    ))}
-                  </p>
-                )}
-              </div>
-              <Button type="button" size="sm" onClick={startCreate} disabled={form?.mode === 'create'}>
-                {t('addTxn')}
-              </Button>
-            </div>
-
+            {/* 009c8a37 — the identity + Add button that used to open this Card are now the shell's header
+                row, on the same horizontal line as the Hide/Show control. */}
             {/* Totals of exactly the rows below — never a second read that could disagree with them. */}
             <div className="flex flex-wrap gap-x-6 gap-y-2 border-b border-border bg-muted/20 px-4 py-2.5 text-xs">
               <span className="text-muted-foreground">

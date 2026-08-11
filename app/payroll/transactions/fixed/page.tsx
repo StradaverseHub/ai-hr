@@ -158,31 +158,13 @@ export default async function FixedTransactionPage({
         cookieKey={FIXED_PANEL_COOKIE}
         hideLabel={t('fixed.hideEmployees')}
         showLabel={t('fixed.showEmployees')}
-        collapsedTitle={t('fixed.pickEmployee')}
-        panel={
-          <Card className="p-4">
-            <h2 className="text-sm font-medium">{t('fixed.pickEmployee')}</h2>
-            {employees.length === 0 ? (
-              <p className="mt-3 text-sm text-muted-foreground">{t('fixed.empty')}</p>
-            ) : (
-              <div className="mt-3">
-                <EmployeePicker employees={pickerEmployees} selectedId={selected} />
-              </div>
-            )}
-          </Card>
-        }
-      >
-        {!selectedEmp && (
-          <Card className="px-6 py-16 text-center">
-            <p className="text-sm font-medium text-foreground">{t('fixed.pickEmployeeTitle')}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{t('fixed.pickEmployeeBody')}</p>
-          </Card>
-        )}
-
-        {selectedEmp && (
-          <Card className="overflow-hidden">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
-              <div className="min-w-0">
+        // 009c8a37 — the screen name carries the header row until somebody is picked. Before this the row
+        // did not exist at all in that state, which is where the reporter's screenshot was taken.
+        title={t('fixed.title')}
+        detailHeader={
+          selectedEmp ? (
+            <>
+              <div className="min-w-0 flex-1">
                 <EmployeeName
                   code={selectedEmp.employeeCode}
                   name={selectedEmp.name}
@@ -214,8 +196,33 @@ export default async function FixedTransactionPage({
                   ended: r.validTo != null && r.validTo < today,
                 }))}
               />
-            </div>
+            </>
+          ) : undefined
+        }
+        panel={
+          <Card className="p-4">
+            <h2 className="text-sm font-medium">{t('fixed.pickEmployee')}</h2>
+            {employees.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">{t('fixed.empty')}</p>
+            ) : (
+              <div className="mt-3">
+                <EmployeePicker employees={pickerEmployees} selectedId={selected} />
+              </div>
+            )}
+          </Card>
+        }
+      >
+        {!selectedEmp && (
+          <Card className="px-6 py-16 text-center">
+            <p className="text-sm font-medium text-foreground">{t('fixed.pickEmployeeTitle')}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t('fixed.pickEmployeeBody')}</p>
+          </Card>
+        )}
 
+        {selectedEmp && (
+          <Card className="overflow-hidden">
+            {/* 009c8a37 — the identity + Add button that used to open this Card now open the shell's
+                header row instead, on the same horizontal line as the Hide/Show control. */}
             <SectionHeader title={t('fixed.title')} count={rows.length} />
 
             {/* A CHANGE ADDS A LINE — said here, and again in full on the item's own page. Editing a

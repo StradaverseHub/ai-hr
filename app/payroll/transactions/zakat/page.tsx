@@ -236,6 +236,32 @@ export default async function ZakatTransactionPage({
       <CollapsibleEmployeePanel
         defaultOpen={panelDefaultOpen}
         cookieKey={ZAKAT_PANEL_COOKIE}
+        // 009c8a37 — the header row: who is selected, the ONE button that opens the editor, and the
+        // Hide/Show control last, on one horizontal line. Same shape as Fixed / Individual / TP1 / Loans.
+        title={t('zakat.title')}
+        detailHeader={
+          selectedEmp ? (
+            <>
+              <div className="min-w-0 flex-1">
+                <EmployeeName
+                  code={selectedEmp.employeeCode}
+                  name={selectedEmp.name}
+                  className="text-sm font-semibold text-foreground"
+                />
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {selectedEmp.company} · {selectedEmp.department ?? '—'} · {selectedEmp.position ?? '—'}
+                </p>
+              </div>
+              <Button asChild size="sm">
+                <Link
+                  href={`/payroll/transactions/zakat/election?employmentId=${encodeURIComponent(selectedEmp.employmentId)}`}
+                >
+                  {hasElection ? t('zakat.election.editButton') : t('zakat.election.addButton')}
+                </Link>
+              </Button>
+            </>
+          ) : undefined
+        }
         panel={
           /* ── The searchable employee panel (r168a, shared with Loans / Individual Payslip) ── */
           <Card className="p-4">
@@ -257,32 +283,10 @@ export default async function ZakatTransactionPage({
         }
       >
         <div className="space-y-6">
-          {/* ── The header row: who is selected, and the ONE button that opens the editor ──
-              Copied from the selectedEmp block of app/payroll/transactions/fixed/page.tsx on purpose —
-              same three facts, same place on the screen, same action on the right of the same row. */}
-          {selectedEmp ? (
-            <Card className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <EmployeeName
-                  code={selectedEmp.employeeCode}
-                  name={selectedEmp.name}
-                  className="text-sm font-semibold text-foreground"
-                />
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  {selectedEmp.company} · {selectedEmp.department ?? '—'} · {selectedEmp.position ?? '—'}
-                </p>
-              </div>
-              <Button asChild size="sm">
-                <Link
-                  href={`/payroll/transactions/zakat/election?employmentId=${encodeURIComponent(selectedEmp.employmentId)}`}
-                >
-                  {hasElection ? t('zakat.election.editButton') : t('zakat.election.addButton')}
-                </Link>
-              </Button>
-            </Card>
-          ) : (
-            /* No selection is a legitimate state here, not an empty one: this is the only screen carrying
-               the everyone-at-once view. Say what picking somebody would do instead of gating the lists. */
+          {/* No selection is a legitimate state here, not an empty one: this is the only screen besides
+              Loans carrying the everyone-at-once view. Say what picking somebody would do instead of
+              gating the lists. The identity + button moved up into the header row (009c8a37). */}
+          {!selectedEmp && (
             <p className="text-xs text-muted-foreground">{t('zakat.election.pickEmployeeHint')}</p>
           )}
 

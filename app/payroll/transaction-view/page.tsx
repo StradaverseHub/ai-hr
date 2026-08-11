@@ -653,6 +653,25 @@ export default async function TransactionViewPage({
         <CollapsibleEmployeePanel
           defaultOpen={gridPanelDefaultOpen}
           cookieKey={GRID_PANEL_COOKIE}
+          // 009c8a37 — the header row, on the same horizontal line as the Hide/Show control. This tab has
+          // no per-employee button of its own (the export lives inside the grid), so the row carries the
+          // identity and the control; with nobody picked it carries the tab name and the control.
+          title={t('view.tabs.grid')}
+          detailHeader={
+            selectedGridEmployee ? (
+              <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
+                {/* Employee ID left-of-name (feedback 38668d9b) */}
+                <EmployeeName
+                  code={selectedGridEmployee.employeeCode}
+                  name={selectedGridEmployee.name}
+                  className="text-sm font-semibold text-foreground"
+                />
+                <span className="text-xs text-muted-foreground">
+                  {selectedGridEmployee.company} · {gridYear}
+                </span>
+              </div>
+            ) : undefined
+          }
           panel={
             <Card className="p-4">
               <h2 className="text-sm font-semibold">{t('view.grid.pickEmployee')}</h2>
@@ -727,17 +746,7 @@ export default async function TransactionViewPage({
             <Card className="p-4">
               {selectedGridEmployee ? (
                 <>
-                  <div className="mb-3 flex flex-wrap items-baseline gap-2">
-                    {/* Employee ID left-of-name (feedback 38668d9b) */}
-                    <EmployeeName
-                      code={selectedGridEmployee.employeeCode}
-                      name={selectedGridEmployee.name}
-                      className="text-sm font-semibold text-foreground"
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {selectedGridEmployee.company} · {gridYear}
-                    </span>
-                  </div>
+                  {/* 009c8a37 — the identity line that used to sit here is now the shell's header row. */}
                   <HistoryGrid
                     rows={grid?.rows ?? []}
                     months={grid?.months ?? gridMonths}

@@ -121,23 +121,15 @@ export default async function LoansPage({
       <CollapsibleEmployeePanel
         defaultOpen={panelDefaultOpen}
         cookieKey={LOANS_PANEL_COOKIE}
-        panel={
-          <Card className="p-4">
-            <h2 className="text-sm font-semibold">{t('employee')}</h2>
-            <div className="mt-3">
-              <EmployeeScopePanel employees={panelEmployees} selectedId={selected} basePath="/admin/loans" />
-            </div>
-          </Card>
-        }
-      >
-        <div className="space-y-6">
-          {/* ── The header row: who is selected, and the ONE button that opens the Add page ──
-              Copied from the selectedEmp block of app/payroll/transactions/fixed/page.tsx on purpose, and
-              shared in spirit with the Zakat screen: same three facts, same place, same action on the
-              right of the same row. */}
-          {selectedEmp ? (
-            <Card className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
+        // 009c8a37 — the header row: who is selected, the ONE button, and the Hide/Show control last, on
+        // one horizontal line. Copied from the Fixed Transaction call on purpose, and shared in spirit
+        // with Zakat and TP1: same three facts, same place, same action, on every screen with this panel.
+        // With nobody selected the row still draws, carrying the screen name and the control.
+        title={t('title')}
+        detailHeader={
+          selectedEmp ? (
+            <>
+              <div className="min-w-0 flex-1">
                 <EmployeeName
                   code={selectedEmp.employeeCode}
                   name={selectedEmp.name}
@@ -152,12 +144,23 @@ export default async function LoansPage({
                   {t('addButton')}
                 </Link>
               </Button>
-            </Card>
-          ) : (
-            /* No Add button with nobody selected, because a loan needs an employee — and no empty state
-               either, because this is the only screen carrying the everyone-at-once view. */
-            <p className="text-xs text-muted-foreground">{t('pickEmployeeHint')}</p>
-          )}
+            </>
+          ) : undefined
+        }
+        panel={
+          <Card className="p-4">
+            <h2 className="text-sm font-semibold">{t('employee')}</h2>
+            <div className="mt-3">
+              <EmployeeScopePanel employees={panelEmployees} selectedId={selected} basePath="/admin/loans" />
+            </div>
+          </Card>
+        }
+      >
+        <div className="space-y-6">
+          {/* No Add button with nobody selected, because a loan needs an employee — and no empty state
+              either, because this is the only screen carrying the everyone-at-once view. The hint stays
+              exactly where it was; only the identity + button moved up into the header row (009c8a37). */}
+          {!selectedEmp && <p className="text-xs text-muted-foreground">{t('pickEmployeeHint')}</p>}
 
           <Card className="overflow-hidden">
             <SectionHeader title={t('loansTitle')} count={visibleLoans.length} />
