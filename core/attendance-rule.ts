@@ -62,13 +62,6 @@ export type ResolvedAttendanceRule = {
  * PURE + exported so the engine and the golden tests share one definition. Standard rules (no OT rows,
  * applyToEarlyOt=false) return the input unchanged, so today's OT stays byte-identical.
  *
- * SCOPE, CORRECTED BY 7c834696 STAGE 1: the per-band rate now DOES something — it decides which rate
- * COLUMN a day's overtime minutes land in (core/attendance-calc.ts splitOtMinutes, called by the engine
- * right after this). What is still true is that pay uses the tenant-global statutory multipliers
- * (1.5×/2×/3×) as the compliance cap; feeding custom band multipliers into the payroll kernel remains a
- * deferred follow-up. This function still owns ONLY rounding + early-OT inclusion, and it still decides
- * `ot_minutes` — the canonical total everything downstream reads.
- *
  * RESOLVED BY 7c834696 rev 3 (2026-08-11) — ROUNDING IS DOWNWARD, and this is the ONE line in the item
  * that moves money. It was round-to-NEAREST, and nearest is unsound for a BANDED table because nothing
  * stopped the result exceeding either the band's own upper bound or the minutes actually worked:
