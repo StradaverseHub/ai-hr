@@ -28,6 +28,7 @@
  */
 import { IMPORT_COLUMNS } from './import-schema';
 import { employeeTemplate } from './import-template';
+import { PAYROLL_HISTORY_HEADERS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
 
 /** Words that must not be title-cased letter-by-letter. Everything else is Capitalised. */
 const ACRONYMS: Record<string, string> = { ic: 'IC', epf: 'EPF', socso: 'SOCSO', eis: 'EIS' };
@@ -120,3 +121,90 @@ export const EMPLOYEE_XLSX_SHEETS = {
 } as const;
 
 export const EMPLOYEE_XLSX_FILENAME = 'employee-import-template.xlsx';
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// PAYROLL HISTORY (4157a498) — the reporter's Payroll Result Import (PAY_IMP) workbook
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Three sheets, as specified: a blank one to fill in, the worked example, and every code the import
+ * accepts. The DATA sheet must stay FIRST — workbookToCsvText reads the first worksheet, so reordering
+ * these would silently change which sheet an upload is read from.
+ */
+export const PAYROLL_HISTORY_XLSX_SHEETS = {
+  data: 'Payroll History',
+  sample: 'Sample',
+  codes: 'Codes',
+} as const;
+
+export const PAYROLL_HISTORY_XLSX_FILENAME = 'payroll-history-import-template.xlsx';
+
+/**
+ * 0-based positions of the columns stamped as TEXT (`z: '@'`).
+ *
+ * Everything except Amount, which must stay a real number so Excel can sum a column of them. Employee No
+ * is the one that matters — none of the 40 live employee codes is numeric-with-leading-zero today
+ * (100009, A0001, EMP-0001, IDB-240009, T100009, TMPL0001, X000001), but a General-formatted cell
+ * destroys a leading zero IN THE FILE before any reader sees it, so the guard goes in anyway. Payroll
+ * Period is text for the same reason: 202501 survives as a number, but 0 does not belong in a period and
+ * an accidental date format would.
+ */
+export const PAYROLL_HISTORY_TEXT_COLUMN_INDEXES: readonly number[] = [0, 1, 2, 3, 4, 6];
+
+/** The headings the Codes sheet and its explanatory line carry, supplied translated by the caller. */
+export type ImportCodeSheetHeadings = {
+  title: string;
+  code: string;
+  label: string;
+  destination: string;
+  direction: string;
+  note: string;
+};
+
+/**
+ * Build the reporter's Payroll Result Import workbook.
+ *
+ * ONE function, called by the screen's Download Template button AND by the test that parses the bytes
+ * back — because "the template is a real workbook with the right sheets and headings" is only worth
+ * anything if the artifact HR receives is the artifact that was checked, not a re-implementation of it.
+ *
+ * Three sheets: the blank one to fill in (FIRST, because workbookToCsvText reads the first worksheet on
+ * re-upload), the reporter's worked example, and every code the import accepts.
+ */
+export async function buildPayrollHistoryWorkbook(
+  headings: ImportCodeSheetHeadings,
+  codes: { code: string; label: string; destination: string; direction: string }[],
+): Promise<Uint8Array> {
+  const { buildXlsx } = await import('./spreadsheet');
+  return buildXlsx([...PAYROLL_HISTORY_HEADERS], [], {
+    sheetName: PAYROLL_HISTORY_XLSX_SHEETS.data,
+    textColumns: [...PAYROLL_HISTORY_TEXT_COLUMN_INDEXES],
+    extraSheets: [
+      {
+        name: PAYROLL_HISTORY_XLSX_SHEETS.sample,
+        rows: [[...PAYROLL_HISTORY_HEADERS], ...PAYROLL_HISTORY_SAMPLE_ROWS.map((r) => [...r])],
+      },
+      { name: PAYROLL_HISTORY_XLSX_SHEETS.codes, rows: buildImportCodeRows(headings, codes) },
+    ],
+  });
+}
+
+/**
+ * The Codes sheet: every code the import will accept, with what it means and where its money lands.
+ *
+ * This is the sheet the plan calls "the list of every code the import will accept" — it is generated
+ * from the SAME resolver the validator uses (core/payroll-history-import.ts resolveImportCodes), so a
+ * code on this sheet is a code that validates, and there is no second list to drift.
+ */
+export function buildImportCodeRows(
+  headings: { title: string; code: string; label: string; destination: string; direction: string; note: string },
+  codes: { code: string; label: string; destination: string; direction: string }[],
+): string[][] {
+  return [
+    [headings.title],
+    [headings.note],
+    [],
+    [headings.code, headings.label, headings.destination, headings.direction],
+    ...codes.map((c) => [c.code, c.label, c.destination, c.direction]),
+  ];
+}

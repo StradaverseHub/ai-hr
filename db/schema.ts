@@ -4835,6 +4835,11 @@ export const payrollCycle = pgTable(
       .notNull()
       .references(() => company.id),
     name: text('name').notNull(),
+    // 4157a498 (migration 0427) — the SHORT CODE this cycle is known by in an import file's "Payroll
+    // Cycle" column (the reporter's example is "ME"). Nullable: every pre-0427 row has none, and the
+    // payroll-history importer accepts either the code OR the name, so a customer who never fills this
+    // in is not blocked. It is a LABEL, not behaviour: the kernel still gates exclusively on run_type.
+    code: text('code'),
     // The fixed behavioural run type this cycle maps to (NOT the label). The kernel gates on this.
     runType: payrollRunTypeEnum('run_type').notNull(),
     // Free-text label an off_cycle preset carries (e.g. 'Advance Salary'). Null for straight-through cycles.
@@ -4852,6 +4857,54 @@ export const payrollCycle = pgTable(
     index('payroll_cycle_company_idx').on(t.companyId),
     // One live name per company (case-insensitive). Archived rows may share a name that was re-created.
     uniqueIndex('payroll_cycle_company_name_uq').on(t.companyId, sql`lower(${t.name})`).where(sql`archived_at IS NULL`),
+    // 4157a498 — one live CODE per company (case-insensitive), so an import file's "ME" can never be
+    // ambiguous. Partial on code IS NOT NULL as well: NULLs are distinct to Postgres anyway, but the
+    // predicate states that "no code" is the normal state rather than a collision waiting to happen.
+    uniqueIndex('payroll_cycle_company_code_uq')
+      .on(t.companyId, sql`lower(${t.code})`)
+      .where(sql`archived_at IS NULL AND code IS NOT NULL`),
+  ],
+);
+
+/**
+ * 4157a498 (migration 0427) — the DOE-code catalog the payroll-history importer validates against, and
+ * the map from a code to WHERE its money lands on the folded employee-month.
+ *
+ * NOT the only source of accepted codes, deliberately. core/payroll-history-import.ts resolves a code
+ * against three layers, in this order:
+ *   1. STATUTORY_IMPORT_CODES — built into lib/payroll-history-import-schema.ts, so every tenant has the
+ *      statutory vocabulary (EEEPF, PCB, EREPF, HRDF, …) whether or not 0427's seed ever ran for it;
+ *   2. the tenant's live pay_component catalog — BASIC, A0027, OVERTIME, … mapped by kind + display
+ *      category, so the codes an admin already maintains need no second entry here;
+ *   3. these rows, which ADD a code, ALIAS one onto another, or DEACTIVATE one.
+ *
+ * That ordering exists because a tenant provisioned after 0427 has zero rows here and must still be able
+ * to import. The seed is so an admin can SEE the statutory codes, not so the importer can function.
+ *
+ * `aliasFor` holds the TARGET CODE as text, not an FK: an alias commonly points at a built-in statutory
+ * code or a pay_component code, neither of which has a row in this table. One hop only — the resolver
+ * refuses an alias of an alias rather than chasing a cycle.
+ */
+export const payrollImportCode = pgTable(
+  'payroll_import_code',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    code: text('code').notNull(),
+    label: text('label').notNull(),
+    // One of PAYROLL_IMPORT_DESTINATIONS (lib/payroll-history-import-schema.ts); CHECK-constrained in
+    // the DB, because a typo would silently route an employee's EPF into "allowance" and distort both
+    // the EA form and the CP39 file with no error anywhere.
+    destination: text('destination').notNull(),
+    // 'earning' | 'deduction' | 'employer' | 'check'. CHECK-constrained in the DB.
+    direction: text('direction').notNull(),
+    aliasFor: text('alias_for'),
+    active: boolean('active').notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // Case-insensitive, unlike pay_component_code_uq: HR types the DOE code by hand into a spreadsheet.
+    uniqueIndex('payroll_import_code_tenant_code_uq').on(t.tenantId, sql`lower(${t.code})`),
   ],
 );
 

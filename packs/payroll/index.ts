@@ -249,6 +249,9 @@ export const payrollPack: ModulePack = {
     { table: 'payroll_step_up_challenge', note: 'step-up re-auth challenges guarding sensitive payroll ops' },
     { table: 'payroll_input', note: 'draft-batch input rows: OT/bonus/deductions/claim/allowance/zakat — the PayrollInputContributor write target' },
     { table: 'pay_component', note: 'the tenant pay-component catalog (earning/deduction, taxability, statutory flags)' },
+    // 4157a498 (migration 0427). Declared rather than left undeclared because a satellite table with no
+    // owner is exactly what D5 exists to prevent: it is read only by core/payroll-history-import.ts.
+    { table: 'payroll_import_code', note: 'the DOE-code catalog the payroll-history importer validates against, and where each code lands on the folded month' },
     { table: 'employment_pay_component', note: 'per-employment recurring pay-component assignments (fixed txns)' },
     { table: 'payroll_batch_component', note: 'per-batch per-employee resolved component amounts' },
     { table: 'payroll_individual_txn', note: 'one-off individual payroll transactions applied to a batch' },
