@@ -46,16 +46,22 @@ const optNum = (formData: FormData, key: string): number | null => {
  *  hidden field). Empty/absent/invalid JSON ⇒ null ⇒ the legacy single breakMinutes scalar is the fallback.
  *  cf21e554 — `paid` is carried through ONLY when true, so an unpaid row is the byte-identical
  *  { start, end } it has always been. */
-const parseBreakPeriods = (raw: string): { start: string; end: string; paid?: boolean }[] | null => {
+type PostedBreak = { start: string; end: string; paid?: boolean; flexible?: boolean };
+const parseBreakPeriods = (raw: string): PostedBreak[] | null => {
   if (!raw) return null;
   try {
     const arr: unknown = JSON.parse(raw);
     if (!Array.isArray(arr)) return null;
     const out = arr
-      .filter((x): x is { start: string; end: string; paid?: boolean } => !!x && typeof x === 'object' && 'start' in x && 'end' in x)
+      .filter((x): x is PostedBreak => !!x && typeof x === 'object' && 'start' in x && 'end' in x)
       .map((x) => {
-        const row: { start: string; end: string; paid?: boolean } = { start: norm(String(x.start)), end: norm(String(x.end)) };
+        const row: PostedBreak = { start: norm(String(x.start)), end: norm(String(x.end)) };
         if (x.paid === true) row.paid = true;
+        // b8aa3466 — the Fixed tick, stored INVERTED as `flexible` and carried through ONLY when true, so a
+        // window saved before this release round-trips as the byte-identical { start, end } it always was.
+        // Semi-Flexi still forces flexible on every break inside core/roster.ts; this only carries what the
+        // operator actually chose on a Normal shift.
+        if (x.flexible === true) row.flexible = true;
         return row;
       });
     return out.length > 0 ? out : null;
@@ -102,10 +108,31 @@ function shiftFields(formData: FormData) {
   // R17 3e8350db — per-shift "OT Rules". A checkbox posts otEligible='on' when TICKED; an unchecked box
   // posts nothing ⇒ ineligible. Optional min-block / daily-cap minutes. The service collapses a fully-default
   // rule (eligible, no min, no cap) back to null, so a shift that touched none of these stays legacy.
-  const weeklyPattern = formData
-    .getAll('weeklyPattern')
-    .map((v) => Number(v))
-    .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7);
+  // b8aa3466 — the Mon-Sun row posts one dayKind_<1..7> select ("full" | "half" | "rest" | "off") per ISO
+  // weekday instead of a checkbox list. Decode into the three arrays the service expects; REST is the
+  // complement and has no array, exactly as "unticked" has none today. An unrecognised value falls to rest,
+  // which is what an absent checkbox meant — this is a select, not free text.
+  //
+  // The legacy `weeklyPattern` checkbox name is still read as a FALLBACK so any caller or test that posts
+  // the old shape keeps working unchanged.
+  const weeklyPattern: number[] = [];
+  const halfPattern: number[] = [];
+  const offPattern: number[] = [];
+  let sawDayKind = false;
+  for (let d = 1; d <= 7; d++) {
+    const v = formData.get(`dayKind_${d}`);
+    if (v == null) continue;
+    sawDayKind = true;
+    if (v === 'full') weeklyPattern.push(d);
+    else if (v === 'half') halfPattern.push(d);
+    else if (v === 'off') offPattern.push(d);
+  }
+  if (!sawDayKind) {
+    for (const v of formData.getAll('weeklyPattern')) {
+      const d = Number(v);
+      if (Number.isInteger(d) && d >= 1 && d <= 7) weeklyPattern.push(d);
+    }
+  }
   // f3321963 — shift template type (Normal / Semi-Flexi / Full-Flexi). Blank ⇒ null ⇒ the service defaults to
   // 'normal' (legacy). The service validates the value against the three-value enum + forces the Semi-Flexi
   // break flags.
@@ -129,6 +156,13 @@ function shiftFields(formData: FormData) {
     // service preserves any pre-existing per-shift OT-shape override untouched.
     ruleId: String(formData.get('attendanceRuleId') ?? '').trim() || null,
     weeklyPattern: weeklyPattern.length > 0 ? weeklyPattern : null,
+    halfPattern,
+    offPattern,
+    // b8aa3466 — the daily cut-off pair. An unchecked box posts nothing ⇒ off, which is byte-identical to
+    // every shift today; the service refuses enabled-with-no-time rather than storing a state its reader
+    // could not honour.
+    dailyCutoffEnabled: formData.get('dailyCutoffEnabled') != null,
+    dailyCutoffTime: optTime(formData, 'dailyCutoffTime'),
     differential,
     // cf21e554 stage 1 — the General tab. Unlike the two grace fields above these ARE on the form, so a
     // blank box genuinely means "cleared" and posting null is correct.

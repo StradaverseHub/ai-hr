@@ -18,6 +18,14 @@ const DAY_TYPE_KEY: Record<string, string> = {
   rest_day: 'shiftDayTypeRestDay',
   holiday: 'shiftDayTypeHoliday',
 };
+// b8aa3466 — the four day kinds of the weekly row. Static literal keys, same reason as above.
+const DAY_KIND_KEY = {
+  full: 'dayKindFull',
+  half: 'dayKindHalf',
+  rest: 'dayKindRest',
+  off: 'dayKindOff',
+} as const;
+type DayKind = keyof typeof DAY_KIND_KEY;
 
 export type ShiftRow = Awaited<ReturnType<typeof listShiftsForTenant>>[number];
 export type ShiftOtWindowRow = Awaited<ReturnType<typeof listShiftOtWindows>>[number];
@@ -26,12 +34,21 @@ export type ShiftRuleOption = Awaited<ReturnType<typeof listAttendanceRules>>[nu
 /**
  * af7a8eb4 · Add / Edit form for ONE shift template, on its own page — the same shape
  * /admin/attendance-policy/rules already uses (rules/rule-form.tsx behind rules/new + rules/[ruleId]).
- * Before this it lived permanently open underneath the shift list on /admin/attendance, which is the
- * thing the reporter asked to stop seeing.
  *
- * This is a pure RELOCATION: every field, legend, hint and default is byte-for-byte what the inline form
- * rendered, with the flex-wrap groups swapped for the house responsive grid rule-form.tsx uses. Nothing is
- * added, renamed or removed — b8aa3466 is the item that changes the field set.
+ * b8aa3466 · and now the form the reporter actually asked for. Three things changed:
+ *
+ *  1. EVERY BOX HAS A PRINTED LABEL. Ten controls carried only an aria-label or a placeholder, four of them
+ *     the first four you type into.
+ *  2. The top of the form is the EIGHT things the reporter listed, in their order, and the shift type
+ *     decides which of them a shift needs (components/shift-time-fields.tsx owns that, as client state).
+ *  3. Everything else folds into a collapsed "More settings" panel.
+ *
+ * MORE SETTINGS IS COLLAPSED, NOT UNMOUNTED, AND THAT IS LOAD-BEARING. shiftFields() in shift-actions.ts is
+ * a FULL-ROW OVERWRITE and every General / Recorded-for-reference key is deliberately absent-means-null
+ * (core/roster.ts). If any of those inputs stopped rendering, saving MB28 would null its early_in, late_out,
+ * its OT window and the shift-premium pair that core/payroll.ts prefillShiftDifferential reads. A <details>
+ * element keeps them all in the DOM and in the POST — which is exactly why it is a <details> and not a
+ * conditional render.
  *
  * Server component: it RENDERS ShiftTimeFields and ShiftOtWindowFields as JSX (never imports+calls them),
  * keeping the RSC boundary clean.
@@ -48,7 +65,20 @@ export async function ShiftForm({
   error?: string;
 }) {
   const t = await getTranslations('admin.attendancePolicy');
+  const tr = await getTranslations('roster');
   const editing = shift;
+
+  // b8aa3466 — today's row read as the four-way one. Full = in weekly_pattern, Half / Off = their own
+  // arrays, Rest = in none of them. A shift saved before migration 0429 therefore opens as Full where it
+  // was ticked and Rest where it was not, which is precisely what it means today. A NEW shift defaults
+  // Mon–Fri Full, Sat/Sun Rest — the same default the tick row had.
+  const kindOf = (d: number): DayKind => {
+    if (!editing) return d <= 5 ? 'full' : 'rest';
+    if (editing.weeklyPattern?.includes(d)) return 'full';
+    if (editing.halfPattern?.includes(d)) return 'half';
+    if (editing.offPattern?.includes(d)) return 'off';
+    return 'rest';
+  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -70,87 +100,40 @@ export async function ShiftForm({
       >
         {editing && <input type="hidden" name="shiftId" value={editing.id} />}
 
+        {/* ── What the shift IS ───────────────────────────────────────────────────────────────────── */}
         <Card className="space-y-4 p-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Field label={t('shiftName')}>
-              <input
-                name="name"
-                required
-                placeholder={t('shiftName')}
-                defaultValue={editing?.name ?? ''}
-                className={inputCls}
-                aria-label={t('shiftName')}
-              />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t('shiftName')} required requiredAriaLabel={tr('requiredField')}>
+              <input name="name" required defaultValue={editing?.name ?? ''} className={inputCls} />
             </Field>
-            <Field label={t('shiftCode')}>
-              <input
-                name="code"
-                required
-                placeholder={t('shiftCode')}
-                defaultValue={editing?.code ?? ''}
-                className={inputCls}
-                aria-label={t('shiftCode')}
-              />
-            </Field>
-            {/* f3321963 — Shift Type selector. Normal (fixed schedule) + Semi-Flexi (flexible window) are
-                selectable; Full-Flexi is reserved for a FUTURE enhancement (reporter-sanctioned), so its
-                option is disabled and a placeholder note explains it. */}
-            <Field label={t('shiftTypeLabel')}>
-              <select
-                name="shiftTemplateType"
-                defaultValue={editing?.type ?? 'normal'}
-                className={inputCls}
-                aria-label={t('shiftTypeLabel')}
-              >
-                <option value="normal">{t('shiftTypeNormal')}</option>
-                <option value="semi_flexi">{t('shiftTypeSemiFlexi')}</option>
-                <option value="full_flexi" disabled>
-                  {t('shiftTypeFullFlexi')}
-                </option>
-              </select>
+            <Field label={t('shiftCode')} required requiredAriaLabel={tr('requiredField')}>
+              <input name="code" required defaultValue={editing?.code ?? ''} className={inputCls} />
             </Field>
           </div>
-          {/* cf21e554 — the reference "Description" box. The Shift name can go back to being a short name.
-              Full width: MB28's description is 48 characters and was being typed into the name field. */}
-          <Field label={t('shiftDescription')}>
-            <input
-              name="description"
-              defaultValue={editing?.description ?? ''}
-              className={inputCls}
-              aria-label={t('shiftDescription')}
-            />
-          </Field>
-          <div className="flex flex-wrap items-end gap-2">
-            <ShiftTimeFields
-              defaultStart={editing?.startTime.slice(0, 5) ?? '09:00'}
-              defaultEnd={editing?.endTime.slice(0, 5) ?? '18:00'}
-              defaultBreaks={(editing?.breakPeriods ?? []).map((bp) => ({
-                start: bp.start.slice(0, 5),
-                end: bp.end.slice(0, 5),
-                paid: bp.paid === true,
-              }))}
-              defaultBreakMinutes={editing ? String(editing.breakMinutes) : '60'}
-              defaultOverride={editing?.normalMinutesOverride != null ? String(editing.normalMinutesOverride) : ''}
-              defaultRounding={editing?.normalHoursRoundingMinutes != null ? String(editing.normalHoursRoundingMinutes) : ''}
-            />
-          </div>
-          {/* 7c834696 rev 2 point 4 — the per-shift Late Grace / Early Out Grace INPUTS are gone. Grace is
-              set in one place now: the rule picked below. The shift.late_grace_minutes /
-              early_leave_grace_minutes COLUMNS and their precedence in core/attendance.ts (explicit shift
-              grace → rule grace → policy-derived) deliberately stay — a future per-shift override needs
-              somewhere to land, and the fallback chain is what keeps a row carrying one safe. Because this
-              form is a full-row overwrite, shift-actions.ts now OMITS the two keys rather than posting
-              blanks, so saving a shift preserves any stored override instead of nulling it. */}
-          {/* 88e94371 — the shift's attendance-calculation rule ("Lateness, Early Out & Overtime Settings").
-              Replaces the old per-shift OT-Rules field: OT shaping + lateness/early-out grace now live in the
-              reusable rule library. Blank ⇒ the tenant's Standard rule is applied automatically. */}
+
+          {/* Shift type + the per-type field set (items 1-6 of the reporter's list). The island owns the
+              type select, because the type is what decides which of these boxes a shift needs. */}
+          <ShiftTimeFields
+            defaultType={(editing?.type ?? 'normal') as 'normal' | 'semi_flexi' | 'full_flexi'}
+            defaultStart={editing?.startTime.slice(0, 5) ?? '09:00'}
+            defaultEnd={editing?.endTime.slice(0, 5) ?? '18:00'}
+            defaultBreaks={(editing?.breakPeriods ?? []).map((bp) => ({
+              start: bp.start.slice(0, 5),
+              end: bp.end.slice(0, 5),
+              paid: bp.paid === true,
+              flexible: bp.flexible === true,
+            }))}
+            defaultBreakMinutes={editing ? String(editing.breakMinutes) : '60'}
+            defaultOverride={editing?.normalMinutesOverride != null ? String(editing.normalMinutesOverride) : ''}
+            defaultRounding={editing?.normalHoursRoundingMinutes != null ? String(editing.normalHoursRoundingMinutes) : ''}
+            defaultHalfDayFirstOut={editing?.halfDayFirstOut?.slice(0, 5) ?? ''}
+            defaultDailyCutoffEnabled={editing?.dailyCutoffEnabled === true}
+            defaultDailyCutoffTime={editing?.dailyCutoffTime?.slice(0, 5) ?? ''}
+          />
+
+          {/* 7 — 88e94371: the shift's attendance-calculation rule. Blank ⇒ the tenant's Standard rule. */}
           <Field label={t('ruleFieldLabel')}>
-            <select
-              name="attendanceRuleId"
-              defaultValue={editing?.ruleId ?? ''}
-              className={inputCls}
-              aria-label={t('ruleFieldLabel')}
-            >
+            <select name="attendanceRuleId" defaultValue={editing?.ruleId ?? ''} className={inputCls}>
               <option value="">{t('ruleFieldStandardDefault')}</option>
               {ruleOptions.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -160,226 +143,185 @@ export async function ShiftForm({
               ))}
             </select>
           </Field>
-        </Card>
 
-        {/* ── cf21e554 · the reference GENERAL tab's remaining boxes ─────────────────────────────── */}
-        <Card className="space-y-4 p-4">
+          {/* 8 — b8aa3466: the Mon–Sun row becomes seven dropdowns, one line, four choices each.
+              One <select> per weekday posting "full" | "half" | "rest" | "off", decoded server-side in
+              shift-actions.ts into the three ISO-weekday arrays the service expects — the same idiom the
+              company work schedule has used since feedback 31474452. */}
           <fieldset>
-            <legend className="mb-1.5 text-sm font-medium text-foreground">{t('generalSectionLegend')}</legend>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={t('shiftNormalHoursRounding')}>
-                <input
-                  name="normalHoursRoundingMinutes"
-                  type="number"
-                  min={0}
-                  max={1440}
-                  defaultValue={editing?.normalHoursRoundingMinutes ?? ''}
-                  className={inputCls}
-                  aria-label={t('shiftNormalHoursRounding')}
-                />
-              </Field>
-              <Field label={t('shiftHalfDayFirstOut')}>
-                <input
-                  name="halfDayFirstOut"
-                  type="time"
-                  defaultValue={editing?.halfDayFirstOut?.slice(0, 5) ?? ''}
-                  className={inputCls}
-                  aria-label={t('shiftHalfDayFirstOut')}
-                />
-              </Field>
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">{t('shiftNormalHoursRoundingHint')}</p>
-            <p className="text-xs text-muted-foreground">{t('shiftHalfDayHint')}</p>
-          </fieldset>
-        </Card>
-
-        {/* cf21e554 — the boxes that are RECORDED ONLY in this stage. Grouped and labelled as such,
-            because the plan promises "the screen will say so on the box itself, so nobody fills one in
-            and expects a different pay result".
-
-            Earliest clock-in, Latest clock-out, its next-day marker and the 2nd half-day clock-in were
-            shipped in the General fieldset beside controls that DO move figures — but they have no
-            reader anywhere in core/, app/, packs/ or components/ either (only validation in
-            normalizeShiftInput and the copy in copyShift), so they belong here. Verified per field
-            before moving. `halfDayFirstOut` deliberately STAYS in General: it is genuinely wired, at
-            core/attendance.ts:528 and :599. Nothing is being wired up here — that is a later stage. */}
-        <Card className="space-y-4 p-4">
-          <fieldset>
-            <legend className="mb-1.5 text-sm font-medium text-foreground">
-              {t('recordedOnlyLegend')}{' '}
-              <span className="font-normal text-muted-foreground">({t('recordedOnlyNote')})</span>
-            </legend>
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-              <Field label={t('shiftEarlyIn')}>
-                <input
-                  name="earlyIn"
-                  type="time"
-                  defaultValue={editing?.earlyIn?.slice(0, 5) ?? ''}
-                  className={inputCls}
-                  aria-label={t('shiftEarlyIn')}
-                />
-              </Field>
-              <Field label={t('shiftLateOut')}>
-                <input
-                  name="lateOut"
-                  type="time"
-                  defaultValue={editing?.lateOut?.slice(0, 5) ?? ''}
-                  className={inputCls}
-                  aria-label={t('shiftLateOut')}
-                />
-              </Field>
-              <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 self-end text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  name="lateOutNextDay"
-                  defaultChecked={editing?.lateOutNextDay === true}
-                  className="h-3.5 w-3.5 accent-primary"
-                />
-                {t('shiftLateOutNextDay')}
-              </label>
-              <Field label={t('shiftHalfDaySecondIn')}>
-                <input
-                  name="halfDaySecondIn"
-                  type="time"
-                  defaultValue={editing?.halfDaySecondIn?.slice(0, 5) ?? ''}
-                  className={inputCls}
-                  aria-label={t('shiftHalfDaySecondIn')}
-                />
-              </Field>
-              <Field label={t('shiftDayType')}>
-                <select
-                  name="shiftDayType"
-                  defaultValue={editing?.dayType ?? ''}
-                  className={inputCls}
-                  aria-label={t('shiftDayType')}
-                >
-                  <option value="">{t('notSet')}</option>
-                  <option value="workday">{t(DAY_TYPE_KEY.workday)}</option>
-                  <option value="rest_day">{t(DAY_TYPE_KEY.rest_day)}</option>
-                  <option value="holiday">{t(DAY_TYPE_KEY.holiday)}</option>
-                </select>
-              </Field>
-              <Field label={t('shiftCategory')}>
-                <input
-                  name="category"
-                  defaultValue={editing?.category ?? ''}
-                  className={inputCls}
-                  aria-label={t('shiftCategory')}
-                />
-              </Field>
-              <Field label={t('shiftFullDayLeaveMinutes')}>
-                <input
-                  name="fullDayLeaveMinutes"
-                  type="number"
-                  min={0}
-                  max={1440}
-                  defaultValue={editing?.fullDayLeaveMinutes ?? ''}
-                  className={inputCls}
-                  aria-label={t('shiftFullDayLeaveMinutes')}
-                />
-              </Field>
-              <Field label={t('shiftFullDayOtMinutes')}>
-                <input
-                  name="fullDayOtMinutes"
-                  type="number"
-                  min={0}
-                  max={1440}
-                  defaultValue={editing?.fullDayOtMinutes ?? ''}
-                  className={inputCls}
-                  aria-label={t('shiftFullDayOtMinutes')}
-                />
-              </Field>
-            </div>
-          </fieldset>
-        </Card>
-
-        {/* ── cf21e554 stage 2 · the reference OVERTIME SCHEDULE tab ─────────────────────────────── */}
-        <Card className="space-y-4 p-4">
-          <fieldset>
-            <legend className="mb-1.5 text-sm font-medium text-foreground">{t('otScheduleLegend')}</legend>
-            <ShiftOtWindowFields
-              defaultRows={otWindows.map((w) => ({
-                label: w.label ?? '',
-                startTime: w.startTime.slice(0, 5),
-                endTime: w.endTime.slice(0, 5),
-                endNextDay: w.endNextDay,
-                minMinutes: w.minMinutes == null ? '' : String(w.minMinutes),
-                maxMinutes: w.maxMinutes == null ? '' : String(w.maxMinutes),
-                adjustAfterMinutes: w.adjustAfterMinutes == null ? '' : String(w.adjustAfterMinutes),
-                adjustDeltaMinutes: w.adjustDeltaMinutes == null ? '' : String(w.adjustDeltaMinutes),
-              }))}
-            />
-          </fieldset>
-        </Card>
-
-        {/* 7c834696 rev 2 point 4 — these two are PAY, not a calculation setting, and sitting unlabelled
-            next to the grace boxes is what made them read as one. core/payroll.ts prefillShiftDifferential
-            reads shift.differential to prefill a payroll component (percent / flat-hourly / flat-per-shift),
-            so removing them would leave live premiums unmaintainable. Grouped under their own heading
-            instead, which is the fix the reporter actually needs. */}
-        <Card className="space-y-4 p-4">
-          <fieldset>
-            <legend className="mb-1.5 text-sm font-medium text-foreground">
-              {t('shiftPremiumLegend')}{' '}
-              <span className="font-normal text-muted-foreground">({t('shiftPremiumHint')})</span>
-            </legend>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <select
-                name="differentialKind"
-                defaultValue={editing?.differential?.kind ?? ''}
-                className={inputCls}
-                aria-label={t('diffLabel')}
-              >
-                <option value="">{t('diffNone')}</option>
-                <option value="percent">{t('diffPercent')}</option>
-                <option value="flat_hourly">{t('diffFlatHourly')}</option>
-                <option value="flat_per_shift">{t('diffPerShift')}</option>
-              </select>
-              <input
-                name="differentialValue"
-                type="number"
-                min={0}
-                step="0.01"
-                placeholder={t('diffValue')}
-                defaultValue={editing?.differential?.value ?? ''}
-                className={inputCls}
-                aria-label={t('diffValue')}
-              />
-            </div>
-          </fieldset>
-        </Card>
-
-        {/* Mon–Sun Working/Rest toggle — same has-[:checked] row as the working-days editor. Checked =
-            working day; unchecked = rest. New shift defaults Mon–Fri. */}
-        <Card className="space-y-4 p-4">
-          <fieldset>
-            <legend className="mb-1.5 text-sm font-medium text-foreground">
-              {t('shiftWorkingDays')}{' '}
-              <span className="font-normal text-muted-foreground">
-                ({t('shiftWorking')} / {t('shiftRest')})
-              </span>
-            </legend>
+            <legend className="mb-1.5 text-sm font-medium text-foreground">{t('shiftWorkingDays')}</legend>
             <div className="flex flex-wrap gap-1.5">
-              {ISO_DAYS.map((d) => {
-                const checked = editing ? (editing.weeklyPattern?.includes(d) ?? false) : d <= 5;
-                return (
-                  <label
-                    key={d}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-primary"
+              {ISO_DAYS.map((d) => (
+                <div key={d} className="flex flex-col items-center gap-1 rounded-lg border border-border px-2 py-1.5">
+                  <span className="text-xs font-medium text-foreground">{t(DAY_KEY[d])}</span>
+                  <select
+                    name={`dayKind_${d}`}
+                    defaultValue={kindOf(d)}
+                    className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+                    aria-label={t(DAY_KEY[d])}
                   >
+                    <option value="full">{tr(DAY_KIND_KEY.full)}</option>
+                    <option value="half">{tr(DAY_KIND_KEY.half)}</option>
+                    <option value="rest">{tr(DAY_KIND_KEY.rest)}</option>
+                    <option value="off">{tr(DAY_KIND_KEY.off)}</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">{tr('dayKindHint')}</p>
+          </fieldset>
+        </Card>
+
+        {/* ── MORE SETTINGS · collapsed, never unmounted (see the header comment) ──────────────────── */}
+        <Card className="p-0">
+          <details className="group">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground marker:content-none">
+              <span className="inline-flex items-center gap-2">
+                <span aria-hidden="true" className="text-muted-foreground transition-transform group-open:rotate-90">
+                  ▸
+                </span>
+                {tr('moreSettingsSummary')}
+              </span>
+              <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{tr('moreSettingsHint')}</span>
+            </summary>
+
+            <div className="space-y-6 border-t border-border px-4 py-4">
+              {/* cf21e554 — the reference "Description" box. */}
+              <Field label={t('shiftDescription')}>
+                <input name="description" defaultValue={editing?.description ?? ''} className={inputCls} />
+              </Field>
+
+              <fieldset>
+                <legend className="mb-1.5 text-sm font-medium text-foreground">{t('generalSectionLegend')}</legend>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label={t('shiftNormalHoursRounding')}>
+                    <input
+                      name="normalHoursRoundingMinutes"
+                      type="number"
+                      min={0}
+                      max={1440}
+                      defaultValue={editing?.normalHoursRoundingMinutes ?? ''}
+                      className={inputCls}
+                    />
+                  </Field>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">{t('shiftNormalHoursRoundingHint')}</p>
+              </fieldset>
+
+              {/* cf21e554 — the boxes that are RECORDED ONLY, grouped and labelled as such. Every one of
+                  them still POSTS, which is why they live behind a <details> rather than a condition. */}
+              <fieldset>
+                <legend className="mb-1.5 text-sm font-medium text-foreground">
+                  {t('recordedOnlyLegend')}{' '}
+                  <span className="font-normal text-muted-foreground">({t('recordedOnlyNote')})</span>
+                </legend>
+                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                  <Field label={t('shiftEarlyIn')}>
+                    <input name="earlyIn" type="time" defaultValue={editing?.earlyIn?.slice(0, 5) ?? ''} className={inputCls} />
+                  </Field>
+                  <Field label={t('shiftLateOut')}>
+                    <input name="lateOut" type="time" defaultValue={editing?.lateOut?.slice(0, 5) ?? ''} className={inputCls} />
+                  </Field>
+                  <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 self-end text-sm text-muted-foreground">
                     <input
                       type="checkbox"
-                      name="weeklyPattern"
-                      value={d}
-                      defaultChecked={checked}
+                      name="lateOutNextDay"
+                      defaultChecked={editing?.lateOutNextDay === true}
                       className="h-3.5 w-3.5 accent-primary"
                     />
-                    {t(DAY_KEY[d])}
+                    {t('shiftLateOutNextDay')}
                   </label>
-                );
-              })}
+                  <Field label={t('shiftHalfDaySecondIn')}>
+                    <input
+                      name="halfDaySecondIn"
+                      type="time"
+                      defaultValue={editing?.halfDaySecondIn?.slice(0, 5) ?? ''}
+                      className={inputCls}
+                    />
+                  </Field>
+                  <Field label={t('shiftDayType')}>
+                    <select name="shiftDayType" defaultValue={editing?.dayType ?? ''} className={inputCls}>
+                      <option value="">{t('notSet')}</option>
+                      <option value="workday">{t(DAY_TYPE_KEY.workday)}</option>
+                      <option value="rest_day">{t(DAY_TYPE_KEY.rest_day)}</option>
+                      <option value="holiday">{t(DAY_TYPE_KEY.holiday)}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('shiftCategory')}>
+                    <input name="category" defaultValue={editing?.category ?? ''} className={inputCls} />
+                  </Field>
+                  <Field label={t('shiftFullDayLeaveMinutes')}>
+                    <input
+                      name="fullDayLeaveMinutes"
+                      type="number"
+                      min={0}
+                      max={1440}
+                      defaultValue={editing?.fullDayLeaveMinutes ?? ''}
+                      className={inputCls}
+                    />
+                  </Field>
+                  <Field label={t('shiftFullDayOtMinutes')}>
+                    <input
+                      name="fullDayOtMinutes"
+                      type="number"
+                      min={0}
+                      max={1440}
+                      defaultValue={editing?.fullDayOtMinutes ?? ''}
+                      className={inputCls}
+                    />
+                  </Field>
+                </div>
+              </fieldset>
+
+              {/* ── cf21e554 stage 2 · the reference OVERTIME SCHEDULE tab ─────────────────────────── */}
+              <fieldset>
+                <legend className="mb-1.5 text-sm font-medium text-foreground">{t('otScheduleLegend')}</legend>
+                <ShiftOtWindowFields
+                  defaultRows={otWindows.map((w) => ({
+                    label: w.label ?? '',
+                    startTime: w.startTime.slice(0, 5),
+                    endTime: w.endTime.slice(0, 5),
+                    endNextDay: w.endNextDay,
+                    minMinutes: w.minMinutes == null ? '' : String(w.minMinutes),
+                    maxMinutes: w.maxMinutes == null ? '' : String(w.maxMinutes),
+                    adjustAfterMinutes: w.adjustAfterMinutes == null ? '' : String(w.adjustAfterMinutes),
+                    adjustDeltaMinutes: w.adjustDeltaMinutes == null ? '' : String(w.adjustDeltaMinutes),
+                  }))}
+                />
+              </fieldset>
+
+              {/* 7c834696 rev 2 point 4 — these two are PAY, not a calculation setting.
+                  core/payroll.ts prefillShiftDifferential reads shift.differential to prefill a payroll
+                  component, so removing them would leave live premiums unmaintainable. b8aa3466 — and they
+                  finally have printed labels; they were two of the ten unlabelled boxes. */}
+              <fieldset>
+                <legend className="mb-1.5 text-sm font-medium text-foreground">
+                  {t('shiftPremiumLegend')}{' '}
+                  <span className="font-normal text-muted-foreground">({t('shiftPremiumHint')})</span>
+                </legend>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label={t('diffLabel')}>
+                    <select name="differentialKind" defaultValue={editing?.differential?.kind ?? ''} className={inputCls}>
+                      <option value="">{t('diffNone')}</option>
+                      <option value="percent">{t('diffPercent')}</option>
+                      <option value="flat_hourly">{t('diffFlatHourly')}</option>
+                      <option value="flat_per_shift">{t('diffPerShift')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('diffValue')}>
+                    <input
+                      name="differentialValue"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      defaultValue={editing?.differential?.value ?? ''}
+                      className={inputCls}
+                    />
+                  </Field>
+                </div>
+              </fieldset>
             </div>
-          </fieldset>
+          </details>
         </Card>
 
         <div className="flex items-center gap-3">
@@ -392,16 +334,10 @@ export async function ShiftForm({
 
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">{t('shiftHint')}</p>
-        {/* cf21e554 — `multiBreakStorageHint` ("the hours deducted still use their combined total") is no
-            longer rendered here. It was already out of date after b7b886e2 taught the engine to deduct the
-            window a clocking actually spanned, and the Paid tick makes it plainly wrong: the total is now
-            the sum of the UNPAID windows. The key is left in the message files rather than deleted (other
-            locales and any computed lookup keep resolving); this screen states the live rule instead. */}
         <p className="text-xs text-muted-foreground">{t('breakPaidHint')}</p>
         {/* f3321963 — Semi-Flexi rule + Full-Flexi future-release placeholder. */}
         <p className="text-xs text-muted-foreground">{t('shiftTypeSemiFlexiNote')}</p>
         <p className="text-xs text-muted-foreground">{t('shiftTypeFullFlexiNote')}</p>
-        {/* cf21e554 — the reference tab we were never shown. Named, not guessed at. */}
         <p className="text-xs text-muted-foreground">{t('generalMoreTabNote')}</p>
       </div>
     </div>
