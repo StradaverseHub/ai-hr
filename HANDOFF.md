@@ -18,18 +18,28 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-12 (r185, r186 AND r187 ALL SHIPPED · NOTHING IN FLIGHT)
+## CURRENT STATE — snapshot 2026-08-12 (r185–r189 ALL SHIPPED · NOTHING IN FLIGHT)
 
-**`main@10edeb28` IS WHAT RUNS ON PRODUCTION** — verified by a zero-change `rsync -azi --delete
+**`main@4518ab8b` IS WHAT RUNS ON PRODUCTION** — verified by a zero-change `rsync -azi --delete
 --dry-run` (not by `deploy.sh` succeeding, which is not proof; the single line it reports is
-`next-env.d.ts`, which the box regenerates during its own build). **Production is on 353 migrations.**
-Service active, `GET /` 401. **Next free migration is `0435`** (`0431` was allocated and deliberately
+`next-env.d.ts`, which the box regenerates during its own build). **Production is on 354 migrations.**
+Service active, `GET /` 401. **Next free migration is `0436`** (`0431` was allocated and deliberately
 unused; gaps are fine).
 
-**TWENTY-TWO ITEMS SHIPPED IN ONE DAY, IN THREE ROUNDS.** r185 (seven, `0426`+`0427`), r186 (eight,
-`0428`+`0429`), r187 (eight, `0430`/`0432`/`0433`/`0434`). Every new column, table and CHECK constraint was
-confirmed present on the live schema after each deploy, with GRANTs, rather than inferred from `deploy.sh`
-exiting 0 — and payslip and batch counts were re-checked unchanged after every one.
+**TWENTY-FIVE ITEMS SHIPPED IN ONE DAY, ACROSS FIVE ROUNDS.** r185 (seven, `0426`+`0427`), r186 (eight,
+`0428`+`0429`), r187 (seven, `0430`/`0432`/`0433`/`0434`), r188 (one defect fix, no migration), r189 (two,
+`0435`). Every new column, table, index and CHECK constraint was confirmed present on the live schema after
+each deploy, with GRANTs, rather than inferred from `deploy.sh` exiting 0 — and payslip and batch counts
+were re-checked unchanged after every one.
+
+⚠️ **`deploy.sh` DOES NOT RUN SCRIPTS, ONLY MIGRATIONS.** r189's live-risk fix was half-armed until
+`scripts/backfill-mileage-flat-rate.ts --apply` was run BY HAND after the deploy. If a round's fix depends
+on a script, the round is not finished when `deploy.sh` returns. Run it, and verify the row it writes.
+
+⚠️ **`ALLOW_DEMO_SESSION=true` IS SET ON PRODUCTION.** The dev identity switcher is active on the box a real
+customer's payroll runs on — 40 employees, issued payslips, statutory filings. Deliberate for a gated
+consultant demo, per the startup warning, but it is a standing decision nobody has revisited. Not ours to
+flip; raise it rather than leave it as a warning line nobody reads.
 
 **r186 SHIPPED 2026-08-12 — `main@bed6c212`, migrations `0428` and `0429`, production on 349.** Full
 entry below. **Next free migration is `0430`**; `0430`-`0434` are handed out to r187's four agents.
@@ -107,6 +117,69 @@ is produced by the guard rather than doubled by the database.**
 bulk tool that removes shifts inherits protection for add and change and silently does not for remove.
 **Raised as board item `154865f4`** so the reporter owns the decision; closing it needs a restrictive
 DELETE policy or per-command policies.
+### r189 (2026-08-12) — CLAIMS GRADE-FIRST LIMITS (`0435`) AND THE PAY-ITEM FORMULA BUILDER
+
+`e7eb5d83` rev5 + `e318eaec`. Gate **660 declared / 660 counted / every chunk exit=0 / 8,597 tests / 0
+AssertionErrors / 0 timeouts**; tsc 0; `next build` 0; `gate:shadow` PASS 354/354; render 0 MISSING_MESSAGE
+across 6 routes × 6 locales. Catalogues audited base-aware, 9023 → 9025, **all 17 deliberate deletions
+confirmed absent BY NAME**.
+
+⚠️ **THE FIX WAS HALF-ARMED UNTIL A SCRIPT RAN BY HAND — AND `deploy.sh` DOES NOT RUN SCRIPTS.**
+Every mileage claim on production was priced by a legacy `mileage_flat` 0.70 scalar, because all five real
+`claim_mileage_rate` bands sit on GRADE 12, **which has zero employments**. The limit editor no longer
+offers that rate kind, so ANY re-save of the Mileage limit would have written `{"kind":"receipt"}`, dropped
+the 0.70, and stopped mileage claiming for all 40 people. Verified not yet triggered.
+The code fix (carry `rate_config` forward on re-save; delete the dead parser branch) stops FUTURE damage.
+Making the band table the live path needed `scripts/backfill-mileage-flat-rate.ts --apply`, run manually
+after the deploy — dry-run first, then verified: one company-wide band `[0 km → ∞] @ 0.70` from the flat
+policy's own `valid_from`, GRADE 12's five bands untouched, nobody's claim changed by a cent.
+
+**REVISION 4 REFUSED A VALID REQUEST BY MISREADING THE LEVEL, AND THE SCHEMA NOW RECORDS IT.** The reporter
+asked for sub-claim limits; rev 4 deflected it as "a third group/claim/sub-claim level" and scoped it out.
+`MEDICAL 001` is the claim TYPE and `MEDICAL 002/003` are its `claim_item` rows — **the SECOND level, which
+has existed since the module shipped.** `0435` adds `claim_policy.claim_item_id`.
+
+⚠️ **EVERY TYPE-LEVEL READ NOW CARRIES `claim_item_id IS NULL`, AND ONE OMISSION WOULD DESTROY, NOT MISREAD.**
+Resolution picks the latest `valid_from` within a tier, so an item row is otherwise indistinguishable from a
+newer version of the type's own policy. In `setClaimPolicy`'s close-and-insert predicate that means **saving
+a limit for Outpatient would CLOSE Medical's own open version.** Readers were enumerated by grepping
+`claimPolicy` repo-wide and cross-checking `graphify explain "getActiveClaimPolicy"`, not from the plan's
+list. `deleteClaimType`'s DELETE is deliberately NOT filtered — item rows belong to the type being deleted.
+
+**`e318eaec` SHIPS A RENDERER, NOT A PARSER — AND THAT REFUSAL IS THE ITEM.** The ticket asked for "normal
+operator precedence". The reporter's live `OT1_5` is stored as a LEFT-TO-RIGHT FOLD, and that is the only
+reason it computes the intended answer; literal precedence would have silently re-priced overtime that has
+already paid real money. `test/pay-rule-format.test.ts` asserts RM584.13 for 15h, asserts the precedence
+reading is a DIFFERENT number, and round-trips the rendered line through a reference precedence parser over
+`OT1_5` **and all 64 three-step operator combinations**, with a vacuity check that the 0-clamp never engages.
+
+**`first_name`/`last_name` ARE NULL ON 40 OF 40 PEOPLE** — every name lives in `full_name`. A dropdown built
+from `${firstName} ${lastName}` read "null null" for EVERY option, not merely some. Fixed against the house
+display-name source (`person.fullName` + `employment.employeeCode`); a repo-wide grep found no second site.
+
+**KNOWN CONSEQUENCE, FLAGGED NOT ABSORBED: `fixed_allowance` can no longer be CREATED from any screen.**
+Deleting the old limit editor was the plan's instruction and the grid posts no rate by design. Existing ones
+(MOBILE 001, RM180) survive via the carry-forward and are pinned by a test, but a new one has no home. A rate
+control belongs on Claim Types. Needs its own item.
+
+### r188 (2026-08-12) — ONE DEFECT FIX, NO MIGRATION. "Apply to Early Overtime" could not be unticked.
+
+`7c834696` came back contested with *"How come I cannot untick Apply to Early Overtime?"* — and they were
+right. **A hidden input is submitted ALWAYS, whatever its value**, and the reader asked only whether the
+field was PRESENT (`fd.get(key) != null`). Unticked sent `''`; `'' != null` is true; the flag saved ON every
+time, on a setting that folds pre-shift minutes into PAID OVERTIME. Both production rules carried it true,
+including `Standard`, the tenant default.
+
+**Fixed on BOTH sides so neither depends on the other**: the hidden field renders only when on (absent when
+off, exactly like a real checkbox), and `bool()` requires a non-empty value. The other three `bool()` fields
+are real checkboxes and were never affected — verified, not assumed.
+
+**NOT introduced by r186's rounding work** — it arrived with the original attendance-rule library.
+
+**The test is SOURCE-SHAPE on purpose:** the defect lived in the form contract BETWEEN two files, so a unit
+test of either half in isolation passed throughout, which is exactly why it shipped. It also pins that **no
+OTHER hidden input on these forms is read by the presence-only pattern**, so the trap cannot generalise.
+
 ### r187 (2026-08-12) — EIGHT APPROVED ITEMS, SHIPPED. Migrations `0430` · `0432` · `0433` · `0434`.
 
 `017d9c25` · `2961a7ae` · `1372d169` · `4e403268` · `5c65367d` · `579255c3` · `2166ef79`, plus the payroll
@@ -173,56 +246,6 @@ so rendering it twice yields `$1/$2` against `$3/$4` and Postgres rejects the st
 `GROUP BY 1`). And the Draft card read **0** whenever another card was selected, because it counted under
 the already-chosen bucket while clicking a card REPLACES the bucket — every individual count was correct,
 which is exactly why only a render found it.
-
-### r186 (2026-08-12) — EIGHT APPROVED ITEMS, SHIPPED. Migrations `0428` + `0429`.
-
-`e7eb5d83` · `74d00fd2` · `7c834696` · `af7a8eb4` · `b8aa3466` · `42afb2d2` · `2ec1e3d2`, plus the
-pack-facade fix. 64 files, +5418/−1450. Gate **644 declared / 644 counted / every chunk exit=0 / 8,321
-tests / 1 expected fail / 0 AssertionErrors / 0 timeouts**; tsc 0; `next build` 0; `gate:shadow` PASS
-349/349; render check 0 MISSING_MESSAGE across 27 routes × 6 locales. Verified on production: 349
-migrations, all six new columns and both CHECK constraints present, **shift rows 11 and payslips 84
-UNCHANGED**, `GET /` 401, zero-change arrival dry-run.
-
-⚠️ **`7c834696` REDUCED TWO NAMED EMPLOYEES' RECORDED OVERTIME BY 60 MINUTES EACH.** Production was
-paying 120 minutes where 90 and 100 were worked, because rounding to the NEAREST 60 pushes a day past
-its own band ceiling. The fix is `Math.round` → `Math.floor` — **not** "nearest then clamp", which returns
-90 and contradicts the plan. Measured across all 63 clock-out days since 2026-08-04: exactly two figures
-move, both down. The 14 `Standard`-rule rows are all exact multiples of 60 and are untouched.
-
-⚠️ **ITS SCOPED RECOMPUTE IS DELIBERATELY NOT RUN.** The two stored rows keep their 120 until someone
-recomputes **2026-08-05, employments 100814 and 100815 ONLY**. A wide recompute would rewrite 41
-historical days against shift times that were reassigned mid-day on the 5th.
-
-#### AN AGENT REFUSED TO BUILD, AND IT WAS RIGHT — a plan's stated order beat my file map
-`b8aa3466`'s BUILD NOTES say verbatim "Build af7a8eb4 FIRST … building this item first would write the new
-form inside `app/admin/attendance/page.tsx` and then move it wholesale, and would falsify af7a8eb4's
-already-approved mockup". I had scheduled `af7a8eb4` LAST because it looked cross-cutting. The agent
-stopped rather than build 4 of 9 sub-items that would have been rewritten. **Group by file overlap, but
-read each plan for a declared dependency FIRST — the plan may state an order the file map does not.**
-
-#### A MOCKUP IS A PROMISE, AND `af7a8eb4` DISCHARGED ITS OWN
-The approved sketch says "the same content at full width … no new field, no new column, no renamed
-heading, nothing removed", against a diff that **deletes 721 lines net**. Proof it was relocation: diff
-the UNION of the old files against the UNION of the new ones — **19 POSTed form fields, identical set;
-zero i18n keys removed.** Copy that technique for any "move, don't change" claim.
-
-#### THE `off_day` ENUM THAT WAS NOT WIDENED, AND WHY THAT IS CORRECT
-`b8aa3466`'s plan said add `off_day` to `DayType`. That widens a SHARED Postgres enum (`plan_ot` uses it
-too), three TS types, the payroll OT policy allowlist and `core/payroll.ts`. **An Off day pays 1.5× hourly
-under s.60A(3)(a) — exactly the workday leg** — so it ships as a workday with a zero-minute normal day.
-Same money, no enum change, `core/payroll.ts` untouched. Asserted in ringgit AND by `day_type`, with a
-Rest-day test proving Off did not swallow Rest.
-
-#### THE HALF-DAY BUG THE MONEY TEST CAUGHT
-Halving `scheduledMinutes` produced **zero** overtime: on a resolved shift the engine measures workday OT
-as minutes past the shift's TIME-OUT, not as an overshoot of scheduled duration. A half day now ends
-halfway through the span too. **Row shape would not have caught this; a generated payslip did.**
-
-#### THE PACK RATCHET FIRED ONCE, AND THE ALLOWLIST WAS NOT THE FIX
-`core/absence-days.ts` imported `core/attendance` directly so absence derivation and the engine resolve a
-working day identically — right intent, wrong edge. Fixed by importing `packs/attendance/service`, which
-that file **already** does for approved-leave dates. The guard refuses allowlist additions in its own
-message: it only ever shrinks.
 
 ### ✅ THE FIXTURE TIME BOMB IS DEFUSED — the clock pinning HELD on 2026-08-12
 
@@ -318,8 +341,16 @@ unconfigured type, that guard has broken and it is the first thing to check.
 **Counts live in CURRENT STATE and are not repeated here. Always RE-COUNT** — the line said
 `approved = 0` on 2026-08-08 and eight items were approved the next morning.
 
-**COUNTS ON THE BOX, 2026-08-12 (re-count before trusting these):**
-`deployed = 641` · `approved = 9` · `open = 9` · `planned = 6` · `cancelled = 14`.
+**COUNTS ON THE BOX, end of 2026-08-12 (RE-COUNT before trusting these — this line has been wrong
+three times):** `deployed = 655` · `planned = 10` · `open = 3` · `approved = 2` · `cancelled = 14`.
+
+**The two approved are both blocked on something other than code:** `c8052ae3` is an OPERATOR RUN only
+(backups taken and verified; its rehearsal on the box is stale and its plan wants rehearsal and apply in
+ONE sitting, so re-run it fresh), and whatever else has been approved since — re-pull, do not trust this.
+
+**THE CONSTRAINT FLIPPED TWICE IN ONE DAY.** It was their approval throughput; then ours (13 items planned
+in an afternoon); then theirs again. **Check which side is short before choosing what to do next** —
+`improve:pull` for unplanned work, `improve:pull-approved` for unbuilt work.
 
 **THE CONSTRAINT HAS FLIPPED BACK TO US.** For weeks it was their approval throughput. On 2026-08-12 they
 approved 8 items in a morning while r185 was mid-build, and the open queue is now 9 deep with only 6
@@ -1051,8 +1082,8 @@ method or carry-forward is WRONG.**
 
 ## NOTHING IS IN FLIGHT — but prove it rather than believing this line
 
-`main@10edeb28` is r185 + r186 + r187 and IS deployed (dry-run rsync, 2026-08-12). All three rounds'
-branches are merged and every `r185-*`/`r186-*`/`r187-*` worktree is pruned.
+`main@4518ab8b` is r185 through r189 and IS deployed (dry-run rsync, 2026-08-12). Every round's branches
+are merged and every `r185-*` … `r189-*` worktree is pruned.
 
 Every remaining unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed,
 ancestrally unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main by another route:

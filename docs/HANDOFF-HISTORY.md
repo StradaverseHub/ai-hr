@@ -1,3 +1,54 @@
+## r186 (2026-08-12) — EIGHT APPROVED ITEMS, SHIPPED. Migrations `0428` + `0429`.
+
+`e7eb5d83` · `74d00fd2` · `7c834696` · `af7a8eb4` · `b8aa3466` · `42afb2d2` · `2ec1e3d2`, plus the
+pack-facade fix. 64 files, +5418/−1450. Gate **644 declared / 644 counted / every chunk exit=0 / 8,321
+tests / 1 expected fail / 0 AssertionErrors / 0 timeouts**; tsc 0; `next build` 0; `gate:shadow` PASS
+349/349; render check 0 MISSING_MESSAGE across 27 routes × 6 locales. Verified on production: 349
+migrations, all six new columns and both CHECK constraints present, **shift rows 11 and payslips 84
+UNCHANGED**, `GET /` 401, zero-change arrival dry-run.
+
+⚠️ **`7c834696` REDUCED TWO NAMED EMPLOYEES' RECORDED OVERTIME BY 60 MINUTES EACH.** Production was
+paying 120 minutes where 90 and 100 were worked, because rounding to the NEAREST 60 pushes a day past
+its own band ceiling. The fix is `Math.round` → `Math.floor` — **not** "nearest then clamp", which returns
+90 and contradicts the plan. Measured across all 63 clock-out days since 2026-08-04: exactly two figures
+move, both down. The 14 `Standard`-rule rows are all exact multiples of 60 and are untouched.
+
+⚠️ **ITS SCOPED RECOMPUTE IS DELIBERATELY NOT RUN.** The two stored rows keep their 120 until someone
+recomputes **2026-08-05, employments 100814 and 100815 ONLY**. A wide recompute would rewrite 41
+historical days against shift times that were reassigned mid-day on the 5th.
+
+#### AN AGENT REFUSED TO BUILD, AND IT WAS RIGHT — a plan's stated order beat my file map
+`b8aa3466`'s BUILD NOTES say verbatim "Build af7a8eb4 FIRST … building this item first would write the new
+form inside `app/admin/attendance/page.tsx` and then move it wholesale, and would falsify af7a8eb4's
+already-approved mockup". I had scheduled `af7a8eb4` LAST because it looked cross-cutting. The agent
+stopped rather than build 4 of 9 sub-items that would have been rewritten. **Group by file overlap, but
+read each plan for a declared dependency FIRST — the plan may state an order the file map does not.**
+
+#### A MOCKUP IS A PROMISE, AND `af7a8eb4` DISCHARGED ITS OWN
+The approved sketch says "the same content at full width … no new field, no new column, no renamed
+heading, nothing removed", against a diff that **deletes 721 lines net**. Proof it was relocation: diff
+the UNION of the old files against the UNION of the new ones — **19 POSTed form fields, identical set;
+zero i18n keys removed.** Copy that technique for any "move, don't change" claim.
+
+#### THE `off_day` ENUM THAT WAS NOT WIDENED, AND WHY THAT IS CORRECT
+`b8aa3466`'s plan said add `off_day` to `DayType`. That widens a SHARED Postgres enum (`plan_ot` uses it
+too), three TS types, the payroll OT policy allowlist and `core/payroll.ts`. **An Off day pays 1.5× hourly
+under s.60A(3)(a) — exactly the workday leg** — so it ships as a workday with a zero-minute normal day.
+Same money, no enum change, `core/payroll.ts` untouched. Asserted in ringgit AND by `day_type`, with a
+Rest-day test proving Off did not swallow Rest.
+
+#### THE HALF-DAY BUG THE MONEY TEST CAUGHT
+Halving `scheduledMinutes` produced **zero** overtime: on a resolved shift the engine measures workday OT
+as minutes past the shift's TIME-OUT, not as an overshoot of scheduled duration. A half day now ends
+halfway through the span too. **Row shape would not have caught this; a generated payslip did.**
+
+#### THE PACK RATCHET FIRED ONCE, AND THE ALLOWLIST WAS NOT THE FIX
+`core/absence-days.ts` imported `core/attendance` directly so absence derivation and the engine resolve a
+working day identically — right intent, wrong edge. Fixed by importing `packs/attendance/service`, which
+that file **already** does for approved-leave dates. The guard refuses allowlist additions in its own
+message: it only ever shrinks.
+
+
 ## r185 (2026-08-12) — SEVEN APPROVED ITEMS, SHIPPED. Migrations `0426` + `0427`.
 
 `98e69987` · `f35f758a` · `2aed39d4` · `587ee719` · `4157a498` · `510f4bd1` · `009c8a37`.
