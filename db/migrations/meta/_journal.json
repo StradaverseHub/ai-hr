@@ -2444,6 +2444,13 @@
       "when": 1781862529000,
       "tag": "0429_shift_cutoff_and_day_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 433,
+      "version": "7",
+      "when": 1781862533000,
+      "tag": "0433_employee_list_columns",
+      "breakpoints": true
     }
   ]
 }

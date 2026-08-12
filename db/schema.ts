@@ -518,6 +518,13 @@ export const appUser = pgTable(
     // employee's preferred vertical section order; NULL = system default. Written only through the
     // SECURITY DEFINER app.dashboard_layout_* seam so a user can touch only their own row.
     dashboardLayout: jsonb('dashboard_layout'),
+    // Per-user LIST preferences (feedback 579255c3, migration 0433): a namespaced envelope of per-screen
+    // table settings — today `{ employeeList: { selected, order } }`, the Personnel listing's chosen
+    // columns and their arrangement. NULL = the system default view. Written only through the SECURITY
+    // DEFINER app.list_preferences_* seam so a user can touch only their own row, exactly like
+    // dashboard_layout above. Namespaced rather than one bare column per screen: the next list that wants
+    // remembered columns adds a key here, not a migration.
+    listPreferences: jsonb('list_preferences'),
     // Login lifecycle (0279): non-null = this login is archived (switched off by an administrator) and
     // app.principal_by_subject refuses to resolve it. Reversible via Restore; permissions are untouched.
     // A leaver is blocked separately and LIVE off their employment end dates — see app.login_blocked.

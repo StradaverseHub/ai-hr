@@ -62,6 +62,7 @@ import {
   clockingLocation,
   company,
   compensation,
+  costCenter,
   department,
   domainEvent,
   employeeStatutoryMy,
@@ -175,7 +176,130 @@ export type EmployeeListRow = {
   resignationDate: string | null;
   lastWorkingDate: string | null;
   blacklistedAt: string | null;
+  // ── Customize Columns (579255c3) ────────────────────────────────────────────────────────────────
+  // The OPT-IN columns of the Personnel listing. Every one of them is information Personnel already
+  // holds; none is a new field. They hang off the SAME ≤1-row current-assignment join the department and
+  // position already use (plus three 1:1 master lookups), so the row count — and therefore the pager
+  // total — is untouched. `reportingTo` is the one exception and is a correlated SUBQUERY on purpose: an
+  // employment can carry several reporting_line edges, so joining that table would multiply rows and
+  // silently inflate the list.
+  //
+  // They are always SELECTED, never conditionally: a projection that changes shape with the reader's
+  // preferences is a query that is only tested in whichever shape the test happened to pick, and these
+  // are joins on indexed foreign keys against one page of rows.
+  jobGrade: string | null;
+  employmentType: string | null;
+  reportingTo: string | null;
+  businessUnit: string | null;
+  costCenter: string | null;
+  workLocation: string | null;
+  /** employment.join_date — the current company's joining date. Null = never captured (18 of 40 on
+   *  production carry one); `hiredOn` above is the GROUP join date and is never null. */
+  joinDate: string | null;
 };
+
+/** The narrowings the employee listing understands. Extracted from listEmployeesPage's inline parameter
+ *  bag (579255c3) so `countEmployeesByStatus` can take the SAME set and be guaranteed to count exactly
+ *  the population the table is about to show. Two filter vocabularies drifting apart is precisely how a
+ *  headcount card comes to disagree with the rows underneath it. */
+export type EmployeeListFilters = {
+  companyIds?: string[];
+  q?: string;
+  // #18 structured filters (each optional; combine with AND). status: 'active' = not terminated.
+  companyId?: string;
+  departmentId?: string;
+  status?: 'active' | 'terminated';
+  employmentType?: string;
+  // Employee Details listing (feedback 650b6eb8) — the SAME narrowings, multi-select. They sit
+  // ALONGSIDE the singular ones rather than replacing them: /personnel and /admin/personnel drive
+  // single-value pickers, and `filterCompanyIds` carries the clumsy prefix for the reason 8ec63139
+  // gave on the leave read — conflating "what the switcher lets you see" (`companyIds`) with "what
+  // you asked to see" would be a security bug, not a tidy-up.
+  filterCompanyIds?: string[];
+  departmentIds?: string[];
+  /** Derived Employee Status buckets (9cbf5e0d). A WHERE predicate cannot call the TypeScript
+   *  deriver, so it narrows through employmentStatusSql — the twin pinned equal by
+   *  test/personnel-status-sync.test.ts. There is no stored status column to confuse it with (R81). */
+  employmentStatuses?: EmploymentStatus[];
+};
+
+/** The current-assignment join (≤1 row per employment) — shared by every employee-listing query so the
+ *  department / employment-type filters apply identically to the rows, the pager total and the cards. */
+const currentAssignmentJoin = () =>
+  and(
+    eq(assignment.employmentId, employment.id),
+    isNull(assignment.validTo),
+    isNull(assignment.supersededAt),
+  );
+
+/** ONE WHERE for the employee listing: the rows, the pager count and the headcount cards all build it
+ *  from here, so no two of them can be answering slightly different questions. */
+function employeeListWhere(p: EmployeeListFilters) {
+  const q = p.q?.trim();
+  return and(
+    p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+    p.companyId ? eq(employment.companyId, p.companyId) : undefined,
+    p.filterCompanyIds && p.filterCompanyIds.length
+      ? inArray(employment.companyId, p.filterCompanyIds)
+      : undefined,
+    p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
+    p.departmentIds && p.departmentIds.length ? inArray(assignment.departmentId, p.departmentIds) : undefined,
+    p.employmentStatuses && p.employmentStatuses.length
+      ? inArray(employmentStatusSql(), p.employmentStatuses)
+      : undefined,
+    p.status === 'terminated'
+      ? isNotNull(employment.terminatedOn)
+      : p.status === 'active'
+        ? isNull(employment.terminatedOn)
+        : undefined,
+    p.employmentType ? eq(assignment.employmentType, p.employmentType as (typeof employmentTypeEnum.enumValues)[number]) : undefined,
+    q
+      ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${person.primaryEmail} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'})`
+      : undefined,
+  );
+}
+
+/**
+ * Headcount by DERIVED Employee Status over the whole filtered set (feedback 579255c3, point 5) —
+ * `{ active: 30, resigned: 9, probation: 1, … }` plus the grand total.
+ *
+ * Counted in SQL over every matching employment, NEVER over the page: a card that agreed with the 25
+ * rows on screen rather than with the 40 people on the books would answer no question worth asking.
+ * It takes the same EmployeeListFilters the table does MINUS the bucket narrowing, which is what makes
+ * the cards a facet of the current view — filter to one company and the cards describe that company.
+ *
+ * Buckets are `employmentStatusSql()`, the SQL twin of deriveEmploymentStatus pinned equal by
+ * test/personnel-status-sync.test.ts, so a card and the Status badge on a row it counted cannot disagree.
+ * DRAFTS ARE NOT HERE: a draft is a row of a different table with no employment behind it, so the Draft
+ * card is counted by the caller from listEmployeeDrafts.
+ */
+export function countEmployeesByStatus(
+  ctx: SessionContext,
+  p: EmployeeListFilters,
+): Promise<{ total: number; byStatus: Partial<Record<EmploymentStatus, number>> }> {
+  return withTenant(ctx, async (tx) => {
+    const rows = (await tx
+      .select({
+        status: employmentStatusSql(),
+        // count(distinct employment.id) for the same reason the pager total uses it: the assignment join
+        // is ≤1 row per employment, and distinct is the guard that keeps that a fact rather than a hope.
+        count: sql<number>`count(distinct ${employment.id})::int`,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(assignment, currentAssignmentJoin())
+      .where(employeeListWhere(p))
+      .groupBy(employmentStatusSql())) as { status: EmploymentStatus; count: number }[];
+    const byStatus: Partial<Record<EmploymentStatus, number>> = {};
+    let total = 0;
+    for (const r of rows) {
+      const n = Number(r.count);
+      byStatus[r.status] = n;
+      total += n;
+    }
+    return { total, byStatus };
+  });
+}
 
 /** Paginated + searchable employee list for the People page. Returns the page rows plus the
  *  total match count (for the pager). Search matches name or email (case-insensitive). The
@@ -183,25 +307,7 @@ export type EmployeeListRow = {
  *  target dropdowns, exports). */
 export function listEmployeesPage(
   ctx: SessionContext,
-  p: {
-    companyIds?: string[];
-    q?: string;
-    // #18 structured filters (each optional; combine with AND). status: 'active' = not terminated.
-    companyId?: string;
-    departmentId?: string;
-    status?: 'active' | 'terminated';
-    employmentType?: string;
-    // Employee Details listing (feedback 650b6eb8) — the SAME narrowings, multi-select. They sit
-    // ALONGSIDE the singular ones rather than replacing them: /personnel and /admin/personnel drive
-    // single-value pickers, and `filterCompanyIds` carries the clumsy prefix for the reason 8ec63139
-    // gave on the leave read — conflating "what the switcher lets you see" (`companyIds`) with "what
-    // you asked to see" would be a security bug, not a tidy-up.
-    filterCompanyIds?: string[];
-    departmentIds?: string[];
-    /** Derived Employee Status buckets (9cbf5e0d). A WHERE predicate cannot call the TypeScript
-     *  deriver, so it narrows through employmentStatusSql — the twin pinned equal by
-     *  test/personnel-status-sync.test.ts. There is no stored status column to confuse it with (R81). */
-    employmentStatuses?: EmploymentStatus[];
+  p: EmployeeListFilters & {
     /** 'company' = company A→Z then employee name A→Z (650b6eb8's reading order); default is name. */
     sort?: 'name' | 'company';
     limit: number;
@@ -209,35 +315,8 @@ export function listEmployeesPage(
   },
 ): Promise<{ rows: EmployeeListRow[]; total: number }> {
   return withTenant(ctx, async (tx) => {
-    const q = p.q?.trim();
-    // The current-assignment join (≤1 row per employment) — shared by the rows + count queries so the
-    // department filter applies consistently to both.
-    const currentAssignment = and(
-      eq(assignment.employmentId, employment.id),
-      isNull(assignment.validTo),
-      isNull(assignment.supersededAt),
-    );
-    const where = and(
-      p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
-      p.companyId ? eq(employment.companyId, p.companyId) : undefined,
-      p.filterCompanyIds && p.filterCompanyIds.length
-        ? inArray(employment.companyId, p.filterCompanyIds)
-        : undefined,
-      p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
-      p.departmentIds && p.departmentIds.length ? inArray(assignment.departmentId, p.departmentIds) : undefined,
-      p.employmentStatuses && p.employmentStatuses.length
-        ? inArray(employmentStatusSql(), p.employmentStatuses)
-        : undefined,
-      p.status === 'terminated'
-        ? isNotNull(employment.terminatedOn)
-        : p.status === 'active'
-          ? isNull(employment.terminatedOn)
-          : undefined,
-      p.employmentType ? eq(assignment.employmentType, p.employmentType as (typeof employmentTypeEnum.enumValues)[number]) : undefined,
-      q
-        ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${person.primaryEmail} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'})`
-        : undefined,
-    );
+    const currentAssignment = currentAssignmentJoin();
+    const where = employeeListWhere(p);
     const rows = (await tx
       .select({
         employmentId: employment.id,
@@ -261,6 +340,29 @@ export function listEmployeesPage(
         resignationDate: employment.resignationDate,
         lastWorkingDate: employment.lastWorkingDate,
         blacklistedAt: employment.blacklistedAt,
+        // ── Customize Columns (579255c3) ────────────────────────────────────────────────────────────
+        // The opt-in columns. Four 1:1 master lookups hung off the existing current-assignment join, so
+        // the row count is unchanged and the count query below needs no edit at all.
+        jobGrade: jobGrade.name,
+        employmentType: assignment.employmentType,
+        businessUnit: businessUnit.name,
+        costCenter: costCenter.name,
+        workLocation: location.name,
+        joinDate: employment.joinDate,
+        // "Reporting To". A SUBQUERY, not a join: reporting_line is 0..N per employment (administrative,
+        // functional, project, dotted, delegate), so joining it would return one LIST ROW PER EDGE and
+        // quietly show the same person two or three times — the class of fault that put 1 of 8 rows on
+        // the Companies screen for 24 days. It reads the SAME edge reportingLinesFor and the leave
+        // approver lookup read (administrative, still open, not superseded) rather than inventing a
+        // second notion of "manager" that could drift from the one the profile shows.
+        reportingTo: sql<string | null>`(
+          select mp.full_name from reporting_line rl
+          join employment me on me.id = rl.manager_employment_id
+          join person mp on mp.id = me.person_id
+          where rl.subordinate_employment_id = ${employment.id}
+            and rl.line_type = 'administrative'
+            and rl.valid_to is null and rl.superseded_at is null
+          order by rl.valid_from desc limit 1)`,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -268,6 +370,12 @@ export function listEmployeesPage(
       .leftJoin(assignment, currentAssignment)
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
+      // 579255c3 — the optional columns' masters. All four are FK → one row, so none of them can widen
+      // the result: `grade_id` on the employment, the other three on the CURRENT assignment.
+      .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
+      .leftJoin(costCenter, eq(costCenter.id, assignment.costCenterId))
+      .leftJoin(location, eq(location.id, assignment.locationId))
       .where(where)
       // lower() rather than the raw columns: the reading order must not put "acme" in a different half of
       // the list from "Acme" — the same case-insensitivity lib/leave-inquiry.ts applies in TypeScript.
