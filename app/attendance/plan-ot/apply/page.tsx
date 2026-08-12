@@ -83,8 +83,11 @@ export default async function ApplyOtPlanPage({
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
+        {/* 2166ef79 — back to the Self Overtime SECTION of My Attendance, which is where the Plan OT list
+            now lives. Pointing straight at it rather than at /attendance/plan-ot (which forwards here
+            anyway) saves the employee a redirect on the one link they press most on this screen. */}
         <Link
-          href="/attendance/plan-ot"
+          href="/attendance/requests?section=overtime"
           className="text-xs font-medium text-primary underline-offset-2 hover:underline"
         >
           ← {t('backToPlanOt')}

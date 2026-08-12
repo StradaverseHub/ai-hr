@@ -3570,6 +3570,22 @@ export const OT_REASON_CATEGORIES = [
 ] as const;
 export type OtReasonCategory = (typeof OT_REASON_CATEGORIES)[number];
 
+// 2166ef79 My Attendance stage one (migration 0434) — WHICH of the four self-service sections a request
+// was filed from. text + CHECK, not a pgEnum, for the same 0275 reason as the categories above.
+//
+// STORED rather than derived, and that is the point: the instant a missing clock-out is approved the day
+// stops being an Incomplete Entry, so a request list that re-derived its own type would relabel its own
+// history the moment it succeeded. `other` is the free-form "correct another day" route, which is not one
+// of the four sections; NULL is every request filed before this release.
+export const ATTENDANCE_REQUEST_KINDS = [
+  'self_overtime',
+  'short_hours',
+  'incomplete_entry',
+  'absent',
+  'other',
+] as const;
+export type AttendanceRequestKind = (typeof ATTENDANCE_REQUEST_KINDS)[number];
+
 // Attendance correction requests (ADR-0011 Phase B): an employee proposes corrected punch
 // times for a day; an admin or their manager approves, which amends the attendance row
 // (re-derived through the time engine). Mirrors the leave request→decide workflow.
@@ -3618,6 +3634,14 @@ export const attendanceCorrection = pgTable(
     plannedEndTime: time('planned_end_time'),
     otReasonCategory: text('ot_reason_category').$type<OtReasonCategory>(),
     appliedAt: timestamp('applied_at', { withTimezone: true }),
+    // 2166ef79 My Attendance stage one (migration 0434). Both nullable, so every existing row and every
+    // existing caller are byte-identical.
+    //  • remark — the OPTIONAL note beside the mandatory `reason`. The reporter asks for both; only the
+    //    reason is enforced (stage one runs on fixed rules until the settings screen exists).
+    //  • requestKind — which of the four sections the employee filed from. See ATTENDANCE_REQUEST_KINDS
+    //    above for why it is stored rather than re-derived at read time.
+    remark: text('remark'),
+    requestKind: text('request_kind').$type<AttendanceRequestKind>(),
     status: attendanceCorrectionStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
@@ -3638,6 +3662,32 @@ export const attendanceCorrection = pgTable(
       .on(t.employmentId, t.attendanceDate)
       .where(sql`status = 'approved' AND applied_at IS NULL AND requested_ot_minutes IS NOT NULL`),
   ],
+);
+
+// 2166ef79 My Attendance stage one (migration 0434) — ONE optional supporting file per attendance request
+// ("a photo of the gate log", "the site sign-out sheet"). Verbatim reuse of leave_request_attachment (0084)
+// and resignation_request_attachment (0156) retargeted: bytea content, and a DENORMALISED employment_id so
+// RLS reuses can_see_employment() with no per-row subquery — the same subject + manager + admin rule the
+// request row itself carries. Strictly additive; a request with no file has no row here.
+export const attendanceCorrectionAttachment = pgTable(
+  'attendance_correction_attachment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    attendanceCorrectionId: uuid('attendance_correction_id')
+      .notNull()
+      .references(() => attendanceCorrection.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('attendance_correction_attachment_request_idx').on(t.attendanceCorrectionId)],
 );
 
 // ADR-0069 Attendance Request Management — Travel Request. An approved date-range record marking that an
