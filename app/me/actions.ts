@@ -417,9 +417,11 @@ export async function myRequestCorrection(formData: FormData) {
   const requestKind = (ATTENDANCE_REQUEST_KINDS as readonly string[]).includes(kindRaw)
     ? (kindRaw as AttendanceRequestKind)
     : null;
-  // Where to land afterwards: back on the section the employee was looking at, so a fix does not bounce
-  // them to a different tab from the one they were working through.
-  const back = `${REQUESTS_PAGE}?section=${encodeURIComponent(sectionParam(formData))}`;
+  // Land back on the SECTION the employee was working through, so a fix does not bounce them to a
+  // different tab from the one they came from. Spelt out against REQUESTS_PAGE at each redirect rather
+  // than hidden behind a local: test/me-tabs.test.ts reads these lines to prove an action still answers
+  // to the page it is posted from, and a guard that can only see a variable name proves nothing.
+  const section = encodeURIComponent(sectionParam(formData));
   const file = formData.get('attachment');
   const hasFile = file instanceof File && file.size > 0;
   try {
@@ -446,10 +448,10 @@ export async function myRequestCorrection(formData: FormData) {
       });
     }
   } catch (e) {
-    redirect(`${back}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${REQUESTS_PAGE}?section=${section}&error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(REQUESTS_PAGE);
-  redirect(`${back}&toast=Attendance+request+submitted`);
+  redirect(`${REQUESTS_PAGE}?section=${section}&toast=Attendance+request+submitted`);
 }
 
 /** 2166ef79 — the employee CANCELS their own pending clock-time request. Overtime is withdrawn from the
@@ -457,14 +459,14 @@ export async function myRequestCorrection(formData: FormData) {
  *  correction rewrites one, so the two states are not the same and the service refuses the cross-over. */
 export async function myCancelAttendanceRequest(formData: FormData) {
   const { s } = await resolveMe();
-  const back = `${REQUESTS_PAGE}?section=${encodeURIComponent(sectionParam(formData))}`;
+  const section = encodeURIComponent(sectionParam(formData));
   try {
     await cancelOwnAttendanceCorrection(s, { correctionId: String(formData.get('correctionId')) });
   } catch (e) {
-    redirect(`${back}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${REQUESTS_PAGE}?section=${section}&error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(REQUESTS_PAGE);
-  redirect(`${back}&toast=Attendance+request+cancelled`);
+  redirect(`${REQUESTS_PAGE}?section=${section}&toast=Attendance+request+cancelled`);
 }
 
 /** The section the form was posted from, shape-checked. Anything unrecognised falls back to the section a
