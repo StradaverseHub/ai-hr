@@ -84,8 +84,11 @@ import {
 } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { holidayDatesFor } from './holidays';
-// b8aa3466 — the ONE four-way weekday resolver; absence derivation must read the same schedule the engine does.
-import { isWorkingDayKind, shiftDayKindFor } from './attendance';
+// b8aa3466 — the ONE four-way weekday resolver; absence derivation must read the same schedule the engine
+// does. ADR-0080 D9: attendance is a PACK, so this comes through the FACADE, exactly as the approved-leave
+// dates below do. Importing core/attendance directly turns test/attendance-pack-drift.test.ts red, and the
+// fix is never test/pack-drift-allowlist.json — that list is audited kernel-contract debt and only shrinks.
+import { isWorkingDayKind, shiftDayKindFor } from '../packs/attendance/service';
 // ADR-0080 D9 — leave is a PACK, and this module is spine (attendance and payroll both read it), so the
 // approved-leave dates come through the pack FACADE rather than reaching into `core/leave` directly. The
 // audited leak list in test/pack-drift-allowlist.json only ever shrinks; a new consumer joins by using
@@ -95,8 +98,14 @@ import { approvedLeaveDates } from '../packs/leave/service';
 
 const MS_DAY = 86_400_000;
 
-/** ISO weekday (1=Mon … 7=Sun). Local copy: this module is deliberately free of core/attendance so the
- *  money count cannot be broken by an edit to the screens' module (and so the import graph stays a tree). */
+/** ISO weekday (1=Mon … 7=Sun). Local copy, kept deliberately.
+ *
+ *  This header used to say the module was "deliberately free of core/attendance". That stopped being true
+ *  in b8aa3466, which had to read the ONE four-way weekday resolver so absence derivation and the engine
+ *  cannot disagree about what a working day is — see the facade import above. The ORIGINAL reason for the
+ *  local copy still stands though, and is why this is not replaced by the imported helper: this is the
+ *  MONEY count, and a plain weekday lookup that cannot be changed by an edit to the screens' module is
+ *  worth more here than one fewer duplicated line. */
 const isoWeekdayOf = (iso: string): number => {
   const dow = new Date(`${iso}T00:00:00Z`).getUTCDay();
   return dow === 0 ? 7 : dow;
