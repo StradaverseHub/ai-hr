@@ -139,13 +139,14 @@ export function OutstandingTable({ rows }: { rows: UnattachedGroupRow[] }) {
           {sorted.map((r) => (
             <tr key={`${r.employmentId}-${r.payPeriod}`}>
               <td className="px-4 py-2.5 tabular-nums">{r.payPeriod}</td>
-              <td className="px-4 py-2.5 font-medium">
+              {/* 1372d169 — identity columns on one line. */}
+              <td className="whitespace-nowrap px-4 py-2.5 font-medium">
                 {r.employeeName}
                 {r.employeeCode && (
                   <span className="ml-1 font-mono text-xs text-muted-foreground">({r.employeeCode})</span>
                 )}
               </td>
-              <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
+              <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{r.company}</td>
               <td className="px-4 py-2.5 text-right tabular-nums">{r.count}</td>
               {/* Each row carries its own company's currency — without the code a reader cannot tell
                   which of two subtotals below this row belongs to. */}
