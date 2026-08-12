@@ -3687,11 +3687,22 @@ export async function generatePayslips(
             contributes('bonus', taxable);
             // Same rule on the additional stream. `epfBonus2012` codes are validated to require
             // includedInEpf (core/pay-components.ts `epfBonusRequiresEpf`), so they never carve EPF out.
-            // The SOCSO leg is the ADDING one: Overtime 1.5 on this tenant is ticked "not EPF, yes
-            // SOCSO/EIS" but classified 'additional', so today it is charged EPF and left OUT of
-            // SOCSO/EIS — wrong in both directions. Both directions are corrected here.
             if (!c.epf) epfAdditionalExcluded = round2(epfAdditionalExcluded + taxable);
-            if (c.socso) socsoWageExtra = round2(socsoWageExtra + taxable);
+            // The SOCSO leg is the ADDING one, and the only place r187 increases a contribution:
+            // Overtime 1.5 on this tenant is ticked "not EPF, yes SOCSO/EIS" but classified
+            // 'additional', so before r187 it was charged EPF and left OUT of SOCSO/EIS — the exact
+            // opposite of its own settings, in both directions.
+            //
+            // `epfBonus2012` IS THE EXCEPTION, and deliberately so. Every other flag on a pay item is
+            // the operator answering "is this in that agency's base"; epfBonus2012 is the operator
+            // saying "this money IS a bonus" (it forces the additional-remuneration EPF rate). SOCSO
+            // Act 1969 s.2 excludes a bonus from wages, so a declared bonus stays out of SOCSO/EIS even
+            // if its SOCSO box is ticked — honouring the tick there would compute an illegal
+            // contribution. The seeded BONUS code carries epfBonus2012, so the ordinary bonus is
+            // covered by this without anyone having to know the rule. Pinned by the golden test in
+            // test/pcb-classification.test.ts ("EPF Bonus 2012 … routes the amount down the
+            // additional-remuneration EPF path"), which asserts the RM4,000-band SOCSO share.
+            if (c.socso && !c.epfBonus2012) socsoWageExtra = round2(socsoWageExtra + taxable);
           }
           continue;
         }

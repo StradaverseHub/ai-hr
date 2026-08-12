@@ -372,3 +372,34 @@ describe('017d9c25 — the ticks decide the statutory bases, on a generated pays
     expect(Number(after.grossPay)).toBeCloseTo(5000, 2); // the RM1,000 transaction is still paid
   });
 });
+
+describe('017d9c25 — a DECLARED bonus stays out of SOCSO/EIS even when the box is ticked', () => {
+  /**
+   * The one exception to tick authority, and the reason it exists. `epfBonus2012` is not an "is this in
+   * that agency's base" answer like the other flags — it is the operator saying "this money IS a bonus"
+   * (it forces the additional-remuneration EPF rate). SOCSO Act 1969 s.2 excludes a bonus from wages, so
+   * honouring a ticked SOCSO box on a declared bonus would compute an illegal contribution. The seeded
+   * BONUS code carries epfBonus2012, so the ordinary bonus is covered without anyone knowing the rule.
+   */
+  it('epfBonus2012 + SOCSO ticked: EPF charged on the bonus, SOCSO is not', async () => {
+    await seedPayComponentCatalog(a);
+    await upsertPayComponent(a, input('DECLBONUS', {
+      includedInEpf: true, includedInSocsoEis: true,
+      epfBonus2012: true, pcbRemunerationType: 'additional', pcbExemptionCode: 'PCB_TAXABLE',
+    }));
+    const e = await hire('declbonus@acme.test', '900101015108', 4000);
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('DECLBONUS'), amount: 1000, effectiveFrom: '2026-01-01' });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-02' });
+    await enableTypedComponents();
+    await generatePayslips(a, { batchId });
+    const st = statOf(await slipOf(batchId, e.employmentId));
+
+    // EPF: wage band 4,000 (440) + the bonus at the normal-wage-band employee rate (11% of 1,000).
+    expect(st.epfEmployee).toBe(440 + 110);
+    // SOCSO/EIS: the RM4,000 band only — the bonus is NOT wages under the SOCSO Act.
+    expect(Number(st.socsoEmployee)).toBeCloseTo(19.75, 2);
+    expect(Number(st.eisEmployee)).toBeCloseTo(7.9, 2);
+    expect(st.bases!.socsoEis).toBeCloseTo(4000, 2);
+  });
+});
