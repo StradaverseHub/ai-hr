@@ -1,3 +1,113 @@
+## r185 (2026-08-12) — SEVEN APPROVED ITEMS, SHIPPED. Migrations `0426` + `0427`.
+
+`98e69987` · `f35f758a` · `2aed39d4` · `587ee719` · `4157a498` · `510f4bd1` · `009c8a37`.
+74 files, +9046/−2075. Gate **638 files / 6 chunks / every chunk exit=0 / 8,216 tests / 1 expected fail /
+0 AssertionErrors**; tsc 0; `next build` 0; `gate:shadow` PASS 347/347; render check 0 MISSING_MESSAGE
+across 16 routes × 6 locales. All seven marked `deployed`.
+
+**THE BOARD SAID `approved = 1` AND IT WAS ACTUALLY 8** — and by the time the round finished it was 16.
+This file's own instruction ("Counts live in CURRENT STATE … **Always RE-COUNT**") is the only reason the
+round was not planned around one item. It has now been wrong in this direction three times.
+
+#### ⚠️ THE DEPLOY ORDER WAS NOT THE USUAL ONE, AND THE FAILURE IT AVOIDED LOOKS LIKE NOTHING YOU EXPECT
+
+**`scripts/repair-fixed-transaction-overlaps.ts --apply` had to run BEFORE `0426`.** `deploy.sh` is what
+runs `db:migrate`, and the repair script only reaches the box via the release rsync — so the release was
+split: **rsync → repair → `deploy.sh` → zero-change dry-run**, not one `improve:release` call. Keep that
+shape for any migration whose precondition is a data repair.
+
+Production carried ONE inverted row (`valid_to` before `valid_from`). An inverted row does **not** raise an
+exclusion conflict — `daterange()` raises `range lower bound must be less than or equal to range upper
+bound` while merely BUILDING the index entry, so the `ALTER TABLE` aborts on an error mentioning neither
+overlaps nor the constraint. **`gate:shadow` cannot catch this**: it dumps the live schema STRUCTURE ONLY,
+no rows, so it passed 347/347 while production would have failed. A shadow PASS proves a migration is
+well-formed, not that it will apply.
+
+Applied outcome: 9 rows superseded (1 inverted + 8 overlapping), 52 → 43 live, payslips untouched at 84,
+and **0 remaining overlapping pairs measured with the constraint's own predicate**. X000001 keeps the
+150.00 written last, which does NOT match the 100.00 its July payslip paid — stated in the approved plan,
+intended, not a defect.
+
+#### THE `daterange` EXCLUDE IS NOW PROVEN, AND THE BOUNDS ARE LOAD-BEARING
+Executed on **PostgreSQL 16.14, which is what production runs**, across eight probes:
+
+    daterange('2026-01-01','2026-07-01','[]') && daterange('2026-07-01','9999-12-31','[]')  ->  true
+    daterange('2026-01-01','2026-07-01','[)') && daterange('2026-07-01','9999-12-31','[)')  ->  false
+
+`employment_pay_component.valid_to` is **INCLUSIVE**; `compensation.valid_to` is **EXCLUSIVE**. The two
+precedents for this constraint shape (`0004`, `0117`) are both HALF-OPEN — **copy their shape, never their
+bounds.** `COALESCE(valid_to, DATE '9999-12-31')` because `'[]'` cannot be applied to an infinite bound.
+The same asymmetry bit twice: `overlapsClosedPeriod` was written for `compensation` and its `to` is
+EXCLUSIVE, so it is called with `addDaysIso(validTo, 1)` or a row whose last paid month IS the closed month
+walks past the guard.
+
+#### THREE APPROVED PLANS WERE WRONG ABOUT THE TREE, AND THE BUILDS WERE RIGHT TO REFUSE THEM
+A plan is a specification, not scripture. Each was reported, not silently followed or silently dropped.
+1. **`2aed39d4` step 5 misread `test/fixed-transaction.test.ts:323`** — its two windows do not touch, so
+   "gap is intended" still holds. The overlapping sibling was what changed.
+2. **`2aed39d4` step 7 named `processedPeriodsTx`**, which returns processed-OR-closed and would have
+   re-implemented the very rule the step exists to reverse. `closedPeriodsTx` is correct.
+3. **`f35f758a` item 4 called a comment stale** that the SAME ROUND made true again.
+
+#### ⚠️ A LINT RULE FIRING IDENTICALLY IN EVERY LOCALE IS EVIDENCE ABOUT THE LINT RULE
+`scripts/i18n-check.mjs` flagged `payroll.historyImport.missingColumns`, diagnosed TWICE (by an agent and
+by the parent relaying it) as a translated placeholder name that would throw `FORMATTING_ERROR`.
+**Both diagnoses were wrong.** `{count, plural, one {column} other {columns}}` — `column` is a plural
+BRANCH BODY, ordinary text, not an argument. The tell both missed: it fired in **all five** non-English
+locales. Five translators do not make the same mistake; a checker does. Its regex cannot tell a branch body
+from an argument name. Verified properly by FORMATTING all 786 messages in the namespace through
+`intl-messageformat` with the arguments the call sites pass (0 failures) and parsing all 51,564 (0
+unparseable). **Follow-up, not on the board: teach the checker to skip plural/select branch bodies.**
+
+#### THE SIX CATALOGUES SURVIVED FIVE BRANCHES BECAUSE THE MERGE WAS AUDITED, NOT ASSUMED
+Five branches edited all six files and **28 keys were deliberately DELETED**. This is the r138/r141 trap:
+a naive recursive merge reads "present in theirs, absent in ours" as an addition and resurrects every
+retired key. **PRESENCE IS A VALUE — consult the merge BASE for absence too.** Git's line-based merge did
+handle it, but that was verified with a base-aware audit (RESURRECTED / LOST / CLOBBERED) against the base
+and all five sides: **8549 → 8668 keys, zero problems**, union +127/−28 reconciling exactly, all 28
+deletions confirmed absent BY NAME. Note agents' self-counts ran high — **a REWORDED key is not an
+addition.** Tool kept at `scratchpad/check-catalog-merge.mjs`; worth promoting into the repo.
+
+#### `i18n/request.ts` IGNORED next-intl's REQUESTED LOCALE — A WHOLE FEATURE WOULD HAVE SHIPPED SILENT
+`getRequestConfig` took no arguments and read the cookie unconditionally, so `getTranslations({locale})`
+resolved to the COOKIE's catalogue: HTTP 200, a valid PDF, wrong language, every gate green. Now honours
+`requested`, falling back to the cookie. **Blast radius measured before accepting: exactly 1 of 269
+`getTranslations` call sites passes an explicit locale.** Proven by decompressing both PDFs' content
+streams — the override beats the cookie in BOTH directions and the row count holds at 52 across the swap.
+
+#### VERIFY ON THE ARTEFACT, NOT ON THE LAYOUT MATHS
+r175a's CP22 lesson applied to the new two-column payslip: rasterised in **both** `mutool` and `pdftoppm`
+across five fixtures, row count read off the artefact (all 70 items present in both, `missing=0`), geometry
+read back with `pdftotext -bbox`. **The plan's own pt budget was pessimistic** — it predicted a spill that
+does not happen; its figures came from a re-implementation, as it warned.
+
+#### TWO DEFECTS FOUND BY RENDERING THAT NO TEST HELD
+`?txnStatus=processed` returned rows the same grid labelled *Pending reprocessing*; and a wholly-failed
+month produced no row at all in the import preview. Related and worth keeping: **`cleanBatchStatus` FAILS
+OPEN** — an unrecognised filter value returns `undefined`, which DROPS the filter and silently shows
+everything.
+
+#### DELIBERATE ASYMMETRIES A REVIEWER WILL QUESTION — ALL INTENDED
+- **`2aed39d4`'s key excludes `run_type`** though the ticket asked for it: the kernel never reads it and
+  pays every returned row in full, so including it would have LEGALISED 2 of the 10 live clashes.
+- **`4157a498` never lets `Override?` overwrite an occupied month**, and reports `updated = 0` always.
+  `loadBatchRows` selects every batch for a (company, period) with no `run_type` and no `status` filter and
+  SUMs, so a second load would submit someone paid 5,000 as 10,000. There is no undo — `0011` blocks UPDATE
+  and DELETE on a closed batch at trigger level.
+- **`4157a498` folds on (Employee No, Payroll Period)**, not the five-part key — `payslip_batch_employment_uq`
+  allows exactly one payslip per employment per batch.
+
+#### c8052ae3 — STILL NOT RUN. THE PLAN'S BACKUP COMMAND DOES NOT WORK ON THIS DATABASE.
+Step 0's `pg_dump "$U" -Fc -f …` **exits 1** and leaves an ~889 KB partial that looks like a backup and is
+not: `ai_provider_config`, `leave_adjustment_batch` and `platform_user` are FORCE RLS, `ai_hr_owner` has
+neither superuser nor BYPASSRLS, and there is no passwordless sudo to `postgres`. Taken instead 2026-08-11,
+both verified with `pg_restore -l`: a broad dump with those three tables' DATA excluded (85.5 MB, 1954 TOC
+entries) plus a targeted dump of `leave_ledger`, `leave_entitlement_recalc_audit` and
+`leave_ledger_reset_archive`. **All three excluded tables hold 0 rows, so the broad dump is complete.**
+**Correct step 0 before the next operator runs it.** The rehearsal on the box is from 08-10 and its plan
+wants rehearsal and apply in ONE sitting — re-run it fresh.
+
+
 ## r180 (2026-08-10) — TWO DEFECT FIXES, BOTH DEPLOYED. One of them was paying people twice.
 
 **1. RECURRING PAY ITEMS HAVE BEEN PAYING TWICE, AND IT REACHED ISSUED PAYSLIPS.** Found while planning
