@@ -289,7 +289,12 @@ export function countEmployeesByStatus(
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(assignment, currentAssignmentJoin())
       .where(employeeListWhere(p))
-      .groupBy(employmentStatusSql())) as { status: EmploymentStatus; count: number }[];
+      // GROUP BY 1 — the ORDINAL, not a second copy of the expression, and this is load-bearing rather
+      // than terse. employmentStatusSql() carries the `today` value as a BIND PARAMETER, so rendering it
+      // twice produces `$1`/`$2` in the SELECT and `$3`/`$4` in the GROUP BY. Postgres matches a grouped
+      // expression structurally, decides those two are different expressions, and rejects the statement
+      // with "column employment.blacklisted_at must appear in the GROUP BY clause". Observed, not feared.
+      .groupBy(sql`1`)) as { status: EmploymentStatus; count: number }[];
     const byStatus: Partial<Record<EmploymentStatus, number>> = {};
     let total = 0;
     for (const r of rows) {
