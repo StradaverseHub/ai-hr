@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
+import { isAdmin } from '@/lib/authz';
 import {
   archivePayComponent,
   createPayComponent,
@@ -307,11 +308,19 @@ export async function previewPayRuleAction(p: {
  * already loaded, which is the defect the ticket reports ("the list is the fifty most recently hired, with
  * no search"). Read-only, and it returns the same shape the page's initial load does, so the picker's
  * options come from one definition rather than two.
+ *
+ * GUARDED LIKE THE PAGE THAT HOSTS IT. component-form.tsx loads the initial list behind `requireAdmin`, and
+ * a server action is reachable by any authenticated caller regardless of which route it lives under — so
+ * the check is repeated here rather than inherited. It REFUSES BY RETURNING NOTHING instead of calling
+ * requireAdmin(): that helper signals with `redirect()`, which throws NEXT_REDIRECT, and a data-returning
+ * action that throws a navigation at a non-admin is a worse answer than an empty picker. RLS is still the
+ * backstop underneath (withTenant), so this narrows the caller set; it is not what keeps tenants apart.
  */
 export async function searchPreviewEmployeesAction(
   query: string,
 ): Promise<{ employmentId: string; name: string; employeeCode: string | null }[]> {
   const s = await getSession();
+  if (!isAdmin(s)) return [];
   const rows = await listPayRulePreviewCandidates(s, { query });
   return rows.map((r) => ({ employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode }));
 }
