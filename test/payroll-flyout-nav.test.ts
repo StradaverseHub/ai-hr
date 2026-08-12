@@ -64,6 +64,11 @@ const EXPECTED_SET = [
   // 169e3c24 — an ADDITION to the set, like statutory-forms above. Every original entry is untouched, so
   // the guard's promise ("no destination lost, no href renamed") is not weakened by listing it.
   { href: '/payroll/individual-payslip', labelKey: 'payrollIndividualPayslip' },
+  // 2961a7ae — an ADDITION, like statutory-forms / individual-payslip / loans / back-pay. Statutory
+  // Adjustment is a NEW screen (the manual override of a computed statutory figure), ranked into the
+  // same REVIEW phase as the payslip screen it sits beside. Every original entry above and below is
+  // character for character what it was, so the guard's promise is untouched.
+  { href: '/payroll/statutory-adjustment', labelKey: 'payrollStatutoryAdjustment' },
   { href: '/payroll/reports', labelKey: 'payrollReports' },
   { href: '/payroll/statutory-forms', labelKey: 'payrollStatutoryForms' },
   { href: '/payroll/setup', labelKey: 'payrollSettings' },

@@ -523,6 +523,15 @@ export const SCREENS: readonly ScreenEntry[] = [
       // grant or revoke. Its `export` sibling is a route handler, not a guarded page, so it is not
       // listed (the reverse-completeness check walks page.tsx files).
       '/payroll/statutory-forms/[formId]',
+      // 2961a7ae: Statutory Adjustment — the manual override of a computed statutory figure on a run that
+      // is processed and not yet closed. Same scopedAdmin key as the rest of the Payroll hub: it shows
+      // and CHANGES per-employee EPF/SOCSO/EIS/PCB figures, so it is admin-scoped exactly like Reports
+      // and Transaction View. Registered here because test/function-access.test.ts checks reverse
+      // completeness: a guarded page with no matrix column fails the suite rather than silently becoming
+      // a screen nobody can grant or revoke. ONE route — pick a run, pick an employee, edit, review and
+      // apply are states of the same page (`?batch=` / `?employment=`), the single-pager convention
+      // /payroll/transaction-view uses for `?tab=`.
+      '/payroll/statutory-adjustment',
       '/payroll/setup',
       // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
       // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.

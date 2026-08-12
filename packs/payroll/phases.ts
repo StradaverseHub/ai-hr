@@ -95,6 +95,10 @@ export const PAYROLL_NAV_PHASE: Readonly<Record<string, number>> = {
   // before it goes out. Same rank, and `sort` is stable, so it lands immediately after it (its literal
   // position in PAYROLL_ADMIN_NAV) rather than depending on a guessed splice point.
   '/payroll/individual-payslip': 5,
+  // 2961a7ae — Statutory Adjustment is a CORRECTION to a processed run, so it sits with the review
+  // screens (same rank as Individual Payslip, immediately after it by literal position): you look at the
+  // result, and this is where you correct a figure on it before the month is closed and filed.
+  '/payroll/statutory-adjustment': 5,
   '/payroll/reports': 7,
   // 956cec85 — filing comes AFTER the figures are reported: the last thing you do with a month.
   '/payroll/statutory-forms': 8,
