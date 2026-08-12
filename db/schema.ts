@@ -5608,14 +5608,31 @@ export const payrollIndividualTxn = pgTable(
     // row that was keyed before processing. With editing allowed after a run is processed, that blindness
     // becomes the whole hazard, so the edit stamps its own instant.
     updatedAt: timestamp('updated_at', { withTimezone: true }),
+    // 4e403268 (0432) — WHERE this line came from. One of TXN_SOURCES ('manual'|'attendance'|'leave'|
+    // 'import'|'system'), app-validated exactly as `unit` above is (no pg enum, no CHECK — one literal set
+    // in core/payroll-individual-txn.ts). NULL READS AS 'manual' (`txnSourceOf`), which is why all 47
+    // existing production rows are correct with no backfill: every one of them was keyed by hand.
+    source: text('source'),
+    // The originating module's own record id (an attendance day, a leave request line). Null for a row
+    // keyed by hand. Nothing writes it yet — Attendance and Leave do not post into payroll today — and the
+    // uniqueness guard below exists so that when they do, a repeated sync UPDATES rather than double-posts.
+    sourceRef: text('source_ref'),
     createdAt: createdAt(),
   },
   (t) => [
-    // No unique constraint — multiple dated entries per (batch, employment) are allowed by design.
+    // No unique constraint — multiple dated entries per (batch, employment) are allowed by design. THIS IS
+    // WHAT MAKES DAY-BY-DAY ENTRY (4e403268) A SCREEN CHANGE RATHER THAN A SCHEMA CHANGE: five dated lines
+    // for one employee in one month have always been legal rows.
     index('payroll_individual_txn_batch_emp_idx').on(t.batchId, t.employmentId),
     index('payroll_individual_txn_tenant_batch_idx').on(t.tenantId, t.batchId),
     // Attach-on-generate lookup (0175); the SQL migration creates it partial (WHERE batch_id IS NULL).
     index('payroll_individual_txn_unattached_idx').on(t.tenantId, t.companyId, t.payPeriod),
+    // 4e403268 (0432) — the request's point 14. The SQL migration creates it PARTIAL
+    // (WHERE source_ref IS NOT NULL), so it is empty today and costs nothing; putting it in before the
+    // first sync exists is the difference between a constraint and a data repair.
+    uniqueIndex('payroll_individual_txn_source_ref_uq')
+      .on(t.tenantId, t.employmentId, t.txnDate, t.componentId, t.source, t.sourceRef)
+      .where(sql`source_ref is not null`),
   ],
 );
 

@@ -4119,6 +4119,41 @@
           "hours": "此薪资项目会自行计算金额。输入小时数后，系统按该项目的公式算出金额，无需手动输入。",
           "days": "此薪资项目会自行计算金额。输入天数后，系统按该项目的公式算出金额，无需手动输入。",
           "none": "此薪资项目按其公式自行计算金额，因此无需手动输入金额。"
+        },
+        "inputMethod": "录入方式",
+        "inputMethodLump": "当月一笔总额",
+        "inputMethodDaily": "按日录入",
+        "dayGridTitle": "按日新增交易",
+        "dayGridAddDate": "新增日期",
+        "dayGridSave": "保存所有日期",
+        "dayGridSaved": "{count, plural, other {已保存 # 笔交易}}",
+        "dayGridTotal": "{count, plural, other {合计 — # 个日期}}",
+        "dayGridDays": "日期数",
+        "dayGridEmpty": "保存前请至少新增一个日期。",
+        "dayGridRoundingHint": "每个日期各自计算并四舍五入到分，因此多日合计可能与同样数量一次性录入相差一分。",
+        "dayGridNoRuleHint": "此薪资项目未设置公式，因此每个日期的金额需手动输入。在薪资项目主档为该项目设置公式后即可自动计算。",
+        "dayGridViewDays": "显示此合计下的各个日期",
+        "dayGridEditHint": "若要修改或删除其中一笔，请将上方列表切换为「按交易」。",
+        "dayOfWeek": "星期",
+        "dayShort": {
+          "sun": "日",
+          "mon": "一",
+          "tue": "二",
+          "wed": "三",
+          "thu": "四",
+          "fri": "五",
+          "sat": "六"
+        },
+        "listViewFlat": "按交易",
+        "listViewGrouped": "分组",
+        "nGroups": "{count, plural, other {# 组}}",
+        "sourceLabel": "来源",
+        "sourceValue": {
+          "manual": "手动",
+          "attendance": "考勤",
+          "leave": "休假",
+          "import": "导入",
+          "system": "系统"
         }
       },
       "tp1": {

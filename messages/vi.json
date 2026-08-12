@@ -4119,6 +4119,41 @@
           "hours": "Mục lương này tự tính số tiền. Nhập số giờ và số tiền sẽ được tính theo công thức của mục — không cần gõ tay.",
           "days": "Mục lương này tự tính số tiền. Nhập số ngày và số tiền sẽ được tính theo công thức của mục — không cần gõ tay.",
           "none": "Mục lương này tự tính số tiền theo công thức của nó, nên không cần gõ số tiền."
+        },
+        "inputMethod": "Cách nhập",
+        "inputMethodLump": "Một tổng cho cả tháng",
+        "inputMethodDaily": "Theo từng ngày",
+        "dayGridTitle": "Thêm giao dịch theo từng ngày",
+        "dayGridAddDate": "Thêm ngày",
+        "dayGridSave": "Lưu tất cả các ngày",
+        "dayGridSaved": "{count, plural, other {Đã lưu # giao dịch}}",
+        "dayGridTotal": "{count, plural, other {Tổng — # ngày}}",
+        "dayGridDays": "Số ngày",
+        "dayGridEmpty": "Hãy thêm ít nhất một ngày trước khi lưu.",
+        "dayGridRoundingHint": "Mỗi ngày được tính và làm tròn đến xu riêng, nên tổng của nhiều ngày có thể lệch một xu so với cùng số lượng nhập thành một con số.",
+        "dayGridNoRuleHint": "Mục lương này chưa đặt công thức nên số tiền của từng ngày phải nhập tay. Hãy đặt công thức cho mục trong Danh mục mục lương và hệ thống sẽ tự tính.",
+        "dayGridViewDays": "Hiện các ngày đằng sau tổng này",
+        "dayGridEditHint": "Để sửa hoặc xóa một trong số này, hãy chuyển danh sách phía trên sang Theo giao dịch.",
+        "dayOfWeek": "Thứ",
+        "dayShort": {
+          "sun": "CN",
+          "mon": "T2",
+          "tue": "T3",
+          "wed": "T4",
+          "thu": "T5",
+          "fri": "T6",
+          "sat": "T7"
+        },
+        "listViewFlat": "Theo giao dịch",
+        "listViewGrouped": "Nhóm lại",
+        "nGroups": "{count, plural, other {# nhóm}}",
+        "sourceLabel": "Nguồn",
+        "sourceValue": {
+          "manual": "Thủ công",
+          "attendance": "Chấm công",
+          "leave": "Nghỉ phép",
+          "import": "Nhập khẩu",
+          "system": "Hệ thống"
         }
       },
       "tp1": {

@@ -4119,6 +4119,41 @@
           "hours": "Item gaji ini mengira jumlahnya sendiri. Masukkan jam dan jumlah akan dikira daripada formula item — ia tidak ditaip.",
           "days": "Item gaji ini mengira jumlahnya sendiri. Masukkan hari dan jumlah akan dikira daripada formula item — ia tidak ditaip.",
           "none": "Item gaji ini mengira jumlahnya sendiri daripada formulanya, jadi jumlah tidak ditaip."
+        },
+        "inputMethod": "Kaedah kemasukan",
+        "inputMethodLump": "Satu jumlah untuk bulan ini",
+        "inputMethodDaily": "Hari demi hari",
+        "dayGridTitle": "Tambah transaksi hari demi hari",
+        "dayGridAddDate": "Tambah tarikh",
+        "dayGridSave": "Simpan semua tarikh",
+        "dayGridSaved": "{count, plural, other {# transaksi disimpan}}",
+        "dayGridTotal": "{count, plural, other {Jumlah — # tarikh}}",
+        "dayGridDays": "Tarikh",
+        "dayGridEmpty": "Tambah sekurang-kurangnya satu tarikh sebelum menyimpan.",
+        "dayGridRoundingHint": "Setiap tarikh dikira dan dibundarkan kepada sen secara berasingan, jadi jumlah beberapa tarikh boleh berbeza satu sen daripada kuantiti yang sama dimasukkan sebagai satu angka.",
+        "dayGridNoRuleHint": "Item gaji ini tiada formula, jadi jumlah bagi setiap tarikh dimasukkan secara manual. Tetapkan formula pada item itu dalam Fail Induk Item Gaji dan ia akan dikira untuk anda.",
+        "dayGridViewDays": "Tunjukkan tarikh di sebalik jumlah ini",
+        "dayGridEditHint": "Untuk mengubah atau membuang salah satu, tukar senarai di atas kepada Mengikut transaksi.",
+        "dayOfWeek": "Hari",
+        "dayShort": {
+          "sun": "Ahd",
+          "mon": "Isn",
+          "tue": "Sel",
+          "wed": "Rab",
+          "thu": "Kha",
+          "fri": "Jum",
+          "sat": "Sab"
+        },
+        "listViewFlat": "Mengikut transaksi",
+        "listViewGrouped": "Dikumpulkan",
+        "nGroups": "{count, plural, other {# kumpulan}}",
+        "sourceLabel": "Sumber",
+        "sourceValue": {
+          "manual": "Manual",
+          "attendance": "Kehadiran",
+          "leave": "Cuti",
+          "import": "Import",
+          "system": "Sistem"
         }
       },
       "tp1": {

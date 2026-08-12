@@ -4119,6 +4119,41 @@
           "hours": "This pay item calculates its own amount. Enter the hours and the amount is worked out from the item’s formula — it is not typed in.",
           "days": "This pay item calculates its own amount. Enter the days and the amount is worked out from the item’s formula — it is not typed in.",
           "none": "This pay item calculates its own amount from its formula, so the amount is not typed in."
+        },
+        "inputMethod": "Input method",
+        "inputMethodLump": "One total for the month",
+        "inputMethodDaily": "Day by day",
+        "dayGridTitle": "Add transactions day by day",
+        "dayGridAddDate": "Add date",
+        "dayGridSave": "Save all dates",
+        "dayGridSaved": "{count, plural, one {# transaction saved} other {# transactions saved}}",
+        "dayGridTotal": "{count, plural, one {Total — # date} other {Total — # dates}}",
+        "dayGridDays": "Dates",
+        "dayGridEmpty": "Add at least one date before saving.",
+        "dayGridRoundingHint": "Each date is worked out and rounded to the cent on its own, so a set of dates can total a cent away from the same quantity entered as one figure.",
+        "dayGridNoRuleHint": "This pay item has no formula set, so the amount for each date is entered by hand. Set a formula on the item in Payroll Item Master and it will be worked out for you.",
+        "dayGridViewDays": "Show the dates behind this total",
+        "dayGridEditHint": "To change or remove one of these, switch the list above to By transaction.",
+        "dayOfWeek": "Day",
+        "dayShort": {
+          "sun": "Sun",
+          "mon": "Mon",
+          "tue": "Tue",
+          "wed": "Wed",
+          "thu": "Thu",
+          "fri": "Fri",
+          "sat": "Sat"
+        },
+        "listViewFlat": "By transaction",
+        "listViewGrouped": "Grouped",
+        "nGroups": "{count, plural, one {# group} other {# groups}}",
+        "sourceLabel": "Source",
+        "sourceValue": {
+          "manual": "Manual",
+          "attendance": "Attendance",
+          "leave": "Leave",
+          "import": "Import",
+          "system": "System"
         }
       },
       "tp1": {

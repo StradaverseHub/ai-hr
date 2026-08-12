@@ -128,6 +128,11 @@ const individualRow: IndividualTxnViewRow = {
   runSeq: 1,
   batchStatus: 'processed',
   kind: 'earning',
+  // 4e403268 added these to the shared projection; they play no part in the width guard.
+  componentId: null,
+  componentCode: null,
+  componentName: null,
+  source: null,
   txnDate: '2026-08-01',
   amount: '584.13',
   quantity: '15.00',
