@@ -36,7 +36,10 @@
 import { createDb } from '../db/client';
 import { tenant, claimPolicy, claimType, claimMileageRate } from '../db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
-import { setMileageRateTable } from '../core/claims';
+// ADR-0080 D9 — through the pack FACADE, never `core/claims` directly. The import ratchet
+// (test/claims-pack-drift.test.ts) fails any new file that reaches past it, and its allowlist is audited
+// kernel-contract debt that only ever shrinks — it is not a place to register a new caller.
+import { setMileageRateTable } from '../packs/claims/service';
 
 type Plan = {
   tenantId: string;
