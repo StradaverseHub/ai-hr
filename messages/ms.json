@@ -64,7 +64,7 @@
     "dateRange": "Julat tarikh",
     "generated": "Jadual dijana untuk {employees} pekerja — {working} catatan hari bekerja dan {rest} catatan hari rehat.",
     "generateHint": "Mengisi setiap tarikh dalam julat mengikut corak mingguan syif: catatan syif pada hari bekerja dan hari rehat yang jelas pada hari selebihnya, supaya polisi syarikat tidak menimpa corak itu secara senyap. Jana semula akan menulis ganti tarikh yang sama.",
-    "manageShiftsHint": "Jadual syif diurus dalam Dasar Kehadiran; syif biasa seseorang ditetapkan pada profil mereka sebagai Syif lalai. Gunakan roster untuk pengecualian tarikh tertentu.",
+    "manageShiftsHint": "Jadual syif diurus dalam Tetapan syif; syif biasa seseorang ditetapkan pada profil mereka sebagai Syif lalai. Gunakan roster untuk pengecualian tarikh tertentu.",
     "manageShiftsLink": "Urus jadual syif",
     "copyTitle": "Salin roster",
     "copySource": "Salin daripada",

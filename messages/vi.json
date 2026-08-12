@@ -64,7 +64,7 @@
     "dateRange": "Khoảng ngày",
     "generated": "Đã tạo lịch cho {employees} nhân viên — {working} mục ngày làm việc và {rest} mục ngày nghỉ.",
     "generateHint": "Điền mọi ngày trong khoảng theo mẫu tuần của ca: mục ca vào ngày làm việc và ngày nghỉ rõ ràng cho các ngày còn lại, để chính sách công ty không âm thầm ghi đè mẫu. Chạy lại sẽ ghi đè các ngày đó.",
-    "manageShiftsHint": "Lịch ca được quản lý trong Chính sách chấm công; ca thường lệ của nhân viên được đặt trong hồ sơ dưới dạng Ca mặc định. Dùng lịch trực cho các ngoại lệ theo ngày.",
+    "manageShiftsHint": "Lịch ca được quản lý trong Cài đặt ca làm việc; ca thường lệ của nhân viên được đặt trong hồ sơ dưới dạng Ca mặc định. Dùng lịch trực cho các ngoại lệ theo ngày.",
     "manageShiftsLink": "Quản lý lịch ca",
     "copyTitle": "Sao chép lịch trực",
     "copySource": "Sao chép từ",

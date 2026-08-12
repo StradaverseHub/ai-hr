@@ -64,7 +64,7 @@
     "dateRange": "Date range",
     "generated": "Roster generated for {employees} employees — {working} working-day and {rest} rest-day entries.",
     "generateHint": "Fills every date in the range from the shift's weekly pattern: shift entries on working days and explicit rest days on the rest, so the company policy never silently overrides the pattern. Re-running overwrites the same dates.",
-    "manageShiftsHint": "Shift schedules are managed in Attendance Policy; a person's usual shift is set on their profile as their Default shift. Use the roster for date-specific exceptions.",
+    "manageShiftsHint": "Shift schedules are managed in Shift settings; a person's usual shift is set on their profile as their Default shift. Use the roster for date-specific exceptions.",
     "manageShiftsLink": "Manage shift schedules",
     "copyTitle": "Copy roster",
     "copySource": "Copy from",
