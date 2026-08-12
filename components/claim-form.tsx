@@ -12,7 +12,24 @@ type RateConfig =
   | { kind: 'mileage_flat'; ratePerKm: number }
   | { kind: 'fixed_allowance'; amount: number };
 
+/**
+ * One sub-claim's OWN pot (e7eb5d83 rev 5). Shown BESIDE the claim type's figures, never instead of them:
+ * a Dental claim spends Medical's pot and Dental's, and the submit refusal checks both. An entry exists
+ * for every live sub-claim; all-null limits mean it has no limit of its own, which is the default.
+ */
+export type ClaimItemBalanceLine = {
+  claimItemId: string;
+  itemName: string;
+  annualLimit: number | null;
+  usedThisYear: number;
+  remainingThisYear: number | null;
+  monthlyLimit: number | null;
+  remainingThisMonth: number | null;
+  perClaimCap: number | null;
+};
+
 export type ClaimBalance = {
+  items: ClaimItemBalanceLine[];
   annualLimit: number | null;
   usedThisYear: number;
   /** The reserved (submitted, not yet decided) slice of usedThisYear. Part of it, not extra. */
@@ -124,6 +141,14 @@ export function ClaimForm({
       bal.blockLimit != null);
   const afterYear = bal?.remainingThisYear == null ? null : bal.remainingThisYear - currentAmount;
   const afterMonth = bal?.remainingThisMonth == null ? null : bal.remainingThisMonth - currentAmount;
+  // e7eb5d83 rev 5 — the SELECTED sub-claim's own pot, and only when it actually has one. Showing a
+  // "remaining" line for a sub-claim with no limit of its own would read as a second, tighter budget where
+  // there is none; showing nothing when there IS one lets the server refuse a claim the panel said was
+  // affordable. So the line appears exactly when the limit that could refuse it exists.
+  const itemBal = bal?.items.find((i) => i.claimItemId === claimItemId) ?? null;
+  const itemHasLimit = itemBal != null && (itemBal.annualLimit != null || itemBal.monthlyLimit != null || itemBal.perClaimCap != null);
+  const afterItemYear =
+    itemBal?.remainingThisYear == null ? null : itemBal.remainingThisYear - currentAmount;
 
   return (
     <form action={formAction} className="grid gap-4 sm:grid-cols-2">
@@ -162,7 +187,7 @@ export function ClaimForm({
       {bal && (
         <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs sm:col-span-2">
           <div className="mb-1.5 font-semibold text-foreground">{t('balanceTitle')}</div>
-          {hasLimit ? (
+          {hasLimit || itemHasLimit ? (
             <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
               {bal.annualLimit != null && (
                 <>
@@ -196,6 +221,30 @@ export function ClaimForm({
               )}
               {bal.maxClaimsPerYear != null && (
                 <div className="flex justify-between"><span className="text-muted-foreground">{t('claimsLeftThisYear')}</span><span className="tabular-nums">{Math.max(0, bal.maxClaimsPerYear - bal.claimsUsedThisYear)} / {bal.maxClaimsPerYear}</span></div>
+              )}
+              {/* THE SUB-CLAIM's OWN POT (e7eb5d83 rev 5), spanning both columns under the type's figures
+                  so it reads as an extra constraint rather than a competing one. Both are checked at
+                  submit and a claim that breaks either is refused, so both belong on the panel. */}
+              {itemHasLimit && itemBal != null && (
+                <div className="sm:col-span-2 mt-1 border-t border-border/60 pt-1">
+                  <div className="mb-0.5 font-medium text-foreground">{itemBal.itemName}</div>
+                  {itemBal.annualLimit != null && (
+                    <>
+                      <div className="flex justify-between"><span className="text-muted-foreground">{t('annualLimit')}</span><span className="tabular-nums">{rm(itemBal.annualLimit)}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">{t('alreadyClaimed')}</span><span className="tabular-nums">{rm(itemBal.usedThisYear)}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">{t('remainingBalance')}</span><span className="tabular-nums">{rm(itemBal.remainingThisYear ?? 0)}</span></div>
+                      {afterItemYear != null && (
+                        <div className="flex justify-between"><span className="text-muted-foreground">{t('balanceAfter')}</span><span className={`tabular-nums font-medium ${afterItemYear < 0 ? 'text-destructive' : 'text-foreground'}`}>{rm(afterItemYear)}</span></div>
+                      )}
+                    </>
+                  )}
+                  {itemBal.monthlyLimit != null && (
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t('monthlyRemaining')}</span><span className="tabular-nums">{rm(itemBal.remainingThisMonth ?? 0)}</span></div>
+                  )}
+                  {itemBal.perClaimCap != null && (
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t('perClaimCap')}</span><span className="tabular-nums">{rm(itemBal.perClaimCap)}</span></div>
+                  )}
+                </div>
               )}
             </div>
           ) : (

@@ -3,79 +3,114 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { setClaimPolicy, type ClaimRateConfig } from '@/core/claims';
+import { setGradeClaimLimits, type GradeLimitEdit } from '@/packs/claims/service';
 
 const BASE = '/admin/claims/limits';
 const fail = (e: unknown) => redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
-const numOrNull = (v: FormDataEntryValue | null): number | null => {
+
+const numOrNull = (v: unknown): number | null => {
   const s = String(v ?? '').trim();
-  return s === '' ? null : Number(s);
+  if (s === '') return null;
+  const n = Number(s);
+  if (!Number.isFinite(n)) throw new Error('Limits must be numbers');
+  return n;
 };
-const intOrNull = (v: FormDataEntryValue | null): number | null => {
+const intOrNull = (v: unknown): number | null => {
   const n = numOrNull(v);
   return n == null ? null : Math.trunc(n);
 };
+const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+
+/** One row as the grid serialises it. Everything arrives as a string because it came out of an input. */
+type PostedRow = {
+  claimTypeId?: unknown;
+  claimItemId?: unknown;
+  perClaimCap?: unknown;
+  monthlyLimit?: unknown;
+  annualBudget?: unknown;
+  maxClaimsPerYear?: unknown;
+  blockEnabled?: unknown;
+  blockLimit?: unknown;
+  blockLength?: unknown;
+  blockUnit?: unknown;
+};
 
 /**
- * Build the rate-config union from the form's `rateKind` select + its conditional input.
+ * SAVE EVERY CHANGED LIMIT FOR ONE JOB GRADE (e7eb5d83 rev 5, step 3).
  *
- * ⚠️ RETURNS `undefined` WHEN THE FORM CARRIES NO `rateKind` AT ALL, and that is the whole point of the
- * signature. `undefined` is the INHERIT arm of setClaimPolicy's tri-state: a form with no rate control on
- * it says nothing about rates and therefore cannot delete the rate already on the policy. The old version
- * of this function could not say "nothing" — it defaulted to `{kind:'receipt'}` — so every save posted a
- * rate whether or not one had been asked for. (Cleared deliberately? Post rateKind=receipt.)
+ * ⚠️ NOTE WHAT IS ABSENT: there is no rateKind, no ratePerKm, no fixedAmount, and no rateConfig passed to
+ * the service. That is the plan's promise — "saving limits will never touch a rate again" — and it works
+ * because setClaimPolicyTx treats an ABSENT rateConfig as INHERIT (step 1a) rather than as "clear it". The
+ * predecessor of this action always posted a rate whether one had been asked for or not, which is exactly
+ * how the company's live RM0.70/km mileage rate was one Save away from being deleted. `GradeLimitEdit`
+ * omits rateConfig from its own type, so re-introducing one here is a compile error rather than a habit.
  *
- * e7eb5d83 rev 5 step 1c — THE 'mileage_flat' BRANCH IS GONE. The select stopped offering it in r186 when
- * the rate per km moved to Claims → Mileage Rates, but the parser still honoured it, so a hand-rolled POST
- * could write a flat per-km scalar back onto a claim policy through a screen that does not have the field.
- * An unrecognised kind now REFUSES rather than falling through to 'receipt': falling through would turn a
- * forged value into a silent rate deletion, which is the failure this whole step exists to close.
+ * THE PAYLOAD IS UNTRUSTED, like any POST. The grid sends only the rows the admin actually edited, but a
+ * hand-rolled request can send anything: every field is re-parsed here, a non-numeric limit is refused
+ * rather than coerced to NaN, and the service re-validates each row (and refuses a sub-claim that does
+ * not belong to its claim type) inside the transaction.
  */
-function rateConfigFrom(formData: FormData): ClaimRateConfig | undefined {
-  const raw = formData.get('rateKind');
-  if (raw == null || String(raw).trim() === '') return undefined;
-  const kind = String(raw);
-  if (kind === 'fixed_allowance') return { kind: 'fixed_allowance', amount: Number(formData.get('fixedAmount') ?? 0) };
-  if (kind === 'receipt') return { kind: 'receipt' };
-  throw new Error(`Unknown rate kind: ${kind}`);
+/** PURE parse — no I/O and, deliberately, no redirect. See the action below for why that matters. */
+function rowsFrom(formData: FormData): GradeLimitEdit[] {
+  const raw = String(formData.get('payload') ?? '[]');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('Could not read the changed limits from this form');
+  }
+  if (!Array.isArray(parsed)) throw new Error('Could not read the changed limits from this form');
+  return (parsed as PostedRow[]).map((r) => {
+    const claimTypeId = str(r.claimTypeId);
+    if (!claimTypeId) throw new Error('A changed row arrived without a claim type');
+    // Per block is all-four-or-none. The tick is the switch: unticked sends the whole rule as null, which
+    // is "no per-block rule" and is every row on production today. blockStartOn is deliberately NEVER
+    // sent — the service inherits the anchor already on the rule rather than restarting the window, so
+    // editing an unrelated cap cannot silently move everybody's two-year boundary.
+    const blockOn = r.blockEnabled === true || r.blockEnabled === 'true' || r.blockEnabled === 'on';
+    return {
+      claimTypeId,
+      claimItemId: str(r.claimItemId) || null,
+      perClaimCap: numOrNull(r.perClaimCap),
+      monthlyLimit: numOrNull(r.monthlyLimit),
+      annualBudget: numOrNull(r.annualBudget),
+      maxClaimsPerYear: intOrNull(r.maxClaimsPerYear),
+      blockLength: blockOn ? intOrNull(r.blockLength) : null,
+      blockUnit: blockOn ? (str(r.blockUnit) || 'year') : null,
+      blockLimit: blockOn ? numOrNull(r.blockLimit) : null,
+      blockStartOn: null,
+    };
+  });
 }
 
-export async function setClaimPolicyAction(formData: FormData) {
+export async function setGradeClaimLimitsAction(formData: FormData) {
   const s = await getSession();
-  // Unlimited toggle ⇒ every amount/count limit is NULL (an all-null row IS "unlimited").
-  const unlimited = formData.get('unlimited') === 'on';
   const gradeId = String(formData.get('gradeId') ?? '').trim() || null;
-  // e7eb5d83 rev 4 point 3c — Per block is all-four-or-none. The tick is the switch: unticked (or the
-  // whole row Unlimited) sends all four as null, which is "no per-block rule" and is every row today.
-  // blockStartOn deliberately passes through EMPTY as null rather than as today's date: null is what
-  // makes setClaimPolicy inherit the anchor already on the rule instead of restarting the window.
-  const blockOn = !unlimited && formData.get('blockEnabled') === 'on';
-  const rawBlockStart = String(formData.get('blockStartOn') ?? '').trim();
+
+  // ⚠️ redirect() SIGNALS BY THROWING, so there is exactly ONE redirect in this function and it is the
+  // last statement. An earlier `redirect()` inside the try would be caught by the catch below and turned
+  // into an error banner reading "NEXT_REDIRECT" — the trap this repo has hit before.
+  let rows: GradeLimitEdit[] = [];
   try {
-    await setClaimPolicy(s, {
-      claimTypeId: String(formData.get('claimTypeId')),
-      gradeId,
-      annualBudget: unlimited ? null : numOrNull(formData.get('annualBudget')),
-      perClaimCap: unlimited ? null : numOrNull(formData.get('perClaimCap')),
-      monthlyLimit: unlimited ? null : numOrNull(formData.get('monthlyLimit')),
-      // e7eb5d83 point 3b — no lifetimeLimit read: the field left this screen. setClaimPolicy still
-      // ACCEPTS it (the column, the scope and the enforcement branch are untouched), so re-adding the
-      // input is the only change needed to bring it back.
-      maxClaimsPerYear: unlimited ? null : intOrNull(formData.get('maxClaimsPerYear')),
-      blockLength: blockOn ? intOrNull(formData.get('blockLength')) : null,
-      blockUnit: blockOn ? String(formData.get('blockUnit') ?? 'year') : null,
-      blockLimit: blockOn ? numOrNull(formData.get('blockLimit')) : null,
-      blockStartOn: blockOn && rawBlockStart !== '' ? rawBlockStart : null,
-      effectiveFrom: String(formData.get('effectiveFrom')),
-      rateConfig: rateConfigFrom(formData),
-    });
+    rows = rowsFrom(formData);
   } catch (e) {
     fail(e);
   }
+  if (rows.length > 0) {
+    try {
+      await setGradeClaimLimits(s, { gradeId, effectiveFrom: String(formData.get('effectiveFrom')), rows });
+    } catch (e) {
+      fail(e);
+    }
+  }
   revalidatePath(BASE);
-  // e7eb5d83 — the limits screen is now grade-first and its selection lives in ?gradeId=. Redirecting back
-  // without it would bounce the admin to the company-wide view after every save, which reads as the save
-  // having gone to the wrong grade.
+  // Nothing edited is NOT an error: an admin who opened a grade to look and pressed Save should be told
+  // nothing happened, not shown a red banner — and certainly not have nine identical versions written
+  // into an append-only table.
+  const message = rows.length === 0 ? 'No changes to save' : 'Claim limits saved';
+  // The limits screen is grade-first and its selection lives in ?gradeId=. Redirecting back without it
+  // would bounce the admin to the company-wide view after every save, which reads as the save having gone
+  // to the wrong grade.
   const back = gradeId ? `${BASE}?gradeId=${encodeURIComponent(gradeId)}` : BASE;
-  redirect(`${back}${gradeId ? '&' : '?'}toast=${encodeURIComponent('Claim limit saved')}`);
+  redirect(`${back}${gradeId ? '&' : '?'}toast=${encodeURIComponent(message)}`);
 }

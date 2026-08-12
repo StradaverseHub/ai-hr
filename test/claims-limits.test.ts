@@ -21,6 +21,7 @@ import {
   listClaimLimits,
   listClaimTypes,
   setClaimPolicy,
+  setGradeClaimLimits,
   setMileageRateTable,
   submitClaim,
 } from '../core/claims';
@@ -472,6 +473,80 @@ describe('ccbd0508 — claim limits by grade', () => {
       }).catch((e) => e);
       expect(err).toBeInstanceOf(Error);
       expect(err.message).toMatch(/does not belong to this claim type/);
+    });
+
+    it('STEP 3: a whole grade saves ATOMICALLY — an invalid row writes none of the others', async () => {
+      // A grid Save is ONE user action over up to nine rows. A partial write leaves the grade half
+      // configured with no way for the admin to tell which half landed, so setGradeClaimLimits opens one
+      // transaction and setClaimPolicyTx runs inside it.
+      const a = adminCtx(base);
+      const { typeId, out } = await medicalWithItems({ typeAnnual: null });
+      const err = await setGradeClaimLimits(a, {
+        gradeId: null,
+        effectiveFrom: '2026-06-01',
+        rows: [
+          { claimTypeId: typeId, claimItemId: null, annualBudget: 2000, perClaimCap: null },
+          { claimTypeId: typeId, claimItemId: out.id, annualBudget: 1000, perClaimCap: null },
+          // Refused by the service: a negative limit. It is the LAST row, so the two above have already
+          // been written inside the transaction when it throws.
+          { claimTypeId: typeId, claimItemId: null, annualBudget: -1, perClaimCap: null },
+        ],
+      }).catch((e) => e);
+      expect(err).toBeInstanceOf(Error);
+      const rows = await owner.db.select().from(schema.claimPolicy).where(eq(schema.claimPolicy.claimTypeId, typeId));
+      expect(rows.length).toBe(0); // nothing at all — not the two that "succeeded"
+    });
+
+    it('STEP 3: a grade save that touches Mileage leaves its rate_config INTACT', async () => {
+      // The two halves of this round meeting: the grid posts no rate (step 3) and the service inherits
+      // one when none is posted (step 1a). Either half alone would still have destroyed the company's
+      // RM0.70/km on the first Save that included the Mileage row.
+      const a = adminCtx(base);
+      const { id: mileageId } = await createClaimType(a, {
+        code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false, isMileage: true,
+      });
+      await setClaimPolicy(a, {
+        claimTypeId: mileageId, annualBudget: 100, perClaimCap: 100, effectiveFrom: '2026-01-01',
+        rateConfig: { kind: 'mileage_flat', ratePerKm: 0.7 },
+      });
+      await setGradeClaimLimits(a, {
+        gradeId: null,
+        effectiveFrom: '2026-06-01',
+        rows: [{ claimTypeId: mileageId, claimItemId: null, annualBudget: 250, perClaimCap: 120 }],
+      });
+      const p = await withTenant(a, (tx) => getActiveClaimPolicy(tx, mileageId, '2026-06-01', null));
+      expect(p?.annualBudget).toBe(250);
+      expect(p?.rateConfig).toEqual({ kind: 'mileage_flat', ratePerKm: 0.7 });
+    });
+
+    it('STEP 3: the same claim type twice in one save is refused', async () => {
+      // The screen cannot produce it; a forged POST can. Two rows for one key would close the version the
+      // other just opened, and the admin would see whichever arrived last with no hint the first was lost.
+      const a = adminCtx(base);
+      const { typeId } = await medicalWithItems({ typeAnnual: null });
+      const err = await setGradeClaimLimits(a, {
+        gradeId: null,
+        effectiveFrom: '2026-06-01',
+        rows: [
+          { claimTypeId: typeId, claimItemId: null, annualBudget: 1, perClaimCap: null },
+          { claimTypeId: typeId, claimItemId: null, annualBudget: 2, perClaimCap: null },
+        ],
+      }).catch((e) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err.message).toMatch(/twice in one save/);
+    });
+
+    it('STEP 4: the mileage claim type renders NO sub-claim limit rows, and its item is not touched', async () => {
+      // The reporter's second complaint. "RM1.00/km sitting under Claim Limits" is not a leftover rate
+      // FIELD — r186 removed those — it is a claim_item they created in June named "RM1.00/km", listed
+      // beside their real sub-claims. So the mileage type carries a line pointing at Mileage Rates and no
+      // sub-claim rows at all, and the ITEM IS NOT ARCHIVED OR DELETED: it is the reporter's data.
+      const page = readFileSync(new URL('../app/admin/claims/limits/page.tsx', import.meta.url), 'utf8');
+      expect(page).toMatch(/const subs = isMileage \? \[\] : r\.items;/);
+      expect(page).toMatch(/kind: 'mileage'/);
+      // Nothing on this screen archives or deletes an item — the only writes it can make are limits.
+      const code = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      expect(code).not.toMatch(/archiveClaimItem|deleteClaimItem/);
     });
 
     it('a sub-claim with no limit of its own is unlimited IN ITSELF and still bounded by its type', async () => {

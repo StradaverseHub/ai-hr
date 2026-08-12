@@ -892,61 +892,127 @@ function assertValidRateConfig(rc: ClaimRateConfig): void {
   }
 }
 
+/** The one input shape for a claim-limit write, named so setClaimPolicy and setClaimPolicyTx
+ *  cannot drift apart — the grade grid writes through the Tx form, everything else through the
+ *  wrapper, and both must mean exactly the same thing. (e7eb5d83 rev 5) */
+export type SetClaimPolicyInput = {
+  claimTypeId: string;
+  annualBudget: number | null;
+  perClaimCap: number | null;
+  effectiveFrom: string;
+  /**
+   * ⚠️ EXPLICIT TRI-STATE (e7eb5d83 rev 5, step 1a) — `undefined` and `null` mean DIFFERENT things:
+   *   • ABSENT (undefined) ⇒ INHERIT the rate config from the version this insert closes.
+   *   • null               ⇒ CLEAR it (the type goes back to plain 'receipt' pricing).
+   *   • a config           ⇒ replace it.
+   *
+   * This exists because it was a live money bug, not a nicety. A limits screen that does not ASK for a
+   * rate was still POSTing one: `rateConfigFrom()` always returned a config, so the first re-save of the
+   * Mileage limit would have written `{kind:'receipt'}` over `{kind:'mileage_flat', ratePerKm:0.7}` and
+   * stopped mileage claiming for the whole company with "No mileage rate has been set up". A caller that
+   * does not know about rates must not be able to destroy one by staying silent — the same inheritance
+   * blockStartOn already has, and for the same reason.
+   */
+  rateConfig?: ClaimRateConfig | null;
+  /** null (or absent) = the all-grades default row; a grade id = a per-grade limit. (ccbd0508) */
+  gradeId?: string | null;
+  /**
+   * null (or absent) = a limit on the claim TYPE — every caller before 0435. An id = a limit on that
+   * one sub-claim, which is checked IN ADDITION to the type's, never instead of it. (e7eb5d83 rev 5)
+   *
+   * ⚠️ THIS IS PART OF THE VERSIONING KEY, not just a column on the insert. The close-and-insert below
+   * compares (type, grade, item) three ways null-safe, and the item arm is the one that destroys data
+   * if it is forgotten: setting Outpatient's limit would close MEDICAL 001's own open version, so the
+   * claim type's RM1,000 would not change value — it would stop existing, for everybody, silently.
+   */
+  claimItemId?: string | null;
+  monthlyLimit?: number | null;
+  lifetimeLimit?: number | null;
+  maxClaimsPerYear?: number | null;
+  /**
+   * PER BLOCK (e7eb5d83 rev 4). Give length + unit + limit to set a rule; omit all three to clear it.
+   *
+   * blockStartOn is OPTIONAL and that is the important part: when a rule is being set and no anchor is
+   * given, the anchor is INHERITED from the version this insert closes, falling back to 1 January of
+   * effectiveFrom's year only when there is nothing to inherit. An admin who edits the per-claim cap
+   * next month and re-posts the same block rule must not silently restart everybody's two-year window.
+   */
+  blockLength?: number | null;
+  blockUnit?: string | null;
+  blockLimit?: number | null;
+  blockStartOn?: string | null;
+};
+
+
 /**
  * Set the budget policy for a claim type, effective-dated (CLOSE the open version + INSERT a new one — never
  * UPDATE business columns in place). NULL budget/cap = unlimited / no cap. `rateConfig` (optional) carries the
  * per-type calculation kind; because policies are append-only, a rate change is a new effective-dated version
  * with full history — no destructive in-place overwrite, no silent re-pricing of historical claims.
  */
-export async function setClaimPolicy(
+export async function setClaimPolicy(ctx: SessionContext, p: SetClaimPolicyInput): Promise<{ id: string }> {
+  return withTenant(ctx, (tx) => setClaimPolicyTx(tx, ctx, p));
+}
+
+/** One row of a grade-wide save: a claim type, or one of its sub-claims, with the limits typed into it. */
+export type GradeLimitEdit = Omit<SetClaimPolicyInput, 'effectiveFrom' | 'gradeId' | 'rateConfig'>;
+
+/**
+ * Write EVERY changed limit for ONE job grade, atomically, on ONE effective-from date (e7eb5d83 rev 5).
+ *
+ * This is the service behind the grade grid, and it exists because the old screen made an admin open a
+ * one-claim-type-at-a-time form once per row: four claim types on a grade meant four trips, and a
+ * sub-claim could not be reached at all. The reporter's words were "click GRADE 12, type down the page,
+ * press Save once".
+ *
+ * ONE TRANSACTION, so a grade is never half-configured. If row six is invalid, rows one to five are not
+ * written either — the admin fixes the message and presses Save again, rather than trying to work out
+ * which of nine rows landed.
+ *
+ * ONE effective-from FOR THE WHOLE SAVE. Per-row dates would let an admin write versions that interleave
+ * in an order they never chose, and there is no screen affordance for it in the approved design.
+ *
+ * ⚠️ IT NEVER SENDS A rateConfig, AND `GradeLimitEdit` MAKES THAT A TYPE ERROR RATHER THAN A CONVENTION.
+ * That is the promise in the plan — "saving limits will never touch a rate again" — and it is only true
+ * because setClaimPolicyTx treats an absent rateConfig as INHERIT (step 1a). A grid Save touches every row
+ * of the grade, so without both halves this would have been the fastest possible way to destroy the
+ * company's mileage rate.
+ */
+export async function setGradeClaimLimits(
   ctx: SessionContext,
-  p: {
-    claimTypeId: string;
-    annualBudget: number | null;
-    perClaimCap: number | null;
-    effectiveFrom: string;
-    /**
-     * ⚠️ EXPLICIT TRI-STATE (e7eb5d83 rev 5, step 1a) — `undefined` and `null` mean DIFFERENT things:
-     *   • ABSENT (undefined) ⇒ INHERIT the rate config from the version this insert closes.
-     *   • null               ⇒ CLEAR it (the type goes back to plain 'receipt' pricing).
-     *   • a config           ⇒ replace it.
-     *
-     * This exists because it was a live money bug, not a nicety. A limits screen that does not ASK for a
-     * rate was still POSTing one: `rateConfigFrom()` always returned a config, so the first re-save of the
-     * Mileage limit would have written `{kind:'receipt'}` over `{kind:'mileage_flat', ratePerKm:0.7}` and
-     * stopped mileage claiming for the whole company with "No mileage rate has been set up". A caller that
-     * does not know about rates must not be able to destroy one by staying silent — the same inheritance
-     * blockStartOn already has, and for the same reason.
-     */
-    rateConfig?: ClaimRateConfig | null;
-    /** null (or absent) = the all-grades default row; a grade id = a per-grade limit. (ccbd0508) */
-    gradeId?: string | null;
-    /**
-     * null (or absent) = a limit on the claim TYPE — every caller before 0435. An id = a limit on that
-     * one sub-claim, which is checked IN ADDITION to the type's, never instead of it. (e7eb5d83 rev 5)
-     *
-     * ⚠️ THIS IS PART OF THE VERSIONING KEY, not just a column on the insert. The close-and-insert below
-     * compares (type, grade, item) three ways null-safe, and the item arm is the one that destroys data
-     * if it is forgotten: setting Outpatient's limit would close MEDICAL 001's own open version, so the
-     * claim type's RM1,000 would not change value — it would stop existing, for everybody, silently.
-     */
-    claimItemId?: string | null;
-    monthlyLimit?: number | null;
-    lifetimeLimit?: number | null;
-    maxClaimsPerYear?: number | null;
-    /**
-     * PER BLOCK (e7eb5d83 rev 4). Give length + unit + limit to set a rule; omit all three to clear it.
-     *
-     * blockStartOn is OPTIONAL and that is the important part: when a rule is being set and no anchor is
-     * given, the anchor is INHERITED from the version this insert closes, falling back to 1 January of
-     * effectiveFrom's year only when there is nothing to inherit. An admin who edits the per-claim cap
-     * next month and re-posts the same block rule must not silently restart everybody's two-year window.
-     */
-    blockLength?: number | null;
-    blockUnit?: string | null;
-    blockLimit?: number | null;
-    blockStartOn?: string | null;
-  },
+  p: { gradeId: string | null; effectiveFrom: string; rows: GradeLimitEdit[] },
+): Promise<{ written: number }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveFrom)) throw new Error('effectiveFrom must be YYYY-MM-DD');
+  if (p.rows.length === 0) return { written: 0 };
+  // A duplicated (type, item) inside one save would close the version its own sibling just opened, and the
+  // admin would see whichever arrived last with no hint that the other was discarded. The screen cannot
+  // produce one; a forged POST can.
+  const seen = new Set<string>();
+  for (const r of p.rows) {
+    const key = `${r.claimTypeId}:${r.claimItemId ?? ''}`;
+    if (seen.has(key)) throw new Error('The same claim type or sub-claim appears twice in one save');
+    seen.add(key);
+  }
+  return withTenant(ctx, async (tx) => {
+    for (const row of p.rows) {
+      await setClaimPolicyTx(tx, ctx, { ...row, gradeId: p.gradeId, effectiveFrom: p.effectiveFrom });
+    }
+    return { written: p.rows.length };
+  });
+}
+
+/**
+ * setClaimPolicy's BODY, running inside a caller-provided transaction (e7eb5d83 rev 5).
+ *
+ * Extracted so the grade grid can write every changed row of one grade in ONE transaction. That is
+ * not a performance choice: a grid Save is a single user action over up to nine rows, and a partial
+ * one leaves the grade half-configured with no way for the admin to tell which half landed. The
+ * public wrapper above keeps every existing caller on the one-row-one-transaction path unchanged.
+ */
+export async function setClaimPolicyTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: SetClaimPolicyInput,
 ): Promise<{ id: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveFrom)) throw new Error('effectiveFrom must be YYYY-MM-DD');
   if (p.annualBudget != null && p.annualBudget < 0) throw new Error('Annual budget must be ≥ 0');
@@ -979,105 +1045,103 @@ export async function setClaimPolicy(
     }
   }
 
-  return withTenant(ctx, async (tx) => {
-    // A sub-claim limit must belong to the claim type it is being filed under. Checked in the SERVICE, not
-    // only by the foreign key: the FK proves the item exists, not that it is an item OF THIS TYPE, and a
-    // policy row pointing at another type's item would be a limit no claim could ever match.
-    if (claimItemId != null) {
-      const [it] = await tx
-        .select({ id: claimItem.id })
-        .from(claimItem)
-        .where(and(eq(claimItem.id, claimItemId), eq(claimItem.claimTypeId, p.claimTypeId), isNull(claimItem.archivedAt)))
-        .limit(1);
-      if (!it) throw new Error('That sub-claim does not belong to this claim type');
-    }
-
-    /**
-     * THE VERSIONING KEY: (claim type, grade, sub-claim), compared THREE WAYS NULL-SAFE.
-     *
-     * Written once and used by both statements below, because the read that inherits and the update that
-     * closes MUST agree — if they ever drift, a version is closed whose anchor and rate were inherited
-     * from a different row. `= NULL` is never true in SQL, so each dimension needs its IS NULL arm; the
-     * grade arm has been here since ccbd0508 and the item arm is 0435's, and it is the dangerous one:
-     * without it, saving Outpatient's limit closes MEDICAL 001's own open version.
-     */
-    const versionKey = and(
-      eq(claimPolicy.claimTypeId, p.claimTypeId),
-      isNull(claimPolicy.validTo),
-      gradeId == null ? isNull(claimPolicy.gradeId) : eq(claimPolicy.gradeId, gradeId),
-      claimItemId == null ? isNull(claimPolicy.claimItemId) : eq(claimPolicy.claimItemId, claimItemId),
-    );
-
-    // The version this insert is about to close, read BEFORE closing it — the only place the previous
-    // anchor and the previous rate still exist. Carrying block_start_on forward from here is what stops an
-    // unrelated edit (a new per-claim cap, a rate change) from restarting every employee's block; carrying
-    // rate_config forward is what stops a screen that never asked for a rate from silently deleting one.
-    const [prevOpen] = await tx
-      .select({ blockStartOn: claimPolicy.blockStartOn, rateConfig: claimPolicy.rateConfig })
-      .from(claimPolicy)
-      .where(versionKey)
+  // A sub-claim limit must belong to the claim type it is being filed under. Checked in the SERVICE, not
+  // only by the foreign key: the FK proves the item exists, not that it is an item OF THIS TYPE, and a
+  // policy row pointing at another type's item would be a limit no claim could ever match.
+  if (claimItemId != null) {
+    const [it] = await tx
+      .select({ id: claimItem.id })
+      .from(claimItem)
+      .where(and(eq(claimItem.id, claimItemId), eq(claimItem.claimTypeId, p.claimTypeId), isNull(claimItem.archivedAt)))
       .limit(1);
-    const blockStartOn = wantsBlock
-      ? (p.blockStartOn ?? prevOpen?.blockStartOn ?? `${p.effectiveFrom.slice(0, 4)}-01-01`)
-      : null;
-    // The tri-state resolved: `undefined` inherits, `null` clears. `??` would be wrong here — it cannot
-    // tell "the caller said clear it" from "the caller said nothing", and collapsing the two is exactly
-    // the bug this guards against, in the other direction.
-    const rateConfig: ClaimRateConfig | null =
-      p.rateConfig === undefined ? (prevOpen?.rateConfig ?? null) : p.rateConfig;
+    if (!it) throw new Error('That sub-claim does not belong to this claim type');
+  }
 
-    // Close the currently-open version for THIS (type, grade, sub-claim) only (half-open validity), on the
-    // same key the inheritance above was read under: changing the Executive-Medical limit never closes the
-    // Manager-Medical row, and setting Outpatient's never closes Medical's.
-    await tx.update(claimPolicy).set({ validTo: p.effectiveFrom }).where(versionKey);
-    const [row] = await tx
-      .insert(claimPolicy)
-      .values({
-        tenantId: ctx.tenantId,
-        claimTypeId: p.claimTypeId,
-        gradeId,
-        claimItemId,
-        annualBudget: p.annualBudget == null ? null : p.annualBudget.toFixed(2),
-        perClaimCap: p.perClaimCap == null ? null : p.perClaimCap.toFixed(2),
-        monthlyLimit: p.monthlyLimit == null ? null : p.monthlyLimit.toFixed(2),
-        lifetimeLimit: p.lifetimeLimit == null ? null : p.lifetimeLimit.toFixed(2),
-        maxClaimsPerYear,
-        rateConfig,
-        blockLength: wantsBlock ? p.blockLength : null,
-        blockUnit: wantsBlock ? p.blockUnit : null,
-        blockLimit: wantsBlock && p.blockLimit != null ? p.blockLimit.toFixed(2) : null,
-        blockStartOn,
-        validFrom: p.effectiveFrom,
-      })
-      .returning({ id: claimPolicy.id });
-    await appendEvent(tx, {
+  /**
+   * THE VERSIONING KEY: (claim type, grade, sub-claim), compared THREE WAYS NULL-SAFE.
+   *
+   * Written once and used by both statements below, because the read that inherits and the update that
+   * closes MUST agree — if they ever drift, a version is closed whose anchor and rate were inherited
+   * from a different row. `= NULL` is never true in SQL, so each dimension needs its IS NULL arm; the
+   * grade arm has been here since ccbd0508 and the item arm is 0435's, and it is the dangerous one:
+   * without it, saving Outpatient's limit closes MEDICAL 001's own open version.
+   */
+  const versionKey = and(
+    eq(claimPolicy.claimTypeId, p.claimTypeId),
+    isNull(claimPolicy.validTo),
+    gradeId == null ? isNull(claimPolicy.gradeId) : eq(claimPolicy.gradeId, gradeId),
+    claimItemId == null ? isNull(claimPolicy.claimItemId) : eq(claimPolicy.claimItemId, claimItemId),
+  );
+
+  // The version this insert is about to close, read BEFORE closing it — the only place the previous
+  // anchor and the previous rate still exist. Carrying block_start_on forward from here is what stops an
+  // unrelated edit (a new per-claim cap, a rate change) from restarting every employee's block; carrying
+  // rate_config forward is what stops a screen that never asked for a rate from silently deleting one.
+  const [prevOpen] = await tx
+    .select({ blockStartOn: claimPolicy.blockStartOn, rateConfig: claimPolicy.rateConfig })
+    .from(claimPolicy)
+    .where(versionKey)
+    .limit(1);
+  const blockStartOn = wantsBlock
+    ? (p.blockStartOn ?? prevOpen?.blockStartOn ?? `${p.effectiveFrom.slice(0, 4)}-01-01`)
+    : null;
+  // The tri-state resolved: `undefined` inherits, `null` clears. `??` would be wrong here — it cannot
+  // tell "the caller said clear it" from "the caller said nothing", and collapsing the two is exactly
+  // the bug this guards against, in the other direction.
+  const rateConfig: ClaimRateConfig | null =
+    p.rateConfig === undefined ? (prevOpen?.rateConfig ?? null) : p.rateConfig;
+
+  // Close the currently-open version for THIS (type, grade, sub-claim) only (half-open validity), on the
+  // same key the inheritance above was read under: changing the Executive-Medical limit never closes the
+  // Manager-Medical row, and setting Outpatient's never closes Medical's.
+  await tx.update(claimPolicy).set({ validTo: p.effectiveFrom }).where(versionKey);
+  const [row] = await tx
+    .insert(claimPolicy)
+    .values({
       tenantId: ctx.tenantId,
-      aggregateType: 'claim-policy',
-      aggregateId: row.id,
-      eventType: 'claim-policy.set',
-      actor: actorOf(ctx),
-      // limits + rateConfig are RATES/config (not a claim amount) — safe to log (ADR-0030).
-      payload: {
-        claimTypeId: p.claimTypeId,
-        gradeId,
-        claimItemId,
-        annualBudget: p.annualBudget,
-        perClaimCap: p.perClaimCap,
-        monthlyLimit: p.monthlyLimit ?? null,
-        lifetimeLimit: p.lifetimeLimit ?? null,
-        maxClaimsPerYear,
-        effectiveFrom: p.effectiveFrom,
-        // The RESOLVED config (inherited or supplied) — the audit trail must show what was WRITTEN, not
-        // what the caller happened to type, or an inherited rate looks like a rate that was deleted.
-        rateConfig,
-        blockLength: wantsBlock ? p.blockLength : null,
-        blockUnit: wantsBlock ? p.blockUnit : null,
-        blockLimit: wantsBlock ? p.blockLimit : null,
-        blockStartOn,
-      },
-    });
-    return { id: row.id };
+      claimTypeId: p.claimTypeId,
+      gradeId,
+      claimItemId,
+      annualBudget: p.annualBudget == null ? null : p.annualBudget.toFixed(2),
+      perClaimCap: p.perClaimCap == null ? null : p.perClaimCap.toFixed(2),
+      monthlyLimit: p.monthlyLimit == null ? null : p.monthlyLimit.toFixed(2),
+      lifetimeLimit: p.lifetimeLimit == null ? null : p.lifetimeLimit.toFixed(2),
+      maxClaimsPerYear,
+      rateConfig,
+      blockLength: wantsBlock ? p.blockLength : null,
+      blockUnit: wantsBlock ? p.blockUnit : null,
+      blockLimit: wantsBlock && p.blockLimit != null ? p.blockLimit.toFixed(2) : null,
+      blockStartOn,
+      validFrom: p.effectiveFrom,
+    })
+    .returning({ id: claimPolicy.id });
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'claim-policy',
+    aggregateId: row.id,
+    eventType: 'claim-policy.set',
+    actor: actorOf(ctx),
+    // limits + rateConfig are RATES/config (not a claim amount) — safe to log (ADR-0030).
+    payload: {
+      claimTypeId: p.claimTypeId,
+      gradeId,
+      claimItemId,
+      annualBudget: p.annualBudget,
+      perClaimCap: p.perClaimCap,
+      monthlyLimit: p.monthlyLimit ?? null,
+      lifetimeLimit: p.lifetimeLimit ?? null,
+      maxClaimsPerYear,
+      effectiveFrom: p.effectiveFrom,
+      // The RESOLVED config (inherited or supplied) — the audit trail must show what was WRITTEN, not
+      // what the caller happened to type, or an inherited rate looks like a rate that was deleted.
+      rateConfig,
+      blockLength: wantsBlock ? p.blockLength : null,
+      blockUnit: wantsBlock ? p.blockUnit : null,
+      blockLimit: wantsBlock ? p.blockLimit : null,
+      blockStartOn,
+    },
   });
+  return { id: row.id };
 }
 
 /**
