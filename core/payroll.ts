@@ -450,6 +450,100 @@ export async function markBatchNeedsRecalc(
 }
 
 /**
+ * ── Feedback 017d9c25 (r187) — a Pay Item save marks the runs it makes stale ───────────────────────
+ *
+ * WHY THIS EXISTS. Keying a one-off transaction against a processed run already marks it (the four
+ * calls in core/payroll-individual-txn.ts); recomputing attendance already marks it. Changing a Pay
+ * Item's statutory configuration did NOT — which is exactly why the reporter's January figures sat
+ * there looking settled after they unticked EPF. The run said nothing, and Close would have accepted
+ * it. Now the run says "needs reprocessing", names the employees, and refuses to close (the refusal
+ * already exists at closeBatch; app/payroll/[batchId]/page.tsx already renders `needsRecalc`).
+ *
+ * WHO IS AFFECTED — three signals, unioned, because no single one is complete:
+ *   1. the payslip itemises the code in `statutory.componentLines` (the r-862ed0ad provenance). This is
+ *      the strongest signal and covers the reporter's case, but it is absent on every payslip written
+ *      before that item shipped, and on any run where the component resolved to zero;
+ *   2. the employment holds a live (non-superseded) `employment_pay_component` row for the component —
+ *      covers a recurring item on a run whose slips predate componentLines;
+ *   3. a one-off ledger row (`payroll_individual_txn`) on the batch names the component.
+ *
+ * ONLY PROCESSED, UNCLOSED RUNS. `markBatchNeedsRecalc` itself refuses anything but `processed`, so a
+ * draft (nothing to be stale) and a closed run (frozen; 0011 guards it at trigger level) are both
+ * no-ops here — the status filter below is a narrowing for cost, not the correctness boundary.
+ *
+ * ONLY A STATUTORY-RELEVANT EDIT. The caller decides, from the `changed` field-name list the save
+ * already computes, via `isStatutoryRelevantChange` — renaming a Pay Item moves no money and must not
+ * make every open run in the tenant look stale.
+ */
+export async function markRunsAffectedByPayComponent(
+  ctx: SessionContext,
+  p: { componentId: string; code: string },
+): Promise<{ batchId: string; employmentIds: string[] }[]> {
+  return withTenant(ctx, async (tx) => {
+    const open = await tx
+      .select({ id: payrollBatch.id })
+      .from(payrollBatch)
+      .where(and(eq(payrollBatch.tenantId, ctx.tenantId), eq(payrollBatch.status, 'processed')));
+    if (open.length === 0) return [];
+    const openIds = open.map((b) => b.id);
+
+    const byBatch = new Map<string, Set<string>>();
+    const add = (batchId: string, employmentId: string) => {
+      const s = byBatch.get(batchId) ?? new Set<string>();
+      s.add(employmentId);
+      byBatch.set(batchId, s);
+    };
+
+    // (1) the payslip itemises this code. `componentLines` is a jsonb ARRAY of {code,name,amount,buckets},
+    // so the containment operator reads it directly — no per-row unnest, and it uses the jsonb index shape.
+    const itemised = await tx
+      .select({ batchId: payslip.batchId, employmentId: payslip.employmentId })
+      .from(payslip)
+      .where(
+        and(
+          inArray(payslip.batchId, openIds),
+          sql`${payslip.statutory} -> 'componentLines' @> ${JSON.stringify([{ code: p.code }])}::jsonb`,
+        ),
+      );
+    for (const r of itemised) add(r.batchId, r.employmentId);
+
+    // (2) a live recurring assignment of this component, on an employment that has a slip on the run.
+    const recurring = await tx
+      .select({ batchId: payslip.batchId, employmentId: payslip.employmentId })
+      .from(payslip)
+      .innerJoin(employmentPayComponent, eq(employmentPayComponent.employmentId, payslip.employmentId))
+      .where(
+        and(
+          inArray(payslip.batchId, openIds),
+          eq(employmentPayComponent.componentId, p.componentId),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      );
+    for (const r of recurring) add(r.batchId, r.employmentId);
+
+    // (3) a one-off ledger row on the run naming this component.
+    const oneOff = await tx
+      .select({ batchId: payrollIndividualTxn.batchId, employmentId: payrollIndividualTxn.employmentId })
+      .from(payrollIndividualTxn)
+      .where(
+        and(
+          inArray(payrollIndividualTxn.batchId, openIds),
+          eq(payrollIndividualTxn.componentId, p.componentId),
+        ),
+      );
+    for (const r of oneOff) if (r.batchId) add(r.batchId, r.employmentId);
+
+    const marked: { batchId: string; employmentIds: string[] }[] = [];
+    for (const [batchId, set] of byBatch) {
+      const employmentIds = [...set];
+      await markBatchNeedsRecalc(tx, ctx, { batchId, employmentIds });
+      marked.push({ batchId, employmentIds });
+    }
+    return marked;
+  });
+}
+
+/**
  * Clear the mark for the employments that have just been recalculated. When nothing is left waiting, the
  * timestamp is cleared with the set — the two are always written together, so "marked but nobody waiting"
  * is not a state this can produce.
