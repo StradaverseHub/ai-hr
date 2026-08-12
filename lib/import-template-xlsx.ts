@@ -29,6 +29,13 @@
 import { IMPORT_COLUMNS } from './import-schema';
 import { employeeTemplate } from './import-template';
 import { PAYROLL_HISTORY_HEADERS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
+import {
+  TXN_IMPORT_HEADERS,
+  TXN_IMPORT_SAMPLE_ROWS,
+  TXN_IMPORT_SHEETS,
+  TXN_IMPORT_TEXT_COLUMN_INDEXES,
+  type TxnImportKind,
+} from './payroll-txn-import-schema';
 
 /** Words that must not be title-cased letter-by-letter. Everything else is Capitalised. */
 const ACRONYMS: Record<string, string> = { ic: 'IC', epf: 'EPF', socso: 'SOCSO', eis: 'EIS' };
@@ -207,4 +214,123 @@ export function buildImportCodeRows(
     [headings.code, headings.label, headings.destination, headings.direction],
     ...codes.map((c) => [c.code, c.label, c.destination, c.direction]),
   ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// PAYROLL TRANSACTIONS (5c65367d) — the Fixed / Individual Transaction import workbooks
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The two transaction templates, built by the SAME function the test parses back — the pattern
+ * `buildPayrollHistoryWorkbook` above established, and it exists for one reason: "the template has the
+ * right sheets and headings" is only worth something if the artifact HR receives is the artifact that
+ * was checked, not a re-implementation of it.
+ *
+ * SHEET ORDER IS LOAD-BEARING. `workbookToCsvText` reads the FIRST worksheet, so the blank fill-in sheet
+ * is first and every reference list comes after it. Reordering these silently changes which sheet an
+ * upload is read from.
+ *
+ * THE REFERENCE SHEETS ARE LISTS, NOT IN-CELL DROPDOWNS, and that limit is stated on the Instructions
+ * line rather than hidden: Excel's data-validation lives in a part of the file format the SheetJS
+ * community build does not write. Promising a clickable dropdown would mean shipping a second xlsx
+ * writer. The lists give the exact accepted spellings; the upload check names anything that does not
+ * match, by row.
+ *
+ * The values come from the SAME catalogues the validator resolves against (the screen reads them and
+ * passes them in), so a code on a sheet is a code that validates — there is no second list to drift.
+ */
+export type TxnTemplateReference = {
+  /** Column headings for each reference sheet, supplied translated by the screen. */
+  headings: {
+    employees: string;
+    employeeId: string;
+    employeeName: string;
+    company: string;
+    department: string;
+    payItems: string;
+    payItemCode: string;
+    payItemName: string;
+    payItemKind: string;
+    payItemInput: string;
+    cycles: string;
+    cycleCode: string;
+    cycleLabel: string;
+    kinds: string;
+    kindCode: string;
+    kindLabel: string;
+    example: string;
+    note: string;
+  };
+  employees: { code: string; name: string; company: string; department: string }[];
+  payItems: { code: string; name: string; kind: string; input: string }[];
+  /** Fixed only — the run_type vocabulary with its own labels. */
+  cycles: { code: string; label: string }[];
+  /** Individual only — the ledger's five transaction kinds with their labels. */
+  kinds: { code: string; label: string }[];
+};
+
+/**
+ * Build one screen's import template.
+ *
+ * `kind` picks the column contract, the sheet name, the sample rows and which of the two vocabulary
+ * sheets is appended — everything else is identical, which is the point: the reporter asked for "a shared
+ * UI pattern between Fixed Transaction and Individual Transaction, while each screen continues to apply
+ * its own transaction rules".
+ */
+export async function buildTxnImportWorkbook(kind: TxnImportKind, ref: TxnTemplateReference): Promise<Uint8Array> {
+  const { buildXlsx } = await import('./spreadsheet');
+  const headers = [...TXN_IMPORT_HEADERS[kind]];
+  const extraSheets: { name: string; rows: (string | number)[][] }[] = [
+    {
+      name: TXN_IMPORT_SHEETS.example,
+      rows: [[ref.headings.note], [], headers, ...TXN_IMPORT_SAMPLE_ROWS[kind].map((r) => [...r])],
+    },
+    {
+      name: TXN_IMPORT_SHEETS.employees,
+      rows: [
+        [ref.headings.employees],
+        [],
+        [ref.headings.employeeId, ref.headings.employeeName, ref.headings.company, ref.headings.department],
+        ...ref.employees.map((e) => [e.code, e.name, e.company, e.department]),
+      ],
+    },
+    {
+      name: TXN_IMPORT_SHEETS.payItems,
+      rows: [
+        [ref.headings.payItems],
+        [],
+        [ref.headings.payItemCode, ref.headings.payItemName, ref.headings.payItemKind, ref.headings.payItemInput],
+        ...ref.payItems.map((c) => [c.code, c.name, c.kind, c.input]),
+      ],
+    },
+  ];
+  // Sheet 5 differs by screen because the vocabularies do. Fixed carries a Payroll Cycle tag (the
+  // run_type enum); Individual carries a transaction Kind. Shipping both on both would put a column on
+  // the reference that the contract beside it does not have.
+  if (kind === 'fixed') {
+    extraSheets.push({
+      name: TXN_IMPORT_SHEETS.cycles,
+      rows: [
+        [ref.headings.cycles],
+        [],
+        [ref.headings.cycleCode, ref.headings.cycleLabel],
+        ...ref.cycles.map((c) => [c.code, c.label]),
+      ],
+    });
+  } else {
+    extraSheets.push({
+      name: TXN_IMPORT_SHEETS.kinds,
+      rows: [
+        [ref.headings.kinds],
+        [],
+        [ref.headings.kindCode, ref.headings.kindLabel],
+        ...ref.kinds.map((c) => [c.code, c.label]),
+      ],
+    });
+  }
+  return buildXlsx(headers, [], {
+    sheetName: TXN_IMPORT_SHEETS.data[kind],
+    textColumns: [...TXN_IMPORT_TEXT_COLUMN_INDEXES[kind]],
+    extraSheets,
+  });
 }

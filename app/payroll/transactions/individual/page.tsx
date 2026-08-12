@@ -8,6 +8,8 @@ import { payRuleDerivesAmount, payRuleInputUnit, type PayRule } from '@/core/pay
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { ErrorBanner, PageHeader } from '@/components/ui';
 import { TxnWorkspace, type TxnBatch, type TxnEmployee } from './txn-workspace';
+import { TxnImportButtons } from '../import-excel/txn-import-dialog';
+import { buildTxnTemplateReference } from '../import-excel/reference';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 
 /**
@@ -126,12 +128,21 @@ export default async function IndividualTransactionPage({
   ]);
   const errorMessage = error && errorKeys.has(error) ? t(`individual.${error}`) : error;
 
+  // 5c65367d — the Excel import's reference sheets, read from the same catalogues the validator resolves
+  // against. Built here rather than inside the template builder because that module is client-safe and a
+  // `db/` import in it would drag the data layer into the browser bundle.
+  const importReference = await buildTxnTemplateReference(s, scopeIds);
+
   return (
     <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader
         back={{ href: '/payroll/transactions', label: t('title') }}
         title={t('individual.title')}
         description={t('individual.subtitle')}
+        // 5c65367d — Import Excel + Download Template, the same pair as Fixed Transaction and the same
+        // component. In the page header rather than beside Add, because Add belongs to ONE selected
+        // employee and an import does not.
+        actions={<TxnImportButtons kind="individual" reference={importReference} />}
       />
 
       {!typedComponentsOn && (
