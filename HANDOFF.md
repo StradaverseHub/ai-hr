@@ -1090,14 +1090,23 @@ method or carry-forward is WRONG.**
 
 ---
 
-## ⚠️ A BRANCH *IS* IN FLIGHT — `build/r186`, EIGHT ITEMS, BUILT AND NOT DEPLOYED
+## ⚠️ FOUR BRANCHES ARE IN FLIGHT — r187, EIGHT APPROVED ITEMS, BUILT-OR-BUILDING, NOT DEPLOYED
 
-`main@468fc827` is r185 and IS deployed (proved by dry-run rsync, 2026-08-12). **`build/r186` is NOT
-merged and NOT deployed**: eight items, migrations `0428` and `0429`, 64 files, +5418/−1450, tsc clean,
-i18n clean, catalogues audited. It was awaiting a green gate at the time of writing — **check
-`git log --oneline main..build/r186` and re-gate before assuming either way.**
+`main@bed6c212` is r185 + r186 and IS deployed (proved by dry-run rsync, 2026-08-12). **r186's worktrees
+are pruned and its branches are merged.**
 
-Worktrees for it are under `.claude/worktrees/r186-*`; prune them once merged.
+**NOT merged and NOT deployed:** `build/r187-stat` (`017d9c25` → `2961a7ae`, statutory — **the highest-risk
+work: it moves EPF, SOCSO, EIS and PCB on every currently-open run**), `build/r187-txn` (`1372d169` →
+`4e403268` → `5c65367d`), `build/r187-people` (`579255c3`), `build/r187-attend` (`2166ef79`, stage one,
+migration `0434`). Migrations `0430`–`0434` are handed out; **check
+`git log --oneline main..build/r187-*` and re-gate before assuming either way.**
+
+⚠️ **DO NOT BUILD `017d9c25` AND ANYTHING ELSE AGAINST THE SAME OPEN PERIODS AT ONCE.** Its fix changes
+EPF, PCB and net pay on every open run, and r186 has just landed attendance and overtime changes onto
+those same runs.
+
+⚠️ **`2f889bae` IS APPROVED AND MUST NOT BE BUILT AS WRITTEN** — see The board, above. Its step 7 reverses
+what r185 shipped; it needs a re-plan, not a build.
 
 Every OTHER unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed, ancestrally
 unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main by another route: their
