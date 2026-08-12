@@ -43,6 +43,13 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { employmentPayComponent, payComponent } from '../db/schema';
 import { listEmployees } from './read';
+// ADR-0080 D9 — payroll is a PACK, and this module is spine, so every payroll service comes through the
+// FACADE rather than reaching into core/pay-components, core/pay-rule, core/payroll-individual-txn or
+// core/payroll directly. Importing those turns test/payroll-pack-drift.test.ts red, and the fix is never
+// test/pack-drift-allowlist.json: that list is audited kernel-contract debt and its own failure message
+// says it only ever shrinks. The facade re-exports all four with `export *`, so every symbol below
+// resolves unchanged, and seven core/ files already import a pack facade this way (absence-days, admin,
+// attendance-recompute, entitlements, movement-apply, operator, schema-explorer) — no new cycle.
 import {
   FIXED_TRANSACTION_CYCLES,
   FixedTransactionAmountError,
@@ -55,9 +62,9 @@ import {
   deriveIndividualTxnAmount,
   setEmploymentPayComponent,
   type FixedTransactionCycle,
-} from './pay-components';
-import { payRuleInputUnit, PayRuleEvalError, type PayRule } from './pay-rule';
-import {
+  payRuleInputUnit,
+  PayRuleEvalError,
+  type PayRule,
   AmountNotPositiveError,
   ComponentRequiredError,
   DuplicateTxnRowError,
@@ -68,8 +75,10 @@ import {
   createIndividualTxnsBulk,
   isTxnKind,
   isPayPeriod,
-} from './payroll-individual-txn';
-import { BatchNotDraftError, batchEditImpact, listBatches } from './payroll';
+  BatchNotDraftError,
+  batchEditImpact,
+  listBatches,
+} from '../packs/payroll/service';
 import {
   TXN_IMPORT_REQUIRED_COLUMNS,
   fixedWindowsOverlap,
