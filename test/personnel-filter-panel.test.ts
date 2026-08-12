@@ -46,12 +46,25 @@ describe('Personnel filter panel: both pages use the consolidated component', ()
     });
 
     it(`${file} preserves the searchParams URL contract (q, company, dept, status, type, page)`, () => {
+      // 579255c3 — the ADMIN listing's params and their translation into listEmployeesPage arguments moved
+      // out of the page and into app/admin/personnel/list-query.ts, so that the Excel export can be built
+      // from the SAME parse the screen uses (point 9: "the export should respect the selected filters").
+      // The contract is asserted where it now lives rather than dropped: a param that disappears from the
+      // shared module, or a page that stops feeding it through, still fails here.
+      const contract = file.startsWith('app/admin/') ? read('app/admin/personnel/list-query.ts') : src;
       for (const param of ['q?: string', 'page?: string', 'company?: string', 'dept?: string', 'status?: string', 'type?: string']) {
-        expect(src.includes(param)).toBe(true);
+        expect(contract.includes(param), `${param} in the ${file} contract`).toBe(true);
       }
-      // …and still feeds every filter into listEmployeesPage exactly as before.
-      for (const arg of ['companyId: company', 'departmentId: dept', 'status: statusFilter', 'employmentType: type']) {
-        expect(src.includes(arg)).toBe(true);
+      for (const arg of ['companyId: company', 'departmentId: dept', 'employmentType: type']) {
+        expect(contract.includes(arg), `${arg} in the ${file} contract`).toBe(true);
+      }
+      // The lifecycle `status` narrowing is still HONOURED — nothing writes it any more, but an existing
+      // bookmark must keep narrowing exactly as it did.
+      expect(contract.includes(file.startsWith('app/admin/') ? 'status: legacyStatus' : 'status: statusFilter')).toBe(true);
+      if (file.startsWith('app/admin/')) {
+        // …and the page must actually feed the parsed filters through, not re-derive its own.
+        expect(src).toContain('parsePersonnelListQuery(sp)');
+        expect(src).toContain('...query.filters');
       }
     });
   }
