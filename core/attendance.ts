@@ -776,6 +776,19 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       // windows are unchanged, and a Full day halves nothing.
       const full = netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding);
       const sched = kind === 'half' ? Math.floor(full / 2) : full;
+      // A HALF day ENDS halfway through the shift's clock span, and that end is what makes "overtime starts
+      // after half a day" TRUE. Halving `sched` alone would not: on a resolved shift the engine measures
+      // workday overtime as the minutes worked past the shift's TIME-OUT (the `window` branch in
+      // deriveAttendance), not as the amount by which the day's total overshot its scheduled duration. So
+      // the effective time-out has to halve with the hours, or a half day would accrue nothing until the
+      // FULL day's end and the dropdown would be a label with no behaviour behind it.
+      //
+      // Half the clock span, half the net hours — one rule, stated once. A Full day halves nothing and is
+      // byte-identical.
+      const shiftEnd =
+        kind === 'half' ? fmtTime((toMinutes(ds.start) + Math.floor(shiftSpan(ds.start, ds.end, ds.crosses) / 2)) % MINS_PER_DAY) : ds.end;
+      // Halving the span can only bring the end back inside the same day, so a half day never crosses midnight.
+      const crosses = kind === 'half' ? false : ds.crosses;
       // The manual normal-hours figure is halved with it — otherwise a Semi-Flexi shift's required 8h would
       // still be the threshold on a half day, and the half day would pay no overtime until hour 8.
       const override = ds.override == null ? null : kind === 'half' ? Math.floor(ds.override / 2) : ds.override;
@@ -792,15 +805,15 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
           type: ds.shiftType,
           explicit: ds.halfDayFirstOut,
           start: ds.start,
-          end: ds.end,
-          crosses: ds.crosses,
+          end: shiftEnd,
+          crosses,
           normalMinutes: override ?? sched,
           earlyGrace,
         }),
         scheduledMinutes: sched,
         breakMinutes: ds.brk,
         shiftStart: ds.start,
-        shiftEnd: ds.end,
+        shiftEnd,
         breakPeriods: ds.periods ?? null,
         dailyCutoffMinutes: ds.cutoffOn && ds.cutoffAt ? toMinutes(ds.cutoffAt) : null,
         normalMinutesOverride: override,
@@ -808,10 +821,10 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
         otWindows,
         rule,
         scheduledStart: ds.start,
-        scheduledEnd: ds.end,
+        scheduledEnd: shiftEnd,
         lateGraceMinutes: lateGrace,
         earlyGraceMinutes: earlyGrace ?? 0,
-        crossesMidnight: ds.crosses,
+        crossesMidnight: crosses,
         source: 'default-shift',
       };
     }
