@@ -27,30 +27,36 @@
  * The Prorates checkbox lives HERE (not in the flags row) because proration interacts with per-day/per-hour
  * rules — keeping them together lets the live validator surface the conflict as the admin toggles either one.
  */
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Loader2, Plus, Sparkles, X } from 'lucide-react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { Button, Field, inputCls } from '@/components/ui';
 import {
+  FORMULA_LABEL_MAX_LENGTH,
   FORMULA_MAX_TERMS,
   FORMULA_OPERAND_REFS,
   FORMULA_OPS,
   PAY_RULE_KINDS,
+  formatPayRule,
+  formatPayRuleOperand,
   validatePayRule,
   type FormulaOperand,
   type FormulaOp,
   type FormulaTerm,
   type PayRule,
+  type PayRuleFormatLabels,
   type PayRuleKind,
+  type PayRuleTraceStep,
 } from '@/core/pay-rule';
-import { draftPayRuleAction, previewPayRuleAction } from './actions';
+import { draftPayRuleAction, previewPayRuleAction, searchPreviewEmployeesAction } from './actions';
 
 /** A selectable pay item for the "another pay item" operand — code + display name, from the server. */
 export type PayItemOption = { code: string; name: string };
-/** A selectable employee for the preview — id + display name. */
-export type PreviewEmployeeOption = { employmentId: string; name: string };
+/** A selectable employee for the preview. e318eaec — `employeeCode` is part of the shape because the option
+ *  reads "Irwin Law (X000001)"; it used to read "null null" for everybody (core/pay-components.ts). */
+export type PreviewEmployeeOption = { employmentId: string; name: string; employeeCode: string | null };
 
 type Props = {
   code: string;
@@ -66,6 +72,13 @@ type Props = {
 
 const num = (v: string): number => (v.trim() === '' ? NaN : Number(v));
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** e318eaec — the WORKING carries four decimals and only the final figure is rounded to the cent, which is
+ *  what payroll itself does: rounding every intermediate step would print a chain that does not add up. */
+const money4 = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+/** A literal on the formula line: 26, 8, 1.5 — never padded to "26.00", which would read as money. */
+const plain = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+/** e318eaec — the employee option label the ticket asks for: full name then employee ID. */
+const employeeLabel = (e: PreviewEmployeeOption) => (e.employeeCode ? `${e.name} (${e.employeeCode})` : e.name);
 
 const OP_KEY: Record<FormulaOp, string> = { '+': 'op_add', '-': 'op_sub', '*': 'op_mul', '/': 'op_div' };
 
@@ -111,7 +124,14 @@ function OperandFields({
           step="0.01"
           min="0"
           value={String(op.value)}
-          onChange={(e) => onChange({ ref: 'number', value: e.target.value.trim() === '' ? NaN : Number(e.target.value) })}
+          onChange={(e) =>
+            onChange({
+              ref: 'number',
+              value: e.target.value.trim() === '' ? NaN : Number(e.target.value),
+              // Keep the name attached to its number when the figure is retyped.
+              ...(op.label ? { label: op.label } : {}),
+            })
+          }
           className={inputCls}
           aria-label={t('operand_number')}
         />
@@ -129,6 +149,28 @@ function OperandFields({
             </option>
           ))}
         </select>
+      ) : (
+        <span />
+      )}
+      {/* e318eaec — NAME THIS NUMBER. The reporter's complaint in one box: 26, 8 and 1.5 all read "A fixed
+          amount" and nothing says which is a working-day divisor, which is an hours divisor and which is an
+          overtime rate. The name is stored ON the operand and is DISPLAY ONLY — it never reaches
+          resolvePayRule, so naming a number cannot move a cent. Empty ⇒ the key is dropped entirely, so an
+          unnamed number serialises exactly as it always has and a stored rule is untouched by this feature
+          until someone types in this box. */}
+      {op.ref === 'number' ? (
+        <input
+          type="text"
+          maxLength={FORMULA_LABEL_MAX_LENGTH}
+          value={op.label ?? ''}
+          onChange={(e) => {
+            const label = e.target.value;
+            onChange(label.trim() === '' ? { ref: 'number', value: op.value } : { ref: 'number', value: op.value, label });
+          }}
+          placeholder={t('numberLabelPlaceholder')}
+          className={inputCls}
+          aria-label={t('numberLabel')}
+        />
       ) : (
         <span />
       )}
@@ -171,7 +213,13 @@ export function PayRuleEditor({
   const [description, setDescription] = useState('');
   const [pending, startTransition] = useTransition();
   // Preview state.
-  const [previewEmp, setPreviewEmp] = useState(previewEmployees[0]?.employmentId ?? '');
+  const [previewEmp, setPreviewEmp] = useState<PreviewEmployeeOption | null>(previewEmployees[0] ?? null);
+  // e318eaec — SERVER-SIDE employee search (the ticket asks for it, and the old control was a bare
+  // "fifty most recently hired" window with no way to reach anyone else). `query` is what the operator
+  // typed; `found` is the server's answer; the initial list is what the page already loaded.
+  const [empQuery, setEmpQuery] = useState('');
+  const [found, setFound] = useState<PreviewEmployeeOption[]>(previewEmployees);
+  const [searching, startSearch] = useTransition();
   const [preview, setPreview] = useState<
     | {
         ok: true;
@@ -179,6 +227,7 @@ export function PayRuleEditor({
         scope: { basic: number; days: number; hours: number };
         inputs: { code: string; amount: number }[];
         zeroDivisor: string | null;
+        steps: PayRuleTraceStep[];
       }
     | { ok: false; message: string }
     | null
@@ -213,6 +262,44 @@ export function PayRuleEditor({
   const hint = validation.ok
     ? { ok: true as const, text: t('valid') }
     : { ok: false as const, text: t(`errors.${validation.code}`) };
+
+  /**
+   * e318eaec — how a formula is DRAWN, in one place, for both the live line below and the working in the
+   * preview panel. Passing the same labels to core's formatPayRule is what stops the two from describing
+   * one formula two different ways in any of the six locales.
+   */
+  const formatLabels = useMemo<PayRuleFormatLabels>(
+    () => ({
+      operand: (ref) => t(`operand_${ref}`),
+      payItem: (c) => payItems.find((p) => p.code === c)?.name ?? null,
+      number: plain,
+    }),
+    [payItems, t],
+  );
+  /**
+   * THE READABLE FORMULA LINE — the ticket's headline ask, and the one place the precedence trap lives.
+   *
+   * The brackets DESCRIBE the order the steps already run in; they do not introduce precedence. The stored
+   * rule is a left-to-right fold and stays one, which is why the reporter's Overtime 1.5 keeps paying
+   * exactly what it pays today. See the long note above formatPayRule in core/pay-rule.ts.
+   */
+  const formulaLine = useMemo(() => formatPayRule(rule, formatLabels), [rule, formatLabels]);
+
+  // Debounced server-side employee search. 250ms so a fast typist issues one query, not eight.
+  useEffect(() => {
+    const q = empQuery.trim();
+    const timer = setTimeout(() => {
+      startSearch(async () => setFound(await searchPreviewEmployeesAction(q)));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [empQuery]);
+
+  /** The dropdown's options: what the search returned, with the CURRENT selection kept in the list even when
+   *  it no longer matches — narrowing a search must never silently re-point the preview at someone else. */
+  const employeeOptions = useMemo(() => {
+    if (!previewEmp || found.some((e) => e.employmentId === previewEmp.employmentId)) return found;
+    return [previewEmp, ...found];
+  }, [found, previewEmp]);
 
   function applyRule(r: PayRule) {
     setKind(r.kind);
@@ -252,8 +339,15 @@ export function PayRuleEditor({
   }
 
   function onPreview() {
+    if (!previewEmp) return;
     startPreview(async () => {
-      const res = await previewPayRuleAction({ code, kind: componentKind, prorates, rule, employmentId: previewEmp });
+      const res = await previewPayRuleAction({
+        code,
+        kind: componentKind,
+        prorates,
+        rule,
+        employmentId: previewEmp.employmentId,
+      });
       setPreview(res.ok ? res : { ok: false, message: res.message });
     });
   }
@@ -362,6 +456,24 @@ export function PayRuleEditor({
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">{t('formulaHint')}</p>
+
+          {/* ── e318eaec — THE FORMULA, READ BACK ────────────────────────────────────────────────────
+              "There is no line anywhere that reads the formula back to you as a formula." This is it, and
+              it updates as steps are added, removed or changed because it is derived from the same `rule`
+              value the hidden field submits — there is no second state to keep in sync.
+              THE BRACKETS DESCRIBE THE EXISTING ORDER. They are not a new precedence rule and the engine
+              did not change: (Basic salary + All fixed allowances) / 26 / 8 × 1.5 × Hours worked is what
+              the stored left-to-right fold has always computed. */}
+          {formulaLine && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('formulaLine')}</p>
+              <p className="rounded-md border border-primary/30 bg-primary/5 p-3 font-mono text-sm font-semibold leading-relaxed break-words">
+                {formulaLine}
+              </p>
+              <p className="text-xs text-muted-foreground">{t('formulaLineHint')}</p>
+            </div>
+          )}
+
           {/* 2da9937a — dividing by a live value is now allowed, and it carries a consequence the admin
               must know about BEFORE they save: an employee for whom that value is zero is paid nothing for
               this item. Shown only when the formula actually does it, so it is a consequence of a choice
@@ -370,14 +482,15 @@ export function PayRuleEditor({
             <p className="rounded-md bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">{t('formulaDivisionNote')}</p>
           )}
 
-          <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[8rem_1fr_1fr_2rem]">
+          {/* Five columns since e318eaec: operator · what · value · NAME FOR THAT VALUE · remove. */}
+          <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[7rem_1fr_1fr_1fr_2rem]">
             <span className="text-sm text-muted-foreground">{t('formulaStart')}</span>
             <OperandFields op={start} onChange={setStart} payItems={payItems} />
             <span />
           </div>
 
           {terms.map((term, i) => (
-            <div key={i} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[8rem_1fr_1fr_2rem]">
+            <div key={i} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[7rem_1fr_1fr_1fr_2rem]">
               <select
                 value={term.op}
                 onChange={(e) => {
@@ -428,11 +541,28 @@ export function PayRuleEditor({
             <p className="text-xs text-muted-foreground">{t('previewNone')}</p>
           ) : (
             <div className="flex flex-wrap items-end gap-3">
+              {/* e318eaec — search by name OR employee ID, answered by the server (the list is capped, so
+                  filtering the cap client-side would only ever search the fifty rows already loaded). */}
+              <Field label={t('previewSearch')}>
+                <input
+                  type="search"
+                  value={empQuery}
+                  onChange={(e) => setEmpQuery(e.target.value)}
+                  placeholder={t('previewSearchPlaceholder')}
+                  className={inputCls}
+                />
+              </Field>
               <Field label={t('previewEmployee')}>
-                <select value={previewEmp} onChange={(e) => setPreviewEmp(e.target.value)} className={inputCls}>
-                  {previewEmployees.map((e) => (
+                <select
+                  value={previewEmp?.employmentId ?? ''}
+                  onChange={(e) => setPreviewEmp(employeeOptions.find((o) => o.employmentId === e.target.value) ?? null)}
+                  className={inputCls}
+                >
+                  {/* Was `${firstName} ${lastName}` — "null null" for every person on the reporter's
+                      tenant, because every name there lives in full_name (core/pay-components.ts). */}
+                  {employeeOptions.map((e) => (
                     <option key={e.employmentId} value={e.employmentId}>
-                      {e.name}
+                      {employeeLabel(e)}
                     </option>
                   ))}
                 </select>
@@ -441,15 +571,48 @@ export function PayRuleEditor({
                 {previewing && <Loader2 className="size-3.5 animate-spin" />}
                 {t('previewRun')}
               </Button>
+              {searching && <Loader2 className="mb-2 size-3.5 animate-spin text-muted-foreground" />}
             </div>
+          )}
+          {!searching && empQuery.trim() !== '' && found.length === 0 && (
+            <p className="text-xs text-muted-foreground">{t('previewSearchNone')}</p>
           )}
           {preview && !preview.ok && <p className="text-xs font-medium text-destructive">{preview.message}</p>}
           {preview && preview.ok && (
             <div className="space-y-2 rounded-md bg-muted/50 p-3">
+              {/* e318eaec — the formula this answer came from, drawn by the SAME formatPayRule the live line
+                  above uses, so the panel and the builder cannot disagree about what the rule says. */}
+              {formulaLine && <p className="font-mono text-xs break-words text-muted-foreground">{formulaLine}</p>}
               <p className="text-sm">
                 <span className="text-muted-foreground">{t('previewResult')}: </span>
                 <span className="font-semibold tabular-nums">RM {money(preview.amount)}</span>
               </p>
+              {/* ── SHOW THE WORKING (e318eaec) ─────────────────────────────────────────────────────
+                  "This is particularly useful when HR is checking why the payroll result is different from
+                  their expectation." Every row here came OUT OF the fold that produced the figure above
+                  (PayRuleTraceStep), not from a second walk over the steps — so it cannot describe a route
+                  to the answer that the evaluator did not take. Four decimals on the way, cents at the end,
+                  which is what payroll does. */}
+              {preview.steps.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('previewSteps')}</p>
+                  <ol className="space-y-0.5 text-xs">
+                    {preview.steps.map((s, i) => (
+                      <li key={i} className="flex items-baseline justify-between gap-3 border-b border-border/50 py-0.5 last:border-0">
+                        <span className="min-w-0">
+                          <span className="mr-1.5 text-muted-foreground tabular-nums">{i + 1}.</span>
+                          {s.op === null ? t('formulaStart') : t(OP_KEY[s.op])}{' '}
+                          <span className="font-medium">{formatPayRuleOperand(s.operand, formatLabels)}</span>
+                          {s.op !== null && s.operand.ref !== 'number' && (
+                            <span className="text-muted-foreground tabular-nums"> ({money4(s.value)})</span>
+                          )}
+                        </span>
+                        <span className="shrink-0 font-mono tabular-nums">{money4(s.running)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-3">
                 <div>
                   <dt className="inline">{t('base_basic')}: </dt>

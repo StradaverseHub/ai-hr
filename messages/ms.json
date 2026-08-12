@@ -8718,7 +8718,17 @@
     "previewFailed": "Tidak dapat mengira hasil untuk pekerja itu.",
     "operand_fixed_allowances": "Semua elaun tetap",
     "formulaDivisionNote": "Anda boleh bahagi dengan nilai langsung seperti hari atau jam bekerja. Jika ia sifar bagi seseorang pekerja, item gaji ini tidak membayar apa-apa untuk pekerja itu dan proses gaji tetap selesai — semak pratonton di sini sebelum anda bergantung padanya.",
-    "previewZeroDivisor": "Ini membayar RM 0.00 untuk pekerja ini kerana \"{divisor}\" adalah sifar pada langkah {step}. Proses gaji tetap akan selesai."
+    "previewZeroDivisor": "Ini membayar RM 0.00 untuk pekerja ini kerana \"{divisor}\" adalah sifar pada langkah {step}. Proses gaji tetap akan selesai.",
+    "formulaLine": "Formula ini berbunyi",
+    "formulaLineHint": "Kurungan menunjukkan susunan langkah yang sedia dijalankan, dari atas ke bawah — cara pengiraan ini tidak berubah.",
+    "numberLabel": "Nama untuk nombor ini",
+    "numberLabelPlaceholder": "cth. Hari bekerja",
+    "operand_calendar_days": "Hari kalendar dalam bulan",
+    "operand_prorated_basic": "Gaji pokok pro rata",
+    "previewSteps": "Bagaimana hasil ini diperoleh",
+    "previewSearch": "Cari pekerja",
+    "previewSearchPlaceholder": "Nama atau ID pekerja",
+    "previewSearchNone": "Tiada pekerja sepadan dengan carian itu."
   },
   "review": {
     "title": "Penilaian",

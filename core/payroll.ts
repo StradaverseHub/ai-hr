@@ -3677,7 +3677,19 @@ export async function generatePayslips(
       // component row is inert in this engine, so a rule reading `component:'BASIC'` must get the same
       // number the `basic` operand gives, never the stale component amount. resolvePayComponentSet does not
       // overwrite a caller-pinned code.
-      const rscope: PayRuleScope = { basic: 0, daysWorked: factor * dim, hours: hoursByEmp.get(e.employmentId) ?? 0, components: {} };
+      // e318eaec — `calendarDays` is `dim` itself, NOT `daysWorked`. `daysWorked` is `factor × dim`, the
+      // tenure-prorated count; `calendarDays` is the month's own length (31 in August, 30 in September),
+      // identical for every employee. They are different numbers, a formula legitimately wants either, and
+      // aliasing one to the other is the mistake test/pay-rule-format.test.ts pins against.
+      // `proratedBasic` is seeded 0 and set to basicGross immediately below, once the factor is applied.
+      const rscope: PayRuleScope = {
+        basic: 0,
+        daysWorked: factor * dim,
+        hours: hoursByEmp.get(e.employmentId) ?? 0,
+        components: {},
+        calendarDays: dim,
+        proratedBasic: 0,
+      };
       // ── Feedback 64fb5e48 (supersedes the R37 62e370b0 fallback): Personnel is the ONLY basic source ──
       // The BASIC line always reads the Personnel Basic Salary record (the compensation join, `e.basic`) —
       // exactly what the legacy path reads. A BASIC employment_pay_component never supplies the amount any
@@ -3692,6 +3704,9 @@ export async function generatePayslips(
       rscope.components = { BASIC: compensationBasic }; // pinned — see the rscope comment above
       basicRaw = compensationBasic;
       basicGross = round2(compensationBasic * factor);
+      // e318eaec — the `prorated_basic` operand IS basicGross. Assigned from the same expression rather
+      // than recomputed, so a formula reading it and the payslip's own basic line can never disagree.
+      rscope.proratedBasic = basicGross;
       // A single resolved value per component, substituted at BOTH read sites (the line-868 amount and the
       // line-877 basicRaw accumulator) so the gross AND the statutory base see the same number.
       //

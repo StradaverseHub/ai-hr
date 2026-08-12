@@ -4,12 +4,14 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
+import { isAdmin } from '@/lib/authz';
 import {
   archivePayComponent,
   createPayComponent,
   deletePayComponent,
   isStatutoryRelevantChange,
   isUnsupportedTaxableComponent,
+  listPayRulePreviewCandidates,
   PayComponentCodeExistsError,
   PayComponentInUseError,
   PayComponentStatutoryConfigError,
@@ -23,7 +25,7 @@ import {
 // 017d9c25 — the pack facade, not core/payroll directly (ADR-0080 pack import ratchet).
 import { markRunsAffectedByPayComponent } from '@/packs/payroll/service';
 import { draftPayRule, PayRuleDraftError } from '@/core/pay-rule-ai';
-import type { PayRule } from '@/core/pay-rule';
+import type { PayRule, PayRuleTraceStep } from '@/core/pay-rule';
 
 const PAGE = '/admin/pay-components';
 // NOTE — redirect() throws NEXT_REDIRECT by design. back()/fail() must therefore be called OUTSIDE any
@@ -263,6 +265,10 @@ export async function previewPayRuleAction(p: {
        *  (`hours`, `fixed_allowances`, …), and the admin must read it as the same words the operand picker
        *  showed them, not as an internal token. Null when nothing divided by zero. */
       zeroDivisor: string | null;
+      /** e318eaec — the fold, step by step, straight from the evaluator. The CLIENT renders each step's
+       *  operand, with the same formatPayRuleOperand and the same `payRule.operand_*` catalog entries the
+       *  live formula line uses — so the working and the formula above it are worded identically. */
+      steps: PayRuleTraceStep[];
     }
   | { ok: false; message: string }
 > {
@@ -288,10 +294,35 @@ export async function previewPayRuleAction(p: {
       zeroDivisor: res.zeroDivisor
         ? tr('previewZeroDivisor', { divisor: tr(`operand_${res.zeroDivisor.divisor}`), step: res.zeroDivisor.step })
         : null,
+      steps: res.steps,
     };
   } catch {
     return { ok: false, message: tr('previewFailed') };
   }
+}
+
+/**
+ * e318eaec — search the employees the rule can be checked against, by name or employee ID.
+ *
+ * SERVER-SIDE because the list is capped: filtering the cap in the browser would only ever search the rows
+ * already loaded, which is the defect the ticket reports ("the list is the fifty most recently hired, with
+ * no search"). Read-only, and it returns the same shape the page's initial load does, so the picker's
+ * options come from one definition rather than two.
+ *
+ * GUARDED LIKE THE PAGE THAT HOSTS IT. component-form.tsx loads the initial list behind `requireAdmin`, and
+ * a server action is reachable by any authenticated caller regardless of which route it lives under — so
+ * the check is repeated here rather than inherited. It REFUSES BY RETURNING NOTHING instead of calling
+ * requireAdmin(): that helper signals with `redirect()`, which throws NEXT_REDIRECT, and a data-returning
+ * action that throws a navigation at a non-admin is a worse answer than an empty picker. RLS is still the
+ * backstop underneath (withTenant), so this narrows the caller set; it is not what keeps tenants apart.
+ */
+export async function searchPreviewEmployeesAction(
+  query: string,
+): Promise<{ employmentId: string; name: string; employeeCode: string | null }[]> {
+  const s = await getSession();
+  if (!isAdmin(s)) return [];
+  const rows = await listPayRulePreviewCandidates(s, { query });
+  return rows.map((r) => ({ employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode }));
 }
 
 /** Deactivate OR reactivate (feedback 4994a48f) — one toggle action over the house-shaped service toggle. */

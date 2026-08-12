@@ -569,9 +569,20 @@ async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Pr
         // days_worked is stored; hours are not (see the header) — so `hours: 0` here is only ever read by
         // rules that are flagged needs-review below and whose figures are therefore never used.
         const daysWorked = slip.daysWorked != null ? Number(slip.daysWorked) : dim;
-        const base = { daysWorked, hours: 0 } as const;
-        const oldResolved = resolvePayComponentSet(entries, { ...base, basic: oldBasic, components: { [BASIC_PAY_CODE]: oldBasic } });
-        const newResolved = resolvePayComponentSet(entries, { ...base, basic: newBasic, components: { [BASIC_PAY_CODE]: newBasic } });
+        // e318eaec — `calendarDays` is the month's own length, which this recompute already has as `dim`;
+        // it is NOT `daysWorked` (that one carries the tenure factor). Supplying it matters even though no
+        // rule here is new: an absent scope input reads as 0, and 0 as a divisor would make an arrears line
+        // silently pay nothing rather than reproduce what the run did.
+        const base = { daysWorked, hours: 0, calendarDays: dim } as const;
+        // `paidBasic` and `reworkedBasic` ARE basic × the run's own factor — the same quantity the kernel
+        // calls basicGross and exposes as `prorated_basic` — so the two recomputes read the figure this
+        // batch actually paid, and the one it would now pay, rather than a second derivation of either.
+        const oldResolved = resolvePayComponentSet(entries, {
+          ...base, basic: oldBasic, proratedBasic: paidBasic, components: { [BASIC_PAY_CODE]: oldBasic },
+        });
+        const newResolved = resolvePayComponentSet(entries, {
+          ...base, basic: newBasic, proratedBasic: reworkedBasic, components: { [BASIC_PAY_CODE]: newBasic },
+        });
         for (const [i, e] of entries.entries()) {
           if (e.code.trim().toUpperCase() === BASIC_PAY_CODE) continue; // inert in the kernel; already paid above
           const oldVal = round2(applyProration(oldResolved[i], e.prorate, factor, e.rounding));

@@ -8718,7 +8718,17 @@
     "previewFailed": "Could not work out a result for that employee.",
     "operand_fixed_allowances": "All fixed allowances",
     "formulaDivisionNote": "You may divide by a live value such as days or hours worked. If it is zero for an employee, this pay item pays nothing for that employee and the run still completes — check the preview here before you rely on it.",
-    "previewZeroDivisor": "This pays RM 0.00 for this employee because \"{divisor}\" is zero at step {step}. The payroll run will still complete."
+    "previewZeroDivisor": "This pays RM 0.00 for this employee because \"{divisor}\" is zero at step {step}. The payroll run will still complete.",
+    "formulaLine": "This formula reads",
+    "formulaLineHint": "The brackets show the order the steps already run in, top to bottom — nothing about how this is calculated has changed.",
+    "numberLabel": "Name for this number",
+    "numberLabelPlaceholder": "e.g. Working days",
+    "operand_calendar_days": "Calendar days in the month",
+    "operand_prorated_basic": "Prorated basic salary",
+    "previewSteps": "How the result was reached",
+    "previewSearch": "Find an employee",
+    "previewSearchPlaceholder": "Name or employee ID",
+    "previewSearchNone": "No employee matches that search."
   },
   "review": {
     "title": "Reviews",

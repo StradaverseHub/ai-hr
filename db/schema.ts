@@ -3803,8 +3803,21 @@ export type ShiftType = 'normal' | 'semi_flexi' | 'full_flexi';
 // a VALIDATOR change (core/pay-rule.ts); the aggregate half is this new ref. It names no pay code — it is
 // the SUM of the employee's fixed allowances, so it stays correct as the catalog grows instead of needing
 // the formula re-edited every time an allowance is added.
+// ── e318eaec — NAMED numbers, and two values the kernel already computes ────────────────────────────
+// The reporter's complaint was legibility, not arithmetic: in `… / 26 / 8 × 1.5 × hours`, the 26, the 8 and
+// the 1.5 all render as "A fixed amount" and nothing says which is a working-day divisor, which is an hours
+// divisor and which is an overtime rate. `label` is the operator's own name for that number. It is DISPLAY
+// ONLY — readOperand never reads it, so a labelled rule and an unlabelled one resolve to the same cent — and
+// it is OPTIONAL, so every rule already stored (including the reporter's live OT1_5) stays valid, unchanged
+// and byte-identical without a migration or a backfill.
+//
+// `calendar_days` and `prorated_basic` are figures the payroll kernel ALREADY works out per employee and had
+// no way to expose to a formula. Neither is a new calculation: see core/pay-rule.ts PayRuleScope.
+// DELIBERATELY ABSENT: working_days and working_hours_per_day. There is no single definition of either in
+// this system (roster vs shift vs attendance policy, and per-employee), so offering one would be inventing a
+// number rather than exposing one. Stated as a follow-up on the board item.
 export type FormulaOperand =
-  | { ref: 'number'; value: number } //   a literal / fixed rate
+  | { ref: 'number'; value: number; label?: string } // a literal / fixed rate, optionally NAMED (display only)
   | { ref: 'basic' } //                   the employee's Personnel Basic Salary (same figure percent_of reads)
   | { ref: 'days' } //                    days worked in the period (factor × days-in-month)
   | { ref: 'hours' } //                   attendance worked hours in the period
@@ -3812,6 +3825,10 @@ export type FormulaOperand =
   //                                      isFixedAllowanceComponent: kind 'allowance', non-statutory, paid as
   //                                      a stored amount). Ranks strictly below the item reading it, so it
   //                                      can never include a rule-driven item and cannot reintroduce a cycle.
+  | { ref: 'calendar_days' } //           e318eaec — days in the payroll month (31 in August, 30 in September).
+  //                                      NOT `days`, which is the TENURE-PRORATED count. See PayRuleScope.
+  | { ref: 'prorated_basic' } //          e318eaec — basic AFTER the EA-1955 joiner/leaver factor the kernel
+  //                                      already applies, so a formula never rebuilds proration by hand.
   | { ref: 'component'; code: string }; // another pay item's resolved amount for this employee
 
 export type FormulaOp = '+' | '-' | '*' | '/';
