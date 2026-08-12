@@ -1,0 +1,208 @@
+<meta charset="utf-8">
+<title>813fd22a — The entitlement table dropdown in the operator's order</title>
+<!--
+  Mockup for 813fd22a ("Standardize Entitlement Table Dropdown Sorting"), plan revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here.
+
+  · THE "TODAY" DROPDOWN IS TRACED FROM THE REPORTER'S OWN SCREENSHOT (attachment "template sorting.png"
+    on this item), cross-checked against production READ-ONLY on 2026-08-12: 16 running entitlement
+    templates for Annual Leave, ordered by name A–Z, which is what
+    core/entitlement-template.ts listEntitlementTemplates returns today. Both the order and the sixteen
+    names are real. Nothing in the TODAY panel is invented.
+  · THE SURROUNDING FORM IS REAL TOO — the card titles, field labels and the four collapsed criteria
+    sections are the shipped strings from messages/en.json (admin.entitlementTemplates.*,
+    admin.leave.adjustmentsCriteria.section*). "Employee eligibility (0)" really does read 0: production
+    has zero eligibility rules today.
+  · THE AFTER PANEL is the reporter's own requested order, position for position. Their list has fifteen
+    entries; the dropdown really holds sixteen, because PART TIMER is in it. PART TIMER is drawn last, to
+    match the companion request 3214cb11 which does list it. It is not being added or removed here.
+  · The reporter's list writes "PART TIME"; the stored name is "PART TIMER". The real name is drawn. This
+    change never renames anything.
+  · The criteria sections are drawn COLLAPSED, exactly as they appear on the screenshot. Nothing about
+    their contents is being claimed by this sketch.
+  · Wording, spacing and colours will differ from the finished screen.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .ph{font-size:16px;font-weight:700;margin:0}
+  .phs{font-size:11.5px;color:var(--mf);margin:2px 0 16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:16px}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .sub{font-size:11px;color:var(--mf);margin:0 0 12px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;
+        vertical-align:2px;margin-left:7px;letter-spacing:.02em}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .split > *{min-width:0}
+
+  /* the eligibility-rule form shell */
+  .pnl{border:1px solid var(--border);border-radius:12px;background:#fff;overflow:hidden}
+  .pnlhd{display:flex;align-items:baseline;gap:7px;padding:8px 12px;border-bottom:1px solid var(--border);
+         background:var(--muted)}
+  .pnlhd b{font-size:12px}
+  .pnlhd span{font-size:10.5px;color:var(--mf)}
+  .body{padding:11px 12px 12px}
+  .row3{display:grid;grid-template-columns:1fr 1.25fr .8fr;gap:9px;align-items:start}
+  .lbl{font-size:9.6px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);font-weight:700;margin-bottom:4px}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:11px;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:29px}
+  .ghost{color:#9a9ba8}
+  .selbox{border:1.5px solid var(--primary);border-radius:8px;padding:6px 9px;font-size:11px;
+          display:flex;justify-content:space-between;align-items:center;background:#fff}
+  .selbox i{font-style:normal;color:var(--mf);font-size:9px}
+  .sect{border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11px;margin-top:7px;
+        display:flex;align-items:center;gap:7px;color:var(--fg);background:#fff}
+  .sect u{text-decoration:none;color:var(--mf);font-size:9px}
+
+  /* the open list */
+  .menu{border:1px solid var(--border);border-radius:9px;background:#fff;overflow:hidden;margin-top:5px;
+        box-shadow:0 6px 20px rgba(20,20,40,.10)}
+  .menu .hd{padding:5.5px 10px;font-size:10.8px;background:#6b6b78;color:#fff;font-weight:600}
+  .menu ol{list-style:none;margin:0;padding:0;counter-reset:n}
+  .menu li{padding:3.6px 10px 3.6px 30px;font-size:10.6px;border-bottom:1px solid #f2f3f9;position:relative;
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .menu li:last-child{border-bottom:0}
+  .menu li::before{counter-increment:n;content:counter(n);position:absolute;left:9px;color:#a9aab8;
+                   font-size:9px;font-variant-numeric:tabular-nums}
+  .gPERM{background:color-mix(in srgb,#4f46e5 7%,white)}
+  .gCON{background:color-mix(in srgb,#0891b2 7%,white)}
+  .gSPE{background:color-mix(in srgb,#d97706 9%,white)}
+  .gRET{background:color-mix(in srgb,#15803d 8%,white)}
+  .gPT{background:color-mix(in srgb,#9333ea 8%,white)}
+  .key{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 11px}
+  .key i{font-style:normal;font-size:9.6px;padding:2px 8px;border-radius:999px;font-weight:600}
+  .kPERM{background:color-mix(in srgb,#4f46e5 13%,white);color:#3730a3}
+  .kCON{background:color-mix(in srgb,#0891b2 15%,white);color:#155e75}
+  .kSPE{background:color-mix(in srgb,#d97706 18%,white);color:#92400e}
+  .kRET{background:color-mix(in srgb,#15803d 15%,white);color:#14532d}
+  .kPT{background:color-mix(in srgb,#9333ea 15%,white);color:#6b21a8}
+  .callout{display:flex;gap:7px;font-size:11px;margin:11px 0 0;line-height:1.45}
+  .callout.b{color:var(--bad)} .callout.g{color:var(--good)}
+  .callout i{font-style:normal;font-weight:800}
+  .foot{font-size:10.7px;color:var(--mf);line-height:1.55;margin:0;border-top:1px dashed var(--border);padding-top:11px}
+  .foot b{color:var(--fg)}
+  .foot p{margin:0 0 7px}
+  .foot p:last-child{margin:0}
+</style>
+
+<p class="ph">Leave config &rsaquo; Annual Leave &rsaquo; Entitlement &rsaquo; Employee eligibility</p>
+<p class="phs">Choosing the entitlement table on a new eligibility rule — sketch, traced from your screenshot and the live production list on 12 Aug 2026. Wording, spacing and colours will differ.</p>
+
+<div class="card">
+  <div class="key">
+    <i class="kPERM">Permanent</i>
+    <i class="kCON">Contract</i>
+    <i class="kSPE">Contract (Special)</i>
+    <i class="kRET">Contract (Retiree)</i>
+    <i class="kPT">Part timer</i>
+  </div>
+
+  <div class="split">
+
+    <div>
+      <h2>Today<span class="chip now">NOW</span></h2>
+      <p class="sub">The list is straight A&ndash;Z, so the families interleave. Reading down it you cross between Retiree, Contract and Special five times before Permanent even starts.</p>
+      <div class="pnl">
+        <div class="pnlhd"><b>Employee eligibility</b><span>(0)</span></div>
+        <div class="body">
+          <div style="font-size:11.5px;font-weight:600;margin-bottom:9px">New eligibility rule</div>
+          <div class="row3">
+            <div><p class="lbl">Rule name</p><div class="inp ghost">&nbsp;</div></div>
+            <div>
+              <p class="lbl">Entitlement table</p>
+              <div class="selbox"><span class="ghost">Choose an entitlement table</span><i>&#9660;</i></div>
+              <div class="menu">
+                <div class="hd">Choose an entitlement table</div>
+                <ol>
+                  <li class="gRET">CONTRACT - GRADE 12 - 15 (RETIREE)</li>
+                  <li class="gCON">CONTRACT - GRADE 12 - 18</li>
+                  <li class="gSPE">CONTRACT - GRADE 12 - 18 (SPECIAL)</li>
+                  <li class="gRET">CONTRACT - GRADE 16 - 19 (RETIREE)</li>
+                  <li class="gCON">CONTRACT - GRADE &gt;= 19</li>
+                  <li class="gSPE">CONTRACT - GRADE &gt;= 19 (SPECIAL)</li>
+                  <li class="gRET">CONTRACT - GRADE 20 - 23 (RETIREE)</li>
+                  <li class="gCON">CONTRACT - GRADE H</li>
+                  <li class="gRET">CONTRACT - GRADE H (RETIREE)</li>
+                  <li class="gSPE">CONTRACT - GRADE H (SPECIAL)</li>
+                  <li class="gCON">CONTRACT - SPECIAL (40 AL)</li>
+                  <li class="gPT">PART TIMER</li>
+                  <li class="gPERM">PERMANENT - GRADE 12 - 15</li>
+                  <li class="gPERM">PERMANENT - GRADE 16 - 19</li>
+                  <li class="gPERM">PERMANENT - GRADE 20 - 23</li>
+                  <li class="gPERM">PERMANENT - GRADE H</li>
+                </ol>
+              </div>
+            </div>
+            <div><p class="lbl">Effective from</p><div class="inp">2026-08-12</div></div>
+          </div>
+          <div class="sect"><u>&#9654;</u> Company Information</div>
+          <div class="sect"><u>&#9654;</u> Employment Information</div>
+          <div class="sect"><u>&#9654;</u> Employee Information</div>
+          <div class="sect"><u>&#9654;</u> Service Information</div>
+        </div>
+      </div>
+      <p class="callout b"><i>&times;</i> "PERMANENT - GRADE H" is the very last of sixteen, and Grade H sits after Grade 20 - 23 in every family because "H" sorts after "2".</p>
+    </div>
+
+    <div>
+      <h2>After this change<span class="chip new">AFTER</span></h2>
+      <p class="sub">Permanent, then Contract, then Special, then Retiree, then Part timer — and Grade H leads each family, with the numbered grades after it. Exactly the order in your request.</p>
+      <div class="pnl">
+        <div class="pnlhd"><b>Employee eligibility</b><span>(0)</span></div>
+        <div class="body">
+          <div style="font-size:11.5px;font-weight:600;margin-bottom:9px">New eligibility rule</div>
+          <div class="row3">
+            <div><p class="lbl">Rule name</p><div class="inp ghost">&nbsp;</div></div>
+            <div>
+              <p class="lbl">Entitlement table</p>
+              <div class="selbox"><span class="ghost">Choose an entitlement table</span><i>&#9660;</i></div>
+              <div class="menu">
+                <div class="hd">Choose an entitlement table</div>
+                <ol>
+                  <li class="gPERM">PERMANENT - GRADE H</li>
+                  <li class="gPERM">PERMANENT - GRADE 12 - 15</li>
+                  <li class="gPERM">PERMANENT - GRADE 16 - 19</li>
+                  <li class="gPERM">PERMANENT - GRADE 20 - 23</li>
+                  <li class="gCON">CONTRACT - GRADE H</li>
+                  <li class="gCON">CONTRACT - GRADE 12 - 18</li>
+                  <li class="gCON">CONTRACT - GRADE &gt;= 19</li>
+                  <li class="gCON">CONTRACT - SPECIAL (40 AL)</li>
+                  <li class="gSPE">CONTRACT - GRADE H (SPECIAL)</li>
+                  <li class="gSPE">CONTRACT - GRADE 12 - 18 (SPECIAL)</li>
+                  <li class="gSPE">CONTRACT - GRADE &gt;= 19 (SPECIAL)</li>
+                  <li class="gRET">CONTRACT - GRADE H (RETIREE)</li>
+                  <li class="gRET">CONTRACT - GRADE 12 - 15 (RETIREE)</li>
+                  <li class="gRET">CONTRACT - GRADE 16 - 19 (RETIREE)</li>
+                  <li class="gRET">CONTRACT - GRADE 20 - 23 (RETIREE)</li>
+                  <li class="gPT">PART TIMER</li>
+                </ol>
+              </div>
+            </div>
+            <div><p class="lbl">Effective from</p><div class="inp">2026-08-12</div></div>
+          </div>
+          <div class="sect"><u>&#9654;</u> Company Information</div>
+          <div class="sect"><u>&#9654;</u> Employment Information</div>
+          <div class="sect"><u>&#9654;</u> Employee Information</div>
+          <div class="sect"><u>&#9654;</u> Service Information</div>
+        </div>
+      </div>
+      <p class="callout g"><i>&check;</i> Five clean blocks. Same sixteen tables, same names, same rules — only the order in the list moves.</p>
+    </div>
+
+  </div>
+</div>
+
+<div class="card">
+  <div class="foot">
+    <p><b>Your list has fifteen entries; the dropdown holds sixteen.</b> PART TIMER is in this dropdown too. It is drawn last, which is where your companion request about the Entitlement Tables list puts it. Nothing is being added or removed here.</p>
+    <p><b>The Entitlement Tables list above gets the same order.</b> Both this dropdown and the list of tables on the same page read from one source, so a single change reorders both — which is why this request and the Entitlement Tables ordering request are delivered together.</p>
+    <p><b>Nothing else on this form changes.</b> The rule name, the effective date and the four criteria groups behave exactly as they do today.</p>
+  </div>
+</div>

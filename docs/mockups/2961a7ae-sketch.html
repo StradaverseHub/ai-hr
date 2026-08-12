@@ -1,0 +1,239 @@
+<meta charset="utf-8">
+<title>2961a7ae — Statutory Adjustment with full manual override</title>
+<!--
+  Mockup for 2961a7ae (Payroll — Statutory Adjustment with full manual override), plan revision 1.
+
+  EVERY SYSTEM AMOUNT IS REAL, measured read-only on production 2026-08-12. Employee A0013, pay period
+  2026-01, batch 368c67fc, payslip version 3:
+      gross_pay 7552.00 · total_deductions 1476.30 · net_pay 6075.70 · employer_cost 8640.57
+      epfEmployee 836 · epfEmployer 912 · socsoEmployee 29.75 · socsoEmployer 104.15 · socsoSkbbk 0
+      eisEmployee 11.9 · eisEmployer 11.9 · pcb 429.05 · zakat 0 · hrdf 60.52
+  The two ADJUSTMENTS drawn (PCB 429.05 -> 300.00 and EPF employer 912.00 -> 950.00) are illustrative
+  entries, and every consequence of them is exact arithmetic on the real figures:
+      total_deductions 1476.30 - 129.05 = 1347.25 ;  net_pay 7552.00 - 1347.25 = 6204.75
+      employer_cost 8640.57 + 38.00 = 8678.57 ;  net_pay unchanged by the employer leg.
+
+  NINE LINES, NOT TEN. The ticket lists SKBBK / Lindung 24 Jam on both the employee and employer side.
+  localization/my/payroll.ts socso() returns { employer, employee, skbbk } and documents skbbk as the
+  EMPLOYEE-paid leg; there is no employer SKBBK figure in the system. Drawing an always-zero tenth row
+  would be drawing something that does not exist, so it is absent and the plan says why.
+
+  DELIBERATELY NOT DRAWN:
+   - No Gross Pay input. Gross is never editable here.
+   - No cascade from EPF to PCB. The plan states each line moves only its own figure.
+   - The Revert control is drawn on a line that HAS an adjustment; no revert-all button is promised.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;
+        --grid:#d8dae6;--hl:#eef0ff;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .cap{font-size:10.5px;color:var(--mf);margin:0 0 7px;font-weight:700;text-transform:uppercase;
+       letter-spacing:.05em}
+
+  .screen{background:#fff;border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .scrpad{padding:14px 16px}
+  .sechead{display:flex;align-items:center;justify-content:space-between;gap:12px;
+           padding:10px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600}
+  .sechead .cnt{color:var(--mf);font-weight:400}
+  .fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .f label{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;
+           color:var(--mf);font-weight:700;margin-bottom:4px}
+  .inp{border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;background:#fff;
+       display:flex;justify-content:space-between;gap:6px;color:var(--fg)}
+  .inp i{color:#9698ab;font-style:normal}
+  .btnrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:13px}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:7px 15px;font-size:12px;font-weight:600;
+       display:inline-block}
+  .btn.gh{background:#fff;color:var(--fg);border:1px solid var(--border)}
+  .btn.sm{padding:3px 10px;font-size:10.5px;border-radius:6px}
+  .btn.off{background:#f2f3f8;color:#b0b1c0;border:1px solid var(--border)}
+
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:7px 8px;background:#fafafd;border-bottom:1px solid var(--border);vertical-align:bottom}
+  td{padding:6px 8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;vertical-align:middle}
+  .r{text-align:right}
+  .grp td{background:#f6f7fc;font-size:9px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;
+          color:var(--mf);padding:5px 8px}
+  .cell{border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11.5px;background:#fff;
+        display:block;text-align:right;min-width:86px;color:var(--fg);font-variant-numeric:tabular-nums}
+  .cell.ph{color:#b5b7c6}
+  .cell.set{border-color:var(--primary);background:#f4f4ff;font-weight:700}
+  .fin{font-weight:700}
+  .fin.moved{color:var(--primary)}
+  .rowadj{background:#fbfbff}
+  .badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:9.5px;font-weight:700;
+         background:#e8eaff;color:#3730a3;margin-left:7px}
+
+  .banner{display:flex;align-items:flex-start;gap:10px;border:1px solid #fcd34d;background:#fffbeb;
+          border-radius:10px;padding:11px 13px;font-size:12px;color:#78350f;margin-top:13px}
+  .banner .ic{width:17px;height:17px;border-radius:5px;background:#b45309;color:#fff;font-size:11px;
+              line-height:17px;text-align:center;flex:none;font-weight:700}
+  .ta{border:1px solid var(--border);border-radius:8px;background:#fff;padding:8px 11px;font-size:12px;
+      min-height:38px;color:var(--fg)}
+  .req{color:#dc2626;font-weight:700}
+  .tot{display:grid;grid-template-columns:1fr auto auto;gap:6px 18px;font-size:12px;
+       font-variant-numeric:tabular-nums}
+  .tot b{font-weight:700}
+  .tot .h{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:700}
+  .up{color:var(--good);font-weight:700}
+  .flat{color:var(--mf)}
+  .steps{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--mf);margin-bottom:10px}
+  .steps b{background:var(--primary);color:#fff;border-radius:999px;padding:2px 10px;font-size:10.5px}
+  .steps s{text-decoration:none;background:var(--muted);border-radius:999px;padding:2px 10px;font-size:10.5px}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Find the run and the employee</h2>
+  <p class="q">Payroll &rarr; Statutory Adjustment. Only runs that are Processed and not Closed appear.</p>
+  <div class="screen">
+    <div class="sechead">Statutory Adjustment</div>
+    <div class="scrpad f">
+      <div class="fgrid">
+        <div><label>Company</label><div class="inp">ISEDECOR BINA SDN BHD <i>&#9662;</i></div></div>
+        <div><label>Year</label><div class="inp">2026 <i>&#9662;</i></div></div>
+        <div><label>Month</label><div class="inp">January <i>&#9662;</i></div></div>
+        <div><label>Payroll cycle</label><div class="inp">Monthly <i>&#9662;</i></div></div>
+      </div>
+      <div style="margin-top:12px"><label>Search employee</label><div class="inp">A0013 <i>&#128269;</i></div></div>
+    </div>
+    <table>
+      <thead><tr><th>Employee ID</th><th>Employee name</th><th>Payroll status</th><th class="r">Net pay</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>A0013</td><td>&mdash;</td><td>Processed</td><td class="r">6,075.70</td><td class="r"><span class="btn sm">Adjust</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>System amount, adjustment, final amount</h2>
+  <div class="steps"><b>1 Enter</b><span>&rarr;</span><s>2 Review</s><span>&rarr;</span><s>3 Apply</s></div>
+  <p class="q">Employee A0013 &middot; January 2026 &middot; Monthly &middot; Processed. Every System Amount below is
+     the figure on this payslip today.</p>
+
+  <div class="screen">
+    <table>
+      <thead><tr><th>Statutory item</th><th class="r">System amount</th><th class="r">Adjustment</th><th class="r">Final amount</th><th></th></tr></thead>
+      <tbody>
+        <tr class="grp"><td colspan="5">Employee</td></tr>
+        <tr class="rowadj"><td>PCB / MTD <span class="badge">Adjusted</span></td><td class="r">429.05</td>
+            <td class="r"><span class="cell set">300.00</span></td><td class="r fin moved">300.00</td>
+            <td class="r"><span class="btn gh sm">Revert</span></td></tr>
+        <tr><td>EPF / KWSP &mdash; employee</td><td class="r">836.00</td>
+            <td class="r"><span class="cell ph">blank</span></td><td class="r fin">836.00</td><td></td></tr>
+        <tr><td>SOCSO / PERKESO &mdash; employee</td><td class="r">29.75</td>
+            <td class="r"><span class="cell ph">blank</span></td><td class="r fin">29.75</td><td></td></tr>
+        <tr><td>SKBBK / Lindung 24 Jam &mdash; employee</td><td class="r">0.00</td>
+            <td class="r"><span class="cell ph">blank</span></td><td class="r fin">0.00</td><td></td></tr>
+        <tr><td>EIS / SIP &mdash; employee</td><td class="r">11.90</td>
+            <td class="r"><span class="cell ph">blank</span></td><td class="r fin">11.90</td><td></td></tr>
+        <tr class="grp"><td colspan="5">Employer</td></tr>
+        <tr><td>HRD levy</td><td class="r">60.52</td>
+            <td class="r"><span class="cell ph">blank</span></td><td class="r fin">60.52</td><td></td></tr>
+        <tr class="rowadj"><td>EPF / KWSP &mdash; employer <span class="badge">Adjusted</span></td><td class="r">912.00</td>
+            <td class="r"><span class="cell set">950.00</span></td><td class="r fin moved">950.00</td>
+            <td class="r"><span class="btn gh sm">Revert</span></td></tr>
+        <tr><td>SOCSO / PERKESO &mdash; employer</td><td class="r">104.15</td>
+            <td class="r"><span class="cell ph">blank</span></td><td class="r fin">104.15</td><td></td></tr>
+        <tr style="border-bottom:none"><td>EIS / SIP &mdash; employer</td><td class="r">11.90</td>
+            <td class="r"><span class="cell ph">blank</span></td><td class="r fin">11.90</td><td></td></tr>
+      </tbody>
+    </table>
+    <div class="scrpad" style="border-top:1px solid var(--border)">
+      <label style="display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700;margin-bottom:4px">
+        Adjustment reason <span class="req">required</span></label>
+      <div class="ta">Manual correction based on statutory confirmation.</div>
+      <div class="btnrow">
+        <span class="btn">Review adjustment</span>
+        <span class="btn gh">Cancel</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Blank is not zero.</b> An empty box means "use the system amount". Typing 0.00 means "make this line
+    zero" and is stored as a real instruction — so a line you deliberately zeroed stays zero the next time
+    the run is reprocessed.
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Review before anything is applied</h2>
+  <div class="steps"><s>1 Enter</s><span>&rarr;</span><b>2 Review</b><span>&rarr;</span><s>3 Apply</s></div>
+  <div class="two">
+    <div>
+      <p class="cap">What you changed</p>
+      <div class="screen">
+        <table>
+          <thead><tr><th>Item</th><th class="r">Original</th><th class="r">Final</th></tr></thead>
+          <tbody>
+            <tr><td>PCB / MTD</td><td class="r">429.05</td><td class="r fin moved">300.00</td></tr>
+            <tr style="border-bottom:none"><td>EPF employer</td><td class="r">912.00</td><td class="r fin moved">950.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <p class="cap">What it does to the payroll result</p>
+      <div class="screen"><div class="scrpad">
+        <div class="tot">
+          <span class="h"></span><span class="h r">Before</span><span class="h r">After</span>
+          <span>Gross pay</span><span class="r">7,552.00</span><span class="r flat">7,552.00</span>
+          <span>Total deduction</span><span class="r">1,476.30</span><span class="r"><b>1,347.25</b></span>
+          <span>Net pay</span><span class="r">6,075.70</span><span class="r up">6,204.75</span>
+          <span>Employer cost</span><span class="r">8,640.57</span><span class="r"><b>8,678.57</b></span>
+        </div>
+      </div></div>
+      <div class="note">Gross pay does not move. The employer adjustment changes employer cost only — it
+        never comes off the employee's net pay.</div>
+    </div>
+  </div>
+
+  <div class="banner">
+    <span class="ic">!</span>
+    <span>The statutory report for January 2026 has already been generated for this company. Applying this
+      adjustment changes the figures behind it. You can still go ahead — this is here so you know.</span>
+  </div>
+
+  <div class="btnrow">
+    <span class="btn">Confirm &amp; apply</span>
+    <span class="btn gh">Back to edit</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">4</span>After applying</h2>
+  <div class="two">
+    <div>
+      <p class="cap">The adjustment sticks through a reprocess</p>
+      <div class="screen"><div class="scrpad" style="font-size:12px">
+        The adjustment is stored as an instruction against this employee on this run, not written onto the
+        payslip and forgotten. Reprocess the run tomorrow for any other reason and PCB is still 300.00,
+        because the instruction is applied again. Press Revert and the system figure comes back.
+      </div></div>
+    </div>
+    <div>
+      <p class="cap">And it is on the record</p>
+      <div class="screen">
+        <table>
+          <thead><tr><th>When</th><th>Who</th><th>What</th><th>Reason</th></tr></thead>
+          <tbody>
+            <tr><td>12 Aug 2026 14:22</td><td>HR Admin</td><td>PCB 429.05 &rarr; 300.00</td><td>Manual correction based on statutory confirmation.</td></tr>
+            <tr style="border-bottom:none"><td>12 Aug 2026 14:22</td><td>HR Admin</td><td>EPF employer 912.00 &rarr; 950.00</td><td>Manual correction based on statutory confirmation.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

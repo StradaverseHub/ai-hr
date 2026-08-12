@@ -1,0 +1,212 @@
+<meta charset="utf-8">
+<title>3214cb11 — Entitlement tables in the operator's order, not A–Z</title>
+<!--
+  Mockup for 3214cb11 ("Standardize Entitlement Table Name Ordering"), plan revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here.
+
+  · EVERY NAME, EVERY SERVICE RANGE AND EVERY IN-FORCE DATE ON THIS PAGE IS REAL, read READ-ONLY from
+    production on 2026-08-12 (entitlement_template, valid_to is null, leave type = Annual Leave; 16 rows).
+    Nothing here is invented. The NOW column is the exact order production returns today
+    (core/entitlement-template.ts listEntitlementTemplates orders by name A–Z); the AFTER column is the
+    reporter's own list from the item text, position for position.
+  · The reporter's list writes the last row as "PART TIME". The table is really named "PART TIMER". The
+    AFTER column shows the real stored name — this change never renames anything.
+  · The RULES column really does read 0 on all sixteen rows today (production has zero eligibility rules).
+    It is drawn as it is, not as it will be.
+  · The lower band shows the SAME sixteen names in the "Choose an entitlement table" dropdown of the
+    eligibility rule form, because that dropdown is fed by the same list and is reordered by the same
+    change. That is the sibling request 813fd22a.
+  · Wording, spacing and colours will differ from the finished screen.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .ph{font-size:16px;font-weight:700;margin:0}
+  .phs{font-size:11.5px;color:var(--mf);margin:2px 0 16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:16px}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .sub{font-size:11px;color:var(--mf);margin:0 0 11px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;
+        vertical-align:2px;margin-left:7px;letter-spacing:.02em}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .split > *{min-width:0}
+  table{border-collapse:separate;border-spacing:0;font-size:11px;width:100%;table-layout:fixed}
+  th,td{padding:5px 9px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  th{font-size:8.7px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);font-weight:700;
+     text-align:left;background:var(--muted)}
+  td.nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  td.bd{font-size:9.7px;color:var(--mf);font-variant-numeric:tabular-nums}
+  td.bd span{display:block;white-space:nowrap}
+  td.fd{font-size:9.7px;color:var(--mf);white-space:nowrap;font-variant-numeric:tabular-nums}
+  td.no{font-size:9.7px;color:#9a9ba8;text-align:center;font-variant-numeric:tabular-nums;width:26px}
+  .tbl{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:#fff}
+  /* the four blocks the operator's order restores */
+  .gPERM td{background:color-mix(in srgb,#4f46e5 6%,white)}
+  .gCON  td{background:color-mix(in srgb,#0891b2 6%,white)}
+  .gSPE  td{background:color-mix(in srgb,#d97706 8%,white)}
+  .gRET  td{background:color-mix(in srgb,#15803d 7%,white)}
+  .gPT   td{background:color-mix(in srgb,#9333ea 7%,white)}
+  .key{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+  .key i{font-style:normal;font-size:9.6px;padding:2px 8px;border-radius:999px;font-weight:600}
+  .kPERM{background:color-mix(in srgb,#4f46e5 13%,white);color:#3730a3}
+  .kCON{background:color-mix(in srgb,#0891b2 15%,white);color:#155e75}
+  .kSPE{background:color-mix(in srgb,#d97706 18%,white);color:#92400e}
+  .kRET{background:color-mix(in srgb,#15803d 15%,white);color:#14532d}
+  .kPT{background:color-mix(in srgb,#9333ea 15%,white);color:#6b21a8}
+  .callout{display:flex;gap:7px;font-size:11px;margin:10px 0 0;line-height:1.45}
+  .callout.b{color:var(--bad)} .callout.g{color:var(--good)}
+  .callout i{font-style:normal;font-weight:800}
+  /* dropdown band */
+  .ddwrap{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .lbl{font-size:9.4px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700;margin-bottom:4px}
+  .sel{border:1px solid var(--border);border-radius:8px;background:#fff;overflow:hidden}
+  .sel .hd{padding:6px 10px;font-size:11px;background:#6b6b78;color:#fff;font-weight:600}
+  .sel ul{list-style:none;margin:0;padding:0}
+  .sel li{padding:3.5px 10px;font-size:10.6px;border-bottom:1px solid #f1f2f8;white-space:nowrap;
+          overflow:hidden;text-overflow:ellipsis}
+  .sel li:last-child{border-bottom:0}
+  .foot{font-size:10.6px;color:var(--mf);line-height:1.5;margin:14px 0 0;border-top:1px dashed var(--border);padding-top:11px}
+  .foot b{color:var(--fg)}
+</style>
+
+<p class="ph">Leave config &rsaquo; Annual Leave &rsaquo; Entitlement</p>
+<p class="phs">Entitlement tables for Annual Leave (16) — sketch, drawn from the live production list on 12 Aug 2026. Wording, spacing and colours will differ.</p>
+
+<div class="card">
+  <div class="key">
+    <i class="kPERM">Permanent</i>
+    <i class="kCON">Contract</i>
+    <i class="kSPE">Contract (Special)</i>
+    <i class="kRET">Contract (Retiree)</i>
+    <i class="kPT">Part timer</i>
+  </div>
+  <div class="split">
+
+    <div>
+      <h2>Today<span class="chip now">NOW</span></h2>
+      <p class="sub">Straight A&ndash;Z. The four families interleave: Retiree rows sit between Contract rows, Permanent is stranded at the bottom, and Grade H lands after Grade 20&ndash;23 because "H" sorts after "2".</p>
+      <div class="tbl"><table>
+        <colgroup><col style="width:26px"><col><col style="width:150px"><col style="width:62px"></colgroup>
+        <thead><tr><th></th><th>Name</th><th>Service ranges</th><th>In force</th></tr></thead>
+        <tbody>
+          <tr class="gRET"><td class="no">1</td><td class="nm">CONTRACT - GRADE 12 - 15 (RETIREE)</td><td class="bd"><span>0–2: 16.00 (+10.00) ≤26.00</span><span>2–5: 18.00 (+10.00) ≤28.00</span><span>5–No limit: 20.00 (+10.00) ≤30.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gCON"><td class="no">2</td><td class="nm">CONTRACT - GRADE 12 - 18</td><td class="bd"><span>0–No limit: 14.00 (+10.00) ≤24.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gSPE"><td class="no">3</td><td class="nm">CONTRACT - GRADE 12 - 18 (SPECIAL)</td><td class="bd"><span>0–No limit: 14.00 (+10.00) ≤24.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gRET"><td class="no">4</td><td class="nm">CONTRACT - GRADE 16 - 19 (RETIREE)</td><td class="bd"><span>0–2: 20.00 (+10.00) ≤30.00</span><span>2–5: 22.00 (+10.00) ≤32.00</span><span>5–No limit: 24.00 (+10.00) ≤34.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gCON"><td class="no">5</td><td class="nm">CONTRACT - GRADE &gt;= 19</td><td class="bd"><span>0–No limit: 18.00 (+10.00) ≤28.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gSPE"><td class="no">6</td><td class="nm">CONTRACT - GRADE &gt;= 19 (SPECIAL)</td><td class="bd"><span>0–No limit: 18.00 (+10.00) ≤28.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gRET"><td class="no">7</td><td class="nm">CONTRACT - GRADE 20 - 23 (RETIREE)</td><td class="bd"><span>0–No limit: 24.00 (+10.00) ≤34.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gCON"><td class="no">8</td><td class="nm">CONTRACT - GRADE H</td><td class="bd"><span>0–No limit: 8.00 (+10.00) ≤18.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gRET"><td class="no">9</td><td class="nm">CONTRACT - GRADE H (RETIREE)</td><td class="bd"><span>0–2: 12.00 (+10.00) ≤22.00</span><span>2–5: 14.00 (+10.00) ≤24.00</span><span>5–No limit: 16.00 (+10.00) ≤26.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gSPE"><td class="no">10</td><td class="nm">CONTRACT - GRADE H (SPECIAL)</td><td class="bd"><span>0–No limit: 8.00 (+10.00) ≤18.00</span></td><td class="fd">2026-08-10</td></tr>
+          <tr class="gCON"><td class="no">11</td><td class="nm">CONTRACT - SPECIAL (40 AL)</td><td class="bd"><span>0–No limit: 40.00 (+10.00) ≤50.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gPT"><td class="no">12</td><td class="nm">PART TIMER</td><td class="bd"><span>0–No limit: 8.00 (+10.00) ≤18.00</span></td><td class="fd">2026-08-10</td></tr>
+          <tr class="gPERM"><td class="no">13</td><td class="nm">PERMANENT - GRADE 12 - 15</td><td class="bd"><span>0–2: 16.00 (+10.00) ≤26.00</span><span>2–5: 18.00 (+10.00) ≤28.00</span><span>5–No limit: 20.00 (+10.00) ≤30.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gPERM"><td class="no">14</td><td class="nm">PERMANENT - GRADE 16 - 19</td><td class="bd"><span>0–2: 20.00 (+10.00) ≤30.00</span><span>2–5: 22.00 (+10.00) ≤32.00</span><span>5–No limit: 24.00 (+10.00) ≤34.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gPERM"><td class="no">15</td><td class="nm">PERMANENT - GRADE 20 - 23</td><td class="bd"><span>0–No limit: 24.00 (+10.00) ≤34.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gPERM"><td class="no">16</td><td class="nm">PERMANENT - GRADE H</td><td class="bd"><span>0–2: 12.00 (+10.00) ≤22.00</span><span>2–5: 14.00 (+10.00) ≤24.00</span><span>5–No limit: 16.00 (+10.00) ≤26.00</span></td><td class="fd">2026-08-01</td></tr>
+        </tbody>
+      </table></div>
+      <p class="callout b"><i>&times;</i> Five colour changes on the way down the list. To find "PERMANENT - GRADE H" you scroll past all eleven Contract rows first.</p>
+    </div>
+
+    <div>
+      <h2>After this change<span class="chip new">AFTER</span></h2>
+      <p class="sub">Permanent first, then Contract, then Contract (Special), then Contract (Retiree), then Part timer — and inside each family, Grade H first and then the grades in number order. Exactly the list in the request.</p>
+      <div class="tbl"><table>
+        <colgroup><col style="width:26px"><col><col style="width:150px"><col style="width:62px"></colgroup>
+        <thead><tr><th></th><th>Name</th><th>Service ranges</th><th>In force</th></tr></thead>
+        <tbody>
+          <tr class="gPERM"><td class="no">1</td><td class="nm">PERMANENT - GRADE H</td><td class="bd"><span>0–2: 12.00 (+10.00) ≤22.00</span><span>2–5: 14.00 (+10.00) ≤24.00</span><span>5–No limit: 16.00 (+10.00) ≤26.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gPERM"><td class="no">2</td><td class="nm">PERMANENT - GRADE 12 - 15</td><td class="bd"><span>0–2: 16.00 (+10.00) ≤26.00</span><span>2–5: 18.00 (+10.00) ≤28.00</span><span>5–No limit: 20.00 (+10.00) ≤30.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gPERM"><td class="no">3</td><td class="nm">PERMANENT - GRADE 16 - 19</td><td class="bd"><span>0–2: 20.00 (+10.00) ≤30.00</span><span>2–5: 22.00 (+10.00) ≤32.00</span><span>5–No limit: 24.00 (+10.00) ≤34.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gPERM"><td class="no">4</td><td class="nm">PERMANENT - GRADE 20 - 23</td><td class="bd"><span>0–No limit: 24.00 (+10.00) ≤34.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gCON"><td class="no">5</td><td class="nm">CONTRACT - GRADE H</td><td class="bd"><span>0–No limit: 8.00 (+10.00) ≤18.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gCON"><td class="no">6</td><td class="nm">CONTRACT - GRADE 12 - 18</td><td class="bd"><span>0–No limit: 14.00 (+10.00) ≤24.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gCON"><td class="no">7</td><td class="nm">CONTRACT - GRADE &gt;= 19</td><td class="bd"><span>0–No limit: 18.00 (+10.00) ≤28.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gCON"><td class="no">8</td><td class="nm">CONTRACT - SPECIAL (40 AL)</td><td class="bd"><span>0–No limit: 40.00 (+10.00) ≤50.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gSPE"><td class="no">9</td><td class="nm">CONTRACT - GRADE H (SPECIAL)</td><td class="bd"><span>0–No limit: 8.00 (+10.00) ≤18.00</span></td><td class="fd">2026-08-10</td></tr>
+          <tr class="gSPE"><td class="no">10</td><td class="nm">CONTRACT - GRADE 12 - 18 (SPECIAL)</td><td class="bd"><span>0–No limit: 14.00 (+10.00) ≤24.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gSPE"><td class="no">11</td><td class="nm">CONTRACT - GRADE &gt;= 19 (SPECIAL)</td><td class="bd"><span>0–No limit: 18.00 (+10.00) ≤28.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gRET"><td class="no">12</td><td class="nm">CONTRACT - GRADE H (RETIREE)</td><td class="bd"><span>0–2: 12.00 (+10.00) ≤22.00</span><span>2–5: 14.00 (+10.00) ≤24.00</span><span>5–No limit: 16.00 (+10.00) ≤26.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gRET"><td class="no">13</td><td class="nm">CONTRACT - GRADE 12 - 15 (RETIREE)</td><td class="bd"><span>0–2: 16.00 (+10.00) ≤26.00</span><span>2–5: 18.00 (+10.00) ≤28.00</span><span>5–No limit: 20.00 (+10.00) ≤30.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gRET"><td class="no">14</td><td class="nm">CONTRACT - GRADE 16 - 19 (RETIREE)</td><td class="bd"><span>0–2: 20.00 (+10.00) ≤30.00</span><span>2–5: 22.00 (+10.00) ≤32.00</span><span>5–No limit: 24.00 (+10.00) ≤34.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gRET"><td class="no">15</td><td class="nm">CONTRACT - GRADE 20 - 23 (RETIREE)</td><td class="bd"><span>0–No limit: 24.00 (+10.00) ≤34.00</span></td><td class="fd">2026-08-01</td></tr>
+          <tr class="gPT"><td class="no">16</td><td class="nm">PART TIMER</td><td class="bd"><span>0–No limit: 8.00 (+10.00) ≤18.00</span></td><td class="fd">2026-08-10</td></tr>
+        </tbody>
+      </table></div>
+      <p class="callout g"><i>&check;</i> Four clean blocks, then Part timer. Same sixteen tables, same days, same dates — only the order on screen moves.</p>
+    </div>
+
+  </div>
+</div>
+
+<div class="card">
+  <h2>The same order in the entitlement table dropdown</h2>
+  <p class="sub">Leave config &rsaquo; Annual Leave &rsaquo; Entitlement &rsaquo; Employee eligibility &rsaquo; New eligibility rule. This dropdown reads from the same list as the table above, so it is reordered by the same change — which is the companion request about the dropdown.</p>
+  <div class="ddwrap">
+    <div>
+      <p class="lbl">Today</p>
+      <div class="sel">
+        <div class="hd">Choose an entitlement table</div>
+        <ul>
+          <li>CONTRACT - GRADE 12 - 15 (RETIREE)</li>
+          <li>CONTRACT - GRADE 12 - 18</li>
+          <li>CONTRACT - GRADE 12 - 18 (SPECIAL)</li>
+          <li>CONTRACT - GRADE 16 - 19 (RETIREE)</li>
+          <li>CONTRACT - GRADE &gt;= 19</li>
+          <li>CONTRACT - GRADE &gt;= 19 (SPECIAL)</li>
+          <li>CONTRACT - GRADE 20 - 23 (RETIREE)</li>
+          <li>CONTRACT - GRADE H</li>
+          <li>CONTRACT - GRADE H (RETIREE)</li>
+          <li>CONTRACT - GRADE H (SPECIAL)</li>
+          <li>CONTRACT - SPECIAL (40 AL)</li>
+          <li>PART TIMER</li>
+          <li>PERMANENT - GRADE 12 - 15</li>
+          <li>PERMANENT - GRADE 16 - 19</li>
+          <li>PERMANENT - GRADE 20 - 23</li>
+          <li>PERMANENT - GRADE H</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <p class="lbl">After this change</p>
+      <div class="sel">
+        <div class="hd">Choose an entitlement table</div>
+        <ul>
+          <li>PERMANENT - GRADE H</li>
+          <li>PERMANENT - GRADE 12 - 15</li>
+          <li>PERMANENT - GRADE 16 - 19</li>
+          <li>PERMANENT - GRADE 20 - 23</li>
+          <li>CONTRACT - GRADE H</li>
+          <li>CONTRACT - GRADE 12 - 18</li>
+          <li>CONTRACT - GRADE &gt;= 19</li>
+          <li>CONTRACT - SPECIAL (40 AL)</li>
+          <li>CONTRACT - GRADE H (SPECIAL)</li>
+          <li>CONTRACT - GRADE 12 - 18 (SPECIAL)</li>
+          <li>CONTRACT - GRADE &gt;= 19 (SPECIAL)</li>
+          <li>CONTRACT - GRADE H (RETIREE)</li>
+          <li>CONTRACT - GRADE 12 - 15 (RETIREE)</li>
+          <li>CONTRACT - GRADE 16 - 19 (RETIREE)</li>
+          <li>CONTRACT - GRADE 20 - 23 (RETIREE)</li>
+          <li>PART TIMER</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <p class="foot">
+    <b>What about the other leave types?</b> The other eight leave types that have entitlement tables use three
+    names each — PERMANENT, CONTRACT - SPECIAL and CONTRACT - RETIREE. The same rule sorts them the same way:
+    Permanent first, then Contract, then Contract (Retiree). Any future table whose name does not follow the
+    Permanent / Contract / Part timer pattern is listed after the ones that do, in alphabetical order, exactly as
+    the request asks.
+  </p>
+</div>

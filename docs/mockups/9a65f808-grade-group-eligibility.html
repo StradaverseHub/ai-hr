@@ -1,0 +1,193 @@
+<meta charset="utf-8">
+<title>9a65f808 — Grade Group becomes an eligibility criterion</title>
+<!--
+  Mockup for 9a65f808 ("Move Grade Group Selection to Eligibility Rules"), plan revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here.
+
+  · ALL 16 GRADE GROUP NAMES AND ALL MEMBER GRADE CODES ARE REAL, read READ-ONLY from production on
+    2026-08-12 (grade_group / grade_group_member / job_grade). 55 job grades exist, 54 of them sit in one
+    of 16 groups, 1 is in no group. The typo "SEPCIAL5" and the double space in "GRADE  16-19 (PERMANENT)"
+    are how the records really read — nothing here is tidied or invented.
+  · "GRADE 12-18 (CONTRACT)" really does hold exactly these seven grades, and both their codes and their
+    display names are read from job_grade — nothing is paraphrased:
+      EXECC = GRADE 12 (CONTRACT)          M1  = GRADE 16 (CONTRACT)
+      EXECCC = GRADE 13 (CONTRACT)         M2  = GRADE 17 (CONTRACT)
+      SENIOREXEC1 = GRADE 14 (CONTRACT)    SENIORMANAGER1 = GRADE 18 (CONTRACT)
+      AM1 = GRADE 15 (CONTRACT)
+    The two unticked rows drawn beneath them, AGM1 = GRADE 19 (CONTRACT) and CEO1 = GRADE 22 (CONTRACT),
+    are the real next grades and are correctly NOT part of that group. That is why the BEFORE panel shows
+    seven ticks and two empty boxes.
+  · THE REFUSAL SENTENCE IN THE BEFORE PANEL IS THE SHIPPED WORDING, quoted from
+    core/leave-approval-template.ts resolveEligibilityRuleScopes — not a paraphrase and not a prediction.
+  · THE TOP STRIP IS TRACED FROM THE REPORTER'S OWN SCREENSHOT (attachment "grade group to eligibility
+    rules.png"): the Assign template panel with Template / Companies / Leave types / Eligibility rules /
+    Conditions, including the real empty-state sentences "No eligibility rules for the chosen companies."
+    and "None selected = applies to all". Production has zero eligibility rules, which is why it is empty.
+  · THE AFTER PANEL DRAWS ONE NEW CONTROL AND NOTHING ELSE. The criteria groups, the rule name, the
+    effective date and the matched-count check are unchanged and are drawn as they are.
+  · Wording, spacing and colours will differ from the finished screen.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .ph{font-size:16px;font-weight:700;margin:0}
+  .phs{font-size:11.5px;color:var(--mf);margin:2px 0 16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:16px}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .sub{font-size:11px;color:var(--mf);margin:0 0 12px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;
+        vertical-align:2px;margin-left:7px;letter-spacing:.02em}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .ok{background:color-mix(in srgb,#15803d 13%,white);color:#14532d}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .split > *{min-width:0}
+
+  /* assign-template strip */
+  .cols{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+  .col{border:1px solid var(--border);border-radius:9px;background:#fff;overflow:hidden;min-height:96px}
+  .col .h{font-size:9.6px;font-weight:700;color:var(--mf);padding:5px 8px;border-bottom:1px solid var(--border);
+          background:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .col .b{padding:6px 8px;font-size:10.2px}
+  .col .b .o{display:flex;gap:5px;align-items:center;padding:1.5px 0;color:var(--fg)}
+  .col .b .o em{font-style:normal;width:9px;height:9px;border:1px solid #c4c5d4;border-radius:2px;flex:none}
+  .empty{font-size:10px;color:#9a9ba8;padding:8px}
+  .hint{font-size:9.2px;color:var(--mf);padding:0 8px 6px}
+  .hi{outline:2px solid var(--good);outline-offset:2px;border-radius:9px}
+
+  /* pickers */
+  .pnl{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .pnlhd{padding:7px 11px;border-bottom:1px solid var(--border);background:var(--muted);font-size:11.4px;font-weight:700}
+  .body{padding:10px 11px 11px}
+  .lbl{font-size:9.4px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);font-weight:700;margin-bottom:4px}
+  .trigger{border:1.5px solid var(--primary);border-radius:8px;padding:5.5px 9px;font-size:10.8px;background:#fff;
+           display:flex;justify-content:space-between;align-items:center;font-weight:600}
+  .trigger i{font-style:normal;color:var(--mf);font-size:8.5px;font-weight:400}
+  .list{border:1px solid var(--border);border-radius:8px;margin-top:5px;overflow:hidden;background:#fff}
+  .list .i{display:flex;gap:6px;align-items:center;padding:3.1px 9px;font-size:10.3px;border-bottom:1px solid #f3f4fa}
+  .list .i:last-child{border-bottom:0}
+  .list .i em{font-style:normal;width:10px;height:10px;border:1px solid #c4c5d4;border-radius:2px;flex:none;
+              display:flex;align-items:center;justify-content:center;font-size:7.5px;color:#fff}
+  .list .i.on em{background:var(--primary);border-color:var(--primary)}
+  .list .i.on em::after{content:"\2713"}
+  .list .i.on{background:color-mix(in srgb,var(--primary) 6%,white)}
+  .list .i .c{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9.4px;color:var(--mf);margin-left:auto}
+  .scrollnote{padding:4px 9px;font-size:9.3px;color:var(--mf);background:#fafbff;border-top:1px dashed var(--border)}
+  .sect{border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:10.5px;margin-top:6px;
+        display:flex;align-items:center;gap:7px;color:var(--mf)}
+  .refuse{margin-top:9px;border:1px solid #f3c9c9;background:#fff7f7;border-radius:9px;padding:8px 10px;
+          font-size:10.3px;color:#991b1b;line-height:1.5}
+  .refuse b{display:block;font-size:9.4px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+  .callout{display:flex;gap:7px;font-size:11px;margin:10px 0 0;line-height:1.45}
+  .callout.b{color:var(--bad)} .callout.g{color:var(--good)}
+  .callout i{font-style:normal;font-weight:800}
+  .foot{font-size:10.7px;color:var(--mf);line-height:1.55;margin:0}
+  .foot b{color:var(--fg)}
+  .foot p{margin:0 0 7px} .foot p:last-child{margin:0}
+</style>
+
+<p class="ph">Leave config &rsaquo; Entitlement &rsaquo; Employee eligibility — adding Grade Group</p>
+<p class="phs">Sketch, drawn from your screenshot and your real 16 grade groups on 12 Aug 2026. Wording, spacing and colours will differ.</p>
+
+<div class="card">
+  <h2>First, the good news — half of this already happened<span class="chip ok">ALREADY WORKS</span></h2>
+  <p class="sub">Approval templates stopped being scoped by picking a grade group some time ago. The Eligibility rules column below is what replaced it: you choose an eligibility rule, and the grade group is worked out from that rule automatically. So the routing side of your request is already the way you describe.</p>
+  <div class="cols">
+    <div class="col"><div class="h">Companies</div><div class="b">
+      <div class="o"><em></em>Chin Hin Construction Engineering</div>
+      <div class="o"><em></em>Chin Hin Property Group</div>
+      <div class="o"><em></em>Demo Group Holdings Bhd</div>
+      <div class="o"><em></em>Demo Sdn Bhd</div>
+    </div><div class="hint">Pick at least one</div></div>
+    <div class="col"><div class="h">Leave types</div><div class="b">
+      <div class="o"><em></em>Annual Leave</div>
+      <div class="o"><em></em>Caregiver Leave</div>
+      <div class="o"><em></em>Compassionate Leave</div>
+      <div class="o"><em></em>Emergency Leave</div>
+    </div><div class="hint">Pick at least one</div></div>
+    <div class="col hi"><div class="h">Eligibility rules</div><div class="empty">No eligibility rules for the chosen companies.</div><div class="hint">None selected = applies to all</div></div>
+    <div class="col"><div class="h">Conditions</div><div class="b"><div class="o"><em></em>Add a condition</div></div><div class="hint">None selected = applies to all</div></div>
+  </div>
+  <p class="callout g"><i>&check;</i> This column is empty only because no eligibility rules exist yet — not because the feature is missing. What is missing is the ability to say "this grade group" when you write one.</p>
+</div>
+
+<div class="card">
+  <div class="split">
+
+    <div>
+      <h2>Writing an eligibility rule today<span class="chip now">NOW</span></h2>
+      <p class="sub">There is no Grade Group choice. To target the group "GRADE 12-18 (CONTRACT)" you must know its seven grades and tick every one of them, out of 55 in the list.</p>
+      <div class="pnl">
+        <div class="pnlhd">Employment Information</div>
+        <div class="body">
+          <p class="lbl">Job Grade</p>
+          <div class="trigger"><span>7 selected</span><i>&#9660;</i></div>
+          <div class="list">
+            <div class="i on"><em></em>GRADE 12 (CONTRACT)<span class="c">EXECC</span></div>
+            <div class="i on"><em></em>GRADE 13 (CONTRACT)<span class="c">EXECCC</span></div>
+            <div class="i on"><em></em>GRADE 14 (CONTRACT)<span class="c">SENIOREXEC1</span></div>
+            <div class="i on"><em></em>GRADE 15 (CONTRACT)<span class="c">AM1</span></div>
+            <div class="i on"><em></em>GRADE 16 (CONTRACT)<span class="c">M1</span></div>
+            <div class="i on"><em></em>GRADE 17 (CONTRACT)<span class="c">M2</span></div>
+            <div class="i on"><em></em>GRADE 18 (CONTRACT)<span class="c">SENIORMANAGER1</span></div>
+            <div class="i"><em></em>GRADE 19 (CONTRACT)<span class="c">AGM1</span></div>
+            <div class="i"><em></em>GRADE 22 (CONTRACT)<span class="c">CEO1</span></div>
+            <div class="scrollnote">&#8595; 46 more grades below</div>
+          </div>
+          <div class="sect">Grade Group &mdash; not offered here</div>
+          <div class="refuse">
+            <b>And if you miss one</b>
+            &ldquo;Contract executives&rdquo; covers only part of grade group &ldquo;GRADE 12-18 (CONTRACT)&rdquo;. An approval rule can only scope to a WHOLE grade group, so assigning it would reach grades the rule does not cover.
+          </div>
+        </div>
+      </div>
+      <p class="callout b"><i>&times;</i> Seven correct ticks or the rule is refused later, on a different screen, with a message about groups you were never shown.</p>
+    </div>
+
+    <div>
+      <h2>After this change<span class="chip new">AFTER</span></h2>
+      <p class="sub">Grade Group sits beside Job Grade, listing your sixteen groups by name. One tick does what seven did, and it is always the whole group.</p>
+      <div class="pnl">
+        <div class="pnlhd">Employment Information</div>
+        <div class="body">
+          <p class="lbl">Grade Group</p>
+          <div class="trigger"><span>1 selected</span><i>&#9660;</i></div>
+          <div class="list">
+            <div class="i"><em></em>GRADE H (PERMANENT)<span class="c">1 grade</span></div>
+            <div class="i"><em></em>GRADE 12-15 (PERMANENT)<span class="c">4 grades</span></div>
+            <div class="i"><em></em>GRADE  16-19 (PERMANENT)<span class="c">4 grades</span></div>
+            <div class="i"><em></em>GRADE 20-23 (PERMANENT)<span class="c">4 grades</span></div>
+            <div class="i"><em></em>GRADE H (CONTRACT)<span class="c">1 grade</span></div>
+            <div class="i on"><em></em>GRADE 12-18 (CONTRACT)<span class="c">7 grades</span></div>
+            <div class="i"><em></em>GRADE &gt;= 19 (CONTRACT)<span class="c">5 grades</span></div>
+            <div class="i"><em></em>CONTRACT - SPECIAL (40 AL)<span class="c">1 grade</span></div>
+            <div class="i"><em></em>CONTRACT - GRADE H (SPECIAL)<span class="c">1 grade</span></div>
+            <div class="i"><em></em>CONTRACT - GRADE 12 - 18 (SPECIAL)<span class="c">7 grades</span></div>
+            <div class="i"><em></em>CONTRACT - GRADE &gt;= 19 (SPECIAL)<span class="c">5 grades</span></div>
+            <div class="i"><em></em>GRADE H (CONTRACT -RETIREE)<span class="c">1 grade</span></div>
+            <div class="i"><em></em>GRADE 12-15 (CONTRACT -RETIREE)<span class="c">4 grades</span></div>
+            <div class="i"><em></em>GRADE 16-19 (CONTRACT -RETIREE)<span class="c">4 grades</span></div>
+            <div class="i"><em></em>GRADE 20-23 (CONTRACT -RETIREE)<span class="c">4 grades</span></div>
+            <div class="i"><em></em>Part Time<span class="c">1 grade</span></div>
+          </div>
+          <div class="sect">Job Grade &mdash; still there, for a single grade</div>
+        </div>
+      </div>
+      <p class="callout g"><i>&check;</i> All sixteen of your groups, by their real names. Picking one always covers the whole group, so the refusal above can no longer happen.</p>
+    </div>
+
+  </div>
+</div>
+
+<div class="card">
+  <div class="foot">
+    <p><b>The Grade Groups list itself moves too.</b> The block at the bottom of Approval Workflow, where the sixteen groups are created and grades are put into them, moves next to Employee Eligibility so everything about who is eligible sits in one place. A link is left behind on the Approval Workflow screen. It has to live somewhere: it is the list this new choice reads from.</p>
+    <p><b>Nothing about approval routing changes.</b> Existing approval templates, escalation settings and every rule already saved keep working exactly as they do now. No group is renamed, no grade moves between groups.</p>
+    <p><b>One of your 55 grades is currently in no group at all.</b> It stays selectable under Job Grade as it is today; only Grade Group is new.</p>
+  </div>
+</div>

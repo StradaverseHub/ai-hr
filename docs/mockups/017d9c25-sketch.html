@@ -1,0 +1,278 @@
+<meta charset="utf-8">
+<title>017d9c25 — the EPF tick decides, and a Pay Item change flags the run</title>
+<!--
+  Mockup for 017d9c25 (Payroll Processing — always apply latest Pay Item statutory configuration),
+  plan revision 1.
+
+  EVERY FIGURE ON THIS PAGE WAS MEASURED READ-ONLY ON PRODUCTION 2026-08-12. Nothing is invented.
+   - Employee A0013 (the reporter's "TEST0013" — no TEST* employee codes exist on the system).
+   - Payslip on batch 368c67fc (pay_period 2026-01), version 3, created 2026-08-11 11:49:
+       basic_salary 5952.00 · allowance 1600.00 · gross_pay 7552.00
+       statutory.epfEmployee 836 · epfEmployer 912 · socsoEmployee 29.75 · eisEmployee 11.90 · pcb 429.05
+       statutory.componentLines: A0027 100 -> wage · A0080 500 -> wage · A0020 1000 -> wage ·
+                                 D0030 169.60 -> deduct
+   - pay_component flags, verbatim: A0020 epf=f socso=f pcb=t, pcb_remuneration_type='normal';
+     A0027 epf=f socso=t pcb=t 'normal'; A0080 epf=f socso=f pcb=t 'normal'; D0030 is a DEDUCTION.
+   - The AFTER EPF figures are the EPF Act Third Schedule Part A band amounts for a 5952.00 wage
+     (band upper 6000 -> employee ceil(0.11*6000)=660, employer ceil(0.12*6000)=720). The BEFORE
+     figures are the band for 7552.00 (band upper 7600 -> 836 / 912) and match the stored payslip
+     to the cent, which is what proves the band arithmetic here is the system's own.
+
+  DELIBERATELY NOT DRAWN:
+   - NO net pay figure in the after column. PCB is recalculated alongside EPF and its exact new value
+     depends on the cumulative tax tables; a picture cannot hedge, so the change is stated in words
+     under the table instead of drawn as a number.
+   - NO dated/effective history of Pay Item settings anywhere. The plan does not promise one.
+   - NO invented employees. A0013 is the reporter's own case and is the only employee shown.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;
+        --grid:#d8dae6;--hl:#eef0ff;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .tag.amb{background:#fef3c7;color:#92400e}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px;font-size:12px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+
+  .screen{background:#fff;border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .scrpad{padding:14px 16px}
+  .sechead{display:flex;align-items:center;justify-content:space-between;gap:12px;
+           padding:10px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600}
+  .sechead .cnt{color:var(--mf);font-weight:400}
+  .f label{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;
+           color:var(--mf);font-weight:700;margin-bottom:4px}
+  .inp{border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;background:#fff;
+       display:flex;justify-content:space-between;gap:6px;color:var(--fg)}
+  .inp i{color:#9698ab;font-style:normal}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:7px 15px;font-size:12px;font-weight:600;
+       display:inline-block}
+  .btn.gh{background:#fff;color:var(--fg);border:1px solid var(--border)}
+  .btnrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:13px}
+
+  .ticks{display:grid;grid-template-columns:1fr 1fr;gap:7px 18px;margin-top:4px}
+  .tick{display:flex;align-items:center;gap:8px;font-size:12px}
+  .cb{width:15px;height:15px;border-radius:4px;border:1.5px solid #b9bcd8;background:#fff;flex:none;
+      display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700}
+  .cb.on{background:var(--primary);border-color:var(--primary)}
+  .cb.hi{border-color:#dc2626;box-shadow:0 0 0 3px #fee2e2}
+  .cb.hg{border-color:#15803d;box-shadow:0 0 0 3px #dcfce7}
+
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:7px 8px;background:#fafafd;border-bottom:1px solid var(--border);vertical-align:bottom}
+  td{padding:7px 8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;vertical-align:middle}
+  .r{text-align:right}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
+  .rowin{background:#fef4f4}
+  .rowout{background:#f4fbf5}
+  .st{display:inline-block;padding:1px 9px;border-radius:999px;font-size:9.5px;font-weight:700}
+  .st.in{background:#fee2e2;color:#991b1b}
+  .st.out{background:#dcfce7;color:#166534}
+  .st.na{background:var(--muted);color:var(--mf)}
+  .st.ok{background:#e8eaff;color:#3730a3}
+  tr.tot td{font-weight:700;background:#fafafd;border-bottom:none}
+  .big{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+  .del{font-size:11px;font-weight:700}
+  .del.dn{color:var(--good)}
+
+  .banner{display:flex;align-items:flex-start;gap:10px;border:1px solid #fcd34d;background:#fffbeb;
+          border-radius:10px;padding:11px 13px;font-size:12px;color:#78350f}
+  .banner .ic{width:17px;height:17px;border-radius:5px;background:#b45309;color:#fff;font-size:11px;
+              line-height:17px;text-align:center;flex:none;font-weight:700}
+  .banner b{display:block;margin-bottom:2px}
+  .lnk{color:var(--primary);font-weight:600;text-decoration:none}
+  .arrow{text-align:center;font-size:17px;color:#b9bcd8;margin:-4px 0 6px}
+  .cap{font-size:10.5px;color:var(--mf);margin:0 0 7px;font-weight:700;text-transform:uppercase;
+       letter-spacing:.05em}
+  .callout{border-left:3px solid var(--bad);padding-left:11px;margin-top:11px;font-size:11.5px;color:#7f1d1d}
+  .callout.ok{border-left-color:var(--good);color:#14532d}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Why January did not change — the box that is quietly overriding your ticks</h2>
+  <p class="q">Payroll Settings &rarr; Pay Items &rarr; Director Fee (A0020), as it stands on your system today.</p>
+
+  <div class="two">
+    <div class="screen">
+      <div class="sechead">Director Fee (A0020) <span class="cnt">Allowance</span></div>
+      <div class="scrpad f">
+        <label>Subject to</label>
+        <div class="ticks">
+          <div class="tick"><span class="cb hi"></span> EPF / KWSP</div>
+          <div class="tick"><span class="cb"></span> SOCSO / EIS</div>
+          <div class="tick"><span class="cb on">&#10003;</span> PCB / MTD</div>
+          <div class="tick"><span class="cb"></span> HRDF levy</div>
+        </div>
+        <div style="margin-top:14px">
+          <label>Remuneration type <span style="color:#dc2626">(required once PCB is ticked)</span></label>
+          <div class="inp" style="border-color:#dc2626;background:#fef2f2">Normal remuneration <i>&#9662;</i></div>
+        </div>
+        <div class="callout">
+          Today this one box decides the statutory treatment on its own. "Normal" puts the money in the
+          same pot as basic salary — and that pot is what EPF is charged on. Your EPF tick above is never
+          read.
+        </div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="sechead">The same screen, after this change</div>
+      <div class="scrpad f">
+        <label>Subject to</label>
+        <div class="ticks">
+          <div class="tick"><span class="cb hg"></span> EPF / KWSP</div>
+          <div class="tick"><span class="cb"></span> SOCSO / EIS</div>
+          <div class="tick"><span class="cb on">&#10003;</span> PCB / MTD</div>
+          <div class="tick"><span class="cb"></span> HRDF levy</div>
+        </div>
+        <div style="margin-top:14px">
+          <label>Remuneration type <span class="mf">(used for tax only)</span></label>
+          <div class="inp">Normal remuneration <i>&#9662;</i></div>
+        </div>
+        <div class="callout ok">
+          Each tick decides its own statutory figure. Remuneration type goes back to doing only what its
+          name says — telling the tax calculation whether this is normal or additional pay.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>What that costs on your own payslip — A0013, January 2026</h2>
+  <p class="q">Measured on your live system. These are the figures on the payslip as it stands after your
+     reprocess of 11 August.</p>
+
+  <div class="two">
+    <div>
+      <p class="cap">Today &mdash; counted for EPF</p>
+      <div class="screen">
+        <table>
+          <thead><tr><th>Pay item</th><th class="r">Amount</th><th>In the EPF calculation?</th></tr></thead>
+          <tbody>
+            <tr><td>Basic salary</td><td class="r">5,952.00</td><td><span class="st ok">Yes</span></td></tr>
+            <tr class="rowin"><td>A0027 Handphone allowance <span class="mono">EPF off</span></td><td class="r">100.00</td><td><span class="st in">Yes</span></td></tr>
+            <tr class="rowin"><td>A0080 Travel allowance <span class="mono">EPF off</span></td><td class="r">500.00</td><td><span class="st in">Yes</span></td></tr>
+            <tr class="rowin"><td>A0020 Director fee <span class="mono">EPF off</span></td><td class="r">1,000.00</td><td><span class="st in">Yes</span></td></tr>
+            <tr><td>D0030 Monthly parking <span class="mono">deduction</span></td><td class="r">169.60</td><td><span class="st na">Never was</span></td></tr>
+            <tr class="tot"><td>EPF is worked out on</td><td class="r big">7,552.00</td><td></td></tr>
+          </tbody>
+        </table>
+        <div class="scrpad" style="border-top:1px solid var(--border)">
+          <table>
+            <tbody>
+              <tr><td>EPF employee</td><td class="r big" style="color:var(--bad)">836.00</td></tr>
+              <tr style="border-bottom:none"><td>EPF employer</td><td class="r big" style="color:var(--bad)">912.00</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <p class="cap">After this change &mdash; your ticks decide</p>
+      <div class="screen">
+        <table>
+          <thead><tr><th>Pay item</th><th class="r">Amount</th><th>In the EPF calculation?</th></tr></thead>
+          <tbody>
+            <tr><td>Basic salary</td><td class="r">5,952.00</td><td><span class="st ok">Yes</span></td></tr>
+            <tr class="rowout"><td>A0027 Handphone allowance <span class="mono">EPF off</span></td><td class="r">100.00</td><td><span class="st out">No</span></td></tr>
+            <tr class="rowout"><td>A0080 Travel allowance <span class="mono">EPF off</span></td><td class="r">500.00</td><td><span class="st out">No</span></td></tr>
+            <tr class="rowout"><td>A0020 Director fee <span class="mono">EPF off</span></td><td class="r">1,000.00</td><td><span class="st out">No</span></td></tr>
+            <tr><td>D0030 Monthly parking <span class="mono">deduction</span></td><td class="r">169.60</td><td><span class="st na">Never was</span></td></tr>
+            <tr class="tot"><td>EPF is worked out on</td><td class="r big">5,952.00</td><td></td></tr>
+          </tbody>
+        </table>
+        <div class="scrpad" style="border-top:1px solid var(--border)">
+          <table>
+            <tbody>
+              <tr><td>EPF employee</td><td class="r big" style="color:var(--good)">660.00</td><td class="r del dn">&minus;176.00</td></tr>
+              <tr style="border-bottom:none"><td>EPF employer</td><td class="r big" style="color:var(--good)">720.00</td><td class="r del dn">&minus;192.00</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    PCB is recalculated at the same time, because the EPF contribution feeds the tax relief — so total
+    deduction and net pay both move too. The exact new tax figure comes out of the reprocess; it is not
+    drawn here because it is not ours to promise to the cent.
+  </div>
+  <div class="note">
+    Monthly parking is a <b>deduction</b>. Deductions come off after the statutory figures are worked out,
+    so it has never been inside the EPF calculation — that half of your report is already correct.
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>And the run will tell you it is out of date</h2>
+  <p class="q">Today, saving a Pay Item changes nothing on a run you have already processed, and the run
+     will still let you close it on the old figures.</p>
+
+  <div class="banner" style="margin-bottom:12px">
+    <span class="ic">!</span>
+    <span><b>January 2026 &mdash; Monthly needs reprocessing</b>
+      Pay item <span style="font-weight:700">Director Fee (A0020)</span> was changed on 12 Aug 2026 at
+      14:05. 2 employees on this run use it. This run cannot be closed until it is reprocessed.
+      <a class="lnk" href="#">See what will change</a> &nbsp;&middot;&nbsp;
+      <a class="lnk" href="#">Reprocess these employees</a>
+    </span>
+  </div>
+
+  <p class="cap">See what will change &mdash; the screen this links to already exists</p>
+  <div class="screen">
+    <div class="sechead">January 2026 &middot; Monthly <span class="cnt">2 employees affected</span></div>
+    <table>
+      <thead><tr><th>Employee</th><th>Statutory line</th><th class="r">Before</th><th class="r">After</th><th class="r">Change</th></tr></thead>
+      <tbody>
+        <tr><td>A0013</td><td>EPF employee</td><td class="r">836.00</td><td class="r">660.00</td><td class="r del dn">&minus;176.00</td></tr>
+        <tr><td>A0013</td><td>EPF employer</td><td class="r">912.00</td><td class="r">720.00</td><td class="r del dn">&minus;192.00</td></tr>
+        <tr><td>A0014</td><td>EPF employee</td><td class="r" colspan="3" style="color:var(--mf);font-style:italic">calculated when you press Reprocess</td></tr>
+      </tbody>
+    </table>
+    <div class="scrpad" style="border-top:1px solid var(--border)">
+      <span class="btn">Reprocess</span>
+      <span class="btn gh">Back to the run</span>
+    </div>
+  </div>
+
+  <div class="note">
+    Keying a one-off transaction already raises this notice today. Changing a Pay Item does not — which is
+    exactly why January sat there looking settled after you changed the EPF tick.
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">4</span>One more we found while checking yours &mdash; Overtime 1.5</h2>
+  <p class="q">You did not report this. It is the same fault, pointing the other way.</p>
+  <div class="two">
+    <div class="box bad">
+      <b>Today</b><br>
+      Overtime 1.5 is ticked <b>not subject to EPF</b> and <b>subject to SOCSO / EIS</b>, but it is
+      classified as Additional remuneration — so it is charged EPF and left out of SOCSO and EIS. The exact
+      opposite of its own settings, in both directions.
+      <div class="note" style="color:#7f1d1d">On the 2026-08 run, employee X000001: overtime 584.13 charged
+        EPF, contributing 65.00 of the 714.00 employee EPF on that payslip.</div>
+    </div>
+    <div class="box good">
+      <b>After this change</b><br>
+      Overtime 1.5 is left out of EPF and counted for SOCSO and EIS, because that is what its ticks say.
+      Same fix, no separate work — which is why it is in this plan rather than a new request.
+    </div>
+  </div>
+</div>

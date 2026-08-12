@@ -1,0 +1,143 @@
+<meta charset="utf-8">
+<title>3ddae357 — Making the As at date actually move the balances</title>
+<!--
+  Mockup for 3ddae357 ("Make Employee Balance 'As At' Date Dynamic"), plan revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here.
+
+  · THE LEDGER BLOCK IS REAL, read READ-ONLY from production on 2026-08-12: the four Annual Leave ledger
+    entries for FARAH (employee 100009, Chin Hin Construction Engineering) — the very employee selected in
+    the reporter's own screenshot on this item.
+        2025-05-01  accrual      +10.67
+        2026-01-01  adjustment    -0.67   (carry-forward cap)
+        2026-08-01  accrual      +11.00
+        2026-08-04  adjustment    -1.50   (profile recalculation)
+    They sum to 19.50, which is exactly the Balance the reporter's screenshot shows on the ANNUAL row.
+    That agreement is the proof the sketch rests on; nothing here is invented.
+  · THE THREE "SHOULD READ" FIGURES ARE ARITHMETIC ON THAT REAL LEDGER, not a guess: sum the entries dated
+    on or before each date. 2025-12-31 -> 10.67. 2026-07-31 -> 10.00. 2026-08-11 -> 19.50.
+  · THE "SHOWS TODAY" COLUMN IS 19.50 THREE TIMES because core/read.ts leaveBalances takes no as-at date at
+    all — app/leave/employee-balances/rows.ts calls it without one and sums the WHOLE ledger. Verified in
+    source, not assumed.
+  · THE COLUMN MAP IS VERIFIED PER COLUMN against components/leave/leave-balance-row.ts deriveBalanceRow and
+    rows.ts. Five columns already move with the date (they come from leaveEntitlementBreakdown, which does
+    take asOf); four do not (they come from the undated leaveBalances). The Date column simply prints back
+    the date you typed.
+  · THE OTHER COLUMNS' FUTURE VALUES ARE DELIBERATELY NOT DRAWN. Only Balance can be computed exactly from
+    the ledger without running the entitlement engine, so only Balance is given figures. Every other column
+    is shown at its real value TODAY (from the reporter's screenshot) and marked as moving or not moving.
+    A picture cannot hedge, so the uncertain figures are simply absent.
+  · Wording, spacing and colours will differ from the finished screen.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .ph{font-size:16px;font-weight:700;margin:0}
+  .phs{font-size:11.5px;color:var(--mf);margin:2px 0 16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:16px}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .sub{font-size:11px;color:var(--mf);margin:0 0 12px;line-height:1.45}
+  .split{display:grid;grid-template-columns:0.85fr 1.15fr;gap:16px;align-items:start}
+  .split > *{min-width:0}
+  table{border-collapse:separate;border-spacing:0;font-size:11px;width:100%}
+  th,td{padding:5px 9px;border-bottom:1px solid var(--border);text-align:left}
+  tr:last-child td{border-bottom:0}
+  th{font-size:8.7px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);font-weight:700;
+     background:var(--muted)}
+  .tbl{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:#fff}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.2px}
+  .pos{color:var(--good);font-weight:600}
+  .neg{color:var(--bad);font-weight:600}
+  .bad{color:var(--bad);font-weight:700}
+  .good{color:var(--good);font-weight:700}
+  .warn{color:var(--warn);font-weight:700}
+  .sm{font-size:9.6px;color:var(--mf)}
+  .pill{display:inline-block;padding:1.5px 7px;border-radius:999px;font-size:9.3px;font-weight:700}
+  .pMove{background:color-mix(in srgb,#15803d 14%,white);color:#14532d}
+  .pStuck{background:color-mix(in srgb,#dc2626 13%,white);color:#991b1b}
+  .pEcho{background:color-mix(in srgb,#b45309 16%,white);color:#7c2d12}
+  .callout{display:flex;gap:7px;font-size:11px;margin:10px 0 0;line-height:1.45}
+  .callout.b{color:var(--bad)} .callout.g{color:var(--good)}
+  .callout i{font-style:normal;font-weight:800}
+  .asat{display:inline-block;border:1.5px solid var(--primary);border-radius:8px;padding:3px 9px;
+        font-size:10.8px;background:#fff;font-variant-numeric:tabular-nums}
+  .foot{font-size:10.7px;color:var(--mf);line-height:1.55;margin:0}
+  .foot b{color:var(--fg)}
+  .foot p{margin:0 0 7px} .foot p:last-child{margin:0}
+  .hdrrow{display:flex;align-items:center;gap:9px;margin-bottom:9px;flex-wrap:wrap}
+  .hdrrow .who{font-size:11.5px;font-weight:700}
+  .hdrrow .meta{font-size:10.3px;color:var(--mf)}
+</style>
+
+<p class="ph">Team Leave Tracker &rsaquo; Employee Balances &rsaquo; the As at date</p>
+<p class="phs">Sketch, built from the real Annual Leave ledger of the employee in your screenshot (FARAH, 100009), read on 12 Aug 2026. Wording, spacing and colours will differ.</p>
+
+<div class="card">
+  <div class="hdrrow">
+    <span class="who">FARAH · Chin Hin Construction Engineering</span>
+    <span class="meta">Annual Leave — every entry on record</span>
+  </div>
+  <div class="split">
+
+    <div>
+      <div class="tbl"><table>
+        <thead><tr><th>Dated</th><th>What happened</th><th class="n">Days</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">2025-05-01</td><td>Entitlement earned</td><td class="n pos">+10.67</td></tr>
+          <tr><td class="mono">2026-01-01</td><td>Carry-forward cap applied</td><td class="n neg">−0.67</td></tr>
+          <tr><td class="mono">2026-08-01</td><td>Entitlement earned</td><td class="n pos">+11.00</td></tr>
+          <tr><td class="mono">2026-08-04</td><td>Recalculated after a profile change</td><td class="n neg">−1.50</td></tr>
+        </tbody>
+      </table></div>
+      <p class="callout g"><i>&check;</i> These four add up to 19.50 — exactly the Balance your screenshot shows. This is the real record, not an example.</p>
+    </div>
+
+    <div>
+      <p class="sub" style="margin-top:0">Because those four entries carry four different dates, the balance genuinely was a different number at different times. Here is what the Balance column should read at each As at date, and what it actually reads.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>As at</th><th>Entries counted</th><th class="n">Should read</th><th class="n">Shows today</th></tr></thead>
+        <tbody>
+          <tr><td><span class="asat">2025-12-31</span></td><td class="sm">the first entry only</td><td class="n good">10.67</td><td class="n bad">19.50</td></tr>
+          <tr><td><span class="asat">2026-07-31</span></td><td class="sm">the first two</td><td class="n good">10.00</td><td class="n bad">19.50</td></tr>
+          <tr><td><span class="asat">2026-08-11</span></td><td class="sm">all four</td><td class="n good">19.50</td><td class="n good">19.50</td></tr>
+        </tbody>
+      </table></div>
+      <p class="callout b"><i>&times;</i> The Balance column is the same number whatever date you pick. It is only right by accident, on today's date.</p>
+    </div>
+
+  </div>
+</div>
+
+<div class="card">
+  <h2>Column by column — what the As at date does today</h2>
+  <p class="sub">The figures in the "Today" column are the real ones from your screenshot's Annual Leave row. Five columns already respond to the date. Four ignore it completely, and one of those four is the Balance.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Column</th><th class="n">Today</th><th>Responds to the As at date?</th><th>After this change</th></tr></thead>
+    <tbody>
+      <tr><td>Entitlement Year</td><td class="n">2026</td><td><span class="pill pMove">Yes, already</span></td><td class="sm">unchanged</td></tr>
+      <tr><td>YTD Entitled</td><td class="n">21.00</td><td><span class="pill pMove">Yes, already</span></td><td class="sm">unchanged</td></tr>
+      <tr><td>Brought Forward</td><td class="n">10.00</td><td><span class="pill pMove">Yes, already</span></td><td class="sm">unchanged</td></tr>
+      <tr><td>Taken</td><td class="n">0.00</td><td><span class="pill pStuck">No — counts every leave ever taken</span></td><td class="sm good">counts leave up to the date</td></tr>
+      <tr><td>Pending Approval</td><td class="n">0.00</td><td><span class="pill pStuck">No — counts every open request</span></td><td class="sm good">counts requests up to the date</td></tr>
+      <tr><td>Adjustment</td><td class="n">0.00</td><td><span class="pill pMove">Yes, already</span></td><td class="sm">unchanged</td></tr>
+      <tr><td>Overutilized</td><td class="n">0.00</td><td><span class="pill pStuck">No — follows the stuck balance</span></td><td class="sm good">follows the dated balance</td></tr>
+      <tr><td>Forfeited BF</td><td class="n">10.67</td><td><span class="pill pMove">Yes, already</span></td><td class="sm">unchanged</td></tr>
+      <tr><td><b>Balance</b></td><td class="n"><b>19.50</b></td><td><span class="pill pStuck">No — adds up the whole record</span></td><td class="sm good">adds up to the date only</td></tr>
+      <tr><td>Date</td><td class="n mono">2026-08-11</td><td><span class="pill pEcho">It just repeats what you typed</span></td><td class="sm">unchanged</td></tr>
+    </tbody>
+  </table></div>
+  <p class="callout b"><i>&times;</i> The Date column changing is what makes the screen look like it responded. The four columns that matter did not.</p>
+</div>
+
+<div class="card">
+  <div class="foot">
+    <p><b>Why some columns already work.</b> The five that respond are worked out from your entitlement setup as at the date you pick. The four that do not are read from a running total of the employee's whole leave record, which carries no date at all — so it cannot answer "as at when".</p>
+    <p><b>What a future date will mean.</b> Entitlement already earned by that date is counted, as is leave already booked for days up to it. Nothing is forecast or estimated — only what is genuinely on record for a date on or before the one you choose.</p>
+    <p><b>Only what is shown changes.</b> No entitlement rule, accrual, carry-forward or approval is altered, and nobody's actual balance moves. This is about answering "as at when" honestly on a screen that already asks the question.</p>
+  </div>
+</div>

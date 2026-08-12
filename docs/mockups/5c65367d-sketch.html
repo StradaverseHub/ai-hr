@@ -1,0 +1,264 @@
+<meta charset="utf-8">
+<title>5c65367d — Excel import on Fixed &amp; Individual Transactions</title>
+<!--
+  Mockup for 5c65367d (Payroll Transactions — .xlsx import for Fixed & Individual), plan revision 1.
+
+  REAL, VERIFIED, NOT INVENTED (measured read-only on production 2026-08-12):
+   - The BEFORE toolbar is the live one: app/payroll/transactions/fixed/add-fixed-dialog.tsx:186-192
+     renders a DISABLED "Export" button whose tooltip is "Export is coming soon", beside "Refresh".
+     The Add trigger's label is "Add New Fixed Transaction" (messages/en.json
+     payroll.transactions.fixed.addNew).
+   - Every employee code, pay item code, pay item name, amount and start date in the workbook and the
+     preview is an ACTUAL live row of employment_pay_component:
+         A0013 / A0027 HANDPHONE ALLOWANCE / 100.00 / 2025-03-03
+         A0013 / A0080 TRAVEL ALLOWANCE     / 500.00 / 2025-03-03
+         A0001 / A0027 HANDPHONE ALLOWANCE  / 100.00 / 2025-05-01
+         A0006 / A0027 HANDPHONE ALLOWANCE  / 100.00 / 2019-05-02
+     Nothing here is a made-up person or a made-up salary.
+   - The two FAILED rows use deliberately-wrong values (an employee code that does not exist, and a
+     second row that overlaps A0013's real existing A0027 row). Being wrong is the point of them.
+   - The Pay Items sheet lists the live pay_component catalogue codes.
+   - Companies are the live company legal names.
+   - The error report's shape is the one already shipped for Import Payroll History
+     (app/payroll/history-import/history-import.tsx downloadIssues — buildXlsx, sheet "Validation Result").
+
+  DELIBERATELY NOT DRAWN:
+   - No in-cell Excel dropdowns. The sheets are reference LISTS; Excel data validation is not something
+     the spreadsheet writer in this product emits, and the plan says so in words.
+   - No "overwrite existing row" control. The plan does not promise one; a clash is drawn as a failure.
+   - No Individual Transaction preview screen — only its toolbar. The two screens share one component
+     but their columns differ, and drawing a second grid would imply columns not yet settled.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;
+        --grid:#d8dae6;--hl:#eef0ff;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .cap{font-size:10.5px;color:var(--mf);margin:0 0 7px;font-weight:700;text-transform:uppercase;
+       letter-spacing:.05em}
+
+  .screen{background:#fff;border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .scrpad{padding:14px 16px}
+  .sechead{display:flex;align-items:center;justify-content:space-between;gap:12px;
+           padding:10px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600}
+  .sechead .cnt{color:var(--mf);font-weight:400}
+  .btnrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:7px 15px;font-size:12px;font-weight:600;
+       display:inline-block}
+  .btn.gh{background:#fff;color:var(--fg);border:1px solid var(--border)}
+  .btn.off{background:#f2f3f8;color:#b0b1c0;border:1px solid var(--border)}
+  .btn.new{box-shadow:0 0 0 3px #dcfce7;border-color:#86efac}
+  .tip{font-size:10.5px;color:#a0a1b2;font-style:italic}
+
+  /* drop zone */
+  .drop{border:2px dashed #b9bcd8;border-radius:12px;background:#fafaff;padding:16px;text-align:center}
+  .drop b{display:block;font-size:13px;margin-bottom:3px}
+  .drop span{font-size:11.5px;color:var(--mf)}
+  .filechip{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--border);background:#fff;
+            border-radius:9px;padding:7px 12px;margin-top:11px;font-size:12px}
+  .filechip .xi{width:20px;height:20px;border-radius:5px;background:#107c41;color:#fff;font-size:9px;
+                font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+  .filechip u{text-decoration:none;color:var(--mf);font-size:11px}
+
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:7px 8px;background:#fafafd;border-bottom:1px solid var(--border);vertical-align:bottom}
+  td{padding:7px 8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;vertical-align:top}
+  .r{text-align:right}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
+  .rowfail{background:#fef4f4}
+  .st{display:inline-block;padding:1px 9px;border-radius:999px;font-size:9.5px;font-weight:700}
+  .st.f{background:#fee2e2;color:#991b1b}
+  .st.o{background:#dcfce7;color:#166534}
+
+  /* spreadsheet strip */
+  .xl{border:1px solid var(--grid);border-radius:8px;overflow:hidden;background:#fff}
+  .xtab{display:flex;gap:4px;padding:5px 7px;background:#f4f5f9;border-top:1px solid var(--grid);flex-wrap:wrap}
+  .xtab i{font-style:normal;font-size:10px;padding:3px 12px;border-radius:5px 5px 0 0;background:#fff;
+          border:1px solid var(--grid);border-bottom:none;font-weight:700}
+  .xtab u{text-decoration:none;font-size:10px;color:var(--mf);padding:3px 10px;border-radius:5px 5px 0 0;
+          background:#e9ebf3;border:1px solid var(--grid);border-bottom:none}
+  .xt{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}
+  .xt td,.xt th{border:1px solid var(--grid);padding:4px 6px;white-space:nowrap;overflow:hidden;
+                text-overflow:ellipsis;font-variant-numeric:tabular-nums;vertical-align:middle}
+  .xt th{background:#eceef6;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;
+         color:#3b3d4d;white-space:normal;line-height:1.2;text-align:left}
+  .xt .g{width:24px;background:#eceef6;color:#7b7d8e;text-align:center;font-weight:700;font-size:8.5px}
+  .xt .rr{text-align:right}
+  .xt .dim{color:#8a8c9d;font-style:italic}
+
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+  .tile{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#fbfbfe}
+  .tile b{display:block;font-size:19px;font-variant-numeric:tabular-nums;line-height:1.2}
+  .tile span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+             font-weight:700;margin-top:2px}
+  .tile.ok b{color:var(--good)} .tile.err b{color:var(--bad)}
+  .reuse{display:inline-block;font-size:9.5px;font-weight:700;padding:2px 9px;border-radius:999px;
+         background:#dcfce7;color:#166534;margin-left:8px}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>The toolbar — before and after</h2>
+  <p class="q">Payroll &rarr; Transactions &rarr; Fixed Transaction. The Individual Transaction screen gets the same three buttons.</p>
+
+  <div class="two">
+    <div>
+      <p class="cap">Today</p>
+      <div class="screen">
+        <div class="sechead">Fixed Transaction <span class="cnt">43 recurring items</span></div>
+        <div class="scrpad">
+          <div class="btnrow">
+            <span class="btn">Add New Fixed Transaction</span>
+            <span class="btn off">Export</span>
+            <span class="btn gh">Refresh</span>
+          </div>
+          <div class="note"><span class="tip">Export is greyed out. Its tooltip reads "Export is coming soon."</span></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="cap">After</p>
+      <div class="screen">
+        <div class="sechead">Fixed Transaction <span class="cnt">43 recurring items</span></div>
+        <div class="scrpad">
+          <div class="btnrow">
+            <span class="btn">Add New Fixed Transaction</span>
+            <span class="btn gh new">Import Excel</span>
+            <span class="btn gh new">Download Template</span>
+            <span class="btn off">Export</span>
+            <span class="btn gh">Refresh</span>
+          </div>
+          <div class="note"><span class="tip">Export stays as it is — this request is about getting data in.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>The template you download <span class="reuse">the workbook builder already exists</span></h2>
+  <p class="q">A real Excel file. The first sheet is the one you fill in; the rest are there so you never have to guess a spelling.</p>
+
+  <div class="xl">
+    <table class="xt">
+      <colgroup><col style="width:24px"><col style="width:12%"><col style="width:17%"><col style="width:12%"><col style="width:19%"><col style="width:10%"><col style="width:11%"><col style="width:10%"><col style="width:9%"></colgroup>
+      <thead>
+        <tr><th class="g"></th><th>Employee ID</th><th>Employee Name</th><th>Pay Item Code</th><th>Pay Item</th>
+            <th class="rr">Amount</th><th>Cycle</th><th>Start Date</th><th>End Date</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="g">2</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="g">3</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="g">4</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      </tbody>
+    </table>
+    <div class="xtab"><i>Fixed Transactions</i><u>Example</u><u>Employees</u><u>Pay Items</u><u>Payroll Cycles</u></div>
+  </div>
+
+  <div class="two" style="margin-top:14px">
+    <div>
+      <p class="cap">Sheet "Example" — filled from your own live records</p>
+      <div class="xl">
+        <table class="xt">
+          <colgroup><col style="width:24px"><col style="width:14%"><col style="width:13%"><col style="width:26%"><col style="width:13%"><col style="width:12%"><col style="width:20%"></colgroup>
+          <thead><tr><th class="g"></th><th>Employee ID</th><th>Pay Item Code</th><th>Pay Item</th><th class="rr">Amount</th><th>Cycle</th><th>Start Date</th></tr></thead>
+          <tbody>
+            <tr><td class="g">2</td><td>A0013</td><td>A0027</td><td>HANDPHONE ALLOWANCE</td><td class="rr">100.00</td><td>Regular</td><td>2025-03-03</td></tr>
+            <tr><td class="g">3</td><td>A0013</td><td>A0080</td><td>TRAVEL ALLOWANCE</td><td class="rr">500.00</td><td>Regular</td><td>2025-03-03</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <p class="cap">Sheet "Pay Items" — your live catalogue</p>
+      <div class="xl">
+        <table class="xt">
+          <colgroup><col style="width:24px"><col style="width:18%"><col><col style="width:22%"><col style="width:20%"></colgroup>
+          <thead><tr><th class="g"></th><th>Code</th><th>Pay Item</th><th>Type</th><th>You key</th></tr></thead>
+          <tbody>
+            <tr><td class="g">2</td><td>A0027</td><td>HANDPHONE ALLOWANCE</td><td>Allowance</td><td>Amount</td></tr>
+            <tr><td class="g">3</td><td>A0080</td><td>TRAVEL ALLOWANCE</td><td>Allowance</td><td>Amount</td></tr>
+            <tr><td class="g">4</td><td>A0020</td><td>DIRECTOR FEE</td><td>Allowance</td><td>Amount</td></tr>
+            <tr><td class="g">5</td><td>OT1_5</td><td>Overtime 1.5</td><td>Allowance</td><td>Hours</td></tr>
+            <tr><td class="g">6</td><td>D0030</td><td>MONTHLY PARKING</td><td>Deduction</td><td>Amount</td></tr>
+            <tr><td class="g">7</td><td class="dim">…</td><td class="dim">23 active pay items</td><td></td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="note">
+    The Employees sheet lists every employee in your scope with their ID, name and company, and the
+    Payroll Cycles sheet lists the accepted cycle names. These are reference lists to copy from — not
+    clickable dropdowns inside Excel.
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Upload — and nothing is written yet <span class="reuse">this whole flow already exists</span></h2>
+
+  <div class="drop" style="margin-bottom:14px">
+    <b>Drop your .xlsx file here, or choose a file</b>
+    <span>Excel .xlsx only. A .csv or .xls file is refused with a clear message.</span>
+    <div class="filechip"><span class="xi">X</span> fixed-transactions-august.xlsx <u>48 rows</u></div>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><b>48</b><span>Rows in the file</span></div>
+    <div class="tile ok"><b>46</b><span>Ready to import</span></div>
+    <div class="tile err"><b>2</b><span>Will not import</span></div>
+  </div>
+
+  <div class="screen">
+    <div class="sechead">Import preview <span class="cnt">nothing has been saved yet</span></div>
+    <table>
+      <thead><tr><th>Row</th><th>Employee ID</th><th>Pay item</th><th class="r">Amount</th><th>Cycle</th><th>Start date</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>2</td><td>A0001</td><td>A0027 HANDPHONE ALLOWANCE</td><td class="r">100.00</td><td>Regular</td><td>2025-05-01</td><td><span class="st o">Valid</span></td></tr>
+        <tr><td>3</td><td>A0006</td><td>A0027 HANDPHONE ALLOWANCE</td><td class="r">100.00</td><td>Regular</td><td>2019-05-02</td><td><span class="st o">Valid</span></td></tr>
+        <tr><td>4</td><td>A0013</td><td>A0080 TRAVEL ALLOWANCE</td><td class="r">500.00</td><td>Regular</td><td>2025-03-03</td><td><span class="st o">Valid</span></td></tr>
+        <tr class="rowfail"><td>5</td><td>A9999</td><td>A0027 HANDPHONE ALLOWANCE</td><td class="r">100.00</td><td>Regular</td><td>2026-08-01</td><td><span class="st f">Employee ID does not exist</span></td></tr>
+        <tr class="rowfail"><td>6</td><td>A0013</td><td>A0027 HANDPHONE ALLOWANCE</td><td class="r">120.00</td><td>Regular</td><td>2026-08-01</td><td><span class="st f">Clashes with an existing item for these dates</span></td></tr>
+        <tr><td colspan="7" style="color:var(--mf);font-style:italic">42 more valid rows</td></tr>
+      </tbody>
+    </table>
+    <div class="scrpad" style="border-top:1px solid var(--border)">
+      <div class="btnrow">
+        <span class="btn">Import 46 valid rows</span>
+        <span class="btn gh">Download error report</span>
+        <span class="btn gh">Cancel</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    Every row is checked by exactly the same rules the Add form uses — the same clash rule, the same
+    closed-run refusal, the same date and amount rules. Nothing about an imported row behaves differently
+    from one you typed.
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">4</span>The error report you get back <span class="reuse">same file format as the payroll history import</span></h2>
+  <p class="q">An Excel file — correct it, and upload the same file again.</p>
+  <div class="xl">
+    <table class="xt">
+      <colgroup><col style="width:24px"><col style="width:7%"><col style="width:14%"><col style="width:16%"><col style="width:23%"><col><col style="width:11%"></colgroup>
+      <thead><tr><th class="g"></th><th>Row</th><th>Employee ID</th><th>Pay Item Code</th><th>Error Type</th><th>Error Description</th><th>Import Status</th></tr></thead>
+      <tbody>
+        <tr><td class="g">2</td><td>5</td><td>A9999</td><td>A0027</td><td>Invalid Employee ID</td><td>Employee does not exist in Employee Master</td><td>Failed</td></tr>
+        <tr><td class="g">3</td><td>6</td><td>A0013</td><td>A0027</td><td>Duplicate transaction</td><td>A0027 already runs for this employee from 2025-03-03 with no end date</td><td>Failed</td></tr>
+      </tbody>
+    </table>
+    <div class="xtab"><i>Validation Result</i></div>
+  </div>
+</div>

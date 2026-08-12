@@ -1,0 +1,210 @@
+<meta charset="utf-8">
+<title>38b94df7 — A searchable employee box on Employee Balances</title>
+<!--
+  Mockup for 38b94df7 ("Add Searchable Employee Dropdown in Employee Balances"), plan revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here.
+
+  · THE "TODAY" PANEL IS TRACED FROM THE REPORTER'S OWN SCREENSHOT (attachment "searchable employee.png"
+    on this item). The twenty visible rows are the exact twenty their screenshot shows, in the same order.
+    Cross-checked READ-ONLY against production on 2026-08-12: 40 employments across 9 companies, every one
+    carrying an employee code, ordered company A–Z then name A–Z (lib/leave-inquiry.ts sortInquiryEmployees).
+    So "20 more below" is a real count, not a guess.
+  · EVERY NAME, COMPANY AND EMPLOYEE ID ON THIS PAGE IS REAL production data. Nothing is invented.
+    "Mei Ling (EMP-0003)" is the reporter's own worked example from the item text and is a real record.
+    The two Daniel Tans in two different companies are real, and are why the second line of each result
+    row earns its place.
+  · THE SEARCH BEHAVIOUR DRAWN IS THE SHIPPED RULE, not a proposal: lib/employee-search.ts matchEmployees
+    already ranks exact employee ID above code-prefix above name-prefix above substring, already folds
+    separators so "emp0003" finds "EMP-0003", and already caps the list at 8 (EMPLOYEE_SEARCH_RESULT_CAP).
+    The control itself is components/employee-search-field.tsx, built and tested, currently mounted on no
+    screen.
+  · THE FILTER ROW around it is real: the captions Employee / As at / Search / Apply / Filter / Export:
+    CSV · Excel are the shipped strings, and "Search leave code" really is what the box beside the
+    employee picker searches today.
+  · THE BALANCES TABLE IS DELIBERATELY NOT DRAWN. In the reporter's screenshot the open dropdown covers
+    the leave-type names, so drawing that table would mean inventing row labels. It is untouched by this
+    change and is described in words instead.
+  · Wording, spacing and colours will differ from the finished screen.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .ph{font-size:16px;font-weight:700;margin:0}
+  .phs{font-size:11.5px;color:var(--mf);margin:2px 0 16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:16px}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .sub{font-size:11px;color:var(--mf);margin:0 0 12px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;
+        vertical-align:2px;margin-left:7px;letter-spacing:.02em}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .split > *{min-width:0}
+
+  /* screen shell */
+  .shell{display:grid;grid-template-columns:132px minmax(0,1fr);gap:12px;align-items:start}
+  .rail{border:1px solid var(--border);border-radius:10px;background:#fff;overflow:hidden}
+  .rail div{padding:6px 9px;font-size:10.6px;border-bottom:1px solid var(--border);color:var(--mf)}
+  .rail div:last-child{border-bottom:0}
+  .rail div.on{background:color-mix(in srgb,var(--primary) 9%,white);color:var(--primary);font-weight:700}
+  .fr{display:flex;flex-wrap:wrap;gap:7px;align-items:flex-end}
+  .fld{display:flex;flex-direction:column;gap:3px}
+  .lbl{font-size:9.4px;color:var(--mf);font-weight:600}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:5.5px 9px;font-size:10.8px;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:28px;display:flex;align-items:center}
+  .ghost{color:#9a9ba8}
+  .selbox{border:1.5px solid var(--primary);border-radius:8px;padding:5.5px 9px;font-size:10.8px;background:#fff;
+          display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:28px}
+  .selbox i{font-style:normal;color:var(--mf);font-size:8.5px}
+  .btn{background:#eef0f7;border:1px solid var(--border);border-radius:8px;padding:5.5px 12px;font-size:10.6px;
+       font-weight:600;min-height:28px;display:flex;align-items:center}
+  .btn.p{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .exp{border:1px solid var(--border);border-radius:8px;padding:5.5px 9px;font-size:10.2px;color:var(--mf);
+       min-height:28px;display:flex;align-items:center;gap:5px}
+  .exp b{color:var(--primary);font-weight:600}
+
+  /* the open native list */
+  .menu{border:1px solid var(--border);border-radius:9px;background:#fff;overflow:hidden;margin-top:5px;
+        box-shadow:0 6px 20px rgba(20,20,40,.10);width:330px}
+  .menu li{padding:3.4px 10px;font-size:10.4px;border-bottom:1px solid #f2f3f9;list-style:none;
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .menu ul{margin:0;padding:0}
+  .menu li:first-child{background:#6b6b78;color:#fff;font-weight:600}
+  .menu li:last-child{border-bottom:0}
+  .more{padding:5px 10px;font-size:10px;color:var(--bad);background:#fff7f7;border-top:1px dashed #f0c9c9;font-weight:600}
+
+  /* the search result list */
+  .res{border:1px solid var(--border);border-radius:9px;background:#fff;overflow:hidden;margin-top:5px;
+       box-shadow:0 6px 20px rgba(20,20,40,.10);width:330px}
+  .res .r{padding:6px 10px;border-bottom:1px solid #f2f3f9}
+  .res .r:last-child{border-bottom:0}
+  .res .r.hi{background:color-mix(in srgb,var(--primary) 8%,white);box-shadow:inset 3px 0 0 var(--primary)}
+  .res .n{font-size:10.9px;font-weight:600}
+  .res .n b{background:#fde68a;font-weight:700;border-radius:2px;padding:0 1px}
+  .res .m{font-size:9.6px;color:var(--mf);margin-top:1px}
+  .res .m span{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .typed{color:var(--fg)}
+  .typed b{background:#fde68a;font-weight:700;border-radius:2px;padding:0 1px}
+  .caret{display:inline-block;width:1px;height:11px;background:var(--primary);vertical-align:-2px;margin-left:1px}
+  .callout{display:flex;gap:7px;font-size:11px;margin:11px 0 0;line-height:1.45}
+  .callout.b{color:var(--bad)} .callout.g{color:var(--good)}
+  .callout i{font-style:normal;font-weight:800}
+  .tblnote{margin-top:9px;border:1px dashed var(--border);border-radius:9px;padding:8px 10px;
+           font-size:10.4px;color:var(--mf);background:#fafbff;line-height:1.5}
+  .foot{font-size:10.7px;color:var(--mf);line-height:1.55;margin:0}
+  .foot b{color:var(--fg)}
+  .foot p{margin:0 0 7px} .foot p:last-child{margin:0}
+</style>
+
+<p class="ph">Team Leave Tracker &rsaquo; Employee Balances</p>
+<p class="phs">One employee's position for every leave type, as at the date you choose — sketch, traced from your screenshot and real production records on 12 Aug 2026. Wording, spacing and colours will differ.</p>
+
+<div class="card">
+  <div class="split">
+
+    <div>
+      <h2>Today<span class="chip now">NOW</span></h2>
+      <p class="sub">The Employee box opens the whole list at once, every name spelled out as company, then name, then ID. There is no way to type: you scroll until you see the person.</p>
+      <div class="shell">
+        <div class="rail">
+          <div>Employee Details</div>
+          <div class="on">Employee Balances</div>
+          <div>Employee Leave Record</div>
+        </div>
+        <div>
+          <div class="fr">
+            <div class="fld"><span class="lbl">Employee</span>
+              <div class="selbox" style="width:330px"><span>Chin Hin Construction Engineering · FARAH (100009)</span><i>&#9660;</i></div>
+            </div>
+            <div class="fld"><span class="lbl">As at</span><div class="inp">11/08/2026</div></div>
+            <div class="fld"><span class="lbl">Search</span><div class="inp ghost">Search leave code</div></div>
+            <div class="btn">Apply</div>
+          </div>
+          <div class="menu">
+            <ul>
+              <li>Chin Hin Construction Engineering · FARAH (100009)</li>
+              <li>Chin Hin Construction Engineering · IMIN BIN AZHAR (100502)</li>
+              <li>Chin Hin Construction Engineering · Taylor Swift (EMP-2000)</li>
+              <li>Chin Hin Construction Engineering · TEST0002 (T100180)</li>
+              <li>Chin Hin Property Group · Ou Yang Na Na (EMP-2001)</li>
+              <li>Demo Group Holdings Bhd · Daniel Tan (EMP-0005)</li>
+              <li>Demo Group Holdings Bhd · Elon Musk (EMP-0008)</li>
+              <li>Demo Sdn Bhd · Aisyah Rahman (EMP-0001)</li>
+              <li>Demo Sdn Bhd · Arjun Kumar (EMP-0004)</li>
+              <li>Demo Sdn Bhd · Daniel Tan (EMP-0002)</li>
+              <li>Demo Sdn Bhd · Mei Ling (EMP-0003)</li>
+              <li>Demo Sdn Bhd · Nurul Huda (EMP-0006)</li>
+              <li>Demo Sdn Bhd · Wei Jie Lim (EMP-0007)</li>
+              <li>Fiamma (Chin Hin Property) · NURUL ALIAH BINTI ACHIN (100815)</li>
+              <li>Fiamma (Chin Hin Property) · Post Malone (EMP-2002)</li>
+              <li>ISEDECOR BINA SDN BHD · Eee Lee Yong (100814)</li>
+              <li>ISEDECOR BINA SDN BHD · ISMAIL (100180)</li>
+              <li>ISEDECOR BINA SDN BHD · TEST0001 (A0001)</li>
+              <li>ISEDECOR BINA SDN BHD · TEST0001 (T100009)</li>
+              <li>ISEDECOR BINA SDN BHD · TEST0002 (A0002)</li>
+            </ul>
+            <div class="more">&#8595; 20 more below — keep scrolling</div>
+          </div>
+          <p class="callout b"><i>&times;</i> Forty today. The box beside it says "Search leave code" — it filters the leave types in the table, not the people in this list.</p>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2>After this change<span class="chip new">AFTER</span></h2>
+      <p class="sub">The Employee box becomes a search box. Type part of a name or part of an employee ID and the matches appear underneath, best match first. Nothing is listed until you type.</p>
+      <div class="shell">
+        <div class="rail">
+          <div>Employee Details</div>
+          <div class="on">Employee Balances</div>
+          <div>Employee Leave Record</div>
+        </div>
+        <div>
+          <div class="fr">
+            <div class="fld"><span class="lbl">Employee</span>
+              <div class="selbox" style="width:330px"><span class="typed"><b>daniel</b><span class="caret"></span></span><i>&#10005;</i></div>
+            </div>
+            <div class="fld"><span class="lbl">As at</span><div class="inp">11/08/2026</div></div>
+            <div class="fld"><span class="lbl">Search</span><div class="inp ghost">Search leave code</div></div>
+            <div class="btn">Apply</div>
+          </div>
+          <div class="res">
+            <div class="r hi"><div class="n"><b>Daniel</b> Tan</div><div class="m">Demo Group Holdings Bhd · <span>EMP-0005</span></div></div>
+            <div class="r"><div class="n"><b>Daniel</b> Tan</div><div class="m">Demo Sdn Bhd · <span>EMP-0002</span></div></div>
+          </div>
+          <p class="callout g"><i>&check;</i> Two real people share the name "Daniel Tan". The company and the employee ID on the second line are what tell them apart.</p>
+
+          <div style="margin-top:14px">
+            <div class="fr">
+              <div class="fld"><span class="lbl">Employee</span>
+                <div class="selbox" style="width:330px"><span class="typed"><b>emp0003</b><span class="caret"></span></span><i>&#10005;</i></div>
+              </div>
+            </div>
+            <div class="res">
+              <div class="r hi"><div class="n">Mei Ling</div><div class="m">Demo Sdn Bhd · <span><b>EMP-0003</b></span></div></div>
+            </div>
+            <p class="callout g"><i>&check;</i> Your own example. Typing it without the dash still finds it — the search ignores dashes, dots and spaces in an employee ID.</p>
+          </div>
+
+          <div class="tblnote">
+            <b style="color:var(--fg)">Below this row, nothing changes.</b> Once you pick someone, the balances table shows exactly what it shows today — the same leave types, the same YTD Entitled, Brought Forward, Taken, Pending Approval, Adjustment, Overutilized, Forfeited BF and Balance figures, the same As at date, the same filters and the same CSV and Excel exports.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="card">
+  <div class="foot">
+    <p><b>The same box goes on Employee Leave Record.</b> That screen has the identical full-list Employee dropdown, so it gets the same searchable box in the same place — one change, both screens. Employee Details is a browsable list with its own filters and pager, so it is left alone.</p>
+    <p><b>At most eight matches are offered at a time.</b> A search box is for jumping straight to someone, not for browsing — if eight come back, type another letter or two.</p>
+    <p><b>Forty employees today, across nine companies.</b> The request is written for hundreds or thousands, and the box is built for that: it stays a single line however long the list grows.</p>
+  </div>
+</div>

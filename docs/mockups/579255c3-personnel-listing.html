@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Personnel (Admin) — employee listing, before and after</title>
+<style>
+  :root{
+    --canvas:#e6e8f1; --background:#f5f6fa; --foreground:#1a1a22; --card:#ffffff;
+    --muted:#f0f1f7; --muted-foreground:#63636f; --primary:#4f46e5; --primary-foreground:#fff;
+    --accent:#eceefb; --accent-foreground:#312e81; --border:#e7e8f1; --input:#dbdce7;
+    --radius:1rem;
+    --shadow-card:0 1px 2px rgb(26 26 48 / .04), 0 6px 16px -4px rgb(26 26 48 / .07);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--canvas); color:var(--foreground);
+    font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased; padding:28px 24px 34px;
+  }
+  .wrap{max-width:1232px;margin:0 auto}
+  .caption{font-size:11px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:#7c7c8a;margin:0 0 10px 2px}
+  .panel{background:var(--background);border-radius:20px;padding:20px 22px 22px;box-shadow:var(--shadow-card);margin-bottom:26px}
+  .panel.after{outline:2px solid var(--primary);outline-offset:3px}
+  .banner{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .tag{font-size:10.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;padding:4px 9px;border-radius:999px}
+  .tag.now{background:#e9e9f0;color:#5a5a68}
+  .tag.new{background:var(--primary);color:#fff}
+  .tagline{font-size:12px;color:var(--muted-foreground)}
+
+  .hdr{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+  .h1{font-size:22px;font-weight:800;letter-spacing:-.02em}
+  .acts{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .count{font-size:12.5px;color:var(--muted-foreground)}
+  .btn{font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--foreground);white-space:nowrap}
+  .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .btn.ghost{background:transparent}
+  .searchbox{font-size:12.5px;color:#9a9aa6;background:var(--card);border:1px solid var(--input);border-radius:10px;padding:7px 12px;min-width:220px}
+
+  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:14px}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 15px;box-shadow:var(--shadow-card)}
+  .kpi.sel{border-color:var(--primary);background:var(--accent)}
+  .kpi .lbl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted-foreground)}
+  .kpi.sel .lbl{color:var(--accent-foreground)}
+  .kpi .num{font-size:27px;font-weight:800;letter-spacing:-.03em;margin-top:5px;font-variant-numeric:tabular-nums}
+  .kpi .sub{font-size:10.5px;color:#8c8c98;margin-top:2px}
+  .kpi.sel .sub{color:var(--accent-foreground)}
+
+  .chips{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  .chip{font-size:11.5px;font-weight:600;background:var(--accent);color:var(--accent-foreground);border-radius:999px;padding:4px 10px}
+  .chip .x{opacity:.55;margin-left:5px}
+  .clear{font-size:11.5px;color:var(--primary);font-weight:600}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow-card)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  thead{background:#f4f4f9}
+  th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-foreground);padding:11px 14px;white-space:nowrap}
+  td{padding:10px 14px;border-top:1px solid var(--border);vertical-align:middle;color:#33333d}
+  td.mut{color:var(--muted-foreground)}
+  .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#4b4b57}
+  .who{display:flex;align-items:center;gap:9px}
+  .av{width:26px;height:26px;border-radius:999px;background:var(--accent);color:var(--accent-foreground);font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .nm{font-weight:700;color:#22222b;line-height:1.25}
+  .em{font-size:10.5px;color:#9a9aa6}
+  .badge{display:inline-flex;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .b-active{background:#e7f7ef;color:#137a4b}
+  .b-prob{background:#fff3e0;color:#9a5a00}
+  .b-resig{background:#fdecec;color:#a52121}
+  .b-draft{background:#eeeef4;color:#5c5c69}
+  tr.draft{background:#fafafd}
+  .pager{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted-foreground)}
+
+  .side{display:grid;grid-template-columns:1fr 300px;gap:14px;align-items:start}
+  .picker{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-card);overflow:hidden}
+  .picker h3{font-size:12.5px;font-weight:800;padding:12px 14px;border-bottom:1px solid var(--border)}
+  .picker .hint{font-size:10.5px;color:#8c8c98;padding:9px 14px 4px}
+  .row{display:flex;align-items:center;gap:9px;padding:5px 14px;font-size:11.5px}
+  .row + .row{border-top:1px solid #f2f2f7}
+  .grip{color:#b6b6c2;font-size:13px;letter-spacing:-1px}
+  .tick{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--input);flex:0 0 auto}
+  .tick.on{background:var(--primary);border-color:var(--primary);position:relative}
+  .tick.on:after{content:'';position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+  .row.drag{background:var(--accent);border-radius:10px;margin:0 8px;box-shadow:0 6px 16px -6px rgb(26 26 48 / .3)}
+  .row .lab{flex:1}
+  .row .off{color:#9a9aa6}
+  .apply{padding:11px 14px;border-top:1px solid var(--border);text-align:right}
+
+  .note{font-size:11.5px;color:var(--muted-foreground);margin-top:10px;line-height:1.55}
+  .note b{color:#3a3a46}
+  .foot{font-size:11px;color:#8a8a97;text-align:center;margin-top:4px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="caption">Personnel (Admin) — employee listing · sketch</p>
+
+  <!-- ───────────────────────── BEFORE ───────────────────────── -->
+  <div class="panel">
+    <div class="banner">
+      <span class="tag now">Today</span>
+      <span class="tagline">One table, six columns, a plain count in the corner. Position is already read for every row but never shown.</span>
+    </div>
+
+    <div class="hdr">
+      <div class="h1">Personnel</div>
+      <div class="acts">
+        <span class="count">40 employees</span>
+        <span class="btn">Import employees</span>
+        <span class="searchbox">Search employee ID or name…</span>
+        <span class="btn">▽ Filter</span>
+        <span class="btn primary">Create new employee</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead><tr>
+          <th>Code</th><th>Name</th><th>Department</th><th>Company</th><th>Status</th><th>Hired</th>
+        </tr></thead>
+        <tbody>
+          <tr class="draft">
+            <td class="mut">—</td>
+            <td><div class="who"><span class="av">A</span><div><div class="nm">abc</div><div class="em">4 details still missing</div></div></div></td>
+            <td class="mut">—</td><td class="mut">Demo Sdn Bhd</td>
+            <td><span class="badge b-draft">Draft</span></td><td class="mut">—</td>
+          </tr>
+          <tr class="draft">
+            <td><span class="code">X00002</span></td>
+            <td><div class="who"><span class="av">JT</span><div><div class="nm">Jess Ting</div><div class="em">3 details still missing</div></div></div></td>
+            <td class="mut">—</td><td class="mut">XYZ BINA SDN BHD</td>
+            <td><span class="badge b-draft">Draft</span></td><td class="mut">—</td>
+          </tr>
+          <tr>
+            <td><span class="code">100009</span></td>
+            <td><div class="who"><span class="av">F</span><div><div class="nm">FARAH</div></div></div></td>
+            <td class="mut">ANDALAN</td><td class="mut">Chin Hin Construction Engineering</td>
+            <td><span class="badge b-active">Active</span></td><td class="mut">2025-05-01</td>
+          </tr>
+          <tr>
+            <td><span class="code">100180</span></td>
+            <td><div class="who"><span class="av">I</span><div><div class="nm">ISMAIL</div></div></div></td>
+            <td class="mut">—</td><td class="mut">ISEDECOR BINA SDN BHD</td>
+            <td><span class="badge b-resig">Resigned</span></td><td class="mut">2025-07-01</td>
+          </tr>
+          <tr>
+            <td><span class="code">100814</span></td>
+            <td><div class="who"><span class="av">EL</span><div><div class="nm">Eee Lee Yong</div></div></div></td>
+            <td class="mut">Finance</td><td class="mut">ISEDECOR BINA SDN BHD</td>
+            <td><span class="badge b-active">Active</span></td><td class="mut">2026-07-23</td>
+          </tr>
+          <tr>
+            <td><span class="code">100815</span></td>
+            <td><div class="who"><span class="av">NA</span><div><div class="nm">NURUL ALIAH BINTI ACHIN</div></div></div></td>
+            <td class="mut">Customer Service</td><td class="mut">Fiamma (Chin Hin Property)</td>
+            <td><span class="badge b-prob">Probation</span></td><td class="mut">2026-07-27</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pager"><span>Rows 25</span><span>1–25 of 40</span><span>← Previous&nbsp;&nbsp;&nbsp;Next →</span></div>
+    </div>
+
+    <p class="note">Already working today: the <b>Filter</b> button narrows by Company, Department, Status and Employment Type and shows a removable tag for each; its search box matches Employee ID as well as name; the separate box jumps straight to a person's profile; the screen is already full width; and unfinished records already sit in the list carrying a Draft badge and the Employee ID held for them.</p>
+  </div>
+
+  <!-- ───────────────────────── AFTER ───────────────────────── -->
+  <div class="panel after">
+    <div class="banner">
+      <span class="tag new">Proposed</span>
+      <span class="tagline">Headcount on the screen, your own columns in your own order, and the same view out as a spreadsheet.</span>
+    </div>
+
+    <div class="hdr">
+      <div class="h1">Personnel</div>
+      <div class="acts">
+        <span class="btn">Import employees</span>
+        <span class="searchbox">Search employee ID or name…</span>
+        <span class="btn">▽ Filter</span>
+        <span class="btn">▦ Customize Columns</span>
+        <span class="btn">⭳ Export</span>
+        <span class="btn primary">Create new employee</span>
+      </div>
+    </div>
+
+    <div class="cards">
+      <div class="kpi"><div class="lbl">Total</div><div class="num">40</div><div class="sub">everyone on the books</div></div>
+      <div class="kpi sel"><div class="lbl">Active</div><div class="num">30</div><div class="sub">showing these</div></div>
+      <div class="kpi"><div class="lbl">Probation</div><div class="num">1</div><div class="sub">not yet confirmed</div></div>
+      <div class="kpi"><div class="lbl">Resigned</div><div class="num">9</div><div class="sub">lifecycle ended</div></div>
+      <div class="kpi"><div class="lbl">Draft</div><div class="num">2</div><div class="sub">still being entered</div></div>
+    </div>
+
+    <div class="chips">
+      <span class="chip">Active <span class="x">✕</span></span>
+      <span class="clear">Clear all</span>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <table>
+          <thead><tr>
+            <th>Emp ID</th><th>Full Name</th><th>Company</th><th>Department</th><th>Position</th><th>Job Grade</th><th>Status</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="code">100814</span></td>
+              <td><div class="who"><span class="av">EL</span><div><div class="nm">Eee Lee Yong</div></div></div></td>
+              <td class="mut">ISEDECOR BINA SDN BHD</td><td class="mut">Finance</td>
+              <td class="mut">Assistant Sales Manager</td><td class="mut">GRADE 17 (PERMANENT)</td>
+              <td><span class="badge b-active">Active</span></td>
+            </tr>
+            <tr>
+              <td><span class="code">A0001</span></td>
+              <td><div class="who"><span class="av">T</span><div><div class="nm">TEST0001</div></div></div></td>
+              <td class="mut">ISEDECOR BINA SDN BHD</td><td class="mut">ANDALAN</td>
+              <td class="mut">SAFETY &amp; HEALTH OFFICER</td><td class="mut">—</td>
+              <td><span class="badge b-active">Active</span></td>
+            </tr>
+            <tr>
+              <td><span class="code">A0002</span></td>
+              <td><div class="who"><span class="av">T</span><div><div class="nm">TEST0002</div></div></div></td>
+              <td class="mut">ISEDECOR BINA SDN BHD</td><td class="mut">ANDALAN</td>
+              <td class="mut">SITE SUPERVISOR</td><td class="mut">—</td>
+              <td><span class="badge b-active">Active</span></td>
+            </tr>
+            <tr>
+              <td><span class="code">A0003</span></td>
+              <td><div class="who"><span class="av">T</span><div><div class="nm">TEST0003</div></div></div></td>
+              <td class="mut">ISEDECOR BINA SDN BHD</td><td class="mut">ANDALAN</td>
+              <td class="mut">QAQC ENGINEER</td><td class="mut">—</td>
+              <td><span class="badge b-active">Active</span></td>
+            </tr>
+            <tr>
+              <td><span class="code">A0006</span></td>
+              <td><div class="who"><span class="av">T</span><div><div class="nm">TEST0006</div></div></div></td>
+              <td class="mut">ISEDECOR BINA SDN BHD</td><td class="mut">TECHNICAL</td>
+              <td class="mut">M&amp;E COORDINATOR</td><td class="mut">—</td>
+              <td><span class="badge b-active">Active</span></td>
+            </tr>
+            <tr>
+              <td><span class="code">100502</span></td>
+              <td><div class="who"><span class="av">IA</span><div><div class="nm">IMIN BIN AZHAR</div></div></div></td>
+              <td class="mut">Chin Hin Construction Engineering</td><td class="mut">ANDALAN</td>
+              <td class="mut">M&amp;E SUPERVISOR</td><td class="mut">GRADE 15 (CONTRACT)</td>
+              <td><span class="badge b-active">Active</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pager"><span>Rows 25</span><span>1–25 of 30</span><span>← Previous&nbsp;&nbsp;&nbsp;Next →</span></div>
+      </div>
+
+      <div class="picker">
+        <h3>Customize Columns</h3>
+        <p class="hint">Tick to show. Drag to reorder.</p>
+        <div class="row"><span class="grip">☰</span><span class="tick on"></span><span class="lab">Emp ID</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick on"></span><span class="lab">Full Name</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick on"></span><span class="lab">Company</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick on"></span><span class="lab">Department</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick on"></span><span class="lab">Position</span></div>
+        <div class="row drag"><span class="grip">☰</span><span class="tick on"></span><span class="lab">Job Grade</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick on"></span><span class="lab">Status</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick"></span><span class="lab off">Employment Type</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick"></span><span class="lab off">Reporting To</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick"></span><span class="lab off">Business Unit</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick"></span><span class="lab off">Cost Centre</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick"></span><span class="lab off">Work Location</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick"></span><span class="lab off">Group Join Date</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick"></span><span class="lab off">Join Date</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick"></span><span class="lab off">Confirmation Date</span></div>
+        <div class="row"><span class="grip">☰</span><span class="tick"></span><span class="lab off">Work email</span></div>
+        <div class="apply"><span class="btn primary">Apply</span></div>
+      </div>
+    </div>
+
+    <p class="note">The five cards are your live figures. Clicking one filters the list to that group; <b>Clear all</b> brings everyone back. <b>Export</b> produces an Excel file of exactly what is on screen — same filter, same columns, same order. Your column arrangement is remembered for your next visit and is yours alone.</p>
+  </div>
+
+  <p class="foot">Sketch — wording, spacing and colours will differ in the finished screen. Employee names, companies, positions, grades and all five headcount figures are your own live records as at 12 August 2026.</p>
+</div>
+</body>
+</html>

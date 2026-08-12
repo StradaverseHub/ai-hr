@@ -1,0 +1,248 @@
+<meta charset="utf-8">
+<title>e318eaec — Formula builder: readable formula, named numbers, working shown</title>
+<!--
+  Mockup for e318eaec (Improve Pay Items Formula Builder), plan revision 1.
+
+  EVERYTHING NUMERIC HERE IS THE REPORTER'S OWN LIVE DATA, measured read-only on production 2026-08-12:
+   - The Overtime 1.5 rule, verbatim from pay_component.rule:
+       {"kind":"formula","start":{"ref":"basic"},"terms":[
+         {"op":"+","operand":{"ref":"fixed_allowances"}},
+         {"op":"/","operand":{"ref":"number","value":26}},
+         {"op":"/","operand":{"ref":"number","value":8}},
+         {"op":"*","operand":{"ref":"number","value":1.5}},
+         {"op":"*","operand":{"ref":"hours"}}]}
+   - The preview employee is Irwin Law (X000001): compensation.basic_salary 5000.00; one live fixed
+     allowance A0080 TRAVEL ALLOWANCE 400.00 from 2026-07-01, open-ended. His August one-off Overtime 1.5
+     was keyed as 15.00 hours and derived 584.13, which is the figure on his 2026-08 payslip.
+     (5000 + 400) / 26 / 8 x 1.5 x 15 = 584.13 exactly. Nothing here is invented.
+   - The "null null" dropdown is real and total: person.first_name and person.last_name are NULL on
+     40 of 40 people; every name lives in person.full_name. core/pay-components.ts:627 builds the option
+     label as `${firstName} ${lastName}`.
+   - The operand names in the LEFT panel ("A fixed amount", "Basic salary", "All fixed allowances",
+     "Hours worked", "Start with", "multiply by", "divide by") are the live English labels from
+     messages/en.json payRule.*.
+
+  DELIBERATELY NOT DRAWN:
+   - NO open/close parenthesis buttons and NO precedence change. The brackets in the readable line
+     DESCRIBE the order the steps already run in. Adding real precedence would re-price this live
+     formula, and the plan says so.
+   - NO "Working days in month" or "Working hours per day" operand. They have no single definition in
+     the system and are not in this build.
+   - NO shared rate library screen. A named number is a label on the formula that uses it.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;
+        --grid:#d8dae6;--hl:#eef0ff;--amber:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .cap{font-size:10.5px;color:var(--mf);margin:0 0 7px;font-weight:700;text-transform:uppercase;
+       letter-spacing:.05em}
+
+  .screen{background:#fff;border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .scrpad{padding:14px 16px}
+  .sechead{display:flex;align-items:center;justify-content:space-between;gap:12px;
+           padding:10px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600}
+  .sechead .cnt{color:var(--mf);font-weight:400}
+  label.l{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;
+          color:var(--mf);font-weight:700;margin-bottom:4px}
+  .inp{border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;background:#fff;
+       display:flex;justify-content:space-between;gap:6px;color:var(--fg)}
+  .inp.bad{border-color:#dc2626;background:#fef2f2;color:#991b1b;font-weight:700}
+  .inp i{color:#9698ab;font-style:normal}
+  .btnrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:7px 15px;font-size:12px;font-weight:600;
+       display:inline-block}
+  .btn.gh{background:#fff;color:var(--fg);border:1px solid var(--border)}
+  .btn.sm{padding:3px 10px;font-size:10.5px;border-radius:6px}
+
+  /* formula step rows */
+  .step{display:grid;grid-template-columns:80px 150px 1fr;gap:8px;align-items:center;margin-bottom:6px}
+  .step.wide{grid-template-columns:80px 150px 1fr 130px}
+  .step .k{font-size:10.5px;color:var(--mf);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  .sel{border:1px solid var(--border);border-radius:7px;padding:5px 9px;font-size:11.5px;background:#fff;
+       display:flex;justify-content:space-between;gap:6px}
+  .sel i{color:#9698ab;font-style:normal}
+  .val{border:1px solid var(--border);border-radius:7px;padding:5px 9px;font-size:11.5px;background:#fff;
+       font-variant-numeric:tabular-nums}
+  .val.new{border-color:#86efac;box-shadow:0 0 0 2px #dcfce7}
+  .lbl{border:1px solid var(--border);border-radius:7px;padding:5px 9px;font-size:11.5px;background:#fff}
+  .lbl.new{border-color:#86efac;box-shadow:0 0 0 2px #dcfce7}
+  .lbl.ph{color:#b5b7c6}
+
+  .flin{border:1px solid #c7cbf5;background:#f4f5ff;border-radius:10px;padding:12px 14px;
+        font:600 14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:#26268c;word-break:break-word}
+  .flin .n{background:#e2e5ff;border-radius:5px;padding:0 5px}
+  .missing{border:1.5px dashed #f0a8a8;border-radius:10px;padding:12px 14px;font-size:12px;color:#b91c1b;
+           background:#fff5f5;text-align:center;font-style:italic}
+
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     font-weight:600;padding:7px 8px;background:#fafafd;border-bottom:1px solid var(--border);vertical-align:bottom}
+  td{padding:6px 8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;vertical-align:middle}
+  .r{text-align:right}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+  .res{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--primary)}
+  .ok{display:inline-block;padding:1px 9px;border-radius:999px;font-size:9.5px;font-weight:700;
+      background:#dcfce7;color:#166534}
+  .warn{border-left:3px solid var(--amber);padding-left:11px;font-size:11.5px;color:#78350f;margin-top:11px}
+  .exists{display:inline-block;font-size:9.5px;font-weight:700;padding:2px 9px;border-radius:999px;
+          background:#dcfce7;color:#166534;margin-left:8px}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>The formula, read back to you</h2>
+  <p class="q">Payroll Settings &rarr; Pay Items &rarr; Overtime 1.5. This is your own formula, exactly as it is stored today.</p>
+
+  <div class="two">
+    <div>
+      <p class="cap">Today &mdash; there is no readable line</p>
+      <div class="missing">nothing here reads the formula back as a formula</div>
+      <div class="screen" style="margin-top:10px">
+        <div class="sechead">Formula <span class="cnt">steps apply in order, top to bottom</span></div>
+        <div class="scrpad">
+          <div class="step"><span class="k">Start with</span><span class="sel">Basic salary <i>&#9662;</i></span><span></span></div>
+          <div class="step"><span class="k">add</span><span class="sel">All fixed allowances <i>&#9662;</i></span><span></span></div>
+          <div class="step"><span class="k">divide by</span><span class="sel">A fixed amount <i>&#9662;</i></span><span class="val">26</span></div>
+          <div class="step"><span class="k">divide by</span><span class="sel">A fixed amount <i>&#9662;</i></span><span class="val">8</span></div>
+          <div class="step"><span class="k">multiply by</span><span class="sel">A fixed amount <i>&#9662;</i></span><span class="val">1.5</span></div>
+          <div class="step"><span class="k">multiply by</span><span class="sel">Hours worked <i>&#9662;</i></span><span></span></div>
+        </div>
+      </div>
+      <div class="note">26, 8 and 1.5 all read "A fixed amount". Nothing says which is a working-day
+        divisor, which is an hours divisor and which is an overtime rate.</div>
+    </div>
+
+    <div>
+      <p class="cap">After</p>
+      <div class="flin">
+        ( Basic salary + All fixed allowances ) / <span class="n">26 &nbsp;Working days</span>
+        / <span class="n">8 &nbsp;Working hours</span> &times; <span class="n">1.5 &nbsp;Rate 1.5</span>
+        &times; Hours worked
+      </div>
+      <div class="screen" style="margin-top:10px">
+        <div class="sechead">Formula <span class="cnt">steps apply in order, top to bottom</span></div>
+        <div class="scrpad">
+          <div class="step wide"><span class="k">Start with</span><span class="sel">Basic salary <i>&#9662;</i></span><span></span><span></span></div>
+          <div class="step wide"><span class="k">add</span><span class="sel">All fixed allowances <i>&#9662;</i></span><span></span><span></span></div>
+          <div class="step wide"><span class="k">divide by</span><span class="sel">A fixed amount <i>&#9662;</i></span><span class="val">26</span><span class="lbl new">Working days</span></div>
+          <div class="step wide"><span class="k">divide by</span><span class="sel">A fixed amount <i>&#9662;</i></span><span class="val">8</span><span class="lbl new">Working hours</span></div>
+          <div class="step wide"><span class="k">multiply by</span><span class="sel">A fixed amount <i>&#9662;</i></span><span class="val">1.5</span><span class="lbl new">Rate 1.5</span></div>
+          <div class="step wide"><span class="k">multiply by</span><span class="sel">Hours worked <i>&#9662;</i></span><span></span><span class="lbl ph">name it (optional)</span></div>
+        </div>
+      </div>
+      <div class="note">A new box beside each fixed number lets you name it. The name then shows
+        everywhere the formula is shown.</div>
+    </div>
+  </div>
+
+  <div class="warn">
+    The brackets describe what your formula <b>already does</b>. Steps run in order, top to bottom, which is
+    why yours gives the right answer today. We are not changing that &mdash; only showing it. Switching to
+    normal maths precedence would turn this into "basic salary plus a fraction of the allowances" and would
+    change overtime you have already paid.
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Check against an employee <span class="exists">the panel and the calculation already exist</span></h2>
+  <div class="two">
+    <div>
+      <p class="cap">Today</p>
+      <div class="screen"><div class="scrpad">
+        <label class="l">Employee</label>
+        <div class="inp bad">null null <i>&#9662;</i></div>
+        <div class="note">Every one of the fifty names in this list reads "null null". The list is the
+          fifty most recently hired, with no search.</div>
+      </div></div>
+    </div>
+    <div>
+      <p class="cap">After</p>
+      <div class="screen"><div class="scrpad">
+        <label class="l">Employee</label>
+        <div class="inp">Irwin Law (X000001) <i>&#9662;</i></div>
+        <div class="note" style="margin-top:8px">
+          <span class="mono">TEST0013 (A0013)</span> &nbsp; <span class="mono">Eee Lee Yong (100814)</span>
+          &nbsp; <span class="mono">NURUL ALIAH BINTI ACHIN (100815)</span>
+        </div>
+        <div class="note">Full name then employee ID, with a search box &mdash; type any part of either.</div>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Show the working &mdash; on your own figures</h2>
+  <p class="q">Irwin Law (X000001), Overtime 1.5, 15 hours. Every figure below is his live record.</p>
+
+  <div class="two">
+    <div>
+      <div class="screen">
+        <div class="sechead">Values used <span class="cnt">read from his record</span></div>
+        <table>
+          <tbody>
+            <tr><td>Basic salary</td><td class="r">5,000.00</td></tr>
+            <tr><td>All fixed allowances <span class="mono">A0080 Travel allowance</span></td><td class="r">400.00</td></tr>
+            <tr><td>Rate 1.5</td><td class="r">1.50</td></tr>
+            <tr style="border-bottom:none"><td>Hours worked</td><td class="r">15.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">The panel already lists the basic salary, days, hours and pay items it used. What
+        it does not do yet is show how they were combined.</div>
+    </div>
+    <div>
+      <div class="screen">
+        <div class="sechead">Calculation <span class="cnt">new</span></div>
+        <table>
+          <tbody>
+            <tr><td>1</td><td>Basic salary + All fixed allowances</td><td class="r mono">5,000.00 + 400.00</td><td class="r">5,400.00</td></tr>
+            <tr><td>2</td><td>divide by 26 <span class="mono">Working days</span></td><td class="r mono">5,400.00 / 26</td><td class="r">207.6923</td></tr>
+            <tr><td>3</td><td>divide by 8 <span class="mono">Working hours</span></td><td class="r mono">207.6923 / 8</td><td class="r">25.9615</td></tr>
+            <tr><td>4</td><td>multiply by 1.5 <span class="mono">Rate 1.5</span></td><td class="r mono">25.9615 &times; 1.5</td><td class="r">38.9423</td></tr>
+            <tr><td>5</td><td>multiply by Hours worked</td><td class="r mono">38.9423 &times; 15</td><td class="r">584.1346</td></tr>
+          </tbody>
+        </table>
+        <div class="scrpad" style="border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <span>Result <span class="ok">matches his August payslip</span></span>
+          <span class="res">RM 584.13</span>
+        </div>
+      </div>
+      <div class="note">Steps carry four decimals; only the final figure is rounded to the cent, which is
+        what payroll does.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">4</span>Two values you can use that the system already works out</h2>
+  <div class="two">
+    <div class="screen"><div class="scrpad">
+      <b>Calendar days in the month</b>
+      <div class="note" style="margin-top:4px">31 in August, 30 in September, 28 in February. So
+        <span class="mono">Basic salary / Calendar days in the month &times; Days worked</span> is written once
+        and never edited again.</div>
+      <div class="note"><b>Not the same as "Days worked"</b>, which is already available and is reduced for
+        someone who joined or left mid-month.</div>
+    </div></div>
+    <div class="screen"><div class="scrpad">
+      <b>Prorated basic salary</b>
+      <div class="note" style="margin-top:4px">Basic salary after the joiner and leaver rules payroll already
+        applies. Use it instead of rebuilding proration inside a formula, so the formula and the payroll run
+        can never disagree.</div>
+    </div></div>
+  </div>
+  <div class="note">
+    Working days in the month and working hours per day are not included &mdash; the system has no single
+    answer for them, because it would depend on which roster or shift is counted and employees have
+    different ones.
+  </div>
+</div>

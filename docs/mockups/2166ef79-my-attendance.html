@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>My Attendance — self-service exceptions and requests (stage one)</title>
+<style>
+  :root{
+    --canvas:#e6e8f1; --background:#f5f6fa; --foreground:#1a1a22; --card:#ffffff;
+    --muted:#f0f1f7; --muted-foreground:#63636f; --primary:#4f46e5; --primary-foreground:#fff;
+    --accent:#eceefb; --accent-foreground:#312e81; --border:#e7e8f1; --input:#dbdce7;
+    --shadow-card:0 1px 2px rgb(26 26 48 / .04), 0 6px 16px -4px rgb(26 26 48 / .07);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--canvas);color:var(--foreground);
+    font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;padding:28px 24px 34px}
+  .wrap{max-width:1232px;margin:0 auto}
+  .caption{font-size:11px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:#7c7c8a;margin:0 0 10px 2px}
+  .panel{background:var(--background);border-radius:20px;padding:20px 22px 22px;box-shadow:var(--shadow-card);margin-bottom:26px}
+  .panel.after{outline:2px solid var(--primary);outline-offset:3px}
+  .banner{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .tag{font-size:10.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;padding:4px 9px;border-radius:999px}
+  .tag.now{background:#e9e9f0;color:#5a5a68}
+  .tag.new{background:var(--primary);color:#fff}
+  .tagline{font-size:12px;color:var(--muted-foreground)}
+
+  .menu{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .mrow{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 15px;box-shadow:var(--shadow-card)}
+  .mrow .t{font-size:12.5px;font-weight:800}
+  .mrow .d{font-size:11px;color:var(--muted-foreground);margin-top:5px;line-height:1.5}
+
+  .h1{font-size:22px;font-weight:800;letter-spacing:-.02em}
+  .sub{font-size:12px;color:var(--muted-foreground);margin-top:3px}
+  .hdr{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+  .acts{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .btn{font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--foreground);white-space:nowrap}
+  .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .sel{font-size:12px;color:#4a4a56;background:var(--card);border:1px solid var(--input);border-radius:10px;padding:7px 11px}
+
+  .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .tab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 15px;box-shadow:var(--shadow-card)}
+  .tab.on{border-color:var(--primary);background:var(--accent)}
+  .tab .lbl{font-size:12px;font-weight:800;display:flex;align-items:center;gap:7px}
+  .tab.on .lbl{color:var(--accent-foreground)}
+  .tab .d{font-size:10.5px;color:#8c8c98;margin-top:5px;line-height:1.5}
+  .tab.on .d{color:var(--accent-foreground)}
+  .cnt{font-size:10.5px;font-weight:800;background:#fdecec;color:#a52121;border-radius:999px;padding:2px 8px}
+  .cnt.zero{background:#e7f7ef;color:#137a4b}
+
+  .split{display:grid;grid-template-columns:1fr 330px;gap:14px;align-items:start;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow-card)}
+  .ch{font-size:12.5px;font-weight:800;padding:12px 14px;border-bottom:1px solid var(--border)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  thead{background:#f4f4f9}
+  th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-foreground);padding:11px 14px;white-space:nowrap}
+  td{padding:11px 14px;border-top:1px solid var(--border);vertical-align:middle;color:#33333d}
+  td.mut{color:var(--muted-foreground)}
+  .num{font-variant-numeric:tabular-nums}
+  .warn{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:#9a3412}
+  .dot{width:7px;height:7px;border-radius:999px;background:#ea580c;display:inline-block}
+  .empty{padding:22px 14px;text-align:center;font-size:12px;color:var(--muted-foreground)}
+
+  .form{padding:13px 14px}
+  .fl{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-foreground);margin-bottom:5px}
+  .fi{border:1px solid var(--input);border-radius:9px;padding:7px 10px;font-size:12.5px;background:#fff;color:#22222b}
+  .fi.ghost{color:#9a9aa6}
+  .fi.locked{background:#f4f4f9;color:#63636f}
+  .fg{margin-bottom:10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .req{color:#c02626;font-weight:800}
+  .hint{font-size:10.5px;color:#8c8c98;margin-top:5px;line-height:1.5}
+  .clip{display:flex;align-items:center;gap:7px;border:1px dashed var(--input);border-radius:9px;padding:8px 10px;font-size:11.5px;color:#8c8c98}
+
+  .fchips{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .fc{font-size:11.5px;font-weight:600;border-radius:999px;padding:4px 11px;background:#f2f2f7;color:#5c5c69}
+  .fc.on{background:var(--primary);color:#fff}
+  .pill{display:inline-flex;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .p-pending{background:#fff3e0;color:#9a5a00}
+  .p-appr{background:#e7f7ef;color:#137a4b}
+  .p-rej{background:#fdecec;color:#a52121}
+  .p-canc{background:#eeeef4;color:#5c5c69}
+
+  .note{font-size:11.5px;color:var(--muted-foreground);line-height:1.6;margin-top:2px}
+  .note b{color:#3a3a46}
+  .foot{font-size:11px;color:#8a8a97;text-align:center;margin-top:4px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="caption">My Attendance — self-service exceptions and requests · stage one · sketch</p>
+
+  <!-- ── TODAY ── -->
+  <div class="panel">
+    <div class="banner">
+      <span class="tag now">Today</span>
+      <span class="tagline">My Attendance already has four rows. None of them tells you which of your own days has a problem.</span>
+    </div>
+    <div class="menu">
+      <div class="mrow"><div class="t">Clock in / out</div><div class="d">Punch in and out, with location checking.</div></div>
+      <div class="mrow"><div class="t">Records</div><div class="d">Your month, day by day.</div></div>
+      <div class="mrow"><div class="t">Attendance Request</div><div class="d">A blank form: type a date, a clock-in, a clock-out and a reason. You have to know which day is wrong.</div></div>
+      <div class="mrow"><div class="t">Plan OT</div><div class="d">Overtime, asked for and claimed. Hours worked out from the times, approver shown, withdraw available.</div></div>
+    </div>
+    <p class="note" style="margin-top:12px">The system already works out, for every day, whether it was late, short, missing a punch, or absent — but only HR sees that, on the Individual Attendance screen. The employee is left to spot their own problems.</p>
+  </div>
+
+  <!-- ── PROPOSED ── -->
+  <div class="panel after">
+    <div class="banner">
+      <span class="tag new">Proposed — stage one</span>
+      <span class="tagline">The screen finds the days that need fixing, and each one carries the request that fixes it.</span>
+    </div>
+
+    <div class="hdr">
+      <div>
+        <div class="h1">My Attendance</div>
+        <div class="sub">IMIN BIN AZHAR · 100502 · M&amp;E Supervisor, Chin Hin Construction Engineering</div>
+      </div>
+      <div class="acts">
+        <span class="sel">July – August 2026 ▾</span>
+        <span class="btn primary">+ Apply overtime</span>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab">
+        <div class="lbl">Self Overtime</div>
+        <div class="d">Ask for overtime, before or after the day.</div>
+      </div>
+      <div class="tab">
+        <div class="lbl">Short Hours <span class="cnt">1</span></div>
+        <div class="d">Late in or left early.</div>
+      </div>
+      <div class="tab on">
+        <div class="lbl">Incomplete Entry <span class="cnt">1</span></div>
+        <div class="d">A punch is missing, so the day counts nothing.</div>
+      </div>
+      <div class="tab">
+        <div class="lbl">Absent</div>
+        <div class="d">A working day with nothing recorded.</div>
+      </div>
+    </div>
+
+    <div class="split">
+     <div>
+      <div class="card">
+        <div class="ch">Incomplete Entry — days we found for you</div>
+        <table>
+          <thead><tr>
+            <th>Date</th><th>Scheduled</th><th>What we found</th><th>What we have</th><th></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td class="num">Mon 27 Jul 2026</td>
+              <td class="mut num">09:00 – 18:00</td>
+              <td><span class="warn"><span class="dot"></span> Clock-out missing</span></td>
+              <td class="mut num">In 09:00 · Out —</td>
+              <td style="text-align:right"><span class="btn primary">Fix this</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="empty" style="border-top:1px solid var(--border)">That is every incomplete day in this period. Hours worked and overtime both read as nothing until it is fixed.</p>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="ch">Also waiting for you — Short Hours</div>
+        <table>
+          <thead><tr>
+            <th>Date</th><th>Scheduled</th><th>What we found</th><th>What we have</th><th></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td class="num">Wed 5 Aug 2026</td>
+              <td class="mut num">09:00 – 18:00</td>
+              <td><span class="warn"><span class="dot"></span> Late in · 16 min</span></td>
+              <td class="mut num">In 09:16 · Out 18:00</td>
+              <td style="text-align:right"><span class="btn">Fix this</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+     </div>
+
+      <div class="card">
+        <div class="ch">Fix Monday 27 July 2026</div>
+        <div class="form">
+          <div class="two">
+            <div class="fg"><div class="fl">Clock in</div><div class="fi locked">09:00</div></div>
+            <div class="fg"><div class="fl">Clock out <span class="req">*</span></div><div class="fi">18:00</div></div>
+          </div>
+          <div class="fg"><div class="fl">Reason <span class="req">*</span></div><div class="fi ghost">Forgot to clock out</div></div>
+          <div class="fg"><div class="fl">Remark</div><div class="fi ghost">Anything your approver should know</div></div>
+          <div class="fg"><div class="fl">Attachment</div><div class="clip">📎 Add a file (optional)</div></div>
+          <div class="fg"><div class="fl">Goes to</div><div class="fi locked">HR</div></div>
+          <p class="hint">Your clocking record is never overwritten. This is a request; the original 09:00 with no clock-out stays on file either way.</p>
+          <div style="text-align:right;margin-top:11px"><span class="btn primary">Submit request</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch">My attendance requests</div>
+      <div class="fchips">
+        <span class="fc on">All</span><span class="fc">Pending</span><span class="fc">Approved</span>
+        <span class="fc">Rejected</span><span class="fc">Cancelled</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Type</th><th>What was asked for</th><th>Submitted</th><th>With</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="num">Mon 27 Jul 2026</td>
+            <td>Incomplete Entry</td>
+            <td class="mut">Clock out 18:00 — forgot to clock out</td>
+            <td class="mut num">12 Aug 2026</td>
+            <td class="mut">HR</td>
+            <td><span class="pill p-pending">Pending</span></td>
+            <td style="text-align:right"><span class="btn">Cancel</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note" style="margin-top:12px">Stage one. The four sections, the days found for you, the request on each one, the status filter, and overtime moved in whole from Plan OT. <b>Not in this stage, and not drawn here:</b> the Attendance Request Settings screen, approval chains with more than one level, choosing Overtime Pay or Replacement Leave, and asking for a lateness to be simply disregarded.</p>
+  </div>
+
+  <p class="foot">Sketch — wording, spacing and colours will differ in the finished screen. The employee, the dates, the shift times and the two flagged days are real records from your system as at 12 August 2026; the request row shows what pressing Fix this would create.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,299 @@
+<meta charset="utf-8">
+<title>4e403268 — Individual Transaction: day-by-day input</title>
+<!--
+  Mockup for 4e403268 ("Payroll Module – Individual Transaction: Day-by-Day Input Function"),
+  plan revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here.
+
+  · HOW THIS WAS DRAWN. The cluster was busy with a full test gate, so this is NOT a screenshot: it is
+    reconstructed from the component source at main@468fc827 (= what runs on production; verified by a
+    zero-change rsync dry-run) plus production data read by SELECT on 2026-08-12.
+
+  · THE "TODAY" FORM IS THE REAL FORM, field for field and in source order
+    (app/payroll/transactions/individual/txn-workspace.tsx:1114-1292): Month, Pay cycle, Payroll item,
+    Effective date, Input type, Hours, Calculated amount, Remarks — then the hint line, then
+    Save / Save & add another / Cancel. Every caption is resolved from messages/en.json
+    (payroll.transactions.individual.*), not invented: "Effective date", "Input type", "Calculated
+    amount", "Save & add another", "Hours". Input type is drawn DISABLED because a calculating pay item
+    owns it (2da9937a); Calculated amount is drawn READ-ONLY and grey for the same reason.
+
+  · THE "TODAY" LISTING IS THE REAL LISTING, columns in source order (txn-workspace.tsx:1314-1321):
+    Month, Payroll item, Remarks, Quantity, Effective date, Amount, Status.
+
+  · THE DATA IS REAL AND IT IS THE REPORTER'S OWN. Irwin Law, employee code X000001, SpaceX Sdn Bhd —
+    the employee code the request itself uses in its example. His single Overtime 1.5 row on production
+    is: pay_period 2026-08, txn_date 2026-08-01, unit hours, quantity 15.00, amount 584.13, and it is on
+    a processed run. That is the ONLY row on the whole system carrying hours (1 of 47 individual
+    transaction rows), and 45 of those 47 are dated the 1st of their month — which is the pain, seen
+    from the data side.
+
+  · THE MONEY IN THE "AFTER" GRID IS COMPUTED, NOT INVENTED. OT1_5's stored rule on production is
+    {"kind":"formula", basic + fixed_allowances / 26 / 8 * 1.5 * hours}. Irwin Law's compensation row is
+    basic 5,000.00 and his one live fixed allowance (A0080) is 400.00, so the hourly figure is
+    5400/26/8*1.5 = 38.942308. Each drawn amount is that rate times that day's hours, rounded to the
+    cent: 2.00h→77.88, 3.00h→116.83, 2.50h→97.36, 4.00h→155.77, 3.50h→136.30. They sum to 584.14 against
+    the single 15.00-hour entry's 584.13, and the picture STATES that one-cent difference rather than
+    hiding it — it is a real consequence of pricing each day on its own, and the reporter will meet it.
+
+  · THE DATES AND THE SPLIT OF HOURS ARE THE REPORTER'S OWN, from their request: 01 Aug (Sat), 05 Aug
+    (Wed), 12 Aug (Wed), 20 Aug (Thu) at 2.00 / 3.00 / 2.50 / 4.00 hours. Their weekday labels check out
+    against the real 2026 calendar. A fifth line (26 Aug, Wed, 3.50h) is added so the split adds to the
+    15.00 hours actually on file rather than to their illustrative 11.50.
+
+  · SOURCE IS DRAWN AS "Manual" ON EVERY LINE, because that is the only value anything will write in
+    this change. The column exists so Attendance and Leave can fill it later; nothing feeds it today and
+    the picture does not pretend otherwise.
+
+  · WHAT IS DELIBERATELY NOT DRAWN: the Import / Sync button from the request's wireframe, and any
+    Attendance- or Leave-sourced line. Neither module writes payroll transactions today, so drawing one
+    would be a promise nothing behind the screen can keep.
+
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px;margin-bottom:16px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+
+  .scr{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .schd{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border)}
+  .schd .nm{flex:1;min-width:0;font-size:11.5px;font-weight:600}
+  .code{color:var(--mf);font-size:9.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .tgl{border:1px solid var(--border);border-radius:7px;padding:3px 9px;font-size:9.5px;color:var(--mf);background:#fff}
+
+  .formttl{font-size:11.5px;font-weight:600;padding:10px 12px 0}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 12px;padding:9px 12px 0}
+  .full{grid-column:1 / -1}
+  .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;
+       margin-bottom:3px}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:5px 9px;font-size:11px;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .inp.ro{background:#f4f5fa;color:var(--mf)}
+  .inp.dis{background:#f4f5fa;color:#9a9ba8}
+  .inp.r{text-align:right;font-variant-numeric:tabular-nums}
+  .hint{font-size:10px;color:var(--mf);padding:9px 12px 0;line-height:1.45}
+  .acts{display:flex;gap:7px;padding:10px 12px 12px}
+  .btn{border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:8px;
+       padding:5px 11px;font-size:10.5px;font-weight:600}
+  .btn.sec{background:#fff;color:var(--fg);border-color:var(--border);font-weight:500}
+
+  /* input-method selector */
+  .method{display:flex;gap:8px;align-items:center;padding:10px 12px 0;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;
+        padding:5px 12px;font-size:10.5px;color:var(--mf);background:#fff}
+  .pill.on{border-color:var(--primary);color:var(--primary);font-weight:600;
+           background:color-mix(in srgb,var(--primary) 8%,white)}
+  .dot{width:9px;height:9px;border-radius:50%;border:1.5px solid #b9bacb;display:inline-block}
+  .pill.on .dot{border-color:var(--primary);background:var(--primary);box-shadow:inset 0 0 0 2px #fff}
+
+  table{border-collapse:collapse;width:100%}
+  th{background:var(--muted);color:var(--mf);font-size:8.5px;text-transform:uppercase;letter-spacing:.03em;
+     font-weight:600;text-align:left;padding:5px 8px;border-bottom:1px solid var(--border)}
+  td{padding:5px 8px;font-size:10.5px;border-bottom:1px solid var(--border);white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  th.num{text-align:right}
+  .tot td{background:#fafbff;font-weight:700;border-top:1.5px solid var(--border)}
+  .badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:8.5px;font-weight:600;
+         background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .badge.p{background:color-mix(in srgb,var(--warn) 13%,white);color:var(--warn)}
+  .src{font-size:9px;color:var(--mf);border:1px solid var(--border);border-radius:5px;padding:1px 6px}
+  .x{color:#b9bacb}
+
+  .sechdr{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;font-size:11px;
+          font-weight:600;border-top:1px solid var(--border)}
+  .cnt{font-weight:400;color:var(--mf);font-size:10px}
+  .totals{display:flex;gap:14px;flex-wrap:wrap;padding:0 12px 9px}
+  .kv{font-size:10px;color:var(--mf)}
+  .kv b{display:block;font-size:12px;color:var(--fg);font-variant-numeric:tabular-nums}
+
+  .addrow{padding:8px 12px;border-top:1px dashed var(--border)}
+  .add{border:1px dashed #b9bacb;border-radius:8px;padding:5px 11px;font-size:10.5px;color:var(--primary);
+       background:#fff;font-weight:600;display:inline-block}
+
+  .grp{border:1px solid var(--border);border-radius:10px;margin:0 12px 9px;overflow:hidden}
+  .grph{display:flex;align-items:center;gap:10px;padding:7px 10px;background:#fafbff;
+        border-bottom:1px solid var(--border);font-size:10.5px}
+  .grph .t{flex:1;min-width:0;font-weight:600}
+  .grph .m{color:var(--mf);font-weight:400}
+  .caret{font-size:9px;color:var(--mf)}
+
+  .note{font-size:10.5px;color:var(--mf);margin:10px 0 0;line-height:1.5}
+  .note b{color:var(--fg)}
+  .red{color:var(--bad);font-weight:600}
+  .grn{color:var(--good);font-weight:600}
+  .warnbox{border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+           background:color-mix(in srgb,var(--warn) 7%,white);border-radius:8px;padding:7px 10px;
+           font-size:10px;color:#7c4a06;margin:8px 12px 0;line-height:1.45}
+</style>
+
+<div class="card">
+  <h2>Today &mdash; one entry, one total, and no record of which days<span class="chip now">today</span></h2>
+  <p class="sub">
+    Payroll &rarr; Transactions &rarr; Individual Transaction. This is the real screen and Irwin Law&rsquo;s
+    real August overtime, exactly as it stands on your system.
+  </p>
+
+  <div class="scr">
+    <div class="schd">
+      <span class="nm"><span class="code">X000001</span> Irwin Law &middot; SpaceX Sdn Bhd</span>
+      <span class="tgl">&#9776; Hide employee list</span>
+    </div>
+
+    <p class="formttl">New transaction</p>
+    <div class="grid">
+      <div><div class="lbl">Month</div><div class="inp">2026-08</div></div>
+      <div><div class="lbl">Pay cycle</div><div class="inp">Regular</div></div>
+      <div><div class="lbl">Payroll item</div><div class="inp">OT1_5 &mdash; Overtime 1.5</div></div>
+      <div><div class="lbl">Effective date</div><div class="inp">01/08/2026</div></div>
+      <div><div class="lbl">Input type</div><div class="inp dis">Hours</div></div>
+      <div><div class="lbl">Hours</div><div class="inp r">15.00</div></div>
+      <div><div class="lbl">Calculated amount</div><div class="inp ro r">584.13</div></div>
+      <div><div class="lbl">Remarks</div><div class="inp">OT1_5 &mdash; Overtime 1.5</div></div>
+    </div>
+    <p class="hint">
+      This pay item calculates its own amount. Enter the hours and the amount is worked out from the
+      item&rsquo;s formula &mdash; it is not typed in.
+    </p>
+    <div class="acts">
+      <span class="btn">Save</span><span class="btn sec">Save &amp; add another</span><span class="btn sec">Cancel</span>
+    </div>
+
+    <div class="sechdr"><span>Transactions <span class="cnt">1 row</span></span></div>
+    <table>
+      <tr>
+        <th>Month</th><th>Payroll item</th><th>Remarks</th><th>Quantity</th>
+        <th>Effective date</th><th class="num">Amount</th><th>Status</th>
+      </tr>
+      <tr>
+        <td>2026-08</td><td>Earning</td><td>OT1_5 &mdash; Overtime 1.5</td><td>15 Hours</td>
+        <td>2026-08-01</td><td class="num">584.13</td><td><span class="badge">Processed</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <p class="note">
+    Fifteen hours, one date, and nothing on file about <b>which</b> days they were worked. Adding a second
+    date means opening the form again and re-picking the pay item every time. Across your whole system today
+    only one transaction carries hours at all &mdash; this one &mdash; and <b>45 of the 47 one-off
+    transactions are dated the 1st of their month</b>, because the date box has no day-by-day use to be put to.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Day by day &mdash; every date on one screen, priced by the same formula<span class="chip new">what we&rsquo;ll build</span></h2>
+  <p class="sub">
+    A new choice at the top of the form. <b>One total for the month</b> is the screen you have today and stays
+    the default, so nothing you already do changes. <b>Day by day</b> opens a dated grid instead.
+  </p>
+
+  <div class="scr">
+    <div class="schd">
+      <span class="nm"><span class="code">X000001</span> Irwin Law &middot; SpaceX Sdn Bhd</span>
+      <span class="tgl">&#9776; Hide employee list</span>
+    </div>
+
+    <p class="formttl">New transaction</p>
+    <div class="method">
+      <span class="lbl" style="margin:0 2px 0 0">Input method</span>
+      <span class="pill"><span class="dot"></span>One total for the month</span>
+      <span class="pill on"><span class="dot"></span>Day by day</span>
+    </div>
+    <div class="grid">
+      <div><div class="lbl">Month</div><div class="inp">2026-08</div></div>
+      <div><div class="lbl">Pay cycle</div><div class="inp">Regular</div></div>
+      <div class="full"><div class="lbl">Payroll item</div><div class="inp">OT1_5 &mdash; Overtime 1.5 &nbsp;&middot;&nbsp; <span class="x">input type Hours</span></div></div>
+    </div>
+    <p class="hint">
+      Each day is priced by this pay item&rsquo;s own formula &mdash; (Basic salary + fixed allowances) &divide; 26
+      &divide; 8 &times; 1.5 &times; hours &mdash; exactly as a single entry is today. Nothing about the
+      calculation changes.
+    </p>
+
+    <div style="padding:9px 12px 0">
+      <table>
+        <tr>
+          <th style="width:15%">Date</th><th style="width:8%">Day</th><th class="num" style="width:11%">Hours</th>
+          <th class="num" style="width:16%">Calculated amount</th><th>Remark</th>
+          <th style="width:11%">Source</th><th style="width:5%"></th>
+        </tr>
+        <tr><td>01/08/2026</td><td>Sat</td><td class="num">2.00</td><td class="num">77.88</td><td>Project A</td><td><span class="src">Manual</span></td><td class="x">&times;</td></tr>
+        <tr><td>05/08/2026</td><td>Wed</td><td class="num">3.00</td><td class="num">116.83</td><td>Project A</td><td><span class="src">Manual</span></td><td class="x">&times;</td></tr>
+        <tr><td>12/08/2026</td><td>Wed</td><td class="num">2.50</td><td class="num">97.36</td><td>Project B</td><td><span class="src">Manual</span></td><td class="x">&times;</td></tr>
+        <tr><td>20/08/2026</td><td>Thu</td><td class="num">4.00</td><td class="num">155.77</td><td>Project B</td><td><span class="src">Manual</span></td><td class="x">&times;</td></tr>
+        <tr><td>26/08/2026</td><td>Wed</td><td class="num">3.50</td><td class="num">136.30</td><td>Project B</td><td><span class="src">Manual</span></td><td class="x">&times;</td></tr>
+        <tr class="tot"><td colspan="2">Total &mdash; 5 days</td><td class="num">15.00</td><td class="num">584.14</td><td colspan="3"></td></tr>
+      </table>
+    </div>
+    <div class="addrow"><span class="add">+ Add date</span></div>
+    <div class="warnbox">
+      Each day is rounded to the cent on its own, so these five days come to <b>RM584.14</b> where the single
+      15.00-hour entry above gives RM584.13. That one cent is the honest consequence of pricing each day
+      separately, and it is the same way your own worked example in the request adds up.
+    </div>
+    <div class="acts">
+      <span class="btn">Save all 5 dates</span><span class="btn sec">Cancel</span>
+    </div>
+  </div>
+
+  <p class="note">
+    A date outside August is refused, in the same words the screen already uses. The grid works the same way
+    for any pay item that takes a quantity &mdash; <b>Hours</b> for Overtime 1.5, 2.0 and 3.0, <b>Days</b> for
+    Unpaid Leave and Absent &mdash; because it reads the input type off the pay item rather than assuming overtime.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Afterwards &mdash; the daily record stays, and the payslip still shows one line<span class="chip new">what we&rsquo;ll build</span></h2>
+  <p class="sub">
+    Back on the employee&rsquo;s list, the days are grouped under the pay item that produced them, with the
+    totals you asked for and the detail one click away.
+  </p>
+
+  <div class="scr">
+    <div class="sechdr"><span>Transactions <span class="cnt">5 rows</span></span></div>
+    <div class="grp">
+      <div class="grph">
+        <span class="t">2026-08 &nbsp;&middot;&nbsp; Overtime 1.5 <span class="m">&nbsp;&middot;&nbsp; 5 days</span></span>
+        <span class="m">Total 15.00 Hours</span>
+        <span style="font-weight:700">RM584.14</span>
+        <span class="caret">&#9662; Hide daily details</span>
+      </div>
+      <table>
+        <tr>
+          <th style="width:15%">Date</th><th style="width:8%">Day</th><th class="num" style="width:11%">Hours</th>
+          <th class="num" style="width:14%">Amount</th><th>Remark</th>
+          <th style="width:11%">Source</th><th style="width:14%">Status</th>
+        </tr>
+        <tr><td>2026-08-01</td><td>Sat</td><td class="num">2.00</td><td class="num">77.88</td><td>Project A</td><td><span class="src">Manual</span></td><td><span class="badge">Processed</span></td></tr>
+        <tr><td>2026-08-05</td><td>Wed</td><td class="num">3.00</td><td class="num">116.83</td><td>Project A</td><td><span class="src">Manual</span></td><td><span class="badge">Processed</span></td></tr>
+        <tr><td>2026-08-12</td><td>Wed</td><td class="num">2.50</td><td class="num">97.36</td><td>Project B</td><td><span class="src">Manual</span></td><td><span class="badge">Processed</span></td></tr>
+        <tr><td>2026-08-20</td><td>Thu</td><td class="num">4.00</td><td class="num">155.77</td><td>Project B</td><td><span class="src">Manual</span></td><td><span class="badge">Processed</span></td></tr>
+        <tr><td>2026-08-26</td><td>Wed</td><td class="num">3.50</td><td class="num">136.30</td><td>Project B</td><td><span class="src">Manual</span></td><td><span class="badge">Processed</span></td></tr>
+      </table>
+    </div>
+    <div class="totals">
+      <span class="kv">Entered<b>584.14</b></span>
+      <span class="kv">Not yet paid<b>0.00</b></span>
+      <span class="kv">Paid<b>584.14</b></span>
+      <span class="kv">Needs reprocessing<b>0.00</b></span>
+    </div>
+  </div>
+
+  <p class="note">
+    <b>The payslip is unchanged.</b> It still shows a single Overtime 1.5 line of RM584.14 &mdash; the daily
+    breakdown lives here, as the audit trail behind that figure, and stays readable after the payroll has been
+    processed. The four totals above the fold are the ones already on this screen today; they simply now
+    count days as well as amounts.
+  </p>
+</div>
