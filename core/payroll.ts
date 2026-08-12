@@ -6726,7 +6726,7 @@ function valuesOfAdjustmentRow(r: Record<string, unknown>): StatutoryAdjustmentV
 export function applyStatutoryAdjustment<T extends Record<string, unknown>>(
   computed: T,
   adj: { values: StatutoryAdjustmentValues; reason: string } | null,
-): T {
+): T & { adjustment?: StatutoryAdjustmentStamp } {
   if (!adj) return computed;
   const lines: StatutoryAdjustmentStamp['lines'] = {};
   const patch: Record<string, number> = {};
@@ -6739,7 +6739,7 @@ export function applyStatutoryAdjustment<T extends Record<string, unknown>>(
   }
   if (Object.keys(patch).length === 0) return computed;
   const stamp: StatutoryAdjustmentStamp = { reason: adj.reason, lines };
-  return { ...computed, ...patch, adjustment: stamp } as T;
+  return { ...computed, ...patch, adjustment: stamp } as T & { adjustment: StatutoryAdjustmentStamp };
 }
 
 /**
