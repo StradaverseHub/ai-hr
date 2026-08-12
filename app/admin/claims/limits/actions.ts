@@ -16,12 +16,28 @@ const intOrNull = (v: FormDataEntryValue | null): number | null => {
   return n == null ? null : Math.trunc(n);
 };
 
-/** Build the rate-config union from the form's `rateKind` radio + its conditional input. */
-function rateConfigFrom(formData: FormData): ClaimRateConfig {
-  const kind = String(formData.get('rateKind') ?? 'receipt');
-  if (kind === 'mileage_flat') return { kind: 'mileage_flat', ratePerKm: Number(formData.get('ratePerKm') ?? 0) };
+/**
+ * Build the rate-config union from the form's `rateKind` select + its conditional input.
+ *
+ * ⚠️ RETURNS `undefined` WHEN THE FORM CARRIES NO `rateKind` AT ALL, and that is the whole point of the
+ * signature. `undefined` is the INHERIT arm of setClaimPolicy's tri-state: a form with no rate control on
+ * it says nothing about rates and therefore cannot delete the rate already on the policy. The old version
+ * of this function could not say "nothing" — it defaulted to `{kind:'receipt'}` — so every save posted a
+ * rate whether or not one had been asked for. (Cleared deliberately? Post rateKind=receipt.)
+ *
+ * e7eb5d83 rev 5 step 1c — THE 'mileage_flat' BRANCH IS GONE. The select stopped offering it in r186 when
+ * the rate per km moved to Claims → Mileage Rates, but the parser still honoured it, so a hand-rolled POST
+ * could write a flat per-km scalar back onto a claim policy through a screen that does not have the field.
+ * An unrecognised kind now REFUSES rather than falling through to 'receipt': falling through would turn a
+ * forged value into a silent rate deletion, which is the failure this whole step exists to close.
+ */
+function rateConfigFrom(formData: FormData): ClaimRateConfig | undefined {
+  const raw = formData.get('rateKind');
+  if (raw == null || String(raw).trim() === '') return undefined;
+  const kind = String(raw);
   if (kind === 'fixed_allowance') return { kind: 'fixed_allowance', amount: Number(formData.get('fixedAmount') ?? 0) };
-  return { kind: 'receipt' };
+  if (kind === 'receipt') return { kind: 'receipt' };
+  throw new Error(`Unknown rate kind: ${kind}`);
 }
 
 export async function setClaimPolicyAction(formData: FormData) {

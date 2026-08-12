@@ -741,6 +741,19 @@ export async function setClaimPolicy(
     annualBudget: number | null;
     perClaimCap: number | null;
     effectiveFrom: string;
+    /**
+     * ⚠️ EXPLICIT TRI-STATE (e7eb5d83 rev 5, step 1a) — `undefined` and `null` mean DIFFERENT things:
+     *   • ABSENT (undefined) ⇒ INHERIT the rate config from the version this insert closes.
+     *   • null               ⇒ CLEAR it (the type goes back to plain 'receipt' pricing).
+     *   • a config           ⇒ replace it.
+     *
+     * This exists because it was a live money bug, not a nicety. A limits screen that does not ASK for a
+     * rate was still POSTing one: `rateConfigFrom()` always returned a config, so the first re-save of the
+     * Mileage limit would have written `{kind:'receipt'}` over `{kind:'mileage_flat', ratePerKm:0.7}` and
+     * stopped mileage claiming for the whole company with "No mileage rate has been set up". A caller that
+     * does not know about rates must not be able to destroy one by staying silent — the same inheritance
+     * blockStartOn already has, and for the same reason.
+     */
     rateConfig?: ClaimRateConfig | null;
     /** null (or absent) = the all-grades default row; a grade id = a per-grade limit. (ccbd0508) */
     gradeId?: string | null;
@@ -793,10 +806,11 @@ export async function setClaimPolicy(
 
   return withTenant(ctx, async (tx) => {
     // The version this insert is about to close, read BEFORE closing it — the only place the previous
-    // anchor still exists. Carrying block_start_on forward from here is what stops an unrelated edit
-    // (a new per-claim cap, a rate change) from restarting every employee's block.
+    // anchor and the previous rate still exist. Carrying block_start_on forward from here is what stops an
+    // unrelated edit (a new per-claim cap, a rate change) from restarting every employee's block; carrying
+    // rate_config forward is what stops a screen that never asked for a rate from silently deleting one.
     const [prevOpen] = await tx
-      .select({ blockStartOn: claimPolicy.blockStartOn })
+      .select({ blockStartOn: claimPolicy.blockStartOn, rateConfig: claimPolicy.rateConfig })
       .from(claimPolicy)
       .where(
         and(
@@ -809,6 +823,11 @@ export async function setClaimPolicy(
     const blockStartOn = wantsBlock
       ? (p.blockStartOn ?? prevOpen?.blockStartOn ?? `${p.effectiveFrom.slice(0, 4)}-01-01`)
       : null;
+    // The tri-state resolved: `undefined` inherits, `null` clears. `??` would be wrong here — it cannot
+    // tell "the caller said clear it" from "the caller said nothing", and collapsing the two is exactly
+    // the bug this guards against, in the other direction.
+    const rateConfig: ClaimRateConfig | null =
+      p.rateConfig === undefined ? (prevOpen?.rateConfig ?? null) : p.rateConfig;
 
     // Close the currently-open policy version for THIS (type, grade) only (half-open validity) — a
     // null-safe grade compare so changing the Executive-Medical limit never closes the Manager-Medical row.
@@ -833,7 +852,7 @@ export async function setClaimPolicy(
         monthlyLimit: p.monthlyLimit == null ? null : p.monthlyLimit.toFixed(2),
         lifetimeLimit: p.lifetimeLimit == null ? null : p.lifetimeLimit.toFixed(2),
         maxClaimsPerYear,
-        rateConfig: p.rateConfig ?? null,
+        rateConfig,
         blockLength: wantsBlock ? p.blockLength : null,
         blockUnit: wantsBlock ? p.blockUnit : null,
         blockLimit: wantsBlock && p.blockLimit != null ? p.blockLimit.toFixed(2) : null,
@@ -857,7 +876,9 @@ export async function setClaimPolicy(
         lifetimeLimit: p.lifetimeLimit ?? null,
         maxClaimsPerYear,
         effectiveFrom: p.effectiveFrom,
-        rateConfig: p.rateConfig ?? null,
+        // The RESOLVED config (inherited or supplied) — the audit trail must show what was WRITTEN, not
+        // what the caller happened to type, or an inherited rate looks like a rate that was deleted.
+        rateConfig,
         blockLength: wantsBlock ? p.blockLength : null,
         blockUnit: wantsBlock ? p.blockUnit : null,
         blockLimit: wantsBlock ? p.blockLimit : null,

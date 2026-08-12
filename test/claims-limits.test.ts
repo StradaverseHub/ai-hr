@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
+import { readFileSync } from 'node:fs';
 import {
   createClaimItem,
   createClaimType,
@@ -16,6 +17,7 @@ import {
   listClaimLimits,
   listClaimTypes,
   setClaimPolicy,
+  setMileageRateTable,
   submitClaim,
 } from '../core/claims';
 import { hireEmployee } from '../core/org';
@@ -128,5 +130,183 @@ describe('ccbd0508 — claim limits by grade', () => {
     await submitClaim(a, { employmentId: E.employmentId, claimTypeId: id, amount: 10, incurredOn: todayInKualaLumpur() });
     await expect(deleteClaimType(a, id)).rejects.toThrow(/archive/i);
     expect((await listClaimTypes(a)).find((t) => t.id === id)).toBeDefined(); // still there
+  });
+
+  // ══════════ e7eb5d83 rev 5 STEP 1 — rate_config carry-forward: the mileage re-save trap ══════════
+  //
+  // MEASURED ON PRODUCTION 2026-08-12, before a line of this was written: MILEAGE 001's OPEN policy still
+  // carried {"kind":"mileage_flat","ratePerKm":0.7} (valid_to null, created 2026-06-30), and all five
+  // claim_mileage_rate rows sat on GRADE 12 (PERMANENT), which has zero employments. So the flat scalar was
+  // not a leftover — it was the live pricing path for all 40 employees, and the existing RM70.00 draft is
+  // 100 km × 0.70 proving it.
+  //
+  // Meanwhile the limits screen had stopped offering a rate-per-km field (r186) but its action still POSTed
+  // a rate on every save: rateConfigFrom() always returned a config, defaulting to {kind:'receipt'}. The
+  // first re-save of the Mileage limit would therefore have written receipt over the scalar and every filer
+  // would have met "No mileage rate has been set up for this claim type yet".
+  //
+  // These tests pin the fix in BOTH directions. Carry-forward that cannot be turned off would be its own
+  // bug — an admin who genuinely wants a rate gone must still be able to remove it — so `undefined` and
+  // `null` are asserted to mean different things, not merely asserted to be safe.
+  describe('rate_config is a TRI-STATE: absent inherits, null clears', () => {
+    async function mileageTypeWithFlatRate(rate = 0.7) {
+      const a = adminCtx(base);
+      const { id } = await createClaimType(a, {
+        code: 'MILEAGE',
+        name: 'Mileage',
+        defaultTaxable: false,
+        requiresReceipt: false,
+        isMileage: true,
+      });
+      await setClaimPolicy(a, {
+        claimTypeId: id,
+        annualBudget: 100,
+        perClaimCap: 100,
+        effectiveFrom: '2026-01-01',
+        rateConfig: { kind: 'mileage_flat', ratePerKm: rate },
+      });
+      return id;
+    }
+    const rateAt = (id: string, gradeId: string | null = null, asOf = '2026-06-01') =>
+      withTenant(adminCtx(base), (tx) => getActiveClaimPolicy(tx, id, asOf, gradeId));
+
+    it('THE TRAP: a re-save that supplies no rateConfig CARRIES THE RATE FORWARD', async () => {
+      const id = await mileageTypeWithFlatRate();
+      // Exactly what a limits save looks like once the screen has no rate control on it: money limits
+      // only, not one word about rates. Before the fix this wrote {kind:'receipt'}.
+      await setClaimPolicy(adminCtx(base), {
+        claimTypeId: id,
+        annualBudget: 250,
+        perClaimCap: 120,
+        effectiveFrom: '2026-05-01',
+      });
+      const p = await rateAt(id);
+      expect(p?.annualBudget).toBe(250); // the edit landed …
+      expect(p?.rateConfig).toEqual({ kind: 'mileage_flat', ratePerKm: 0.7 }); // … and took nothing with it
+    });
+
+    it('and the claim still prices at the old rate after that re-save', async () => {
+      // The assertion that actually matters to the 40 employees: not "the column still holds a value" but
+      // "a mileage claim filed after the save is still worth what it was worth before it".
+      const a = adminCtx(base);
+      const E = await hireEmployee(a, {
+        person: { fullName: 'Rider', primaryEmail: 'rider@acme.test' },
+        companyId: base.companyId,
+        departmentId: base.deptA,
+        employmentType: 'full_time',
+        hiredOn: '2026-01-01',
+      });
+      const id = await mileageTypeWithFlatRate();
+      await setClaimPolicy(a, { claimTypeId: id, annualBudget: 250, perClaimCap: 120, effectiveFrom: '2026-05-01' });
+      const claim = await submitClaim(a, {
+        employmentId: E.employmentId,
+        claimTypeId: id,
+        amount: 0,
+        quantityKm: 100,
+        incurredOn: todayInKualaLumpur(),
+      });
+      const [row] = await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id, claim.id));
+      expect(Number(row.amount)).toBe(70); // 100 × 0.70 — the production draft's own figure
+    });
+
+    it('an EXPLICIT null clears the rate — inheritance is not a one-way ratchet', async () => {
+      const id = await mileageTypeWithFlatRate();
+      await setClaimPolicy(adminCtx(base), {
+        claimTypeId: id,
+        annualBudget: 250,
+        perClaimCap: null,
+        effectiveFrom: '2026-05-01',
+        rateConfig: null,
+      });
+      expect((await rateAt(id))?.rateConfig).toBeNull();
+    });
+
+    it('an explicit config REPLACES the inherited one', async () => {
+      const id = await mileageTypeWithFlatRate();
+      await setClaimPolicy(adminCtx(base), {
+        claimTypeId: id,
+        annualBudget: null,
+        perClaimCap: null,
+        effectiveFrom: '2026-05-01',
+        rateConfig: { kind: 'fixed_allowance', amount: 180 },
+      });
+      expect((await rateAt(id))?.rateConfig).toEqual({ kind: 'fixed_allowance', amount: 180 });
+    });
+
+    it('the event payload records the RESOLVED config, so an inherited rate is not logged as a deletion', async () => {
+      const id = await mileageTypeWithFlatRate();
+      const { id: versionId } = await setClaimPolicy(adminCtx(base), {
+        claimTypeId: id,
+        annualBudget: 250,
+        perClaimCap: null,
+        effectiveFrom: '2026-05-01',
+      });
+      const payload = await latestEventPayload(base.tenantId, versionId, 'claim-policy.set');
+      expect(payload).toMatchObject({ rateConfig: { kind: 'mileage_flat', ratePerKm: 0.7 } });
+    });
+
+    it('inheritance is per (type, grade) — a grade row does not inherit the company-wide rate', async () => {
+      // The close-and-insert predicate is null-safe on grade, and the read that feeds the inheritance uses
+      // the SAME predicate. If it did not, the first per-grade limit ever set on a type would silently
+      // acquire the company-wide row's rate, which is a rate nobody chose for that grade.
+      const exec = await makeGrade(base.tenantId, 'EXEC', 'Executive', 1);
+      const id = await mileageTypeWithFlatRate();
+      await setClaimPolicy(adminCtx(base), {
+        claimTypeId: id,
+        gradeId: exec,
+        annualBudget: 500,
+        perClaimCap: null,
+        effectiveFrom: '2026-05-01',
+      });
+      const [execRow] = await owner.db
+        .select()
+        .from(schema.claimPolicy)
+        .where(eq(schema.claimPolicy.gradeId, exec));
+      expect(execRow.rateConfig).toBeNull(); // nothing to inherit on this tier ⇒ nothing inherited
+      expect((await rateAt(id))?.rateConfig).toEqual({ kind: 'mileage_flat', ratePerKm: 0.7 }); // untouched
+    });
+
+    it('STEP 1b: the company-wide band seed prices identically to the flat scalar it retires', async () => {
+      // What scripts/backfill-mileage-flat-rate.ts writes, asserted as arithmetic rather than as intent:
+      // one open band [0 km → ∞] at the same rate is priceMileage's answer to computeClaimAmount's.
+      const a = adminCtx(base);
+      const E = await hireEmployee(a, {
+        person: { fullName: 'Seeded Rider', primaryEmail: 'seededrider@acme.test' },
+        companyId: base.companyId,
+        departmentId: base.deptA,
+        employmentType: 'full_time',
+        hiredOn: '2026-01-01',
+      });
+      const id = await mileageTypeWithFlatRate();
+      await setMileageRateTable(a, {
+        claimTypeId: id,
+        gradeId: null,
+        vehicleClass: 'any',
+        effectiveFrom: '2026-01-01',
+        bands: [{ fromKm: 0, toKm: null, ratePerKm: 0.7 }],
+      });
+      const claim = await submitClaim(a, {
+        employmentId: E.employmentId,
+        claimTypeId: id,
+        amount: 0,
+        quantityKm: 100,
+        incurredOn: todayInKualaLumpur(),
+      });
+      const [row] = await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id, claim.id));
+      expect(Number(row.amount)).toBe(70); // identical to the mileage_flat answer above, to the sen
+      // …and now the claim can EXPLAIN itself, which the fallback path never could.
+      expect(row.mileageRateApplied).toMatchObject({ source: 'company', gradeId: null });
+    });
+
+    it('STEP 1c: the limits action can no longer parse a mileage_flat rate out of a POST', async () => {
+      // rateConfigFrom() cannot be imported here — a 'use server' module may only export async functions —
+      // so the dead branch is pinned at the source. The screen stopped offering the option in r186; until
+      // this step the parser still honoured it, so a hand-rolled POST could write a per-km scalar back onto
+      // a claim policy through a screen that has no such field.
+      const src = readFileSync(new URL('../app/admin/claims/limits/actions.ts', import.meta.url), 'utf8');
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      expect(code).not.toContain('mileage_flat');
+      expect(code).not.toContain('ratePerKm');
+    });
   });
 });

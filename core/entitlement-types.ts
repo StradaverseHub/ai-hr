@@ -165,6 +165,11 @@ export const ENTITLEMENTS_EXEMPT_REASONS = {
       // resolveEntitlementsTx and carries no marker — exactly the swap this note prescribed.
       'scripts/backfill-basic-components.ts',
       'scripts/correct-hrdf-opt-outs.ts',
+      // e7eb5d83 rev 5 step 1b — one-off: promotes the legacy claim_policy mileage_flat scalar into a
+      // company-wide claim_mileage_rate band. Same synthetic-context shape as the two above; core/claims.ts
+      // gates on no module, so the marker is a label on a cross-tenant maintenance run rather than a key
+      // that opens anything.
+      'scripts/backfill-mileage-flat-rate.ts',
     ],
   },
   /*
