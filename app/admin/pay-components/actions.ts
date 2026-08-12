@@ -8,6 +8,7 @@ import {
   archivePayComponent,
   createPayComponent,
   deletePayComponent,
+  isStatutoryRelevantChange,
   isUnsupportedTaxableComponent,
   PayComponentCodeExistsError,
   PayComponentInUseError,
@@ -19,6 +20,8 @@ import {
   type PayComponentInput,
   type PcbRemunerationType,
 } from '@/core/pay-components';
+// 017d9c25 — the pack facade, not core/payroll directly (ADR-0080 pack import ratchet).
+import { markRunsAffectedByPayComponent } from '@/packs/payroll/service';
 import { draftPayRule, PayRuleDraftError } from '@/core/pay-rule-ai';
 import type { PayRule } from '@/core/pay-rule';
 
@@ -187,7 +190,17 @@ export async function updateComponentAction(formData: FormData) {
   const unsupported = unsupportedTaxableMessage(input, t);
   if (unsupported) redirect(`${PAGE}/${encodeURIComponent(input.code)}?error=${encodeURIComponent(unsupported)}`);
   try {
-    await upsertPayComponent(s, input);
+    const { id, changed } = await upsertPayComponent(s, input);
+    // ── Feedback 017d9c25 (r187) — a statutory edit marks the runs it makes stale ──────────────────
+    // Keying a one-off transaction against a processed run already does this; changing a Pay Item did
+    // not, which is why the reporter's January figures sat there looking settled after they unticked
+    // EPF. Only fires when a field that MOVES MONEY changed (isStatutoryRelevantChange) — a rename
+    // must not make every open run in the tenant look stale. Marking is idempotent (a set union) and
+    // markBatchNeedsRecalc itself no-ops on anything but a processed run, so a draft and a closed run
+    // are both untouched. Inside the try so a failure surfaces on the form rather than half-saving.
+    if (isStatutoryRelevantChange(changed)) {
+      await markRunsAffectedByPayComponent(s, { componentId: id, code: input.code });
+    }
     revalidatePath(PAGE);
   } catch (e) {
     redirect(`${PAGE}/${encodeURIComponent(input.code)}?error=${encodeURIComponent(await messageOf(e, t))}`);

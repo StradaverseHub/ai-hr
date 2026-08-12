@@ -134,8 +134,18 @@ describe('fc776376 — one implementation, not a sixth', () => {
     expect(src).not.toContain('rowsPlusOne');
   });
 
+  // Where each screen DECLARES its searchParams. Normally the page itself; 579255c3 moved the Personnel
+  // listing's declaration into a shared module so the Excel export can be built from the SAME parse of
+  // the SAME params. The contract is asserted where it lives rather than dropped — a page that stops
+  // accepting ?size= still fails here.
+  const searchParamsIn: Record<string, string> = {
+    'app/admin/personnel/page.tsx': 'app/admin/personnel/list-query.ts',
+  };
+
   it.each(converted)('%s accepts ?size= so a shared link opens the same view', (file) => {
-    expect(read(file)).toContain('size?: string;');
+    expect(read(searchParamsIn[file] ?? file)).toContain('size?: string;');
+    // …and the page still feeds those params to the shared helper, wherever the type is declared.
+    expect(read(file)).toContain('parsePageQuery(sp)');
   });
 
   it('every locale carries the pager strings', () => {

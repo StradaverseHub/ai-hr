@@ -9,16 +9,28 @@ import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-pane
 import { formatMoney } from '@/lib/money';
 import {
   createIndividualTxnAction,
+  createIndividualTxnDayGridAction,
   deleteIndividualTxnAction,
   fetchBatchImpactAction,
   fetchEmployeeTxnPanelAction,
   fetchTxnDetailAction,
   previewTxnAmountAction,
+  previewTxnAmountsAction,
   updateIndividualTxnAction,
   type TxnActionResult,
   type TxnBatchImpact,
 } from './actions';
-import type { TxnPanel, TxnPanelRow } from './existing-context';
+import { buildTxnGroups, type TxnPanel, type TxnPanelRow } from './existing-context';
+import {
+  blankDayLine,
+  dayKeyOf,
+  dayLineIssue,
+  dayLineTotals,
+  distinctQuantities,
+  duplicateDayLineKeys,
+  quantityKey,
+  type DayLine,
+} from './day-lines';
 
 /**
  * 44129979 — the Individual Transaction screen, as ONE two-panel workspace.
@@ -167,6 +179,31 @@ type FormState = {
   notes: string;
 };
 
+/**
+ * 4e403268 — DAY-BY-DAY entry state.
+ *
+ * TWO SEPARATE STATES, NOT ONE WIDENED OBJECT, and the invariant is that at most one of `form` and
+ * `daily` is ever non-null. That is a discriminated union expressed as a state machine, and it is the
+ * shape the approved plan asked for: the two modes are different machines — one row with a date and a
+ * quantity, versus a header plus a LIST of dated lines — and folding them into one object with a mode
+ * flag means every existing read of `form.txnDate` has to start asking which mode it is in. Keeping them
+ * apart costs one extra `useState` and leaves the lump-sum path, which is the one production data and the
+ * existing tests depend on, byte-for-byte unchanged.
+ *
+ * The header (month, run, pay item) is duplicated rather than shared for the same reason: switching modes
+ * CONVERTS one into the other, carrying the header across, so there is never a moment where two objects
+ * disagree about which month is being keyed.
+ *
+ * Edit is deliberately lump-sum only. An existing row IS one day; opening five days to edit one of them
+ * would be a grid that can delete rows the operator never opened.
+ */
+type DailyState = {
+  payPeriod: string;
+  batchId: string;
+  item: string;
+  lines: DayLine[];
+};
+
 const EMPTY_PANEL: TxnPanel = {
   rows: [],
   totals: {
@@ -278,8 +315,14 @@ export function TxnWorkspace({
 
   // ── The form ──
   const [form, setForm] = useState<FormState | null>(null);
+  /** 4e403268 — the day-by-day grid. Mutually exclusive with `form`; see the DailyState doc. */
+  const [daily, setDaily] = useState<DailyState | null>(null);
   const [formBaseline, setFormBaseline] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
+  /** 4e403268 — the listing's shape: the flat line-per-row list, or grouped by month + pay item with the
+   *  days one click away. Flat stays the default so nobody's screen changes under them. */
+  const [listView, setListView] = useState<'flat' | 'grouped'>('flat');
+  const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
   const [pendingEmployeeId, setPendingEmployeeId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -391,6 +434,7 @@ export function TxnWorkspace({
     setPage(0);
     setRowQuery('');
     setExpandedId(null);
+    setExpandedGroupKey(null);
     setConfirmDeleteId(null);
     setRecalcBatchId(null);
   };
@@ -438,6 +482,16 @@ export function TxnWorkspace({
     });
   }, [panel.rows, rowQuery, sortKey, sortDir]);
 
+  /**
+   * 4e403268 — the same rows, grouped by month + pay item.
+   *
+   * Built from `sortedRows` rather than from `panel.rows` on purpose: the search box has to narrow the
+   * grouped view too, or typing a remark would silently change which days a total is over without changing
+   * the total's label. The grouping's own ordering (newest month, then pay item code) then applies —
+   * the column sort belongs to the flat list, where a column exists to sort by.
+   */
+  const groups = useMemo(() => buildTxnGroups(sortedRows), [sortedRows]);
+
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
   const pageRows = useMemo(
@@ -454,7 +508,10 @@ export function TxnWorkspace({
   };
 
   // ── Form target resolution: which run (if any) a new/edited row lands on ──
-  const formPeriod = form?.payPeriod ?? '';
+  // 4e403268 — one month for whichever entry machine is open. The two are mutually exclusive, so this
+  // reads the open one; everything downstream (eligible runs, the date bounds, the derived figure) is
+  // written once and serves both modes rather than being duplicated per mode.
+  const formPeriod = form?.payPeriod ?? daily?.payPeriod ?? '';
   const eligibleBatches = useMemo(() => {
     if (!selected || !isPeriod(formPeriod)) return [];
     return batches
@@ -474,10 +531,11 @@ export function TxnWorkspace({
    * run that no longer covers this employee. There is no such window if it is never stored.
    */
   const resolvedBatchId = useMemo(() => {
-    if (!form) return '';
-    if (form.batchId && eligibleBatches.some((b) => b.id === form.batchId)) return form.batchId;
+    const picked = form?.batchId ?? daily?.batchId ?? '';
+    if (!form && !daily) return '';
+    if (picked && eligibleBatches.some((b) => b.id === picked)) return picked;
     return eligibleBatches.length === 1 ? eligibleBatches[0].id : '';
-  }, [form, eligibleBatches]);
+  }, [form, daily, eligibleBatches]);
 
   /** The run a save would land on, as a batch record (not just its id) — the form needs its status. */
   const targetBatch = useMemo(
@@ -522,7 +580,7 @@ export function TxnWorkspace({
   }, [formPeriod]);
 
   // ── 2da9937a — the amount the PAY ITEM works out, when it is not the operator's to type ──
-  const pickedItem = form ? (itemByValue.get(form.item) ?? null) : null;
+  const pickedItem = form ? (itemByValue.get(form.item) ?? null) : daily ? (itemByValue.get(daily.item) ?? null) : null;
   const derives = pickedItem?.derives === true;
   /** The quantity this item's rule needs keyed, or null when it needs none (qty_rate carries its own). */
   const requiredUnit: ItemInputUnit = derives ? pickedItem!.inputUnit : null;
@@ -542,8 +600,11 @@ export function TxnWorkspace({
    * The key is EMPTY until the required quantity is present, so an item that calculates from hours does not
    * fire a request (and surface a refusal) while the operator is still on their way to the Hours box.
    */
+  // 4e403268 — LUMP-SUM ONLY. In day-by-day mode the grid's own batched preview (below) is the single
+  // source of the figures, and leaving this one armed would fire a second, differently-keyed request for
+  // a quantity box that is not on screen.
   const derivedKey =
-    derives && pickedItem?.fromMaster && selected && isPeriod(formPeriod) && quantityReady
+    form != null && derives && pickedItem?.fromMaster && selected && isPeriod(formPeriod) && quantityReady
       ? [
           componentIdOf(pickedItem.value) ?? '',
           selected.employmentId,
@@ -591,13 +652,103 @@ export function TxnWorkspace({
   const derivedError = derives ? (derivedCurrent?.error ?? null) : null;
   const derivedZeroDivisor = derives ? (derivedCurrent?.zeroDivisor ?? null) : null;
   const derivedPending = derives && derivedKey !== '' && derivedState.key !== derivedKey;
+
+  // ── 4e403268 — the SAME derivation, for a whole day-by-day grid, in ONE request ──
+  /**
+   * The distinct quantities the grid needs priced. Deduplicated because the figure depends on (item,
+   * employment, company, month, quantity, unit) and nothing else: five days of 2.00 hours are five copies
+   * of one answer, and asking five times would be five transactions resolving the same employee's month.
+   */
+  const dailyQuantities = useMemo(() => (daily ? distinctQuantities(daily.lines) : []), [daily]);
+  /**
+   * Keyed on everything the answer depends on, and the answers are stored WITH the key — the same
+   * store-the-key / derive-is-this-current guard the two effects above use, for the same reason: a reply
+   * for a quantity set the operator has already changed must never paint over the figures now on screen.
+   * The key is empty until there is something to price, so an empty grid fires nothing.
+   */
+  const dailyDerivedKey =
+    daily != null && derives && pickedItem?.fromMaster && selected && isPeriod(formPeriod) && dailyQuantities.length > 0
+      ? [
+          componentIdOf(pickedItem.value) ?? '',
+          selected.employmentId,
+          selected.companyId,
+          formPeriod,
+          requiredUnit ?? '',
+          dailyQuantities.join(','),
+        ].join('|')
+      : '';
+  const [dailyDerived, setDailyDerived] = useState<{
+    key: string;
+    amounts: Record<string, string>;
+    zeroDivisor: string | null;
+    error: string | null;
+  }>({ key: '', amounts: {}, zeroDivisor: null, error: null });
+  useEffect(() => {
+    if (!dailyDerivedKey) return;
+    let live = true;
+    const [componentId, employmentId, companyId, payPeriod, unit, quantities] = dailyDerivedKey.split('|');
+    previewTxnAmountsAction({
+      componentId: componentId!,
+      employmentId: employmentId!,
+      companyId: companyId!,
+      payPeriod: payPeriod!,
+      unit: unit === '' ? null : unit!,
+      quantities: quantities!.split(',').filter(Boolean),
+    })
+      .then((r) => {
+        if (!live) return;
+        if (!r.ok) setDailyDerived({ key: dailyDerivedKey, amounts: {}, zeroDivisor: null, error: r.error });
+        else if (!r.derived) setDailyDerived({ key: dailyDerivedKey, amounts: {}, zeroDivisor: null, error: null });
+        else {
+          const amounts: Record<string, string> = {};
+          for (const a of r.amounts) amounts[a.quantity] = a.amount;
+          setDailyDerived({ key: dailyDerivedKey, amounts, zeroDivisor: r.zeroDivisor, error: null });
+        }
+      })
+      .catch(() => {
+        // Same refusal as the single-value path: never fall back to a typed amount on a calculating item.
+        if (live) setDailyDerived({ key: dailyDerivedKey, amounts: {}, zeroDivisor: null, error: 'derivedAmountUnavailable' });
+      });
+    return () => {
+      live = false;
+    };
+  }, [dailyDerivedKey]);
+  const dailyDerivedCurrent = dailyDerived.key === dailyDerivedKey && dailyDerivedKey !== '' ? dailyDerived : null;
+  const dailyDerivedPending = derives && dailyDerivedKey !== '' && dailyDerived.key !== dailyDerivedKey;
+
+  /**
+   * ONE line's money: the item's own figure when it calculates, the typed figure when it does not.
+   *
+   * Null means NOT KNOWN YET (a request in flight, or a quantity that could not be priced) — and one
+   * unknown line withholds the grid's total rather than showing a partial sum as if it were complete.
+   */
+  const dailyAmountFor = useCallback(
+    (line: DayLine): string | null => {
+      if (!derives) return line.amount.trim() === '' ? null : line.amount;
+      const k = quantityKey(line.quantity);
+      if (k === '') return null;
+      return dailyDerivedCurrent?.amounts[k] ?? null;
+    },
+    [derives, dailyDerivedCurrent],
+  );
+  const dailyTotals = useMemo(
+    () => (daily ? dayLineTotals(daily.lines, dailyAmountFor) : null),
+    [daily, dailyAmountFor],
+  );
+  const dailyDuplicateKeys = useMemo(() => (daily ? duplicateDayLineKeys(daily.lines) : []), [daily]);
+
   /** What the save will post: the item's own figure when it has one, otherwise the typed amount. */
   const effectiveAmount = derives ? Number(derivedAmount ?? 0) : Number(form?.amount ?? 0);
 
-  const dirty = form != null && JSON.stringify(form) !== formBaseline;
+  // 4e403268 — ONE baseline serves both machines, because only one of them is ever open. An unsaved
+  // day-by-day grid is exactly as much unsaved work as an unsaved single entry, and the switch-employee
+  // guard below must protect it the same way.
+  const dirty =
+    (form != null && JSON.stringify(form) !== formBaseline) || (daily != null && JSON.stringify(daily) !== formBaseline);
 
   const openForm = (next: FormState) => {
     setForm(next);
+    setDaily(null);
     setFormBaseline(JSON.stringify(next));
     setFormError(null);
   };
@@ -605,8 +756,23 @@ export function TxnWorkspace({
     setForm((f) => (f ? { ...f, ...patch } : f));
     setFormError(null);
   };
+  const openDaily = (next: DailyState) => {
+    setDaily(next);
+    setForm(null);
+    setFormBaseline(JSON.stringify(next));
+    setFormError(null);
+  };
+  const patchDaily = (patch: Partial<DailyState>) => {
+    setDaily((d) => (d ? { ...d, ...patch } : d));
+    setFormError(null);
+  };
+  const patchDailyLine = (key: string, patch: Partial<DayLine>) => {
+    setDaily((d) => (d ? { ...d, lines: d.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)) } : d));
+    setFormError(null);
+  };
   const closeForm = () => {
     setForm(null);
+    setDaily(null);
     setFormBaseline('');
     setFormError(null);
   };
@@ -637,6 +803,49 @@ export function TxnWorkspace({
     patchForm({ item: value, unit: unitFor(value, form?.unit ?? ''), amount: '' });
 
   const startCreate = () => openForm(blankForm(periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod));
+
+  // ── 4e403268 — the mode switch ──
+  /**
+   * Switching modes CONVERTS the open entry rather than discarding it: the month, the run and the pay item
+   * are carried across, because they are the same three answers in both machines and re-picking them is the
+   * friction the request is about ("you must open the form five times and re-pick the pay item each time").
+   *
+   * What is NOT carried is the row itself. Going to day-by-day seeds the grid with the single entry as its
+   * first line, so a half-typed date and quantity survive the switch; coming back takes the FIRST line, and
+   * says so on screen before it does, because there is no honest way to fold five days into one box.
+   */
+  const changeDailyItem = (value: string) => patchDaily({ item: value });
+  const switchToDaily = () => {
+    const from = form;
+    openDaily({
+      payPeriod: from?.payPeriod ?? (periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod),
+      batchId: from?.batchId ?? '',
+      item: from?.item ?? defaultItemValue,
+      lines: [
+        from
+          ? { ...blankDayLine(), txnDate: from.txnDate, quantity: from.quantity, amount: from.amount, notes: from.notes }
+          : blankDayLine(),
+      ],
+    });
+  };
+  const switchToLump = () => {
+    const from = daily;
+    const first = from?.lines[0];
+    const item = from?.item ?? defaultItemValue;
+    openForm({
+      ...blankForm(from?.payPeriod ?? currentPeriod),
+      batchId: from?.batchId ?? '',
+      item,
+      unit: unitFor(item, ''),
+      txnDate: first?.txnDate ?? '',
+      quantity: first?.quantity ?? '',
+      amount: first?.amount ?? '',
+      notes: first?.notes ?? '',
+    });
+  };
+  const addDailyLine = () => setDaily((d) => (d ? { ...d, lines: [...d.lines, blankDayLine()] } : d));
+  const removeDailyLine = (key: string) =>
+    setDaily((d) => (d ? { ...d, lines: d.lines.length > 1 ? d.lines.filter((l) => l.key !== key) : d.lines } : d));
 
   /** Open Edit or Duplicate. Both need the row's stored component, which only the by-id read carries. */
   const openFromRow = (row: TxnPanelRow, mode: 'edit' | 'duplicate') => {
@@ -707,6 +916,37 @@ export function TxnWorkspace({
   };
 
   /**
+   * 4e403268 — the day grid's client-side validity, per line and then for the grid as a whole.
+   *
+   * `dayLineIssue` (day-lines.ts, pure) is the per-line half and mirrors `formInvalid` above field for
+   * field. The service re-validates every one of them inside the write transaction — `assertDateInPeriod`,
+   * the derived amount, `AmountNotPositiveError`, `DuplicateTxnRowError` — so this only avoids a round trip
+   * and, more usefully, marks WHICH row is at fault instead of failing a grid of twenty at the end.
+   */
+  const dailyIssueFor = useCallback(
+    (line: DayLine): string | null =>
+      dayLineIssue(line, {
+        bounds: monthBounds,
+        requiredUnit,
+        derives,
+        derivedAmount: dailyAmountFor(line),
+      }),
+    [monthBounds, requiredUnit, derives, dailyAmountFor],
+  );
+  const dailyInvalid = (d: DailyState): string | null => {
+    if (!isPeriod(d.payPeriod)) return 'periodInvalid';
+    if (!itemByValue.get(d.item)) return 'rowIncomplete';
+    if (d.lines.length === 0) return 'dayGridEmpty';
+    if (dailyDerivedCurrent?.error) return dailyDerivedCurrent.error;
+    if (dailyDuplicateKeys.length > 0) return 'duplicateRow';
+    for (const l of d.lines) {
+      const issue = dailyIssueFor(l);
+      if (issue) return issue;
+    }
+    return null;
+  };
+
+  /**
    * A copy the operator has not changed would post a second, byte-identical transaction. That is exactly
    * the double-post `DuplicateTxnRowError` rejects within one grid submission — but across submissions
    * the service does not (and should not) refuse it: two identical claims on one day are occasionally
@@ -758,6 +998,65 @@ export function TxnWorkspace({
           batchId: resolvedBatchId,
           ...common,
         });
+  };
+
+  /**
+   * 4e403268 — the day grid's ONE write path. All lines or none.
+   *
+   * The atomicity is INHERITED, not built here: `createIndividualTxnDayGridAction` hands the whole set to
+   * `createIndividualTxnsBulk`, which has done many rows in a single transaction since 1.2.2 with every
+   * guard re-checked inside it. A partial save is therefore not something this screen has to prevent — it
+   * is something the service cannot produce.
+   *
+   * The AMOUNT sent per line is the server's own figure where the item calculates. It is re-derived on the
+   * write regardless, so this is "what was on screen", not a number the browser gets a vote on.
+   */
+  const runDailySave = async (d: DailyState): Promise<TxnActionResult & { count?: number }> => {
+    if (!selected) return { ok: false, error: 'noEmployeesSelected' };
+    const opt = itemByValue.get(d.item) ?? itemOptions[0];
+    const componentId = opt.fromMaster ? componentIdOf(opt.value) : null;
+    return createIndividualTxnDayGridAction({
+      employmentId: selected.employmentId,
+      companyId: selected.companyId,
+      payPeriod: d.payPeriod,
+      batchId: resolvedBatchId,
+      kind: opt.kind,
+      componentId,
+      unit: requiredUnit ?? null,
+      lines: d.lines.map((l) => ({
+        txnDate: l.txnDate,
+        amount: Number(dailyAmountFor(l) ?? 0),
+        quantity: l.quantity.trim() === '' ? null : Number(l.quantity),
+        // Same default the single form applies: an unlabelled line on a named pay item takes the item's
+        // own label, so the ledger reads as the pay item rather than as a blank.
+        notes: l.notes.trim() || (opt.fromMaster ? opt.label : null),
+      })),
+    });
+  };
+
+  const submitDaily = () => {
+    if (!daily) return;
+    const bad = dailyInvalid(daily);
+    if (bad) {
+      setFormError(t(bad as never));
+      return;
+    }
+    const d = daily;
+    startTransition(async () => {
+      const res = await runDailySave(d);
+      if (!res.ok) {
+        setFormError(t(res.error as never));
+        return;
+      }
+      setFormError(null);
+      refreshPanel();
+      if (res.recalcBatchId) setRecalcBatchId(res.recalcBatchId);
+      toast.success(t('dayGridSaved', { count: res.count ?? d.lines.length }));
+      // Land the operator on the grouped view, where the days they just keyed are one line with a total —
+      // which is the thing they came to see and the reason grouping is part of this item at all.
+      setListView('grouped');
+      closeForm();
+    });
   };
 
   const submitForm = (addAnother: boolean) => {
@@ -820,6 +1119,28 @@ export function TxnWorkspace({
   /** Save first, then switch — and if the save fails, do NOT switch. Navigating away from a failed save
    *  is exactly the loss this dialog exists to prevent. */
   const saveThenSwitch = () => {
+    // 4e403268 — the unsaved-changes dialog protects whichever machine is open. A day grid is unsaved work
+    // in exactly the same sense, so Save-then-switch has to be able to save one.
+    if (daily) {
+      const badDaily = dailyInvalid(daily);
+      if (badDaily) {
+        setPendingEmployeeId(null);
+        setFormError(t(badDaily as never));
+        return;
+      }
+      const d = daily;
+      startTransition(async () => {
+        const res = await runDailySave(d);
+        if (res.ok) {
+          toast.success(t('dayGridSaved', { count: res.count ?? d.lines.length }));
+          completeSwitch();
+        } else {
+          setPendingEmployeeId(null);
+          setFormError(t(res.error as never));
+        }
+      });
+      return;
+    }
     if (!form) return;
     const bad = formInvalid(form);
     if (bad) {
@@ -919,7 +1240,8 @@ export function TxnWorkspace({
                 </span>
               )}
             </div>
-            <Button type="button" size="sm" onClick={startCreate} disabled={form?.mode === 'create'}>
+            {/* 4e403268 — also disabled while the day grid is open: Add would silently discard it. */}
+            <Button type="button" size="sm" onClick={startCreate} disabled={form?.mode === 'create' || daily != null}>
               {t('addTxn')}
             </Button>
           </>
@@ -1111,6 +1433,14 @@ export function TxnWorkspace({
                   {form.sourceId && <span className="text-xs text-muted-foreground">{t('duplicateHint')}</span>}
                 </div>
 
+                {/* 4e403268 — the request's Input Method selector. Offered on a NEW entry only: an existing
+                    row IS one day, and opening five days to edit one of them would be a grid that can
+                    delete lines the operator never opened. One total for the month is the default and is
+                    the screen exactly as it was, so nothing anybody already does changes. */}
+                {form.mode === 'create' && (
+                  <InputMethod mode="lump" onLump={switchToLump} onDaily={switchToDaily} t={t} />
+                )}
+
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label={t('monthLabel')}>
                     <input
@@ -1293,6 +1623,278 @@ export function TxnWorkspace({
               </div>
             )}
 
+            {/* ── 4e403268 — DAY-BY-DAY ENTRY ──
+                A sibling block rather than a branch inside the form above, because the two are different
+                machines: one row with a date and a quantity, versus a header plus a LIST of dated lines.
+                They are mutually exclusive (`openForm` and `openDaily` each clear the other), so only one
+                is ever on screen and they look like one panel.
+
+                THE MONTH, THE RUN AND THE PAY ITEM ARE THE HEADER. That is the whole point of the change:
+                today five days means opening the form five times and re-picking the pay item each time. */}
+            {daily && (
+              <div className="space-y-3 border-b border-border bg-muted/10 p-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">{t('dayGridTitle')}</h3>
+                </div>
+
+                <InputMethod mode="daily" onLump={switchToLump} onDaily={switchToDaily} t={t} />
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <Field label={t('monthLabel')}>
+                    <input
+                      type="month"
+                      value={daily.payPeriod}
+                      onChange={(e) =>
+                        // Every line's date belongs to the month; changing the month invalidates all of
+                        // them, so they are cleared rather than left to fail validation one by one.
+                        patchDaily({
+                          payPeriod: e.target.value,
+                          lines: daily.lines.map((l) => ({ ...l, txnDate: '' })),
+                        })
+                      }
+                      className={inputCls}
+                    />
+                  </Field>
+                  <Field label={t('cycleLabel')}>
+                    {eligibleBatches.length > 1 ? (
+                      <select value={resolvedBatchId} onChange={(e) => patchDaily({ batchId: e.target.value })} className={inputCls}>
+                        <option value="">—</option>
+                        {eligibleBatches.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {cycleLabel(b)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="px-1 py-2 text-sm text-muted-foreground">
+                        {eligibleBatches.length === 1 ? cycleLabel(eligibleBatches[0]) : t('pendingRun')}
+                      </p>
+                    )}
+                  </Field>
+                  <Field label={t('colItem')}>
+                    <select value={daily.item} onChange={(e) => changeDailyItem(e.target.value)} className={inputCls}>
+                      <optgroup label={t('itemGroupGeneral')}>
+                        {genericKinds.map((k) => (
+                          <option key={k} value={`k:${k}`}>
+                            {t(`kindLabel.${k}`)}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {masterEarnings.length > 0 && (
+                        <optgroup label={t('itemGroupEarnings')}>
+                          {masterEarnings.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {masterDeductions.length > 0 && (
+                        <optgroup label={t('itemGroupDeductions')}>
+                          {masterDeductions.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </Field>
+                </div>
+
+                {/* THE GRID. `unit` is not a per-line choice — the pay item owns it (2da9937a), and a
+                    grid where each line could disagree about whether it holds hours or days is a grid
+                    whose total means nothing. It is stated once, in the column heading. */}
+                <div className="overflow-x-auto rounded-lg border border-border bg-background">
+                  <table className="w-full min-w-[640px] text-sm">
+                    <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">{t('colEffectiveDate')}</th>
+                        <th className="px-3 py-2 font-medium">{t('dayOfWeek')}</th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          {requiredUnit ? t(`quantityLabel.${requiredUnit}` as never) : t('quantity')}
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          {derives ? t('derivedAmountLabel') : t('colAmount')}
+                        </th>
+                        <th className="px-3 py-2 font-medium">{t('colRemarks')}</th>
+                        <th className="px-3 py-2 text-right font-medium">{t('actions')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {daily.lines.map((l) => {
+                        const dk = dayKeyOf(l.txnDate);
+                        const lineAmount = dailyAmountFor(l);
+                        const issue = dailyIssueFor(l);
+                        const isDupe = dailyDuplicateKeys.includes(l.key);
+                        return (
+                          <tr key={l.key} className={isDupe ? 'bg-red-50/60 dark:bg-red-500/10' : ''}>
+                            <td className="px-3 py-2">
+                              <input
+                                type="date"
+                                aria-label={t('colEffectiveDate')}
+                                value={l.txnDate}
+                                min={monthBounds?.min}
+                                max={monthBounds?.max}
+                                onChange={(e) => patchDailyLine(l.key, { txnDate: e.target.value })}
+                                className={inputCls}
+                              />
+                            </td>
+                            {/* DERIVED FOR DISPLAY, NEVER STORED, and pinned to UTC midnight so the label
+                                is a fact about the calendar day rather than about the operator's timezone
+                                (day-lines.ts `dayOfWeekIndex`). */}
+                            <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
+                              {dk ? t(`dayShort.${dk}` as never) : '—'}
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                aria-label={requiredUnit ? t(`quantityLabel.${requiredUnit}` as never) : t('quantity')}
+                                value={l.quantity}
+                                onChange={(e) => patchDailyLine(l.key, { quantity: e.target.value })}
+                                className={`${inputCls} text-right`}
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type={derives ? 'text' : 'number'}
+                                min={derives ? undefined : '0'}
+                                step={derives ? undefined : '0.01'}
+                                readOnly={derives}
+                                aria-readonly={derives || undefined}
+                                aria-label={derives ? t('derivedAmountLabel') : t('colAmount')}
+                                value={
+                                  derives
+                                    ? dailyDerivedPending
+                                      ? t('derivedAmountPending')
+                                      : (lineAmount ?? '—')
+                                    : l.amount
+                                }
+                                onChange={(e) => patchDailyLine(l.key, { amount: e.target.value })}
+                                className={`${inputCls} text-right${derives ? ' bg-muted/40 text-muted-foreground' : ''}`}
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                aria-label={t('colRemarks')}
+                                value={l.notes}
+                                placeholder={t('notesPlaceholder')}
+                                onChange={(e) => patchDailyLine(l.key, { notes: e.target.value })}
+                                className={inputCls}
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <div className="flex flex-col items-end gap-1">
+                                <RowAction
+                                  label={t('gridDeleteRow')}
+                                  tone="danger"
+                                  disabled={daily.lines.length <= 1 || isPending}
+                                  onClick={() => removeDailyLine(l.key)}
+                                />
+                                {/* The refusal names the ROW. Failing a grid of twenty at the end and
+                                    saying only "amount must be greater than zero" is what makes bulk
+                                    entry worse than one-at-a-time, not better. */}
+                                {issue && !isDupe && (
+                                  <span className="text-[11px] text-destructive">{t(issue as never)}</span>
+                                )}
+                                {isDupe && <span className="text-[11px] text-destructive">{t('duplicateRow')}</span>}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    {/* RUNNING TOTALS — the request's point 7. The money total is withheld (not shown as a
+                        partial sum) while any line's figure is still unknown; see dayLineTotals. */}
+                    <tfoot className="border-t-2 border-border bg-muted/30 text-sm font-medium">
+                      <tr>
+                        <td className="px-3 py-2" colSpan={2}>
+                          {t('dayGridTotal', { count: dailyTotals?.count ?? 0 })}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {dailyTotals?.quantity ??
+                            /* No line carries a quantity — an item that needs none. */ '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {dailyTotals?.amount != null ? rm(dailyTotals.amount) : t('derivedAmountPending')}
+                        </td>
+                        <td className="px-3 py-2" colSpan={2} />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" variant="secondary" onClick={addDailyLine} disabled={isPending}>
+                    {t('dayGridAddDate')}
+                  </Button>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  {derives
+                    ? t(requiredUnit ? `derivedAmountHint.${requiredUnit}` : 'derivedAmountHint.none')
+                    : t('amountIsFinalHint')}
+                </p>
+                {/* THE ROUNDING NOTE, ON SCREEN RATHER THAN IN THE RELEASE NOTES. Each day is priced and
+                    rounded to the cent on its own, so a split can total a cent away from the same
+                    quantity keyed as one figure (15.00 hours = RM584.13 in one line, RM584.14 across
+                    five). Per-day is the right answer — the amount shown against a date has to be what
+                    that date is worth — but it is a surprise unless it is said. */}
+                {derives && <p className="text-xs text-muted-foreground">{t('dayGridRoundingHint')}</p>}
+                {dailyDerivedCurrent?.zeroDivisor && (
+                  <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                    {dailyDerivedCurrent.zeroDivisor}
+                  </p>
+                )}
+                {dailyDerivedCurrent?.error && (
+                  <p className="text-xs text-destructive">{t(dailyDerivedCurrent.error as never)}</p>
+                )}
+                {/* An item with NO rule at all — ABSENT and UNPAID LEAVE on this tenant today. The grid
+                    still records the days; the amount is simply the operator's to key until a formula is
+                    set on the item in Payroll Item Master. Said plainly rather than leaving a read-only
+                    box showing a dash. */}
+                {pickedItem?.fromMaster && !derives && (
+                  <p className="text-xs text-muted-foreground">{t('dayGridNoRuleHint')}</p>
+                )}
+                {requireComponent && <p className="text-xs text-muted-foreground">{t('componentRequiredHint')}</p>}
+                {periodKeyed && isPeriod(daily.payPeriod) && (
+                  <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                    {t('noDraftYetNotice', { period: daily.payPeriod })}{' '}
+                    <Link href={processHref} className="font-medium underline underline-offset-2">
+                      {t('noDraftForSelectionLink')}
+                    </Link>
+                  </p>
+                )}
+                {targetProcessed && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+                    <p className="font-medium">{t('processedEditTitle')}</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                      {impact?.paymentDisbursed && <li>{t('processedEditPaymentExported')}</li>}
+                      {impact?.statutoryFiled && (
+                        <li>{t('processedEditStatutoryFiled', { count: impact.statutoryReportCount })}</li>
+                      )}
+                      <li>{t('processedEditMarksRecalc')}</li>
+                    </ul>
+                  </div>
+                )}
+                {formError && <p className="text-sm text-destructive">{formError}</p>}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* ONE save for every line. Not "save each row" — the service writes the whole set in one
+                      transaction, so a failure on line nine cannot leave lines one to eight behind. */}
+                  <Button type="button" size="sm" onClick={submitDaily} disabled={isPending}>
+                    {isPending ? t('saving') : t('dayGridSave')}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={closeForm} disabled={isPending}>
+                    {t('cancel')}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* ── Itemised listing ── */}
             <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
               <input
@@ -1305,9 +1907,183 @@ export function TxnWorkspace({
                 placeholder={t('searchTxnPlaceholder')}
                 className={`${inputCls} max-w-xs`}
               />
-              <span className="text-xs text-muted-foreground">{t('nShown', { count: sortedRows.length })}</span>
+              <div className="flex flex-wrap items-center gap-3">
+                {/* 4e403268 — the request's point 16: the daily records do NOT disappear once payroll is
+                    processed, they become the audit trail behind the figure. Flat is still the default, so
+                    nobody's screen changes under them; grouped is one click and shows the month + pay item
+                    with its totals, with the days one click further. */}
+                <div className="flex rounded-md border border-border p-0.5 text-xs">
+                  {(['flat', 'grouped'] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setListView(v)}
+                      aria-pressed={listView === v}
+                      className={`rounded px-2 py-1 transition-colors ${
+                        listView === v ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {t(v === 'flat' ? 'listViewFlat' : 'listViewGrouped')}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {listView === 'grouped'
+                    ? t('nGroups', { count: groups.length })
+                    : t('nShown', { count: sortedRows.length })}
+                </span>
+              </div>
             </div>
 
+            {/* ── 4e403268 — GROUPED BY MONTH + PAY ITEM ──
+                One line per (month, pay item) with the summed quantity and the summed amount, and the days
+                behind it one click away. Nothing here is stored: `buildTxnGroups` is a pure derivation over
+                the rows already on screen (existing-context.ts), which is why it cannot disagree with the
+                flat list beside it.
+
+                THE STATUS IS THE CONSERVATIVE ROLL-UP. A group holding one line that is not in the
+                employee's latest payslip is NOT "Processed", and neither is a group holding one unpaid
+                line — 510f4bd1 split that verdict three ways precisely so the screen could stop
+                overclaiming, and a group must not put it back together. */}
+            {listView === 'grouped' && (
+              <div className="overflow-x-auto border-t border-border">
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="w-8 px-2 py-2" />
+                      <th className="px-3 py-2 font-medium">{t('monthLabel')}</th>
+                      <th className="px-3 py-2 font-medium">{t('colItem')}</th>
+                      <th className="px-3 py-2 text-right font-medium">{t('dayGridDays')}</th>
+                      <th className="px-3 py-2 text-right font-medium">{t('quantity')}</th>
+                      <th className="px-3 py-2 text-right font-medium">{t('colAmount')}</th>
+                      <th className="px-3 py-2 font-medium">{t('colStatus')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {groups.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                          {panelLoading ? t('alreadyLoading') : t('noTxnsYet')}
+                        </td>
+                      </tr>
+                    )}
+                    {groups.map((g) => {
+                      const open = expandedGroupKey === g.key;
+                      return (
+                        <Fragment key={g.key}>
+                          <tr
+                            className={`cursor-pointer transition-colors hover:bg-muted/30 ${open ? 'bg-muted/30' : ''}`}
+                            onClick={() => setExpandedGroupKey((k) => (k === g.key ? null : g.key))}
+                          >
+                            <td className="px-2 py-2 text-center align-middle">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedGroupKey((k) => (k === g.key ? null : g.key));
+                                }}
+                                aria-expanded={open}
+                                aria-label={t('dayGridViewDays')}
+                                className="text-muted-foreground transition-colors hover:text-foreground"
+                              >
+                                <span className={`inline-block text-xs transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+                              </button>
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2 tabular-nums">{g.payPeriod}</td>
+                            <td className="whitespace-nowrap px-3 py-2">
+                              {g.componentCode ? (
+                                <>
+                                  <span className="font-mono text-xs">{g.componentCode}</span>{' '}
+                                  <span className="text-muted-foreground">{g.componentName}</span>
+                                </>
+                              ) : (
+                                t(`kindLabel.${g.kind}` as never)
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">{g.count}</td>
+                            {/* A DASH, NOT A NUMBER, when the group's units disagree or a line carries no
+                                quantity: two hours and three days do not add up to five of anything, and a
+                                figure there would be contradicted by the rows one click below it. */}
+                            <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                              {g.quantity != null && g.unit
+                                ? `${Number(g.quantity)} ${t(`unitLabel.${g.unit}` as never)}`
+                                : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right font-medium tabular-nums">{rm(g.total)}</td>
+                            <td className="px-3 py-2">
+                              <Badge
+                                variant={
+                                  g.status === 'reprocessRequired' ? 'danger' : g.status === 'processed' ? 'success' : 'info'
+                                }
+                              >
+                                {g.status === 'reprocessRequired'
+                                  ? t('statusReprocessRequired')
+                                  : g.status === 'processed'
+                                    ? t('statusProcessed')
+                                    : t('statusPending')}
+                              </Badge>
+                            </td>
+                          </tr>
+                          {open && (
+                            <tr className="bg-muted/20">
+                              <td colSpan={7} className="px-3 pb-3 pt-1">
+                                <table className="w-full text-xs">
+                                  <thead className="text-left uppercase tracking-wide text-muted-foreground">
+                                    <tr>
+                                      <th className="px-2 py-1 font-medium">{t('colEffectiveDate')}</th>
+                                      <th className="px-2 py-1 font-medium">{t('dayOfWeek')}</th>
+                                      <th className="px-2 py-1 text-right font-medium">{t('quantity')}</th>
+                                      <th className="px-2 py-1 text-right font-medium">{t('colAmount')}</th>
+                                      <th className="px-2 py-1 font-medium">{t('sourceLabel')}</th>
+                                      <th className="px-2 py-1 font-medium">{t('colRemarks')}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-border/60">
+                                    {g.rows.map((r) => {
+                                      const dk = dayKeyOf(r.txnDate);
+                                      return (
+                                        <tr key={r.id}>
+                                          <td className="whitespace-nowrap px-2 py-1 tabular-nums">{r.txnDate}</td>
+                                          <td className="whitespace-nowrap px-2 py-1 text-muted-foreground">
+                                            {dk ? t(`dayShort.${dk}` as never) : '—'}
+                                          </td>
+                                          <td className="px-2 py-1 text-right tabular-nums text-muted-foreground">
+                                            {r.quantity != null
+                                              ? `${Number(r.quantity)}${r.unit ? ` ${t(`unitLabel.${r.unit}` as never)}` : ''}`
+                                              : '—'}
+                                          </td>
+                                          <td className="px-2 py-1 text-right tabular-nums">{rm(r.amount)}</td>
+                                          {/* 'manual' on every row today — nothing writes another source
+                                              yet. The column exists so Attendance and Leave can fill it
+                                              in without this view being rebuilt. */}
+                                          <td className="whitespace-nowrap px-2 py-1 text-muted-foreground">
+                                            {t(`sourceValue.${r.source}` as never)}
+                                          </td>
+                                          <td className="max-w-[18rem] truncate px-2 py-1 text-muted-foreground">
+                                            {r.notes ?? '—'}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                                {/* Editing lives on the flat list, one click away. Duplicating every row
+                                    action here would be a second copy of the delete confirmation and the
+                                    edit form's open path, and the grouped view's job is to explain a
+                                    figure, not to be a second keying surface. */}
+                                <p className="mt-2 text-[11px] text-muted-foreground">{t('dayGridEditHint')}</p>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {listView === 'flat' && (
             <div className="overflow-x-auto border-t border-border">
               <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -1413,8 +2189,12 @@ export function TxnWorkspace({
                 </tbody>
               </table>
             </div>
+            )}
 
-            {pageCount > 1 && (
+            {/* The pager belongs to the FLAT list. The grouped view is one line per month + pay item —
+                a handful of rows even for an employee with a year of daily overtime — and paging it
+                would split a month's groups across two pages for no benefit. */}
+            {listView === 'flat' && pageCount > 1 && (
               <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs">
                 <Button type="button" size="sm" variant="outline" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={safePage === 0}>
                   {t('prevPage')}
@@ -1449,7 +2229,20 @@ export function TxnWorkspace({
               <Button type="button" size="sm" variant="secondary" onClick={completeSwitch}>
                 {t('discard')}
               </Button>
-              <Button type="button" size="sm" disabled={isPending || form == null || formInvalid(form) != null} onClick={saveThenSwitch}>
+              {/* 4e403268 — Save is offered when EITHER machine would actually save. Offering it for an
+                  invalid grid would put the operator one click from a refusal they cannot see the cause
+                  of, because the failing row is behind a modal. */}
+              <Button
+                type="button"
+                size="sm"
+                disabled={
+                  isPending ||
+                  (form == null && daily == null) ||
+                  (form != null && formInvalid(form) != null) ||
+                  (daily != null && dailyInvalid(daily) != null)
+                }
+                onClick={saveThenSwitch}
+              >
                 {t('save')}
               </Button>
             </div>
@@ -1484,6 +2277,54 @@ function RowAction({
     >
       {label}
     </button>
+  );
+}
+
+/**
+ * 4e403268 — the request's Input Method selector, rendered identically above both machines so switching
+ * feels like one control rather than two screens.
+ *
+ * Radios rather than a segmented button, because that is what the control MEANS: two mutually exclusive
+ * ways to record the same thing, one of them currently chosen. A fieldset + legend is what gives a screen
+ * reader the same grouping the sighted reader gets from the box.
+ */
+function InputMethod({
+  mode,
+  onLump,
+  onDaily,
+  t,
+}: {
+  mode: 'lump' | 'daily';
+  onLump: () => void;
+  onDaily: () => void;
+  t: (key: string) => string;
+}) {
+  return (
+    <fieldset className="rounded-md border border-border px-3 py-2">
+      <legend className="px-1 text-[10px] uppercase tracking-wide text-muted-foreground">{t('inputMethod')}</legend>
+      <div className="flex flex-wrap items-center gap-4 text-sm">
+        <label className="flex items-center gap-2">
+          <input
+            type="radio"
+            name="txn-input-method"
+            checked={mode === 'lump'}
+            onChange={onLump}
+            className="h-3.5 w-3.5 accent-primary"
+          />
+          <span>{t('inputMethodLump')}</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="radio"
+            name="txn-input-method"
+            checked={mode === 'daily'}
+            onChange={onDaily}
+            className="h-3.5 w-3.5 accent-primary"
+          />
+          <span>{t('inputMethodDaily')}</span>
+        </label>
+      </div>
+    </fieldset>
   );
 }
 

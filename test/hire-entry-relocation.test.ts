@@ -160,6 +160,12 @@ describe('the dedicated screen carries the whole job', () => {
     expect(listPage).toContain('<StatusBadge status="draft"');
     expect(listPage).toContain('d.reservedEmployeeCode');
     // And Draft is an option on the status filter, so HR can pull up exactly who is outstanding.
-    expect(listPage).toContain("value: 'draft'");
+    //
+    // 579255c3 moved the literal into a NAMED constant (app/admin/personnel/list-query.ts), because the
+    // same value now has three readers — the filter option, the Draft headcount card, and the export —
+    // and three copies of a magic string is how one of them gets missed. Asserted at both ends rather
+    // than loosened: the page must use the constant, and the constant must still be 'draft'.
+    expect(listPage).toContain('value: DRAFT_BUCKET');
+    expect(read('app/admin/personnel/list-query.ts')).toContain("export const DRAFT_BUCKET = 'draft'");
   });
 });

@@ -322,6 +322,39 @@ const cleanRemunerationType = (v: unknown): PcbRemunerationType | null =>
   PCB_REMUNERATION_TYPES.includes(v as PcbRemunerationType) ? (v as PcbRemunerationType) : null;
 
 /**
+ * Feedback 017d9c25 (r187) — PURE predicate: does this set of changed field NAMES move money on an
+ * already-processed payroll run?
+ *
+ * The fields that decide which statutory base a pay item's amount lands in, plus the ones that decide
+ * how much the amount IS. `name` / `label` / `eaFormLine` / `displayCategory` are presentation and are
+ * deliberately absent: renaming a Pay Item must not make every open run in the tenant look stale.
+ *
+ * `kind` is in the list because flipping earning↔deduction moves the money from inside the statutory
+ * bases to after them (that is exactly the Monthly Parking distinction the reporter ran into).
+ * `prorates` and `roundingMethod` change the applied amount; `rule` changes it outright.
+ *
+ * Fed the `changed` list `upsertPayComponent` already computes from DIFF_FIELDS — no second diff.
+ */
+export const STATUTORY_RELEVANT_FIELDS = [
+  'kind',
+  'includedInEpf',
+  'includedInSocsoEis',
+  'includedInPcb',
+  'includedInHrdfBase',
+  'isNonPayable',
+  'prorates',
+  'roundingMethod',
+  'rule',
+  'epfBonus2012',
+  'pcbRemunerationType',
+  'pcbExemptionCode',
+] as const;
+
+export function isStatutoryRelevantChange(changed: readonly string[]): boolean {
+  return changed.some((f) => (STATUTORY_RELEVANT_FIELDS as readonly string[]).includes(f));
+}
+
+/**
  * PURE classification validator (server-authoritative; the form island mirrors it client-side by
  * construction). Only enforced when the input SUPPLIES the classification fields — legacy callers that
  * predate them (seed/backfill/tests) pass undefined and keep their stored values untouched.
@@ -543,7 +576,11 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
       // which fields changed (names only) and whether the row is archived (actor/time live on the event).
       payload: { code: p.code, ruleKind: rule?.kind ?? null, changed, archived: existing ? existing.archivedAt != null : false },
     });
-    return { id };
+    // 017d9c25 — `changed` is returned so the master-save action can mark the processed runs this edit
+    // makes stale (markRunsAffectedByPayComponent), WITHOUT recomputing the diff or importing the payroll
+    // kernel here. Additive: every existing caller destructures `{ id }` and is unaffected. Empty on an
+    // insert — a brand-new code cannot be on a run that has already been processed.
+    return { id, changed };
   });
 }
 

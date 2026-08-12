@@ -364,12 +364,16 @@ export default async function TransactionViewPage({
   );
 
   return (
-    // 080de5cf — Transaction Detail is twelve month columns plus a frozen block, and the reporter's whole
-    // point is that the screen "does not fully utilise the available screen width". So that ONE tab drops
-    // the 6xl reading measure; every other tab keeps it, because a 6-column table stretched across a
-    // 32-inch monitor is worse, not better. The employee rail is back (98e69987 rev 2) and can be
-    // collapsed with one click when the figures want the whole width.
-    <div className={tab === 'grid' ? pageWideCls : 'mx-auto max-w-6xl space-y-6'}>
+    // 1372d169 — ONE width rule for the whole screen. 080de5cf gave the Transaction Detail tab the full
+    // width and left the other four capped at max-w-6xl (1152px); the reporter came back asking for the
+    // same on every tab, because History is thirteen columns and Individual is twelve and both wrap the
+    // employee and company names at that measure. So the conditional is gone: every tab is pageWideCls.
+    //
+    // This is NOT the employee-rail question. That rail (98e69987 rev 2, restored 2026-08-11 after r179
+    // removed it and the reporter contested) lives ONLY inside the `tab === 'grid'` branch below, which
+    // was already full width — so it is untouched by this change and must stay that way. r179 → 98e69987
+    // was one round-trip already; a second removal would be the third reversal.
+    <div className={pageWideCls}>
       <PageHeader title={t('view.title')} description={t('view.subtitle')} />
 
       {/* Sub-tab strip (Fixed | Individual | History | Transaction Detail | Outstanding). Switching tabs
@@ -518,12 +522,16 @@ export default async function TransactionViewPage({
                   const ended = r.validTo != null && r.validTo < today;
                   return (
                     <tr key={r.id}>
-                      <td className="px-4 py-2.5 font-medium">
+                      {/* 1372d169 — identity and pay-item cells stay on ONE line now that the page has the
+                          full width to give them; the table's own overflow-x-auto wrapper handles a narrow
+                          window. Deliberately NOT applied to the <th> captions: TOTAL DEDUCTIONS wants two
+                          header lines and nowrap truncates it. */}
+                      <td className="whitespace-nowrap px-4 py-2.5 font-medium">
                         {/* Employee ID left-of-name (feedback 38668d9b) */}
                         <EmployeeName code={r.employeeCode} name={r.employeeName} />
                       </td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
-                      <td className="px-4 py-2.5">
+                      <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{r.company}</td>
+                      <td className="whitespace-nowrap px-4 py-2.5">
                         <span className="font-mono text-xs">{r.code}</span>{' '}
                         <span className="text-muted-foreground">{r.name}</span>
                       </td>

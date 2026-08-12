@@ -42,16 +42,25 @@ import {
   type LeaveDurationType,
 } from '@/core/leave';
 import {
+  addAttendanceCorrectionAttachment,
+  cancelOwnAttendanceCorrection,
   cancelPlannedOvertime,
   checkIn,
   checkOut,
   requestAttendanceCorrection,
+  ATTENDANCE_ATTACHMENT_MAX_BYTES,
+  ATTENDANCE_ATTACHMENT_MIME_TYPES,
   GeolocationRequiredError,
   OutsideGeofenceError,
   DeviceNotRegisteredError,
   OvertimePlanWithdrawNotAllowedError,
 } from '@/packs/attendance/service';
-import { OT_REASON_CATEGORIES, type OtReasonCategory } from '@/db/schema';
+import {
+  ATTENDANCE_REQUEST_KINDS,
+  OT_REASON_CATEGORIES,
+  type AttendanceRequestKind,
+  type OtReasonCategory,
+} from '@/db/schema';
 import { requestTravel } from '@/core/travel-request';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
@@ -389,25 +398,94 @@ const REQUESTS_PAGE = '/attendance/requests';
 
 // R45 3707cba9 — "Attendance Request": a PURE clock-in/out correction (date + optional check-in/out +
 // mandatory reason). Overtime moved to its own myRequestOvertime request; the OT field is gone from here.
+//
+// 2166ef79 WIDENED IT, it did not fork it — the same action, the same core service, the same approval route.
+// What is new is what My Attendance's "Fix this" panel collects on top: an optional remark, one optional
+// supporting file, and WHICH of the four sections the employee filed from (stored, because the moment a
+// missing clock-out is approved the day stops being an Incomplete Entry and a re-derived label would
+// relabel its own history). Every one of them is optional at every layer, so the plain form is unchanged.
 export async function myRequestCorrection(formData: FormData) {
   const { s, employmentId } = await resolveMe();
   const date = String(formData.get('date'));
   const checkInTime = String(formData.get('checkIn') || '');
   const checkOutTime = String(formData.get('checkOut') || '');
   const reason = String(formData.get('reason') || '').trim();
+  const remark = String(formData.get('remark') || '').trim();
+  // Never trust the posted kind: an unknown value would meet the DB CHECK with a constraint name in the
+  // message. Anything outside the vocabulary is simply dropped — the request itself is unaffected.
+  const kindRaw = String(formData.get('requestKind') || '').trim();
+  const requestKind = (ATTENDANCE_REQUEST_KINDS as readonly string[]).includes(kindRaw)
+    ? (kindRaw as AttendanceRequestKind)
+    : null;
+  // Land back on the SECTION the employee was working through, so a fix does not bounce them to a
+  // different tab from the one they came from. Spelt out against REQUESTS_PAGE at each redirect rather
+  // than hidden behind a local: test/me-tabs.test.ts reads these lines to prove an action still answers
+  // to the page it is posted from, and a guard that can only see a variable name proves nothing.
+  const section = encodeURIComponent(sectionParam(formData));
+  const file = formData.get('attachment');
+  const hasFile = file instanceof File && file.size > 0;
   try {
-    await requestAttendanceCorrection(s, {
+    // Orphan-prevention, the leave path's lesson (myRequestLeave above): a bad file is refused BEFORE the
+    // request row and its event commit, so a rejected upload never leaves a pending request behind.
+    if (hasFile) {
+      assertAttendanceAttachmentAcceptable(file);
+    }
+    const { correctionId } = await requestAttendanceCorrection(s, {
       employmentId,
       date,
       checkIn: checkInTime || null,
       checkOut: checkOutTime || null,
       reason: reason || undefined,
+      remark: remark || null,
+      requestKind,
     });
+    if (hasFile) {
+      await addAttendanceCorrectionAttachment(s, {
+        correctionId,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        content: Buffer.from(await file.arrayBuffer()),
+      });
+    }
   } catch (e) {
-    redirect(`${REQUESTS_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${REQUESTS_PAGE}?section=${section}&error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(REQUESTS_PAGE);
-  redirect(`${REQUESTS_PAGE}?toast=Attendance+request+submitted`);
+  redirect(`${REQUESTS_PAGE}?section=${section}&toast=Attendance+request+submitted`);
+}
+
+/** 2166ef79 — the employee CANCELS their own pending clock-time request. Overtime is withdrawn from the
+ *  Self Overtime list instead (myWithdrawOvertimePlan): approving a plan does not touch a day, approving a
+ *  correction rewrites one, so the two states are not the same and the service refuses the cross-over. */
+export async function myCancelAttendanceRequest(formData: FormData) {
+  const { s } = await resolveMe();
+  const section = encodeURIComponent(sectionParam(formData));
+  try {
+    await cancelOwnAttendanceCorrection(s, { correctionId: String(formData.get('correctionId')) });
+  } catch (e) {
+    redirect(`${REQUESTS_PAGE}?section=${section}&error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(REQUESTS_PAGE);
+  redirect(`${REQUESTS_PAGE}?section=${section}&toast=Attendance+request+cancelled`);
+}
+
+/** The section the form was posted from, shape-checked. Anything unrecognised falls back to the section a
+ *  fix most often comes from, so a tampered field can never build a redirect out of posted text. */
+function sectionParam(formData: FormData): string {
+  const raw = String(formData.get('section') || '');
+  return (['overtime', 'short', 'incomplete', 'absent', 'other'] as const).includes(raw as never)
+    ? raw
+    : 'incomplete';
+}
+
+/** The fixed stage-one attachment rule, checked before anything is written. Deliberately restated in the
+ *  action as well as in the service: the service is the authority (any other caller meets it there), this
+ *  one exists so the employee is told before a request row is created. */
+function assertAttendanceAttachmentAcceptable(file: File) {
+  if (file.size > ATTENDANCE_ATTACHMENT_MAX_BYTES) throw new Error('That file is larger than 5 MB.');
+  if (!(ATTENDANCE_ATTACHMENT_MIME_TYPES as readonly string[]).includes(file.type)) {
+    throw new Error('That file type is not accepted — attach a photo or a PDF.');
+  }
 }
 
 // 1e9145d4 — Plan OT is now the ONE home for overtime, planned or claimed after the fact, so these two

@@ -518,6 +518,13 @@ export const appUser = pgTable(
     // employee's preferred vertical section order; NULL = system default. Written only through the
     // SECURITY DEFINER app.dashboard_layout_* seam so a user can touch only their own row.
     dashboardLayout: jsonb('dashboard_layout'),
+    // Per-user LIST preferences (feedback 579255c3, migration 0433): a namespaced envelope of per-screen
+    // table settings — today `{ employeeList: { selected, order } }`, the Personnel listing's chosen
+    // columns and their arrangement. NULL = the system default view. Written only through the SECURITY
+    // DEFINER app.list_preferences_* seam so a user can touch only their own row, exactly like
+    // dashboard_layout above. Namespaced rather than one bare column per screen: the next list that wants
+    // remembered columns adds a key here, not a migration.
+    listPreferences: jsonb('list_preferences'),
     // Login lifecycle (0279): non-null = this login is archived (switched off by an administrator) and
     // app.principal_by_subject refuses to resolve it. Reversible via Restore; permissions are untouched.
     // A leaver is blocked separately and LIVE off their employment end dates — see app.login_blocked.
@@ -3570,6 +3577,22 @@ export const OT_REASON_CATEGORIES = [
 ] as const;
 export type OtReasonCategory = (typeof OT_REASON_CATEGORIES)[number];
 
+// 2166ef79 My Attendance stage one (migration 0434) — WHICH of the four self-service sections a request
+// was filed from. text + CHECK, not a pgEnum, for the same 0275 reason as the categories above.
+//
+// STORED rather than derived, and that is the point: the instant a missing clock-out is approved the day
+// stops being an Incomplete Entry, so a request list that re-derived its own type would relabel its own
+// history the moment it succeeded. `other` is the free-form "correct another day" route, which is not one
+// of the four sections; NULL is every request filed before this release.
+export const ATTENDANCE_REQUEST_KINDS = [
+  'self_overtime',
+  'short_hours',
+  'incomplete_entry',
+  'absent',
+  'other',
+] as const;
+export type AttendanceRequestKind = (typeof ATTENDANCE_REQUEST_KINDS)[number];
+
 // Attendance correction requests (ADR-0011 Phase B): an employee proposes corrected punch
 // times for a day; an admin or their manager approves, which amends the attendance row
 // (re-derived through the time engine). Mirrors the leave request→decide workflow.
@@ -3618,6 +3641,14 @@ export const attendanceCorrection = pgTable(
     plannedEndTime: time('planned_end_time'),
     otReasonCategory: text('ot_reason_category').$type<OtReasonCategory>(),
     appliedAt: timestamp('applied_at', { withTimezone: true }),
+    // 2166ef79 My Attendance stage one (migration 0434). Both nullable, so every existing row and every
+    // existing caller are byte-identical.
+    //  • remark — the OPTIONAL note beside the mandatory `reason`. The reporter asks for both; only the
+    //    reason is enforced (stage one runs on fixed rules until the settings screen exists).
+    //  • requestKind — which of the four sections the employee filed from. See ATTENDANCE_REQUEST_KINDS
+    //    above for why it is stored rather than re-derived at read time.
+    remark: text('remark'),
+    requestKind: text('request_kind').$type<AttendanceRequestKind>(),
     status: attendanceCorrectionStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
@@ -3638,6 +3669,32 @@ export const attendanceCorrection = pgTable(
       .on(t.employmentId, t.attendanceDate)
       .where(sql`status = 'approved' AND applied_at IS NULL AND requested_ot_minutes IS NOT NULL`),
   ],
+);
+
+// 2166ef79 My Attendance stage one (migration 0434) — ONE optional supporting file per attendance request
+// ("a photo of the gate log", "the site sign-out sheet"). Verbatim reuse of leave_request_attachment (0084)
+// and resignation_request_attachment (0156) retargeted: bytea content, and a DENORMALISED employment_id so
+// RLS reuses can_see_employment() with no per-row subquery — the same subject + manager + admin rule the
+// request row itself carries. Strictly additive; a request with no file has no row here.
+export const attendanceCorrectionAttachment = pgTable(
+  'attendance_correction_attachment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    attendanceCorrectionId: uuid('attendance_correction_id')
+      .notNull()
+      .references(() => attendanceCorrection.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('attendance_correction_attachment_request_idx').on(t.attendanceCorrectionId)],
 );
 
 // ADR-0069 Attendance Request Management — Travel Request. An approved date-range record marking that an
@@ -5315,6 +5372,56 @@ export const payrollInput = pgTable(
   (t) => [uniqueIndex('payroll_input_batch_emp_uq').on(t.batchId, t.employmentId)],
 );
 
+// ─────────── 2961a7ae — Statutory Adjustment: the manual override, stored as an INPUT ───────────
+// Migration 0430. One row per (batch, employment), mirroring payroll_input above — deliberately, because
+// this IS an input: the generator reads it and applies it to the computed figures. It is NOT a stamped
+// result. An override written onto the payslip row would be destroyed by the next reprocess (which
+// recomputes from scratch and bumps payslip.version), and this reporter reprocesses constantly. As an
+// input it is idempotent across reprocesses and Revert is a row delete plus a reprocess.
+//
+// EVERY AMOUNT IS NULLABLE WITH NO DEFAULT, AND THAT IS THE WHOLE "BLANK VS ZERO" REQUIREMENT:
+//   null → no override on this line, use the system-calculated figure
+//   0.00 → override this line to zero
+// Defaulting any column to 0 would collapse the two into one value.
+//
+// NINE LINES, NOT TEN: SKBBK / Lindung 24 Jam exists only as an EMPLOYEE-paid leg in the engine
+// (localization/my/payroll.ts socso() → { employer, employee, skbbk }, surfaced as socsoSkbbk). There is
+// no employer SKBBK figure to override, so there is no column for one.
+export const payrollStatutoryAdjustment = pgTable(
+  'payroll_statutory_adjustment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    // Employee side — these move Total Deduction and therefore Net Pay.
+    pcb: numeric('pcb', { precision: 12, scale: 2 }),
+    epfEmployee: numeric('epf_employee', { precision: 12, scale: 2 }),
+    socsoEmployee: numeric('socso_employee', { precision: 12, scale: 2 }),
+    socsoSkbbk: numeric('socso_skbbk', { precision: 12, scale: 2 }),
+    eisEmployee: numeric('eis_employee', { precision: 12, scale: 2 }),
+    // Employer side — these move employer cost and can never touch net pay (structural: core/payroll.ts
+    // composes employer_cost from the employer legs and net_pay from the employee legs).
+    hrdf: numeric('hrdf', { precision: 12, scale: 2 }),
+    epfEmployer: numeric('epf_employer', { precision: 12, scale: 2 }),
+    socsoEmployer: numeric('socso_employer', { precision: 12, scale: 2 }),
+    eisEmployer: numeric('eis_employer', { precision: 12, scale: 2 }),
+    // Required on every save, including an adjustment to zero (the reporter's rule 10).
+    reason: text('reason').notNull(),
+    createdByUserId: uuid('created_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('payroll_statutory_adjustment_batch_employment_uq').on(t.batchId, t.employmentId),
+    index('payroll_statutory_adjustment_batch_idx').on(t.batchId),
+  ],
+);
+
 // ─────────────── Typed pay components (Wave 3 #9, ADR-0025) ───────────────
 // GATED behind TYPED_PAY_COMPONENTS_ENABLED — the kernel only reads these when the flag is on.
 export const payComponentKindEnum = pgEnum('pay_component_kind', [
@@ -5608,14 +5715,31 @@ export const payrollIndividualTxn = pgTable(
     // row that was keyed before processing. With editing allowed after a run is processed, that blindness
     // becomes the whole hazard, so the edit stamps its own instant.
     updatedAt: timestamp('updated_at', { withTimezone: true }),
+    // 4e403268 (0432) — WHERE this line came from. One of TXN_SOURCES ('manual'|'attendance'|'leave'|
+    // 'import'|'system'), app-validated exactly as `unit` above is (no pg enum, no CHECK — one literal set
+    // in core/payroll-individual-txn.ts). NULL READS AS 'manual' (`txnSourceOf`), which is why all 47
+    // existing production rows are correct with no backfill: every one of them was keyed by hand.
+    source: text('source'),
+    // The originating module's own record id (an attendance day, a leave request line). Null for a row
+    // keyed by hand. Nothing writes it yet — Attendance and Leave do not post into payroll today — and the
+    // uniqueness guard below exists so that when they do, a repeated sync UPDATES rather than double-posts.
+    sourceRef: text('source_ref'),
     createdAt: createdAt(),
   },
   (t) => [
-    // No unique constraint — multiple dated entries per (batch, employment) are allowed by design.
+    // No unique constraint — multiple dated entries per (batch, employment) are allowed by design. THIS IS
+    // WHAT MAKES DAY-BY-DAY ENTRY (4e403268) A SCREEN CHANGE RATHER THAN A SCHEMA CHANGE: five dated lines
+    // for one employee in one month have always been legal rows.
     index('payroll_individual_txn_batch_emp_idx').on(t.batchId, t.employmentId),
     index('payroll_individual_txn_tenant_batch_idx').on(t.tenantId, t.batchId),
     // Attach-on-generate lookup (0175); the SQL migration creates it partial (WHERE batch_id IS NULL).
     index('payroll_individual_txn_unattached_idx').on(t.tenantId, t.companyId, t.payPeriod),
+    // 4e403268 (0432) — the request's point 14. The SQL migration creates it PARTIAL
+    // (WHERE source_ref IS NOT NULL), so it is empty today and costs nothing; putting it in before the
+    // first sync exists is the difference between a constraint and a data repair.
+    uniqueIndex('payroll_individual_txn_source_ref_uq')
+      .on(t.tenantId, t.employmentId, t.txnDate, t.componentId, t.source, t.sourceRef)
+      .where(sql`source_ref is not null`),
   ],
 );
 

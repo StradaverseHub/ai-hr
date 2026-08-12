@@ -136,11 +136,15 @@ export function HistoryTable({
                     {t(`individual.cycle.${r.runType}`)}
                     {r.runSeq > 1 ? ` #${r.runSeq}` : ''}
                   </td>
-                  <td className="px-4 py-2.5 font-medium">
+                  {/* 1372d169 — thirteen columns is the worst case on this screen, and employee + company
+                      were the two that wrapped onto a second line. They stay on one line; the wrapper's
+                      overflow-x-auto still covers a narrow window. The <th> captions are left wrappable on
+                      purpose — TOTAL DEDUCTIONS legitimately uses two header lines. */}
+                  <td className="whitespace-nowrap px-4 py-2.5 font-medium">
                     {/* Employee ID left-of-name (feedback 38668d9b) */}
                     <EmployeeName code={r.employeeCode} name={r.employeeName} />
                   </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{r.company}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{rm(r.gross)}</td>
                   {/* 3c473773 — the same employee-borne figures the expanded breakdown shows. Reading the
                       raw blob here and the net figure there would put two contradictory numbers for one

@@ -2,15 +2,38 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listDepartments, listEmployees, listEmployeesPage } from '@/core/read';
+import {
+  countEmployeesByStatus,
+  listCompanies,
+  listDepartments,
+  listEmployees,
+  listEmployeesPage,
+} from '@/core/read';
 import { listProfileChangeRequests } from '@/core/profile';
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
+import { getEmployeeListColumns } from '@/core/employee-list-prefs';
 import { Avatar, Button, Card, EmployeeCode, PageHeader, StatusBadge } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
+import {
+  MANDATORY_EMPLOYEE_COLUMNS,
+  UNAVAILABLE_EMPLOYEE_FIELDS,
+  employeeColumnText,
+  type EmployeeColumnKey,
+} from '@/lib/employee-columns';
 import { decideProfileChangeAction } from './actions';
+import { resetEmployeeColumnsAction, saveEmployeeColumnsAction } from './column-actions';
+import { ColumnPicker } from './column-picker';
+import {
+  DRAFT_BUCKET,
+  EMPLOYEE_STATUS_BUCKETS,
+  draftMatchesQuery,
+  headcountFilters,
+  parsePersonnelListQuery,
+  type PersonnelSearchParams,
+} from './list-query';
 // c002b3c3 — "Search Employee": jump straight to a profile without a round trip through this list.
 import { EmployeeSwitcher } from './employee-switcher';
 
@@ -36,23 +59,57 @@ function describeProposed(
   return parts.length ? parts.join(' · ') : t('noChanges');
 }
 
+/** people.list message key per catalogue column — ONE map, read by the <th> row, the picker and the
+ *  export route's header row, so a column cannot be called two different things on two surfaces. */
+const COLUMN_LABEL_KEY: Record<EmployeeColumnKey, string> = {
+  code: 'colCode',
+  name: 'colName',
+  company: 'colCompany',
+  department: 'colDepartment',
+  position: 'colPosition',
+  status: 'colStatus',
+  jobGrade: 'colJobGrade',
+  employmentType: 'colEmploymentType',
+  reportingTo: 'colReportingTo',
+  businessUnit: 'colBusinessUnit',
+  costCenter: 'colCostCenter',
+  workLocation: 'colWorkLocation',
+  groupJoinDate: 'colHired',
+  joinDate: 'colJoinDate',
+  confirmationDate: 'colConfirmationDate',
+  email: 'colEmail',
+};
+
+const EMPLOYMENT_TYPES = [
+  { value: 'full_time', labelKey: 'employmentFullTime' },
+  { value: 'part_time', labelKey: 'employmentPartTime' },
+  { value: 'contract', labelKey: 'employmentContract' },
+  { value: 'intern', labelKey: 'employmentIntern' },
+] as const;
+
+const EMPLOYMENT_TYPE_KEY: Record<string, string> = Object.fromEntries(
+  EMPLOYMENT_TYPES.map((e) => [e.value, e.labelKey]),
+);
+
+/** people.list key per absent field (lib/employee-columns.UNAVAILABLE_EMPLOYEE_FIELDS). */
+const ABSENT_LABEL_KEY: Record<(typeof UNAVAILABLE_EMPLOYEE_FIELDS)[number], string> = {
+  division: 'absentDivision',
+  section: 'absentSection',
+  line: 'absentLine',
+  team: 'absentTeam',
+  region: 'absentRegion',
+  base: 'absentBase',
+  employeeCategory: 'absentEmployeeCategory',
+  employeeType: 'absentEmployeeType',
+};
+
 export default async function PeoplePage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    error?: string;
-    q?: string;
-    page?: string;
-    size?: string;
-    company?: string;
-    dept?: string;
-    status?: string;
-    type?: string;
-  }>;
+  searchParams: Promise<PersonnelSearchParams>;
 }) {
   await requireAdmin(); // Admin-only management surface (ADR: People→Personnel split). Non-admins redirect home.
   const t = await getTranslations('people.list');
-  const tCommon = await getTranslations('common');
   const tStatus = await getTranslations('people.employeeStatus');
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
@@ -60,30 +117,35 @@ export default async function PeoplePage({
   const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const sp = await searchParams;
-  const { error, q, company, dept, status, type } = sp;
+  const { error } = sp;
   const pq = parsePageQuery(sp);
-  const statusFilter = status === 'active' || status === 'terminated' ? status : undefined;
-  const hasFilters = !!(q || company || dept || status || type);
-  // 06f0cb8f — DRAFT is a status you can filter to, and it selects the draft rows INSTEAD of employees.
-  // The two are different tables (see below), so "status = draft" cannot narrow the employment query; it
-  // suppresses it. `draftOnly` is that suppression, kept as a named flag rather than buried in a ternary
-  // because the pager total below depends on it and a wrong total is a silently broken page.
-  const draftOnly = status === 'draft';
-  // 6d671f44 — the hire form is no longer on this page, so neither are its pickers. What this screen
-  // still needs is the LIST, its filter options, the pending profile-change queue, and the unfinished
-  // Create New Employee drafts — which since 06f0cb8f are ROWS IN THE TABLE BELOW rather than a card
-  // above it, because the reporter's request is that a Draft appears in the employee list.
-  const [{ rows: employeeRows, total: employeeTotal }, companies, departments, profileChanges, allDrafts, allEmployees] = await Promise.all([
+  // 579255c3 — ONE parse of the query string, shared with the Excel export so the file and the table
+  // are answering the same question. See ./list-query.ts for why the cards write `bucket` rather than
+  // overloading `status`.
+  const query = parsePersonnelListQuery(sp);
+  const { q, company, dept, type, draftOnly, hasFilters } = query;
+
+  const [
+    { rows: employeeRows, total: employeeTotal },
+    headcount,
+    companies,
+    departments,
+    profileChanges,
+    allDrafts,
+    allEmployees,
+    savedColumns,
+  ] = await Promise.all([
     listEmployeesPage(session, {
       companyIds: scopeIds,
-      q,
-      companyId: company || undefined,
-      departmentId: dept || undefined,
-      status: statusFilter,
-      employmentType: type || undefined,
+      ...query.filters,
       limit: pq.limit,
       offset: pq.offset,
     }),
+    // Point 5 — the five headcount cards. Counted in SQL over the WHOLE filtered set, never over the
+    // page: "40 employees" must keep meaning forty people, not twenty-five rows. The bucket narrowing is
+    // stripped (headcountFilters) so the cards stay a facet of the current view — clicking one cannot
+    // make the other four read zero.
+    countEmployeesByStatus(session, { companyIds: scopeIds, ...headcountFilters(query) }),
     listCompanies(session),
     listDepartments(session),
     isAdmin
@@ -96,49 +158,53 @@ export default async function PeoplePage({
     // (`scopeIds`) so the box searches exactly what this screen is showing. It can only ever be NARROWER
     // than RLS — the profile route re-resolves whatever is picked and 404s on anything out of scope.
     listEmployees(session, scopeIds),
+    // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
+    // the own-row seam), so one person's arrangement never changes what anybody else sees.
+    getEmployeeListColumns(session),
   ]);
 
-  // ── Draft rows (item 06f0cb8f) ────────────────────────────────────────────────────────────────────
+  const columns = savedColumns.selected;
+
+  // ── Draft rows (item 06f0cb8f, preserved) ─────────────────────────────────────────────────────────
   // Drafts are PINNED ABOVE the employees on every page, not merged into the sort and not paged. There
   // are a handful of them at most (they exist for days, not years), and the reporter's reason for wanting
   // them in this list is to see who is still outstanding — an outstanding record on page 4 answers
   // nothing. THE PAGER TOTAL STILL COUNTS EMPLOYMENTS ONLY: "40 employees" must keep meaning forty people
   // on the books, and a Draft is a reserved place, not a person.
   //
-  // NARROWED IN MEMORY, deliberately. A draft is not an employment — it has no assignment, so no
-  // department and no employment type — so the two filters that read those columns (`dept`, `type`) can
-  // only ever exclude every draft, and the lifecycle filters (`active` / `terminated`) describe dates a
-  // draft does not have. Each of those hides the drafts rather than pretending to match them, and
-  // `draft` shows them alone. Company and the search box DO apply, because a draft has both.
-  const drafts = allDrafts.filter((d) => {
-    // FIRST PAGE ONLY. Pinned rows that repeat above every page of a long list stop reading as "these
-    // are outstanding" and start reading as a rendering fault. With the Draft filter on there is only
-    // one page, so this costs nothing there.
-    if (pq.offset > 0) return false;
-    if (dept || type || statusFilter) return false;
-    if (company && d.companyId !== company) return false;
-    if (q) {
-      const needle = q.trim().toLowerCase();
-      const hay = `${d.label} ${d.reservedEmployeeCode ?? ''} ${d.companyName ?? ''}`.toLowerCase();
-      if (!hay.includes(needle)) return false;
-    }
-    return true;
-  });
+  // 579255c3 DELIBERATELY DOES NOT RE-SEPARATE THEM. A standalone "Draft Employees" card above the table
+  // used to exist and was REMOVED AT THE REPORTER'S OWN REQUEST (06f0cb8f) — a draft parked outside the
+  // list with no status against it was exactly the complaint. What the redesign adds instead is the Draft
+  // CARD, which shows the count and pulls up those rows alone in one click.
+  //
+  // Which filters hide a draft, and why, now lives in ONE predicate (draftMatchesQuery) shared with the
+  // Draft card's count and with the export, so a card can never promise records the table then refuses.
+  const matchingDrafts = allDrafts.filter((d) => draftMatchesQuery(d, query));
+  // THE DRAFT CARD COUNTS WHAT CLICKING IT WOULD SHOW, not what the current selection shows. Clicking a
+  // card REPLACES the bucket, so counting the drafts under the bucket already chosen made the card read
+  // "0" the moment Active was selected — a card offering nothing, next to two records that exist. Caught
+  // by rendering, not by a test: every count was individually correct.
+  const draftCardCount = allDrafts.filter((d) =>
+    draftMatchesQuery(d, { ...query, bucket: undefined }),
+  ).length;
+  // FIRST PAGE ONLY. Pinned rows that repeat above every page of a long list stop reading as "these are
+  // outstanding" and start reading as a rendering fault. Under the Draft selection there is only one
+  // page, so this costs nothing there.
+  const drafts = pq.offset > 0 ? [] : matchingDrafts;
 
   const employees = draftOnly ? [] : employeeRows;
   const total = draftOnly ? 0 : employeeTotal;
   const pgState = pageState(pq, total, employees.length);
-  const EMPLOYMENT_TYPES = [
-    { value: 'full_time', labelKey: 'employmentFullTime' },
-    { value: 'part_time', labelKey: 'employmentPartTime' },
-    { value: 'contract', labelKey: 'employmentContract' },
-    { value: 'intern', labelKey: 'employmentIntern' },
-  ] as const;
 
-  // Consolidated filter panel (feedback 3542ed4a): same GET params (?q=&company=&dept=&status=&type=),
-  // same query path — only the presentation moved from an inline row into a top-right panel + chips.
-  // All strings resolved here so the client island stays free of dynamic t() keys. The onboarding
-  // tour's "people-search" anchor now points at the Filter button (the search input lives inside it).
+  // ── Filters ───────────────────────────────────────────────────────────────────────────────────────
+  // Consolidated filter panel (feedback 3542ed4a): same GET params, same query path — only the
+  // presentation moved from an inline row into a top-right panel + chips. All strings resolved here so
+  // the client island stays free of dynamic t() keys.
+  //
+  // 579255c3 — the Status field now offers the DERIVED Employee Status vocabulary (the same words the
+  // badge in the same table prints, plus Draft) on the `bucket` param, instead of the lifecycle
+  // active/terminated query on `status`. The old param is still honoured for existing links; nothing
+  // writes it any more. See ./list-query.ts.
   const filterFields: FilterField[] = [
     {
       kind: 'search',
@@ -168,22 +234,15 @@ export default async function PeoplePage({
     },
     {
       kind: 'select',
-      name: 'status',
+      name: 'bucket',
       label: t('colStatus'),
       ariaLabel: t('filterStatus'),
       allLabel: t('allStatuses'),
       options: [
-        // R81 (9cbf5e0d): the VALUES are the lifecycle query params this filter has always used
-        // (employment.terminated_on set or not) and are unchanged — this narrows the list, it does not
-        // display a status. Only the LABELS moved onto the reporter's vocabulary, so the filter and the
-        // Status badge in the same table stop using two different words ("Terminated" / "Resigned") for
-        // one state. Retiring Terminated as a word means retiring it here too.
-        { value: 'active', label: t('statusActive') },
-        { value: 'terminated', label: t('statusTerminated') },
-        // 06f0cb8f — the reporter asked to be able to pull up exactly who is still outstanding. It is
-        // the one option here that is a STORED state rather than a lifecycle query, because it selects
-        // from a different table; picking it shows the Draft rows and no employees at all.
-        { value: 'draft', label: t('statusDraft') },
+        ...EMPLOYEE_STATUS_BUCKETS.map((b) => ({ value: b, label: tStatus(b) })),
+        // 06f0cb8f — the one option here that is a STORED state rather than a derived one, because it
+        // selects from a different table; picking it shows the Draft rows and no employees at all.
+        { value: DRAFT_BUCKET, label: t('statusDraft') },
       ],
       removeAriaLabel: t('removeFilter', { label: t('colStatus') }),
     },
@@ -197,14 +256,76 @@ export default async function PeoplePage({
       removeAriaLabel: t('removeFilter', { label: t('employmentType') }),
     },
   ];
-  const filterValues = { q, company, dept, status, type };
-  const activeFilterCount = [q, company, dept, status, type].filter(Boolean).length;
+  const filterValues = { q, company, dept, bucket: sp.bucket, type };
+  const activeFilterCount = [q, company, dept, sp.bucket, type].filter(Boolean).length;
   const filterLabels = {
     filter: t('filter'),
     apply: t('applyFilters'),
     clearAll: t('clearAllFilters'),
     activeCount: t('activeFilters', { count: activeFilterCount }),
   };
+
+  // ── Headcount cards (point 5) + card-as-quick-filter (point 6) ────────────────────────────────────
+  // Each card is a plain <Link> carrying the CURRENT filters plus its own bucket, so a card click
+  // narrows rather than replaces, works without JavaScript, and appears as a removable chip like every
+  // other filter. `page` is deliberately dropped: a new narrowing starts at page one.
+  const cardHref = (bucket: string | null) => {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (company) params.set('company', company);
+    if (dept) params.set('dept', dept);
+    if (type) params.set('type', type);
+    if (bucket) params.set('bucket', bucket);
+    const s = params.toString();
+    return s ? `/admin/personnel?${s}` : '/admin/personnel';
+  };
+  const n = (k: keyof typeof headcount.byStatus) => headcount.byStatus[k] ?? 0;
+  const cards = [
+    // Total = every employment in the filtered scope. active_serving_notice and blacklisted fold in
+    // here and nowhere else — they are real states a row can be in, but not cards the reporter asked
+    // for, and inventing a card per state would bury the five that were asked for.
+    { key: null, label: t('cardTotal'), hint: t('cardTotalHint'), count: headcount.total },
+    { key: 'active', label: tStatus('active'), hint: t('cardActiveHint'), count: n('active') },
+    { key: 'probation', label: tStatus('probation'), hint: t('cardProbationHint'), count: n('probation') },
+    { key: 'resigned', label: tStatus('resigned'), hint: t('cardResignedHint'), count: n('resigned') },
+    // The Draft figure comes from the OTHER table, counted through the same predicate that decides
+    // which draft rows the table shows.
+    { key: DRAFT_BUCKET, label: t('statusDraft'), hint: t('cardDraftHint'), count: draftCardCount },
+  ] as const;
+  const activeCard = draftOnly ? DRAFT_BUCKET : (query.bucket ?? null);
+
+  // ── Column picker (points 2 & 3) ──────────────────────────────────────────────────────────────────
+  // Pre-translated, serialisable props only — no closure over `t` may cross into a client island
+  // (test/server-client-boundary.test.ts).
+  const pickerColumns = savedColumns.order.map((key) => ({
+    key,
+    label: t(COLUMN_LABEL_KEY[key]),
+    mandatory: MANDATORY_EMPLOYEE_COLUMNS.includes(key),
+  }));
+  const absentNote = t('columnsAbsent', {
+    fields: UNAVAILABLE_EMPLOYEE_FIELDS.map((f) => t(ABSENT_LABEL_KEY[f])).join(', '),
+  });
+
+  // The Export link carries the SCREEN's resolved columns, not just the filters, so the file cannot
+  // disagree with the table even if the preference changes in another tab between the two requests.
+  const exportHref = (() => {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (company) params.set('company', company);
+    if (dept) params.set('dept', dept);
+    if (type) params.set('type', type);
+    if (sp.bucket) params.set('bucket', sp.bucket);
+    if (sp.status) params.set('status', sp.status);
+    params.set('cols', columns.join(','));
+    return `/admin/personnel/export?${params.toString()}`;
+  })();
+
+  /** The plain-text cell for a column, from the SAME projection the export prints. */
+  const textCell = (e: (typeof employees)[number], key: EmployeeColumnKey) =>
+    employeeColumnText(e, key, {
+      status: tStatus(deriveEmploymentStatus(e, today)),
+      employmentType: e.employmentType ? t(EMPLOYMENT_TYPE_KEY[e.employmentType] ?? 'employmentType') : null,
+    });
 
   return (
     // c002b3c3 — the Personnel module goes FULL WIDTH. `max-w-[100rem]` is not a new number: it is the
@@ -220,9 +341,8 @@ export default async function PeoplePage({
           // group `shrink-0` — without wrapping, a narrow window would scroll the PAGE sideways rather
           // than stacking the controls, which is the one thing a full-width change must not introduce.
           <div className="flex flex-wrap items-center justify-end gap-3">
-            <span className="text-sm text-muted-foreground">
-              {t('employeeCount', { count: total })}
-            </span>
+            {/* 579255c3 — the bare "40 employees" count that stood here is GONE. It said one number with
+                no context; the five cards below say all five, and the pager still prints "1–25 of 30". */}
             {isAdmin && (
               <Link
                 href="/admin/personnel/import"
@@ -232,10 +352,6 @@ export default async function PeoplePage({
                 {t('importCsv')}
               </Link>
             )}
-            {/* 7b5f18c3 — the Hiring Defaults button that used to sit here is GONE. It is a system setup,
-                not a daily HR action, and nobody looks for one in the top-right corner of the employee
-                list; it now lives at System Settings → Hiring Defaults. The old address still redirects
-                there, so a bookmark of the removed button's destination still lands somewhere real. */}
             {/* c002b3c3 — Search Employee, beside the Filter button. It is NOT a second copy of the
                 filter's `q` box and does not narrow this table: it JUMPS to a profile. Both controls
                 are here because they answer different questions — "show me these people" and "take me
@@ -256,11 +372,34 @@ export default async function PeoplePage({
               labels={filterLabels}
               dataTour="people-search"
             />
+            <ColumnPicker
+              columns={pickerColumns}
+              selected={columns}
+              labels={{
+                title: t('customizeColumns'),
+                hint: t('columnsHint'),
+                apply: t('columnsApply'),
+                reset: t('columnsReset'),
+                moveUp: t('columnsMoveUp'),
+                moveDown: t('columnsMoveDown'),
+                unavailableNote: absentNote,
+              }}
+              saveAction={saveEmployeeColumnsAction}
+              resetAction={resetEmployeeColumnsAction}
+            />
+            {/* Points 9 & 10 — a plain link, so the download is a GET the browser owns and the file is
+                whatever this screen is currently showing. */}
+            <a
+              href={exportHref}
+              aria-label={t('exportAria')}
+              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              {t('exportXlsx')}
+            </a>
             {/* 6d671f44 — Create New Employee is now its own step-by-step screen with Save as Draft.
                 The reporter's requirement is literal: "The current employee list screen shall not be
                 used for data entry", so this is a LINK, and the inline form that used to expand below
-                the header is gone. The tour anchor moves with the button, exactly as it did in
-                5c9b73f2 when the entry point last relocated. */}
+                the header is gone. */}
             {isAdmin && (
               <Link
                 href="/admin/personnel/new"
@@ -274,6 +413,38 @@ export default async function PeoplePage({
         }
       />
 
+      {/* Point 5 + 6 — the headcount summary, and every card a one-click narrowing. */}
+      <div
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+        aria-label={t('headcountAria')}
+        data-tour="people-headcount"
+      >
+        {cards.map((c) => {
+          const on = activeCard === c.key;
+          return (
+            <Link
+              key={c.key ?? 'total'}
+              href={cardHref(c.key)}
+              aria-current={on ? 'true' : undefined}
+              data-headcount={c.key ?? 'total'}
+              className={`rounded-xl border px-4 py-3 transition-colors ${
+                on
+                  ? 'border-primary bg-accent text-accent-foreground'
+                  : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40'
+              }`}
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {c.label}
+              </div>
+              <div className="mt-1 text-2xl font-bold tabular-nums">{c.count}</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">
+                {on ? t('cardShowing') : c.hint}
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+
       <FilterChips
         action="/admin/personnel"
         fields={filterFields}
@@ -286,12 +457,6 @@ export default async function PeoplePage({
           {error}
         </div>
       )}
-
-      {/* 06f0cb8f — the amber "Unfinished new employees" card that used to sit HERE is gone. It was a
-          separate panel above the table with no status against it, which is exactly what the reporter
-          objected to; drafts are rows in the table below now, carrying their held Employee ID and a
-          Draft badge. Everything else 6d671f44 promised is still true: a draft is captured input, absent
-          from headcount, from payroll selection and from every report. */}
 
       {isAdmin && profileChanges.length > 0 && (
         <Card className="overflow-hidden border-amber-200 dark:border-amber-500/30">
@@ -334,101 +499,115 @@ export default async function PeoplePage({
       )}
 
       <Card className="overflow-hidden" data-tour="people-table">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3 font-medium">{t('colCode')}</th>
-              <th className="px-4 py-3 font-medium">{t('colName')}</th>
-              <th className="px-4 py-3 font-medium">{t('colDepartment')}</th>
-              <th className="px-4 py-3 font-medium">{t('colCompany')}</th>
-              <th className="px-4 py-3 font-medium">{t('colStatus')}</th>
-              <th className="px-4 py-3 font-medium">{t('colHired')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {/* DRAFTS FIRST (item 06f0cb8f). Same columns as everyone else — the reporter's own example
-                table is Employee ID / Employee Name / Company / Status — so a Draft reads as what it is:
-                a place in the list with a number held for it. The two columns it genuinely has no answer
-                for (Department, Hired) show an em dash rather than being left blank, because a blank cell
-                in a table of filled ones reads as a loading fault. The row links to the continue form,
-                not to a profile: there is no profile yet. */}
-            {drafts.map((d) => (
-              <tr key={d.id} className="bg-muted/20 hover:bg-muted/40">
-                <td className="px-4 py-3">
-                  {d.reservedEmployeeCode ? (
-                    <EmployeeCode code={d.reservedEmployeeCode} />
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar name={d.label || '?'} />
-                    <div className="min-w-0">
-                      <Link
-                        href={`/admin/personnel/new?draft=${d.id}`}
-                        className="font-medium text-foreground hover:text-primary"
-                      >
-                        {d.label || t('draftUntitled')}
-                      </Link>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {d.missing.length > 0 ? t('draftMissing', { count: d.missing.length }) : t('draftReady')}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">—</td>
-                <td className="px-4 py-3 text-muted-foreground">{d.companyName ?? t('draftNoCompany')}</td>
-                <td className="px-4 py-3">
-                  <StatusBadge status="draft" label={t('statusDraft')} />
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">—</td>
-              </tr>
-            ))}
-            {employees.map((e) => (
-              <tr key={e.employmentId} className="hover:bg-muted/40">
-                <td className="px-4 py-3">
-                  <EmployeeCode code={e.employeeCode} />
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar name={e.name} />
-                    <div className="min-w-0">
-                      <Link
-                        href={`/admin/personnel/${e.employmentId}?from=personnel`}
-                        className="font-medium text-foreground hover:text-primary"
-                      >
-                        {e.name}
-                      </Link>
-                      <div className="truncate text-xs text-muted-foreground">{e.email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">{e.department ?? '—'}</td>
-                <td className="px-4 py-3 text-muted-foreground">{e.company}</td>
-                <td className="px-4 py-3">
-                  {(() => {
-                    const st = deriveEmploymentStatus(e, today);
-                    return <StatusBadge status={st} label={tStatus(st)} />;
-                  })()}
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">{e.hiredOn}</td>
-              </tr>
-            ))}
-            {/* The empty state counts the DRAFT rows too — "no employees yet" under a table that is
-                visibly showing two of them would be the screen contradicting itself. */}
-            {employees.length === 0 && drafts.length === 0 && (
+        {/* The table can now carry up to sixteen columns, so it scrolls INSIDE its card rather than
+            pushing the page sideways — the same rule the full-width change (c002b3c3) was careful about. */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
-                  {q ? t('emptySearch', { q }) : hasFilters ? t('emptyFiltered') : t('emptyNoEmployeesAdmin')}
-                </td>
+                {columns.map((key) => (
+                  <th key={key} scope="col" data-column={key} className="whitespace-nowrap px-4 py-3 font-medium">
+                    {t(COLUMN_LABEL_KEY[key])}
+                  </th>
+                ))}
               </tr>
-            )}
-          </tbody>
-        </table>
-        <Pager basePath="/admin/personnel" params={{ q, company, dept, status, type }} state={pgState} />
+            </thead>
+            <tbody className="divide-y divide-border">
+              {/* DRAFTS FIRST (item 06f0cb8f). Same columns as everyone else — the reporter's own example
+                  table is Employee ID / Employee Name / Company / Status — so a Draft reads as what it is:
+                  a place in the list with a number held for it. Every column it genuinely has no answer
+                  for shows an em dash rather than being left blank, because a blank cell in a table of
+                  filled ones reads as a loading fault. The row links to the continue form, not to a
+                  profile: there is no profile yet. */}
+              {drafts.map((d) => (
+                <tr key={d.id} className="bg-muted/20 hover:bg-muted/40">
+                  {columns.map((key) => (
+                    <td key={key} className="px-4 py-3">
+                      {key === 'code' ? (
+                        d.reservedEmployeeCode ? (
+                          <EmployeeCode code={d.reservedEmployeeCode} />
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )
+                      ) : key === 'name' ? (
+                        <div className="flex items-center gap-3">
+                          <Avatar name={d.label || '?'} />
+                          <div className="min-w-0">
+                            <Link
+                              href={`/admin/personnel/new?draft=${d.id}`}
+                              className="font-medium text-foreground hover:text-primary"
+                            >
+                              {d.label || t('draftUntitled')}
+                            </Link>
+                            <div className="truncate text-xs text-muted-foreground">
+                              {d.missing.length > 0
+                                ? t('draftMissing', { count: d.missing.length })
+                                : t('draftReady')}
+                            </div>
+                          </div>
+                        </div>
+                      ) : key === 'status' ? (
+                        <StatusBadge status="draft" label={t('statusDraft')} />
+                      ) : key === 'company' ? (
+                        <span className="text-muted-foreground">{d.companyName ?? t('draftNoCompany')}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {employees.map((e) => (
+                <tr key={e.employmentId} className="hover:bg-muted/40">
+                  {columns.map((key) => (
+                    <td key={key} className="px-4 py-3">
+                      {key === 'code' ? (
+                        <EmployeeCode code={e.employeeCode} />
+                      ) : key === 'name' ? (
+                        <div className="flex items-center gap-3">
+                          <Avatar name={e.name} />
+                          <div className="min-w-0">
+                            <Link
+                              href={`/admin/personnel/${e.employmentId}?from=personnel`}
+                              className="font-medium text-foreground hover:text-primary"
+                            >
+                              {e.name}
+                            </Link>
+                            <div className="truncate text-xs text-muted-foreground">{e.email}</div>
+                          </div>
+                        </div>
+                      ) : key === 'status' ? (
+                        (() => {
+                          const st = deriveEmploymentStatus(e, today);
+                          return <StatusBadge status={st} label={tStatus(st)} />;
+                        })()
+                      ) : (
+                        <span className="whitespace-nowrap text-muted-foreground">
+                          {textCell(e, key) ?? '—'}
+                        </span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {/* The empty state counts the DRAFT rows too — "no employees yet" under a table that is
+                  visibly showing two of them would be the screen contradicting itself. */}
+              {employees.length === 0 && drafts.length === 0 && (
+                <tr>
+                  <td colSpan={columns.length} className="px-4 py-10 text-center text-muted-foreground">
+                    {q ? t('emptySearch', { q }) : hasFilters ? t('emptyFiltered') : t('emptyNoEmployeesAdmin')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <Pager
+          basePath="/admin/personnel"
+          params={{ q, company, dept, status: sp.status, type, bucket: sp.bucket }}
+          state={pgState}
+        />
       </Card>
-
     </div>
   );
 }

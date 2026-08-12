@@ -56,6 +56,34 @@ export const STATUTORY_LINE_KEYS = [
 
 export type StatutoryLineKey = (typeof STATUTORY_LINE_KEYS)[number];
 
+/**
+ * Feedback 017d9c25 (r187) — THE WORKING BETWEEN the pay items and the answers.
+ *
+ * "Today you can see the pay items and you can see the answers, but not the working in between." These
+ * are the amounts each agency was actually CHARGED ON, stamped by core/payroll.ts as `statutory.bases`
+ * from the run that produced the slip. They are not money lines — they are the base each money line was
+ * computed from — so they are deliberately NOT in STATUTORY_LINE_KEYS: a base moving is not a reportable
+ * statutory movement, it is the explanation for one.
+ *
+ * ABSENT ON EVERY PAYSLIP WRITTEN BEFORE r187, which is why `payslipStatutoryBases` returns null rather
+ * than a zero-filled object: "we do not know what this was charged on" and "it was charged on nothing"
+ * are different statements, and a screen must not print the second when it means the first.
+ */
+export const STATUTORY_BASE_KEYS = ['epf', 'epfAdditional', 'socsoEis', 'pcb', 'hrdf'] as const;
+export type StatutoryBaseKey = (typeof STATUTORY_BASE_KEYS)[number];
+export type StatutoryBases = Record<StatutoryBaseKey, number>;
+
+/** Read `statutory.bases` off a stored payslip blob. Null when the slip predates the stamp. Total. */
+export function payslipStatutoryBases(statutory: unknown): StatutoryBases | null {
+  const st = (statutory ?? {}) as Record<string, unknown>;
+  const b = st.bases;
+  if (!b || typeof b !== 'object') return null;
+  const src = b as Record<string, unknown>;
+  const out = {} as StatutoryBases;
+  for (const k of STATUTORY_BASE_KEYS) out[k] = round2(Number(src[k] ?? 0));
+  return out;
+}
+
 /** One statutory line that moved between two computations of the same payslip. */
 export type StatutoryMove = {
   key: StatutoryLineKey;
@@ -109,6 +137,12 @@ export type RecomputeDiff = {
   /** True when either side's ruleset version was never stamped — the version cause is undecidable. */
   rulesetUnknown: boolean;
   causes: RecomputeCause[];
+  /**
+   * 017d9c25 — the amounts each agency was charged on, before and after. NULL on either side means that
+   * computation predates the stamp, and the screen says nothing rather than printing zeroes.
+   */
+  basesBefore: StatutoryBases | null;
+  basesAfter: StatutoryBases | null;
   /**
    * The movement worth explaining: a statutory line moved while gross did NOT. (A gross change
    * explains itself — different pay, different statutory.)
@@ -189,6 +223,8 @@ export function diffPayslipVersions(
     rulesetChanged,
     rulesetUnknown,
     causes,
+    basesBefore: payslipStatutoryBases(b.statutory),
+    basesAfter: payslipStatutoryBases(a.statutory),
     needsDisclosure: moved.length > 0 && grossBefore === grossAfter,
   };
 }

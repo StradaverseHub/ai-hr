@@ -56,6 +56,8 @@ import {
   assignment,
   attendance,
   attendanceCorrection,
+  // 2166ef79 My Attendance stage one (migration 0434) — the optional supporting file on a request.
+  attendanceCorrectionAttachment,
   attendancePolicy,
   attendancePunch,
   clockingLocation,
@@ -71,6 +73,8 @@ import {
   // 1e9145d4 Plan OT — the five reason categories the Apply OT Plan form offers, declared beside the column
   // they constrain (text + DB CHECK, not a pgEnum — see the note there).
   type OtReasonCategory,
+  // 2166ef79 — which of My Attendance's four sections a request was filed from (same text + CHECK shape).
+  type AttendanceRequestKind,
   type ShiftOtRule,
 } from '../db/schema';
 import { parseAttendanceCsv } from '../lib/attendance-csv';
@@ -2661,6 +2665,11 @@ export async function requestAttendanceCorrection(
     plannedStartTime?: string | null;
     plannedEndTime?: string | null;
     otReasonCategory?: OtReasonCategory | null;
+    // 2166ef79 My Attendance stage one — the optional note beside the mandatory reason, and which of the
+    // four sections the request was filed from. Both optional at every layer: every existing caller (the
+    // OT form, the tests, the import paths) omits them and stores NULL, which is byte-identical to before.
+    remark?: string | null;
+    requestKind?: AttendanceRequestKind | null;
   },
 ) {
   const checkIn = p.checkIn ?? null;
@@ -2700,6 +2709,11 @@ export async function requestAttendanceCorrection(
     throw new Error('The planned end time must be after the planned start time.');
   }
   const otReasonCategory = p.otReasonCategory ?? null;
+  // 2166ef79 — the remark is OPTIONAL and stays optional in stage one: the reporter's "Require Remark"
+  // switch belongs to the Attendance Request Settings screen, which is deliberately stage two. An empty
+  // string stores as NULL rather than as a blank note nobody wrote.
+  const remark = (p.remark ?? '').trim() || null;
+  const requestKind = p.requestKind ?? null;
 
   return withTenant(ctx, async (tx) => {
     // 1e9145d4 — ONE APPROVED PLAN PER DATE. attendance_correction_one_pending_uq is partial (WHERE status =
@@ -2730,6 +2744,8 @@ export async function requestAttendanceCorrection(
         plannedStartTime,
         plannedEndTime,
         otReasonCategory,
+        remark,
+        requestKind,
       })
       .returning({ id: attendanceCorrection.id });
     await appendEvent(tx, {
@@ -2749,9 +2765,94 @@ export async function requestAttendanceCorrection(
         plannedStartTime,
         plannedEndTime,
         otReasonCategory,
+        remark,
+        requestKind,
       },
     });
     return { correctionId: row.id };
+  });
+}
+
+/**
+ * 2166ef79 — attach ONE supporting file to an attendance request. Mirrors addLeaveAttachment (core/leave.ts)
+ * and addResignationAttachment: the file is written to a bytea side table, never onto the request row.
+ *
+ * WHILE PENDING ONLY. A file added to a request somebody has already decided would be evidence the approver
+ * never saw, filed under their decision — so it is refused, exactly as leave refuses it.
+ *
+ * The ceiling and the accepted types are FIXED in stage one (5 MB, images + PDF). Making them configurable
+ * is "Require Attachment / attachment rules" on the Attendance Request Settings screen, which is stage two;
+ * a fixed, stated limit is honest, a silently-unbounded upload is not.
+ */
+export const ATTENDANCE_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+export const ATTENDANCE_ATTACHMENT_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'application/pdf',
+] as const;
+
+export async function addAttendanceCorrectionAttachment(
+  ctx: SessionContext,
+  p: { correctionId: string; fileName: string; mimeType: string; content: Buffer },
+): Promise<{ id: string }> {
+  if (p.content.byteLength === 0) throw new Error('That file is empty.');
+  if (p.content.byteLength > ATTENDANCE_ATTACHMENT_MAX_BYTES) {
+    throw new Error('That file is larger than 5 MB.');
+  }
+  if (!(ATTENDANCE_ATTACHMENT_MIME_TYPES as readonly string[]).includes(p.mimeType)) {
+    throw new Error('That file type is not accepted — attach a photo or a PDF.');
+  }
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx
+      .select({ employmentId: attendanceCorrection.employmentId, status: attendanceCorrection.status })
+      .from(attendanceCorrection)
+      .where(eq(attendanceCorrection.id, p.correctionId))
+      .limit(1);
+    if (!req) throw new Error('attendance request not found (or not visible)');
+    if (req.status !== 'pending') throw new Error('A file can only be attached while the request is waiting.');
+    const [row] = await tx
+      .insert(attendanceCorrectionAttachment)
+      .values({
+        tenantId: ctx.tenantId,
+        attendanceCorrectionId: p.correctionId,
+        employmentId: req.employmentId,
+        content: p.content,
+        fileName: p.fileName,
+        mimeType: p.mimeType,
+        sizeBytes: p.content.byteLength,
+        uploadedByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: attendanceCorrectionAttachment.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-correction',
+      aggregateId: p.correctionId,
+      eventType: 'attendance-correction.document.attached',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: { fileName: p.fileName, mimeType: p.mimeType, sizeBytes: p.content.byteLength },
+    });
+    return { id: row.id };
+  });
+}
+
+/** The supporting file on an attendance request, for the download route. RLS-fenced (subject + manager +
+ *  admin via can_see_employment), so this needs no gate of its own — the policy IS the gate. */
+export function getAttendanceCorrectionAttachment(ctx: SessionContext, correctionId: string) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        content: attendanceCorrectionAttachment.content,
+        fileName: attendanceCorrectionAttachment.fileName,
+        mimeType: attendanceCorrectionAttachment.mimeType,
+      })
+      .from(attendanceCorrectionAttachment)
+      .where(eq(attendanceCorrectionAttachment.attendanceCorrectionId, correctionId))
+      .orderBy(desc(attendanceCorrectionAttachment.createdAt))
+      .limit(1);
+    return row ?? null;
   });
 }
 
@@ -3302,11 +3403,12 @@ export function otMonthToDateMinutes(
 /**
  * The employee's OWN overtime plans, newest first, paged — the Plan OT landing list.
  *
- * WHY NOT myAttendanceCorrections. That one defaults to FIVE rows, returns no reason, no category and no
- * planned times, and mixes clock-time corrections in with overtime. Every one of those is a thing the Plan
- * OT list has to show, and the five-row cap is the specific complaint the item was raised about. Widening
- * the shared helper would change what the Attendance Request screen renders as a side effect, so this is a
- * separate, OT-only read.
+ * WHY NOT myAttendanceCorrections. That one is EVERY request of every kind, which is the other list on the
+ * same screen (2166ef79 widened it to carry reason, remark, kind and the four statuses for exactly that
+ * job). This read is OT-ONLY by construction — it is what the Self Overtime section shows, and it is the
+ * only one that answers "has this been counted on the day yet". Merging the two would mean a section
+ * called Self Overtime filtering a general list in the page, which is how the five-row mixed list this
+ * item replaced came about in the first place.
  *
  * RLS scopes the rows; the employmentId argument narrows to the one employment the caller asked about.
  */
@@ -3616,24 +3718,162 @@ export async function cancelPlannedOvertime(
   });
 }
 
-/** An employee's own recent corrections (the /me history). */
-export function myAttendanceCorrections(ctx: SessionContext, employmentId: string, limit = 5) {
-  return withTenant(ctx, (tx) =>
-    tx
+/** One row of "My attendance requests" — every request this employee has filed, whatever it was for. */
+export type MyAttendanceRequestRow = {
+  id: string;
+  attendanceDate: string;
+  proposedCheckIn: string | null;
+  proposedCheckOut: string | null;
+  requestedOtMinutes: number | null;
+  plannedStartTime: string | null;
+  plannedEndTime: string | null;
+  otReasonCategory: OtReasonCategory | null;
+  reason: string | null;
+  remark: string | null;
+  requestKind: AttendanceRequestKind | null;
+  status: string;
+  appliedAt: Date | null;
+  decidedAt: Date | null;
+  createdAt: Date;
+  /** True when a supporting file was attached (the file itself streams from its own route). */
+  hasAttachment: boolean;
+};
+
+/**
+ * An employee's OWN attendance requests, newest first — the "My attendance requests" list on My Attendance.
+ *
+ * 2166ef79 WIDENED this read; it did not fork it. It used to return five rows and four columns, which was
+ * all the collapsed list on /me needed. The stage-one screen has to show what was asked for, when it was
+ * filed, where it stands and whether it can still be taken back, and it has to be filterable by status —
+ * so the columns and the ceiling grew here rather than in a second near-identical query beside it. The one
+ * previous caller (app/attendance/requests) is the screen doing the asking.
+ *
+ * NOT merged with myOvertimePlans, deliberately: that one is OT-ONLY by construction (the Self Overtime
+ * section is exactly the Plan OT list, moved in whole and still showing planned window, category and
+ * whether the hours have landed). This read is the OTHER list on the same screen — every request of every
+ * kind. Two lists on one page, each with its own question.
+ *
+ * RLS scopes the rows; `employmentId` narrows to the one employment the caller asked about.
+ */
+export function myAttendanceCorrections(
+  ctx: SessionContext,
+  employmentId: string,
+  opts: { limit?: number; status?: 'pending' | 'approved' | 'rejected' | 'cancelled' } = {},
+): Promise<MyAttendanceRequestRow[]> {
+  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 100)), 500);
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         id: attendanceCorrection.id,
         attendanceDate: attendanceCorrection.attendanceDate,
         proposedCheckIn: attendanceCorrection.proposedCheckIn,
         proposedCheckOut: attendanceCorrection.proposedCheckOut,
         requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
+        plannedStartTime: attendanceCorrection.plannedStartTime,
+        plannedEndTime: attendanceCorrection.plannedEndTime,
+        otReasonCategory: attendanceCorrection.otReasonCategory,
+        reason: attendanceCorrection.reason,
+        remark: attendanceCorrection.remark,
+        requestKind: attendanceCorrection.requestKind,
         status: attendanceCorrection.status,
+        appliedAt: attendanceCorrection.appliedAt,
+        decidedAt: attendanceCorrection.decidedAt,
         createdAt: attendanceCorrection.createdAt,
       })
       .from(attendanceCorrection)
-      .where(eq(attendanceCorrection.employmentId, employmentId))
-      .orderBy(desc(attendanceCorrection.createdAt))
-      .limit(limit),
-  );
+      .where(
+        opts.status
+          ? and(
+              eq(attendanceCorrection.employmentId, employmentId),
+              eq(attendanceCorrection.status, opts.status),
+            )
+          : eq(attendanceCorrection.employmentId, employmentId),
+      )
+      // Newest first BY THE ATTENDANCE DATE, then by when it was filed — the same ordering the Plan OT
+      // list uses, so two lists on one screen are not sorted two different ways.
+      .orderBy(desc(attendanceCorrection.attendanceDate), desc(attendanceCorrection.createdAt))
+      .limit(limit);
+    if (rows.length === 0) return [];
+    // Which of them carry a file. One extra query for the page rather than one per row; the content
+    // itself is never selected here (it streams from the attachment route, on demand).
+    const withFiles = new Set(
+      (
+        await tx
+          .select({ id: attendanceCorrectionAttachment.attendanceCorrectionId })
+          .from(attendanceCorrectionAttachment)
+          .where(
+            inArray(
+              attendanceCorrectionAttachment.attendanceCorrectionId,
+              rows.map((r) => r.id),
+            ),
+          )
+      ).map((r) => r.id),
+    );
+    return rows.map((r) => ({ ...r, hasAttachment: withFiles.has(r.id) }));
+  });
+}
+
+/**
+ * 2166ef79 — the employee CANCELS their own clock-time attendance request.
+ *
+ * WHY THIS IS NOT cancelPlannedOvertime. The subject rule is identical and is shared below, but the STATE
+ * rule is genuinely different and must not be blurred into one. An overtime plan may be withdrawn after
+ * approval, while the hours have not yet landed on a day — that is the whole point of agreeing overtime in
+ * advance. A clock correction may not: approving one WRITES the punches onto the attendance row and
+ * re-derives the day, so "withdrawing" it afterwards is a second correction, with the approval trail a
+ * correction carries, not a cancellation. Pending only, therefore.
+ *
+ * An overtime plan handed to this function is refused and pointed at withdraw, rather than silently
+ * cancelled under the wrong rule.
+ */
+export async function cancelOwnAttendanceCorrection(
+  ctx: SessionContext,
+  p: { correctionId: string },
+): Promise<{ status: 'cancelled' }> {
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx
+      .select()
+      .from(attendanceCorrection)
+      .where(eq(attendanceCorrection.id, p.correctionId))
+      .limit(1);
+    if (!req) throw new Error('attendance request not found (or not visible)');
+    await assertOwnCorrectionTx(tx, ctx, req.employmentId);
+    if (req.proposedCheckIn == null && req.requestedOtMinutes != null) {
+      throw new Error('This is an overtime plan — withdraw it from the Self Overtime list.');
+    }
+    if (req.status !== 'pending') {
+      throw new Error(`This request has already been ${req.status}, so it can no longer be cancelled.`);
+    }
+    await tx
+      .update(attendanceCorrection)
+      .set({ status: 'cancelled' })
+      .where(eq(attendanceCorrection.id, p.correctionId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-correction',
+      aggregateId: p.correctionId,
+      eventType: 'attendance-correction.cancelled',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: { date: req.attendanceDate, previousStatus: req.status, requestKind: req.requestKind },
+    });
+    return { status: 'cancelled' as const };
+  });
+}
+
+/** SUBJECT-ONLY. Enforced in code rather than by RLS, because RLS makes an employee's own rows writable AND
+ *  a manager's reports' rows visible — and a manager who wants a request gone REJECTS it, which is a
+ *  decision and is recorded as one. (cancelPlannedOvertime states the same rule inline because it must
+ *  raise the TYPED OvertimePlanWithdrawNotAllowedError its own action layer reports verbatim.) */
+async function assertOwnCorrectionTx(tx: Tx, ctx: SessionContext, employmentId: string) {
+  const [subject] = await tx
+    .select({ personId: employment.personId })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  if (!ctx.personId || subject?.personId !== ctx.personId) {
+    throw new Error('Only the employee who filed a request can cancel it.');
+  }
 }
 
 // ─── ADR-0032 C7 · attendance policy (the no-roster default schedule the engine resolves against) ─────

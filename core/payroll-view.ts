@@ -235,11 +235,23 @@ export type IndividualTxnViewRow = {
   runSeq: number | null;
   batchStatus: string | null;
   kind: PayrollTxnKind;
+  /** 4e403268 — THE PAY ITEM, on the listing row at last. Until this round the projection deliberately
+   *  carried no `component_id` (`getIndividualTxn`'s doc says so) because the only thing that wanted it
+   *  was two per-row buttons, and a by-id read served those better than widening a shared projection.
+   *  Day-by-day changes the calculus: the grouping is keyed on (pay period, pay item), so every row on
+   *  screen needs its item — a by-id read per row would be N round trips to draw one list. Additive:
+   *  three nullable columns from a LEFT JOIN that cannot multiply rows (component_id is a single FK). */
+  componentId: string | null;
+  componentCode: string | null;
+  componentName: string | null;
   txnDate: string;
   amount: string;
   quantity: string | null;
   unit: string | null;
   notes: string | null;
+  /** 4e403268 (0432) — provenance. NULL on every row written before that migration, and null MEANS
+   *  'manual' (core/payroll-individual-txn.ts `txnSourceOf`) rather than "unknown". */
+  source: string | null;
   // "Created By" / "Created Date" audit dimensions (ADR-0056: no created_by column on the ledger row, so the
   // creator is resolved from the row's append-only 'created' DomainEvent → the acting app_user's person name).
   createdOn: string; // 'YYYY-MM-DD' — payroll_individual_txn.created_at cast to a date
@@ -327,11 +339,15 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
       runSeq: payrollBatch.runSeq,
       batchStatus: payrollBatch.status,
       kind: payrollIndividualTxn.kind,
+      componentId: payrollIndividualTxn.componentId,
+      componentCode: payComponent.code,
+      componentName: payComponent.name,
       txnDate: payrollIndividualTxn.txnDate,
       amount: payrollIndividualTxn.amount,
       quantity: payrollIndividualTxn.quantity,
       unit: payrollIndividualTxn.unit,
       notes: payrollIndividualTxn.notes,
+      source: payrollIndividualTxn.source,
       createdOn: sql<string>`to_char(${payrollIndividualTxn.createdAt}, 'YYYY-MM-DD')`,
       createdById: appUser.id,
       createdBy: creatorPerson.fullName,
@@ -355,6 +371,11 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
     .innerJoin(company, eq(company.id, payrollIndividualTxn.companyId))
     .innerJoin(employment, eq(employment.id, payrollIndividualTxn.employmentId))
     .innerJoin(person, eq(person.id, employment.personId))
+    // 4e403268 — the picked Payroll Item Master row, for its code and name. LEFT because `component_id` is
+    // nullable (a generic-kind row names no pay item), and it cannot multiply rows: the join is on the
+    // component's primary key. An ARCHIVED component still joins on purpose — a row already keyed against
+    // an item that was later retired must keep showing which item it was, not go blank.
+    .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
     // Created-by provenance: the row's 'created' event → the acting app_user → that user's person name.
     .leftJoin(
       domainEvent,

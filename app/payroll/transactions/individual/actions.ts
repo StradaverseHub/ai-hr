@@ -333,6 +333,195 @@ export async function previewTxnAmountAction(input: {
 }
 
 /**
+ * 4e403268 — the same preview, for a WHOLE DAY-BY-DAY GRID, in ONE round trip.
+ *
+ * WHY THIS EXISTS RATHER THAN CALLING `previewTxnAmountAction` PER ROW. The single-value preview is fired
+ * from a keyed effect on every change to the quantity box. Fanning that out to one request per grid row
+ * would put five to thirty concurrent server actions in flight on every keystroke, each opening its own
+ * transaction to resolve the same employee's same month — and the answers would land in an order nobody
+ * controls, which is exactly the race the single-value version's store-the-key-with-the-answer guard
+ * exists to survive. One request, one answer set, the same guard shape.
+ *
+ * IT TAKES DISTINCT QUANTITIES, NOT ROWS. The derived amount is a function of (item, employment, company,
+ * month, quantity, unit) and of nothing else, so five days of 2.00 hours are five copies of one answer.
+ * The client dedupes (`distinctQuantities` in day-lines.ts) and maps the figures back onto its rows.
+ *
+ * The evaluator is `deriveIndividualTxnAmount` — the same call the single preview makes and the same one
+ * the SAVE makes. There is exactly one place in this system that prices a pay item, and this is not a
+ * second one.
+ *
+ * Read-only: no write, no domain event.
+ */
+export type TxnAmountsPreview =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      derived: false;
+    }
+  | {
+      ok: true;
+      derived: true;
+      /** One entry per requested quantity, keyed by the quantity as the client normalised it. */
+      amounts: { quantity: string; amount: string }[];
+      code: string;
+      inputUnit: 'hours' | 'days' | null;
+      /** Localised, exactly as the single-value preview does it. Null when nothing divided by zero. */
+      zeroDivisor: string | null;
+    };
+
+export async function previewTxnAmountsAction(input: {
+  componentId: string;
+  employmentId: string;
+  companyId: string;
+  payPeriod: string;
+  unit: string | null;
+  /** Already deduplicated and normalised by the caller. Capped server-side regardless. */
+  quantities: string[];
+}): Promise<TxnAmountsPreview> {
+  const { s, scopeIds } = await scopedAdmin();
+  if (!input.companyId || !scopeIds.includes(input.companyId)) return { ok: false, error: 'outOfScope' };
+  if (!input.componentId || !input.employmentId) return { ok: true, derived: false };
+  if (!isPayPeriod(input.payPeriod)) return { ok: false, error: 'periodInvalid' };
+  // A month has at most 31 days, so 31 DISTINCT quantities is already the ceiling a real grid can reach.
+  // The cap is here rather than only on the client because the client is not the authority on request size.
+  const quantities = [...new Set(input.quantities)].slice(0, 31);
+  if (quantities.length === 0) return { ok: true, derived: false };
+  try {
+    const results: { quantity: string; amount: string }[] = [];
+    let code = '';
+    let inputUnit: 'hours' | 'days' | null = null;
+    let zeroDivisor: { divisor: string; step: number } | null = null;
+    let anyDerived = false;
+    for (const q of quantities) {
+      const n = Number(q);
+      if (!Number.isFinite(n)) continue;
+      const d = await deriveIndividualTxnAmount(s, {
+        componentId: input.componentId,
+        employmentId: input.employmentId,
+        companyId: input.companyId,
+        payPeriod: input.payPeriod,
+        quantity: n,
+        unit: input.unit,
+      });
+      if (!d.derived) continue;
+      anyDerived = true;
+      code = d.code;
+      inputUnit = d.inputUnit;
+      // The FIRST zero divisor wins: it is one explanation about this employee and this month, not a
+      // per-line fault, so reporting it once is reporting it correctly.
+      if (d.zeroDivisor && !zeroDivisor) zeroDivisor = d.zeroDivisor;
+      // PER-DAY ROUNDING, and it happens HERE, once, in the same `toFixed(2)` the single-entry preview and
+      // the write both use. This is why five days of a split can total a cent away from the same hours
+      // keyed as one figure — the amount shown against a date is the amount that date is worth.
+      results.push({ quantity: q, amount: d.amount.toFixed(2) });
+    }
+    if (!anyDerived) return { ok: true, derived: false };
+    const tr = await getTranslations('payRule');
+    return {
+      ok: true,
+      derived: true,
+      amounts: results,
+      code,
+      inputUnit,
+      zeroDivisor: zeroDivisor
+        ? tr('previewZeroDivisor', { divisor: tr(`operand_${zeroDivisor.divisor}` as never), step: zeroDivisor.step })
+        : null,
+    };
+  } catch (e) {
+    return { ok: false, error: txnErrorKey(e) };
+  }
+}
+
+/** One dated line as the day-by-day grid submits it. `amount` is the typed figure and is IGNORED whenever
+ *  the pay item works its own out — exactly as the single-entry form's is. */
+export type DayByDayLineInput = {
+  txnDate: string;
+  amount: number;
+  quantity: number | null;
+  notes: string | null;
+};
+
+/**
+ * 4e403268 — SAVE A WHOLE DAY-BY-DAY GRID, ALL LINES OR NONE.
+ *
+ * This is not a new write path. `createIndividualTxnsBulk` has taken many rows since 1.2.2 and does the
+ * whole set in ONE transaction with all its guards re-checked inside it (draft re-check, company match,
+ * batch-scope membership, date-in-period per row, amount > 0 per row, the Phase-3 component rules, and the
+ * byte-identical-row refusal). Day-by-day is many rows for ONE employment, which is the easier half of what
+ * that service already does — the multi-EMPLOYEE half is what 44129979 took off the screen, not off the
+ * service. So the atomicity the request asks for ("save all valid entries in one transaction") is not
+ * built here; it is inherited, and this action's job is to hand that service a correctly priced set.
+ *
+ * EVERY LINE IS PRICED SERVER-SIDE, one at a time, before any of them is written — the same
+ * `amountForWrite` the single create calls. The browser's figure never survives on a calculating item.
+ *
+ * `source` is left NULL rather than written as the string 'manual'. Null already means manual
+ * (`txnSourceOf`), so a hand-keyed row saved by this grid is byte-identical to the 47 already on
+ * production and no backfill can ever be needed. The column is for the modules that will write something
+ * else into it.
+ */
+export async function createIndividualTxnDayGridAction(input: {
+  employmentId: string;
+  companyId: string;
+  payPeriod: string;
+  batchId: string;
+  kind: string;
+  componentId: string | null;
+  unit: string | null;
+  lines: DayByDayLineInput[];
+}): Promise<TxnActionResult & { count?: number }> {
+  const { s, scopeIds } = await scopedAdmin();
+  if (!input.companyId || !scopeIds.includes(input.companyId)) return { ok: false, error: 'outOfScope' };
+  if (!input.employmentId) return { ok: false, error: 'noEmployeesSelected' };
+  if (!input.batchId && !isPayPeriod(input.payPeriod)) return { ok: false, error: 'periodInvalid' };
+  if (input.lines.length === 0) return { ok: false, error: 'dayGridEmpty' };
+  const targetImpact = input.batchId ? await batchEditImpact(s, { batchId: input.batchId }) : null;
+  // The month the rules resolve against: the RUN's when there is one (the service does the same), so the
+  // form field and the run can never price against different months.
+  const payPeriod = input.batchId ? (targetImpact?.payPeriod ?? input.payPeriod) : input.payPeriod;
+  try {
+    const rows = [];
+    for (const l of input.lines) {
+      const amount = await amountForWrite(s, {
+        componentId: input.componentId,
+        employmentId: input.employmentId,
+        companyId: input.companyId,
+        payPeriod,
+        quantity: l.quantity,
+        unit: input.unit,
+        typed: l.amount,
+      });
+      rows.push({
+        kind: input.kind,
+        txnDate: l.txnDate,
+        amount,
+        quantity: l.quantity,
+        unit: input.unit,
+        notes: l.notes,
+        componentId: input.componentId,
+        // See the doc above: null IS 'manual'.
+        source: null,
+        sourceRef: null,
+      });
+    }
+    const { ids } = await createIndividualTxnsBulk(s, {
+      ...(input.batchId ? { batchId: input.batchId } : { companyId: input.companyId, payPeriod: input.payPeriod }),
+      employmentIds: [input.employmentId],
+      rows,
+    });
+    revalidatePath('/payroll/transactions/individual');
+    return {
+      ok: true,
+      id: ids[0],
+      count: ids.length,
+      ...(targetImpact?.status === 'processed' && input.batchId ? { recalcBatchId: input.batchId } : {}),
+    };
+  } catch (e) {
+    return { ok: false, error: txnErrorKey(e) };
+  }
+}
+
+/**
  * Create ONE one-off transaction — the Add form, and equally the save of a Duplicate (a copy is an
  * ordinary create of a row whose fields were prefilled from another; nothing about the write differs).
  *
