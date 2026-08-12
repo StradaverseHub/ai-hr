@@ -1,0 +1,241 @@
+<meta charset="utf-8">
+<title>8ca344bf — SOCSO Borang 8A: filter, preview and the no-offset rule</title>
+<!--
+  Mockup for board item 8ca344bf (SOCSO Borang 8A), plan revision 0.
+
+  EVERY FIGURE ON THIS PAGE IS THE REPORTER'S OWN. They come from the completed Borang 8A the reporter
+  attached to this item (attachment 91ce0f6a, "Socso Borang 8A.pdf", 84,219 bytes, A4, produced 2026-08-12
+  by another payroll system's reporting engine, NOT by PERKESO) and, for the contrast panel, from the
+  Borang A they attached to item 9c8dad7a. Both come off the SAME July 2026 payroll:
+      SOCSO  CARUMAN GAJI BULAN 07 / 2026   ·  due "tidak lewat daripada 31/07/2026"
+      EPF    Bulan Caruman 0826
+  which is the +1 versus no-offset difference, measured, in the reporter's own documents.
+    Employer code B3201005082P · Amaun Caruman 202.35 · Lembaran 1/1 · Bil. Pekerja 1
+    Row: IC 860208105128 · ANG PEI YEE · 202.35 · Jumlah muka surat ini 202.35 · Nama CHONG PEI YUH
+  MyCoID is BLANK in their specimen and is drawn blank here.
+  "33 of 33 employees have an identity card number" is measured on production 2026-08-13 (SELECT only).
+
+  DELIBERATELY NOT DRAWN: a filled PERKESO page. The attachment is a third-party facsimile, not agency
+  artwork, so the drawn form is described in words and only its column structure is sketched.
+
+  Tokens from app/globals.css. Everything inline: scripts/mockup/render.ts blocks external requests.
+-->
+<style>
+  :root{--background:#f5f6fa;--foreground:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;
+        --muted-foreground:#63636f;--border:#e7e8f1;--band:#fafbff;--rule:#d9dae6;
+        --amber-bg:#fffaeb;--amber-bd:#f5d98e;--amber-fg:#8a5b06;
+        --green-bg:#e9f8f2;--green-bd:#9fdcc6;--green-fg:#0d6b52;
+        --blue-bg:#eef4ff;--blue-bd:#b9cdf3;--blue-fg:#28489a}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px 22px 32px;background:var(--background);color:var(--foreground);
+       font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;width:1280px}
+  h1.hd{font-size:18px;margin:0 0 5px;letter-spacing:-.01em}
+  p.lede{margin:0 0 4px;font-size:12.5px;color:var(--muted-foreground);max-width:124ch}
+  p.lede b{color:var(--foreground);font-weight:600}
+  section{margin-top:24px}
+  h2.sec{font-size:13px;margin:0 0 3px}
+  h2.sec span.n{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:50%;
+                background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:8px;vertical-align:1px}
+  p.sub{margin:0 0 11px;font-size:12px;color:var(--muted-foreground);max-width:122ch}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 3px rgba(20,20,40,.06)}
+  .chd{padding:11px 15px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600;
+       display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .tag{display:inline-block;border-radius:999px;padding:2px 9px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+  .tag.was{background:var(--muted);color:var(--muted-foreground);text-decoration:line-through}
+  .tag.now{background:var(--blue-bg);color:var(--blue-fg)}
+  .fbar{display:flex;flex-wrap:wrap;gap:14px;padding:15px;align-items:flex-end}
+  .fld{display:flex;flex-direction:column;gap:5px}
+  .fld label{font-size:11px;font-weight:600;color:var(--muted-foreground)}
+  .inp{height:34px;min-width:158px;border:1px solid var(--border);border-radius:7px;background:#fff;
+       display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:12.5px;gap:8px}
+  .inp.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .inp .ph{color:#a6a7b4}
+  .inp .cv{color:#9a9bab;font-size:10px}
+  .inp.lock{background:var(--blue-bg);border-color:var(--blue-bd);color:var(--blue-fg);font-weight:600}
+  .src{font-size:10.5px;color:var(--muted-foreground)}
+  .src b{color:var(--primary);font-weight:600}
+  .btn{height:34px;border-radius:7px;padding:0 14px;display:inline-flex;align-items:center;font-size:12.5px;
+       font-weight:600;border:1px solid var(--border);background:#fff}
+  .btn.p{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .strip{margin:0 15px 15px;border-radius:8px;padding:9px 12px;font-size:11.5px;border:1px solid}
+  .strip.g{background:var(--green-bg);border-color:var(--green-bd);color:var(--green-fg)}
+  .strip.a{background:var(--amber-bg);border-color:var(--amber-bd);color:var(--amber-fg)}
+  .strip.b{background:var(--blue-bg);border-color:var(--blue-bd);color:var(--blue-fg)}
+  /* rule contrast panel */
+  .rule2{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff}
+  .rc{padding:13px 15px}
+  .rc + .rc{border-left:1px solid var(--border)}
+  .rc h4{margin:0 0 8px;font-size:12px}
+  .rc h4 em{font-style:normal;color:var(--muted-foreground);font-weight:500}
+  .flow{display:flex;align-items:center;gap:9px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+  .bx{border:1px solid var(--rule);border-radius:6px;padding:5px 10px;background:var(--band);font-weight:700}
+  .bx.hot{background:#fef3c7;border-color:#e5c477;color:#7c4b06}
+  .bx.cold{background:var(--blue-bg);border-color:var(--blue-bd);color:var(--blue-fg)}
+  .arw{color:var(--muted-foreground);font-size:15px}
+  .rc p{margin:9px 0 0;font-size:11.5px;color:var(--muted-foreground)}
+  .rc p b{color:var(--foreground)}
+  /* preview table */
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  thead th{background:var(--band);text-align:left;font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+           color:var(--muted-foreground);font-weight:700;padding:7px 11px;border-bottom:1px solid var(--border)}
+  tbody td{padding:8px 11px;border-bottom:1px solid #f2f3f8}
+  tbody tr:last-child td{border-bottom:0}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  td.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+  tr.tot td{background:var(--band);font-weight:700;border-top:1px solid var(--border)}
+  .dim{color:#a6a7b4}
+  .hdgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--border)}
+  .hdgrid div{background:#fff;padding:10px 12px}
+  .hdgrid .k{font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-foreground);font-weight:700}
+  .hdgrid .v{font-size:13px;font-weight:600;margin-top:2px}
+  .hdgrid .v.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+  /* field map */
+  .map{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;padding:13px 15px 6px}
+  .grp h3{margin:0 0 5px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted-foreground)}
+  .grp{margin-bottom:11px}
+  .fm{display:flex;align-items:baseline;gap:8px;padding:3px 0;font-size:11.5px;border-bottom:1px solid #f2f3f8}
+  .fm .nm{flex:1}
+  .pill{border-radius:999px;padding:1px 7px;font-size:9.5px;font-weight:700;white-space:nowrap}
+  .p-co{background:#e7e5fb;color:#4338ca}
+  .p-st{background:#e0f2fe;color:#0369a1}
+  .p-pa{background:#dcfce7;color:#15803d}
+  .p-ty{background:#fef3c7;color:#92400e}
+  .p-bl{background:#f1f2f7;color:#6b6c7c}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--muted-foreground);padding:0 15px 13px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .foot{margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .note{border:1px solid var(--border);background:#fff;border-radius:9px;padding:11px 13px;font-size:11.5px;line-height:1.55}
+  .note b{display:block;margin-bottom:3px}
+  .note.warn{background:var(--amber-bg);border-color:var(--amber-bd);color:var(--amber-fg)}
+  .sketch{font-size:11px;color:var(--muted-foreground);margin:16px 0 0}
+</style>
+
+<h1 class="hd">SOCSO Borang 8A — one processed payroll run, one form, no month shift</h1>
+<p class="lede">Sketch for item <b>8ca344bf</b>. Wording, spacing and colours will differ. <b>Every figure here is yours</b> — read straight off the completed Borang 8A you attached, and off the Borang A you attached to the EPF request. Both come from the same July 2026 payroll, which is what makes the month difference between the two forms visible.</p>
+
+<section>
+  <h2 class="sec"><span class="n">1</span>Step 1 — Filter</h2>
+  <p class="sub">On the shelf, the Borang 8A row loses its "Not built yet" label and gains an Open form action, in the same place it already sits under SOCSO / EIS. Nothing else on that screen moves.</p>
+  <div class="card">
+    <div class="chd">
+      <span>SOCSO / EIS · Borang 8A · ENGENIOUS SOLUTIONS SDN BHD</span>
+      <span><span class="tag was">Not built yet</span> <span class="tag now">Agency layout · drawn by us</span></span>
+    </div>
+    <div class="fbar">
+      <div class="fld"><label>Payroll cycle</label><div class="inp">July 2026 <span class="cv">processed ▾</span></div><span class="src">processed runs only</span></div>
+      <div class="fld"><label>SOCSO employer code (No. Kod Majikan)</label><div class="inp mono">B3201005082P</div><span class="src">from <b>Organization</b>, editable</span></div>
+      <div class="fld"><label>MyCoID / business registration no.</label><div class="inp mono"><span class="ph">not set for this company</span></div><span class="src">from <b>Organization</b>, editable</span></div>
+      <div class="fld"><label>Contribution period</label><div class="inp lock mono">07 / 2026</div><span class="src">the payroll month itself — no shift</span></div>
+      <div class="fld"><span class="btn p">Filter</span></div>
+    </div>
+    <div class="strip b"><b>Payment due 31/07/2026</b> — the last day of the contribution month, shown on the form itself, exactly as on the copy you sent. This is not the fifteenth-of-next-month rule the EPF form uses.</div>
+  </div>
+</section>
+
+<section>
+  <h2 class="sec"><span class="n">2</span>The one rule these two forms must never share</h2>
+  <p class="sub">Both panels below are your own July 2026 payroll, read off your own two attachments. You flagged this risk in the request; this is how we hold it.</p>
+  <div class="rule2">
+    <div class="rc">
+      <h4>SOCSO Borang 8A <em>— this request</em></h4>
+      <div class="flow"><span class="bx">Payroll July 2026</span><span class="arw">→</span><span class="bx cold">Caruman gaji bulan 07 / 2026</span></div>
+      <p>No month arithmetic exists anywhere in this form. A test runs a list of payroll months through it — <b>including December, where a copied "plus one" would jump the year</b> — and fails if the contribution month is ever anything but the payroll month.</p>
+    </div>
+    <div class="rc">
+      <h4>EPF Borang A <em>— separate request, separate build</em></h4>
+      <div class="flow"><span class="bx">Payroll July 2026</span><span class="arw">→</span><span class="bx hot">Bulan caruman 08 / 2026</span></div>
+      <p>One month ahead, which is the rule printed on the KWSP form itself. A further test runs the same payroll month through <b>both</b> forms and fails if the two ever agree — so neither can quietly pick up the other's rule.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="sec"><span class="n">3</span>Step 2 — Preview, before anything can be downloaded</h2>
+  <p class="sub">The header block, the rows and the page total are exactly the boxes on the form you attached, filled from the payroll run.</p>
+  <div class="card">
+    <div class="hdgrid">
+      <div><div class="k">No. Kod Majikan</div><div class="v mono">B3201005082P</div></div>
+      <div><div class="k">MyCoID</div><div class="v dim">—</div></div>
+      <div><div class="k">Bulan / Tahun caruman</div><div class="v mono">07 / 2026</div></div>
+      <div><div class="k">Lembaran</div><div class="v mono">1 / 1</div></div>
+      <div><div class="k">Bil. Pekerja</div><div class="v">1</div></div>
+      <div><div class="k">Amaun Caruman (RM)</div><div class="v mono">202.35</div></div>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="width:170px">Tarikh mula / berhenti kerja</th>
+        <th style="width:120px">Status</th>
+        <th style="width:170px">No. kad pengenalan</th>
+        <th>Nama pekerja</th>
+        <th class="n" style="width:150px">Caruman (RM · sen)</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="dim">— neither joined nor left this month</td>
+          <td class="dim">—</td>
+          <td class="mono">860208105128</td>
+          <td>ANG PEI YEE</td>
+          <td class="n">202 · 35</td>
+        </tr>
+        <tr class="tot"><td colspan="4">Jumlah muka surat ini</td><td class="n">202 · 35</td></tr>
+      </tbody>
+    </table>
+    <div class="strip g" style="margin-top:15px"><b>Everyone on this run is ready.</b> All 33 of your people already have an identity card number on file, which is the only employee detail this form needs. Anyone without one would be named here in red and left out of the download until fixed. <i>(measured on your live data, 13 Aug 2026)</i></div>
+    <div class="strip a"><b>The status column stays blank, and the start/stop dates stay blank, for anyone who neither joined nor left in the month</b> — exactly as your own copy does. We fill those dates from the joining and leaving dates already on file, and you can type a status into any row here before downloading. PERKESO's own code list is not in the form you sent and we are not inventing one.</div>
+    <div class="strip b"><b>The amount is never recalculated.</b> It is the SOCSO contribution the payroll run itself worked out, employer and employee together. This screen shows the run's own total beside the form total, so if they ever differ you see it here rather than after filing.</div>
+    <div style="display:flex;gap:9px;padding:0 15px 15px;align-items:center">
+      <span class="btn p">View</span><span class="btn">Download PDF</span><span class="btn">Download as text</span>
+      <span style="font-size:11.5px;color:var(--muted-foreground)">More than one page numbers itself Lembaran 1/2, 2/2… with a total per page and the header repeated.</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="sec"><span class="n">4</span>Where each box on the form gets filled from</h2>
+  <div class="card">
+    <div class="map">
+      <div>
+        <div class="grp"><h3>Header</h3>
+          <div class="fm"><span class="nm">No. Kod Majikan</span><span class="pill p-co">Organization — already a field</span></div>
+          <div class="fm"><span class="nm">No. MyCoID / No. Pendaftaran Perniagaan</span><span class="pill p-co">Organization — already a field</span></div>
+          <div class="fm"><span class="nm">Caruman gaji bulan / tahun</span><span class="pill p-pa">Payroll cycle, no shift</span></div>
+          <div class="fm"><span class="nm">Amaun Caruman (RM)</span><span class="pill p-pa">Payroll run</span></div>
+          <div class="fm"><span class="nm">Tidak lewat daripada (due date)</span><span class="pill p-pa">Last day of that month</span></div>
+          <div class="fm"><span class="nm">Nama dan alamat majikan</span><span class="pill p-co">Company setup</span></div>
+          <div class="fm"><span class="nm">Lembaran · Bil. Pekerja</span><span class="pill p-pa">Counted</span></div>
+          <div class="fm"><span class="nm">Kegunaan Ejen Pemungut · Cop · No. Slip Bayaran</span><span class="pill p-bl">Left blank — theirs</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="grp"><h3>Employee rows</h3>
+          <div class="fm"><span class="nm">(1) Tarikh mula / berhenti kerja</span><span class="pill p-st">Only if it falls in the month</span></div>
+          <div class="fm"><span class="nm">(2) Status</span><span class="pill p-ty">Blank, you may type</span></div>
+          <div class="fm"><span class="nm">(3) No. kad pengenalan</span><span class="pill p-st">Staff profile</span></div>
+          <div class="fm"><span class="nm">(4) Nama pekerja</span><span class="pill p-st">Staff profile</span></div>
+          <div class="fm"><span class="nm">(5) Caruman — RM and sen cells</span><span class="pill p-pa">Payroll run</span></div>
+          <div class="fm"><span class="nm">Jumlah muka surat ini</span><span class="pill p-pa">Page total</span></div>
+        </div>
+        <div class="grp"><h3>Foot of the form — filled in by hand, never from payroll</h3>
+          <div class="fm"><span class="nm">Tandatangan · Nama · No. Tel &amp; Cop Majikan</span><span class="pill p-bl">Printed empty</span></div>
+          <div class="fm"><span class="nm">Kaedah pembayaran ticks · No. Cek / Kiriman Wang</span><span class="pill p-bl">Printed empty</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><span class="pill p-co">Organization</span> already stored — nothing new to add</span>
+      <span><span class="pill p-st">Staff profile</span></span>
+      <span><span class="pill p-pa">Payroll run</span> never recalculated</span>
+      <span><span class="pill p-ty">You type</span></span>
+      <span><span class="pill p-bl">Blank</span> by design</span>
+    </div>
+  </div>
+</section>
+
+<div class="foot">
+  <div class="note warn"><b>The file you attached is not a blank PERKESO page.</b>
+    It is a completed Borang 8A produced by another payroll system on 12 August 2026. That makes it an excellent specification — it shows exactly which boxes you expect filled — but it is not a page we can print onto, and PERKESO publishes no blank one. So we draw the page ourselves to match yours line for line, and label it on the shelf as the agency's own layout drawn by us. CP22 is the only form here that comes out on a genuinely government-issued page, and we will not claim otherwise for this.</div>
+  <div class="note"><b>Nothing new has to be stored for this form.</b>
+    Your SOCSO employer code and your MyCoID / business registration number are already fields under Organization — the registration number is already what feeds the PERKESO upload file today. Every one of your 33 people already has an identity card number. That is why we would build this one before the EPF Borang A, which cannot list 24 of your people until their EPF member numbers are keyed in.</div>
+</div>
+
+<p class="sketch">Sketch for board item 8ca344bf · all figures read off the reporter's own attached Borang 8A (July 2026) and Borang A (same run) · employee counts measured on live data 13 Aug 2026.</p>
