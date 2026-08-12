@@ -64,7 +64,7 @@
     "dateRange": "Khoảng ngày",
     "generated": "Đã tạo lịch cho {employees} nhân viên — {working} mục ngày làm việc và {rest} mục ngày nghỉ.",
     "generateHint": "Điền mọi ngày trong khoảng theo mẫu tuần của ca: mục ca vào ngày làm việc và ngày nghỉ rõ ràng cho các ngày còn lại, để chính sách công ty không âm thầm ghi đè mẫu. Chạy lại sẽ ghi đè các ngày đó.",
-    "manageShiftsHint": "Lịch ca được quản lý trong Chính sách chấm công; ca thường lệ của nhân viên được đặt trong hồ sơ dưới dạng Ca mặc định. Dùng lịch trực cho các ngoại lệ theo ngày.",
+    "manageShiftsHint": "Lịch ca được quản lý trong Cài đặt ca làm việc; ca thường lệ của nhân viên được đặt trong hồ sơ dưới dạng Ca mặc định. Dùng lịch trực cho các ngoại lệ theo ngày.",
     "manageShiftsLink": "Quản lý lịch ca",
     "copyTitle": "Sao chép lịch trực",
     "copySource": "Sao chép từ",
@@ -172,7 +172,38 @@
       "emptyFile": "Tệp đó trống.",
       "emptySheet": "Trang tính đầu tiên của tệp đó trống.",
       "fileReadError": "Không thể đọc tệp đó."
-    }
+    },
+    "requiredField": "bắt buộc",
+    "workingTimesLegend": "Giờ làm việc",
+    "timeIn": "Giờ vào",
+    "timeOut": "Giờ ra",
+    "earliestTimeIn": "Giờ vào sớm nhất",
+    "latestTimeOut": "Giờ ra muộn nhất",
+    "totalNormalWorkingHours": "Tổng giờ làm việc bình thường",
+    "totalNormalHoursNormalHint": "Được tính từ giờ làm và giờ nghỉ của bạn. Hãy sửa nếu một ngày bình thường của ca này có độ dài khác.",
+    "totalNormalHoursSemiHint": "Bắt buộc với ca Semi Flexi. Tăng ca bắt đầu sau khi đã làm đủ số giờ này, không tính giờ nghỉ.",
+    "unitHoursShort": "g",
+    "unitMinutesShort": "p",
+    "unitHoursLong": "Giờ",
+    "unitMinutesLong": "Phút",
+    "breaksLabel": "Giờ nghỉ",
+    "breakFixed": "Cố định",
+    "breakFixedHint": "Cố định nghĩa là nghỉ đúng vào giờ đó. Bỏ chọn thì nhân viên nghỉ vào lúc nào tùy ý.",
+    "dailyCutoffLegend": "Giờ chốt ngày",
+    "dailyCutoffUse": "Dùng giờ chốt ngày",
+    "dailyCutoffAt": "Chốt lúc",
+    "dailyCutoffHint": "Mọi lần chấm công sau giờ này được tính sang ngày hôm sau. Để tắt thì hệ thống vẫn tự quyết định như hiện nay.",
+    "halfDayCutoffLabel": "Giờ chốt nửa ngày",
+    "halfDayCutoffHint": "Ra về trước giờ này thì ngày đó được tính là nửa ngày.",
+    "halfDayCutoffDerived": "Được tính sẵn cho bạn — một nửa của {total} là {half} làm việc, không tính giờ nghỉ (khoảng {at}).",
+    "halfDayCutoffDerivedPending": "Sẽ được tính sẵn khi bạn đặt tổng giờ làm việc bình thường.",
+    "dayKindFull": "Cả ngày",
+    "dayKindHalf": "Nửa ngày",
+    "dayKindRest": "Ngày nghỉ tuần",
+    "dayKindOff": "Ngày nghỉ",
+    "dayKindHint": "Cả ngày là ngày làm việc bình thường. Nửa ngày là ngày làm việc với một nửa số giờ bình thường. Ngày nghỉ tuần là ngày nghỉ theo luật. Ngày nghỉ là ngày không làm việc nhưng không phải ngày nghỉ tuần.",
+    "moreSettingsSummary": "Cài đặt khác",
+    "moreSettingsHint": "Mô tả, danh mục, loại ngày, giờ vào sớm nhất, giờ ra muộn nhất, giờ vào nửa ngày thứ hai, nghỉ cả ngày, tăng ca cả ngày, làm tròn giờ bình thường, bảng tăng ca và phụ cấp ca — tất cả vẫn được lưu và vẫn sửa được."
   },
   "common": {
     "appName": "AI HR",
@@ -6021,7 +6052,7 @@
       "budget": "Ngân sách",
       "noBudget": "Không có ngân sách",
       "save": "Lưu",
-      "annualBudgetLabel": "Ngân sách hàng năm (RM)",
+      "annualBudgetLabel": "Hạn mức hàng năm (RM)",
       "perClaimCapLabel": "Mức trần mỗi khoản chi (RM)",
       "effectiveFromLabel": "Hiệu lực từ",
       "setBudget": "Đặt ngân sách",
@@ -6125,7 +6156,27 @@
       "fieldKind_date": "Ngày",
       "fieldKind_select": "Danh sách chọn",
       "fieldKind_boolean": "Có / Không",
-      "fieldKind_file": "Tệp"
+      "fieldKind_file": "Tệp",
+      "addNewType": "Thêm mới",
+      "hideNewType": "Đóng",
+      "blockLimitLabel": "Theo chu kỳ",
+      "blockEnableLabel": "Hạn mức theo chu kỳ",
+      "blockEveryLabel": "Mỗi",
+      "blockUnitLabel": "Đơn vị chu kỳ",
+      "blockUnit_month": "Tháng",
+      "blockUnit_year": "Năm",
+      "blockLimitAmountLabel": "Hạn mức (RM)",
+      "blockStartLabel": "Tính từ",
+      "blockEveryMonths": "Mỗi {n} tháng",
+      "blockEveryYears": "Mỗi {n} năm",
+      "blockFrom": "từ {date}",
+      "blockHint": "Hạn mức có chu kỳ là một số tháng hoặc số năm cố định — RM2.000 mỗi 2 năm, RM300 mỗi 6 tháng. Ngày bắt đầu tính áp dụng cho toàn công ty: mọi nhân viên đều theo cùng một chu kỳ. Để nguyên và quy tắc hiện có sẽ giữ nguyên ngày bắt đầu cũ.",
+      "isMileageLabel": "Đây là khoản chi theo quãng đường",
+      "isMileageHint": "Chỉ một loại khoản chi được là khoản chi theo quãng đường. Khi đánh dấu, nhân viên sẽ nhập quãng đường thay vì số tiền, và trang Đơn giá quãng đường sẽ biết các bậc quãng đường thuộc loại khoản chi nào.",
+      "mileageBadge": "Quãng đường",
+      "noMileageType": "Chưa có loại khoản chi nào được đánh dấu là khoản chi theo quãng đường, nên chưa có đơn giá để thiết lập.",
+      "noMileageTypeLink": "Sang Loại khoản chi và đánh dấu một loại",
+      "mileageTypeChangeLink": "Thay đổi ở Loại khoản chi"
     },
     "reimbursements": {
       "back": "Cấu hình khoản chi",
@@ -6331,7 +6382,11 @@
       "deactivatedBadge": "Đã ngừng",
       "breakPaidBadge": "Có lương",
       "breakPaidHint": "Giờ nghỉ có lương không bị trừ khỏi giờ của ca; giờ nghỉ không lương thì bị trừ. Giờ nghỉ không đánh dấu là không lương, đúng như trước đây.",
-      "generalMoreTabNote": "Tab “General (More…)” của màn hình tham chiếu chưa từng được chụp lại, nên các trường của nó không có trong bản phát hành này."
+      "generalMoreTabNote": "Tab “General (More…)” của màn hình tham chiếu chưa từng được chụp lại, nên các trường của nó không có trong bản phát hành này.",
+      "shiftFormNewTitle": "Ca làm việc mới",
+      "shiftFormEditTitle": "Sửa ca làm việc",
+      "shiftFormBackToList": "Quay lại danh sách ca",
+      "shiftFormDescription": "Mẫu ca làm việc được dùng chung cho toàn bộ tổ chức. Gán cho nhân viên qua hồ sơ của họ (ca cố định) hoặc Quản lý lịch trực."
     },
     "payrollPermissions": {
       "title": "Quyền tính lương",
@@ -6634,7 +6689,7 @@
       "unitHour": "g",
       "unitMin": "phút",
       "applyEarlyOtLabel": "Áp dụng cho Tăng ca sớm",
-      "applyEarlyOtHint": "Áp dụng chính sách tăng ca này cho tăng ca được duyệt làm trước giờ bắt đầu theo lịch.",
+      "applyEarlyOtHint": "Tính mọi phút chấm công trước giờ bắt đầu theo lịch là tăng ca. Không có bước phê duyệt — khi bật, đến sớm sẽ tự động được tính tăng ca.",
       "otEmptyHint": "Chưa có khoảng tăng ca. Dùng + Thêm dòng để xác định cách tính tăng ca.",
       "statutoryCapNote": "Hệ số tăng ca theo luật (1.5×, 2×, 3×) vẫn là mức tối thiểu hợp pháp và được đặt trong mức tăng ca của công ty. Các quy tắc này định hình và làm tròn tăng ca bên trên đó.",
       "save": "Lưu",
@@ -6647,7 +6702,8 @@
       "deductionsFromLabel": "Khấu trừ áp dụng từ",
       "deductionsFromNone": "Không áp dụng",
       "otLadderGapWarning": "Dòng {row} phải bắt đầu ở {expected} phút để nối tiếp dòng {prev} — nhưng nó bắt đầu ở {actual}. Không thể lưu cho đến khi các dòng nối liền nhau.",
-      "otLadderOpenEndedWarning": "Dòng {row} không có giới hạn trên nên không dòng nào có thể theo sau. Hãy nhập giá trị “Đến” hoặc chuyển nó xuống cuối."
+      "otLadderOpenEndedWarning": "Dòng {row} không có giới hạn trên nên không dòng nào có thể theo sau. Hãy nhập giá trị “Đến” hoặc chuyển nó xuống cuối.",
+      "scheduleBackToRules": "Quay lại quy tắc tính"
     },
     "benefitScheme": {
       "groupsTitle": "Nhóm bậc",
@@ -6881,7 +6937,11 @@
       "criteriaEveryone": "Tất cả mọi người",
       "chipAddPlaceholder": "Thêm…",
       "chipRemoveLabel": "Gỡ {value}",
-      "chipCountLabel": "Đã chọn {count}"
+      "chipCountLabel": "Đã chọn {count}",
+      "chipSelectAll": "Chọn tất cả",
+      "chipDeselectAll": "Bỏ chọn tất cả",
+      "chipSearchPlaceholder": "Tìm kiếm…",
+      "chipAllSelected": "Đã chọn tất cả"
     }
   },
   "topbar": {
@@ -7333,7 +7393,10 @@
     "deleteDraftConfirmTitle": "Xóa bản nháp này?",
     "deleteDraftConfirmDescription": "Bản nháp và mọi hóa đơn đính kèm sẽ bị xóa. Không thể hoàn tác.",
     "deleteDraftConfirmLabel": "Xóa bản nháp",
-    "reservedPending": "Đã giữ chỗ (chờ duyệt)"
+    "reservedPending": "Đã giữ chỗ (chờ duyệt)",
+    "blockLimit": "Hạn mức cho chu kỳ này",
+    "blockRemaining": "Còn lại đến {date}",
+    "mileagePricedOnSubmit": "Số tiền sẽ được tính từ bảng đơn giá quãng đường khi bạn gửi."
   },
   "analytics": {
     "title": "Phân tích nhân sự",

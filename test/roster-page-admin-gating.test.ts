@@ -1,10 +1,17 @@
 /**
- * 23390097 — WHO IS OFFERED THE THREE ADMIN TOOLS ON THE ROSTER SCREEN, measured on the RENDERED page.
+ * 23390097 — WHO IS OFFERED THE ADMIN AFFORDANCES ON THE ROSTER SCREEN, measured on the RENDERED page.
  *
  * app/roster/page.tsx gates Upload Shift Roster, Download Template, Generate roster and Copy roster
  * behind `{admin && …}`, because all four end in a write to roster_assignment and its RLS requires
  * app.can_admin_employment. Offering them to a supervisor is offering a form that can only ever end in
  * a 42501.
+ *
+ * 2ec1e3d2 adds a FIFTH, of a different kind: the "Manage shift schedules" link. It writes nothing, but
+ * it points at /admin/attendance, which calls requireAdmin and bounces a supervisor back to '/' with no
+ * message — a door that will not open. The gate is the same `{admin && …}`, and the assertions for it
+ * sit in the same three blocks below. Its SENTENCE (manageShiftsHint) deliberately stays for everybody:
+ * a supervisor who cannot open the screen still benefits from knowing where the setting lives. That is
+ * pinned in the third block, and it is the assertion that stops a later tidy-up deleting the whole line.
  *
  * NOTHING TESTED THAT. page.tsx is a server component and no test rendered it, so `{admin && …}` could
  * become `{true && …}` — the whole gate deleted — and the suite stayed green. A source grep would not
@@ -137,7 +144,7 @@ const formActions = (tree: unknown): unknown[] =>
 const hasTemplateButton = (tree: unknown): boolean => elementsIn(tree).some((el) => el.type === RosterTemplateButton);
 
 describe('the roster screen offers its write tools to an HR administrator', () => {
-  it('Upload Shift Roster, Download Template, Generate roster and Copy roster are all on the page', async () => {
+  it('Upload, Download Template, Generate, Copy and Manage shift schedules are all on the page', async () => {
     const tree = await renderAs(admin);
     const labels = stringsIn(tree);
 
@@ -149,11 +156,14 @@ describe('the roster screen offers its write tools to an HR administrator', () =
     expect(labels).toContain('copyTitle');
     expect(formActions(tree)).toContain(generateRosterAction);
     expect(formActions(tree)).toContain(copyRosterAction);
+
+    // 2ec1e3d2 — the link stays exactly where it was for the people it actually opens for.
+    expect(labels).toContain('manageShiftsLink');
   });
 });
 
 describe('…and offers a supervisor none of them', () => {
-  it('the four admin affordances are absent from a supervisor’s page', async () => {
+  it('the five admin affordances are absent from a supervisor’s page', async () => {
     const tree = await renderAs(supervisor);
     const labels = stringsIn(tree);
 
@@ -167,6 +177,9 @@ describe('…and offers a supervisor none of them', () => {
     expect(labels).not.toContain('copyTitle');
     expect(formActions(tree)).not.toContain(generateRosterAction);
     expect(formActions(tree)).not.toContain(copyRosterAction);
+    // 2ec1e3d2 — Manage shift schedules: /admin/attendance is requireAdmin, so following it can only
+    // ever bounce this session back to '/' with nothing said. Not a write, but the same broken promise.
+    expect(labels).not.toContain('manageShiftsLink');
   });
 
   it('but the page RENDERED — otherwise every assertion above is a false green', async () => {
@@ -182,5 +195,9 @@ describe('…and offers a supervisor none of them', () => {
     // …and the filter row, which is the other half of the screen the reporter asked for.
     expect(labels).toContain('filterDepartment');
     expect(labels).toContain('query');
+    // 2ec1e3d2 — the SENTENCE survives the link being gated. This is the substance of the option chosen
+    // there: hide the door, keep the directions. Without this assertion a later tidy-up could delete the
+    // whole card and the "not.toContain('manageShiftsLink')" above would stay trivially green.
+    expect(labels).toContain('manageShiftsHint');
   });
 });

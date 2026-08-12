@@ -64,7 +64,7 @@
     "dateRange": "Date range",
     "generated": "Roster generated for {employees} employees — {working} working-day and {rest} rest-day entries.",
     "generateHint": "Fills every date in the range from the shift's weekly pattern: shift entries on working days and explicit rest days on the rest, so the company policy never silently overrides the pattern. Re-running overwrites the same dates.",
-    "manageShiftsHint": "Shift schedules are managed in Attendance Policy; a person's usual shift is set on their profile as their Default shift. Use the roster for date-specific exceptions.",
+    "manageShiftsHint": "Shift schedules are managed in Shift settings; a person's usual shift is set on their profile as their Default shift. Use the roster for date-specific exceptions.",
     "manageShiftsLink": "Manage shift schedules",
     "copyTitle": "Copy roster",
     "copySource": "Copy from",
@@ -172,7 +172,38 @@
       "emptyFile": "That file is empty.",
       "emptySheet": "The first sheet of that workbook is empty.",
       "fileReadError": "Could not read that file."
-    }
+    },
+    "requiredField": "required",
+    "workingTimesLegend": "Working times",
+    "timeIn": "Time in",
+    "timeOut": "Time out",
+    "earliestTimeIn": "Earliest time in",
+    "latestTimeOut": "Latest time out",
+    "totalNormalWorkingHours": "Total normal working hours",
+    "totalNormalHoursNormalHint": "Worked out from your times and breaks. Change it if a normal day on this shift is a different length.",
+    "totalNormalHoursSemiHint": "Required on a Semi Flexi shift. Overtime starts once this many hours of work have been done, breaks not counted.",
+    "unitHoursShort": "h",
+    "unitMinutesShort": "m",
+    "unitHoursLong": "Hours",
+    "unitMinutesLong": "Minutes",
+    "breaksLabel": "Breaks",
+    "breakFixed": "Fixed",
+    "breakFixedHint": "Fixed means the break is taken at that clock time. Untick it and the employee takes the break whenever they like.",
+    "dailyCutoffLegend": "Daily cut-off",
+    "dailyCutoffUse": "Use a daily cut-off",
+    "dailyCutoffAt": "Cut off at",
+    "dailyCutoffHint": "Any clocking after this time counts towards the next day. Leave it off and the system keeps deciding that on its own, as it does today.",
+    "halfDayCutoffLabel": "Half-day cut-off",
+    "halfDayCutoffHint": "Clock out before this time and the day is treated as a half day.",
+    "halfDayCutoffDerived": "Worked out for you — half of {total} is {half} of work, breaks not counted (about {at}).",
+    "halfDayCutoffDerivedPending": "Worked out for you once the total normal working hours are set.",
+    "dayKindFull": "Full",
+    "dayKindHalf": "Half",
+    "dayKindRest": "Rest",
+    "dayKindOff": "Off",
+    "dayKindHint": "Full is an ordinary working day. Half is a working day with half the normal hours. Rest is the statutory rest day. Off is a non-working day that is not the rest day.",
+    "moreSettingsSummary": "More settings",
+    "moreSettingsHint": "Description, category, day type, earliest clock-in, latest clock-out, 2nd half-day clock-in, full-day leave, full-day overtime, normal-hours rounding, the overtime schedule and the shift premium — all still saved, all still editable."
   },
   "common": {
     "appName": "AI HR",
@@ -6021,7 +6052,7 @@
       "budget": "Budget",
       "noBudget": "No budget",
       "save": "Save",
-      "annualBudgetLabel": "Annual budget (RM)",
+      "annualBudgetLabel": "Annual limit (RM)",
       "perClaimCapLabel": "Per-claim cap (RM)",
       "effectiveFromLabel": "Effective from",
       "setBudget": "Set budget",
@@ -6125,7 +6156,27 @@
       "fieldKind_date": "Date",
       "fieldKind_select": "Dropdown",
       "fieldKind_boolean": "Yes / No",
-      "fieldKind_file": "File"
+      "fieldKind_file": "File",
+      "addNewType": "Add new",
+      "hideNewType": "Close",
+      "blockLimitLabel": "Per block",
+      "blockEnableLabel": "Per block limit",
+      "blockEveryLabel": "Every",
+      "blockUnitLabel": "Period",
+      "blockUnit_month": "Month(s)",
+      "blockUnit_year": "Year(s)",
+      "blockLimitAmountLabel": "Limit (RM)",
+      "blockStartLabel": "Counting from",
+      "blockEveryMonths": "Every {n} month(s)",
+      "blockEveryYears": "Every {n} year(s)",
+      "blockFrom": "from {date}",
+      "blockHint": "A limit whose period is a fixed number of months or years — RM2,000 every 2 years, RM300 every 6 months. Counting from is company-wide: every employee is on the same cycle. Leave it as it is and an existing rule keeps the start date it already had.",
+      "isMileageLabel": "This is the mileage claim",
+      "isMileageHint": "Only one claim type can be the mileage claim. Ticking it gives staff a distance box instead of an amount box, and tells Mileage Rates which claim type its distance bands belong to.",
+      "mileageBadge": "Mileage",
+      "noMileageType": "No claim type is marked as the mileage claim yet, so there is nothing to set rates for.",
+      "noMileageTypeLink": "Go to Claim Types and tick one",
+      "mileageTypeChangeLink": "Change on Claim Types"
     },
     "reimbursements": {
       "back": "Claims configuration",
@@ -6331,7 +6382,11 @@
       "deactivatedBadge": "Deactivated",
       "breakPaidBadge": "Paid",
       "breakPaidHint": "A paid break is not deducted from the shift’s hours; an unpaid one is. A break with no tick is unpaid, exactly as before.",
-      "generalMoreTabNote": "The reference screen’s “General (More…)” tab was never captured, so its fields are not in this release."
+      "generalMoreTabNote": "The reference screen’s “General (More…)” tab was never captured, so its fields are not in this release.",
+      "shiftFormNewTitle": "New shift",
+      "shiftFormEditTitle": "Edit shift",
+      "shiftFormBackToList": "Back to shifts",
+      "shiftFormDescription": "A shift template is shared across your whole organisation. Assign it to an employee through their profile (fixed shift) or Roster Management."
     },
     "payrollPermissions": {
       "title": "Payroll permissions",
@@ -6634,7 +6689,7 @@
       "unitHour": "h",
       "unitMin": "min",
       "applyEarlyOtLabel": "Apply to Early Overtime",
-      "applyEarlyOtHint": "Apply this overtime policy to approved overtime worked before the scheduled start time.",
+      "applyEarlyOtHint": "Counts every minute clocked before the scheduled start time as overtime. There is no approval step — with this on, an early arrival earns overtime automatically.",
       "otEmptyHint": "No overtime bands yet. Use + Add Row to define how overtime is calculated.",
       "statutoryCapNote": "Statutory overtime multipliers (1.5×, 2×, 3×) remain the legal minimum and are set in the company overtime rates. These rules shape and round overtime on top of that.",
       "save": "Save",
@@ -6647,7 +6702,8 @@
       "deductionsFromLabel": "Deductions apply from",
       "deductionsFromNone": "Not applied",
       "otLadderGapWarning": "Row {row} must start at {expected} minutes to continue from row {prev} — it starts at {actual}. Saving is blocked until the rows join up.",
-      "otLadderOpenEndedWarning": "Row {row} has no upper limit, so no row can follow it. Give it a “To” value or move it to the end."
+      "otLadderOpenEndedWarning": "Row {row} has no upper limit, so no row can follow it. Give it a “To” value or move it to the end.",
+      "scheduleBackToRules": "Back to calculation rules"
     },
     "benefitScheme": {
       "groupsTitle": "Grade Groups",
@@ -6881,7 +6937,11 @@
       "criteriaEveryone": "Everyone",
       "chipAddPlaceholder": "Add…",
       "chipRemoveLabel": "Remove {value}",
-      "chipCountLabel": "{count} selected"
+      "chipCountLabel": "{count} selected",
+      "chipSelectAll": "Select all",
+      "chipDeselectAll": "Deselect all",
+      "chipSearchPlaceholder": "Search…",
+      "chipAllSelected": "All selected"
     }
   },
   "topbar": {
@@ -7333,7 +7393,10 @@
     "deleteDraftConfirmTitle": "Delete this draft?",
     "deleteDraftConfirmDescription": "The draft and any receipt attached to it are removed. This cannot be undone.",
     "deleteDraftConfirmLabel": "Delete draft",
-    "reservedPending": "Reserved (awaiting approval)"
+    "reservedPending": "Reserved (awaiting approval)",
+    "blockLimit": "Limit for this period",
+    "blockRemaining": "Remaining until {date}",
+    "mileagePricedOnSubmit": "The amount is worked out from the mileage rate table when you submit."
   },
   "analytics": {
     "title": "HR analytics",

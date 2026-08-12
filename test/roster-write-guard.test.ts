@@ -6,8 +6,8 @@
  * that same supervisor's JavaScript bundle, and a Server Action is a POST endpoint whether or not a
  * button points at it. Generate and Copy are form actions, which is the same thing.
  *
- * So the five roster writes were reaching the database with a session RLS refuses. The data was never at
- * risk — app.can_admin_employment rejected every one of them. THE MESSAGE WAS: drizzle wraps
+ * So the five roster writes were reaching the database with a session RLS refuses. THE MESSAGE WAS the
+ * defect this file was written about: drizzle wraps
  * PostgresError 42501 as `Failed query: insert into "roster_assignment" … params: <tenant uuid>,
  * <employment uuid>, …`, the cell actions returned that verbatim for `toast.error`, and Generate / Copy
  * encoded it into `?error=` for ErrorBanner to render. SQL and internal identifiers, on an HR screen,
@@ -17,6 +17,15 @@
  * FUTURE — the past-date rule would have refused today and earlier all by itself, so a future date is
  * the only one that proves the new right rather than the old one. `whatTheUserSees` is the string the
  * screen would actually print; the assertions are on that, not on an internal error type.
+ *
+ * 42afb2d2, 2026-08-12 — "app.can_admin_employment rejected every one of them" WOULD HAVE BEEN WRONG,
+ * and the earlier draft of this header said it. roster_assignment_rls is ONE `FOR ALL` policy: its
+ * WITH CHECK (can_admin_employment) governs INSERT and the new row of an UPDATE, but a DELETE is checked
+ * against USING alone (can_see_employment), which a supervisor and the employee themselves both pass.
+ * Measured as ai_hr_app in a rolled-back transaction against a real active reporting line: INSERT 42501,
+ * UPDATE 42501, DELETE 1. So of the three brushes below, `clear` is the ONLY one whose refusal is
+ * produced by `assertRosterAdmin` rather than doubled by the database — delete that guard and the other
+ * two still fail on RLS while `clear` quietly succeeds. See the note on core/roster.ts's `clearRoster`.
  *
  * WATCHED-FAIL (recorded, not assumed): with `assertRosterAdmin` removed from core/roster.ts and from
  * the five actions, the first describe below still passes — the database still refuses — and every
@@ -136,8 +145,9 @@ async function redirectError(run: () => Promise<unknown>): Promise<string> {
 describe('why the guard exists — the database refuses, in its own words', () => {
   it('a supervisor writing the roster directly gets the RAW driver text, UUIDs and all', async () => {
     // The unguarded call the five actions used to make. Nothing here is being fixed — this is the
-    // measurement that makes the rest of the file necessary, and it must keep passing: if RLS ever stops
-    // refusing, the application guard becomes the only thing standing between a supervisor and the roster.
+    // measurement that makes the rest of the file necessary, and it must keep passing: where RLS stops
+    // refusing, the application guard becomes the only thing standing between a supervisor and the
+    // roster. For DELETE that is already true today (see the 42afb2d2 note in the header).
     const err = await assignShift(supervisor, { employmentId, shiftDate: FUTURE, shiftId }).catch((e: unknown) => e);
     expect(err, 'RLS must refuse a supervisor outright').toBeInstanceOf(Error);
     const chain = flatten(err);
@@ -157,6 +167,8 @@ describe('why the guard exists — the database refuses, in its own words', () =
 });
 
 describe('the five roster writes refuse a supervisor IN THE SERVER (23390097)', () => {
+  // `clear` is the load-bearing one: it ends in a DELETE, and RLS does not refuse a supervisor a DELETE
+  // (42afb2d2, header). The other two brushes would still fail on 42501 with the guard removed.
   it('assignCellAction — a shift, a rest day and a clear are all refused, readably', async () => {
     for (const brush of [shiftId, 'rest', 'clear']) {
       const seen = await whatTheUserSees(() => assignCellAction({ employmentId, shiftDate: FUTURE, brush }));

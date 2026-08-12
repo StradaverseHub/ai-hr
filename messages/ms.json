@@ -64,7 +64,7 @@
     "dateRange": "Julat tarikh",
     "generated": "Jadual dijana untuk {employees} pekerja — {working} catatan hari bekerja dan {rest} catatan hari rehat.",
     "generateHint": "Mengisi setiap tarikh dalam julat mengikut corak mingguan syif: catatan syif pada hari bekerja dan hari rehat yang jelas pada hari selebihnya, supaya polisi syarikat tidak menimpa corak itu secara senyap. Jana semula akan menulis ganti tarikh yang sama.",
-    "manageShiftsHint": "Jadual syif diurus dalam Dasar Kehadiran; syif biasa seseorang ditetapkan pada profil mereka sebagai Syif lalai. Gunakan roster untuk pengecualian tarikh tertentu.",
+    "manageShiftsHint": "Jadual syif diurus dalam Tetapan syif; syif biasa seseorang ditetapkan pada profil mereka sebagai Syif lalai. Gunakan roster untuk pengecualian tarikh tertentu.",
     "manageShiftsLink": "Urus jadual syif",
     "copyTitle": "Salin roster",
     "copySource": "Salin daripada",
@@ -172,7 +172,38 @@
       "emptyFile": "Fail itu kosong.",
       "emptySheet": "Helaian pertama buku kerja itu kosong.",
       "fileReadError": "Gagal membaca fail itu."
-    }
+    },
+    "requiredField": "wajib",
+    "workingTimesLegend": "Waktu bekerja",
+    "timeIn": "Waktu masuk",
+    "timeOut": "Waktu keluar",
+    "earliestTimeIn": "Waktu masuk paling awal",
+    "latestTimeOut": "Waktu keluar paling lewat",
+    "totalNormalWorkingHours": "Jumlah waktu kerja biasa",
+    "totalNormalHoursNormalHint": "Dikira daripada waktu dan rehat anda. Ubah jika satu hari biasa pada syif ini berbeza panjangnya.",
+    "totalNormalHoursSemiHint": "Wajib pada syif Semi Flexi. Lebih masa bermula selepas jumlah jam kerja ini dicapai, tidak termasuk rehat.",
+    "unitHoursShort": "j",
+    "unitMinutesShort": "m",
+    "unitHoursLong": "Jam",
+    "unitMinutesLong": "Minit",
+    "breaksLabel": "Waktu rehat",
+    "breakFixed": "Tetap",
+    "breakFixedHint": "Tetap bermaksud rehat diambil pada waktu itu. Nyahtanda dan pekerja boleh berehat bila-bila masa.",
+    "dailyCutoffLegend": "Had masa harian",
+    "dailyCutoffUse": "Guna had masa harian",
+    "dailyCutoffAt": "Had pada",
+    "dailyCutoffHint": "Sebarang rekod waktu selepas masa ini dikira untuk hari berikutnya. Biarkan tutup dan sistem terus menentukannya sendiri, seperti hari ini.",
+    "halfDayCutoffLabel": "Had masa separuh hari",
+    "halfDayCutoffHint": "Keluar sebelum waktu ini dan hari itu dikira sebagai separuh hari.",
+    "halfDayCutoffDerived": "Dikira untuk anda — separuh daripada {total} ialah {half} waktu kerja, tidak termasuk rehat (lebih kurang {at}).",
+    "halfDayCutoffDerivedPending": "Akan dikira untuk anda sebaik jumlah waktu kerja biasa ditetapkan.",
+    "dayKindFull": "Penuh",
+    "dayKindHalf": "Separuh",
+    "dayKindRest": "Rehat",
+    "dayKindOff": "Cuti",
+    "dayKindHint": "Penuh ialah hari bekerja biasa. Separuh ialah hari bekerja dengan separuh waktu biasa. Rehat ialah hari rehat berkanun. Cuti ialah hari tidak bekerja yang bukan hari rehat.",
+    "moreSettingsSummary": "Tetapan lanjut",
+    "moreSettingsHint": "Penerangan, kategori, jenis hari, waktu masuk paling awal, waktu keluar paling lewat, waktu masuk separuh hari kedua, cuti sehari penuh, lebih masa sehari penuh, pembundaran waktu biasa, jadual lebih masa dan premium syif — semuanya masih disimpan dan boleh disunting."
   },
   "common": {
     "appName": "AI HR",
@@ -6021,7 +6052,7 @@
       "budget": "Bajet",
       "noBudget": "Tiada bajet",
       "save": "Simpan",
-      "annualBudgetLabel": "Bajet tahunan (RM)",
+      "annualBudgetLabel": "Had tahunan (RM)",
       "perClaimCapLabel": "Had setiap tuntutan (RM)",
       "effectiveFromLabel": "Berkuat kuasa dari",
       "setBudget": "Tetapkan bajet",
@@ -6125,7 +6156,27 @@
       "fieldKind_date": "Tarikh",
       "fieldKind_select": "Senarai pilihan",
       "fieldKind_boolean": "Ya / Tidak",
-      "fieldKind_file": "Fail"
+      "fieldKind_file": "Fail",
+      "addNewType": "Tambah baharu",
+      "hideNewType": "Tutup",
+      "blockLimitLabel": "Setiap blok",
+      "blockEnableLabel": "Had setiap blok",
+      "blockEveryLabel": "Setiap",
+      "blockUnitLabel": "Tempoh",
+      "blockUnit_month": "Bulan",
+      "blockUnit_year": "Tahun",
+      "blockLimitAmountLabel": "Had (RM)",
+      "blockStartLabel": "Dikira dari",
+      "blockEveryMonths": "Setiap {n} bulan",
+      "blockEveryYears": "Setiap {n} tahun",
+      "blockFrom": "dari {date}",
+      "blockHint": "Had yang tempohnya ialah bilangan bulan atau tahun yang tetap — RM2,000 setiap 2 tahun, RM300 setiap 6 bulan. Tarikh mula dikira adalah untuk seluruh syarikat: semua pekerja mengikut kitaran yang sama. Biarkan sebagaimana adanya dan peraturan sedia ada akan mengekalkan tarikh mula asalnya.",
+      "isMileageLabel": "Ini ialah tuntutan perbatuan",
+      "isMileageHint": "Hanya satu jenis tuntutan boleh menjadi tuntutan perbatuan. Menandakannya memberi pekerja ruangan jarak dan bukan ruangan jumlah, serta memberitahu Kadar Perbatuan jenis tuntutan mana yang memiliki jalur jaraknya.",
+      "mileageBadge": "Perbatuan",
+      "noMileageType": "Tiada jenis tuntutan ditandakan sebagai tuntutan perbatuan lagi, jadi tiada kadar untuk ditetapkan.",
+      "noMileageTypeLink": "Pergi ke Jenis Tuntutan dan tandakan satu",
+      "mileageTypeChangeLink": "Tukar di Jenis Tuntutan"
     },
     "reimbursements": {
       "back": "Konfigurasi tuntutan",
@@ -6331,7 +6382,11 @@
       "deactivatedBadge": "Dinyahaktifkan",
       "breakPaidBadge": "Berbayar",
       "breakPaidHint": "Rehat berbayar tidak ditolak daripada jam syif; rehat tidak berbayar ditolak. Rehat tanpa tanda adalah tidak berbayar, sama seperti sebelum ini.",
-      "generalMoreTabNote": "Tab “General (More…)” pada skrin rujukan tidak pernah dirakam, jadi medannya tiada dalam keluaran ini."
+      "generalMoreTabNote": "Tab “General (More…)” pada skrin rujukan tidak pernah dirakam, jadi medannya tiada dalam keluaran ini.",
+      "shiftFormNewTitle": "Syif baharu",
+      "shiftFormEditTitle": "Sunting syif",
+      "shiftFormBackToList": "Kembali ke syif",
+      "shiftFormDescription": "Templat syif dikongsi merentas seluruh organisasi anda. Tetapkan kepada pekerja melalui profil mereka (syif tetap) atau Pengurusan Roster."
     },
     "payrollPermissions": {
       "title": "Kebenaran gaji",
@@ -6634,7 +6689,7 @@
       "unitHour": "j",
       "unitMin": "min",
       "applyEarlyOtLabel": "Guna untuk Lebih Masa Awal",
-      "applyEarlyOtHint": "Guna dasar lebih masa ini untuk lebih masa yang diluluskan sebelum waktu mula dijadualkan.",
+      "applyEarlyOtHint": "Mengira setiap minit rekod masuk sebelum waktu mula dijadualkan sebagai lebih masa. Tiada langkah kelulusan — apabila dihidupkan, kedatangan awal terus memperoleh lebih masa.",
       "otEmptyHint": "Belum ada jalur lebih masa. Guna + Tambah Baris untuk menentukan cara lebih masa dikira.",
       "statutoryCapNote": "Pengganda lebih masa berkanun (1.5×, 2×, 3×) kekal sebagai minimum undang-undang dan ditetapkan dalam kadar lebih masa syarikat. Peraturan ini membentuk dan membundarkan lebih masa di atasnya.",
       "save": "Simpan",
@@ -6647,7 +6702,8 @@
       "deductionsFromLabel": "Potongan berkuat kuasa dari",
       "deductionsFromNone": "Tidak dikenakan",
       "otLadderGapWarning": "Baris {row} mesti bermula pada {expected} minit untuk menyambung baris {prev} — ia bermula pada {actual}. Simpanan disekat sehingga baris bersambung.",
-      "otLadderOpenEndedWarning": "Baris {row} tiada had atas, jadi tiada baris boleh mengikutinya. Beri nilai “Hingga” atau pindahkannya ke hujung."
+      "otLadderOpenEndedWarning": "Baris {row} tiada had atas, jadi tiada baris boleh mengikutinya. Beri nilai “Hingga” atau pindahkannya ke hujung.",
+      "scheduleBackToRules": "Kembali ke peraturan pengiraan"
     },
     "benefitScheme": {
       "groupsTitle": "Kumpulan Gred",
@@ -6881,7 +6937,11 @@
       "criteriaEveryone": "Semua orang",
       "chipAddPlaceholder": "Tambah…",
       "chipRemoveLabel": "Buang {value}",
-      "chipCountLabel": "{count} dipilih"
+      "chipCountLabel": "{count} dipilih",
+      "chipSelectAll": "Pilih semua",
+      "chipDeselectAll": "Nyahpilih semua",
+      "chipSearchPlaceholder": "Cari…",
+      "chipAllSelected": "Semua dipilih"
     }
   },
   "topbar": {
@@ -7333,7 +7393,10 @@
     "deleteDraftConfirmTitle": "Padam draf ini?",
     "deleteDraftConfirmDescription": "Draf dan sebarang resit yang dilampirkan akan dibuang. Tindakan ini tidak boleh dibatalkan.",
     "deleteDraftConfirmLabel": "Padam draf",
-    "reservedPending": "Ditempah (menunggu kelulusan)"
+    "reservedPending": "Ditempah (menunggu kelulusan)",
+    "blockLimit": "Had bagi tempoh ini",
+    "blockRemaining": "Baki sehingga {date}",
+    "mileagePricedOnSubmit": "Jumlah akan dikira daripada jadual kadar perbatuan apabila anda menghantar."
   },
   "analytics": {
     "title": "Analitik HR",

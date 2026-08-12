@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listHolidays, listHolidayYears } from '@/core/admin';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { HolidayTabs } from '@/components/holiday-tabs';
 import { createHolidayAction, deleteHolidayAction, updateHolidayAction } from '../actions';
 
@@ -58,7 +58,7 @@ export default async function HolidaysPage({
     v && (HOLIDAY_TYPES as readonly string[]).includes(v) ? (v as (typeof HOLIDAY_TYPES)[number]) : 'public';
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <HolidayTabs active="holidays" />
       <ErrorBanner message={error} />
@@ -232,7 +232,9 @@ export default async function HolidaysPage({
       </Card>
 
       {/* Add — simplified master fields only: Name, Date, Type, Country, Status. No code / description. */}
-      <Card id="add-holiday">
+      {/* af7a8eb4 — the LIST above gained the full window; this is a form, and a form spread edge to
+          edge is harder to fill in, not easier. Capped locally at the width the whole page used to be. */}
+      <Card id="add-holiday" className="max-w-5xl">
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="text-sm font-medium">{t('addTitle')}</div>
           <button form="add-holiday-form" className={btnPrimary}>

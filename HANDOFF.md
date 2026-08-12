@@ -378,37 +378,41 @@ and approval rules is correctly deletable. `core/read.ts` documents the identica
 - **Claims stage 1 has no `reserved_amount` column**, deliberately: a stored counter is what gets
   decremented twice and silently frees limit that is still consumed.
 
-### ⚠️ TWO OWNER DECISIONS OPEN ON ATTENDANCE — free to make NOW, expensive later
+### ⚠️ ONE OWNER DECISION OPEN ON ATTENDANCE — free to make NOW, expensive later
 
-1. ⚠️ **THE OT ROUNDING RULE IS NOW COSTING REAL MONEY — THIS ENTRY USED TO SAY IT COST NOTHING.**
-   The old text said "Production has exactly ONE rounding band — rule `A01` … it costs nobody anything
-   yet: `A01` is not the tenant default and no shift selects it, so it decides ZERO days." **That was
-   overtaken on 2026-08-05, when `A02` was created WITH a rounding band (60–119 minutes, round-to 60)
-   and shifts began using it.** The hazard arrived by a different route than the one being watched.
+1. ✅ **THE OT ROUNDING RULE — DECIDED AND BUILT IN r186 (`7c834696`). ROUNDING IS DOWNWARD.**
+   `core/attendance-rule.ts applyOtRuleRows` uses `Math.floor`, so a band's Round-To can never return
+   more minutes than were worked nor exceed the band's own upper bound. **Built on `build/r186-attend`;
+   see that round's entry for merge/deploy state.**
 
-   **MEASURED ON PRODUCTION 2026-08-10, and the arithmetic is visible in the data:** rounding to the
-   NEAREST 60 sends anything from 90 minutes upward to 120 — **past the band's own 119-minute ceiling**
-   — so a day inside the band is paid MORE than was worked. Two real days:
+   History, kept because this entry was wrong twice. It first said "Production has exactly ONE rounding
+   band — rule `A01` … it decides ZERO days"; that was overtaken on 2026-08-05 when `A02` (the SAME row,
+   renamed) got a 60–119 band with round-to 60 and 8 shifts began selecting it. Rounding to the NEAREST
+   60 then sent 90 minutes upward to 120 — past the band's own 119-minute ceiling — so a day inside the
+   band paid MORE than was worked, and it created a cliff (1h29 paid one hour, 1h30 paid two, 2h00 paid
+   two). Two real days, re-measured on production 2026-08-11:
 
-       Eee Lee Yong             2026-08-05  out 19:30   ot_minutes 120   worked  90
-       NURUL ALIAH BINTI ACHIN  2026-08-05  out 19:40   ot_minutes 120   worked 100
+       Eee Lee Yong             2026-08-05  out 19:30   ot_minutes 120   worked  90   → 60
+       NURUL ALIAH BINTI ACHIN  2026-08-05  out 19:40   ot_minutes 120   worked 100   → 60
 
-   Every other overtime day on production matches its raw minutes exactly. So this is 30 + 20 minutes
-   of overtime nobody worked, and it also creates a cliff: 1h29 pays one hour, 1h30 pays two, 2h00
-   pays two — an extra half hour earns nothing.
+   Every other overtime day on production matches its raw minutes exactly, and every Standard-governed
+   OT figure is an exact multiple of 60, so floor moves nothing else.
 
-   **NOT YET FIXED.** A plan is on the board under `7c834696` (which the reporter raised as a QUESTION —
-   "why is the lateness and early out calculation wrong, show me A02" — and the answer is that lateness
-   and early-out are RIGHT and overtime is not). The fix reduces two employees' recorded overtime, so it
-   goes through approval rather than shipping as a bug fix.
-   `test/attendance-stage1-calc.test.ts` pins today's behaviour against `A01`'s geometry; changing the
-   rounding will fail a test that names the exact minutes that move — update it, do not loosen it.
+   **THE STORED FIGURES DO NOT MOVE ON DEPLOY.** Code decides new derivations only; the two rows above
+   keep their 120 until someone runs the SCOPED recompute (Attendance → Recompute Attendance,
+   `core/attendance-recompute.ts`) for **2026-08-05 and those two employments only**. Do NOT run a wide
+   recompute: shift codes and times were reassigned on 2026-08-05 17:45–17:47 and 41 historical days
+   already carry a stored OT that disagrees with today's shift times.
+
+   `test/attendance-stage1-calc.test.ts` and `test/attendance-ot-rounding-money.test.ts` pin the new
+   rule against `A02`'s REAL two-row geometry and name the exact minutes that move — update them, never
+   loosen them.
 
    **A02's OTHER SETTINGS, verified, because they read as bugs and are not:** grace is 5 minutes on
    arrival and **0 on departure**, and `include_grace_in_lateness` is TRUE — so a 09:06 arrival counts
    6 minutes late, not 1, because once the grace is spent it stops counting in the employee's favour at
    all. `apply_deductions` is FALSE, so no lateness or early-out deduction has ever been taken from
-   anyone's pay, on any day.
+   anyone's pay, on any day. **Lateness and early-out are RIGHT; only overtime was wrong.**
 2. **"Overtime beyond the final band shall not be counted"** would cut `ot_minutes` DOWNWARD and
    retroactively. Not built — those minutes keep the final band's rate. Truncation needs its own opt-in.
 

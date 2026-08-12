@@ -84,6 +84,11 @@ import {
 } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { holidayDatesFor } from './holidays';
+// b8aa3466 — the ONE four-way weekday resolver; absence derivation must read the same schedule the engine
+// does. ADR-0080 D9: attendance is a PACK, so this comes through the FACADE, exactly as the approved-leave
+// dates below do. Importing core/attendance directly turns test/attendance-pack-drift.test.ts red, and the
+// fix is never test/pack-drift-allowlist.json — that list is audited kernel-contract debt and only shrinks.
+import { isWorkingDayKind, shiftDayKindFor } from '../packs/attendance/service';
 // ADR-0080 D9 — leave is a PACK, and this module is spine (attendance and payroll both read it), so the
 // approved-leave dates come through the pack FACADE rather than reaching into `core/leave` directly. The
 // audited leak list in test/pack-drift-allowlist.json only ever shrinks; a new consumer joins by using
@@ -93,8 +98,14 @@ import { approvedLeaveDates } from '../packs/leave/service';
 
 const MS_DAY = 86_400_000;
 
-/** ISO weekday (1=Mon … 7=Sun). Local copy: this module is deliberately free of core/attendance so the
- *  money count cannot be broken by an edit to the screens' module (and so the import graph stays a tree). */
+/** ISO weekday (1=Mon … 7=Sun). Local copy, kept deliberately.
+ *
+ *  This header used to say the module was "deliberately free of core/attendance". That stopped being true
+ *  in b8aa3466, which had to read the ONE four-way weekday resolver so absence derivation and the engine
+ *  cannot disagree about what a working day is — see the facade import above. The ORIGINAL reason for the
+ *  local copy still stands though, and is why this is not replaced by the imported helper: this is the
+ *  MONEY count, and a plain weekday lookup that cannot be changed by an edit to the screens' module is
+ *  worth more here than one fewer duplicated line. */
 const isoWeekdayOf = (iso: string): number => {
   const dow = new Date(`${iso}T00:00:00Z`).getUTCDay();
   return dow === 0 ? 7 : dow;
@@ -323,11 +334,19 @@ export async function absenceBreakdownByEmployment(
     // `scheduled` only, for the same reason as the roster.
     scheduled
       ? tx
-          .select({ employmentId: employment.id, pattern: shift.weeklyPattern })
+          .select({
+            employmentId: employment.id,
+            pattern: shift.weeklyPattern,
+            // b8aa3466 — the four-way row, so absence derivation reads the same schedule scheduleFor does.
+            halfPattern: shift.halfPattern,
+            offPattern: shift.offPattern,
+          })
           .from(employment)
           .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
           .where(inArray(employment.id, empIds))
-      : Promise.resolve([] as { employmentId: string; pattern: number[] | null }[]),
+      : Promise.resolve(
+          [] as { employmentId: string; pattern: number[] | null; halfPattern: number[]; offPattern: number[] }[],
+        ),
     // The OPEN assignment's location — the last input the holiday resolver keys on. See holidayKeyOf.
     tx
       .select({ employmentId: assignment.employmentId, locationId: assignment.locationId })
@@ -342,7 +361,11 @@ export async function absenceBreakdownByEmployment(
   ]);
 
   const daysByCompany = new Map(policies.map((p) => [p.companyId, unionDays(p.workingDays, p.halfWorkingDays)]));
-  const patternByEmp = new Map(defaultShifts.map((d) => [d.employmentId, d.pattern]));
+  // b8aa3466 — keep the whole four-way row, not just the Full list, so the scheduled test below can tell a
+  // Half day (a WORKING day, so a missing row on it IS an absence) from an Off day (not scheduled).
+  const patternByEmp = new Map(
+    defaultShifts.map((d) => [d.employmentId, { pattern: d.pattern, halfPattern: d.halfPattern, offPattern: d.offPattern }]),
+  );
 
   // ── The holiday memo ────────────────────────────────────────────────────────────────────────────────
   // `holidayDatesFor` is single-employment and costs 3–4 round trips a call; a company-wide month roll-up
@@ -455,7 +478,7 @@ export async function absenceBreakdownByEmployment(
       const ra = roster?.get(d);
       let isScheduled: boolean;
       if (ra) isScheduled = !ra.isRestDay && ra.hasShift;
-      else if (hasDefaultShift) isScheduled = pattern?.includes(isoWeekdayOf(d)) ?? false;
+      else if (hasDefaultShift) isScheduled = pattern != null && isWorkingDayKind(shiftDayKindFor(pattern, d));
       else isScheduled = companyDays.includes(isoWeekdayOf(d));
       if (!isScheduled) continue;
 

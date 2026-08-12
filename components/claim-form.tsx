@@ -23,6 +23,11 @@ export type ClaimBalance = {
   perClaimCap: number | null;
   claimsUsedThisYear: number;
   maxClaimsPerYear: number | null;
+  /** e7eb5d83 rev 4 — the per-block pot ("RM2,000 every 2 years"). All null ⇒ no per-block rule today. */
+  blockLimit: number | null;
+  remainingThisBlock: number | null;
+  /** Inclusive last day of the block containing today — the date "Remaining until …" names. */
+  blockEndsOn: string | null;
 };
 
 /** An existing draft being edited (?draft=<id>) — every value the form should open with. */
@@ -42,6 +47,10 @@ export type ClaimFormType = {
   name: string;
   requiresReceipt: boolean;
   rateConfig: RateConfig | null;
+  /** e7eb5d83 rev 4 — THE mileage claim type. This, not rateConfig, decides that this form asks for a
+   *  distance: the old test read a per-grade policy row, so two employees on the same claim type could
+   *  be shown different forms. */
+  isMileage: boolean;
   items: { id: string; code: string; name: string }[];
   /** Earliest receipt date allowed for THIS type (per-type receipt-age window). */
   minDate: string;
@@ -88,7 +97,14 @@ export function ClaimForm({
   const [state, formAction, isPending] = useActionState<SubmitState, FormData>(submitAction, { error: null });
 
   const selected = useMemo(() => types.find((ct) => ct.id === typeId) ?? types[0], [types, typeId]);
-  const kind = selected?.rateConfig?.kind ?? 'receipt';
+  // The tick wins over the rate config, in both directions: a marked type asks for a distance even when
+  // its policy carries no flat scalar (the band table prices it), and an unmarked type asks for an amount
+  // even when a legacy mileage_flat scalar is still sitting on its policy.
+  const kind: 'mileage_flat' | 'fixed_allowance' | 'receipt' = selected?.isMileage
+    ? 'mileage_flat'
+    : selected?.rateConfig?.kind === 'fixed_allowance'
+      ? 'fixed_allowance'
+      : 'receipt';
   const items = selected?.items ?? [];
   const ratePerKm = selected?.rateConfig?.kind === 'mileage_flat' ? selected.rateConfig.ratePerKm : 0;
   const fixedAmount = selected?.rateConfig?.kind === 'fixed_allowance' ? selected.rateConfig.amount : 0;
@@ -101,7 +117,11 @@ export function ClaimForm({
   const minDate = selected?.minDate ?? todayUtc;
   const hasLimit =
     !!bal &&
-    (bal.annualLimit != null || bal.monthlyLimit != null || bal.perClaimCap != null || bal.maxClaimsPerYear != null);
+    (bal.annualLimit != null ||
+      bal.monthlyLimit != null ||
+      bal.perClaimCap != null ||
+      bal.maxClaimsPerYear != null ||
+      bal.blockLimit != null);
   const afterYear = bal?.remainingThisYear == null ? null : bal.remainingThisYear - currentAmount;
   const afterMonth = bal?.remainingThisMonth == null ? null : bal.remainingThisMonth - currentAmount;
 
@@ -159,6 +179,15 @@ export function ClaimForm({
                   )}
                 </>
               )}
+              {/* PER BLOCK (e7eb5d83 rev 4). The DATE is the point: "RM800 left" is unusable advice on a
+                  two-year window if the employee cannot tell whether that is for this month or until
+                  2027. The server's refusal names the same day, so the screen and the refusal agree. */}
+              {bal.blockLimit != null && bal.blockEndsOn != null && (
+                <>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{t('blockLimit')}</span><span className="tabular-nums">{rm(bal.blockLimit)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{t('blockRemaining', { date: bal.blockEndsOn })}</span><span className="tabular-nums">{rm(bal.remainingThisBlock ?? 0)}</span></div>
+                </>
+              )}
               {bal.monthlyLimit != null && afterMonth != null && (
                 <div className="flex justify-between"><span className="text-muted-foreground">{t('monthlyRemaining')}</span><span className={`tabular-nums ${afterMonth < 0 ? 'text-destructive' : 'text-foreground'}`}>{rm(bal.remainingThisMonth ?? 0)}</span></div>
               )}
@@ -203,8 +232,11 @@ export function ClaimForm({
             onChange={(e) => setKm(e.target.value)}
             className={inputCls}
           />
+          {/* The live preview only makes sense against a FLAT rate. With a banded rate table the
+              server prices band by band, so a flat×km figure here would be a number the employee
+              could reconcile against nothing. Show it when there is a flat rate, say so otherwise. */}
           <span className="mt-1 text-xs text-muted-foreground">
-            {t('computedAmount')}: {rm(computedMileage)}
+            {ratePerKm > 0 ? `${t('computedAmount')}: ${rm(computedMileage)}` : t('mileagePricedOnSubmit')}
           </span>
           {/* amount is server-computed; send 0 so the form value never wins. */}
           <input type="hidden" name="amount" value="0" />

@@ -29,6 +29,12 @@ export async function setClaimPolicyAction(formData: FormData) {
   // Unlimited toggle ⇒ every amount/count limit is NULL (an all-null row IS "unlimited").
   const unlimited = formData.get('unlimited') === 'on';
   const gradeId = String(formData.get('gradeId') ?? '').trim() || null;
+  // e7eb5d83 rev 4 point 3c — Per block is all-four-or-none. The tick is the switch: unticked (or the
+  // whole row Unlimited) sends all four as null, which is "no per-block rule" and is every row today.
+  // blockStartOn deliberately passes through EMPTY as null rather than as today's date: null is what
+  // makes setClaimPolicy inherit the anchor already on the rule instead of restarting the window.
+  const blockOn = !unlimited && formData.get('blockEnabled') === 'on';
+  const rawBlockStart = String(formData.get('blockStartOn') ?? '').trim();
   try {
     await setClaimPolicy(s, {
       claimTypeId: String(formData.get('claimTypeId')),
@@ -36,8 +42,14 @@ export async function setClaimPolicyAction(formData: FormData) {
       annualBudget: unlimited ? null : numOrNull(formData.get('annualBudget')),
       perClaimCap: unlimited ? null : numOrNull(formData.get('perClaimCap')),
       monthlyLimit: unlimited ? null : numOrNull(formData.get('monthlyLimit')),
-      lifetimeLimit: unlimited ? null : numOrNull(formData.get('lifetimeLimit')),
+      // e7eb5d83 point 3b — no lifetimeLimit read: the field left this screen. setClaimPolicy still
+      // ACCEPTS it (the column, the scope and the enforcement branch are untouched), so re-adding the
+      // input is the only change needed to bring it back.
       maxClaimsPerYear: unlimited ? null : intOrNull(formData.get('maxClaimsPerYear')),
+      blockLength: blockOn ? intOrNull(formData.get('blockLength')) : null,
+      blockUnit: blockOn ? String(formData.get('blockUnit') ?? 'year') : null,
+      blockLimit: blockOn ? numOrNull(formData.get('blockLimit')) : null,
+      blockStartOn: blockOn && rawBlockStart !== '' ? rawBlockStart : null,
       effectiveFrom: String(formData.get('effectiveFrom')),
       rateConfig: rateConfigFrom(formData),
     });

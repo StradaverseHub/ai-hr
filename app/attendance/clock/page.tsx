@@ -97,7 +97,16 @@ export default async function AttendanceClockPage({
   const dow = isoWeekday(today);
   const shiftOptions: ShiftOption[] = resolved?.shiftCode
     ? tenantShifts
-        .filter((sh) => !sh.weeklyPattern || sh.weeklyPattern.includes(dow))
+        // b8aa3466 — a HALF day is a working day, so a shift whose today is Half is still switchable to.
+        // Rest and Off are not. A shift with no pattern at all stays assignable on any day, as before.
+        .filter(
+          (sh) =>
+            (!sh.weeklyPattern || sh.weeklyPattern.length === 0) &&
+            sh.halfPattern.length === 0 &&
+            sh.offPattern.length === 0
+              ? true
+              : sh.weeklyPattern?.includes(dow) === true || sh.halfPattern.includes(dow),
+        )
         .map((sh) => ({
           code: sh.code,
           name: sh.name,

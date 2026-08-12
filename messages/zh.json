@@ -64,7 +64,7 @@
     "dateRange": "日期范围",
     "generated": "已为 {employees} 名员工生成排班——{working} 条工作日记录和 {rest} 条休息日记录。",
     "generateHint": "按班次的每周模式填满范围内的每一天：工作日写入班次记录，其余日期写入明确的休息日，公司政策不会悄悄覆盖该模式。重复生成会覆盖相同日期。",
-    "manageShiftsHint": "班次排班在考勤政策中管理；员工的常规班次在其个人档案中设置为默认班次。特定日期的例外请使用排班表。",
+    "manageShiftsHint": "班次排班在班次设置中管理；员工的常规班次在其个人档案中设置为默认班次。特定日期的例外请使用排班表。",
     "manageShiftsLink": "管理班次排班",
     "copyTitle": "复制排班",
     "copySource": "复制自",
@@ -172,7 +172,38 @@
       "emptyFile": "该文件为空。",
       "emptySheet": "该工作簿的第一个工作表为空。",
       "fileReadError": "无法读取该文件。"
-    }
+    },
+    "requiredField": "必填",
+    "workingTimesLegend": "工作时间",
+    "timeIn": "上班时间",
+    "timeOut": "下班时间",
+    "earliestTimeIn": "最早上班时间",
+    "latestTimeOut": "最晚下班时间",
+    "totalNormalWorkingHours": "正常工作时数合计",
+    "totalNormalHoursNormalHint": "根据您的时间和休息时间计算得出。如果此班次的正常一天长度不同，请修改。",
+    "totalNormalHoursSemiHint": "弹性班次必填。工作满这些时数后才开始计算加班，不含休息时间。",
+    "unitHoursShort": "小时",
+    "unitMinutesShort": "分",
+    "unitHoursLong": "小时",
+    "unitMinutesLong": "分钟",
+    "breaksLabel": "休息时间",
+    "breakFixed": "固定",
+    "breakFixedHint": "固定表示在该时间休息。取消勾选则员工可自行选择休息时间。",
+    "dailyCutoffLegend": "每日截止时间",
+    "dailyCutoffUse": "使用每日截止时间",
+    "dailyCutoffAt": "截止于",
+    "dailyCutoffHint": "此时间之后的打卡计入次日。保持关闭则由系统自行判断，与当前一致。",
+    "halfDayCutoffLabel": "半日截止时间",
+    "halfDayCutoffHint": "在此时间之前下班，该日按半日计算。",
+    "halfDayCutoffDerived": "已为您计算 — {total} 的一半为 {half} 的工作时间，不含休息（约 {at}）。",
+    "halfDayCutoffDerivedPending": "设定正常工作时数合计后将为您计算。",
+    "dayKindFull": "全日",
+    "dayKindHalf": "半日",
+    "dayKindRest": "休息日",
+    "dayKindOff": "例假日",
+    "dayKindHint": "全日为普通工作日。半日为正常时数一半的工作日。休息日为法定休息日。例假日为非休息日的不上班日。",
+    "moreSettingsSummary": "更多设置",
+    "moreSettingsHint": "描述、类别、日期类型、最早上班时间、最晚下班时间、第二段半日上班时间、全日请假、全日加班、正常时数取整、加班时段表和班次津贴 — 全部仍会保存，仍可编辑。"
   },
   "common": {
     "appName": "AI HR",
@@ -6021,7 +6052,7 @@
       "budget": "预算",
       "noBudget": "无预算",
       "save": "保存",
-      "annualBudgetLabel": "年度预算（RM）",
+      "annualBudgetLabel": "年度限额（RM）",
       "perClaimCapLabel": "单笔报销上限（RM）",
       "effectiveFromLabel": "生效自",
       "setBudget": "设置预算",
@@ -6125,7 +6156,27 @@
       "fieldKind_date": "日期",
       "fieldKind_select": "下拉选择",
       "fieldKind_boolean": "是 / 否",
-      "fieldKind_file": "文件"
+      "fieldKind_file": "文件",
+      "addNewType": "新增",
+      "hideNewType": "关闭",
+      "blockLimitLabel": "每个周期",
+      "blockEnableLabel": "周期限额",
+      "blockEveryLabel": "每",
+      "blockUnitLabel": "周期单位",
+      "blockUnit_month": "个月",
+      "blockUnit_year": "年",
+      "blockLimitAmountLabel": "限额（RM）",
+      "blockStartLabel": "起算日",
+      "blockEveryMonths": "每 {n} 个月",
+      "blockEveryYears": "每 {n} 年",
+      "blockFrom": "自 {date} 起",
+      "blockHint": "周期为固定月数或年数的限额 —— 每 2 年 RM2,000、每 6 个月 RM300。起算日为全公司统一：所有员工使用同一周期。保持原样，已有规则会沿用原来的起算日。",
+      "isMileageLabel": "此为里程报销类型",
+      "isMileageHint": "只能有一个报销类型作为里程报销。勾选后，员工填写的是里程而非金额，里程费率页也据此知道费率区间属于哪个报销类型。",
+      "mileageBadge": "里程",
+      "noMileageType": "尚未勾选任何报销类型作为里程报销，因此没有可设置的费率。",
+      "noMileageTypeLink": "前往报销类型并勾选一个",
+      "mileageTypeChangeLink": "在报销类型中更改"
     },
     "reimbursements": {
       "back": "报销配置",
@@ -6331,7 +6382,11 @@
       "deactivatedBadge": "已停用",
       "breakPaidBadge": "带薪",
       "breakPaidHint": "带薪休息不会从班次工时中扣除，无薪休息则会扣除。未勾选的休息视为无薪，与此前一致。",
-      "generalMoreTabNote": "参考画面的“General (More…)”页签未曾截取，因此其字段不在本次发布范围内。"
+      "generalMoreTabNote": "参考画面的“General (More…)”页签未曾截取，因此其字段不在本次发布范围内。",
+      "shiftFormNewTitle": "新建班次",
+      "shiftFormEditTitle": "编辑班次",
+      "shiftFormBackToList": "返回班次列表",
+      "shiftFormDescription": "班次模板在整个组织内共享。可通过员工档案（固定班次）或排班管理指派给员工。"
     },
     "payrollPermissions": {
       "title": "薪资权限",
@@ -6634,7 +6689,7 @@
       "unitHour": "时",
       "unitMin": "分",
       "applyEarlyOtLabel": "应用于提前加班",
-      "applyEarlyOtHint": "将此加班政策应用于在计划开始时间之前经批准的加班。",
+      "applyEarlyOtHint": "将计划开始时间之前打卡的每一分钟计为加班。没有审批环节——开启后，提早到达即自动计入加班。",
       "otEmptyHint": "尚无加班区间。使用 + 添加行来定义加班的计算方式。",
       "statutoryCapNote": "法定加班倍率（1.5×、2×、3×）仍为法律最低标准，在公司加班费率中设置。这些规则在此基础上调整并对加班取整。",
       "save": "保存",
@@ -6647,7 +6702,8 @@
       "deductionsFromLabel": "扣减生效日期",
       "deductionsFromNone": "未启用",
       "otLadderGapWarning": "第 {row} 行必须从 {expected} 分钟开始才能接续第 {prev} 行——它从 {actual} 开始。在各行衔接之前无法保存。",
-      "otLadderOpenEndedWarning": "第 {row} 行没有上限，因此其后不能再有任何行。请填写“至”的数值，或将其移到最后。"
+      "otLadderOpenEndedWarning": "第 {row} 行没有上限，因此其后不能再有任何行。请填写“至”的数值，或将其移到最后。",
+      "scheduleBackToRules": "返回计算规则"
     },
     "benefitScheme": {
       "groupsTitle": "职级组",
@@ -6881,7 +6937,11 @@
       "criteriaEveryone": "所有人",
       "chipAddPlaceholder": "添加…",
       "chipRemoveLabel": "移除{value}",
-      "chipCountLabel": "已选 {count} 项"
+      "chipCountLabel": "已选 {count} 项",
+      "chipSelectAll": "全选",
+      "chipDeselectAll": "取消全选",
+      "chipSearchPlaceholder": "搜索…",
+      "chipAllSelected": "已全选"
     }
   },
   "topbar": {
@@ -7333,7 +7393,10 @@
     "deleteDraftConfirmTitle": "删除此草稿？",
     "deleteDraftConfirmDescription": "草稿及其附带的收据都会被删除，且无法恢复。",
     "deleteDraftConfirmLabel": "删除草稿",
-    "reservedPending": "已预留（待审批）"
+    "reservedPending": "已预留（待审批）",
+    "blockLimit": "本周期限额",
+    "blockRemaining": "至 {date} 的余额",
+    "mileagePricedOnSubmit": "金额将在提交时根据里程费率表计算。"
   },
   "analytics": {
     "title": "人力分析",

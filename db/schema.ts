@@ -3458,7 +3458,12 @@ export const attendancePolicy = pgTable(
 //     (attendance.late_deduct_minutes / early_out_deduct_minutes) — gated on `apply_deductions` below,
 //     which ships FALSE, and never for a date before `deductions_effective_from`;
 //   • the OT rows now CATEGORISE, progressively, into the per-rate buckets on the attendance row, instead
-//     of only supplying a rounding step (applyOtRuleRows still owns rounding, unchanged).
+//     of only supplying a rounding step (applyOtRuleRows still owns rounding).
+// 7c834696 rev 3 (2026-08-11) then CHANGED the rounding direction: a band's Round-To now floors, so a
+// rounded overtime can never exceed either the band's own upper bound or the minutes actually worked. It
+// used to round to nearest, which inflated two real production days by 30 and 20 minutes. A non-workday
+// also stopped borrowing the band's WORKDAY multiplier for its rate column — see core/attendance-calc.ts
+// rateForDay.
 // STILL DEFERRED, deliberately: nothing MONETIZES the deduction figures — attendance reports categorised
 // results and payroll decides what they are worth (the request's own split), and no payroll path reads
 // them yet. Per-band custom OT PAY multipliers are likewise still not fed to the payroll kernel; the
@@ -3495,9 +3500,12 @@ export const attendanceRule = pgTable(
     earlyDeductMinutes: integer('early_deduct_minutes').notNull().default(0),
     includeGraceInEarlyOut: boolean('include_grace_in_early_out').notNull().default(false),
     // ── Overtime section ──
-    // "Apply this overtime policy to approved OVERTIME worked before the scheduled start." Honoured by the
-    // pure resolver applyOtRuleRows (unit-tested); the engine currently feeds 0 pre-shift OT minutes (early-OT
-    // punch attribution is a deferred follow-up — documented GAP).
+    // "Count time clocked before the scheduled start as overtime." Honoured by the pure resolver
+    // applyOtRuleRows (unit-tested) and folded in by core/attendance.ts before the per-shift OT shape.
+    // THERE IS NO APPROVAL STEP behind it, despite the label the editor used to carry: with the switch on,
+    // EVERY pre-shift minute becomes overtime. 7c834696 rev 3 corrected the hint in all six catalogues
+    // (admin.attendanceRule.applyEarlyOtHint) rather than pretend an approval gate exists. Gating early OT
+    // on approval is its own item.
     applyToEarlyOt: boolean('apply_to_early_ot').notNull().default(false),
     // ── 7c834696 stage 1 (migration 0394) · the deduction opt-in ──
     // The after-X/deduct-Y pairs above have been editable since 0204 and read by NOTHING, so every rule's
@@ -3797,7 +3805,32 @@ export const shift = pgTable(
     // R7 Multi-Shift Phase 2: ISO weekday numbers (1=Mon … 7=Sun) that are WORKING days for this shift —
     // rest = complement — mirroring attendance_policy.working_days. NULL ⇒ no pattern; the shift cannot
     // drive generateRosterFromTemplate and behaves exactly as before.
+    //
+    // b8aa3466 (migration 0429) — this is now the FULL-day list of a four-way row. See halfPattern /
+    // offPattern below; a weekday in none of the three is still a Rest day, exactly as before.
     weeklyPattern: integer('weekly_pattern').array(),
+    // b8aa3466 (migration 0429) — the other two day kinds, copying the shape attendance_policy already uses
+    // for the same problem (working_days + half_working_days, migration 0142) rather than inventing an
+    // encoding. Disjoint from weekly_pattern and from each other by a DB CHECK.
+    //   Half = a working day with HALF the normal hours, so overtime starts after half a day.
+    //   Off  = a non-working day that is NOT the statutory rest day (s.60A(3)(a): 1.5× hourly), as opposed
+    //          to Rest (s.60(3)(b)-(c): half/full day ORP plus 2× on the excess).
+    // Both default '{}', so every row written before 0429 reads back as Full-where-ticked / Rest-otherwise —
+    // which is exactly what it means today. No backfill statement exists or is needed.
+    halfPattern: integer('half_pattern')
+      .array()
+      .notNull()
+      .default(sql`'{}'::integer[]`),
+    offPattern: integer('off_pattern')
+      .array()
+      .notNull()
+      .default(sql`'{}'::integer[]`),
+    // b8aa3466 (migration 0429) — the DAILY CUT-OFF. OFF (default) ⇒ core/attendance.ts anchorToShift keeps
+    // its hard-coded 12-hour rule byte-identically. ON ⇒ that boundary becomes this clock time: a punch
+    // before it belongs to the shift-day that opened on the previous calendar day. CHECK in 0429 forbids
+    // enabled-with-no-time, which the reader could not honour.
+    dailyCutoffEnabled: boolean('daily_cutoff_enabled').notNull().default(false),
+    dailyCutoffTime: time('daily_cutoff_time'),
     crossesMidnight: boolean('crosses_midnight').notNull().default(false),
     // R17 3e8350db — per-shift grace windows (minutes). NULL ⇒ inherit the company-policy behaviour
     // (core/attendance.ts scheduleFor): late = policy grace applied to the shift start, early-leave = the
@@ -6344,6 +6377,20 @@ export const claimType = pgTable(
     requiresReceipt: boolean('requires_receipt').notNull().default(true),
     /** Per-type receipt-backdate window (days). NULL ⇒ the global RECEIPT_BACKDATE_DAYS default. (ccbd0508) */
     maxReceiptAgeDays: integer('max_receipt_age_days'),
+    /**
+     * THE mileage claim type (e7eb5d83 rev 4, point 4 — 0428). The reporter's own spec: "one special
+     * Claim Type can be designated as Mileage Claim".
+     *
+     * What this replaces: "a claim is a mileage claim iff its resolved claim_policy carries
+     * rate_config = {kind:'mileage_flat'}". That put the answer on an effective-dated, PER-GRADE row, so
+     * whether the employee saw a distance box or an amount box depended on which grade's limit resolved —
+     * and the banded Mileage Rates table (claim_mileage_rate), which is where a rate per km actually lives
+     * now, could only be reached through a legacy scalar that the limits screen still had to ask for.
+     *
+     * It is a property of the TYPE, not of a limit, so it lives here. At most one live type per tenant
+     * carries it (partial unique index below).
+     */
+    isMileage: boolean('is_mileage').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -6351,6 +6398,11 @@ export const claimType = pgTable(
     index('claim_type_tenant_idx').on(t.tenantId),
     // One live code per tenant (archived rows may share a code that was re-created).
     uniqueIndex('claim_type_tenant_code_uq').on(t.tenantId, t.code).where(sql`archived_at IS NULL`),
+    // At most ONE live mileage claim type per tenant. Enforced in the DB, not only in setIsMileage:
+    // "which type is the mileage one" is read by the employee form, the submit pricing path and the
+    // Mileage Rates screen, and two answers would mean three readers disagreeing about what an
+    // employee is filing. Archived rows are excluded so a retired mileage type does not block a new one.
+    uniqueIndex('claim_type_tenant_mileage_uq').on(t.tenantId).where(sql`is_mileage AND archived_at IS NULL`),
   ],
 );
 
@@ -6605,6 +6657,31 @@ export const claimPolicy = pgTable(
     lifetimeLimit: numeric('lifetime_limit', { precision: 12, scale: 2 }),
     /** NULL = no count cap. Max number of claims of this type per calendar year. (ccbd0508) */
     maxClaimsPerYear: integer('max_claims_per_year'),
+    /**
+     * ─────────── PER BLOCK: "RM2,000 every 2 years", "RM300 every 6 months" (e7eb5d83 rev 4, 0428) ───────────
+     *
+     * The one thing in the reporter's five points that genuinely did not exist. The vocabulary was per
+     * claim / per calendar month / per calendar year / lifetime / a count per year — there was nowhere to
+     * write a limit whose period is N months or N years long.
+     *
+     * ALL FOUR TOGETHER OR ALL FOUR NULL (claim_policy_block_ck). All-null is today's behaviour, which is
+     * why every existing row is already correct and 0428 needs no backfill.
+     *
+     * blockStartOn is a POLICY-LEVEL FIXED DATE — the anchor every employee's block is measured from — and
+     * emphatically NOT the employee's hire date and not their first claim. Anchoring per employee means no
+     * one can ever answer "when does my pot refill", and it is not what the reporter's screenshot shows.
+     * It defaults to 1 January of the effectiveFrom year when an admin first ticks Per block, and
+     * setClaimPolicy CARRIES IT FORWARD across the close+insert versioning: editing next month's per-claim
+     * cap must not silently restart everybody's two-year window.
+     *
+     * A claim incurred BEFORE blockStartOn falls in no block and skips the per-block check only; the
+     * annual, monthly and per-claim checks still apply to it.
+     */
+    blockLength: integer('block_length'),
+    /** 'month' | 'year' — the unit blockLength counts. DB-checked (claim_policy_block_unit_ck). */
+    blockUnit: text('block_unit'),
+    blockLimit: numeric('block_limit', { precision: 12, scale: 2 }),
+    blockStartOn: date('block_start_on'),
     /**
      * Per-type rate/calculation config (discriminated union; nullable/absent ⇒ default 'receipt').
      *   { kind: 'receipt' }                                — amount entered by the employee (current behaviour).

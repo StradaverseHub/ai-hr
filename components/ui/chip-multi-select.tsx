@@ -44,16 +44,34 @@
  * "{n} selected" past summaryThreshold). All are additive — omit them (as the leave eligibility pickers now
  * do) and the popover shows a plain checklist while the chips always render with their remove buttons.
  *
+ * Summary ON THE TRIGGER (74d00fd2, opt-in — `triggerSummaryFor`): the collapsed control otherwise reads
+ * "Add…" however many values are picked, so a field holding three values looks identical to an empty one
+ * until you open it. Passing `triggerSummaryFor` moves the summary onto the trigger itself, at ANY count
+ * (that "at any count" is the point — the below-control count only ever appeared past summaryThreshold,
+ * which is precisely the range the reporter could already see the chips for). An EMPTY selection still
+ * reads addPlaceholder, so "filled" and "untouched" stay distinguishable at a glance. While it is supplied
+ * the below-control summary lines are suppressed ENTIRELY — the same sentence is never printed twice — and
+ * the strip below becomes chips-or-nothing: up to summaryThreshold the removable chips render exactly as
+ * they always did (including for a SHORT field that happens to be fully picked, which would otherwise
+ * collapse to "All selected" and lose its per-value remove buttons); past it, nothing, because the count
+ * is already on the control and 197 chips help nobody. It is opt-in for the usual reason — six-plus call
+ * sites, none of whose triggers may change.
+ *
  * Search (18103ba4, opt-in): passing `searchPlaceholder` puts a filter box at the top of the popover. The
  * Leave Adjustments criteria builder offers ~20 pickers, several of them over catalogues with dozens of
  * values, and the reporter asked for search on every one of them. State is popover-local and resets on
  * close, so it can never affect what the form posts.
  *
- * ⚠️ WITH A FILTER ACTIVE, "Select all" MEANS "select everything I can currently see", ADDED to what is
- * already picked — not "replace my selection with the whole catalogue". Anything else makes the pair
- * (search, select all) actively dangerous: filter to "Finance", press Select all, and silently select all
- * two hundred departments. When no filter is typed the visible set IS every option and the selection is
- * replaced-by-superset, so every pre-existing caller behaves exactly as it did.
+ * ⚠️ WITH A FILTER ACTIVE, BOTH BULK BUTTONS ACT ON THE VISIBLE ROWS ONLY. "Select all" means "select
+ * everything I can currently see", ADDED to what is already picked — not "replace my selection with the
+ * whole catalogue". Anything else makes the pair (search, select all) actively dangerous: filter to
+ * "Finance", press Select all, and silently select all two hundred departments. "Clear all" is the mirror
+ * image and was the missing half (74d00fd2): it used to `apply([])` regardless of the filter, so typing
+ * "ind" and pressing it dropped the six picks the filter was HIDING along with the one on screen — the
+ * destructive direction of exactly the bug the Select-all rule above exists to prevent. When no filter is
+ * typed the visible set IS every option, so both buttons behave exactly as they always did for every
+ * pre-existing caller; only the filtered case changes, and only for callers that pass BOTH searchPlaceholder
+ * and clearAllLabel (components/leave/adjustment-form.tsx and components/leave/generate-form.tsx).
  *
  * Dismissal & keyboard (b9c30be0 — the 2449fbb7 standardize-dropdown idiom, same as combobox.tsx and
  * multi-select-popover.tsx): while open, a document `mousedown` listener closes the popover when the event
@@ -81,6 +99,7 @@ export function ChipMultiSelect({
   searchPlaceholder,
   allSelectedLabel,
   countLabelFor,
+  triggerSummaryFor,
   onSelectionChange,
   summaryThreshold = 4,
 }: {
@@ -103,6 +122,16 @@ export function ChipMultiSelect({
   allSelectedLabel?: string;
   /** Opt-in: translated collapsed summary when the selection count exceeds summaryThreshold, e.g. (n) => t('nSelected', { count: n }). */
   countLabelFor?: (count: number) => string;
+  /**
+   * Opt-in: translated summary for the TRIGGER itself, called only when something is selected — an empty
+   * selection always reads addPlaceholder. `allSelected` is true once every option is picked, so one
+   * function covers both sentences the below-control strip used to own:
+   *   (n, all) => (all ? t('allSelected') : t('nSelected', { count: n }))
+   *
+   * Supplying it suppresses the below-control summary lines entirely; see the header for why the chips
+   * below then run to summaryThreshold and stop.
+   */
+  triggerSummaryFor?: (count: number, allSelected: boolean) => string;
   /**
    * Opt-in: called with the NEW selection whenever it changes, by any route (a row, Select all, Clear all,
    * a chip's ×).
@@ -172,8 +201,18 @@ export function ChipMultiSelect({
   // Collapsed summary (opt-in): "All selected" once everything is picked, else a "{n} selected" pill past
   // the chip threshold, else the removable chips. Falls back to chips whenever the labels aren't provided.
   const allSelected = options.length > 0 && selected.length === options.length;
-  const showAllSummary = allSelected && allSelectedLabel != null;
-  const showCountSummary = !showAllSummary && countLabelFor != null && selected.length > summaryThreshold;
+  // 74d00fd2: with the summary on the trigger, the lines below it are OFF — printing the same sentence
+  // twice, once above the chips and once on the control, is not a summary, it is noise.
+  const summaryOnTrigger = triggerSummaryFor != null;
+  const triggerSummary =
+    summaryOnTrigger && selected.length > 0 ? triggerSummaryFor(selected.length, allSelected) : null;
+  const showAllSummary = !summaryOnTrigger && allSelected && allSelectedLabel != null;
+  const showCountSummary =
+    !summaryOnTrigger && !showAllSummary && countLabelFor != null && selected.length > summaryThreshold;
+  // Chips-or-nothing once the summary moved onto the trigger: up to the threshold they are unchanged (a
+  // short, fully-picked field keeps its per-value remove buttons); past it the count is already on the
+  // control, and a 197-chip strip is not the thing to print underneath it.
+  const showChips = !summaryOnTrigger || selected.length <= summaryThreshold;
 
   return (
     <div
@@ -209,7 +248,9 @@ export function ChipMultiSelect({
           aria-labelledby={label != null ? captionId : undefined}
           className={cn(inputCls, 'flex items-center justify-between gap-2 text-left')}
         >
-          <span className="truncate text-muted-foreground">{addPlaceholder}</span>
+          <span className={cn('truncate', triggerSummary == null ? 'text-muted-foreground' : 'font-medium text-foreground')}>
+            {triggerSummary ?? addPlaceholder}
+          </span>
           <ChevronDown
             aria-hidden
             className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')}
@@ -236,7 +277,12 @@ export function ChipMultiSelect({
                 {clearAllLabel != null && (
                   <button
                     type="button"
-                    onClick={() => apply([])}
+                    onClick={() =>
+                      // The MIRROR of Select all — see the header. Removes only what is currently
+                      // VISIBLE, so a filtered clear can never drop the picks the filter is hiding.
+                      // Unfiltered, `visible` IS every option, so this is exactly the old apply([]).
+                      apply(selected.filter((v) => !visible.some((o) => o.value === v)))
+                    }
                     className="font-medium text-muted-foreground hover:underline"
                   >
                     {clearAllLabel}
@@ -293,7 +339,7 @@ export function ChipMultiSelect({
           <div className="text-xs font-medium text-primary">{allSelectedLabel}</div>
         ) : showCountSummary ? (
           <div className="text-xs font-medium text-primary">{countLabelFor!(selected.length)}</div>
-        ) : (
+        ) : !showChips ? null : (
           <div className="flex flex-wrap gap-1.5">
             {selected.map((v) => {
               const chipLabel = labelOf.get(v) ?? v;

@@ -12,16 +12,21 @@ import Link from 'next/link';
  * holiday, statutory and system-labels strips (and company-panel's tab trigger) all point here instead.
  * If this one is ever retired the same way, move the pointer again rather than leaving them dangling.
  */
-export async function ClaimsTabs({ active }: { active: 'types' | 'limits' | 'mileage' | 'forms' | 'reimbursements' }) {
+export async function ClaimsTabs({ active }: { active: 'types' | 'limits' | 'mileage' | 'reimbursements' }) {
   const t = await getTranslations('admin.claimsTabs');
-  // e7eb5d83 — "I want claim type, claim limit in different tab". Mileage rates and the form designer join
-  // as their own sub-routes rather than as panels stacked on the limits page, because everything-on-one-page
-  // was the original complaint. Reimbursements stays where it is: it is a live route with bookmarks.
+  // e7eb5d83 — "I want claim type, claim limit in different tab". Mileage rates joins as its own sub-route
+  // rather than as a panel stacked on the limits page, because everything-on-one-page was the original
+  // complaint. Reimbursements stays where it is: it is a live route with bookmarks.
+  //
+  // e7eb5d83 rev 4 point 2 — THE FORMS TAB IS GONE. A claim type's form is edited inside that claim type's
+  // own panel on the Types tab now, so setting one up is one place instead of two. /admin/claims/forms is
+  // still a route (a permanent redirect to /admin/claims) so old bookmarks land somewhere, but it must not
+  // be reachable as a tab: a second way to EDIT the same rows is exactly the duplication this contests.
+  // admin.claimsTabs.forms is left in the catalogues, unused, so restoring the tab is a one-line revert.
   const tabs = [
     { key: 'types', href: '/admin/claims', label: t('types') },
     { key: 'limits', href: '/admin/claims/limits', label: t('limits') },
     { key: 'mileage', href: '/admin/claims/mileage', label: t('mileage') },
-    { key: 'forms', href: '/admin/claims/forms', label: t('forms') },
     { key: 'reimbursements', href: '/admin/claims/reimbursements', label: t('reimbursements') },
   ] as const;
   return (

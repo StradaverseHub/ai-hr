@@ -23,7 +23,7 @@ import {
   type ShiftOtRule,
   type ShiftType,
 } from '../db/schema';
-import { isoWeekday, netScheduledMinutes, shiftSpan } from './attendance';
+import { isWorkingDayKind, netScheduledMinutes, shiftDayKindFor, shiftSpan } from './attendance';
 import { approvedLeaveDates } from './leave';
 import { listEmployees, listEmployeesPage } from './read';
 import { isAdmin } from '../lib/authz';
@@ -77,6 +77,11 @@ function validateShiftType(v: ShiftType | string | null | undefined): ShiftType 
 /** end ≤ start means the shift runs past midnight (e.g. 22:00:00 → 06:00:00). Times are 'HH:MM:SS', whose
  *  lexicographic order is chronological. */
 export const shiftCrossesMidnight = (startTime: string, endTime: string) => endTime <= startTime;
+
+/** b8aa3466 — how many WORKING weekdays a shift has, Full ∪ Half. Used by the two "a backup shift with no
+ *  working pattern makes every day a rest day" guards, which must not reject an all-half-days shift. */
+const workingDayCount = (sh: { pattern: number[] | null; halfPattern?: number[] | null }): number =>
+  new Set([...(sh.pattern ?? []), ...(sh.halfPattern ?? [])]).size;
 
 const asShiftTime = (v: string, label: string): string => {
   if (!/^\d{2}:\d{2}(:\d{2})?$/.test(v)) throw new Error(`${label} must be HH:MM`);
@@ -140,8 +145,20 @@ export type ShiftInput = {
   /** Manual normal-working-minutes figure; when set it is the workday OT threshold (deriveAttendance). */
   normalMinutesOverride?: number | null;
   /** R7 Phase 2 — ISO weekdays (1=Mon…7=Sun) that are WORKING days (rest = complement), mirroring
-   *  attendance_policy.working_days. Null/empty ⇒ no pattern; the shift cannot drive roster generation. */
+   *  attendance_policy.working_days. Null/empty ⇒ no pattern; the shift cannot drive roster generation.
+   *  b8aa3466 — this is the FULL-day list of the four-way row; see halfPattern / offPattern. */
   weeklyPattern?: number[] | null;
+  /** b8aa3466 — the other two day kinds (migration 0429). HALF = a working day with half the normal hours.
+   *  OFF = a non-working day that is NOT the statutory rest day. A weekday in none of the three arrays is
+   *  a Rest day, which is exactly what "not in weekly_pattern" means today. Absent/empty ⇒ '{}', i.e. the
+   *  pre-0429 two-way meaning, byte-identical. Validated pairwise-disjoint here AND by a DB CHECK. */
+  halfPattern?: number[] | null;
+  offPattern?: number[] | null;
+  /** b8aa3466 — the DAILY CUT-OFF (migration 0429). When enabled, core/attendance.ts anchorToShift uses this
+   *  clock time as the attendance-day boundary instead of its hard-coded 12-hour rule. Absent ⇒ off, which
+   *  is byte-identical to today. Enabling without a time is refused (and by a DB CHECK too). */
+  dailyCutoffEnabled?: boolean | null;
+  dailyCutoffTime?: string | null;
   /** R17 3e8350db — per-shift late grace (minutes): lateness is measured from shift-start + this. Null ⇒
    *  inherit the company-policy grace (core/attendance.ts). UNDEFINED ⇒ leave the stored value unchanged
    *  (7c834696 rev 2: the shift form dropped this input in favour of the rule's grace, so saving a shift
@@ -201,6 +218,10 @@ type NormalizedShift = {
   breakPeriods: BreakPeriod[] | null;
   normalMinutesOverride: number | null;
   weeklyPattern: number[] | null;
+  halfPattern: number[];
+  offPattern: number[];
+  dailyCutoffEnabled: boolean;
+  dailyCutoffTime: string | null;
   // UNDEFINED ⇒ omit from the write (preserve stored value); null ⇒ explicitly clear. Same contract as
   // otRule / ruleId below, for the same reason: the field's editor no longer lives on the shift form.
   lateGraceMinutes: number | null | undefined;
@@ -293,13 +314,40 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
 
   // R7 Phase 2 — weekly pattern: validated ISO weekdays, deduped + sorted. Empty ⇒ null (a shift with zero
   // working days is "no pattern", not a 7-day rest week).
-  let weeklyPattern: number[] | null = null;
-  if (p.weeklyPattern && p.weeklyPattern.length > 0) {
-    const days = [...new Set(p.weeklyPattern.map((d) => Math.trunc(d)))].sort((a, b) => a - b);
+  //
+  // b8aa3466 — the row is now FOUR-way (Full / Half / Rest / Off) and this is the FULL list. Half and Off
+  // get an array each; Rest stays the complement, so a shift saved before 0429 — and a caller that never
+  // heard of the new arrays — reads back exactly as it does today. The three lists must be pairwise
+  // disjoint: a Monday cannot be both Full and Off. The DB enforces it too (0429
+  // shift_day_kinds_disjoint); this check exists so HR gets a sentence instead of a Postgres error.
+  const isoDays = (v: number[] | null | undefined, label: string): number[] => {
+    if (!v || v.length === 0) return [];
+    const days = [...new Set(v.map((d) => Math.trunc(d)))].sort((a, b) => a - b);
     if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) {
-      throw new Error('Weekly pattern days must be ISO weekday numbers 1 (Mon) … 7 (Sun)');
+      throw new Error(`${label} must be ISO weekday numbers 1 (Mon) \u2026 7 (Sun)`);
     }
-    weeklyPattern = days;
+    return days;
+  };
+  const fullDays = isoDays(p.weeklyPattern, 'Weekly pattern days');
+  const halfPattern = isoDays(p.halfPattern, 'Half-day weekdays');
+  const offPattern = isoDays(p.offPattern, 'Off-day weekdays');
+  for (const [a, b] of [
+    [fullDays, halfPattern],
+    [fullDays, offPattern],
+    [halfPattern, offPattern],
+  ] as const) {
+    if (a.some((d) => b.includes(d))) throw new Error('Each weekday can only be one of Full, Half, Rest or Off');
+  }
+  // Empty ⇒ null, preserving "no pattern" — a shift with zero FULL days is not a 7-day rest week.
+  const weeklyPattern: number[] | null = fullDays.length > 0 ? fullDays : null;
+
+  // b8aa3466 — the daily cut-off. Enabled with no time is refused rather than stored: the reader could not
+  // honour it, and a pair that can hold nonsense eventually does. (0429 shift_daily_cutoff_time_required
+  // says the same thing at the DB; this is the sentence HR sees.)
+  const dailyCutoffTime = optTime(p.dailyCutoffTime, 'Daily cut-off');
+  const dailyCutoffEnabled = p.dailyCutoffEnabled === true;
+  if (dailyCutoffEnabled && dailyCutoffTime == null) {
+    throw new Error('A daily cut-off needs a time \u2014 set one, or switch the cut-off off');
   }
 
   // R17 3e8350db — per-shift grace windows. Explicit null ⇒ clear (inherit the legacy behaviour); when
@@ -377,6 +425,10 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     breakPeriods,
     normalMinutesOverride,
     weeklyPattern,
+    halfPattern,
+    offPattern,
+    dailyCutoffEnabled,
+    dailyCutoffTime,
     lateGraceMinutes,
     earlyLeaveGraceMinutes,
     otRule,
@@ -399,6 +451,11 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
 /** cf21e554 stage 1 — the General-tab columns, in one place so createShift, updateShift and copyShift
  *  cannot drift apart (the drift that let 7c834696's grace columns be silently cleared by a save). */
 const generalColumns = (n: NormalizedShift) => ({
+  // b8aa3466 — the 0429 columns ride here so createShift, updateShift and copyShift cannot drift apart.
+  halfPattern: n.halfPattern,
+  offPattern: n.offPattern,
+  dailyCutoffEnabled: n.dailyCutoffEnabled,
+  dailyCutoffTime: n.dailyCutoffTime,
   description: n.description,
   dayType: n.dayType,
   category: n.category,
@@ -645,6 +702,12 @@ export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Pr
           breakPeriods: src.breakPeriods,
           normalMinutesOverride: src.normalMinutesOverride,
           weeklyPattern: src.weeklyPattern,
+          // b8aa3466 — the four-way day kinds and the daily cut-off travel with the copy, like every other
+          // column here. A copy that quietly dropped them would turn Half/Off days back into Rest days.
+          halfPattern: src.halfPattern,
+          offPattern: src.offPattern,
+          dailyCutoffEnabled: src.dailyCutoffEnabled,
+          dailyCutoffTime: src.dailyCutoffTime,
           crossesMidnight: src.crossesMidnight,
           lateGraceMinutes: src.lateGraceMinutes,
           earlyLeaveGraceMinutes: src.earlyLeaveGraceMinutes,
@@ -1072,7 +1135,12 @@ export async function assignEmployeeShift(
       .limit(1);
     if (!emp) throw new Error('Employment not found');
     const [sh] = await tx
-      .select({ id: shift.id, archivedAt: shift.archivedAt, pattern: shift.weeklyPattern })
+      .select({
+        id: shift.id,
+        archivedAt: shift.archivedAt,
+        pattern: shift.weeklyPattern,
+        halfPattern: shift.halfPattern,
+      })
       .from(shift)
       .where(eq(shift.id, shiftId))
       .limit(1);
@@ -1088,7 +1156,9 @@ export async function assignEmployeeShift(
     // and the employee silently books every working day as a rest day — which pays rest-day overtime rates
     // on ordinary work and shows nobody an error. Before this item that shift was merely one option among
     // several; now it is the floor, so the floor has to be walkable.
-    if (!Array.isArray(sh.pattern) || sh.pattern.length === 0) throw new ShiftHasNoWorkingPatternError();
+    // b8aa3466 — "has a working pattern" is now Full ∪ HALF: a shift that is all half days is perfectly
+    // walkable, and refusing it would be a new false rejection. Off and Rest are still not working days.
+    if (workingDayCount(sh) === 0) throw new ShiftHasNoWorkingPatternError();
     await tx
       .update(employment)
       .set({ shiftType: p.shiftType, defaultShiftId: shiftId })
@@ -1299,7 +1369,26 @@ export async function setRestDay(ctx: SessionContext, p: { employmentId: string;
   });
 }
 
-/** Remove an assignment → the date falls back to the company policy. */
+/**
+ * Remove an assignment → the date falls back to the company policy.
+ *
+ * 42afb2d2 — THE DELETE ASYMMETRY, MEASURED 2026-08-12. DO NOT ADD A CALLER THAT SKIPS
+ * `assertRosterAdmin`. `roster_assignment_rls` (db/migrations/0075_shift_roster.sql:50-53) is a single
+ * FOR ALL policy, so its WITH CHECK (`app.can_admin_employment`) governs INSERT and the new row of an
+ * UPDATE — but a DELETE is checked against USING ALONE, which is `app.can_see_employment`. A supervisor
+ * and the employee themselves both pass that. Measured on a disposable database as `ai_hr_app` in a
+ * rolled-back transaction, with a real active administrative reporting line: the same manager session
+ * that gets 42501 for an INSERT and for a constraint-valid UPDATE on a future-dated row of a direct
+ * report gets `DELETE 1` for the delete of that row — future-dated or past-dated, it makes no
+ * difference, because the storage layer carries no date rule either. The employee's own roster day
+ * likewise deletes under a plain `employee` grant. The negative control holds: the same employee
+ * against a row they cannot see gets `DELETE 0`, silently filtered rather than refused, which is what
+ * USING does.
+ *
+ * So for the OTHER two verbs `assertRosterAdmin` is belt over a brace, and for THIS one it is the only
+ * thing there is. Closing the gap needs a restrictive DELETE policy or per-command policies, i.e. a
+ * centrally numbered migration; it was measured and reported under 42afb2d2, not built.
+ */
 export async function clearRoster(ctx: SessionContext, p: { employmentId: string; shiftDate: string }) {
   return withTenant(ctx, async (tx) => {
     // The deleted row IS the "before" — returning it costs nothing and needs no second read.
@@ -1438,14 +1527,23 @@ export async function generateRosterFromTemplate(
 
   const [tpl] = await withTenant(ctx, (tx) =>
     tx
-      .select({ companyId: shift.companyId, weeklyPattern: shift.weeklyPattern, archivedAt: shift.archivedAt })
+      .select({
+        companyId: shift.companyId,
+        weeklyPattern: shift.weeklyPattern,
+        // b8aa3466 — the four-way row, so generation and the engine split the month the same way.
+        halfPattern: shift.halfPattern,
+        offPattern: shift.offPattern,
+        archivedAt: shift.archivedAt,
+      })
       .from(shift)
       .where(eq(shift.id, p.shiftId))
       .limit(1),
   );
   if (!tpl) throw new Error('Shift not found (or not visible)');
   if (tpl.archivedAt) throw new Error('Cannot generate a roster from an archived shift');
-  if (!tpl.weeklyPattern || tpl.weeklyPattern.length === 0) {
+  // b8aa3466 — Full ∪ Half. A shift that is all half days has a perfectly usable pattern; refusing it here
+  // would be a new false rejection introduced by the four-way row.
+  if (workingDayCount({ pattern: tpl.weeklyPattern, halfPattern: tpl.halfPattern }) === 0) {
     throw new Error('This shift has no weekly working-day pattern — set one on the shift first');
   }
 
@@ -1468,12 +1566,16 @@ export async function generateRosterFromTemplate(
   }
   if (employmentIds.length === 0) throw new Error('No employees in scope — pick employees or a department with members');
 
-  const pattern = tpl.weeklyPattern;
+  // b8aa3466 — generation reads the FOUR-WAY row through the shared resolver. Full and Half both generate
+  // a shift row (a half day is a working day; its shorter hours are decided by the engine, not by whether a
+  // roster row exists); Rest and Off both generate a rest row, because neither is scheduled work. A
+  // template written before migration 0429 has empty half/off arrays and therefore splits exactly as before.
   const workingDates: string[] = [];
   const restDates: string[] = [];
   for (let ms = fromMs; ms <= toMs; ms += DAY_MS) {
     const iso = new Date(ms).toISOString().slice(0, 10);
-    (pattern.includes(isoWeekday(iso)) ? workingDates : restDates).push(iso);
+    const kind = shiftDayKindFor({ pattern: tpl.weeklyPattern, halfPattern: tpl.halfPattern, offPattern: tpl.offPattern }, iso);
+    (isWorkingDayKind(kind) ? workingDates : restDates).push(iso);
   }
 
   const assigned = await assignShiftBulk(ctx, { employmentIds, shiftDates: workingDates, shiftId: p.shiftId });
@@ -1740,8 +1842,10 @@ export async function rosterMonthView(
 /**
  * 23390097 BLOCKER — WHO MAY CHANGE THE ROSTER AT ALL, answered in the SERVER before any SQL runs.
  *
- * Writing roster_assignment requires app.can_admin_employment → app.is_admin_for, so ROW-LEVEL SECURITY
- * already refuses a supervisor. WHAT IT REFUSES WITH was the hole: drizzle wraps PostgresError 42501 as
+ * INSERTING OR UPDATING roster_assignment requires app.can_admin_employment → app.is_admin_for, so
+ * ROW-LEVEL SECURITY already refuses a supervisor those two verbs. READ THE DELETE NOTE ON
+ * `clearRoster` BEFORE TREATING THAT AS "the database decides" — it does not decide the third verb,
+ * and this guard is the only thing that does. WHAT IT REFUSES WITH was the hole: drizzle wraps 42501 as
  * `Failed query: insert into "roster_assignment" … params: <tenant uuid>,<employment uuid>,…`, and the
  * roster actions copy `(e as Error).message` verbatim into a toast (the three cell actions) or into
  * `?error=`, which app/roster/page.tsx renders in ErrorBanner (Generate / Copy). The database's own
@@ -1774,12 +1878,14 @@ export function assertRosterAdmin(ctx: SessionContext): void {
  * already been attended — the attendance figures for it were fixed when the day was saved — so only an
  * HR administrator may re-write it, and the UI confirms first.
  *
- * READ THIS BEFORE QUOTING THE `shiftDate > today` BRANCH AS A SUPERVISOR CAPABILITY. Writing
- * roster_assignment at all already requires app.can_admin_employment → app.is_admin_for, i.e. an
- * hr_admin or super_admin grant. Every session that reaches a roster write is therefore an admin,
- * `isAdmin(ctx)` is already true, and the left-hand branch never decides anything at the write boundary.
- * A supervisor clicking tomorrow does not get "allowed" — RLS refuses the insert with 42501. The grid is
- * rendered READ-ONLY for a non-admin for exactly that reason (components/roster-grid.tsx).
+ * READ THIS BEFORE QUOTING THE `shiftDate > today` BRANCH AS A SUPERVISOR CAPABILITY. Inserting or
+ * updating roster_assignment already requires app.can_admin_employment → app.is_admin_for, i.e. an
+ * hr_admin or super_admin grant; and `assertRosterAdmin` is called before this predicate in every write
+ * path, so every session that reaches it is an admin, `isAdmin(ctx)` is already true, and the left-hand
+ * branch never decides anything at the write boundary. A supervisor clicking tomorrow does not get
+ * "allowed" — RLS refuses the insert with 42501. The grid is rendered READ-ONLY for a non-admin for
+ * exactly that reason (components/roster-grid.tsx). (DELETE is the exception RLS does NOT cover; see the
+ * measurement on `clearRoster` above. It changes nothing here, because `assertRosterAdmin` runs first.)
  *
  * The predicate is kept as belt-and-braces, so that if roster_assignment's RLS is ever widened to
  * supervisors, today-and-earlier stays administrator-only without a second change. It is NOT evidence

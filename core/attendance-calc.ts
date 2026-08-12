@@ -60,10 +60,30 @@ export function bucketForRate(ratePattern: 'flat' | 'variable', rate: number): O
   return hit ? hit[1] : 'flat';
 }
 
-/** The multiplier a band uses on a given day: a public holiday prefers the band's own PH rate when one is
- *  set, and falls back to the ordinary rate when it is not — which is exactly today's behaviour. */
+/**
+ * The multiplier a band uses on a given day.
+ *
+ * 7c834696 rev 3 FIXED A REPORTING REGRESSION HERE. A band carries an ordinary rate and (optionally) a
+ * public-holiday rate; there is no rest-day column on a band at all. The original reading — "PH rate when
+ * set, else the ordinary rate" — therefore categorised a rest day and an unconfigured public holiday at
+ * the band's WORKDAY multiplier, so under production rule A02 (both bands 1.50, ph_rate NULL) a rest day
+ * would have been reported in the OT 1.5 column and a public holiday likewise, where the same day on a
+ * rule with NO bands lands in OT 2.0 and OT 3.0 respectively (see splitOtMinutes' no-bands leg). Adding an
+ * OT table silently changed which column a rest day was reported in.
+ *
+ * The rule now: a non-workday falls back to the STATUTORY multiplier the no-bands leg already uses — 2×
+ * for a rest day, 3× for a public holiday — and an explicitly configured `phRate` still wins on a public
+ * holiday, because that is the owner's own number (Standard sets 2.00 and 3.00 on its two bands). A rest
+ * day has nothing to override it with, so it always takes 2×.
+ *
+ * REPORTING ONLY. Pay reads `ot_minutes` plus the statutory multipliers (core/payroll.ts prefill reads
+ * ot_minutes and day_type; band multipliers never reach the payroll kernel), so this moves a COLUMN on the
+ * attendance report, not a ringgit. Production has 8 rest-day rows, all 2026-06-28, all predating any
+ * banded rule, and no public-holiday rows — nothing on production is re-categorised unless it is recomputed.
+ */
 export function rateForDay(row: ResolvedOtRow, dayType: DayType): number {
-  if (dayType === 'holiday' && row.phRate != null) return row.phRate;
+  if (dayType === 'holiday') return row.phRate ?? 3.0;
+  if (dayType === 'rest_day') return 2.0;
   return row.rate;
 }
 
@@ -89,8 +109,8 @@ export function rateForDay(row: ResolvedOtRow, dayType: DayType): number {
  *     counted as OT" — but that would cut `ot_minutes`, which is the figure payroll pays from, downward
  *     and retroactively for anyone with a bounded table. Truncation is its own opt-in decision.
  *  2. Rounding is NOT touched here. It stays in applyOtRuleRows and still decides `ot_minutes`; this
- *     function splits whatever total came out of it. See applyOtRuleRows for the unresolved conflict
- *     between the request's two rounding examples.
+ *     function splits whatever total came out of it. (7c834696 rev 3 settled that rounding is DOWNWARD —
+ *     see applyOtRuleRows. The total this function is handed changed; the split arithmetic did not.)
  */
 export function splitOtMinutes(
   otMinutes: number | null,

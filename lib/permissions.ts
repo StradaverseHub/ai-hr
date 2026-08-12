@@ -401,7 +401,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     // checks guard-derived access in BOTH directions, so registering them there swaps one failure for
     // another. And the entry cannot land before the page does — the test fails both ways — which is why
     // the two builders were told to declare these rather than edit this file.
-    routes: ['/admin/attendance', '/attendance/import', '/roster/import', '/attendance/recompute'],
+    // af7a8eb4 (r186): the add/edit shift form moved off this page into its own routes, so the shift
+    // library is now a list + two sub-pages, matching the notice-board / pay-components shape above.
+    // Both call requireAdmin, the same guard as their parent, so they ride THIS screen.
+    routes: [
+      '/admin/attendance',
+      '/admin/attendance/new',
+      '/admin/attendance/[shiftId]',
+      '/attendance/import',
+      '/roster/import',
+      '/attendance/recompute',
+    ],
   },
   {
     // R33 f21d6eee: the per-company working-hours + overtime-rates config relocated off the shift library
@@ -412,7 +422,14 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/attendance-policy',
     labelKey: 'nav.attendancePolicy',
     guard: 'requireAdmin',
-    routes: ['/admin/attendance-policy', '/admin/attendance-policy/rules/new', '/admin/attendance-policy/rules/[ruleId]'],
+    // af7a8eb4 (r186): the working-hours schedule block moved off the policy page onto its own route.
+    // requireAdmin, same guard as its parent, so it rides this screen rather than getting a column.
+    routes: [
+      '/admin/attendance-policy',
+      '/admin/attendance-policy/schedule',
+      '/admin/attendance-policy/rules/new',
+      '/admin/attendance-policy/rules/[ruleId]',
+    ],
   },
   {
     screenKey: 'attendanceAllowance',
