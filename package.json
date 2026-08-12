@@ -44,6 +44,7 @@
     "statutory:build-my": "node --env-file=.env.local --import tsx scripts/statutory-pack-build-my.ts",
     "statutory:sync": "node --env-file=.env.local --import tsx scripts/statutory-sync.ts",
     "seed:catalogs": "node --env-file=.env.local --import tsx scripts/seed-catalogs.ts",
+    "claims:backfill-mileage-rate": "node --env-file=.env.local --import tsx scripts/backfill-mileage-flat-rate.ts",
     "platform:usage": "node --env-file=.env.local --import tsx scripts/platform-usage-report.ts"
   },
   "dependencies": {

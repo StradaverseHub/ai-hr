@@ -6780,6 +6780,30 @@ export const claimPolicy = pgTable(
      */
     gradeId: uuid('grade_id').references(() => jobGrade.id),
     /**
+     * ─────────── SUB-CLAIM LIMITS: the SECOND level, not a third one (e7eb5d83 rev 5, 0435) ───────────
+     *
+     * NULL ⇒ this row is a limit on the claim TYPE — every row that existed before 0435, and the only
+     * kind the engine had. Non-null ⇒ a limit on that one `claim_item`, checked IN ADDITION to its
+     * type's limit, never instead of it.
+     *
+     * Revision 4 refused this as "a third group/claim/sub-claim level" and that was our error, recorded
+     * here so it is not repeated: MEDICAL 001 is the TYPE and MEDICAL 002/003 are its claim_item rows,
+     * the second level, which has existed since the module shipped. It had no limit columns of its own
+     * and claim_policy had no way to point at it, so the screen could only ever say "shares Medical's".
+     *
+     * ⚠️ EVERY TYPE-LEVEL READ MUST CARRY `claim_item_id IS NULL`. Resolution picks the latest
+     * valid_from within a tier, so an item row is otherwise indistinguishable from a newer version of
+     * the type's own policy and would REPLACE it for every employee. That includes setClaimPolicy's
+     * close-and-insert predicate, where the omission does not merely mis-read but DESTROYS: saving a
+     * limit for Outpatient would close Medical's own open version.
+     *
+     * WHY NOT LIMIT COLUMNS ON claim_item INSTEAD. A sub-claim limit is effective-dated and per-grade
+     * for exactly the reasons the type's is — "RM1,000 for Dental, RM500 for Executives, from April" —
+     * and claim_item is a flat master row with no versioning and no grade dimension. Putting them there
+     * means either re-inventing both, or a sub-limit that silently re-prices history when edited.
+     */
+    claimItemId: uuid('claim_item_id').references(() => claimItem.id),
+    /**
      * NULL = unlimited. Annual cap on the total (pending+approved+paid) of this type per employee.
      *
      * e7eb5d83 — THIS COMMENT USED TO SAY "approved claims", AND THAT WAS NEVER WHAT THE CODE DID. The
@@ -6838,6 +6862,8 @@ export const claimPolicy = pgTable(
   (t) => [
     index('claim_policy_type_idx').on(t.claimTypeId, t.validFrom),
     index('claim_policy_type_grade_idx').on(t.claimTypeId, t.gradeId, t.validFrom),
+    // 0435 — the resolver's predicate order once item rows share the table (type, grade, item, valid_from).
+    index('claim_policy_type_grade_item_idx').on(t.claimTypeId, t.gradeId, t.claimItemId, t.validFrom),
   ],
 );
 
