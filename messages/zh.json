@@ -8718,7 +8718,17 @@
     "previewFailed": "无法为该员工计算结果。",
     "operand_fixed_allowances": "所有固定津贴",
     "formulaDivisionNote": "您可以除以实时数值，例如工作天数或工作时数。若某位员工的该数值为零，此薪资项目对该员工不发放任何金额，薪资运算仍会完成——请先在此处查看预览再依赖它。",
-    "previewZeroDivisor": "由于「{divisor}」在第 {step} 步为零，此项目为该员工发放 RM 0.00。薪资运算仍会完成。"
+    "previewZeroDivisor": "由于「{divisor}」在第 {step} 步为零，此项目为该员工发放 RM 0.00。薪资运算仍会完成。",
+    "formulaLine": "此公式读作",
+    "formulaLineHint": "括号显示的是各步骤本来就自上而下执行的顺序——计算方式没有任何改变。",
+    "numberLabel": "为此数字命名",
+    "numberLabelPlaceholder": "例如：工作天数",
+    "operand_calendar_days": "当月日历天数",
+    "operand_prorated_basic": "按比例分摊的基本工资",
+    "previewSteps": "结果是如何算出的",
+    "previewSearch": "查找员工",
+    "previewSearchPlaceholder": "姓名或员工编号",
+    "previewSearchNone": "没有员工符合该搜索条件。"
   },
   "review": {
     "title": "评估",

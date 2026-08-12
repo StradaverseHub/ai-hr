@@ -8718,7 +8718,17 @@
     "previewFailed": "Không thể tính kết quả cho nhân viên đó.",
     "operand_fixed_allowances": "Tất cả phụ cấp cố định",
     "formulaDivisionNote": "Bạn có thể chia cho một giá trị thực tế như số ngày hoặc số giờ làm việc. Nếu giá trị đó bằng 0 với một nhân viên, mục lương này không trả gì cho nhân viên đó và kỳ lương vẫn hoàn tất — hãy xem bản xem trước tại đây trước khi dựa vào nó.",
-    "previewZeroDivisor": "Mục này trả RM 0.00 cho nhân viên này vì \"{divisor}\" bằng 0 ở bước {step}. Kỳ lương vẫn sẽ hoàn tất."
+    "previewZeroDivisor": "Mục này trả RM 0.00 cho nhân viên này vì \"{divisor}\" bằng 0 ở bước {step}. Kỳ lương vẫn sẽ hoàn tất.",
+    "formulaLine": "Công thức này đọc là",
+    "formulaLineHint": "Dấu ngoặc thể hiện thứ tự các bước vốn đã chạy, từ trên xuống dưới — cách tính không có gì thay đổi.",
+    "numberLabel": "Tên cho số này",
+    "numberLabelPlaceholder": "vd. Ngày công",
+    "operand_calendar_days": "Số ngày theo lịch trong tháng",
+    "operand_prorated_basic": "Lương cơ bản theo tỷ lệ",
+    "previewSteps": "Kết quả được tính ra sao",
+    "previewSearch": "Tìm nhân viên",
+    "previewSearchPlaceholder": "Tên hoặc mã nhân viên",
+    "previewSearchNone": "Không có nhân viên nào khớp với tìm kiếm đó."
   },
   "review": {
     "title": "Đánh giá",

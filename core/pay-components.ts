@@ -4,7 +4,7 @@
  * helpers that seed components from the legacy compensation + payroll_input so the gated kernel path
  * is byte-identical. Every state-changing method appends a DomainEvent (substrate discipline).
  */
-import { and, desc, eq, gte, ilike, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gte, ilike, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
